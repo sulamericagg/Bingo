@@ -263,7 +263,7 @@ export class Sim {
     }
     if (this.o.portrait) {
       const t = cols;
-      cols = Math.max(this.theme === 'truck' ? 5 : 7, rows);
+      cols = Math.max(this.theme === 'truck' ? 6 : 7, rows);
       rows = Math.max(9, t);
     }
     this.cols = cols;
@@ -971,7 +971,7 @@ export class Sim {
     if (this.time >= this.p.len) this.ended = true;
   }
 
-  private ignite(s: Station): void {
+  ignite(s: Station): void {
     if (s.fire > 0) return;
     s.fire = 1;
     s.fireT = 0;

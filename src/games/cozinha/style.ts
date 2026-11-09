@@ -54,6 +54,7 @@ const CSS = `
 .cz-tabs .cz-btn{flex:1;font-size:14px;padding:8px 4px;background:linear-gradient(#5d4a9e,#3b2a7a)}
 .cz-tabs .cz-btn.cz-on{background:linear-gradient(#fff3a0,#ffcf2e 50%,#e98f00);color:#2a0b5c}
 .cz-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.08);border-radius:14px;padding:8px}
+.cz-item .cz-grow{flex:1;min-width:0}
 .cz-item .cz-grow b{display:block;font-size:16px}
 .cz-item .cz-grow small{display:block;font-size:12px;opacity:.85;line-height:1.2}
 .cz-lv{display:flex;gap:3px;margin-top:3px}

@@ -261,8 +261,8 @@ export function dayParams(day: number, up: Record<UpId, number>): DayParams {
   const dd = Math.max(1, day);
   const over = Math.max(0, dd - 30); // depois do dia 30 a pressão continua devagar
   const late = 1 / (1 + over * 0.02); // 1 → 0.5 no dia 80
-  const every = Math.max(4.5, (21 - 7 * Math.log2(1 + dd / 4)) * Math.max(0.75, late));
-  const maxOrders = Math.min(8, 2 + Math.floor(dd / 3) + up.dining);
+  const every = Math.max(4.5, (22 - 6 * Math.log2(1 + dd / 5)) * Math.max(0.75, late));
+  const maxOrders = Math.min(8, 2 + Math.floor(dd / 4) + up.dining);
   const patience = Math.max(30, 80 - 15 * Math.log2(1 + dd / 5)) * Math.max(0.7, late);
   const len = 120 + Math.min(60, dd * 3);
   const menu = Math.min(8, 2 + Math.floor((dd + 1) / 3));

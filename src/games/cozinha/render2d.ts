@@ -90,7 +90,7 @@ export class Render2D {
     const top = this.topPad + ticketsH + 6;
     const availW = this.w - 12;
     const availH = this.h - top - this.botPad - 8;
-    const DR = 1.7;
+    const DR = this.h < this.w ? 1.25 : 1.7;
     const T = Math.max(14, Math.min(availW / s.cols, availH / (s.rows + DR), 96));
     const kw = T * s.cols;
     const kh = T * (s.rows + DR);

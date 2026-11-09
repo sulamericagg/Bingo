@@ -374,6 +374,13 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     } else {
       sim.clientPick = () => net.notePick();
     }
+    // depuração/screenshots: turno curto e incêndio forçado
+    const dlen = Number(qs.get('czlen') ?? 0);
+    if (dlen > 0) (sim.p as { len: number }).len = dlen;
+    if (qs.has('czfire')) {
+      const pans = sim.st.filter((s) => (s.fx || s.fy) && (s.k === 'pan' || s.k === 'pot' || s.k === 'counter'));
+      setTimeout(() => pans.slice(0, 2).forEach((s) => sim.ignite(s)), 4000);
+    }
     const mkBot = (i: number, role: Role) => sim.addPlayer(10 + i, roleName(role), BOT_SKINS[i % BOT_SKINS.length], true, role, true);
     const mkHuman = (p: PeerState) => sim.addPlayer(200 + others.size, p.name, p.skin === 'custom' ? 'bloop' : p.skin, false, 'cook', true);
 
