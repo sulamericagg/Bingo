@@ -55,7 +55,6 @@ export type IconName =
   | 'asteroid'
   | 'clock'
   | 'user'
-  | 'users'
   | 'party'
   | 'comet'
   | 'arrow-up'
@@ -490,16 +489,6 @@ const ICONS: Record<IconName, string> = {
     '<ellipse cx="12.5" cy="31" rx="2.8" ry="1.8" fill="#ff2f9a" opacity=".45"/><ellipse cx="35.5" cy="31" rx="2.8" ry="1.8" fill="#ff2f9a" opacity=".45"/>' +
     `<path d="M21.5 31.5Q24 34 26.5 31.5" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>` +
     hl('<ellipse cx="16" cy="13.5" rx="4.5" ry="2.2" transform="rotate(-30 16 13.5)"/>', 0.7),
-
-  users:
-    sil('<path d="M22 30C22 18.5 27.5 11 34 11C40.5 11 46 18.5 46 30C46 35 43 37 39 36.3C37 36 36 35.4 34 35.4C32 35.4 31 36 29 36.3C25 37 22 35 22 30Z"/>', 'cyan', 2.6) +
-    '<circle cx="30.5" cy="22.5" r="2.4" fill="#fff"/><circle cx="38" cy="22.5" r="2.4" fill="#fff"/>' +
-    ink('<circle cx="31" cy="23" r="1.3"/><circle cx="38.5" cy="23" r="1.3"/>') +
-    sil('<path d="M3 35C3 22 9.5 13 17.5 13C25.5 13 32 22 32 35C32 41 28.5 43 23.5 42.2C21 41.8 19.5 41 17.5 41C15.5 41 14 41.8 11.5 42.2C6.5 43 3 41 3 35Z"/>', 'pink', 2.8) +
-    '<ellipse cx="13" cy="27" rx="3.4" ry="4.2" fill="#fff"/><ellipse cx="22.5" cy="27" rx="3.4" ry="4.2" fill="#fff"/>' +
-    ink('<circle cx="13.8" cy="28" r="2"/><circle cx="23.3" cy="28" r="2"/>') +
-    `<path d="M15.5 34Q17.7 36 20 34" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>` +
-    hl('<ellipse cx="11" cy="18.5" rx="3.6" ry="1.8" transform="rotate(-30 11 18.5)"/>', 0.7),
 
   party:
     `<path d="M26 13Q30 6 26 2M33 22Q40 19 44 23" fill="none" stroke="#5ef0ff" stroke-width="2.6" stroke-linecap="round"/>` +

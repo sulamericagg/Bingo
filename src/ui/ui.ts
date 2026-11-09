@@ -347,7 +347,7 @@ export class UI {
       const inf = BOOST_INFO[id];
       return `<button class="lo-chip ${on ? 'on' : ''} ${n ? '' : 'none'}" data-lo="${id}" aria-pressed="${on}" aria-label="${inf.name}">
         <span class="plate sm plate-${inf.plate}">${icon(inf.icon)}</span>
-        <span class="lo-txt"><b>${inf.short}</b><small>${n ? (on ? 'Ativo' : `x${n}`) : 'Obter'}</small></span>
+        <span class="lo-txt"><b>${inf.short}</b><small>${n ? (on ? 'Ativo' : `x${n}`) : 'Comprar'}</small></span>
         <em class="lo-mark">${on ? icon('check') : n ? '' : '+'}</em>
       </button>`;
     }).join('');

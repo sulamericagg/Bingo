@@ -46,19 +46,18 @@
           <div class="spacer"></div>
           <button class="icon-btn" data-open="settings" aria-label="Configurações" data-icon="gear"></button>
         </header>
-        <nav class="rail rail-left" aria-label="Atalhos">
+        <nav class="rail rail-left">
           <button class="rail-btn" data-open="inbox" aria-label="Correio"><span class="plate round plate-pink" data-icon="mail"></span><small>Correio</small><em class="badge hidden" data-badge="inbox"></em></button>
           <button class="rail-btn" data-open="redeem" aria-label="Resgatar código"><span class="plate round plate-gold" data-icon="ticket"></span><small>Código</small></button>
-          <button class="rail-btn" id="btn-free" aria-label="Moedas grátis"><span class="plate round plate-green" data-icon="video"></span><small>Grátis</small><em class="badge hidden" data-badge="free"></em></button>
         </nav>
-        <nav class="rail rail-right" aria-label="Ofertas">
-          <button class="rail-btn flash-btn" data-open="shop" data-tab="offers" aria-label="Oferta relâmpago"><span class="plate round plate-orange" data-icon="fire"></span><small>Oferta</small><b class="rail-timer" id="rail-timer">00:00:00</b></button>
-          <button class="rail-btn" data-open="shop" data-tab="upgrades" aria-label="Melhorias"><span class="plate round plate-cyan" data-icon="arrow-up"></span><small>Melhorias</small><em class="badge hidden" data-badge="upgrades"></em></button>
+        <nav class="rail rail-right">
+          <button class="rail-btn flash-btn" data-open="shop" data-tab="offers" aria-label="Oferta relâmpago"><span class="plate round plate-pink" data-icon="fire"></span><small>Oferta</small><b class="rail-timer" id="rail-timer">00:00:00</b></button>
+          <button class="rail-btn" data-open="shop" data-tab="upgrades" aria-label="Melhorias"><span class="plate round plate-green" data-icon="arrow-up"></span><small>Melhorias</small><em class="badge hidden" data-badge="upgrades"></em></button>
         </nav>
         <div class="logo">
           <div class="logo-small"><span data-icon="sparkle" data-size="16"></span><span data-icon="sparkle" data-size="24"></span><span data-icon="sparkle" data-size="16"></span></div>
           <h1><span>BLOOP</span><span class="o">ORBIT</span></h1>
-          <div class="best"><span data-icon="trophy" data-size="24"></span> Recorde <b data-bind="best">0</b></div>
+          <div class="best"><span data-icon="trophy" data-size="26"></span> Recorde <b data-bind="best">0</b></div>
         </div>
         <div class="menu-bottom">
           <button class="offer hidden" id="starter-offer" data-open="shop" data-tab="offers">
@@ -68,19 +67,16 @@
           </button>
           <div class="loadout" id="loadout"></div>
           <button class="btn btn-play" id="btn-play">JOGAR</button>
-          <button class="mode-btn" id="btn-race">
-            <span class="plate plate-violet mode-ico" data-icon="rocket"></span>
-            <span class="mode-txt"><b>CORRIDA ORBITAL</b><small><span data-icon="users" data-size="15"></span> 5 jogadores · 60s</small></span>
-            <span class="mode-go" data-icon="play" data-size="22"></span>
-          </button>
+          <div class="menu-row">
+            <button class="tile" data-open="shop" data-tab="skins"><span class="tile-ico plate plate-pink" data-icon="bag"></span>Loja<em class="badge hidden" data-badge="shop"></em></button>
+            <button class="tile" data-open="missions"><span class="tile-ico plate plate-cyan" data-icon="target"></span>Missões<em class="badge hidden" data-badge="missions"></em></button>
+            <button class="tile" data-open="daily"><span class="tile-ico plate plate-gold" data-icon="gift"></span>Diário<em class="badge hidden" data-badge="daily"></em></button>
+            <button class="tile" id="btn-creator"><span class="tile-ico plate plate-violet" data-icon="user"></span>Criar<em class="badge hidden"></em></button>
+            <button class="tile" id="btn-free"><span class="tile-ico plate plate-green" data-icon="video"></span>Grátis<em class="badge hidden" data-badge="free"></em></button>
+            <button class="tile" id="btn-race"><span class="tile-ico plate plate-violet" data-icon="rocket"></span>Corrida</button>
+            <button class="tile" id="btn-ranking"><span class="tile-ico plate plate-orange" data-icon="trophy"></span>Ranking</button>
+          </div>
         </div>
-        <nav class="menu-nav" aria-label="Navegação">
-          <button class="nav-btn" data-open="shop" data-tab="skins"><span class="nav-ico plate plate-pink" data-icon="bag"></span><small>Loja</small><em class="badge hidden" data-badge="shop"></em></button>
-          <button class="nav-btn" id="btn-creator"><span class="nav-ico plate plate-violet" data-icon="user"></span><small>Criar</small><em class="badge hidden"></em></button>
-          <button class="nav-btn" id="btn-ranking"><span class="nav-ico plate plate-orange" data-icon="trophy"></span><small>Ranking</small></button>
-          <button class="nav-btn" data-open="missions"><span class="nav-ico plate plate-cyan" data-icon="target"></span><small>Missões</small><em class="badge hidden" data-badge="missions"></em></button>
-          <button class="nav-btn" data-open="daily"><span class="nav-ico plate plate-gold" data-icon="gift"></span><small>Diário</small><em class="badge hidden" data-badge="daily"></em></button>
-        </nav>
       </section>
 
       <!-- CONTINUAR -->

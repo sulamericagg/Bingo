@@ -359,34 +359,21 @@ button {
   animation: biome 2.6s ease forwards;
 }
 
-/* ---------- MENU ----------
- * Hierarquia: topo (carteira + ajustes) · trilhos laterais (atalhos) · logo ·
- * bloco central (oferta, turbos, JOGAR, Corrida) · barra de navegação inferior.
- * Todo o CSS do menu vive aqui (não redefinir em creator.css / race.css).
- */
+/* ---------- MENU ---------- */
 #menu {
-  --rail-w: 64px;
   flex-direction: column;
   align-items: stretch;
-  padding-bottom: calc(10px + var(--safe-bot) + var(--banner-h, 0px));
 }
 .topbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: none;
 }
 .spacer {
   flex: 1;
 }
 .logo {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4px var(--rail-w) 8px;
+  margin-top: 6vh;
   text-align: center;
   pointer-events: none;
 }
@@ -395,7 +382,7 @@ button {
   display: flex;
   flex-direction: column;
   line-height: 0.88;
-  font-size: clamp(40px, min(13.5vw, 10.5vh), 96px);
+  font-size: min(19vw, 96px);
   font-weight: 700;
   letter-spacing: 2px;
 }
@@ -423,254 +410,54 @@ button {
   animation: twinkle 2s ease-in-out infinite;
 }
 .best {
-  margin-top: 12px;
+  margin-top: 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 19px;
-  padding: 5px 16px 5px 10px;
+  font-size: 20px;
+  padding: 6px 18px 6px 10px;
   border-radius: 999px;
-  background: rgba(10, 4, 30, 0.55);
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
+  background: rgba(10, 4, 30, 0.5);
 }
 .menu-bottom {
-  flex: none;
+  margin-top: auto;
+  margin-bottom: 64px; /* espaço do banner */
   width: 100%;
   max-width: 460px;
   align-self: center;
 }
-
-/* modo secundário: Corrida Orbital */
-.mode-btn {
-  position: relative;
-  width: 100%;
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 14px 7px 8px;
-  border-radius: 20px;
-  text-align: left;
-  background: linear-gradient(180deg, rgba(120, 90, 255, 0.85), rgba(70, 30, 170, 0.9));
-  border: 2px solid rgba(160, 230, 255, 0.55);
-  box-shadow: 0 5px 0 #2a1070, 0 0 22px rgba(94, 240, 255, 0.22), inset 0 2px 0 rgba(255, 255, 255, 0.25);
-  transition: transform 0.08s;
-}
-.mode-btn:active {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 #2a1070;
-}
-.mode-ico.plate {
-  width: 44px;
-  height: 44px;
-}
-.mode-ico.plate > .ico {
-  width: 80%;
-  height: 80%;
-}
-.mode-txt {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
-}
-.mode-txt b {
-  font-size: 19px;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 0 rgba(30, 5, 70, 0.6);
-  white-space: nowrap;
-}
-.mode-txt small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #c9f6ff;
-}
-.mode-go {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: rgba(10, 4, 30, 0.4);
-}
-
-/* barra de navegação inferior */
-.menu-nav {
-  flex: none;
-  width: 100%;
-  max-width: 460px;
-  align-self: center;
-  margin-top: 14px;
+.menu-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
-  padding: 8px 4px 6px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(40, 20, 96, 0.88), rgba(16, 6, 44, 0.92));
-  border: 1.5px solid rgba(190, 150, 255, 0.3);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 18px;
 }
-.nav-btn {
+.tile {
   position: relative;
-  min-width: 0;
+  padding: 10px 4px 7px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(120, 80, 255, 0.45), rgba(60, 20, 140, 0.55));
+  border: 1.5px solid rgba(200, 170, 255, 0.35);
+  box-shadow: 0 4px 0 rgba(30, 8, 80, 0.8);
+  font-size: 14px;
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 0;
+  gap: 5px;
   transition: transform 0.08s;
 }
-.nav-btn:active {
-  transform: scale(0.92);
+.tile:active {
+  transform: translateY(3px);
 }
-.nav-btn small {
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 0 rgba(20, 5, 60, 0.9);
+.tile-ico.plate {
+  width: min(56px, 13vw);
+  height: min(56px, 13vw);
 }
-.nav-ico.plate {
-  width: 44px;
-  height: 44px;
-  border-radius: 30%;
+.tile-ico.plate > .ico {
+  width: 82%;
+  height: 82%;
 }
-.nav-ico.plate > .ico {
-  width: 80%;
-  height: 80%;
-}
-.nav-btn .badge {
-  top: -6px;
-  right: auto;
-  left: calc(50% + 10px);
-}
-.cr-tile-art {
-  overflow: hidden;
-}
-.cr-tile-art canvas {
-  width: 92% !important;
-  height: 92% !important;
-  filter: drop-shadow(0 2px 0 rgba(30, 5, 70, 0.45));
-}
-
-/* trilhos laterais (atalhos) */
-.rail {
-  position: absolute;
-  top: calc(70px + var(--safe-top));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: var(--rail-w);
-}
-.rail-left {
-  left: 6px;
-}
-.rail-right {
-  right: 6px;
-}
-.rail-btn {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-  font-size: 11.5px;
-  font-weight: 700;
-  text-shadow: 0 2px 0 rgba(20, 5, 60, 0.9);
-  transition: transform 0.1s;
-}
-.rail-btn small {
-  font-size: inherit;
-  white-space: nowrap;
-}
-.rail-btn:active {
-  transform: scale(0.9);
-}
-.rail-btn .plate {
-  width: 46px;
-  height: 46px;
-}
-.rail-btn .plate > .ico {
-  width: 74%;
-  height: 74%;
-}
-.rail-btn .badge {
-  top: -4px;
-  right: 2px;
-}
-.rail-timer {
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 7px;
-  background: linear-gradient(90deg, #ff3c7a, #ff7a3c);
-  font-variant-numeric: tabular-nums;
-  text-shadow: none;
-}
-.flash-btn .plate {
-  animation: bump 1.6s ease infinite;
-}
-
-@media (max-height: 760px) {
-  .logo-small {
-    display: none;
-  }
-  .best {
-    margin-top: 8px;
-    font-size: 17px;
-  }
-  .rail {
-    gap: 6px;
-  }
-  .rail-btn .plate {
-    width: 40px;
-    height: 40px;
-  }
-  .mode-btn {
-    margin-top: 12px;
-    padding-block: 5px;
-  }
-  .mode-ico.plate {
-    width: 38px;
-    height: 38px;
-  }
-  .menu-nav {
-    margin-top: 10px;
-    padding-top: 6px;
-  }
-  .nav-ico.plate {
-    width: 38px;
-    height: 38px;
-  }
-  .offer {
-    padding: 7px 12px;
-    margin-bottom: 10px;
-  }
-  .offer-art .ico {
-    width: 36px;
-    height: 36px;
-  }
-  .loadout {
-    margin-bottom: 8px;
-  }
-  .btn-play {
-    padding: 14px;
-    font-size: 30px;
-  }
-}
-@media (max-height: 600px) {
-  #menu .offer small,
-  .rail-btn small {
-    display: none;
-  }
-}
-
 .badge {
   position: absolute;
   top: -6px;
@@ -1546,6 +1333,11 @@ button {
   }
 }
 
+@media (min-height: 760px) {
+  .menu-bottom {
+    margin-bottom: 80px;
+  }
+}
 
 /* =====================================================================
  *  MONETIZAÇÃO + ONLINE (loja nova, turbos, correio, códigos, créditos)
@@ -2074,8 +1866,62 @@ button {
   height: 26px;
 }
 
+/* ---------- menu: trilhos laterais ---------- */
 .modal-screen {
   z-index: 5;
+}
+.rail {
+  position: absolute;
+  top: calc(72px + var(--safe-top));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rail-left {
+  left: 12px;
+}
+.rail-right {
+  right: 12px;
+}
+.rail-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 58px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-shadow: 0 2px 0 rgba(20, 5, 60, 0.9);
+  transition: transform 0.1s;
+}
+.rail-btn:active {
+  transform: scale(0.9);
+}
+.rail-btn .plate {
+  width: 48px;
+  height: 48px;
+}
+.rail-btn .plate > .ico {
+  width: 76%;
+  height: 76%;
+}
+.rail-btn .badge {
+  top: -4px;
+  right: 0;
+}
+.rail-timer {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #ff3c7a, #ff7a3c);
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+  margin-top: 1px;
+}
+.flash-btn .plate {
+  animation: bump 1.6s ease infinite;
 }
 
 /* ---------- menu: turbos pré-partida ---------- */
@@ -3105,7 +2951,7 @@ button {
   }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 380px) {
   .tabs.five button {
     font-size: 10.5px;
   }
@@ -3125,15 +2971,18 @@ button {
     width: 84px;
   }
   .lo-txt b {
-    font-size: 11px;
-  }
-  .lo-chip {
-    gap: 3px;
-    padding: 4px 3px 4px 4px;
+    font-size: 10.5px;
   }
   .lo-chip .plate.sm {
     width: 26px;
     height: 26px;
+  }
+  .rail-btn {
+    width: 52px;
+  }
+  .rail-btn .plate {
+    width: 42px;
+    height: 42px;
   }
   .tm-ross {
     font-size: 44px;
@@ -3144,6 +2993,17 @@ button {
   }
   .lo-txt small {
     font-size: 10px;
+  }
+}
+@media (max-height: 700px) {
+  .logo {
+    margin-top: 2vh;
+  }
+  .rail {
+    gap: 8px;
+  }
+  .menu-row {
+    margin-top: 12px;
   }
 }
 #toast {
@@ -3160,15 +3020,4 @@ button {
 }
 .quality-row select option {
   color: #1a0b3a;
-}
-
-.plate-red {
-  --pa: #ffb0bd;
-  --pb: #e0304f;
-  --glow: rgba(255, 79, 106, 0.45);
-}
-.plate-orange {
-  --pa: #ffd08a;
-  --pb: #ff6a2a;
-  --glow: rgba(255, 140, 60, 0.45);
 }
