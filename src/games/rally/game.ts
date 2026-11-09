@@ -114,6 +114,10 @@ class RallyGame {
   private dist = 0;
   private distInt = -1;
   private distStr = '0 m';
+  private coinInt = -1;
+  private coinStr = '0';
+  private safeT = 0;
+  private safeB = 0;
   private emptyT = 0;
   private endReason: 'crash' | 'fuel' = 'fuel';
   private oopsT = 0;
@@ -234,7 +238,11 @@ class RallyGame {
     this.cv.height = Math.round(h * this.dpr);
     this.cv.style.width = w + 'px';
     this.cv.style.height = h + 'px';
-    this.S = Math.min(w / 12.5, h / 9.5);
+    this.S = Math.min(w / 11, h / 9);
+    // áreas seguras lidas uma vez (nada de getComputedStyle por frame)
+    const cs = getComputedStyle(this.el);
+    this.safeT = parseFloat(cs.paddingTop) || 0;
+    this.safeB = parseFloat(cs.paddingBottom) || 0;
   }
 
   private makeCar(id: string): void {
@@ -523,7 +531,9 @@ class RallyGame {
 
   private popup(text: string, color: string, big = false): void {
     if (this.popups.length > 5) this.popups.shift();
-    this.popups.push({ text, x: this.car.x, y: this.car.y + 2.2, t: 0, color, big });
+    let row = 0;
+    for (const p of this.popups) if (p.t < 1.2) row = Math.max(row, p.y + 1);
+    this.popups.push({ text, x: 0, y: row, t: 0, color, big });
   }
 
   private step(): void {
@@ -865,23 +875,30 @@ class RallyGame {
     x.lineCap = 'round';
     const left = camX - ox / S - 1;
     const right = camX + (w - ox) / S + 1;
-    for (const c of this.terrain.chunks.values()) {
-      if (c.x0 > right || c.x0 + CHUNK_LEN < left || !c.fill) continue;
-      const z = c.zone;
-      x.fillStyle = z.ground[1];
-      x.fill(c.fill);
-      x.save();
-      x.translate(0, -1.0);
-      x.strokeStyle = z.ground[0];
-      x.lineWidth = 2;
-      x.stroke(c.edge!);
-      x.restore();
-      x.strokeStyle = INK;
-      x.lineWidth = 0.5;
-      x.stroke(c.edge!);
-      x.strokeStyle = z.top;
-      x.lineWidth = 0.3;
-      x.stroke(c.edge!);
+    // em camadas (todas as bases, depois faixas, contorno e topo) para não marcar emendas
+    for (let pass = 0; pass < 4; pass++) {
+      if (pass === 1) x.translate(0, -1.0);
+      if (pass === 2) x.translate(0, 1.0);
+      for (const c of this.terrain.chunks.values()) {
+        if (c.x0 > right || c.x0 + CHUNK_LEN < left || !c.fill) continue;
+        const z = c.zone;
+        if (pass === 0) {
+          x.fillStyle = z.ground[1];
+          x.fill(c.fill);
+        } else if (pass === 1) {
+          x.strokeStyle = z.ground[0];
+          x.lineWidth = 2;
+          x.stroke(c.edge!);
+        } else if (pass === 2) {
+          x.strokeStyle = INK;
+          x.lineWidth = 0.5;
+          x.stroke(c.edge!);
+        } else {
+          x.strokeStyle = z.top;
+          x.lineWidth = 0.3;
+          x.stroke(c.edge!);
+        }
+      }
     }
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -932,8 +949,8 @@ class RallyGame {
       x.globalAlpha = Math.max(0, a);
       const sz = (p.big ? 30 : 22) * (0.6 + 0.4 * pop);
       x.font = `800 ${sz.toFixed(0)}px Fredoka, system-ui, sans-serif`;
-      const sx = toSX(p.x);
-      const sy = toSY(p.y) - p.t * 30;
+      const sx = w / 2;
+      const sy = h * 0.26 + p.y * 38 - p.t * 24;
       x.lineWidth = 6;
       x.strokeStyle = INK;
       x.strokeText(p.text, sx, sy);
@@ -960,8 +977,7 @@ class RallyGame {
     }
   }
 
-  private drawCarAt(car: Car, S: number, sx: number, sy: number, skin: Skin | null, mood: 'idle' | 'happy' | 'fly', gas: boolean): void {
-    const x = this.ctx;
+  private drawCarAt(car: Car, S: number, sx: number, sy: number, skin: Skin | null, mood: 'idle' | 'happy' | 'fly', gas: boolean, x: CanvasRenderingContext2D = this.ctx): void {
     const p = this.pose;
     const c = Math.cos(car.a);
     const s = Math.sin(car.a);
@@ -992,6 +1008,18 @@ class RallyGame {
     x.restore();
   }
 
+  private ghostCv = document.createElement('canvas');
+  private ghostX: CanvasRenderingContext2D | null = null;
+  private ghostCtx(S: number): CanvasRenderingContext2D {
+    const size = Math.ceil(S * 5.2 * this.dpr);
+    if (this.ghostCv.width !== size) {
+      this.ghostCv.width = this.ghostCv.height = size;
+      this.ghostX = null;
+    }
+    if (!this.ghostX) this.ghostX = this.ghostCv.getContext('2d')!;
+    return this.ghostX;
+  }
+
   private peerSkin(id: string): Skin {
     let s = this.peerSkins.get(id);
     if (!s) {
@@ -1008,8 +1036,13 @@ class RallyGame {
     const sy = oy - (pr.y - this.camY) * S;
     const inView = pr.x > left - 2 && pr.x < right + 2 && sy > -S * 3 && sy < this.h + S * 2;
     if (inView) {
-      x.globalAlpha = 0.55;
-      if (pr.car) this.drawCarAt(pr.car, S, sx, sy, this.peerSkin(pr.skin), 'idle', pr.inp.gas);
+      // fantasma translúcido: desenha numa tela auxiliar reaproveitada e cola com alpha
+      const gx = this.ghostCtx(S);
+      const half = this.ghostCv.width / 2;
+      gx.setTransform(1, 0, 0, 1, 0, 0);
+      gx.clearRect(0, 0, this.ghostCv.width, this.ghostCv.height);
+      gx.setTransform(this.dpr, 0, 0, this.dpr, half, half);
+      if (pr.car) this.drawCarAt(pr.car, S, 0, 0, this.peerSkin(pr.skin), 'idle', pr.inp.gas, gx);
       else {
         const p = this.pose;
         const L = def.wheelBase * S;
@@ -1021,12 +1054,12 @@ class RallyGame {
         p.gas = true;
         p.t = this.time;
         p.mood = 'idle';
-        x.save();
-        x.translate(sx, sy);
-        x.rotate(-pr.a);
-        drawCar(x, def, S, p, this.peerSkin(pr.skin));
-        x.restore();
+        gx.rotate(-pr.a);
+        drawCar(gx, def, S, p, this.peerSkin(pr.skin));
       }
+      x.globalAlpha = 0.6;
+      const hw = half / this.dpr;
+      x.drawImage(this.ghostCv, sx - hw, sy - hw, hw * 2, hw * 2);
       x.globalAlpha = 1;
       // etiqueta com nome
       const ty = sy - S * 1.75;
@@ -1085,7 +1118,7 @@ class RallyGame {
   }
 
   private drawHud(x: CanvasRenderingContext2D, w: number, h: number): void {
-    const top = 14 + (parseFloat(getComputedStyle(this.el).getPropertyValue('--rl-safe')) || 0);
+    const top = 14 + this.safeT;
     // distância
     x.textAlign = 'center';
     x.textBaseline = 'middle';
@@ -1096,9 +1129,9 @@ class RallyGame {
     x.fillStyle = '#fff';
     x.fillText(this.distStr, w / 2, top + 22);
     // combustível
-    const fx = 70;
-    const fy = top + 6;
-    const fw = Math.min(150, w * 0.32);
+    const fw = Math.min(150, w * 0.36);
+    const fx = w / 2 - (fw + 30) / 2;
+    const fy = top + 46;
     x.drawImage(this.sFuel, fx - 4, fy - 6, 34, 34);
     const k = this.fuel / this.fuelMax;
     x.fillStyle = INK;
@@ -1113,17 +1146,23 @@ class RallyGame {
       x.fill();
     }
     // moedas
-    x.drawImage(this.sCoin, fx - 2, fy + 32, 28, 28);
+    const cy = top + 62;
+    x.drawImage(this.sCoin, 14, cy - 14, 28, 28);
     x.textAlign = 'left';
     x.font = '800 20px Fredoka, system-ui, sans-serif';
     x.lineWidth = 5;
-    x.strokeText(String(this.coins), fx + 32, fy + 47);
+    x.strokeStyle = INK;
+    if (this.coinInt !== this.coins) {
+      this.coinInt = this.coins;
+      this.coinStr = String(this.coins);
+    }
+    x.strokeText(this.coinStr, 46, cy + 1);
     x.fillStyle = '#fff';
-    x.fillText(String(this.coins), fx + 32, fy + 47);
+    x.fillText(this.coinStr, 46, cy + 1);
 
     // pedais
     const pr = Math.min(56, w * 0.13);
-    const by = h - pr - 28 - (parseFloat(getComputedStyle(this.el).getPropertyValue('--rl-safe-b')) || 0);
+    const by = h - pr - 28 - this.safeB;
     this.drawPedal(x, 24 + pr, by, pr, false, this.inp.brake);
     this.drawPedal(x, w - 24 - pr, by, pr, true, this.inp.gas);
   }

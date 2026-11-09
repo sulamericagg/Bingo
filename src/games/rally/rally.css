@@ -10,6 +10,8 @@
   user-select: none;
   -webkit-user-select: none;
   --rl-safe: env(safe-area-inset-top, 0px);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   --rl-safe-b: env(safe-area-inset-bottom, 0px);
   z-index: 50;
 }
@@ -93,7 +95,7 @@
 .rl-toasts {
   position: absolute;
   left: 50%;
-  top: calc(64px + var(--rl-safe));
+  top: calc(100px + var(--rl-safe));
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;

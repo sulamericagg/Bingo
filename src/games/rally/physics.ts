@@ -99,124 +99,127 @@ export class Car {
     const st = this.st;
     const c = Math.cos(this.a);
     const s = Math.sin(this.a);
-    // eixo para baixo do chassi (local (0,-1))
+    // eixo "para baixo" do chassi
     const ux = s;
     const uy = -c;
     const M = this.mass;
-    const mw = 0.14 * M;
-    const k = 260 * M * st.spring;
-    const cd = 15 * M * st.damp;
-    const kl = 2600 * M;
-    const cl = 45 * M;
+    const k = 38 * M * st.spring;
+    const cd = 5 * M * st.damp;
     let fx = 0;
     let fy = -gravity * M;
     let tq = 0;
     const gas = inp.gas && fuelOk;
     const brake = inp.brake;
     let onG = 0;
+    let impact = 0;
 
     for (let i = 0; i < 2; i++) {
       const wh = this.wheels[i];
-      // ponto de fixação no mundo
       const px = this.x + wh.lx * c - this.mountY * s;
       const py = this.y + wh.lx * s + this.mountY * c;
-      const rx = px - this.x;
-      const ry = py - this.y;
-      // velocidade do ponto
-      const pvx = this.vx - this.w * ry;
-      const pvy = this.vy + this.w * rx;
-      const dx = wh.x - px;
-      const dy = wh.y - py;
-      const along = dx * ux + dy * uy;
-      const latx = dx - along * ux;
-      const laty = dy - along * uy;
-      const rvx = wh.vx - pvx;
-      const rvy = wh.vy - pvy;
-      const rva = rvx * ux + rvy * uy;
-      // mola da suspensão (+ batente)
-      let f = -k * (along - this.rest) - cd * rva;
-      if (along < 0.12) f += (0.12 - along) * k * 6;
-      if (along > this.rest + 0.35) f -= (along - this.rest - 0.35) * k * 6;
-      wh.comp = this.rest - along;
-      // mola lateral dura
-      const rvlx = rvx - rva * ux;
-      const rvly = rvy - rva * uy;
-      const flx = -kl * latx - cl * rvlx;
-      const fly = -kl * laty - cl * rvly;
-      const Fx = f * ux + flx;
-      const Fy = f * uy + fly;
-      // aplica na roda
-      wh.vx += (Fx / mw) * dt;
-      wh.vy += ((Fy - gravity * mw) / mw) * dt;
-      // reação no chassi
-      fx -= Fx;
-      fy -= Fy;
-      tq += rx * -Fy - ry * -Fx;
+      const r = wh.r + (this.hover ? 0.12 : 0);
+      // "raio" da suspensão: sobe a roda até não penetrar o chão
+      let sl = this.rest;
+      let nx = 0;
+      let ny = 1;
+      let pen = 0;
+      for (let it = 0; it < 3; it++) {
+        const cx = px + ux * sl;
+        const cy = py + uy * sl;
+        const h = terrain.height(cx);
+        const d = terrain.slope(cx);
+        const inv = 1 / Math.sqrt(1 + d * d);
+        nx = -d * inv;
+        ny = inv;
+        pen = r - (cy - h) * ny;
+        if (pen <= 0) break;
+        const un = -(ux * nx + uy * ny); // quanto a distância cresce por metro subindo
+        sl -= pen / Math.max(0.3, un);
+        if (sl < 0) {
+          sl = 0;
+          break;
+        }
+      }
+      const cx = px + ux * sl;
+      const cy = py + uy * sl;
+      const touching = sl < this.rest - 0.001 || pen > -0.03;
+      wh.ground = touching;
+      const comp = this.rest - sl;
+      const compRate = (comp - wh.comp) / dt;
+      wh.comp = comp;
+      wh.x = cx;
+      wh.y = cy;
+      if (!touching) {
+        if (gas) wh.spin -= 18 * dt;
+        continue;
+      }
+      onG++;
+      // braço do ponto de contato
+      const qx = cx - nx * r;
+      const qy = cy - ny * r;
+      const rx = qx - this.x;
+      const ry = qy - this.y;
+      // mola + amortecedor (só empurra)
+      let F = k * comp + cd * compRate;
+      if (F < 0) F = 0;
+      if (F > 60 * M) F = 60 * M;
+      if (compRate > 3) impact = Math.max(impact, compRate);
+      const sfx = -ux * F;
+      const sfy = -uy * F;
+      // velocidade do ponto de contato
+      const vpx = this.vx - this.w * ry;
+      const vpy = this.vy + this.w * rx;
+      const tx = ny;
+      const ty = -nx;
+      const vt = vpx * tx + vpy * ty;
+      const N = Math.max(F * (-(ux * nx + uy * ny)), 0);
+      const grip = st.grip * gripMul;
+      const maxT = (N + gravity * M * 0.25) * grip * 1.3;
+      let Ft = 0;
+      if (gas) {
+        if (vt < st.topSpeed) Ft = st.power * M * 0.5 * grip * Math.min(1, (st.topSpeed - vt) * 0.6);
+      } else if (brake) {
+        if (vt > 0.4) Ft = -st.power * M * 0.6;
+        else if (fuelOk && vt > -st.topSpeed * 0.35) Ft = -st.power * M * 0.3;
+      } else {
+        Ft = -vt * M * (this.hover ? 0.15 : 0.6);
+      }
+      if (Ft > maxT) Ft = maxT;
+      if (Ft < -maxT) Ft = -maxT;
+      const tfx = Ft * tx;
+      const tfy = Ft * ty;
+      fx += sfx + tfx;
+      fy += sfy + tfy;
+      // torque: mola no ponto de fixação, tração no contato
+      tq += (px - this.x) * sfy - (py - this.y) * sfx;
+      tq += rx * tfy - ry * tfx;
+      wh.spin -= (vt / wh.r) * dt;
+      // fundo de curso: impulso para não atravessar
+      if (sl === 0 && pen > 0) {
+        this.y += pen * ny;
+        this.x += pen * nx;
+        const vn = vpx * nx + vpy * ny;
+        if (vn < 0) {
+          const rn = rx * ny - ry * nx;
+          const j = (-(1 + 0.2) * vn) / (1 / M + (rn * rn) / this.inertia);
+          this.vx += (j * nx) / M;
+          this.vy += (j * ny) / M;
+          this.w += (rn * j) / this.inertia;
+          if (-vn > 3) impact = Math.max(impact, -vn);
+        }
+      }
     }
 
-    // integra chassi
     this.vx += (fx / M) * dt;
     this.vy += (fy / M) * dt;
     this.w += (tq / this.inertia) * dt;
 
-    // contato das rodas com o chão
-    let impact = 0;
-    for (let i = 0; i < 2; i++) {
-      const wh = this.wheels[i];
-      wh.x += wh.vx * dt;
-      wh.y += wh.vy * dt;
-      const h = terrain.height(wh.x);
-      const sl = terrain.slope(wh.x);
-      const inv = 1 / Math.sqrt(1 + sl * sl);
-      const nx = -sl * inv;
-      const ny = inv;
-      const r = wh.r + (this.hover ? 0.12 : 0);
-      const dist = (wh.y - h) * ny;
-      wh.ground = dist < r + 0.03;
-      if (dist < r) {
-        onG++;
-        wh.x += nx * (r - dist);
-        wh.y += ny * (r - dist);
-        const tx = ny;
-        const ty = -nx;
-        let vn = wh.vx * nx + wh.vy * ny;
-        let vt = wh.vx * tx + wh.vy * ty;
-        if (vn < 0) {
-          if (vn < -3) impact = Math.max(impact, -vn);
-          vn = -vn * 0.08;
-        }
-        // tração
-        const grip = st.grip * gripMul;
-        const acc = st.power * grip * dt * (this.hover ? 1.1 : 1);
-        if (gas) {
-          if (vt < st.topSpeed) vt = Math.min(st.topSpeed, vt + acc);
-        } else if (brake) {
-          if (vt > 0.3) vt = Math.max(-0.2, vt - acc * 1.6);
-          else if (fuelOk) vt = Math.max(-st.topSpeed * 0.35, vt - acc * 0.6);
-        } else {
-          // rolamento livre + atrito leve
-          vt -= vt * 0.12 * dt * (this.hover ? 0.4 : 1);
-        }
-        // deslize lateral em gelo: tração limitada já pelo grip
-        wh.vx = vn * nx + vt * tx;
-        wh.vy = vn * ny + vt * ty;
-      }
-      // giro visual
-      const tvel = wh.vx * Math.cos(this.a) + wh.vy * Math.sin(this.a);
-      if (wh.ground) wh.spin -= (tvel / wh.r) * dt;
-      else if (gas) wh.spin -= 18 * dt;
-      else if (brake) wh.spin *= 0.98;
-    }
-
     // controle no ar / empinada no chão
     if (onG === 0) {
-      const target = gas ? st.airTorque : brake ? -st.airTorque : 0;
-      this.w += (target - this.w * 0.25) * dt * 1.6;
-    } else {
-      if (gas) this.w += 2.2 * dt; // empina de leve
-      if (brake && this.speed > 1) this.w -= 1.6 * dt;
+      const target = gas ? st.airTorque * 0.55 : brake ? -st.airTorque * 0.55 : this.w;
+      this.w += (target - this.w) * dt * 2.2;
     }
-    this.w *= 1 - 0.4 * dt;
+    this.w *= 1 - 0.3 * dt;
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;
@@ -239,7 +242,6 @@ export class Car {
         const pen = h + 0.02 - qy;
         this.y += pen;
         const rx = qx - this.x;
-        const ry = qy - this.y;
         const pvy = this.vy + this.w * rx;
         if (pvy < 0) {
           const rn = rx; // braço para normal (0,1)
@@ -250,7 +252,6 @@ export class Car {
           this.vx *= 0.97;
           if (-pvy > 3) impact = Math.max(impact, -pvy);
         }
-        for (const wh of this.wheels) wh.y += pen;
       }
     }
 

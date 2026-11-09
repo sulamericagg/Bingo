@@ -55,7 +55,7 @@ export class Terrain {
 
   /** altura do chão em x (m) */
   height(x: number): number {
-    if (x < 0) return 0;
+    if (!(x >= 0)) return 0;
     const s = this.seed;
     const w = this.weights(x);
     const diff = Math.min(1.7, 0.55 + x / 1400);
