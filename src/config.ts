@@ -127,6 +127,14 @@ export const PASS = {
   priceGems: 950,
   /** pular 1 nível */
   skipGems: 150,
+  /** Passe da Casa (premium separado) e combo "Passes do Mês" (os dois, com desconto) */
+  homePriceGems: 800,
+  homeSkipGems: 120,
+  bundlePriceGems: 1450,
+  /** XP do Passe da Casa: parte do XP de partidas + atividades da casa (teto diário) */
+  homeRunShare: 0.4,
+  homeXp: { 'home-build': 40, 'home-paint': 30, 'home-clean': 25, 'party-host': 300, 'party-join': 150, 'home-visit-help': 120 } as Record<string, number>,
+  homeDailyCap: 2500,
   /** XP do login diário */
   dailyLoginXp: 300,
   /** XP por partida: base + por segundo (teto) + bônus */

@@ -41,11 +41,12 @@ export function notePurchase(): void {
 /** Clube Bloop ativo (assinatura). Lido direto do save para não criar dependência circular. */
 export const clubActive = (now = Date.now()): boolean => save.club.expires > now;
 
-/** true se quem comprou o Passe Estelar da temporada atual (sem anúncios na temporada dele). */
-let passPremiumCheck: () => boolean = () => false;
-/** O módulo do passe registra aqui como saber se o jogador tem o passe premium vigente. */
+/** Checagens registradas pelos passes (Estelar, Casa): true = premium da temporada vigente → sem anúncios. */
+const passPremiumChecks: (() => boolean)[] = [];
+const passPremiumCheck = (): boolean => passPremiumChecks.some((f) => f());
+/** Cada passe registra aqui como saber se o jogador tem o premium vigente. */
 export function setPassPremiumCheck(fn: () => boolean): void {
-  passPremiumCheck = fn;
+  passPremiumChecks.push(fn);
 }
 
 /** ms restantes de tempo sem anúncios ganho com vídeos. */

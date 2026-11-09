@@ -14,7 +14,7 @@ const ink = (s: string) => `<g fill="${INK}">${s}</g>`;
 const line = (d: string, c: string, w = 5) =>
   `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w + 6}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
 
-export type PassIcon = 'p-pass' | 'p-eyes' | 'p-mouth' | 'p-aura' | 'p-emote' | 'p-frame' | 'p-banner' | 'p-paw' | 'p-left' | 'p-right' | 'p-history' | 'p-skip' | 'p-club' | 'p-music';
+export type PassIcon = 'p-pass' | 'p-eyes' | 'p-mouth' | 'p-aura' | 'p-emote' | 'p-frame' | 'p-banner' | 'p-paw' | 'p-left' | 'p-right' | 'p-history' | 'p-skip' | 'p-club' | 'p-music' | 'p-house';
 
 const ICONS: Record<PassIcon, string> = {
   'p-pass':
@@ -69,6 +69,12 @@ const ICONS: Record<PassIcon, string> = {
     sil('<rect x="9" y="36" width="30" height="7" rx="3"/>', 'gold', 2) +
     sil('<circle cx="24" cy="27" r="5"/>', 'gem', 1.5) +
     hl('<path d="M12 22L15 27L11 30Z"/>', 0.6),
+  'p-house':
+    sil('<path d="M6 22L24 6L42 22V42H6Z"/>', 'pink') +
+    sil('<path d="M3 23L24 4L45 23L40 27L24 13L8 27Z"/>', 'violet', 2.5) +
+    sil('<rect x="19" y="27" width="10" height="15" rx="3"/>', 'gold', 2) +
+    sil('<rect x="9.5" y="25" width="7" height="7" rx="1.5"/><rect x="31.5" y="25" width="7" height="7" rx="1.5"/>', 'cyan', 1.5) +
+    hl('<path d="M10 20L22 9.5L23 12L12 22Z"/>', 0.55),
   'p-music':
     sil('<rect x="15" y="11" width="4.5" height="24" rx="1"/><rect x="38" y="6" width="4.5" height="24" rx="1"/><path d="M15 11L42.5 5V12L15 18Z"/>', 'violet', 2.5) +
     sil('<ellipse cx="12" cy="35" rx="7" ry="5.5"/><ellipse cx="36" cy="30" rx="7" ry="5.5"/>', 'pink') +
