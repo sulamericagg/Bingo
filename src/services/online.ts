@@ -32,6 +32,17 @@ interface StoredPlayer {
 let player: StoredPlayer | null = readPlayer();
 let inbox: Gift[] = [];
 let syncing: Promise<Gift[]> | null = null;
+/** null = ainda não tentou; true/false = resultado da última requisição. */
+let reachable: boolean | null = null;
+
+/** Resultado da última tentativa de falar com o servidor (para a UI mostrar "Sem conexão"). */
+export const onlineReachable = (): boolean | null => reachable;
+function markReach(ok: boolean): void {
+  if (reachable !== ok) {
+    reachable = ok;
+    bus.emit('online', ok);
+  }
+}
 
 function readPlayer(): StoredPlayer | null {
   try {
@@ -89,7 +100,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as T;
+    const data = (await res.json()) as T;
+    markReach(true);
+    return data;
+  } catch (e) {
+    markReach(false);
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -218,10 +234,12 @@ export async function fetchChallenges(): Promise<PublicChallenge[]> {
   const timer = setTimeout(() => ctrl.abort(), ONLINE.timeoutMs);
   try {
     const res = await fetch(apiUrl('/challenges'), { signal: ctrl.signal });
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { challenges?: PublicChallenge[] };
+    markReach(true);
     return Array.isArray(data.challenges) ? data.challenges : [];
   } catch {
+    markReach(false);
     return [];
   } finally {
     clearTimeout(timer);

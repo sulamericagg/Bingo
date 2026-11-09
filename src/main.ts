@@ -12,6 +12,7 @@ import { persistNow } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
 import { initBilling } from './services/billing';
+import { initOnline } from './services/online';
 import { UI } from './ui/ui';
 
 async function boot(): Promise<void> {
@@ -49,6 +50,8 @@ async function boot(): Promise<void> {
 
   initAds();
   initBilling();
+  // presentes / códigos / desafios: em segundo plano, nunca bloqueia nem lança erro
+  initOnline().catch(() => {});
 }
 
 boot();

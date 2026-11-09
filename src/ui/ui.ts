@@ -1,58 +1,102 @@
-import { ECONOMY, LINKS, PRODUCTS, type ProductDef } from '../config';
+import { BOOST_PACKS, ECONOMY, productById, type ProductDef } from '../config';
 import { audio } from '../core/audio';
 import {
-  addCoins,
+  BOOST_IDS,
+  UPGRADE_FX,
+  UPGRADE_IDS,
   addGems,
-  canAfford,
+  addCoins,
+  boostCount,
+  buyBoostPack,
   claimDaily,
   claimMission,
   dailyAvailable,
   dailyIndex,
   ensureMissions,
+  extra,
+  hasCoinDoubler,
   itemsAffordable,
   missionsReady,
-  ownsSkin,
-  ownsTrail,
-  spend,
+  runCoinBreakdown,
   trackMission,
-  unlockSkin,
-  unlockTrail,
+  upgradeCost,
+  upgradeLevel,
+  useBoost,
+  type BoostId,
+  type RunCoins,
 } from '../core/economy';
 import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
 import { isNative } from '../core/platform';
 import { dayNumber, persist, save, type Mission } from '../core/storage';
-import type { Game, RunResult } from '../game/game';
-import { makeCanvas } from '../game/math';
-import { SKINS, TRAILS, type Price, type Skin, type Trail } from '../game/skins';
-import { drawPlayer } from '../game/sprites';
+import type { Game, Loadout, RunResult } from '../game/game';
+import { renderSkinPreview } from '../game/preview';
+import { skinById } from '../game/skins';
 import { hideBanner, maybeInterstitial, showBanner, showPrivacyOptions, showRewarded } from '../services/ads';
-import { billingSupported, buy, priceOf, restore } from '../services/billing';
+import { priceOf, restore, type Granted } from '../services/billing';
 import { shareScore } from '../services/share';
+import { celebrate, celebrating } from './celebrate';
+import { $, $$, COIN, GEM, clock, countUp, esc, fmt, msToMidnight } from './dom';
 import { hydrateIcons, icon, type IconName } from './icons';
-
-const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
-const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll<T>(sel));
+import { OnlineUI, bindOnlineBadges } from './online-ui';
+import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
 
 const FREE_COINS = 40;
 const FREE_LIMIT = 8;
 const FREE_KEY = 'bo-free';
+const LOADOUT_KEY = 'bo-loadout';
+/** popup do Pacote Inicial a partir desta partida (no máx. 1x por dia) */
+const STARTER_POPUP_RUNS = 3;
 
-type Screen = 'menu' | 'hud' | 'over' | 'revive' | 'pause' | 'shop' | 'daily' | 'missions' | 'settings';
-const MODALS: Screen[] = ['shop', 'daily', 'missions', 'settings'];
+type Screen =
+  | 'menu'
+  | 'hud'
+  | 'over'
+  | 'revive'
+  | 'pause'
+  | 'shop'
+  | 'daily'
+  | 'missions'
+  | 'settings'
+  | 'inbox'
+  | 'redeem'
+  | 'credits'
+  | 'boost'
+  | 'starter';
+const MODALS: Screen[] = ['shop', 'daily', 'missions', 'settings', 'inbox', 'redeem', 'credits', 'boost', 'starter'];
 
 export class UI {
   private game: Game;
   private base: Screen = 'menu';
-  private modal: Screen | null = null;
-  private shopTab = 'skins';
+  /** pilha de modais (o último está visível) */
+  private stack: Screen[] = [];
+  private shop: Shop;
+  private online: OnlineUI;
   private result: RunResult | null = null;
+  private coins: RunCoins | null = null;
   private reviveTimer = 0;
   private doubled = false;
   private toastTimer = 0;
+  private tipTimer = 0;
+  private speedTimer = 0;
+  private railTimer = 0;
+  private boostSel: Record<BoostId, boolean> = readLoadout();
+  /** escudo grátis por vídeo, armado para a próxima partida */
+  private freeShield = false;
+  private boostModal: BoostId = 'shield';
 
   constructor(game: Game) {
     this.game = game;
+    this.shop = new Shop({
+      game,
+      toast: (m, i) => this.toast(m, i),
+      open: (s) => this.show(s as Screen),
+      flyReward: (r, from) => this.flyReward(r, from),
+      freeCoins: () => this.freeCoins(),
+      freeLeft: () => FREE_LIMIT - this.freeState().n,
+      freeAmount: FREE_COINS,
+    });
+    this.online = new OnlineUI((m, i) => this.toast(m, i));
     hydrateIcons(document);
     this.bind();
     this.refreshWallet();
@@ -60,17 +104,20 @@ export class UI {
     this.show('menu');
   }
 
+  private get modal(): Screen | null {
+    return this.stack.length ? this.stack[this.stack.length - 1] : null;
+  }
+
   /* ============================== navegação ============================== */
 
   private show(s: Screen): void {
     if (MODALS.includes(s)) {
+      if (this.modal === s) return this.renderModal(s);
       if (this.modal) $(`#${this.modal}`).classList.remove('on');
-      this.modal = s;
+      this.stack = this.stack.filter((m) => m !== s);
+      this.stack.push(s);
       $(`#${s}`).classList.add('on');
-      if (s === 'shop') this.renderShop();
-      if (s === 'daily') this.renderDaily();
-      if (s === 'missions') this.renderMissions();
-      if (s === 'settings') this.renderSettings();
+      this.renderModal(s);
       return;
     }
     for (const id of ['menu', 'hud', 'over', 'revive', 'pause']) $(`#${id}`).classList.remove('on');
@@ -79,21 +126,50 @@ export class UI {
     if (s === 'pause' || s === 'revive' || s === 'over') $('#hud').classList.add('on');
     if (s === 'menu' || s === 'over') showBanner();
     else hideBanner();
+    clearInterval(this.railTimer);
     if (s === 'menu') {
       this.refreshBadges();
-      $('#starter-offer').classList.toggle('hidden', save.starter || save.runs < 2);
+      this.renderLoadout();
+      this.refreshStarterOffer();
+      this.tickRail();
+      this.railTimer = window.setInterval(() => this.tickRail(), 1000);
     }
   }
 
+  private renderModal(s: Screen): void {
+    if (s === 'shop') this.shop.render();
+    if (s === 'daily') this.renderDaily();
+    if (s === 'missions') this.renderMissions();
+    if (s === 'settings') this.renderSettings();
+    if (s === 'inbox') this.online.openInbox();
+    if (s === 'redeem') this.online.openRedeem();
+    if (s === 'boost') this.renderBoostModal();
+    if (s === 'starter') this.renderStarter();
+  }
+
   private closeModal(): void {
-    if (!this.modal) return;
-    $(`#${this.modal}`).classList.remove('on');
-    this.modal = null;
+    const top = this.modal;
+    if (!top) return;
+    $(`#${top}`).classList.remove('on');
+    this.stack.pop();
+    if (top === 'shop') this.shop.stop();
+    if (top === 'settings') this.online.saveName();
+    const prev = this.modal;
+    if (prev) {
+      $(`#${prev}`).classList.add('on');
+      this.renderModal(prev);
+    }
     this.refreshBadges();
+    if (this.base === 'menu') this.renderLoadout();
   }
 
   /** Botão voltar do Android. Retorna false se deve sair do app. */
   back(): boolean {
+    if (celebrating()) return true;
+    if (document.querySelector('#shop .item-sheet')) {
+      this.shop.closeSheet();
+      return true;
+    }
     if (this.modal) {
       this.closeModal();
       return true;
@@ -116,6 +192,7 @@ export class UI {
   pause(): void {
     if (this.base !== 'hud' || this.game.state !== 'play') return;
     this.game.paused = true;
+    this.hideTip();
     this.show('pause');
   }
 
@@ -132,14 +209,21 @@ export class UI {
       e.preventDefault();
       audio.unlock();
       if (this.base === 'hud') {
+        if (!$('#tip-card').classList.contains('hidden')) this.hideTip();
         this.game.input();
       }
     };
     canvas.addEventListener('pointerdown', press, { passive: false });
     window.addEventListener('keydown', (e) => {
+      const typing = (e.target as HTMLElement)?.tagName === 'INPUT';
+      if (typing) {
+        if (e.key === 'Enter' && (e.target as HTMLElement).id === 'code-input') this.online.redeem();
+        if (e.key === 'Enter' && (e.target as HTMLElement).id === 'profile-name') (e.target as HTMLInputElement).blur();
+        return;
+      }
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         if (this.base === 'menu' && !this.modal) this.play();
-        else press(e);
+        else if (!this.modal) press(e);
       }
       if (e.code === 'Escape') this.back();
     });
@@ -152,11 +236,11 @@ export class UI {
       }
       const open = t.closest<HTMLElement>('[data-open]');
       if (open) {
-        if (open.dataset.tab) this.shopTab = open.dataset.tab;
+        if (open.dataset.tab) this.shop.tab = open.dataset.tab as ShopTab;
         this.show(open.dataset.open as Screen);
       }
       if (t.closest('[data-close]')) this.closeModal();
-      if (t.classList.contains('modal-screen') && this.modal) this.closeModal();
+      if (t.classList.contains('modal-screen') && this.modal && t.id === this.modal) this.closeModal();
     });
 
     $('#btn-play').onclick = () => this.play();
@@ -181,13 +265,24 @@ export class UI {
       this.toast(ok ? 'Compras restauradas' : isNative ? 'Nada para restaurar' : 'Disponível no app Android', ok ? 'check' : 'shield');
     };
     $('#btn-privacy-ads').onclick = () => showPrivacyOptions();
+    $('#btn-claim-all').onclick = () => this.online.claimAll();
+    $('#btn-redeem').onclick = () => this.online.redeem();
+    $('#btn-starter-buy').onclick = () => {
+      const def = productById('starter_pack');
+      if (def) this.shop.buyProduct(def, $('#btn-starter-buy'));
+    };
+    $<HTMLInputElement>('#profile-name').onchange = () => this.online.saveName();
+    $('#tip-card').onclick = () => this.hideTip();
     $('#revive-cost').textContent = String(ECONOMY.reviveGemCost);
-    $('#version').textContent = `v${__APP_VERSION__} · ${isNative ? 'Android' : 'Web'}`;
+    const ver = `v${__APP_VERSION__} · ${isNative ? 'Android' : 'Web'}`;
+    $('#version').textContent = ver;
+    $('#credits-version').textContent = ver;
 
-    $$('.tabs button').forEach((b) => {
+    $$('#shop .tabs button').forEach((b) => {
       b.onclick = () => {
-        this.shopTab = b.dataset.tab!;
-        this.renderShop();
+        this.shop.closeSheet();
+        this.shop.tab = b.dataset.tab as ShopTab;
+        this.shop.render();
       };
     });
 
@@ -203,6 +298,7 @@ export class UI {
     });
 
     bus.on('wallet', () => this.refreshWallet());
+    bus.on('boosts', () => this.base === 'menu' && this.renderLoadout());
     bus.on('score', (s: number) => {
       const el = $('#hud-score');
       el.textContent = String(s);
@@ -219,28 +315,147 @@ export class UI {
       void el.offsetWidth;
       el.classList.add('show');
     });
-    bus.on('gameover', (r: RunResult) => this.onGameOver(r));
-    bus.on('purchase', (def: ProductDef) => {
-      audio.cash();
-      haptics.success();
-      if (def.kind === 'gems') this.toast(`+${def.gems} gemas!`, 'gem');
-      else this.toast('Compra concluída! Obrigado!', 'party');
-      if (this.modal === 'shop') this.renderShop();
-      $('#starter-offer').classList.toggle('hidden', save.starter || save.runs < 2);
+    bus.on('tip', (kind: string) => {
+      // o jogo já conta save.tips.asteroid; aqui só mostramos
+      if (kind === 'asteroid') this.showTip();
     });
-    bus.on('prices', () => this.modal === 'shop' && this.renderShop());
+    bus.on('speedup', (tier: number) => this.speedToast(tier));
+    bus.on('gameover', (r: RunResult) => this.onGameOver(r));
+    bus.on('purchase', (def: ProductDef, g?: Granted) => this.onPurchase(def, g));
+    bus.on('prices', () => {
+      if (this.modal === 'shop') this.shop.render();
+      if (this.modal === 'starter') this.renderStarter();
+    });
     bus.on('mission-done', (m: Mission) => this.toast(`Missão completa: ${missionText(m)}`, 'target'));
+    bus.on('player', () => this.modal === 'settings' && this.online.renderProfile());
+    bus.on('online', () => this.modal === 'settings' && this.online.renderProfile());
+    bus.on('inventory', () => this.modal === 'shop' && this.shop.render());
+    bindOnlineBadges((n) => this.setBadge('inbox', n));
+  }
+
+  /* ============================== turbos (pré-partida) ============================== */
+
+  private renderLoadout(): void {
+    const box = $('#loadout');
+    const chips = BOOST_IDS.map((id) => {
+      const n = boostCount(id);
+      if (!n) this.boostSel[id] = false;
+      const on = this.boostSel[id];
+      const inf = BOOST_INFO[id];
+      return `<button class="lo-chip ${on ? 'on' : ''} ${n ? '' : 'none'}" data-lo="${id}" aria-pressed="${on}" aria-label="${inf.name}">
+        <span class="plate sm plate-${inf.plate}">${icon(inf.icon)}</span>
+        <span class="lo-txt"><b>${inf.short}</b><small>${n ? (on ? 'Ativo' : `x${n}`) : 'Comprar'}</small></span>
+        <em class="lo-mark">${on ? icon('check') : n ? '' : '+'}</em>
+      </button>`;
+    }).join('');
+    const vid = this.freeShield
+      ? `<button class="lo-chip lo-video armed" id="lo-video" aria-label="Escudo grátis pronto"><span class="plate sm plate-cyan">${icon('shield')}</span><span class="lo-txt"><b>Grátis</b><small>Pronto!</small></span><em class="lo-mark">${icon('check')}</em></button>`
+      : `<button class="lo-chip lo-video" id="lo-video" aria-label="Assista um vídeo para um Escudo grátis"><span class="plate sm plate-green">${icon('video')}</span><span class="lo-txt"><b>Escudo</b><small>grátis</small></span></button>`;
+    box.innerHTML = `<div class="lo-row">${chips}${vid}</div>`;
+    $$<HTMLButtonElement>('[data-lo]', box).forEach((b) => {
+      b.onclick = () => {
+        const id = b.dataset.lo as BoostId;
+        if (!boostCount(id)) {
+          this.boostModal = id;
+          this.show('boost');
+          return;
+        }
+        this.boostSel[id] = !this.boostSel[id];
+        writeLoadout(this.boostSel);
+        haptics.tap('light');
+        this.renderLoadout();
+      };
+    });
+    $('#lo-video', box).onclick = async () => {
+      if (this.freeShield) return this.toast('Escudo grátis pronto para a próxima partida!', 'shield');
+      const ok = await showRewarded();
+      if (!ok) return this.toast('Vídeo indisponível agora', 'video');
+      this.freeShield = true;
+      audio.unlock2();
+      haptics.success();
+      this.toast('Escudo grátis na próxima partida!', 'shield');
+      this.renderLoadout();
+    };
+  }
+
+  /** Desconta os turbos escolhidos e monta o loadout da partida. */
+  private takeLoadout(): { lo: Loadout; used: IconName[]; lucky: boolean } {
+    const lo: Loadout = {};
+    const used: IconName[] = [];
+    for (const id of BOOST_IDS) {
+      if (this.boostSel[id] && useBoost(id)) {
+        lo[id] = true;
+        used.push(BOOST_INFO[id].icon);
+      }
+      if (!boostCount(id)) this.boostSel[id] = false;
+    }
+    writeLoadout(this.boostSel);
+    if (this.freeShield && !lo.shield) {
+      lo.shield = true;
+      used.push('shield');
+    }
+    this.freeShield = false;
+    // melhoria Escudo: chance de começar protegido
+    let lucky = false;
+    if (!lo.shield && Math.random() * 100 < UPGRADE_FX.shieldStartPct(upgradeLevel('shield'))) {
+      lo.shield = true;
+      lucky = true;
+      used.push('shield');
+    }
+    return { lo, used, lucky };
+  }
+
+  private renderBoostModal(): void {
+    const id = this.boostModal;
+    const inf = BOOST_INFO[id];
+    const pk = {
+      coins: { ...BOOST_PACK(id, 'coins') },
+      gems: { ...BOOST_PACK(id, 'gems') },
+    };
+    $('#boost-title').innerHTML = `${icon(inf.icon)} ${inf.name.toUpperCase()}`;
+    const bundle = productById('boost_bundle')!;
+    $('#boost-body').innerHTML = `
+      <div class="boost-hero"><div class="plate plate-${inf.plate}">${icon(inf.icon)}</div><div class="bh-count">Você tem <b>${boostCount(id)}</b></div></div>
+      <p class="muted">${inf.desc}</p>
+      <button class="btn btn-green" id="bb-coins" ${save.coins < pk.coins.price ? 'disabled' : ''}>+${pk.coins.n} ${inf.plural} · ${COIN} ${fmt(pk.coins.price)}</button>
+      <button class="btn btn-gem" id="bb-gems" ${save.gems < pk.gems.price ? 'disabled' : ''}>+${pk.gems.n} ${inf.plural} · ${GEM} ${pk.gems.price}</button>
+      <button class="btn btn-gold" id="bb-iap">${icon('rocket')} Kit Turbo (5 de cada) · ${esc(priceOf(bundle))}</button>
+      <button class="link" data-open="shop" data-tab="upgrades">Ver todas as melhorias</button>`;
+    const after = (n: number) => {
+      if (!n) return;
+      audio.cash();
+      haptics.tap('medium');
+      this.boostSel[id] = true;
+      writeLoadout(this.boostSel);
+      this.toast(`+${n} ${inf.plural}! Ativado para a próxima partida`, inf.icon);
+      this.closeModal();
+    };
+    $('#bb-coins').onclick = () => after(buyBoostPack(id, 'coins'));
+    $('#bb-gems').onclick = () => after(buyBoostPack(id, 'gems'));
+    $('#bb-iap').onclick = () => this.shop.buyProduct(bundle, $('#bb-iap'));
   }
 
   /* ============================== jogo ============================== */
 
   private play(): void {
     audio.unlock();
+    const { lo, used, lucky } = this.takeLoadout();
     this.show('hud');
     $('#hud-score').textContent = '0';
     $('#hud-coins').textContent = '0';
     $('#tutorial').classList.toggle('hidden', save.runs >= 2);
-    this.game.start();
+    this.hideTip();
+    this.game.start(lo);
+    this.hudBoosts(used, lucky);
+  }
+
+  private hudBoosts(used: IconName[], lucky: boolean): void {
+    const el = $('#hud-boosts');
+    el.classList.remove('show');
+    if (!used.length) return;
+    el.innerHTML = used.map((i) => `<span class="plate sm round plate-${i === 'shield' ? 'cyan' : i === 'magnet' ? 'pink' : 'gold'}">${icon(i)}</span>`).join('') + `<b>${lucky ? 'Escudo da sorte!' : 'Turbos ativos!'}</b>`;
+    void el.offsetWidth;
+    el.classList.add('show');
   }
 
   private async again(): Promise<void> {
@@ -250,13 +465,22 @@ export class UI {
   }
 
   private async goHome(): Promise<void> {
-    if (this.base === 'over') await maybeInterstitial();
+    const fromRun = this.base === 'over';
+    const starter = fromRun && this.starterDue();
+    // nunca empilha anúncio + oferta na mesma volta ao menu
+    if (fromRun && !starter) await maybeInterstitial();
     this.game.reset('menu');
     this.show('menu');
+    if (starter) {
+      extra.starterPopupDay = dayNumber();
+      persist();
+      setTimeout(() => this.base === 'menu' && !this.modal && this.show('starter'), 350);
+    }
   }
 
   private onGameOver(r: RunResult): void {
     this.result = r;
+    this.hideTip();
     if (r.canRevive) {
       this.show('revive');
       ($('#btn-revive-gem') as HTMLButtonElement).disabled = save.gems < ECONOMY.reviveGemCost;
@@ -303,11 +527,14 @@ export class UI {
   }
 
   private showResults(): void {
+    if (this.base === 'over') return;
     cancelAnimationFrame(this.reviveTimer);
     const r = this.result!;
     const stats = this.game.runStats;
-    // creditar recompensa da corrida
-    addCoins(stats.coins);
+    // creditar recompensa da corrida (melhoria já vem nas moedas do jogo; dobrador soma aqui)
+    const rc = runCoinBreakdown(stats.coins);
+    this.coins = rc;
+    addCoins(rc.total);
     addGems(stats.gems);
     const newBest = this.game.score > save.best;
     if (newBest) save.best = this.game.score;
@@ -324,15 +551,34 @@ export class UI {
     this.doubled = false;
     $('#over-score').textContent = String(this.game.score);
     $('#over-best').textContent = String(save.best);
-    $('#over-coins').textContent = String(stats.coins);
     $('#over-perfects').textContent = String(stats.perfects);
     $('#over-planets').textContent = String(stats.planets);
+    $('#over-asteroids').textContent = String(stats.asteroids ?? 0);
+    $('#over-gems').textContent = String(stats.gems);
     $('#over-newbest').classList.toggle('hidden', !newBest);
     $('#over-title').textContent = newBest ? 'INCRÍVEL!' : pickPhrase(this.game.score);
-    const dbl = $<HTMLButtonElement>('#btn-double');
-    dbl.classList.toggle('hidden', stats.coins < 3);
-    dbl.disabled = false;
-    dbl.innerHTML = `${icon('video')} Dobrar moedas +${stats.coins} ${icon('coin')}`;
+    // resumo das moedas com contagem animada
+    const lvl = upgradeLevel('coinValue');
+    $('#cs-up-row').classList.toggle('hidden', lvl === 0);
+    $('#cs-dbl-row').classList.toggle('hidden', !hasCoinDoubler());
+    $('#cs-upsell').classList.toggle('hidden', hasCoinDoubler() || rc.total < 5);
+    $('#cs-up-row span:first-child').innerHTML = `${icon('arrow-up', { size: 18 })} Melhoria +${UPGRADE_FX.coinPct(lvl)}%`;
+    const base = $('#cs-base');
+    const up = $('#cs-up');
+    const dbl = $('#cs-dbl');
+    const tot = $('#over-coins');
+    base.textContent = up.textContent = dbl.textContent = tot.textContent = '0';
+    setTimeout(() => countUp(base, rc.base, 600), 250);
+    setTimeout(() => countUp(up, rc.upgrade, 450, 0, '+'), 600);
+    setTimeout(() => countUp(dbl, rc.doubler, 450, 0, '+'), 850);
+    setTimeout(() => {
+      countUp(tot, rc.total, 700);
+      if (rc.total > 0) audio.cash();
+    }, 1000);
+    const dblBtn = $<HTMLButtonElement>('#btn-double');
+    dblBtn.classList.toggle('hidden', rc.total < 3);
+    dblBtn.disabled = false;
+    dblBtn.innerHTML = `${icon('video')} Dobrar moedas +${fmt(rc.total)} ${icon('coin')}`;
     if (newBest) {
       audio.unlock2();
       haptics.success();
@@ -342,21 +588,99 @@ export class UI {
   }
 
   private async doubleCoins(): Promise<void> {
-    if (this.doubled) return;
+    if (this.doubled || !this.coins) return;
     const btn = $<HTMLButtonElement>('#btn-double');
     btn.disabled = true;
     const ok = await showRewarded();
     if (ok) {
       this.doubled = true;
-      const c = this.game.runStats.coins;
+      const c = this.coins.total;
       addCoins(c);
       this.flyReward({ coins: c }, btn);
+      countUp($('#over-coins'), c * 2, 600, c);
       btn.innerHTML = `${icon('check')} Moedas dobradas!`;
       audio.cash();
     } else {
       btn.disabled = false;
       this.toast('Vídeo indisponível agora', 'video');
     }
+  }
+
+  /* ============================== HUD: dica e velocidade ============================== */
+
+  private showTip(): void {
+    const el = $('#tip-card');
+    el.classList.remove('hidden', 'out');
+    const bar = $('.tip-bar', el);
+    bar.style.animation = 'none';
+    void bar.offsetWidth;
+    bar.style.animation = '';
+    haptics.tap('medium');
+    clearTimeout(this.tipTimer);
+    this.tipTimer = window.setTimeout(() => this.hideTip(), 3600);
+  }
+
+  private hideTip(): void {
+    clearTimeout(this.tipTimer);
+    const el = $('#tip-card');
+    if (el.classList.contains('hidden')) return;
+    el.classList.add('out');
+    this.tipTimer = window.setTimeout(() => el.classList.add('hidden'), 220);
+  }
+
+  private speedToast(tier: number): void {
+    const el = $('#speed-toast');
+    el.innerHTML = `${icon('bolt', { size: 20 })} Velocidade x${tier + 1}`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this.speedTimer);
+    this.speedTimer = window.setTimeout(() => el.classList.remove('show'), 1800);
+  }
+
+  /* ============================== compras / ofertas ============================== */
+
+  private onPurchase(def: ProductDef, g?: Granted): void {
+    this.refreshStarterOffer();
+    if (this.modal === 'starter') this.closeModal();
+    if (this.modal === 'shop') this.shop.render();
+    if (this.modal === 'boost') this.renderBoostModal();
+    if (this.base === 'menu') this.renderLoadout();
+    celebrate(
+      g
+        ? { coins: g.coins, gems: g.gems, skins: g.skins, trails: g.trails, boosts: g.boosts, noAds: g.noAds, coinDoubler: g.coinDoubler }
+        : { gems: def.gems, coins: def.coins },
+      { title: 'OBRIGADO!', subtitle: `${productTitle(def)} · compra concluída`, button: 'DEMAIS!' },
+    );
+  }
+
+  private refreshStarterOffer(): void {
+    $('#starter-offer').classList.toggle('hidden', save.starter || save.runs < 2);
+  }
+
+  private starterDue(): boolean {
+    return !save.starter && save.runs >= STARTER_POPUP_RUNS && extra.starterPopupDay !== dayNumber();
+  }
+
+  private renderStarter(): void {
+    const def = productById('starter_pack')!;
+    $('#starter-gems').textContent = fmt(def.gems);
+    $('#starter-coins').textContent = fmt(def.coins);
+    $('#btn-starter-buy').innerHTML = `${icon('bag')} Pegar por ${esc(priceOf(def))}`;
+    const cv = $<HTMLCanvasElement>('#starter-skin');
+    const t0 = performance.now();
+    const loop = (t: number) => {
+      if (this.modal !== 'starter') return;
+      renderSkinPreview(skinById(def.skin ?? 'galaxy'), 150, 0.4 + (t - t0) / 1000, { target: cv });
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  private tickRail(): void {
+    if (this.base !== 'menu') return;
+    const t = $('#rail-timer');
+    t.textContent = extra.flashDay === dayNumber() ? 'amanhã' : clock(msToMidnight());
   }
 
   /* ============================== economia ============================== */
@@ -383,7 +707,11 @@ export class UI {
       return;
     }
     st.n++;
-    localStorage.setItem(FREE_KEY, JSON.stringify(st));
+    try {
+      localStorage.setItem(FREE_KEY, JSON.stringify(st));
+    } catch {
+      /* */
+    }
     addCoins(FREE_COINS);
     audio.cash();
     this.flyReward({ coins: FREE_COINS }, $('#btn-free'));
@@ -412,198 +740,36 @@ export class UI {
 
   private refreshWallet(): void {
     $$('[data-bind="coins"]').forEach((e) => {
-      if (e.textContent !== String(save.coins)) {
-        e.textContent = String(save.coins);
+      const v = fmt(save.coins);
+      if (e.textContent !== v) {
+        e.textContent = v;
         const pill = e.closest('.pill');
         pill?.classList.remove('bump');
         void (pill as HTMLElement)?.offsetWidth;
         pill?.classList.add('bump');
       }
     });
-    $$('[data-bind="gems"]').forEach((e) => (e.textContent = String(save.gems)));
+    $$('[data-bind="gems"]').forEach((e) => (e.textContent = fmt(save.gems)));
     $$('[data-bind="best"]').forEach((e) => (e.textContent = String(save.best)));
   }
 
+  private setBadge(k: string, n: number | string): void {
+    const el = document.querySelector<HTMLElement>(`[data-badge="${k}"]`);
+    if (!el) return;
+    el.classList.toggle('hidden', !n);
+    el.textContent = String(n);
+  }
+
   private refreshBadges(): void {
-    const set = (k: string, n: number | string) => {
-      const el = $(`[data-badge="${k}"]`);
-      el.classList.toggle('hidden', !n);
-      el.textContent = String(n);
-    };
-    set('daily', dailyAvailable() ? '!' : 0);
-    set('missions', missionsReady());
-    set('shop', itemsAffordable());
-    set('free', this.freeState().n < FREE_LIMIT ? `+${FREE_COINS}` : 0);
+    this.setBadge('daily', dailyAvailable() ? '!' : 0);
+    this.setBadge('missions', missionsReady());
+    this.setBadge('shop', itemsAffordable());
+    this.setBadge('free', this.freeState().n < FREE_LIMIT ? `+${FREE_COINS}` : 0);
+    this.setBadge('upgrades', UPGRADE_IDS.filter((id) => {
+      const c = upgradeCost(id);
+      return c && save.coins >= c.coins;
+    }).length);
     this.refreshWallet();
-  }
-
-  /* ============================== loja ============================== */
-
-  private renderShop(): void {
-    $$('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === this.shopTab));
-    const body = $('#shop-body');
-    body.innerHTML = '';
-    if (this.shopTab === 'gems') return this.renderGems(body);
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    const items: (Skin | Trail)[] = this.shopTab === 'skins' ? SKINS : TRAILS;
-    for (const item of items) {
-      const isSkin = this.shopTab === 'skins';
-      const owned = isSkin ? ownsSkin(item.id) : ownsTrail(item.id);
-      const equipped = isSkin ? save.skin === item.id : save.trail === item.id;
-      const card = document.createElement('div');
-      card.className = 'card' + (equipped ? ' equipped' : '');
-      const cv = isSkin ? skinPreview(item as Skin) : trailPreview(item as Trail);
-      card.appendChild(cv);
-      if (isSkin) {
-        const r = (item as Skin).rarity;
-        const tag = document.createElement('span');
-        tag.className = `rarity r-${r}`;
-        tag.textContent = { common: 'comum', rare: 'raro', epic: 'épico', legendary: 'lendário', mythic: 'mítico' }[r];
-        card.appendChild(tag);
-      }
-      const name = document.createElement('div');
-      name.className = 'name';
-      name.textContent = item.name;
-      card.appendChild(name);
-      const btn = document.createElement('button');
-      btn.className = 'price';
-      if (equipped) {
-        btn.classList.add('on');
-        btn.innerHTML = `${icon('check')} Equipado`;
-      } else if (owned) {
-        btn.classList.add('equip');
-        btn.textContent = 'Equipar';
-      } else {
-        this.fillPrice(btn, item.price, item.id);
-      }
-      btn.onclick = () => this.onItem(item, isSkin);
-      card.appendChild(btn);
-      grid.appendChild(card);
-    }
-    body.appendChild(grid);
-  }
-
-  private fillPrice(btn: HTMLElement, p: Price, id: string): void {
-    if (p.coins) {
-      btn.innerHTML = `<i class="coin"></i>${p.coins}`;
-      if (!canAfford(p)) btn.classList.add('cant');
-    } else if (p.gems) {
-      btn.innerHTML = `<i class="gem"></i>${p.gems}`;
-      if (!canAfford(p)) btn.classList.add('cant');
-    } else if (p.ads) {
-      btn.classList.add('ad');
-      btn.innerHTML = `${icon('video')} ${save.adProgress[id] ?? 0}/${p.ads}`;
-    } else if (p.iap) {
-      btn.classList.add('ad');
-      btn.innerHTML = `${icon('gift')} Pacote`;
-    }
-  }
-
-  private async onItem(item: Skin | Trail, isSkin: boolean): Promise<void> {
-    const owned = isSkin ? ownsSkin(item.id) : ownsTrail(item.id);
-    const unlock = () => {
-      if (isSkin) unlockSkin(item.id);
-      else unlockTrail(item.id);
-      audio.unlock2();
-      haptics.success();
-      this.toast(`${item.name} desbloqueado!`, 'party');
-    };
-    if (!owned) {
-      const p = item.price;
-      if (p.iap) {
-        this.shopTab = 'gems';
-        this.renderShop();
-        return;
-      }
-      if (p.ads) {
-        const ok = await showRewarded();
-        if (!ok) return this.toast('Vídeo indisponível agora', 'video');
-        save.adProgress[item.id] = (save.adProgress[item.id] ?? 0) + 1;
-        persist();
-        if (save.adProgress[item.id] >= p.ads) unlock();
-        else this.toast(`${save.adProgress[item.id]}/${p.ads} — continue assistindo!`, 'video');
-      } else if (!spend(p)) {
-        if (p.gems) {
-          this.toast('Gemas insuficientes', 'gem');
-          this.shopTab = 'gems';
-          this.renderShop();
-        } else this.toast('Moedas insuficientes — jogue mais ou pegue grátis', 'coin');
-        return;
-      } else unlock();
-      if (!(isSkin ? ownsSkin(item.id) : ownsTrail(item.id))) return this.renderShop();
-    }
-    if (isSkin) save.skin = item.id;
-    else save.trail = item.id;
-    persist();
-    this.game.refreshCosmetics();
-    this.renderShop();
-  }
-
-  private renderGems(body: HTMLElement): void {
-    const native = isNative && billingSupported();
-    const add = (html: string) => body.insertAdjacentHTML('beforeend', html);
-    for (const p of PRODUCTS) {
-      if (p.kind === 'starter' && save.starter) continue;
-      if (p.kind === 'noads' && save.noAds) continue;
-      if (p.kind === 'gems' && p.id === 'gems_small') add('<div class="section-title">Gemas</div>');
-      const title = p.kind === 'starter' ? 'Pacote Inicial' : p.kind === 'noads' ? 'Sem Anúncios' : `${p.gems} Gemas`;
-      const desc =
-        p.kind === 'starter'
-          ? `Remove anúncios + ${p.gems} ${GEM} + ${p.coins} ${COIN} + skin lendária Galáxia`
-          : p.kind === 'noads'
-            ? 'Remove banners e intersticiais para sempre'
-            : p.id === 'gems_mega'
-              ? 'Melhor custo-benefício!'
-              : 'Use para skins épicas e continuar';
-      const badge = p.badge === 'best' ? 'MELHOR OFERTA' : p.badge === 'popular' ? 'POPULAR' : '';
-      add(`<div class="product ${p.kind === 'starter' ? 'featured' : ''}">
-        ${badge ? `<span class="p-badge">${badge}</span>` : ''}
-        ${productArt(p.id)}
-        <div class="p-info"><div class="p-title">${title}</div><div class="p-desc">${desc}</div></div>
-        <button class="price" data-buy="${p.id}">${native ? priceOf(p) : 'No app'}</button>
-      </div>`);
-    }
-    add('<div class="section-title">Trocar</div>');
-    add(`<div class="product">
-      ${productArt('convert')}
-      <div class="p-info"><div class="p-title">10 ${GEM} → ${10 * ECONOMY.gemsToCoinsRate} ${COIN}</div><div class="p-desc">Converta gemas em moedas</div></div>
-      <button class="price ${save.gems < 10 ? 'cant' : ''}" id="btn-convert"><i class="gem"></i>10</button>
-    </div>`);
-    add(`<div class="product">
-      ${productArt('free')}
-      <div class="p-info"><div class="p-title">+${FREE_COINS} moedas grátis</div><div class="p-desc">Assista a um vídeo curto (${FREE_LIMIT - this.freeState().n} restantes hoje)</div></div>
-      <button class="price ad" id="btn-free2">Assistir</button>
-    </div>`);
-    if (!isNative) add(`<p class="muted">Compras disponíveis no app Android.<br/><a class="link" href="${LINKS.playStore}" target="_blank" rel="noopener">Baixar na Google Play</a></p>`);
-
-    $$('[data-buy]', body).forEach((b) => {
-      b.onclick = async () => {
-        const def = PRODUCTS.find((p) => p.id === b.dataset.buy)!;
-        if (!native) {
-          window.open(LINKS.playStore, '_blank');
-          return;
-        }
-        b.setAttribute('disabled', '');
-        const r = await buy(def);
-        b.removeAttribute('disabled');
-        if (r === 'pending') this.toast('Pagamento pendente — você recebe assim que confirmar');
-        else if (r === 'error') this.toast('Não foi possível concluir a compra');
-        else if (r === 'unavailable') this.toast('Loja indisponível no momento');
-        this.renderShop();
-      };
-    });
-    $('#btn-convert', body).onclick = () => {
-      if (save.gems < 10) return this.toast('Gemas insuficientes', 'gem');
-      addGems(-10);
-      addCoins(10 * ECONOMY.gemsToCoinsRate);
-      audio.cash();
-      this.renderShop();
-    };
-    $('#btn-free2', body).onclick = async () => {
-      await this.freeCoins();
-      this.renderShop();
-    };
   }
 
   /* ============================== diário / missões / ajustes ============================== */
@@ -661,6 +827,7 @@ export class UI {
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.checked = !!save[inp.dataset.setting as 'sound'];
     });
+    this.online.renderProfile();
   }
 
   /* ============================== feedback ============================== */
@@ -680,7 +847,7 @@ export class UI {
     el.className = 'reward-fly';
     if (typeof reward === 'string') el.textContent = reward;
     else {
-      const part = (v: number | undefined, ico: IconName) => (v ? `<span class="rf-part">+${v}${icon(ico, { size: 30 })}</span>` : '');
+      const part = (v: number | undefined, ico: IconName) => (v ? `<span class="rf-part">+${fmt(v)}${icon(ico, { size: 30 })}</span>` : '');
       el.innerHTML = part(reward.coins, 'coin') + part(reward.gems, 'gem');
     }
     el.style.left = `${r.left + r.width / 2}px`;
@@ -692,11 +859,23 @@ export class UI {
 
 /* ============================== helpers ============================== */
 
-const COIN = '<i class="coin"></i>';
-const GEM = '<i class="gem"></i>';
+const BOOST_PACK = (id: BoostId, cur: 'coins' | 'gems') => BOOST_PACKS[id][cur];
 
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+function readLoadout(): Record<BoostId, boolean> {
+  try {
+    const o = JSON.parse(localStorage.getItem(LOADOUT_KEY) || '{}');
+    return { shield: !!o.shield, magnet: !!o.magnet, headstart: !!o.headstart };
+  } catch {
+    return { shield: false, magnet: false, headstart: false };
+  }
+}
+
+function writeLoadout(s: Record<BoostId, boolean>): void {
+  try {
+    localStorage.setItem(LOADOUT_KEY, JSON.stringify(s));
+  } catch {
+    /* */
+  }
 }
 
 const MISSION_ICON: Record<Mission['type'], IconName> = {
@@ -711,23 +890,6 @@ function dailyArt(r: { coins?: number; gems?: number }, last: boolean): IconName
   if (last) return 'gem-chest';
   if (r.gems) return r.gems >= 10 ? 'gem-pile' : 'gem';
   return (r.coins ?? 0) >= 200 ? 'coins' : 'coin';
-}
-
-/** Composição ilustrada dos produtos da loja: placa brilhante + ícone principal + acento. */
-const PRODUCT_ART: Record<string, { main: IconName; plate: string; accent?: IconName }> = {
-  starter_pack: { main: 'chest', plate: 'gold', accent: 'star' },
-  remove_ads: { main: 'no-ads', plate: 'violet', accent: 'shield' },
-  gems_small: { main: 'gem', plate: 'violet' },
-  gems_medium: { main: 'gem-pile', plate: 'violet', accent: 'sparkle' },
-  gems_large: { main: 'gem-heap', plate: 'pink', accent: 'sparkle' },
-  gems_mega: { main: 'gem-chest', plate: 'gold', accent: 'crown' },
-  convert: { main: 'refresh', plate: 'violet', accent: 'coin' },
-  free: { main: 'video', plate: 'green', accent: 'coin' },
-};
-
-function productArt(id: string): string {
-  const a = PRODUCT_ART[id] ?? { main: 'gem' as IconName, plate: 'cyan' };
-  return `<div class="p-ico plate plate-${a.plate}">${icon(a.main)}${a.accent ? `<span class="p-accent">${icon(a.accent)}</span>` : ''}</div>`;
 }
 
 function missionText(m: Mission): string {
@@ -750,47 +912,4 @@ function pickPhrase(score: number): string {
   if (score >= 30) return 'MANDOU BEM!';
   if (score >= 15) return 'QUASE LÁ!';
   return 'FIM DE JOGO';
-}
-
-function skinPreview(skin: Skin): HTMLCanvasElement {
-  const d = Math.min(2, window.devicePixelRatio || 1);
-  const [c, x] = makeCanvas(92 * d, 92 * d);
-  x.scale(d, d);
-  x.translate(46, 52);
-  const g = x.createRadialGradient(0, 0, 0, 0, 0, 44);
-  g.addColorStop(0, skin.light + '55');
-  g.addColorStop(1, skin.light + '00');
-  x.fillStyle = g;
-  x.fillRect(-46, -52, 92, 92);
-  drawPlayer(x, skin, 22, { t: 0.4, blink: 0, lookX: 0.2, lookY: 0.1, sx: 1, sy: 1, mood: 'idle', lx: -0.55, ly: -0.83 });
-  return c;
-}
-
-function trailPreview(trail: Trail): HTMLCanvasElement {
-  const d = Math.min(2, window.devicePixelRatio || 1);
-  const [c, x] = makeCanvas(92 * d, 92 * d);
-  x.scale(d, d);
-  x.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 26; i++) {
-    const t = i / 26;
-    const px = 12 + t * 66;
-    const py = 78 - t * 60 + Math.sin(t * 8) * 6;
-    const r = 2 + t * 6;
-    const col = trail.colors[i % trail.colors.length];
-    const g = x.createRadialGradient(px, py, 0, px, py, r * 2);
-    g.addColorStop(0, col);
-    g.addColorStop(1, col + '00');
-    x.fillStyle = g;
-    x.globalAlpha = 0.3 + t * 0.7;
-    x.beginPath();
-    x.arc(px, py, r * 2, 0, Math.PI * 2);
-    x.fill();
-  }
-  x.globalAlpha = 1;
-  x.globalCompositeOperation = 'source-over';
-  x.fillStyle = '#ff8fd8';
-  x.beginPath();
-  x.arc(80, 16, 9, 0, Math.PI * 2);
-  x.fill();
-  return c;
 }

@@ -26,6 +26,15 @@ let interstitialReady = false;
 let bannerShown = false;
 let busy = false;
 let webReady = false;
+/** momento da última compra com dinheiro real (sessão atual) */
+let lastPurchaseAt = 0;
+/** pausa de intersticiais depois de uma compra */
+const AFTER_PURCHASE_MS = 15 * 60 * 1000;
+
+/** Chamado pelo billing: nada de intersticial logo depois de alguém pagar. */
+export function notePurchase(): void {
+  lastPurchaseAt = Date.now();
+}
 
 async function loadRewarded(): Promise<void> {
   if (!isNative) return;
@@ -158,6 +167,7 @@ export async function showRewarded(): Promise<boolean> {
 /** Intersticial com limite de frequência — nunca para quem comprou "Sem Anúncios". */
 export async function maybeInterstitial(): Promise<void> {
   if (save.noAds || busy) return;
+  if (lastPurchaseAt && Date.now() - lastPurchaseAt < AFTER_PURCHASE_MS) return;
   save.runsSinceAd++;
   persist();
   const now = Date.now();

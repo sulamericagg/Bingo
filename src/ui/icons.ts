@@ -56,7 +56,13 @@ export type IconName =
   | 'clock'
   | 'user'
   | 'party'
-  | 'comet';
+  | 'comet'
+  | 'arrow-up'
+  | 'pencil'
+  | 'link'
+  | 'heart'
+  | 'tag'
+  | 'cloud-off';
 
 export interface IconOpts {
   /** Lado em px. Sem valor, usa 1.25em (acompanha o texto). */
@@ -505,6 +511,45 @@ const ICONS: Record<IconName, string> = {
     sil('<circle cx="31" cy="17" r="10.5"/>', 'cyan') +
     hl('<ellipse cx="27.5" cy="13" rx="3.6" ry="2" transform="rotate(-40 27.5 13)"/>', 0.85) +
     twinkle(43, 5, 3.5, '#ffe680'),
+  'arrow-up':
+    sil('<path d="M24 4L42 22H32V40Q32 44 28 44H20Q16 44 16 40V22H6Z"/>', 'green') +
+    hl('<path d="M24 9L12 19.5H17L24 13Z"/><rect x="19.5" y="24" width="3" height="15" rx="1.5"/>', 0.6) +
+    twinkle(41, 36, 4, '#ffe680'),
+
+  pencil:
+    `<g transform="rotate(45 24 24)">` +
+    sil('<rect x="17" y="3" width="14" height="8" rx="3"/>', 'pink', 2.5) +
+    sil('<rect x="17" y="11" width="14" height="23"/>', 'gold', 2.5) +
+    sil('<path d="M17 34H31L24 45Z"/>', 'skin', 2.5) +
+    ink('<path d="M22.2 41.4H25.8L24 45Z"/>') +
+    hl('<rect x="19" y="12.5" width="3" height="20" rx="1.5"/>', 0.55) +
+    `</g>`,
+
+  link:
+    sil('<rect x="6" y="12" width="30" height="30" rx="7"/>', 'violet') +
+    `<path d="M15 33L32 16" stroke="${INK}" stroke-width="9" stroke-linecap="round"/>` +
+    `<path d="M15 33L32 16" stroke="#fff" stroke-width="4" stroke-linecap="round"/>` +
+    sil('<path d="M26 5H43V22L37 16L31 22L26 17L32 11Z"/>', 'cyan', 2.5) +
+    hl('<rect x="9" y="15" width="8" height="2.5" rx="1.25"/>', 0.6),
+
+  heart:
+    sil('<path d="M24 43C24 43 5 31 5 17.5C5 10.5 10.5 6 16 6C20 6 22.6 8.4 24 11C25.4 8.4 28 6 32 6C37.5 6 43 10.5 43 17.5C43 31 24 43 24 43Z"/>', 'pink') +
+    hl('<ellipse cx="14" cy="15" rx="4.5" ry="3" transform="rotate(-30 14 15)"/>', 0.8) +
+    twinkle(38, 9, 3.5),
+
+  tag:
+    `<g transform="rotate(-30 24 24)">` +
+    sil('<path d="M14 9H38Q42 9 42 13V35Q42 39 38 39H14L4 24Z"/>', 'red') +
+    sil('<circle cx="13" cy="24" r="3.4"/>', 'white', 1.5) +
+    `<path d="M22 31L34 17" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="24" cy="18.5" r="2.6" fill="#fff"/><circle cx="32" cy="29.5" r="2.6" fill="#fff"/>` +
+    hl('<rect x="16" y="11.5" width="18" height="2.4" rx="1.2"/>', 0.55) +
+    `</g>`,
+
+  'cloud-off':
+    sil('<path d="M13 38C7.5 38 4 34 4 29.5C4 25 7.5 21.5 12 21.5C12.5 14 18 9 25 9C31.5 9 36.5 13.5 37.5 19.5C42 20 45 24 45 28.5C45 33.5 41 38 36 38Z"/>', 'silver') +
+    line('M10 6L40 44', '#ff4f6a', 4.5) +
+    hl('<ellipse cx="20" cy="15" rx="5" ry="2.4" transform="rotate(-20 20 15)"/>', 0.7),
+
 };
 
 export const ICON_NAMES = Object.keys(ICONS) as IconName[];

@@ -1,7 +1,7 @@
-import { ECONOMY } from '../config';
+import { BOOST_PACKS, ECONOMY, UPGRADES } from '../config';
 import { SKINS, TRAILS, type Price } from '../game/skins';
 import { bus } from './events';
-import { dayNumber, persist, save, type Mission, type MissionType } from './storage';
+import { dayNumber, persist, save, type Mission, type MissionType, type SaveData } from './storage';
 
 export function addCoins(n: number): void {
   save.coins = Math.max(0, save.coins + Math.round(n));
@@ -124,4 +124,114 @@ export function missionsReady(): number {
 
 export function itemsAffordable(): number {
   return [...SKINS.filter((s) => !ownsSkin(s.id)), ...TRAILS.filter((t) => !ownsTrail(t.id))].filter((i) => canAfford(i.price)).length;
+}
+
+/* ---------------- Vantagens permanentes (fora do SaveData base) ---------------- */
+
+/**
+ * Campos extras guardados no mesmo save (o load faz merge raso, então campos
+ * desconhecidos sobrevivem ao JSON). Mantidos aqui para não mexer no formato base.
+ */
+interface SaveExtra {
+  /** dobrador de moedas (compra coin_doubler ou vip_pack) */
+  coinDoubler?: boolean;
+  /** comprou o VIP */
+  vip?: boolean;
+  /** dia (dayNumber) da última compra da oferta relâmpago */
+  flashDay?: number;
+  /** dia em que o popup do Pacote Inicial apareceu */
+  starterPopupDay?: number;
+}
+export const extra = save as SaveData & SaveExtra;
+
+export const hasCoinDoubler = (): boolean => !!extra.coinDoubler;
+
+/* ---------------- Melhorias ---------------- */
+
+export type UpgradeId = 'magnet' | 'shield' | 'coinValue';
+export const UPGRADE_IDS: UpgradeId[] = ['magnet', 'shield', 'coinValue'];
+
+export const upgradeLevel = (id: UpgradeId): number => Math.max(0, Math.min(UPGRADES.maxLevel, save.upgrades?.[id] ?? 0));
+
+/** Preço do próximo nível (null se já está no máximo). */
+export function upgradeCost(id: UpgradeId): { coins: number; gems: number } | null {
+  const lv = upgradeLevel(id);
+  if (lv >= UPGRADES.maxLevel) return null;
+  return { coins: UPGRADES.coinCost[lv], gems: UPGRADES.gemCost[lv] };
+}
+
+/** Compra o próximo nível com moedas ou gemas. */
+export function buyUpgrade(id: UpgradeId, currency: 'coins' | 'gems'): boolean {
+  const c = upgradeCost(id);
+  if (!c) return false;
+  if (!spend(currency === 'coins' ? { coins: c.coins } : { gems: c.gems })) return false;
+  save.upgrades[id] = upgradeLevel(id) + 1;
+  persist();
+  bus.emit('upgrades');
+  return true;
+}
+
+/** Efeitos (iguais aos usados no jogo — game.ts lê save.upgrades). */
+export const UPGRADE_FX = {
+  /** game.ts: raio de atração 44 + 12/nível */
+  magnetPct: (lv: number) => Math.round(((lv * 12) / 44) * 100),
+  /** UI: chance de começar a corrida com escudo */
+  shieldStartPct: (lv: number) => lv * 10,
+  /** game.ts: invencibilidade extra após o escudo quebrar */
+  shieldInv: (lv: number) => lv * 0.25,
+  /** game.ts: cada moeda vale 1 + 0,2/nível */
+  coinPct: (lv: number) => lv * 20,
+};
+
+/* ---------------- Consumíveis ---------------- */
+
+export type BoostId = 'shield' | 'magnet' | 'headstart';
+export const BOOST_IDS: BoostId[] = ['shield', 'magnet', 'headstart'];
+
+export const boostCount = (id: BoostId): number => Math.max(0, save.boosts?.[id] ?? 0);
+
+export function addBoosts(b: Partial<Record<BoostId, number>>): void {
+  for (const id of BOOST_IDS) save.boosts[id] = boostCount(id) + Math.max(0, Math.floor(b[id] ?? 0));
+  persist();
+  bus.emit('boosts');
+}
+
+export function useBoost(id: BoostId): boolean {
+  if (boostCount(id) <= 0) return false;
+  save.boosts[id] = boostCount(id) - 1;
+  persist();
+  bus.emit('boosts');
+  return true;
+}
+
+export function buyBoostPack(id: BoostId, currency: 'coins' | 'gems'): number {
+  const pack = BOOST_PACKS[id][currency];
+  if (!spend(currency === 'coins' ? { coins: pack.price } : { gems: pack.price })) return 0;
+  addBoosts({ [id]: pack.n });
+  return pack.n;
+}
+
+/* ---------------- Moedas da corrida ---------------- */
+
+export interface RunCoins {
+  /** moedas coletadas sem a melhoria */
+  base: number;
+  /** extra da melhoria Valor da moeda (já vem embutido nas moedas do jogo) */
+  upgrade: number;
+  /** extra do dobrador */
+  doubler: number;
+  total: number;
+}
+
+/**
+ * O jogo JÁ aplica a melhoria "Valor da moeda" a cada moeda coletada
+ * (game.ts: 1 + 0,2/nível), então `runCoins` (runStats.coins) já inclui esse bônus.
+ * Aqui só separamos para mostrar e somamos o dobrador.
+ */
+export function runCoinBreakdown(runCoins: number): RunCoins {
+  const mult = 1 + UPGRADE_FX.coinPct(upgradeLevel('coinValue')) / 100;
+  const base = Math.min(runCoins, Math.round(runCoins / mult));
+  const upgrade = runCoins - base;
+  const doubler = hasCoinDoubler() ? runCoins : 0;
+  return { base, upgrade, doubler, total: runCoins + doubler };
 }

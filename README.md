@@ -14,7 +14,8 @@ Jogo casual **one-tap** (um toque) feito para viralizar: pule de planeta em plan
 | **Vídeo premiado (rewarded)** | Continuar após morrer · Dobrar moedas · Diário em dobro · Moedas grátis (8/dia) · Skins/rastros desbloqueados por vídeo |
 | **Intersticial** | A cada 3 partidas, mínimo 75 s entre anúncios, nunca nas 2 primeiras (ajustável em `AD_RULES`) |
 | **Banner** | Só no menu e na tela de fim (nunca durante o jogo) |
-| **Compras (Google Play Billing)** | Pacote Inicial, Sem Anúncios, 4 pacotes de gemas |
+| **Compras (Google Play Billing)** | Pacote Inicial, Sem Anúncios, VIP, Mega Pacote, Kit Turbo, Dobrador de Moedas, Oferta Relâmpago diária, 3 cosméticos míticos, 4 pacotes de gemas |
+| **Melhorias e turbos** | Ímã / Escudo / Valor da moeda (níveis 1–5, moedas ou gemas) · Escudo, Ímã e Largada Turbo antes da partida (+ Escudo grátis por vídeo) |
 | **Economia** | Moedas (jogando) + Gemas (premium) → 13 skins e 8 rastros, continuar com gemas, troca gema→moeda |
 | **Retenção** | Presente diário de 7 dias, 3 missões diárias, recorde, botão “Desafiar” (compartilhar) |
 
@@ -28,8 +29,9 @@ Na web: anúncios via **Google H5 Games Ads (AdSense)**; compras redirecionam pa
    - `WEB_ADS.adsenseClient` → seu `ca-pub-...` (opcional, para a versão web).
    - Preços de referência em `PRODUCTS` (o app mostra o preço real da Play Store automaticamente).
 2. **`android/app/src/main/AndroidManifest.xml`** → `com.google.android.gms.ads.APPLICATION_ID` = ID do **app** no AdMob (`ca-app-pub-...~...`).
-3. **Google Play Console → Monetizar → Produtos no app**: crie os produtos com estes IDs exatos:
-   `starter_pack`, `remove_ads` (não consumíveis) · `gems_small`, `gems_medium`, `gems_large`, `gems_mega` (consumíveis).
+3. **Google Play Console → Monetizar → Produtos no app**: crie os produtos com estes IDs exatos (tabela completa com preços em [docs/STORE.md](docs/STORE.md)):
+   não consumíveis `starter_pack`, `remove_ads`, `skin_phoenix`, `skin_lava_golem`, `trail_neon`, `coin_doubler`, `vip_pack` ·
+   consumíveis `gems_small`, `gems_medium`, `gems_large`, `gems_mega`, `boost_bundle`, `mega_bundle`, `flash_gems`.
 4. **`capacitor.config.ts` / `android/app/build.gradle`** → `appId` se quiser outro nome de pacote (`com.sulamericagg.blooporbit`).
 5. Política de privacidade: `public/privacy.html` (publique a versão web e use a URL `/privacy.html` na Play Console).
 
