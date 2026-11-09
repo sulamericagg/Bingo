@@ -67,6 +67,89 @@ export const INGS: Ing[] = [
   I('pimentao', 'round', ['#3ec95a', '#1f8a3a', '#ff4f4f'], ['chop']),
   I('tortilla', 'sheet', ['#f5d58a', '#d9aa4a', '#fff0c0']),
 ];
+/** nome do ingrediente (3D em 1ª pessoa mostra o que você está mirando) */
+export function ingName(id: string): string {
+  switch (id) {
+    case 'tomate':
+      return t('cozinha.ing.tomate', 'Tomate');
+    case 'alface':
+      return t('cozinha.ing.alface', 'Alface');
+    case 'cebola':
+      return t('cozinha.ing.cebola', 'Cebola');
+    case 'cenoura':
+      return t('cozinha.ing.cenoura', 'Cenoura');
+    case 'pepino':
+      return t('cozinha.ing.pepino', 'Pepino');
+    case 'queijo':
+      return t('cozinha.ing.queijo', 'Queijo');
+    case 'pao':
+      return t('cozinha.ing.pao', 'Pão');
+    case 'carne':
+      return t('cozinha.ing.carne', 'Carne');
+    case 'frango':
+      return t('cozinha.ing.frango', 'Frango');
+    case 'peixe':
+      return t('cozinha.ing.peixe', 'Peixe');
+    case 'arroz':
+      return t('cozinha.ing.arroz', 'Arroz');
+    case 'feijao':
+      return t('cozinha.ing.feijao', 'Feijão');
+    case 'macarrao':
+      return t('cozinha.ing.macarrao', 'Macarrão');
+    case 'batata':
+      return t('cozinha.ing.batata', 'Batata');
+    case 'ovo':
+      return t('cozinha.ing.ovo', 'Ovo');
+    case 'massaPizza':
+      return t('cozinha.ing.massaPizza', 'Massa de pizza');
+    case 'massaPQ':
+      return t('cozinha.ing.massaPQ', 'Massa de pão de queijo');
+    case 'chocolate':
+      return t('cozinha.ing.chocolate', 'Chocolate');
+    case 'granulado':
+      return t('cozinha.ing.granulado', 'Granulado');
+    case 'goma':
+      return t('cozinha.ing.goma', 'Goma de tapioca');
+    case 'coco':
+      return t('cozinha.ing.coco', 'Coco');
+    case 'massaPastel':
+      return t('cozinha.ing.massaPastel', 'Massa de pastel');
+    case 'acai':
+      return t('cozinha.ing.acai', 'Açaí');
+    case 'banana':
+      return t('cozinha.ing.banana', 'Banana');
+    case 'granola':
+      return t('cozinha.ing.granola', 'Granola');
+    case 'morango':
+      return t('cozinha.ing.morango', 'Morango');
+    case 'manga':
+      return t('cozinha.ing.manga', 'Manga');
+    case 'leite':
+      return t('cozinha.ing.leite', 'Leite');
+    case 'alga':
+      return t('cozinha.ing.alga', 'Alga');
+    case 'massaBolo':
+      return t('cozinha.ing.massaBolo', 'Massa de bolo');
+    case 'abobora':
+      return t('cozinha.ing.abobora', 'Abóbora');
+    case 'milho':
+      return t('cozinha.ing.milho', 'Milho');
+    case 'camarao':
+      return t('cozinha.ing.camarao', 'Camarão');
+    case 'mandioca':
+      return t('cozinha.ing.mandioca', 'Mandioca');
+    case 'limao':
+      return t('cozinha.ing.limao', 'Limão');
+    case 'calabresa':
+      return t('cozinha.ing.calabresa', 'Calabresa');
+    case 'pimentao':
+      return t('cozinha.ing.pimentao', 'Pimentão');
+    case 'tortilla':
+      return t('cozinha.ing.tortilla', 'Tortilha');
+    default:
+      return id;
+  }
+}
 export const ING_INDEX: Record<string, number> = {};
 INGS.forEach((g, i) => (ING_INDEX[g.id] = i));
 

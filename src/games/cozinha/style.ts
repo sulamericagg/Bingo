@@ -3,6 +3,7 @@ const CSS = `
 .cz-root{position:absolute;inset:0;overflow:hidden;background:#ff8a7a;font-family:var(--font,Fredoka,system-ui,sans-serif);color:#fff;user-select:none;-webkit-user-select:none;touch-action:none;z-index:50}
 .cz-root canvas.cz-cv{position:absolute;left:0;top:0;display:block;touch-action:none}
 .cz-hud{position:absolute;inset:0;pointer-events:none}
+.cz-fpsmode .cz-acts,.cz-fpsmode .cz-joy{display:none!important}
 .cz-top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 6px) 8px 0}
 .cz-btn{pointer-events:auto;border:0;cursor:pointer;font:inherit;color:#fff;background:linear-gradient(#8a5cff,#5326cc);box-shadow:0 3px 0 #2a0b5c,inset 0 2px 0 rgba(255,255,255,.35);border-radius:14px;padding:7px 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:700;font-size:16px}
 .cz-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #2a0b5c}

@@ -32,6 +32,12 @@ export interface Renderer {
   draw(time: number, dt: number, q: QualitySettings): void;
   onFx(e: { t: FX; x: number; y: number; v: number }): void;
   destroy(): void;
+  /** 3D em 1ª pessoa: o renderizador cuida da entrada do jogador local (joystick/olhar/botões próprios) */
+  fps?: boolean;
+  /** chamado antes de sim.step (move o chef e aplica pegar/jogar/ação) */
+  preStep?(dt: number): void;
+  /** ponte online do 1ª pessoa (pegar com alvo, resultado de arremesso) */
+  net?: { notePick(target: number): void; noteThrow(st: number, x: number, y: number): void } | null;
 }
 
 const qs = new URLSearchParams(location.search);
@@ -106,7 +112,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <div class="cz-sub">${t('cozinha.choose', 'Como você quer ver a cozinha?')}</div>
       <div class="cz-modes">
         <button class="cz-mode${sv.mode === '2d' ? ' cz-last' : ''}" data-m="2d"><b>2D</b>${czIcon('flat', 54)}<span>${t('cozinha.mode2d', 'Desenhado')}</span><small>${t('cozinha.mode2dD', 'Leve e rápido, roda em qualquer celular')}</small></button>
-        <button class="cz-mode cz-3d${sv.mode === '3d' ? ' cz-last' : ''}" data-m="3d"><b>3D</b>${czIcon('cube', 54)}<span>${t('cozinha.mode3d', 'Modelado')}</span><small>${!gl ? t('cozinha.no3dShort', 'Indisponível neste aparelho') : tier <= 1 ? t('cozinha.mode3dWeak', 'Pode ficar lento neste aparelho') : t('cozinha.mode3dD', 'Tudo em 3D, com luz e física. Melhor em celulares fortes')}</small></button>
+        <button class="cz-mode cz-3d${sv.mode === '3d' ? ' cz-last' : ''}" data-m="3d"><b>3D</b>${czIcon('cube', 54)}<span>${t('cozinha.mode3dFps', 'Primeira pessoa — caos total!')}</span><small>${!gl ? t('cozinha.no3dShort', 'Indisponível neste aparelho') : tier <= 1 ? t('cozinha.mode3dWeak', 'Pode ficar lento neste aparelho') : t('cozinha.mode3dFpsD', 'Você é o chef: pegue, jogue e cozinhe com física de verdade')}</small></button>
       </div>
       <button class="cz-btn" data-a="exit">${icon('home', { size: 22 })}${t('cozinha.exit', 'Sair')}</button>`;
     bind(d, '[data-m]', (b) => {
@@ -407,6 +413,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     } else rend = new Render2D(cv) as unknown as Renderer;
     rend.me = me;
     rend.setSim(sim, cfg.ups.decor);
+    if (rend.fps && net.online) rend.net = { notePick: (tg) => net.notePick(tg), noteThrow: (st, x, y) => net.noteThrow(st, x, y) };
 
     // HUD
     const hud = document.createElement('div');
@@ -459,7 +466,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     let actTouch = false;
     let pickPress = false;
     const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement).closest('button')) return;
+      if (rend.fps || (e.target as HTMLElement).closest('button')) return;
       if (joyId >= 0 || e.clientX > el.clientWidth * 0.6) return;
       joyId = e.pointerId;
       jx0 = e.clientX;
@@ -607,13 +614,15 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       if (keys.has('ArrowRight') || keys.has('KeyD')) mx += 1;
       if (keys.has('ArrowUp') || keys.has('KeyW')) my -= 1;
       if (keys.has('ArrowDown') || keys.has('KeyS')) my += 1;
-      if (!qs.has('czauto')) {
+      if (hud.classList.contains('cz-fpsmode') !== !!rend.fps) hud.classList.toggle('cz-fpsmode', !!rend.fps);
+      if (!qs.has('czauto') && !rend.fps) {
         me.in.mx = mx;
         me.in.my = my;
         me.in.pick = pickPress;
         me.in.act = actTouch || keys.has('KeyJ') || keys.has('KeyE');
       }
       pickPress = false;
+      if (!paused) rend.preStep?.(dt);
       if (!paused && countdown <= 0) {
         if (client) net.applyHost(sim, me, others, mkBot, mkHuman);
         else if (net.online) net.applyRemotes(sim, remotes, lastPick);

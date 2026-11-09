@@ -197,6 +197,11 @@ export class Sim {
   private orderId = 1;
   private itemId = 1;
   private returnQ: number[] = [];
+  /** 3D em 1ª pessoa: a física dos itens soltos é do renderizador (não pula/escorrega aqui) */
+  physFloor = false;
+  /** pratos quebrados (3D) */
+  broken = 0;
+  private ghost: Player | null = null;
   readonly rnd: () => number;
   readonly ups: Record<UpId, number>;
   /** fila de efeitos (anel) */
@@ -563,6 +568,70 @@ export class Sim {
     this.floor.push(it);
     this.emit(FX.Drop, it.x, it.y, it.id);
   }
+  /* ---------- ponte para o 3D físico (itens voando/soltos são do renderizador) ---------- */
+  /** coloca um item solto no chão em (x,y) (sem pulo) */
+  dropAt(it: Item, x: number, y: number): void {
+    it.x = x;
+    it.y = y;
+    it.z = 0;
+    it.vz = 0;
+    if (!this.floor.includes(it)) this.floor.push(it);
+  }
+  /** tira um item do chão (pegou / pousou numa estação) */
+  takeFloor(it: Item): boolean {
+    const i = this.floor.indexOf(it);
+    if (i < 0) return false;
+    this.floor.splice(i, 1);
+    return true;
+  }
+  /**
+   * Um item que chegou VOANDO (ou foi solto) numa estação: mesma regra de "Pegar/Soltar"
+   * com as mãos cheias. 0 = recusou (quica), 1 = ficou na estação (ou foi servido/lixo),
+   * 2 = o item mudou mas continua solto (prato pegou o ingrediente da bancada, lixo esvaziou o prato).
+   */
+  placeInto(si: number, it: Item, by: Player | null = null): 0 | 1 | 2 {
+    const s = this.st[si];
+    if (!s || s.fire > 0 || (!s.fx && !s.fy)) return 0;
+    let g = this.ghost;
+    if (!g) g = this.ghost = this.addGhost();
+    g.x = s.x + 0.5 + s.fx;
+    g.y = s.y + 0.5 + s.fy;
+    g.fx = -s.fx;
+    g.fy = -s.fy;
+    g.hold = it;
+    g.force = si;
+    g.bot = by?.bot ?? false;
+    g.id = by?.id ?? 0;
+    const np = it.parts.length;
+    this.pick(g);
+    g.force = -1;
+    if (g.hold !== it) {
+      g.hold = null;
+      return 1;
+    }
+    g.hold = null;
+    return it.parts.length !== np ? 2 : 0;
+  }
+  private addGhost(): Player {
+    return { id: 0, name: '', skin: '', bot: false, remote: true, role: 'cook', x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: 1, hold: null, target: -1, force: -1, in: { mx: 0, my: 0, pick: false, act: false }, pickPrev: false, walk: 0, acting: 0, emote: '', emoteT: 0, happy: 0, speedMul: 1, hid: 0 };
+  }
+  /** prato (ou pilha suja) quebrou no 3D: o conteúdo se perde e os pratos voltam sujos depois */
+  breakPlate(it: Item): void {
+    const n = it.k === IK.Dirty ? Math.max(1, it.n) : it.k === IK.Plate ? 1 : 0;
+    for (let i = 0; i < n; i++) this.returnQ.push(this.time + 5 + i * 0.5);
+    this.broken += n;
+    this.takeFloor(it);
+  }
+  /** item perdido (caiu fora da cozinha): ingrediente some; prato volta sujo; extintor volta à bancada */
+  lose(it: Item): void {
+    this.takeFloor(it);
+    if (it.k === IK.Plate || it.k === IK.Dirty) this.breakPlate(it);
+    else if (it.k === IK.Ext) {
+      const c = this.st.find((s) => s.k === 'counter' && (s.fx || s.fy) && !s.item);
+      if (c) c.item = it;
+    }
+  }
+
   /** Pegar/Soltar */
   pick(p: Player): void {
     const si = this.aim(p);
@@ -951,8 +1020,8 @@ export class Sim {
         if (it.over > BURN_AFTER + FIRE_AFTER) this.ignite(s);
       }
     }
-    // itens no chão (pulo visual; no barco escorregam)
-    for (const it of this.floor) {
+    // itens no chão (pulo visual; no barco escorregam) — no 3D físico quem move é o renderizador
+    if (!this.physFloor) for (const it of this.floor) {
       if (it.z > 0 || it.vz) {
         it.vz -= 12 * dt;
         it.z += it.vz * dt;

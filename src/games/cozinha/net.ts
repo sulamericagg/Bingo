@@ -60,6 +60,14 @@ export class Net {
   private out: Record<string, number> = {};
   private sendT = 0;
   private pickN = 0;
+  /** 1ª pessoa: estação mirada (pegar/ação no host) */
+  private pickTg = -1;
+  /** 1ª pessoa: arremessos que terminaram (contador + resultado) */
+  private throwN = 0;
+  private throwSt = -1;
+  private throwX = 0;
+  private throwY = 0;
+  private lastThrow = new Map<number, number>();
   /** host visto pela última vez (estado) */
   hostState: Record<string, number> | null = null;
   onChange: (() => void) | null = null;
@@ -148,9 +156,17 @@ export class Net {
   }
 
   /* ------------------------------ partida ------------------------------ */
-  /** cliente apertou pegar */
-  notePick(): void {
+  /** cliente apertou pegar (tg = estação mirada no 3D, -1 = a mais perto) */
+  notePick(tg = -1): void {
     this.pickN++;
+    this.pickTg = tg;
+  }
+  /** cliente (1ª pessoa): o item que joguei caiu na estação `st` (ou no chão em x,y se st < 0) */
+  noteThrow(st: number, x: number, y: number): void {
+    this.throwN++;
+    this.throwSt = st;
+    this.throwX = x;
+    this.throwY = y;
   }
   /** envia (host: mundo inteiro; cliente: só eu) */
   sendGame(sim: Sim, me: Player, cfg: HostCfg, dt: number): void {
@@ -166,6 +182,14 @@ export class Net {
     o.fy = Math.round(me.fy * 100) / 100;
     o.pk = this.pickN;
     o.ac = me.in.act ? 1 : 0;
+    if (me.force >= 0) o.Tg = me.force;
+    else if (this.pickTg >= 0) o.Tg = this.pickTg;
+    if (this.throwN) {
+      o.Th = this.throwN;
+      o.Ts = this.throwSt;
+      o.Tx = Math.round(this.throwX * 100) / 100;
+      o.Ty = Math.round(this.throwY * 100) / 100;
+    }
     if (this.isHost()) {
       this.putCfg(o, cfg);
       o.T = Math.round(sim.time * 10);
@@ -212,6 +236,17 @@ export class Net {
       o.hh = itemCode(me.hold);
       const hp = partsCode(me.hold);
       if (hp) o.hp = hp;
+      // itens soltos no chão (3D físico mostra para os clientes)
+      const fn = Math.min(8, sim.floor.length);
+      if (fn) o.Ln = fn;
+      for (let i = 0; i < fn; i++) {
+        const it = sim.floor[i];
+        o['L' + i] = itemCode(it);
+        const pc2 = partsCode(it);
+        if (pc2) o['LP' + i] = pc2;
+        o['Lx' + i] = Math.round(it.x * 100) / 100;
+        o['Ly' + i] = Math.round(it.y * 100) / 100;
+      }
     }
     this.ses.send(o);
   }
@@ -229,12 +264,25 @@ export class Net {
         p.fx = s.fx ?? p.fx;
         p.fy = s.fy ?? p.fy;
       }
+      // 1ª pessoa: estação mirada vira alvo forçado (pegar e ação)
+      p.force = typeof s.Tg === 'number' && s.Tg >= 0 && s.Tg < sim.st.length ? s.Tg : -1;
       const lp = lastPick.get(s.h) ?? s.pk ?? 0;
       p.in.pick = false;
       if ((s.pk ?? 0) > lp) {
         sim.pick(p);
         lastPick.set(s.h, s.pk);
       } else lastPick.set(s.h, lp);
+      // 1ª pessoa: arremesso do cliente terminou → resultado no host
+      const lt = this.lastThrow.get(s.h) ?? s.Th ?? 0;
+      if ((s.Th ?? 0) > lt) {
+        this.lastThrow.set(s.h, s.Th);
+        const it = p.hold;
+        if (it) {
+          p.hold = null;
+          const r = (s.Ts ?? -1) >= 0 ? sim.placeInto(s.Ts, it, p) : 0;
+          if (r !== 1) sim.dropAt(it, s.Tx ?? p.x, s.Ty ?? p.y);
+        }
+      } else this.lastThrow.set(s.h, lt);
       p.in.act = !!s.ac;
       p.emote = h.emote ?? '';
       p.emoteT = h.emote ? 1 : 0;
@@ -274,6 +322,16 @@ export class Net {
       st.prog = (s['w' + i] ?? 0) / 99;
     });
     me.hold = decodeInto(sim, s['R' + this.h] ?? 0, s['RP' + this.h] ?? 0, me.hold);
+    // itens soltos do host (o 3D cria/mexe os corpos a partir daqui)
+    const ln = s.Ln ?? 0;
+    while (sim.floor.length > ln) sim.floor.pop();
+    for (let i = 0; i < ln; i++) {
+      const it = decodeInto(sim, s['L' + i] ?? 0, s['LP' + i] ?? 0, sim.floor[i] ?? null);
+      if (!it) continue;
+      it.x = s['Lx' + i] ?? it.x;
+      it.y = s['Ly' + i] ?? it.y;
+      sim.floor[i] = it;
+    }
     // bots do host
     const bn = s.bn ?? 0;
     for (let i = 0; i < bn; i++) {
