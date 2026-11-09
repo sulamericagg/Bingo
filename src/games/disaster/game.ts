@@ -53,6 +53,10 @@ export interface Player {
   climbing: boolean;
   jumpHeld: boolean;
   coyote: number;
+  /** buffer de pulo (s) */
+  jbuf: number;
+  /** recarga do "tum" de objeto leve caindo (s) */
+  bonk: number;
   sq: number; // squash & stretch (-1..1)
   runT: number;
   alive: boolean;
@@ -166,6 +170,8 @@ export class DisasterGame implements MiniGameHandle {
   rng = mulberry(1);
   /** dev/screenshots: seu Bloop é controlado pela IA */
   autoMe = false;
+  /** a sequência desta rodada bateu o recorde */
+  newBest = false;
   private nameOff = Math.floor(Math.random() * 14);
 
   // sessão
@@ -359,6 +365,8 @@ export class DisasterGame implements MiniGameHandle {
         climbing: false,
         jumpHeld: false,
         coyote: 0,
+        jbuf: 0,
+        bonk: 0,
         sq: 0,
         runT: 0,
         alive: true,
@@ -399,7 +407,9 @@ export class DisasterGame implements MiniGameHandle {
   private nextPhase(): void {
     switch (this.phase) {
       case 'intro':
-        this.setPhase('prepare', this.finale ? 18 + this.sc.difficulty : 15);
+        // final do meteoro: tempo curto o bastante para precisar correr (antes 18+df: quase todos chegavam andando)
+        this.setPhase('prepare', this.finale ? 14 + this.sc.difficulty * 0.8 : 15);
+        if (this.finale) audio.siren(3);
         break;
       case 'prepare':
         if (this.finale) {
@@ -408,7 +418,7 @@ export class DisasterGame implements MiniGameHandle {
         } else {
           this.setPhase('warn', 2.6);
           this.hud.disasterCard(this.sc.disasters[0]);
-          audio.hit();
+          audio.siren(2.5);
           tap('heavy');
         }
         break;
@@ -421,7 +431,8 @@ export class DisasterGame implements MiniGameHandle {
           this.dIndex++;
           this.setPhase('warn', 2.6);
           this.hud.disasterCard(this.sc.disasters[this.dIndex]);
-          audio.hit();
+          audio.siren(2.5);
+          tap('heavy');
         } else this.endRound();
         break;
       case 'impact':
@@ -438,13 +449,20 @@ export class DisasterGame implements MiniGameHandle {
   private beginDisaster(d: DisasterId): void {
     this.active.add(d);
     const df = this.sc.difficulty;
-    const fl = (f: Partial<Fluid> & { kind: Fluid['kind'] }): Fluid => ({ level: 0, target: 100, rate: 3, front: -300, dir: 0, speed: 0, crest: 0, push: 0, ...f });
+    // cenário duplo: cada desastre vem um pouco mais brando (somados já são difíceis)
+    const duo = this.sc.disasters.length > 1 ? 0.8 : 1;
+    const fl = (f: Partial<Fluid> & { kind: Fluid['kind'] }): Fluid => {
+      const o: Fluid = { level: 0, target: 100, rate: 3, front: -300, dir: 0, speed: 0, crest: 0, push: 0, ...f };
+      o.target *= duo;
+      if (!o.dir) o.rate *= duo;
+      return o;
+    };
     switch (d) {
       case 'tsunami':
-        this.fluid = fl({ kind: 'water', target: 96 + df * 22, rate: 60, front: -260, dir: 1, speed: 250, crest: 90, push: 520 });
+        this.fluid = fl({ kind: 'water', target: 88 + df * 18, rate: 60, front: -260, dir: 1, speed: 250, crest: 90, push: 520 });
         break;
       case 'avalanche':
-        this.fluid = fl({ kind: 'snow', target: 84 + df * 20, rate: 50, front: this.world.W + 260, dir: -1, speed: 190, crest: 70, push: -420 });
+        this.fluid = fl({ kind: 'snow', target: 76 + df * 16, rate: 50, front: this.world.W + 260, dir: -1, speed: 190, crest: 70, push: -420 });
         break;
       case 'enchente':
         this.fluid = fl({ kind: 'water', target: 110 + df * 22, rate: (110 + df * 22) / 34 });
@@ -453,13 +471,14 @@ export class DisasterGame implements MiniGameHandle {
         this.fluid = fl({ kind: 'goo', target: 130 + df * 22, rate: (130 + df * 22) / 40 });
         break;
       case 'vulcao':
-        this.fluid = fl({ kind: 'lava', target: 70 + df * 20, rate: (70 + df * 20) / 36 });
-        this.strikeTimer = 2;
+        // lava mais baixa e mais lenta: o perigo principal são as bombas (com marcador no chão)
+        this.fluid = fl({ kind: 'lava', target: 52 + df * 16, rate: (52 + df * 16) / 42 });
+        this.strikeTimer = 3;
         break;
       case 'tornado':
         this.tornado.on = true;
         this.tornado.x = this.rng() < 0.5 ? -120 : this.world.W + 120;
-        this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (80 + df * 14);
+        this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12);
         this.tornado.r = 58 + df * 3;
         break;
       case 'terremoto':
@@ -493,6 +512,7 @@ export class DisasterGame implements MiniGameHandle {
     if (survived) {
       this.streak++;
       this.sessionSurvived++;
+      this.newBest = this.streak > 1 && this.streak > this.progress.best;
       this.progress.best = Math.max(this.progress.best, this.streak);
       let coins = 20 + this.sc.difficulty * 6 + Math.min(10, this.streak - 1) * 5 + (this.finale ? 40 : 0);
       try {
@@ -581,7 +601,7 @@ export class DisasterGame implements MiniGameHandle {
     this.updateCamera(rdt);
     if (this.shake > 0) this.shake = Math.max(0, this.shake - rdt * 2.2);
     this.draw.particles.step(dt);
-    this.hud.tick();
+    this.hud.tick(rdt);
 
     // online ~5 Hz
     this.sendT -= rdt;
@@ -633,7 +653,7 @@ export class DisasterGame implements MiniGameHandle {
           }
         }
       }
-      this.strikeTimer -= dt;
+      this.strikeTimer -= dt * (this.sc.disasters.length > 1 ? 0.8 : 1);
       if (this.strikeTimer <= 0) {
         if (this.active.has('meteoros')) {
           this.spawnStrike('meteor', 1.6, 44);
@@ -642,8 +662,8 @@ export class DisasterGame implements MiniGameHandle {
           this.spawnStrike('bolt', 1.4, 20);
           this.strikeTimer = Math.max(0.4, 0.95 - df * 0.09) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('vulcao')) {
-          this.spawnStrike('bomb', 1.9, 28);
-          this.strikeTimer = Math.max(0.6, 1.8 - df * 0.16) * (0.7 + this.rng() * 0.6);
+          this.spawnStrike('bomb', 2.1, 26);
+          this.strikeTimer = Math.max(0.95, 2.3 - df * 0.18) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('terremoto')) {
           this.spawnStrike('rock', 1.3, 22);
           this.strikeTimer = Math.max(0.6, 1.6 - df * 0.15) * (0.7 + this.rng() * 0.6);
@@ -659,6 +679,8 @@ export class DisasterGame implements MiniGameHandle {
           const cx = b.x + b.w * 0.5;
           const d = cx - tn.x;
           if (Math.abs(d) < tn.r + b.w * 0.5) {
+            // casas aguentam o tornado (é o abrigo que a dica ensina); o resto voa
+            if (!b.awake && (b.kind === 'wall' || b.kind === 'slab')) continue;
             if (!b.awake && b.kind !== 'crate' && this.rng() > dt * 3) continue;
             w.wake(b);
             b.vy -= (b.heavy ? 1700 : 2600) * dt;
@@ -790,7 +812,8 @@ export class DisasterGame implements MiniGameHandle {
     if (this.wind && this.phase === 'disaster') p.vx += this.wind * dt * (p.onGround ? 0.6 : 1.4);
     if (this.tornado.on) {
       const d = this.tornado.x - p.x;
-      if (Math.abs(d) < 240) p.vx += Math.sign(d) * 160 * dt;
+      // puxa só quem está ao ar livre (dentro de casa ninguém é arrastado para fora sem querer)
+      if (Math.abs(d) < 240 && !w.insideHouse(p.x, p.y)) p.vx += Math.sign(d) * 120 * dt;
     }
     if (this.quake > 0 && p.onGround) p.vx += (this.rng() - 0.5) * 900 * this.quake * dt;
 
@@ -823,12 +846,16 @@ export class DisasterGame implements MiniGameHandle {
       p.coyote = 0.09;
       p.jumps = 0;
     } else p.coyote -= dt;
+    // buffer de pulo: apertou um pouquinho antes de encostar no chão? pula assim que encostar
+    if (inp.j && !p.jumpHeld) p.jbuf = 0.13;
+    else if (p.jbuf > 0) p.jbuf -= dt;
     const pressed = inp.j && !p.jumpHeld;
     p.jumpHeld = inp.j;
-    if (pressed && !p.climbing && !frozen) {
+    if ((pressed || (p.jbuf > 0 && p.coyote > 0 && p.coyote >= 0.09)) && !p.climbing && !frozen) {
       if (p.coyote > 0) {
         p.vy = -JUMP;
         p.coyote = 0;
+        p.jbuf = 0;
         p.jumps = 1;
         p.sq = -0.35;
         if (p.self) audio.jump();
@@ -951,26 +978,44 @@ export class DisasterGame implements MiniGameHandle {
     if (!p.alive || p.safe) return;
     if (this.phase === 'end') return;
     const w = this.world;
-    if (this.fluid) {
+    // fluido parado ainda rasinho (< 12): só "molha o pé" — dá tempo de subir depois do alerta
+    if (this.fluid && (this.fluid.dir !== 0 || this.fluid.level > 12)) {
       const s = this.surfaceAt(p.x);
       if (p.y > s + 3) {
         this.knockOut(p, this.fluid.dir);
         return;
       }
     }
-    // algo caindo em cima
+    // algo caindo em cima: só o que é pesado e rápido derruba; caixas e pedacinhos dão um "tum" e empurram
+    if (p.bonk > 0) p.bonk -= 1 / 60;
+    const roofed = this.tornado.on && w.insideHouse(p.x, p.y);
     for (const b of w.bodies) {
+      if (roofed) break; // dentro de casa inteira: o teto segura o que cai
       if (!b.alive || !b.awake || b.vy < 170) continue;
       if (p.x + 7 < b.x || p.x - 7 > b.x + b.w) continue;
       const top = p.y - 22;
       if (b.y + b.h > top && b.y + b.h < p.y - 4) {
-        this.knockOut(p, 0);
-        return;
+        if (b.heavy && b.vy > 260 && b.w * b.h > 500) {
+          this.knockOut(p, 0);
+          return;
+        }
+        if (p.bonk <= 0) {
+          p.bonk = 0.5;
+          const side = p.x < b.x + b.w / 2 ? -1 : 1;
+          p.vx = side * 260;
+          p.vy = Math.min(p.vy, -140);
+          p.sq = 0.4;
+          b.vy *= -0.3;
+          if (p.self) {
+            audio.crack();
+            tap('medium');
+          }
+        }
       }
     }
     // tornado
     const tn = this.tornado;
-    if (tn.on && Math.abs(p.x - tn.x) < tn.r * 0.75 && !w.isSheltered(p.x, p.y)) this.knockOut(p, Math.sign(tn.vx));
+    if (tn.on && Math.abs(p.x - tn.x) < tn.r * 0.5 && !w.insideHouse(p.x, p.y)) this.knockOut(p, Math.sign(tn.vx));
   }
 
   knockOut(p: Player, dir: number): void {
@@ -1024,7 +1069,8 @@ export class DisasterGame implements MiniGameHandle {
       inp.l = inp.r = inp.j = inp.u = false;
       return;
     }
-    const known = this.phase === 'disaster' || this.phase === 'warn' ? this.sc.disasters[this.dIndex] : null;
+    // o desastre aparece no título do cenário: quem presta atenção já se prepara certo
+    const known = this.phase === 'disaster' || this.phase === 'warn' || (this.phase === 'prepare' && (p.self || b.skill > 0.6)) ? this.sc.disasters[this.dIndex] : null;
     if (b.think <= 0) {
       b.think = 0.35 + (1 - b.skill) * 0.5 + this.rng() * 0.2;
       this.plan(p, known);
@@ -1085,6 +1131,12 @@ export class DisasterGame implements MiniGameHandle {
       b.gx = bk.x + 60 + (p.outOrder % 3) * 30 + b.lazy * 80;
       // bots distraídos demoram a sair e às vezes param
       if (this.phaseT < b.lazy * 3.5 || (b.skill < 0.55 && this.rng() < 0.12)) b.gx = p.x;
+      b.gy = p.y;
+      return;
+    }
+    if (known === 'tornado' && w.insideHouse(p.x, p.y) && (p.self || this.rng() < 0.6 + b.skill * 0.4)) {
+      // já está abrigado: fica quietinho
+      b.gx = p.x;
       b.gy = p.y;
       return;
     }

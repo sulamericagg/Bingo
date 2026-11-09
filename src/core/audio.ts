@@ -162,6 +162,120 @@ class Sfx {
     this.tone(2093, 0.6, 'sine', 0.12, { delay: 0.25, rev: true });
   }
 
+  /** Sirene de alerta (sobe e desce): ~dur segundos. Avisa ANTES do perigo. */
+  siren(dur = 2.4): void {
+    const ctx = this.ctx;
+    if (!ctx || !save.sound) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const depth = ctx.createGain();
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    o.type = 'triangle';
+    o2.type = 'square';
+    o.frequency.value = 820;
+    o2.frequency.value = 820;
+    lfo.type = 'sine';
+    lfo.frequency.value = 1.6; // "uóóó-uóóó"
+    depth.gain.value = 260;
+    lfo.connect(depth);
+    depth.connect(o.frequency);
+    depth.connect(o2.frequency);
+    f.type = 'lowpass';
+    f.frequency.value = 2200;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.18;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.11, t + 0.12);
+    g.gain.setValueAtTime(0.11, t + Math.max(0.2, dur - 0.35));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f);
+    o2.connect(g2).connect(f);
+    f.connect(g).connect(this.sfxBus);
+    for (const n of [o, o2, lfo]) {
+      n.start(t);
+      n.stop(t + dur + 0.05);
+    }
+  }
+
+  /** "Tic" curtinho para contadores de recompensa (sobe de tom com i). */
+  tick(i = 0): void {
+    this.tone(900 * Math.pow(1.04, Math.min(i, 24)), 0.04, 'square', 0.035);
+  }
+
+  /** Quase! (passou raspando) — assobio rápido e brilhante. */
+  nearMiss(): void {
+    this.tone(1400, 0.12, 'sine', 0.08, { slide: 1.6 });
+    this.noise(0.1, 0.06, 4000, 1.2, 1.5);
+  }
+
+  /** Novo recorde: fanfarra curta. */
+  record(): void {
+    [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, 'square', 0.05, { delay: i * 0.09 }));
+    [1047, 1319, 1568].forEach((f) => this.tone(f, 0.9, 'triangle', 0.09, { delay: 0.38, rev: true }));
+  }
+
+  /** Perdeu: "uóóón" suave e descendente (não assusta criança). */
+  fail(): void {
+    this.tone(392, 0.22, 'triangle', 0.14, { slide: 0.9 });
+    this.tone(330, 0.5, 'triangle', 0.14, { delay: 0.18, slide: 0.7 });
+  }
+
+  /* ----------- motor (Rally) ----------- */
+  private eng: { o: OscillatorNode; o2: OscillatorNode; f: BiquadFilterNode; g: GainNode } | null = null;
+
+  /** Liga o ronco do motor (idempotente). Segue o sfxBus, então respeita "Som". */
+  engineStart(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.eng) return;
+    const o = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    const f = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o2.type = 'square';
+    o.frequency.value = 48;
+    o2.frequency.value = 24.5;
+    f.type = 'lowpass';
+    f.frequency.value = 320;
+    f.Q.value = 2;
+    g.gain.value = 0.0001;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.5;
+    o.connect(f);
+    o2.connect(g2).connect(f);
+    f.connect(g).connect(this.sfxBus);
+    o.start();
+    o2.start();
+    this.eng = { o, o2, f, g };
+  }
+
+  /** throttle 0..1 (acelerador), speed 0..1 (velocidade relativa). */
+  engineSet(throttle: number, speed: number): void {
+    const e = this.eng;
+    const ctx = this.ctx;
+    if (!e || !ctx) return;
+    const t = ctx.currentTime;
+    const rpm = 0.25 + speed * 0.55 + throttle * 0.3;
+    e.o.frequency.setTargetAtTime(42 + rpm * 95, t, 0.06);
+    e.o2.frequency.setTargetAtTime(21 + rpm * 47.5 + 0.7, t, 0.06);
+    e.f.frequency.setTargetAtTime(260 + rpm * 900 + throttle * 300, t, 0.05);
+    e.g.gain.setTargetAtTime(save.sound ? 0.035 + throttle * 0.04 : 0.0001, t, 0.08);
+  }
+
+  engineStop(): void {
+    const e = this.eng;
+    const ctx = this.ctx;
+    if (!e || !ctx) return;
+    this.eng = null;
+    const t = ctx.currentTime;
+    e.g.gain.setTargetAtTime(0.0001, t, 0.05);
+    e.o.stop(t + 0.3);
+    e.o2.stop(t + 0.3);
+  }
+
   /* ----------- música generativa ----------- */
   private startMusic(): void {
     if (!this.ctx) return;
