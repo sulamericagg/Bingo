@@ -41,7 +41,8 @@ import {
 } from './data';
 import { Car, DT, type Input } from './physics';
 import { Terrain, CHUNK_LEN } from './terrain';
-import { coinSprite, drawBackdrop, drawCar, emoteSprite, EMOTES, fuelSprite, INK, type CarPose } from './draw';
+import { coinSprite, drawBackdrop, drawCar, drawCarShadow, emoteSprite, EMOTES, fuelSprite, groundPattern, INK, rgbOf, type CarPose } from './draw';
+import { glowSprite } from '../../gfx/light';
 import { Lobby, type RemotePeer } from './net';
 
 type State = 'garage' | 'play' | 'over' | 'results';
@@ -857,13 +858,14 @@ class RallyGame {
     const dpr = this.dpr;
     const S = this.S * this.zoom;
     const layers = this.q.starLayers;
+    const fx = this.q.bloom ? 3 : this.q.grade ? 2 : this.q.softShadows ? 1 : 0;
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     const camX = this.camX;
     // fundo (com transição entre zonas)
-    drawBackdrop(x, ZONES[this.bgZone], w, h, camX, S, this.time, layers);
+    drawBackdrop(x, ZONES[this.bgZone], w, h, camX, S, this.time, layers, fx);
     if (this.bgFade > 0 && this.bgPrev >= 0) {
       x.globalAlpha = this.bgFade;
-      drawBackdrop(x, ZONES[this.bgPrev], w, h, camX, S, this.time, layers);
+      drawBackdrop(x, ZONES[this.bgPrev], w, h, camX, S, this.time, layers, fx);
       x.globalAlpha = 1;
     }
     const ox = w * (this.state === 'garage' ? 0.5 : 0.34);
@@ -883,7 +885,7 @@ class RallyGame {
         if (c.x0 > right || c.x0 + CHUNK_LEN < left || !c.fill) continue;
         const z = c.zone;
         if (pass === 0) {
-          x.fillStyle = z.ground[1];
+          x.fillStyle = (fx >= 2 && groundPattern(x, z, h, dpr)) || z.ground[1];
           x.fill(c.fill);
         } else if (pass === 1) {
           x.strokeStyle = z.ground[0];
@@ -922,19 +924,31 @@ class RallyGame {
     // visitantes
     for (const p of this.lobby.peers.values()) this.drawPeer(p, S, ox, oy, left, right);
 
-    // poeira
+    // poeira (nuvens macias em sprite no Baixo+; círculos no Mínimo)
     const zc = this.terrain.zone(this.car.x).top;
+    const puff = fx >= 1 ? glowSprite(rgbOf(zc)) : null;
     x.fillStyle = zc;
     for (let i = 0; i < MAX_DUST; i++) {
       const l = this.dl[i];
       if (l <= 0) continue;
       x.globalAlpha = Math.min(1, l * 1.5) * 0.8;
       const r = (1.2 - l) * S * 0.35 + 2;
+      if (puff) {
+        const rr = r * 2.4;
+        x.drawImage(puff, toSX(this.dx[i]) - rr, toSY(this.dy[i]) - rr, rr * 2, rr * 2);
+        continue;
+      }
       x.beginPath();
       x.arc(toSX(this.dx[i]), toSY(this.dy[i]), r, 0, 6.283);
       x.fill();
     }
     x.globalAlpha = 1;
+
+    // sombra de contato do carro no chão
+    {
+      const gy = this.terrain.height(this.car.x);
+      drawCarShadow(x, toSX(this.car.x), toSY(gy) + S * 0.05, (this.car.def.wheelBase + 0.5) * S * 0.5, (this.car.y - gy - this.car.def.wheelR) * S, fx >= 1);
+    }
 
     // jogador
     this.drawCarAt(this.car, S, toSX(this.car.x), toSY(this.car.y), this.skin, this.mood, this.inp.gas);
@@ -1001,6 +1015,9 @@ class RallyGame {
     p.gas = gas;
     p.t = this.time;
     p.mood = mood;
+    p.speed = car.speed;
+    p.fx = this.q.bloom ? 3 : this.q.grade ? 2 : this.q.softShadows ? 1 : 0;
+    p.night = this.terrain.zone(car.x).deco === 'stars';
     x.save();
     x.translate(sx, sy);
     x.rotate(-car.a);

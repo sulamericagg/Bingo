@@ -33,16 +33,26 @@ export interface QualitySettings {
    * personagem a cada n frames (posição, giro e squash continuam a cada frame).
    */
   heroCache: number;
+  /** pós-processo de bloom (cópia reduzida + blur, somada com 'lighter') — só Alto */
+  bloom: boolean;
+  /** luzes dinâmicas aditivas (lâmpadas, lava, faróis, estrelas iluminando o cenário) */
+  dynLights: boolean;
+  /** sombras de contato suaves (sprite borrado em cache) em vez de elipse chapada */
+  softShadows: boolean;
+  /** partículas de ambiente (poeira, brasas, pólen) */
+  ambientParticles: boolean;
+  /** gradação de cor / raios de luz / reflexos especulares extras */
+  grade: boolean;
 }
 
 export const TIER_LABELS: Record<Tier, string> = { 0: 'Mínimo', 1: 'Baixo', 2: 'Médio', 3: 'Alto' };
 export const MAX_TIER: Tier = 3;
 
 const SETTINGS: Record<Tier, QualitySettings> = {
-  0: { dprCap: 1, particleBudget: 0.3, nebula: false, farPlanet: false, starLayers: 1, glows: false, atmospheres: false, vignette: false, shake: false, fpsCap: 30, trailDensity: 0.35, heroCache: 2 },
-  1: { dprCap: 1.25, particleBudget: 0.5, nebula: false, farPlanet: true, starLayers: 2, glows: true, atmospheres: false, vignette: false, shake: true, fpsCap: 60, trailDensity: 0.6, heroCache: 2 },
-  2: { dprCap: 1.6, particleBudget: 0.8, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 0.85, heroCache: 2 },
-  3: { dprCap: 2, particleBudget: 1, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 1, heroCache: 0 },
+  0: { dprCap: 1, particleBudget: 0.3, nebula: false, farPlanet: false, starLayers: 1, glows: false, atmospheres: false, vignette: false, shake: false, fpsCap: 30, trailDensity: 0.35, heroCache: 2, bloom: false, dynLights: false, softShadows: false, ambientParticles: false, grade: false },
+  1: { dprCap: 1.25, particleBudget: 0.5, nebula: false, farPlanet: true, starLayers: 2, glows: true, atmospheres: false, vignette: false, shake: true, fpsCap: 60, trailDensity: 0.6, heroCache: 2, bloom: false, dynLights: false, softShadows: true, ambientParticles: false, grade: false },
+  2: { dprCap: 1.6, particleBudget: 0.8, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 0.85, heroCache: 2, bloom: false, dynLights: true, softShadows: true, ambientParticles: true, grade: true },
+  3: { dprCap: 2, particleBudget: 1, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 1, heroCache: 0, bloom: true, dynLights: true, softShadows: true, ambientParticles: true, grade: true },
 };
 
 export function settingsFor(tier: Tier): QualitySettings {

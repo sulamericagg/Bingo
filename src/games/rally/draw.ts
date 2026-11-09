@@ -5,6 +5,7 @@
 import { drawPlayer, type PlayerPose } from '../../game/character';
 import type { Skin } from '../../game/skins';
 import type { VehicleDef, ZoneDef } from './data';
+import { drawLight, drawRays, drawSoftShadow } from '../../gfx/light';
 
 const TAU = Math.PI * 2;
 export const INK = '#2a0b5c';
@@ -250,11 +251,17 @@ export interface CarPose {
   gas: boolean;
   t: number;
   mood: PlayerPose['mood'];
+  /** velocidade (m/s) para o borrão de movimento das rodas */
+  speed?: number;
+  /** nível de efeitos: 0 chapado, 1 sombras/borrão, 2 + luzes dinâmicas */
+  fx?: number;
+  /** zona escura: acende os faróis */
+  night?: boolean;
 }
 
 const pose: PlayerPose = { t: 0, blink: 0, lookX: 0.4, lookY: 0, sx: 1, sy: 1, mood: 'idle', lx: -0.55, ly: -0.83 };
 
-function wheel(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, spin: number, rim: string, big: boolean): void {
+function wheel(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, spin: number, rim: string, big: boolean, blur = 0): void {
   x.fillStyle = INK;
   x.beginPath();
   x.arc(cx, cy, r, 0, TAU);
@@ -263,6 +270,15 @@ function wheel(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, s
   x.beginPath();
   x.arc(cx, cy, r * 0.86, 0, TAU);
   x.fill();
+  // borrão de movimento: os cravos viram um anel e os raios se espalham
+  if (blur > 0.05) {
+    x.strokeStyle = 'rgba(42,11,92,' + (blur * 0.7).toFixed(2) + ')';
+    x.lineWidth = r * 0.2;
+    x.beginPath();
+    x.arc(cx, cy, r * 0.92, 0, TAU);
+    x.stroke();
+    x.globalAlpha = 1 - blur * 0.85;
+  }
   // cravos do pneu
   x.fillStyle = INK;
   const n = big ? 10 : 8;
@@ -285,6 +301,14 @@ function wheel(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, s
     x.lineTo(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.5);
   }
   x.stroke();
+  if (blur > 0.05) {
+    x.globalAlpha = blur * 0.45;
+    x.fillStyle = INK;
+    x.beginPath();
+    x.arc(cx, cy, r * 0.5, 0, TAU);
+    x.fill();
+    x.globalAlpha = 1;
+  }
   x.fillStyle = 'rgba(255,255,255,.55)';
   x.beginPath();
   x.arc(cx - r * 0.15, cy - r * 0.18, r * 0.14, 0, TAU);
@@ -580,13 +604,29 @@ export function drawCar(x: CanvasRenderingContext2D, def: VehicleDef, S: number,
 
   // rodas por cima
   const wr = def.wheelR * S;
+  const fx = p.fx ?? 0;
   if (def.shape === 'hover') {
     hoverPad(x, p.w0x, p.w0y, wr, p.t, T);
     hoverPad(x, p.w1x, p.w1y, wr, p.t, T);
   } else {
-    wheel(x, p.w0x, p.w0y, wr, p.spin0, T, big);
-    wheel(x, p.w1x, p.w1y, wr, p.spin1, T, big);
+    const blur = fx >= 1 ? Math.max(0, Math.min(1, ((p.speed ?? 0) - 3) / 9)) : 0;
+    wheel(x, p.w0x, p.w0y, wr, p.spin0, T, big, blur);
+    wheel(x, p.w1x, p.w1y, wr, p.spin1, T, big, blur);
   }
+  // faróis nas zonas escuras (cone aditivo à frente + ponto quente)
+  if (p.night && fx >= 2) {
+    const hx = L * 0.62;
+    const hy = -0.12 * S;
+    drawLight(x, '255,240,190', hx + S * 1.9, hy + S * 0.25, S * 2.2, 0.55, 0.42);
+    drawLight(x, '255,250,220', hx, hy, S * 0.38, 1, 1, true);
+  }
+}
+
+/** sombra de contato do carro no chão (coordenadas de tela). */
+export function drawCarShadow(x: CanvasRenderingContext2D, cx: number, groundY: number, halfW: number, lift: number, soft: boolean): void {
+  const k = Math.max(0, 1 - lift / (halfW * 2.5));
+  if (k <= 0.02) return;
+  drawSoftShadow(x, cx, groundY, halfW * (0.75 + 0.25 * k), halfW * 0.16 * (0.6 + 0.4 * k), 0.38 * k, soft, 'rgba(20,6,50,1)');
 }
 
 /* ---------------------------- cenário ---------------------------- */
@@ -595,11 +635,33 @@ interface Backdrop {
   sky: CanvasGradient;
   far: Path2D;
   mid: Path2D;
+  /** cordilheira distante (perspectiva atmosférica: quase a cor do céu) */
+  haze: Path2D;
   tile: number;
+  hazeCol: string;
+  farCol: string;
+  /** faixa de névoa (sprite 2×64 esticado na base de cada camada) */
+  mist: HTMLCanvasElement;
+  /** brilho do horizonte */
+  glowRgb: string;
 }
 const bdCache = new Map<string, Backdrop>();
 let bdW = 0;
 let bdH = 0;
+
+function hexRgb(h: string): [number, number, number] {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+/** mistura duas cores hex → "rgb(...)" (usado só na montagem do cache) */
+function mix(a: string, b: string, k: number): string {
+  const A = hexRgb(a);
+  const B = hexRgb(b);
+  return `rgb(${Math.round(A[0] + (B[0] - A[0]) * k)},${Math.round(A[1] + (B[1] - A[1]) * k)},${Math.round(A[2] + (B[2] - A[2]) * k)})`;
+}
+export function rgbOf(h: string): string {
+  return hexRgb(h).join(',');
+}
 
 function hills(w: number, h: number, base: number, amp: number, n: number, seed: number, bumpy: boolean): Path2D {
   const p = new Path2D();
@@ -616,6 +678,15 @@ function hills(w: number, h: number, base: number, amp: number, n: number, seed:
   return p;
 }
 
+/** posição do astro (sol/planeta) por zona, em fração da tela */
+const SUN: Record<string, [number, number, string]> = {
+  moon: [0.78, 0.17, '120,200,255'],
+  dunes: [0.72, 0.3, '255,214,140'],
+  candy: [0.75, 0.2, '255,236,250'],
+  ice: [0.25, 0.16, '255,252,235'],
+  jungle: [0.7, 0.14, '255,250,200'],
+};
+
 function backdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number): Backdrop {
   if (w !== bdW || h !== bdH) {
     bdCache.clear();
@@ -626,15 +697,33 @@ function backdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number)
   if (!b) {
     const sky = x.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, z.sky[0]);
-    sky.addColorStop(1, z.sky[1]);
+    sky.addColorStop(0.62, z.sky[1]);
+    // o céu clareia perto do horizonte (espalhamento atmosférico)
+    sky.addColorStop(1, mix(z.sky[1], '#ffffff', z.deco === 'stars' ? 0.08 : 0.35));
     const tile = Math.max(w, 600) * 1.5;
     const seed = z.id.length * 1.7;
     const spiky = z.deco === 'ice';
+    const mist = document.createElement('canvas');
+    mist.width = 2;
+    mist.height = 64;
+    const mx = mist.getContext('2d')!;
+    const mg = mx.createLinearGradient(0, 0, 0, 64);
+    const [r, g, bb] = hexRgb(z.sky[1]);
+    mg.addColorStop(0, `rgba(${r},${g},${bb},0)`);
+    mg.addColorStop(0.55, `rgba(${r},${g},${bb},0.55)`);
+    mg.addColorStop(1, `rgba(${r},${g},${bb},0.85)`);
+    mx.fillStyle = mg;
+    mx.fillRect(0, 0, 2, 64);
     b = {
       sky,
       tile,
+      haze: hills(tile, h, h * 0.5, h * (spiky ? 0.1 : 0.06), 1, seed + 5, spiky),
       far: hills(tile, h, h * 0.55, h * (spiky ? 0.12 : 0.07), 2, seed, spiky),
       mid: hills(tile, h, h * 0.7, h * 0.05, 3, seed + 2, z.deco === 'jungle'),
+      hazeCol: mix(z.far, z.sky[1], 0.62),
+      farCol: mix(z.far, z.sky[1], 0.18),
+      mist,
+      glowRgb: SUN[z.id]?.[2] ?? '255,240,210',
     };
     bdCache.set(z.id, b);
   }
@@ -651,11 +740,33 @@ const STARS = (() => {
   return a;
 })();
 
-/** fundo com parallax (sky + astro + 2 camadas de morros + enfeites) */
-export function drawBackdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number, camX: number, S: number, t: number, layers: number): void {
+function layer(x: CanvasRenderingContext2D, p: Path2D, tile: number, off: number): void {
+  const o = -(off % tile);
+  x.save();
+  x.translate(o, 0);
+  x.fill(p);
+  x.translate(tile, 0);
+  x.fill(p);
+  x.restore();
+}
+
+/**
+ * fundo com parallax (céu + astro + até 3 camadas de morros + enfeites).
+ * fx: 0 = chapado (Mínimo), 1 = cordilheira na névoa, 2 = + faixas de névoa, 3 = + brilho/raios do astro.
+ */
+export function drawBackdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number, camX: number, S: number, t: number, layers: number, fx = 0): void {
   const b = backdrop(x, z, w, h);
   x.fillStyle = b.sky;
   x.fillRect(0, 0, w, h);
+  const sun = SUN[z.id] ?? SUN.dunes;
+  const sx0 = w * sun[0];
+  const sy0 = h * sun[1];
+  const m = Math.min(w, h);
+  // brilho e raios do astro (atrás de tudo)
+  if (fx >= 3) {
+    drawLight(x, b.glowRgb, sx0, sy0, m * (z.deco === 'stars' ? 0.42 : 0.75), z.deco === 'stars' ? 0.45 : 0.7);
+    if (z.deco !== 'stars') drawRays(x, sx0, sy0, m * 0.9, t, b.glowRgb, 0.22);
+  }
   // astro
   if (z.deco === 'stars') {
     x.fillStyle = '#fff';
@@ -668,9 +779,9 @@ export function drawBackdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number,
     }
     x.globalAlpha = 1;
     // planeta azul (lar distante)
-    const px = w * 0.78;
-    const py = h * 0.17;
-    const pr = Math.min(w, h) * 0.09;
+    const px = sx0;
+    const py = sy0;
+    const pr = m * 0.09;
     x.fillStyle = '#3fb8ff';
     x.beginPath();
     x.arc(px, py, pr, 0, TAU);
@@ -684,44 +795,60 @@ export function drawBackdrop(x: CanvasRenderingContext2D, z: ZoneDef, w: number,
     x.beginPath();
     x.arc(px + pr * 0.25, py + pr * 0.1, pr, 0, TAU);
     x.fill();
-  } else if (z.deco === 'dunes' || z.deco === 'candy') {
-    x.fillStyle = z.deco === 'dunes' ? 'rgba(255,240,170,.9)' : 'rgba(255,255,255,.85)';
+    if (fx >= 1) {
+      // halo de atmosfera no lado iluminado
+      x.strokeStyle = 'rgba(160,230,255,.55)';
+      x.lineWidth = Math.max(1.5, pr * 0.08);
+      x.beginPath();
+      x.arc(px, py, pr * 1.02, Math.PI * 0.75, Math.PI * 1.6);
+      x.stroke();
+    }
+  } else if (z.deco === 'dunes' || z.deco === 'candy' || fx >= 1) {
+    const sr = m * 0.08;
+    if (fx >= 1) drawLight(x, b.glowRgb, sx0, sy0, sr * 2.2, 0.9, 1, true);
+    x.fillStyle = z.deco === 'dunes' ? 'rgba(255,240,170,.95)' : 'rgba(255,255,255,.9)';
     x.beginPath();
-    x.arc(w * 0.75, h * 0.18, Math.min(w, h) * 0.08, 0, TAU);
+    x.arc(sx0, sy0, sr, 0, TAU);
     x.fill();
   }
   if (z.deco !== 'stars') {
-    // nuvenzinhas
-    x.fillStyle = 'rgba(255,255,255,.55)';
+    // nuvenzinhas (com barriga sombreada quando fx ≥ 1)
     for (let i = 0; i < 3; i++) {
       const cx = (((i * 0.37 + 0.1) * w * 1.4 - camX * S * 0.04 - t * 6) % (w * 1.4) + w * 1.4) % (w * 1.4) - w * 0.2;
       const cy = h * (0.12 + i * 0.08);
+      if (fx >= 1) {
+        x.fillStyle = 'rgba(120,110,170,.16)';
+        x.beginPath();
+        x.ellipse(cx + 8, cy + 5, 38, 11, 0, 0, TAU);
+        x.fill();
+      }
+      x.fillStyle = 'rgba(255,255,255,.55)';
       x.beginPath();
       x.ellipse(cx, cy, 36, 12, 0, 0, TAU);
       x.ellipse(cx + 22, cy - 8, 22, 13, 0, 0, TAU);
       x.fill();
     }
   }
+  // cordilheira distante, quase da cor do céu (perspectiva atmosférica)
+  if (fx >= 1 && layers >= 2) {
+    x.fillStyle = b.hazeCol;
+    layer(x, b.haze, b.tile, camX * S * 0.05);
+    if (fx >= 2) x.drawImage(b.mist, 0, h * 0.4, w, h * 0.22);
+  }
   if (layers >= 2) {
-    x.fillStyle = z.far;
-    const o = -((camX * S * 0.12) % b.tile);
-    x.save();
-    x.translate(o, 0);
-    x.fill(b.far);
-    x.translate(b.tile, 0);
-    x.fill(b.far);
-    x.restore();
+    x.fillStyle = fx >= 1 ? b.farCol : z.far;
+    layer(x, b.far, b.tile, camX * S * 0.12);
+    if (fx >= 2) x.drawImage(b.mist, 0, h * 0.5, w, h * 0.2);
   }
   // camada do meio com enfeites
-  const o2 = -((camX * S * 0.3) % b.tile);
   x.fillStyle = z.mid;
-  x.save();
-  x.translate(o2, 0);
-  x.fill(b.mid);
-  x.translate(b.tile, 0);
-  x.fill(b.mid);
-  x.restore();
-  if (layers >= 3) drawDecos(x, z, w, h, camX * S * 0.3, Math.min(w, h) / 9);
+  layer(x, b.mid, b.tile, camX * S * 0.3);
+  if (layers >= 3) drawDecos(x, z, w, h, camX * S * 0.3, m / 9);
+  if (fx >= 2) {
+    x.globalAlpha = 0.6;
+    x.drawImage(b.mist, 0, h * 0.62, w, h * 0.16);
+    x.globalAlpha = 1;
+  }
 }
 
 function drawDecos(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number, off: number, u: number): void {
@@ -797,4 +924,34 @@ function drawDecos(x: CanvasRenderingContext2D, z: ZoneDef, w: number, h: number
       }
     }
   }
+}
+
+/* ------------------------ chão com profundidade ------------------------ */
+
+const groundCache = new Map<string, CanvasPattern>();
+/**
+ * Padrão vertical (topo iluminado → fundo escuro com oclusão) em espaço de TELA.
+ * Recebe a transformação de mundo atual e devolve o padrão já alinhado à tela.
+ */
+export function groundPattern(x: CanvasRenderingContext2D, z: ZoneDef, h: number, dpr: number): CanvasPattern | null {
+  let p = groundCache.get(z.id);
+  if (!p) {
+    const c = document.createElement('canvas');
+    c.width = 1;
+    c.height = 128;
+    const g = c.getContext('2d')!;
+    const l = g.createLinearGradient(0, 0, 0, 128);
+    l.addColorStop(0, mix(z.ground[0], '#ffffff', 0.12));
+    l.addColorStop(0.42, z.ground[0]);
+    l.addColorStop(0.7, z.ground[1]);
+    l.addColorStop(1, mix(z.ground[1], '#1a0830', 0.45));
+    g.fillStyle = l;
+    g.fillRect(0, 0, 1, 128);
+    const pat = x.createPattern(c, 'repeat');
+    if (!pat || !('setTransform' in pat)) return null;
+    groundCache.set(z.id, pat);
+    p = pat;
+  }
+  p.setTransform(x.getTransform().inverse().multiply(new DOMMatrix([dpr, 0, 0, (dpr * h) / 128, 0, 0])));
+  return p;
 }
