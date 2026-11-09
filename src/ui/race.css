@@ -540,6 +540,7 @@
 
 /* ---------- Ranking ---------- */
 .rk-screen {
+  z-index: 6; /* acima do hub (#menu.hub > * tem z-index 1) */
   align-items: center;
   justify-content: center;
   background: rgba(5, 2, 18, 0.55);

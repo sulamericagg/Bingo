@@ -6,6 +6,7 @@
  * Integração: main.ts chama `initRace(game)` uma vez, depois de criar a UI.
  * Botões no menu: #btn-race (Corrida) e #btn-ranking (Ranking).
  */
+import { pushBack } from '../core/back';
 import './race.css';
 import { audio } from '../core/audio';
 import { addCoins, addGems } from '../core/economy';
@@ -507,13 +508,18 @@ class RaceUI {
 
   /* ============================== Ranking ============================== */
 
+  private popRank: (() => void) | null = null;
+
   openRanking(): void {
+    if (!this.rank.classList.contains('on')) this.popRank = pushBack(() => this.closeRanking());
     this.rank.classList.add('on');
     this.rkCache = {};
     this.loadRanking(this.rkScope);
   }
 
   closeRanking(): void {
+    this.popRank?.();
+    this.popRank = null;
     this.rank.classList.remove('on');
   }
 
