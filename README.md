@@ -35,6 +35,10 @@ Na web: anúncios via **Google H5 Games Ads (AdSense)**; compras redirecionam pa
 
 > ⚠️ Nunca clique nos seus próprios anúncios reais — o AdMob bane a conta. Teste sempre com `ADS_TEST_MODE = true`.
 
+## 🌐 Servidor online + painel admin
+
+Presentes, códigos promocionais e desafios ficam num Cloudflare Worker (`server/`, `wrangler.jsonc`) que também publica a versão web. Passo a passo em **[docs/PAINEL-ADMIN.md](docs/PAINEL-ADMIN.md)**.
+
 ## 🛠️ Desenvolvimento
 
 ```bash

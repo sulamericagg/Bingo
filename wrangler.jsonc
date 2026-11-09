@@ -1,0 +1,21 @@
+// Configuração do Cloudflare Worker "bloop-orbit".
+// Serve o jogo (dist/), a API (/api/*) e o painel admin (/admin).
+// Deploy: npm run build && npx wrangler deploy   (veja docs/PAINEL-ADMIN.md)
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bloop-orbit",
+  "main": "server/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/admin*"]
+  },
+  "kv_namespaces": [
+    { "binding": "DATA", "id": "3c7cece821ee4d6297ce2db9f664b948" }
+  ],
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
+  // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em
+  // Cloudflare → Workers & Pages → bloop-orbit → Settings → Variables and Secrets.
+}

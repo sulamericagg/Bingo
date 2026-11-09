@@ -7,11 +7,14 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json",
     "cap:sync": "npm run build && npx cap sync android",
     "android:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug",
     "android:release": "npm run cap:sync && cd android && ./gradlew bundleRelease assembleRelease",
-    "assets": "node scripts/render-assets.mjs && npx @capacitor/assets generate --android --assetPath assets"
+    "assets": "node scripts/render-assets.mjs && npx @capacitor/assets generate --android --assetPath assets",
+    "worker:dev": "wrangler dev --local",
+    "worker:deploy": "npm run build && wrangler deploy",
+    "test:server": "node scripts/test-server.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.3.0",
@@ -28,7 +31,9 @@
   "devDependencies": {
     "@capacitor/assets": "^4.0.0",
     "@capacitor/cli": "^8.6.0",
+    "@cloudflare/workers-types": "^5.20261109.1",
     "typescript": "^7.0.2",
-    "vite": "^7.3.7"
+    "vite": "^7.3.7",
+    "wrangler": "^4.158.0"
   }
 }

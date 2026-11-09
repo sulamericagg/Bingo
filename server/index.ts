@@ -1,0 +1,97 @@
+/**
+ * Bloop Orbit — Cloudflare Worker
+ *  - /api/*   → API JSON (jogo + painel admin)
+ *  - /admin   → painel admin (HTML único)
+ *  - resto    → jogo web (pasta ./dist via binding ASSETS)
+ */
+import adminHtml from './admin.html';
+import { handleAdminApi } from './admin-api';
+import { challenges, claim, redeem, register, sync } from './public';
+import { HttpError, json } from './util';
+
+/** Origens do app Android (Capacitor) e desenvolvimento local. */
+const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
+const DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+function corsHeaders(req: Request, url: URL): Record<string, string> {
+  const origin = req.headers.get('origin');
+  if (!origin) return {};
+  if (origin === url.origin || ALLOWED_ORIGINS.has(origin) || DEV_ORIGIN.test(origin)) {
+    return {
+      'access-control-allow-origin': origin,
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '86400',
+      vary: 'Origin',
+    };
+  }
+  return {};
+}
+
+type PublicHandler = (req: Request, env: Env) => Promise<Response>;
+const PUBLIC: Record<string, PublicHandler> = {
+  'POST /api/player/register': register,
+  'POST /api/player/sync': sync,
+  'POST /api/inbox/claim': claim,
+  'POST /api/redeem': redeem,
+  'GET /api/challenges': challenges,
+};
+
+function withHeaders(res: Response, headers: Record<string, string>): Response {
+  if (!Object.keys(headers).length) return res;
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(headers)) out.headers.set(k, v);
+  return out;
+}
+
+function errorResponse(e: unknown): Response {
+  if (e instanceof HttpError) return json({ error: e.code, message: e.message }, e.status);
+  console.error(e);
+  return json({ error: 'server_error', message: 'Erro interno no servidor.' }, 500);
+}
+
+function adminPage(): Response {
+  return new Response(adminHtml, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-frame-options': 'DENY',
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+      'x-robots-tag': 'noindex, nofollow',
+    },
+  });
+}
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+    const path = url.pathname;
+
+    if (path === '/admin' || path === '/admin/' || path === '/admin/index.html') return adminPage();
+
+    if (path.startsWith('/api/admin/') || path === '/api/admin') {
+      try {
+        return await handleAdminApi(req, env, url);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    if (path.startsWith('/api/')) {
+      const cors = corsHeaders(req, url);
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+      const h = PUBLIC[`${req.method} ${path.replace(/\/+$/, '')}`];
+      let res: Response;
+      try {
+        res = h ? await h(req, env) : json({ error: 'not_found', message: 'Rota não encontrada' }, 404);
+      } catch (e) {
+        res = errorResponse(e);
+      }
+      return withHeaders(res, cors);
+    }
+
+    if (path.startsWith('/admin')) return new Response('Não encontrado', { status: 404 });
+    return env.ASSETS.fetch(req);
+  },
+} satisfies ExportedHandler<Env>;

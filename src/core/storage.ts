@@ -35,6 +35,8 @@ export interface SaveData {
   lastInterstitial: number;
   runsSinceAd: number;
   firstSeen: number;
+  /** Power-ups guardados (ganhos em presentes/códigos). */
+  boosts: { shield: number; magnet: number; headstart: number };
 }
 
 const defaults = (): SaveData => ({
@@ -62,6 +64,7 @@ const defaults = (): SaveData => ({
   lastInterstitial: 0,
   runsSinceAd: 0,
   firstSeen: Date.now(),
+  boosts: { shield: 0, magnet: 0, headstart: 0 },
 });
 
 function load(): SaveData {

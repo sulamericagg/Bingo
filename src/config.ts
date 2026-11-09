@@ -66,3 +66,18 @@ export const ECONOMY = {
     { coins: 50 }, { coins: 100 }, { gems: 5 }, { coins: 200 }, { coins: 300 }, { gems: 15 }, { coins: 500, gems: 30 },
   ] as { coins?: number; gems?: number }[],
 };
+
+/**
+ * SERVIDOR ONLINE (presentes, códigos e desafios) — Cloudflare Worker em server/.
+ *  - apiBase: deixe '' para a versão web servida pelo próprio Worker (usa a mesma origem: /api/...).
+ *  - nativeApiBase: usado no app Android (Capacitor). TROQUE pelo endereço real
+ *    *.workers.dev que a Cloudflare mostra depois do primeiro deploy
+ *    (Workers & Pages → bloop-orbit → "Visit"), ou pelo seu domínio próprio.
+ *    Sem barra no final. Veja docs/PAINEL-ADMIN.md.
+ */
+export const ONLINE = {
+  apiBase: '',
+  nativeApiBase: 'https://bloop-orbit.sulamericaradioetv.workers.dev',
+  /** Tempo máximo de cada requisição (ms). */
+  timeoutMs: 8000,
+};
