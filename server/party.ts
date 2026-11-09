@@ -266,9 +266,18 @@ export class PartyRoom extends DurableObject<Env> {
     };
     const food = typeof e.food === 'string' && TOKEN_RE.test(e.food) ? e.food : '';
     switch (e.t) {
-      case 'throw':
-        if (food) this.broadcast({ type: 'ev', e: { t: 'throw', from: a.id, food, x: num(e.x), y: num(e.y), vx: num(e.vx), vy: num(e.vy) } }, ws);
+      case 'throw': {
+        if (!food) return;
+        // modo 3D manda posição/velocidade 3D extras (p3/v3: [x,y,z])
+        const v3 = (v: unknown) => (Array.isArray(v) && v.length === 3 ? v.map(num) : undefined);
+        const ev: Record<string, unknown> = { t: 'throw', from: a.id, food, x: num(e.x), y: num(e.y), vx: num(e.vx), vy: num(e.vy) };
+        const p3 = v3(e.p3);
+        const vv3 = v3(e.v3);
+        if (p3) ev.p3 = p3;
+        if (vv3) ev.v3 = vv3;
+        this.broadcast({ type: 'ev', e: ev }, ws);
         return;
+      }
       case 'eat':
         if (food) this.broadcast({ type: 'ev', e: { t: 'eat', by: a.id, food } }, ws);
         return;
@@ -293,7 +302,20 @@ export class PartyRoom extends DurableObject<Env> {
         const now = Date.now();
         if (now - (this.lastDesign.get(a.id) ?? 0) < DESIGN_EV_MS) return;
         this.lastDesign.set(a.id, now);
-        const r = await this.applyDesign(a.id, e.design);
+        // aceita design completo (e.design) ou patch por cômodo dos clientes 2D/3D ({room, items?, paint?})
+        let next: unknown = e.design;
+        if (next === undefined && typeof e.room === 'string') {
+          const cur = (await this.state()).home?.design as Record<string, any> | undefined;
+          if (!cur) return;
+          const d = JSON.parse(JSON.stringify(cur)) as Record<string, any>;
+          if (Array.isArray(e.items) && Array.isArray(d.rooms)) {
+            const room = d.rooms.find((r: any) => r && r.id === e.room);
+            if (room) room.items = e.items;
+          }
+          if (e.paint && typeof e.paint === 'object') d.paint = { ...(d.paint ?? {}), [e.room]: e.paint };
+          next = d;
+        }
+        const r = await this.applyDesign(a.id, next);
         if (r && !r.ok) this.send(ws, { type: 'denied', reason: r.error ?? 'no_permission' });
         return;
       }
