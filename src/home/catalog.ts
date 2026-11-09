@@ -134,6 +134,10 @@ export interface FurnDef {
   color: number; // cor padrão (índice da paleta)
   cost: Cost;
   name: () => string;
+  /** cor exata (itens do Passe da Casa) */
+  hex?: string;
+  /** id do item do passe (desenho especial) */
+  passId?: string;
 }
 const FK: [FurnKind, string, number, number, boolean?, boolean?][] = [
   ['sofa', 'Sofá', 120, 62], ['armchair', 'Poltrona', 62, 64], ['bed', 'Cama', 130, 70], ['bunk', 'Beliche', 92, 140], ['table', 'Mesa', 96, 52],
@@ -167,6 +171,20 @@ FK.forEach(([kind, pt, w, h, wall, flat], ki) => {
 });
 export const furnById = (id: string): FurnDef | undefined => FURN_MAP.get(id);
 const FURN_MAP = new Map(FURNITURE.map((f) => [f.id, f]));
+/** Móveis extras (Passe da Casa). Não entram na contagem de combinações. */
+export function addExtraFurn(defs: FurnDef[]): void {
+  for (const d of defs) if (!FURN_MAP.has(d.id)) FURN_MAP.set(d.id, d);
+}
+/** cor de piso/parede do passe ("base:pass:<id>") */
+let passColor: (id: string) => string | undefined = () => undefined;
+export function setPassColorResolver(fn: (id: string) => string | undefined): void {
+  passColor = fn;
+}
+export function surfaceColor(spec: string): string {
+  const p = spec.split(':');
+  if (p[1] === 'pass') return passColor(p[2]) ?? PALETTE[0];
+  return pal(Number(p[1]) || 0);
+}
 export const FURN_CATS: { id: string; label: () => string; kinds: FurnKind[] }[] = [
   { id: 'seat', label: L('cat.seat', 'Sentar'), kinds: ['sofa', 'armchair', 'chair', 'stool', 'beanbag', 'bed', 'bunk'] },
   { id: 'table', label: L('cat.table', 'Mesas'), kinds: ['table', 'desk', 'partytable', 'counter', 'toybox', 'bookcase', 'wardrobe'] },

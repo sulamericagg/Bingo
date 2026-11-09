@@ -7,7 +7,7 @@
 import type { HomeDesign, HomeRole, MessItem, PartyEvent, PartyPeer, PartySession, RoomDesign } from './api';
 import { FURNITURE, furnById, mulberry, pal, type RoomId } from './catalog';
 import { INK, TAU, alpha, circ, ell, fs, heartPath, makeCanvas, rr, star } from './gfx';
-import { Painter, parseSpec, finishFill, type PaintTool } from './paint';
+import { Painter, specFill, type PaintTool } from './paint';
 import { RH, RW, WALL_Y, drawFurn, drawMess, drawRoomShell, itemBox } from './render-room';
 import { hsfx } from './sfx';
 import { can, type DesignEvent } from './service';
@@ -278,9 +278,9 @@ export class RoomScene {
       c.setTransform(k, 0, 0, k, 0, 0);
       c.clearRect(0, 0, RW, RH);
       drawRoomShell(c, this.rd);
-      const base = parseSpec(this.host.design.paint?.[this.room]?.wall);
+      const base = specFill(c, this.host.design.paint?.[this.room]?.wall ?? '', WALL_Y - 8);
       if (base) {
-        c.fillStyle = finishFill(c, base[0], base[1], WALL_Y - 8);
+        c.fillStyle = base;
         c.fillRect(0, 0, RW, WALL_Y - 8);
       }
       this.shell = cv;

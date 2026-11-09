@@ -4,7 +4,7 @@
  *  o laço só desenha personagens, comida voando e partículas.
  * ============================================================ */
 import type { MessItem, RoomDesign } from './api';
-import { furnById, mulberry, pal, surface, type FurnDef } from './catalog';
+import { furnById, mulberry, pal, surface, surfaceColor, type FurnDef } from './catalog';
 import { INK, TAU, alpha, circ, ell, fs, heartPath, rr, shade, star } from './gfx';
 
 export const RW = 360;
@@ -13,10 +13,10 @@ export const WALL_Y = 230;
 
 /* ---------------- parede e piso ---------------- */
 export function drawRoomShell(c: CanvasRenderingContext2D, room: RoomDesign): void {
-  const [wk, wci] = surface(room.wall);
-  const [fk, fci] = surface(room.floor);
-  const wc = pal(wci);
-  const fc = pal(fci);
+  const [wk] = surface(room.wall);
+  const [fk] = surface(room.floor);
+  const wc = surfaceColor(room.wall);
+  const fc = surfaceColor(room.floor);
   // parede
   c.fillStyle = wc;
   c.fillRect(0, 0, RW, WALL_Y);
@@ -290,7 +290,7 @@ export function drawRoomShell(c: CanvasRenderingContext2D, room: RoomDesign): vo
 /* ---------------- móveis ---------------- */
 /** Desenha o móvel com base em (0,0) (centro-inferior; itens de parede: centro). */
 export function drawFurn(c: CanvasRenderingContext2D, def: FurnDef, color?: string, flip?: boolean): void {
-  const col = color ?? pal(def.color);
+  const col = color ?? def.hex ?? pal(def.color);
   const w = def.w,
     h = def.h,
     v = def.v;

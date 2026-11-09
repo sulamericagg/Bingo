@@ -16,8 +16,20 @@ export const finishCost = (f: Finish): Cost =>
   f === 'solid' ? { kind: 'free' } : f === 'gradient' ? { kind: 'coins', n: 150 } : f === 'stripes' ? { kind: 'coins', n: 200 } : f === 'stars' ? { kind: 'video' } : { kind: 'gems', n: 5 };
 
 /** "cor:acabamento" ex. "5:glitter" */
+let passPat: (c: CanvasRenderingContext2D, id: string) => CanvasPattern | string = () => '#ffffff';
+export function setPassPaint(fn: (c: CanvasRenderingContext2D, id: string) => CanvasPattern | string): void {
+  passPat = fn;
+}
+/** tinta do passe: "pass:<id>" */
+export const passOf = (s: string | undefined): string | null => (s && s.startsWith('pass:') ? s.slice(5) : null);
+export function specFill(c: CanvasRenderingContext2D, s: string, h: number): CanvasPattern | string | CanvasGradient | null {
+  const pid = passOf(s);
+  if (pid) return passPat(c, pid);
+  const p = parseSpec(s);
+  return p ? finishFill(c, p[0], p[1], h) : null;
+}
 export function parseSpec(s: string | undefined): [number, Finish] | null {
-  if (!s) return null;
+  if (!s || s.startsWith('pass:')) return null;
   const [a, b] = s.split(':');
   const f = (FINISHES as readonly string[]).includes(b) ? (b as Finish) : 'solid';
   return [Number(a) || 0, f];
@@ -72,6 +84,8 @@ export class Painter {
   colorIdx = 0;
   finish: Finish = 'solid';
   tape = true;
+  /** tinta especial do Passe da Casa (null = cor da paleta) */
+  passId: string | null = null;
   constructor(
     public rx: number,
     public ry: number,
@@ -92,8 +106,9 @@ export class Painter {
   coverage(): number {
     return this.covered / this.total;
   }
-  setPaint(colorIdx: number, f: Finish): void {
-    if (colorIdx === this.colorIdx && f === this.finish) return;
+  setPaint(colorIdx: number, f: Finish, passId: string | null = null): void {
+    if (colorIdx === this.colorIdx && f === this.finish && passId === this.passId) return;
+    this.passId = passId;
     this.colorIdx = colorIdx;
     this.finish = f;
     this.clear();
@@ -122,7 +137,7 @@ export class Painter {
     const m = this.tape ? 4 : 0;
     c.rect(m, m, this.rw - m * 2, this.rh - m * 2);
     c.clip();
-    c.fillStyle = finishFill(c, this.colorIdx, this.finish, this.rh);
+    c.fillStyle = this.fill(c);
     const C = this.cell;
     if (tool === 'roller') {
       const w = 40,
@@ -159,14 +174,17 @@ export class Painter {
   fillAll(): void {
     const c = this.x;
     c.save();
-    c.fillStyle = finishFill(c, this.colorIdx, this.finish, this.rh);
+    c.fillStyle = this.fill(c);
     c.fillRect(0, 0, this.rw, this.rh);
     c.restore();
     this.grid.fill(1);
     this.covered = this.total;
   }
+  fill(c: CanvasRenderingContext2D): CanvasPattern | string | CanvasGradient {
+    return this.passId ? passPat(c, this.passId) : finishFill(c, this.colorIdx, this.finish, this.rh);
+  }
   spec(): string {
-    return `${this.colorIdx}:${this.finish}`;
+    return this.passId ? 'pass:' + this.passId : `${this.colorIdx}:${this.finish}`;
   }
   encode(): string {
     let s = '';
@@ -186,12 +204,14 @@ export class Painter {
     this.clear();
     if (!strokes) return;
     const [spec, hex] = strokes.split(';');
+    const pid = passOf(spec);
     const p = parseSpec(spec);
-    if (!p || !hex) return;
-    [this.colorIdx, this.finish] = p;
+    if ((!p && !pid) || !hex) return;
+    if (p) [this.colorIdx, this.finish] = p;
+    this.passId = pid;
     const per = Math.ceil(this.cols / 4);
     const c = this.x;
-    c.fillStyle = finishFill(c, this.colorIdx, this.finish, this.rh);
+    c.fillStyle = this.fill(c);
     for (let r = 0; r < this.rows; r++)
       for (let k = 0; k < per; k++) {
         const n = parseInt(hex[r * per + k] || '0', 16);

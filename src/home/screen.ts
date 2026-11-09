@@ -28,6 +28,7 @@ import { openEmoteWheel } from '../social/emotes';
 import { getPlayer } from '../services/online';
 import { addStat } from '../pet/state';
 import { makeCanvas, alpha, star } from './gfx';
+import { installPass, passData, passThumb, refreshPass, openHomePass } from './pass-bridge';
 
 type View = 'planet' | 'room' | 'build' | 'paintExt';
 let root: HTMLElement | null = null;
@@ -87,7 +88,14 @@ export async function openHome(o: OpenOpts = {}): Promise<void> {
   S.myId = getPlayer()?.id ?? 'me';
   resize();
   window.addEventListener('resize', resize);
-  unsub.push(bus.on('wallet', refreshWallet));
+  installPass();
+  unsub.push(
+    bus.on('wallet', refreshWallet),
+    bus.on('home-item-grant', () => {
+      refreshPass();
+      refreshBar();
+    }),
+  );
   refreshWallet();
   cancelAnimationFrame(raf);
   last = performance.now();
@@ -384,6 +392,7 @@ function roomHost(): RoomHost {
         session?.event({ t: 'clean', messId: m.id, by: S.myId });
         addCoins(S.isOwner ? 2 : 4);
         bump('cleaned');
+        bus.emit('home-clean', { count: 1 });
       }
       persistMess();
       refreshMessUi();
@@ -403,6 +412,8 @@ function roomHost(): RoomHost {
         if (session && !S.isOwner) sendDesign(session, { t: 'design', by: S.myId, room: scene.room, paint: res });
         toast(scene.painter.tape ? t('home.paint.perfect', 'Parede perfeita! Bordas lisinhas com a fita.') : t('home.paint.done', 'Parede pintada! Que lindo!'), 'sparkle' as HomeIcon);
         addCoins(scene.painter.tape ? 15 : 10);
+        bus.emit('home-paint', { room: scene.room });
+        if (!S.isOwner) bus.emit('home-visit-help', { kind: 'paint' });
       }
     },
     onCake(n) {
@@ -418,6 +429,7 @@ function roomHost(): RoomHost {
       } else {
         addCoins(40);
         const n = bump('helper');
+        bus.emit('home-visit-help', { kind: 'clean' });
         toast(t('home.clean.helper', 'Medalha Amigo Ajudante! Você já ajudou {n} vezes. +40', { n }), 'star');
       }
       refreshBar();
@@ -594,7 +606,10 @@ function action(a: string, b: HTMLElement): void {
       refreshBar();
       break;
     case 'add':
-      void buyThen('furn:' + b.dataset.id, furnById(b.dataset.id!)!.cost, () => scene.addItem(b.dataset.id!));
+      void buyThen('furn:' + b.dataset.id, furnById(b.dataset.id!)!.cost, () => {
+        scene.addItem(b.dataset.id!);
+        bus.emit('home-build', { item: b.dataset.id });
+      });
       break;
     case 'tpl':
       scene.applyTemplate(b.dataset.id!);
@@ -646,6 +661,67 @@ function action(a: string, b: HTMLElement): void {
     case 'paintext':
       startPaintExt();
       break;
+    case 'pass':
+      openHomePass();
+      break;
+    case 'passlock':
+      hsfx.error();
+      toast(t('home.pass.locked', 'Exclusivo do Passe da Casa! Ganhe subindo de nível.'), 'lock');
+      break;
+    case 'psurf': {
+      const spec = b.dataset.spec!;
+      const rd = scene.rd;
+      if (spec.includes(':') && passData().surfaces.find((x) => x.spec === spec)?.type === 'floor') rd.floor = spec;
+      else {
+        rd.wall = spec;
+        if (S.design.paint?.[scene.room]) delete S.design.paint[scene.room];
+      }
+      scene.setRoom(scene.room);
+      scene.host.onDesign(scene.room, 'items');
+      bus.emit('home-build', { item: spec });
+      refreshBar();
+      break;
+    }
+    case 'ppass': {
+      const P = view === 'paintExt' ? extPainter! : scene.painter;
+      if (P.covered && view === 'room') {
+        scene.commitPaint();
+        changed();
+      }
+      P.setPaint(P.colorIdx, P.finish, b.dataset.id!);
+      if (view === 'paintExt') rebuildExt();
+      scene.invalidateItems();
+      refreshBar();
+      break;
+    }
+    case 'pext': {
+      const rec = (buildSect === 'planet' ? S.design.planet : S.design.exterior) as Record<string, string | number>;
+      rec[b.dataset.f!] = Number(b.dataset.i);
+      rec[b.dataset.f! + 'P'] = b.dataset.id!;
+      hsfx.place();
+      bus.emit('home-build', { item: b.dataset.id });
+      changed();
+      buildBar($('.hm-bar'));
+      pop = 1;
+      break;
+    }
+    case 'kit': {
+      const k = passData().kits.find((x) => x.id === b.dataset.id);
+      if (!k?.item.kit) break;
+      const list = k.item.kit.items.filter((id) => furnById(id));
+      if (k.item.kit.room !== scene.room) scene.setRoom(k.item.kit.room);
+      scene.rd.items = list.map((id, i) => {
+        const d = furnById(id)!;
+        return { id, x: 50 + ((i * 70) % 280), y: d.wall ? 100 : 330 + (i % 2) * 40 };
+      });
+      scene.confetti(180, 200);
+      hsfx.done();
+      scene.invalidate();
+      scene.host.onDesign(scene.room, 'items');
+      bus.emit('home-build', { item: k.id });
+      renderRoomTabs();
+      break;
+    }
   }
 }
 
@@ -765,7 +841,9 @@ function paintPanel(bar: HTMLElement, ext: boolean): void {
   bar.innerHTML = `<div class="hm-row"><div class="hm-prog hm-pprog"><i style="width:${Math.round(cov * 100)}%"></i><b>${Math.floor(cov * 100)}%</b></div><button class="hm-btn ${P.tape ? 'on' : ''}" data-a="tape">${hicon('tape', 20)} ${esc(t('home.paint.tape', 'Fita'))}</button></div>
     <div class="hm-row">${tools.map(([id, ic, l]) => `<button class="hm-btn hm-act ${scene.paintTool === id ? 'on' : ''}" data-a="ptool" data-t="${id}">${hicon(ic, 26)}<span>${esc(l)}</span></button>`).join('')}</div>
     <div class="hm-row scroll">${PALETTE.map((c, i) => `<button class="hm-sw ${P.colorIdx === i ? 'on' : ''}" style="background:${c}" data-a="pcol" data-c="${i}" aria-label="${c}">${colorCost(i).kind !== 'free' && !owns('pcol:' + i) ? `<span class="lk">${hicon('lock', 14)}</span>` : ''}</button>`).join('')}</div>
-    <div class="hm-row scroll">${FINISHES.map((f) => `<button class="hm-opt ${P.finish === f ? 'on' : ''}" data-a="pfin" data-f="${f}">${esc(finishName(f))}${priceTag('fin:' + f, finishCost(f))}</button>`).join('')}</div>
+    <div class="hm-row scroll">${FINISHES.map((f) => `<button class="hm-opt ${P.finish === f && !P.passId ? 'on' : ''}" data-a="pfin" data-f="${f}">${esc(finishName(f))}${priceTag('fin:' + f, finishCost(f))}</button>`).join('')}${passData()
+      .paints.map((x) => `<button class="hm-opt ${P.passId === x.id ? 'on' : ''} ${x.owned ? '' : 'locked'}" data-a="${x.owned ? 'ppass' : 'passlock'}" data-id="${x.id}"><img src="${passThumb(x.item, 30)}" width="30" height="30" alt=""><span class="price">${x.owned ? '' : hicon('lock', 12)}${esc(t('home.pass', 'Passe'))}</span></button>`)
+      .join('')}</div>
     <div class="hm-row"><small class="grow">${esc(t('home.paint.tip', 'Pinte a parede inteira até 100%!'))}</small><button class="hm-btn hm-go" data-a="${ext ? 'build' : 'done'}">${hicon('check', 20)} ${esc(t('home.done', 'Pronto'))}</button></div>`;
 }
 async function pickPaint(c?: number, f?: Finish): Promise<void> {
@@ -795,16 +873,27 @@ function editPanel(bar: HTMLElement): void {
       <div class="hm-row scroll">${PALETTE.map((c, i) => `<button class="hm-sw" style="background:${c}" data-a="icol" data-c="${i}"></button>`).join('')}</div>`;
   } else if (surfTab === 'items') {
     const cat = FURN_CATS.find((c) => c.id === furnCat) ?? FURN_CATS[0];
-    body = `<div class="hm-row scroll">${FURN_CATS.map((c) => `<button class="hm-chip ${c.id === cat.id ? 'on' : ''}" data-a="cat" data-c="${c.id}">${esc(c.label())}</button>`).join('')}</div>
-      <div class="hm-row scroll">${FURNITURE.filter((f) => cat.kinds.includes(f.kind)).map((f) => `<button class="hm-furn" data-a="add" data-id="${f.id}"><img src="${furnThumb(f.id)}" width="60" height="52" alt="">${esc(f.name())}${priceTag('furn:' + f.id, f.cost)}</button>`).join('')}</div>`;
+    const pass = furnCat === 'pass';
+    const items = pass
+      ? passData().furniture.map(({ def, owned }) => `<button class="hm-furn ${owned ? '' : 'locked'}" data-a="${owned ? 'add' : 'passlock'}" data-id="${def.id}"><img src="${passThumb(def.pass, 52)}" width="60" height="52" alt="">${esc(def.name())}${owned ? '' : `<span class="price">${hicon('lock', 13)}${esc(t('home.pass', 'Passe'))}</span>`}</button>`).join('') +
+        `<button class="hm-furn hm-gold" data-a="pass">${hicon('star', 40)}${esc(t('home.pass.open', 'Ver Passe da Casa'))}</button>`
+      : FURNITURE.filter((f) => cat.kinds.includes(f.kind)).map((f) => `<button class="hm-furn" data-a="add" data-id="${f.id}"><img src="${furnThumb(f.id)}" width="60" height="52" alt="">${esc(f.name())}${priceTag('furn:' + f.id, f.cost)}</button>`).join('');
+    body = `<div class="hm-row scroll">${FURN_CATS.map((c) => `<button class="hm-chip ${c.id === furnCat ? 'on' : ''}" data-a="cat" data-c="${c.id}">${esc(c.label())}</button>`).join('')}<button class="hm-chip ${pass ? 'on' : ''}" data-a="cat" data-c="pass">${esc(t('home.pass.name', 'Passe da Casa'))}</button></div>
+      <div class="hm-row scroll">${items}</div>`;
   } else if (surfTab === 'floor' || surfTab === 'wall') {
     const isF = surfTab === 'floor';
     const [k, c] = surface(isF ? scene.rd.floor : scene.rd.wall);
     const list = isF ? FLOORS : WALLS;
     body = `<div class="hm-row scroll">${list.map((id, i) => `<button class="hm-opt ${id === k ? 'on' : ''}" data-a="${surfTab}" data-k="${id}">${esc(isF ? floorName(id) : wallName(id))}${priceTag(`${surfTab}:${id}`, i < 4 ? { kind: 'free' } : { kind: 'coins', n: 80 })}</button>`).join('')}</div>
-      <div class="hm-row scroll">${PALETTE.map((col, i) => `<button class="hm-sw ${i === c ? 'on' : ''}" style="background:${col}" data-a="${surfTab}" data-c="${i}">${colorCost(i).kind !== 'free' && !owns('pcol:' + i) ? `<span class="lk">${hicon('lock', 14)}</span>` : ''}</button>`).join('')}</div>`;
+      <div class="hm-row scroll">${PALETTE.map((col, i) => `<button class="hm-sw ${i === c ? 'on' : ''}" style="background:${col}" data-a="${surfTab}" data-c="${i}">${colorCost(i).kind !== 'free' && !owns('pcol:' + i) ? `<span class="lk">${hicon('lock', 14)}</span>` : ''}</button>`).join('')}</div>
+      <div class="hm-row scroll">${passData()
+        .surfaces.filter((x) => x.type === surfTab)
+        .map((x) => `<button class="hm-opt ${x.owned ? '' : 'locked'}" data-a="${x.owned ? 'psurf' : 'passlock'}" data-spec="${esc(x.spec)}"><img src="${passThumb(x.item, 36)}" width="36" height="36" alt=""><span class="price">${x.owned ? '' : hicon('lock', 12)}${esc(t('home.pass', 'Passe'))}</span></button>`)
+        .join('')}</div>`;
   } else {
-    body = `<div class="hm-row scroll">${TEMPLATES.map((tp) => `<button class="hm-opt" data-a="tpl" data-id="${tp.id}">${hicon('template', 26)}${esc(t('home.tpl.' + tp.id, tp.name))}</button>`).join('')}</div><small>${esc(t('home.tpl.tip', 'Um modelo troca os móveis deste cômodo (dá para desfazer).'))}</small>`;
+    body = `<div class="hm-row scroll">${TEMPLATES.map((tp) => `<button class="hm-opt" data-a="tpl" data-id="${tp.id}">${hicon('template', 26)}${esc(t('home.tpl.' + tp.id, tp.name))}</button>`).join('')}${passData()
+      .kits.map((k) => `<button class="hm-opt ${k.owned ? '' : 'locked'}" data-a="${k.owned ? 'kit' : 'passlock'}" data-id="${k.id}"><img src="${passThumb(k.item, 32)}" width="32" height="32" alt="">${esc(k.item.name)}${k.owned ? '' : `<span class="price">${hicon('lock', 12)}${esc(t('home.pass', 'Passe'))}</span>`}</button>`)
+      .join('')}</div><small>${esc(t('home.tpl.tip', 'Um modelo troca os móveis deste cômodo (dá para desfazer).'))}</small>`;
   }
   bar.innerHTML = (sel ? '' : tabs) + body + tools;
 }
@@ -889,7 +978,11 @@ function buildBar(bar: HTMLElement): void {
       const items = f.color
         ? PALETTE.map((c, i) => `<button class="hm-sw ${i === cur ? 'on' : ''}" style="background:${c}" data-a="opt" data-f="${f.key}" data-i="${i}">${colorCost(i).kind !== 'free' && !owns(key(i)) ? `<span class="lk">${hicon('lock', 14)}</span>` : ''}</button>`).join('')
         : f.options!.map((o, i) => `<button class="hm-opt ${i === cur ? 'on' : ''}" data-a="opt" data-f="${f.key}" data-i="${i}">${esc(o())}${priceTag(key(i), costOfField(f, i))}</button>`).join('');
-      return `<div class="hm-lbl">${esc(f.label())}</div><div class="hm-row scroll">${items}</div>`;
+      const extra = passData()
+        .exterior.filter((x) => x.section === buildSect && x.field === f.key)
+        .map((x) => `<button class="hm-opt ${rec[f.key + 'P'] === x.id ? 'on' : ''} ${x.owned ? '' : 'locked'}" data-a="${x.owned ? 'pext' : 'passlock'}" data-f="${f.key}" data-i="${x.base}" data-id="${x.id}"><img src="${passThumb(x.item, 30)}" width="30" height="30" alt="">${esc(x.item.name)}<span class="price">${x.owned ? '' : hicon('lock', 12)}${esc(t('home.pass', 'Passe'))}</span></button>`)
+        .join('');
+      return `<div class="hm-lbl">${esc(f.label())}</div><div class="hm-row scroll">${items}${extra}</div>`;
     })
     .join('');
   bar.innerHTML = `<div class="hm-row"><button class="hm-chip ${buildSect === 'planet' ? 'on' : ''}" data-a="sect" data-s="planet">${hicon('planet', 18)}</button><button class="hm-chip ${buildSect === 'exterior' ? 'on' : ''}" data-a="sect" data-s="exterior">${hicon('house', 18)}</button>
@@ -905,7 +998,9 @@ async function chooseOpt(key: string, i: number): Promise<void> {
   if (!(await acquire(okey, costOfField(f, i)))) return;
   const rec = (buildSect === 'planet' ? S.design.planet : S.design.exterior) as Record<string, string | number>;
   rec[key] = i;
+  delete rec[key + 'P'];
   hsfx.place();
+  bus.emit('home-build', { item: okey });
   changed();
   buildBar($('.hm-bar'));
   pop = 1;
@@ -992,6 +1087,7 @@ function paintExtAt(lx: number, ly: number): void {
     S.design.paint = { ...(S.design.paint ?? {}), exterior: { wall: P.spec() } };
     changed();
     addCoins(P.tape ? 15 : 10);
+    bus.emit('home-paint', { room: 'exterior' });
     toast(t('home.paint.house', 'Fachada novinha! +{n}', { n: P.tape ? 15 : 10 }), 'roller');
     scene.confetti(180, y + 20);
     rebuildExt();
@@ -1024,6 +1120,8 @@ async function startParty(hostId: string): Promise<void> {
   s.onPeers((p) => scene.setPeers(p));
   s.onEvent((e) => scene.onEvent(e, botsLocal));
   partyMusic(true);
+  if (S.isOwner) bus.emit('party-host', { guests: 0 });
+  else bus.emit('party-join', { hostId });
   scene.setRoom('party');
   scene.setMode('party');
   setView('room');
