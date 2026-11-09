@@ -9,7 +9,7 @@
  * Protocolo (JSON):
  *   cliente → {type:'hello', id, name, handle?, skin, avatar?}
  *             {type:'s', s:{x,y,room,holding?,emote?}}          (estado, até 8 Hz)
- *             {type:'ev', e: PartyEvent}                          (throw/splat/clean/eat/cake/chat)
+ *             {type:'ev', e: PartyEvent}        (throw/splat/clean/eat/cake/chat/design — design só papel decorate/build)
  *   servidor → {type:'welcome', you, host, hostHere, peers: PartyPeer[], mess: MessItem[]}
  *              {type:'join', p} {type:'leave', id} {type:'s', id, s} {type:'ev', e}
  *              {type:'reject', reason}  (not_friend | closed | full | bad_id)
@@ -20,7 +20,7 @@
  */
 import { DurableObject } from 'cloudflare:workers';
 import { hub } from './friends';
-import { cleanMess, loadHome, loadMess, MESS_MAX, saveMess, type MessItem } from './home';
+import { applyDesignChange, atLeast, cleanMess, DESIGN_MAX_BYTES, loadHome, loadMess, MESS_MAX, roleOf, saveHome, saveMess, validDesign, visitsAllowed, type HomeRec, type MessItem } from './home';
 import { safeName } from './moderation';
 import { cleanName, json, PLAYER_ID_RE } from './util';
 
@@ -48,7 +48,11 @@ interface Stored {
   at: number;
   kvDirty: boolean;
   lastKv: number;
+  /** design da casa durante a festa (amigos 'decorate'/'build' editam ao vivo) */
+  home?: HomeRec | null;
+  homeDirty?: boolean;
 }
+const DESIGN_EV_MS = 500;
 
 export class PartyRoom extends DurableObject<Env> {
   private host = '';
@@ -56,6 +60,7 @@ export class PartyRoom extends DurableObject<Env> {
   private pos = new Map<string, Record<string, unknown>>();
   private lastState = new Map<string, number>();
   private bucket = new Map<string, { n: number; at: number }>();
+  private lastDesign = new Map<string, number>();
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'expected_websocket' }, 426);
@@ -81,10 +86,19 @@ export class PartyRoom extends DurableObject<Env> {
   private async state(): Promise<Stored> {
     if (this.st) return this.st;
     const local = await this.ctx.storage.get<Stored>('mess');
+    const noted = await this.ctx.storage.get<{ mess: MessItem[]; updatedAt: number }>('messNote');
     const host = await this.getHost();
-    const kv = host ? await loadMess(this.env, host) : { mess: [], updatedAt: 0 };
-    this.st = local && (local.kvDirty || local.at >= kv.updatedAt) ? local : { mess: kv.mess, at: kv.updatedAt, kvDirty: false, lastKv: local?.lastKv ?? 0 };
-    return this.st;
+    let kv = host ? await loadMess(this.env, host) : { mess: [], updatedAt: 0 };
+    if (noted && noted.updatedAt > kv.updatedAt) kv = noted;
+    const st: Stored = local && (local.kvDirty || local.at >= kv.updatedAt) ? local : { mess: kv.mess, at: kv.updatedAt, kvDirty: false, lastKv: local?.lastKv ?? 0 };
+    if (!(local?.homeDirty && local.home)) {
+      // o KV pode devolver uma cópia velha (cache de até 60 s): fica com a mais nova entre KV e a nota do REST
+      const [kvHome, noted] = await Promise.all([host ? loadHome(this.env, host) : null, this.ctx.storage.get<HomeRec>('home')]);
+      st.home = noted && (!kvHome || noted.updatedAt >= kvHome.updatedAt) ? noted : kvHome;
+      st.homeDirty = false;
+    }
+    this.st = st;
+    return st;
   }
 
   private members(): { ws: WebSocket; a: Att }[] {
@@ -123,9 +137,10 @@ export class PartyRoom extends DurableObject<Env> {
 
   /* ---------------- sujeira: gravação econômica ---------------- */
 
-  private async dirty(): Promise<void> {
+  private async dirty(home = false): Promise<void> {
     const s = await this.state();
-    s.kvDirty = true;
+    if (home) s.homeDirty = true;
+    else s.kvDirty = true;
     s.at = Date.now();
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + LOCAL_SAVE_MS);
   }
@@ -133,16 +148,25 @@ export class PartyRoom extends DurableObject<Env> {
   private async flush(forceKv: boolean): Promise<void> {
     const s = await this.state();
     const now = Date.now();
-    if (s.kvDirty && (forceKv || now - s.lastKv >= KV_SAVE_MS)) {
+    if ((s.kvDirty || s.homeDirty) && (forceKv || now - s.lastKv >= KV_SAVE_MS)) {
       const host = await this.getHost();
       if (host) {
-        s.at = await saveMess(this.env, host, s.mess);
+        if (s.kvDirty) {
+          s.at = await saveMess(this.env, host, s.mess, false);
+          await this.ctx.storage.put('messNote', { mess: s.mess, updatedAt: s.at });
+        }
+        if (s.homeDirty && s.home) {
+          s.home = { ...s.home, updatedAt: now };
+          await saveHome(this.env, host, s.home);
+          await this.ctx.storage.put('home', s.home);
+        }
         s.lastKv = now;
         s.kvDirty = false;
+        s.homeDirty = false;
       }
     }
     await this.ctx.storage.put('mess', s);
-    if (s.kvDirty) await this.ctx.storage.setAlarm(Math.min(now + LOCAL_SAVE_MS, s.lastKv + KV_SAVE_MS));
+    if (s.kvDirty || s.homeDirty) await this.ctx.storage.setAlarm(Math.min(now + LOCAL_SAVE_MS, s.lastKv + KV_SAVE_MS));
   }
 
   async alarm(): Promise<void> {
@@ -176,10 +200,8 @@ export class PartyRoom extends DurableObject<Env> {
     const others = this.members().filter((m) => m.a.id !== id);
     if (id !== host) {
       if (!(await hub(this.env).areFriends(host, id))) return this.reject(ws, 'not_friend');
-      if (!others.some((m) => m.a.id === host)) {
-        const home = await loadHome(this.env, host);
-        if (home && home.visitsOpen === false) return this.reject(ws, 'closed');
-      }
+      const home = (await this.state()).home ?? null;
+      if (!visitsAllowed(home, others.some((m) => m.a.id === host))) return this.reject(ws, 'closed');
     }
     if (others.length >= PARTY_MAX) return this.reject(ws, 'full');
     for (const m of this.members()) if (m.a.id === id && m.ws !== ws) this.drop(m.ws, m.a, false);
@@ -267,9 +289,18 @@ export class PartyRoom extends DurableObject<Env> {
         this.broadcast({ type: 'ev', e: { t: 'splat', mess: m } }, ws);
         return;
       }
+      case 'design': {
+        const now = Date.now();
+        if (now - (this.lastDesign.get(a.id) ?? 0) < DESIGN_EV_MS) return;
+        this.lastDesign.set(a.id, now);
+        const r = await this.applyDesign(a.id, e.design);
+        if (r && !r.ok) this.send(ws, { type: 'denied', reason: r.error ?? 'no_permission' });
+        return;
+      }
       case 'clean': {
         const id = String(e.messId ?? '');
         const s = await this.state();
+        if (!atLeast(roleOf(s.home?.design, await this.getHost(), a.id, true), 'clean')) return;
         const i = s.mess.findIndex((x) => x.id === id);
         if (i < 0) return;
         s.mess.splice(i, 1);
@@ -299,7 +330,7 @@ export class PartyRoom extends DurableObject<Env> {
     // fim da festa: grava a sujeira no KV agora
     if (this.members().length) return;
     if (!this.st) this.st = (await this.ctx.storage.get<Stored>('mess')) ?? null;
-    if (this.st?.kvDirty) await this.flush(true);
+    if (this.st?.kvDirty || this.st?.homeDirty) await this.flush(true);
     // sem ninguém: esquece o cache (o dono pode limpar pelo REST até a próxima festa)
     this.st = null;
   }
@@ -332,6 +363,33 @@ export class PartyRoom extends DurableObject<Env> {
     return { ok: true, count: s.mess.length };
   }
 
+  /**
+   * Troca o design durante a festa (evento 'design' de um membro, ou PUT /api/home/design com festa ativa).
+   * null = não há festa. Papel conferido contra o design ATUAL da festa (amizade já verificada na entrada/rota).
+   */
+  async applyDesign(id: string, next: unknown, visitsOpen?: boolean): Promise<{ ok: boolean; error?: string } | null> {
+    const mem = this.members();
+    if (!mem.length) return null;
+    const host = await this.getHost();
+    const s = await this.state();
+    let size = 0;
+    try {
+      size = new TextEncoder().encode(JSON.stringify(next)).length;
+    } catch {
+      return { ok: false, error: 'bad_design' };
+    }
+    if (size > DESIGN_MAX_BYTES || validDesign(next)) return { ok: false, error: 'bad_design' };
+    const role = roleOf(s.home?.design, host, id, true);
+    const r = applyDesignChange(s.home?.design ?? null, next as Record<string, unknown>, role ?? 'view');
+    if ('error' in r) return { ok: false, error: r.error };
+    s.home = { design: r.design, visitsOpen: visitsOpen ?? s.home?.visitsOpen ?? true, updatedAt: Date.now() };
+    this.broadcast({ type: 'ev', e: { t: 'design', by: id, design: r.design } }, mem.find((m) => m.a.id === id)?.ws ?? null);
+    // o dono fechou a casa (access.visits='nobody')? os amigos saem
+    if (!visitsAllowed(s.home, true)) for (const m of mem) if (m.a.id !== host) this.reject(m.ws, 'closed');
+    await this.dirty(true);
+    return { ok: true };
+  }
+
   /** Admin: limpa tudo (se houver festa, avisa os clientes). */
   async clearMess(host: string): Promise<void> {
     await this.setHost(host);
@@ -343,6 +401,16 @@ export class PartyRoom extends DurableObject<Env> {
     s.lastKv = Date.now();
     await this.ctx.storage.put('mess', s);
     if (!this.members().length) this.st = null;
+  }
+
+  /** O REST gravou design/sujeira no KV sem festa: guarda uma cópia (o KV pode servir cache velho ao DO). */
+  async noteHome(rec: HomeRec): Promise<void> {
+    await this.ctx.storage.put('home', rec);
+    if (this.st && !this.st.homeDirty) this.st.home = rec;
+  }
+  async noteMess(mess: MessItem[], updatedAt: number): Promise<void> {
+    await this.ctx.storage.put('messNote', { mess, updatedAt });
+    if (this.st && !this.st.kvDirty) (this.st.mess = mess), (this.st.at = updatedAt);
   }
 
   async info(): Promise<{ members: string[]; mess: number }> {
