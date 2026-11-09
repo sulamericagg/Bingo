@@ -786,6 +786,19 @@ export class Game {
     this.sy = 1.3;
   }
 
+  /**
+   * Sair no meio da partida (pausa → "Sair para o menu"): encerra a corrida sem "continuar",
+   * para a UI creditar moedas/gemas e reportar a partida. false = nada a encerrar.
+   */
+  forfeit(): boolean {
+    if (this.state !== 'play' || this.race) return false;
+    if (this.score <= 0 && this.coinsRun <= 0 && this.gemsRun <= 0) return false;
+    this.revived = true;
+    this.paused = false;
+    this.finish();
+    return true;
+  }
+
   revive(): void {
     if (this.race) return;
     let p = this.lastPlanet ?? this.planets[0];

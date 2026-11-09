@@ -206,6 +206,11 @@ export class UI {
       this.resume();
       return true;
     }
+    if (this.base === 'revive') {
+      // antes: voltar do Android aqui minimizava o app no meio da contagem
+      this.showResults();
+      return true;
+    }
     if (this.base === 'over') {
       this.goHome();
       return true;
@@ -272,6 +277,8 @@ export class UI {
     $('#btn-resume').onclick = () => this.resume();
     $('#btn-quit').onclick = () => {
       this.game.paused = false;
+      // moedas/gemas coletadas não somem: encerra a partida e mostra o resultado (de lá, "Menu")
+      if (this.game.forfeit()) return;
       this.goHome();
     };
     $('#btn-again').onclick = () => this.again();
