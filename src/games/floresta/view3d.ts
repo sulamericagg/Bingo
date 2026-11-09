@@ -56,7 +56,7 @@ class View3D implements View {
   world: CANNON.World;
   q: Q;
   private yaw = Math.PI / 2;
-  private pitch = 0.32;
+  private pitch = 0.42;
   private first = false;
   private camPos = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
@@ -263,13 +263,22 @@ class View3D implements View {
       path.rotation.x = -Math.PI / 2;
       path.position.set(x0 + len / 2, 0.02, 0);
       this.scene.add(path);
-      // cerquinhas laterais e morros ao fundo
+      // arbustos e flores nas bordas do corredor
+      const bush = this.mat(B.night ? '#7a6ad0' : '#4fae5a');
+      for (let i = 0; i < len / 5; i++) {
+        const m = new THREE.Mesh(this.geo('sphere'), i % 4 === 0 ? this.mat(B.night ? '#ff86b6' : '#ffd34a') : bush);
+        const s = i % 4 === 0 ? 0.25 : 0.6 + ((i * 13) % 5) * 0.12;
+        m.scale.set(s * 1.3, s, s);
+        m.position.set(x0 + i * 5 + ((i * 7) % 3), s * 0.5, (i % 2 ? 1 : -1) * (WORLD_Z + 1.5 + ((i * 11) % 4)));
+        this.scene.add(m);
+      }
+      // morros ao fundo
       const hill = this.mat(B.mid);
       for (let i = 0; i < len / 14; i++) {
         const m = new THREE.Mesh(this.geo('sphere'), hill);
-        const s = 6 + ((i * 37) % 7);
-        m.scale.set(s * 1.4, s * 0.7, s);
-        m.position.set(x0 + i * 14 + 7, 0, (i % 2 ? 1 : -1) * (WORLD_Z + 9 + (i % 3) * 3));
+        const s = 5 + ((i * 37) % 6);
+        m.scale.set(s * 1.6, s * 0.55, s);
+        m.position.set(x0 + i * 14 + 7, -1, (i % 2 ? 1 : -1) * (WORLD_Z + 22 + (i % 3) * 4));
         this.scene.add(m);
       }
     }
@@ -895,7 +904,7 @@ class View3D implements View {
       this.tmpV.set(m.x + Math.sin(this.yaw) * 5, 1.6 - this.pitch * 3 + 1, m.z + Math.cos(this.yaw) * 5);
       this.cam.lookAt(this.tmpV);
     } else {
-      const dist = ride ? 9 : 7;
+      const dist = ride ? 10 : 8.5;
       const tx = m.x - Math.sin(this.yaw) * dist * Math.cos(this.pitch);
       const tz = m.z - Math.cos(this.yaw) * dist * Math.cos(this.pitch);
       const ty = 1.5 + Math.sin(this.pitch) * dist + 1.5;

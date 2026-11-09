@@ -218,7 +218,10 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
       jx = jy = 0;
       chop = false;
     }
-    if (this.view?.toWorld) this.view.toWorld(jx, jy, this.stepOut);
+    if (this.autoMe) {
+      this.stepOut.mx = jx;
+      this.stepOut.mz = this.autoZ;
+    } else if (this.view?.toWorld) this.view.toWorld(jx, jy, this.stepOut);
     else {
       this.stepOut.mx = jx;
       this.stepOut.mz = 0;
@@ -237,10 +240,12 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   };
 
   /** IA para screenshots/dev: corta, carrega e entrega */
+  private autoZ = 0;
   private autoInput(dt: number): { x: number; c: boolean } {
     const s = this.sim;
     const m = s.me;
     this.autoT += dt;
+    this.autoZ = 0;
     if (m.carry >= s.vehicle.cap || (m.carry > 0 && !s.trees.some((tr) => tr.state === TS.Grown && tr.biome < s.s.unlocked && Math.abs(tr.x - m.x) < 30))) {
       return { x: -1, c: false };
     }
@@ -248,12 +253,14 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     if (m.target >= 0) return { x: 0, c: true };
     let best = 1e9;
     let dir = 1;
+    this.autoZ = 0;
     for (const tr of s.trees) {
       if (tr.state !== TS.Grown || tr.biome >= s.s.unlocked) continue;
       const d = Math.abs(tr.x - m.x);
       if (d < best) {
         best = d;
-        dir = Math.sign(tr.x - m.x);
+        dir = Math.abs(tr.x - m.x) < 1.2 ? 0 : Math.sign(tr.x - m.x);
+        this.autoZ = Math.max(-1, Math.min(1, (tr.z - m.z) * 0.5));
       }
     }
     return { x: dir, c: false };
