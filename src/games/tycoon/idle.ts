@@ -201,7 +201,7 @@ export function startIdle(root: HTMLElement, onBack: () => void, quality: Qualit
     if (destroyed) return;
     raf = requestAnimationFrame(frame);
     if (paused || !limiter.shouldRender(now)) return;
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
     wanderT -= dt;
     if (wanderT <= 0) {

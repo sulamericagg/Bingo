@@ -351,7 +351,7 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     }
     if (!limiter.shouldRender(nowMs)) return;
     const frameMs = nowMs - last;
-    const dt = Math.min(0.05, frameMs / 1000);
+    const dt = Math.max(0, Math.min(0.05, frameMs / 1000));
     last = nowMs;
     const t0 = performance.now();
     for (let k = 0; k < (phase === 'play' ? SPEED : 1); k++) step(dt);
@@ -427,7 +427,7 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
       }
       // câmera
       let tz = 1;
-      let cx = me.ox + me.cx;
+      let cx = me.ox + 4 + (me.cx - 4) * 0.25;
       let cy = me.oy + me.cy - 1.2;
       if (overview) {
         tz = overviewZoom();

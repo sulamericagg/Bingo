@@ -4,11 +4,12 @@
  * ============================================================ */
 import { audio } from '../../core/audio';
 import { tap } from '../../core/haptics';
-import { fmt } from '../../i18n';
+import { fmt, t } from '../../i18n';
 import { BELT_SPEED, COFRE, ITEMS, LINE_ROW, PLOT_H, PLOT_W, TURBO_INDEX } from './data';
 import { BELT_ITEM, HELPER_ITEM, PAD_POS, stars, UPG_ITEM, type Plot, type SimFx } from './sim';
 import { BELT_FRAMES, buildFloor, buildSky, charSprite, getSheet, ISLAND_DEPTH, ISLAND_PAD, rr, INK, type Sheet } from './sprites';
 
+const FREE = () => t('tycoon.free', 'Grátis');
 export function fmtShort(n: number): string {
   n = Math.floor(n);
   if (n < 10000) return fmt(n);
@@ -326,7 +327,7 @@ export class FactoryView implements SimFx {
     const ox = p.ox * S;
     const oy = p.oy * S;
     const row = LINE_ROW[l];
-    const f = Math.floor(this.time * (BELT_SPEED / 0.5) * BELT_FRAMES) % BELT_FRAMES;
+    const f = (Math.floor(Math.max(0, this.time) * (BELT_SPEED / 0.5) * BELT_FRAMES) % BELT_FRAMES) | 0;
     const belt = sh.belt[f];
     const by = oy + (row + 0.5) * S - S * 0.36;
     if (pop < 1) {
@@ -396,8 +397,7 @@ export class FactoryView implements SimFx {
       x.stroke();
     }
     if (!this.showPrices && p.idx !== this.me) return;
-    const label = it.cost === 0 ? '' : fmtShort(it.cost);
-    if (!label) return;
+    const label = it.cost === 0 ? FREE() : fmtShort(it.cost);
     x.font = `700 ${Math.round(S * 0.27)}px Fredoka, system-ui, sans-serif`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
@@ -408,6 +408,7 @@ export class FactoryView implements SimFx {
     x.strokeText(label, px + S * 0.1, ty);
     x.fillStyle = ok ? '#fff36b' : '#e8e2ff';
     x.fillText(label, px + S * 0.1, ty);
+    if (it.cost === 0) return;
     const st = sh.star[0];
     const tw = x.measureText(label).width;
     x.drawImage(st, px + S * 0.1 - tw / 2 - st.width * 0.75, ty - st.height / 2, st.width * 0.7, st.height * 0.7);

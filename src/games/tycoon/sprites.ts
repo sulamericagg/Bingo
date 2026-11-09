@@ -185,7 +185,7 @@ function mkCollector(S: number, col: string): HTMLCanvasElement {
 
 function mkDropper(S: number, col: string): HTMLCanvasElement {
   const W = S * 1.0;
-  const H = S * 1.75;
+  const H = S * 1.3;
   const [c, x] = makeCanvas(W + 6, H + 6);
   const lw = Math.max(1.5, S * 0.045);
   const cx = W / 2 + 3;
