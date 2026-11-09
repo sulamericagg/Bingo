@@ -769,7 +769,7 @@ export class Synth {
     const g = this.ctx.createGain();
     g.gain.value = 0;
     const out = this.ctx.createGain();
-    out.gain.value = 1.4;
+    out.gain.value = 0.8;
     g.connect(out);
     // sai direto no master: audível mesmo com a trilha abafada
     out.connect(this.master);
