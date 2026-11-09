@@ -248,6 +248,15 @@ async function scanDynamicData() {
   const sea = fs.readFileSync(path.join(ROOT, 'src/creatures/seasons.ts'), 'utf8');
   let j = 0;
   for (const m of sea.matchAll(/^\s*\['([^']+)', \['#/gm)) out[`season.s${String(j++).padStart(2, '0')}.theme`] = m[1];
+  // skins e rastros: skinName()/skinDesc()/trailName()/trailDesc() — src/game/skins.ts
+  const sk = fs.readFileSync(path.join(ROOT, 'src/game/skins.ts'), 'utf8');
+  const trailsAt = sk.indexOf('export const TRAILS');
+  for (const m of sk.matchAll(/^\s*\{ id: '([^']+)', name: '((?:[^'\\]|\\.)*)'.*?(?:desc: '((?:[^'\\]|\\.)*)')?[^']*\},?\s*$/gm)) {
+    const kind = m.index > trailsAt ? 'trail' : 'skin';
+    const un = (x) => x.replace(/\\'/g, "'");
+    out[`${kind}.${m[1]}`] = un(m[2]);
+    if (m[3]) out[`${kind}.${m[1]}.desc`] = un(m[3]);
+  }
   return out;
 }
 
@@ -296,7 +305,7 @@ async function main() {
   fs.writeFileSync(path.join(OUT, 'pt.json'), JSON.stringify(sorted, null, 2) + '\n');
 
   const lines = [];
-  lines.push(`Chaves: ${Object.keys(pt).length} (${staticCount} de t()/HTML + ${dataCount} de dados: bichinhos/temporadas)`);
+  lines.push(`Chaves: ${Object.keys(pt).length} (${staticCount} de t()/HTML + ${dataCount} de dados: bichinhos/temporadas/skins/rastros)`);
   lines.push(`\n== Conflitos (mesma chave, textos diferentes): ${conflicts.length}`);
   for (const c of conflicts) {
     lines.push(`  ${c.key}`);
