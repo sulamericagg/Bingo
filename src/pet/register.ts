@@ -10,6 +10,7 @@
  *    closePetScreen()         fecha (true se estava aberta) — use no botão voltar
  *    petCoinBonus()           (de ./state) bônus de moedas p/ todos os jogos, ex.: 0.05
  *    petHubHint()             dica curta para o hub ("Estou com fome!") ou null
+ *    petVoiceEnabled()/setPetVoiceEnabled(on)  toggle "Bichinho repete o que você fala"
  *  Eventos no bus: 'pet' (status mudou), 'pet-levelup' (nível), 'pet-closed',
  *    'pet-play-games' (botão "Jogar minigames" da sala — a tela já fechou).
  * ============================================================ */
@@ -20,8 +21,11 @@ import { t } from '../i18n';
 import type { IconName } from '../ui/icons';
 import { cancelReminders, onNotifTap, scheduleReminders } from './notify';
 import { mood, needsCount, onRunEnd, tick, worstStat } from './state';
+import { stopVoice } from './voice';
 
 export { petCoinBonus } from './state';
+/** Configuração "Bichinho repete o que você fala" (para a tela de Configurações). */
+export { petVoiceEnabled, setPetVoiceEnabled } from './voice';
 
 type Screen = typeof import('./screen');
 let screen: Screen | null = null;
@@ -81,6 +85,7 @@ export function registerPet(): void {
 
   // app em segundo plano: agenda lembretes; ao voltar: cancela e atualiza
   const onHide = (): void => {
+    stopVoice(); // microfone nunca fica aberto em segundo plano
     tick();
     void scheduleReminders();
   };

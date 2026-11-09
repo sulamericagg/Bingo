@@ -40,6 +40,19 @@ import {
 } from './render';
 import { sfx } from './sfx';
 import {
+  onVoiceState,
+  petVoiceEnabled,
+  pollVoice,
+  setPetVoiceEnabled,
+  startVoice,
+  stopVoice,
+  voiceMicLevel,
+  voiceOutLevel,
+  voiceState,
+  voiceSupported,
+  type VoiceState,
+} from './voice';
+import {
   LOW,
   STATS,
   bathed,
@@ -179,6 +192,7 @@ export function closePet(): boolean {
     return true;
   }
   isOpen = false;
+  stopVoice();
   root!.classList.remove('on');
   cancelAnimationFrame(raf);
   unsub.forEach((u) => u());
@@ -236,6 +250,8 @@ function build(): void {
     ).join('')}<button class="pet-tab pet-tab-decor">${icon('paint', { size: 30 })}<span>${esc(t('pet.decorate', 'Decorar'))}</span></button></nav>
     <div class="pet-modal pet-decor"><div class="pet-card"></div></div>
     <div class="pet-modal pet-ask"><div class="pet-card"></div></div>
+    <button class="pet-mic" aria-label="${esc(t('pet.voice.btn', 'Falar'))}">${micSvg()}<span>${esc(t('pet.voice.btn', 'Falar'))}</span></button>
+    <div class="pet-modal pet-vask"><div class="pet-card"></div></div>
     <div class="pet-toast"></div>`;
   document.body.appendChild(root);
   cv = $('.pet-cv') as HTMLCanvasElement;
@@ -251,6 +267,8 @@ function build(): void {
       setRoom(b.dataset.room as Room, true);
     }),
   );
+  $('.pet-mic').addEventListener('click', onMicButton);
+  onVoiceState(onVoice);
   $('.pet-tab-decor').addEventListener('click', () => {
     sfx.click();
     openDecor('wall');
@@ -285,6 +303,7 @@ function resize(): void {
   }
   const say = $('.pet-say');
   say.style.top = `${Math.max(150, L.cy - L.R * 2.05)}px`;
+  $('.pet-mic').style.top = `${Math.round(L.floorY - 64)}px`;
 }
 
 /* ---------------------------- HUD ---------------------------- */
@@ -835,6 +854,7 @@ function drawBathTool(c: CanvasRenderingContext2D): void {
 function toggleLamp(): void {
   audio.unlock();
   lampOn = !lampOn;
+  if (!lampOn) stopVoice();
   sfx.click();
   tap('light');
   if (lampOn) {
@@ -1066,6 +1086,83 @@ function onUp(e: PointerEvent): void {
   if (!ptr.swipe && ptr.moved < 10 && ptr.onPet && !(room === 'bath' && stage !== 'done')) boop();
 }
 
+/* ============================================================
+ *  FALA (microfone)
+ * ============================================================ */
+
+function micSvg(): string {
+  return `<svg viewBox="0 0 48 48" width="30" height="30" aria-hidden="true"><g stroke="#2a0b5c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="16" y="5" width="16" height="25" rx="8" fill="#ff7ab8"/><path d="M10 22Q10 36 24 36Q38 36 38 22" fill="none"/><path d="M24 36V43M16 43H32" fill="none"/></g>
+    <rect x="19.5" y="9" width="3.5" height="10" rx="1.75" fill="#fff" opacity=".7"/></svg>`;
+}
+
+function onVoice(st: VoiceState): void {
+  if (!root) return;
+  const b = $('.pet-mic');
+  b.dataset.st = st;
+  b.querySelector('span')!.textContent = st === 'off' ? t('pet.voice.btn', 'Falar') : t('pet.voice.stop', 'Parar');
+  if (st === 'listening') say(true, t('pet.voice.listen', 'Fala alguma coisa! Tô ouvindo...'));
+  else if (st === 'capturing' || st === 'playing') {
+    $('.pet-say').classList.remove('show');
+    sayT = 0;
+    sayCd = 30;
+  }
+}
+
+async function onMicButton(): Promise<void> {
+  audio.unlock();
+  sfx.click();
+  tap('light');
+  if (voiceState() !== 'off') {
+    stopVoice();
+    say(true, t('pet.voice.bye', 'Foi divertido conversar!'));
+    return;
+  }
+  if (!voiceSupported()) {
+    toast(t('pet.voice.unsupported', 'Aqui não dá para usar o microfone. No app do celular funciona!'), 'sound');
+    return;
+  }
+  if (!pet().voiceAsked || !petVoiceEnabled()) {
+    askVoice();
+    return;
+  }
+  await beginVoice();
+}
+
+async function beginVoice(): Promise<void> {
+  if (room === 'bed' && !lampOn) toggleLamp();
+  const err = await startVoice();
+  if (err === 'denied') toast(t('pet.voice.denied', 'Sem permissão do microfone. Dá para liberar nas configurações do aparelho.'), 'warning');
+  else if (err === 'nosound') toast(t('pet.voice.nosound', 'Ligue o som do jogo para ouvir a vozinha!'), 'sound');
+  else if (err) toast(t('pet.voice.failed', 'Não consegui abrir o microfone agora.'), 'warning');
+}
+
+function askVoice(): void {
+  const m = $('.pet-vask');
+  const on = petVoiceEnabled();
+  m.querySelector('.pet-card')!.innerHTML = `
+    <div class="pet-ask-ico">${micSvg().replace('width="30" height="30"', 'width="64" height="64"')}</div>
+    <h3>${esc(t('pet.voice.askTitle', 'Vamos conversar?'))}</h3>
+    <p>${esc(t('pet.voice.askText', 'Fale perto do celular e seu bichinho repete com uma vozinha engraçada! Para isso ele precisa usar o microfone.'))}</p>
+    <p class="pet-priv">${icon('shield', { size: 22 })}<span>${esc(t('pet.voice.privacy', 'Sua voz fica só na memória do aparelho: não é gravada, guardada nem enviada para ninguém. O microfone só fica ligado enquanto o botão Falar está ativo.'))}</span></p>
+    <label class="pet-switch"><input type="checkbox" ${on ? 'checked' : ''}><i></i><span>${esc(t('pet.voice.setting', 'Bichinho repete o que você fala'))}</span></label>
+    <div class="pet-row"><button class="pet-btn pet-no">${esc(t('pet.voice.no', 'Agora não'))}</button>
+    <button class="pet-btn pet-big pet-yes">${icon('check', { size: 22 })}${esc(t('pet.voice.yes', 'Vamos!'))}</button></div>`;
+  m.classList.add('on');
+  const cb = m.querySelector<HTMLInputElement>('input')!;
+  m.querySelector('.pet-no')!.addEventListener('click', () => {
+    pet().voiceAsked = true;
+    setPetVoiceEnabled(cb.checked);
+    m.classList.remove('on');
+  });
+  m.querySelector('.pet-yes')!.addEventListener('click', () => {
+    pet().voiceAsked = true;
+    m.classList.remove('on');
+    setPetVoiceEnabled(true);
+    void beginVoice();
+  });
+}
+
 function boop(): void {
   if (room === 'bed' && !lampOn) {
     squashV += 2;
@@ -1074,7 +1171,7 @@ function boop(): void {
   }
   squashV -= 5;
   hopPhase = 0.001;
-  sfx.giggle();
+  if (voiceState() !== 'playing') Math.random() < 0.6 ? sfx.chirp() : sfx.giggle();
   tap('light');
   happyT = Math.max(happyT, 0.9);
   fx.emit(PK.Heart, L.cx, L.cy - L.R * 1.1, (Math.random() - 0.5) * 80, -140, 1.2, 10, 4);
@@ -1191,6 +1288,25 @@ function update(dt: number): void {
     blink = 1;
     m = 'idle';
   }
+  // fala: escuta (mão na orelha) e repete com a boca no ritmo do áudio
+  pollVoice();
+  const vs = voiceState();
+  const listening = vs === 'listening' || vs === 'capturing';
+  v.listen += ((listening ? 1 : 0) - v.listen) * Math.min(1, dt * 10);
+  v.mic += (voiceMicLevel() - v.mic) * Math.min(1, dt * 15);
+  if (listening) {
+    pose.lookX += (0.8 - pose.lookX) * Math.min(1, dt * 6);
+    v.tilt += (0.12 - v.tilt) * Math.min(1, dt * 6);
+    m = 'idle';
+    blink = Math.min(blink, 0.2);
+  }
+  if (vs === 'playing') {
+    const lv = voiceOutLevel();
+    m = lv > 0.12 ? 'fly' : 'happy';
+    squashV -= lv * 1.5;
+    v.tilt += (Math.sin(v.t * 9) * 0.06 * lv - v.tilt) * Math.min(1, dt * 12);
+    blink = 0;
+  }
   pose.mood = m;
   pose.blink = blink;
   v.drool = v.m.hungry || foodNear ? Math.min(1, v.drool + dt * 2) : Math.max(0, v.drool - dt * 3);
@@ -1262,6 +1378,7 @@ function update(dt: number): void {
     if (sayCd <= 0) say(true);
   }
   mouthOpenT = Math.max(0, mouthOpenT - dt);
+  if (voiceState() === 'playing') v.hop += voiceOutLevel() * L.R * 0.06;
 }
 
 let moonGlow: CanvasGradient | null = null;
@@ -1486,6 +1603,7 @@ export const __petDebug = {
     drag.x = L.W / 2;
     drag.y = L.H * 0.85;
   },
+  mic: onMicButton,
   hold(id: string, x: number, y: number) {
     drag.id = id;
     drag.on = true;

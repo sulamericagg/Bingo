@@ -1057,6 +1057,9 @@ export interface PetView {
   polish: number;
   thinkFood: FoodShape | null;
   drool: number;
+  /** 0..1 pose de "escutando" (mão na orelha + ondas) e volume do microfone */
+  listen: number;
+  mic: number;
 }
 
 export function makeView(): PetView {
@@ -1079,6 +1082,8 @@ export function makeView(): PetView {
     polish: 0,
     thinkFood: null,
     drool: 0,
+    listen: 0,
+    mic: 0,
   };
 }
 
@@ -1284,9 +1289,54 @@ export function drawPet(c: CanvasRenderingContext2D, skin: Skin, L: Layout, v: P
     }
   }
 
+  // escutando: mãozinha em concha na "orelha"
+  if (v.listen > 0.01) {
+    const k = v.listen;
+    c.save();
+    c.translate(R * (0.98 + (1 - k) * 0.4), -R * 0.18);
+    c.rotate(-0.35);
+    c.globalAlpha = k;
+    c.fillStyle = '#ffffff';
+    c.strokeStyle = INK;
+    c.lineWidth = Math.max(2, R * 0.035);
+    c.beginPath();
+    c.ellipse(0, 0, R * 0.17, R * 0.24, 0, 0, TAU);
+    c.fill();
+    c.stroke();
+    c.beginPath();
+    c.ellipse(-R * 0.13, R * 0.08, R * 0.07, R * 0.1, 0.5, 0, TAU);
+    c.fill();
+    c.stroke();
+    c.strokeStyle = 'rgba(42,11,92,0.35)';
+    c.beginPath();
+    c.moveTo(-R * 0.02, -R * 0.12);
+    c.lineTo(-R * 0.02, R * 0.06);
+    c.moveTo(R * 0.07, -R * 0.1);
+    c.lineTo(R * 0.07, R * 0.06);
+    c.stroke();
+    c.restore();
+  }
+
   c.restore();
 
   // ---------- coisas fora do corpo ----------
+  // ondas de som chegando (escutando)
+  if (v.listen > 0.01) {
+    const hx = x0 + R * 1.25;
+    const hy = y0 - R * 0.2;
+    c.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * 1.6 + i / 3) % 1;
+      const rr2 = R * (0.25 + (1 - ph) * 0.55) * (1 + v.mic * 0.4);
+      c.globalAlpha = v.listen * Math.sin(ph * Math.PI) * (0.7 + v.mic * 0.3);
+      c.strokeStyle = v.mic > 0.15 ? '#ff5cc8' : '#8a5cff';
+      c.lineWidth = R * (0.04 + v.mic * 0.04);
+      c.beginPath();
+      c.arc(hx, hy, rr2, -0.7, 0.7);
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  }
   // moscas fofinhas + cheirinho
   if (anyDirt && v.m.dirty && v.foamN === 0) {
     c.strokeStyle = 'rgba(120,170,60,0.55)';

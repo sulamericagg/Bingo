@@ -113,6 +113,12 @@ export interface PetSave {
   /** limite diário de XP (anti-farm) */
   xpDay: number;
   xpToday: number;
+  /** "Bichinho repete o que você fala" (microfone) */
+  voiceOn: boolean;
+  /** já explicamos o microfone */
+  voiceAsked: boolean;
+  /** o sistema já concedeu o microfone alguma vez */
+  voiceGranted: boolean;
 }
 
 export const defaultPet = (): PetSave => ({
@@ -132,6 +138,9 @@ export const defaultPet = (): PetSave => ({
   shineUntil: 0,
   xpDay: 0,
   xpToday: 0,
+  voiceOn: true,
+  voiceAsked: false,
+  voiceGranted: false,
 });
 
 export interface AvatarSave {
