@@ -15,42 +15,19 @@
  * Para um jogo infantil com nomes pouco disputados, o risco é aceitável (veja docs/CASA-AMIGOS.md).
  */
 import { hub, friendInfos, requireId } from './friends';
-import { buildExtra, filterMessage, hasPersonalInfo, loadExtraWords } from './moderation';
+import { buildExtra, loadExtraWords } from './moderation';
+import { HANDLE_RE, handleRuleProblem, normalizeHandle } from '../shared/handle-rules';
 import { json, readJson } from './util';
 
-export const HANDLE_RE = /^[a-z0-9][a-z0-9_.]{1,14}[a-z0-9_]$/;
+export { HANDLE_RE, normalizeHandle } from '../shared/handle-rules';
 export const HANDLE_CHANGE_MS = 30 * 86400_000;
 export const BANNED = '!banned';
 
-const RESERVED = new Set(
-  'admin administrador adm root system sistema suporte support ajuda help staff equipe team oficial official moderador moderator mod mods bloop bloopworld bloop_world teamross team_ross ross null undefined anonimo anonymous everyone here todos bot robo claude cloudflare'.split(
-    ' ',
-  ),
-);
-const RESERVED_PREFIX = ['admin', 'mod_', 'moder', 'staff', 'suporte', 'support', 'oficial', 'official', 'teamross', 'team_ross', 'bloop_oficial', 'bloopworld'];
-/* redes sociais / contato, como pedaço do nome (o filtro de chat só pega palavra inteira) */
-const CONTACT_PARTS = ['insta', 'whats', 'wpp', 'zapzap', 'tiktok', 'snapchat', 'discord', 'telegram', 'gmail', 'hotmail', 'outlook', 'youtube', 'twitch', 'kwai', 'facebook', 'celular', 'telefone', 'email', 'roblox', 'twitter'];
-
-export const normalizeHandle = (s: string): string => s.trim().replace(/^@+/, '').toLowerCase();
-
 export type HandleReason = 'taken' | 'invalid' | 'blocked';
 
-/** Valida formato + palavras reservadas + moderação. null = ok. */
+/** Valida formato + palavras reservadas + moderação (regras em shared/handle-rules.ts + lista extra do KV). null = ok. */
 export async function handleProblem(env: Env, h: string): Promise<'invalid' | 'blocked' | null> {
-  if (!HANDLE_RE.test(h) || h.includes('..')) return 'invalid';
-  if (RESERVED.has(h) || RESERVED.has(h.replace(/[_.\d]/g, '')) || RESERVED_PREFIX.some((p) => h.startsWith(p))) return 'blocked';
-  if ((h.match(/\d/g) ?? []).length >= 6) return 'blocked'; // parece telefone/documento
-  if (CONTACT_PARTS.some((p) => h.includes(p))) return 'blocked';
-  if (hasPersonalInfo(h)) return 'blocked';
-  const extra = buildExtra(await loadExtraWords(env));
-  const variants = [h.replace(/[_.]/g, ' '), h.replace(/[_.\d]/g, ' '), h.replace(/[_.]/g, ''), h.replace(/[_.\d]/g, '')];
-  for (const v of variants) {
-    if (!v.trim()) continue;
-    if (hasPersonalInfo(v)) return 'blocked';
-    const r = filterMessage(v, extra);
-    if (!r.ok || r.filtered) return 'blocked';
-  }
-  return null;
+  return handleRuleProblem(h, buildExtra(await loadExtraWords(env)));
 }
 
 export async function getHandleOwner(env: Env, h: string): Promise<string | null> {

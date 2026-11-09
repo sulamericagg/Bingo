@@ -18,7 +18,10 @@
   --cyan: #5ef0ff;
   --danger: #ff4f6a;
   --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bot: env(safe-area-inset-bottom, 0px);
+  /* altura do banner AdMob visível (services/ads.ts); 0 quando escondido/sem anúncios */
+  --ad-bottom: 0px;
+  /* fundo seguro = barra de gestos + banner: toda tela que usa --safe-bot fica acima do anúncio */
+  --safe-bot: calc(env(safe-area-inset-bottom, 0px) + var(--ad-bottom, 0px));
   font-family: var(--font, 'Fredoka', system-ui, sans-serif);
 }
 

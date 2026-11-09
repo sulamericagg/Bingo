@@ -13,12 +13,6 @@
 body.orbit-off #game {
   visibility: hidden;
 }
-body {
-  --banner-h: 0px;
-}
-body.has-banner {
-  --banner-h: 58px;
-}
 
 #menu.hub {
   padding: 0;
@@ -538,7 +532,7 @@ body.hub-qmin .hub-play {
   align-self: center;
   width: calc(100% - 20px);
   max-width: 640px;
-  margin: 6px 10px calc(8px + var(--safe-bot) + var(--banner-h));
+  margin: 6px 10px calc(8px + var(--safe-bot)); /* --safe-bot já inclui o banner (--ad-bottom) */
   padding: 6px 4px 5px;
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)), rgba(12, 5, 34, 0.78);

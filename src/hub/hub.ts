@@ -14,7 +14,6 @@ import './hub.css';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
-import { isNative } from '../core/platform';
 import { save } from '../core/storage';
 import { t } from '../i18n';
 import { applyI18n } from '../i18n/langs';
@@ -132,7 +131,7 @@ export function hubVisible(): boolean {
 
 /** Hub visível e livre (sem painel/modal por cima) — hora boa para pop-ups automáticos. */
 export function hubIdle(): boolean {
-  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, .celebrate, .item-sheet');
+  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .celebrate, .item-sheet, .ob-root, .beta-sheet-bg');
 }
 
 /** Inicia o jogo selecionado (botão JOGAR / Espaço). */
@@ -233,7 +232,6 @@ export function initHub(o: HubOptions): void {
   dots = document.getElementById('hub-dots')!;
   nav = document.getElementById('hub-nav')!;
   buildHost();
-  document.body.classList.toggle('has-banner', isNative && !save.noAds);
   document.title = 'Bloop World';
 
   (stage.querySelector('.hub-arrow.prev') as HTMLElement).onclick = () => go(idx - 1);
@@ -280,7 +278,6 @@ export function initHub(o: HubOptions): void {
   bus.on('profile', refreshProfile);
   bus.on('cosmetics', refreshProfile);
   bus.on('wallet', refreshNavBadges);
-  bus.on('purchase', () => document.body.classList.toggle('has-banner', isNative && !save.noAds));
   window.addEventListener('resize', () => layout(false));
 
   buildCards();

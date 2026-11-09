@@ -1,11 +1,11 @@
-Chaves: 3702 (1517 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 3758 (1573 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 
 == Chamadas dinâmicas (chave ou texto não-literal): 37
-  src/creatures/collection.ts:35  t("creature.${c.id}", c.name)
-  src/creatures/collection.ts:36  t("creature.${c.id}.desc", c.desc)
-  src/creatures/collection.ts:37  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
+  src/creatures/collection.ts:36  t("creature.${c.id}", c.name)
+  src/creatures/collection.ts:37  t("creature.${c.id}.desc", c.desc)
+  src/creatures/collection.ts:38  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
   src/creatures/seasons.ts:97  t("season.${s.id}.theme", s.theme)
   src/game/avatar.ts:213  t("part.${p.id}", p.name)
   src/game/skins.ts:191  t("skin.${s.id}", s.name)
@@ -22,7 +22,7 @@ Chaves: 3702 (1517 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastr
   src/home/catalog.ts:168  t("home.furn.${…}", + kind, pt) + (v ? t('home.furn.v' + v, VNAME[v]) : ''),)
   src/home/catalog.ts:168  t("home.furn.v${…}", + v, VNAME[v]) : ''),)
   src/home/paint.ts:14  t("home.paint.fin.${…}", + f, ({ solid: 'Lisa', gradient: 'Degradê', stripes: 'Listr)
-  src/home/screen.ts:894  t("home.tpl.${…}", + tp.id, tp.name))}</button>`).join('')}${passData())
+  src/home/screen.ts:929  t("home.tpl.${…}", + tp.id, tp.name))}</button>`).join('')}${passData())
   src/home3d/build.ts:223  t("home3d.furn.${…}", + k, KINDS[k].name))}`);)
   src/home3d/fps.ts:711  t("home3d.furn.${…}", + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state)
   src/home3d/fps.ts:712  t("home3d.mess.${…}", + tg.decal.m.kind, messName(tg.decal.m.kind as MessKind));)
