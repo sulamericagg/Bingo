@@ -68,6 +68,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   let onShift: boolean[] = sv.staff.map(() => true);
   let hostGo = 0;
   let cleanup: (() => void) | null = null;
+  let pauseHook: (() => void) | null = null;
 
   const setBack = (fn: (() => void) | null) => {
     popBack?.();
@@ -526,7 +527,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       joyId = -1;
       jmx = jmy = 0;
       joy.style.display = 'none';
-      if (!client && !net.online) paused = true;
+      if (document.visibilityState === 'hidden' || !document.hasFocus()) togglePause(true);
     };
     window.addEventListener('blur', blur);
     document.addEventListener('visibilitychange', blur);
@@ -540,9 +541,11 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         pauseEl.className = 'cz-pause';
         pauseEl.innerHTML = `<div class="cz-title">${t('cozinha.pause', 'Pausado')}</div>
           <button class="cz-btn cz-green cz-big" style="width:240px" data-a="resume">${icon('play', { size: 24 })}${t('cozinha.resume', 'Continuar')}</button>
-          <button class="cz-btn cz-big" style="width:240px" data-a="quitday">${t('cozinha.quitDay', 'Encerrar o dia')}</button>`;
+          <button class="cz-btn cz-big" style="width:240px" data-a="quitday">${t('cozinha.quitDay', 'Encerrar o dia')}</button>
+          <button class="cz-btn cz-big" style="width:240px" data-a="exitgame">${icon('home', { size: 22 })}${t('cozinha.exit', 'Sair')}</button>`;
         el.appendChild(pauseEl);
         bind(pauseEl, '[data-a=resume]', () => togglePause(false));
+        bind(pauseEl, '[data-a=exitgame]', () => quit());
         bind(pauseEl, '[data-a=quitday]', () => {
           sim.ended = true;
           togglePause(false);
@@ -554,6 +557,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       }
     };
     bind(hud, '[data-a=pause]', () => togglePause(!pauseEl));
+    pauseHook = () => togglePause(true);
     bind(hud, '[data-a=emote]', () =>
       openEmoteWheel((code) => {
         me.emote = code;
@@ -572,6 +576,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       window.removeEventListener('keyup', ku);
       window.removeEventListener('blur', blur);
       document.removeEventListener('visibilitychange', blur);
+      pauseHook = null;
       rend.destroy();
     };
 
@@ -583,7 +588,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     let cashShown = -1;
     let actShown = '';
     let endT = 0;
-    const startMs = performance.now();
+    live = { sim, client, startMs: performance.now(), done: false };
     const fps = { lim: 0 };
     const loop = (ms: number) => {
       raf = requestAnimationFrame(loop);
@@ -679,7 +684,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         if (endT === dt) banner(t('cozinha.timeUp', 'Fim do turno!'), '', 1600);
         if (endT > 1.4 || qs.has('czfast')) {
           cancelAnimationFrame(raf);
-          results(sim, client, (performance.now() - startMs) / 1000);
+          results(sim);
         }
       }
     };
@@ -698,26 +703,51 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   }
 
   /* ======================= 5) resultado ======================= */
-  function results(sim: Sim, client: boolean, dur: number): void {
-    clear();
-    const stars = sim.stars();
+  /** turno em andamento (para creditar uma única vez, mesmo saindo no meio) */
+  let live: { sim: Sim; client: boolean; startMs: number; done: boolean } | null = null;
+  interface Settled {
+    stars: number;
+    w: number;
+    net$: number;
+    coins: number;
+    rec: boolean;
+  }
+  /** credita moedas/caixa e chama reportRun UMA vez. partial = saiu no meio do dia (não avança o dia). */
+  function settle(partial: boolean): Settled | null {
+    if (!live || live.done) return null;
+    live.done = true;
+    const { sim, client } = live;
+    const dur = (performance.now() - live.startMs) / 1000;
+    const stars = partial ? 0 : sim.stars();
     const helpers = sim.players.filter((p) => p.bot && !p.remote).length;
-    const w = client ? 0 : Math.min(wage(helpers), Math.floor(sim.cash * 0.4));
+    const w = client ? 0 : Math.min(partial ? Math.round(wage(helpers) * Math.min(1, sim.time / sim.p.len)) : wage(helpers), Math.floor(sim.cash * 0.4));
     const net$ = Math.max(0, sim.cash - w);
-    const coins = Math.max(3, Math.round(sim.cash / 8) + stars * 5);
-    const rec = sim.day > sv.bestDay || net$ > sv.bestCash;
+    const coins = partial ? Math.round(sim.cash / 8) : Math.max(3, Math.round(sim.cash / 8) + stars * 5);
+    const rec = !partial && (sim.day > sv.bestDay || net$ > sv.bestCash);
     if (!client) {
       sv.cash += net$;
-      sv.stars[sim.day] = Math.max(sv.stars[sim.day] ?? 0, stars);
-      sv.day = sim.day + 1; // infinito: sempre avança
+      if (!partial) {
+        sv.stars[sim.day] = Math.max(sv.stars[sim.day] ?? 0, stars);
+        sv.day = sim.day + 1; // infinito: sempre avança
+      }
     }
-    sv.days++;
+    if (!partial) {
+      sv.days++;
+      sv.bestDay = Math.max(sv.bestDay, sim.day);
+    }
     sv.dishes += sim.served;
-    sv.bestDay = Math.max(sv.bestDay, sim.day);
     sv.bestCash = Math.max(sv.bestCash, net$);
     persistCz();
-    addCoins(coins);
-    reportRun({ game: 'cozinha', score: sim.cash, coins, durationSec: Math.round(dur), won: stars > 0, stats: { dishes: sim.served, days: 1, stars, fires: sim.fires } });
+    if (coins > 0) addCoins(coins);
+    reportRun({ game: 'cozinha', score: sim.cash, coins, durationSec: Math.round(dur), won: stars > 0, stats: { dishes: sim.served, days: partial ? 0 : 1, stars, fires: sim.fires } });
+    return { stars, w, net$, coins, rec };
+  }
+
+  function results(sim: Sim): void {
+    const r = settle(false);
+    clear();
+    if (!r) return lobby();
+    const { stars, w, net$, coins, rec } = r;
     const d = ov(true);
     const starHtml = [0, 1, 2].map((i) => `<span style="animation-delay:${0.2 + i * 0.25}s;${i < stars ? '' : 'filter:grayscale(1) brightness(.6)'}">${icon('star', { size: 54 })}</span>`).join('');
     d.innerHTML = `
@@ -758,6 +788,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   const handle: MiniGameHandle = {
     destroy() {
       if (dead) return;
+      settle(true); // saiu no meio do turno: credita o que ganhou (uma vez só)
       dead = true;
       clear();
       setBack(null);
@@ -765,7 +796,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       el.remove();
     },
     pause() {
-      cancelAnimationFrame(raf);
+      pauseHook?.();
     },
     resume() {
       /* a tela atual recomeça no próximo toque; o turno fica pausado */
