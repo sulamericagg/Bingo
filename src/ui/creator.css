@@ -4,24 +4,6 @@
  *  "gordinhos" com sombra sólida, cores de raridade)
  * ============================================================ */
 
-/* menu: 5 blocos na fileira */
-#menu .menu-row {
-  grid-template-columns: repeat(5, 1fr);
-  gap: 7px;
-}
-#menu .menu-row .tile {
-  font-size: 13px;
-  padding: 9px 2px 7px;
-}
-.cr-tile-art {
-  overflow: hidden;
-}
-.cr-tile-art canvas {
-  width: 92% !important;
-  height: 92% !important;
-  filter: drop-shadow(0 2px 0 rgba(30, 5, 70, 0.45));
-}
-
 /* ---------- tela ---------- */
 .cr {
   position: absolute;

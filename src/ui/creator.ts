@@ -649,12 +649,12 @@ function refreshTile(): void {
   let plate = btn.querySelector<HTMLElement>('.cr-tile-art');
   if (!plate) {
     plate = document.createElement('span');
-    plate.className = 'tile-ico plate plate-violet cr-tile-art';
-    btn.prepend(plate);
+    plate.className = 'nav-ico plate plate-violet cr-tile-art';
     btn.querySelectorAll('[data-icon]').forEach((e) => e.remove());
+    btn.prepend(plate);
   }
   plate.innerHTML = '';
-  const cv = renderAvatarPreview(save.avatar, 52, 0.6, { backdrop: false, zoom: 1.05, focusY: 0.1 });
+  const cv = renderAvatarPreview(save.avatar, 48, 0.6, { backdrop: false, zoom: 1.05, focusY: 0.1 });
   plate.appendChild(cv);
   let badge = btn.querySelector<HTMLElement>('.badge');
   if (!badge) {

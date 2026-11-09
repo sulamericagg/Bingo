@@ -1,6 +1,7 @@
 import {
   AdMob,
   AdmobConsentStatus,
+  BannerAdPluginEvents,
   BannerAdPosition,
   BannerAdSize,
   InterstitialAdPluginEvents,
@@ -199,9 +200,20 @@ export async function maybeInterstitial(): Promise<void> {
   }
 }
 
+/** Reserva espaço no rodapé do menu para o banner (CSS: var(--banner-h)). */
+function setBannerSpace(px: number): void {
+  document.documentElement.style.setProperty('--banner-h', `${Math.max(0, Math.round(px))}px`);
+}
+let bannerSizeHooked = false;
+
 export async function showBanner(): Promise<void> {
   if (!isNative || save.noAds || bannerShown) return;
+  if (!bannerSizeHooked) {
+    bannerSizeHooked = true;
+    AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => bannerShown && setBannerSpace(info.height)).catch(() => {});
+  }
   try {
+    setBannerSpace(60);
     await AdMob.showBanner({
       adId: ADMOB.banner,
       adSize: BannerAdSize.ADAPTIVE_BANNER,
@@ -211,13 +223,14 @@ export async function showBanner(): Promise<void> {
     });
     bannerShown = true;
   } catch {
-    /* sem banner */
+    setBannerSpace(0); /* sem banner */
   }
 }
 
 export async function hideBanner(): Promise<void> {
   if (!isNative || !bannerShown) return;
   bannerShown = false;
+  setBannerSpace(0);
   await AdMob.removeBanner().catch(() => {});
 }
 
