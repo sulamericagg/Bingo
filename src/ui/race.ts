@@ -19,12 +19,13 @@ import { hideBanner, showBanner } from '../services/ads';
 import { displayName, ensurePlayer, fetchLeaderboard, initLeaderboard, type LbResponse, type LbScope } from '../services/leaderboard';
 import { joinRace, RACE, rewardForPlace, type RacePlayerInfo, type RaceResult, type RaceSession, type StandingRow } from '../services/multiplayer';
 import { hydrateIcons, icon } from './icons';
+import { t } from '../i18n';
 
 /** Cores das etiquetas por vaga (0..4). */
 const SLOT_COLORS = ['#ff5cc8', '#5ef0ff', '#ffcf2e', '#3ee07a', '#b48cff'];
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-const ordinal = (n: number) => `${n}º`;
+const ordinal = (n: number) => t('race.ord', '{n}º', { n });
 const fmtTime = (s: number) => {
   const v = Math.max(0, Math.ceil(s));
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
@@ -79,23 +80,23 @@ class RaceUI {
       <div class="rc-panel rc-lobby panel hidden" id="rc-lobby">
         <div class="rc-head">
           <span class="plate plate-violet rc-head-ico">${icon('rocket')}</span>
-          <div><h2>CORRIDA ORBITAL</h2><p class="muted">5 jogadores · ${RACE.durationSec} segundos</p></div>
+          <div><h2>${t('race.title', 'CORRIDA ORBITAL')}</h2><p class="muted">${t('race.sub', '5 jogadores · {n} segundos', { n: RACE.durationSec })}</p></div>
         </div>
-        <div class="rc-searching" id="rc-searching"><span class="rc-dots"><i></i><i></i><i></i></span><span id="rc-status">Procurando jogadores…</span></div>
+        <div class="rc-searching" id="rc-searching"><span class="rc-dots"><i></i><i></i><i></i></span><span id="rc-status">${t('race.searching', 'Procurando jogadores…')}</span></div>
         <ul class="rc-slots" id="rc-slots"></ul>
         <div class="rc-prizes">
-          <div><b>1º</b>${icon('coin', { size: 18 })}100 ${icon('gem', { size: 18 })}5</div>
-          <div><b>2º</b>${icon('coin', { size: 18 })}60</div>
-          <div><b>3º</b>${icon('coin', { size: 18 })}40</div>
-          <div><b>4º-5º</b>${icon('coin', { size: 18 })}20</div>
+          <div><b>${ordinal(1)}</b>${icon('coin', { size: 18 })}100 ${icon('gem', { size: 18 })}5</div>
+          <div><b>${ordinal(2)}</b>${icon('coin', { size: 18 })}60</div>
+          <div><b>${ordinal(3)}</b>${icon('coin', { size: 18 })}40</div>
+          <div><b>${ordinal(4)}-${ordinal(5)}</b>${icon('coin', { size: 18 })}20</div>
         </div>
-        <p class="muted rc-tip">Pule de planeta em planeta. Quem fizer mais pontos em ${RACE.durationSec}s vence. Caiu, acabou!</p>
-        <button class="btn btn-ghost" id="rc-cancel">Cancelar</button>
+        <p class="muted rc-tip">${t('race.tip', 'Pule de planeta em planeta. Quem fizer mais pontos em {n}s vence. Caiu, acabou!', { n: RACE.durationSec })}</p>
+        <button class="btn btn-ghost" id="rc-cancel">${t('common.cancel', 'Cancelar')}</button>
       </div>
       <div class="rc-panel rc-dead panel hidden" id="rc-dead">
-        <h2>VOCÊ CAIU!</h2>
+        <h2>${t('race.fell', 'VOCÊ CAIU!')}</h2>
         <div class="rc-dead-place" id="rc-dead-place">—</div>
-        <p class="muted" id="rc-dead-msg">Aguardando o fim da corrida…</p>
+        <p class="muted" id="rc-dead-msg">${t('race.waitEnd', 'Aguardando o fim da corrida…')}</p>
       </div>
       <div class="rc-panel rc-results panel hidden" id="rc-results"></div>`;
     ui.appendChild(this.root);
@@ -106,12 +107,12 @@ class RaceUI {
     this.rank.innerHTML = `
       <div class="panel big rk-panel">
         <header class="panel-head">
-          <h2>${icon('trophy')} RANKING</h2>
-          <button class="icon-btn close" id="rk-close" aria-label="Fechar">${icon('close')}</button>
+          <h2>${icon('trophy')} ${t('rank.title', 'RANKING')}</h2>
+          <button class="icon-btn close" id="rk-close" aria-label="${t('common.close', 'Fechar')}">${icon('close')}</button>
         </header>
         <nav class="rk-tabs" id="rk-tabs">
-          <button data-scope="all" class="active">${icon('crown', { size: 22 })}Geral</button>
-          <button data-scope="week">${icon('calendar', { size: 22 })}Semana</button>
+          <button data-scope="all" class="active">${icon('crown', { size: 22 })}${t('rank.all', 'Geral')}</button>
+          <button data-scope="week">${icon('calendar', { size: 22 })}${t('rank.week', 'Semana')}</button>
         </nav>
         <div class="rk-body" id="rk-body"></div>
         <div class="rk-me" id="rk-me"></div>
@@ -194,7 +195,7 @@ class RaceUI {
     this.alive.clear();
     this.rewarded = false;
     this.renderSlots([], RACE.lobbyWaitMs);
-    this.$('rc-status').textContent = 'Procurando jogadores…';
+    this.$('rc-status').textContent = t('race.searching', 'Procurando jogadores…');
     ensurePlayer(1500).then((p) => {
       if (this.phase !== 'lobby' || this.session) return;
       this.startSession(p.id, p.name);
@@ -250,7 +251,7 @@ class RaceUI {
       audio.click();
       haptics.tap('light');
     }
-    this.$('rc-status').textContent = players.length >= RACE.players ? 'Sala completa!' : 'Procurando jogadores…';
+    this.$('rc-status').textContent = players.length >= RACE.players ? t('race.full', 'Sala completa!') : t('race.searching', 'Procurando jogadores…');
   }
 
   private renderSlots(players: RacePlayerInfo[], _ms: number): void {
@@ -263,11 +264,11 @@ class RaceUI {
       const li = document.createElement('li');
       if (!p) {
         li.className = 'rc-slot empty';
-        li.innerHTML = `<span class="rc-av"></span><span class="rc-name">Aguardando…</span>`;
+        li.innerHTML = `<span class="rc-av"></span><span class="rc-name">${t('race.waiting', 'Aguardando…')}</span>`;
       } else {
         li.className = 'rc-slot' + (p.slot === me ? ' me' : '');
         li.style.setProperty('--c', SLOT_COLORS[p.slot % SLOT_COLORS.length]);
-        li.innerHTML = `<span class="rc-av"></span><span class="rc-name">${esc(p.name)}</span>${p.slot === me ? '<em class="rc-tag">VOCÊ</em>' : ''}${p.bot ? '<em class="rc-tag bot">BOT</em>' : ''}${icon('check', { size: 22 })}`;
+        li.innerHTML = `<span class="rc-av"></span><span class="rc-name">${esc(p.name)}</span>${p.slot === me ? `<em class="rc-tag">${t('race.youTag', 'VOCÊ')}</em>` : ''}${p.bot ? '<em class="rc-tag bot">BOT</em>' : ''}${icon('check', { size: 22 })}`;
         li.querySelector('.rc-av')!.appendChild(renderSkinPreview(skinById(p.skin), 40, 0.4, { backdrop: false }));
       }
       ul.appendChild(li);
@@ -282,7 +283,7 @@ class RaceUI {
     this.you = you;
     this.durationSec = durationSec;
     this.renderSlots(players, 0);
-    this.$('rc-status').textContent = 'Preparar…';
+    this.$('rc-status').textContent = t('race.ready', 'Preparar…');
     this.phase = 'countdown';
     for (const p of players) this.alive.set(p.slot, true);
     this.game.startRace({
@@ -312,7 +313,7 @@ class RaceUI {
         shown = n;
         el.classList.remove('hidden', 'pop');
         void el.offsetWidth;
-        el.textContent = n < 3 ? String(steps[n]) : 'JÁ!';
+        el.textContent = n < 3 ? String(steps[n]) : t('race.go', 'JÁ!');
         el.classList.toggle('go', n === 3);
         el.classList.add('pop');
         if (n < 3) {
@@ -364,7 +365,7 @@ class RaceUI {
     this.game.raceStop();
     this.sendProgress();
     const el = this.$('rc-count');
-    el.textContent = 'TEMPO!';
+    el.textContent = t('race.timeUp', 'TEMPO!');
     el.classList.remove('hidden', 'pop', 'go');
     void el.offsetWidth;
     el.classList.add('pop', 'go');
@@ -407,7 +408,7 @@ class RaceUI {
         const pl = this.players.find((p) => p.slot === r[0]);
         const me = r[0] === this.you;
         const c = SLOT_COLORS[r[0] % SLOT_COLORS.length];
-        return `<li class="${me ? 'me' : ''}${r[3] ? '' : ' out'}" style="--c:${c}"><b>${i + 1}</b><i></i><span>${esc(me ? 'Você' : (pl?.name ?? '?'))}${this.debug && pl?.bot ? ' <small>bot</small>' : ''}</span><em>${r[3] ? r[1] : icon('close', { size: 14 }) + r[1]}</em></li>`;
+        return `<li class="${me ? 'me' : ''}${r[3] ? '' : ' out'}" style="--c:${c}"><b>${i + 1}</b><i></i><span>${esc(me ? t('race.you', 'Você') : (pl?.name ?? '?'))}${this.debug && pl?.bot ? ' <small>bot</small>' : ''}</span><em>${r[3] ? r[1] : icon('close', { size: 14 }) + r[1]}</em></li>`;
       })
       .join('');
   }
@@ -436,8 +437,8 @@ class RaceUI {
     const rows = this.sortedRows();
     const i = rows.findIndex((r) => r[0] === this.you);
     const left = rows.filter((r) => r[3] && r[0] !== this.you).length;
-    this.$('rc-dead-place').innerHTML = `${ordinal(i + 1)} <small>lugar por enquanto</small>`;
-    this.$('rc-dead-msg').textContent = left ? `${left} ainda na corrida… aguarde o resultado` : 'Calculando o resultado…';
+    this.$('rc-dead-place').innerHTML = `${ordinal(i + 1)} <small>${t('race.placeSoFar', 'lugar por enquanto')}</small>`;
+    this.$('rc-dead-msg').textContent = left ? t('race.left', '{n} ainda na corrida… aguarde o resultado', { n: left }) : t('race.calc', 'Calculando o resultado…');
   }
 
   /* ---------------- resultado ---------------- */
@@ -466,18 +467,18 @@ class RaceUI {
       haptics.success();
     } else audio.cash();
 
-    const title = place === 1 ? 'VITÓRIA!' : place <= 3 ? `${ordinal(place)} LUGAR!` : `${ordinal(place)} LUGAR`;
+    const title = place === 1 ? t('race.win', 'VITÓRIA!') : place <= 3 ? t('race.placeX', '{ord} LUGAR!', { ord: ordinal(place) }) : t('race.placeN', '{ord} LUGAR', { ord: ordinal(place) });
     const podium = [results[1], results[0], results[2]]
       .map((r, k) => {
         if (!r) return '<div class="rc-pod empty"></div>';
         const pos = [2, 1, 3][k];
-        return `<div class="rc-pod p${pos}${r.slot === this.you ? ' me' : ''}"><div class="rc-pod-av" data-skin="${esc(r.skin)}"></div><div class="rc-pod-name">${esc(r.slot === this.you ? 'Você' : r.name)}</div><div class="rc-pod-score">${r.score}</div><div class="rc-pod-base"><b>${pos}</b></div></div>`;
+        return `<div class="rc-pod p${pos}${r.slot === this.you ? ' me' : ''}"><div class="rc-pod-av" data-skin="${esc(r.skin)}"></div><div class="rc-pod-name">${esc(r.slot === this.you ? t('race.you', 'Você') : r.name)}</div><div class="rc-pod-score">${r.score}</div><div class="rc-pod-base"><b>${pos}</b></div></div>`;
       })
       .join('');
     const list = results
       .map(
         (r) =>
-          `<li class="${r.slot === this.you ? 'me' : ''}" style="--c:${SLOT_COLORS[r.slot % SLOT_COLORS.length]}"><b>${ordinal(r.place)}</b><span>${esc(r.slot === this.you ? 'Você' : r.name)}${this.debug && r.bot ? ' <small>bot</small>' : ''}</span><em>${r.score}</em><small class="rc-res-rw">+${r.coins}${icon('coin', { size: 16 })}${r.gems ? ` +${r.gems}${icon('gem', { size: 16 })}` : ''}</small></li>`,
+          `<li class="${r.slot === this.you ? 'me' : ''}" style="--c:${SLOT_COLORS[r.slot % SLOT_COLORS.length]}"><b>${ordinal(r.place)}</b><span>${esc(r.slot === this.you ? t('race.you', 'Você') : r.name)}${this.debug && r.bot ? ' <small>bot</small>' : ''}</span><em>${r.score}</em><small class="rc-res-rw">+${r.coins}${icon('coin', { size: 16 })}${r.gems ? ` +${r.gems}${icon('gem', { size: 16 })}` : ''}</small></li>`,
       )
       .join('');
     const el = this.$('rc-results');
@@ -486,14 +487,14 @@ class RaceUI {
       <div class="rc-podium">${podium}</div>
       <ol class="rc-res-list">${list}</ol>
       <div class="rc-reward">
-        <span>Você ganhou</span>
+        <span>${t('race.youWon', 'Você ganhou')}</span>
         <b>+${coins}${icon('coin', { size: 26 })}</b>${gems ? `<b>+${gems}${icon('gem', { size: 26 })}</b>` : ''}
       </div>
-      ${prog.coins || prog.gems ? `<p class="muted rc-reward-note">${ordinal(place)} lugar: ${rw.coins} moedas${rw.gems ? ` + ${rw.gems} gemas` : ''} · coletadas: ${prog.coins}${prog.gems ? ` + ${prog.gems} gemas` : ''}</p>` : ''}
-      <button class="btn btn-play small" id="rc-again">JOGAR DE NOVO</button>
+      ${prog.coins || prog.gems ? `<p class="muted rc-reward-note">${t('race.rewardNote', '{ord} lugar: {n} moedas', { ord: ordinal(place), n: rw.coins })}${rw.gems ? ` + ${t('race.nGems', '{n} gemas', { n: rw.gems })}` : ''} · ${t('race.collected', 'coletadas: {n}', { n: prog.coins })}${prog.gems ? ` + ${t('race.nGems', '{n} gemas', { n: prog.gems })}` : ''}</p>` : ''}
+      <button class="btn btn-play small" id="rc-again">${t('over.again', 'JOGAR DE NOVO')}</button>
       <div class="rc-row">
-        <button class="btn btn-ghost" id="rc-home">${icon('home')} Menu</button>
-        <button class="btn btn-ghost" id="rc-rank">${icon('trophy')} Ranking</button>
+        <button class="btn btn-ghost" id="rc-home">${icon('home')} ${t('over.home', 'Menu')}</button>
+        <button class="btn btn-ghost" id="rc-rank">${icon('trophy')} ${t('orbit.ranking', 'Ranking')}</button>
       </div>`;
     el.querySelectorAll<HTMLElement>('[data-skin]').forEach((d) => d.appendChild(renderSkinPreview(skinById(d.dataset.skin!), 64, 0.4)));
     this.$('rc-again').onclick = () => this.again();
@@ -522,14 +523,14 @@ class RaceUI {
     const body = this.$('rk-body');
     const meEl = this.$('rk-me');
     if (!(scope in this.rkCache)) {
-      body.innerHTML = `<div class="rk-loading"><span class="rc-dots"><i></i><i></i><i></i></span>Carregando…</div>`;
+      body.innerHTML = `<div class="rk-loading"><span class="rc-dots"><i></i><i></i><i></i></span>${t('common.loading', 'Carregando…')}</div>`;
       meEl.innerHTML = '';
       this.rkCache[scope] = await fetchLeaderboard(scope);
       if (this.rkScope !== scope) return;
     }
     const d = this.rkCache[scope];
     if (!d) {
-      body.innerHTML = `<div class="rk-empty">${icon('planet', { size: 64 })}<b>Sem conexão</b><span>O ranking precisa de internet. Seu recorde: <b>${save.best}</b></span><button class="btn btn-ghost" id="rk-retry">${icon('refresh')} Tentar de novo</button></div>`;
+      body.innerHTML = `<div class="rk-empty">${icon('planet', { size: 64 })}<b>${t('net.offline', 'Sem conexão')}</b><span>${t('rank.offline', 'O ranking precisa de internet. Seu recorde:')} <b>${save.best}</b></span><button class="btn btn-ghost" id="rk-retry">${icon('refresh')} ${t('common.retry', 'Tentar de novo')}</button></div>`;
       meEl.innerHTML = '';
       this.$('rk-retry').onclick = () => {
         delete this.rkCache[scope];
@@ -538,29 +539,29 @@ class RaceUI {
       return;
     }
     if (!d.entries.length) {
-      body.innerHTML = `<div class="rk-empty">${icon('trophy', { size: 64 })}<b>Ninguém aqui ainda</b><span>Jogue uma partida e seja o primeiro${scope === 'week' ? ' da semana' : ''}!</span></div>`;
+      body.innerHTML = `<div class="rk-empty">${icon('trophy', { size: 64 })}<b>${t('rank.empty', 'Ninguém aqui ainda')}</b><span>${scope === 'week' ? t('rank.emptyWeek', 'Jogue uma partida e seja o primeiro da semana!') : t('rank.emptyAll', 'Jogue uma partida e seja o primeiro!')}</span></div>`;
     } else {
       const top = d.entries.slice(0, 3);
       const pod = [top[1], top[0], top[2]]
         .map((r, k) => {
           if (!r) return '<div class="rc-pod empty"></div>';
           const pos = [2, 1, 3][k];
-          return `<div class="rc-pod p${pos}${r.me ? ' me' : ''}"><div class="rc-pod-av" data-skin="${esc(r.skin)}"></div><div class="rc-pod-name">${esc(r.me ? 'Você' : r.name)}</div><div class="rc-pod-score">${r.score}</div><div class="rc-pod-base"><b>${pos}</b></div></div>`;
+          return `<div class="rc-pod p${pos}${r.me ? ' me' : ''}"><div class="rc-pod-av" data-skin="${esc(r.skin)}"></div><div class="rc-pod-name">${esc(r.me ? t('race.you', 'Você') : r.name)}</div><div class="rc-pod-score">${r.score}</div><div class="rc-pod-base"><b>${pos}</b></div></div>`;
         })
         .join('');
       const rest = d.entries
         .slice(3)
-        .map((r) => `<li class="${r.me ? 'me' : ''}"><b>${r.rank}</b><span>${esc(r.name)}${r.me ? ' <em class="rc-tag">VOCÊ</em>' : ''}</span><em>${r.score}</em></li>`)
+        .map((r) => `<li class="${r.me ? 'me' : ''}"><b>${r.rank}</b><span>${esc(r.name)}${r.me ? ` <em class="rc-tag">${t('race.youTag', 'VOCÊ')}</em>` : ''}</span><em>${r.score}</em></li>`)
         .join('');
-      body.innerHTML = `<div class="rc-podium rk-podium">${pod}</div>${rest ? `<ol class="rk-list">${rest}</ol>` : ''}<p class="muted rk-note">${scope === 'week' ? `Semana ${esc(d.week.split('-W')[1] ?? '')} · zera toda segunda-feira` : 'Melhor pontuação de cada jogador'}</p>`;
+      body.innerHTML = `<div class="rc-podium rk-podium">${pod}</div>${rest ? `<ol class="rk-list">${rest}</ol>` : ''}<p class="muted rk-note">${scope === 'week' ? t('rank.weekNote', 'Semana {n} · zera toda segunda-feira', { n: esc(d.week.split('-W')[1] ?? '') }) : t('rank.allNote', 'Melhor pontuação de cada jogador')}</p>`;
       body.querySelectorAll<HTMLElement>('[data-skin]').forEach((el) => el.appendChild(renderSkinPreview(skinById(el.dataset.skin!), 60, 0.4)));
     }
     // linha "Você" fixa embaixo
     const me = d.me;
     const name = esc(displayName());
     meEl.innerHTML = me
-      ? `<div class="rk-me-row"><b>${me.rank}º</b><span class="rk-me-av"></span><span class="rk-me-name">${name}<small>Sua posição</small></span><em>${me.score}</em></div>`
-      : `<div class="rk-me-row out"><b>—</b><span class="rk-me-av"></span><span class="rk-me-name">${name}<small>${save.best > 0 ? `Recorde ${save.best} · ainda fora do top` : 'Jogue para entrar no ranking!'}</small></span><em></em></div>`;
+      ? `<div class="rk-me-row"><b>${ordinal(me.rank)}</b><span class="rk-me-av"></span><span class="rk-me-name">${name}<small>${t('rank.yourPos', 'Sua posição')}</small></span><em>${me.score}</em></div>`
+      : `<div class="rk-me-row out"><b>—</b><span class="rk-me-av"></span><span class="rk-me-name">${name}<small>${save.best > 0 ? t('rank.outOfTop', 'Recorde {n} · ainda fora do top', { n: save.best }) : t('rank.playToEnter', 'Jogue para entrar no ranking!')}</small></span><em></em></div>`;
     meEl.querySelector('.rk-me-av')!.appendChild(renderSkinPreview(skinById(me?.skin ?? save.skin), 34, 0.4, { backdrop: false }));
   }
 }

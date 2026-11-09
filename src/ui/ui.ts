@@ -280,7 +280,7 @@ export class UI {
     $('#btn-free').onclick = () => this.freeCoins();
     $('#btn-restore').onclick = async () => {
       const ok = await restore();
-      this.toast(ok ? 'Compras restauradas' : isNative ? 'Nada para restaurar' : 'Disponível no app Android', ok ? 'check' : 'shield');
+      this.toast(ok ? t('settings.restored', 'Compras restauradas') : isNative ? t('settings.nothingToRestore', 'Nada para restaurar') : t('common.androidOnly', 'Disponível no app Android'), ok ? 'check' : 'shield');
     };
     $('#btn-privacy-ads').onclick = () => showPrivacyOptions();
     $('#btn-claim-all').onclick = () => this.online.claimAll();
@@ -343,7 +343,7 @@ export class UI {
       if (this.modal === 'shop') this.shop.render();
       if (this.modal === 'starter') this.renderStarter();
     });
-    bus.on('mission-done', (m: Mission) => this.toast(`Missão completa: ${missionText(m)}`, 'target'));
+    bus.on('mission-done', (m: Mission) => this.toast(t('missions.done', 'Missão completa: {m}', { m: missionText(m) }), 'target'));
     bus.on('player', () => this.modal === 'settings' && this.online.renderProfile());
     bus.on('online', () => this.modal === 'settings' && this.online.renderProfile());
     bus.on('inventory', () => this.modal === 'shop' && this.shop.render());
@@ -437,19 +437,19 @@ export class UI {
     $('#boost-title').innerHTML = `${icon(inf.icon)} ${inf.name.toUpperCase()}`;
     const bundle = productById('boost_bundle')!;
     $('#boost-body').innerHTML = `
-      <div class="boost-hero"><div class="plate plate-${inf.plate}">${icon(inf.icon)}</div><div class="bh-count">Você tem <b>${boostCount(id)}</b></div></div>
+      <div class="boost-hero"><div class="plate plate-${inf.plate}">${icon(inf.icon)}</div><div class="bh-count">${t('boost.youHave', 'Você tem')} <b>${boostCount(id)}</b></div></div>
       <p class="muted">${inf.desc}</p>
       <button class="btn btn-green" id="bb-coins" ${save.coins < pk.coins.price ? 'disabled' : ''}>+${pk.coins.n} ${inf.plural} · ${COIN} ${fmt(pk.coins.price)}</button>
       <button class="btn btn-gem" id="bb-gems" ${save.gems < pk.gems.price ? 'disabled' : ''}>+${pk.gems.n} ${inf.plural} · ${GEM} ${pk.gems.price}</button>
-      <button class="btn btn-gold" id="bb-iap">${icon('rocket')} Kit Turbo (5 de cada) · ${esc(priceOf(bundle))}</button>
-      <button class="link" data-open="shop" data-tab="upgrades">Ver todas as melhorias</button>`;
+      <button class="btn btn-gold" id="bb-iap">${icon('rocket')} ${t('boost.kit', 'Kit Turbo (5 de cada)')} · ${esc(priceOf(bundle))}</button>
+      <button class="link" data-open="shop" data-tab="upgrades">${t('boost.seeAll', 'Ver todas as melhorias')}</button>`;
     const after = (n: number) => {
       if (!n) return;
       audio.cash();
       haptics.tap('medium');
       this.boostSel[id] = true;
       writeLoadout(this.boostSel);
-      this.toast(`+${n} ${inf.plural}! Ativado para a próxima partida`, inf.icon);
+      this.toast(t('boost.bought', '+{n} {item}! Ativado para a próxima partida', { n, item: inf.plural }), inf.icon);
       this.closeModal();
     };
     $('#bb-coins').onclick = () => after(buyBoostPack(id, 'coins'));
@@ -480,7 +480,7 @@ export class UI {
     const el = $('#hud-boosts');
     el.classList.remove('show');
     if (!used.length) return;
-    el.innerHTML = used.map((i) => `<span class="plate sm round plate-${i === 'shield' ? 'cyan' : i === 'magnet' ? 'pink' : 'gold'}">${icon(i)}</span>`).join('') + `<b>${lucky ? 'Escudo da sorte!' : 'Turbos ativos!'}</b>`;
+    el.innerHTML = used.map((i) => `<span class="plate sm round plate-${i === 'shield' ? 'cyan' : i === 'magnet' ? 'pink' : 'gold'}">${icon(i)}</span>`).join('') + `<b>${lucky ? t('hud.luckyShield', 'Escudo da sorte!') : t('hud.boostsOn', 'Turbos ativos!')}</b>`;
     void el.offsetWidth;
     el.classList.add('show');
   }
@@ -583,13 +583,13 @@ export class UI {
     $('#over-asteroids').textContent = String(stats.asteroids ?? 0);
     $('#over-gems').textContent = String(stats.gems);
     $('#over-newbest').classList.toggle('hidden', !newBest);
-    $('#over-title').textContent = newBest ? 'INCRÍVEL!' : pickPhrase(this.game.score);
+    $('#over-title').textContent = newBest ? t('over.amazing', 'INCRÍVEL!') : pickPhrase(this.game.score);
     // resumo das moedas com contagem animada
     const lvl = upgradeLevel('coinValue');
     $('#cs-up-row').classList.toggle('hidden', lvl === 0);
     $('#cs-dbl-row').classList.toggle('hidden', !hasCoinDoubler());
     $('#cs-upsell').classList.toggle('hidden', hasCoinDoubler() || rc.total < 5);
-    $('#cs-up-row span:first-child').innerHTML = `${icon('arrow-up', { size: 18 })} Melhoria +${UPGRADE_FX.coinPct(lvl)}%`;
+    $('#cs-up-row span:first-child').innerHTML = `${icon('arrow-up', { size: 18 })} ${t('over.upgPct', 'Melhoria +{n}%', { n: UPGRADE_FX.coinPct(lvl) })}`;
     const base = $('#cs-base');
     const up = $('#cs-up');
     const dbl = $('#cs-dbl');
@@ -605,7 +605,7 @@ export class UI {
     const dblBtn = $<HTMLButtonElement>('#btn-double');
     dblBtn.classList.toggle('hidden', rc.total < 3);
     dblBtn.disabled = false;
-    dblBtn.innerHTML = `${icon('video')} Dobrar moedas +${fmt(rc.total)} ${icon('coin')}`;
+    dblBtn.innerHTML = `${icon('video')} ${t('over.doubleN', 'Dobrar moedas +{n}', { n: fmt(rc.total) })} ${icon('coin')}`;
     if (newBest) {
       audio.unlock2();
       haptics.success();
@@ -625,11 +625,11 @@ export class UI {
       addCoins(c);
       this.flyReward({ coins: c }, btn);
       countUp($('#over-coins'), c * 2, 600, c);
-      btn.innerHTML = `${icon('check')} Moedas dobradas!`;
+      btn.innerHTML = `${icon('check')} ${t('over.doubled', 'Moedas dobradas!')}`;
       audio.cash();
     } else {
       btn.disabled = false;
-      this.toast('Vídeo indisponível agora', 'video');
+      this.toast(t('shop.noVideo', 'Vídeo indisponível agora'), 'video');
     }
   }
 
@@ -657,7 +657,7 @@ export class UI {
 
   private speedToast(tier: number): void {
     const el = $('#speed-toast');
-    el.innerHTML = `${icon('bolt', { size: 20 })} Velocidade x${tier + 1}`;
+    el.innerHTML = `${icon('bolt', { size: 20 })} ${t('hud.speed', 'Velocidade x{n}', { n: tier + 1 })}`;
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
@@ -677,7 +677,7 @@ export class UI {
       g
         ? { coins: g.coins, gems: g.gems, skins: g.skins, trails: g.trails, boosts: g.boosts, noAds: g.noAds, coinDoubler: g.coinDoubler }
         : { gems: def.gems, coins: def.coins },
-      { title: 'OBRIGADO!', subtitle: `${productTitle(def)} · compra concluída`, button: 'DEMAIS!' },
+      { title: t('buy.thanks', 'OBRIGADO!'), subtitle: t('buy.done', '{item} · compra concluída', { item: productTitle(def) }), button: t('buy.ok', 'DEMAIS!') },
     );
   }
 
@@ -693,7 +693,7 @@ export class UI {
     const def = productById('starter_pack')!;
     $('#starter-gems').textContent = fmt(def.gems);
     $('#starter-coins').textContent = fmt(def.coins);
-    $('#btn-starter-buy').innerHTML = `${icon('bag')} Pegar por ${esc(priceOf(def))}`;
+    $('#btn-starter-buy').innerHTML = `${icon('bag')} ${t('starter.buy', 'Pegar por {price}', { price: esc(priceOf(def)) })}`;
     const cv = $<HTMLCanvasElement>('#starter-skin');
     const t0 = performance.now();
     const loop = (t: number) => {
@@ -810,7 +810,7 @@ export class UI {
         const done = avail ? i < idx : i < save.dailyStreak;
         const cls = done ? 'done' : avail && i === idx ? 'today' : '';
         return `<div class="day ${cls} ${i === 6 ? 'last' : ''}">
-          <small>Dia ${i + 1}</small>
+          <small>${t('daily.day', 'Dia {n}', { n: i + 1 })}</small>
           <span class="day-art">${icon(dailyArt(r, i === 6), { size: i === 6 ? 52 : 38 })}</span>
           <span class="day-amt">${r.coins ? `<b><i class="coin"></i>${r.coins}</b>` : ''}${r.gems ? `<b><i class="gem"></i>${r.gems}</b>` : ''}</span>
           ${done ? `<span class="day-check">${icon('check')}</span>` : ''}
@@ -819,7 +819,7 @@ export class UI {
       .join('');
     $<HTMLButtonElement>('#btn-daily').disabled = !avail;
     $<HTMLButtonElement>('#btn-daily2').disabled = !avail;
-    $('#btn-daily').innerHTML = avail ? 'Pegar' : `${icon('clock')} Volte amanhã`;
+    $('#btn-daily').innerHTML = avail ? t('daily.take', 'Pegar') : `${icon('clock')} ${t('daily.tomorrow', 'Volte amanhã')}`;
   }
 
   private renderMissions(): void {
@@ -954,21 +954,21 @@ function dailyArt(r: { coins?: number; gems?: number }, last: boolean): IconName
 function missionText(m: Mission): string {
   switch (m.type) {
     case 'planets':
-      return `Pouse em ${m.target} planetas`;
+      return t('mission.planets', 'Pouse em {n} planetas', { n: m.target });
     case 'coins':
-      return `Colete ${m.target} moedas`;
+      return t('mission.coins', 'Colete {n} moedas', { n: m.target });
     case 'perfects':
-      return `Faça ${m.target} pousos PERFEITOS`;
+      return t('mission.perfects', 'Faça {n} pousos PERFEITOS', { n: m.target });
     case 'score':
-      return `Faça ${m.target} pontos numa partida`;
+      return t('mission.score', 'Faça {n} pontos numa partida', { n: m.target });
     case 'runs':
-      return `Jogue ${m.target} partidas`;
+      return t('mission.runs', 'Jogue {n} partidas', { n: m.target });
   }
 }
 
 function pickPhrase(score: number): string {
-  if (score >= 50) return 'LENDÁRIO!';
-  if (score >= 30) return 'MANDOU BEM!';
-  if (score >= 15) return 'QUASE LÁ!';
-  return 'FIM DE JOGO';
+  if (score >= 50) return t('over.legend', 'LENDÁRIO!');
+  if (score >= 30) return t('over.great', 'MANDOU BEM!');
+  if (score >= 15) return t('over.almost', 'QUASE LÁ!');
+  return t('over.title', 'FIM DE JOGO');
 }
