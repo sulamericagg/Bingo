@@ -2,6 +2,7 @@
  *  PRÉ-VISUALIZAÇÕES DA LOJA — skins e rastros em canvas.
  *  Fundo com brilho pela raridade (raios girando p/ épico+, faíscas p/ mítico).
  * ============================================================ */
+import { drawAvatar, type AvatarData } from './avatar';
 import { drawPlayer, type PlayerPose } from './character';
 import { makeCanvas, rgba, TAU } from './math';
 import { Particles } from './particles';
@@ -170,5 +171,33 @@ export function renderTrailPreview(trail: Trail, sizeCss: number, target?: HTMLC
   drawPlayer(x, skinById('bloop'), 15, { t: 0.3, blink: 0, lookX: 0, lookY: -1, sx: 0.9, sy: 1.12, mood: 'fly', lx: -0.55, ly: -0.83, still: true });
   x.restore();
   fx.clear();
+  return c;
+}
+
+/* ============================================================
+ *  CRIE SEU BLOOP — miniaturas do avatar (criador de personagem)
+ * ============================================================ */
+
+export interface AvatarPreviewOpts extends SkinPreviewOpts {
+  /** foco/zoom: centro em unidades de R (cima = −y) e fator de zoom */
+  focusY?: number;
+  zoom?: number;
+  /** raridade do fundo (padrão: sem fundo) */
+  rarity?: Rarity;
+}
+
+/** Miniatura estática (ou animada, reaproveitando `opts.target`) de um avatar montado. */
+export function renderAvatarPreview(av: AvatarData, sizeCss: number, t = 0.6, opts: AvatarPreviewOpts = {}): HTMLCanvasElement {
+  const S = sizeCss;
+  const [c, x] = setup(S, opts.target);
+  const zoom = opts.zoom ?? 1;
+  const R = S * 0.25 * zoom;
+  const cx = S / 2;
+  const cy = S * 0.56 - (opts.focusY ?? 0) * R;
+  if (opts.rarity && opts.backdrop !== false) drawRarityBackdrop(x, opts.rarity, S, S / 2, S / 2, t);
+  x.save();
+  x.translate(cx, cy);
+  drawAvatar(x, av, R, { t, blink: 0, lookX: 0.15, lookY: 0.1, sx: 1, sy: 1, mood: opts.mood ?? 'idle', lx: -0.55, ly: -0.83, still: true });
+  x.restore();
   return c;
 }

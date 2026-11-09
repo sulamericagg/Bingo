@@ -6,6 +6,8 @@
 import { rng, TAU } from './math';
 import { glow } from './sprites';
 import type { Face, Skin } from './skins';
+import { drawAvatar } from './avatar';
+import { save } from '../core/storage';
 
 export interface PlayerPose {
   t: number;
@@ -235,6 +237,7 @@ const DASH_NONE: number[] = [];
  * ============================================================ */
 
 export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p: PlayerPose): void {
+  if (skin.id === 'custom') return drawAvatar(x, save.avatar, R, p);
   const d = derive(skin);
   const ghost = skin.pattern === 'ghost';
   const calm = (p.mood === 'idle' || p.mood === 'happy') && !p.still;

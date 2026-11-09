@@ -58,6 +58,8 @@ export interface Skin {
 export const SKINS: Skin[] = [
   /* ---------------- COMUM ---------------- */
   { id: 'bloop', name: 'Bloop', light: '#ff8fd8', dark: '#b63fd6', belly: '#ffd2f1', eye: '#2a1140', accessory: 'antenna', accent: '#fff36b', pattern: 'none', price: {}, rarity: 'common', desc: 'O original. Fofo e saltitante.' },
+  /* personagem montado no "Crie seu Bloop" (desenhado por avatar.ts; cores/raridade sincronizadas lá) */
+  { id: 'custom', name: 'Meu Bloop', light: '#c9a3a3', dark: '#8a6a6a', belly: '#e8d0d0', eye: '#231d1a', accessory: 'none', accent: '#a8b08f', pattern: 'none', price: {}, rarity: 'common', desc: 'Criado por você, peça por peça.' },
   { id: 'mint', name: 'Hortelã', light: '#9dffcb', dark: '#19b67f', belly: '#e1ffef', eye: '#0d3527', accessory: 'leaf', accent: '#3fe06c', pattern: 'spots', price: { coins: 250 }, rarity: 'common', desc: 'Fresquinho como uma folha.' },
   { id: 'sunny', name: 'Solzinho', light: '#fff38a', dark: '#ffaa1c', belly: '#fffbe0', eye: '#4a2a00', iris: '#c06a00', accessory: 'bow', accent: '#ff5d8f', pattern: 'none', price: { coins: 450 }, rarity: 'common', desc: 'Sempre de bom humor.' },
   { id: 'chef', name: 'Chef Bloop', light: '#ffe9dc', dark: '#e59f86', belly: '#ffffff', eye: '#3a1a10', iris: '#8a4a2a', accessory: 'chef', accent: '#ff4d4d', pattern: 'none', face: 'mustache', price: { ads: 3 }, rarity: 'common', desc: 'Cozinha órbitas al dente.' },

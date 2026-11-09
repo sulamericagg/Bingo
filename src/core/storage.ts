@@ -41,7 +41,22 @@ export interface SaveData {
   boosts: { shield: number; magnet: number; headstart: number };
   /** Quantas vezes cada dica já foi mostrada (ex.: tips.asteroid). */
   tips: Record<string, number>;
+  /** "Crie seu Bloop": peças equipadas por slot + cores (ver game/avatar.ts). */
+  avatar: AvatarSave;
+  /** Peças/paletas compradas do criador (as grátis não precisam estar aqui). */
+  ownedParts: string[];
 }
+
+export interface AvatarSave {
+  parts: Record<'body' | 'material' | 'pattern' | 'eyes' | 'mouth' | 'head' | 'face' | 'back' | 'aura', string>;
+  colors: { primary: string; secondary: string };
+}
+
+/** Avatar inicial (de propósito tosco). Espelha STARTER_AVATAR em game/avatar.ts. */
+const defaultAvatar = (): AvatarSave => ({
+  parts: { body: 'b_blob', material: 'm_crayon', pattern: 'p_none', eyes: 'e_dots', mouth: 'mo_line', head: 'h_bag', face: 'f_bandaid', back: 'k_none', aura: 'a_none' },
+  colors: { primary: '#c9a3a3', secondary: '#a8b08f' },
+});
 
 const defaults = (): SaveData => ({
   coins: 0,
@@ -50,7 +65,7 @@ const defaults = (): SaveData => ({
   runs: 0,
   skin: 'bloop',
   trail: 'spark',
-  ownedSkins: ['bloop'],
+  ownedSkins: ['bloop', 'custom'],
   ownedTrails: ['spark'],
   adProgress: {},
   noAds: false,
@@ -71,6 +86,8 @@ const defaults = (): SaveData => ({
   upgrades: { magnet: 0, shield: 0, coinValue: 0 },
   boosts: { shield: 0, magnet: 0, headstart: 0 },
   tips: {},
+  avatar: defaultAvatar(),
+  ownedParts: [],
 });
 
 function load(): SaveData {
@@ -84,6 +101,11 @@ function load(): SaveData {
       m.upgrades = { ...d.upgrades, ...(o && o.upgrades) };
       m.boosts = { ...d.boosts, ...(o && o.boosts) };
       m.tips = { ...(o && o.tips) };
+      const da = defaultAvatar();
+      const oa = (o && o.avatar) || {};
+      m.avatar = { parts: { ...da.parts, ...oa.parts }, colors: { ...da.colors, ...oa.colors } };
+      m.ownedParts = Array.isArray(o?.ownedParts) ? o.ownedParts : [];
+      if (!m.ownedSkins.includes('custom')) m.ownedSkins.push('custom');
       return m;
     }
   } catch {
