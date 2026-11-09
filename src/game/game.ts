@@ -1,6 +1,7 @@
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import { FpsLimiter, migrateLowFx, QualityGovernor, type QualityMode, type QualitySettings } from '../core/quality';
+import { Bloom, drawFlare } from '../gfx/light';
 import * as haptics from '../core/haptics';
 import { persist, save } from '../core/storage';
 import { angleDiff, clamp, lerp, makeCanvas, mixHex, rand, rng, TAU } from './math';
@@ -361,6 +362,7 @@ export class Game {
   private nebulas: HTMLCanvasElement[] = [];
   private farPlanets: PlanetSprite[] = [];
   private vignette!: HTMLCanvasElement;
+  private bloomFx = new Bloom();
   /** fundo (degradê + nebulosa + planeta distante + vinheta) num canvas opaco, refeito só quando muda */
   private bd!: HTMLCanvasElement;
   private bdx!: CanvasRenderingContext2D;
@@ -1933,6 +1935,13 @@ export class Game {
 
     /* ---- pós ---- */
     x.setTransform(1, 0, 0, 1, 0, 0);
+    // bloom (só Alto): sutil sempre, forte nos perfeitos/ondas de choque/salto de bioma
+    if (this.q.bloom) {
+      const boost = Math.max(this.flash, this.warpT > 0 ? 0.6 : 0);
+      this.bloomFx.apply(x, this.canvas, cw, ch, 0.22 + boost * 0.7);
+      // reflexo de lente no salto de bioma
+      if (this.warpT > 0) drawFlare(x, cw * 0.82, ch * 0.18, cw * 0.5, ch * 0.5, Math.min(cw, ch) * 0.16, Math.min(1, this.warpT * 2));
+    }
     if (this.race && !this.race.ended) this.drawGhostMarkers(x);
     if (this.warn > 0) {
       // bordas vermelhas pulsando quando um asteroide se aproxima
