@@ -9,6 +9,10 @@ import { handleAdminApi } from './admin-api';
 import { getLeaderboard, submitScore } from './leaderboard';
 import { challenges, claim, redeem, register, sync } from './public';
 import { raceJoin } from './race';
+import { champClaim, champGet, champList, champScore, champSignup } from './champ';
+import { chatJoin } from './chat';
+import { presenceJoin } from './presence';
+import { chatReport, handleSocialAdmin, profileGet, profilePut } from './social';
 import { HttpError, json } from './util';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
@@ -39,6 +43,15 @@ const PUBLIC: Record<string, PublicHandler> = {
   'GET /api/challenges': challenges,
   'POST /api/score': submitScore,
   'GET /api/leaderboard': getLeaderboard,
+  // social / campeonatos
+  'POST /api/profile': profilePut,
+  'GET /api/profile': profileGet,
+  'POST /api/chat/report': chatReport,
+  'GET /api/champ/list': champList,
+  'GET /api/champ/get': champGet,
+  'POST /api/champ/signup': champSignup,
+  'POST /api/champ/score': champScore,
+  'POST /api/champ/claim': champClaim,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -68,6 +81,9 @@ function adminPage(): Response {
 }
 
 export { RaceRoom } from './race';
+export { PresenceRoom } from './presence';
+export { ChatRoom } from './chat';
+export { Championship } from './champ';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -75,6 +91,14 @@ export default {
     const path = url.pathname;
 
     if (path === '/admin' || path === '/admin/' || path === '/admin/index.html') return adminPage();
+
+    if (path.startsWith('/api/admin/social/')) {
+      try {
+        return await handleSocialAdmin(req, env, url);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
 
     if (path.startsWith('/api/admin/') || path === '/api/admin') {
       try {
@@ -87,6 +111,16 @@ export default {
     if (path === '/api/race/join') {
       try {
         return await raceJoin(req, env);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // WebSockets do social: /api/presence/<jogo> e /api/chat/<sala>
+    const ws = /^\/api\/(presence|chat)\/([a-z0-9-]{1,30})$/.exec(path);
+    if (ws && !PUBLIC[`${req.method} ${path}`]) {
+      try {
+        return ws[1] === 'presence' ? await presenceJoin(req, env, ws[2]) : await chatJoin(req, env, ws[2]);
       } catch (e) {
         return errorResponse(e);
       }

@@ -306,12 +306,317 @@ async function main() {
   const cs = await mkClient('Solo', 'bloop', 1);
   check('jogador sozinho: 4 bots e resultado', cs.start?.players?.length === 5 && cs.start.players.filter((p) => p.bot).length === 4 && cs.end?.results?.length === 5, cs.start?.players);
 
+  await socialTests(T);
+
   console.log('\nRate limit');
   let last;
   for (let i = 0; i < 9; i++) last = await call('POST', '/api/admin/login', { password: 'x' + i });
   check('login bloqueado após muitas tentativas → 429', last.status === 429, last.data);
 
   console.log(`\n${passed} ok, ${failed} falha(s)`);
+}
+
+/* ======================= SOCIAL (presença, chat, campeonatos) ======================= */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Cliente WebSocket que guarda todas as mensagens recebidas. */
+function wsClient(path) {
+  return new Promise((resolve) => {
+    const c = { msgs: [], open: false, closed: false };
+    const ws = new WebSocket(BASE.replace(/^http/, 'ws') + path);
+    c.ws = ws;
+    c.send = (o) => ws.send(JSON.stringify(o));
+    c.of = (type) => c.msgs.filter((m) => m.type === type);
+    c.wait = async (pred, ms = 4000) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        const m = c.msgs.find(pred);
+        if (m) return m;
+        await sleep(40);
+      }
+      return null;
+    };
+    ws.onopen = () => {
+      c.open = true;
+      resolve(c);
+    };
+    ws.onmessage = (ev) => {
+      try {
+        c.msgs.push(JSON.parse(ev.data));
+      } catch {}
+    };
+    ws.onclose = () => {
+      c.closed = true;
+      if (!c.open) resolve(c);
+    };
+    ws.onerror = () => {};
+  });
+}
+
+async function socialTests(T) {
+  console.log('\nPresença (drop-in)');
+  const ida = crypto.randomUUID();
+  const idb = crypto.randomUUID();
+  const pa = await wsClient('/api/presence/orbit');
+  pa.send({ type: 'hello', id: ida, name: 'Ana', skin: 'bloop' });
+  const wa = await pa.wait((m) => m.type === 'welcome');
+  check('1º cliente recebe welcome (sem peers)', wa && wa.you === ida && Array.isArray(wa.peers), wa);
+  const pb = await wsClient('/api/presence/orbit');
+  pb.send({ type: 'hello', id: idb, name: 'Beto', skin: 'king' });
+  const wb = await pb.wait((m) => m.type === 'welcome');
+  check('2º cliente vê o 1º na lista de peers', wb?.peers?.some((p) => p.id === ida && p.name === 'Ana'), wb);
+  const ja = await pa.wait((m) => m.type === 'join');
+  check('1º cliente recebe "join" do 2º', ja?.p?.id === idb && ja.p.name === 'Beto', ja);
+  pa.send({ type: 's', s: { x: 10.123, y: 20, bad: 'x' } });
+  const sb = await pb.wait((m) => m.type === 's');
+  check('estado é retransmitido (números, arredondado)', sb?.id === ida && sb.s.x === 10.12 && sb.s.y === 20 && !('bad' in sb.s), sb);
+  pb.send({ type: 'e', code: 'joinha' });
+  const ea = await pa.wait((m) => m.type === 'e');
+  check('emote chega ao outro jogador', ea?.id === idb && ea.code === 'joinha', ea);
+  pb.send({ type: 'e', code: 'palavrao' });
+  await sleep(300);
+  check('emote desconhecido é ignorado', pa.of('e').length === 1);
+  pb.ws.close();
+  const la = await pa.wait((m) => m.type === 'leave');
+  check('saída avisa os outros ("leave")', la?.id === idb, la);
+  pa.ws.close();
+  const many = [];
+  for (let i = 0; i < 7; i++) {
+    const c = await wsClient('/api/presence/shardtest');
+    c.send({ type: 'hello', id: crypto.randomUUID(), name: 'P' + i, skin: 'bloop' });
+    await c.wait((m) => m.type === 'welcome');
+    many.push(c);
+  }
+  const lastW = many[6].msgs.find((m) => m.type === 'welcome');
+  check('7º jogador vai para outro shard (máx. 6 por sala)', lastW && lastW.peers.length === 0 && many[5].msgs.find((m) => m.type === 'welcome').peers.length === 5, lastW);
+  many.forEach((c) => c.ws.close());
+
+  console.log('\nFiltro do chat');
+  const F = async (text) => (await call('POST', '/api/admin/social/chat/test', { text }, T)).data;
+  const blocked = {
+    'pt palavrão': 'que porra é essa',
+    'pt insulto': 'vc é um idiota',
+    'en palavrão': 'what the fuck',
+    'en insulto': 'you are stupid',
+    'es palavrão': 'eres un pendejo',
+    'es insulto': 'qué mierda',
+    'leetspeak c4r4lh0': 'c4r4lh0 mano',
+    'leetspeak f*ck/sh1t': 'sh1t',
+    'letras repetidas': 'merdaaaaa',
+    'letras separadas': 'p u t a',
+    'letras com pontos': 'f.u.c.k you',
+    'acento': 'idióta',
+  };
+  for (const [name, text] of Object.entries(blocked)) {
+    const r = await F(text);
+    check(`bloqueia ${name}: "${text}"`, r && (!r.ok || r.text.includes('###')), r);
+  }
+  const pii = {
+    telefone: 'me liga 11 98765-4321',
+    'telefone colado': '11987654321',
+    email: 'manda pra ana.silva@gmail.com',
+    'email com arroba escrito': 'ana arroba gmail ponto com',
+    url: 'entra em www.site.com',
+    'url https': 'https://exemplo.org/x',
+    'dominio solto': 'joga em meujogo.com.br',
+    '@perfil': 'me segue @bloop_kid',
+    whatsapp: 'me chama no whatsapp',
+    zap: 'passa teu zap',
+    insta: 'qual teu insta',
+    telegram: 'tem telegram?',
+    endereço: 'moro na rua das flores 12',
+  };
+  for (const [name, text] of Object.entries(pii)) {
+    const r = await F(text);
+    check(`dado pessoal recusado (${name})`, r && !r.ok && r.reason === 'pii', r);
+  }
+  const fine = ['oi pessoal!', 'boa partida, gg', 'vamos jogar de novo?', 'computador novo', 'instalar o jogo', 'sem atalho hoje', 'esse é o melhor jogo', 'Hola amigos', 'nice run, well played', 'fiz 120 pontos', 'sexta feira tem copa', 'enviado'];
+  for (const text of fine) {
+    const r = await F(text);
+    check(`mensagem normal passa: "${text}"`, r?.ok && r.text === text, r);
+  }
+  check('mensagem longa (>80) recusada', (await F('a'.repeat(81))).reason === 'long');
+  let r = await call('PUT', '/api/admin/social/chat/words', { words: ['bobalhao'] }, T);
+  check('admin salva palavra extra', r.data?.words?.includes('bobalhao'), r.data);
+  r = await call('POST', '/api/admin/social/chat/test', { text: 'seu bobalhão' }, T);
+  check('palavra extra passa a ser filtrada', r.data && (!r.data.ok || r.data.text.includes('###')), r.data);
+
+  console.log('\nChat (WebSocket)');
+  const u1 = crypto.randomUUID();
+  const u2 = crypto.randomUUID();
+  const c1 = await wsClient('/api/chat/global');
+  c1.send({ type: 'hello', id: u1, name: 'Clara', skin: 'bloop' });
+  const h1 = await c1.wait((m) => m.type === 'hist');
+  check('chat: histórico ao entrar', h1 && Array.isArray(h1.msgs), h1);
+  const c2 = await wsClient('/api/chat/global');
+  c2.send({ type: 'hello', id: u2, name: 'Duda', skin: 'king' });
+  await c2.wait((m) => m.type === 'hist');
+  c1.send({ type: 'say', text: 'oi Duda!' });
+  const m2 = await c2.wait((m) => m.type === 'msg' && m.m.text === 'oi Duda!');
+  check('mensagem chega ao outro jogador', m2?.m?.name === 'Clara' && m2.m.pid === u1, m2);
+  await sleep(2100);
+  c1.send({ type: 'say', text: 'seu idiota' });
+  const m3 = await c2.wait((m) => m.type === 'msg' && m.m.text?.includes('###'));
+  check('palavrão chega como ###', m3?.m?.text === 'seu ###', m3);
+  await sleep(2100);
+  c1.send({ type: 'say', text: 'meu zap é 11999998888' });
+  const rj = await c1.wait((m) => m.type === 'reject');
+  check('dado pessoal: recusado com aviso amigável', rj?.reason === 'pii' && /segurança/.test(rj.message), rj);
+  await sleep(2100);
+  c1.send({ type: 'quick', code: 'gg' });
+  const q = await c2.wait((m) => m.type === 'msg' && m.m.q === 'gg');
+  check('atalho rápido (quick) chega', !!q, q);
+  await sleep(4500);
+  c1.msgs.length = 0;
+  for (let i = 0; i < 5; i++) c1.send({ type: 'say', text: 'flood ' + i });
+  await sleep(600);
+  const rates = c1.msgs.filter((m) => m.type === 'reject' && m.reason === 'rate').length;
+  const sent = c1.msgs.filter((m) => m.type === 'msg' && m.m.text?.startsWith('flood')).length;
+  check('rate limit: rajada de 3, resto recusado', sent === 3 && rates === 2, { sent, rates });
+
+  r = await call('POST', '/api/chat/report', { reporter: u2, pid: u1, name: 'Clara', text: 'seu ###', room: 'global', msgId: m3?.m?.id, reason: 'ofensa' });
+  check('denúncia gravada', r.status === 200 && r.data.ok, r.data);
+  r = await call('GET', '/api/admin/social/reports', undefined, T);
+  check('admin vê a denúncia', r.data?.items?.some((x) => x.pid === u1 && x.reporter === u2), r.data);
+  r = await call('GET', '/api/admin/social/chat/recent?room=global', undefined, T);
+  check('admin vê mensagens recentes', r.data?.msgs?.some((x) => x.text === 'oi Duda!'), r.data);
+  r = await call('POST', '/api/admin/social/chat/mute', { pid: u2, minutes: 5 }, T);
+  await sleep(200);
+  c2.send({ type: 'say', text: 'posso falar?' });
+  const mu = await c2.wait((m) => m.type === 'reject' && m.reason === 'muted');
+  check('silenciado não consegue falar', !!mu, c2.msgs.slice(-2));
+  r = await call('POST', '/api/admin/social/chat/ban', { pid: u1, minutes: 0, reason: 'teste', purge: true }, T);
+  check('ban derruba a conexão', r.data?.kicked >= 1, r.data);
+  await sleep(300);
+  check('banido recebe aviso e é desconectado', c1.msgs.some((m) => m.reason === 'banned') && c1.closed);
+  check('mensagens do banido somem (del)', c2.msgs.some((m) => m.type === 'del' && m.ids.length >= 1));
+  const c3 = await wsClient('/api/chat/global');
+  c3.send({ type: 'hello', id: u1, name: 'Clara', skin: 'bloop' });
+  await sleep(500);
+  check('banido não consegue reconectar', c3.msgs.some((m) => m.reason === 'banned') && !c3.msgs.some((m) => m.type === 'hist'), c3.msgs);
+  r = await call('GET', '/api/admin/social/chat/bans', undefined, T);
+  check('lista de banidos/silenciados', r.data?.bans?.some((b) => b.pid === u1) && r.data?.mutes?.some((b) => b.pid === u2), r.data);
+  await call('POST', '/api/admin/social/chat/unban', { pid: u1 }, T);
+  const c4 = await wsClient('/api/chat/global');
+  c4.send({ type: 'hello', id: u1, name: 'Clara', skin: 'bloop' });
+  check('desbanido volta a entrar', !!(await c4.wait((m) => m.type === 'hist', 3000)));
+  [c2, c3, c4].forEach((c) => c.ws.close());
+  r = await call('GET', '/api/chat/global');
+  check('chat sem WebSocket → 426', r.status === 426);
+
+  console.log('\nPerfil');
+  r = await call('POST', '/api/profile', { id: u2, name: 'Duda', skin: 'king', level: 7, bests: { orbit: 321 }, badges: ['champ'] });
+  check('perfil salvo', r.data?.ok, r.data);
+  r = await call('GET', '/api/profile?id=' + u2);
+  check('perfil lido', r.data?.name === 'Duda' && r.data.level === 7 && r.data.bests.orbit === 321, r.data);
+  r = await call('POST', '/api/profile', { id: u1, name: 'idiota', skin: 'king' });
+  r = await call('GET', '/api/profile?id=' + u1);
+  check('nome ofensivo no perfil vira "Bloop"', r.data?.name === 'Bloop', r.data);
+
+  console.log('\nCampeonatos');
+  r = await call('GET', '/api/champ/list');
+  check('lista traz campeonatos regulares agendados', r.data?.items?.filter((c) => c.id.startsWith('r')).length >= 2, r.data?.items?.map((c) => c.id));
+  check('regular: 3 rodadas, prêmio base em moedas', r.data.items[0].rounds.length === 3 && r.data.items[0].prize >= 100 && r.data.items[0].entry >= 1);
+  const mk = async (name, startIn, roundSec, games = ['orbit', 'tubo', 'rally']) =>
+    (await call('POST', '/api/admin/social/champs', { name, games, prizeBase: 100, prizePer: 50, entry: 1, startAt: Date.now() + startIn, roundSec }, T)).data;
+  const P = () => crypto.randomUUID();
+  const signup = (id, pid, name) => call('POST', '/api/champ/signup', { id, pid, name, skin: 'bloop' });
+  const score = (id, pid, round, s, duration = 30) => call('POST', '/api/champ/score', { id, pid, round, score: s, duration });
+  const get = async (id, me) => (await call('GET', `/api/champ/get?id=${id}&me=${me}`)).data;
+  const claim = async (id, pid) => (await call('POST', '/api/champ/claim', { id, pid })).data;
+
+  // A) um só inscrito → cancelado e devolvido
+  const A = await mk('Teste A', 1500, 2);
+  check('admin cria campeonato especial', A?.id && A.status === 'signup', A);
+  const a1 = P();
+  r = await signup(A.id, a1, 'Solo');
+  check('inscrição ok (custa 1 ficha)', r.data?.ok && r.data.entry === 1, r.data);
+  r = await signup(A.id, a1, 'Solo');
+  check('inscrição repetida não cobra de novo', r.data?.already && r.data.entry === 0, r.data);
+  // B) 2 inscritos, só 1 joga → ganha tudo
+  const B = await mk('Teste B', 1500, 3);
+  const b1 = P(), b2 = P();
+  await signup(B.id, b1, 'Bia');
+  await signup(B.id, b2, 'Caio');
+  // C) 2 inscritos, ninguém joga → cancelado
+  const C = await mk('Teste C', 1500, 2);
+  const c1p = P(), c2p = P();
+  await signup(C.id, c1p, 'X');
+  await signup(C.id, c2p, 'Y');
+  // D) 3 jogadores → eliminação
+  const D = await mk('Teste D', 1500, 3);
+  const d = [P(), P(), P()];
+  for (const [i, pid] of d.entries()) await signup(D.id, pid, 'D' + i);
+  await sleep(1700);
+
+  let a = await get(A.id, a1);
+  check('A: 1 inscrito → cancelado (poucos inscritos)', a.status === 'cancelled' && a.cancelReason === 'few_signups', a.status);
+  check('A: ficha marcada para devolução', a.me.refund === true);
+  let cl = await claim(A.id, a1);
+  check('A: resgate devolve 1 ficha', cl.fichas === 1 && cl.coins === 0, cl);
+  cl = await claim(A.id, a1);
+  check('A: não devolve duas vezes', cl.fichas === 0 && cl.already, cl);
+  r = await signup(A.id, P(), 'Tarde');
+  check('inscrição após fechar → 409', r.status === 409, r.data);
+
+  let b = await get(B.id, b1);
+  check('B: ao vivo na rodada 1', b.status === 'live' && b.round === 0 && b.me.canPlay, b);
+  r = await score(B.id, b1, 0, 999999, 10);
+  check('B: pontuação impossível recusada (sanidade)', r.status === 422, r.data);
+  r = await score(B.id, b1, 0, 150, 20);
+  check('B: pontuação aceita', r.data?.ok && r.data.best === 150, r.data);
+  await score(B.id, b1, 0, 90, 20);
+  b = await get(B.id, b1);
+  check('B: vale a melhor tentativa', b.me.best === 150 && b.me.attempts === 2, b.me);
+  let c = await get(C.id, c1p);
+  check('C: ao vivo (2 inscritos)', c.status === 'live');
+  for (const [i, pid] of d.entries()) await score(D.id, pid, 0, [300, 200, 100][i], 20);
+  r = await score(D.id, P(), 0, 50, 20);
+  check('D: quem não se inscreveu não pontua', r.status === 403, r.data);
+  await sleep(3200); // fim da rodada 1
+
+  c = await get(C.id, c1p);
+  check('C: ninguém jogou → cancelado e devolvido', c.status === 'cancelled' && c.cancelReason === 'nobody_played' && c.me.refund, c.status);
+  cl = await claim(C.id, c2p);
+  check('C: resgate devolve a ficha', cl.fichas === 1, cl);
+  b = await get(B.id, b1);
+  check('B: só ele jogou → segue sozinho para a rodada 2', b.status === 'live' && b.round === 1 && b.me.canPlay, b);
+  const b2v = await get(B.id, b2);
+  check('B: quem não jogou foi eliminado', b2v.me.out === 0 && !b2v.me.canPlay, b2v.me);
+  let dv = await get(D.id, d[2]);
+  check('D: 3 jogaram → 2 avançam, o último é eliminado', dv.round === 1 && dv.me.out === 0 && dv.standings[1].length === 2, dv.standings);
+  r = await score(D.id, d[2], 1, 500, 20);
+  check('D: eliminado não pontua na rodada 2', r.status === 403, r.data);
+  await score(D.id, d[0], 1, 100, 20);
+  await score(D.id, d[1], 1, 400, 20);
+  r = await score(D.id, d[0], 0, 100, 20);
+  check('D: rodada antiga não aceita mais pontos', r.status === 409, r.data);
+  await sleep(3100); // fim da rodada 2
+  dv = await get(D.id, d[1]);
+  check('D: semifinal com 2 → os 2 vão para a final (mín. 2)', dv.round === 2 && dv.standings[2].length === 2, dv.standings);
+  await score(D.id, d[0], 2, 900, 20);
+  await score(D.id, d[1], 2, 800, 20);
+  await sleep(3200); // fim da final (B também termina)
+  dv = await get(D.id, d[0]);
+  check('D: final decide o campeão', dv.status === 'done' && dv.results[0].pid === d[0] && dv.results[1].pid === d[1] && dv.me.place === 1, dv.results);
+  const poolD = 100 + 50 * 3;
+  check('D: prêmio 60/40 com 2 finalistas, bancado pelo sistema', dv.results[0].prize === Math.floor(poolD * 0.6) && dv.results[1].prize === Math.floor(poolD * 0.4), dv.results);
+  cl = await claim(D.id, d[0]);
+  check('D: campeão resgata as moedas', cl.coins === Math.floor(poolD * 0.6), cl);
+  check('D: 2º resgata as moedas', (await claim(D.id, d[1])).coins === Math.floor(poolD * 0.4));
+  check('D: eliminado na 1ª rodada não ganha', (await claim(D.id, d[2])).coins === 0);
+  b = await get(B.id, b1);
+  check('B: jogador único leva o prêmio inteiro', b.status === 'done' && b.results.length === 1 && b.results[0].pid === b1 && b.results[0].prize === 100 + 50 * 2, b.results);
+  cl = await claim(B.id, b1);
+  check('B: resgata o prêmio inteiro', cl.coins === 200, cl);
+
+  const E = await mk('Teste E', 60_000, 60);
+  r = await call('POST', `/api/admin/social/champs/${E.id}/cancel`, {}, T);
+  check('admin cancela campeonato', r.data?.status === 'cancelled' && r.data.cancelReason === 'admin', r.data);
+  r = await call('GET', '/api/admin/social/champs', undefined, T);
+  check('admin lista campeonatos com inscritos', r.data?.items?.some((x) => x.id === D.id && x.players.length === 3), r.data?.items?.length);
+  r = await call('GET', '/api/admin/social/champs');
+  check('admin social sem token → 401', r.status === 401);
 }
 
 main()
