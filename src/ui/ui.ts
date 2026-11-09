@@ -1,4 +1,5 @@
 import { BOOST_PACKS, ECONOMY, productById, type ProductDef } from '../config';
+import { celebrateRecord } from './record';
 import { audio } from '../core/audio';
 import {
   BOOST_IDS,
@@ -606,10 +607,7 @@ export class UI {
     dblBtn.classList.toggle('hidden', rc.total < 3);
     dblBtn.disabled = false;
     dblBtn.innerHTML = `${icon('video')} ${t('over.doubleN', 'Dobrar moedas +{n}', { n: fmt(rc.total) })} ${icon('coin')}`;
-    if (newBest) {
-      audio.unlock2();
-      haptics.success();
-    }
+    if (newBest && save.runs > 1) celebrateRecord(t('record.pts', '{n} pontos', { n: fmt(this.game.score) }));
     this.result = { ...r, newBest, best: save.best };
     this.show('over');
   }
@@ -943,6 +941,10 @@ const MISSION_ICON: Record<Mission['type'], IconName> = {
   perfects: 'star',
   score: 'trophy',
   runs: 'rocket',
+  tubo_rings: 'target',
+  rally_dist: 'planet',
+  dz_survive: 'trophy',
+  ty_play: 'star',
 };
 
 function dailyArt(r: { coins?: number; gems?: number }, last: boolean): IconName {
@@ -963,6 +965,14 @@ function missionText(m: Mission): string {
       return t('mission.score', 'Faça {n} pontos numa partida', { n: m.target });
     case 'runs':
       return t('mission.runs', 'Jogue {n} partidas', { n: m.target });
+    case 'tubo_rings':
+      return t('mission.tubo', 'Queda Giratória: chegue ao anel {n}', { n: m.target });
+    case 'rally_dist':
+      return t('mission.rally', 'Rally Lunar: dirija {n} m no total', { n: m.target });
+    case 'dz_survive':
+      return t('mission.disaster', 'Desastres: sobreviva {n} vezes', { n: m.target });
+    case 'ty_play':
+      return t('mission.tycoon', 'Fábrica Estelar: jogue {n} partidas', { n: m.target });
   }
 }
 

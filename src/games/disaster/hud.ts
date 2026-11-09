@@ -2,6 +2,7 @@
  *  HUD em HTML/CSS: topo (cenário, fase, vivos), cartões de título,
  *  controles na tela, resultado da rodada e resumo da sessão.
  * ============================================================ */
+import { celebrateRecord } from '../../ui/record';
 import { t, fmt } from '../../i18n';
 import { icon } from '../../ui/icons';
 import { audio } from '../../core/audio';
@@ -162,7 +163,7 @@ export class Hud {
 
   resultCard(survived: boolean, coins: number, alive: number): void {
     const g = this.g;
-    if (survived && g.newBest) audio.record();
+    if (survived && g.newBest) celebrateRecord(t('dz.recDetail', 'Sequência {n}', { n: g.streak }));
     if (survived)
       this.showCard(
         `${icon('trophy', { size: 72 })}<div class="big">${g.newBest ? t('dz.record', 'Novo recorde!') : t('dz.survived', 'Sobreviveu!')}</div><div class="sub">${icon('coin', { size: 18 })} +${fmt(coins)} &nbsp; ${icon('fire', { size: 18 })} ${t('dz.streak', 'Sequência {n}', { n: g.streak })}</div>`,

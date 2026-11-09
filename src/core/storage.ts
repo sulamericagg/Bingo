@@ -1,6 +1,6 @@
 const KEY = 'bloop-orbit-save-v1';
 
-export type MissionType = 'planets' | 'coins' | 'perfects' | 'score' | 'runs';
+export type MissionType = 'planets' | 'coins' | 'perfects' | 'score' | 'runs' | 'tubo_rings' | 'rally_dist' | 'dz_survive' | 'ty_play';
 
 export interface Mission {
   type: MissionType;

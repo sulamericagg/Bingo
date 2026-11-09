@@ -6,6 +6,7 @@
  * Carregado sob demanda pelo hub (register.ts → launch()).
  * Performance: sprites dos anéis em pool, partículas em arrays tipados, nada alocado por frame.
  */
+import { celebrateRecord } from '../../ui/record';
 import './tubo.css';
 import { t, fmt } from '../../i18n';
 import type { MiniGameHandle } from '../../hub/registry';
@@ -706,6 +707,7 @@ class TuboGame implements MiniGameHandle {
     if (total > 0) addCoins(total);
     this.credited = Math.max(1, total);
     this.newBest = this.score > this.best;
+    if (this.newBest && this.best > 0) celebrateRecord(t('record.pts', '{n} pontos', { n: fmt(this.score) }));
     if (this.newBest) {
       this.best = this.score;
       try {

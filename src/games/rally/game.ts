@@ -3,6 +3,7 @@
  *  Estados: garagem → corrida → resultado. Física em passo fixo (120 Hz),
  *  desenho limitado pelo nível de qualidade.
  * ============================================================ */
+import { celebrateRecord } from '../../ui/record';
 import './rally.css';
 import { t, fmt } from '../../i18n';
 import { icon } from '../../ui/icons';
@@ -808,7 +809,7 @@ class RallyGame {
       <button class="rl-btn rl-alt rl-small" data-a="exit">${icon('home', { size: 22 })}<span>${t('rally.exit', 'Sair')}</span></button>
     </div>`;
     this.resultsEl.classList.add('on');
-    if (this.newBest) audio.record();
+    if (this.newBest) celebrateRecord(fmt(dist) + ' m');
     // total "conta" de 0 até o valor (com tic que sobe de tom) — recompensa que se sente
     const tc0 = this.resultsEl.querySelector<HTMLElement>('.rl-tc');
     const total = this.resultCoins;
