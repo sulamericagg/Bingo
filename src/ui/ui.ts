@@ -42,6 +42,9 @@ import { hydrateIcons, icon, type IconName } from './icons';
 import { closeCreator } from './creator';
 import { OnlineUI, bindOnlineBadges } from './online-ui';
 import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
+import { hubBack, playSelected } from '../hub/hub';
+import { t, t as tr } from '../i18n';
+import { LANGUAGES, changeLang, langInfo } from '../i18n/langs';
 
 const FREE_COINS = 40;
 const FREE_LIMIT = 8;
@@ -64,8 +67,9 @@ type Screen =
   | 'redeem'
   | 'credits'
   | 'boost'
-  | 'starter';
-const MODALS: Screen[] = ['shop', 'daily', 'missions', 'settings', 'inbox', 'redeem', 'credits', 'boost', 'starter'];
+  | 'starter'
+  | 'lang';
+const MODALS: Screen[] = ['shop', 'daily', 'missions', 'settings', 'inbox', 'redeem', 'credits', 'boost', 'starter', 'lang'];
 
 export class UI {
   private game: Game;
@@ -135,7 +139,14 @@ export class UI {
       this.refreshStarterOffer();
       this.tickRail();
       this.railTimer = window.setInterval(() => this.tickRail(), 1000);
+      bus.emit('hub-show');
     }
+  }
+
+  /** Abre uma tela/modal do Orbit (usado pelos painéis do hub). */
+  open(s: Screen, tab?: ShopTab): void {
+    if (tab) this.shop.tab = tab;
+    this.show(s);
   }
 
   private renderModal(s: Screen): void {
@@ -147,6 +158,7 @@ export class UI {
     if (s === 'redeem') this.online.openRedeem();
     if (s === 'boost') this.renderBoostModal();
     if (s === 'starter') this.renderStarter();
+    if (s === 'lang') this.renderLang();
   }
 
   private closeModal(): void {
@@ -168,6 +180,7 @@ export class UI {
   /** Botão voltar do Android. Retorna false se deve sair do app. */
   back(): boolean {
     if (celebrating()) return true;
+    if (hubBack()) return true;
     if (closeCreator(false)) return true;
     if (document.querySelector('#shop .item-sheet')) {
       this.shop.closeSheet();
@@ -226,7 +239,7 @@ export class UI {
         return;
       }
       if (e.code === 'Space' || e.code === 'ArrowUp') {
-        if (this.base === 'menu' && !this.modal) this.play();
+        if (this.base === 'menu' && !this.modal) playSelected();
         else if (!this.modal) press(e);
       }
       if (e.code === 'Escape') this.back();
@@ -247,7 +260,6 @@ export class UI {
       if (t.classList.contains('modal-screen') && this.modal && t.id === this.modal) this.closeModal();
     });
 
-    $('#btn-play').onclick = () => this.play();
     $('#btn-pause').onclick = () => this.pause();
     $('#btn-resume').onclick = () => this.resume();
     $('#btn-quit').onclick = () => {
@@ -333,6 +345,11 @@ export class UI {
     bus.on('player', () => this.modal === 'settings' && this.online.renderProfile());
     bus.on('online', () => this.modal === 'settings' && this.online.renderProfile());
     bus.on('inventory', () => this.modal === 'shop' && this.shop.render());
+    bus.on('toast', (m: string, i?: IconName) => this.toast(m, i));
+    bus.on('lang', () => {
+      if (this.modal === 'settings' || this.modal === 'lang') this.renderModal(this.modal);
+      if (this.base === 'menu') this.renderLoadout();
+    });
     bindOnlineBadges((n) => this.setBadge('inbox', n));
   }
 
@@ -347,13 +364,13 @@ export class UI {
       const inf = BOOST_INFO[id];
       return `<button class="lo-chip ${on ? 'on' : ''} ${n ? '' : 'none'}" data-lo="${id}" aria-pressed="${on}" aria-label="${inf.name}">
         <span class="plate sm plate-${inf.plate}">${icon(inf.icon)}</span>
-        <span class="lo-txt"><b>${inf.short}</b><small>${n ? (on ? 'Ativo' : `x${n}`) : 'Comprar'}</small></span>
+        <span class="lo-txt"><b>${inf.short}</b><small>${n ? (on ? t('orbit.boostOn', 'Ativo') : `x${n}`) : t('orbit.boostBuy', 'Comprar')}</small></span>
         <em class="lo-mark">${on ? icon('check') : n ? '' : '+'}</em>
       </button>`;
     }).join('');
     const vid = this.freeShield
-      ? `<button class="lo-chip lo-video armed" id="lo-video" aria-label="Escudo grátis pronto"><span class="plate sm plate-cyan">${icon('shield')}</span><span class="lo-txt"><b>Grátis</b><small>Pronto!</small></span><em class="lo-mark">${icon('check')}</em></button>`
-      : `<button class="lo-chip lo-video" id="lo-video" aria-label="Assista um vídeo para um Escudo grátis"><span class="plate sm plate-green">${icon('video')}</span><span class="lo-txt"><b>Escudo</b><small>grátis</small></span></button>`;
+      ? `<button class="lo-chip lo-video armed" id="lo-video" aria-label="${t('orbit.freeShieldReady', 'Escudo grátis pronto')}"><span class="plate sm plate-cyan">${icon('shield')}</span><span class="lo-txt"><b>${t('orbit.free', 'Grátis')}</b><small>${t('orbit.ready', 'Pronto!')}</small></span><em class="lo-mark">${icon('check')}</em></button>`
+      : `<button class="lo-chip lo-video" id="lo-video" aria-label="${t('orbit.freeShieldAria', 'Assista um vídeo para um Escudo grátis')}"><span class="plate sm plate-green">${icon('video')}</span><span class="lo-txt"><b>${t('orbit.shield', 'Escudo')}</b><small>${t('orbit.freeLow', 'grátis')}</small></span></button>`;
     box.innerHTML = `<div class="lo-row">${chips}${vid}</div>`;
     $$<HTMLButtonElement>('[data-lo]', box).forEach((b) => {
       b.onclick = () => {
@@ -439,6 +456,11 @@ export class UI {
   }
 
   /* ============================== jogo ============================== */
+
+  /** Começa uma partida do Bloop Orbit (chamado pela carta do hub). */
+  playOrbit(): void {
+    this.play();
+  }
 
   private play(): void {
     audio.unlock();
@@ -683,7 +705,7 @@ export class UI {
   private tickRail(): void {
     if (this.base !== 'menu') return;
     const t = $('#rail-timer');
-    t.textContent = extra.flashDay === dayNumber() ? 'amanhã' : clock(msToMidnight());
+    t.textContent = extra.flashDay === dayNumber() ? tr('hub.tomorrow', 'amanhã') : clock(msToMidnight());
   }
 
   /* ============================== economia ============================== */
@@ -839,11 +861,30 @@ export class UI {
   private renderSettings(): void {
     const sel = $<HTMLSelectElement>('#sel-quality');
     sel.value = String(this.game.quality.mode);
-    sel.options[0].textContent = `Auto (${TIER_LABELS[this.game.quality.tier]})`;
+    const tier = this.game.quality.tier;
+    sel.options[0].textContent = tr('quality.auto', 'Auto ({tier})', { tier: tr(`quality.${tier}`, TIER_LABELS[tier]) });
+    $('#lang-cur').textContent = langInfo().native;
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.checked = !!save[inp.dataset.setting as 'sound'];
     });
     this.online.renderProfile();
+  }
+
+  private renderLang(): void {
+    const grid = $('#lang-grid');
+    const cur = langInfo().code;
+    grid.innerHTML = LANGUAGES.map(
+      (l) =>
+        `<button class="lang-btn ${l.code === cur ? 'on' : ''}" data-lang="${l.code}" style="--h:${l.hue}"><i class="lang-tag">${l.code.toUpperCase()}</i><span>${esc(l.native)}</span>${l.code === cur ? icon('check', { size: 24 }) : ''}</button>`,
+    ).join('');
+    $$<HTMLButtonElement>('[data-lang]', grid).forEach((b) => {
+      b.onclick = async () => {
+        haptics.tap('light');
+        await changeLang(b.dataset.lang as Parameters<typeof changeLang>[0]);
+        this.renderLang();
+        setTimeout(() => this.modal === 'lang' && this.closeModal(), 220);
+      };
+    });
   }
 
   /* ============================== feedback ============================== */

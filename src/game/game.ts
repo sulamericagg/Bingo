@@ -901,6 +901,18 @@ export class Game {
 
   stop(): void {
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
+  }
+
+  /** Hub: liga/desliga o loop de render (no menu do hub o canvas fica parado e escondido). */
+  setActive(on: boolean): void {
+    if (on === !!this.raf) return;
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    if (on) {
+      this.last = 0;
+      this.raf = requestAnimationFrame(this.loop);
+    }
   }
 
   /** Alvo de velocidade para a pontuação atual: sobe logo no começo e satura em ~110 pontos (+ bônus por ciclo). */
