@@ -287,6 +287,7 @@ details.more summary { cursor: pointer; color: var(--muted); font-size: .9rem; p
       <button data-tab="ranking"><span class="ic">🏆</span><span>Ranking</span></button>
       <button data-tab="moderation"><span class="ic">&#9873;</span><span>Moderação</span></button>
       <button data-tab="champs"><span class="ic">&#9733;</span><span>Campeonatos</span></button>
+      <button data-tab="beta"><span class="ic">&#128030;</span><span>Beta / Bugs</span></button>
     </nav>
     <div class="spacer"></div>
     <button class="btn ghost sm logout" onclick="logout()">↩ Sair</button>
@@ -545,7 +546,7 @@ async function start() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   const hash = location.hash.slice(1);
-  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets', 'ranking', 'moderation', 'champs'].includes(hash) ? hash : 'dash');
+  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets', 'ranking', 'moderation', 'champs', 'beta'].includes(hash) ? hash : 'dash');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
 function go(tab) {
@@ -553,10 +554,83 @@ function go(tab) {
   history.replaceState(null, '', '#' + tab);
   $$('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
-  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets, ranking: viewRanking, moderation: viewModeration, champs: viewChamps })[tab]();
+  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets, ranking: viewRanking, moderation: viewModeration, champs: viewChamps, beta: viewBeta })[tab]();
 }
 const view = () => $('#view');
 
+
+/* ================= Beta / Bugs (relatórios do Programa Beta) ================= */
+const betaState = { status: 'open', cat: '' };
+const BETA_CATS = { physics: 'Física', crash: 'Jogo travou', visual: 'Visual', sound: 'Som', shop: 'Loja', other: 'Outro' };
+async function viewBeta() {
+  view().innerHTML = `<div class="page-head"><div><h2>Beta / Bugs</h2><p class="muted">Relatórios enviados pelos testadores (Ajustes → Programa Beta → Reportar bug). Ficam guardados por 120 dias. Veja docs/BETA-TESTERS.md.</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" id="bgExport">⬇ Baixar JSON</button><button class="btn ghost sm" onclick="viewBeta()">Atualizar</button></div></div>
+    <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="bgStatus"><option value="open">Abertos</option><option value="resolved">Resolvidos</option><option value="all">Todos</option></select>
+      <select id="bgCat"><option value="">Todas as categorias</option>${Object.entries(BETA_CATS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <span class="muted small" id="bgCounts"></span></div>
+      <div id="bgList" style="margin-top:12px">${spinner()}</div></div>`;
+  $('#bgStatus').value = betaState.status;
+  $('#bgCat').value = betaState.cat;
+  $('#bgStatus').onchange = (e) => { betaState.status = e.target.value; loadBeta(); };
+  $('#bgCat').onchange = (e) => { betaState.cat = e.target.value; loadBeta(); };
+  $('#bgExport').onclick = (e) => busy(e.currentTarget, async () => {
+    const res = await fetch('/api/admin/feedback/export', { headers: { authorization: 'Bearer ' + token } });
+    if (!res.ok) throw new Error('Erro ' + res.status);
+    download('bloop-bugs-' + new Date().toISOString().slice(0, 10) + '.json', await res.text(), 'application/json');
+  });
+  loadBeta();
+}
+async function loadBeta() {
+  let d;
+  try { d = await api('GET', '/feedback?status=' + betaState.status + '&cat=' + encodeURIComponent(betaState.cat)); }
+  catch (e) { $('#bgList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#bgList')) return;
+  $('#bgCounts').textContent = `${fmtN(d.counts.open)} abertos · ${fmtN(d.counts.resolved)} resolvidos`;
+  $('#bgList').innerHTML = d.items.length ? `<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Categoria</th><th>Relato</th><th class="hide-m">Jogador / app</th><th></th></tr></thead><tbody>
+    ${d.items.map((r) => `<tr><td class="small">${fmtDate(r.t)}<div class="muted small">${esc(r.where)}</div></td>
+      <td class="small"><b>${esc(BETA_CATS[r.cat] || r.cat)}</b>${r.shot ? ' 📷' : ''}${r.errs ? `<div class="muted small">${r.errs} erro(s)</div>` : ''}</td>
+      <td class="small">${esc(r.text)}</td>
+      <td class="hide-m small">${esc(r.name || '—')}${r.handle ? ' @' + esc(r.handle) : ''}<div class="muted small">v${esc(r.v)} · ${esc(r.plat)}</div></td>
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-open="${esc(r.key)}">Abrir</button>
+        <button class="btn ghost sm" data-res="${esc(r.key)}" data-to="${r.st === 'open' ? '1' : '0'}">${r.st === 'open' ? '✓ Resolver' : 'Reabrir'}</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">Nenhum relatório aqui. 🎉</div>';
+  $$('#bgList [data-open]').forEach((b) => (b.onclick = () => busy(b, () => openBeta(b.dataset.open))));
+  $$('#bgList [data-res]').forEach((b) => (b.onclick = () => busy(b, async () => {
+    await api('POST', '/feedback/resolve', { key: b.dataset.res, resolved: b.dataset.to === '1' });
+    toast(b.dataset.to === '1' ? 'Marcado como resolvido' : 'Reaberto'); loadBeta();
+  })));
+}
+async function openBeta(key) {
+  const r = await api('GET', '/feedback/item?key=' + encodeURIComponent(key));
+  const ctx = r.ctx || {};
+  const m = modal(`<div class="modal-head"><h3>🐞 ${esc(BETA_CATS[r.category] || r.category)} · ${fmtDate(r.t)}</h3><button class="btn ghost sm" data-close>✕</button></div>
+    <p style="white-space:pre-wrap">${esc(r.text)}</p>
+    ${r.pii ? '<p class="muted small">⚠ Dados pessoais foram removidos automaticamente.</p>' : ''}
+    ${r.shot && /^data:image\/(jpeg|png|webp);base64,/.test(r.shot) ? `<img src="${esc(r.shot)}" alt="foto do jogo" style="max-width:100%;border-radius:10px;margin:8px 0" />` : ''}
+    <div class="table-wrap"><table><tbody>
+      <tr><th>Jogador</th><td>${esc(r.name || '—')} ${r.handle ? '@' + esc(r.handle) : ''}<div class="muted small mono">${esc(r.pid || '—')}</div></td></tr>
+      <tr><th>App</th><td>v${esc(ctx.version)} · ${esc(ctx.platform)} · qualidade ${esc(ctx.tier ?? '—')} · ${esc(ctx.lang)}</td></tr>
+      <tr><th>Tela</th><td>${esc(ctx.where)} · ${esc(ctx.viewport)} (tela ${esc(ctx.screen)}, dpr ${esc(ctx.dpr)})</td></tr>
+      <tr><th>Aparelho</th><td class="small mono">${esc(ctx.ua)}${ctx.mem ? ' · ' + esc(ctx.mem) + ' GB' : ''}${ctx.cores ? ' · ' + esc(ctx.cores) + ' núcleos' : ''}</td></tr>
+    </tbody></table></div>
+    <h4>Últimos erros (${(r.errors || []).length})</h4>
+    <pre class="small mono" style="max-height:220px;overflow:auto;white-space:pre-wrap;background:rgba(0,0,0,.3);padding:8px;border-radius:8px">${esc((r.errors || []).map((e) => `[${new Date(e.t).toLocaleTimeString('pt-BR')}] ${e.kind}: ${e.msg}${e.src ? ' @ ' + e.src : ''}`).join('\n') || '—')}</pre>
+    <label class="small muted">Nota interna</label><input id="bgNote" type="text" value="${esc(r.note || '')}" style="width:100%" />
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn sm" id="bgResolve">${r.status === 'open' ? '✓ Marcar resolvido' : 'Reabrir'}</button>
+      <button class="btn ghost sm" id="bgJson">⬇ JSON</button>
+      <button class="btn danger sm" id="bgDel">Apagar</button></div>`, 'wide');
+  $('#bgResolve', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+    await api('POST', '/feedback/resolve', { key, resolved: r.status === 'open', note: $('#bgNote', m.el).value });
+    m.close(); toast('Salvo'); loadBeta();
+  });
+  $('#bgJson', m.el).onclick = () => download(key.replace(/:/g, '_') + '.json', JSON.stringify(r, null, 2), 'application/json');
+  $('#bgDel', m.el).onclick = async () => {
+    if (!(await ask('Apagar relatório?', 'Isso não pode ser desfeito.', 'Apagar', true))) return;
+    await api('POST', '/feedback/delete', { key }); m.close(); toast('Apagado'); loadBeta();
+  };
+}
 
 /* ================= Moderação (chat) ================= */
 const modState = { room: 'global' };

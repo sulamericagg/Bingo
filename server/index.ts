@@ -18,6 +18,7 @@ import { handleCheck, handleClaim, handleMine, playerByHandle } from './handles'
 import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
+import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { HttpError, json } from './util';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
@@ -58,6 +59,8 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/champ/score': champScore,
   'POST /api/champ/claim': champClaim,
   // casa, planeta & amigos (docs/CASA-AMIGOS.md)
+  // Programa Beta: relatórios de bug (docs/BETA-TESTERS.md)
+  'POST /api/feedback': feedbackPost,
   'GET /api/handle/check': handleCheck,
   'POST /api/handle/claim': handleClaim,
   'GET /api/handle/mine': handleMine,
@@ -117,6 +120,14 @@ export default {
     if (path.startsWith('/api/admin/social/')) {
       try {
         return await handleSocialAdmin(req, env, url);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    if (path === '/api/admin/feedback' || path.startsWith('/api/admin/feedback/')) {
+      try {
+        return await handleFeedbackAdmin(req, env, url);
       } catch (e) {
         return errorResponse(e);
       }

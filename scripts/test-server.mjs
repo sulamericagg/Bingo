@@ -924,6 +924,59 @@ async function homeTests(T) {
   check('admin bane o @nome (ninguém usa; jogador fica sem nome)', r.data?.id === B && after.data?.ok === false && (await call('GET', '/api/handle/mine?id=' + B)).data.handle === null, [r.data, after.data]);
   r = await call('GET', '/api/admin/home/handle?h=' + hA);
   check('admin casas sem token → 401', r.status === 401);
+
+  /* ---------------- Programa Beta: relatórios de bug ---------------- */
+  console.log('\nBeta: relatórios de bug (/api/feedback)');
+  const fbPid = 'beta-' + Math.random().toString(36).slice(2, 12);
+  const tinyJpeg = 'data:image/jpeg;base64,' + 'A'.repeat(400);
+  const fb = (o = {}) => ({
+    id: 'c1',
+    pid: fbPid,
+    name: 'Tester',
+    handle: 'tester_1',
+    category: 'physics',
+    text: 'A bola atravessou a parede no nível 3, porra. Me liga 11 98765-4321',
+    ctx: { version: '1.1.0', platform: 'android', ua: 'x', screen: '412x915', viewport: '412x915', dpr: 2.6, lang: 'pt', tier: 2, where: 'game:tubo', online: true },
+    errors: [{ t: Date.now(), kind: 'error', msg: 'TypeError: x is undefined' }],
+    shot: tinyJpeg,
+    t: Date.now(),
+    ...o,
+  });
+  r = await call('POST', '/api/feedback', fb());
+  check('feedback aceito', r.status === 200 && r.data?.ok === true && /^fb:/.test(r.data.key), r.data);
+  const fbKey = r.data?.key;
+  r = await call('POST', '/api/feedback', fb({ text: '  ' }));
+  check('feedback vazio → 400', r.status === 400, r.data);
+  r = await call('POST', '/api/feedback', fb({ category: 'hack', shot: 'javascript:alert(1)', text: 'Tela branca <script>' }));
+  check('categoria desconhecida vira "other" e foto inválida é ignorada', r.status === 200, r.data);
+  const fbKey2 = r.data?.key;
+  const huge = await fetch(BASE + '/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fb({ shot: 'data:image/jpeg;base64,' + 'A'.repeat(400_000) })) });
+  check('feedback grande demais → 413', huge.status === 413, huge.status);
+  r = await call('GET', '/api/admin/feedback');
+  check('admin feedback sem token → 401', r.status === 401);
+  r = await call('GET', '/api/admin/feedback?status=open', undefined, T);
+  const it1 = r.data?.items?.find((x) => x.key === fbKey);
+  check('admin lista o relatório (resumo)', !!it1 && it1.cat === 'physics' && it1.shot === true && it1.where === 'game:tubo' && it1.st === 'open', r.data);
+  check('texto moderado: palavrão mascarado e telefone removido', !!it1 && it1.text.includes('###') && !it1.text.includes('98765') && it1.text.includes('[removido]'), it1?.text);
+  r = await call('GET', '/api/admin/feedback?status=open&cat=other', undefined, T);
+  check('filtro por categoria', r.data?.items?.length >= 1 && r.data.items.every((x) => x.cat === 'other') && r.data.items.some((x) => x.key === fbKey2), r.data);
+  r = await call('GET', '/api/admin/feedback/item?key=' + encodeURIComponent(fbKey), undefined, T);
+  check('admin abre o relatório completo com foto e erros', r.data?.shot === tinyJpeg && r.data.errors?.length === 1 && r.data.ctx?.tier === 2 && r.data.pii === true, r.data && { ...r.data, shot: r.data.shot?.slice(0, 30) });
+  r = await call('GET', '/api/admin/feedback/item?key=' + encodeURIComponent(fbKey2), undefined, T);
+  check('relatório sem foto e sem HTML', r.data?.hasShot === false && !r.data.shot && !r.data.text.includes('<'), r.data);
+  r = await call('POST', '/api/admin/feedback/resolve', { key: fbKey, resolved: true, note: 'corrigido na 1.1.1' }, T);
+  check('marcar como resolvido', r.data?.status === 'resolved', r.data);
+  r = await call('GET', '/api/admin/feedback?status=resolved', undefined, T);
+  check('aparece em "resolvidos"', r.data?.items?.some((x) => x.key === fbKey) && !(r.data.items.some((x) => x.key === fbKey2)), r.data);
+  const ex = await fetch(BASE + '/api/admin/feedback/export', { headers: { authorization: 'Bearer ' + T } });
+  const exj = await ex.json().catch(() => null);
+  check('exportar JSON (download)', ex.status === 200 && /attachment/.test(ex.headers.get('content-disposition') || '') && exj?.reports?.some((x) => x.key === fbKey && x.note === 'corrigido na 1.1.1'), exj && exj.count);
+  r = await call('POST', '/api/admin/feedback/delete', { key: fbKey2 }, T);
+  r = await call('GET', '/api/admin/feedback/item?key=' + encodeURIComponent(fbKey2), undefined, T);
+  check('apagar relatório', r.status === 404, r.data);
+  let fbLast;
+  for (let i = 0; i < 10; i++) fbLast = await call('POST', '/api/feedback', fb({ shot: undefined }));
+  check('limite: 10 relatórios por hora por jogador → 429', fbLast.status === 429, fbLast.data);
 }
 
 main()

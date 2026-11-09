@@ -298,6 +298,7 @@ const BLOCK_SEL = [
   '.race-screen.on',
   '.sc-game-root',
   '.ob-root',
+  '.beta-sheet-bg',
   '.celebrate',
   '.fake-ad',
 ].join(', ');

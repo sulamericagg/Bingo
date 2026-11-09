@@ -2,6 +2,8 @@ import '@fontsource/fredoka/500.css';
 import '@fontsource/fredoka/600.css';
 import '@fontsource/fredoka/700.css';
 import './ui/styles.css';
+import { installErrorBoundary, showFatal } from './services/errors';
+installErrorBoundary(); // antes de tudo: erros vão para o buffer do relatório beta
 
 import { App } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
@@ -36,6 +38,33 @@ import { wireGlue } from './hub/glue';
 import { registerSocial } from './social/register';
 import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
+import { runOnboarding } from './ui/onboarding';
+import { initBeta, openReportSheet } from './ui/beta';
+import { initProfileSync, profile } from './services/profile';
+import { setFeedbackProbes } from './services/feedback';
+import { isHostActive, selectedGame } from './hub/hub';
+
+/** Onde o jogador está agora (anexado aos relatórios beta). */
+function whereNow(): string {
+  if (isHostActive()) return 'game:' + (selectedGame()?.id ?? '?');
+  const map: [string, string][] = [
+    ['.ob-root', 'onboarding'],
+    ['.pet-scr.on', 'pet'],
+    ['.h3', 'house3d'],
+    ['.hm-scr.on', 'house'],
+    ['#creator.on', 'creator'],
+    ['.race-screen.on', 'race'],
+    ['.pass-panel', 'pass'],
+    ['.crc-overlay', 'collection'],
+    ['.sc-overlay', 'social'],
+    ['#over.on', 'orbit-result'],
+    ['#hud.on', 'orbit'],
+  ];
+  for (const [sel, name] of map) if (document.querySelector(sel)) return name;
+  const modal = document.querySelector('.modal-screen.on');
+  if (modal) return 'menu:' + modal.id;
+  return document.querySelector('#menu.on') ? 'hub' : 'unknown';
+}
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -96,12 +125,26 @@ async function boot(): Promise<void> {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  setFeedbackProbes(() => game.quality.tier, whereNow);
+
   await intro; // anúncios/consentimento só depois da abertura
+  // presentes / códigos / desafios: em segundo plano, nunca bloqueia nem lança erro
+  initOnline().catch(() => {});
+  initProfileSync();
+  // 1ª abertura: apelido + @ ANTES do hub; pop-ups/anúncios só depois
+  try {
+    await runOnboarding(() => game.refreshCosmetics());
+  } catch (e) {
+    console.error('[onboarding]', e);
+    document.querySelector('.ob-root')?.remove();
+  }
   initAds();
   initBilling();
   registerPass();
-  // presentes / códigos / desafios: em segundo plano, nunca bloqueia nem lança erro
-  initOnline().catch(() => {});
+  initBeta();
 }
 
-boot();
+boot().catch((e) => {
+  console.error('[boot]', e);
+  showFatal(e, profile.beta ? () => openReportSheet({ category: 'crash' }) : undefined);
+});

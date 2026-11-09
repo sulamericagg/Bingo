@@ -171,3 +171,37 @@ export function safeName(name: string, extra: Extra = EMPTY): string {
   if (!r.ok || r.filtered) return 'Bloop';
   return r.text.slice(0, 20);
 }
+
+/**
+ * Texto longo (relatórios de bug, até ~1000 letras): não recusa — mascara palavrões (###) e
+ * apaga dados pessoais óbvios (telefone, e-mail, links, @perfis). Usado em /api/feedback.
+ */
+export function maskLongText(input: unknown, max = 1000, extra: Extra = EMPTY): { text: string; filtered: boolean; pii: boolean } {
+  const raw = String(input ?? '')
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u2028-\u202f\ufeff<>]/g, ' ')
+    .slice(0, max);
+  // 1) palavrões → ###
+  let filtered = false;
+  let text = raw
+    .split(/(\s+)/)
+    .map((p) => {
+      if (!p.trim()) return p;
+      const pieces = p.split(/[.,;:?¿¡"'()[\]{}\-_/\\*~^]+/).filter(Boolean);
+      if (isBad(normWord(p), extra) || pieces.some((x) => isBad(normWord(x), extra))) {
+        filtered = true;
+        return '###';
+      }
+      return p;
+    })
+    .join('');
+  // 2) dados pessoais óbvios → [removido] (sem o "adivinhador" de domínio do chat: "parede. Me" não é link)
+  let pii = false;
+  for (const r of [PII[0], PII[1], /(https?:\/\/|www\.)\S+/i, PII[3]]) {
+    const g = new RegExp(r.source, r.flags.includes('g') ? r.flags : r.flags + 'g');
+    text = text.replace(g, (m) => {
+      pii = true;
+      return /^\s/.test(m) ? ' [removido]' : '[removido]';
+    });
+  }
+  return { text: text.trim(), filtered, pii };
+}

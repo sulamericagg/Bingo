@@ -1,0 +1,199 @@
+/* ---------- Programa Beta: botão flutuante, folha de relatório, Ajustes ---------- */
+.beta-bug {
+  position: fixed;
+  right: 8px;
+  bottom: calc(150px + var(--safe-bot, 0px));
+  z-index: 2147482000;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 246, 176, 0.92);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  opacity: 0.78;
+  touch-action: none;
+  cursor: grab;
+}
+.beta-bug:active {
+  opacity: 1;
+  transform: scale(1.06);
+}
+.beta-sheet-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(5, 2, 18, 0.6);
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
+  color: #fff;
+}
+.beta-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 92%;
+  overflow-y: auto;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 24px 24px 0 0;
+  background: linear-gradient(180deg, #3a1d82, #1a0c40);
+  border-top: 2px solid rgba(190, 150, 255, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: popIn 0.25s ease-out;
+}
+.beta-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.beta-sheet header b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 19px;
+}
+.beta-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: #e6dcff;
+}
+.beta-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.beta-cats button {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: 600 14px var(--font, 'Fredoka', system-ui, sans-serif);
+}
+.beta-cats button.on {
+  border-color: var(--gold, #ffcf2e);
+  background: rgba(255, 207, 46, 0.2);
+}
+.beta-sheet textarea {
+  width: 100%;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 10px;
+  font: 500 15px var(--font, 'Fredoka', system-ui, sans-serif);
+  resize: vertical;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.beta-sheet textarea.bad {
+  border-color: #ff7a90;
+}
+.beta-shot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.beta-shot img {
+  margin-left: auto;
+  max-height: 54px;
+  max-width: 90px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.beta-ctx {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(230, 220, 255, 0.7);
+}
+.beta-err {
+  position: fixed;
+  left: 50%;
+  top: calc(10px + var(--safe-top, 0px));
+  transform: translateX(-50%);
+  z-index: 2147482400;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 8px 8px 8px 12px;
+  border-radius: 16px;
+  background: #2a0b5c;
+  border: 2px solid #ffcf2e;
+  color: #fff;
+  font: 600 14px var(--font, 'Fredoka', system-ui, sans-serif);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.beta-err span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.beta-err button {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #3ee07a;
+  color: #0b2a14;
+  font: 700 14px var(--font, 'Fredoka', system-ui, sans-serif);
+}
+.beta-err button[data-n] {
+  background: transparent;
+  padding: 4px;
+}
+.beta-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff5cc8, #8a5cff);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.acc-box .acc-at {
+  color: var(--cyan, #5ef0ff);
+}
+.acc-chip {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 207, 46, 0.22);
+  color: #ffe58a;
+  margin-left: 4px;
+}
+.acc-chip.bad {
+  background: rgba(255, 79, 106, 0.25);
+  color: #ffb3c0;
+}
+.acc-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted, #c6b6ff);
+}
+.acc-row {
+  width: 100%;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  color: inherit;
+  font: inherit;
+}
+.acc-edit {
+  opacity: 0.8;
+}
+.beta-plate svg {
+  width: 22px;
+  height: 22px;
+}
+.acc-report {
+  margin-top: 8px;
+}
