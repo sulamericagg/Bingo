@@ -1,5 +1,5 @@
 import { NativePurchases, PURCHASE_TYPE, type Transaction } from '@capgo/native-purchases';
-import { FLASH_BONUSES, PRODUCTS, type ProductDef } from '../config';
+import { CLUB, FLASH_BONUSES, PRODUCTS, type ProductDef } from '../config';
 import { addBoosts, addCoins, addGems, extra, ownsSkin, ownsTrail, unlockSkin, unlockTrail } from '../core/economy';
 import { bus } from '../core/events';
 import { isAndroid } from '../core/platform';
@@ -119,6 +119,7 @@ export async function initBilling(): Promise<void> {
     bus.emit('prices');
     const { purchases } = await NativePurchases.getPurchases({ productType: PURCHASE_TYPE.INAPP });
     await reconcile(purchases);
+    await refreshClub();
   } catch (e) {
     console.warn('Billing indisponível', e);
   }
@@ -156,8 +157,90 @@ export async function restore(): Promise<boolean> {
     await NativePurchases.restorePurchases().catch(() => {});
     const { purchases } = await NativePurchases.getPurchases({ productType: PURCHASE_TYPE.INAPP });
     await reconcile(purchases);
+    await refreshClub();
     return true;
   } catch {
     return false;
   }
+}
+
+/* ============================================================
+ *  CLUBE BLOOP — assinatura mensal (Play Billing SUBS)
+ *  produto `clube_bloop`, plano base `mensal` (ver CLUB em config.ts).
+ *  Entrega: passe da temporada incluso, zero anúncios, gemas mensais + diárias, moldura.
+ * ============================================================ */
+
+const DAY = 86400000;
+let clubPrice = '';
+export const clubPriceString = (): string => clubPrice || CLUB.fallbackPrice;
+
+/** Concede/renova o Clube até `expires` (ms). Entrega as gemas do mês 1x a cada ~30 dias. */
+export function grantClub(expires: number): void {
+  const wasActive = save.club.expires > Date.now();
+  save.club.expires = Math.max(save.club.expires, expires);
+  if (Date.now() - save.club.lastRenewGrant >= 28 * DAY) {
+    save.club.lastRenewGrant = Date.now();
+    addGems(CLUB.gemsOnRenew);
+  }
+  if (!save.passItems.includes(CLUB.frame)) save.passItems.push(CLUB.frame);
+  onNoAdsPurchased(); // some banner/intersticial carregado
+  notePurchase();
+  persistNow();
+  bus.emit('club', true);
+  if (!wasActive) bus.emit('inventory');
+}
+
+/** Lê a assinatura no Google Play e atualiza o direito (chamado na abertura e após comprar). */
+export async function refreshClub(): Promise<void> {
+  if (!isAndroid || !supported) return;
+  try {
+    const { products } = await NativePurchases.getProducts({ productIdentifiers: [CLUB.productId], productType: PURCHASE_TYPE.SUBS });
+    if (products[0]?.priceString) clubPrice = products[0].priceString;
+    const { purchases } = await NativePurchases.getPurchases({ productType: PURCHASE_TYPE.SUBS });
+    const sub = purchases.find((t) => t.productIdentifier === CLUB.productId && t.purchaseState !== '2');
+    const active = !!sub && sub.isActive !== false && sub.subscriptionState !== 'expired' && sub.subscriptionState !== 'revoked';
+    if (active) {
+      // Google nem sempre informa a data: sem ela, vale por 3 dias e é reconferido a cada abertura.
+      const exp = sub!.expirationDate ? Date.parse(sub!.expirationDate) : Date.now() + 3 * DAY;
+      grantClub(Number.isFinite(exp) ? exp : Date.now() + 3 * DAY);
+      if (sub!.purchaseToken && sub!.isAcknowledged === false) NativePurchases.acknowledgePurchase({ purchaseToken: sub!.purchaseToken }).catch(() => {});
+    } else if (save.club.expires > Date.now()) {
+      // consulta respondeu e não há assinatura: encerra agora
+      save.club.expires = Date.now();
+      persistNow();
+      bus.emit('club', false);
+    }
+  } catch {
+    /* offline: mantém o que estava salvo até a data de expiração */
+  }
+}
+
+/** Assinar o Clube Bloop. Na web devolve 'unavailable' (a UI explica que é só no app Android). */
+export async function buyClub(): Promise<BuyResult> {
+  if (!isAndroid || !supported) return 'unavailable';
+  try {
+    const t = await NativePurchases.purchaseProduct({
+      productIdentifier: CLUB.productId,
+      planIdentifier: CLUB.basePlan,
+      productType: PURCHASE_TYPE.SUBS,
+      autoAcknowledgePurchases: true,
+    });
+    if (t.purchaseState === '2') return 'pending';
+    const exp = t.expirationDate ? Date.parse(t.expirationDate) : Date.now() + 31 * DAY;
+    grantClub(Number.isFinite(exp) ? exp : Date.now() + 31 * DAY);
+    return 'ok';
+  } catch (e: any) {
+    const msg = String(e?.message ?? e).toLowerCase();
+    if (msg.includes('cancel')) return 'cancel';
+    if (msg.includes('already') || msg.includes('owned')) {
+      await refreshClub();
+      return 'ok';
+    }
+    return 'error';
+  }
+}
+
+/** Abre a tela de assinaturas do Google Play (cancelar/trocar forma de pagamento). */
+export async function manageClub(): Promise<void> {
+  if (isAndroid) await NativePurchases.manageSubscriptions().catch(() => {});
 }

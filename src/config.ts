@@ -31,7 +31,7 @@ export const AD_RULES = {
   freeRunsBeforeFirstInterstitial: 2,
 };
 
-export type ProductKind = 'gems' | 'noads' | 'starter' | 'vip' | 'cosmetic' | 'doubler' | 'boosts' | 'bundle' | 'flash';
+export type ProductKind = 'gems' | 'noads' | 'starter' | 'vip' | 'cosmetic' | 'doubler' | 'boosts' | 'bundle' | 'flash' | 'club';
 
 export interface ProductDef {
   id: string;
@@ -42,6 +42,8 @@ export interface ProductDef {
   coins: number;
   fallbackPrice: string;
   badge?: 'popular' | 'best' | 'sale';
+  /** % de bônus sobre o pacote base (só visual: "+20%") */
+  bonusPct?: number;
   /** skin desbloqueada pela compra */
   skin?: string;
   /** rastro desbloqueado pela compra */
@@ -63,10 +65,14 @@ export interface ProductDef {
 export const PRODUCTS: ProductDef[] = [
   { id: 'starter_pack', kind: 'starter', consumable: false, gems: 300, coins: 3000, fallbackPrice: 'R$ 9,90', skin: 'galaxy', noAds: true, badge: 'best' },
   { id: 'remove_ads', kind: 'noads', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 14,90', noAds: true },
+  // Gemas (moeda premium). Pacotes maiores rendem MUITO mais por real (bônus progressivo).
+  // IDs antigos mantidos (gems_small..gems_mega); preços/quantidades re-escalonados em nov/2026.
   { id: 'gems_small', kind: 'gems', consumable: true, gems: 100, coins: 0, fallbackPrice: 'R$ 4,90' },
-  { id: 'gems_medium', kind: 'gems', consumable: true, gems: 550, coins: 0, fallbackPrice: 'R$ 19,90', badge: 'popular' },
-  { id: 'gems_large', kind: 'gems', consumable: true, gems: 1200, coins: 0, fallbackPrice: 'R$ 39,90' },
-  { id: 'gems_mega', kind: 'gems', consumable: true, gems: 3000, coins: 0, fallbackPrice: 'R$ 89,90' },
+  { id: 'gems_medium', kind: 'gems', consumable: true, gems: 220, coins: 0, fallbackPrice: 'R$ 9,90', bonusPct: 9 },
+  { id: 'gems_large', kind: 'gems', consumable: true, gems: 600, coins: 0, fallbackPrice: 'R$ 24,90', badge: 'popular', bonusPct: 18 },
+  { id: 'gems_mega', kind: 'gems', consumable: true, gems: 1300, coins: 0, fallbackPrice: 'R$ 49,90', bonusPct: 27 },
+  { id: 'gems_ultra', kind: 'gems', consumable: true, gems: 2800, coins: 0, fallbackPrice: 'R$ 99,90', bonusPct: 37 },
+  { id: 'gems_galaxy', kind: 'gems', consumable: true, gems: 6000, coins: 0, fallbackPrice: 'R$ 199,90', badge: 'best', bonusPct: 47 },
   // cosméticos míticos (permanentes)
   { id: 'skin_phoenix', kind: 'cosmetic', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 12,90', skin: 'phoenix' },
   { id: 'skin_lava_golem', kind: 'cosmetic', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 12,90', skin: 'lava' },
@@ -90,6 +96,45 @@ export const FLASH_BONUSES: { coins?: number; boosts?: { shield?: number; magnet
   { boosts: { shield: 2, magnet: 2, headstart: 2 } },
   { coins: 2500 },
 ];
+
+/**
+ * ASSINATURA "Clube Bloop" (Play Console → Monetizar → Produtos → Assinaturas).
+ * Produto `clube_bloop`, plano base `mensal` (renovação automática mensal).
+ * NÃO entra em PRODUCTS (que é só de produtos no app / INAPP).
+ */
+export const CLUB = {
+  productId: 'clube_bloop',
+  basePlan: 'mensal',
+  fallbackPrice: 'R$ 19,90/mês',
+  /** gemas entregues ao assinar e a cada renovação (1x por mês de assinatura) */
+  gemsOnRenew: 300,
+  /** gotejamento diário de gemas enquanto ativo (resgatar no Passe) */
+  gemsDaily: 15,
+  /** moldura exclusiva de perfil */
+  frame: 'fr_club',
+};
+
+/** PASSE ESTELAR — um por mês (60 temporadas em src/creatures/seasons.ts). */
+export const PASS = {
+  levels: 50,
+  /** XP por nível (constante: fácil de entender para crianças) */
+  xpPerLevel: 1000,
+  /** preço do passe premium em gemas */
+  priceGems: 950,
+  /** pular 1 nível */
+  skipGems: 150,
+  /** XP do login diário */
+  dailyLoginXp: 300,
+  /** XP por partida: base + por segundo (teto) + bônus */
+  runXp: { base: 25, perSec: 1.5, maxDur: 90, win: 60, podium: [0, 80, 50, 30] as number[], perfScore: 0 },
+};
+
+/** TEMPO SEM ANÚNCIOS: assista N vídeos premiados → M minutos sem intersticial/banner (acumula até o teto). */
+export const AD_FREE = {
+  videos: 3,
+  minutes: 30,
+  maxMinutes: 120,
+};
 
 export const productById = (id: string): ProductDef | undefined => PRODUCTS.find((p) => p.id === id);
 

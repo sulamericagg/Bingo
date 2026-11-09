@@ -24,6 +24,7 @@ import { registerCorePanels } from './hub/core-panels';
 import { registerPet } from './pet/register';
 import { petCoinBonus } from './pet/state';
 import { registerTubo } from './games/tubo/register';
+import { registerPass } from './pass/register';
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -52,7 +53,6 @@ async function boot(): Promise<void> {
   // registerRally();
   // registerTycoon();
   registerPet();
-  // registerPass();
   // registerCreatures();
   // registerSocial();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
@@ -83,6 +83,7 @@ async function boot(): Promise<void> {
   await intro; // anúncios/consentimento só depois da abertura
   initAds();
   initBilling();
+  registerPass();
   // presentes / códigos / desafios: em segundo plano, nunca bloqueia nem lança erro
   initOnline().catch(() => {});
 }
