@@ -17,11 +17,11 @@
     <div id="ui">
       <!-- HUD -->
       <section id="hud" class="screen">
-        <button class="icon-btn" id="btn-pause" aria-label="Pausar">❚❚</button>
+        <button class="icon-btn" id="btn-pause" aria-label="Pausar" data-icon="pause"></button>
         <div class="hud-score" id="hud-score">0</div>
         <div class="pill hud-coins"><i class="coin"></i><span id="hud-coins">0</span></div>
         <div id="tutorial" class="tutorial hidden">
-          <div class="hand">👆</div>
+          <div class="hand" data-icon="hand-tap" data-size="72"></div>
           <div>Toque para <b>pular</b>!<br /><small>Mire no próximo planeta</small></div>
         </div>
         <div id="banner-biome" class="biome-banner"></div>
@@ -33,25 +33,25 @@
           <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
           <button class="pill gem-pill" data-open="shop" data-tab="gems"><i class="gem"></i><span data-bind="gems">0</span><b class="plus">+</b></button>
           <div class="spacer"></div>
-          <button class="icon-btn" data-open="settings" aria-label="Configurações">⚙</button>
+          <button class="icon-btn" data-open="settings" aria-label="Configurações" data-icon="gear"></button>
         </header>
         <div class="logo">
-          <div class="logo-small">✦ ✦ ✦</div>
+          <div class="logo-small"><span data-icon="sparkle" data-size="16"></span><span data-icon="sparkle" data-size="24"></span><span data-icon="sparkle" data-size="16"></span></div>
           <h1><span>BLOOP</span><span class="o">ORBIT</span></h1>
-          <div class="best">🏆 Recorde <b data-bind="best">0</b></div>
+          <div class="best"><span data-icon="trophy" data-size="26"></span> Recorde <b data-bind="best">0</b></div>
         </div>
         <div class="menu-bottom">
           <button class="offer hidden" id="starter-offer" data-open="shop" data-tab="gems">
-            <span class="offer-tag">OFERTA</span>
-            <span>Pacote Inicial</span>
-            <small>Sem anúncios + 300 💎 + skin lendária</small>
+            <span class="offer-art" data-icon="chest" data-size="46"></span>
+            <span class="offer-title">Pacote Inicial <span class="offer-tag">OFERTA</span></span>
+            <small>Sem anúncios + 300 <i class="gem"></i> + skin lendária</small>
           </button>
           <button class="btn btn-play" id="btn-play">JOGAR</button>
           <div class="menu-row">
-            <button class="tile" data-open="shop" data-tab="skins"><span class="tile-ico">🛍️</span>Loja<em class="badge hidden" data-badge="shop"></em></button>
-            <button class="tile" data-open="missions"><span class="tile-ico">🎯</span>Missões<em class="badge hidden" data-badge="missions"></em></button>
-            <button class="tile" data-open="daily"><span class="tile-ico">🎁</span>Diário<em class="badge hidden" data-badge="daily"></em></button>
-            <button class="tile" id="btn-free"><span class="tile-ico">🎬</span>Grátis<em class="badge hidden" data-badge="free"></em></button>
+            <button class="tile" data-open="shop" data-tab="skins"><span class="tile-ico plate plate-pink" data-icon="bag"></span>Loja<em class="badge hidden" data-badge="shop"></em></button>
+            <button class="tile" data-open="missions"><span class="tile-ico plate plate-cyan" data-icon="target"></span>Missões<em class="badge hidden" data-badge="missions"></em></button>
+            <button class="tile" data-open="daily"><span class="tile-ico plate plate-gold" data-icon="gift"></span>Diário<em class="badge hidden" data-badge="daily"></em></button>
+            <button class="tile" id="btn-free"><span class="tile-ico plate plate-green" data-icon="video"></span>Grátis<em class="badge hidden" data-badge="free"></em></button>
           </div>
         </div>
       </section>
@@ -61,8 +61,8 @@
         <div class="panel revive-panel">
           <h2>CONTINUAR?</h2>
           <div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="ring-bg" /><circle cx="50" cy="50" r="44" class="ring-fg" id="revive-ring" /></svg><span id="revive-count">5</span></div>
-          <button class="btn btn-green" id="btn-revive-ad">🎬 Continuar grátis</button>
-          <button class="btn btn-gem" id="btn-revive-gem">💎 <span id="revive-cost">15</span> Continuar</button>
+          <button class="btn btn-green" id="btn-revive-ad"><span data-icon="video"></span> Continuar grátis</button>
+          <button class="btn btn-gem" id="btn-revive-gem"><span data-icon="gem"></span> <span id="revive-cost">15</span> Continuar</button>
           <button class="link" id="btn-revive-skip">Não, obrigado</button>
         </div>
       </section>
@@ -70,20 +70,20 @@
       <!-- FIM DE JOGO -->
       <section id="over" class="screen modal-screen">
         <div class="panel over-panel">
-          <div class="newbest hidden" id="over-newbest">🎉 NOVO RECORDE! 🎉</div>
+          <div class="newbest hidden" id="over-newbest"><span data-icon="crown"></span> NOVO RECORDE! <span data-icon="party"></span></div>
           <h2 id="over-title">FIM DE JOGO</h2>
           <div class="over-score" id="over-score">0</div>
           <div class="over-best">Recorde: <b id="over-best">0</b></div>
           <div class="stats">
-            <div><i class="coin"></i><b id="over-coins">0</b><small>moedas</small></div>
-            <div><span>⭐</span><b id="over-perfects">0</b><small>perfeitos</small></div>
-            <div><span>🪐</span><b id="over-planets">0</b><small>planetas</small></div>
+            <div><span class="stat-ico" data-icon="coin"></span><b id="over-coins">0</b><small>moedas</small></div>
+            <div><span class="stat-ico" data-icon="star"></span><b id="over-perfects">0</b><small>perfeitos</small></div>
+            <div><span class="stat-ico" data-icon="planet"></span><b id="over-planets">0</b><small>planetas</small></div>
           </div>
-          <button class="btn btn-gold" id="btn-double">🎬 Dobrar moedas</button>
+          <button class="btn btn-gold" id="btn-double"><span data-icon="video"></span> Dobrar moedas</button>
           <button class="btn btn-play small" id="btn-again">JOGAR DE NOVO</button>
           <div class="row">
-            <button class="btn btn-ghost" id="btn-home">⌂ Menu</button>
-            <button class="btn btn-ghost" id="btn-share">📣 Desafiar</button>
+            <button class="btn btn-ghost" id="btn-home"><span data-icon="home"></span> Menu</button>
+            <button class="btn btn-ghost" id="btn-share"><span data-icon="megaphone"></span> Desafiar</button>
           </div>
         </div>
       </section>
@@ -91,8 +91,9 @@
       <!-- PAUSA -->
       <section id="pause" class="screen modal-screen">
         <div class="panel">
+          <div class="panel-art plate plate-violet round" data-icon="pause"></div>
           <h2>PAUSADO</h2>
-          <button class="btn btn-play small" id="btn-resume">CONTINUAR</button>
+          <button class="btn btn-play small" id="btn-resume"><span data-icon="play"></span> CONTINUAR</button>
           <button class="btn btn-ghost" id="btn-quit">Sair para o menu</button>
         </div>
       </section>
@@ -101,15 +102,15 @@
       <section id="shop" class="screen modal-screen">
         <div class="panel big">
           <header class="panel-head">
-            <h2>LOJA</h2>
+            <h2><span data-icon="bag"></span> LOJA</h2>
             <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
             <div class="pill"><i class="gem"></i><span data-bind="gems">0</span></div>
-            <button class="icon-btn close" data-close>✕</button>
+            <button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button>
           </header>
           <nav class="tabs">
-            <button data-tab="skins" class="active">Personagens</button>
-            <button data-tab="trails">Rastros</button>
-            <button data-tab="gems">💎 Gemas</button>
+            <button data-tab="skins" class="active"><span data-icon="user"></span>Personagens</button>
+            <button data-tab="trails"><span data-icon="comet"></span>Rastros</button>
+            <button data-tab="gems"><span data-icon="gem"></span>Gemas</button>
           </nav>
           <div class="shop-body" id="shop-body"></div>
         </div>
@@ -118,18 +119,18 @@
       <!-- DIÁRIO -->
       <section id="daily" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2>PRESENTE DIÁRIO</h2><button class="icon-btn close" data-close>✕</button></header>
-          <p class="muted">Volte todo dia! O 7º dia é o melhor 😉</p>
+          <header class="panel-head"><h2><span data-icon="calendar"></span> PRESENTE DIÁRIO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <p class="muted">Volte todo dia! O 7º dia é o melhor <span data-icon="sparkle"></span></p>
           <div class="daily-grid" id="daily-grid"></div>
           <button class="btn btn-green" id="btn-daily">Pegar</button>
-          <button class="btn btn-gold" id="btn-daily2">🎬 Pegar em DOBRO</button>
+          <button class="btn btn-gold" id="btn-daily2"><span data-icon="video"></span> Pegar em DOBRO</button>
         </div>
       </section>
 
       <!-- MISSÕES -->
       <section id="missions" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2>MISSÕES DO DIA</h2><button class="icon-btn close" data-close>✕</button></header>
+          <header class="panel-head"><h2><span data-icon="target"></span> MISSÕES DO DIA</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
           <div id="mission-list"></div>
           <p class="muted">Novas missões todo dia à meia-noite.</p>
         </div>
@@ -138,11 +139,11 @@
       <!-- CONFIG -->
       <section id="settings" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2>AJUSTES</h2><button class="icon-btn close" data-close>✕</button></header>
-          <label class="toggle"><span>🔊 Efeitos sonoros</span><input type="checkbox" data-setting="sound" /><i></i></label>
-          <label class="toggle"><span>🎵 Música</span><input type="checkbox" data-setting="music" /><i></i></label>
-          <label class="toggle"><span>📳 Vibração</span><input type="checkbox" data-setting="haptics" /><i></i></label>
-          <label class="toggle"><span>⚡ Modo economia (celular fraco)</span><input type="checkbox" data-setting="lowFx" /><i></i></label>
+          <header class="panel-head"><h2><span data-icon="gear"></span> AJUSTES</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <label class="toggle"><span><span class="plate round sm plate-cyan" data-icon="sound"></span>Efeitos sonoros</span><input type="checkbox" data-setting="sound" /><i></i></label>
+          <label class="toggle"><span><span class="plate round sm plate-pink" data-icon="music"></span>Música</span><input type="checkbox" data-setting="music" /><i></i></label>
+          <label class="toggle"><span><span class="plate round sm plate-violet" data-icon="vibration"></span>Vibração</span><input type="checkbox" data-setting="haptics" /><i></i></label>
+          <label class="toggle"><span><span class="plate round sm plate-gold" data-icon="bolt"></span>Modo economia (celular fraco)</span><input type="checkbox" data-setting="lowFx" /><i></i></label>
           <button class="btn btn-ghost" id="btn-restore">Restaurar compras</button>
           <button class="btn btn-ghost" id="btn-privacy-ads">Privacidade dos anúncios</button>
           <a class="link" href="./privacy.html" target="_blank" rel="noopener">Política de privacidade</a>

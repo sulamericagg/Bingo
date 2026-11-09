@@ -29,6 +29,7 @@ import { drawPlayer } from '../game/sprites';
 import { hideBanner, maybeInterstitial, showBanner, showPrivacyOptions, showRewarded } from '../services/ads';
 import { billingSupported, buy, priceOf, restore } from '../services/billing';
 import { shareScore } from '../services/share';
+import { hydrateIcons, icon, type IconName } from './icons';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
 const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll<T>(sel));
@@ -52,6 +53,7 @@ export class UI {
 
   constructor(game: Game) {
     this.game = game;
+    hydrateIcons(document);
     this.bind();
     this.refreshWallet();
     this.refreshBadges();
@@ -176,7 +178,7 @@ export class UI {
     $('#btn-free').onclick = () => this.freeCoins();
     $('#btn-restore').onclick = async () => {
       const ok = await restore();
-      this.toast(ok ? '✅ Compras restauradas' : isNative ? 'Nada para restaurar' : 'Disponível no app Android');
+      this.toast(ok ? 'Compras restauradas' : isNative ? 'Nada para restaurar' : 'Disponível no app Android', ok ? 'check' : 'shield');
     };
     $('#btn-privacy-ads').onclick = () => showPrivacyOptions();
     $('#revive-cost').textContent = String(ECONOMY.reviveGemCost);
@@ -212,7 +214,7 @@ export class UI {
     bus.on('jump', () => $('#tutorial').classList.add('hidden'));
     bus.on('biome', (name: string) => {
       const el = $('#banner-biome');
-      el.textContent = `✦ ${name} ✦`;
+      el.innerHTML = `${icon('sparkle')} ${esc(name)} ${icon('sparkle')}`;
       el.classList.remove('show');
       void el.offsetWidth;
       el.classList.add('show');
@@ -221,12 +223,13 @@ export class UI {
     bus.on('purchase', (def: ProductDef) => {
       audio.cash();
       haptics.success();
-      this.toast(def.kind === 'gems' ? `💎 +${def.gems} gemas!` : '🎉 Compra concluída! Obrigado!');
+      if (def.kind === 'gems') this.toast(`+${def.gems} gemas!`, 'gem');
+      else this.toast('Compra concluída! Obrigado!', 'party');
       if (this.modal === 'shop') this.renderShop();
       $('#starter-offer').classList.toggle('hidden', save.starter || save.runs < 2);
     });
     bus.on('prices', () => this.modal === 'shop' && this.renderShop());
-    bus.on('mission-done', (m: Mission) => this.toast(`🎯 Missão completa: ${missionText(m)}`));
+    bus.on('mission-done', (m: Mission) => this.toast(`Missão completa: ${missionText(m)}`, 'target'));
   }
 
   /* ============================== jogo ============================== */
@@ -282,7 +285,7 @@ export class UI {
     this.base = base;
     if (ok) this.doRevive();
     else {
-      this.toast('Vídeo indisponível agora 😕');
+      this.toast('Vídeo indisponível agora', 'video');
       this.showResults();
     }
   }
@@ -329,7 +332,7 @@ export class UI {
     const dbl = $<HTMLButtonElement>('#btn-double');
     dbl.classList.toggle('hidden', stats.coins < 3);
     dbl.disabled = false;
-    dbl.textContent = `🎬 Dobrar moedas (+${stats.coins})`;
+    dbl.innerHTML = `${icon('video')} Dobrar moedas +${stats.coins} ${icon('coin')}`;
     if (newBest) {
       audio.unlock2();
       haptics.success();
@@ -347,12 +350,12 @@ export class UI {
       this.doubled = true;
       const c = this.game.runStats.coins;
       addCoins(c);
-      this.flyReward(`+${c} 🪙`, btn);
-      btn.textContent = '✅ Moedas dobradas!';
+      this.flyReward({ coins: c }, btn);
+      btn.innerHTML = `${icon('check')} Moedas dobradas!`;
       audio.cash();
     } else {
       btn.disabled = false;
-      this.toast('Vídeo indisponível agora 😕');
+      this.toast('Vídeo indisponível agora', 'video');
     }
   }
 
@@ -371,19 +374,19 @@ export class UI {
   private async freeCoins(): Promise<void> {
     const st = this.freeState();
     if (st.n >= FREE_LIMIT) {
-      this.toast('Volte amanhã para mais moedas grátis!');
+      this.toast('Volte amanhã para mais moedas grátis!', 'clock');
       return;
     }
     const ok = await showRewarded();
     if (!ok) {
-      this.toast('Vídeo indisponível agora 😕');
+      this.toast('Vídeo indisponível agora', 'video');
       return;
     }
     st.n++;
     localStorage.setItem(FREE_KEY, JSON.stringify(st));
     addCoins(FREE_COINS);
     audio.cash();
-    this.flyReward(`+${FREE_COINS} 🪙`, $('#btn-free'));
+    this.flyReward({ coins: FREE_COINS }, $('#btn-free'));
     this.refreshBadges();
   }
 
@@ -393,14 +396,14 @@ export class UI {
       if (mult > 1) {
         const ok = await showRewarded();
         if (!ok) {
-          this.toast('Vídeo indisponível agora 😕');
+          this.toast('Vídeo indisponível agora', 'video');
           return;
         }
       }
       const r = claimDaily(mult);
       audio.cash();
       haptics.success();
-      this.flyReward([r.coins ? `+${r.coins} 🪙` : '', r.gems ? `+${r.gems} 💎` : ''].filter(Boolean).join('  '), $('#btn-daily'));
+      this.flyReward({ coins: r.coins, gems: r.gems }, $('#btn-daily'));
       this.renderDaily();
       this.refreshBadges();
     };
@@ -467,7 +470,7 @@ export class UI {
       btn.className = 'price';
       if (equipped) {
         btn.classList.add('on');
-        btn.textContent = '✓ Equipado';
+        btn.innerHTML = `${icon('check')} Equipado`;
       } else if (owned) {
         btn.classList.add('equip');
         btn.textContent = 'Equipar';
@@ -490,10 +493,10 @@ export class UI {
       if (!canAfford(p)) btn.classList.add('cant');
     } else if (p.ads) {
       btn.classList.add('ad');
-      btn.textContent = `🎬 ${save.adProgress[id] ?? 0}/${p.ads}`;
+      btn.innerHTML = `${icon('video')} ${save.adProgress[id] ?? 0}/${p.ads}`;
     } else if (p.iap) {
       btn.classList.add('ad');
-      btn.textContent = '🎁 Pacote';
+      btn.innerHTML = `${icon('gift')} Pacote`;
     }
   }
 
@@ -504,7 +507,7 @@ export class UI {
       else unlockTrail(item.id);
       audio.unlock2();
       haptics.success();
-      this.toast(`🎉 ${item.name} desbloqueado!`);
+      this.toast(`${item.name} desbloqueado!`, 'party');
     };
     if (!owned) {
       const p = item.price;
@@ -515,17 +518,17 @@ export class UI {
       }
       if (p.ads) {
         const ok = await showRewarded();
-        if (!ok) return this.toast('Vídeo indisponível agora 😕');
+        if (!ok) return this.toast('Vídeo indisponível agora', 'video');
         save.adProgress[item.id] = (save.adProgress[item.id] ?? 0) + 1;
         persist();
         if (save.adProgress[item.id] >= p.ads) unlock();
-        else this.toast(`🎬 ${save.adProgress[item.id]}/${p.ads} — continue assistindo!`);
+        else this.toast(`${save.adProgress[item.id]}/${p.ads} — continue assistindo!`, 'video');
       } else if (!spend(p)) {
         if (p.gems) {
-          this.toast('Gemas insuficientes 💎');
+          this.toast('Gemas insuficientes', 'gem');
           this.shopTab = 'gems';
           this.renderShop();
-        } else this.toast('Moedas insuficientes — jogue mais ou pegue grátis 🎬');
+        } else this.toast('Moedas insuficientes — jogue mais ou pegue grátis', 'coin');
         return;
       } else unlock();
       if (!(isSkin ? ownsSkin(item.id) : ownsTrail(item.id))) return this.renderShop();
@@ -540,7 +543,6 @@ export class UI {
   private renderGems(body: HTMLElement): void {
     const native = isNative && billingSupported();
     const add = (html: string) => body.insertAdjacentHTML('beforeend', html);
-    const icons: Record<string, string> = { gems_small: '💎', gems_medium: '💎💎', gems_large: '💰', gems_mega: '👑' };
     for (const p of PRODUCTS) {
       if (p.kind === 'starter' && save.starter) continue;
       if (p.kind === 'noads' && save.noAds) continue;
@@ -548,29 +550,28 @@ export class UI {
       const title = p.kind === 'starter' ? 'Pacote Inicial' : p.kind === 'noads' ? 'Sem Anúncios' : `${p.gems} Gemas`;
       const desc =
         p.kind === 'starter'
-          ? 'Remove anúncios + 300 💎 + 3000 🪙 + skin lendária Galáxia'
+          ? `Remove anúncios + ${p.gems} ${GEM} + ${p.coins} ${COIN} + skin lendária Galáxia`
           : p.kind === 'noads'
             ? 'Remove banners e intersticiais para sempre'
             : p.id === 'gems_mega'
               ? 'Melhor custo-benefício!'
               : 'Use para skins épicas e continuar';
-      const ico = p.kind === 'starter' ? '🎁' : p.kind === 'noads' ? '🚫' : icons[p.id] ?? '💎';
       const badge = p.badge === 'best' ? 'MELHOR OFERTA' : p.badge === 'popular' ? 'POPULAR' : '';
       add(`<div class="product ${p.kind === 'starter' ? 'featured' : ''}">
         ${badge ? `<span class="p-badge">${badge}</span>` : ''}
-        <div class="p-ico">${ico}</div>
+        ${productArt(p.id)}
         <div class="p-info"><div class="p-title">${title}</div><div class="p-desc">${desc}</div></div>
         <button class="price" data-buy="${p.id}">${native ? priceOf(p) : 'No app'}</button>
       </div>`);
     }
     add('<div class="section-title">Trocar</div>');
     add(`<div class="product">
-      <div class="p-ico">🔄</div>
-      <div class="p-info"><div class="p-title">10 💎 → ${10 * ECONOMY.gemsToCoinsRate} 🪙</div><div class="p-desc">Converta gemas em moedas</div></div>
+      ${productArt('convert')}
+      <div class="p-info"><div class="p-title">10 ${GEM} → ${10 * ECONOMY.gemsToCoinsRate} ${COIN}</div><div class="p-desc">Converta gemas em moedas</div></div>
       <button class="price ${save.gems < 10 ? 'cant' : ''}" id="btn-convert"><i class="gem"></i>10</button>
     </div>`);
     add(`<div class="product">
-      <div class="p-ico">🎬</div>
+      ${productArt('free')}
       <div class="p-info"><div class="p-title">+${FREE_COINS} moedas grátis</div><div class="p-desc">Assista a um vídeo curto (${FREE_LIMIT - this.freeState().n} restantes hoje)</div></div>
       <button class="price ad" id="btn-free2">Assistir</button>
     </div>`);
@@ -593,7 +594,7 @@ export class UI {
       };
     });
     $('#btn-convert', body).onclick = () => {
-      if (save.gems < 10) return this.toast('Gemas insuficientes 💎');
+      if (save.gems < 10) return this.toast('Gemas insuficientes', 'gem');
       addGems(-10);
       addCoins(10 * ECONOMY.gemsToCoinsRate);
       audio.cash();
@@ -617,15 +618,15 @@ export class UI {
         const cls = done ? 'done' : avail && i === idx ? 'today' : '';
         return `<div class="day ${cls} ${i === 6 ? 'last' : ''}">
           <small>Dia ${i + 1}</small>
-          ${r.coins ? `<b><i class="coin"></i> ${r.coins}</b>` : ''}
-          ${r.gems ? `<b><i class="gem"></i> ${r.gems}</b>` : ''}
-          ${done ? '✓' : ''}
+          <span class="day-art">${icon(dailyArt(r, i === 6), { size: i === 6 ? 52 : 38 })}</span>
+          <span class="day-amt">${r.coins ? `<b><i class="coin"></i>${r.coins}</b>` : ''}${r.gems ? `<b><i class="gem"></i>${r.gems}</b>` : ''}</span>
+          ${done ? `<span class="day-check">${icon('check')}</span>` : ''}
         </div>`;
       })
       .join('');
     $<HTMLButtonElement>('#btn-daily').disabled = !avail;
     $<HTMLButtonElement>('#btn-daily2').disabled = !avail;
-    $('#btn-daily').textContent = avail ? 'Pegar' : 'Volte amanhã ⏰';
+    $('#btn-daily').innerHTML = avail ? 'Pegar' : `${icon('clock')} Volte amanhã`;
   }
 
   private renderMissions(): void {
@@ -635,11 +636,11 @@ export class UI {
       .map((m, i) => {
         const pct = Math.round((m.progress / m.target) * 100);
         const btn = m.claimed
-          ? '<button class="price on">✓</button>'
+          ? `<button class="price on">${icon('check', { size: 26 })}</button>`
           : m.progress >= m.target
             ? `<button class="price" data-claim="${i}"><i class="coin"></i>${m.reward}</button>`
             : `<button class="price cant"><i class="coin"></i>${m.reward}</button>`;
-        return `<div class="mission"><div class="m-info"><div class="m-title">${missionText(m)}</div>
+        return `<div class="mission ${m.claimed ? 'claimed' : ''}"><span class="m-ico plate round plate-violet">${icon(MISSION_ICON[m.type] ?? 'target')}</span><div class="m-info"><div class="m-title">${missionText(m)}</div>
           <div class="bar"><i style="width:${pct}%"></i></div><small class="muted">${m.progress}/${m.target}</small></div>${btn}</div>`;
       })
       .join('');
@@ -649,7 +650,7 @@ export class UI {
         if (got) {
           audio.cash();
           haptics.success();
-          this.flyReward(`+${got} 🪙`, b);
+          this.flyReward({ coins: got }, b);
         }
         this.renderMissions();
       };
@@ -664,20 +665,25 @@ export class UI {
 
   /* ============================== feedback ============================== */
 
-  toast(msg: string): void {
+  toast(msg: string, ico?: IconName): void {
     const el = $('#toast');
-    el.textContent = msg;
+    el.innerHTML = (ico ? icon(ico, { size: 24 }) : '') + `<span>${esc(msg)}</span>`;
     el.classList.add('show');
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => el.classList.remove('show'), 2400);
   }
 
-  private flyReward(text: string, from: HTMLElement): void {
+  /** Recompensa voando: ícone + número (aceita texto puro por compatibilidade). */
+  private flyReward(reward: { coins?: number; gems?: number } | string, from: HTMLElement): void {
     const r = from.getBoundingClientRect();
     const el = document.createElement('div');
     el.className = 'reward-fly';
-    el.textContent = text;
-    el.style.left = `${r.left + r.width / 2 - 40}px`;
+    if (typeof reward === 'string') el.textContent = reward;
+    else {
+      const part = (v: number | undefined, ico: IconName) => (v ? `<span class="rf-part">+${v}${icon(ico, { size: 30 })}</span>` : '');
+      el.innerHTML = part(reward.coins, 'coin') + part(reward.gems, 'gem');
+    }
+    el.style.left = `${r.left + r.width / 2}px`;
     el.style.top = `${r.top - 10}px`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1200);
@@ -685,6 +691,44 @@ export class UI {
 }
 
 /* ============================== helpers ============================== */
+
+const COIN = '<i class="coin"></i>';
+const GEM = '<i class="gem"></i>';
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+}
+
+const MISSION_ICON: Record<Mission['type'], IconName> = {
+  planets: 'planet',
+  coins: 'coins',
+  perfects: 'star',
+  score: 'trophy',
+  runs: 'rocket',
+};
+
+function dailyArt(r: { coins?: number; gems?: number }, last: boolean): IconName {
+  if (last) return 'gem-chest';
+  if (r.gems) return r.gems >= 10 ? 'gem-pile' : 'gem';
+  return (r.coins ?? 0) >= 200 ? 'coins' : 'coin';
+}
+
+/** Composição ilustrada dos produtos da loja: placa brilhante + ícone principal + acento. */
+const PRODUCT_ART: Record<string, { main: IconName; plate: string; accent?: IconName }> = {
+  starter_pack: { main: 'chest', plate: 'gold', accent: 'star' },
+  remove_ads: { main: 'no-ads', plate: 'violet', accent: 'shield' },
+  gems_small: { main: 'gem', plate: 'violet' },
+  gems_medium: { main: 'gem-pile', plate: 'violet', accent: 'sparkle' },
+  gems_large: { main: 'gem-heap', plate: 'pink', accent: 'sparkle' },
+  gems_mega: { main: 'gem-chest', plate: 'gold', accent: 'crown' },
+  convert: { main: 'refresh', plate: 'violet', accent: 'coin' },
+  free: { main: 'video', plate: 'green', accent: 'coin' },
+};
+
+function productArt(id: string): string {
+  const a = PRODUCT_ART[id] ?? { main: 'gem' as IconName, plate: 'cyan' };
+  return `<div class="p-ico plate plate-${a.plate}">${icon(a.main)}${a.accent ? `<span class="p-accent">${icon(a.accent)}</span>` : ''}</div>`;
+}
 
 function missionText(m: Mission): string {
   switch (m.type) {

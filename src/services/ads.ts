@@ -9,6 +9,7 @@ import {
 import { ADMOB, AD_RULES, ADS_TEST_MODE, WEB_ADS } from '../config';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
+import { icon } from '../ui/icons';
 import { isNative } from '../core/platform';
 import { persist, save } from '../core/storage';
 
@@ -221,13 +222,13 @@ function fakeAd(reward: boolean): Promise<boolean> {
     const el = document.createElement('div');
     el.className = 'fake-ad';
     let left = reward ? 5 : 3;
-    el.innerHTML = `<div class="fake-ad-box"><div class="fake-ad-tag">ANÚNCIO DE TESTE</div><div class="fake-ad-title">Seu anúncio aparece aqui</div><div class="fake-ad-sub">Configure o AdMob/AdSense em <b>src/config.ts</b></div><div class="fake-ad-count">${left}</div><button class="fake-ad-close">Fechar</button></div>`;
+    el.innerHTML = `<div class="fake-ad-box"><div class="fake-ad-art">${icon('video', { size: 56 })}</div><div class="fake-ad-tag">ANÚNCIO DE TESTE</div><div class="fake-ad-title">Seu anúncio aparece aqui</div><div class="fake-ad-sub">Configure o AdMob/AdSense em <b>src/config.ts</b></div><div class="fake-ad-count">${left}</div><button class="fake-ad-close">Fechar</button></div>`;
     document.body.appendChild(el);
     const count = el.querySelector('.fake-ad-count')!;
     const close = el.querySelector<HTMLButtonElement>('.fake-ad-close')!;
     const timer = setInterval(() => {
       left--;
-      count.textContent = left > 0 ? String(left) : '✓';
+      count.innerHTML = left > 0 ? String(left) : icon('check', { size: 52 });
       if (left <= 0) {
         clearInterval(timer);
         close.classList.add('ready');
