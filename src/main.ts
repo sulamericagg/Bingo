@@ -8,7 +8,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { audio } from './core/audio';
 import { isNative } from './core/platform';
-import { persistNow } from './core/storage';
+import { persistNow, save } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
 import { initBilling } from './services/billing';
@@ -18,7 +18,8 @@ import { initRace } from './ui/race';
 import { UI } from './ui/ui';
 import { initCreator } from './ui/creator';
 import { initLang, applyI18n } from './i18n/langs';
-import { hubPause, initHub } from './hub/hub';
+import { closeHost, hubPause, initHub, launchGame } from './hub/hub';
+import { listGames, listPanels } from './hub/registry';
 import { registerOrbit } from './hub/orbit-def';
 import { registerCorePanels } from './hub/core-panels';
 import { registerPet } from './pet/register';
@@ -68,7 +69,7 @@ async function boot(): Promise<void> {
   registerSocial();
   registerHome();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
-  if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
+  if (location.search.includes('debug')) (window as any).__bloop = { game, ui, listGames, listPanels, launchGame, closeHost, save };
 
   const onHide = () => {
     ui.pause();
