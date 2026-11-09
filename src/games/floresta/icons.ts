@@ -15,7 +15,8 @@ const stroke = (d: string, color: string, w = 4): string =>
 export type FlIcon =
   | 'tree' | 'axe' | 'saw' | 'laser' | 'barrow' | 'truck' | 'loader' | 'train' | 'mill' | 'planer' | 'belt' | 'nursery'
   | 'bot' | 'drone' | 'planter' | 'plank' | 'log' | 'acorn' | 'leaf' | 'hammer' | 'seed' | 'shop' | 'sell' | 'emote'
-  | 'heart' | 'star' | 'smile' | 'thumb' | 'wave' | 'close' | 'cam' | 'map' | 'lock' | 'cube' | 'square';
+  | 'heart' | 'star' | 'smile' | 'thumb' | 'wave' | 'close' | 'cam' | 'map' | 'lock' | 'cube' | 'square'
+  | 'grab' | 'drop' | 'throw' | 'kick' | 'wheel';
 
 const ICONS: Record<FlIcon, string> = {
   tree:
@@ -110,6 +111,18 @@ const ICONS: Record<FlIcon, string> = {
   cube:
     sil('<path d="M24 4L42 14V34L24 44L6 34V14Z"/>', 'cyan') + `<path d="M6 14L24 24L42 14M24 24V44" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/>` +
     hl('<path d="M24 8L36 14L24 20L12 14Z"/>', 0.5),
+  grab:
+    sil('<path d="M12 22C12 18 14 16 17 16S21 18 21 18V14C21 11 23 10 25 10S29 11 29 14V18C29 16 31 15 33 15S37 16 37 19V28C37 36 31 42 24 42S12 37 12 30Z"/>', 'gold', 2.4) +
+    sil('<rect x="6" y="4" width="26" height="9" rx="4.5"/>', 'wood', 2),
+  drop: sil('<rect x="10" y="30" width="28" height="10" rx="5"/>', 'wood', 2.4) + stroke('M24 4V22M16 15L24 23L32 15', '#ffd34a', 4),
+  throw:
+    sil('<rect x="22" y="6" width="22" height="9" rx="4.5"/>', 'wood', 2) + stroke('M6 40C10 28 18 20 30 18', '#ffd34a', 4) +
+    stroke('M10 30L6 40L16 38', '#ffd34a', 3),
+  kick:
+    sil('<path d="M8 6H18L20 26L32 30C36 31 38 34 37 38H10Z"/>', 'red', 2.4) + sil('<rect x="34" y="20" width="12" height="8" rx="4"/>', 'wood', 2),
+  wheel:
+    sil('<circle cx="24" cy="24" r="18"/>', 'rock', 2.4) + sil('<circle cx="24" cy="24" r="11"/>', 'silver', 2) +
+    sil('<circle cx="24" cy="24" r="4"/>', 'red', 2) + stroke('M13 24H35M24 24V35', '#5a5a6a', 3),
   square: sil('<rect x="6" y="6" width="36" height="36" rx="6"/>', 'green') + hl('<rect x="10" y="10" width="14" height="4" rx="2"/>', 0.6),
 };
 

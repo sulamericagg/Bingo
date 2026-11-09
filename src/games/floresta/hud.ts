@@ -77,7 +77,6 @@ export class Hud {
       <div class="fl-toast"></div>
       <div class="fl-bottom">
         <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
-        ${h3 ? `<button class="fl-btn round fl-cam" data-a="cam" aria-label="${t('floresta.cam', 'Câmera')}">${flIcon('cam', 28)}</button>` : ''}
         <button class="fl-btn gold fl-ctx hide" data-a="ctx"></button>
         <button class="fl-chop" aria-label="${t('floresta.chop', 'Cortar')}">${flIcon(TOOLS[host.sim.s.tool].kind === 'axe' ? 'axe' : TOOLS[host.sim.s.tool].kind === 'saw' ? 'saw' : 'laser', 52)}<span>${t('floresta.chop', 'Cortar')}</span></button>
       </div>`;
@@ -235,7 +234,7 @@ export class Hud {
     const tut = s.s.tutorial;
     let hint = '';
     if (tut === 0) hint = t('floresta.tut0', 'Vá até uma árvore e segure Cortar!');
-    else if (tut === 1) hint = t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
+    else if (tut === 1) hint = this.host.is3d ? t('floresta.tut1fps', 'Pegue as toras e jogue no funil amarelo da serraria') : t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
     else if (tut === 2) hint = t('floresta.tut2', 'Venda as tábuas na barraca e compre ferramentas na loja');
     if (hint !== (this as any)._hint) {
       (this as any)._hint = hint;
