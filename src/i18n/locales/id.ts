@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "Ubin",
   "home.wall.waves": "Ombak",
   "home.wall.wood": "Kayu",
+  "home.you": "Kamu",
   "home3d.act.break": "HANCURKAN",
   "home3d.act.cancel": "KEMBALI",
   "home3d.act.clean": "BERSIHKAN",

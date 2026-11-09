@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "Piastrelle",
   "home.wall.waves": "Onde",
   "home.wall.wood": "Legno",
+  "home.you": "Tu",
   "home3d.act.break": "ROMPI",
   "home3d.act.cancel": "INDIETRO",
   "home3d.act.clean": "PULISCI",

@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "Fayans",
   "home.wall.waves": "Dalgalar",
   "home.wall.wood": "Ahşap",
+  "home.you": "Sen",
   "home3d.act.break": "KIR",
   "home3d.act.cancel": "GERİ",
   "home3d.act.clean": "TEMİZLE",

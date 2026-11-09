@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "타일",
   "home.wall.waves": "물결",
   "home.wall.wood": "나무",
+  "home.you": "나",
   "home3d.act.break": "부수기",
   "home3d.act.cancel": "뒤로",
   "home3d.act.clean": "청소",

@@ -47,7 +47,18 @@ O relatório (`scripts/i18n/report.txt`) lista:
 - **chamadas dinâmicas** — `t()` com chave ou texto não literal (precisam de entrada em `scanDynamicData()` do extract.mjs se o texto vier de dados);
 - por idioma: faltando obrigatórias / faltando opcionais (bichinhos) / órfãs / problemas.
 
-Chaves `creature.*` (300 nomes + 300 descrições dos bichinhos) são **opcionais**: sem tradução, aparece o português.
+Chaves `creature.*` (300 nomes + 300 descrições dos bichinhos) e `song.<id>` / `song.<id>.band` (títulos e bandas
+fictícios do Bloop Banda — nomes próprios, mantidos em português) são **opcionais**: sem tradução, aparece o português.
+
+Dados lidos por `scanDynamicData()` (todos obrigatórios, exceto os acima):
+- tabelas de texto (regex): bichinhos, temporadas (`season.*`), skins/rastros;
+- módulos empacotados com esbuild (valores reais): peças do criador (`part.<id>`), motivos dos passes
+  (`pass.motif.<slug>` — compõem nomes como "Olhos de {m}", "Tapete de {m}"), músicas/estilos/palcos (`song.*`),
+  temas musicais (`mtheme.sNN`), peças dos nomes do Passe Musical (`mpass.fam.*`, `mpass.move.*`, `mpass.inst.*`),
+  cosméticos da banda (`band.cos.*`);
+- chaves concatenadas (`t('home.opt.' + k, pt)`), gravadas executando os rótulos com um `t()` gravador:
+  `home.opt.*`, `home.furn.*`, `home.floor.*`, `home.wall.*`, `home.paint.fin.*`, `home.tpl.*`, `home3d.*`, `band.style.*`.
+  Uma chave concatenada nova aparece em "Chamadas dinâmicas" no relatório até ganhar entrada ali.
 
 ## Tom das traduções
 

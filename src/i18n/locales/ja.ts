@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "タイル",
   "home.wall.waves": "なみ",
   "home.wall.wood": "木",
+  "home.you": "きみ",
   "home3d.act.break": "こわす",
   "home3d.act.cancel": "もどる",
   "home3d.act.clean": "そうじ",

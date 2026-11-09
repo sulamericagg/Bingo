@@ -940,6 +940,7 @@ export default {
   "home.wall.tile": "Fliesen",
   "home.wall.waves": "Wellen",
   "home.wall.wood": "Holz",
+  "home.you": "Du",
   "home3d.act.break": "KAPUTT",
   "home3d.act.cancel": "ZURÜCK",
   "home3d.act.clean": "PUTZEN",
