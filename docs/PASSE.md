@@ -10,7 +10,7 @@
 - Cartelas de 10 níveis. Premium nível 1 = bichinho comum (bem fofo); níveis 20/30/40 = médio/raro/épico; nível 50 = lendário, o "rei" da temporada. Toda cartela tem bichinho + itens variados.
 - Trilha grátis: nível 1 para todos (olhos nas temporadas pares, música nas ímpares), dancinha grátis no nível 25, 20 gemas a cada 10 níveis, moedas e ingressos nos níveis pares.
 - Recompensas do passe são exclusivas: nunca vendidas. Ao trocar de temporada o nível zera; os itens ficam. A aba Histórico mostra o que foi ganho e o que foi perdido.
-- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura `clube_bloop`, plano `mensal`, R$ 19,90/mês): passe de todo mês incluso, zero anúncios, 300 gemas/mês + 15/dia, moldura exclusiva.
+- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura `clube_bloop`, plano `mensal`, R$ 19,90/mês): Passe Estelar e Passe da Casa de todo mês inclusos, zero anúncios, 300 gemas/mês + 15/dia, moldura exclusiva.
 - Tempo sem anúncios: 3 vídeos premiados = 30 min sem intersticial/banner, acumula até 2h.
 - Teste: `?debug&season=NN` força a temporada (0..59); `&daysleft=2` simula o fim; `&announce` / `&announce=end` força o pop-up.
 

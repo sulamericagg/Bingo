@@ -30,7 +30,7 @@ L.push(`- XP: toda partida de qualquer minigame (\`bus 'run-end'\`: ${PASS.runXp
 L.push('- Cartelas de 10 níveis. Premium nível 1 = bichinho comum (bem fofo); níveis 20/30/40 = médio/raro/épico; nível 50 = lendário, o "rei" da temporada. Toda cartela tem bichinho + itens variados.');
 L.push('- Trilha grátis: nível 1 para todos (olhos nas temporadas pares, música nas ímpares), dancinha grátis no nível 25, 20 gemas a cada 10 níveis, moedas e ingressos nos níveis pares.');
 L.push('- Recompensas do passe são exclusivas: nunca vendidas. Ao trocar de temporada o nível zera; os itens ficam. A aba Histórico mostra o que foi ganho e o que foi perdido.');
-L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): passe de todo mês incluso, zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
+L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): Passe Estelar e Passe da Casa de todo mês inclusos, zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
 L.push(`- Tempo sem anúncios: ${AD_FREE.videos} vídeos premiados = ${AD_FREE.minutes} min sem intersticial/banner, acumula até ${AD_FREE.maxMinutes / 60}h.`);
 L.push('- Teste: `?debug&season=NN` força a temporada (0..59); `&daysleft=2` simula o fim; `&announce` / `&announce=end` força o pop-up.', '');
 L.push('## As 60 temporadas', '');
