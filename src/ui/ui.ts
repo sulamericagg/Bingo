@@ -39,6 +39,7 @@ import { celebrate, celebrating } from './celebrate';
 import { $, $$, COIN, GEM, clock, countUp, esc, fmt, msToMidnight } from './dom';
 import { TIER_LABELS, type QualityMode } from '../core/quality';
 import { hydrateIcons, icon, type IconName } from './icons';
+import { closeCreator } from './creator';
 import { OnlineUI, bindOnlineBadges } from './online-ui';
 import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
 
@@ -167,6 +168,7 @@ export class UI {
   /** Botão voltar do Android. Retorna false se deve sair do app. */
   back(): boolean {
     if (celebrating()) return true;
+    if (closeCreator(false)) return true;
     if (document.querySelector('#shop .item-sheet')) {
       this.shop.closeSheet();
       return true;

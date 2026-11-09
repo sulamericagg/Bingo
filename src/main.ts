@@ -16,6 +16,7 @@ import { initOnline } from './services/online';
 import { playIntro } from './ui/intro';
 import { initRace } from './ui/race';
 import { UI } from './ui/ui';
+import { initCreator } from './ui/creator';
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -29,6 +30,7 @@ async function boot(): Promise<void> {
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);
   initRace(game);
+  initCreator(game);
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
 
   const onHide = () => {
