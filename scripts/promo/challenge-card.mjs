@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Card de "Desafio" (1080x1920) com código promocional para redes sociais.
+ * Card de "Desafio" (1080x1920) com código promocional para redes sociais (marca Bloop World).
  *
  *   NODE_PATH=$(npm root -g) node scripts/promo/challenge-card.mjs --code BLOOP2026 --reward "500 moedas + skin" --out desafio.png
  *

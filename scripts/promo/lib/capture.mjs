@@ -50,14 +50,22 @@ function initScript({ seed, save, key, extraCss }) {
     return id;
   };
   window.cancelAnimationFrame = (i) => q.delete(i);
-  performance.now = () => vt;
+  // benchmarks do tipo while (performance.now() - t0 < X) travariam com o relógio parado
+  let reads = 0;
+  let drift = 0;
+  performance.now = () => {
+    if (++reads > 400) drift += 0.5;
+    return vt + drift;
+  };
   const clock = {
     auto: true,
     get t() {
       return vt;
     },
     step(ms) {
-      vt += ms;
+      vt += ms + drift;
+      drift = 0;
+      reads = 0;
       const cbs = [...q.values()];
       q.clear();
       for (const cb of cbs) cb(vt);
@@ -203,22 +211,28 @@ function setupWorld({ startN, score }) {
 }
 
 export async function openGame(browser, base, { w, h, dpr = 2, seed = 1, skin, trail, saveExtra, extraCss = '' }) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, locale: 'pt-BR' });
   await ctx.route(/^(?!http:\/\/127\.0\.0\.1).*/, (r) => r.abort());
   await ctx.addInitScript(initScript, { seed, save: makeSave(skin, trail, saveExtra), key: SAVE_KEY, extraCss });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`${base}/index.html?debug`);
-  await page.waitForFunction(() => !!window.__bloop, null, { timeout: 30000 });
-  await page.evaluate(() => document.fonts.ready);
+  await page.goto(`${base}/index.html?debug&nointro`);
+  await page.waitForFunction(() => !!window.__bloop, null, { timeout: 90000, polling: 250 });
+  await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]));
   await page.waitForTimeout(400);
   return { ctx, page, errors };
 }
 
 export async function startRun(page, { startN = 0, score = 0, nearMiss = 0.15 } = {}) {
-  await page.click('#btn-play', { force: true });
-  await page.waitForFunction(() => window.__bloop.game.state === 'play');
+  // Bloop World: o Orbit é um jogo do hub (launchGame); versões antigas tinham #btn-play
+  await page.evaluate(() => {
+    const B = window.__bloop;
+    const d = B.listGames?.().find((g) => g.id === 'orbit');
+    if (d) B.launchGame(d);
+    else document.querySelector('#btn-play')?.click();
+  });
+  await page.waitForFunction(() => window.__bloop.game.state === 'play', null, { timeout: 30000, polling: 100 });
   await page.evaluate(
     ([o, setup]) => {
       window.__vclock.auto = false;

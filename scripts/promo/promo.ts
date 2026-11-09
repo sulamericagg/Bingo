@@ -9,6 +9,21 @@ import '@fontsource/fredoka/700.css';
 import { buildPlanetSprite, buildStarTile, drawPlayer, glow, PLANET_PALETTES, type PlanetKind } from '../../src/game/sprites';
 import { SKINS, TRAILS, skinById, RARITY_INFO, type Skin } from '../../src/game/skins';
 import { drawTeamRossLockup, drawTeamRossMark } from './teamross';
+import { listGames } from '../../src/hub/registry';
+import { registerTubo } from '../../src/games/tubo/register';
+import { registerRally } from '../../src/games/rally/register';
+import { registerTycoon } from '../../src/games/tycoon/register';
+import { registerDisaster } from '../../src/games/disaster/register';
+import { registerBand } from '../../src/games/band/register';
+
+// vitrines animadas dos minigames (as mesmas do carrossel do hub)
+for (const r of [registerTubo, registerRally, registerTycoon, registerDisaster, registerBand]) {
+  try {
+    r();
+  } catch (e) {
+    console.warn('[promo] registro', e);
+  }
+}
 
 type Ctx = CanvasRenderingContext2D;
 interface Spec {
@@ -124,14 +139,16 @@ function trail(fromX: number, fromY: number, toX: number, toY: number, size: num
   x.restore();
 }
 
+/** Marca do app. Padrão: BLOOP WORLD (hub). words=['BLOOP','ORBIT'] para o jogo espacial. */
+let LOGO_WORDS: [string, string] = ['BLOOP', 'WORLD'];
 function logo(cx: number, cy: number, size: number, oneLine = false): void {
   x.save();
   x.textAlign = 'center';
   x.textBaseline = 'middle';
   x.font = `700 ${size}px Fredoka`;
   const lines: [string, string, string, string][] = [
-    ['BLOOP', '#ffc2f0', '#ff5cc8', '#5a1a8f'],
-    ['ORBIT', '#b6f7ff', '#5ef0ff', '#1a3d8f'],
+    [LOGO_WORDS[0], '#ffc2f0', '#ff5cc8', '#5a1a8f'],
+    [LOGO_WORDS[1], '#b6f7ff', '#5ef0ff', '#1a3d8f'],
   ];
   const draw = (t: string, c1: string, c2: string, sh: string, X: number, y: number) => {
     x.lineJoin = 'round';
@@ -151,8 +168,8 @@ function logo(cx: number, cy: number, size: number, oneLine = false): void {
     x.shadowBlur = 0;
   };
   if (oneLine) {
-    const w1 = x.measureText('BLOOP ').width;
-    const w2 = x.measureText('ORBIT').width;
+    const w1 = x.measureText(LOGO_WORDS[0] + ' ').width;
+    const w2 = x.measureText(LOGO_WORDS[1]).width;
     const x0 = cx - (w1 + w2) / 2;
     x.textAlign = 'left';
     draw(...lines[0], x0, cy);
@@ -451,7 +468,7 @@ K.endcard = (s) => {
   x.fillStyle = '#ffffff';
   x.shadowColor = 'rgba(0,0,0,0.6)';
   x.shadowBlur = 10;
-  if (L !== 'sq') x.fillText(String(s.tagline ?? 'Um toque. Infinitas galáxias.'), lx, tagY - k * 0.06);
+  if (L !== 'sq') x.fillText(String(s.tagline ?? 'Um mundo de jogos'), lx, tagY - k * 0.06);
   x.restore();
   const pIn = easeOutBack((t - 0.7) / 0.4);
   if (pIn > 0) {
@@ -470,10 +487,10 @@ K.endcard = (s) => {
 };
 
 /** "Um jogo da [selo] TEAM Ross" em uma linha. */
-function studioLine(cx: number, cy: number, size: number): void {
+function studioLine(cx: number, cy: number, size: number, prefix = 'Um jogo da '): void {
   x.save();
   x.font = `600 ${size}px Fredoka`;
-  const a = 'Um jogo da ';
+  const a = prefix;
   const b = 'TEAM Ross';
   const wa = x.measureText(a).width;
   x.font = `700 ${size * 1.1}px Fredoka`;
@@ -528,7 +545,9 @@ K.store = (s) => {
   } else if (content === 'trails' && imgs.shot) {
     phone(imgs.shot, W / 2, H * 0.655, W * 0.6, 0);
   } else if (imgs.shot) {
-    phone(imgs.shot, W / 2, H * 0.655, W * 0.6, Number(s.tilt ?? 0));
+    // largura do "aparelho" limitada pela altura livre (tablets têm outra proporção)
+    const pw = Math.min(W * (s.tablet ? 0.72 : 0.6), (H * 0.6 * imgs.shot.width) / imgs.shot.height);
+    phone(imgs.shot, W / 2, H * 0.655, pw, Number(s.tilt ?? 0));
   }
   if (s.badge) {
     x.save();
@@ -572,25 +591,24 @@ K.post = (s) => {
     trail(W * 0.62, H * 0.75, W * 0.5, H * 0.52, W * 0.035);
     hero(W * 0.5, H * 0.52, W * 0.11, -0.25, 'bloop', 'happy');
     logo(W * 0.5, H * 0.22, W * 0.13);
-    headline('Só um *toque.*', W / 2, H * 0.75, W * 0.085);
+    headline('Um mundo de *jogos!*', W / 2, H * 0.75, W * 0.085);
     studioLine(W / 2, H * 0.93, W * 0.03);
   } else if (v === 2) {
     bg('core', 4);
-    headline(`*${countPlus(SKINS.length)}* personagens\npara colecionar`, W / 2, H * 0.14, W * 0.075);
-    const list = pickSkins(12);
-    skinGrid(W * 0.13, H * 0.27, W * 0.74, 4, list, 0.3);
+    headline('*6 jogos*\nnum só app', W / 2, H * 0.13, W * 0.08);
+    gameGrid(W * 0.05, H * 0.25, W * 0.9, 3, 2);
     logo(W * 0.5, H * 0.93, W * 0.055, true);
   } else {
     bg('ocean', 5);
     if (imgs.shot) phone(imgs.shot, W * 0.74, H * 0.52, W * 0.36, 0.06, [0, imgs.shot.height * 0.08, imgs.shot.width, imgs.shot.height * 0.84]);
-    headline('Qual é o\nseu *recorde?*', W * 0.06, H * 0.3, W * 0.085, { align: 'left', maxW: W * 0.5 });
+    headline('Monte sua\n*banda!*', W * 0.06, H * 0.3, W * 0.085, { align: 'left', maxW: W * 0.5 });
     x.save();
     x.font = `600 ${W * 0.034}px Fredoka`;
     x.fillStyle = '#ffffff';
     x.shadowColor = 'rgba(0,0,0,0.6)';
     x.shadowBlur = 8;
-    x.fillText('Marque um amigo', W * 0.06, H * 0.47);
-    x.fillText('e desafie!', W * 0.06, H * 0.515);
+    x.fillText('Toque com seus amigos', W * 0.06, H * 0.47);
+    x.fillText('no ritmo da música!', W * 0.06, H * 0.515);
     x.restore();
     hero(W * 0.2, H * 0.76, W * 0.075, -0.2, 'cyber', 'happy');
     logo(W * 0.24, H * 0.93, W * 0.045, true);
@@ -604,14 +622,14 @@ K.story = (s) => {
     bg('violet', 6);
     logo(W / 2, H * 0.12, W * 0.13);
     if (imgs.shot) phone(imgs.shot, W / 2, H * 0.475, W * 0.5, -0.03);
-    headline('Pule de planeta\nem *planeta!*', W / 2, H * 0.81, W * 0.085);
+    headline('Um mundo\nde *jogos!*', W / 2, H * 0.81, W * 0.085);
     pill('Grátis na Google Play', W / 2, H * 0.92, W * 0.045, { sub: 'BAIXE AGORA' });
   } else {
     bg('sunset', 7);
     headline('Escolha o\nseu *Bloop!*', W / 2, H * 0.11, W * 0.11);
     const list = pickSkins(12);
     skinGrid(W * 0.11, H * 0.215, W * 0.78, 3, list, 0.8, true);
-    pill(`${countPlus(SKINS.length)} personagens  +  ${TRAILS.length} rastros`, W / 2, H * 0.875, W * 0.04, { bg: '#ffe14a', bg2: '#ff9f1a', fg: '#4a1a00' });
+    pill(`${countPlus(SKINS.length)} personagens  +  300 criaturas`, W / 2, H * 0.875, W * 0.04, { bg: '#ffe14a', bg2: '#ff9f1a', fg: '#4a1a00' });
     logo(W / 2, H * 0.95, W * 0.055, true);
   }
 };
@@ -627,8 +645,8 @@ K.thumb = () => {
   }
   planet(W * 0.55, H * 1.08, H * 0.4, 'gas', 0, true, 61, -0.1);
   trail(W * 0.66, H * 0.86, W * 0.56, H * 0.56, H * 0.05);
-  hero(W * 0.56, H * 0.54, H * 0.18, -0.25, 'phoenix', 'happy');
-  headline('SÓ UM\n*TOQUE!*', W * 0.035, H * 0.5, H * 0.21, { align: 'left', maxW: W * 0.4 });
+  hero(W * 0.56, H * 0.54, H * 0.18, -0.25, 'bloop', 'happy');
+  headline('*6 JOGOS*\nEM 1!', W * 0.035, H * 0.5, H * 0.21, { align: 'left', maxW: W * 0.4 });
   logo(W * 0.62, H * 0.13, H * 0.1, true);
   sparkle(W * 0.56, H * 0.36, H * 0.04);
   sparkle(W * 0.2, H * 0.72, H * 0.03, '#fff36b');
@@ -647,7 +665,7 @@ K.header = () => {
   x.fillStyle = '#ffffff';
   x.shadowColor = 'rgba(0,0,0,0.6)';
   x.shadowBlur = 10;
-  x.fillText('Um toque. Infinitas galáxias.  Grátis na Google Play', W * 0.5, H * 0.66);
+  x.fillText('6 jogos, bichinho, casa e festas 3D  ·  Grátis na Google Play', W * 0.5, H * 0.66);
   x.restore();
   const list = pickSkins(6);
   list.forEach((sk, i) => hero(W * (0.27 + i * 0.092), H * 0.86, H * 0.065, (i - 2.5) * 0.08, sk, 'happy', i * 0.3, 0.35));
@@ -702,7 +720,7 @@ K.challenge = (s) => {
     x.fillText(`Válido até ${String(s.until)}`, W / 2, H * 0.855);
     x.restore();
   }
-  pill('Grátis na Google Play', W / 2, H * 0.92, W * 0.04, { sub: 'BAIXE O BLOOP ORBIT' });
+  pill('Grátis na Google Play', W / 2, H * 0.92, W * 0.04, { sub: 'BAIXE O BLOOP WORLD' });
 };
 
 /** Selo do estúdio 1024x1024. */
@@ -747,7 +765,7 @@ K.hframe = (s) => {
   x.font = `600 ${cx0 * 0.06}px Fredoka`;
   x.textAlign = 'center';
   x.fillStyle = '#ffffff';
-  x.fillText('Um toque. Infinitas galáxias.', cx0 / 2, H * 0.6);
+  x.fillText('Um mundo de jogos', cx0 / 2, H * 0.6);
   x.restore();
   studioLine(cx0 / 2, H * 0.86, cx0 * 0.05);
   // direita: destaques
@@ -770,8 +788,219 @@ K.loopbadge = () => {
   x.fillStyle = g;
   x.fillRect(0, H * 0.8, W, H * 0.2);
   logo(W / 2, H * 0.93, W * 0.06, true);
-  headline('Só um *toque.*', W / 2, H * 0.1, W * 0.075);
+  headline('Um mundo de *jogos*', W / 2, H * 0.1, W * 0.075);
 };
+
+
+/* ============================== Bloop World (hub) ============================== */
+
+const GAME_IDS = ['orbit', 'tubo', 'rally', 'tycoon', 'disaster', 'band'];
+const scCanvas = document.createElement('canvas');
+/** Desenha a vitrine animada de um minigame (a mesma do carrossel do hub) num cartão arredondado. */
+function gameCard(id: string, cx: number, cy: number, w: number, h: number, t = 1, tilt = 0, label = true): void {
+  const def = listGames().find((g) => g.id === id);
+  scCanvas.width = Math.round(w);
+  scCanvas.height = Math.round(h);
+  const sx = scCanvas.getContext('2d')!;
+  sx.setTransform(1, 0, 0, 1, 0, 0);
+  const th = def?.theme;
+  const g0 = sx.createLinearGradient(0, 0, 0, h);
+  g0.addColorStop(0, th?.bg[0] ?? '#3a1170');
+  g0.addColorStop(1, th?.bg[1] ?? '#14062f');
+  sx.fillStyle = g0;
+  sx.fillRect(0, 0, w, h);
+  if (def?.drawShowcase) {
+    try {
+      def.drawShowcase(sx, w, h, t);
+    } catch (e) {
+      console.warn('[promo] vitrine', id, e);
+    }
+  } else if (id === 'orbit') {
+    const xx = x;
+    const WW = W;
+    const HH = H;
+    x = sx;
+    W = w;
+    H = h;
+    bg('violet', 3);
+    planet(w * 0.5, h * 0.66, Math.min(w, h) * 0.24, 'gas', 1, true, 91, -0.2);
+    hero(w * 0.42, h * 0.33, Math.min(w, h) * 0.12, -0.3, 'bloop', 'happy', t);
+    x = xx;
+    W = WW;
+    H = HH;
+  }
+  x.save();
+  x.translate(cx, cy);
+  x.rotate(tilt);
+  x.shadowColor = 'rgba(0,0,0,0.55)';
+  x.shadowBlur = w * 0.08;
+  x.shadowOffsetY = w * 0.03;
+  const r = Math.min(w, h) * 0.1;
+  rrect(-w / 2 - w * 0.025, -h / 2 - w * 0.025, w * 1.05, h + w * 0.05, r * 1.2);
+  x.fillStyle = '#ffffff';
+  x.fill();
+  x.shadowColor = 'transparent';
+  rrect(-w / 2, -h / 2, w, h, r);
+  x.save();
+  x.clip();
+  x.drawImage(scCanvas, -w / 2, -h / 2);
+  const name = def?.name ?? (id === 'orbit' ? 'Bloop Orbit' : '');
+  if (label && name) {
+    const lg = x.createLinearGradient(0, h * 0.2, 0, h / 2);
+    lg.addColorStop(0, 'rgba(0,0,0,0)');
+    lg.addColorStop(1, 'rgba(10,0,30,0.75)');
+    x.fillStyle = lg;
+    x.fillRect(-w / 2, h * 0.2, w, h * 0.3);
+    let fs = Math.min(w * 0.11, h * 0.12);
+    x.font = `700 ${fs}px Fredoka`;
+    const tw = x.measureText(name).width;
+    if (tw > w * 0.9) fs *= (w * 0.9) / tw;
+    x.font = `700 ${fs}px Fredoka`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillStyle = '#ffffff';
+    x.fillText(name, 0, h * 0.4);
+  }
+  x.restore();
+  x.restore();
+}
+
+/** Cartão final de cada minigame (teasers 15 s): nome do jogo + "no Bloop World". */
+K.gameend = (s) => {
+  const t = Number(s.t ?? 2);
+  const id = String(s.game ?? 'tubo');
+  const def = listGames().find((g) => g.id === id);
+  bg('violet', 5);
+  vignette(0.35);
+  const k = Math.min(W, H);
+  const a = easeOutBack(t / 0.45);
+  x.save();
+  x.translate(W / 2, H * 0.36);
+  x.scale(a, a);
+  gameCard(id, 0, 0, k * 0.78, k * 0.56, t + 2, -0.03, false);
+  x.restore();
+  const f = (t0: number) => easeOut((t - t0) / 0.35);
+  x.save();
+  x.globalAlpha = f(0.25);
+  headline(`*${String(s.title ?? def?.name ?? id)}*`, W / 2, H * 0.58, k * 0.11, { maxW: W * 0.88 });
+  x.restore();
+  x.save();
+  x.globalAlpha = f(0.45);
+  x.font = `600 ${k * 0.045}px Fredoka`;
+  x.textAlign = 'center';
+  x.fillStyle = '#ffffff';
+  x.fillText(String(s.sub ?? 'Um dos 6 jogos do'), W / 2, H * 0.645);
+  x.restore();
+  x.save();
+  x.globalAlpha = f(0.55);
+  logo(W / 2, H * 0.72, k * 0.1, true);
+  x.restore();
+  const pIn = easeOutBack((t - 0.8) / 0.4);
+  if (pIn > 0) {
+    x.save();
+    x.translate(W / 2, H * 0.83);
+    x.scale(pIn, pIn);
+    pill('Grátis na Google Play', 0, 0, k * 0.05, { sub: 'BAIXE AGORA' });
+    x.restore();
+  }
+  x.save();
+  x.globalAlpha = f(1.0);
+  studioLine(W / 2, H * 0.94, k * 0.035);
+  x.restore();
+};
+
+/** Ícone alternativo "hub" (1024x1024): Bloop sobre um mundinho + selos dos jogos em órbita. */
+K.icon = (s) => {
+  const full = !s.foreground;
+  if (full) {
+    const g = x.createLinearGradient(0, 0, W * 0.4, H);
+    g.addColorStop(0, '#ff7ad9');
+    g.addColorStop(0.45, '#8a3dff');
+    g.addColorStop(1, '#2a0f7a');
+    x.fillStyle = g;
+    x.fillRect(0, 0, W, H);
+    if (!starTile) starTile = buildStarTile(512, 120, 2.6, 7);
+    x.globalAlpha = 0.6;
+    for (let ty = 0; ty < H; ty += 512) for (let tx = 0; tx < W; tx += 512) x.drawImage(starTile, tx, ty);
+    x.globalAlpha = 1;
+  } else x.clearRect(0, 0, W, H);
+  // zona segura do ícone adaptativo: círculo central de 66%
+  const cx = W / 2;
+  const cy = H * 0.53;
+  const R = W * 0.3;
+  // órbita
+  x.save();
+  x.strokeStyle = 'rgba(255,255,255,0.55)';
+  x.lineWidth = W * 0.012;
+  x.setLineDash([W * 0.03, W * 0.025]);
+  x.beginPath();
+  x.ellipse(cx, cy + R * 0.25, R * 1.12, R * 0.42, -0.18, 0, TAU);
+  x.stroke();
+  x.restore();
+  planet(cx, cy + R * 0.55, R * 0.62, 'terra', 0, false, 7);
+  hero(cx, cy - R * 0.22, R * 0.5, -0.12, 'bloop', 'happy', 0.4, 0.55);
+  // selos: música, estrela, coração, casinha
+  const badge = (bx: number, by: number, r: number, col: string, glyph: string) => {
+    x.save();
+    x.shadowColor = 'rgba(0,0,0,0.35)';
+    x.shadowBlur = r * 0.4;
+    x.beginPath();
+    x.arc(bx, by, r, 0, TAU);
+    const gg = x.createLinearGradient(bx, by - r, bx, by + r);
+    gg.addColorStop(0, '#ffffff');
+    gg.addColorStop(0.25, col);
+    gg.addColorStop(1, col);
+    x.fillStyle = gg;
+    x.fill();
+    x.shadowColor = 'transparent';
+    x.lineWidth = r * 0.14;
+    x.strokeStyle = '#ffffff';
+    x.stroke();
+    x.font = `700 ${r * 1.15}px Fredoka`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillStyle = '#ffffff';
+    x.fillText(glyph, bx, by + r * 0.06);
+    x.restore();
+  };
+  badge(cx - R * 1.02, cy + R * 0.05, R * 0.2, '#ffb627', '★');
+  badge(cx + R * 1.0, cy - R * 0.12, R * 0.2, '#3ddc97', '♪');
+  badge(cx + R * 0.72, cy + R * 0.72, R * 0.17, '#ff4f6a', '♥');
+};
+
+/** Feature graphic Bloop World (1024x500): logo + vitrines dos jogos + personagens. */
+K.featureworld = (s) => {
+  bg('violet', 2);
+  vignette(0.3);
+  const cards: [string, number, number, number][] = [
+    ['band', 0.62, 0.3, -0.08],
+    ['disaster', 0.88, 0.3, 0.07],
+    ['tubo', 0.62, 0.74, 0.05],
+    ['rally', 0.88, 0.74, -0.06],
+  ];
+  for (const [id, fx, fy, tl] of cards) gameCard(id, W * fx, H * fy, W * 0.22, H * 0.36, 2.2, tl, true);
+  hero(W * 0.75, H * 0.52, H * 0.12, -0.2, 'bloop', 'happy', 0.6, 0.8);
+  logo(W * 0.25, H * 0.4, H * 0.21);
+  x.save();
+  x.font = `600 ${H * 0.065}px Fredoka`;
+  x.textAlign = 'center';
+  x.fillStyle = '#ffffff';
+  x.shadowColor = 'rgba(0,0,0,0.6)';
+  x.shadowBlur = 10;
+  x.fillText(String(s.tagline ?? 'Um mundo de jogos'), W * 0.25, H * 0.73);
+  x.restore();
+  hero(W * 0.06, H * 0.14, H * 0.065, -0.2, 'phoenix', 'happy', 1.2, 0.4);
+  hero(W * 0.45, H * 0.13, H * 0.06, 0.2, 'dragon', 'happy', 0.2, 0.4);
+  studioLine(W * 0.25, H * 0.88, H * 0.04, String(s.by ?? 'Um jogo da '));
+};
+
+/** Mosaico com as vitrines dos 6 jogos (posts/stories). */
+function gameGrid(X: number, Y: number, w: number, cols: number, t = 2): number {
+  const cw = w / cols;
+  const chh = cw * 0.78;
+  GAME_IDS.forEach((id, i) => gameCard(id, X + (i % cols) * cw + cw / 2, Y + Math.floor(i / cols) * chh + chh / 2, cw * 0.88, chh * 0.86, t + i * 0.7, 0, true));
+  return Math.ceil(GAME_IDS.length / cols) * chh;
+}
 
 /* ============================== API ============================== */
 
@@ -798,6 +1027,7 @@ async function render(spec: Spec): Promise<string> {
   for (const [k, v] of Object.entries(spec.shots ?? {})) imgs[k] = await loadImg(v);
   const fn = K[spec.kind];
   if (!fn) throw new Error('kind desconhecido: ' + spec.kind);
+  LOGO_WORDS = spec.logoWords ? (spec.logoWords as [string, string]) : ['BLOOP', 'WORLD'];
   await fn(spec);
   return spec.format === 'jpeg' ? c.toDataURL('image/jpeg', 0.92) : c.toDataURL('image/png');
 }
