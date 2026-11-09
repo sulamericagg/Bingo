@@ -7,6 +7,7 @@ import { App } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { audio } from './core/audio';
+import { bus } from './core/events';
 import { isNative } from './core/platform';
 import { persistNow, save } from './core/storage';
 import { Game } from './game/game';
@@ -69,7 +70,7 @@ async function boot(): Promise<void> {
   registerSocial();
   registerHome();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
-  if (location.search.includes('debug')) (window as any).__bloop = { game, ui, listGames, listPanels, launchGame, closeHost, save };
+  if (location.search.includes('debug')) (window as any).__bloop = { game, ui, listGames, listPanels, launchGame, closeHost, save, bus };
 
   const onHide = () => {
     ui.pause();
