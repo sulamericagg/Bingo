@@ -222,10 +222,12 @@ export class Hud {
       this.phaseNum.textContent = String(n);
       if (n <= 3 && n > 0 && (g.phase === 'prepare' || g.phase === 'disaster')) audio.click();
     }
-    const alive = g.players.filter((p) => p.alive).length + '/' + g.players.length;
+    let n2 = 0;
+    for (const p of g.players) if (p.alive) n2++;
+    const alive = n2 + '/' + g.players.length + '|' + g.streak;
     if (alive !== this.lastAlive) {
       this.lastAlive = alive;
-      this.alive.textContent = alive;
+      this.alive.textContent = n2 + '/' + g.players.length;
       this.streak.textContent = String(g.streak);
     }
   }

@@ -642,7 +642,7 @@ export class DisasterGame implements MiniGameHandle {
           this.spawnStrike('bolt', 1.4, 20);
           this.strikeTimer = Math.max(0.4, 0.95 - df * 0.09) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('vulcao')) {
-          this.spawnStrike('bomb', 1.7, 36);
+          this.spawnStrike('bomb', 1.9, 28);
           this.strikeTimer = Math.max(0.6, 1.8 - df * 0.16) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('terremoto')) {
           this.spawnStrike('rock', 1.3, 22);
@@ -723,7 +723,7 @@ export class DisasterGame implements MiniGameHandle {
     const w = this.world;
     let x: number;
     const alive = this.players.filter((p) => p.alive);
-    if (alive.length && this.rng() < 0.55) {
+    if (alive.length && this.rng() < (kind === 'bomb' ? 0.3 : 0.5)) {
       const p = alive[Math.floor(this.rng() * alive.length)];
       x = p.x + (this.rng() - 0.5) * 90;
     } else x = 40 + this.rng() * (w.W - 80);
@@ -1031,13 +1031,14 @@ export class DisasterGame implements MiniGameHandle {
     }
     // fugir de marcadores
     let flee = 0;
+    const high = !!this.fluid && p.y < -20; // no alto com fluido subindo: só um passinho
     for (const s of this.strikes) {
       if (!s.on || s.flash > 0) continue;
       const d = p.x - s.x;
-      if (Math.abs(d) < s.r + 26 && this.rng() < b.skill + 0.25) flee = d >= 0 ? 1 : -1;
+      if (Math.abs(d) < s.r + (high ? 12 : 26) && this.rng() < b.skill + 0.25) flee = d >= 0 ? 1 : -1;
     }
     let tx = b.gx;
-    if (flee) tx = p.x + flee * 80;
+    if (flee) tx = p.x + flee * (high ? 36 : 80);
     if (this.tornado.on && !known) tx = b.gx;
     const dx = tx - p.x;
     inp.l = dx < -6;
