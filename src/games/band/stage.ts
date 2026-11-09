@@ -68,7 +68,24 @@ export const STAGE_LOOKS: Record<string, StageLook> = {
   mar: { sky: ['#021a2e', '#0a4a7a', '#021428'], floor: ['#d8c08a', '#8a7a4a'], lights: ['#4fd6ff', '#ff9a6b'], crowd: '#03192a' },
 };
 const STAGE_KEYS = Object.keys(STAGE_LOOKS);
-export const stageKey = (id: string): string => (STAGE_LOOKS[id] ? id : id === 'espaço' ? 'espaco' : id === 'fundo-do-mar' || id === 'fundo do mar' ? 'mar' : id.startsWith('festa') ? 'junina' : id === 'vulcão' ? 'vulcao' : STAGE_KEYS[hash32(id) % STAGE_KEYS.length]);
+const STAGE_ALIAS: Record<string, string> = {
+  'espaço': 'espaco',
+  'fundo-do-mar': 'mar',
+  'fundo do mar': 'mar',
+  'festa-junina': 'junina',
+  'vulcão': 'vulcao',
+  carnaval: 'junina',
+  pixel: 'neon',
+  discoteca: 'neon',
+  baile: 'neon',
+  rodeio: 'floresta',
+  estudio: 'garagem',
+  'palco-pop': 'arena',
+  gelo: 'castelo',
+  deserto: 'praia',
+  nuvens: 'espaco',
+};
+export const stageKey = (id: string): string => (STAGE_LOOKS[id] ? id : STAGE_ALIAS[id] ?? (id.startsWith('festa') ? 'junina' : STAGE_KEYS[hash32(id) % STAGE_KEYS.length]));
 
 interface Part {
   on: boolean;

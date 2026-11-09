@@ -66,7 +66,13 @@ export const STYLE_NAMES: Record<string, string> = {
   sertanejo: 'Sertanejo',
   criacao: 'Criação',
 };
-export const styleName = (s: string): string => t('band.style.' + s, STYLE_NAMES[s] ?? s.charAt(0).toUpperCase() + s.slice(1));
+let extStyle: ((s: string) => string | null) | null = null;
+let extTitle: ((s: SongDef) => string | null) | null = null;
+export function setNameHelpers(style: (s: string) => string | null, title: (s: SongDef) => string | null): void {
+  extStyle = style;
+  extTitle = title;
+}
+export const styleName = (s: string): string => (STYLE_NAMES[s] ? t('band.style.' + s, STYLE_NAMES[s]) : extStyle?.(s) ?? t('band.style.' + s, s.charAt(0).toUpperCase() + s.slice(1)));
 
 /** Converte a chart (batidas) em notas de jogo (segundos) + frases. */
 export function buildNotes(chart: Note[], bpm: number, lanes: number): { notes: RNote[]; phrases: Phrase[] } {
@@ -161,5 +167,5 @@ export function chartFor(song: SongDef, inst: Instrument, diff: Difficulty): Not
 }
 
 export function songTitle(s: SongDef): string {
-  return s.tier === 'creator' ? s.title : t('song.' + s.id, s.title);
+  return s.tier === 'creator' ? s.title : extTitle?.(s) ?? t('song.' + s.id, s.title);
 }

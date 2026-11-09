@@ -14,7 +14,7 @@ import { SKINS, skinById, type Skin } from '../../game/skins';
 import type { SongDef } from '../../music/api';
 import { Highway, Hero } from './highway';
 import { Stage, type Member } from './stage';
-import { lookFor, instColors, setSeasonPalette } from './cosmetics';
+import { lookFor, instColors, setSeasonPalette, setMusicPass } from './cosmetics';
 import {
   buildNotes,
   chartFor,
@@ -201,6 +201,13 @@ export class BandGame implements MiniGameHandle {
       }
     } catch {
       /* sem passe */
+    }
+    try {
+      const mods = import.meta.glob('../../pass/music/index.ts');
+      const load = Object.values(mods)[0];
+      if (load) setMusicPass((await load()) as Parameters<typeof setMusicPass>[0]);
+    } catch {
+      setMusicPass(null);
     }
     if (!this.destroyed) this.screens.refresh();
   }

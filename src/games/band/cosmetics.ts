@@ -34,6 +34,52 @@ export interface CosItem {
   c: string[];
   /** paleta das lanes (5) */
   lanes?: string[];
+  /** pele só para este instrumento */
+  inst?: Instrument;
+  /** item do Passe Musical (src/pass/music) — posse checada lá */
+  ext?: boolean;
+}
+
+/* ---------------- Passe Musical (src/pass/music, opcional) ---------------- */
+interface MusicPassMod {
+  highwaySkin?: (id: string) => { id: string; name: string; bg: [string, string]; line: string; lanes: string[]; pattern: string } | undefined;
+  instSkin?: (id: string) => { id: string; inst: Instrument; name: string; colors: [string, string, string] } | undefined;
+  ownedMusicItems?: () => string[];
+  ownsMusicItem?: (id: string) => boolean;
+}
+let mp: MusicPassMod | null = null;
+export function setMusicPass(m: MusicPassMod | null): void {
+  mp = m;
+  extCache = null;
+}
+const TEX_MAP: Record<string, Texture> = { grid: 'grid', stars: 'stars', waves: 'waves', stripes: 'stripes', flames: 'lava', snow: 'ice', bubbles: 'waves', hex: 'grid', pixels: 'grid', notes: 'stripes', circuits: 'grid', petals: 'candy' };
+let extCache: { key: string; items: CosItem[] } | null = null;
+function musicPassItems(): CosItem[] {
+  if (!mp) return [];
+  let ids: string[];
+  try {
+    ids = mp.ownedMusicItems?.() ?? [...(save.passItems ?? []), ...bs.owned];
+  } catch {
+    ids = [...(save.passItems ?? [])];
+  }
+  const key = ids.join(',');
+  if (extCache && extCache.key === key) return extCache.items;
+  const items: CosItem[] = [];
+  for (const id of ids) {
+    try {
+      const h = mp.highwaySkin?.(id);
+      if (h) {
+        items.push({ id, kind: 'highway', name: h.name, pass: true, ext: true, tex: TEX_MAP[h.pattern] ?? 'stripes', c: [h.bg[0], h.bg[1], h.line], lanes: h.lanes.length >= 5 ? h.lanes : undefined });
+        continue;
+      }
+      const k = mp.instSkin?.(id);
+      if (k) items.push({ id, kind: 'inst', name: k.name, pass: true, ext: true, inst: k.inst, c: [k.colors[0], k.colors[1]] });
+    } catch {
+      /* id desconhecido */
+    }
+  }
+  extCache = { key, items };
+  return items;
 }
 
 export const LANE_CANDY = ['#ff5fa2', '#ffb627', '#3ddc97', '#4cc9f0', '#a974ff'];
@@ -148,11 +194,18 @@ function hsl(h: number, s: number, l: number): string {
 }
 
 export function catalog(kind: CosKind): CosItem[] {
-  return [...COSMETICS.filter((c) => c.kind === kind && (!c.season || seasonPalette)), ...generated().filter((c) => c.kind === kind)];
+  return [...COSMETICS.filter((c) => c.kind === kind && (!c.season || seasonPalette)), ...generated().filter((c) => c.kind === kind), ...musicPassItems().filter((c) => c.kind === kind)];
 }
 
 export function owns(c: CosItem): boolean {
   if (c.season) return !!seasonPalette;
+  if (c.ext) {
+    try {
+      return mp?.ownsMusicItem ? mp.ownsMusicItem(c.id) : true; // só listados se já possuídos
+    } catch {
+      return false;
+    }
+  }
   if (!c.price && !c.pass) return true;
   const pid = `band-${c.kind}-${c.id}`;
   return bs.owned.includes(pid) || (save.passItems ?? []).includes(pid);

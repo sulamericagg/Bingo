@@ -17,7 +17,7 @@ import { icon } from '../../ui/icons';
 import type { BandGame, BandSlot, RunResult } from './game';
 import { bandIcon, type BandIcon } from './icons';
 import { DIFFS, INSTRUMENTS, LANES, buildNotes, chartFor, diffName, hash32, instName, songTitle, styleName, type Difficulty, type Instrument, type RNote, type SongDef } from './model';
-import { allSongs, isUnlocked, songById } from './songs';
+import { allSongs, isUnlocked, songById, catBand } from './songs';
 import { bs, getBest, persistBand, recordBest, bestStarsAny } from './save';
 import { catalog, cosName, owns, findCos, lookFor, instColors, INST_DEFAULT, type CosItem, type CosKind } from './cosmetics';
 import { Highway, drawNote } from './highway';
@@ -206,7 +206,7 @@ export class Screens {
           const secs = String(Math.round(s.durationSec % 60)).padStart(2, '0');
           return `<button class="bb-song ${lock ? 'locked' : ''}" data-id="${esc(s.id)}">
             <span class="bb-badge bb-t-${s.tier}">${esc(TIER_LABEL(s.tier))}</span>
-            <span class="bb-sinfo"><b>${esc(songTitle(s))}</b><small>${esc(s.band)} · ${esc(styleName(s.style))} · ${s.bpm} BPM · ${mins}:${secs}</small><span class="bb-difs">${dif}</span></span>
+            <span class="bb-sinfo"><b>${esc(songTitle(s))}</b><small>${esc(catBand(s))} · ${esc(styleName(s.style))} · ${s.bpm} BPM · ${mins}:${secs}</small><span class="bb-difs">${dif}</span></span>
             <span class="bb-sbest">${lock ? `${bandIcon('lock', 26)}<small>${s.season != null ? esc(t('band.season', 'Temporada {n}', { n: s.season + 1 })) : esc(TIER_LABEL(s.tier))}</small>` : `${starsHtml(best?.st ?? 0, 13)}<small>${best ? fmt(best.s) : '—'}</small>`}</span>
           </button>`;
         })
@@ -488,7 +488,7 @@ export class Screens {
         return `<button class="bb-inst ${INSTRUMENTS[net.st.in] === i ? 'on' : ''}" data-i="${i}" ${taken ? 'disabled' : ''}>${bandIcon(INST_ICON[i], 28)}<span>${esc(taken ? taken.name : instName(i))}</span></button>`;
       }).join('')}</div>
       <div class="bb-lab">${esc(host ? t('band.songHost', 'Música (você escolhe)') : t('band.songGuest', 'Música (o anfitrião escolhe)'))}</div>
-      <div class="bb-lsong">${s ? `<b>${esc(songTitle(s))}</b><small>${esc(s.band)} · ${esc(diffName(this.lobbyDiff))}</small>` : '—'}${host ? `<button class="bb-chip" data-a="pick">${esc(t('band.change', 'Trocar'))}</button>` : ''}</div>
+      <div class="bb-lsong">${s ? `<b>${esc(songTitle(s))}</b><small>${esc(catBand(s))} · ${esc(diffName(this.lobbyDiff))}</small>` : '—'}${host ? `<button class="bb-chip" data-a="pick">${esc(t('band.change', 'Trocar'))}</button>` : ''}</div>
       ${host ? `<div class="bb-chips bb-diffs">${DIFFS.map((d) => `<button class="bb-chip ${d === this.lobbyDiff ? 'on' : ''}" data-d="${d}">${esc(diffName(d))}</button>`).join('')}</div>` : ''}
       <div class="bb-lactions">
         <button class="bb-mid" data-a="emote">${bandIcon('emote', 24)}<span>${esc(t('band.emote', 'Atalhos'))}</span></button>
@@ -569,7 +569,7 @@ export class Screens {
       ['fx', t('band.cos.tab.fx', 'Palco'), 'star'],
     ];
     const kind = this.customTab;
-    const items = catalog(kind);
+    const items = catalog(kind).filter((c) => !c.inst || c.inst === this.customInst);
     const eqId = kind === 'highway' ? bs.eq.highway : kind === 'note' ? bs.eq.note : kind === 'line' ? bs.eq.line : kind === 'fx' ? bs.eq.fx : (bs.eq.inst[this.customInst] ?? 'padrao');
     this.el.innerHTML = `
       ${this.top(t('band.custom', 'Visual'), () => this.show('home'), `<span class="bb-wallet">${icon('coin', { size: 18 })}${fmt(save.coins)} ${icon('gem', { size: 18 })}${fmt(save.gems)}</span>`)}
