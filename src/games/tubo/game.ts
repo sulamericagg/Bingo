@@ -194,6 +194,10 @@ class TuboGame implements MiniGameHandle {
   private stun = 0;
   private pending: Hit = Hit.Bounce;
   private buffered = false;
+  /** toque durante a tontura do quique / durante o mergulho: vira mergulho assim que puder */
+  private queued = false;
+  /** altura deste quique (fixada no começo do quique, nunca muda no meio do ar) */
+  private hopAmp = 1;
   private landTime = 0;
   private deadT = 0;
   private camY = 0;
@@ -382,6 +386,8 @@ class TuboGame implements MiniGameHandle {
     this.sqv = 0;
     this.stun = 0;
     this.buffered = false;
+    this.queued = false;
+    this.hopAmp = 1;
     this.score = 0;
     this.depth = 0;
     this.combo = 0;
@@ -459,8 +465,11 @@ class TuboGame implements MiniGameHandle {
       this.hud.hint.classList.remove('on');
     }
     if (this.mode === 'hop') {
-      if (this.stun > 0) return;
-      this.smash();
+      // antes: toque durante a tontura (0,22 s depois de quicar) era ignorado em silêncio
+      if (this.stun > 0) this.queued = true;
+      else this.smash();
+    } else if (this.mode === 'smash') {
+      this.queued = true;
     } else if (this.mode === 'fall') {
       // toque pouco antes de pousar vale como mergulho imediato
       const dist = this.surfaceY(this.ringI + 1) - this.footY;
@@ -469,6 +478,7 @@ class TuboGame implements MiniGameHandle {
   }
 
   private smash(): void {
+    this.queued = false;
     const r = this.ringByIdx(this.ringI);
     if (!r) return;
     this.pending = hitTest(r, this.geo).hit;
@@ -538,6 +548,7 @@ class TuboGame implements MiniGameHandle {
     this.mode = 'hop';
     this.hopT = 0;
     this.stun = stun;
+    this.hopAmp = 1.4;
     this.sq = 0.32;
     this.sqv = 0;
     this.combo = 0;
@@ -919,15 +930,27 @@ class TuboGame implements MiniGameHandle {
     switch (this.mode) {
       case 'ready':
       case 'hop': {
+        // toque guardado durante a tontura: mergulha assim que ela passa
+        if (this.mode === 'hop' && this.queued && this.stun <= 0) {
+          this.smash();
+          this.offset = Math.max(0, this.offset - g.R * 55 * dt);
+          this.footY = this.surfaceY(this.ringI) - this.offset;
+          break;
+        }
         const prev = this.hopT;
         this.hopT += dt;
         if (this.hopT >= HOP_T) {
-          this.hopT -= HOP_T;
+          // encostou no anel: amassa no contato e o próximo quique tem altura normal
+          this.hopT %= HOP_T;
+          this.hopAmp = 1;
           this.sq = 0.2;
           this.sqv = 0;
         } else if (prev < HOP_T * 0.5 && this.hopT >= HOP_T * 0.5) this.sqv -= 1.2;
         const ph = this.hopT / HOP_T;
-        this.offset = hopH * Math.sin(Math.PI * ph) * (this.stun > 0 ? 1.4 : 1);
+        // parábola de verdade (gravidade constante), em função do tempo: igual em 30/60/120 Hz.
+        // A altura é fixa durante o quique — antes o fator 1,4 da tontura sumia no meio do ar
+        // e o Bloop "despencava" de repente.
+        this.offset = hopH * 4 * ph * (1 - ph) * this.hopAmp;
         this.footY = this.surfaceY(this.ringI) - this.offset;
         if (this.mode === 'hop' && this.combo > 0 && this.time - this.landTime > COMBO_WIN) {
           this.combo = 0;
@@ -946,8 +969,10 @@ class TuboGame implements MiniGameHandle {
         break;
       }
       case 'fall': {
+        // integração exata (aceleração constante): tempo de queda igual em qualquer fps
+        const v0 = this.vy;
         this.vy += g.spacing * 18 * dt;
-        this.footY += this.vy * dt;
+        this.footY += (v0 + this.vy) * 0.5 * dt;
         const target = this.surfaceY(this.ringI + 1);
         if (this.footY >= target) this.land();
         break;
@@ -1007,6 +1032,7 @@ class TuboGame implements MiniGameHandle {
     this.footY = this.surfaceY(this.ringI);
     this.mode = 'hop';
     this.hopT = 0;
+    this.hopAmp = 1;
     this.offset = 0;
     this.sq = 0.34;
     this.sqv = 0;
@@ -1019,7 +1045,7 @@ class TuboGame implements MiniGameHandle {
       const s = i % 2 ? 1 : -1;
       this.fx.spawn(PK.Spark, this.cx + s * this.geo.R * 0.6, this.footY, s * (60 + Math.random() * 120), -40 - Math.random() * 80, 0.35, 2.5 + Math.random() * 3, z.cloud);
     }
-    if (this.buffered) {
+    if (this.buffered || this.queued) {
       this.buffered = false;
       this.smash();
     }

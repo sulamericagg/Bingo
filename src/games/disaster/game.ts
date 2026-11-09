@@ -107,6 +107,10 @@ const JUMP = 610;
 const RUN = 205;
 const BOT_NAMES = ['Pipoca', 'Jujuba', 'Tico', 'Nina', 'Biscoito', 'Lulu', 'Zeca', 'Mimi', 'Tuca', 'Fofura', 'Dudu', 'Bolacha', 'Pingo', 'Teca'];
 const MAX_STRIKES = 24;
+/** maior subpasso de física (s) */
+const STEP = 1 / 60;
+/** maior intervalo simulado por quadro (s) — engasgos maiores viram câmera lenta */
+const MAX_FRAME = 0.1;
 const LS_KEY = 'bo-disaster';
 
 interface Progress {
@@ -266,11 +270,19 @@ export class DisasterGame implements MiniGameHandle {
   private bindInput(): void {
     const kd = (e: KeyboardEvent) => this.key(e, true);
     const ku = (e: KeyboardEvent) => this.key(e, false);
+    const rel = () => this.releaseInput();
+    const vis = () => {
+      if (document.hidden) rel();
+    };
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
+    window.addEventListener('blur', rel);
+    document.addEventListener('visibilitychange', vis);
     this.offs.push(() => {
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
+      window.removeEventListener('blur', rel);
+      document.removeEventListener('visibilitychange', vis);
     });
   }
 
@@ -279,6 +291,7 @@ export class DisasterGame implements MiniGameHandle {
     if (k === 'ArrowLeft' || k === 'a' || k === 'A') this.keys.l = down;
     else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.keys.r = down;
     else if (k === ' ' || k === 'ArrowUp' || k === 'w' || k === 'W') {
+      if (down && !e.repeat) this.jumpTap = true;
       this.keys.j = down;
       this.keys.u = down;
     } else return;
@@ -287,6 +300,15 @@ export class DisasterGame implements MiniGameHandle {
 
   /** botões na tela (hud.ts) */
   touch = { l: false, r: false, j: false };
+  /** pulo apertado desde o último passo (não se perde se o dedo soltar antes do quadro) */
+  jumpTap = false;
+
+  /** solta tudo (app foi para o fundo, janela perdeu o foco, toque cancelado) */
+  releaseInput(): void {
+    this.keys.l = this.keys.r = this.keys.j = this.keys.u = false;
+    this.touch.l = this.touch.r = this.touch.j = false;
+    this.jumpTap = false;
+  }
 
   /* ------------------------------ online ------------------------------ */
 
@@ -573,15 +595,26 @@ export class DisasterGame implements MiniGameHandle {
       this.last = now;
       return;
     }
-    let dt = (now - this.last) / 1000;
+    // Tempo de jogo robusto a qualquer taxa de quadros (30–120 Hz) e a engasgos de GC:
+    // - o tempo real é acumulado (antes, no nível "Mínimo" com tela de 60 Hz, TODO quadro era
+    //   descartado e o jogo congelava/andava em câmera lenta);
+    // - engasgo longo é cortado em 0,1 s (o jogo desacelera em vez de teletransportar);
+    // - a física roda em subpassos de no máximo 1/60 s, então 30 fps simula igual a 60/120.
+    let frame = (now - this.last) / 1000;
     this.last = now;
-    if (dt > 0.05) dt = 0.05;
-    if (this.q.fpsCap === 30 && dt < 1 / 40) return;
+    if (!(frame > 0)) return;
+    this.acc += Math.min(frame, MAX_FRAME);
+    const minFrame = this.q.fpsCap === 30 ? 1 / 30 - 0.004 : 0;
+    if (this.acc < minFrame) return;
+    const dt = Math.min(this.acc, MAX_FRAME);
+    this.acc = 0;
     const t0 = performance.now();
-    this.update(dt);
+    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
+    for (let i = 0; i < n; i++) this.update(dt / n);
     this.draw.frame();
     this.gov.sample(dt * 1000, performance.now() - t0);
   };
+  private acc = 0;
 
   private update(rdt: number): void {
     this.time += rdt;
@@ -600,8 +633,10 @@ export class DisasterGame implements MiniGameHandle {
     const mi = this.me.input;
     mi.l = this.keys.l || this.touch.l;
     mi.r = this.keys.r || this.touch.r;
-    mi.j = this.keys.j || this.touch.j;
-    mi.u = this.keys.u || this.touch.j;
+    // toque rápido (apertou e soltou entre dois quadros) ainda conta como pulo
+    mi.j = this.keys.j || this.touch.j || this.jumpTap;
+    mi.u = this.keys.u || this.touch.j || this.jumpTap;
+    this.jumpTap = false;
 
     for (const p of this.players) {
       if (p.self && this.autoMe && !p.bot) p.bot = { gx: p.x, gy: 0, think: 0, skill: 0.95, hop: 0, lazy: 0.2 };
@@ -609,7 +644,7 @@ export class DisasterGame implements MiniGameHandle {
       if (p.ghost) this.ghostStep(p, dt);
       else if (p.alive) {
         this.movePlayer(p, dt);
-        this.checkHazards(p);
+        this.checkHazards(p, dt);
       }
     }
     if (this.phase === 'disaster' || this.phase === 'impact') {
@@ -892,6 +927,9 @@ export class DisasterGame implements MiniGameHandle {
         if (p.self) audio.jump(2);
       }
     }
+    // integração exata para aceleração constante (posição pela média da velocidade):
+    // a altura do pulo não depende do tamanho do passo (30, 60 ou 120 Hz pulam igual)
+    const vy0 = p.vy;
     if (!p.climbing) p.vy += GRAV * dt * (p.vy < 0 && !inp.j ? 1.7 : 1);
     if (p.vy > 900) p.vy = 900;
 
@@ -903,8 +941,9 @@ export class DisasterGame implements MiniGameHandle {
       }
     }
     const prevY = p.y;
+    const prevX = p.x;
     p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    p.y += (vy0 + p.vy) * 0.5 * dt;
     const wasGround = p.onGround;
     p.onGround = false;
     p.stand = -1;
@@ -928,8 +967,8 @@ export class DisasterGame implements MiniGameHandle {
         p.y = s.y + s.h + 24;
         if (p.vy < 0) p.vy = 0;
       } else {
-        // lateral
-        p.x = p.x < s.x + s.w * 0.5 ? s.x - 9 : s.x + s.w + 9;
+        // lateral: decide o lado pela posição ANTERIOR (o centro do sólido erra em blocos largos)
+        p.x = prevX <= s.x + s.w * 0.5 ? s.x - 9 : s.x + s.w + 9;
         p.vx = 0;
       }
     }
@@ -999,7 +1038,7 @@ export class DisasterGame implements MiniGameHandle {
     p.climbing = false;
   }
 
-  private checkHazards(p: Player): void {
+  private checkHazards(p: Player, dt: number): void {
     if (!p.alive || p.safe) return;
     if (this.phase === 'end') return;
     const w = this.world;
@@ -1012,7 +1051,7 @@ export class DisasterGame implements MiniGameHandle {
       }
     }
     // algo caindo em cima: só o que é pesado e rápido derruba; caixas e pedacinhos dão um "tum" e empurram
-    if (p.bonk > 0) p.bonk -= 1 / 60;
+    if (p.bonk > 0) p.bonk -= dt;
     const roofed = this.tornado.on && w.insideHouse(p.x, p.y);
     for (const b of w.bodies) {
       if (roofed) break; // dentro de casa inteira: o teto segura o que cai
@@ -1333,6 +1372,7 @@ export class DisasterGame implements MiniGameHandle {
 
   pause(): void {
     this.paused = true;
+    this.releaseInput();
   }
   resume(): void {
     this.paused = false;

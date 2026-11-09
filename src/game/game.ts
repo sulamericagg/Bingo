@@ -50,6 +50,8 @@ const TOX_PERIOD = 3.4; // ciclo de erupção dos planetas tóxicos
 const TOX_WARN = 1.2;
 const TOX_SAFE = 1.6; // tempo mínimo garantido ao pousar num tóxico
 const ROCKET_SPEED = 950;
+/** maior subpasso do voo (s) */
+const FLY_STEP = 1 / 120;
 const HEADSTART_PLANETS = 10;
 const SPEED_TIER_PTS = 15;
 const MAGNET_RUN_BONUS = 95;
@@ -1117,6 +1119,68 @@ export class Game {
     return Math.max(base, Math.min(1, this.speedFx) * 0.9, this.rocketLeft > 0 ? 0.8 : 0, this.warpT > 0 ? 0.6 : 0);
   }
 
+  /** Um subpasso do voo. Devolve true se pousou. */
+  private flyStep(dt: number): boolean {
+    this.flyT += dt;
+    const rocket = this.rocketLeft > 0;
+    if (rocket) {
+      // foguete: segue direto (com correção) para o próximo planeta
+      const t = this.nextTarget();
+      if (t) {
+        const dx = t.x - this.px;
+        const dy = t.y - this.py;
+        const l = Math.hypot(dx, dy) || 1;
+        this.vx = (dx / l) * ROCKET_SPEED;
+        this.vy = (dy / l) * ROCKET_SPEED;
+      }
+      const back = Math.atan2(-this.vy, -this.vx);
+      for (let i = 0; i < 2; i++) {
+        const sp = back + rand(-0.35, 0.35);
+        this.fx.spawn({ x: this.px + Math.cos(back) * PR, y: this.py + Math.sin(back) * PR, vx: Math.cos(sp) * rand(120, 260), vy: Math.sin(sp) * rand(120, 260), life: 0.35, size: rand(4, 8), color: i ? '#ffcf4f' : '#ff6a2a', drag: 3 });
+      }
+    } else {
+      const jf = this.jumpFactor();
+      const g2 = jf * jf; // mantém a geometria das trajetórias ao acelerar
+      // assistência gravitacional
+      for (const p of this.planets) {
+        if (p.destroyed || (p === this.origin && this.flyT < 0.25 / jf)) continue;
+        const dx = p.x - this.px;
+        const dy = p.y - this.py;
+        const d2 = dx * dx + dy * dy;
+        // começo bem camarada: os ~10 primeiros planetas puxam mais (some até o 14º)
+        const easy = this.race ? 0 : clamp((14 - p.n) / 5, 0, 1);
+        const field = p.well ? p.r * 3.4 + 70 : (p.r * 2.4 + 40) * (1 + 0.3 * easy);
+        if (d2 > field * field) continue;
+        const d = Math.sqrt(d2);
+        const acc = p.well ? Math.min(6400, (3.0e6 * (p.r / 40)) / d2) : Math.min(3200 * (1 + 0.5 * easy), (1.3e6 * (p.r / 40) * (1 + 0.7 * easy)) / d2);
+        this.vx += (dx / d) * acc * g2 * dt;
+        this.vy += (dy / d) * acc * g2 * dt;
+      }
+      // mantém a velocidade estável (sensação "arcade")
+      const sp = Math.hypot(this.vx, this.vy) || 1;
+      const target = JUMP_SPEED * jf;
+      const nsp = lerp(sp, target, Math.min(1, dt * 2));
+      this.vx = (this.vx / sp) * nsp;
+      this.vy = (this.vy / sp) * nsp;
+    }
+    this.px += this.vx * dt;
+    this.py += this.vy * dt;
+    // pousar
+    for (const p of this.planets) {
+      if (p.destroyed || (p === this.origin && this.flyT < 0.25)) continue;
+      if (rocket && p.visited) continue;
+      const dx = this.px - p.x;
+      const dy = this.py - p.y;
+      const rr = p.r + PR + 2;
+      if (dx * dx + dy * dy < rr * rr) {
+        this.land(p);
+        return true;
+      }
+    }
+    if (this.state === 'play') this.checkAsteroids();
+    return false;
+  }
+
   private updatePlayer(dt: number): void {
     if (this.inv > 0) this.inv -= dt;
     if (this.landGrace > 0) this.landGrace -= dt;
@@ -1149,69 +1213,22 @@ export class Game {
     }
 
     if (this.pState === 'fly') {
-      this.flyT += dt;
-      const rocket = this.rocketLeft > 0;
-      if (rocket) {
-        // foguete: segue direto (com correção) para o próximo planeta
-        const t = this.nextTarget();
-        if (t) {
-          const dx = t.x - this.px;
-          const dy = t.y - this.py;
-          const l = Math.hypot(dx, dy) || 1;
-          this.vx = (dx / l) * ROCKET_SPEED;
-          this.vy = (dy / l) * ROCKET_SPEED;
-        }
-        const back = Math.atan2(-this.vy, -this.vx);
-        for (let i = 0; i < 2; i++) {
-          const sp = back + rand(-0.35, 0.35);
-          this.fx.spawn({ x: this.px + Math.cos(back) * PR, y: this.py + Math.sin(back) * PR, vx: Math.cos(sp) * rand(120, 260), vy: Math.sin(sp) * rand(120, 260), life: 0.35, size: rand(4, 8), color: i ? '#ffcf4f' : '#ff6a2a', drag: 3 });
-        }
-      } else {
-        const jf = this.jumpFactor();
-        const g2 = jf * jf; // mantém a geometria das trajetórias ao acelerar
-        // assistência gravitacional
-        for (const p of this.planets) {
-          if (p.destroyed || (p === this.origin && this.flyT < 0.25 / jf)) continue;
-          const dx = p.x - this.px;
-          const dy = p.y - this.py;
-          const d2 = dx * dx + dy * dy;
-          // começo bem camarada: os ~10 primeiros planetas puxam mais (some até o 14º)
-          const easy = this.race ? 0 : clamp((14 - p.n) / 5, 0, 1);
-          const field = p.well ? p.r * 3.4 + 70 : (p.r * 2.4 + 40) * (1 + 0.3 * easy);
-          if (d2 > field * field) continue;
-          const d = Math.sqrt(d2);
-          const acc = p.well ? Math.min(6400, (3.0e6 * (p.r / 40)) / d2) : Math.min(3200 * (1 + 0.5 * easy), (1.3e6 * (p.r / 40) * (1 + 0.7 * easy)) / d2);
-          this.vx += (dx / d) * acc * g2 * dt;
-          this.vy += (dy / d) * acc * g2 * dt;
-        }
-        // mantém a velocidade estável (sensação "arcade")
-        const sp = Math.hypot(this.vx, this.vy) || 1;
-        const target = JUMP_SPEED * jf;
-        const nsp = lerp(sp, target, Math.min(1, dt * 2));
-        this.vx = (this.vx / sp) * nsp;
-        this.vy = (this.vy / sp) * nsp;
+      // Voo em subpassos de no máx. 1/120 s: a assistência gravitacional (1/d²) e a captura
+      // pelo planeta ficam iguais em 30, 60 ou 120 Hz e não há "túnel" através de planeta
+      // pequeno em velocidade alta / depois de um engasgo.
+      const n = Math.max(1, Math.ceil(dt / FLY_STEP - 1e-6));
+      const h = dt / n;
+      for (let i = 0; i < n; i++) {
+        if (this.flyStep(h)) return;
+        if (this.pState !== 'fly') return;
       }
-      this.px += this.vx * dt;
-      this.py += this.vy * dt;
+      const rocket = this.rocketLeft > 0;
       this.upAng = Math.atan2(this.vy, this.vx);
       const fb = this.fx.budget;
       this.fx.budget = fb * this.q.trailDensity;
       emitTrail(this.fx, this.trail, this.px, this.py, this.vx, this.vy, this.time, PR);
       this.fx.budget = fb;
 
-      // pousar
-      for (const p of this.planets) {
-        if (p.destroyed || (p === this.origin && this.flyT < 0.25)) continue;
-        if (rocket && p.visited) continue;
-        const dx = this.px - p.x;
-        const dy = this.py - p.y;
-        const rr = p.r + PR + 2;
-        if (dx * dx + dy * dy < rr * rr) {
-          this.land(p);
-          return;
-        }
-      }
-      if (this.state === 'play') this.checkAsteroids();
       if (this.state === 'play') this.collectPickups(dt);
 
       if (this.state === 'play' && !rocket) {
