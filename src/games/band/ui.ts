@@ -372,7 +372,7 @@ export class Screens {
     let coins = Math.max(2, Math.round(r.score / 500) + r.stars * 6 + (multi ? 10 : 0));
     if (r.song.tier === 'creator') coins = Math.round(coins * 0.5);
     addCoins(coins);
-    reportRun({ game: 'band', score: r.score, coins, durationSec: r.durationSec, place: r.place, won: r.place === 1, stats: { perfects: r.perfects, maxCombo: r.maxCombo, stars: r.stars } });
+    reportRun({ game: 'band', score: r.score, coins, durationSec: r.durationSec, place: r.place, won: r.place === 1, stats: { perfects: r.perfects, notes: r.perfects + r.greats + r.goods, maxCombo: r.maxCombo, stars: r.stars } });
     if (r.stars >= 4) success();
     const sorted = r.members.slice().sort((a, b) => b.score - a.score);
     const ordinal = (n: number) => t('band.place', '{n}º', { n });
