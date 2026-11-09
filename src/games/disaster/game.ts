@@ -164,6 +164,8 @@ export class DisasterGame implements MiniGameHandle {
   shake = 0;
   outCount = 0;
   rng = mulberry(1);
+  /** dev/screenshots: seu Bloop é controlado pela IA */
+  autoMe = false;
 
   // sessão
   progress = loadProgress();
@@ -343,7 +345,7 @@ export class DisasterGame implements MiniGameHandle {
         id: self ? 'me' : 'bot' + i,
         name,
         self,
-        bot: self ? null : { gx: x, gy: 0, think: Math.random() * 0.5, skill: prev?.bot?.skill ?? 0.35 + Math.random() * 0.6, hop: 0, lazy: Math.random() },
+        bot: self && !this.autoMe ? null : { gx: x, gy: 0, think: Math.random() * 0.5, skill: prev?.bot?.skill ?? 0.35 + Math.random() * 0.6, hop: 0, lazy: Math.random() },
         x,
         y: -260 - Math.random() * 120,
         vx: 0,
@@ -491,7 +493,13 @@ export class DisasterGame implements MiniGameHandle {
       this.streak++;
       this.sessionSurvived++;
       this.progress.best = Math.max(this.progress.best, this.streak);
-      const coins = 20 + this.sc.difficulty * 6 + Math.min(10, this.streak - 1) * 5 + (this.finale ? 40 : 0);
+      let coins = 20 + this.sc.difficulty * 6 + Math.min(10, this.streak - 1) * 5 + (this.finale ? 40 : 0);
+      try {
+        const bonus = (window as unknown as { petCoinBonus?: (c: number) => number }).petCoinBonus;
+        if (typeof bonus === 'function') coins += Math.max(0, Math.round(bonus(coins) || 0));
+      } catch {
+        /* sem bichinho */
+      }
       this.roundCoins = coins;
       this.sessionCoins += coins;
       addCoins(coins);
@@ -557,6 +565,7 @@ export class DisasterGame implements MiniGameHandle {
     mi.u = this.keys.u || this.touch.j;
 
     for (const p of this.players) {
+      if (p.self && this.autoMe && !p.bot) p.bot = { gx: p.x, gy: 0, think: 0, skill: 0.95, hop: 0, lazy: 0.2 };
       if (p.bot && p.alive) this.think(p, dt);
       if (p.ghost) this.ghostStep(p, dt);
       else if (p.alive) {
