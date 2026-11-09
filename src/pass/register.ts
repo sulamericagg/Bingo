@@ -39,7 +39,9 @@ export function registerPass(): void {
   startPass();
   registerPanel({
     id: 'pass',
-    label: t('pass.nav', 'Passe'),
+    get label() {
+      return t('pass.nav', 'Passe');
+    },
     icon: 'star',
     navOrder: 20,
     open: () => openPass(),

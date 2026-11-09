@@ -16,7 +16,9 @@ export function registerCreatures(): void {
   done = true;
   registry.registerPanel({
     id: 'colecao',
-    label: t('creatures.panel', 'Coleção'),
+    get label() {
+      return t('creatures.panel', 'Coleção');
+    },
     icon: 'sparkle',
     navOrder: 70,
     badge: () => save.creaturesNew.length,
