@@ -1,7 +1,7 @@
 // Regressão de física (Desastres + Queda Giratória + Bloop Orbit).
 // Roda os jogos num Chromium headless com TEMPO VIRTUAL (rAF/performance.now controlados)
 // a 30, 60 e 120 fps (+ engasgos de GC), e uma rodada real com CPU 4x mais lenta (CDP).
-// Uso: NODE_PATH=$(npm root -g) node scripts/dev/physics-check.mjs [--quick]
+// Uso: NODE_PATH=$(npm root -g) node scripts/dev/physics-check.mjs [--quick] [--fluid]
 // Sai com código 1 se alguma invariante falhar.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -15,6 +15,8 @@ const PORT = Number(process.env.PORT) || 5199;
 const BASE = `http://localhost:${PORT}`;
 const VERSION = JSON.parse(readFileSync(root + 'package.json', 'utf8')).version;
 const QUICK = process.argv.includes('--quick');
+// --fluid: só as checagens do fluido (rápido, para iterar no visual da água)
+const FLUID_ONLY = process.argv.includes('--fluid');
 
 /* ---------------- servidor vite ---------------- */
 const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
@@ -248,6 +250,79 @@ async function dzSoak(scenario, fps, { hitches = false, throttle = 0, seconds = 
   return r;
 }
 
+// fluido (superfície em colunas): sem NaN, superfície limitada, energia das ondas decai,
+// madeira flutua; mesmo resultado a 30/60/120 fps (passo fixo)
+async function dzFluid(scenario, fps, { seconds = 20, tier = 2 } = {}) {
+  const { p, ctx } = await page(`/scripts/dev/disaster.html?s=${scenario}&auto=1&tier=${tier}&vt=1`);
+  const r = await p.evaluate(
+    ({ fps, seconds }) => {
+      const g = window.dz;
+      const vt = window.__vt;
+      const ms = 1000 / fps;
+      for (let i = 0; i < 30; i++) vt.step(ms);
+      let guard = 0;
+      while (g.phase !== 'disaster' && guard++ < 40) {
+        g.phaseT = g.phaseDur;
+        vt.step(ms);
+      }
+      const st = { frames: 0, nan: 0, maxD: 0, outOfRange: 0, maxH: 0 };
+      const probe = () => {
+        const s = g.sim;
+        if (!s) return;
+        st.frames++;
+        for (let i = 0; i < s.n; i++) {
+          const d = s.d[i];
+          const v = s.v[i];
+          if (!Number.isFinite(d) || !Number.isFinite(v) || !Number.isFinite(s.rest[i])) st.nan++;
+          if (!s.wet[i]) continue;
+          const ad = Math.abs(d);
+          if (ad > st.maxD) st.maxD = ad;
+          const h = s.rest[i] + d;
+          if (h > st.maxH) st.maxH = h;
+          // superfície: nunca abaixo do chão nem acima de ~3x o alvo do desastre
+          if (h < 0 || h > Math.max(120, g.fluid.target * 2.2 + g.fluid.crest * 1.5)) st.outOfRange++;
+        }
+      };
+      for (let t = 0; t < seconds * 1000; t += ms) {
+        vt.step(ms);
+        probe();
+      }
+      // decaimento: congela o nível, desliga vento/chuva, dá 3 respingos fortes e mede a energia
+      const s = g.sim;
+      const f = g.fluid;
+      f.rate = 0;
+      f.speed = 0;
+      f.crest = 0;
+      s.ambient = false;
+      g.phaseDur = 1e9;
+      for (let t = 0; t < 3000; t += ms) vt.step(ms); // assenta
+      const x0 = g.world.W * 0.5;
+      g.splash(x0, 40, 600);
+      g.splash(x0 - 120, 30, 500);
+      g.splash(x0 + 150, 26, 500);
+      for (let t = 0; t < 100; t += ms) vt.step(ms);
+      st.e0 = s.energy();
+      for (let t = 0; t < 8000; t += ms) vt.step(ms);
+      st.e1 = s.energy();
+      let floating = 0;
+      let sunkLight = 0;
+      for (const b of g.world.bodies) {
+        if (!b.alive || b.heavy || b.kind === 'ladder') continue;
+        const sy = s.surf(b.x + b.w / 2);
+        if (sy > 5000 || b.y + b.h < sy) continue;
+        if (b.y + b.h - sy < b.h * 0.95) floating++;
+        else if (b.y > sy + 4 && !b.rest) sunkLight++;
+      }
+      st.floating = floating;
+      st.sunkLight = sunkLight;
+      return st;
+    },
+    { fps, seconds },
+  );
+  await ctx.close();
+  return r;
+}
+
 /* ================================================================
  *  QUEDA GIRATÓRIA
  * ================================================================ */
@@ -390,6 +465,7 @@ async function orbitFly(fps, speed = 1) {
 
 /* ================================================================ */
 const fpsList = [30, 60, 120];
+if (!FLUID_ONLY) {
 console.log('\n== Desastres: altura do pulo ==');
 const apex = {};
 for (const fps of fpsList) {
@@ -427,6 +503,22 @@ if (!QUICK) {
   check('dz s4 CPU 4x (tempo real)', r.nan === 0 && r.inSolid <= 2 && r.maxBodySpeed < 2500 && r.awakeEnd <= 2, `frames=${r.frames} nan=${r.nan} noSólido=${r.inSolid} vMáx=${r.maxBodySpeed.toFixed(0)} acordadosNoFim=${r.awakeEnd} sobreposição=${r.deepOverlap}`);
 }
 
+}
+console.log('\n== Desastres: fluido (superfície simulada) ==');
+for (const [s, label] of [
+  [69, 'enchente'],
+  [1, 'tsunami'],
+  [5, 'lava'],
+  [12, 'avalanche'],
+]) {
+  for (const fps of QUICK ? [60] : [30, 60, 120]) {
+    const r = await dzFluid(s, fps, { seconds: QUICK ? 14 : 22 });
+    const line = `s${s} ${label} ${fps}fps: quadros=${r.frames} nan=${r.nan} |d|máx=${r.maxD.toFixed(1)} alturaMáx=${r.maxH.toFixed(0)} foraDoLimite=${r.outOfRange} energia ${r.e0.toFixed(0)} → ${r.e1.toFixed(0)} flutuando=${r.floating} afundadas=${r.sunkLight}`;
+    check(`dz fluido s${s} ${label} ${fps}fps`, r.frames > 0 && r.nan === 0 && r.outOfRange === 0 && r.maxD <= 70 && r.e0 > 0 && r.e1 < r.e0 * 0.1, line);
+  }
+}
+
+if (!FLUID_ONLY) {
 console.log('\n== Queda Giratória ==');
 const tb = {};
 for (const fps of fpsList) {
@@ -455,6 +547,7 @@ for (const speed of [1, 2.1]) {
   }
 }
 
+}
 await browser.close();
 killVite();
 console.log(`\n${results.length - failed}/${results.length} checagens ok`);
