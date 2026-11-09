@@ -12,7 +12,7 @@ Chaves: 1692 (942 de t()/HTML + 750 de dados: bichinhos/temporadas/skins/rastros
   src/game/skins.ts:194  t("trail.${tr.id}.desc", tr.desc)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 1032 / 660 / 0 / 0
+  en: 0 / 660 / 0 / 0
   es: 1032 / 660 / 0 / 0
   de: 1032 / 660 / 0 / 0
   fr: 1032 / 660 / 0 / 0

@@ -4,7 +4,7 @@
  *
  *   node scripts/i18n/apply.mjs caminho/en.json caminho/de.lote2.json ...
  *
- * Cada arquivo é um JSON { "chave": "tradução" }. O idioma vem do nome do arquivo
+ * Cada arquivo é um JSON { "chave": "tradução" } ou um .tsv (chave<TAB>tradução por linha). O idioma vem do nome do arquivo
  * (tudo antes do primeiro ponto: en.json, de.lote2.json → en, de).
  * Chaves que não existem em scripts/i18n/pt.json são ignoradas (com aviso);
  * placeholders {x} diferentes do português são rejeitados.
@@ -23,7 +23,19 @@ for (const f of process.argv.slice(2)) {
     console.error(`ignorado (idioma desconhecido): ${f}`);
     continue;
   }
-  const tr = JSON.parse(fs.readFileSync(f, 'utf8'));
+  // .json → objeto; .tsv → "chave<TAB>tradução" por linha (\n literal vira quebra de linha)
+  const raw = fs.readFileSync(f, 'utf8');
+  const tr = f.endsWith('.tsv')
+    ? Object.fromEntries(
+        raw
+          .split('\n')
+          .filter((l) => l.includes('\t') && !l.startsWith('#'))
+          .map((l) => {
+            const i = l.indexOf('\t');
+            return [l.slice(0, i).trim(), l.slice(i + 1).replace(/\\n/g, '\n').trimEnd()];
+          }),
+      )
+    : JSON.parse(raw);
   const dict = (byLang[lang] ??= readLocale(lang));
   let n = 0;
   for (const [k, v] of Object.entries(tr)) {
