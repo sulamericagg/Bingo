@@ -10,7 +10,7 @@
  *  Tudo aqui é exclusivo do passe (nunca vendido).
  * ============================================================ */
 import { PASS } from '../config';
-import { SEASONS, type SeasonInfo } from '../creatures/seasons';
+import { SEASONS, seasonTheme, type SeasonInfo } from '../creatures/seasons';
 import { t } from '../i18n';
 
 export type PassRarity = 'common' | 'medio' | 'rare' | 'epic' | 'legendary';
@@ -103,6 +103,11 @@ export const MOTIFS: string[][] = [
 ];
 
 const NN = (i: number) => String(i).padStart(2, '0');
+
+/** chave estável de um motivo (pt-BR → ascii) e nome traduzível: t('pass.motif.<slug>') */
+export const motifSlug = (m: string): string =>
+  m.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+export const motifName = (m: string): string => t(`pass.motif.${motifSlug(m)}`, m);
 
 /** PRNG determinístico (mulberry32). */
 export function rng(seed: number): () => number {
@@ -259,7 +264,7 @@ export function passSeason(index: number): PassSeason {
       }
       const rr = RAR_BY_KIND[kind];
       if (rr) rarity = rr[Math.min(rr.length - 1, n)];
-      levels.push({ level, free: null, prem: { kind, id, amount, rarity, name: nameFor(kind, motif, info.theme, n, amount, id) } });
+      levels.push({ level, free: null, prem: { kind, id, amount, rarity, name: nameFor(kind, motifName(motif), seasonTheme(info), n, amount, id) } });
     }
   }
   // trilha grátis: nível 1 para TODOS + um prêmio a cada 2 níveis
@@ -272,7 +277,7 @@ export function passSeason(index: number): PassSeason {
     else if (lv % 10 === 0) f = { kind: 'gems', id: '', amount: 20, rarity: 'rare' };
     else if (lv % 6 === 0) f = { kind: 'tickets', id: '', amount: 1, rarity: 'medio' };
     else if (lv % 2 === 0) f = { kind: 'coins', id: '', amount: 150 + lv * 10, rarity: 'common' };
-    if (f) L.free = { ...f, name: nameFor(f.kind, motif, info.theme, f.kind === 'emote' ? 3 : 0, f.amount, f.id) };
+    if (f) L.free = { ...f, name: nameFor(f.kind, motifName(motif), seasonTheme(info), f.kind === 'emote' ? 3 : 0, f.amount, f.id) };
   }
   const season: PassSeason = { info, motifs, levels: levels.slice(0, PASS.levels) };
   cache.set(index, season);

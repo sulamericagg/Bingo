@@ -4,6 +4,8 @@
  *  Passe Musical (src/pass/music) — importar isto NÃO puxa o sintetizador.
  *  Tudo original e fictício.
  * ============================================================ */
+import { t } from '../i18n';
+
 /* ---------------------------- temporadas ---------------------------- */
 // tema musical | estilo | palco | 3 títulos | banda A (músicas 1–2) ; banda B (música 3, estilo vizinho)
 export const SEASON_MUSIC: string[] = [
@@ -155,3 +157,7 @@ export function seasonMusicText(season: number): SeasonMusicText {
   const m = MEGA[season].split('|');
   return { theme, style, stage, titles: titles.split(';'), bands: bands.split(';'), megaTitle: m[0], megaBand: m[1], megaStyle: m[2] };
 }
+
+/** tema musical traduzível da temporada (chave mtheme.sNN) */
+export const musicThemeName = (season: number): string =>
+  t(`mtheme.s${String(season).padStart(2, '0')}`, SEASON_MUSIC[season]?.split('|')[0] ?? '');

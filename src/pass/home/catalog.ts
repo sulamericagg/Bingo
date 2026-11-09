@@ -14,7 +14,7 @@
  * ============================================================ */
 import { SEASONS, seasonTheme, type SeasonInfo } from '../../creatures/seasons';
 import { t } from '../../i18n';
-import { MOTIFS, rng, type PassLevel, type PassRarity, type Reward } from '../catalog';
+import { MOTIFS, motifName, rng, type PassLevel, type PassRarity, type Reward } from '../catalog';
 
 export type HomeCat =
   | 'furniture'
@@ -265,7 +265,7 @@ function buildAll(): HomePassSeason[] {
           it.show = SHOWS[info.index % SHOWS.length];
           break;
       }
-      let name = baseName(it, motifs[motifIdx], theme, n);
+      let name = baseName(it, motifName(motifs[motifIdx]), theme, n);
       if (usedNames.has(name)) name = `${name} · ${theme}`;
       if (usedNames.has(name)) name = `${name} ${n + 2}`;
       usedNames.add(name);

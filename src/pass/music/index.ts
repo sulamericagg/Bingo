@@ -23,7 +23,7 @@
  * ============================================================ */
 import { SEASONS } from '../../creatures/seasons';
 import { t } from '../../i18n';
-import { seasonMusicText, seasonSongIds } from '../../music/season-music-data';
+import { musicThemeName, seasonMusicText, seasonSongIds } from '../../music/season-music-data';
 import { AURA_FAMILIES, AURA_FAMILY_NAME, registerAura, type AuraDef, type AuraFamily } from './auras';
 import { FX_KINDS, MOVE_KINDS, MOVE_NAME, registerDance, type DanceDef, type FxKind, type Move, type MoveKind } from './dances';
 
@@ -327,6 +327,22 @@ export function ensureMusicPassRegistered(): void {
 /** nome traduzível do item */
 export function musicItemName(r: MusicReward): string {
   if (!r.id) return t(`mpass.kind.${r.kind}`, r.name);
+  if (r.kind === 'song') return t(`song.${r.id}`, r.name);
+  const m = /^mp[adihs]_s(\d\d)/.exec(r.id);
+  const S = m ? musicPassSeason(Number(m[1])) : undefined;
+  if (S) {
+    // nomes gerados = peça traduzível + tema musical traduzível (mtheme.sNN)
+    const th = musicThemeName(S.season);
+    const a = S.auras.find((x) => x.id === r.id);
+    if (a) return t('mpass.n.aura', '{a}: {th}', { a: t(`mpass.fam.${a.family}`, AURA_FAMILY_NAME[a.family]), th });
+    const d = S.dances.find((x) => x.id === r.id);
+    if (d) return t('mpass.n.dance', '{d}: {th}', { d: t(`mpass.move.${d.moves[0].k}`, MOVE_NAME[d.moves[0].k]), th });
+    const k = S.instSkins.find((x) => x.id === r.id);
+    if (k) return t('mpass.n.inst', '{i} {th}', { i: t(`mpass.inst.${k.inst}`, INST_NAME[k.inst]), th });
+    const h = S.highways.findIndex((x) => x.id === r.id);
+    if (h >= 0) return h ? t('mpass.n.hw1', 'Pista Brilhante: {th}', { th }) : t('mpass.n.hw0', 'Pista Clássica: {th}', { th });
+    if (S.stage.id === r.id) return t('mpass.n.stage', 'Palco {th}', { th });
+  }
   return t(`mpass.${r.id}`, r.name);
 }
 

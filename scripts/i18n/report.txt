@@ -1,26 +1,40 @@
-Chaves: 1760 (1010 de t()/HTML + 750 de dados: bichinhos/temporadas/skins/rastros)
+Chaves: 3322 (1516 de t()/HTML + 1806 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 
-== Chamadas dinâmicas (chave ou texto não-literal): 8
+== Chamadas dinâmicas (chave ou texto não-literal): 22
   src/creatures/collection.ts:35  t("creature.${c.id}", c.name)
   src/creatures/collection.ts:36  t("creature.${c.id}.desc", c.desc)
   src/creatures/collection.ts:37  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
   src/creatures/seasons.ts:97  t("season.${s.id}.theme", s.theme)
+  src/game/avatar.ts:213  t("part.${p.id}", p.name)
   src/game/skins.ts:191  t("skin.${s.id}", s.name)
   src/game/skins.ts:192  t("skin.${s.id}.desc", s.desc)
   src/game/skins.ts:193  t("trail.${tr.id}", tr.name)
   src/game/skins.ts:194  t("trail.${tr.id}.desc", tr.desc)
+  src/games/band/cosmetics.ts:144  t("band.cos.${c.kind}.${c.id}", c.name)
+  src/music/season-music-data.ts:163  t("mtheme.s${String(season).padStart(2, '0')}", SEASON_MUSIC[season]?.split('|')
+  src/music/songs/index.ts:88  t("song.${s.id}", s.title)
+  src/music/songs/index.ts:89  t("song.${s.id}.band", s.band)
+  src/music/songs/index.ts:90  t("song.style.${style}", STYLES[style as StyleId]?.name ?? style)
+  src/music/songs/index.ts:91  t("song.stage.${stage}", STAGES[stage]?.name ?? stage)
+  src/pass/catalog.ts:110  t("pass.motif.${motifSlug(m)}", m)
+  src/pass/music/index.ts:329  t("mpass.kind.${r.kind}", r.name)
+  src/pass/music/index.ts:330  t("song.${r.id}", r.name)
+  src/pass/music/index.ts:337  t("mpass.fam.${a.family}", AURA_FAMILY_NAME[a.family])
+  src/pass/music/index.ts:339  t("mpass.move.${d.moves[0].k}", MOVE_NAME[d.moves[0].k])
+  src/pass/music/index.ts:341  t("mpass.inst.${k.inst}", INST_NAME[k.inst])
+  src/pass/music/index.ts:346  t("mpass.${r.id}", r.name)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 68 / 600 / 0 / 0
-  es: 68 / 600 / 0 / 0
-  de: 68 / 600 / 0 / 0
-  fr: 68 / 600 / 0 / 0
-  it: 68 / 600 / 0 / 0
-  ja: 68 / 600 / 0 / 0
-  ko: 68 / 600 / 0 / 0
-  ru: 68 / 600 / 0 / 0
-  tr: 68 / 600 / 0 / 0
-  id: 68 / 600 / 0 / 0
-  zh: 68 / 600 / 0 / 0
+  en: 1113 / 1120 / 0 / 0
+  es: 1113 / 1120 / 0 / 0
+  de: 1113 / 1120 / 0 / 0
+  fr: 1113 / 1120 / 0 / 0
+  it: 1113 / 1120 / 0 / 0
+  ja: 1113 / 1120 / 0 / 0
+  ko: 1113 / 1120 / 0 / 0
+  ru: 1113 / 1120 / 0 / 0
+  tr: 1113 / 1120 / 0 / 0
+  id: 1113 / 1120 / 0 / 0
+  zh: 1113 / 1120 / 0 / 0
