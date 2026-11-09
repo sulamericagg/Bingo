@@ -1,6 +1,7 @@
 import { audio } from '../core/audio';
 import { t } from '../i18n';
 import { bus } from '../core/events';
+import { drawEquippedAura } from '../pass/equip';
 import { FpsLimiter, migrateLowFx, QualityGovernor, type QualityMode, type QualitySettings } from '../core/quality';
 import { Bloom, drawFlare } from '../gfx/light';
 import * as haptics from '../core/haptics';
@@ -2287,6 +2288,8 @@ export class Game {
     x.save();
     x.translate(this.px, this.py);
     x.rotate(rot);
+    // aura do Passe Musical atrás do Bloop (não em aparelhos fracos, que usam cache do herói)
+    if (this.q.heroCache <= 0) drawEquippedAura(x, 0, 0, PR, this.time);
     if (this.inv > 0 && Math.floor(this.time * 12) % 2 === 0) x.globalAlpha = 0.6;
     const every = this.q.heroCache;
     if (every > 0) {

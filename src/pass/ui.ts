@@ -19,6 +19,30 @@ import { buyClub, clubPriceString, manageClub } from '../services/billing';
 import { icon } from '../ui/icons';
 import { drawSeasonArt, mixHex } from './art';
 import { homeItem, homePassSeason } from './home/catalog';
+import { bundleAvailable, bundleSavings, buyMonthBundle } from './bundle';
+import { equipAura, equipDance, equippedAura, equippedDance } from './equip';
+import {
+  buyMusicPremium,
+  musicCanClaim,
+  musicClaim,
+  musicClaimAll,
+  musicClaimableCount,
+  musicClaimed,
+  musicHistory,
+  musicLevel,
+  musicLevels,
+  musicLevelXp,
+  musicPremium,
+  musicRewardById,
+  musicSkip,
+  musicWeekly,
+  ownsMusicItem,
+  startMusicPass,
+} from './mstate';
+import { drawAura, ensureMusicPassRegistered, highwaySkin, instSkin, playDance, applyDancePose, drawDanceArms, drawDanceFx, stageVariant } from './music/index';
+import { seasonMusicText } from '../music/season-music-data';
+import { drawPlayer } from '../game/character';
+import { skinById } from '../game/skins';
 import { drawHomeItem, drawHomeSeasonArt } from './home/draw';
 import {
   buyHomePremium,
@@ -82,7 +106,7 @@ let raf = 0;
 let offs: (() => void)[] = [];
 
 /* ---------------- os dois passes do mês: mesmo motor de tela ---------------- */
-type PassMode = 'star' | 'home';
+type PassMode = 'star' | 'home' | 'music';
 let mode: PassMode = 'star';
 interface Model {
   levels(i: number): PassLevel[];
@@ -146,10 +170,34 @@ const HOME: Model = {
   art: drawHomeSeasonArt,
   star: (it) => it.track === 'prem' && (it.level === 1 || it.level % 10 === 0),
 };
+const MUSIC: Model = {
+  levels: (i) => musicLevels(i),
+  level: () => musicLevel(),
+  levelXp: () => musicLevelXp(),
+  premium: () => musicPremium(),
+  canClaim: musicCanClaim,
+  claim: musicClaim,
+  claimAll: musicClaimAll,
+  claimable: musicClaimableCount,
+  claimed: (lv, tr) => musicClaimed(lv, tr),
+  skip: () => musicSkip(1),
+  skipGems: PASS.musicSkipGems,
+  price: PASS.musicPriceGems,
+  weekly: musicWeekly,
+  milestones: () => [],
+  history: musicHistory,
+  items: (i) => itemsOf(musicLevels(i)),
+  art: drawMusicSeasonArt,
+  star: (it) => it.track === 'prem' && (it.level === 1 || it.level % 10 === 0),
+};
 let M: Model = STAR;
 function setMode(m: PassMode): void {
   mode = m;
-  M = m === 'home' ? HOME : STAR;
+  M = m === 'home' ? HOME : m === 'music' ? MUSIC : STAR;
+  if (m === 'music') {
+    ensureMusicPassRegistered();
+    startMusicPass();
+  }
   page = Math.min(4, Math.floor((M.level() - 1) / 10));
   sel = null;
 }
@@ -214,6 +262,8 @@ export function kindLabel(k: Reward['kind']): string {
       return t('pass.k.tickets', 'Ingressos');
     case 'home':
       return t('pass.k.home', 'Casa');
+    case 'mpass':
+      return t('pass.k.mpass', 'Musical');
   }
 }
 
@@ -274,6 +324,10 @@ function rewardVisual(r: Reward, px: number, s: SeasonInfo, live = false): HTMLE
       wrap.appendChild(b);
       break;
     }
+    case 'mpass': {
+      wrap.appendChild(musicVisual(r, px, s, live));
+      break;
+    }
     case 'home': {
       const it = homeItem(r.id);
       if (!it) break;
@@ -307,6 +361,180 @@ function rewardVisual(r: Reward, px: number, s: SeasonInfo, live = false): HTMLE
   return wrap;
 }
 
+/* ---------------- Passe Musical: prévias ---------------- */
+
+/** título + banda de uma música do passe ('sNN-k' / 'sNN-mega') */
+function songInfo(id: string): { title: string; band: string } {
+  const m = /^s(\d\d)-(\w+)$/.exec(id);
+  if (!m) return { title: id, band: '' };
+  const tx = seasonMusicText(Number(m[1]));
+  if (m[2] === 'mega') return { title: tx.megaTitle, band: tx.megaBand };
+  const k = Number(m[2]) - 1;
+  return { title: tx.titles[k] ?? id, band: tx.bands[k] ?? '' };
+}
+
+let songPreviewId = '';
+let songStop: (() => void) | null = null;
+/** prévia de ~15 s da música do passe (carrega o sintetizador só aqui) */
+function toggleSongPreview(id: string): void {
+  songStop?.();
+  songStop = null;
+  if (songPreviewId === id) {
+    songPreviewId = '';
+    render();
+    return;
+  }
+  songPreviewId = id;
+  render();
+  import('../music/songs').then((mod) => {
+    const song = mod.songById(id);
+    if (!song || songPreviewId !== id) return;
+    const AC = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx: AudioContext = new AC();
+    const out = ctx.createGain();
+    out.gain.value = 0.6;
+    out.connect(ctx.destination);
+    const pl = mod.createPlayer(song, ctx, out);
+    pl.start(0);
+    const timer = setTimeout(() => songStop?.(), 15000);
+    songStop = () => {
+      clearTimeout(timer);
+      try {
+        pl.stop();
+      } catch {
+        /* */
+      }
+      ctx.close().catch(() => {});
+      if (songPreviewId === id) songPreviewId = '';
+      root && render();
+    };
+  });
+}
+
+function canvasBox(px: number): [HTMLCanvasElement, CanvasRenderingContext2D, number] {
+  const c = h('canvas');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  c.width = c.height = Math.round(px * dpr);
+  c.style.width = c.style.height = px + 'px';
+  return [c, c.getContext('2d')!, dpr];
+}
+
+const dancePose = { t: 0, blink: 0, lookX: 0.1, lookY: 0.1, sx: 1, sy: 1, mood: 'idle' as 'idle' | 'happy', lx: -0.55, ly: -0.83, still: true };
+
+function musicVisual(r: Reward, px: number, s: SeasonInfo, live: boolean): HTMLElement {
+  const m = musicRewardById(r.id);
+  const [, a, b] = s.palette;
+  if (!m) return h('div', '', passIcon('p-music', px * 0.7));
+  ensureMusicPassRegistered();
+  const skin = skinById(save.skin === 'custom' ? 'bloop' : save.skin);
+  if (m.kind === 'aura' || m.kind === 'dance') {
+    const [c, x, dpr] = canvasBox(px);
+    const R = px * (m.kind === 'aura' ? 0.2 : 0.24);
+    const draw = (time: number) => {
+      x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      x.clearRect(0, 0, px, px);
+      x.save();
+      x.translate(px / 2, px * 0.56);
+      if (m.kind === 'aura') {
+        drawAura(x, m.id, 0, 0, R, time);
+        dancePose.sx = dancePose.sy = 1;
+        dancePose.mood = 'idle';
+        dancePose.t = time;
+        drawPlayer(x, skin, R, dancePose);
+      } else {
+        const pl = playDance(m.id);
+        const p = pl ? pl.frame(time % Math.max(0.5, pl.loopSec)) : null;
+        if (p) {
+          applyDancePose(x, p, R);
+          drawDanceArms(x, p, R, skin.dark);
+          dancePose.sx = p.sx;
+          dancePose.sy = p.sy;
+          dancePose.mood = p.mood;
+        }
+        dancePose.t = time;
+        drawPlayer(x, skin, R, dancePose);
+        x.restore();
+        x.save();
+        if (p) drawDanceFx(x, p, px / 2, px * 0.56, R);
+      }
+      x.restore();
+    };
+    draw(0.6);
+    if (live) animated.push({ c, draw });
+    return c;
+  }
+  const box = h('div', 'pv-music');
+  if (m.kind === 'song') {
+    const mega = m.id.endsWith('mega');
+    box.classList.add('song');
+    box.style.background = `radial-gradient(circle at 50% 50%, ${b} 0 14%, #14102a 15% 30%, #2a2240 31% 33%, #14102a 34% 60%, ${a} 61% 64%, #14102a 65%)`;
+    box.innerHTML = mega ? icon('crown', { size: px * 0.32 }) : '';
+  } else if (m.kind === 'instSkin') {
+    const k = instSkin(m.id);
+    const [c1, c2, c3] = k?.colors ?? [a, b, '#fff'];
+    box.style.background = `linear-gradient(135deg, ${c1}, ${c2} 60%, ${c3})`;
+    box.classList.add('inst');
+    box.innerHTML = passIcon('p-music', px * 0.5);
+  } else if (m.kind === 'highway') {
+    const hw = highwaySkin(m.id);
+    const lanes = (hw?.lanes ?? [a, b, a, b, a]).map((col, i) => `${col} ${i * 20 + 8}% ${i * 20 + 11}%`).join(', ');
+    box.style.background = `linear-gradient(90deg, transparent 0 7%, ${lanes}, transparent 0), linear-gradient(180deg, ${hw?.bg[0] ?? '#111'}, ${hw?.bg[1] ?? '#333'})`;
+    box.classList.add('hw');
+  } else if (m.kind === 'stage') {
+    const st = stageVariant(m.id);
+    box.style.background = `radial-gradient(ellipse at 50% 0%, ${st?.light ?? a}cc, transparent 60%), linear-gradient(180deg, ${st?.sky[0] ?? '#123'}, ${st?.sky[1] ?? '#345'})`;
+    box.classList.add('stage');
+    box.innerHTML = passIcon('p-banner', px * 0.5);
+  }
+  box.style.width = box.style.height = px * 0.86 + 'px';
+  return box;
+}
+
+/** arte do Passe Musical: palco com holofotes e equalizador na paleta da temporada */
+function drawMusicSeasonArt(x: CanvasRenderingContext2D, w: number, hh: number, s: SeasonInfo, time: number): void {
+  const [bg, a, b] = s.palette;
+  const g = x.createLinearGradient(0, 0, 0, hh);
+  g.addColorStop(0, bg);
+  g.addColorStop(1, mixHex(bg, b, 0.35));
+  x.fillStyle = g;
+  x.fillRect(0, 0, w, hh);
+  // holofotes
+  for (let i = 0; i < 3; i++) {
+    const sx = w * (0.55 + i * 0.18);
+    const ang = Math.sin(time * 0.8 + i * 2) * 0.35;
+    x.save();
+    x.translate(sx, -6);
+    x.rotate(ang);
+    const lg = x.createLinearGradient(0, 0, 0, hh);
+    lg.addColorStop(0, (i % 2 ? a : b) + 'aa');
+    lg.addColorStop(1, (i % 2 ? a : b) + '00');
+    x.fillStyle = lg;
+    x.beginPath();
+    x.moveTo(-6, 0);
+    x.lineTo(6, 0);
+    x.lineTo(46, hh);
+    x.lineTo(-46, hh);
+    x.closePath();
+    x.fill();
+    x.restore();
+  }
+  // equalizador
+  const n = 22;
+  const bw = w / n;
+  for (let i = 0; i < n; i++) {
+    const v = 0.25 + 0.55 * Math.abs(Math.sin(time * 2.2 + i * 0.7) * Math.cos(time * 0.9 + i * 0.3));
+    x.fillStyle = i % 2 ? a : b;
+    x.globalAlpha = 0.55;
+    x.fillRect(i * bw + 2, hh * (1 - v * 0.5), bw - 4, hh * v * 0.5);
+  }
+  x.globalAlpha = 1;
+  // palco
+  x.fillStyle = mixHex(bg, '#000000', 0.35);
+  x.fillRect(0, hh * 0.86, w, hh * 0.14);
+  x.fillStyle = a;
+  x.fillRect(0, hh * 0.86, w, 3);
+}
+
 /* ---------------- montagem ---------------- */
 
 function seasonForView(): { s: SeasonInfo; live: boolean } {
@@ -326,7 +554,7 @@ export function openPassUI(startTab: Tab = 'rewards', which: PassMode = mode): v
   document.body.appendChild(root);
   loadSeasonCreatureNames(s.index).then(() => root && render());
   render();
-  offs = [bus.on('pass', () => render()), bus.on('hpass', () => render()), bus.on('wallet', () => renderWallet()), bus.on('club', () => render()), bus.on('ad-free', () => render())];
+  offs = [bus.on('pass', () => render()), bus.on('hpass', () => render()), bus.on('mpass', () => render()), bus.on('cosmetics', () => render()), bus.on('wallet', () => renderWallet()), bus.on('club', () => render()), bus.on('ad-free', () => render())];
   startLoop();
   requestAnimationFrame(() => root?.classList.add('in'));
 }
@@ -335,6 +563,7 @@ export function closePassUI(): void {
   cancelAnimationFrame(raf);
   raf = 0;
   stopTrack();
+  songStop?.();
   offs.forEach((f) => f());
   offs = [];
   root?.remove();
@@ -394,7 +623,7 @@ function render(): void {
   const back = h('button', 'pp-back', passIcon('p-left', 22));
   back.setAttribute('aria-label', t('pass.back', 'Voltar'));
   back.onclick = () => closePassUI();
-  top.append(back, h('div', 'pp-title', mode === 'home' ? `${passIcon('p-house', 28)}<b>${t('hpass.title', 'Passe da Casa')}</b>` : `${passIcon('p-pass', 28)}<b>${t('pass.title', 'Passe Estelar')}</b>`), h('div', 'pp-wallet'));
+  top.append(back, h('div', 'pp-title', mode === 'home' ? `${passIcon('p-house', 28)}<b>${t('hpass.title', 'Passe da Casa')}</b>` : mode === 'music' ? `${passIcon('p-music', 28)}<b>${t('mpass.title', 'Passe Musical')}</b>` : `${passIcon('p-pass', 28)}<b>${t('pass.title', 'Passe Estelar')}</b>`), h('div', 'pp-wallet'));
   root.appendChild(top);
   renderWallet();
 
@@ -402,8 +631,9 @@ function render(): void {
   root.appendChild(scroll);
   const seg = h('div', 'pp-seg');
   for (const [m, label, ic, n] of [
-    ['star', t('pass.title', 'Passe Estelar'), passIcon('p-pass', 20), live ? STAR.claimable() : 0],
-    ['home', t('hpass.title', 'Passe da Casa'), passIcon('p-house', 20), live ? HOME.claimable() : 0],
+    ['star', t('pass.title.short', 'Estelar'), passIcon('p-pass', 20), live ? STAR.claimable() : 0],
+    ['home', t('hpass.title.short', 'Casa'), passIcon('p-house', 20), live ? HOME.claimable() : 0],
+    ['music', t('mpass.title.short', 'Musical'), passIcon('p-music', 20), live ? MUSIC.claimable() : 0],
   ] as [PassMode, string, string, number][]) {
     const b = h('button', 'pp-seg-b' + (mode === m ? ' on' : ''), `${ic}<span>${label}</span>${n && mode !== m ? `<i class="pp-seg-n">${n}</i>` : ''}`);
     b.onclick = () => {
@@ -444,7 +674,7 @@ function render(): void {
 }
 
 function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
-  const hero = h('div', 'pp-hero' + (mode === 'home' ? ' home' : ''));
+  const hero = h('div', 'pp-hero' + (mode !== 'star' ? ' home' : ''));
   const c = h('canvas', 'pp-art');
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.min(window.innerWidth, 720);
@@ -614,6 +844,23 @@ function detail(L: PassLevel, track: Track, s: SeasonInfo, live: boolean, lv: nu
     <div class="pp-dsub">${t('pass.lvTrack', 'Nível {n} · trilha {tr}', { n: L.level, tr: track === 'prem' ? t('pass.trackPrem', 'Premium') : t('pass.trackFree', 'Grátis') })}${exclusive ? ` · <b>${t('pass.exclusive', 'Exclusivo do passe')}</b>` : ''}</div>`;
   const act = h('div', 'pp-dact');
   const got = M.claimed(L.level, track);
+  if (r.kind === 'mpass') {
+    const m = musicRewardById(r.id);
+    if (m?.kind === 'song') {
+      const si = songInfo(r.id);
+      info.querySelector('.pp-dsub')!.insertAdjacentHTML('afterbegin', `<b class="pp-band">${si.band}</b> · `);
+      const on = songPreviewId === r.id;
+      const pb = h('button', 'pp-play', `${icon(on ? 'pause' : 'play', { size: 18 })}${on ? t('pass.stop', 'Parar') : t('pass.listen', 'Ouvir')}`);
+      pb.onclick = () => toggleSongPreview(r.id);
+      act.appendChild(pb);
+    }
+    if ((m?.kind === 'aura' || m?.kind === 'dance') && ownsMusicItem(r.id)) {
+      const isOn = m.kind === 'aura' ? equippedAura() === r.id : equippedDance() === r.id;
+      const eb = h('button', 'pp-play' + (isOn ? ' on' : ''), `${icon(isOn ? 'check' : 'user', { size: 18 })}${isOn ? t('pass.equipped', 'Equipado') : t('pass.equip', 'Equipar')}`);
+      eb.onclick = () => (m.kind === 'aura' ? equipAura(r.id) : equipDance(r.id));
+      act.appendChild(eb);
+    }
+  }
   if (r.kind === 'music') {
     const on = playingTrack() === r.id;
     const pb = h('button', 'pp-play', `${icon(on ? 'pause' : 'play', { size: 18 })}${on ? t('pass.stop', 'Parar') : t('pass.listen', 'Ouvir')}`);
@@ -644,13 +891,68 @@ function detail(L: PassLevel, track: Track, s: SeasonInfo, live: boolean, lv: nu
 
 function openBuy(s: SeasonInfo): void {
   if (mode === 'home') confirmHomeBuy(s);
+  else if (mode === 'music') confirmMusicBuy(s);
   else confirmBuy(s);
+}
+
+/** Botão do combo "Passes do Mês" (os 3 passes) — só se nenhum premium foi comprado. */
+function appendBundle(sh: { box: HTMLElement; close: () => void }): void {
+  if (!bundleAvailable()) return;
+  const bb = h('button', 'pp-buy big bundle', `<span>${t('pass.bundle3', 'Passes do Mês (os 3)')}<small>${t('hpass.bundleSave', 'economize {n} gemas', { n: fmt(bundleSavings()) })}</small></span><b><i class="gem"></i>${fmt(PASS.bundlePriceGems)}</b>`);
+  bb.onclick = () => {
+    const r = buyMonthBundle();
+    if (r === 'gems') return toast(t('pass.needGems', 'Faltam {n} gemas — veja a loja ou o Clube', { n: fmt(PASS.bundlePriceGems - save.gems) }), 'gem');
+    sh.close();
+    if (r === 'ok') {
+      audio.cash();
+      haptics.tap('heavy');
+      sel = null;
+      toast(t('pass.bundleOk', 'Os 3 passes do mês liberados!'), 'crown');
+    }
+    render();
+  };
+  sh.box.appendChild(bb);
+}
+
+function confirmMusicBuy(s: SeasonInfo): void {
+  const sh = sheet();
+  const L = musicLevels(s.index);
+  const mt = seasonMusicText(s.index);
+  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-music', 44)}<div><b>${t('mpass.buyTitle', 'Passe Musical Premium')}</b><small>${mt.theme}</small></div></div>
+    <ul class="ps-list">
+      <li>${passIcon('p-music', 22)}${t('mpass.b1', 'Músicas novas para o Bloop Banda + a MEGA música no nível 50')}</li>
+      <li>${passIcon('p-aura', 22)}${t('mpass.b2', 'Auras animadas e dancinhas para usar no menu')}</li>
+      <li>${passIcon('p-emote', 22)}${t('mpass.b3', 'Skins de instrumento, pista de notas e palco')}</li>
+    </ul>`;
+  const row = h('div', 'ps-creatures');
+  for (const lv of [0, 19, 29, 39, 49]) row.appendChild(rewardVisual(L[lv].prem, 52, s));
+  sh.box.appendChild(row);
+  const b = h('button', 'pp-buy big', `<span>${t('mpass.buyOnly', 'Só o Passe Musical')}</span><b><i class="gem"></i>${fmt(PASS.musicPriceGems)}</b>`);
+  b.onclick = () => {
+    const r = buyMusicPremium();
+    if (r === 'gems') return toast(t('pass.needGems', 'Faltam {n} gemas — veja a loja ou o Clube', { n: fmt(PASS.musicPriceGems - save.gems) }), 'gem');
+    sh.close();
+    if (r === 'ok') {
+      audio.cash();
+      haptics.tap('heavy');
+      sel = null;
+      toast(t('mpass.welcome', 'Passe Musical liberado!'), 'music');
+    }
+    render();
+  };
+  sh.box.appendChild(b);
+  appendBundle(sh);
+  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('pass.orClub3', 'Ou assine o Clube Bloop (os 3 passes inclusos)')}`);
+  c.onclick = () => {
+    sh.close();
+    openClubSheet();
+  };
+  sh.box.appendChild(c);
 }
 
 function confirmHomeBuy(s: SeasonInfo): void {
   const sh = sheet();
   const L = homePassSeason(s.index).levels;
-  const starOwned = isPremium();
   sh.box.innerHTML = `<div class="ps-head">${passIcon('p-house', 44)}<div><b>${t('hpass.buyTitle', 'Passe da Casa Premium')}</b><small>${seasonTheme(s)}</small></div></div>
     <ul class="ps-list">
       <li>${passIcon('p-house', 22)}${t('hpass.b1', 'Móveis, tintas especiais, papéis de parede, pisos e enfeites do planeta')}</li>
@@ -675,13 +977,8 @@ function confirmHomeBuy(s: SeasonInfo): void {
   const b = h('button', 'pp-buy big', `<span>${t('hpass.buyHouse', 'Só o Passe da Casa')}</span><b><i class="gem"></i>${fmt(PASS.homePriceGems)}</b>`);
   b.onclick = () => done(buyHomePremium(false), PASS.homePriceGems);
   sh.box.appendChild(b);
-  if (!starOwned) {
-    const save2 = PASS.priceGems + PASS.homePriceGems - PASS.bundlePriceGems;
-    const bb = h('button', 'pp-buy big bundle', `<span>${t('hpass.bundle', 'Passes do Mês (os dois)')}<small>${t('hpass.bundleSave', 'economize {n} gemas', { n: fmt(save2) })}</small></span><b><i class="gem"></i>${fmt(PASS.bundlePriceGems)}</b>`);
-    bb.onclick = () => done(buyHomePremium(true), PASS.bundlePriceGems);
-    sh.box.appendChild(bb);
-  }
-  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('hpass.orClub', 'Ou assine o Clube Bloop (os dois passes inclusos)')}`);
+  appendBundle(sh);
+  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('pass.orClub3', 'Ou assine o Clube Bloop (os 3 passes inclusos)')}`);
   c.onclick = () => {
     sh.close();
     openClubSheet();
@@ -721,7 +1018,8 @@ function confirmBuy(s: SeasonInfo): void {
     render();
   };
   sh.box.appendChild(b);
-  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('pass.orClub', 'Ou assine o Clube Bloop (passe incluso)')}`);
+  appendBundle(sh);
+  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('pass.orClub3', 'Ou assine o Clube Bloop (os 3 passes inclusos)')}`);
   c.onclick = () => {
     sh.close();
     openClubSheet();
@@ -820,7 +1118,7 @@ function renderClub(body: HTMLElement): void {
   const c = h('div', 'pp-clubcard' + (on ? ' on' : ''));
   c.innerHTML = `<div class="pc-head">${passIcon('p-club', 48)}<div><b>${t('club.name', 'Clube Bloop')}</b><small>${on ? t('club.activeUntil', 'Ativo · renova em {t}', { t: durText(save.club.expires - Date.now()) }) : clubPriceString()}</small></div></div>
     <ul class="ps-list">
-      <li>${passIcon('p-pass', 22)}${t('club.b1both', 'Passe Estelar e Passe da Casa de todo mês inclusos')}</li>
+      <li>${passIcon('p-pass', 22)}${t('club.b1all', 'Os 3 passes do mês inclusos: Estelar, Casa e Musical')}</li>
       <li>${icon('no-ads', { size: 22 })}${t('club.b2', 'Zero anúncios enquanto for membro')}</li>
       <li>${icon('gem-pile', { size: 22 })}${t('club.b3', '{n} gemas por mês + {d} gemas todo dia', { n: CLUB.gemsOnRenew, d: CLUB.gemsDaily })}</li>
       <li>${passIcon('p-frame', 22)}${t('club.b4', 'Moldura de perfil exclusiva do Clube')}</li>
@@ -857,7 +1155,7 @@ export function openClubSheet(): void {
   sh.box.classList.add('club');
   sh.box.innerHTML = `<div class="ps-head">${passIcon('p-club', 52)}<div><b>${t('club.name', 'Clube Bloop')}</b><small>${t('club.sub', 'Assinatura mensal · cancele quando quiser')}</small></div></div>
     <ul class="ps-list">
-      <li>${passIcon('p-pass', 22)}${t('club.b1both', 'Passe Estelar e Passe da Casa de todo mês inclusos')}</li>
+      <li>${passIcon('p-pass', 22)}${t('club.b1all', 'Os 3 passes do mês inclusos: Estelar, Casa e Musical')}</li>
       <li>${icon('no-ads', { size: 22 })}${t('club.b2', 'Zero anúncios enquanto for membro')}</li>
       <li>${icon('gem-pile', { size: 22 })}${t('club.b3', '{n} gemas por mês + {d} gemas todo dia', { n: CLUB.gemsOnRenew, d: CLUB.gemsDaily })}</li>
       <li>${passIcon('p-frame', 22)}${t('club.b4', 'Moldura de perfil exclusiva do Clube')}</li>

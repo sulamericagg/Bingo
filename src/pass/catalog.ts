@@ -14,7 +14,7 @@ import { SEASONS, type SeasonInfo } from '../creatures/seasons';
 import { t } from '../i18n';
 
 export type PassRarity = 'common' | 'medio' | 'rare' | 'epic' | 'legendary';
-export type RewardKind = 'home' | 'creature' | 'eyes' | 'mouth' | 'aura' | 'emote' | 'music' | 'frame' | 'banner' | 'gems' | 'coins' | 'tickets';
+export type RewardKind = 'mpass' | 'home' | 'creature' | 'eyes' | 'mouth' | 'aura' | 'emote' | 'music' | 'frame' | 'banner' | 'gems' | 'coins' | 'tickets';
 
 export interface Reward {
   kind: RewardKind;
@@ -182,6 +182,7 @@ function nameFor(kind: RewardKind, motif: string, theme: string, n: number, amou
     case 'creature':
       return creatureNames.get(id) ?? t('pass.n.creature', 'Bichinho {m}', { m: motif });
     case 'home':
+    case 'mpass':
       return id;
   }
 }

@@ -487,7 +487,11 @@ function bindSwipe(): void {
   const end = (e: PointerEvent) => {
     if (!tracking || e.pointerId !== pid) return;
     tracking = false;
-    if (!dragging) return;
+    if (!dragging) {
+      // toque simples na vitrine (canvas) → emote/dança do Bloop (Passe Musical)
+      if ((e.target as HTMLElement | null)?.tagName === 'CANVAS') bus.emit('showcase-tap', cards[idx]?.def.id);
+      return;
+    }
     dragging = false;
     swallow = true;
     setTimeout(() => (swallow = false), 0);

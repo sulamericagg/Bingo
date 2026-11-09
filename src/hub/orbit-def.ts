@@ -6,6 +6,7 @@
 import { bus } from '../core/events';
 import { save } from '../core/storage';
 import { drawPlayer, type PlayerPose } from '../game/character';
+import { danceFrameNow, drawDanceFxNow, drawEquippedAura, triggerDance } from '../pass/equip';
 import { skinById, type Skin } from '../game/skins';
 import { t } from '../i18n';
 import { markInlineGame, setGameExtras } from './hub';
@@ -86,13 +87,21 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, ts: num
   x.save();
   x.translate(px, py);
   x.rotate(a + Math.PI / 2);
+  // Passe Musical: aura equipada atrás + dança (emote ao tocar no Bloop)
+  drawEquippedAura(x, 0, 0, pr, ts);
+  const dp = danceFrameNow(x, pr, skin.dark);
+  pose.sx = dp ? dp.sx : 1;
+  pose.sy = dp ? dp.sy : 1;
+  pose.mood = dp ? dp.mood : 'idle';
   drawPlayer(x, skin, pr, pose);
+  if (dp) drawDanceFxNow(x, dp, pr);
   x.restore();
 }
 
 export function registerOrbit(hooks: OrbitHooks): void {
   markInlineGame('orbit');
   bus.on('cosmetics', () => (skin = skinById(save.skin)));
+  bus.on('showcase-tap', (id: string) => id === 'orbit' && triggerDance());
   const ex = document.getElementById('orbit-extras');
   if (ex) setGameExtras('orbit', ex);
   const def: MiniGameDef = {
