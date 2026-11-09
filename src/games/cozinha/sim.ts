@@ -154,6 +154,10 @@ export interface SimOpts {
   /** força tema/evento (dev/screenshot) */
   theme?: Theme;
   special?: Special;
+  /** layout em pé (celular na vertical) */
+  portrait?: boolean;
+  /** cliente online: só move o próprio boneco; o host manda o resto */
+  client?: boolean;
 }
 
 const PR = 0.32; // raio do jogador
@@ -256,6 +260,11 @@ export class Sim {
     if (this.theme === 'truck') {
       cols = Math.max(9, cols + 2);
       rows = 5;
+    }
+    if (this.o.portrait) {
+      const t = cols;
+      cols = Math.max(this.theme === 'truck' ? 5 : 7, rows);
+      rows = Math.max(9, t);
     }
     this.cols = cols;
     this.rows = rows;
@@ -837,8 +846,16 @@ export class Sim {
   }
 
   /* ------------------------------ passo ------------------------------ */
+  /** cliente online: chamado no lugar de pick() */
+  clientPick: ((p: Player) => void) | null = null;
+
   step(dt: number): void {
     if (this.ended) return;
+    if (this.o.client) {
+      for (const st of this.st) if (st.bump > 0) st.bump = Math.max(0, st.bump - dt * 5);
+      for (const p of this.players) this.movePlayer(p, dt);
+      return;
+    }
     this.time += dt;
     // eventos especiais
     if (!this.specialShown && this.time >= this.specialAt) {
@@ -1017,9 +1034,13 @@ export class Sim {
     }
     p.target = this.aim(p);
     // pegar (borda)
-    if (inp.pick && !p.pickPrev) this.pick(p);
+    if (inp.pick && !p.pickPrev) {
+      if (this.clientPick) this.clientPick(p);
+      else this.pick(p);
+    }
     p.pickPrev = inp.pick;
-    p.acting = inp.act ? (this.act(p, dt) ? p.acting + dt : 0) : 0;
+    if (this.o.client) p.acting = inp.act ? p.acting + dt : 0;
+    else p.acting = inp.act ? (this.act(p, dt) ? p.acting + dt : 0) : 0;
     if (p.happy > 0) p.happy -= dt;
     if (p.emoteT > 0) {
       p.emoteT -= dt;
