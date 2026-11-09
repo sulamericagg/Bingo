@@ -13,7 +13,7 @@ const TAU = Math.PI * 2;
 
 /* ------------------------------ partículas ------------------------------ */
 
-type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop';
+type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop' | 'spray' | 'goo';
 const PCOL: Record<PKind, string[]> = {
   fire: ['#ffe14d', '#ff9a2e', '#ff5a1f', '#7a3a2a'],
   spark: ['#ffffff', '#fff6a0', '#9fe8ff'],
@@ -21,14 +21,17 @@ const PCOL: Record<PKind, string[]> = {
   puff: ['#ffffff', '#eef3ff', '#dfe7ff'],
   debris: ['#8a6a4a', '#6a5a50', '#b08a5a', '#5a4a3c'],
   drop: ['#bfe6ff'],
+  spray: ['#ffffff', '#e4f6ff', '#bfe6ff', '#9fd4ff'],
+  goo: ['#d8ff8a', '#a6f04a', '#7bd83a'],
 };
-const FLUID_COLS: Record<'water' | 'lava' | 'goo' | 'snow', [string, string, string]> = {
-  water: ['rgba(40,130,240,.82)', '#d8f3ff', 'rgba(20,80,190,.6)'],
-  lava: ['rgba(255,90,20,.95)', '#ffe14d', 'rgba(200,40,20,.8)'],
-  goo: ['rgba(110,230,60,.88)', '#e6ff9a', 'rgba(50,160,40,.6)'],
-  snow: ['rgba(244,249,255,.97)', '#ffffff', 'rgba(170,200,240,.6)'],
+/** degradê de profundidade (0 = nível médio da superfície, 1 = chão) */
+const FLUID_GRAD: Record<'water' | 'lava' | 'goo' | 'snow', [number, string][]> = {
+  water: [[0, 'rgba(120,212,255,.6)'], [0.12, 'rgba(56,150,240,.7)'], [0.5, 'rgba(26,92,200,.8)'], [1, 'rgba(12,40,120,.9)']],
+  lava: [[0, '#ffd84a'], [0.1, '#ff9a22'], [0.4, '#e8471a'], [1, '#701208']],
+  goo: [[0, 'rgba(210,255,120,.8)'], [0.15, 'rgba(130,230,64,.84)'], [0.55, 'rgba(62,165,42,.9)'], [1, 'rgba(22,86,28,.95)']],
+  snow: [[0, '#ffffff'], [0.3, '#eef4ff'], [0.75, '#d2def3'], [1, '#a9bcdc']],
 };
-const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop'];
+const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop', 'spray', 'goo'];
 
 export class Particles {
   n = 420;
@@ -60,6 +63,25 @@ export class Particles {
       this.size[j] = kind === 'puff' ? 5 + Math.random() * 6 : kind === 'debris' ? 3 + Math.random() * 5 : 2 + Math.random() * 4;
       this.kind[j] = k;
       this.col[j] = Math.floor(Math.random() * PCOL[kind].length);
+    }
+  }
+
+  /** jato direcional (respingo, spray da crista): vx/vy médios ± spread */
+  spray(x: number, y: number, count: number, kind: PKind, vx: number, vy: number, spread: number): void {
+    const k = KINDS.indexOf(kind);
+    const c = Math.max(1, Math.round(count * this.budget));
+    const pc = PCOL[kind].length;
+    for (let i = 0; i < c; i++) {
+      const j = this.head;
+      this.head = (this.head + 1) % this.n;
+      this.x[j] = x + (Math.random() - 0.5) * 6;
+      this.y[j] = y + (Math.random() - 0.5) * 4;
+      this.vx[j] = vx * (1 + (Math.random() - 0.5) * spread * 2) + (Math.random() - 0.5) * 60 * spread;
+      this.vy[j] = vy * (1 + (Math.random() - 0.5) * spread * 2);
+      this.max[j] = this.life[j] = kind === 'puff' ? 0.5 + Math.random() * 0.5 : 0.45 + Math.random() * 0.6;
+      this.size[j] = kind === 'puff' ? 4 + Math.random() * 6 : kind === 'spray' ? 1.2 + Math.random() * 2.4 : 1.6 + Math.random() * 2.6;
+      this.kind[j] = k;
+      this.col[j] = Math.floor(Math.random() * pc);
     }
   }
 
@@ -105,6 +127,8 @@ export class Drawer {
   private mid: HTMLCanvasElement | null = null;
   private layerScale = 1;
   private rain = new Float32Array(160);
+  private fGrad: CanvasGradient | null = null;
+  private fGradKind = '';
 
   constructor(g: DisasterGame) {
     this.g = g;
@@ -926,96 +950,304 @@ export class Drawer {
     }
   }
 
-  private fluid(x: CanvasRenderingContext2D, x0: number, x1: number, bottom: number): void {
+  /**
+   * Fluido: corpo com degradê de profundidade (transparente sobre o que afundou), faixa de
+   * espuma e carneirinhos onde a água mexe, reflexos de luz andando por baixo da superfície,
+   * bolhas, crista enrolando do tsunami, nuvem rolando da avalanche, crosta e brilho da lava.
+   * Caminhos montados direto das colunas visíveis; nada alocado por quadro.
+   */
+  private fluid(x: CanvasRenderingContext2D, x0: number, x1: number, _bottom: number): void {
     const g = this.g;
     const f = g.fluid!;
-    const step = g.tier === 0 ? 24 : 14;
-    const cols = FLUID_COLS[f.kind];
-    let started = false;
-    let firstX = 0;
+    const s = g.sim;
+    if (!s) return;
+    const kind = f.kind;
+    const t = g.time;
+    const tier = g.tier;
+    const dx = s.dx;
+    const sx0 = s.x0;
+    const rest = s.rest;
+    const dd = s.d;
+    const wet = s.wet;
+    const i0 = Math.max(0, Math.floor((x0 - sx0) / dx));
+    const i1 = Math.min(s.n - 1, Math.ceil((x1 - sx0) / dx));
+    const bottom = GROUND_Y + 6;
+
+    // ---- corpo ----
+    let any = false;
+    let run = false;
     let lastX = 0;
     x.beginPath();
-    for (let px = Math.floor(x0 / step) * step; px <= x1 + step; px += step) {
-      const sy = g.surfaceAt(px);
-      if (sy > 5000) {
-        if (started) break;
-        continue;
+    for (let i = i0; i <= i1; i++) {
+      const px = sx0 + i * dx;
+      if (wet[i]) {
+        const py = GROUND_Y - rest[i] - dd[i];
+        if (!run) {
+          x.moveTo(px, bottom);
+          run = true;
+          any = true;
+        }
+        x.lineTo(px, py);
+        lastX = px;
+      } else if (run) {
+        x.lineTo(lastX, bottom);
+        x.closePath();
+        run = false;
       }
-      if (!started) {
-        x.moveTo(px, bottom);
-        firstX = px;
-        started = true;
-      }
-      x.lineTo(px, sy);
-      lastX = px;
     }
-    if (!started) return;
-    x.lineTo(lastX, bottom);
-    x.closePath();
-    x.fillStyle = cols[0];
+    if (run) {
+      x.lineTo(lastX, bottom);
+      x.closePath();
+    }
+    if (!any) return;
+    if (!this.fGrad || this.fGradKind !== kind) {
+      // degradê em coordenadas 0..1 (escalado na hora de pintar): criado uma vez por tipo
+      const gr = x.createLinearGradient(0, 0, 0, 1);
+      for (const [o, c] of FLUID_GRAD[kind]) gr.addColorStop(o, c);
+      this.fGrad = gr;
+      this.fGradKind = kind;
+    }
+    const lvl = Math.max(26, f.level);
+    x.save();
+    x.translate(0, GROUND_Y - lvl - 6);
+    x.scale(1, lvl + 6);
+    x.fillStyle = this.fGrad;
     x.fill();
-    // faixa funda
-    x.fillStyle = cols[2];
-    x.fillRect(firstX, g.surfaceAt((firstX + lastX) / 2) + 40, lastX - firstX, 2000);
-    // espuma
-    x.beginPath();
-    let s2 = false;
-    for (let px = firstX; px <= lastX; px += step) {
-      const sy = g.surfaceAt(px);
-      if (!s2) {
-        x.moveTo(px, sy);
-        s2 = true;
-      } else x.lineTo(px, sy);
-    }
-    x.strokeStyle = cols[1];
-    x.lineWidth = f.kind === 'lava' ? 4 : 5;
-    x.lineCap = 'round';
-    x.stroke();
-    if (g.q.glows && f.kind === 'lava') {
-      x.strokeStyle = 'rgba(255,160,40,.35)';
-      x.lineWidth = 16;
+    x.restore();
+
+    // ---- reflexos de luz andando por baixo da superfície (água e gosma) ----
+    if (kind === 'water' || kind === 'goo') {
+      const ns = tier === 0 ? 4 : tier === 1 ? 6 : tier === 2 ? 9 : 12;
+      const span = x1 - x0;
+      x.beginPath();
+      for (let k = 0; k < ns; k++) {
+        const sp = (k & 1 ? 1 : -0.7) * (10 + (k % 3) * 8);
+        let px = (k * 157.3 + t * sp) % span;
+        if (px < 0) px += span;
+        px += x0;
+        const len = 14 + ((k * 13) % 24);
+        const depth = 7 + ((k * 29) % 46);
+        const ya = s.surf(px - len * 0.5);
+        const yb = s.surf(px + len * 0.5);
+        const ym = s.surf(px);
+        if (ya > 5000 || yb > 5000 || ym > 5000) continue;
+        const wob = Math.sin(t * 1.9 + k * 2.3) * 2.5;
+        if (Math.max(ya, yb, ym) + depth + 4 > GROUND_Y || Math.abs(ya - yb) > len) continue;
+        x.moveTo(px - len * 0.5, ya + depth + wob);
+        x.quadraticCurveTo(px, ym + depth - 2 + wob, px + len * 0.5, yb + depth + wob);
+      }
+      x.strokeStyle = kind === 'water' ? 'rgba(220,245,255,.28)' : 'rgba(240,255,200,.22)';
+      x.lineWidth = 2.2;
+      x.lineCap = 'round';
       x.stroke();
     }
-    if (g.q.dynLights) {
-      const t2 = g.time;
-      if (f.kind === 'lava') {
-        // lava emissiva: ilumina o cenário acima da superfície
-        for (let px = Math.floor(firstX / 160) * 160 + 80; px <= lastX; px += 160) {
-          const fl = 0.75 + 0.25 * Math.sin(t2 * 3 + px * 0.05);
-          drawLight(x, '255,120,30', px, g.surfaceAt(px), 150, 0.55 * fl, 0.7);
-        }
-      } else if (f.kind === 'water') {
-        // reflexo do céu logo abaixo da superfície + brilhos especulares
-        x.strokeStyle = 'rgba(255,255,255,.22)';
-        x.lineWidth = 7;
-        x.save();
-        x.translate(0, 9);
+
+    // ---- linha da superfície (montada uma vez, pintada em camadas) ----
+    x.lineCap = 'round';
+    x.lineJoin = 'round';
+    if (kind === 'water' || kind === 'goo') {
+      // faixa de espuma macia logo abaixo + linha clara na superfície
+      this.surfPath(x, i0, i1, 4);
+      x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.3)' : 'rgba(230,255,170,.3)';
+      x.lineWidth = 7;
+      x.stroke();
+      this.surfPath(x, i0, i1, 0);
+      x.strokeStyle = kind === 'water' ? 'rgba(245,253,255,.95)' : '#e8ffa0';
+      x.lineWidth = 2.6;
+      x.stroke();
+      // carneirinhos: espuma onde a água mexe (crista, respingos, frente)
+      const fo = s.foam;
+      const st = tier === 0 ? 3 : 2;
+      x.beginPath();
+      for (let i = i0 - (i0 % st); i <= i1; i += st) {
+        if (i < 0 || !wet[i]) continue;
+        const a = fo[i];
+        if (a < 0.12) continue;
+        const h = Math.sin(i * 12.9898) * 43758.5453;
+        const j = h - Math.floor(h);
+        const r = (1.3 + a * 3.4) * (0.7 + j * 0.6);
+        const px = sx0 + i * dx + (j - 0.5) * dx * 2;
+        const py = GROUND_Y - rest[i] - dd[i] + r * 0.35 + j * a * 5;
+        x.moveTo(px + r, py);
+        x.arc(px, py, r, 0, TAU);
+      }
+      x.fillStyle = kind === 'water' ? 'rgba(255,255,255,.88)' : 'rgba(225,255,160,.85)';
+      x.fill();
+    } else if (kind === 'lava') {
+      this.surfPath(x, i0, i1, 0);
+      if (g.q.glows) {
+        x.globalCompositeOperation = 'lighter';
+        x.strokeStyle = 'rgba(255,140,30,.28)';
+        x.lineWidth = 18;
         x.stroke();
-        x.restore();
-        for (let i = 0; i < 9; i++) {
-          const px = firstX + ((i * 131.7 + t2 * 18) % Math.max(1, lastX - firstX));
-          const tw = Math.sin(t2 * 4 + i * 1.7);
-          if (tw > 0.2) drawSpecular(x, px, g.surfaceAt(px) + 3, 7 * tw, 0.8);
+        x.globalCompositeOperation = 'source-over';
+      }
+      x.strokeStyle = '#fff07a';
+      x.lineWidth = 3.2;
+      x.stroke();
+      // crosta escura derivando devagar
+      const span = x1 - x0;
+      const nc = Math.ceil(span / 46);
+      x.beginPath();
+      for (let k = 0; k < nc; k++) {
+        let px = (k * 61.7 + t * (5 + (k % 3) * 2)) % span;
+        px += x0;
+        const py = s.surf(px);
+        if (py > 5000) continue;
+        const w = 7 + (k % 4) * 4;
+        x.moveTo(px + w, py + 4);
+        x.ellipse(px, py + 4, w, 2.4, 0, 0, TAU);
+      }
+      x.fillStyle = 'rgba(80,16,6,.55)';
+      x.fill();
+    } else {
+      // neve: superfície granulosa (montinhos) + sombra azulada logo abaixo
+      this.surfPath(x, i0, i1, 5);
+      x.strokeStyle = 'rgba(150,175,215,.45)';
+      x.lineWidth = 6;
+      x.stroke();
+      const st = tier === 0 ? 3 : 2;
+      x.beginPath();
+      for (let i = i0 - (i0 % st); i <= i1; i += st) {
+        if (i < 0 || !wet[i]) continue;
+        const h = Math.sin(i * 12.9898) * 43758.5453;
+        const j = h - Math.floor(h);
+        const r = 2.2 + j * 3.6;
+        const px = sx0 + i * dx;
+        const py = GROUND_Y - rest[i] - dd[i] + r * 0.45;
+        x.moveTo(px + r, py);
+        x.arc(px, py, r, 0, TAU);
+      }
+      x.fillStyle = '#ffffff';
+      x.fill();
+    }
+
+    // ---- bolhas ----
+    if (kind !== 'snow') {
+      x.beginPath();
+      for (let k = 0; k < s.NB; k++) {
+        if (s.bl[k] <= 0) continue;
+        const bx = s.bx[k];
+        if (bx < x0 || bx > x1) continue;
+        const r = s.br[k];
+        x.moveTo(bx + r, s.by[k]);
+        x.arc(bx, s.by[k], r, 0, TAU);
+      }
+      if (kind === 'lava') {
+        x.fillStyle = 'rgba(255,215,90,.8)';
+        x.fill();
+      } else {
+        x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.7)' : 'rgba(235,255,180,.75)';
+        x.lineWidth = 1.2;
+        x.stroke();
+      }
+    }
+
+    // ---- frente: crista enrolando (tsunami) / nuvem rolando (avalanche) ----
+    if (f.dir !== 0 && f.crest > 8) {
+      const D = f.dir;
+      const C = Math.max(0.25, Math.min(1.35, f.crest / 90));
+      const xc = f.front - D * 46;
+      const yc = s.surf(xc);
+      if (yc < 5000 && xc > x0 - 120 && xc < x1 + 120) {
+        if (kind === 'water') {
+          const w = Math.sin(t * 4.2) * 0.12;
+          const bxp = xc - D * 34 * C;
+          const byp = s.surf(bxp);
+          const tipX = xc + D * (54 + 10 * w) * C;
+          const tipY = yc + 8 * C;
+          const fx = xc + D * 24 * C;
+          const fy = s.surf(fx);
+          // corpo do lábio
+          x.beginPath();
+          x.moveTo(bxp, byp < 5000 ? byp : yc);
+          x.quadraticCurveTo(xc - D * 6 * C, yc - 26 * C, xc + D * 22 * C, yc - 22 * C);
+          x.quadraticCurveTo(xc + D * (60 + 8 * w) * C, yc - 18 * C, tipX, tipY);
+          x.quadraticCurveTo(xc + D * 40 * C, yc - 6 * C, xc + D * 30 * C, yc + 10 * C);
+          x.lineTo(fx, fy < 5000 ? fy : yc + 20 * C);
+          x.lineTo(xc, yc + 6);
+          x.closePath();
+          x.fillStyle = 'rgba(70,170,250,.88)';
+          x.fill();
+          // tubo (sombra dentro do enrolado)
+          x.beginPath();
+          x.ellipse(xc + D * 36 * C, yc + 10 * C, 13 * C, 9 * C, 0, 0, TAU);
+          x.fillStyle = 'rgba(12,50,140,.42)';
+          x.fill();
+          // borda de espuma por cima e na ponta
+          x.beginPath();
+          x.moveTo(bxp, byp < 5000 ? byp : yc);
+          x.quadraticCurveTo(xc - D * 6 * C, yc - 26 * C, xc + D * 22 * C, yc - 22 * C);
+          x.quadraticCurveTo(xc + D * (60 + 8 * w) * C, yc - 18 * C, tipX, tipY);
+          x.strokeStyle = 'rgba(255,255,255,.95)';
+          x.lineWidth = 4.5;
+          x.stroke();
+          x.beginPath();
+          for (let k = 0; k < 7; k++) {
+            const a = k / 6;
+            const px = xc + D * (4 + a * 52) * C + Math.sin(t * 9 + k * 2) * 2;
+            const py = yc - 22 * C + a * a * 28 * C + Math.cos(t * 7 + k) * 2;
+            const r = (3.2 + (k % 3) * 1.4) * C;
+            x.moveTo(px + r, py);
+            x.arc(px, py, r, 0, TAU);
+          }
+          x.fillStyle = '#ffffff';
+          x.fill();
+        } else if (kind === 'snow') {
+          x.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = t * 3.2 + k * 1.05;
+            const px = f.front - D * (18 + k * 16 + 10 * Math.cos(a)) * C;
+            const sy = s.surf(px);
+            if (sy > 5000) continue;
+            const r = (10 + (k % 3) * 5) * C;
+            const py = sy - r * 0.2 + 6 * Math.sin(a) * C;
+            x.moveTo(px + r, py);
+            x.arc(px, py, r, 0, TAU);
+          }
+          x.fillStyle = 'rgba(255,255,255,.92)';
+          x.fill();
         }
       }
     }
-    // bolhas/espuma soltas
-    const t = g.time;
-    x.fillStyle = cols[1];
-    for (let i = 0; i < 18; i++) {
-      const px = firstX + ((i * 97.3 + t * (f.kind === 'lava' ? 12 : 30)) % Math.max(1, lastX - firstX));
-      const sy = g.surfaceAt(px);
-      const ph = (t * 1.5 + i * 0.37) % 1;
-      x.globalAlpha = 1 - ph;
-      x.beginPath();
-      x.arc(px, sy + 6 + ph * 20 * (f.kind === 'goo' || f.kind === 'lava' ? -0.5 : 1), 2 + (i % 3), 0, TAU);
-      x.fill();
+
+    // ---- luz ----
+    if (g.q.dynLights) {
+      if (kind === 'lava') {
+        for (let px = Math.floor(x0 / 160) * 160 + 80; px <= x1; px += 160) {
+          const py = s.surf(px);
+          if (py > 5000) continue;
+          const fl = 0.75 + 0.25 * Math.sin(t * 3 + px * 0.05);
+          drawLight(x, '255,120,30', px, py, 150, 0.55 * fl, 0.7);
+        }
+      } else if (kind === 'water') {
+        for (let i = 0; i < 7; i++) {
+          const px = x0 + ((i * 131.7 + t * 18) % (x1 - x0));
+          const tw = Math.sin(t * 4 + i * 1.7);
+          const py = s.surf(px);
+          if (tw > 0.25 && py < 5000) drawSpecular(x, px, py + 3, 6 * tw, 0.75);
+        }
+      }
     }
-    x.globalAlpha = 1;
-    // crista da onda: spray
-    if (f.dir !== 0 && f.crest > 10 && Math.random() < g.q.particleBudget) {
-      const fx = f.front - f.dir * 50;
-      if (fx > x0 && fx < x1) this.particles.burst(fx, g.surfaceAt(fx), 2, f.kind === 'snow' ? 'puff' : 'drop', 160);
+  }
+
+  /** caminho da linha da superfície (colunas molhadas visíveis), deslocado em y */
+  private surfPath(x: CanvasRenderingContext2D, i0: number, i1: number, off: number): void {
+    const s = this.g.sim!;
+    const wet = s.wet;
+    x.beginPath();
+    let r = false;
+    for (let i = i0; i <= i1; i++) {
+      if (!wet[i]) {
+        r = false;
+        continue;
+      }
+      const px = s.x0 + i * s.dx;
+      const py = GROUND_Y - s.rest[i] - s.d[i] + off;
+      if (!r) {
+        x.moveTo(px, py);
+        r = true;
+      } else x.lineTo(px, py);
     }
   }
 

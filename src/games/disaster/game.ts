@@ -14,7 +14,8 @@ import type { PeerState, PresenceSession } from '../../services/presence-api';
 import { drawPlayer, type PlayerPose } from '../../game/character';
 import { SKINS, type Skin } from '../../game/skins';
 import { DISASTERS, scenarioName, scenarios, mulberry, type DisasterId, type Scenario } from './scenarios';
-import { GROUND_Y, World, type Body } from './world';
+import { GROUND_Y, World, type Body, type FluidField } from './world';
+import { FluidSim } from './fluid';
 import { Drawer } from './draw';
 import { Hud } from './hud';
 
@@ -206,7 +207,11 @@ export class DisasterGame implements MiniGameHandle {
   private keys: Input = { l: false, r: false, j: false, u: false };
   private sendT = 0;
   private offs: (() => void)[] = [];
-  fluidAt: (x: number) => number;
+  /** superfície simulada do fluido atual (colunas com equação de onda) */
+  sim: FluidSim | null = null;
+  /** fluido como a física dos corpos o enxerga (criado uma vez: nada alocado por quadro) */
+  field: FluidField;
+  private sprayAcc = 0;
 
   constructor(root: HTMLElement, exit: () => void, opts: { scenario?: number } = {}) {
     this.root = root;
@@ -220,7 +225,16 @@ export class DisasterGame implements MiniGameHandle {
     this.tier = this.gov.tier;
     this.q = this.gov.settings;
     for (let i = 0; i < MAX_STRIKES; i++) this.strikes.push({ on: false, kind: 'bomb', x: 0, ty: 0, sx: 0, sy: 0, t: 0, T: 1, r: 40, flash: 0 });
-    this.fluidAt = (x: number) => this.surfaceAt(x);
+    const self = this;
+    this.field = {
+      surf: (x: number) => (self.sim ? self.sim.surf(x) : 9999),
+      slope: (x: number) => (self.sim ? self.sim.slope(x) : 0),
+      flow: (x: number) => (self.sim ? self.sim.flow(x) : 0),
+      push: 0,
+      buoy: 2.4,
+      drag: 1.8,
+      splash: (x: number, w: number, vy: number) => self.splash(x, w, vy),
+    };
     this.draw = new Drawer(this);
     this.hud = new Hud(this);
     this.bindInput();
@@ -346,6 +360,7 @@ export class DisasterGame implements MiniGameHandle {
     this.night = this.sc.mod === 'noite' || this.sc.disasters.includes('raios');
     this.wind = this.sc.mod === 'vento' ? (this.rng() < 0.5 ? -1 : 1) * 90 : 0;
     this.fluid = null;
+    this.sim = null;
     this.active.clear();
     this.dIndex = 0;
     this.quake = 0;
@@ -480,6 +495,37 @@ export class DisasterGame implements MiniGameHandle {
     }
   }
 
+  /** frente do tsunami/avalanche: spray na crista e água subindo ao bater em casas e torres */
+  private frontFx(f: Fluid, prevFront: number, dt: number): void {
+    const sim = this.sim!;
+    const pw = this.draw.particles;
+    const water = f.kind === 'water';
+    const lipX = f.front - f.dir * 8;
+    const ly = sim.surf(f.front - f.dir * 46);
+    if (ly < 5000) {
+      this.sprayAcc += dt * (water ? 26 : 14) * this.q.particleBudget;
+      while (this.sprayAcc >= 1) {
+        this.sprayAcc -= 1;
+        if (water) pw.spray(lipX, ly - 6 + Math.random() * 14, 1, 'spray', f.dir * (120 + Math.random() * 120), -60 - Math.random() * 160, 0.6);
+        else pw.spray(lipX, ly + Math.random() * 20, 1, 'puff', f.dir * (60 + Math.random() * 90), -30 - Math.random() * 60, 0.8);
+      }
+    }
+    // bateu num corpo de pé: a água sobe pela parede
+    const a = Math.min(prevFront, f.front);
+    const b = Math.max(prevFront, f.front);
+    const bs = this.world.bodies;
+    for (let i = 0; i < bs.length; i++) {
+      const bd = bs[i];
+      if (!bd.alive || bd.h < 30 || bd.y + bd.h < GROUND_Y - 4) continue;
+      const face = f.dir > 0 ? bd.x : bd.x + bd.w;
+      if (face < a || face >= b) continue;
+      const y = sim.surf(face - f.dir * 4);
+      if (y > 5000) continue;
+      pw.spray(face - f.dir * 4, Math.max(y, bd.y), water ? 9 : 6, water ? 'spray' : 'puff', -f.dir * 60, -380, 0.35);
+      sim.disturb(face - f.dir * 10, 16, -120);
+    }
+  }
+
   private beginDisaster(d: DisasterId): void {
     this.active.add(d);
     const df = this.sc.difficulty;
@@ -527,6 +573,31 @@ export class DisasterGame implements MiniGameHandle {
       default:
         break;
     }
+    if (this.fluid && (!this.sim || this.sim.kind !== this.fluid.kind)) {
+      this.sim = new FluidSim(this.fluid.kind, this.world, this.tier);
+      const k = this.fluid.kind;
+      this.field.buoy = k === 'water' ? 2.1 : k === 'lava' ? 2.7 : k === 'goo' ? 2.0 : 1.5;
+      this.field.drag = k === 'water' ? 1.8 : k === 'lava' ? 3.2 : k === 'goo' ? 3.6 : 5;
+    }
+  }
+
+  /** algo entrou na água (corpo, jogador, bomba): onda nas colunas + respingo e bolhas */
+  splash(x: number, w: number, vy: number): void {
+    const sim = this.sim;
+    const f = this.fluid;
+    if (!sim || !f) return;
+    const sp = Math.min(700, Math.abs(vy));
+    sim.disturb(x, Math.max(10, w), -Math.sign(vy) * sp * (f.kind === 'snow' ? 0.1 : f.kind === 'water' ? 0.45 : 0.28));
+    if (sp < 90) return;
+    const y = sim.surf(x);
+    if (y > 5000) return;
+    const n = Math.min(14, 3 + Math.round(sp / 60 + w / 14));
+    const pk = f.kind === 'water' ? 'spray' : f.kind === 'lava' ? 'fire' : f.kind === 'goo' ? 'goo' : 'puff';
+    const pw = this.draw.particles;
+    const up = f.kind === 'lava' ? 0.55 : f.kind === 'goo' ? 0.6 : 1;
+    pw.spray(x - w * 0.4, y - 2, n >> 1, pk, -70 - sp * 0.15, -(140 + sp * 0.5) * up, 0.5);
+    pw.spray(x + w * 0.4, y - 2, n >> 1, pk, 70 + sp * 0.15, -(140 + sp * 0.5) * up, 0.5);
+    if (f.kind !== 'snow') for (let i = 0; i < 4; i++) sim.bubble(x + (Math.random() - 0.5) * w, y + 8 + Math.random() * 20, 1.5 + Math.random() * 2.5);
   }
 
   private startMeteor(): void {
@@ -627,7 +698,8 @@ export class DisasterGame implements MiniGameHandle {
     if (this.phaseT >= this.phaseDur) this.nextPhase();
 
     this.updateDisasters(dt);
-    this.world.step(dt, this.fluid ? this.fluidAt : null, this.fluid?.dir ? this.fluid.push : 0, this.fluid?.front ?? 0);
+    if (this.fluid && this.sim) this.field.push = this.fluid.dir ? this.fluid.push : 0;
+    this.world.step(dt, this.fluid && this.sim ? this.field : null);
 
     // entrada do jogador
     const mi = this.me.input;
@@ -674,17 +746,9 @@ export class DisasterGame implements MiniGameHandle {
 
   /* ------------------------------ desastres ------------------------------ */
 
+  /** y da superfície do fluido em x (9999 = seco/sem fluido) — dinâmica, com ondas e respingos */
   surfaceAt(x: number): number {
-    const f = this.fluid;
-    if (!f) return 9999;
-    if (f.dir !== 0) {
-      const d = (x - f.front) * f.dir; // >0: ainda não chegou
-      if (d > 40) return 9999;
-      const bump = d > -220 ? f.crest * Math.max(0, 1 - Math.abs(d + 60) / 120) * Math.min(1, (40 - d) / 50) : 0;
-      const ramp = Math.min(1, (-d + 40) / 70);
-      return GROUND_Y - f.level * ramp - bump - Math.sin(x * 0.035 + this.time * 2.4) * 4;
-    }
-    return GROUND_Y - f.level - Math.sin(x * 0.03 + this.time * 2) * 3 - Math.sin(x * 0.011 - this.time * 1.3) * 3;
+    return this.fluid && this.sim ? this.sim.surf(x) : 9999;
   }
 
   private updateDisasters(dt: number): void {
@@ -698,6 +762,13 @@ export class DisasterGame implements MiniGameHandle {
         // depois que a onda atravessa, a crista some devagar
         if ((f.dir > 0 && f.front > w.W + 200) || (f.dir < 0 && f.front < -200)) f.crest = Math.max(0, f.crest - dt * 30);
       } else if (this.phase === 'disaster') f.level = Math.min(f.target, f.level + f.rate * dt);
+      const sim = this.sim;
+      if (sim) {
+        const prevFront = sim.front;
+        sim.rain = f.kind === 'water' && f.dir === 0 && (this.active.has('enchente') || this.night) ? 0.5 : 0;
+        sim.step(dt, f);
+        if (f.dir !== 0 && f.crest > 10) this.frontFx(f, prevFront, dt);
+      }
     }
     if (this.phase === 'disaster') {
       const df = this.sc.difficulty;
@@ -842,6 +913,7 @@ export class DisasterGame implements MiniGameHandle {
         if (dx < s.r && p.y <= s.ty + 4) this.knockOut(p, 0);
       } else if (dx < s.r && Math.abs(p.y - s.ty) < s.r + 10) this.knockOut(p, Math.sign(p.x - s.x));
     }
+    if (this.surfaceAt(s.x) < s.ty - 2) this.splash(s.x, s.r, 520);
     const pk = s.kind === 'meteor' || s.kind === 'bomb' ? 'fire' : s.kind === 'bolt' ? 'spark' : 'dust';
     this.draw.particles.burst(s.x, s.ty - 6, s.kind === 'rock' ? 10 : 18, pk, 300);
     if (s.kind !== 'rock' && this.q.shake) this.shake = Math.max(this.shake, 0.4);
@@ -1046,6 +1118,7 @@ export class DisasterGame implements MiniGameHandle {
     if (this.fluid && (this.fluid.dir !== 0 || this.fluid.level > 12)) {
       const s = this.surfaceAt(p.x);
       if (p.y > s + 3) {
+        this.splash(p.x, 22, Math.max(260, p.vy));
         this.knockOut(p, this.fluid.dir);
         return;
       }
@@ -1180,6 +1253,11 @@ export class DisasterGame implements MiniGameHandle {
         if (bd.alive && bd.y < p.y - 4 && bd.y > p.y - 70 && bd.x - p.x > 0 && bd.x - p.x < 36 && dx > 0) jump = true;
       }
     }
+    // lê a superfície de verdade (ondas/respingos): água encostando no pé = pulinho para cima
+    if (this.fluid && p.onGround && !jump) {
+      const s = this.surfaceAt(p.x);
+      if (s < 5000 && s - p.y < 16 && this.rng() < 0.3 + b.skill) jump = true;
+    }
     b.hop -= dt;
     if (jump && b.hop <= 0) {
       inp.j = true;
@@ -1281,6 +1359,8 @@ export class DisasterGame implements MiniGameHandle {
     const consider = (x0: number, x1: number, top: number) => {
       if (top < p.y - reach || top > p.y + 400) return;
       const cx = Math.max(x0 + 10, Math.min(x1 - 10, p.x));
+      // já está debaixo d'água (superfície dinâmica, com ondas)
+      if (top > this.surfaceAt(cx) - 8) return;
       let s = -top * (0.6 + b.skill) - Math.abs(cx - p.x) * 0.35 + this.rng() * 40 * (1.3 - b.skill);
       if (fluidTop && top < fluidTop - 16) s += 60 * b.skill;
       if (s > bestS) {

@@ -45,6 +45,26 @@ export interface Body {
   py: number;
   /** encostou em algo por baixo neste passo */
   rest: boolean;
+  /** fração submersa no passo anterior (respingo ao entrar) */
+  sub: number;
+}
+
+/** fluido visto pela física dos corpos (implementado em game.ts sobre o FluidSim) */
+export interface FluidField {
+  /** y da superfície em x (9999 = seco) */
+  surf(x: number): number;
+  /** inclinação dy/dx da superfície */
+  slope(x: number): number;
+  /** correnteza horizontal (unidades/s) */
+  flow(x: number): number;
+  /** empurrão da frente (tsunami/avalanche); 0 = fluido que só sobe */
+  push: number;
+  /** empuxo de um corpo leve (água ~2,4: flutua com ~40% submerso) */
+  buoy: number;
+  /** arrasto (1/s) */
+  drag: number;
+  /** algo entrou/mexeu na superfície: vy > 0 = para baixo */
+  splash(x: number, w: number, vy: number): void;
 }
 
 export interface Ladder {
@@ -117,7 +137,7 @@ export class World {
   private body(x: number, y: number, w: number, h: number, kind: BodyKind, color: string, color2 = color, heavy = 1): number {
     if (this.bodies.length >= this.maxBodies) return -1;
     const id = this.bodies.length;
-    this.bodies.push({ id, x, y, w, h, vx: 0, vy: 0, kind, color, color2, awake: false, still: 0, tip: 0, tipT: 0, ang: 0, va: 0, alive: true, check: Math.random() * 0.3, heavy, wet: 0, py: y + h, rest: false });
+    this.bodies.push({ id, x, y, w, h, vx: 0, vy: 0, kind, color, color2, awake: false, still: 0, tip: 0, tipT: 0, ang: 0, va: 0, alive: true, check: Math.random() * 0.3, heavy, wet: 0, py: y + h, rest: false, sub: 0 });
     return id;
   }
 
@@ -324,7 +344,7 @@ export class World {
     b.va += vx * 0.004 * (b.heavy ? 0.5 : 1.5);
   }
 
-  step(dt: number, fluidAt: ((x: number) => number) | null, fluidPush: number, fluidFront: number): void {
+  step(dt: number, fl: FluidField | null): void {
     const bs = this.bodies;
     let awake = 0;
     for (let i = 0; i < bs.length; i++) {
@@ -357,32 +377,54 @@ export class World {
           b.check = 0.18 + Math.random() * 0.12;
           if (!this.supported(b)) this.wake(b);
         }
-        if (fluidAt) {
-          const s = fluidAt(b.x + b.w * 0.5);
+        if (fl) {
+          const s = fl.surf(b.x + b.w * 0.5);
           if (b.y + b.h > s + 4) {
             b.wet += dt;
             // torres (blocos) aguentam mais tempo antes de ceder
             const hold = b.kind === 'block' || b.kind === 'cap' ? 3.5 + (b.id % 5) : 0.15;
-            if (b.wet > hold && fluidPush !== 0) this.push(b, fluidPush * 0.5, -40);
+            if (b.wet > hold && fl.push !== 0) this.push(b, fl.push * 0.5, -40);
+            // leve (madeira) com água pela metade: solta e flutua
+            else if (!b.heavy && b.kind !== 'ladder' && b.y + b.h - s > b.h * 0.45) {
+              this.wake(b);
+              b.sub = 0.45;
+            }
           }
         }
         if (!b.awake) continue;
       }
       awake++;
-      // fluido: empurra e faz flutuar
+      // fluido: empuxo pela altura local (amostrada nas duas pontas), arrasto pela correnteza,
+      // escorrega na inclinação e inclina junto com a onda
       let sub = 0;
-      if (fluidAt) {
-        const s = fluidAt(b.x + b.w * 0.5);
-        if (b.y + b.h > s) {
+      if (fl) {
+        const sl = fl.surf(b.x + 2);
+        const sr = fl.surf(b.x + b.w - 2);
+        const s = sl > 5000 ? sr : sr > 5000 ? sl : (sl + sr) * 0.5;
+        if (s < 5000 && b.y + b.h > s) {
           sub = Math.min(1, (b.y + b.h - s) / b.h);
           b.wet = Math.max(b.wet, 1);
+          if (b.sub === 0 && b.vy > 90) fl.splash(b.x + b.w * 0.5, b.w, b.vy);
+          else if (b.vy > 40 || b.vy < -40) fl.splash(b.x + b.w * 0.5, b.w, b.vy * 0.05);
         }
       }
-      b.vy += GRAV_BODY * dt * (1 - sub * (b.heavy ? 0.85 : 1.5));
-      if (sub > 0) {
-        b.vx *= 1 - Math.min(1, 1.8 * dt);
-        b.vy *= 1 - Math.min(1, 2.5 * dt);
-        if (fluidPush !== 0 && Math.abs(b.x - fluidFront) < 260) b.vx += fluidPush * dt * 2.5;
+      b.sub = sub;
+      b.vy += GRAV_BODY * dt * (1 - sub * (b.heavy ? 0.85 : fl ? fl.buoy : 1.5));
+      if (sub > 0 && fl) {
+        const k = Math.min(1, fl.drag * dt * (0.4 + sub));
+        const cx = b.x + b.w * 0.5;
+        const flow = fl.flow(cx);
+        b.vx += (flow * (b.heavy ? 0.7 : 1) - b.vx) * k;
+        b.vy -= b.vy * Math.min(1, (b.vy < 0 ? 3.2 : 1.6) * dt * sub);
+        // subida limitada (madeira não vira foguete numa onda alta)
+        if (b.vy < -320) b.vy = -320;
+        const sl = fl.slope(cx);
+        b.vx += sl * GRAV_BODY * 0.22 * dt * sub;
+        if (!b.heavy) {
+          // flutuando: acompanha a inclinação da onda (só visual)
+          const ta = Math.max(-0.45, Math.min(0.45, Math.atan(sl)));
+          b.va += ((ta - b.ang) * 10 - b.va * 3) * dt;
+        }
       }
       // velocidade terminal: no máx. ~12 px por subpasso de 1/60 s (lajes têm 12 px: sem atravessar)
       if (b.vy > MAX_FALL) b.vy = MAX_FALL;
@@ -516,7 +558,9 @@ export class World {
         const lim = o.awake ? Math.max(0, o.vy) : 0;
         if (b.vy > lim) b.vy = lim;
         b.vx *= 0.85;
-      } else if (o.awake && !o.tip) {
+      } else if (o.awake && !o.tip && !(b.sub > 0 && b.vy < 0)) {
+        // (um corpo subindo pelo empuxo não levanta o que está em cima: antes uma caixa
+        // submersa erguia a laje + telhado inteiros como um macaco hidráulico)
         o.y -= my;
         o.rest = true;
         const lim = Math.max(0, b.vy);
