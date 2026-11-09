@@ -333,6 +333,7 @@ class RallyGame {
       else if (a === 'garage') {
         this.pauseEl.classList.remove('on');
         this.paused = false;
+        this.finish(true); // moedas da corrida não se perdem ao ir para a garagem
         this.showGarage();
       } else if (a === 'exit') this.exit();
     });
@@ -773,7 +774,8 @@ class RallyGame {
     for (let i = 0; i < m; i++) this.emitDust(car.x + (Math.random() - 0.5) * 2, car.y - 0.5, (Math.random() - 0.5) * 5, 1 + Math.random() * 3);
   }
 
-  private finish(): void {
+  /** silent = saiu no meio (Garagem/Sair/voltar do Android): credita moedas e distância sem mostrar o resultado. */
+  private finish(silent = false): void {
     if (this.state !== 'play') return;
     this.state = 'results';
     this.hudEl.classList.remove('on');
@@ -788,7 +790,7 @@ class RallyGame {
     this.resultCoins = this.coins + distCoins;
     addCoins(this.resultCoins);
     reportRun({ game: 'rally', score: dist, coins: this.resultCoins, durationSec: Math.round(this.runT), stats: { distance: dist, flips: this.flips, airtime: Math.round(this.bestAir * 10) / 10 } });
-    this.showResults(dist, distCoins);
+    if (!silent) this.showResults(dist, distCoins);
   }
 
   private showResults(dist: number, distCoins: number): void {
@@ -1304,6 +1306,14 @@ class RallyGame {
 
   destroy(): void {
     if (this.destroyed) return;
+    // saiu no meio da corrida (Sair, ou voltar do Android → "Sair para o menu"): credita o que já ganhou
+    if (this.state === 'play' && (this.dist >= 1 || this.coins > 0)) {
+      try {
+        this.finish(true);
+      } catch (e) {
+        console.warn('[rally] crédito na saída', e);
+      }
+    }
     this.destroyed = true;
     audio.engineStop();
     cancelAnimationFrame(this.raf);
