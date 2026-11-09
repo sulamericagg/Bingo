@@ -394,6 +394,9 @@ class TuboGame implements MiniGameHandle {
     this.setupGoals();
     this.revived = false;
     this.credited = 0;
+    this.doubled = false;
+    this.bonus = 0;
+    this.newBest = false;
     this.zoneShown = 0;
     this.flash = 0;
     this.shake = 0;
