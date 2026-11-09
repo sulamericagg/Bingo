@@ -70,7 +70,7 @@ export function registerPet(): void {
     id: 'pet',
     label: t('pet.panel', 'Bichinho'),
     icon: 'pet',
-    navOrder: 2,
+    navOrder: 30,
     open: () => void openPetScreen(),
     badge: () => needsCount(),
   });

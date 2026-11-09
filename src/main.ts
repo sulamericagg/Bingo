@@ -21,6 +21,7 @@ import { initLang, applyI18n } from './i18n/langs';
 import { hubPause, initHub } from './hub/hub';
 import { registerOrbit } from './hub/orbit-def';
 import { registerCorePanels } from './hub/core-panels';
+import { registerPet } from './pet/register';
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -46,7 +47,7 @@ async function boot(): Promise<void> {
   // registerTubo();
   // registerRally();
   // registerTycoon();
-  // registerPet();
+  registerPet();
   // registerPass();
   // registerCreatures();
   // registerSocial();
