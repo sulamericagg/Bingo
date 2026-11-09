@@ -12,6 +12,7 @@ import { persistNow } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
 import { initBilling } from './services/billing';
+import { playIntro } from './ui/intro';
 import { UI } from './ui/ui';
 
 async function boot(): Promise<void> {
@@ -22,6 +23,7 @@ async function boot(): Promise<void> {
     /* segue */
   }
 
+  const intro = playIntro(); // abertura do estúdio: roda por cima enquanto o jogo monta
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
@@ -47,6 +49,7 @@ async function boot(): Promise<void> {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  await intro; // anúncios/consentimento só depois da abertura
   initAds();
   initBilling();
 }
