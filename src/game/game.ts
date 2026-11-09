@@ -1,4 +1,5 @@
 import { audio } from '../core/audio';
+import { t } from '../i18n';
 import { bus } from '../core/events';
 import { FpsLimiter, migrateLowFx, QualityGovernor, type QualityMode, type QualitySettings } from '../core/quality';
 import * as haptics from '../core/haptics';
@@ -31,6 +32,7 @@ import {
   buildWarnMarker,
   buildWellDisc,
 } from './sprites-fx';
+import { gameFont } from '../i18n/font';
 
 /* ------------------------------------------------------------------ */
 const W = 400; // largura do "mundo" jogável (unidades)
@@ -77,11 +79,11 @@ interface Biome {
  * Depois do 5º bioma o ciclo recomeça com mais dificuldade.
  */
 const BIOMES: Biome[] = [
-  { name: 'Nebulosa Roxa', top: '#0a0520', bot: '#2c0f58', neb: ['#7a3cff', '#ff4fd8', '#3c8cff'], kinds: ['rocky', 'gas', 'candy', 'terra'] },
-  { name: 'Mar Estelar', top: '#020a1c', bot: '#07395c', neb: ['#00c2ff', '#3cffd0', '#2b5cff'], kinds: ['ice', 'ice', 'terra', 'gas', 'crystal'] },
-  { name: 'Pôr do Sol Cósmico', top: '#16041a', bot: '#5c1638', neb: ['#ff7a3c', '#ff3c8c', '#ffcf4f'], kinds: ['lava', 'lava', 'candy', 'gas', 'rocky'] },
-  { name: 'Selva Tóxica', top: '#01120e', bot: '#0a4532', neb: ['#3cff8c', '#c4ff3c', '#00e0c0'], kinds: ['toxic', 'toxic', 'terra', 'crystal', 'gas'] },
-  { name: 'Coração da Galáxia', top: '#0e0322', bot: '#43105e', neb: ['#d04fff', '#ff5ca8', '#6c5cff'], kinds: ['crystal', 'candy', 'rocky', 'ice', 'lava', 'toxic', 'gas', 'terra'] },
+  { get name() { return t('biome.0', 'Nebulosa Roxa'); }, top: '#0a0520', bot: '#2c0f58', neb: ['#7a3cff', '#ff4fd8', '#3c8cff'], kinds: ['rocky', 'gas', 'candy', 'terra'] },
+  { get name() { return t('biome.1', 'Mar Estelar'); }, top: '#020a1c', bot: '#07395c', neb: ['#00c2ff', '#3cffd0', '#2b5cff'], kinds: ['ice', 'ice', 'terra', 'gas', 'crystal'] },
+  { get name() { return t('biome.2', 'Pôr do Sol Cósmico'); }, top: '#16041a', bot: '#5c1638', neb: ['#ff7a3c', '#ff3c8c', '#ffcf4f'], kinds: ['lava', 'lava', 'candy', 'gas', 'rocky'] },
+  { get name() { return t('biome.3', 'Selva Tóxica'); }, top: '#01120e', bot: '#0a4532', neb: ['#3cff8c', '#c4ff3c', '#00e0c0'], kinds: ['toxic', 'toxic', 'terra', 'crystal', 'gas'] },
+  { get name() { return t('biome.4', 'Coração da Galáxia'); }, top: '#0e0322', bot: '#43105e', neb: ['#d04fff', '#ff5ca8', '#6c5cff'], kinds: ['crystal', 'candy', 'rocky', 'ice', 'lava', 'toxic', 'gas', 'terra'] },
 ];
 const LOOP_SUFFIX = ['', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X'];
 
@@ -722,7 +724,7 @@ export class Game {
     if (loadout?.headstart) {
       this.rocketLeft = HEADSTART_PLANETS;
       this.showGuide = false;
-      this.addText(this.px, this.py - 40, 'DECOLAR!', '#ffcf4f', 30);
+      this.addText(this.px, this.py - 40, t('fx.liftoff', 'DECOLAR!'), '#ffcf4f', 30);
       this.launchRocket();
     }
   }
@@ -799,7 +801,7 @@ export class Game {
     this.timeScale = 1;
     this.camY = p.y - this.viewH * 0.66;
     this.fx.burst(this.px, this.py, 30, ['#ffffff', this.skin.light, '#fff36b'], 300, { type: PType.Star, size: 6 });
-    this.addText(this.px, this.py - 40, 'DE VOLTA!', '#7dfcff', 30);
+    this.addText(this.px, this.py - 40, t('fx.back', 'DE VOLTA!'), '#7dfcff', 30);
     bus.emit('state', 'play');
   }
 
@@ -1275,7 +1277,7 @@ export class Game {
           if (this.shield) {
             this.breakShield();
             this.destroyAsteroid(p, i, 3);
-            this.addText(ax, ay - 30, 'ASTEROIDE DESTRUÍDO!', '#ff9a6b', 22);
+            this.addText(ax, ay - 30, t('fx.asteroid', 'ASTEROIDE DESTRUÍDO!'), '#ff9a6b', 22);
             continue;
           }
           this.die('asteroid');
@@ -1318,7 +1320,7 @@ export class Game {
         this.perfects++;
         const bonus = Math.min(this.perfectStreak, 3);
         gain += bonus;
-        this.addText(p.x, p.y - p.r - 30, this.perfectStreak > 1 ? `PERFEITO x${this.perfectStreak}` : 'PERFEITO!', '#fff36b', 26 + Math.min(this.perfectStreak, 5) * 2);
+        this.addText(p.x, p.y - p.r - 30, this.perfectStreak > 1 ? t('fx.perfectX', 'PERFEITO x{n}', { n: this.perfectStreak }) : t('fx.perfect', 'PERFEITO!'), '#fff36b', 26 + Math.min(this.perfectStreak, 5) * 2);
         this.fx.burst(this.px, this.py, 18, ['#fff36b', '#ffffff', this.skin.light], 320, { type: PType.Star, size: 6, vr: 8 });
         this.fx.spawn({ x: p.x, y: p.y, life: 0.55, size: p.r + 4, size2: 9, color: '#fff36b', type: PType.Ring });
         this.flash = 0.25;
@@ -1355,7 +1357,7 @@ export class Game {
         return;
       }
       this.inv = 1.3;
-      this.addText(this.px, this.py - 44, 'VAI!', '#ffcf4f', 30);
+      this.addText(this.px, this.py - 44, t('fx.go', 'VAI!'), '#ffcf4f', 30);
       this.flash = 0.3;
       this.flashColor = '#ffe0a0';
     }
@@ -1464,7 +1466,7 @@ export class Game {
     this.fx.spawn({ x: p.x, y: p.y, life: 0.7, size: p.r + PR, size2: 14, color: '#ffffff', type: PType.Ring });
     this.fx.spawn({ x: p.x, y: p.y, life: 0.9, size: p.r + PR, size2: 8, color: '#ff9a6b', type: PType.Ring });
     for (let i = p.asteroids.length - 1; i >= 0; i--) this.destroyAsteroid(p, i, 3);
-    this.addText(p.x, p.y - p.r - 60, 'ASTEROIDE DESTRUÍDO!', '#ff9a6b', 22);
+    this.addText(p.x, p.y - p.r - 60, t('fx.asteroid', 'ASTEROIDE DESTRUÍDO!'), '#ff9a6b', 22);
     this.trauma = Math.max(this.trauma, 0.5);
     this.hitStop = 0.05;
   }
@@ -1496,7 +1498,7 @@ export class Game {
     }
     this.fx.spawn({ x: p.x, y: p.y, life: 0.6, size: p.r, size2: 10, color: '#7dff6b', type: PType.Ring });
     if (this.planet === p && this.pState === 'orbit' && this.state === 'play' && this.rocketLeft <= 0) {
-      this.addText(this.px, this.py - 40, 'GÁS TÓXICO!', '#9dff6b', 24);
+      this.addText(this.px, this.py - 40, t('fx.toxic', 'GÁS TÓXICO!'), '#9dff6b', 24);
       this.trauma = Math.max(this.trauma, 0.35);
       this.jump();
     }
@@ -1523,7 +1525,7 @@ export class Game {
       audio.gem();
       haptics.tap('medium');
       this.fx.burst(c.x, c.y, 20, ['#9ffcff', '#ffffff', '#b06bff'], 260, { type: PType.Star, size: 5 });
-      this.addText(c.x, c.y - 18, '+1 GEMA', '#9ffcff', 22);
+      this.addText(c.x, c.y - 18, t('fx.gem', '+1 GEMA'), '#9ffcff', 22);
       bus.emit('run-gems', this.gemsRun);
     } else if (c.kind === 'shield') {
       if (this.shield) {
@@ -1539,7 +1541,7 @@ export class Game {
       audio.gem();
       haptics.tap('medium');
       this.fx.burst(c.x, c.y, 18, ['#ff5c8a', '#ffffff', '#e8eef6'], 260, { type: PType.Star, size: 5 });
-      this.addText(c.x, c.y - 18, 'ÍMÃ!', '#ff8aa8', 24);
+      this.addText(c.x, c.y - 18, t('fx.magnet', 'ÍMÃ!'), '#ff8aa8', 24);
       bus.emit('powerup', 'magnet');
     } else {
       this.coinChain++;
@@ -1563,7 +1565,7 @@ export class Game {
   private giveShield(announce: boolean): void {
     this.shield = true;
     this.shieldPop = 1;
-    if (announce) this.addText(this.px, this.py - 40, 'ESCUDO!', '#7dfcff', 26);
+    if (announce) this.addText(this.px, this.py - 40, t('fx.shield', 'ESCUDO!'), '#7dfcff', 26);
     bus.emit('shield', true);
   }
 
@@ -1651,7 +1653,7 @@ export class Game {
       this.lastPlanet = p;
       this.landGrace = 0.3;
       this.fx.burst(this.px, this.py, 24, ['#ffffff', '#9ffcff', this.skin.light], 280, { type: PType.Star, size: 5 });
-      this.addText(this.px, this.py - 40, 'SALVO!', '#7dfcff', 26);
+      this.addText(this.px, this.py - 40, t('fx.saved', 'SALVO!'), '#7dfcff', 26);
       return true;
     }
     this.breakShield();
@@ -1918,7 +1920,7 @@ export class Game {
       x.translate(t.x, t.y);
       x.scale(pop, pop);
       x.globalAlpha = Math.min(1, t.life * 2.5);
-      x.font = `700 ${t.size}px Fredoka, system-ui, sans-serif`;
+      x.font = gameFont(700, t.size);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       x.lineWidth = 5;
@@ -2402,10 +2404,10 @@ export class Game {
       x.restore();
       // etiqueta com o nome
       x.globalAlpha = 0.92 * g.fade;
-      x.font = '600 11px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(600, 11);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
-      const label = g.alive ? g.name : g.name + ' caiu';
+      const label = g.alive ? g.name : t('race.ghostFell', '{name} caiu', { name: g.name });
       const tw = x.measureText(label).width + 12;
       const ly = g.y - PR - 16;
       x.fillStyle = 'rgba(12,4,32,0.72)';
@@ -2437,7 +2439,7 @@ export class Game {
       list.forEach((g, i) => {
         const sx = clamp((g.x - this.camX) * sc, 40 * d, this.canvas.width - 40 * d);
         const sy = top ? (226 + i * 24) * d : this.canvas.height - (92 + i * 24) * d;
-        x.font = `600 ${11 * d}px Fredoka, system-ui, sans-serif`;
+        x.font = gameFont(600, 11 * d);
         x.textAlign = 'center';
         x.textBaseline = 'middle';
         const label = `${top ? '▲' : '▼'} ${g.name}`;

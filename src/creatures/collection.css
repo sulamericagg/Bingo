@@ -8,7 +8,7 @@
   justify-content: center;
   background: rgba(8, 3, 24, 0.72);
   backdrop-filter: blur(3px);
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
 }
 .crc-panel {
@@ -86,7 +86,7 @@
   border: 2px solid var(--rc);
   background: transparent;
   color: var(--rc);
-  font: 700 13px 'Fredoka', system-ui, sans-serif;
+  font: 700 13px var(--font, 'Fredoka', system-ui, sans-serif);
   cursor: pointer;
 }
 .crc-chip.on {
@@ -284,7 +284,7 @@
   padding: 12px;
   border: 0;
   border-radius: 16px;
-  font: 700 16px 'Fredoka', system-ui, sans-serif;
+  font: 700 16px var(--font, 'Fredoka', system-ui, sans-serif);
   color: #1a0838;
   background: linear-gradient(180deg, #fff0a0, #ffb000);
   box-shadow: 0 4px 0 #b06a00;

@@ -40,6 +40,7 @@ import {
   type ZoneStyle,
 } from './rings';
 import { RED, ZONES, ZONE_LEN, zoneAt } from './zones';
+import { gameFont } from '../../i18n/font';
 
 const BEST_KEY = 'bo-tubo-best';
 const COMBO_WIN = 2.2; // s entre pousar e mergulhar para manter o combo
@@ -1097,7 +1098,7 @@ class TuboGame implements MiniGameHandle {
         const a = Math.min(1, p.life * 2);
         const s = p.size * (1 + (1 - Math.min(1, (1 - p.life) * 6)) * 0.4);
         x.globalAlpha = a;
-        x.font = `700 ${Math.round(g.R * 1.25 * s)}px Fredoka, system-ui, sans-serif`;
+        x.font = gameFont(700, Math.round(g.R * 1.25 * s));
         x.lineWidth = Math.max(3, g.R * 0.22);
         x.strokeStyle = 'rgba(120,30,70,0.55)';
         x.strokeText(p.txt, p.x, p.y - this.camY);

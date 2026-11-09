@@ -21,6 +21,7 @@ import { getLang, t } from '../i18n';
 import { icon } from '../ui/icons';
 import { tap } from '../core/haptics';
 import { save } from '../core/storage';
+import { gameFont } from '../i18n/font';
 
 export function rarityLabel(r: CreatureRarity): string {
   switch (r) {
@@ -257,7 +258,7 @@ function openDetail(id: string): void {
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(255,255,255,.6)';
-    ctx.font = `700 ${56 * dpr}px Fredoka, sans-serif`;
+    ctx.font = gameFont(700, 56 * dpr);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('?', cv.width / 2, cv.height * 0.55);

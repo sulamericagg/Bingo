@@ -5,6 +5,7 @@
 import { drawPlayer, type PlayerPose } from '../../game/character';
 import type { Skin } from '../../game/skins';
 import type { VehicleDef, ZoneDef } from './data';
+import { gameFont } from '../../i18n/font';
 
 const TAU = Math.PI * 2;
 export const INK = '#2a0b5c';
@@ -200,7 +201,7 @@ export function drawEmoteGlyph(x: CanvasRenderingContext2D, code: string, s: num
       break;
     }
     case 'gg': {
-      x.font = '900 26px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(900, 26);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       x.lineWidth = 7;

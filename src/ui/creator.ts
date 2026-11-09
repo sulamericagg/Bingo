@@ -38,6 +38,7 @@ import { RARITY_INFO, type Rarity } from '../game/skins';
 import { showRewarded } from '../services/ads';
 import { buy } from '../services/billing';
 import { ensureIconDefs, hydrateIcons, icon, type IconName } from './icons';
+import { t } from '../i18n';
 
 /* ---------------------------- ícones das abas (mesmo estilo de icons.ts) ---------------------------- */
 
@@ -76,19 +77,19 @@ const FOCUS: Record<Slot, [number, number]> = {
 /** Looks prontos para "provar" (vitrine de peças premium). */
 const DREAM_LOOKS: { name: string; av: AvatarData }[] = [
   {
-    name: 'Dragão Lendário',
+    get name() { return t('look.dragon', 'Dragão Lendário'); },
     av: { parts: { body: 'b_round', material: 'm_lava', pattern: 'p_scales', eyes: 'e_fire', mouth: 'mo_fangs', head: 'h_horns', face: 'f_none', back: 'k_dragon', aura: 'a_fire' }, colors: { primary: '#ff6a3d', secondary: '#ffe36b' } },
   },
   {
-    name: 'Cósmico Mítico',
+    get name() { return t('look.cosmic', 'Cósmico Mítico'); },
     av: { parts: { body: 'b_round', material: 'm_galaxy', pattern: 'p_runes', eyes: 'e_star', mouth: 'mo_smile', head: 'h_flame', face: 'f_none', back: 'k_phoenix', aura: 'a_moons' }, colors: { primary: '#7a3dff', secondary: '#00fff0' } },
   },
   {
-    name: 'Realeza Dourada',
+    get name() { return t('look.royal', 'Realeza Dourada'); },
     av: { parts: { body: 'b_round', material: 'm_gold', pattern: 'p_none', eyes: 'e_big', mouth: 'mo_gold', head: 'h_crown', face: 'f_monocle', back: 'k_angel', aura: 'a_sparkle' }, colors: { primary: '#ffd23f', secondary: '#ff2e63' } },
   },
   {
-    name: 'Ciber Neon',
+    get name() { return t('look.cyber', 'Ciber Neon'); },
     av: { parts: { body: 'b_square', material: 'm_neon', pattern: 'p_circuit', eyes: 'e_visor', mouth: 'mo_robot', head: 'h_headphones', face: 'f_cyber', back: 'k_mech', aura: 'a_electric' }, colors: { primary: '#ff2bd6', secondary: '#00fff0' } },
   },
 ];
@@ -194,21 +195,21 @@ function build(): void {
   root.className = 'cr';
   root.innerHTML = `
     <header class="cr-top">
-      <button class="icon-btn cr-close" aria-label="Fechar" data-icon="close"></button>
-      <h2>CRIE SEU <b>BLOOP</b></h2>
+      <button class="icon-btn cr-close" aria-label="${t('common.close', 'Fechar')}" data-icon="close"></button>
+      <h2>${t('creator.title1', 'CRIE SEU')} <b>BLOOP</b></h2>
       <div class="pill cr-pill"><i class="coin"></i><span class="cr-coins">0</span></div>
       <button class="pill cr-pill cr-gems-btn"><i class="gem"></i><span class="cr-gems">0</span></button>
     </header>
     <div class="cr-stage">
       <canvas class="cr-cv"></canvas>
       <div class="cr-rar"></div>
-      <div class="cr-style"><small>ESTILO</small><div class="cr-bar"><i></i></div></div>
+      <div class="cr-style"><small>${t('creator.style', 'ESTILO')}</small><div class="cr-bar"><i></i></div></div>
       <div class="cr-stage-btns">
         <button class="cr-chip cr-pose"></button>
-        <button class="cr-chip cr-dream"><span data-icon="sparkle" data-size="18"></span>Provar look</button>
-        <button class="cr-chip cr-rand"><span data-icon="refresh" data-size="18"></span>Aleatório</button>
+        <button class="cr-chip cr-dream"><span data-icon="sparkle" data-size="18"></span>${t('creator.tryLook', 'Provar look')}</button>
+        <button class="cr-chip cr-rand"><span data-icon="refresh" data-size="18"></span>${t('creator.random', 'Aleatório')}</button>
       </div>
-      <div class="cr-tip">Toque no seu Bloop!</div>
+      <div class="cr-tip">${t('creator.tap', 'Toque no seu Bloop!')}</div>
     </div>
     <nav class="cr-tabs"></nav>
     <div class="cr-body"></div>
@@ -217,7 +218,7 @@ function build(): void {
         <div class="cr-buyinfo"><b class="cr-buyname"></b><span class="cr-buyrar"></span></div>
         <button class="cr-buy"></button>
       </div>
-      <button class="btn btn-green cr-save"><span data-icon="check"></span> Salvar e usar</button>
+      <button class="btn btn-green cr-save"><span data-icon="check"></span> ${t('creator.save', 'Salvar e usar')}</button>
     </footer>
     <div class="cr-toast"></div>`;
   (document.getElementById('ui') ?? document.body).appendChild(root);
@@ -283,7 +284,7 @@ function refreshWallet(): void {
 }
 
 function renderPose(): void {
-  $('.cr-pose').innerHTML = `<span data-icon="${flyPose ? 'rocket' : 'user'}" data-size="18"></span>${flyPose ? 'Voando' : 'Parado'}`;
+  $('.cr-pose').innerHTML = `<span data-icon="${flyPose ? 'rocket' : 'user'}" data-size="18"></span>${flyPose ? t('creator.flying', 'Voando') : t('creator.standing', 'Parado')}`;
   hydrateIcons($('.cr-pose'));
 }
 
@@ -330,7 +331,7 @@ function partCard(p: Part, slot: Slot): HTMLElement {
   const [fy, z] = FOCUS[slot];
   const cv = renderAvatarPreview(av, 84, 0.6 + (p.id.length % 5) * 0.37, { focusY: fy, zoom: z, backdrop: false });
   el.appendChild(cv);
-  const status = on ? (owned ? `<span class="cr-price eq">${icon('check', { size: 16 })}Usando</span>` : `<span class="cr-price try">Provando</span>`) : owned ? `<span class="cr-price own">Seu</span>` : priceHtml(p);
+  const status = on ? (owned ? `<span class="cr-price eq">${icon('check', { size: 16 })}${t('creator.using', 'Usando')}</span>` : `<span class="cr-price try">${t('creator.trying', 'Provando')}</span>`) : owned ? `<span class="cr-price own">${t('creator.yours', 'Seu')}</span>` : priceHtml(p);
   el.insertAdjacentHTML('beforeend', `<span class="cr-tag">${RARITY_INFO[p.rarity].label}</span><span class="cr-name">${esc(p.name)}</span>${status}`);
   el.onclick = () => pickPart(p, slot);
   return el;
@@ -365,7 +366,7 @@ function renderBody(): void {
   for (const p of partsOf(tab)) grid.appendChild(partCard(p, tab));
   body.appendChild(grid);
   const owned = partsOf(tab).filter((p) => ownsPart(p.id)).length;
-  body.insertAdjacentHTML('beforeend', `<p class="cr-count">${owned}/${partsOf(tab).length} peças de ${SLOT_LABEL[tab].toLowerCase()} desbloqueadas</p>`);
+  body.insertAdjacentHTML('beforeend', `<p class="cr-count">${t('creator.count', '{n}/{total} peças de {slot} desbloqueadas', { n: owned, total: partsOf(tab).length, slot: SLOT_LABEL[tab].toLowerCase() })}</p>`);
 }
 
 function colorsSection(): HTMLElement {
@@ -376,7 +377,7 @@ function colorsSection(): HTMLElement {
   for (const k of ['primary', 'secondary'] as const) {
     const b = document.createElement('button');
     b.className = k === colorTarget ? 'active' : '';
-    b.innerHTML = `<i style="background:${draft.colors[k]}"></i>${k === 'primary' ? 'Cor principal' : 'Cor detalhe'}`;
+    b.innerHTML = `<i style="background:${draft.colors[k]}"></i>${k === 'primary' ? t('creator.color1', 'Cor principal') : t('creator.color2', 'Cor detalhe')}`;
     b.onclick = () => {
       colorTarget = k;
       audio.click();
@@ -466,19 +467,19 @@ function renderBuyBar(): void {
   b.className = 'cr-buy';
   if (pr.event) {
     b.classList.add('ev');
-    b.innerHTML = `${icon('trophy', { size: 22 })}Só em evento`;
+    b.innerHTML = `${icon('trophy', { size: 22 })}${t('creator.eventOnly', 'Só em evento')}`;
   } else if (pr.iap) {
     b.classList.add('iap');
-    b.innerHTML = `${icon('bag', { size: 22 })}Comprar ${PART_PRODUCTS.find((x) => x.part === p.id)?.fallbackPrice ?? ''}`;
+    b.innerHTML = `${icon('bag', { size: 22 })}${t('creator.buy', 'Comprar')} ${PART_PRODUCTS.find((x) => x.part === p.id)?.fallbackPrice ?? ''}`;
   } else if (pr.ads) {
     b.classList.add('ad');
-    b.innerHTML = `${icon('video', { size: 22 })}Assistir ${save.adProgress['part:' + p.id] ?? 0}/${pr.ads}`;
+    b.innerHTML = `${icon('video', { size: 22 })}${t('shop.watch', 'Assistir')} ${save.adProgress['part:' + p.id] ?? 0}/${pr.ads}`;
   } else if (pr.gems) {
     if (!canAfford(pr)) b.classList.add('cant');
-    b.innerHTML = `Comprar e equipar <i class="gem"></i>${pr.gems}`;
+    b.innerHTML = `${t('creator.buyEquip', 'Comprar e equipar')} <i class="gem"></i>${pr.gems}`;
   } else if (pr.coins) {
     if (!canAfford(pr)) b.classList.add('cant');
-    b.innerHTML = `Comprar e equipar <i class="coin"></i>${pr.coins}`;
+    b.innerHTML = `${t('creator.buyEquip', 'Comprar e equipar')} <i class="coin"></i>${pr.coins}`;
   }
 }
 
@@ -513,7 +514,7 @@ async function buyPart(p: Part): Promise<void> {
     persist();
     if (save.adProgress[k] >= pr.ads) unlockPart(p.id);
     else {
-      toast(`${save.adProgress[k]}/${pr.ads} — continue assistindo!`, 'video');
+      toast(t('shop.keepWatching', '{n}/{total} — continue assistindo!', { n: save.adProgress[k], total: pr.ads }), 'video');
       renderBuyBar();
       renderBody();
     }
@@ -537,7 +538,7 @@ function unlockPart(id: string, silent = false): void {
   const p = partById(id);
   audio.unlock2();
   haptics.success();
-  if (p) toast(`${p.name} desbloqueado!`, 'party');
+  if (p) toast(t('creator.unlocked', '{name} desbloqueado!', { name: p.name }), 'party');
   happyT = 1.5;
   jumpT = 0.7;
   const st = $('.cr-stage');
@@ -604,7 +605,7 @@ function tryDream(): void {
   jumpT = 0.7;
   happyT = 1.4;
   const missing = unownedInDraft().length;
-  toast(missing ? `Provando "${look.name}" — ${missing} peças para desbloquear` : `"${look.name}" — você já tem tudo!`, 'sparkle');
+  toast(missing ? t('creator.tryingLook', 'Provando "{name}" — {n} peças para desbloquear', { name: look.name, n: missing }) : t('creator.haveAll', '"{name}" — você já tem tudo!', { name: look.name }), 'sparkle');
   renderAll();
 }
 
@@ -662,7 +663,7 @@ function refreshTile(): void {
     badge.className = 'badge';
     btn.appendChild(badge);
   }
-  badge.textContent = 'NOVO';
+  badge.textContent = t('common.new', 'NOVO');
   badge.classList.toggle('hidden', !!save.tips.creator);
 }
 
