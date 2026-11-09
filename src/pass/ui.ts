@@ -371,7 +371,7 @@ function songInfo(id: string): { title: string; band: string } {
   const tx = seasonMusicText(Number(m[1]));
   if (m[2] === 'mega') return { title: tx.megaTitle, band: tx.megaBand };
   const k = Number(m[2]) - 1;
-  return { title: tx.titles[k] ?? id, band: tx.bands[k] ?? '' };
+  return { title: tx.titles[k] ?? id, band: tx.bands[k < 2 ? 0 : 1] ?? '' };
 }
 
 let songPreviewId = '';
