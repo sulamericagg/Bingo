@@ -48,7 +48,7 @@ export interface Timbre {
 
 export type Bus = Instrument | 'perc';
 const CAPS: Record<Bus, number> = { drums: 14, perc: 8, bass: 2, guitar: 5, keys: 6, vocals: 3 };
-const LVL: Record<Bus, number> = { drums: 0.9, perc: 0.5, bass: 0.8, guitar: 0.55, keys: 0.42, vocals: 0.5 };
+const LVL: Record<Bus, number> = { drums: 1.0, perc: 0.5, bass: 0.3, guitar: 0.42, keys: 0.62, vocals: 0.5 };
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -130,6 +130,7 @@ export class Synth {
   private track = {} as Record<Bus, GainNode>;
   private gtrIn: GainNode;
   private voices = {} as Record<Bus, Voice[]>;
+  private dead: Voice[] = [];
   readonly tb: Timbre;
 
   constructor(ctx: BaseAudioContext, out: AudioNode, tb: Timbre) {
@@ -254,11 +255,19 @@ export class Synth {
   /* ---------------- gerência de vozes ---------------- */
   private voice(b: Bus, t: number, end: number, dest: AudioNode = this.bus[b]): GainNode {
     const list = this.voices[b];
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].end < t) list.splice(i, 1);
+    // vozes terminadas saem do grafo (senão o navegador continua processando os nós)
+    // (só desconecta o que já terminou no relógio do áudio; o resto espera em `dead`)
+    const dead = this.dead;
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].end < t) dead.push(list.splice(i, 1)[0]);
+    const now = this.ctx.currentTime;
+    for (let i = dead.length - 1; i >= 0; i--) if (dead[i].end < now) dead.splice(i, 1)[0].g.disconnect();
     if (list.length >= CAPS[b]) {
+      // roubo de voz: a mais antiga some em ~30 ms
       const old = list.shift()!;
       old.g.gain.cancelScheduledValues(t);
       old.g.gain.setTargetAtTime(0, t, 0.008);
+      old.end = t + 0.06;
+      dead.push(old);
     }
     const g = this.ctx.createGain();
     g.gain.value = 0;
@@ -572,10 +581,11 @@ export class Synth {
     let dest: AudioNode = g;
     if (pm) dest = this.filt('lowpass', 520, 1.4, g);
     const lead = e.x === 2;
-    const notes = e.m.slice(0, 3);
+    // economia de CPU: abafado = 2 osciladores; aberto = 3 (tônica dobrada + quinta)
+    const notes = e.m.slice(0, 2);
     notes.forEach((m, i) => {
       const f = mtof(m);
-      const dets = i === 0 ? (lead ? [-4, 5] : [-7, 7]) : [i * 3];
+      const dets = i === 0 && !pm ? (lead ? [-4, 5] : [-7, 7]) : [i * 3 + (pm ? 0 : 2)];
       for (const d of dets) {
         const o = this.osc('sawtooth', f, t, end, dest, d);
         if (e.g) {
@@ -756,15 +766,14 @@ export class Synth {
 
   /* ============================ ERROS ============================ */
   miss(inst: Instrument, t: number): void {
-    const dest = this.room; // garantidamente audível (fora da trilha abafada)
     const g = this.ctx.createGain();
     g.gain.value = 0;
     const out = this.ctx.createGain();
     out.gain.value = 1.4;
     g.connect(out);
-    // sai pelo somatório (através do reverb seco/molhado): conecta direto no master também
+    // sai direto no master: audível mesmo com a trilha abafada
     out.connect(this.master);
-    void dest;
+    setTimeout(() => out.disconnect(), 1500);
     switch (inst) {
       case 'guitar': {
         const bp = this.filt('bandpass', 3200, 4, g);
