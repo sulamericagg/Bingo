@@ -35,8 +35,12 @@ export interface SaveData {
   lastInterstitial: number;
   runsSinceAd: number;
   firstSeen: number;
-  /** Power-ups guardados (ganhos em presentes/códigos). */
+  /** Níveis permanentes (0..5) comprados na loja. */
+  upgrades: { magnet: number; shield: number; coinValue: number };
+  /** Consumíveis (quantidade). A UI decrementa ao usar; o jogo não. */
   boosts: { shield: number; magnet: number; headstart: number };
+  /** Quantas vezes cada dica já foi mostrada (ex.: tips.asteroid). */
+  tips: Record<string, number>;
 }
 
 const defaults = (): SaveData => ({
@@ -64,13 +68,24 @@ const defaults = (): SaveData => ({
   lastInterstitial: 0,
   runsSinceAd: 0,
   firstSeen: Date.now(),
+  upgrades: { magnet: 0, shield: 0, coinValue: 0 },
   boosts: { shield: 0, magnet: 0, headstart: 0 },
+  tips: {},
 });
 
 function load(): SaveData {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults(), ...JSON.parse(raw) };
+    if (raw) {
+      const d = defaults();
+      const o = JSON.parse(raw);
+      const m = { ...d, ...o } as SaveData;
+      // objetos aninhados: mescla para manter compatibilidade com saves antigos
+      m.upgrades = { ...d.upgrades, ...(o && o.upgrades) };
+      m.boosts = { ...d.boosts, ...(o && o.boosts) };
+      m.tips = { ...(o && o.tips) };
+      return m;
+    }
   } catch {
     /* storage indisponível */
   }
