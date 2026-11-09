@@ -14,7 +14,10 @@
     "assets": "node scripts/render-assets.mjs && npx @capacitor/assets generate --android --assetPath assets",
     "worker:dev": "wrangler dev --local",
     "worker:deploy": "npm run build && wrangler deploy",
-    "test:server": "node scripts/test-server.mjs"
+    "test:server": "node scripts/test-server.mjs",
+    "i18n:extract": "node scripts/i18n/extract.mjs",
+    "i18n:check": "node scripts/i18n/extract.mjs --check",
+    "i18n:apply": "node scripts/i18n/apply.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.3.0",
