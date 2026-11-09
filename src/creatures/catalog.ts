@@ -262,7 +262,7 @@ const TABLE: string[] = [
   'Morangolino|egg|leaves|happy|smile|freckles|feet|none|#ff4f6a|Moranguinho de sardas que adora chantili.',
   'Chefinho|bean|none|big|smile|none|arms|chef+spoon|#fff3e0|Mini chef que prepara sopinha de estrelas.',
   'Pudinzim|slime|none|sparkle|tongue|cap|none|cherry|#ffd27a|Pudim que treme de alegria e brilha de caramelo.',
-  'Bolorrei|cube|none|star|open|bands|arms|chef+cherry|#ff6b9d|Rei da Cozinha Intergaláctica: bolo de andares que serve fatias de alegria.',
+  'Bolorrei|cube|none|star|open|bands|arms|crown+spoon|#ff6b9d|Rei da Cozinha Intergaláctica: bolo de andares que serve fatias de alegria.',
   // 31 Cristais e Gemas
   'Gemito|gem|none|dot|smile|none|none|none|#b06bff|Gema pequenininha que brilha quando recebe carinho.',
   'Quartzito|bean|crystals|happy|smile|none|feet|none|#6dfcff|Bichinho com cristais nas costas que tilintam.',
@@ -436,7 +436,7 @@ const TABLE: string[] = [
   'Presentinho|cube|none|happy|smile|bands|feet|bow|#5ef0ff|Presente que se abre sozinho de tanta empolgação.',
   'Brigadeirito|blob|none|big|smile|dots|none|none|#5a3a2a|Docinho de chocolate coberto de granulado.',
   'Balãocórnio|egg|unihorn|sparkle|smile|stars|none|party|#ff5cc8|Unicórnio de balão com chapéu de festa.',
-  'Bloopástico|blob|curl|star|open|stars|bigwings|crown+party|#5ef0ff|Rei do Aniversário de 5 Anos: o bloop mais lendário, celebrando cinco anos de aventuras.',
+  'Bloopástico|blob|curl|star|open|stars|bigwings|crown+balloon|#5ef0ff|Rei do Aniversário de 5 Anos: o bloop mais lendário, celebrando cinco anos de aventuras.',
 ];
 
 function build(): CreatureFull[] {

@@ -45,6 +45,14 @@ export interface SaveData {
   avatar: AvatarSave;
   /** Peças/paletas compradas do criador (as grátis não precisam estar aqui). */
   ownedParts: string[];
+  /** Bichinhos colecionáveis obtidos (ids 'sNN-raridade', ver creatures/catalog.ts). */
+  creatures: string[];
+  /** Bichinhos ainda não vistos na Coleção (badge). */
+  creaturesNew: string[];
+  /** Companheiro equipado nos minigames ('' = nenhum). */
+  companion: string;
+  /** Bichinho usado como foto de perfil ('' = avatar padrão). */
+  profileCreature: string;
 }
 
 export interface AvatarSave {
@@ -88,6 +96,10 @@ const defaults = (): SaveData => ({
   tips: {},
   avatar: defaultAvatar(),
   ownedParts: [],
+  creatures: [],
+  creaturesNew: [],
+  companion: '',
+  profileCreature: '',
 });
 
 function load(): SaveData {
@@ -105,6 +117,10 @@ function load(): SaveData {
       const oa = (o && o.avatar) || {};
       m.avatar = { parts: { ...da.parts, ...oa.parts }, colors: { ...da.colors, ...oa.colors } };
       m.ownedParts = Array.isArray(o?.ownedParts) ? o.ownedParts : [];
+      m.creatures = Array.isArray(o?.creatures) ? o.creatures : [];
+      m.creaturesNew = Array.isArray(o?.creaturesNew) ? o.creaturesNew : [];
+      if (typeof m.companion !== 'string') m.companion = '';
+      if (typeof m.profileCreature !== 'string') m.profileCreature = '';
       if (!m.ownedSkins.includes('custom')) m.ownedSkins.push('custom');
       return m;
     }
