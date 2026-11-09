@@ -1158,10 +1158,12 @@ export class Game {
           const dx = p.x - this.px;
           const dy = p.y - this.py;
           const d2 = dx * dx + dy * dy;
-          const field = p.well ? p.r * 3.4 + 70 : p.r * 2.4 + 40;
+          // começo bem camarada: os ~10 primeiros planetas puxam mais (some até o 14º)
+          const easy = this.race ? 0 : clamp((14 - p.n) / 5, 0, 1);
+          const field = p.well ? p.r * 3.4 + 70 : (p.r * 2.4 + 40) * (1 + 0.3 * easy);
           if (d2 > field * field) continue;
           const d = Math.sqrt(d2);
-          const acc = p.well ? Math.min(6400, (3.0e6 * (p.r / 40)) / d2) : Math.min(3200, (1.3e6 * (p.r / 40)) / d2);
+          const acc = p.well ? Math.min(6400, (3.0e6 * (p.r / 40)) / d2) : Math.min(3200 * (1 + 0.5 * easy), (1.3e6 * (p.r / 40) * (1 + 0.7 * easy)) / d2);
           this.vx += (dx / d) * acc * g2 * dt;
           this.vy += (dy / d) * acc * g2 * dt;
         }
