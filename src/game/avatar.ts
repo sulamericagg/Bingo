@@ -209,6 +209,8 @@ export const PALETTES: Part[] = [
 export const ALL_PARTS: Part[] = [...PARTS, ...PASS_PARTS, ...PALETTES];
 const BY_ID = new Map(ALL_PARTS.map((p) => [p.id, p]));
 export const partById = (id: string): Part | undefined => BY_ID.get(id);
+/** nome traduzível da peça (chave part.<id>; peças do passe já vêm traduzidas do catálogo) */
+export const partName = (p: Part): string => t(`part.${p.id}`, p.name);
 /** Peças do passe só aparecem no criador depois de ganhas (são centenas, uma por temporada). */
 export const partsOf = (slot: PartSlot): Part[] => ALL_PARTS.filter((p) => p.slot === slot && (!isPassPart(p) || save.ownedParts.includes(p.id)));
 

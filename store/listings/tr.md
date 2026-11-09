@@ -6,33 +6,37 @@ Bloop World: Mini Oyunlar
 
 ## Kısa açıklama (≤80)
 
-Zıpla, yarış, inşa et ve evcil dostuna bak: sevimli mini oyunlar dünyası!
+6 mini oyun, konuşan evcil dost, arkadaşlarla evler ve 300 yaratık!
 
 ## Tam açıklama (≤4000)
 
-TEAM Ross'un mini oyun dünyası Bloop World'e hoş geldin! Tek bir uygulamada her yaşa uygun, hızlı ve rengârenk oyunlar.
+Bloop World'e hoş geldin, TEAM Ross'un mini oyun merkezi! Her yaştan oyuncu için hızlı ve renkli oyunlarla dolu bir uygulama.
 
-OYUNLAR
+6 OYUN
 • Bloop Orbit — tek dokunuşla gezegenden gezegene zıpla. MÜKEMMEL inişler yap, asteroitlerden kaç!
-• Döner Düşüş — kuleyi döndür, kırmızıya değmeden boşluklardan dal.
-• Ay Rallisi — Ay tepelerinde hızlan, takla at ve garajda arabanı geliştir.
+• Döner Düşüş — kuleyi döndür ve kırmızıya değmeden boşluklardan dal.
+• Ay Rallisi — ay tepelerinde hız yap, takla at ve aracını garajda geliştir.
 • Yıldız Fabrikası — makineler kur, yıldız topla ve TURBO Roketi rakiplerinden önce fırlat.
-• Afet hayatta kalma modu — çılgın felaketlerden kaç ve ayakta kalan son kişi ol!
+• Felaketlerden Kurtul — tırman, koş; depremlerden, tsunamilerden, meteorlardan ve dahasından kaç!
+• Bloop Grup — grubunu kur, arkadaşlarınla ritme göre çal ve stüdyoda kendi şarkılarını yap.
 
 KONUŞAN EVCİL DOST
-Besle, yıka, sev, odasını süsle ve top oyna. Telefona yakın konuş, komik bir sesle seni tekrar etsin. Sesin sadece cihaz belleğinde kalır; kaydedilmez ve gönderilmez.
+Besle, yıka, sev ve top oyna. Telefonun yanında konuş, seni komik bir sesle taklit etsin. Sesin yalnızca cihaz belleğinde kalır; asla kaydedilmez veya gönderilmez.
+
+EVLER VE GEZEGENLER
+Binlerce kombinasyonla evini ve gezegenini inşa et, süsle. Arkadaşlarını ziyaret et, temizliğe yardım et, yemek savaşlı partiler ver ve 3D moda gir (uyumlu cihazlarda).
 
 TOPLA VE YARAT
-• 300 koleksiyon yaratığı: her aylık sezonda 5 yeni
-• Aylık Yıldız Kartı: bedava ödüller ve isteğe bağlı Premium yol
-• Karakter yaratıcı: Bloop'unu parça parça oluştur
-• Sıradandan mitiğe onlarca kostüm ve iz
+• 300 koleksiyon yaratığı, her aylık sezonda yenileri
+• 3 aylık kart — Yıldız, Ev ve Müzik — ücretsiz ödüller ve isteğe bağlı Premium yol
+• Karakter yaratıcı: Bloop'unu parça parça tasarla
+• Görünümler, izler, auralar ve danslar
 
-BİRLİKTE OYNA
-• Eşleşme tablolu ve altın ödüllü turnuvalar
-• Yarışlar ve haftalık sıralamalar
-• Güvenli sohbet: otomatik filtre, 13 yaş altı için sadece hızlı mesajlı Güvenli Mod, susturma, engelleme ve bildirme düğmeleri
+ARKADAŞLARLA OYNA
+• Eleme tablolu ve altın ödüllü şampiyonalar
+• Yarışlar ve sıralamalar
+• Güvenli sohbet: otomatik filtre, 13 yaş altı için sadece hazır cümleli Güvenli Mod, sessize alma, engelleme ve şikâyet düğmeleri. Ev partilerinde sadece ifadeler var.
 
-12 dilde. Ücretsiz oynanır; reklam ve isteğe bağlı uygulama içi satın alımlar içerir. Satın almadan önce bir yetişkine danış.
+12 dilde. Çevrimiçi özellikler (arkadaşlar, partiler, arkadaşlarla grup, sohbet, sıralamalar) internet gerektirir. Ücretsiz oynanır; reklam ve isteğe bağlı uygulama içi satın alımlar içerir. Satın almadan önce bir büyüğüne sor.
 
-Brezilya'da sevgiyle yapıldı — TEAM Ross.
+Brezilya'da TEAM Ross tarafından sevgiyle yapıldı.

@@ -9,7 +9,8 @@
  *  Desenho procedural por modelo + paleta da temporada (sem alocação por quadro
  *  além do que as peças nativas já fazem).
  * ============================================================ */
-import { SEASONS } from '../creatures/seasons';
+import { SEASONS, seasonTheme } from '../creatures/seasons';
+import { t } from '../i18n';
 import { A, al, circ, ell, glowAt, heart, mix, PI, rad, star4, star5 } from '../game/avatar-gfx';
 import type { DC } from '../game/avatar-mat';
 import type { Part } from '../game/avatar';
@@ -322,7 +323,7 @@ for (const s of SEASONS) {
       if (r.kind === 'eyes') eyeDraw[r.id] = eyeFn(style % 6, c1, c2);
       else if (r.kind === 'mouth') mouthDraw[r.id] = mouthFn(style % 4, c1, c2);
       else auraDraw[r.id] = auraFn(style % 4, c1, c2);
-      PASS_PARTS.push({ id: r.id, slot: r.kind, name: r.name, rarity: toRarity(r.rarity), price: { event: 'pass' }, desc: `Passe Estelar · ${s.theme}` });
+      PASS_PARTS.push({ id: r.id, slot: r.kind, name: r.name, rarity: toRarity(r.rarity), price: { event: 'pass' }, desc: t('pass.partDesc', 'Passe Estelar · {th}', { th: seasonTheme(s) }) });
     }
   }
 }

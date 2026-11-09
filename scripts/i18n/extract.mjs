@@ -25,8 +25,13 @@ const OUT = path.join(ROOT, 'scripts/i18n');
 const LOCALES_DIR = path.join(ROOT, 'src/i18n/locales');
 export const LANGS = ['en', 'es', 'de', 'fr', 'it', 'ja', 'ko', 'ru', 'tr', 'id', 'zh'];
 const CHECK = process.argv.includes('--check');
-/** Chaves dinâmicas (prefixos) que NÃO entram na verificação obrigatória (texto de dados, traduzido opcionalmente). */
-const OPTIONAL_PREFIXES = ['creature.', 'season.'];
+/**
+ * Chaves de dados que NÃO entram na verificação obrigatória (traduzidas opcionalmente; sem tradução aparece o pt):
+ *   creature.*            nomes/descrições dos 300 bichinhos
+ *   song.<id>, .band      títulos e bandas das músicas (nomes próprios fictícios)
+ * Estilos/palcos (song.style.*, song.stage.*) e todo o resto são obrigatórios.
+ */
+const isOptional = (k) => k.startsWith('creature.') || (k.startsWith('song.') && !/^song\.(style|stage)\./.test(k));
 
 function walk(dir, acc = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -180,6 +185,11 @@ function scanTs(file) {
     let i = skipWs(src, m.index + 2);
     const k = readConcat(src, i);
     if (!k) continue; // t(variavel, ...) — infra (langs.ts) ou dinâmica
+    if (k.partial) {
+      // t('prefixo.' + id, ...) — chave dinâmica por concatenação (precisa de entrada em scanDynamicData)
+      dynamicCalls.push({ key: k.value + '${…}', fallback: src.slice(k.end, k.end + 60).split('\n')[0], where: `${rel}:${lineOf(src, m.index)}` });
+      continue;
+    }
     i = skipWs(src, k.end);
     if (src[i] !== ',') continue;
     i = skipWs(src, i + 1);
@@ -257,6 +267,142 @@ async function scanDynamicData() {
     out[`${kind}.${m[1]}`] = un(m[2]);
     if (m[3]) out[`${kind}.${m[1]}.desc`] = un(m[3]);
   }
+  Object.assign(out, await scanBundledData());
+  return out;
+}
+
+/**
+ * Tabelas geradas/compostas em TS (músicas, passes, peças do criador, cosméticos da banda): em vez de
+ * replicar a lógica com regex, empacota os módulos de dados com esbuild e lê os valores reais.
+ */
+async function scanBundledData() {
+  const out = {};
+  const esbuild = await import('esbuild');
+  const r = await esbuild.build({
+    stdin: {
+      contents: `
+        export { PARTS, PALETTES } from './src/game/avatar';
+        export { MOTIFS, motifSlug } from './src/pass/catalog';
+        export { CATALOG } from './src/music/songs/catalog';
+        export { STYLES, STAGES } from './src/music/songs/styles';
+        export { SEASON_MUSIC } from './src/music/season-music-data';
+        export { AURA_FAMILY_NAME } from './src/pass/music/auras';
+        export { MOVE_NAME } from './src/pass/music/dances';
+        export { COSMETICS } from './src/games/band/cosmetics';`,
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'neutral',
+    logLevel: 'error',
+    loader: { '.css': 'empty', '.png': 'empty', '.svg': 'empty', '.mp3': 'empty', '.ogg': 'empty', '.webp': 'empty' },
+  });
+  // stubs mínimos de navegador (os módulos só montam tabelas; nada é desenhado)
+  const g = globalThis;
+  const any = () => new Proxy(function () {}, { get: (_, k) => (k === Symbol.toPrimitive ? () => '' : any()), apply: () => any(), construct: () => any() });
+  g.window ??= g;
+  g.document ??= any();
+  g.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {} };
+  g.matchMedia ??= () => ({ matches: false, addEventListener() {} });
+  g.addEventListener ??= () => {};
+  g.requestAnimationFrame ??= () => 0;
+  const m = await import('data:text/javascript;base64,' + Buffer.from(r.outputFiles[0].text).toString('base64'));
+  // peças do criador de personagem
+  for (const p of [...m.PARTS, ...m.PALETTES]) out[`part.${p.id}`] = p.name;
+  // motivos dos passes (compõem nomes: "Olhos de {m}", "Tapete de {m}"...)
+  for (const row of m.MOTIFS) for (const w of row) out[`pass.motif.${m.motifSlug(w)}`] = w;
+  // músicas: títulos/bandas (opcionais), estilos e palcos
+  for (const e of m.CATALOG) {
+    out[`song.${e.spec.id}`] = e.title;
+    out[`song.${e.spec.id}.band`] = e.band;
+  }
+  for (const [id, st] of Object.entries(m.STYLES)) out[`song.style.${id}`] = st.name;
+  for (const [id, st] of Object.entries(m.STAGES)) out[`song.stage.${id}`] = st.name;
+  // Passe Musical: temas, famílias de aura, passos de dança, instrumentos, itens iniciais
+  m.SEASON_MUSIC.forEach((row, i) => (out[`mtheme.s${String(i).padStart(2, '0')}`] = row.split('|')[0]));
+  for (const [k, v] of Object.entries(m.AURA_FAMILY_NAME)) out[`mpass.fam.${k}`] = v;
+  for (const [k, v] of Object.entries(m.MOVE_NAME)) out[`mpass.move.${k}`] = v;
+  const mi = fs.readFileSync(path.join(ROOT, 'src/pass/music/index.ts'), 'utf8');
+  const inst = /const INST_NAME[^=]*=\s*\{([^}]*)\}/.exec(mi);
+  for (const x of inst[1].matchAll(/(\w+): '([^']*)'/g)) out[`mpass.inst.${x[1]}`] = x[2];
+  for (const x of mi.matchAll(/\{ id: '(mp[ad]_free_\d+)', name: '([^']*)'/g)) out[`mpass.${x[1]}`] = x[2];
+  for (const x of mi.matchAll(/kind: '(gems|coins|tickets)', id: '', amount: [^,]+, name: '([^']*)'/g)) out[`mpass.kind.${x[1]}`] = x[2];
+  // cosméticos do Bloop Banda
+  for (const c of m.COSMETICS) out[`band.cos.${c.kind}.${c.id}`] = c.name;
+  Object.assign(out, await scanRecordedData(esbuild));
+  return out;
+}
+
+/** pares `chave: 'texto'` de um objeto literal escrito numa linha (ex.: ({ cake: 'Bolo', ... } as Record<...>)) */
+const objPairs = (txt) => Object.fromEntries([...txt.matchAll(/(?:'([\w-]+)'|([\w-]+)): '((?:[^'\\]|\\.)*)'/g)].map((x) => [x[1] ?? x[2], x[3].replace(/\\'/g, "'")]));
+const lineWith = (file, needle) => fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n').find((l) => l.includes(needle)) ?? '';
+
+/**
+ * Chaves montadas por concatenação (t('home.opt.' + k, pt) etc.): empacota os módulos com um t() que
+ * GRAVA cada chamada e executa os rótulos; o que não dá para executar sem DOM/three.js é lido da fonte.
+ */
+async function scanRecordedData(esbuild) {
+  const rec = {};
+  globalThis.__i18nRec = rec;
+  const r = await esbuild.build({
+    stdin: {
+      contents: `
+        import * as HC from './src/home/catalog';
+        import { FINISHES, finishName } from './src/home/paint';
+        export function run() {
+          for (const f of [...HC.PLANET_FIELDS, ...HC.EXTERIOR_FIELDS]) { f.label(); f.options?.forEach((o) => o()); }
+          HC.DECOR_OPTS.forEach((o) => o());
+          HC.FURN_CATS.forEach((c) => c.label());
+          HC.FURNITURE.forEach((f) => f.name());
+          HC.FLOORS.forEach((x) => HC.floorName(x));
+          HC.WALLS.forEach((x) => HC.wallName(x));
+          HC.ROOM_IDS.forEach((x) => HC.roomName(x));
+          FINISHES.forEach((x) => finishName(x));
+        }`,
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'neutral',
+    logLevel: 'error',
+    loader: { '.css': 'empty', '.png': 'empty', '.svg': 'empty' },
+    plugins: [
+      {
+        name: 'rec-i18n',
+        setup(b) {
+          b.onResolve({ filter: /(^|\/)i18n(\/index)?$/ }, () => ({ path: 'rec-i18n', namespace: 'rec' }));
+          b.onLoad({ filter: /.*/, namespace: 'rec' }, () => ({
+            contents: `export const t = (k, pt) => { if (typeof k === 'string' && typeof pt === 'string') globalThis.__i18nRec[k] = pt; return pt; };
+              export const fmt = (n) => String(n); export const getLang = () => 'pt'; export const lang = () => 'pt';`,
+            loader: 'js',
+          }));
+        },
+      },
+    ],
+  });
+  const m = await import('data:text/javascript;base64,' + Buffer.from(r.outputFiles[0].text).toString('base64'));
+  m.run();
+  const out = { ...rec };
+  // Casa 3D (src/home3d): nomes dos móveis K(..., 'Nome'), sujeiras/comidas e pisos/paredes
+  const ad = fs.readFileSync(path.join(ROOT, 'src/home3d/adapter.ts'), 'utf8');
+  for (const x of ad.matchAll(/^\s*([\w]+): K\([^']*'((?:[^'\\]|\\.)*)'/gm)) out[`home3d.furn.${x[1]}`] = x[2];
+  for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Bolo no chão'")))) out[`home3d.mess.${k}`] = v;
+  for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Fatia de bolo'")))) out[`home3d.food.${k}`] = v;
+  const bs = fs.readFileSync(path.join(ROOT, 'src/home3d/build.ts'), 'utf8');
+  const surf = objPairs(bs.slice(bs.indexOf('function surfName'), bs.indexOf('function surfName') + 700));
+  const list = (n) => [...(new RegExp(`${n} = \\[([^\\]]*)\\]`).exec(ad)?.[1] ?? '').matchAll(/'([\w-]+)'/g)].map((x) => x[1]);
+  for (const s of list('FLOOR_STYLES')) if (surf[s]) out[`home3d.floor.${s}`] = surf[s];
+  for (const s of list('WALL_STYLES')) if (surf[s]) out[`home3d.wall.${s}`] = surf[s];
+  // modelos de cômodo (home.tpl.<id>) e estilos do Bloop Banda (band.style.<id>)
+  const rm = fs.readFileSync(path.join(ROOT, 'src/home/room.ts'), 'utf8');
+  for (const x of rm.matchAll(/\{ id: '([\w-]+)', name: '((?:[^'\\]|\\.)*)'/g)) out[`home.tpl.${x[1]}`] = x[2];
+  const bm = fs.readFileSync(path.join(ROOT, 'src/games/band/model.ts'), 'utf8');
+  const sn = bm.slice(bm.indexOf('STYLE_NAMES'), bm.indexOf('};', bm.indexOf('STYLE_NAMES')));
+  for (const [k, v] of Object.entries(objPairs(sn))) out[`band.style.${k}`] = v;
   return out;
 }
 
@@ -305,13 +451,13 @@ async function main() {
   fs.writeFileSync(path.join(OUT, 'pt.json'), JSON.stringify(sorted, null, 2) + '\n');
 
   const lines = [];
-  lines.push(`Chaves: ${Object.keys(pt).length} (${staticCount} de t()/HTML + ${dataCount} de dados: bichinhos/temporadas/skins/rastros)`);
+  lines.push(`Chaves: ${Object.keys(pt).length} (${staticCount} de t()/HTML + ${dataCount} de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)`);
   lines.push(`\n== Conflitos (mesma chave, textos diferentes): ${conflicts.length}`);
   for (const c of conflicts) {
     lines.push(`  ${c.key}`);
     for (const u of c.uses) lines.push(`     ${u.where}  ${JSON.stringify(u.text)}`);
   }
-  const unknownDyn = dynamicCalls.filter((d) => !/^`?(creature|season)\./.test(d.key));
+  const unknownDyn = dynamicCalls.filter((d) => !/^`?(creature|season|skin|trail|song|mpass|mtheme|band\.cos|band\.style|part|pass\.motif|home|home3d)\./.test(d.key));
   lines.push(`\n== Chamadas dinâmicas (chave ou texto não-literal): ${dynamicCalls.length}`);
   for (const d of dynamicCalls) lines.push(`  ${d.where}  t(${JSON.stringify(d.key)}, ${d.fallback.trim()})`);
 
@@ -329,7 +475,7 @@ async function main() {
     for (const k of Object.keys(sorted)) {
       if (loc[k] == null || loc[k] === '') {
         missing[k] = sorted[k];
-        if (OPTIONAL_PREFIXES.some((p) => k.startsWith(p))) missOpt++;
+        if (isOptional(k)) missOpt++;
         else missReq++;
       }
     }

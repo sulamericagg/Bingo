@@ -6,33 +6,37 @@ Bloop World: Minispiele
 
 ## Kurzbeschreibung (≤80)
 
-Hüpfen, rasen, bauen und dein Tierchen pflegen – eine Welt voller Minispiele!
+6 Minispiele, ein sprechendes Haustier, Häuser mit Freunden & 300 Wesen!
 
 ## Vollständige Beschreibung (≤4000)
 
-Willkommen in Bloop World, der Minispiel-Welt von TEAM Ross! Eine App voller schneller, bunter Spiele für alle Altersgruppen.
+Willkommen in Bloop World, dem Minispiel-Hub von TEAM Ross! Eine App voller schneller, bunter Spiele für alle Altersgruppen.
 
-DIE SPIELE
-• Bloop Orbit – mit einem Tipp von Planet zu Planet springen. Schaffe PERFEKTE Landungen und weiche den Asteroiden aus!
-• Drehsturz – dreh den Turm und tauch durch die Lücken, ohne Rot zu berühren.
-• Mond-Rally – rase über Mondhügel, schlag Saltos und verbessere dein Auto in der Garage.
-• Sternenfabrik – bau Maschinen, sammle Sterne und starte die TURBO-Rakete vor deinen Gegnern.
-• Katastrophen-Überlebensmodus – entkomme verrückten Katastrophen und bleib als Letzter stehen!
+6 SPIELE
+• Bloop Orbit — ein Tipp, und du hüpfst von Planet zu Planet. Schaffe PERFEKTE Landungen und weiche Asteroiden aus!
+• Drehsturz — dreh den Turm und stürz dich durch die Lücken, ohne Rot zu berühren.
+• Mond-Rally — rase über Mondhügel, mach Saltos und verbessere dein Fahrzeug in der Garage.
+• Sternenfabrik — baue Maschinen, sammle Sterne und starte die TURBO-Rakete vor deinen Rivalen.
+• Überlebe die Katastrophen — klettere, renne und entkomme Erdbeben, Tsunamis, Meteoren und mehr!
+• Bloop Band — gründe eine Band, spiel mit Freunden im Takt und mach eigene Songs im Studio.
 
-EIN TIERCHEN, DAS ANTWORTET
-Füttern, baden, kuscheln, das Zimmer dekorieren und Ball spielen. Sprich nah am Handy und es wiederholt dich mit lustiger Stimme – deine Stimme bleibt nur im Gerätespeicher und wird nie aufgenommen oder gesendet.
+EIN HAUSTIER, DAS ANTWORTET
+Füttern, baden, knuddeln und Ball spielen. Sprich in der Nähe des Handys und es plappert dir mit lustiger Stimme nach — deine Stimme bleibt nur im Gerätespeicher und wird nie aufgenommen oder gesendet.
+
+HÄUSER UND PLANETEN
+Baue und gestalte dein Haus und deinen Planeten mit Tausenden Kombinationen. Besuche Freunde, hilf beim Aufräumen, feiere Partys mit Essensschlacht und entdecke den 3D-Modus (auf unterstützten Geräten).
 
 SAMMELN UND GESTALTEN
-• 300 Sammel-Tierchen: 5 neue in jeder Monatssaison
-• Monatlicher Sternenpass mit Gratis-Belohnungen und optionaler Premium-Spur
-• Figuren-Editor: bau deinen Bloop Teil für Teil
-• Dutzende Skins und Spuren, von gewöhnlich bis mythisch
+• 300 Sammelwesen, mit Neuem in jeder Monatssaison
+• 3 Monatspässe — Sterne, Haus und Musik — mit Gratis-Belohnungen und optionaler Premium-Spur
+• Figuren-Editor: Bau deinen Bloop Stück für Stück
+• Skins, Spuren, Auren und Tänze
 
-ZUSAMMEN SPIELEN
-• Turniere mit Turnierbaum und Münzpreisen
-• Rennen und Wochen-Ranglisten
-• Chat mit Schutzfunktionen: automatischer Filter, Sicherer Modus mit Schnellnachrichten für Kinder unter 13 sowie Stummschalten, Blockieren und Melden
+MIT FREUNDEN SPIELEN
+• Meisterschaften mit Turnierbaum und Münzpreisen
+• Rennen und Bestenlisten
+• Chat mit Schutz: automatischer Filter, Sicherer Modus mit Schnellsätzen für Spieler unter 13 sowie Stummschalten, Blockieren und Melden. Bei Hauspartys gibt es nur Emotes.
 
-In 12 Sprachen verfügbar. Kostenlos spielbar; enthält Werbung und optionale In-App-Käufe. Frag vor dem Kauf einen Erwachsenen.
+In 12 Sprachen verfügbar. Online-Funktionen (Freunde, Partys, Band mit Freunden, Chat, Bestenlisten) benötigen Internet. Kostenlos spielbar; enthält Werbung und optionale In-App-Käufe. Frag vor dem Kaufen deine Eltern.
 
 Mit Liebe in Brasilien gemacht von TEAM Ross.

@@ -24,6 +24,7 @@ import {
   PART_PRODUCTS,
   PALETTES,
   partById,
+  partName,
   partsOf,
   SLOT_LABEL,
   SLOTS,
@@ -332,7 +333,7 @@ function partCard(p: Part, slot: Slot): HTMLElement {
   const cv = renderAvatarPreview(av, 84, 0.6 + (p.id.length % 5) * 0.37, { focusY: fy, zoom: z, backdrop: false });
   el.appendChild(cv);
   const status = on ? (owned ? `<span class="cr-price eq">${icon('check', { size: 16 })}${t('creator.using', 'Usando')}</span>` : `<span class="cr-price try">${t('creator.trying', 'Provando')}</span>`) : owned ? `<span class="cr-price own">${t('creator.yours', 'Seu')}</span>` : priceHtml(p);
-  el.insertAdjacentHTML('beforeend', `<span class="cr-tag">${RARITY_INFO[p.rarity].label}</span><span class="cr-name">${esc(p.name)}</span>${status}`);
+  el.insertAdjacentHTML('beforeend', `<span class="cr-tag">${RARITY_INFO[p.rarity].label}</span><span class="cr-name">${esc(partName(p))}</span>${status}`);
   el.onclick = () => pickPart(p, slot);
   return el;
 }
@@ -390,7 +391,7 @@ function colorsSection(): HTMLElement {
     const owned = ownsPart(pal.id);
     const row = document.createElement('div');
     row.className = `cr-pal q-${pal.rarity}${owned ? '' : ' locked'}`;
-    row.innerHTML = `<div class="cr-pal-head"><b>${esc(pal.name)}</b>${owned ? '' : priceHtml(pal)}</div>`;
+    row.innerHTML = `<div class="cr-pal-head"><b>${esc(partName(pal))}</b>${owned ? '' : priceHtml(pal)}</div>`;
     const sw = document.createElement('div');
     sw.className = 'cr-sw';
     for (const col of pal.colors!) {
@@ -458,7 +459,7 @@ function renderBuyBar(): void {
   $('.cr-save').classList.toggle('dim', list.length > 0);
   const p = sel;
   const info = RARITY_INFO[p.rarity];
-  $('.cr-buyname').textContent = p.name + (list.length > 1 ? `  +${list.length - 1}` : '');
+  $('.cr-buyname').textContent = partName(p) + (list.length > 1 ? `  +${list.length - 1}` : '');
   const rr = $('.cr-buyrar');
   rr.textContent = `${info.label} · ${SLOT_LABEL[p.slot]}`;
   rr.style.color = info.color;
@@ -538,7 +539,7 @@ function unlockPart(id: string, silent = false): void {
   const p = partById(id);
   audio.unlock2();
   haptics.success();
-  if (p) toast(t('creator.unlocked', '{name} desbloqueado!', { name: p.name }), 'party');
+  if (p) toast(t('creator.unlocked', '{name} desbloqueado!', { name: partName(p) }), 'party');
   happyT = 1.5;
   jumpT = 0.7;
   const st = $('.cr-stage');

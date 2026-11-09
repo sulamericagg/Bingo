@@ -41,7 +41,7 @@ import {
   startMusicPass,
 } from './mstate';
 import { drawAura, ensureMusicPassRegistered, highwaySkin, instSkin, playDance, applyDancePose, drawDanceArms, drawDanceFx, stageVariant } from './music/index';
-import { seasonMusicText } from '../music/season-music-data';
+import { musicThemeName, seasonMusicText } from '../music/season-music-data';
 import { drawPlayer } from '../game/character';
 import { skinById } from '../game/skins';
 import { drawHomeItem, drawHomeSeasonArt } from './home/draw';
@@ -922,8 +922,7 @@ function appendBundle(sh: { box: HTMLElement; close: () => void }): void {
 function confirmMusicBuy(s: SeasonInfo): void {
   const sh = sheet();
   const L = musicLevels(s.index);
-  const mt = seasonMusicText(s.index);
-  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-music', 44)}<div><b>${t('mpass.buyTitle', 'Passe Musical Premium')}</b><small>${mt.theme}</small></div></div>
+  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-music', 44)}<div><b>${t('mpass.buyTitle', 'Passe Musical Premium')}</b><small>${musicThemeName(s.index)}</small></div></div>
     <ul class="ps-list">
       <li>${passIcon('p-music', 22)}${t('mpass.b1', 'Músicas novas para o Bloop Banda + a MEGA música no nível 50')}</li>
       <li>${passIcon('p-aura', 22)}${t('mpass.b2', 'Auras animadas e dancinhas para usar no menu')}</li>
