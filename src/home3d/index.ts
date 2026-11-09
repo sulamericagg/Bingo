@@ -8,6 +8,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { t } from '../i18n';
+import { pushBack } from '../core/back';
 import { detectInitialTier } from '../core/quality';
 import { tap } from '../core/haptics';
 import { save } from '../core/storage';
@@ -48,7 +49,19 @@ export async function open3D(opts: Open3DOpts): Promise<Close3DResult> {
   ensureCss();
   const root = el('div', 'h3');
   document.body.appendChild(root);
+  // botão voltar do Android: fecha o 3D (ou o aviso/carregamento) em vez de fechar a casa 2D por baixo
+  backAction = () => root.querySelector<HTMLElement>('.h3-full button, .h3-full [data-act="back"]')?.click();
+  const onBack = () => {
+    backAction();
+    // ainda aberto (ex.: carregando): continua na pilha até o 3D realmente fechar
+    setTimeout(() => {
+      if (root.isConnected) popB = pushBack(onBack);
+    }, 0);
+  };
+  let popB = pushBack(onBack);
   const finish = (r: Close3DResult): Close3DResult => {
+    popB();
+    backAction = () => {};
     root.remove();
     removeCss();
     unlockOrientation();
@@ -74,6 +87,8 @@ export async function open3D(opts: Open3DOpts): Promise<Close3DResult> {
     return finish({ design: opts.design, mess: opts.mess, cleaned: 0, broken: 0, reason: 'error' });
   }
 }
+
+let backAction: () => void = () => {};
 
 async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> {
   const loading = new Loading(root);
@@ -348,6 +363,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     sfx.click();
     close('exit');
   };
+  backAction = () => close('exit');
   eng.onContextLost = () => {
     cancelAnimationFrame(raf);
     void fallback(root, t('home3d.lost.title', 'O 3D cansou'), t('home3d.lost.text', 'O aparelho precisou pausar o 3D. Suas mudanças foram guardadas.'), false).then(() => close('error'));

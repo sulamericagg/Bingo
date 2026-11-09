@@ -551,7 +551,16 @@ function action(a: string, b: HTMLElement): void {
       break;
     case '3d':
       void open3D({ design: S.design, mess: S.mess, ownerId: S.ownerId, isOwner: S.isOwner, role: S.role, session, room: scene.room, handle: S.name }).then((ok) => {
-        if (!ok) toast(t('home.3d.soon', 'O modo 3D chega em breve!'), 'cube');
+        if (!ok) return toast(t('home.3d.soon', 'O modo 3D chega em breve!'), 'cube');
+        // o 3D escreve as mudanças de volta em S.design/S.mess: redesenha e salva (antes: edições do 3D se perdiam)
+        if (!root) return;
+        scene.host.design = S.design;
+        scene.host.mess = S.mess;
+        scene.setRoom(scene.room);
+        changed();
+        persistMess();
+        refreshMessUi();
+        refreshBar();
       });
       break;
     case 'mode':
