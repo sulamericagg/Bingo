@@ -85,6 +85,8 @@ export interface RoomRec {
   ceil: THREE.Mesh;
   /** cobertura de pintura (4 paredes × GW × GH) */
   cover: Uint8Array;
+  /** células pintáveis (fora das portas) */
+  valid: Uint8Array;
   paint: string | null;
   center: THREE.Vector3;
   min: THREE.Vector2;
@@ -339,6 +341,7 @@ export class Engine {
       floor: null as unknown as THREE.Mesh,
       ceil: null as unknown as THREE.Mesh,
       cover: new Uint8Array(4 * PAINT_GW * PAINT_GH),
+      valid: new Uint8Array(4 * PAINT_GW * PAINT_GH),
       paint: null,
       center: g.localToWorld(new THREE.Vector3(ROOM_W / 2, 0, ROOM_D / 2)),
       min: new THREE.Vector2(Math.min(a.x, b.x), Math.min(a.z, b.z)),
@@ -363,7 +366,7 @@ export class Engine {
     const cgeo = new THREE.PlaneGeometry(ROOM_W, ROOM_D);
     cgeo.rotateX(Math.PI / 2);
     this.geoOwned.push(cgeo);
-    const cmat = new THREE.MeshLambertMaterial({ color: '#fff8ee' });
+    const cmat = new THREE.MeshBasicMaterial({ color: '#efe4f7' });
     this.matsOwned.push(cmat);
     room.ceil = new THREE.Mesh(cgeo, cmat);
     room.ceil.position.set(ROOM_W / 2, WALL_H, ROOM_D / 2);
@@ -371,6 +374,14 @@ export class Engine {
     // paredes
     const sides: Side[] = ['n', 'e', 's', 'w'];
     sides.forEach((side, wi) => room.walls.push(this.buildWall(room, side, wi, L.doors.filter((d) => d[0] === side).map((d) => [d[1] - DOOR_W / 2, d[1] + DOOR_W / 2] as [number, number]))));
+    for (const w of room.walls)
+      for (let gy = 0; gy < PAINT_GH; gy++)
+        for (let gx = 0; gx < PAINT_GW; gx++) {
+          const u = ((gx + 0.5) / PAINT_GW) * w.len,
+            y = ((gy + 0.5) / PAINT_GH) * WALL_H;
+          const inDoor = w.doors.some(([a, b]) => u > a && u < b && y < DOOR_H);
+          room.valid[w.wi * PAINT_GW * PAINT_GH + gy * PAINT_GW + gx] = inDoor ? 0 : 1;
+        }
     this.rooms.push(room);
     // pintura salva
     const p = this.design.paint?.[rd.id];
@@ -1091,9 +1102,15 @@ export class Engine {
     return changed;
   }
   paintProgress(room: RoomRec): number {
-    let n = 0;
-    for (let i = 0; i < room.cover.length; i++) n += room.cover[i];
-    return room.paint ? n / room.cover.length : 0;
+    if (!room.paint) return 0;
+    let n = 0,
+      tot = 0;
+    for (let i = 0; i < room.cover.length; i++)
+      if (room.valid[i]) {
+        tot++;
+        n += room.cover[i];
+      }
+    return tot ? n / tot : 0;
   }
   /** completa a pintura (100%): tinta da paleta vira o estilo 'paint:<idx>' da parede */
   finishPaint(room: RoomRec): void {

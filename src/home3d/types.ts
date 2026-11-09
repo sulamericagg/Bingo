@@ -36,6 +36,10 @@ export interface Open3DOpts {
   onClose?(result: Close3DResult): void;
   /** pula aviso de girar o telefone (testes) */
   skipRotate?: boolean;
+  /** id de quem está jogando (permissões em design.access.roles e id na festa) */
+  viewerId?: string;
+  /** expõe window.__home3d (testes) */
+  debug?: boolean;
   /** força abrir mesmo em aparelho Mínimo / sem confirmação */
   force?: boolean;
 }
