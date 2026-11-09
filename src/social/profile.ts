@@ -16,6 +16,7 @@ import { fmt, t } from '../i18n';
 import { icon, type IconName } from '../ui/icons';
 import { displayName } from '../services/leaderboard';
 import { getPlayer } from '../services/online';
+import { homeApi } from '../services/home';
 import { api } from './net';
 import { isFriend, persistSocial, setFriend, social, toggleList } from './store';
 import { openSheet, skinThumb, toast } from './sheet';
@@ -137,8 +138,23 @@ function render(s: ReturnType<typeof openSheet>, p: ProfileData, own: boolean): 
     friend.innerHTML = icon(on ? 'check' : 'heart', { size: 18 }) + (on ? t('profile.friend', 'Amigo') : t('profile.addfriend', 'Adicionar amigo'));
   };
   setF();
-  friend.onclick = () => {
-    setFriend({ id: p.id, name: p.name, skin: p.skin }, !isFriend(p.id));
+  friend.onclick = async () => {
+    // amizades agora são do servidor (src/services/home.ts): pedido por id só vale para quem jogou junto
+    if (isFriend(p.id)) {
+      if (await homeApi.removeFriend(p.id)) setFriend({ id: p.id, name: p.name, skin: p.skin }, false);
+      else toast(t('friends.offline', 'Sem conexão. Tente de novo.'), 'refresh');
+      return setF();
+    }
+    const r = await homeApi.addFriend(p.id);
+    if (r === 'already') setFriend({ id: p.id, name: p.name, skin: p.skin }, true);
+    const msg: Record<typeof r, string> = {
+      sent: t('friends.sent', 'Pedido de amizade enviado!'),
+      already: t('friends.already', 'Vocês já são amigos!'),
+      not_found: t('friends.needhandle', 'Para adicionar, peça o @nome da pessoa.'),
+      limit: t('friends.limit', 'Limite de pedidos/amigos atingido. Tente amanhã.'),
+      network: t('friends.offline', 'Sem conexão. Tente de novo.'),
+    };
+    toast(msg[r], r === 'sent' || r === 'already' ? 'heart' : 'lock');
     setF();
   };
   const block = document.createElement('button');
@@ -152,6 +168,7 @@ function render(s: ReturnType<typeof openSheet>, p: ProfileData, own: boolean): 
     const on = !social.blocked.includes(p.id);
     toggleList('blocked', p.id, on);
     if (on) setFriend({ id: p.id, name: p.name, skin: p.skin }, false);
+    homeApi.blockPlayer?.(p.id, on).catch(() => {});
     setB();
     setF();
     toast(on ? t('profile.blocked', 'Jogador bloqueado. Você não verá mais as mensagens dele.') : t('profile.unblocked', 'Jogador desbloqueado.'), on ? 'lock' : 'check');

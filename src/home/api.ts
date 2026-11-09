@@ -10,6 +10,8 @@ export interface HandleCheck {
   ok: boolean; // disponível e válido
   reason?: 'taken' | 'invalid' | 'blocked' | 'network';
   suggestions?: string[];
+  /** (opcional) troca de @nome bloqueada até esta data (1x a cada 30 dias) — vem com reason 'invalid' */
+  until?: number;
 }
 
 /* ---------- amizades ---------- */
@@ -79,6 +81,8 @@ export interface HomeState {
   design: HomeDesign;
   mess: MessItem[];
   updatedAt: number;
+  /** (opcional) casa aberta para amigos visitarem com o dono offline (padrão true) */
+  visitsOpen?: boolean;
 }
 
 /* ---------- festa (tempo real, na casa de alguém) ---------- */
@@ -101,11 +105,15 @@ export type PartyEvent =
   | { t: 'clean'; messId: string; by: string }
   | { t: 'eat'; by: string; food: string }
   | { t: 'cake'; slices: number }
-  | { t: 'chat'; by: string; code: string };
+  | { t: 'chat'; by: string; code: string }
+  /** (opcional) design inteiro novo — só amigos com papel 'decorate'/'build' (ou o dono); o servidor confere */
+  | { t: 'design'; by: string; design: HomeDesign };
 
 export interface PartySession {
   readonly online: boolean;
   readonly hostId: string;
+  /** (opcional) por que ficou offline: 'not_friend' | 'closed' | 'full' | 'network' */
+  readonly reason?: string;
   send(state: Partial<PartyPeer>): void; // ~8 Hz
   event(e: PartyEvent): void;
   onPeers(cb: (peers: PartyPeer[]) => void): void;
@@ -128,4 +136,8 @@ export interface HomeApi {
   saveDesign(design: HomeDesign): Promise<boolean>;
   setMess(ownerId: string, mess: MessItem[]): Promise<boolean>; // dono ou amigo (limpando)
   joinParty(hostId: string, opts?: { botsIfAlone?: number }): Promise<PartySession>;
+  /** (opcional) amigo com papel 'decorate'/'build' salva o design da casa de outro (fora da festa) */
+  saveFriendDesign?(ownerId: string, design: HomeDesign): Promise<boolean>;
+  /** (opcional) bloqueia/desbloqueia no servidor (desfaz amizade e some com pedidos) */
+  blockPlayer?(id: string, on: boolean): Promise<boolean>;
 }
