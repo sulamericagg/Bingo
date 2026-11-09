@@ -46,6 +46,9 @@ import { gameFont } from '../../i18n/font';
 
 /** valor de cada moeda coletada no tubo */
 const COIN_VALUE = 3;
+/** prêmio de cada meta curta da partida */
+const GOAL_COINS = 15;
+const DEPTH_KEY = 'bo-tubo-depth';
 const BEST_KEY = 'bo-tubo-best';
 const COMBO_WIN = 2.2; // s entre pousar e mergulhar para manter o combo
 const FIRE_AT = 3;
@@ -257,6 +260,7 @@ class TuboGame implements MiniGameHandle {
       </div>
       <div class="tubo-shield">${icon('shield', { size: 22 })}<span>${t('tubo.shieldOn', 'Escudo')}</span></div>
       <div class="tubo-combo"></div>
+      <div class="tubo-goals"><span class="g-ring"></span><span class="g-combo"></span></div>
       <div class="tubo-zone"></div>
       <div class="tubo-hint">
         <div class="tubo-hint-hand">${icon('hand-tap', { size: 54 })}</div>
@@ -387,6 +391,7 @@ class TuboGame implements MiniGameHandle {
     this.invuln = 0;
     this.coinsRun = 0;
     this.shatters = 0;
+    this.setupGoals();
     this.revived = false;
     this.credited = 0;
     this.zoneShown = 0;
@@ -415,7 +420,9 @@ class TuboGame implements MiniGameHandle {
     while (this.rings.length && this.rings[0].idx < this.ringI - BEHIND) this.release(this.rings.shift()!);
     let next = this.rings.length ? this.rings[this.rings.length - 1].idx + 1 : Math.max(0, this.ringI - BEHIND);
     while (next <= this.ringI + AHEAD) {
-      const r = genRing(next, this.geo, Math.random, zoneAt(next));
+      // pressão suave pelo tempo: a cada ~9 s de partida, +1 anel "equivalente" de dificuldade (teto 30)
+      const heat = this.startedAt && this.mode !== 'ready' ? Math.min(30, (performance.now() - this.startedAt) / 9000) : 0;
+      const r = genRing(next, this.geo, Math.random, zoneAt(next), heat);
       r.y = next * this.geo.spacing;
       spinRing(r, this.time);
       this.rings.push(r);
@@ -550,6 +557,7 @@ class TuboGame implements MiniGameHandle {
       this.popup(this.txt.fire, '#fff3a0', 1.3);
       hapticSuccess();
     }
+    this.checkGoals();
     const pts = Math.min(this.combo, 10);
     this.score += pts;
     if (r.idx + 1 > this.depth) this.coinsRun += 1; // cada anel novo também paga 1 moeda
@@ -615,6 +623,49 @@ class TuboGame implements MiniGameHandle {
       const a = Math.random() * TAU;
       this.fx.spawn(PK.Spark, this.cx, sy - this.geo.R, Math.cos(a) * 260, Math.sin(a) * 200 - 80, 0.7, 4 + Math.random() * 4, i % 2 ? RED.top : '#ffffff');
     }
+  }
+
+  /* ---------------- metas curtas da partida ---------------- */
+  private goalRing = 20;
+  private goalCombo = 5;
+  private goalRingOk = false;
+  private goalComboOk = false;
+
+  private setupGoals(): void {
+    let bestDepth = 0;
+    try {
+      bestDepth = Number(localStorage.getItem(DEPTH_KEY) || 0) || 0;
+    } catch {
+      /* */
+    }
+    // meta um pouco acima do melhor anel já alcançado (sempre alcançável, de 5 em 5)
+    this.goalRing = Math.max(10, Math.min(80, Math.ceil((bestDepth + 5) / 5) * 5));
+    this.goalCombo = bestDepth < 12 ? 3 : bestDepth < 30 ? 5 : 8;
+    this.goalRingOk = this.goalComboOk = false;
+    this.renderGoals();
+  }
+
+  private renderGoals(): void {
+    const g = this.el?.querySelector('.tubo-goals');
+    if (!g) return;
+    const a = g.querySelector('.g-ring') as HTMLElement;
+    const b = g.querySelector('.g-combo') as HTMLElement;
+    a.innerHTML = `${icon(this.goalRingOk ? 'check' : 'target', { size: 16 })}${t('tubo.goal.ring', 'Anel {n}', { n: this.goalRing })}`;
+    b.innerHTML = `${icon(this.goalComboOk ? 'check' : 'fire', { size: 16 })}${t('tubo.goal.combo', 'Combo x{n}', { n: this.goalCombo })}`;
+    a.classList.toggle('ok', this.goalRingOk);
+    b.classList.toggle('ok', this.goalComboOk);
+  }
+
+  private checkGoals(): void {
+    let done = false;
+    if (!this.goalRingOk && this.depth + 1 >= this.goalRing) done = this.goalRingOk = true;
+    if (!this.goalComboOk && this.combo >= this.goalCombo) done = this.goalComboOk = true;
+    if (!done) return;
+    this.coinsRun += GOAL_COINS;
+    this.popup(t('tubo.goal.done', 'Meta cumprida! +{n}', { n: GOAL_COINS }), '#7dffb0', 1.2);
+    audio.unlock2();
+    haptic('medium');
+    this.renderGoals();
   }
 
   private collect(r: Ring, it: { a: number; kind: 0 | 1; taken: boolean }): void {
@@ -706,6 +757,11 @@ class TuboGame implements MiniGameHandle {
     const total = base + bonus;
     if (total > 0) addCoins(total);
     this.credited = Math.max(1, total);
+    try {
+      if (this.depth > (Number(localStorage.getItem(DEPTH_KEY) || 0) || 0)) localStorage.setItem(DEPTH_KEY, String(this.depth));
+    } catch {
+      /* */
+    }
     this.newBest = this.score > this.best;
     if (this.newBest && this.best > 0) celebrateRecord(t('record.pts', '{n} pontos', { n: fmt(this.score) }));
     if (this.newBest) {
