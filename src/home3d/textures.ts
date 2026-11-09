@@ -4,7 +4,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { gameFont } from '../i18n/font';
-import { MESS_COLORS, type MessKind } from './adapter';
+import { MESS_COLORS, parsePaintSpec, type MessKind } from './adapter';
 
 export const INK = '#2a0b5c';
 const texCache = new Map<string, THREE.Texture>();
@@ -287,45 +287,42 @@ export function drawWallpaper(c: CanvasRenderingContext2D, style: string, col: s
   c.fillRect(0, H - 5, W, 1);
 }
 
-/** cor de tinta para pintura (inclui especiais) num retângulo */
-export function paintFill(c: CanvasRenderingContext2D, paint: string, x: number, y: number, w: number, h: number, W: number, H: number): void {
-  if (paint.startsWith('#')) {
-    c.fillStyle = paint;
-    c.fillRect(x, y, w, h);
-    return;
-  }
-  if (paint === 'rainbow') {
-    const g = c.createLinearGradient(0, 0, W, 0);
-    ['#ff5c7a', '#ff8a3d', '#ffc93d', '#4fd67a', '#3fa0ff', '#8a5cff', '#ff5c7a'].forEach((k, i) => g.addColorStop(i / 6, k));
+/** tinta no formato do 2D ("<corIdx>:<acabamento>" | "pass:<id>") num retângulo */
+export function paintFill(c: CanvasRenderingContext2D, spec: string, x: number, y: number, w: number, h: number, _W: number, H: number): void {
+  const p = parsePaintSpec(spec);
+  if (!p) return;
+  const col = p.col;
+  c.save();
+  c.beginPath();
+  c.rect(x, y, w, h);
+  c.clip();
+  if (p.finish === 'gradient') {
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, shade(col, 0.45));
+    g.addColorStop(1, shade(col, -0.15));
     c.fillStyle = g;
     c.fillRect(x, y, w, h);
-    return;
-  }
-  if (paint === 'galaxy') {
-    const g = c.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, '#262238');
-    g.addColorStop(0.5, '#5866f0');
-    g.addColorStop(1, '#c46bff');
-    c.fillStyle = g;
+  } else {
+    c.fillStyle = col;
     c.fillRect(x, y, w, h);
-    c.fillStyle = '#ffffff';
-    const r = rng((x * 31 + y * 7) | 0);
-    for (let i = 0; i < (w * h) / 60; i++) c.fillRect(x + r() * w, y + r() * h, 1.2, 1.2);
-    return;
-  }
-  if (paint === 'glitter') {
-    c.fillStyle = '#ff9ad5';
-    c.fillRect(x, y, w, h);
-    const r = rng((x * 13 + y * 17) | 0);
-    for (let i = 0; i < (w * h) / 18; i++) {
-      c.fillStyle = r() > 0.5 ? '#ffffff' : '#ffe27a';
-      c.fillRect(x + r() * w, y + r() * h, 1.5, 1.5);
+    if (p.finish === 'stripes') {
+      c.fillStyle = shade(col, 0.35);
+      for (let sx = Math.floor(x / 16) * 16; sx < x + w; sx += 16) c.fillRect(sx, y, 6, h);
+    } else if (p.finish === 'stars') {
+      c.fillStyle = shade(col, 0.5);
+      for (let sy = Math.floor(y / 16) * 16; sy < y + h + 16; sy += 16) for (let sx = Math.floor(x / 16) * 16; sx < x + w + 16; sx += 16) star(c, sx + ((sy / 16) % 2) * 8, sy, 3.5);
+    } else if (p.finish === 'glitter') {
+      for (let sy = Math.floor(y / 4) * 4; sy < y + h; sy += 4)
+        for (let sx = Math.floor(x / 4) * 4; sx < x + w; sx += 4) {
+          const k = (sx * 7 + sy * 13) % 11;
+          if (k < 2) {
+            c.fillStyle = k ? '#ffffff' : '#fff2a0';
+            c.fillRect(sx, sy, 1.5, 1.5);
+          }
+        }
     }
-    return;
   }
-  // glow
-  c.fillStyle = '#7dffd8';
-  c.fillRect(x, y, w, h);
+  c.restore();
 }
 
 /* ---------------- manchas (decalques) ---------------- */

@@ -38,7 +38,7 @@ export function sampleMess(): MessItem[] {
     { id: 'mx4', kind: 'mud', room: 'kitchen', x: 150, y: 400, r: 34 },
     { id: 'mx5', kind: 'confetti', room: 'party', x: 120, y: 360, r: 34 },
     { id: 'mx6', kind: 'tomato', room: 'party', x: 260, y: 300, r: 26 },
-    { id: 'mx7', kind: 'crumbs', room: 'kitchen', x: 0, y: 0, r: 0, moved: { itemId: 'chair1', ox: 140, oy: 360 }, rot: 1.4 } as MessItem,
+    { id: 'mx7', kind: 'mud', room: 'kitchen', x: 100, y: 400, r: 1, moved: { itemId: '5', ox: 140, oy: 360 }, rot: 0.35 },
   ];
 }
 

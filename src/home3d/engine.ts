@@ -9,8 +9,8 @@ import * as CANNON from 'cannon-es';
 import type { HomeDesign, HomeRole, MessItem } from '../home/api';
 import { QualityGovernor, detectInitialTier, loadMode, type Tier } from '../core/quality';
 import {
-  dimsOf, ensureRooms, floorXYToLocal, isDirt, itemColor, itemToPlace, KINDS, kindOf, localToFloorXY, newMessId, PAINT_GH, PAINT_GW,
-  palColor, PALETTE, placeToXY, ROOM_D, ROOM_W, surface, WALL_H, WALL_T, wallHToY, decodeCoverage, encodeCoverage, type Kind, type KindInfo,
+  dimsOf, ensureRooms, FLOOR_Y0, floorXYToLocal, isDirt, itemColor, itemToPlace, KINDS, kindOf, localToFloorXY, newMessId, PAINT_GH, PAINT_GW,
+  palColor, placeToXY, ROOM_D, ROOM_W, surface, WALL_H, WALL_T, wallHToY, decodeStrokes, encodeStrokes, bitsToB64, type Kind, type KindInfo,
   type MessKind,
 } from './adapter';
 import { buildModel, disposeModels, type ModelParts } from './models';
@@ -87,7 +87,10 @@ export interface RoomRec {
   cover: Uint8Array;
   /** células pintáveis (fora das portas) */
   valid: Uint8Array;
+  /** camada de tinta em andamento (spec do 2D) */
   paint: string | null;
+  /** tinta de base já completa (paint[room].wall) */
+  base: string | null;
   center: THREE.Vector3;
   min: THREE.Vector2;
   max: THREE.Vector2;
@@ -343,6 +346,7 @@ export class Engine {
       cover: new Uint8Array(4 * PAINT_GW * PAINT_GH),
       valid: new Uint8Array(4 * PAINT_GW * PAINT_GH),
       paint: null,
+      base: null,
       center: g.localToWorld(new THREE.Vector3(ROOM_W / 2, 0, ROOM_D / 2)),
       min: new THREE.Vector2(Math.min(a.x, b.x), Math.min(a.z, b.z)),
       max: new THREE.Vector2(Math.max(a.x, b.x), Math.max(a.z, b.z)),
@@ -384,10 +388,10 @@ export class Engine {
         }
     this.rooms.push(room);
     // pintura salva
-    const p = this.design.paint?.[rd.id];
-    if (p?.wall) {
-      room.paint = p.wall;
-      room.cover = decodeCoverage(p.strokes, room.cover.length);
+    const p = this.design.paint?.[rd.id] as { wall: string; strokes?: string; w3?: string } | undefined;
+    if (p) {
+      room.base = p.wall || null;
+      room.paint = decodeStrokes(p.strokes, p.w3, room.cover);
     }
     this.refreshSurfaces(room);
   }
@@ -510,6 +514,9 @@ export class Engine {
       cx.clip();
     }
     drawWallpaper(cx, ws, wc, W, H, room.id + w.side);
+    if (room.base) {
+      paintFill(cx, room.base, 0, 0, W, H - 5, W, H);
+    }
     if (room.paint) {
       const off = w.wi * PAINT_GW * PAINT_GH;
       const cw = W / PAINT_GW,
@@ -522,7 +529,8 @@ export class Engine {
             if (rect && (x > rect[0] + rect[2] || x + cw < rect[0] || y > rect[1] + rect[3] || y + ch < rect[1])) continue;
             paintFill(cx, room.paint, Math.floor(x), Math.floor(y), Math.ceil(cw) + 1, Math.ceil(ch) + 1, W, H);
           }
-      // rodapé por cima
+    }
+    if (room.base || room.paint) {
       cx.fillStyle = 'rgba(40,20,70,0.35)';
       cx.fillRect(0, H - 5, W, 5);
     }
@@ -716,14 +724,15 @@ export class Engine {
       if (isDirt(m)) this.addDecal(m, false);
     }
   }
+  /** moved.itemId = índice do item em RoomDesign.items (igual ao 2D); aceita id do catálogo como reserva */
   findItemFor(m: MessItem): ItemRec | undefined {
     const mv = m.moved!;
-    return (
-      this.items.find((i) => i.room.id === m.room && i.data.id === mv.itemId && i.data.x === mv.ox && i.data.y === mv.oy) ??
-      this.items.find((i) => i.room.id === m.room && i.data.id === mv.itemId && i.state === 'home')
-    );
+    const room = this.roomById(m.room);
+    if (!room) return undefined;
+    const idx = /^\d+$/.test(mv.itemId) ? Number(mv.itemId) : -1;
+    const data = idx >= 0 ? room.design.items[idx] : room.design.items.find((d) => d.id === mv.itemId && d.x === mv.ox && d.y === mv.oy);
+    return data ? this.items.find((i) => i.data === data) : undefined;
   }
-
   /** cria o decalque de uma sujeira. Se `fresh`, também adiciona ao vetor mess. */
   addDecal(m: MessItem3D, fresh: boolean, at?: { p: THREE.Vector3; n: THREE.Vector3 }): DecalRec | null {
     const room = this.roomById(m.room);
@@ -745,10 +754,10 @@ export class Engine {
       const u = w.side === 'n' ? loc.x : w.side === 's' ? ROOM_W - loc.x : w.side === 'e' ? loc.z : ROOM_D - loc.z;
       mesh.position.copy(room.group.localToWorld(fr.p(u, m.h, -0.012)));
       normal.copy(w.normal);
-    } else if (m.y < 240) {
+    } else if (m.y < FLOOR_Y0) {
       const w = room.walls[0];
       const fr = this.wallFrame('n');
-      const h = WALL_H * (1 - m.y / 240);
+      const h = WALL_H * (1 - m.y / FLOOR_Y0);
       mesh.position.copy(room.group.localToWorld(fr.p(m.x / 60, h, -0.012)));
       normal.copy(w.normal);
     } else if (m.h) {
@@ -1112,27 +1121,42 @@ export class Engine {
       }
     return tot ? n / tot : 0;
   }
-  /** completa a pintura (100%): tinta da paleta vira o estilo 'paint:<idx>' da parede */
+  /** completa a pintura: a camada vira a tinta de base (igual ao 2D: { wall: spec }) */
   finishPaint(room: RoomRec): void {
     if (!room.paint) return;
-    room.cover.fill(1);
-    const idx = PALETTE.indexOf(room.paint as (typeof PALETTE)[number]);
-    if (idx >= 0) {
-      room.design.wall = 'paint:' + idx;
-      room.paint = null;
-      if (this.design.paint) delete this.design.paint[room.id];
-    }
+    room.base = room.paint;
+    room.paint = null;
+    room.cover.fill(0);
     for (const w of room.walls) this.redrawWall(w);
     this.changed = true;
+  }
+  /** aplica paint[room] vindo de fora (festa: outro jogador pintando) */
+  reloadPaint(r: RoomRec): void {
+    const p = this.design.paint?.[r.id] as { wall: string; strokes?: string; w3?: string } | undefined;
+    r.base = p?.wall || null;
+    r.paint = decodeStrokes(p?.strokes, p?.w3, r.cover);
+    for (const w of r.walls) this.redrawWall(w);
+  }
+  /** recria os móveis de um cômodo a partir de room.design.items (festa: alguém decorou) */
+  rebuildRoomItems(r: RoomRec): void {
+    for (const it of this.items.filter((i) => i.room === r)) this.removeItem(it);
+    for (const d of r.design.items) this.addItem(r, d as RoomItem3D);
+  }
+  /** objeto paint do cômodo no formato do contrato */
+  paintRecord(r: RoomRec): { wall: string; strokes?: string; w3?: string } | null {
+    if (!r.paint && !r.base) return null;
+    if (!r.paint) return { wall: r.base! };
+    return { wall: r.base ?? '', strokes: encodeStrokes(r.paint, r.cover), w3: r.paint + '|' + bitsToB64(r.cover) };
   }
 
   /* ======================= saída: design + mess ======================= */
   snapshot(): { design: HomeDesign; mess: MessItem[] } {
     // pintura
     for (const r of this.rooms) {
-      if (r.paint) {
+      const rec = this.paintRecord(r);
+      if (rec) {
         this.design.paint = this.design.paint ?? {};
-        this.design.paint[r.id] = { wall: r.paint, strokes: encodeCoverage(r.cover) };
+        this.design.paint[r.id] = rec;
       }
     }
     // móveis fora do lugar → mess (dono; visita só mantém o que já estava)
@@ -1146,12 +1170,12 @@ export class Engine {
       const e = new THREE.Euler().setFromQuaternion(it.obj.quaternion, 'YXZ');
       const m: MessItem3D = {
         id: newMessId(),
-        kind: 'crumbs',
+        kind: 'mud',
         room: it.room.id,
         x: xy.x,
         y: xy.y,
-        r: it.state === 'broken' ? 18 : 0,
-        moved: { itemId: it.data.id, ox: it.data.x, oy: it.data.y },
+        r: 1,
+        moved: { itemId: String(it.room.design.items.indexOf(it.data)), ox: it.data.x, oy: it.data.y },
       };
       if (it.state === 'broken') m.broken = true;
       else {

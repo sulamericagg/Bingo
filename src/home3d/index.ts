@@ -12,7 +12,7 @@ import { detectInitialTier } from '../core/quality';
 import { tap } from '../core/haptics';
 import { save } from '../core/storage';
 import { openEmoteWheel, closeEmoteWheel } from '../social/emotes';
-import { canUse, cloneDesign, cloneMess, PALETTE, roleFor, SPECIAL_PAINTS, type Tool, type MessKind } from './adapter';
+import { canUse, cloneDesign, cloneMess, FINISHES, PALETTE, roleFor, type Tool, type MessKind, type Finish } from './adapter';
 import { Engine } from './engine';
 import { Fps, type FpsTool } from './fps';
 import { Build, roomName } from './build';
@@ -22,6 +22,7 @@ import { disposeSfx, sfx } from './sfx';
 import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, ICON, Loading, lockTip, removeCss, Toast, unlockOrientation } from './ui';
 import { splatTexture } from './textures';
 import type { Close3DResult, Open3DOpts } from './types';
+import type { HomeDesign, MessItem } from '../home/api';
 
 export type { Open3DOpts, Close3DResult, MessItem3D, RoomItem3D, Mode3D } from './types';
 
@@ -80,10 +81,12 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   await frame();
   const design = cloneDesign(opts.design);
   const mess = cloneMess(opts.mess);
-  const role = roleFor(design, opts.editable, opts.viewerId);
+  const editable = !!(opts.editable ?? opts.isOwner);
+  const session = opts.party ?? opts.session ?? null;
+  const role = opts.role ?? roleFor(design, editable, opts.viewerId);
   const stage = el('div', 'h3-layer');
   root.insertBefore(stage, loading.box);
-  const eng = new Engine(stage, design, mess, { editable: opts.editable, role });
+  const eng = new Engine(stage, design, mess, { editable, role });
   // 3) geração procedural em passos
   const steps = eng.buildSteps();
   const total = design.rooms.length * 2 + 4;
@@ -105,7 +108,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     await frame();
   }
   // 4) modos
-  const party = opts.party || opts.partyMode ? new Party(eng, opts.party ?? null, true, opts.viewerId ?? 'me', opts.skin ?? save.skin) : null;
+  const party = session || opts.partyMode ? new Party(eng, session, true, opts.viewerId ?? 'me', opts.skin ?? save.skin) : null;
   const hud = el('div', 'h3-layer');
   root.appendChild(hud);
   const input = new FpsInput(hud);
@@ -188,25 +191,41 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   const fixWheelZ = () => requestAnimationFrame(() => document.querySelectorAll<HTMLElement>('.sc-wheel').forEach((w) => (w.style.zIndex = '9500')));
   let myEmote = '';
   let myEmoteT = 0;
-  // paleta de tintas
-  const paints: string[] = [...PALETTE, ...SPECIAL_PAINTS];
-  paints.forEach((p) => {
+  // paleta de tintas (mesmo formato do 2D: "<corIdx>:<acabamento>")
+  let paintIdx = 12;
+  let paintFin: Finish = 'solid';
+  const finName: Record<Finish, string> = {
+    solid: t('home3d.fin.solid', 'Lisa'),
+    gradient: t('home3d.fin.gradient', 'Degradê'),
+    stripes: t('home3d.fin.stripes', 'Listras'),
+    stars: t('home3d.fin.stars', 'Estrelas'),
+    glitter: t('home3d.fin.glitter', 'Glitter'),
+  };
+  const setPaint = () => {
+    fps.paintColor = paintIdx + ':' + paintFin;
+    fps.setTool('paint');
+  };
+  for (const f of FINISHES) {
+    const b = el('button', 'h3-chip' + (f === paintFin ? ' sel' : ''), esc(finName[f]));
+    b.dataset.fin = f;
+    b.onclick = () => {
+      palRow.querySelectorAll('[data-fin]').forEach((x) => x.classList.remove('sel'));
+      b.classList.add('sel');
+      paintFin = f;
+      setPaint();
+      sfx.click();
+    };
+    palRow.appendChild(b);
+  }
+  PALETTE.forEach((p, idx) => {
     const sw = el('div', 'h3-sw');
-    sw.style.background = p.startsWith('#')
-      ? p
-      : p === 'rainbow'
-        ? 'linear-gradient(90deg,#ff5c7a,#ffc93d,#4fd67a,#3fa0ff,#8a5cff)'
-        : p === 'galaxy'
-          ? 'linear-gradient(135deg,#262238,#5866f0,#c46bff)'
-          : p === 'glitter'
-            ? 'radial-gradient(#fff 1px,transparent 1.5px) 0 0/5px 5px,#ff9ad5'
-            : '#7dffd8';
-    if (p === fps.paintColor) sw.classList.add('sel');
+    sw.style.background = p;
+    if (idx === paintIdx) sw.classList.add('sel');
     sw.onclick = () => {
-      palRow.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
+      palRow.querySelectorAll('.h3-sw.sel').forEach((x) => x.classList.remove('sel'));
       sw.classList.add('sel');
-      fps.paintColor = p;
-      fps.setTool('paint');
+      paintIdx = idx;
+      setPaint();
       sfx.click();
     };
     palRow.appendChild(sw);
@@ -267,7 +286,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
       ret.style.display = tgt.style.display = '';
       if (fps.tool === 'paint') palRow.style.display = '';
     }
-    title.textContent = m === 'build' ? t('home3d.title.build', 'Montando a casa') : party ? t('home3d.title.party', 'Festa!') : opts.editable ? t('home3d.title.mine', 'Minha casa') : t('home3d.title.visit', 'Visitando');
+    title.textContent = m === 'build' ? t('home3d.title.build', 'Montando a casa') : party ? t('home3d.title.party', 'Festa!') : editable ? t('home3d.title.mine', 'Minha casa') : opts.handle ? t('home3d.title.of', 'Casa de @{h}', { h: opts.handle }) : t('home3d.title.visit', 'Visitando');
     renderTools();
   };
   setMode(opts.mode === 'build' && canUse(role, 'decorate') ? 'build' : 'fps');
@@ -276,14 +295,24 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   let raf = 0;
   let last = performance.now();
   let saveT = 0;
+  let syncT = 0;
+  const sent = new Map<string, string>();
+  if (party) party.onDesign = (room) => sent.delete(room);
   let closed = false;
   const stats = { frames: 0, ms: 0, fps: 0, tier: eng.q.tier };
+  const writeBack = (s: { design: HomeDesign; mess: MessItem[] }) => {
+    // mesmos objetos que o 2D passou (S.design / S.mess)
+    const d = opts.design as unknown as Record<string, unknown>;
+    for (const k of Object.keys(d)) delete d[k];
+    Object.assign(d, JSON.parse(JSON.stringify(s.design)));
+    opts.mess.splice(0, opts.mess.length, ...(JSON.parse(JSON.stringify(s.mess)) as MessItem[]));
+  };
   const emit = () => {
     if (!eng.changed) return;
     eng.changed = false;
     const s = eng.snapshot();
     try {
-      opts.onChange(s.design, s.mess);
+      opts.onChange?.(s.design, s.mess);
     } catch (e) {
       console.warn('[home3d] onChange', e);
     }
@@ -298,11 +327,12 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     if (build.ghost) build.exit();
     const s = eng.snapshot();
     try {
-      opts.onChange(s.design, s.mess);
+      writeBack(s);
+      opts.onChange?.(s.design, s.mess);
     } catch (e) {
       console.warn('[home3d] onChange', e);
     }
-    if (!opts.editable && eng.cleaned > 0) opts.onReward?.('clean', eng.cleaned);
+    if (!editable && eng.cleaned > 0) opts.onReward?.('clean', eng.cleaned);
     const res: Close3DResult = { design: s.design, mess: s.mess, cleaned: eng.cleaned, broken: eng.broken, reason };
     closeEmoteWheel();
     fps.dispose();
@@ -348,6 +378,18 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
       stats.frames = 0;
       stats.ms = 0;
       stats.tier = eng.q.tier;
+    }
+    syncT += dt;
+    if (syncT > 1 && session && canUse(role, 'decorate')) {
+      syncT = 0;
+      for (const r of eng.rooms) {
+        const pr = eng.paintRecord(r);
+        const sig = JSON.stringify(r.design.items) + JSON.stringify(pr);
+        if (sent.get(r.id) !== sig) {
+          if (sent.has(r.id)) party?.sendDesign(r.id, r.design.items, pr ?? undefined);
+          sent.set(r.id, sig);
+        }
+      }
     }
     saveT += dt;
     if (saveT > 5) {

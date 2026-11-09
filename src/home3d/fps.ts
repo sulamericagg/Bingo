@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { t } from '../i18n';
-import { canUse, itemColor, KINDS, newMessId, PALETTE, placeToXY, ROOM_D, ROOM_W, SPECIAL_PAINTS, WALL_T, type MessKind } from './adapter';
+import { canUse, itemColor, KINDS, newMessId, parsePaintSpec, placeToXY, ROOM_D, ROOM_W, WALL_T, type MessKind } from './adapter';
 import { G, type DecalRec, type Engine, type ItemRec, type RoomRec, type WallRec } from './engine';
 import { Hand, type HandColors } from './hand';
 import { splatColor, type Food, type Party } from './party';
@@ -41,7 +41,8 @@ export class Fps {
   tool: FpsTool = 'hand';
   held: { item?: ItemRec; food?: Food } | null = null;
   target: Target = { type: 'none', point: new THREE.Vector3(), normal: new THREE.Vector3(), dist: 99 };
-  paintColor: string = PALETTE[12];
+  /** tinta no formato do 2D: '<corIdx>:<acabamento>' */
+  paintColor = '12:solid';
   private ray = new THREE.Raycaster();
   private vel = new THREE.Vector2();
   private bob = 0;
@@ -124,7 +125,7 @@ export class Fps {
   }
   private updatePose(): void {
     const tl = this.tool;
-    if (tl === 'paint') this.hand.setPose('roller', this.paintColor.startsWith('#') ? this.paintColor : '#ff9ad5');
+    if (tl === 'paint') this.hand.setPose('roller', parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5');
     else if (tl === 'clean') this.hand.setPose(this.target.decal?.vacuum ? 'vacuum' : 'sponge');
     else if (tl === 'decor') this.hand.setPose(this.held ? 'grab' : 'build');
     else this.hand.setPose(this.held ? 'grab' : 'open');
@@ -433,7 +434,8 @@ export class Fps {
   private throwHeld(): void {
     const cam = this.eng.camera;
     cam.getWorldDirection(V);
-    const h = this.held!;
+    const h = this.held;
+    if (!h) return;
     this.held = null;
     this.hand.play('throw');
     if (h.food && this.party) {
@@ -581,14 +583,13 @@ export class Fps {
     if (fresh && Math.random() < 0.35) sfx.paint();
     if (Math.random() < 0.3) {
       const p = this.target.point;
-      this.eng.emit(p.x, p.y, p.z, w.normal.x * 0.4, -0.3, w.normal.z * 0.4, { tile: 3, color: this.paintColor.startsWith('#') ? this.paintColor : '#ff9ad5', life: 0.5, size: 0.025, grav: 6 });
+      this.eng.emit(p.x, p.y, p.z, w.normal.x * 0.4, -0.3, w.normal.z * 0.4, { tile: 3, color: parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5', life: 0.5, size: 0.025, grav: 6 });
     }
     const room = w.room;
     const prog = this.eng.paintProgress(room);
     this.onProgress?.(room, prog);
     if (prog >= 0.9) {
       this.eng.finishPaint(room);
-      if (room.paint) room.cover.fill(1);
       this.onProgress?.(room, 1);
       sfx.sparkle();
       this.onToast?.(t('home3d.toast.painted', 'Parede novinha!'), );
@@ -698,4 +699,3 @@ export function messName(k: MessKind): string {
 export function foodName(k: string): string {
   return ({ cake: 'Fatia de bolo', pie: 'Torta', tomato: 'Tomate', juice: 'Suco', cupcake: 'Bolinho' } as Record<string, string>)[k] ?? k;
 }
-export const PAINTS = [...PALETTE, ...SPECIAL_PAINTS];

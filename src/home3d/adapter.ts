@@ -19,7 +19,8 @@ export const ROOM_W = 360 / PX; // 6 m
 export const ROOM_D = 4.8;
 export const WALL_H = 2.7;
 export const WALL_T = 0.12;
-export const FLOOR_Y0 = 240;
+/** linha da parede do fundo no 2D (render-room.ts WALL_Y) */
+export const FLOOR_Y0 = 230;
 export const ROOM_IDS = ['living', 'kitchen', 'bedroom', 'bath', 'party'] as const;
 
 /** Paleta curada — espelho de PALETTE em src/home/catalog.ts (mesma ordem). */
@@ -257,33 +258,89 @@ export function surface(spec: string | undefined, fallback: string): [string, st
 export const FLOOR_STYLES = ['wood', 'tile', 'carpet', 'checker', 'stone', 'grass', 'stars', 'hex', 'stripes', 'dots', 'marble', 'candy'] as const;
 export const WALL_STYLES = ['paint', 'stripes', 'dots', 'brick', 'wood', 'stars', 'hearts', 'waves', 'tile', 'check', 'clouds', 'space'] as const;
 
-/* ---------------- pintura (HomeDesign.paint) ----------------
- * paint[roomId] = { wall, strokes }
- *   wall:    cor da tinta ('#rrggbb') ou especial ('rainbow' | 'glitter' | 'glow' | 'galaxy')
- *   strokes: cobertura da tinta nova sobre a parede antiga, grade PAINT_GW×PAINT_GH por parede
- *            (4 paredes na ordem n,e,s,w), 1 bit por célula, base64. Ausente/'' = 100% pintado.
+/* ---------------- pintura (HomeDesign.paint) — MESMO formato do 2D (src/home/paint.ts) ----------------
+ * paint[roomId] = { wall, strokes?, w3? }
+ *   wall:    tinta "de base" já completa ('<corIdx>:<acabamento>' ou 'pass:<id>'), pintada por cima do papel de parede
+ *   strokes: camada em andamento "<spec>;<hex>" — grade 36×23 (células de 10 u) da parede do fundo do 2D
+ *   w3:      (opcional, só 3D) "<spec>|<base64>" cobertura das 4 paredes (grade PAINT_GW×PAINT_GH cada, ordem n,e,s,w)
+ * Completa (>= 90% no 3D, 97% no 2D) → { wall: spec } e a camada some.
  */
 export const PAINT_GW = 48;
 export const PAINT_GH = 16;
-export const SPECIAL_PAINTS = ['rainbow', 'glitter', 'glow', 'galaxy'] as const;
-export function encodeCoverage(cells: Uint8Array): string {
-  let all = true;
-  for (let i = 0; i < cells.length; i++) if (!cells[i]) { all = false; break; }
-  if (all) return '';
+export const FINISHES = ['solid', 'gradient', 'stripes', 'stars', 'glitter'] as const;
+export type Finish = (typeof FINISHES)[number];
+/** grade do 2D (Painter(0,0,360,WALL_Y-8), célula 10) */
+const P2_COLS = 36;
+const P2_ROWS = Math.ceil((FLOOR_Y0 - 8) / 10);
+export function parsePaintSpec(spec: string | undefined): { col: string; finish: Finish } | null {
+  if (!spec) return null;
+  if (spec.startsWith('pass:')) return { col: '#ffd84a', finish: 'glitter' };
+  const [a, b] = spec.split(':');
+  const f = (FINISHES as readonly string[]).includes(b) ? (b as Finish) : 'solid';
+  return { col: palColor(Number(a) || 0), finish: f };
+}
+/** bits → base64 */
+export function bitsToB64(cells: Uint8Array): string {
   const bytes = new Uint8Array(Math.ceil(cells.length / 8));
   for (let i = 0; i < cells.length; i++) if (cells[i]) bytes[i >> 3] |= 1 << (i & 7);
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return btoa(s);
 }
-export function decodeCoverage(strokes: string | undefined, n: number): Uint8Array {
+export function b64ToBits(b64: string, n: number): Uint8Array {
   const out = new Uint8Array(n);
-  if (!strokes) return out.fill(1);
   try {
-    const s = atob(strokes);
+    const s = atob(b64);
     for (let i = 0; i < n; i++) out[i] = (s.charCodeAt(i >> 3) >> (i & 7)) & 1;
   } catch {
-    out.fill(1);
+    /* */
   }
   return out;
+}
+/** célula do 3D (parede do fundo) ↔ ponto 2D */
+function cell3To2D(gx: number, gy: number): [number, number] {
+  const x = ((gx + 0.5) / PAINT_GW) * 360;
+  const h = ((gy + 0.5) / PAINT_GH) * WALL_H;
+  return [x, FLOOR_Y0 * (1 - h / WALL_H)];
+}
+/** lê strokes do 2D ("spec;hex") para a parede do fundo (wi = 0) da cobertura 3D */
+export function decodeStrokes(strokes: string | undefined, w3: string | undefined, cover: Uint8Array): string | null {
+  cover.fill(0);
+  if (!strokes) return null;
+  const [spec, hex] = strokes.split(';');
+  if (w3 && w3.startsWith(spec + '|')) {
+    cover.set(b64ToBits(w3.slice(spec.length + 1), cover.length));
+    return spec;
+  }
+  if (!hex) return spec;
+  const per = Math.ceil(P2_COLS / 4);
+  for (let gy = 0; gy < PAINT_GH; gy++)
+    for (let gx = 0; gx < PAINT_GW; gx++) {
+      const [x, y] = cell3To2D(gx, gy);
+      const cx = Math.floor(x / 10),
+        cy = Math.floor(y / 10);
+      if (cy < 0 || cy >= P2_ROWS) continue;
+      const n = parseInt(hex[cy * per + (cx >> 2)] || '0', 16);
+      if (n & (1 << (cx & 3))) cover[gy * PAINT_GW + gx] = 1;
+    }
+  return spec;
+}
+/** cobertura 3D → strokes do 2D (só a parede do fundo cabe no 2D) */
+export function encodeStrokes(spec: string, cover: Uint8Array): string {
+  let s = '';
+  for (let cy = 0; cy < P2_ROWS; cy++)
+    for (let k = 0; k < P2_COLS; k += 4) {
+      let n = 0;
+      for (let b = 0; b < 4; b++) {
+        const cx = k + b;
+        if (cx >= P2_COLS) continue;
+        const x = cx * 10 + 5,
+          y = cy * 10 + 5;
+        const gx = Math.min(PAINT_GW - 1, Math.floor((x / 360) * PAINT_GW));
+        const gy = Math.min(PAINT_GH - 1, Math.max(0, Math.floor((1 - y / FLOOR_Y0) * PAINT_GH)));
+        if (cover[gy * PAINT_GW + gx]) n |= 1 << b;
+      }
+      s += n.toString(16);
+    }
+  return spec + ';' + s;
 }

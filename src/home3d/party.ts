@@ -5,7 +5,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import type { MessItem, PartyEvent, PartyPeer, PartySession } from '../home/api';
+import type { HomeDesign, MessItem, PartyEvent, PartyPeer, PartySession } from '../home/api';
 import { SKINS, skinById } from '../game/skins';
 import { drawPlayer } from '../game/character';
 import { drawEmoteBubble, EMOTE_CODES, EMOTE_DURATION } from '../social/emotes';
@@ -63,6 +63,7 @@ const BOT_NAMES = [
   ['home3d.bot.3', 'Faísca'],
 ];
 const V = new THREE.Vector3();
+type HomeItems = HomeDesign['rooms'][number]['items'];
 
 export class Party {
   foods: Food[] = [];
@@ -400,6 +401,22 @@ export class Party {
   }
   private onEvent(e: PartyEvent): void {
     const x = e as PartyEvent & { p3?: number[]; v3?: number[] };
+    const de = e as unknown as { t: string; by: string; room: string; items?: HomeItems; paint?: { wall: string; strokes?: string } };
+    if (de.t === 'design') {
+      if (de.by === this.myId) return;
+      const r = this.eng.roomById(de.room);
+      if (!r) return;
+      if (de.items) {
+        r.design.items = de.items;
+        this.eng.rebuildRoomItems(r);
+      }
+      if (de.paint) {
+        this.eng.design.paint = { ...(this.eng.design.paint ?? {}), [de.room]: de.paint };
+        this.eng.reloadPaint(r);
+      }
+      this.onDesign?.(de.room);
+      return;
+    }
     switch (e.t) {
       case 'throw': {
         if (e.from === this.myId) return;
@@ -453,6 +470,12 @@ export class Party {
     const xy = localToFloorXY(loc.x, loc.z);
     this.session.send({ x: xy.x, y: xy.y, room: room.id, holding, emote });
   }
+  /** co-decoração (mesmo evento do 2D: src/home/service.ts DesignEvent) */
+  sendDesign(room: string, items: unknown[], paint?: { wall: string; strokes?: string }): void {
+    if (!this.session) return;
+    this.session.event({ t: 'design', by: this.myId, room, items, paint } as unknown as PartyEvent);
+  }
+  onDesign?: (room: string) => void;
   /** jogador local jogou comida */
   sendThrow(f: Food, from: THREE.Vector3, vel: THREE.Vector3): void {
     if (!this.session) return;

@@ -3,7 +3,7 @@
  *  Fonte da verdade: HomeDesign + MessItem[] (src/home/api.ts).
  *  O 3D só lê esses dados e devolve versões alteradas via onChange.
  * ============================================================ */
-import type { HomeDesign, MessItem, PartySession } from '../home/api';
+import type { HomeDesign, HomeRole, MessItem, PartySession } from '../home/api';
 
 export type Mode3D = 'fps' | 'build';
 
@@ -17,9 +17,21 @@ export interface Open3DOpts {
    * false = visita/festa na casa de outra pessoa: design só leitura (móveis voltam
    * ao lugar ao sair), mas limpar sujeira É permitido (e recompensado).
    */
-  editable: boolean;
-  /** chamado ao sair (e a cada mudança importante, com throttle) */
-  onChange(design: HomeDesign, mess: MessItem[]): void;
+  editable?: boolean;
+  /** apelido usado pelo 2D (src/home/screen.ts): mesmo que editable */
+  isOwner?: boolean;
+  /** papel do visitante (padrão: design.access → roleFor) */
+  role?: HomeRole;
+  /** apelido usado pelo 2D: mesmo que party */
+  session?: PartySession | null;
+  /** @nome do dono (título "Casa de @nome") */
+  handle?: string;
+  /**
+   * chamado ao sair (e a cada ~5 s se algo mudou). Opcional: ao sair, o 3D TAMBÉM
+   * escreve o resultado de volta nos MESMOS objetos recebidos (design e o array mess),
+   * então o 2D que passou S.design / S.mess já vê as mudanças.
+   */
+  onChange?(design: HomeDesign, mess: MessItem[]): void;
   /** modo inicial (padrão 'fps'); 'build' só se editable */
   mode?: Mode3D;
   /** cômodo inicial (padrão: 'party' em festa, senão 'living') */
@@ -59,8 +71,8 @@ export interface Close3DResult {
  *            uma posição aproximada no plano 2D, então o 2D pode desenhar no chão/parede do fundo.
  *  - h:      altura (m) da mancha na parede
  *  - yaw:    giro do móvel derrubado (rad) — o 2D pode usar `rot` (já existe) para inclinar
- * Para móveis fora do lugar: kind = 'crumbs', r = 0, moved = { itemId, ox, oy } (ox/oy identificam
- * QUAL instância — o mesmo id pode aparecer 2x no cômodo).
+ * Para móveis fora do lugar (igual ao 2D, src/home/room.ts knock()): kind = 'mud', r = 1,
+ * moved = { itemId: String(índice em RoomDesign.items), ox, oy }, x/y = onde o móvel está agora.
  */
 export interface MessItem3D extends MessItem {
   broken?: boolean;
