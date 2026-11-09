@@ -90,8 +90,12 @@ function muteMusic(on: boolean): void {
   else audio.applySettings();
 }
 
-/** Abre o microfone e começa a escutar. */
-export async function startVoice(): Promise<VoiceError | null> {
+/**
+ * Abre o microfone e começa a escutar.
+ * `stillWanted`: conferido quando a permissão volta — se a criança fechou a tela do bichinho
+ * enquanto o pedido de permissão estava aberto, o microfone NÃO pode ficar ligado no hub.
+ */
+export async function startVoice(stillWanted: () => boolean = () => true): Promise<VoiceError | null> {
   if (state !== 'off') return null;
   if (!voiceSupported()) return 'unsupported';
   if (!save.sound) return 'nosound';
@@ -110,6 +114,13 @@ export async function startVoice(): Promise<VoiceError | null> {
   }
   save.pet.voiceGranted = true;
   persist();
+  // a permissão demorou (diálogo do Android pausa o app e chama stopVoice): só segue se ainda faz sentido
+  if (!stillWanted() || (typeof document !== 'undefined' && document.hidden)) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+    set('off');
+    return null;
+  }
   if (c.state === 'suspended') await c.resume().catch(() => {});
   const sr = c.sampleRate;
   if (!cap || cap.length !== Math.ceil(sr * (MAX_SEC + PRE_SEC))) {

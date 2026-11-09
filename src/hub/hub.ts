@@ -662,6 +662,11 @@ function buildNav(): void {
     )
     .join('');
   nav.classList.toggle('many', ps.length > 5);
+  // dica de rolagem: esmaece a borda enquanto houver itens escondidos à direita
+  const edge = () => nav.classList.toggle('more', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4);
+  nav.onscroll = edge;
+  requestAnimationFrame(edge);
+  window.addEventListener('resize', edge);
   nav.querySelectorAll<HTMLElement>('[data-panel]').forEach((b) => {
     b.onclick = () => {
       const p = listPanels().find((x) => x.id === b.dataset.panel);
