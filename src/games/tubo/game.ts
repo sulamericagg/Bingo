@@ -884,6 +884,16 @@ class TuboGame implements MiniGameHandle {
 
   destroy(): void {
     if (this.dead) return;
+    // saiu pelo "Sair do jogo?" do hub (voltar do Android) no meio da queda ou na tela de "Continuar":
+    // as moedas coletadas não podem sumir (o "Sair" da pausa própria já fazia isso)
+    const m = this.mode === 'paused' ? this.prevMode : this.mode;
+    if (m !== 'ready' && !this.credited && (this.score > 0 || this.coinsRun > 0)) {
+      try {
+        this.finish();
+      } catch (e) {
+        console.warn('[tubo] crédito na saída', e);
+      }
+    }
     this.dead = true;
     cancelAnimationFrame(this.raf);
     for (const f of this.offs) f();
