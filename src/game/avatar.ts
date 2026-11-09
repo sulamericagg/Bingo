@@ -5,6 +5,7 @@
  *  drawAvatar segue as convenções de drawPlayer (character.ts).
  * ============================================================ */
 import { save } from '../core/storage';
+import { t } from '../i18n';
 import type { PlayerPose } from './character';
 import { A, cols, ell, lum, mix, NP, setBase, SHAPES, tracePts } from './avatar-gfx';
 import { drawOutline, type DC, MATERIALS, PATTERNS, shadeBody } from './avatar-mat';
@@ -20,16 +21,16 @@ export type PartSlot = Slot | 'palette';
 export const SLOTS: Slot[] = ['body', 'material', 'pattern', 'eyes', 'mouth', 'head', 'face', 'back', 'aura'];
 
 export const SLOT_LABEL: Record<PartSlot, string> = {
-  body: 'Corpo',
-  material: 'Cor',
-  pattern: 'Padrão',
-  eyes: 'Olhos',
-  mouth: 'Boca',
-  head: 'Cabeça',
-  face: 'Rosto',
-  back: 'Costas',
-  aura: 'Aura',
-  palette: 'Paleta',
+  get body() { return t('slot.body', 'Corpo'); },
+  get material() { return t('slot.material', 'Cor'); },
+  get pattern() { return t('slot.pattern', 'Padrão'); },
+  get eyes() { return t('slot.eyes', 'Olhos'); },
+  get mouth() { return t('slot.mouth', 'Boca'); },
+  get head() { return t('slot.head', 'Cabeça'); },
+  get face() { return t('slot.face', 'Rosto'); },
+  get back() { return t('slot.back', 'Costas'); },
+  get aura() { return t('slot.aura', 'Aura'); },
+  get palette() { return t('slot.palette', 'Paleta'); },
 };
 
 export interface Part {

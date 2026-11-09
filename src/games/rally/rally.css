@@ -4,7 +4,7 @@
   inset: 0;
   overflow: hidden;
   background: #120b3a;
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
   touch-action: none;
   user-select: none;
@@ -469,4 +469,59 @@
   text-align: center;
   font-weight: 800;
   color: #3ee07a;
+}
+
+/* alvo de toque ≥ 44px nos botões de melhoria (visual igual) */
+.rl-up {
+  position: relative;
+}
+.rl-up::before {
+  content: '';
+  position: absolute;
+  inset: -8px -2px;
+}
+
+/* dica das 3 primeiras corridas: rótulos + mãozinha sobre os pedais desenhados no canvas */
+.rl-hud > .rl-pedals {
+  pointer-events: none;
+}
+.rl-pedals {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+  display: none;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+.rl-pedals.tut {
+  display: flex;
+}
+.rl-pd {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #fff;
+  transition: opacity 0.15s;
+}
+.rl-pd span {
+  font-weight: 800;
+  font-size: 15px;
+  text-align: center;
+  background: rgba(20, 10, 50, 0.72);
+  border-radius: 12px;
+  padding: 3px 8px;
+}
+.rl-pd.on {
+  opacity: 0.35;
+}
+.rl-pd.gas:not(.on) .ico {
+  animation: rl-pd-pulse 0.9s ease-in-out infinite;
+}
+@keyframes rl-pd-pulse {
+  50% {
+    transform: translateY(8px) scale(0.92);
+  }
 }

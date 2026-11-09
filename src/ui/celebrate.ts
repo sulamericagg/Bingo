@@ -8,9 +8,10 @@ import type { RewardPack } from '../../shared/reward';
 import { audio } from '../core/audio';
 import * as haptics from '../core/haptics';
 import { renderSkinPreview, renderTrailPreview } from '../game/preview';
-import { RARITY_INFO, SKINS, TRAILS } from '../game/skins';
+import { RARITY_INFO, SKINS, TRAILS, skinName, trailName } from '../game/skins';
 import { esc, fmt } from './dom';
 import { icon, type IconName } from './icons';
+import { t } from '../i18n';
 
 export interface CelebratePack extends RewardPack {
   coinDoubler?: boolean;
@@ -33,7 +34,11 @@ interface Tile {
   plate?: string;
 }
 
-const BOOST_LABEL = { shield: ['Escudo', 'Escudos'], magnet: ['Ímã', 'Ímãs'], headstart: ['Largada Turbo', 'Largadas Turbo'] } as const;
+const BOOST_LABEL = {
+  shield: () => [t('boost.shield', 'Escudo'), t('boost.shield.pl', 'Escudos')],
+  magnet: () => [t('boost.magnet', 'Ímã'), t('boost.magnet.pl', 'Ímãs')],
+  headstart: () => [t('boost.headstart', 'Largada Turbo'), t('boost.headstart.pl', 'Largadas Turbo')],
+} as const;
 const BOOST_ICON: Record<'shield' | 'magnet' | 'headstart', IconName> = { shield: 'shield', magnet: 'magnet', headstart: 'rocket' };
 
 /** Junta vários pacotes em um (para "Pegar tudo"). */
@@ -59,21 +64,21 @@ function tiles(p: CelebratePack, big: boolean): Tile[] {
   for (const id of p.skins ?? []) {
     const s = SKINS.find((x) => x.id === id);
     if (!s) continue;
-    out.push({ art: renderSkinPreview(s, sz, 0.4), amount: s.name, label: `Skin ${RARITY_INFO[s.rarity].label.toLowerCase()}`, cls: `r-${s.rarity}` });
+    out.push({ art: renderSkinPreview(s, sz, 0.4), amount: skinName(s), label: t('cel.skinOf', 'Skin {r}', { r: RARITY_INFO[s.rarity].label.toLowerCase() }), cls: `r-${s.rarity}` });
   }
   for (const id of p.trails ?? []) {
-    const t = TRAILS.find((x) => x.id === id);
-    if (!t) continue;
-    out.push({ art: renderTrailPreview(t, sz), amount: t.name, label: `Rastro ${RARITY_INFO[t.rarity].label.toLowerCase()}`, cls: `r-${t.rarity}` });
+    const tl = TRAILS.find((x) => x.id === id);
+    if (!tl) continue;
+    out.push({ art: renderTrailPreview(tl, sz), amount: trailName(tl), label: t('cel.trailOf', 'Rastro {r}', { r: RARITY_INFO[tl.rarity].label.toLowerCase() }), cls: `r-${tl.rarity}` });
   }
-  if (p.gems) out.push({ art: icon(p.gems >= 500 ? 'gem-chest' : p.gems >= 100 ? 'gem-heap' : p.gems >= 20 ? 'gem-pile' : 'gem'), amount: `+${fmt(p.gems)}`, label: 'gemas', plate: 'violet' });
-  if (p.coins) out.push({ art: icon(p.coins >= 100 ? 'coins' : 'coin'), amount: `+${fmt(p.coins)}`, label: 'moedas', plate: 'gold' });
+  if (p.gems) out.push({ art: icon(p.gems >= 500 ? 'gem-chest' : p.gems >= 100 ? 'gem-heap' : p.gems >= 20 ? 'gem-pile' : 'gem'), amount: `+${fmt(p.gems)}`, label: t('cel.gems', 'gemas'), plate: 'violet' });
+  if (p.coins) out.push({ art: icon(p.coins >= 100 ? 'coins' : 'coin'), amount: `+${fmt(p.coins)}`, label: t('cel.coins', 'moedas'), plate: 'gold' });
   for (const k of ['shield', 'magnet', 'headstart'] as const) {
     const n = p.boosts?.[k];
-    if (n) out.push({ art: icon(BOOST_ICON[k]), amount: `+${n}`, label: BOOST_LABEL[k][n === 1 ? 0 : 1], plate: k === 'magnet' ? 'pink' : k === 'shield' ? 'cyan' : 'gold' });
+    if (n) out.push({ art: icon(BOOST_ICON[k]), amount: `+${n}`, label: BOOST_LABEL[k]()[n === 1 ? 0 : 1], plate: k === 'magnet' ? 'pink' : k === 'shield' ? 'cyan' : 'gold' });
   }
-  if (p.coinDoubler) out.push({ art: icon('coins'), amount: '2x', label: 'moedas para sempre', plate: 'green' });
-  if (p.noAds) out.push({ art: icon('no-ads'), amount: 'Sem anúncios', label: 'para sempre', plate: 'violet' });
+  if (p.coinDoubler) out.push({ art: icon('coins'), amount: '2x', label: t('cel.coinsForever', 'moedas para sempre'), plate: 'green' });
+  if (p.noAds) out.push({ art: icon('no-ads'), amount: t('shop.noAds', 'Sem anúncios'), label: t('cel.forever', 'para sempre'), plate: 'violet' });
   for (const e of p.extras ?? []) out.push({ art: icon(e.icon), amount: e.label, label: '', plate: e.plate ?? 'violet' });
   return out;
 }
@@ -90,7 +95,7 @@ export function packChips(p: RewardPack): HTMLElement {
     c.insertAdjacentHTML('beforeend', `<b>${esc(t.amount)}</b>`);
     wrap.appendChild(c);
   }
-  if (!wrap.children.length) wrap.innerHTML = `<span class="chip">${icon('gift')}<b>Surpresa</b></span>`;
+  if (!wrap.children.length) wrap.innerHTML = `<span class="chip">${icon('gift')}<b>${t('cel.surprise', 'Surpresa')}</b></span>`;
   return wrap;
 }
 
@@ -132,10 +137,10 @@ function open(pack: CelebratePack, opts: CelebrateOpts, onClose: () => void): vo
     <div class="cel-box">
       <div class="cel-rays"></div>
       <div class="cel-glow"></div>
-      <div class="cel-title">${esc(opts.title ?? 'VOCÊ GANHOU!')}</div>
+      <div class="cel-title">${esc(opts.title ?? t('cel.won', 'VOCÊ GANHOU!'))}</div>
       ${opts.subtitle ? `<div class="cel-sub">${esc(opts.subtitle)}</div>` : ''}
       <div class="cel-items ${one ? 'one' : ''}"></div>
-      <button class="btn btn-play small cel-ok">${esc(opts.button ?? 'OBA!')}</button>
+      <button class="btn btn-play small cel-ok">${esc(opts.button ?? t('cel.ok', 'OBA!'))}</button>
     </div>`;
   const items = root.querySelector<HTMLElement>('.cel-items')!;
   list.forEach((t, i) => {
@@ -150,7 +155,7 @@ function open(pack: CelebratePack, opts: CelebrateOpts, onClose: () => void): vo
     el.insertAdjacentHTML('beforeend', `<b>${esc(t.amount)}</b>${t.label ? `<small>${esc(t.label)}</small>` : ''}`);
     items.appendChild(el);
   });
-  if (!list.length) items.innerHTML = `<div class="cel-item"><div class="cel-art plate plate-gold">${icon('gift')}</div><b>Presente</b></div>`;
+  if (!list.length) items.innerHTML = `<div class="cel-item"><div class="cel-art plate plate-gold">${icon('gift')}</div><b>${t('inbox.gift', 'Presente')}</b></div>`;
   document.body.appendChild(root);
   requestAnimationFrame(() => root.classList.add('on'));
 

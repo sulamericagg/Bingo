@@ -6,7 +6,7 @@
  * ============================================================ */
 import './pass.css';
 import { persist, save } from '../core/storage';
-import type { SeasonInfo } from '../creatures/seasons';
+import { seasonTheme, type SeasonInfo } from '../creatures/seasons';
 import { t } from '../i18n';
 import { icon } from '../ui/icons';
 import { drawSeasonArt, mixHex } from './art';
@@ -66,8 +66,8 @@ export async function maybeAnnounce(): Promise<void> {
   const daysLeft = Math.max(1, Math.ceil(left / DAY));
   body.innerHTML =
     kind === 'new'
-      ? `<div class="pa-kicker">${t('pass.ann.new', 'Novo Passe Estelar!')}</div><div class="pa-title">${s.theme}</div><div class="pa-text">${t('pass.ann.newText', '50 níveis, 5 bichinhos exclusivos e o rei da temporada: {k}.', { k: king.name })}</div>`
-      : `<div class="pa-kicker">${icon('clock', { size: 16 })} ${t('pass.ann.end', 'Últimos {n} dias!', { n: daysLeft })}</div><div class="pa-title">${s.theme}</div><div class="pa-text">${isPremium() ? t('pass.ann.endPrem', 'Corra para resgatar tudo antes que a temporada acabe!') : t('pass.ann.endFree', 'Os prêmios desta temporada nunca mais voltam. Ainda dá tempo!')}</div>`;
+      ? `<div class="pa-kicker">${t('pass.ann.new', 'Novo Passe Estelar!')}</div><div class="pa-title">${seasonTheme(s)}</div><div class="pa-text">${t('pass.ann.newText', '50 níveis, 5 bichinhos exclusivos e o rei da temporada: {k}.', { k: king.name })}</div>`
+      : `<div class="pa-kicker">${icon('clock', { size: 16 })} ${t('pass.ann.end', 'Últimos {n} dias!', { n: daysLeft })}</div><div class="pa-title">${seasonTheme(s)}</div><div class="pa-text">${isPremium() ? t('pass.ann.endPrem', 'Corra para resgatar tudo antes que a temporada acabe!') : t('pass.ann.endFree', 'Os prêmios desta temporada nunca mais voltam. Ainda dá tempo!')}</div>`;
   const btns = document.createElement('div');
   btns.className = 'pa-btns';
   const later = document.createElement('button');
@@ -100,7 +100,7 @@ export function seasonBanner(el: HTMLElement): void {
   const w = Math.max(280, el.clientWidth || 340);
   b.appendChild(art(w, 84, s));
   const txt = document.createElement('div');
-  txt.innerHTML = `<b>${t('pass.title', 'Passe Estelar')}: ${s.theme}</b><small>${t('pass.endsIn', 'Termina em {t}', { t: `${Math.ceil(seasonLeftMs(s) / DAY)}d` })}</small>`;
+  txt.innerHTML = `<b>${t('pass.title', 'Passe Estelar')}: ${seasonTheme(s)}</b><small>${t('pass.endsIn', 'Termina em {t}', { t: `${Math.ceil(seasonLeftMs(s) / DAY)}d` })}</small>`;
   b.appendChild(txt);
   b.onclick = () => import('./ui').then((m) => m.openPassUI());
   el.appendChild(b);

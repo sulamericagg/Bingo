@@ -11,6 +11,7 @@ import { detectInitialTier, type Tier } from '../core/quality';
 import { save } from '../core/storage';
 import { skinById } from '../game/skins';
 import { drawPlayer, glow } from '../game/sprites';
+import { gameFont } from '../i18n/font';
 
 const SEEN_KEY = 'bo-intro-seen';
 const TAU = Math.PI * 2;
@@ -284,7 +285,7 @@ function buildLogo(bw: number, dpr: number): LogoArt {
 
   // wordmark: "TEAM" ciano espaçado + "Ross" rosado
   const fs = bw * 0.155;
-  x.font = `700 ${fs}px Fredoka, system-ui, sans-serif`;
+  x.font = gameFont(700, fs);
   x.textBaseline = 'alphabetic';
   x.textAlign = 'left';
   const t1 = 'TEAM';
@@ -321,7 +322,7 @@ function buildLogo(bw: number, dpr: number): LogoArt {
 
 function buildSubtitle(fs: number, dpr: number): [HTMLCanvasElement, number, number] {
   const [, mx] = canvas(1, 1);
-  mx.font = `600 ${fs}px Fredoka, system-ui, sans-serif`;
+  mx.font = gameFont(600, fs);
   const tr = fs * 0.55;
   const s = 'apresenta';
   const w = trackedWidth(mx, s, tr) + fs;
@@ -340,7 +341,7 @@ function buildSubtitle(fs: number, dpr: number): [HTMLCanvasElement, number, num
 
 function buildTitleWord(word: string, fs: number, dpr: number, grad: [string, string, string], shadow: string, glowC: string): [HTMLCanvasElement, number, number] {
   const [, mx] = canvas(1, 1);
-  mx.font = `700 ${fs}px Fredoka, system-ui, sans-serif`;
+  mx.font = gameFont(700, fs);
   const track = 2;
   const tw = trackedWidth(mx, word, track);
   const pad = fs * 0.35;

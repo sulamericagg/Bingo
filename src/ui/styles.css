@@ -1,3 +1,10 @@
+/* pilha de fontes por idioma (Fredoka só tem latim) — manter igual a src/i18n/font.ts */
+:root { --font: 'Fredoka', system-ui, sans-serif; }
+:root:lang(ja) { --font: 'Fredoka', 'Noto Sans JP', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic', 'Noto Sans CJK JP', system-ui, sans-serif; }
+:root:lang(ko) { --font: 'Fredoka', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', system-ui, sans-serif; }
+:root:lang(zh) { --font: 'Fredoka', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+:root:lang(ru) { --font: 'Fredoka', 'Nunito', 'Noto Sans', 'Roboto', 'Segoe UI', system-ui, sans-serif; }
+
 :root {
   --bg: #0b0620;
   --panel: rgba(28, 14, 64, 0.82);
@@ -12,7 +19,7 @@
   --danger: #ff4f6a;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
 }
 
 * {
@@ -3026,7 +3033,7 @@ button {
 }
 
 .quality-row select {
-  font: 600 15px Fredoka, system-ui, sans-serif;
+  font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.18);

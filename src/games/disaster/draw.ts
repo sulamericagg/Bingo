@@ -415,7 +415,8 @@ export class Drawer {
       x.globalAlpha = 1;
     }
 
-    // jogadores
+    // jogadores (etiquetas de nome não se sobrepõem: a primeira que ocupa o lugar fica)
+    this.tagBoxes.length = 0;
     for (const p of g.players) if (p.alive) this.player(x, p, 1);
     // visitantes online
     for (const pr of g.peers) {
@@ -705,6 +706,7 @@ export class Drawer {
       x.closePath();
       x.stroke();
       x.fill();
+      this.tagBoxes.push(p.x - 10, ay - 8, p.x + 10, ay + 4);
     } else if (g.q.starLayers >= 2 || Math.abs(p.x - g.me.x) < 120) this.tag(x, p.x, p.y - R * 2 - 10, p.name, '#ffffff');
     if (p.maxJumps > 1 && !p.onGround && p.jumps > 1) {
       x.strokeStyle = 'rgba(62,224,122,.7)';
@@ -715,8 +717,22 @@ export class Drawer {
     }
   }
 
+  /** retângulos (x0,y0,x1,y1) das etiquetas já desenhadas neste quadro */
+  private tagBoxes: number[] = [];
+
   private tag(x: CanvasRenderingContext2D, px: number, py: number, name: string, col: string): void {
     x.font = '700 9px Fredoka, system-ui, sans-serif';
+    const hw = x.measureText(name).width / 2 + 2;
+    const bx = this.tagBoxes;
+    const hits = (y: number) => {
+      for (let i = 0; i < bx.length; i += 4) if (px + hw > bx[i] && px - hw < bx[i + 2] && y + 6 > bx[i + 1] && y - 6 < bx[i + 3]) return true;
+      return false;
+    };
+    if (hits(py)) {
+      if (hits(py - 12)) return; // amontoado: some a etiqueta (o Bloop continua visível)
+      py -= 12;
+    }
+    bx.push(px - hw, py - 6, px + hw, py + 6);
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineWidth = 3;

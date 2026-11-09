@@ -7,6 +7,7 @@ import { drawPlayer } from '../../game/character';
 import { makeCanvas } from '../../game/math';
 import { skinById } from '../../game/skins';
 import { LINE_COLORS, PLOT_H, PLOT_W } from './data';
+import { gameFont } from '../../i18n/font';
 
 export const INK = '#2a0b5c';
 const TAU = Math.PI * 2;
@@ -247,7 +248,7 @@ function mkUpgrader(S: number): HTMLCanvasElement {
   x.arc(W / 2 + 3, H * 0.26, S * 0.15, 0, TAU);
   inked(x, lw, '#5ef0ff');
   x.fillStyle = INK;
-  x.font = `900 ${Math.round(S * 0.17)}px Fredoka, system-ui, sans-serif`;
+  x.font = gameFont(900, Math.round(S * 0.17));
   x.textAlign = 'center';
   x.textBaseline = 'middle';
   x.fillText('x2', W / 2 + 3, H * 0.27);
@@ -315,7 +316,7 @@ function mkPadIcon(S: number, kind: string): HTMLCanvasElement {
     x.closePath();
     inked(x, lw, '#ffd84a');
   } else if (kind === 'upgrader') {
-    x.font = `900 ${Math.round(P * 0.6)}px Fredoka, system-ui, sans-serif`;
+    x.font = gameFont(900, Math.round(P * 0.6));
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineWidth = lw * 2.4;
@@ -702,7 +703,7 @@ export function buildFloor(S: number, color: string, name: string): HTMLCanvasEl
   x.strokeStyle = 'rgba(42,11,92,0.35)';
   x.stroke();
   // placa com o nome (embaixo)
-  x.font = `700 ${Math.round(S * 0.34)}px Fredoka, system-ui, sans-serif`;
+  x.font = gameFont(700, Math.round(S * 0.34));
   const tw = Math.min(W * 0.6, x.measureText(name).width + S * 0.6);
   const bx = W / 2 - tw / 2;
   const by = H - pad * 0.15;

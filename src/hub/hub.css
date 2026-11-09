@@ -298,7 +298,7 @@ body.has-banner {
   display: flex;
   gap: 14px;
   height: 100%;
-  transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.05);
+  transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.05); /* antes 0,55 s: o carrossel parecia "pesado" */
   will-change: transform;
 }
 .hub-track.instant {
@@ -843,4 +843,31 @@ body.has-banner {
 }
 .gh-loading i:nth-child(3) {
   animation-delay: 0.3s;
+}
+
+/* ---------- alvos de toque ≥ 44px (área invisível extra, sem mudar o visual) ---------- */
+.hub-gear {
+  width: 44px;
+  height: 44px;
+}
+.hub-pill {
+  position: relative;
+}
+.hub-pill::before {
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+.ox-btn::before {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+.hub-dot {
+  position: relative;
+}
+.hub-dot::before {
+  content: '';
+  position: absolute;
+  inset: -16px -4px;
 }

@@ -52,7 +52,9 @@ export function registerSocial(): void {
   done = true;
   registerPanel({
     id: 'campeonatos',
-    label: t('nav.champ', 'Campeonatos'),
+    get label() {
+      return t('nav.champ', 'Campeonatos');
+    },
     icon: 'trophy',
     navOrder: 60,
     open: openChampionshipsPanel,
@@ -60,7 +62,9 @@ export function registerSocial(): void {
   });
   registerPanel({
     id: 'social',
-    label: t('nav.social', 'Social'),
+    get label() {
+      return t('nav.social', 'Social');
+    },
     icon: 'user',
     navOrder: 50,
     open: () => openSocial('chat'),

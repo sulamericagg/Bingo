@@ -8,6 +8,7 @@
 import { bus } from '../core/events';
 import type { CreatureRarity } from './api';
 import { creatureById, type CreatureDesign, type CreatureFull, type FxKind } from './catalog';
+import { gameFont } from '../i18n/font';
 
 /* ============================== cores ============================== */
 
@@ -1793,7 +1794,7 @@ export function drawCreature(c: C, id: string, sizePx: number, t: number, opts: 
     drawFx(c, cr, tt, true);
     if (mood === 'sleep') {
       c.fillStyle = '#ffffff';
-      c.font = 'bold 9px Fredoka, sans-serif';
+      c.font = gameFont('bold', 9);
       const z = (tt * 0.6) % 1;
       c.globalAlpha = 1 - z;
       c.fillText('z', 22 + z * 8, -28 - z * 16);
