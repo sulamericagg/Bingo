@@ -45,7 +45,7 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
         <button class="ty-btn ty-green ty-big" data-a="match">${icon('play', { size: 26 })}${t('tycoon.playMatch', 'Partida contra 3')}</button>
         <div class="ty-seg">${diffs.map((d, i) => `<button class="ty-btn${i === ts.diff ? ' on' : ''}" data-d="${i}">${d}</button>`).join('')}</div>
         <button class="ty-btn ty-gold ty-big" data-a="idle">${icon('coins', { size: 26 })}${t('tycoon.myFactory', 'Minha Fábrica')}${pend > 0 ? `<span class="ty-badge">+${fmt(pend)}</span>` : ''}</button>
-        <div class="ty-sub" style="font-size:13px">${icon('trophy', { size: 18 })} ${t('tycoon.stats', '{w} vitórias em {m} partidas', { w: ts.wins, m: ts.matches })}</div>
+        <div class="ty-sub" style="font-size:13px">${icon('trophy', { size: 18 })} ${t('tycoon.stats', 'Vitórias: {w} · Partidas: {m}', { w: ts.wins, m: ts.matches })}</div>
       </div>
       <button class="ty-btn" data-a="exit">${icon('home', { size: 22 })}${t('tycoon.exit', 'Sair')}</button>`;
     el.appendChild(ov);

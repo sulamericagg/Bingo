@@ -90,6 +90,8 @@ export class FactoryView implements SimFx {
   /** índice do lote do jogador (recebe sons/vibração) */
   me = 0;
   showPrices = true;
+  /** botões de compra (desligado na Minha Fábrica) */
+  drawPads = true;
 
   constructor(
     public canvas: HTMLCanvasElement,
@@ -304,8 +306,8 @@ export class FactoryView implements SimFx {
         }
       } else if (it.kind === 'turbo') {
         this.drawRocket(p, false);
-        if (p.available(i)) this.drawPad(p, i);
-      } else if (p.available(i)) this.drawPad(p, i);
+        if (this.drawPads && p.available(i)) this.drawPad(p, i);
+      } else if (this.drawPads && p.available(i)) this.drawPad(p, i);
     }
     if (!cofreDrawn) this.drawCofre(p);
     if (!charDrawn) this.drawChar(p);

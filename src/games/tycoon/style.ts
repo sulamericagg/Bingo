@@ -24,13 +24,13 @@ const CSS = `
 .ty-row .ty-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ty-row .ty-bar{position:absolute;left:0;bottom:0;height:3px;background:#3ee07a}
 .ty-hint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);transform:translateX(-50%);background:rgba(42,11,92,.85);padding:8px 14px;border-radius:14px;font-size:15px;font-weight:600;text-align:center;max-width:86%;transition:opacity .4s}
-.ty-banner{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:44px;font-weight:700;color:#fff36b;-webkit-text-stroke:2px #2a0b5c;text-shadow:0 4px 0 #2a0b5c;pointer-events:none;animation:tyPop .5s cubic-bezier(.3,1.6,.6,1)}
+.ty-banner{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:44px;font-weight:700;color:#fff36b;-webkit-text-stroke:4px #2a0b5c;paint-order:stroke fill;text-shadow:0 4px 0 #2a0b5c;pointer-events:none;animation:tyPop .5s cubic-bezier(.3,1.6,.6,1)}
 @keyframes tyPop{from{transform:scale(.3);opacity:0}}
 .ty-joy{position:absolute;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;background:rgba(255,255,255,.14);border:3px solid rgba(255,255,255,.35);pointer-events:none;display:none}
 .ty-joy i{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(255,255,255,.7)}
 .ty-ov{position:absolute;inset:0;background:radial-gradient(circle at 50% 30%,rgba(62,224,122,.25),rgba(20,8,50,.92) 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;pointer-events:auto;animation:tyFade .3s}
 @keyframes tyFade{from{opacity:0}}
-.ty-title{font-size:32px;font-weight:700;color:#fff36b;-webkit-text-stroke:1.5px #2a0b5c;text-shadow:0 3px 0 #2a0b5c;text-align:center;line-height:1.05}
+.ty-title{font-size:32px;font-weight:700;color:#fff36b;-webkit-text-stroke:3px #2a0b5c;paint-order:stroke fill;text-shadow:0 3px 0 #2a0b5c;text-align:center;line-height:1.05}
 .ty-sub{font-size:15px;opacity:.9;text-align:center;max-width:320px}
 .ty-card{width:min(340px,92vw);background:linear-gradient(#3b2a7a,#2a1a60);border:3px solid #2a0b5c;border-radius:20px;padding:14px;box-shadow:0 6px 0 #150533;display:flex;flex-direction:column;gap:10px}
 .ty-big{font-size:20px;padding:12px 16px;border-radius:18px;width:100%}
@@ -43,7 +43,7 @@ const CSS = `
 .ty-step canvas{margin-bottom:-6px}
 .ty-block{width:100%;border:3px solid #2a0b5c;border-radius:12px 12px 4px 4px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:6px;font-weight:700;animation:tyRise .6s cubic-bezier(.3,1.4,.6,1) both}
 @keyframes tyRise{from{transform:scaleY(0);transform-origin:bottom}}
-.ty-block b{font-size:30px;color:#fff;-webkit-text-stroke:1.5px #2a0b5c}
+.ty-block b{font-size:30px;color:#fff;-webkit-text-stroke:3px #2a0b5c;paint-order:stroke fill}
 .ty-block small{font-size:12px;color:#2a0b5c;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
 .ty-list{width:min(340px,92vw);display:flex;flex-direction:column;gap:4px}
 .ty-list .ty-row{font-size:15px;padding:5px 10px}

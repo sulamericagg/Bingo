@@ -63,6 +63,7 @@ export function startIdle(root: HTMLElement, onBack: () => void, quality: Qualit
   const q = quality.settings;
   const view = new FactoryView(cv, { glows: q.glows, budget: q.particleBudget });
   view.showPrices = false;
+  view.drawPads = false;
   const limiter = new FpsLimiter(q.fpsCap);
   apply(false);
 
