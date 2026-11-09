@@ -21,7 +21,33 @@ import { esc } from '../ui/dom';
 import { installIconCss } from '../ui/icons';
 import { bus } from '../core/events';
 import { save } from '../core/storage';
-import { addCoins, spend } from '../core/economy';
+import { addCoins as addCoinsRaw, spend } from '../core/economy';
+import { dayNumber } from '../core/storage';
+
+/* Teto diário das moedas da Casa (limpar/pintar/festa): sem isso dava para
+ * sujar a própria casa na guerra de comida, limpar e repetir para sempre. */
+const HOME_DAILY_COIN_CAP = 200;
+const HOME_EARN_KEY = 'bw-home-earn';
+function addCoins(n: number): number {
+  let st = { d: 0, n: 0 };
+  try {
+    st = JSON.parse(localStorage.getItem(HOME_EARN_KEY) || '') || st;
+  } catch {
+    /* */
+  }
+  const today = dayNumber();
+  if (st.d !== today) st = { d: today, n: 0 };
+  const give = Math.max(0, Math.min(n, HOME_DAILY_COIN_CAP - st.n));
+  if (give <= 0) return 0;
+  st.n += give;
+  try {
+    localStorage.setItem(HOME_EARN_KEY, JSON.stringify(st));
+  } catch {
+    /* */
+  }
+  addCoinsRaw(give);
+  return give;
+}
 import { showRewarded } from '../services/ads';
 import { detectInitialTier, settingsFor } from '../core/quality';
 import { openEmoteWheel } from '../social/emotes';
