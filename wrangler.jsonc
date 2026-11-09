@@ -13,7 +13,8 @@
     "run_worker_first": ["/api/*", "/admin*"]
   },
   "kv_namespaces": [
-    { "binding": "DATA", "id": "3c7cece821ee4d6297ce2db9f664b948" }
+    // sem "id": o banco KV é criado automaticamente na conta no primeiro deploy
+    { "binding": "DATA" }
   ],
   // Corrida Orbital: Durable Object com SQLite (disponível no plano grátis).
   "durable_objects": {
