@@ -2,8 +2,9 @@
  * Telas online: Correio (presentes), Resgatar código + Desafios e perfil.
  * claimGifts()/redeemCode() JÁ aplicam a recompensa — aqui só mostramos.
  */
-import { claimGifts, fetchChallenges, getInbox, getPlayer, onlineReachable, redeemCode, setPlayerName, syncNow, type Gift, type RedeemResult } from '../services/online';
+import { claimGifts, fetchChallenges, getInbox, getPlayer, onlineReachable, redeemCode, syncNow, type Gift, type RedeemResult } from '../services/online';
 import { normalizeCode } from '../../shared/reward';
+import { applyNick, checkNick, nickIssueText } from '../services/profile';
 import { bus } from '../core/events';
 import { celebrate, mergePacks, packChips } from './celebrate';
 import { $, esc } from './dom';
@@ -195,7 +196,13 @@ export class OnlineUI {
     const inp = $<HTMLInputElement>('#profile-name');
     const v = inp.value.trim();
     if (!v || v === getPlayer()?.name) return;
-    setPlayerName(v);
+    const bad = checkNick(v); // mesmas regras do chat (offline)
+    if (bad) {
+      this.toast(nickIssueText(bad), 'warning');
+      inp.value = getPlayer()?.name ?? '';
+      return;
+    }
+    applyNick(v);
     this.toast(t('settings.nickSaved', 'Apelido salvo!'), 'pencil');
     this.renderProfile();
   }

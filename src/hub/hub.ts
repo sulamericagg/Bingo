@@ -131,7 +131,7 @@ export function hubVisible(): boolean {
 
 /** Hub visível e livre (sem painel/modal por cima) — hora boa para pop-ups automáticos. */
 export function hubIdle(): boolean {
-  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, .celebrate, .item-sheet');
+  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .celebrate, .item-sheet, .ob-root, .beta-sheet-bg');
 }
 
 /** Inicia o jogo selecionado (botão JOGAR / Espaço). */
