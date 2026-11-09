@@ -1,4 +1,4 @@
-Chaves: 3701 (1516 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 3702 (1517 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 
@@ -42,14 +42,14 @@ Chaves: 3701 (1516 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastr
   src/pass/music/index.ts:346  t("mpass.${r.id}", r.name)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 1492 / 1120 / 0 / 0
-  es: 1492 / 1120 / 0 / 0
-  de: 1492 / 1120 / 0 / 0
-  fr: 1492 / 1120 / 0 / 0
-  it: 1492 / 1120 / 0 / 0
-  ja: 1492 / 1120 / 0 / 0
-  ko: 1492 / 1120 / 0 / 0
-  ru: 1492 / 1120 / 0 / 0
-  tr: 1492 / 1120 / 0 / 0
-  id: 1492 / 1120 / 0 / 0
-  zh: 1492 / 1120 / 0 / 0
+  en: 1 / 1120 / 0 / 0
+  es: 1493 / 1120 / 0 / 0
+  de: 1493 / 1120 / 0 / 0
+  fr: 1493 / 1120 / 0 / 0
+  it: 1493 / 1120 / 0 / 0
+  ja: 1493 / 1120 / 0 / 0
+  ko: 1493 / 1120 / 0 / 0
+  ru: 1493 / 1120 / 0 / 0
+  tr: 1493 / 1120 / 0 / 0
+  id: 1493 / 1120 / 0 / 0
+  zh: 1493 / 1120 / 0 / 0
