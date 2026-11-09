@@ -108,27 +108,50 @@ export class Hud {
       audio.click();
       g.requestExit();
     });
+    // Botões de toque com multitoque: cada botão guarda os dedos (pointerId) que o seguram.
+    // Andar + pular ao mesmo tempo funciona; arrastar o dedo da seta esquerda para a direita
+    // troca de direção; dedo que sai para longe do botão, é cancelado ou perde a captura solta.
+    const pads: { el: HTMLElement; k: 'l' | 'r' | 'j'; ids: Set<number> }[] = [];
+    const set = (pd: (typeof pads)[number]) => {
+      g.touch[pd.k] = pd.ids.size > 0;
+      pd.el.classList.toggle('on', pd.ids.size > 0);
+    };
+    const near = (el: HTMLElement, x: number, y: number, m: number) => {
+      const r = el.getBoundingClientRect();
+      return x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m;
+    };
     const pad = (sel: string, k: 'l' | 'r' | 'j') => {
       const p = el.querySelector(sel) as HTMLElement;
-      const ids = new Set<number>();
-      const set = () => {
-        g.touch[k] = ids.size > 0;
-        p.classList.toggle('on', ids.size > 0);
-      };
+      const pd = { el: p, k, ids: new Set<number>() };
+      pads.push(pd);
       p.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         audio.unlock();
-        ids.add(e.pointerId);
+        pd.ids.add(e.pointerId);
+        if (k === 'j') g.jumpTap = true;
         try {
           p.setPointerCapture(e.pointerId);
         } catch {
           /* */
         }
-        set();
+        set(pd);
+      });
+      p.addEventListener('pointermove', (e) => {
+        if (!pd.ids.has(e.pointerId) || k === 'j') return;
+        if (near(p, e.clientX, e.clientY, 28)) return;
+        // deslizou para a outra seta?
+        pd.ids.delete(e.pointerId);
+        set(pd);
+        for (const o of pads) {
+          if (o === pd || o.k === 'j' || !near(o.el, e.clientX, e.clientY, 10)) continue;
+          o.ids.add(e.pointerId);
+          set(o);
+        }
       });
       const up = (e: PointerEvent) => {
-        ids.delete(e.pointerId);
-        set();
+        for (const o of pads) {
+          if (o.ids.delete(e.pointerId)) set(o);
+        }
       };
       p.addEventListener('pointerup', up);
       p.addEventListener('pointercancel', up);
