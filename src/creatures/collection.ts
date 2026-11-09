@@ -3,6 +3,7 @@
  * que faltam e detalhe animado com "Usar como foto de perfil" / "Levar como companheiro".
  * Carregada sob demanda (register.ts → openCollectionLazy).
  */
+import { pushBack } from '../core/back';
 import './collection.css';
 import type { CreatureRarity } from './api';
 import { CREATURES, RARITIES, creatureById, type CreatureFull } from './catalog';
@@ -122,8 +123,12 @@ function updateCount(): void {
   if (bar) bar.style.width = `${(n / CREATURES.length) * 100}%`;
 }
 
+let popBack: (() => void) | null = null;
+let popDetail: (() => void) | null = null;
+
 export function openCollection(focusId?: string): void {
   if (root) return;
+  popBack = pushBack(closeCollection);
   filter = 'all';
   onlyMine = false;
   root = document.createElement('div');
@@ -167,6 +172,10 @@ export function openCollection(focusId?: string): void {
 }
 
 export function closeCollection(): void {
+  popDetail?.();
+  popDetail = null;
+  popBack?.();
+  popBack = null;
   cancelAnimationFrame(raf);
   io?.disconnect();
   io = null;
@@ -185,6 +194,14 @@ function openDetail(id: string): void {
   const lvl = creaturePassLevel(c.season, c.rarity);
   const box = document.createElement('div');
   box.className = 'crc-detail';
+  popDetail?.();
+  const closeDetail = () => {
+    popDetail?.();
+    popDetail = null;
+    cancelAnimationFrame(raf);
+    box.remove();
+  };
+  popDetail = pushBack(closeDetail);
   box.innerHTML = `<div class="crc-card r-${c.rarity}" style="--rc:${rc};--sa:${s.palette[1]};--sbg:${s.palette[0]}">
     <button class="crc-close" aria-label="${t('common.close', 'Fechar')}">${icon('close', { size: 28 })}</button>
     <div class="crc-stage"><canvas></canvas></div>
@@ -237,8 +254,7 @@ function openDetail(id: string): void {
       tap('medium');
       refresh();
     } else if (el === box || el.closest('.crc-close')) {
-      cancelAnimationFrame(raf);
-      box.remove();
+      closeDetail();
     }
   });
 

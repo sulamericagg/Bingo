@@ -1,3 +1,4 @@
+import { popBack } from '../core/back';
 import { BOOST_PACKS, ECONOMY, productById, type ProductDef } from '../config';
 import { celebrateRecord } from './record';
 import { audio } from '../core/audio';
@@ -184,6 +185,7 @@ export class UI {
   back(): boolean {
     if (celebrating()) return true;
     if (hubBack()) return true;
+    if (popBack()) return true;
     if (closeCreator(false)) return true;
     if (closePetScreen()) return true;
     if (closeHome()) return true;

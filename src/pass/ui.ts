@@ -3,6 +3,7 @@
  *  Abas: Recompensas (cartelas de 10) · Desafios · Histórico · Clube
  *  Tematizada pela paleta da temporada (CSS vars --s-bg/--s-a/--s-b).
  * ============================================================ */
+import { pushBack } from '../core/back';
 import './pass.css';
 import { AD_FREE, CLUB, PASS } from '../config';
 import { audio } from '../core/audio';
@@ -550,6 +551,7 @@ export function openPassUI(startTab: Tab = 'rewards', which: PassMode = mode): v
   ensureHomeSeason();
   setMode(which);
   root = h('div', 'pass-panel');
+  popBackFn = pushBack(closePassUI);
   applyTheme(root, s);
   document.body.appendChild(root);
   loadSeasonCreatureNames(s.index).then(() => root && render());
@@ -559,7 +561,10 @@ export function openPassUI(startTab: Tab = 'rewards', which: PassMode = mode): v
   requestAnimationFrame(() => root?.classList.add('in'));
 }
 
+let popBackFn: (() => void) | null = null;
 export function closePassUI(): void {
+  popBackFn?.();
+  popBackFn = null;
   cancelAnimationFrame(raf);
   raf = 0;
   stopTrack();

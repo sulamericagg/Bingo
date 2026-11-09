@@ -1,4 +1,5 @@
 /** Peças de UI do social: painel (sheet), toast, menu de contexto, miniaturas de personagem. */
+import { pushBack } from '../core/back';
 import { t } from '../i18n';
 import { icon, type IconName } from '../ui/icons';
 import { renderAvatarPreview, renderSkinPreview } from '../game/preview';
@@ -15,9 +16,16 @@ export interface Sheet {
   onClose(fn: () => void): void;
 }
 
+const byId = new Map<string, () => void>();
+
 export function openSheet(title: string, ico: IconName, opts: { small?: boolean; id?: string } = {}): Sheet {
   ensureSocialCss();
-  if (opts.id) document.getElementById(opts.id)?.remove();
+  // mesmo id já aberto: fecha direito (roda os onClose — timers do campeonato etc.)
+  if (opts.id) {
+    const old = byId.get(opts.id);
+    if (old) old();
+    else document.getElementById(opts.id)?.remove();
+  }
   const root = document.createElement('div');
   root.className = 'sc-overlay';
   if (opts.id) root.id = opts.id;
@@ -26,10 +34,17 @@ export function openSheet(title: string, ico: IconName, opts: { small?: boolean;
     <div class="sc-body"></div></div>`;
   (root.querySelector('h2 span') as HTMLElement).textContent = title;
   const closers: (() => void)[] = [];
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
+    popB();
+    if (opts.id && byId.get(opts.id) === close) byId.delete(opts.id);
     root.remove();
     closers.splice(0).forEach((f) => f());
   };
+  const popB = pushBack(close);
+  if (opts.id) byId.set(opts.id, close);
   root.querySelector('.sc-x')!.addEventListener('click', close);
   root.addEventListener('click', (e) => {
     if (e.target === root) close();
