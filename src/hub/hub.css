@@ -807,6 +807,11 @@ body.has-banner {
   position: absolute;
   inset: 0;
 }
+/* contexto de empilhamento próprio: z-index alto dentro do jogo não cobre o "Sair do jogo?" */
+.gh-root {
+  z-index: 0;
+  isolation: isolate;
+}
 .gh-confirm {
   position: absolute;
   inset: 0;
