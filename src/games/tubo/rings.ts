@@ -103,10 +103,12 @@ export const norm = (a: number): number => {
 export type Rnd = () => number;
 
 /** Cria a configuração de um anel na profundidade `idx`. Dificuldade sobe com a profundidade. */
-export function genRing(idx: number, geo: Geo, rnd: Rnd, zone: number): Ring {
-  const d = idx;
+/** `heat` = pressão extra pelo tempo de partida (anéis "equivalentes"): a partida aperta mesmo sem descer. */
+export function genRing(idx: number, geo: Geo, rnd: Rnd, zone: number, heat = 0): Ring {
+  // curva apertada (nov/2026): antes ninguém morria nos primeiros minutos
+  const d = idx + heat;
   const gw = geo.gw;
-  const twoGaps = d > 24 && rnd() < Math.min(0.4, (d - 24) * 0.015);
+  const twoGaps = idx > 24 && rnd() < Math.min(0.4, (idx - 24) * 0.015);
   const specials: Segment[] = [{ a0: 0, a1: gw, type: Seg.Gap }];
   const free: [number, number][] = [];
   if (twoGaps) {
@@ -114,14 +116,14 @@ export function genRing(idx: number, geo: Geo, rnd: Rnd, zone: number): Ring {
     free.push([gw, Math.PI], [Math.PI + gw, TAU]);
   } else free.push([gw, TAU]);
 
-  let nRed = d < 3 ? 0 : d < 8 ? 1 : d < 18 ? 1 + (rnd() < 0.5 ? 1 : 0) : d < 35 ? 2 + (rnd() < 0.5 ? 1 : 0) : 2 + Math.floor(rnd() * 3);
+  let nRed = d < 4 ? 0 : d < 9 ? 1 : d < 18 ? 1 + (rnd() < 0.5 ? 1 : 0) : d < 30 ? 2 + (rnd() < 0.5 ? 1 : 0) : 2 + Math.floor(rnd() * 3);
   if (twoGaps) nRed = Math.min(4, nRed + 1);
   const buf = 0.1;
   const minSpace = 0.3;
   let redTotal = 0;
   const reds: Segment[] = [];
   for (let n = 0; n < nRed; n++) {
-    const w = Math.min(1.1, 0.42 + rnd() * 0.36 + Math.min(d, 60) * 0.004);
+    const w = Math.min(1.15, 0.44 + rnd() * 0.36 + Math.min(d, 60) * 0.005);
     if (redTotal + w > TAU * 0.48) break;
     for (let tries = 0; tries < 14; tries++) {
       const iv = free[Math.floor(rnd() * free.length)];
@@ -180,8 +182,8 @@ export function genRing(idx: number, geo: Geo, rnd: Rnd, zone: number): Ring {
 
   // rotação: sentidos alternados, velocidade sobe com a profundidade
   let dir = d % 2 ? -1 : 1;
-  if (d > 10 && rnd() < 0.25) dir = -dir;
-  let speed = Math.min(2, (0.7 + Math.min(d, 70) * 0.016) * (0.85 + rnd() * 0.35));
+  if (idx > 10 && rnd() < 0.25) dir = -dir;
+  let speed = Math.min(2.1, (0.75 + Math.min(d, 60) * 0.022) * (0.85 + rnd() * 0.35));
   let wobA = 0;
   let wobF = 0;
   if (d > 30 && rnd() < 0.3) {

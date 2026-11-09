@@ -871,3 +871,18 @@ body.has-banner {
   position: absolute;
   inset: -16px -4px;
 }
+
+/* recorde pessoal no card */
+.hc-best {
+  margin: 4px 0 0;
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe680;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.hc-best.on {
+  display: inline-flex;
+}

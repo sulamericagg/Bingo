@@ -52,6 +52,8 @@ export class Car {
   airTime = 0;
   airRot = 0;
   roofTime = 0;
+  /** ajuda extra das primeiras corridas (somada a st.assist) */
+  assistBoost = 0;
   crashed = false;
   headHit = false;
   grounded = false;
@@ -220,6 +222,19 @@ export class Car {
       this.w += (target - this.w) * dt * 2.2;
     }
     this.w *= 1 - 0.3 * dt;
+
+    // ajuda "anti-capotar": puxa o carro de volta para o ângulo do chão (forte nas primeiras corridas)
+    const asst = Math.min(1, st.assist + this.assistBoost);
+    if (asst > 0) {
+      const ga = Math.atan(terrain.slope(this.x));
+      let diff = this.a - ga;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      const lim = onG === 0 ? 0.35 : 0.8; // no chão só age em empinadas fortes
+      if (Math.abs(diff) > lim) {
+        const want = -Math.sign(diff) * Math.min(3.2, (Math.abs(diff) - lim) * 5);
+        this.w += (want - this.w) * dt * 3.2 * asst;
+      }
+    }
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;

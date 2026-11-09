@@ -6,8 +6,8 @@ import { persist, save, type SaveData } from '../../core/storage';
 import { bus } from '../../core/events';
 import { spend } from '../../core/economy';
 
-export type UpgradeKey = 'motor' | 'tires' | 'susp' | 'tank';
-export const UPGRADE_KEYS: UpgradeKey[] = ['motor', 'tires', 'susp', 'tank'];
+export type UpgradeKey = 'motor' | 'tires' | 'susp' | 'tank' | 'gyro';
+export const UPGRADE_KEYS: UpgradeKey[] = ['motor', 'tires', 'susp', 'tank', 'gyro'];
 export const MAX_UP = 5;
 
 export type CarShape = 'buggy' | 'rover' | 'monster' | 'hover' | 'icecream' | 'rocket';
@@ -88,6 +88,8 @@ export function upgradeName(k: UpgradeKey): string {
       return t('rally.up.susp', 'Suspensão');
     case 'tank':
       return t('rally.up.tank', 'Tanque');
+    case 'gyro':
+      return t('rally.up.gyro', 'Anti-capotar');
   }
 }
 
@@ -173,7 +175,7 @@ export function upCost(id: string, k: UpgradeKey): number | null {
   const lv = upLevel(id, k);
   if (lv >= MAX_UP) return null;
   const v = vehicleById(id);
-  const mult = k === 'motor' ? 1.15 : k === 'tank' ? 1 : 0.9;
+  const mult = k === 'motor' ? 1.15 : k === 'tank' ? 1 : k === 'gyro' ? 0.7 : 0.9;
   return Math.round((v.upBase * Math.pow(lv + 1, 1.7) * mult) / 10) * 10;
 }
 
@@ -236,6 +238,8 @@ export interface CarStats {
   damp: number;
   fuel: number;
   airTorque: number;
+  /** ajuda a endireitar no ar (0..1): melhoria Anti-capotar; as primeiras corridas somam mais (game.ts) */
+  assist: number;
 }
 export function effectiveStats(id: string, lv?: Partial<Record<UpgradeKey, number>>): CarStats {
   const v = vehicleById(id);
@@ -251,6 +255,7 @@ export function effectiveStats(id: string, lv?: Partial<Record<UpgradeKey, numbe
     damp: v.damp * (1 + su * 0.1),
     fuel: v.fuel * (1 + ta * 0.16),
     airTorque: v.airTorque * (1 + su * 0.03),
+    assist: (lv?.gyro ?? upLevel(id, 'gyro')) * 0.07,
   };
 }
 

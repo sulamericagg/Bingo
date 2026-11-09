@@ -23,6 +23,7 @@ import { displayName } from '../services/leaderboard';
 import { renderSkinPreview } from '../game/preview';
 import { skinById } from '../game/skins';
 import { icon, iconDataUri, type IconName } from '../ui/icons';
+import { bestLabel } from './bests';
 import { listGames, listPanels, type HubTheme, type MiniGameDef, type MiniGameHandle } from './registry';
 
 /* ============================== tipos públicos ============================== */
@@ -190,6 +191,7 @@ export function closeHost(): void {
   hostRoot.innerHTML = '';
   host.classList.remove('on');
   menu.classList.add('on');
+  refreshBests();
   showBanner();
   onShow();
 }
@@ -250,15 +252,18 @@ export function initHub(o: HubOptions): void {
     regT = window.setTimeout(() => {
       buildCards();
       buildNav();
+      refreshBests();
     }, 0);
   });
   bus.on('lang', () => {
     applyI18n(document);
     buildCards();
+    refreshBests();
     buildNav();
     refreshProfile();
   });
   bus.on('hub-show', onShow);
+  bus.on('run-end', () => setTimeout(refreshBests, 0));
   bus.on('player', refreshProfile);
   bus.on('profile', refreshProfile);
   bus.on('cosmetics', refreshProfile);
@@ -268,12 +273,14 @@ export function initHub(o: HubOptions): void {
 
   buildCards();
   buildNav();
+  refreshBests();
   refreshProfile();
   requestAnimationFrame(frame);
 }
 
 function onShow(): void {
   refreshProfile();
+  refreshBests();
   refreshNavBadges();
   layout(false);
 }
@@ -296,6 +303,17 @@ function soonDef(): MiniGameDef {
     theme: { bg: ['#3a1a7a', '#120838'], accent: '#8a5cff', accent2: '#ffcf2e', title: ['#ffffff', '#c9b2ff'] },
     launch: async () => ({ destroy() {} }),
   };
+}
+
+/** recorde pessoal em cada card (gancho de "quero bater meu recorde") */
+export function refreshBests(): void {
+  for (const el of document.querySelectorAll<HTMLElement>('.hub-card[data-game]')) {
+    const b = el.querySelector<HTMLElement>('.hc-best');
+    if (!b) continue;
+    const txt = bestLabel(el.dataset.game || '');
+    b.innerHTML = txt ? `${icon('trophy', { size: 16 })}<span>${esc(txt)}</span>` : '';
+    b.classList.toggle('on', !!txt);
+  }
 }
 
 function buildCards(): void {
@@ -321,6 +339,7 @@ function buildCards(): void {
       <div class="hc-body">
         <h2 class="hc-title">${esc(def.name)}</h2>
         <p class="hc-tag">${esc(def.tagline)}</p>
+        <p class="hc-best"></p>
         <div class="hc-extras"></div>
         ${
           soon

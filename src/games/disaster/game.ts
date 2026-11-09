@@ -113,14 +113,16 @@ interface Progress {
   next: number;
   best: number;
   survived: number;
+  /** rodadas jogadas (as 3 primeiras são "Treino") */
+  played: number;
 }
 
 function loadProgress(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-    return { next: p.next | 0 || 1, best: p.best | 0, survived: p.survived | 0 };
+    return { next: p.next | 0 || 1, best: p.best | 0, survived: p.survived | 0, played: p.played | 0 };
   } catch {
-    return { next: 1, best: 0, survived: 0 };
+    return { next: 1, best: 0, survived: 0, played: 0 };
   }
 }
 function saveProgress(p: Progress): void {
@@ -172,6 +174,11 @@ export class DisasterGame implements MiniGameHandle {
   rng = mulberry(1);
   /** dev/screenshots: seu Bloop é controlado pela IA */
   autoMe = false;
+  /** rodada de treino (3 primeiras): desastres mais lentos, mais tempo e seta para o lugar seguro */
+  training = false;
+  /** lugar seguro sugerido (seta verde no treino) */
+  safe: { x: number; y: number } | null = null;
+  private safeT = 0;
   /** a sequência desta rodada bateu o recorde */
   newBest = false;
   private nameOff = Math.floor(Math.random() * 14);
@@ -309,6 +316,9 @@ export class DisasterGame implements MiniGameHandle {
   startRound(): void {
     const list = scenarios();
     this.sc = list[(this.progress.next - 1) % 100];
+    this.training = this.progress.played < 3 || /[?&]train=1/.test(location.search);
+    this.safe = null;
+    this.safeT = 0;
     this.world = new World(this.sc, this.maxBodies());
     this.rng = mulberry(this.sc.seed + this.sessionRounds * 13);
     this.night = this.sc.mod === 'noite' || this.sc.disasters.includes('raios');
@@ -410,7 +420,7 @@ export class DisasterGame implements MiniGameHandle {
     switch (this.phase) {
       case 'intro':
         // final do meteoro: tempo curto o bastante para precisar correr (antes 18+df: quase todos chegavam andando)
-        this.setPhase('prepare', this.finale ? 14 + this.sc.difficulty * 0.8 : 15);
+        this.setPhase('prepare', (this.finale ? 14 + this.sc.difficulty * 0.8 : 15) + (this.training ? 8 : 0));
         if (this.finale) audio.siren(3);
         break;
       case 'prepare':
@@ -452,11 +462,12 @@ export class DisasterGame implements MiniGameHandle {
     this.active.add(d);
     const df = this.sc.difficulty;
     // cenário duplo: cada desastre vem um pouco mais brando (somados já são difíceis)
-    const duo = this.sc.disasters.length > 1 ? 0.8 : 1;
+    const duo = (this.sc.disasters.length > 1 ? 0.8 : 1) * (this.training ? 0.8 : 1);
     const fl = (f: Partial<Fluid> & { kind: Fluid['kind'] }): Fluid => {
       const o: Fluid = { level: 0, target: 100, rate: 3, front: -300, dir: 0, speed: 0, crest: 0, push: 0, ...f };
       o.target *= duo;
-      if (!o.dir) o.rate *= duo;
+      if (!o.dir) o.rate *= duo * (this.training ? 0.8 : 1);
+      else if (this.training) o.speed *= 0.75;
       return o;
     };
     switch (d) {
@@ -480,7 +491,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'tornado':
         this.tornado.on = true;
         this.tornado.x = this.rng() < 0.5 ? -120 : this.world.W + 120;
-        this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12);
+        this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12) * (this.training ? 0.75 : 1);
         this.tornado.r = 58 + df * 3;
         break;
       case 'terremoto':
@@ -509,6 +520,7 @@ export class DisasterGame implements MiniGameHandle {
     const alive = this.players.filter((p) => p.alive).length;
     this.sessionRounds++;
     this.progress.survived += survived ? 1 : 0;
+    this.progress.played++;
     let place = 1;
     if (!survived) place = alive + 1 + (this.outCount - me.outOrder);
     if (survived) {
@@ -604,6 +616,13 @@ export class DisasterGame implements MiniGameHandle {
       const alive = this.players.some((p) => p.alive && !p.self) || this.me.alive;
       if (!alive && this.phaseDur - this.phaseT > 2.5) this.phaseT = this.phaseDur - 2.5;
     }
+    if (this.training && this.me.alive && (this.phase === 'prepare' || this.phase === 'warn' || this.phase === 'disaster')) {
+      this.safeT -= rdt;
+      if (this.safeT <= 0) {
+        this.safeT = 0.8;
+        this.safe = this.safeSpot();
+      }
+    } else this.safe = null;
     this.updateCamera(rdt);
     if (this.shake > 0) this.shake = Math.max(0, this.shake - rdt * 2.2);
     this.draw.particles.step(dt);
@@ -659,7 +678,7 @@ export class DisasterGame implements MiniGameHandle {
           }
         }
       }
-      this.strikeTimer -= dt * (this.sc.disasters.length > 1 ? 0.8 : 1);
+      this.strikeTimer -= dt * (this.sc.disasters.length > 1 ? 0.8 : 1) * (this.training ? 0.65 : 1);
       if (this.strikeTimer <= 0) {
         if (this.active.has('meteoros')) {
           this.spawnStrike('meteor', 1.6, 44);
@@ -1130,6 +1149,43 @@ export class DisasterGame implements MiniGameHandle {
     if (this.finale && p.climbing) inp.u = true;
   }
 
+  /** lugar seguro para o desastre deste cenário (usa o mesmo planejador dos bots, com habilidade máxima) */
+  private safeSpot(): { x: number; y: number } | null {
+    const me = this.me;
+    if (this.finale) {
+      const bk = this.world.bunker;
+      return bk ? { x: bk.x + 70, y: -10 } : null;
+    }
+    const d = this.sc.disasters[this.dIndex];
+    if (d === 'tornado') {
+      let best: { x: number; y: number } | null = null;
+      let bd = 1e9;
+      for (const h of this.world.houses) {
+        const cx = h.x + h.w / 2;
+        if (!this.world.insideHouse(cx, -2)) continue;
+        const dd = Math.abs(cx - me.x);
+        if (dd < bd) {
+          bd = dd;
+          best = { x: cx, y: -4 };
+        }
+      }
+      return best;
+    }
+    const tmp: Player = { ...me, bot: { gx: me.x, gy: me.y, think: 0, skill: 1, hop: 0, lazy: 0 } };
+    this.plan(tmp, d);
+    return { x: tmp.bot!.gx, y: tmp.bot!.gy };
+  }
+
+  /** x aleatório em espaço aberto (nada em cima: não cai coisa na cabeça) */
+  private openX(): number {
+    const w = this.world;
+    for (let i = 0; i < 8; i++) {
+      const x = 40 + this.rng() * (w.W - 80);
+      if (w.topAt(x) >= GROUND_Y - 2 && !this.strikes.some((s) => s.on && Math.abs(s.x - x) < s.r + 30)) return x;
+    }
+    return 40 + this.rng() * (w.W - 80);
+  }
+
   private plan(p: Player, known: DisasterId | null): void {
     const b = p.bot!;
     const w = this.world;
@@ -1147,13 +1203,13 @@ export class DisasterGame implements MiniGameHandle {
       b.gy = p.y;
       return;
     }
-    if (known === 'tornado' && this.rng() < 0.3 + b.skill * 0.7) {
+    if (known === 'tornado' && this.rng() < 0.5 + b.skill * 0.5) {
       let best = -1;
       let bd = 1e9;
       for (let i = 0; i < w.houses.length; i++) {
         const h = w.houses[i];
         const d = Math.abs(h.x + h.w / 2 - p.x);
-        if (d < bd && w.isSheltered(h.x + h.w / 2, -2)) {
+        if (d < bd && w.insideHouse(h.x + h.w / 2, -2)) {
           bd = d;
           best = i;
         }
@@ -1169,19 +1225,25 @@ export class DisasterGame implements MiniGameHandle {
     }
     if (known === 'terremoto' || known === 'meteoros' || known === 'raios') {
       // espaço aberto, longe dos outros
-      if (Math.abs(b.gx - p.x) < 10 || this.rng() < 0.2) b.gx = 40 + this.rng() * (w.W - 80);
-      b.gy = p.y;
+      // espaço aberto de verdade: sem telhado/torre em cima e longe das sombras marcadas
+      const covered = w.topAt(b.gx) < GROUND_Y - 2;
+      if (covered || Math.abs(b.gx - p.x) < 10 || this.rng() < 0.15) b.gx = b.skill > 0.5 ? this.openX() : 40 + this.rng() * (w.W - 80);
+      b.gy = GROUND_Y;
       return;
     }
     // ir para o alto: melhor superfície alcançável a partir daqui
     const reach = 108;
+    // fluido que vai subir: prefere superfícies acima do nível final esperado
+    const df0 = this.sc.difficulty;
+    const fluidTop = known === 'vulcao' ? GROUND_Y - (52 + df0 * 16) : known === 'enchente' ? GROUND_Y - (110 + df0 * 22) : known === 'acido' ? GROUND_Y - (130 + df0 * 22) : known === 'tsunami' ? GROUND_Y - (88 + df0 * 18 + 60) : known === 'avalanche' ? GROUND_Y - (76 + df0 * 16 + 50) : 0;
     let bestX = p.x;
     let bestY = p.y;
     let bestS = -1e9;
     const consider = (x0: number, x1: number, top: number) => {
       if (top < p.y - reach || top > p.y + 400) return;
       const cx = Math.max(x0 + 10, Math.min(x1 - 10, p.x));
-      const s = -top * (0.6 + b.skill) - Math.abs(cx - p.x) * 0.35 + this.rng() * 40 * (1.3 - b.skill);
+      let s = -top * (0.6 + b.skill) - Math.abs(cx - p.x) * 0.35 + this.rng() * 40 * (1.3 - b.skill);
+      if (fluidTop && top < fluidTop - 16) s += 60 * b.skill;
       if (s > bestS) {
         bestS = s;
         bestX = cx;
