@@ -6,6 +6,7 @@
  * Integração: main.ts chama `initRace(game)` uma vez, depois de criar a UI.
  * Botões no menu: #btn-race (Corrida) e #btn-ranking (Ranking).
  */
+import { reportRun } from '../hub/registry';
 import { pushBack } from '../core/back';
 import './race.css';
 import { audio } from '../core/audio';
@@ -462,6 +463,7 @@ class RaceUI {
       this.rewarded = true;
       addCoins(coins);
       if (gems) addGems(gems);
+      reportRun({ game: 'orbit', score: prog.score, coins, durationSec: Math.round(prog.t), place, won: place === 1, stats: { planets: prog.planets, perfects: prog.perfects } });
     }
     if (place === 1) {
       audio.unlock2();

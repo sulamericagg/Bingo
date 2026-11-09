@@ -47,6 +47,7 @@ import { closeHome } from '../home/register';
 import { OnlineUI, bindOnlineBadges } from './online-ui';
 import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
 import { hubBack, playSelected } from '../hub/hub';
+import { reportRun } from '../hub/registry';
 import { t, t as tr } from '../i18n';
 import { LANGUAGES, changeLang, langInfo } from '../i18n/langs';
 
@@ -579,6 +580,14 @@ export class UI {
     trackMission('perfects', stats.perfects);
     trackMission('score', this.game.score, true);
     trackMission('runs', 1);
+    // Passe (XP + desafios do Orbit), bichinho, campeonatos, recordes do perfil ouvem 'run-end'
+    reportRun({
+      game: 'orbit',
+      score: this.game.score,
+      coins: rc.total,
+      durationSec: Math.round(r.duration),
+      stats: { planets: stats.planets, perfects: stats.perfects, asteroids: stats.asteroids ?? 0, gems: stats.gems },
+    });
 
     this.doubled = false;
     $('#over-score').textContent = String(this.game.score);
