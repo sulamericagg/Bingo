@@ -57,6 +57,10 @@ export interface SaveData {
   club: { expires: number; lastRenewGrant: number; lastDrip: number };
   /** Tempo sem anúncios ganho com vídeos premiados (ms epoch) + vídeos acumulados para o próximo bloco. */
   adFree: { until: number; videos: number };
+  /** Passe da Casa (src/pass/home/state.ts) — mesma forma do Passe Estelar. */
+  hpass: PassSave;
+  /** Itens exclusivos do Passe da Casa ganhos (ids 'hSS_cat_n'), para o construtor da casa. */
+  homeItems: string[];
   /** Bichinhos colecionáveis obtidos (ids 'sNN-raridade', ver creatures/catalog.ts). */
   creatures: string[];
   /** Bichinhos ainda não vistos na Coleção (badge). */
@@ -198,6 +202,8 @@ const defaults = (): SaveData => ({
   tickets: 0,
   club: { expires: 0, lastRenewGrant: 0, lastDrip: 0 },
   adFree: { until: 0, videos: 0 },
+  hpass: defaultPass(),
+  homeItems: [],
   creatures: [],
   creaturesNew: [],
   companion: '',
@@ -232,6 +238,9 @@ function load(): SaveData {
       m.passItems = Array.isArray(o?.passItems) ? o.passItems : [];
       m.club = { expires: 0, lastRenewGrant: 0, lastDrip: 0, ...(o && o.club) };
       m.adFree = { until: 0, videos: 0, ...(o && o.adFree) };
+      m.hpass = { ...defaultPass(), ...(o && o.hpass) };
+      m.hpass.cur = { ...emptyPassSeason(), ...m.hpass.cur };
+      m.homeItems = Array.isArray(o?.homeItems) ? o.homeItems : [];
       m.creatures = Array.isArray(o?.creatures) ? o.creatures : [];
       m.creaturesNew = Array.isArray(o?.creaturesNew) ? o.creaturesNew : [];
       if (typeof m.companion !== 'string') m.companion = '';

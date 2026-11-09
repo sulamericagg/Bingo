@@ -30,7 +30,7 @@ L.push(`- XP: toda partida de qualquer minigame (\`bus 'run-end'\`: ${PASS.runXp
 L.push('- Cartelas de 10 níveis. Premium nível 1 = bichinho comum (bem fofo); níveis 20/30/40 = médio/raro/épico; nível 50 = lendário, o "rei" da temporada. Toda cartela tem bichinho + itens variados.');
 L.push('- Trilha grátis: nível 1 para todos (olhos nas temporadas pares, música nas ímpares), dancinha grátis no nível 25, 20 gemas a cada 10 níveis, moedas e ingressos nos níveis pares.');
 L.push('- Recompensas do passe são exclusivas: nunca vendidas. Ao trocar de temporada o nível zera; os itens ficam. A aba Histórico mostra o que foi ganho e o que foi perdido.');
-L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): passe de todo mês incluso, zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
+L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): Passe Estelar e Passe da Casa de todo mês inclusos, zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
 L.push(`- Tempo sem anúncios: ${AD_FREE.videos} vídeos premiados = ${AD_FREE.minutes} min sem intersticial/banner, acumula até ${AD_FREE.maxMinutes / 60}h.`);
 L.push('- Teste: `?debug&season=NN` força a temporada (0..59); `&daysleft=2` simula o fim; `&announce` / `&announce=end` força o pop-up.', '');
 L.push('## As 60 temporadas', '');
@@ -52,5 +52,27 @@ L.push("- Bus emitido: `season-theme` {index,id,theme,palette}, `pass`, `pass-xp
 L.push('- Estatísticas esperadas no RunReport.stats: orbit `perfects`, `planets`; rally `distance` (m); tubo `rings`; tycoon usa `won`.');
 L.push('- Peças do criador (olhos/bocas/auras do passe): `src/pass/parts.ts`, incluídas em `ALL_PARTS` por `game/avatar.ts` (price `{event:\'pass\'}`; o criador só lista as já ganhas).');
 L.push('- Emotes `em_*`: `drawPassEmote(ctx,id,x,y,size,t)`; molduras/faixas: `frameCss(id)`/`bannerCss(id)` (src/pass/cosmetics.ts); músicas `mu_*`: `passTrack(id)`/`previewTrack(id)` (src/pass/music.ts).');
+// ---------------- Passe da Casa ----------------
+const hc = await bundle('src/pass/home/catalog.ts', 'home.mjs');
+const CAT = { furniture: 'Móvel', paint: 'Tinta', wallpaper: 'Papel de parede', floor: 'Piso', rug: 'Tapete', lamp: 'Luminária', wallart: 'Quadro/parede', planet: 'Enfeite de planeta', door: 'Porta', roof: 'Telhado', window: 'Janela', fence: 'Cerca', garden: 'Jardim', roomkit: 'Kit de cômodo', party: 'Festa', cleaning: 'Ferramenta de limpeza', showpiece: 'Peça-mestra' };
+L.push('', '# Passe da Casa', '');
+L.push(`Segundo passe mensal (mesmo calendário e temas). ${PASS.levels} níveis, trilha grátis + premium, tudo exclusivo (nunca vendido) para a casa e o planeta: móveis, tintas especiais (purpurina, degradê, estampa, animada), papéis de parede, pisos, tapetes, luminárias, quadros, enfeites de planeta, portas, telhados, janelas, cercas, jardins, kits de cômodo completos, kits de festa (bolo temático + torta melequenta com cor de respingo especial) e skins de ferramentas de limpeza.`, '');
+L.push(`- Premium: **${PASS.homePriceGems} gemas** (pular nível: ${PASS.homeSkipGems}). Combo **"Passes do Mês"** (Estelar + Casa): **${PASS.bundlePriceGems} gemas** (economiza ${PASS.priceGems + PASS.homePriceGems - PASS.bundlePriceGems}). O **Clube Bloop inclui os dois**. Premium da casa também tira os anúncios na temporada. Devolve 600 gemas ao longo da trilha.`);
+L.push('- Cartelas de 10 com destaque no fim de cada uma: 10 = tinta animada · 20 = kit de cômodo completo (inclui os móveis da temporada) · 30 = monumento de planeta animado · 40 = kit de festa · **50 = peça-mestra** (sala completa / estátua animada / aquário gigante / fonte mágica / árvore gigante / carrossel). Premium nível 1 = móvel temático. Grátis: tinta no nível 1 para todos, jardim (15), ferramenta de limpeza (25), papel de parede (35), gemas a cada 10, moedas nos pares.');
+L.push(`- XP da casa (eventos do bus, teto diário ${PASS.homeDailyCap} XP): ${Object.entries(PASS.homeXp).map(([k, v]) => `\`${k}\` +${v}`).join(', ')}; + ${Math.round(PASS.homeRunShare * 100)}% do XP de cada partida (\`run-end\`). 5 desafios semanais da casa (1.500–2.500 XP; giram por semana ISO).`);
+L.push('- Payloads: `home-build {item?}`, `home-paint {room?}`, `home-clean {count?}` (conta por sujeira), `party-host {guests?}`, `party-join {hostId?}`, `home-visit-help {kind?}`. Emitidos pelo passe: `hpass`, `hpass-xp`, `home-item-grant {id, item}`.');
+let total = 0;
+for (let i = 0; i < 60; i++) for (const lv of hc.homePassSeason(i).levels) for (const r of [lv.prem, lv.free]) if (r && r.kind === 'home') total++;
+L.push(`- **${total} itens exclusivos** em 5 anos, nenhum repetido (id, nome e desenho). Verificação: \`node scripts/check-home-pass.mjs\`.`, '');
+L.push('### Integração com o construtor da casa (o que o lead precisa ligar)', '');
+L.push('- `homePassItems()` (src/pass/home/register.ts) devolve tudo agrupado com `owned`: `furniture` (defs compatíveis com `FurnDef` do construtor: `id, kind, v, w, h, wall, flat, cost {kind:\'pass\'}, name()` + `hex` (cor da temporada) + `pass` (parâmetros do desenho especial)), `surfaces` (spec `"<base>:pass:<id>"` para `RoomDesign.floor/wall`), `exterior` (campo + opção base de `PLANET_FIELDS`/`EXTERIOR_FIELDS`), `paints` (`HomeDesign.paint[room].wall = "pass:<id>"`), `kits`, `party`, `tools`, `showpieces`.');
+L.push('- Itens não ganhos aparecem TRANCADOS com o selo "Passe" (`cost {kind:\'pass\'}`), nunca à venda. Posse: `ownsHomePassItem(id)` / `save.homeItems`. Ao ganhar: bus `home-item-grant`.');
+L.push('- Desenho: `drawHomeItem(ctx, item, S, t)` (ícone/prévia, com acabamento animado). No cômodo, o renderizador pode usar `furn.kind`/`v` com a cor `hex` e, se quiser o efeito especial, `drawHomeItem` ou `item.draw` (paleta, motivo, acabamento, anim).');
+L.push('- Botão "Passe da Casa" no construtor: `openHomePass()` (src/pass/register.ts).', '');
+L.push('| # | Tema | Peça-mestra (nível 50) | Kit de cômodo (nível 20) | Premium nível 1 |', '|---|---|---|---|---|');
+for (const s of SEASONS) {
+  const lv = hc.homePassSeason(s.index).levels;
+  L.push(`| ${s.index + 1} | ${s.theme} | ${lv[49].prem.name} | ${lv[19].prem.name} | ${lv[0].prem.name} |`);
+}
 writeFileSync('docs/PASSE.md', L.join('\n') + '\n');
 console.log('docs/PASSE.md ok', creatures ? '(com nomes reais das criaturas)' : '(nomes provisórios: catálogo de criaturas ainda ausente)');

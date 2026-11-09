@@ -9,7 +9,7 @@ import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
 import { detectInitialTier } from '../core/quality';
-import { save } from '../core/storage';
+import { save, type PassSeasonSave } from '../core/storage';
 import { SEASONS, seasonTheme, type SeasonInfo } from '../creatures/seasons';
 import type { AvatarData } from '../game/avatar';
 import { renderAvatarPreview } from '../game/preview';
@@ -18,7 +18,24 @@ import { adFreeMeter, clubActive, watchForAdFree } from '../services/ads';
 import { buyClub, clubPriceString, manageClub } from '../services/billing';
 import { icon } from '../ui/icons';
 import { drawSeasonArt, mixHex } from './art';
-import { creatureId, passSeason, rarityLabel, seasonItems, type PassLevel, type PassRarity, type Reward } from './catalog';
+import { homeItem, homePassSeason } from './home/catalog';
+import { drawHomeItem, drawHomeSeasonArt } from './home/draw';
+import {
+  buyHomePremium,
+  ensureHomeSeason,
+  homeCanClaim,
+  homeClaim,
+  homeClaimAll,
+  homeClaimableCount,
+  homeClaimed,
+  homeHistory,
+  homeLevel,
+  homeLevelXp,
+  homePremium,
+  homeSkip,
+  homeWeekly,
+} from './home/state';
+import { creatureId, passSeason, rarityLabel, type PassLevel, type PassRarity, type Reward } from './catalog';
 import { bannerCss, drawPassEmote, frameCss } from './cosmetics';
 import { creatureIcon, loadSeasonCreatureNames } from './creatures-bridge';
 import { passIcon, type PassIcon } from './icons';
@@ -63,6 +80,79 @@ let page = 0;
 let sel: { L: PassLevel; track: Track } | null = null;
 let raf = 0;
 let offs: (() => void)[] = [];
+
+/* ---------------- os dois passes do mês: mesmo motor de tela ---------------- */
+type PassMode = 'star' | 'home';
+let mode: PassMode = 'star';
+interface Model {
+  levels(i: number): PassLevel[];
+  level(): number;
+  levelXp(): number;
+  premium(): boolean;
+  canClaim(L: PassLevel, tr: Track): boolean;
+  claim(L: PassLevel, tr: Track): Reward | null;
+  claimAll(): Reward[];
+  claimable(): number;
+  claimed(lv: number, tr: Track): boolean;
+  skip(): 'ok' | 'gems' | 'max';
+  skipGems: number;
+  price: number;
+  weekly(): { def: { text: string; target: number; xp: number; game?: string }; progress: number; done: boolean }[];
+  milestones(): { def: { text: string; target: number; xp: number }; progress: number; done: boolean }[];
+  history(): { info: SeasonInfo; save: PassSeasonSave }[];
+  items(i: number): { level: number; track: Track; r: Reward }[];
+  art(x: CanvasRenderingContext2D, w: number, h: number, s: SeasonInfo, t: number): void;
+  /** destaques (histórico) */
+  star(it: { level: number; track: Track; r: Reward }): boolean;
+}
+const itemsOf = (levels: PassLevel[]) => levels.flatMap((L) => [...(L.free ? [{ level: L.level, track: 'free' as Track, r: L.free }] : []), { level: L.level, track: 'prem' as Track, r: L.prem }]);
+const STAR: Model = {
+  levels: (i) => passSeason(i).levels,
+  level: () => passLevel(),
+  levelXp: () => levelXp(),
+  premium: () => isPremium(),
+  canClaim,
+  claim,
+  claimAll,
+  claimable: () => claimableCount() - (clubDailyAvailable() ? 1 : 0),
+  claimed: (lv, tr) => claimed(lv, tr),
+  skip: () => skipLevels(1),
+  skipGems: PASS.skipGems,
+  price: PASS.priceGems,
+  weekly,
+  milestones,
+  history: historyEntries,
+  items: (i) => itemsOf(passSeason(i).levels),
+  art: drawSeasonArt,
+  star: (it) => it.r.kind === 'creature' || (it.track === 'free' && it.level === 1),
+};
+const HOME: Model = {
+  levels: (i) => homePassSeason(i).levels,
+  level: () => homeLevel(),
+  levelXp: () => homeLevelXp(),
+  premium: () => homePremium(),
+  canClaim: homeCanClaim,
+  claim: homeClaim,
+  claimAll: homeClaimAll,
+  claimable: homeClaimableCount,
+  claimed: (lv, tr) => homeClaimed(lv, tr),
+  skip: () => homeSkip(1),
+  skipGems: PASS.homeSkipGems,
+  price: PASS.homePriceGems,
+  weekly: homeWeekly,
+  milestones: () => [],
+  history: homeHistory,
+  items: (i) => itemsOf(homePassSeason(i).levels),
+  art: drawHomeSeasonArt,
+  star: (it) => it.track === 'prem' && (it.level === 1 || it.level % 10 === 0),
+};
+let M: Model = STAR;
+function setMode(m: PassMode): void {
+  mode = m;
+  M = m === 'home' ? HOME : STAR;
+  page = Math.min(4, Math.floor((M.level() - 1) / 10));
+  sel = null;
+}
 const animated: { c: HTMLCanvasElement; draw: (time: number) => void }[] = [];
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
@@ -122,6 +212,8 @@ export function kindLabel(k: Reward['kind']): string {
       return t('pass.k.coins', 'Moedas');
     case 'tickets':
       return t('pass.k.tickets', 'Ingressos');
+    case 'home':
+      return t('pass.k.home', 'Casa');
   }
 }
 
@@ -182,6 +274,24 @@ function rewardVisual(r: Reward, px: number, s: SeasonInfo, live = false): HTMLE
       wrap.appendChild(b);
       break;
     }
+    case 'home': {
+      const it = homeItem(r.id);
+      if (!it) break;
+      const c = h('canvas');
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      c.width = c.height = Math.round(px * dpr);
+      c.style.width = c.style.height = px + 'px';
+      const x = c.getContext('2d')!;
+      const draw = (time: number) => {
+        x.setTransform(dpr, 0, 0, dpr, 0, 0);
+        x.clearRect(0, 0, px, px);
+        drawHomeItem(x, it, px, time);
+      };
+      draw(0.5);
+      wrap.appendChild(c);
+      if (live) animated.push({ c, draw });
+      break;
+    }
     case 'gems':
       wrap.innerHTML = icon(r.amount >= 100 ? 'gem-pile' : 'gem', { size: px * 0.8 });
       break;
@@ -205,18 +315,18 @@ function seasonForView(): { s: SeasonInfo; live: boolean } {
   return { s: upcomingSeason() ?? SEASONS[0], live: false };
 }
 
-export function openPassUI(startTab: Tab = 'rewards'): void {
+export function openPassUI(startTab: Tab = 'rewards', which: PassMode = mode): void {
   closePassUI();
   tab = startTab;
   const { s } = seasonForView();
-  page = Math.min(4, Math.floor((passLevel() - 1) / 10));
-  sel = null;
+  ensureHomeSeason();
+  setMode(which);
   root = h('div', 'pass-panel');
   applyTheme(root, s);
   document.body.appendChild(root);
   loadSeasonCreatureNames(s.index).then(() => root && render());
   render();
-  offs = [bus.on('pass', () => render()), bus.on('wallet', () => renderWallet()), bus.on('club', () => render()), bus.on('ad-free', () => render())];
+  offs = [bus.on('pass', () => render()), bus.on('hpass', () => render()), bus.on('wallet', () => renderWallet()), bus.on('club', () => render()), bus.on('ad-free', () => render())];
   startLoop();
   requestAnimationFrame(() => root?.classList.add('in'));
 }
@@ -266,7 +376,7 @@ function paintHead(time: number): void {
   const x = c.getContext('2d')!;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawSeasonArt(x, c.width / dpr, c.height / dpr, s, time);
+  M.art(x, c.width / dpr, c.height / dpr, s, time);
 }
 
 function renderWallet(): void {
@@ -284,12 +394,27 @@ function render(): void {
   const back = h('button', 'pp-back', passIcon('p-left', 22));
   back.setAttribute('aria-label', t('pass.back', 'Voltar'));
   back.onclick = () => closePassUI();
-  top.append(back, h('div', 'pp-title', `${passIcon('p-pass', 28)}<b>${t('pass.title', 'Passe Estelar')}</b>`), h('div', 'pp-wallet'));
+  top.append(back, h('div', 'pp-title', mode === 'home' ? `${passIcon('p-house', 28)}<b>${t('hpass.title', 'Passe da Casa')}</b>` : `${passIcon('p-pass', 28)}<b>${t('pass.title', 'Passe Estelar')}</b>`), h('div', 'pp-wallet'));
   root.appendChild(top);
   renderWallet();
 
   const scroll = h('div', 'pp-scroll');
   root.appendChild(scroll);
+  const seg = h('div', 'pp-seg');
+  for (const [m, label, ic, n] of [
+    ['star', t('pass.title', 'Passe Estelar'), passIcon('p-pass', 20), live ? STAR.claimable() : 0],
+    ['home', t('hpass.title', 'Passe da Casa'), passIcon('p-house', 20), live ? HOME.claimable() : 0],
+  ] as [PassMode, string, string, number][]) {
+    const b = h('button', 'pp-seg-b' + (mode === m ? ' on' : ''), `${ic}<span>${label}</span>${n && mode !== m ? `<i class="pp-seg-n">${n}</i>` : ''}`);
+    b.onclick = () => {
+      if (mode === m) return;
+      setMode(m);
+      audio.click();
+      render();
+    };
+    seg.appendChild(b);
+  }
+  scroll.appendChild(seg);
   scroll.appendChild(renderHero(s, live));
   const tabs = h('div', 'pp-tabs');
   const tabDefs: [Tab, string, string][] = [
@@ -300,7 +425,7 @@ function render(): void {
   ];
   for (const [id, label, ic] of tabDefs) {
     const b = h('button', 'pp-tab' + (tab === id ? ' on' : ''), `${ic}<span>${label}</span>`);
-    if (id === 'weekly' && live && weekly().some((w) => !w.done && w.progress > 0)) b.classList.add('dot');
+    if (id === 'weekly' && live && M.weekly().some((w) => !w.done && w.progress > 0)) b.classList.add('dot');
     if (id === 'club' && clubDailyAvailable()) b.classList.add('dot');
     b.onclick = () => {
       tab = id;
@@ -319,7 +444,7 @@ function render(): void {
 }
 
 function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
-  const hero = h('div', 'pp-hero');
+  const hero = h('div', 'pp-hero' + (mode === 'home' ? ' home' : ''));
   const c = h('canvas', 'pp-art');
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.min(window.innerWidth, 720);
@@ -331,7 +456,7 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
   headArt = { c, s };
   paintHead(0);
   const king = h('div', 'pp-king');
-  const kr: Reward = passSeason(s.index).levels[49].prem;
+  const kr: Reward = M.levels(s.index)[49].prem;
   king.appendChild(rewardVisual(kr, 108, s));
   king.appendChild(h('div', 'pp-king-tag', `${icon('crown', { size: 14 })}${kr.name}`));
   hero.appendChild(king);
@@ -345,17 +470,17 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
   hero.appendChild(info);
 
   const prog = h('div', 'pp-prog');
-  const lv = passLevel();
-  const lx = levelXp();
-  const prem = isPremium();
+  const lv = M.level();
+  const lx = M.levelXp();
+  const prem = M.premium();
   prog.innerHTML = `<div class="pp-lv"><small>${t('pass.level', 'Nível')}</small><b>${lv}</b></div>
     <div class="pp-bar-wrap"><div class="pp-bar"><i style="width:${(lx / PASS.xpPerLevel) * 100}%"></i></div>
     <div class="pp-bar-txt">${lv >= PASS.levels ? t('pass.maxed', 'Nível máximo!') : t('pass.xpTo', '{x}/{y} XP para o nível {n}', { x: fmt(lx), y: fmt(PASS.xpPerLevel), n: lv + 1 })}</div></div>`;
   if (live && lv < PASS.levels) {
-    const sk = h('button', 'pp-skip', `${passIcon('p-skip', 18)}<span>+1</span><i class="gem"></i>${PASS.skipGems}`);
+    const sk = h('button', 'pp-skip', `${passIcon('p-skip', 18)}<span>+1</span><i class="gem"></i>${M.skipGems}`);
     sk.setAttribute('aria-label', t('pass.skip', 'Pular 1 nível'));
     sk.onclick = () => {
-      const r = skipLevels(1);
+      const r = M.skip();
       if (r === 'gems') toast(t('pass.noGems', 'Gemas insuficientes'), 'gem');
       else if (r === 'ok') {
         audio.cash();
@@ -372,8 +497,8 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
   } else if (prem) {
     cta.innerHTML = `<div class="pp-owned">${icon('check', { size: 20 })}${clubActive() ? t('pass.ownedClub', 'Passe Premium incluso no Clube Bloop') : t('pass.owned', 'Passe Premium ativo · sem anúncios nesta temporada')}</div>`;
   } else {
-    const buy = h('button', 'pp-buy', `<span>${t('pass.buy', 'Liberar Premium')}</span><b><i class="gem"></i>${fmt(PASS.priceGems)}</b>`);
-    buy.onclick = () => confirmBuy(s);
+    const buy = h('button', 'pp-buy', `<span>${t('pass.buy', 'Liberar Premium')}</span><b><i class="gem"></i>${fmt(M.price)}</b>`);
+    buy.onclick = () => openBuy(s);
     const club = h('button', 'pp-club-btn', `${passIcon('p-club', 22)}<span>${t('pass.clubCta', 'Clube Bloop')}</span>`);
     club.onclick = () => openClubSheet();
     cta.append(buy, club);
@@ -385,9 +510,9 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
 /* ---------------- aba Prêmios ---------------- */
 
 function renderRewards(body: HTMLElement, s: SeasonInfo, live: boolean): void {
-  const ps = passSeason(s.index);
-  const lv = live ? passLevel() : 0;
-  const prem = isPremium();
+  const ps = { levels: M.levels(s.index) };
+  const lv = live ? M.level() : 0;
+  const prem = M.premium();
   const nav = h('div', 'pp-pager');
   const prev = h('button', 'pp-arrow', passIcon('p-left', 22));
   const next = h('button', 'pp-arrow', passIcon('p-right', 22));
@@ -415,8 +540,8 @@ function renderRewards(body: HTMLElement, s: SeasonInfo, live: boolean): void {
   const grid = h('div', 'pp-grid');
   const levels = ps.levels.slice(page * 10, page * 10 + 10);
   if (!sel) {
-    const firstClaim = levels.find((L) => (prem && canClaim(L, 'prem')) || canClaim(L, 'free'));
-    sel = firstClaim ? { L: firstClaim, track: prem && canClaim(firstClaim, 'prem') ? 'prem' : 'free' } : { L: levels.find((L) => L.prem.kind === 'creature') ?? levels[0], track: 'prem' };
+    const firstClaim = levels.find((L) => (prem && M.canClaim(L, 'prem')) || M.canClaim(L, 'free'));
+    sel = firstClaim ? { L: firstClaim, track: prem && M.canClaim(firstClaim, 'prem') ? 'prem' : 'free' } : { L: levels.find((L) => L.prem.kind === 'creature') ?? levels[0], track: 'prem' };
   }
   for (const L of levels) {
     const cell = h('div', 'pp-cell' + (L.level <= lv ? ' reached' : '') + (L.level === lv ? ' current' : ''));
@@ -431,11 +556,11 @@ function renderRewards(body: HTMLElement, s: SeasonInfo, live: boolean): void {
   // detalhe do selecionado
   if (sel) body.appendChild(detail(sel.L, sel.track, s, live, lv, prem));
 
-  const n = live ? claimableCount() - (clubDailyAvailable() ? 1 : 0) : 0;
+  const n = live ? M.claimable() - (clubDailyAvailable() ? 1 : 0) : 0;
   if (n > 1) {
     const all = h('button', 'pp-claim-all', `${icon('gift', { size: 22 })}${t('pass.claimAll', 'Resgatar tudo ({n})', { n })}`);
     all.onclick = () => {
-      const got = claimAll();
+      const got = M.claimAll();
       if (got.length) {
         audio.cash();
         haptics.tap('medium');
@@ -448,7 +573,7 @@ function renderRewards(body: HTMLElement, s: SeasonInfo, live: boolean): void {
 
 function card(L: PassLevel, track: Track, s: SeasonInfo, lv: number, prem: boolean): HTMLElement {
   const r = track === 'free' ? L.free! : L.prem;
-  const got = claimed(L.level, track);
+  const got = M.claimed(L.level, track);
   const locked = track === 'prem' && !prem;
   const ready = !got && L.level <= lv && !locked;
   const el = h('button', `pp-card ${track} r-${r.rarity}${got ? ' got' : ''}${ready ? ' ready' : ''}${locked ? ' locked' : ''}${r.kind === 'creature' ? ' creature' : ''}`);
@@ -468,7 +593,7 @@ function card(L: PassLevel, track: Track, s: SeasonInfo, lv: number, prem: boole
 }
 
 function doClaim(L: PassLevel, track: Track): void {
-  const r = claim(L, track);
+  const r = M.claim(L, track);
   if (!r) return;
   audio.cash();
   haptics.tap('medium');
@@ -488,7 +613,7 @@ function detail(L: PassLevel, track: Track, s: SeasonInfo, live: boolean, lv: nu
     <div class="pp-dname">${r.name}</div>
     <div class="pp-dsub">${t('pass.lvTrack', 'Nível {n} · trilha {tr}', { n: L.level, tr: track === 'prem' ? t('pass.trackPrem', 'Premium') : t('pass.trackFree', 'Grátis') })}${exclusive ? ` · <b>${t('pass.exclusive', 'Exclusivo do passe')}</b>` : ''}</div>`;
   const act = h('div', 'pp-dact');
-  const got = claimed(L.level, track);
+  const got = M.claimed(L.level, track);
   if (r.kind === 'music') {
     const on = playingTrack() === r.id;
     const pb = h('button', 'pp-play', `${icon(on ? 'pause' : 'play', { size: 18 })}${on ? t('pass.stop', 'Parar') : t('pass.listen', 'Ouvir')}`);
@@ -500,13 +625,13 @@ function detail(L: PassLevel, track: Track, s: SeasonInfo, live: boolean, lv: nu
     act.appendChild(pb);
   }
   if (got || (exclusive && hasItem(r.id) && r.kind !== 'creature')) act.appendChild(h('span', 'pp-have', `${icon('check', { size: 18 })}${t('pass.have', 'É seu')}`));
-  else if (live && canClaim(L, track)) {
+  else if (live && M.canClaim(L, track)) {
     const b = h('button', 'pp-claim', t('pass.claim', 'Resgatar'));
     b.onclick = () => doClaim(L, track);
     act.appendChild(b);
   } else if (track === 'prem' && !prem && live) {
     const b = h('button', 'pp-claim locked', `${icon('lock', { size: 16 })}${t('pass.needPrem', 'Precisa do Premium')}`);
-    b.onclick = () => confirmBuy(s);
+    b.onclick = () => openBuy(s);
     act.appendChild(b);
   } else {
     act.appendChild(h('span', 'pp-need', t('pass.reach', 'Chegue ao nível {n}', { n: L.level })));
@@ -515,6 +640,53 @@ function detail(L: PassLevel, track: Track, s: SeasonInfo, live: boolean, lv: nu
   d.appendChild(info);
   void lv;
   return d;
+}
+
+function openBuy(s: SeasonInfo): void {
+  if (mode === 'home') confirmHomeBuy(s);
+  else confirmBuy(s);
+}
+
+function confirmHomeBuy(s: SeasonInfo): void {
+  const sh = sheet();
+  const L = homePassSeason(s.index).levels;
+  const starOwned = isPremium();
+  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-house', 44)}<div><b>${t('hpass.buyTitle', 'Passe da Casa Premium')}</b><small>${seasonTheme(s)}</small></div></div>
+    <ul class="ps-list">
+      <li>${passIcon('p-house', 22)}${t('hpass.b1', 'Móveis, tintas especiais, papéis de parede, pisos e enfeites do planeta')}</li>
+      <li>${icon('party', { size: 22 })}${t('hpass.b2', 'Kit de cômodo completo e kit de festa com bolo temático')}</li>
+      <li>${icon('crown', { size: 22 })}${t('hpass.b3', 'Peça-mestra no nível 50: {n}', { n: L[49].prem.name })}</li>
+      <li>${icon('gem', { size: 22 })}${t('hpass.b4', '600 gemas de volta ao longo do passe')}</li>
+    </ul>`;
+  const row = h('div', 'ps-creatures');
+  for (const lv of [0, 19, 29, 39, 49]) row.appendChild(rewardVisual(L[lv].prem, 52, s));
+  sh.box.appendChild(row);
+  const done = (r: ReturnType<typeof buyHomePremium>, price: number) => {
+    if (r === 'gems') return toast(t('pass.needGems', 'Faltam {n} gemas — veja a loja ou o Clube', { n: fmt(price - save.gems) }), 'gem');
+    sh.close();
+    if (r === 'ok') {
+      audio.cash();
+      haptics.tap('heavy');
+      sel = null;
+      toast(t('hpass.welcome', 'Passe da Casa liberado! Resgate seu primeiro móvel'), 'home');
+    }
+    render();
+  };
+  const b = h('button', 'pp-buy big', `<span>${t('hpass.buyHouse', 'Só o Passe da Casa')}</span><b><i class="gem"></i>${fmt(PASS.homePriceGems)}</b>`);
+  b.onclick = () => done(buyHomePremium(false), PASS.homePriceGems);
+  sh.box.appendChild(b);
+  if (!starOwned) {
+    const save2 = PASS.priceGems + PASS.homePriceGems - PASS.bundlePriceGems;
+    const bb = h('button', 'pp-buy big bundle', `<span>${t('hpass.bundle', 'Passes do Mês (os dois)')}<small>${t('hpass.bundleSave', 'economize {n} gemas', { n: fmt(save2) })}</small></span><b><i class="gem"></i>${fmt(PASS.bundlePriceGems)}</b>`);
+    bb.onclick = () => done(buyHomePremium(true), PASS.bundlePriceGems);
+    sh.box.appendChild(bb);
+  }
+  const c = h('button', 'ps-alt', `${passIcon('p-club', 20)}${t('hpass.orClub', 'Ou assine o Clube Bloop (os dois passes inclusos)')}`);
+  c.onclick = () => {
+    sh.close();
+    openClubSheet();
+  };
+  sh.box.appendChild(c);
 }
 
 function confirmBuy(s: SeasonInfo): void {
@@ -581,16 +753,27 @@ function renderWeekly(body: HTMLElement, live: boolean): void {
     return;
   }
   body.appendChild(h('div', 'pp-sec', `<b>${t('pass.weekTitle', 'Desafios da semana')}</b><small>${icon('clock', { size: 14 })}${t('pass.renews', 'Renova em {t}', { t: durText(weekEnds() - Date.now()) })}</small>`));
-  for (const w of weekly()) body.appendChild(chRow(w.def.text, w.progress, w.def.target, w.def.xp, w.done, w.def.game));
-  body.appendChild(h('div', 'pp-sec', `<b>${t('pass.msTitle', 'Marcos da temporada')}</b>`));
-  for (const m of milestones()) body.appendChild(chRow(m.def.text, m.progress, m.def.target, m.def.xp, m.done));
-  body.appendChild(h('div', 'pp-tip', `${icon('sparkle', { size: 16 })}${t('pass.xpTip', 'Toda partida em qualquer minigame dá XP. Entrar no jogo todo dia dá +{n} XP.', { n: PASS.dailyLoginXp })}`));
+  for (const w of M.weekly()) body.appendChild(chRow(w.def.text, w.progress, w.def.target, w.def.xp, w.done, w.def.game));
+  const ms = M.milestones();
+  if (ms.length) body.appendChild(h('div', 'pp-sec', `<b>${t('pass.msTitle', 'Marcos da temporada')}</b>`));
+  for (const m of ms) body.appendChild(chRow(m.def.text, m.progress, m.def.target, m.def.xp, m.done));
+  body.appendChild(
+    h(
+      'div',
+      'pp-tip',
+      `${icon('sparkle', { size: 16 })}${
+        mode === 'home'
+          ? t('hpass.xpTip', 'Construir, pintar, limpar, dar festas e ajudar amigos dá XP da casa. Partidas também contam um pouco.')
+          : t('pass.xpTip', 'Toda partida em qualquer minigame dá XP. Entrar no jogo todo dia dá +{n} XP.', { n: PASS.dailyLoginXp })
+      }`,
+    ),
+  );
 }
 
 function chRow(text: string, prog: number, target: number, xp: number, done: boolean, game?: string): HTMLElement {
   const row = h('div', 'pp-ch' + (done ? ' done' : ''));
   const p = Math.min(1, prog / target);
-  const ic = game === 'orbit' ? 'planet' : game === 'rally' ? 'rocket' : game === 'tycoon' ? 'coins' : game === 'tubo' ? 'target' : game === 'pet' ? 'heart' : 'star';
+  const ic = game === 'orbit' ? 'planet' : game === 'rally' ? 'rocket' : game === 'tycoon' ? 'coins' : game === 'tubo' ? 'target' : game === 'pet' ? 'heart' : game === 'home' ? 'home' : 'star';
   row.innerHTML = `<div class="ch-ic">${done ? icon('check', { size: 26 }) : icon(ic as any, { size: 26 })}</div>
     <div class="ch-main"><div class="ch-t">${text}</div><div class="ch-bar"><i style="width:${p * 100}%"></i></div><small>${fmt(Math.floor(prog * 10) / 10)}/${fmt(target)}</small></div>
     <div class="ch-xp"><b>+${fmt(xp)}</b><small>XP</small></div>`;
@@ -600,14 +783,14 @@ function chRow(text: string, prog: number, target: number, xp: number, done: boo
 /* ---------------- aba Histórico ---------------- */
 
 function renderHistory(body: HTMLElement): void {
-  const list = historyEntries();
+  const list = M.history();
   body.appendChild(h('div', 'pp-sec', `<b>${t('pass.histTitle', 'Temporadas anteriores')}</b><small>${t('pass.histSub', 'Seus itens ficam com você para sempre')}</small>`));
   if (!list.length) {
     body.appendChild(h('div', 'pp-empty', `${passIcon('p-history', 44)}<p>${t('pass.histEmpty', 'Quando uma temporada acabar, ela aparece aqui com tudo o que você ganhou.')}</p>`));
     return;
   }
   for (const { info, save: sv } of list) {
-    const items = seasonItems(info.index);
+    const items = M.items(info.index);
     const lvReached = Math.min(PASS.levels, Math.floor(sv.xp / PASS.xpPerLevel) + 1);
     const gotSet = new Set([...sv.free.map((l) => 'free:' + l), ...sv.prem.map((l) => 'prem:' + l)]);
     const got = items.filter((i) => gotSet.has(`${i.track}:${i.level}`));
@@ -617,7 +800,7 @@ function renderHistory(body: HTMLElement): void {
     card.style.setProperty('--s-bg', info.palette[0]);
     card.innerHTML = `<div class="ph-head"><div><b>${seasonTheme(info)}</b><small>${t('pass.seasonN', 'Temporada {n}', { n: info.index + 1 })} · ${t('pass.level', 'Nível')} ${lvReached}${sv.premium ? ' · Premium' : ''}</small></div><div class="ph-count">${got.length}/${items.length}</div></div>`;
     const strip = h('div', 'ph-strip');
-    const highlight = items.filter((i) => i.r.kind === 'creature' || (i.track === 'free' && i.level === 1));
+    const highlight = items.filter((i) => M.star(i));
     for (const it of highlight) {
       const have = gotSet.has(`${it.track}:${it.level}`);
       const cell = h('div', 'ph-item' + (have ? '' : ' missed'));
@@ -637,7 +820,7 @@ function renderClub(body: HTMLElement): void {
   const c = h('div', 'pp-clubcard' + (on ? ' on' : ''));
   c.innerHTML = `<div class="pc-head">${passIcon('p-club', 48)}<div><b>${t('club.name', 'Clube Bloop')}</b><small>${on ? t('club.activeUntil', 'Ativo · renova em {t}', { t: durText(save.club.expires - Date.now()) }) : clubPriceString()}</small></div></div>
     <ul class="ps-list">
-      <li>${passIcon('p-pass', 22)}${t('club.b1', 'Passe Estelar Premium de todo mês incluso')}</li>
+      <li>${passIcon('p-pass', 22)}${t('club.b1both', 'Passe Estelar e Passe da Casa de todo mês inclusos')}</li>
       <li>${icon('no-ads', { size: 22 })}${t('club.b2', 'Zero anúncios enquanto for membro')}</li>
       <li>${icon('gem-pile', { size: 22 })}${t('club.b3', '{n} gemas por mês + {d} gemas todo dia', { n: CLUB.gemsOnRenew, d: CLUB.gemsDaily })}</li>
       <li>${passIcon('p-frame', 22)}${t('club.b4', 'Moldura de perfil exclusiva do Clube')}</li>
@@ -674,7 +857,7 @@ export function openClubSheet(): void {
   sh.box.classList.add('club');
   sh.box.innerHTML = `<div class="ps-head">${passIcon('p-club', 52)}<div><b>${t('club.name', 'Clube Bloop')}</b><small>${t('club.sub', 'Assinatura mensal · cancele quando quiser')}</small></div></div>
     <ul class="ps-list">
-      <li>${passIcon('p-pass', 22)}${t('club.b1', 'Passe Estelar Premium de todo mês incluso')}</li>
+      <li>${passIcon('p-pass', 22)}${t('club.b1both', 'Passe Estelar e Passe da Casa de todo mês inclusos')}</li>
       <li>${icon('no-ads', { size: 22 })}${t('club.b2', 'Zero anúncios enquanto for membro')}</li>
       <li>${icon('gem-pile', { size: 22 })}${t('club.b3', '{n} gemas por mês + {d} gemas todo dia', { n: CLUB.gemsOnRenew, d: CLUB.gemsDaily })}</li>
       <li>${passIcon('p-frame', 22)}${t('club.b4', 'Moldura de perfil exclusiva do Clube')}</li>
