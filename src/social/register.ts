@@ -54,7 +54,7 @@ export function registerSocial(): void {
     id: 'campeonatos',
     label: t('nav.champ', 'Campeonatos'),
     icon: 'trophy',
-    navOrder: 3,
+    navOrder: 60,
     open: openChampionshipsPanel,
     badge: () => champBadge,
   });
@@ -62,7 +62,7 @@ export function registerSocial(): void {
     id: 'social',
     label: t('nav.social', 'Social'),
     icon: 'user',
-    navOrder: 4,
+    navOrder: 50,
     open: () => openSocial('chat'),
   });
   dailyFicha();
