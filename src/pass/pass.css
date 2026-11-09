@@ -218,3 +218,12 @@
 @keyframes pp-up { from { transform: translateY(100%); } }
 @keyframes pp-pop { from { transform: scale(0.7); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .pp-card.ready, .pp-count.hot { animation: none; } }
+
+/* alternador Passe Estelar | Passe da Casa */
+.pp-seg { display: flex; gap: 6px; margin: 0 12px 10px; padding: 4px; border-radius: 18px; background: rgba(0, 0, 0, 0.4); }
+.pp-seg-b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 6px; border-radius: 14px; font-weight: 800; font-size: 14px; background: transparent; opacity: 0.7; }
+.pp-seg-b.on { opacity: 1; background: linear-gradient(180deg, var(--s-b), color-mix(in srgb, var(--s-b) 55%, var(--s-bg))); color: #1a0b3a !important; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
+.pp-seg-n { position: absolute; top: -4px; right: 6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: #ff4f6a; color: #fff; font-style: normal; font-size: 12px; display: grid; place-items: center; }
+.pp-hero.home { box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-b) 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.45); }
+.pp-buy.bundle { background: linear-gradient(180deg, #8affc0, #2fd47a); box-shadow: 0 4px 0 #168a4a, 0 0 18px rgba(62, 224, 122, 0.45); color: #053a17 !important; }
+.pp-buy span small { display: block; font-size: 12px; font-weight: 700; opacity: 0.85; }
