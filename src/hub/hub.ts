@@ -194,6 +194,7 @@ export function closeHost(): void {
   refreshBests();
   showBanner();
   onShow();
+  kickFrame();
 }
 
 /**
@@ -243,7 +244,11 @@ export function initHub(o: HubOptions): void {
   });
 
   // orbit: canvas só roda quando o menu está escondido (partida/corrida) e sem minigame
-  new MutationObserver(syncOrbit).observe(menu, { attributes: true, attributeFilter: ['class'] });
+  new MutationObserver(() => {
+    syncOrbit();
+    kickFrame();
+  }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+  document.addEventListener('visibilitychange', kickFrame);
   syncOrbit();
 
   let regT = 0;
@@ -275,7 +280,7 @@ export function initHub(o: HubOptions): void {
   buildNav();
   refreshBests();
   refreshProfile();
-  requestAnimationFrame(frame);
+  kickFrame();
 }
 
 function onShow(): void {
@@ -538,12 +543,19 @@ function sizeCanvas(c: CardView): void {
   c.ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+let rafId = 0;
+/** (re)liga o loop da vitrine — ele dorme sozinho quando o hub some (minigame/partida/2º plano). */
+function kickFrame(): void {
+  if (!rafId) rafId = requestAnimationFrame(frame);
+}
+
 function frame(now: number): void {
-  requestAnimationFrame(frame);
+  rafId = 0;
   if (!hubVisible() || document.hidden) {
-    last = now;
+    last = 0;
     return;
   }
+  rafId = requestAnimationFrame(frame);
   if ((frameN++ & 15) === 0) covered = !!document.querySelector('.modal-screen.on, .cr-root.on, .rank.on');
   const dt = Math.min(0.1, (now - (last || now)) / 1000);
   last = now;
