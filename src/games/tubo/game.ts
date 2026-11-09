@@ -14,6 +14,7 @@ import { addCoins } from '../../core/economy';
 import { audio } from '../../core/audio';
 import { tap as haptic, success as hapticSuccess } from '../../core/haptics';
 import { FpsLimiter, QualityGovernor, type QualitySettings } from '../../core/quality';
+import { Bloom, drawGrade, drawLight, drawRim, drawSoftShadow } from '../../gfx/light';
 import { save } from '../../core/storage';
 import { showRewarded, rewardedAvailable } from '../../services/ads';
 import { drawPlayer, type PlayerPose } from '../../game/character';
@@ -159,6 +160,7 @@ class TuboGame implements MiniGameHandle {
 
   private q: QualitySettings;
   private quality: QualityGovernor;
+  private bloom = new Bloom();
   private limiter = new FpsLimiter(60);
   private raf = 0;
   private last = 0;
@@ -1013,7 +1015,7 @@ class TuboGame implements MiniGameHandle {
 
     // fundo com transição entre zonas
     const zf = this.footY / g.spacing / ZONE_LEN;
-    const zA = Math.floor(zf);
+    const zA = Math.max(0, Math.floor(zf));
     const frac = zf - zA;
     x.imageSmoothingEnabled = true;
     x.drawImage(this.bgs[zA % ZONES.length], 0, 0, W, H);
@@ -1037,6 +1039,8 @@ class TuboGame implements MiniGameHandle {
       }
       x.globalAlpha = 1;
     }
+    // luz que vem de cima (claraboia do tubo)
+    if (this.q.dynLights) drawLight(x, '255,246,220', this.cx, -H * 0.05, W * 0.75, 0.5, 0.9);
 
     x.save();
     if (this.shake > 0) x.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
@@ -1088,6 +1092,18 @@ class TuboGame implements MiniGameHandle {
     this.drawHero(x);
     this.drawParticles(x, false);
     x.restore();
+
+    // névoa de profundidade: o fundo do tubo some na cor do céu da zona
+    if (this.q.grade) {
+      const z = ZONES[zA % ZONES.length];
+      drawGrade(x, W, H, 'rgba(255,255,255,0)', z.bg[2], 0.3, 'source-over');
+      if (this.q.bloom) drawGrade(x, W, H, 'rgba(255,240,215,0.9)', 'rgba(40,10,60,0.9)', 0.35);
+    }
+    // bloom no Turbo (só no Alto)
+    if (this.q.bloom && this.fire > 0) {
+      x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.bloom.apply(x, this.cv, W, H, 0.55);
+    }
 
     // textos flutuantes
     if (this.pops.length) {
@@ -1165,10 +1181,13 @@ class TuboGame implements MiniGameHandle {
     const seg = segAt(r, norm(FRONT - r.rot));
     if (seg.type === Seg.Gap) return;
     const k = 1 - Math.min(0.6, this.offset / (g.R * 3));
-    x.fillStyle = 'rgba(90,20,60,0.28)';
-    x.beginPath();
-    x.ellipse(0, g.rMid * g.k, g.R * 0.95 * k, g.R * 0.3 * k, 0, 0, TAU);
-    x.fill();
+    if (this.q.softShadows) drawSoftShadow(x, 0, g.rMid * g.k, g.R * 0.95 * k, g.R * 0.32 * k, 0.4 * (0.5 + k * 0.5), true);
+    else {
+      x.fillStyle = 'rgba(90,20,60,0.28)';
+      x.beginPath();
+      x.ellipse(0, g.rMid * g.k, g.R * 0.95 * k, g.R * 0.3 * k, 0, 0, TAU);
+      x.fill();
+    }
   }
 
   private drawHero(x: CanvasRenderingContext2D): void {
@@ -1195,6 +1214,8 @@ class TuboGame implements MiniGameHandle {
     if (this.mode === 'dead' || this.mode === 'over') x.rotate(Math.sin(this.deadT * 30) * 0.08 * Math.max(0, 1 - this.deadT * 2));
     drawPlayer(x, this.skin, R, p);
     x.restore();
+    // luz de recorte vinda de cima
+    if (this.q.dynLights) drawRim(x, 0, fy - R * 1.04 * p.sy, R * 1.02, -Math.PI / 2 - 0.5, '255,244,214', 0.5);
     if (this.shield || this.invuln > 0) {
       const blinkOut = this.invuln > 0 && this.invuln < 0.8 && Math.sin(this.pose.t * 30) < 0;
       if (!blinkOut) {

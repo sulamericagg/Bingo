@@ -259,10 +259,13 @@ export function makeZoneStyle(ctx: CanvasRenderingContext2D, zi: number, geo: Ge
     g.addColorStop(1, c1);
     return g;
   };
-  const side = (c0: string, c1: string) => {
+  // lateral com reflexo especular fixo (luz de cima-esquerda) e oclusão na borda direita
+  const side = (c0: string, c1: string, spec: string) => {
     const g = ctx.createLinearGradient(-rOut, 0, rOut, 0);
     g.addColorStop(0, c0);
-    g.addColorStop(0.45, c0);
+    g.addColorStop(0.2, spec);
+    g.addColorStop(0.32, c0);
+    g.addColorStop(0.55, c0);
     g.addColorStop(1, c1);
     return g;
   };
@@ -279,8 +282,8 @@ export function makeZoneStyle(ctx: CanvasRenderingContext2D, zi: number, geo: Ge
     topNormal: radial(z.ring[0], z.ring[1], z.ring[3]),
     topCrack: radial(z.ring[1], z.ring[2], z.ring[3]),
     topRed: radial(RED.top, RED.topDark, RED.stripe),
-    sideNormal: side(z.ring[2], z.ring[3]),
-    sideRed: side(RED.side, RED.sideDark),
+    sideNormal: side(z.ring[2], z.ring[3], z.ring[1]),
+    sideRed: side(RED.side, RED.sideDark, RED.top),
     cut: z.ring[3],
     pipe,
     pipeAO: ao,
