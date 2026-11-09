@@ -6,7 +6,7 @@ import {
   InterstitialAdPluginEvents,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
-import { ADMOB, AD_RULES, ADS_TEST_MODE, WEB_ADS } from '../config';
+import { ADMOB, AD_FREE, AD_RULES, ADS_TEST_MODE, WEB_ADS } from '../config';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import { icon } from '../ui/icons';
@@ -36,6 +36,60 @@ export function notePurchase(): void {
   lastPurchaseAt = Date.now();
 }
 
+/* ---------------- tempo sem anúncios / isenções ---------------- */
+
+/** Clube Bloop ativo (assinatura). Lido direto do save para não criar dependência circular. */
+export const clubActive = (now = Date.now()): boolean => save.club.expires > now;
+
+/** true se quem comprou o Passe Estelar da temporada atual (sem anúncios na temporada dele). */
+let passPremiumCheck: () => boolean = () => false;
+/** O módulo do passe registra aqui como saber se o jogador tem o passe premium vigente. */
+export function setPassPremiumCheck(fn: () => boolean): void {
+  passPremiumCheck = fn;
+}
+
+/** ms restantes de tempo sem anúncios ganho com vídeos. */
+export const adFreeLeftMs = (now = Date.now()): number => Math.max(0, save.adFree.until - now);
+
+/**
+ * true = não mostrar intersticial nem banner agora
+ * (Sem Anúncios comprado, Clube ativo, Passe premium da temporada ou tempo sem anúncios).
+ * Vídeos premiados continuam disponíveis (são opcionais).
+ */
+export function adsSuppressed(now = Date.now()): boolean {
+  return save.noAds || clubActive(now) || adFreeLeftMs(now) > 0 || passPremiumCheck();
+}
+
+/** Progresso do medidor: vídeos já vistos para o próximo bloco. */
+export function adFreeMeter(): { videos: number; need: number; leftMs: number; maxed: boolean } {
+  const left = adFreeLeftMs();
+  return { videos: save.adFree.videos, need: AD_FREE.videos, leftMs: left, maxed: left >= (AD_FREE.maxMinutes - AD_FREE.minutes) * 60000 + 1 };
+}
+
+/**
+ * Assiste 1 vídeo premiado para o medidor "X vídeos = 30 min sem anúncios".
+ * Retorna 'blocked' quando o bloco completou (ganhou tempo), 'progress' quando só avançou,
+ * 'maxed' se já está no teto, 'fail' se o vídeo não foi assistido.
+ */
+export async function watchForAdFree(): Promise<'progress' | 'blocked' | 'maxed' | 'fail'> {
+  if (adFreeMeter().maxed) return 'maxed';
+  const ok = await showRewarded();
+  if (!ok) return 'fail';
+  save.adFree.videos++;
+  let res: 'progress' | 'blocked' = 'progress';
+  if (save.adFree.videos >= AD_FREE.videos) {
+    save.adFree.videos = 0;
+    const now = Date.now();
+    const base = Math.max(now, save.adFree.until);
+    save.adFree.until = Math.min(now + AD_FREE.maxMinutes * 60000, base + AD_FREE.minutes * 60000);
+    res = 'blocked';
+    hideBanner();
+  }
+  persist();
+  bus.emit('ad-free');
+  return res;
+}
+
 async function loadRewarded(): Promise<void> {
   if (!isNative) return;
   try {
@@ -48,7 +102,7 @@ async function loadRewarded(): Promise<void> {
 }
 
 async function loadInterstitial(): Promise<void> {
-  if (!isNative || save.noAds) return;
+  if (!isNative || save.noAds || clubActive()) return;
   try {
     await AdMob.prepareInterstitial({ adId: ADMOB.interstitial, isTesting: ADS_TEST_MODE });
     interstitialReady = true;
@@ -166,7 +220,7 @@ export async function showRewarded(): Promise<boolean> {
 
 /** Intersticial com limite de frequência — nunca para quem comprou "Sem Anúncios". */
 export async function maybeInterstitial(): Promise<void> {
-  if (save.noAds || busy) return;
+  if (adsSuppressed() || busy) return;
   if (lastPurchaseAt && Date.now() - lastPurchaseAt < AFTER_PURCHASE_MS) return;
   save.runsSinceAd++;
   persist();
@@ -200,7 +254,7 @@ export async function maybeInterstitial(): Promise<void> {
 }
 
 export async function showBanner(): Promise<void> {
-  if (!isNative || save.noAds || bannerShown) return;
+  if (!isNative || adsSuppressed() || bannerShown) return;
   try {
     await AdMob.showBanner({
       adId: ADMOB.banner,

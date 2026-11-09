@@ -45,6 +45,42 @@ export interface SaveData {
   avatar: AvatarSave;
   /** Peças/paletas compradas do criador (as grátis não precisam estar aqui). */
   ownedParts: string[];
+  /** Passe Estelar (src/pass/state.ts). */
+  pass: PassSave;
+  /** Itens exclusivos do passe que não são peças do criador: emotes, músicas, molduras, faixas, criaturas. */
+  passItems: string[];
+  /** Ingressos (campeonatos/eventos). */
+  tickets: number;
+  /** Clube Bloop (assinatura). expires = ms epoch; 0 = nunca assinou. */
+  club: { expires: number; lastRenewGrant: number; lastDrip: number };
+  /** Tempo sem anúncios ganho com vídeos premiados (ms epoch) + vídeos acumulados para o próximo bloco. */
+  adFree: { until: number; videos: number };
+}
+
+export interface PassSeasonSave {
+  xp: number;
+  premium: boolean;
+  /** níveis resgatados (trilha grátis / premium) */
+  free: number[];
+  prem: number[];
+}
+
+export interface PassSave {
+  /** índice da temporada que os campos abaixo descrevem (-1 = nenhuma) */
+  season: number;
+  cur: PassSeasonSave;
+  /** temporadas anteriores (para a tela de histórico) */
+  history: Record<string, PassSeasonSave>;
+  /** desafios semanais: semana ISO + progresso por desafio + resgatados */
+  week: string;
+  wprog: Record<string, number>;
+  wdone: string[];
+  /** marcos da temporada (progresso acumulado por chave) */
+  mprog: Record<string, number>;
+  mdone: string[];
+  loginDay: number;
+  /** pop-ups já vistos: 'sNN' (anúncio) e 'sNN-end' (últimos 3 dias) */
+  seen: string[];
 }
 
 export interface AvatarSave {
@@ -88,7 +124,15 @@ const defaults = (): SaveData => ({
   tips: {},
   avatar: defaultAvatar(),
   ownedParts: [],
+  pass: defaultPass(),
+  passItems: [],
+  tickets: 0,
+  club: { expires: 0, lastRenewGrant: 0, lastDrip: 0 },
+  adFree: { until: 0, videos: 0 },
 });
+
+export const emptyPassSeason = (): PassSeasonSave => ({ xp: 0, premium: false, free: [], prem: [] });
+const defaultPass = (): PassSave => ({ season: -1, cur: emptyPassSeason(), history: {}, week: '', wprog: {}, wdone: [], mprog: {}, mdone: [], loginDay: 0, seen: [] });
 
 function load(): SaveData {
   try {
@@ -105,6 +149,11 @@ function load(): SaveData {
       const oa = (o && o.avatar) || {};
       m.avatar = { parts: { ...da.parts, ...oa.parts }, colors: { ...da.colors, ...oa.colors } };
       m.ownedParts = Array.isArray(o?.ownedParts) ? o.ownedParts : [];
+      m.pass = { ...defaultPass(), ...(o && o.pass) };
+      m.pass.cur = { ...emptyPassSeason(), ...m.pass.cur };
+      m.passItems = Array.isArray(o?.passItems) ? o.passItems : [];
+      m.club = { expires: 0, lastRenewGrant: 0, lastDrip: 0, ...(o && o.club) };
+      m.adFree = { until: 0, videos: 0, ...(o && o.adFree) };
       if (!m.ownedSkins.includes('custom')) m.ownedSkins.push('custom');
       return m;
     }

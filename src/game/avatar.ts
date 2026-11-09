@@ -10,6 +10,9 @@ import { A, cols, ell, lum, mix, NP, setBase, SHAPES, tracePts } from './avatar-
 import { drawOutline, type DC, MATERIALS, PATTERNS, shadeBody } from './avatar-mat';
 import { AURAS, BACKS, EYES, FACES, HEADS, MOUTHS } from './avatar-parts';
 import { RARITY_INFO, SKINS, type Price, type Rarity } from './skins';
+// EXTENSÃO: peças exclusivas do Passe Estelar (olhos/bocas/auras por temporada)
+import { installPassParts, isPassPart, PASS_PARTS } from '../pass/parts';
+installPassParts(EYES, MOUTHS, AURAS);
 
 export type Slot = 'body' | 'material' | 'pattern' | 'eyes' | 'mouth' | 'head' | 'face' | 'back' | 'aura';
 export type PartSlot = Slot | 'palette';
@@ -202,10 +205,11 @@ export const PALETTES: Part[] = [
   PAL('pal_metal', 'Metais', 'legendary', { gems: 100 }, ['#ffd23f', '#d8dce8', '#c87a4a', '#f2b8a8', '#4a5068', '#fff7d6']),
 ];
 
-export const ALL_PARTS: Part[] = [...PARTS, ...PALETTES];
+export const ALL_PARTS: Part[] = [...PARTS, ...PASS_PARTS, ...PALETTES];
 const BY_ID = new Map(ALL_PARTS.map((p) => [p.id, p]));
 export const partById = (id: string): Part | undefined => BY_ID.get(id);
-export const partsOf = (slot: PartSlot): Part[] => ALL_PARTS.filter((p) => p.slot === slot);
+/** Peças do passe só aparecem no criador depois de ganhas (são centenas, uma por temporada). */
+export const partsOf = (slot: PartSlot): Part[] => ALL_PARTS.filter((p) => p.slot === slot && (!isPassPart(p) || save.ownedParts.includes(p.id)));
 
 /** Produtos de dinheiro real (cadastrar no Play Console). */
 export const PART_PRODUCTS: { id: string; part: string; fallbackPrice: string }[] = [
