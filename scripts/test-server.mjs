@@ -8,6 +8,7 @@
  * Para testar um servidor já rodando: BASE=http://127.0.0.1:8787 ADMIN_PASSWORD=... node scripts/test-server.mjs
  */
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,7 +19,15 @@ let child;
 let persist;
 
 async function startServer() {
-  const port = 8790 + Math.floor(Math.random() * 100);
+  // porta livre de verdade (outros `wrangler dev` podem estar rodando na máquina)
+  const port = await new Promise((res, rej) => {
+    const srv = createServer();
+    srv.once('error', rej);
+    srv.listen(0, '127.0.0.1', () => {
+      const p = srv.address().port;
+      srv.close(() => res(p));
+    });
+  });
   persist = mkdtempSync(join(tmpdir(), 'bo-kv-'));
   child = spawn(
     'npx',
@@ -307,6 +316,7 @@ async function main() {
   check('jogador sozinho: 4 bots e resultado', cs.start?.players?.length === 5 && cs.start.players.filter((p) => p.bot).length === 4 && cs.end?.results?.length === 5, cs.start?.players);
 
   await socialTests(T);
+  await homeTests(T);
 
   console.log('\nRate limit');
   let last;
@@ -617,6 +627,303 @@ async function socialTests(T) {
   check('admin lista campeonatos com inscritos', r.data?.items?.some((x) => x.id === D.id && x.players.length === 3), r.data?.items?.length);
   r = await call('GET', '/api/admin/social/champs');
   check('admin social sem token → 401', r.status === 401);
+}
+
+
+/* ======================= CASA, PLANETA & AMIGOS ======================= */
+async function homeTests(T) {
+  const uid = () => crypto.randomUUID();
+  const tag = Array.from({ length: 5 }, () => 'abcdefghjkmnpqrstuvwxyz'[Math.floor(Math.random() * 23)]).join('');
+  const [A, B, C, D] = [uid(), uid(), uid(), uid()];
+
+  console.log('\n@nomes');
+  let r = await call('GET', '/api/handle/check?h=ab');
+  check('curto demais → invalid', r.data?.ok === false && r.data.reason === 'invalid', r.data);
+  r = await call('GET', '/api/handle/check?h=' + encodeURIComponent('com espaço'));
+  check('espaço → invalid', r.data?.reason === 'invalid', r.data);
+  r = await call('GET', '/api/handle/check?h=admin');
+  check('reservado → blocked', r.data?.reason === 'blocked', r.data);
+  for (const bad of ['merda_x', 'p.u.t.a', 'fuck123', 'ana11999887', 'insta_ana', 'zap_bia']) {
+    r = await call('GET', '/api/handle/check?h=' + bad);
+    check(`moderação recusa "${bad}"`, r.data?.ok === false && r.data.reason === 'blocked', r.data);
+  }
+  const hA = 'ana_' + tag;
+  r = await call('GET', '/api/handle/check?h=@' + hA.toUpperCase());
+  check('nome livre (com @ e maiúsculas) → ok', r.data?.ok === true, r.data);
+  r = await call('POST', '/api/handle/claim', { id: A, handle: hA.toUpperCase() });
+  check('claim ok (guardado em minúsculas)', r.data?.ok === true && r.data.handle === hA, r.data);
+  r = await call('GET', '/api/handle/check?h=' + hA.toUpperCase());
+  check('nome tomado → taken + sugestões livres', r.data?.reason === 'taken' && r.data.suggestions?.length >= 1 && r.data.suggestions.every((x) => /^[a-z0-9_.]{3,16}$/.test(x) && x !== hA), r.data);
+  r = await call('POST', '/api/handle/claim', { id: B, handle: hA });
+  check('outro jogador não pega o mesmo nome', r.data?.ok === false && r.data.reason === 'taken', r.data);
+  r = await call('POST', '/api/handle/claim', { id: A, handle: 'ana2_' + tag });
+  check('trocar de nome antes de 30 dias → recusado com prazo', r.data?.ok === false && r.data.until > Date.now() + 29 * 86400_000, r.data);
+  r = await call('GET', '/api/handle/mine?id=' + A);
+  check('handle/mine devolve o nome', r.data?.handle === hA, r.data);
+  // corrida: dois jogadores pedindo o mesmo nome ao mesmo tempo → no máximo um vence
+  const hRace = 'race_' + tag;
+  const [r1, r2] = await Promise.all([call('POST', '/api/handle/claim', { id: C, handle: hRace }), call('POST', '/api/handle/claim', { id: D, handle: hRace })]);
+  const winners = [r1, r2].filter((x) => x.data?.ok).length;
+  const owner = await call('GET', '/api/player/by-handle?h=' + hRace);
+  const winnerId = r1.data?.ok ? C : D;
+  check('claim simultâneo: só um fica com o nome (índice consistente)', winners >= 1 && owner.data?.id === (winners === 1 ? winnerId : owner.data?.id) && [C, D].includes(owner.data?.id), { winners, o: owner.data });
+  if (owner.data?.id !== C) await call('POST', '/api/handle/claim', { id: C, handle: 'cia_' + tag });
+  if (owner.data?.id !== D) await call('POST', '/api/handle/claim', { id: D, handle: 'dan_' + tag });
+  const hB = 'beto_' + tag;
+  await call('POST', '/api/handle/claim', { id: B, handle: hB });
+  r = await call('GET', '/api/player/by-handle?h=@' + hB.toUpperCase());
+  check('by-handle acha o jogador (sem status online para estranhos)', r.data?.id === B && r.data.handle === hB && r.data.online === false && r.data.lastSeen === 0, r.data);
+  r = await call('GET', '/api/player/by-handle?h=ninguem_' + tag);
+  check('by-handle inexistente → 404', r.status === 404);
+
+  console.log('\nAmizades');
+  r = await call('POST', '/api/friends/request', { id: A, to: C });
+  check('pedido por id sem ter jogado junto → recusado', r.data?.result === 'not_met', r.data);
+  r = await call('POST', '/api/friends/request', { id: A, handle: '@' + hB });
+  check('pedido pelo @nome exato → sent', r.data?.result === 'sent', r.data);
+  r = await call('POST', '/api/friends/request', { id: A, handle: 'naoexiste_' + tag });
+  check('@nome inexistente → not_found', r.data?.result === 'not_found', r.data);
+  r = await call('GET', '/api/friends?id=' + B);
+  check('B vê o pedido de A (com @nome)', r.data?.requests?.length === 1 && r.data.requests[0].from.id === A && r.data.requests[0].from.handle === hA, r.data);
+  r = await call('POST', '/api/friends/respond', { id: B, from: A, accept: true });
+  check('B aceita', r.data?.ok === true, r.data);
+  r = await call('GET', '/api/friends?id=' + A);
+  const fB = r.data?.friends?.find((f) => f.id === B);
+  check('A vê B na lista (online, com @nome e bagunça 0)', fB && fB.handle === hB && fB.online === true && fB.houseMess === 0, r.data);
+  r = await call('POST', '/api/friends/request', { id: A, handle: hB });
+  check('pedir de novo → already', r.data?.result === 'already', r.data);
+  // presença conta como "jogar junto"
+  const pc = await wsClient('/api/presence/home-test-' + tag);
+  pc.send({ type: 'hello', id: C, name: 'Cia', skin: 'bloop' });
+  await pc.wait((m) => m.type === 'welcome');
+  const pd = await wsClient('/api/presence/home-test-' + tag);
+  pd.send({ type: 'hello', id: D, name: 'Dan', skin: 'bloop' });
+  await pd.wait((m) => m.type === 'welcome');
+  await sleep(300);
+  pc.ws.close();
+  pd.ws.close();
+  r = await call('POST', '/api/friends/request', { id: C, to: D });
+  check('pedido por id depois de jogarem juntos (presença) → sent', r.data?.result === 'sent', r.data);
+  r = await call('POST', '/api/friends/respond', { id: D, from: C, accept: false });
+  r = await call('GET', '/api/friends?id=' + D);
+  check('recusar remove o pedido sem virar amigo', r.data?.requests?.length === 0 && r.data.friends.length === 0, r.data);
+  // bloqueio
+  await call('POST', '/api/friends/block', { id: D, target: A, on: true });
+  r = await call('POST', '/api/friends/request', { id: A, handle: 'dan_' + tag });
+  const dHandle = (await call('GET', '/api/handle/mine?id=' + D)).data?.handle;
+  r = await call('POST', '/api/friends/request', { id: A, handle: dHandle });
+  check('bloqueado: pedido some (not_found)', r.data?.result === 'not_found', r.data);
+  r = await call('GET', '/api/friends?id=' + D);
+  check('bloqueado não aparece nos pedidos', r.data?.requests?.length === 0, r.data);
+  // limite diário de 20 pedidos
+  const spammer = uid();
+  const targets = [];
+  for (let i = 0; i < 21; i++) {
+    const t = uid();
+    targets.push(t);
+    await call('POST', '/api/handle/claim', { id: t, handle: `pal${'abcdefghjkmnpqrstuvwx'[i]}_${tag}` });
+  }
+  let lastRes;
+  let sent = 0;
+  const other = [];
+  for (let i = 0; i < 21; i++) {
+    lastRes = await call('POST', '/api/friends/request', { id: spammer, handle: `pal${'abcdefghjkmnpqrstuvwx'[i]}_${tag}` });
+    if (lastRes.data?.result === 'sent') sent++;
+    else other.push([i, lastRes.data]);
+  }
+  check('limite de 20 pedidos por dia (21º → limit)', sent === 20 && lastRes.data?.result === 'limit', { sent, other });
+  r = await call('POST', '/api/friends/remove', { id: A, friend: B });
+  check('desfazer amizade', r.data?.ok === true && (await call('GET', '/api/friends?id=' + B)).data.friends.length === 0, r.data);
+  // refaz a amizade A–B para as casas
+  await call('POST', '/api/friends/request', { id: B, handle: hA });
+  await call('POST', '/api/friends/respond', { id: A, from: B, accept: true });
+
+  console.log('\nCasas');
+  const design = { v: 1, planet: { shape: 3, color: '#88ccff' }, exterior: { roof: 'r2', wall: 'w1' }, rooms: [{ id: 'sala', floor: 'f1', wall: 'w2', items: [{ id: 'sofa', x: 10, y: 20 }] }] };
+  r = await call('GET', `/api/home/${A}?id=${A}`);
+  check('casa inexistente → 404', r.status === 404, r.data);
+  r = await call('PUT', '/api/home/design', { id: A, design });
+  check('dono salva o design', r.data?.ok === true, r.data);
+  r = await call('GET', `/api/home/${A}?id=${B}`);
+  check('amigo vê a casa (design + sujeira vazia)', r.data?.ownerId === A && r.data.design.rooms[0].items[0].id === 'sofa' && Array.isArray(r.data.mess) && r.data.visitsOpen === true, r.data);
+  r = await call('GET', `/api/home/${A}?id=${C}`);
+  check('não-amigo não vê a casa → 403', r.status === 403, r.data);
+  r = await call('PUT', '/api/home/design', { id: A, design: { v: 2 } });
+  check('design inválido → 400', r.status === 400, r.data);
+  const big = { ...design, rooms: ['a', 'b'].map((id) => ({ id, floor: 'f1', wall: 'w2', items: Array.from({ length: 300 }, (_, i) => ({ id: 'item-com-nome-comprido-' + i, x: i, y: i })) })) };
+  await sleep(3100);
+  r = await call('PUT', '/api/home/design', { id: A, design: big });
+  check('design > 16 KB → 413', r.status === 413, r.data);
+  r = await call('PUT', '/api/home/design', { id: A, design, visitsOpen: true });
+  const rr = await call('PUT', '/api/home/design', { id: A, design });
+  check('gravações muito rápidas → 429 (economiza KV)', r.data?.ok === true && rr.status === 429, [r.data, rr.data]);
+  const mess3 = [
+    { id: 'm1', kind: 'cake', room: 'sala', x: 1, y: 2, r: 10 },
+    { id: 'm2', kind: 'juice', room: 'sala', x: 3, y: 4, r: 8 },
+    { id: 'm3', kind: 'mud', room: 'sala', x: 5, y: 6, r: 9, moved: { itemId: 'sofa', ox: 10, oy: 20 } },
+  ];
+  r = await call('PUT', '/api/home/mess', { id: A, ownerId: A, mess: mess3 });
+  check('dono grava sujeira', r.data?.ok === true && r.data.count === 3, r.data);
+  r = await call('PUT', '/api/home/mess', { id: B, ownerId: A, mess: mess3.slice(1) });
+  check('amigo limpa (remove item) → ok', r.data?.ok === true && r.data.count === 2 && r.data.cleaned === 1, r.data);
+  r = await call('PUT', '/api/home/mess', { id: B, ownerId: A, mess: [...mess3.slice(1), { id: 'm9', kind: 'pie', room: 'sala', x: 0, y: 0, r: 5 }] });
+  check('amigo fora de festa NÃO pode sujar → 403', r.status === 403 && r.data?.error === 'not_in_party', r.data);
+  r = await call('PUT', '/api/home/mess', { id: C, ownerId: A, mess: [] });
+  check('não-amigo não mexe na sujeira → 403', r.status === 403, r.data);
+  r = await call('PUT', '/api/home/mess', { id: A, ownerId: A, mess: Array.from({ length: 301 }, (_, i) => ({ id: 'x' + i, kind: 'crumbs', room: 'sala', x: 0, y: 0, r: 1 })) });
+  check('mais de 300 itens → 400', r.status === 400, r.data);
+  r = await call('GET', '/api/friends?id=' + B);
+  check('lista de amigos mostra a bagunça da casa', r.data?.friends?.find((f) => f.id === A)?.houseMess > 0, r.data?.friends);
+
+  console.log('\nFesta');
+  const host = await wsClient('/api/party/' + A);
+  host.send({ type: 'hello', id: A, name: 'Ana', handle: hA, skin: 'bloop' });
+  const wh = await host.wait((m) => m.type === 'welcome');
+  check('anfitrião entra e recebe a sujeira atual', wh?.host === A && wh.mess?.length === 2 && wh.hostHere === true, wh);
+  const guest = await wsClient('/api/party/' + A);
+  guest.send({ type: 'hello', id: B, name: 'Beto', handle: hB, skin: 'king' });
+  const wg = await guest.wait((m) => m.type === 'welcome');
+  check('amigo entra e vê o anfitrião', wg?.peers?.some((p) => p.id === A && p.handle === hA), wg);
+  const jh = await host.wait((m) => m.type === 'join');
+  check('anfitrião vê o amigo entrar', jh?.p?.id === B && jh.p.name === 'Beto', jh);
+  const stranger = await wsClient('/api/party/' + A);
+  stranger.send({ type: 'hello', id: C, name: 'Cia', skin: 'bloop' });
+  const rj = await stranger.wait((m) => m.type === 'reject');
+  check('não-amigo é recusado na festa', rj?.reason === 'not_friend', rj);
+  host.send({ type: 's', s: { x: 5.555, y: 7, room: 'sala', holding: 'bolo', junk: 'x' } });
+  const sg = await guest.wait((m) => m.type === 's');
+  check('estado retransmitido (sanitizado)', sg?.id === A && sg.s.x === 5.56 && sg.s.room === 'sala' && sg.s.holding === 'bolo' && !('junk' in sg.s), sg);
+  guest.send({ type: 'ev', e: { t: 'throw', from: 'falso', food: 'tomato', x: 1, y: 2, vx: 3, vy: 4 } });
+  const th = await host.wait((m) => m.type === 'ev' && m.e.t === 'throw');
+  check('arremesso chega (from = quem jogou de verdade)', th?.e.from === B && th.e.food === 'tomato', th);
+  guest.send({ type: 'ev', e: { t: 'splat', mess: { id: 'p1', kind: 'tomato', room: 'sala', x: 9, y: 9, r: 12 } } });
+  const sp = await host.wait((m) => m.type === 'ev' && m.e.t === 'splat');
+  check('splat vira sujeira para todos', sp?.e.mess.id === 'p1', sp);
+  host.send({ type: 'ev', e: { t: 'clean', messId: 'm2' } });
+  const cl = await guest.wait((m) => m.type === 'ev' && m.e.t === 'clean');
+  check('clean remove (e avisa quem limpou)', cl?.e.messId === 'm2' && cl.e.by === A, cl);
+  guest.send({ type: 'ev', e: { t: 'chat', code: 'parabens' } });
+  guest.send({ type: 'ev', e: { t: 'chat', code: 'meu zap 1199' } });
+  await host.wait((m) => m.type === 'ev' && m.e.t === 'chat');
+  await sleep(200);
+  check('chat só por códigos (texto livre ignorado)', host.msgs.filter((m) => m.type === 'ev' && m.e.t === 'chat').length === 1);
+  // durante a festa, quem está nela pode sujar via REST; quem não está, não
+  r = await call('PUT', '/api/home/mess', { id: B, ownerId: A, mess: [mess3[2], { id: 'p1', kind: 'tomato', room: 'sala', x: 9, y: 9, r: 12 }, { id: 'p2', kind: 'pie', room: 'sala', x: 1, y: 1, r: 5 }] });
+  check('membro da festa adiciona sujeira pelo REST (vai para a festa)', r.data?.ok === true && r.data.party === true, r.data);
+  host.ws.close();
+  guest.ws.close();
+  await sleep(700);
+  r = await call('GET', `/api/home/${A}?id=${A}`);
+  const ids = (r.data?.mess ?? []).map((m) => m.id).sort().join(',');
+  check('fim da festa: sujeira gravada no KV (splat + limpeza)', ids === 'm3,p1,p2', r.data?.mess);
+  // dono offline: amigo visita (casa aberta) e limpa
+  const visit = await wsClient('/api/party/' + A);
+  visit.send({ type: 'hello', id: B, name: 'Beto', skin: 'king' });
+  const wv = await visit.wait((m) => m.type === 'welcome');
+  check('amigo visita com o dono offline (casa aberta)', wv?.hostHere === false && wv.mess.length === 3, wv);
+  visit.send({ type: 'ev', e: { t: 'clean', messId: 'p1' } });
+  await sleep(200);
+  visit.ws.close();
+  await sleep(700);
+  r = await call('GET', `/api/home/${A}?id=${B}`);
+  check('limpeza da visita persiste', (r.data?.mess ?? []).length === 2 && !r.data.mess.some((m) => m.id === 'p1'), r.data?.mess);
+  await sleep(3100);
+  const rClose = await call('PUT', '/api/home/design', { id: A, design, visitsOpen: false });
+  const shut = await wsClient('/api/party/' + A);
+  shut.send({ type: 'hello', id: B, name: 'Beto', skin: 'king' });
+  const rs = await shut.wait((m) => m.type === 'reject');
+  check('casa fechada para visitas: amigo não entra sem o dono', rClose.data?.ok === true && rs?.reason === 'closed', [rClose.data, rs, shut.msgs]);
+  shut.ws.close();
+
+  console.log('\nPermissões da casa (access/roles)');
+  const [E, F, G] = [uid(), uid(), uid()];
+  for (const [pidX, nm] of [[E, 'eva'], [F, 'fab'], [G, 'gil']]) {
+    await call('POST', '/api/handle/claim', { id: pidX, handle: `${nm}_${tag}` });
+    await call('POST', '/api/friends/request', { id: pidX, handle: hA });
+    await call('POST', '/api/friends/respond', { id: A, from: pidX, accept: true });
+  }
+  const access = { visits: 'friends', defaultRole: 'clean', roles: { [E]: 'decorate', [F]: 'build', [G]: 'view' } };
+  const d2 = { ...design, access, paint: { sala: { wall: '#ffcc00' } } };
+  await sleep(3100);
+  r = await call('PUT', '/api/home/design', { id: A, design: d2, visitsOpen: true });
+  check('dono define permissões (access) e pintura', r.data?.ok === true, r.data);
+  r = await call('PUT', '/api/home/design', { id: B, ownerId: A, design: { ...d2, paint: { sala: { wall: '#000000' } } } });
+  check("papel 'clean' (padrão) não muda o design → 403", r.status === 403 && r.data?.error === 'no_permission', r.data);
+  r = await call('PUT', '/api/home/mess', { id: G, ownerId: A, mess: [] });
+  check("papel 'view' não limpa → 403", r.status === 403 && r.data?.error === 'no_permission', r.data);
+  r = await call('PUT', '/api/home/design', { id: E, ownerId: A, design: { ...d2, exterior: { roof: 'r9', wall: 'w1' } } });
+  check("'decorate' não muda o exterior → 403 structural_change", r.status === 403 && r.data?.error === 'structural_change', r.data);
+  r = await call('PUT', '/api/home/design', { id: E, ownerId: A, design: { ...d2, rooms: [...d2.rooms, { id: 'quarto', floor: 'f1', wall: 'w1', items: [] }] } });
+  check("'decorate' não adiciona cômodo → 403", r.status === 403 && r.data?.error === 'structural_change', r.data);
+  await sleep(3100);
+  const moved = { ...d2, paint: { sala: { wall: '#ff88aa' } }, rooms: [{ ...d2.rooms[0], items: [{ id: 'sofa', x: 50, y: 60 }, { id: 'abajur', x: 1, y: 1 }] }] };
+  r = await call('PUT', '/api/home/design', { id: E, ownerId: A, design: moved });
+  check("'decorate' move móveis e pinta → ok", r.data?.ok === true, r.data);
+  r = await call('PUT', '/api/home/design', { id: F, ownerId: A, design: { ...moved, access: { ...access, defaultRole: 'build' } } });
+  check("'build' não muda permissões (access só do dono) → 403", r.status === 403 && r.data?.error === 'access_owner_only', r.data);
+  await sleep(3100);
+  const built = { ...moved, exterior: { roof: 'r5', wall: 'w3' }, rooms: [...moved.rooms, { id: 'quarto', floor: 'f2', wall: 'w1', items: [] }] };
+  delete built.access; // amigo mandou sem access → o do dono é preservado
+  r = await call('PUT', '/api/home/design', { id: F, ownerId: A, design: built });
+  const after2 = await call('GET', `/api/home/${A}?id=${A}`);
+  check("'build' muda estrutura; access do dono preservado", r.data?.ok === true && after2.data?.design?.rooms?.length === 2 && after2.data.design.exterior.roof === 'r5' && after2.data.design.access?.roles?.[E] === 'decorate', [r.data, after2.data?.design]);
+  // na festa: evento 'design'
+  const ph = await wsClient('/api/party/' + A);
+  ph.send({ type: 'hello', id: A, name: 'Ana', skin: 'bloop' });
+  await ph.wait((m) => m.type === 'welcome');
+  const pe = await wsClient('/api/party/' + A);
+  pe.send({ type: 'hello', id: E, name: 'Eva', skin: 'bloop' });
+  await pe.wait((m) => m.type === 'welcome');
+  const pg = await wsClient('/api/party/' + A);
+  pg.send({ type: 'hello', id: G, name: 'Gil', skin: 'bloop' });
+  await pg.wait((m) => m.type === 'welcome');
+  const live = { ...after2.data.design, rooms: after2.data.design.rooms.map((rm, i) => (i === 0 ? { ...rm, items: [{ id: 'sofa', x: 99, y: 99 }] } : rm)) };
+  pe.send({ type: 'ev', e: { t: 'design', design: live } });
+  const de = await ph.wait((m) => m.type === 'ev' && m.e.t === 'design');
+  check("festa: 'decorate' manda evento design → todos recebem", de?.e.by === E && de.e.design.rooms[0].items[0].x === 99, de);
+  pg.send({ type: 'ev', e: { t: 'design', design: { ...live, paint: {} } } });
+  const dn = await pg.wait((m) => m.type === 'denied');
+  check("festa: 'view' não pode mudar o design (denied)", dn?.reason === 'no_permission', dn);
+  await sleep(600);
+  pe.send({ type: 'ev', e: { t: 'design', design: { ...live, exterior: { roof: 'x' } } } });
+  const dn2 = await pe.wait((m) => m.type === 'denied');
+  check("festa: 'decorate' não muda estrutura (denied)", dn2?.reason === 'structural_change', dn2);
+  r = await call('PUT', '/api/home/design', { id: F, ownerId: A, design: { ...live, exterior: { roof: 'r7', wall: 'w3' } } });
+  check("festa ativa: PUT de 'build' vai para a festa", r.data?.ok === true && r.data.party === true, r.data);
+  const dF = await pe.wait((m) => m.type === 'ev' && m.e.t === 'design' && m.e.by === F);
+  check('membros recebem a mudança feita pelo REST', dF?.e.design.exterior.roof === 'r7', dF);
+  ph.ws.close();
+  pe.ws.close();
+  pg.ws.close();
+  await sleep(800);
+  r = await call('GET', `/api/home/${A}?id=${A}`);
+  check('fim da festa: design da festa gravado no KV', r.data?.design?.exterior?.roof === 'r7' && r.data.design.rooms[0].items[0].x === 99, r.data?.design);
+  // visits: 'nobody'
+  await sleep(3100);
+  r = await call('PUT', '/api/home/design', { id: A, design: { ...r.data.design, access: { ...access, visits: 'nobody' } } });
+  const nb = await wsClient('/api/party/' + A);
+  nb.send({ type: 'hello', id: F, name: 'Fab', skin: 'bloop' });
+  const rn = await nb.wait((m) => m.type === 'reject');
+  check("access.visits='nobody': amigo não entra na festa", r.data?.ok === true && rn?.reason === 'closed', [r.data, rn]);
+  nb.ws.close();
+  r = await call('GET', `/api/home/${A}?id=${F}`);
+  check("access.visits='nobody': amigo não vê a casa → 403", r.status === 403 && r.data?.error === 'closed', r.data);
+
+  console.log('\nAdmin: casas e @nomes');
+  r = await call('GET', '/api/admin/home/handle?h=' + hA, undefined, T);
+  check('admin acha o @nome', r.data?.id === A && r.data.handle === hA, r.data);
+  r = await call('GET', '/api/admin/home/home?id=' + A, undefined, T);
+  check('admin vê o JSON da casa', r.data?.home?.design?.v === 1 && r.data.mess.mess.length === 2, r.data);
+  r = await call('POST', '/api/admin/home/home/clear-mess', { id: A }, T);
+  r = await call('GET', `/api/home/${A}?id=${A}`);
+  check('admin limpa a sujeira', r.data?.mess?.length === 0, r.data);
+  r = await call('POST', '/api/admin/home/handle/rename', { id: A, handle: 'ana_nova_' + tag }, T);
+  check('admin renomeia (sem prazo)', r.data?.ok === true && (await call('GET', '/api/handle/mine?id=' + A)).data.handle === 'ana_nova_' + tag, r.data);
+  r = await call('POST', '/api/admin/home/handle/ban', { handle: hB }, T);
+  const after = await call('GET', '/api/handle/check?h=' + hB);
+  check('admin bane o @nome (ninguém usa; jogador fica sem nome)', r.data?.id === B && after.data?.ok === false && (await call('GET', '/api/handle/mine?id=' + B)).data.handle === null, [r.data, after.data]);
+  r = await call('GET', '/api/admin/home/handle?h=' + hA);
+  check('admin casas sem token → 401', r.status === 401);
 }
 
 main()

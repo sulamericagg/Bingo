@@ -136,6 +136,10 @@ export class PresenceRoom extends DurableObject<Env> {
       ws.send(JSON.stringify({ type: 'welcome', you: id, peers }));
       this.sendOthers(ws, JSON.stringify({ type: 'join', p: { ...me, s: {} } }));
       await this.reportCount();
+      // amizades: "jogaram juntos" (permite pedir amizade pelo id) + online
+      const fh = this.env.FRIENDS.get(this.env.FRIENDS.idFromName('hub'));
+      await fh.touch(id).catch(() => {});
+      if (peers.length) await fh.met([id, ...peers.map((p) => p.id)]).catch(() => {});
       return;
     }
     if (msg.type === 's') {

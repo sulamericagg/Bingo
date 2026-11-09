@@ -22,12 +22,16 @@
       // Social (docs/SOCIAL.md): presença drop-in, chat moderado e campeonatos.
       { "name": "PRESENCE", "class_name": "PresenceRoom" },
       { "name": "CHAT", "class_name": "ChatRoom" },
-      { "name": "CHAMP", "class_name": "Championship" }
+      { "name": "CHAMP", "class_name": "Championship" },
+      // Casa, Planeta & Amigos (docs/CASA-AMIGOS.md): festas por anfitrião + amizades.
+      { "name": "PARTY", "class_name": "PartyRoom" },
+      { "name": "FRIENDS", "class_name": "FriendsHub" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RaceRoom"] },
-    { "tag": "v2-social", "new_sqlite_classes": ["PresenceRoom", "ChatRoom", "Championship"] }
+    { "tag": "v2-social", "new_sqlite_classes": ["PresenceRoom", "ChatRoom", "Championship"] },
+    { "tag": "v3-home", "new_sqlite_classes": ["PartyRoom", "FriendsHub"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em

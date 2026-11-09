@@ -13,6 +13,11 @@ import { champClaim, champGet, champList, champScore, champSignup } from './cham
 import { chatJoin } from './chat';
 import { presenceJoin } from './presence';
 import { chatReport, handleSocialAdmin, profileGet, profilePut } from './social';
+import { friendsBlock, friendsGet, friendsRemove, friendsRequest, friendsRespond } from './friends';
+import { handleCheck, handleClaim, handleMine, playerByHandle } from './handles';
+import { homeGet, homePutDesign, homePutMess } from './home';
+import { handleHomeAdmin } from './home-admin';
+import { partyJoin } from './party';
 import { HttpError, json } from './util';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
@@ -25,7 +30,7 @@ function corsHeaders(req: Request, url: URL): Record<string, string> {
   if (origin === url.origin || ALLOWED_ORIGINS.has(origin) || DEV_ORIGIN.test(origin)) {
     return {
       'access-control-allow-origin': origin,
-      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
       'access-control-allow-headers': 'content-type',
       'access-control-max-age': '86400',
       vary: 'Origin',
@@ -52,6 +57,21 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/champ/signup': champSignup,
   'POST /api/champ/score': champScore,
   'POST /api/champ/claim': champClaim,
+  // casa, planeta & amigos (docs/CASA-AMIGOS.md)
+  'GET /api/handle/check': handleCheck,
+  'POST /api/handle/claim': handleClaim,
+  'GET /api/handle/mine': handleMine,
+  'GET /api/player/by-handle': playerByHandle,
+  'GET /api/friends': friendsGet,
+  'POST /api/friends/request': friendsRequest,
+  'POST /api/friends/respond': friendsRespond,
+  'POST /api/friends/remove': friendsRemove,
+  'POST /api/friends/block': friendsBlock,
+  'PUT /api/home/design': homePutDesign,
+  'PUT /api/home/mess': homePutMess,
+  // POST também (alguns proxies/webviews antigos não mandam PUT)
+  'POST /api/home/design': homePutDesign,
+  'POST /api/home/mess': homePutMess,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -84,6 +104,8 @@ export { RaceRoom } from './race';
 export { PresenceRoom } from './presence';
 export { ChatRoom } from './chat';
 export { Championship } from './champ';
+export { PartyRoom } from './party';
+export { FriendsHub } from './friends';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -95,6 +117,14 @@ export default {
     if (path.startsWith('/api/admin/social/')) {
       try {
         return await handleSocialAdmin(req, env, url);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    if (path.startsWith('/api/admin/home/')) {
+      try {
+        return await handleHomeAdmin(req, env, url);
       } catch (e) {
         return errorResponse(e);
       }
@@ -126,13 +156,24 @@ export default {
       }
     }
 
+    // Festa (WebSocket): /api/party/<hostId>
+    const pm = /^\/api\/party\/([A-Za-z0-9-]{8,64})$/.exec(path);
+    if (pm) {
+      try {
+        return await partyJoin(req, env, pm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
     if (path.startsWith('/api/')) {
       const cors = corsHeaders(req, url);
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
       const h = PUBLIC[`${req.method} ${path.replace(/\/+$/, '')}`];
+      const hm = req.method === 'GET' ? /^\/api\/home\/([A-Za-z0-9-]{8,64})$/.exec(path) : null;
       let res: Response;
       try {
-        res = h ? await h(req, env) : json({ error: 'not_found', message: 'Rota não encontrada' }, 404);
+        res = h ? await h(req, env) : hm ? await homeGet(req, env, hm[1]) : json({ error: 'not_found', message: 'Rota não encontrada' }, 404);
       } catch (e) {
         res = errorResponse(e);
       }

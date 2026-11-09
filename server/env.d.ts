@@ -14,6 +14,10 @@ interface Env {
   CHAT: DurableObjectNamespace<import('./chat').ChatRoom>;
   /** Campeonatos (instância única 'hub' com alarme). */
   CHAMP: DurableObjectNamespace<import('./champ').Championship>;
+  /** Festa na casa de alguém (uma instância por anfitrião). */
+  PARTY: DurableObjectNamespace<import('./party').PartyRoom>;
+  /** Amizades + cartão (online/@nome/bagunça) — instância única 'hub'. */
+  FRIENDS: DurableObjectNamespace<import('./friends').FriendsHub>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
 }
