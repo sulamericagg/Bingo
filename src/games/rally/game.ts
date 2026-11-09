@@ -762,7 +762,7 @@ class RallyGame {
         <div>${icon('star', { size: 20 })}<span>${t('rally.res.flips', 'Cambalhotas')}</span><b>${fmt(this.flips)}</b></div>
       </div>
       <div class="rl-total">${icon('coins', { size: 30 })}<b class="rl-tc">+${fmt(this.resultCoins)}</b></div>
-      <button class="rl-btn rl-ad" data-a="double">${icon('video', { size: 26 })}<span>${t('rally.double', 'Dobrar moedas')}</span></button>
+      ${this.resultCoins > 0 ? '' : '<!--'}<button class="rl-btn rl-ad" data-a="double">${icon('video', { size: 26 })}<span>${t('rally.double', 'Dobrar moedas')}</span></button>${this.resultCoins > 0 ? '' : '-->'}
       <div class="rl-two">
         <button class="rl-btn rl-go" data-a="again">${icon('refresh', { size: 24 })}<span>${t('rally.again', 'De novo')}</span></button>
         <button class="rl-btn rl-alt" data-a="garage">${icon('gear', { size: 24 })}<span>${t('rally.toGarage', 'Garagem')}</span></button>

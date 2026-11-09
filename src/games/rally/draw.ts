@@ -333,7 +333,7 @@ export function drawCar(x: CanvasRenderingContext2D, def: VehicleDef, S: number,
     pose.blink = (p.t % 3.3) < 0.12 ? 1 : 0;
     const R = 0.36 * S;
     x.save();
-    x.translate(def.shape === 'rocket' ? 0.05 * S : -0.05 * S, -0.62 * S);
+    x.translate(def.shape === 'rocket' ? 0.05 * S : -0.05 * S, (def.shape === 'monster' ? -0.95 : def.shape === 'icecream' ? -0.5 : -0.62) * S);
     drawPlayer(x, skin, R, pose);
     x.restore();
   }
@@ -422,34 +422,27 @@ export function drawCar(x: CanvasRenderingContext2D, def: VehicleDef, S: number,
       break;
     }
     case 'icecream': {
+      // carroceria com janela vazada (o motorista aparece por ela)
       x.fillStyle = B;
-      rr(x, -L, -0.95 * S, L * 2, 1.25 * S, 0.2 * S);
-      x.fill();
+      x.beginPath();
+      x.roundRect(-L, -0.95 * S, L * 2, 1.25 * S, 0.2 * S);
+      x.roundRect(-0.42 * S, -0.84 * S, 0.8 * S, 0.52 * S, 0.12 * S);
+      x.fill('evenodd');
       x.stroke();
-      // janela do motorista
-      x.fillStyle = '#bff3ff';
-      rr(x, -0.4 * S, -0.82 * S, 0.75 * S, 0.5 * S, 0.12 * S);
+      x.fillStyle = 'rgba(191,243,255,.3)';
+      rr(x, -0.42 * S, -0.84 * S, 0.8 * S, 0.52 * S, 0.12 * S);
       x.fill();
-      x.stroke();
       x.fillStyle = B2;
       rr(x, -L, 0.05 * S, L * 2, 0.22 * S, 0.1 * S);
       x.fill();
       // casquinha gigante no teto
       x.fillStyle = '#f0b060';
       x.beginPath();
-      x.moveTo(-0.25 * S, -0.95 * S);
-      x.lineTo(0.25 * S, -0.95 * S);
-      x.lineTo(0, -0.4 * S);
+      x.moveTo(0.5 * S, -1.05 * S);
+      x.lineTo(1.0 * S, -1.05 * S);
+      x.lineTo(0.75 * S, -0.92 * S);
       x.closePath();
-      x.save();
-      x.translate(0.1 * S, -0.65 * S);
-      x.rotate(Math.PI);
-      x.restore();
-      x.beginPath();
-      x.moveTo(0.55 * S, -0.95 * S);
-      x.lineTo(0.95 * S, -0.95 * S);
-      x.lineTo(0.75 * S, -1.45 * S + 0.9 * S);
-      x.closePath();
+      x.fill();
       x.fillStyle = T;
       x.beginPath();
       x.arc(0.75 * S, -1.25 * S, 0.3 * S, 0, TAU);
@@ -460,13 +453,6 @@ export function drawCar(x: CanvasRenderingContext2D, def: VehicleDef, S: number,
       x.arc(0.75 * S, -1.55 * S, 0.2 * S, 0, TAU);
       x.fill();
       x.stroke();
-      x.fillStyle = '#f0b060';
-      x.beginPath();
-      x.moveTo(0.5 * S, -1.05 * S);
-      x.lineTo(1.0 * S, -1.05 * S);
-      x.lineTo(0.75 * S, -0.92 * S);
-      x.closePath();
-      x.fill();
       x.fillStyle = '#ff5d8f';
       x.beginPath();
       x.arc(0.8 * S, -1.78 * S, 0.07 * S, 0, TAU);
@@ -474,23 +460,30 @@ export function drawCar(x: CanvasRenderingContext2D, def: VehicleDef, S: number,
       break;
     }
     case 'monster': {
+      // santo-antônio alto
+      x.lineWidth = Math.max(2, S * 0.1);
+      x.beginPath();
+      x.moveTo(-0.75 * S, -0.5 * S);
+      x.quadraticCurveTo(-0.6 * S, -1.6 * S, 0.25 * S, -1.5 * S);
+      x.lineTo(0.5 * S, -0.55 * S);
+      x.stroke();
+      x.strokeStyle = T;
+      x.lineWidth = Math.max(1, S * 0.05);
+      x.stroke();
+      x.strokeStyle = INK;
+      x.lineWidth = ol;
       x.fillStyle = B;
       x.beginPath();
-      x.moveTo(-L, -0.15 * S);
-      x.lineTo(-L * 0.9, -0.55 * S);
-      x.lineTo(-0.45 * S, -0.55 * S);
-      x.lineTo(-0.3 * S, -1.15 * S);
-      x.lineTo(0.45 * S, -1.15 * S);
-      x.lineTo(0.7 * S, -0.55 * S);
-      x.lineTo(L * 0.98, -0.45 * S);
+      x.moveTo(-L, -0.1 * S);
+      x.lineTo(-L * 0.92, -0.6 * S);
+      x.lineTo(-0.35 * S, -0.6 * S);
+      x.quadraticCurveTo(0, -0.4 * S, 0.45 * S, -0.62 * S);
+      x.lineTo(L * 0.95, -0.5 * S);
       x.lineTo(L, 0.15 * S);
       x.lineTo(-L, 0.15 * S);
       x.closePath();
       x.fill();
       x.stroke();
-      x.fillStyle = '#bff3ff';
-      rr(x, -0.2 * S, -1.02 * S, 0.55 * S, 0.38 * S, 0.08 * S);
-      x.fill();
       x.fillStyle = B2;
       for (let i = 0; i < 3; i++) {
         x.beginPath();

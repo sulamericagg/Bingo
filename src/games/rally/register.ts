@@ -68,8 +68,8 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, t: numb
   const cx = w * 0.42;
   const a = hill(cx - s + scroll, h);
   const b = hill(cx + s + scroll, h);
-  const bounce = Math.abs(Math.sin(t * 5)) * s * 0.35;
-  const cy = (a + b) / 2 - s * 0.95 - bounce;
+  const bounce = Math.max(0, Math.sin(t * 5)) ** 2 * s * 0.3;
+  const cy = (a + b) / 2 - s * 0.86 - bounce;
   const ang = Math.atan2(b - a, 2 * s) + Math.sin(t * 5) * 0.06;
   x.save();
   x.translate(cx, cy);
