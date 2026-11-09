@@ -9,6 +9,7 @@ import { BELT_SPEED, COFRE, ITEMS, LINE_ROW, PLOT_H, PLOT_W, TURBO_INDEX } from 
 import { BELT_ITEM, HELPER_ITEM, PAD_POS, stars, UPG_ITEM, type Plot, type SimFx } from './sim';
 import { BELT_FRAMES, buildFloor, buildSky, charSprite, getSheet, ISLAND_DEPTH, ISLAND_PAD, rr, INK, type Sheet } from './sprites';
 
+const COST_LABEL: string[] = [];
 const FREE = () => t('tycoon.free', 'Grátis');
 export function fmtShort(n: number): string {
   n = Math.floor(n);
@@ -92,6 +93,8 @@ export class FactoryView implements SimFx {
   showPrices = true;
   /** botões de compra (desligado na Minha Fábrica) */
   drawPads = true;
+  private bankN = [-1, -1, -1, -1];
+  private bankS = ['', '', '', ''];
 
   constructor(
     public canvas: HTMLCanvasElement,
@@ -399,7 +402,7 @@ export class FactoryView implements SimFx {
       x.stroke();
     }
     if (!this.showPrices && p.idx !== this.me) return;
-    const label = it.cost === 0 ? FREE() : fmtShort(it.cost);
+    const label = COST_LABEL[i] || (COST_LABEL[i] = it.cost === 0 ? FREE() : fmtShort(it.cost));
     x.font = `700 ${Math.round(S * 0.27)}px Fredoka, system-ui, sans-serif`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
@@ -427,7 +430,12 @@ export class FactoryView implements SimFx {
     const cy = (p.oy + COFRE.y) * S;
     x.drawImage(img, cx - w / 2, cy - h * 0.55, w, h);
     if (p.bank >= 1) {
-      const s = fmtShort(p.bank);
+      const b = Math.floor(p.bank);
+      if (b !== this.bankN[p.idx]) {
+        this.bankN[p.idx] = b;
+        this.bankS[p.idx] = fmtShort(b);
+      }
+      const s = this.bankS[p.idx];
       x.font = `700 ${Math.round(S * 0.3)}px Fredoka, system-ui, sans-serif`;
       x.textAlign = 'center';
       x.textBaseline = 'middle';

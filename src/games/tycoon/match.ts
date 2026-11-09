@@ -493,11 +493,13 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     else tap('medium');
     audio.cash();
 
+    hud.style.display = 'none';
     const ov = document.createElement('div');
     ov.className = 'ty-ov';
     const title = won ? t('tycoon.win', 'Você venceu!') : t('tycoon.place', '{n}º lugar!', { n: place });
     ov.innerHTML = `
       <div class="ty-title">${title}</div>
+      <div class="ty-sub">${t('tycoon.made', 'Sua fábrica produziu {n} estrelas!', { n: fmtShort(me.score) })}</div>
       <div class="ty-pod"></div>
       <div class="ty-list"></div>
       <div class="ty-reward">${icon('coin', { size: 32 })}<span data-v="coins">+${fmt(coins)}</span></div>

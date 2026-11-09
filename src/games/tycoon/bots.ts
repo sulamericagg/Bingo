@@ -16,7 +16,7 @@ export interface Brain {
 }
 
 const THINK = [1.3, 0.65, 0.3];
-const SPEED = [2.5, 3.0, 3.35];
+const SPEED = [2.5, 2.8, 3.35];
 const BUBBLES = ['star', 'heart', 'sparkle', 'party'];
 
 export function makeBrain(diff: number, rnd: () => number): Brain {
