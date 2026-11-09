@@ -17,6 +17,10 @@ import { playIntro } from './ui/intro';
 import { initRace } from './ui/race';
 import { UI } from './ui/ui';
 import { initCreator } from './ui/creator';
+import { initLang, applyI18n } from './i18n/langs';
+import { hubPause, initHub } from './hub/hub';
+import { registerOrbit } from './hub/orbit-def';
+import { registerCorePanels } from './hub/core-panels';
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -26,15 +30,32 @@ async function boot(): Promise<void> {
     /* segue */
   }
 
+  initLang(); // idioma salvo ou detectado do aparelho (1ª execução)
+  applyI18n(document);
   const intro = playIntro(); // abertura do estúdio: roda por cima enquanto o jogo monta
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);
   initRace(game);
   initCreator(game);
+
+  // ---------------- HUB Bloop World ----------------
+  initHub({ getTier: () => game.quality.tier, setOrbitActive: (on) => game.setActive(on) });
+  registerOrbit({ play: () => ui.playOrbit() });
+  registerCorePanels(ui);
+  // Minigames e painéis dos outros módulos (o líder liga depois do merge):
+  // registerTubo();
+  // registerRally();
+  // registerTycoon();
+  // registerPet();
+  // registerPass();
+  // registerCreatures();
+  // registerSocial();
+  if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
 
   const onHide = () => {
     ui.pause();
+    hubPause();
     audio.suspend();
     persistNow();
   };

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.sulamericagg.blooporbit',
-  appName: 'Bloop Orbit',
+  appName: 'Bloop World',
   webDir: 'dist',
   android: {
     backgroundColor: '#0b0620',

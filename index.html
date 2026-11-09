@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0620" />
-    <meta name="description" content="Bloop Orbit — pule de planeta em planeta! Um toque, infinitas galáxias." />
-    <meta property="og:title" content="Bloop Orbit" />
-    <meta property="og:description" content="Pule de planeta em planeta. Quantos você consegue?" />
+    <meta name="description" content="Bloop World — um mundo de minigames fofos: Bloop Orbit e muito mais!" />
+    <meta property="og:title" content="Bloop World" />
+    <meta property="og:description" content="Um mundo de minigames para jogar com um toque." />
     <meta property="og:image" content="./og.png" />
     <link rel="icon" href="./icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <title>Bloop Orbit</title>
+    <title>Bloop World</title>
   </head>
   <body>
     <canvas id="game"></canvas>
@@ -38,43 +38,49 @@
         </div>
       </section>
 
-      <!-- MENU -->
-      <section id="menu" class="screen">
-        <header class="topbar">
-          <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
-          <button class="pill gem-pill" data-open="shop" data-tab="gems"><i class="gem"></i><span data-bind="gems">0</span><b class="plus">+</b></button>
-          <div class="spacer"></div>
-          <button class="icon-btn" data-open="settings" aria-label="Configurações" data-icon="gear"></button>
-        </header>
-        <nav class="rail rail-left">
-          <button class="rail-btn" data-open="inbox" aria-label="Correio"><span class="plate round plate-pink" data-icon="mail"></span><small>Correio</small><em class="badge hidden" data-badge="inbox"></em></button>
-          <button class="rail-btn" data-open="redeem" aria-label="Resgatar código"><span class="plate round plate-gold" data-icon="ticket"></span><small>Código</small></button>
-        </nav>
-        <nav class="rail rail-right">
-          <button class="rail-btn flash-btn" data-open="shop" data-tab="offers" aria-label="Oferta relâmpago"><span class="plate round plate-pink" data-icon="fire"></span><small>Oferta</small><b class="rail-timer" id="rail-timer">00:00:00</b></button>
-          <button class="rail-btn" data-open="shop" data-tab="upgrades" aria-label="Melhorias"><span class="plate round plate-green" data-icon="arrow-up"></span><small>Melhorias</small><em class="badge hidden" data-badge="upgrades"></em></button>
-        </nav>
-        <div class="logo">
-          <div class="logo-small"><span data-icon="sparkle" data-size="16"></span><span data-icon="sparkle" data-size="24"></span><span data-icon="sparkle" data-size="16"></span></div>
-          <h1><span>BLOOP</span><span class="o">ORBIT</span></h1>
-          <div class="best"><span data-icon="trophy" data-size="26"></span> Recorde <b data-bind="best">0</b></div>
-        </div>
-        <div class="menu-bottom">
-          <button class="offer hidden" id="starter-offer" data-open="shop" data-tab="offers">
-            <span class="offer-art" data-icon="chest" data-size="46"></span>
-            <span class="offer-title">Pacote Inicial <span class="offer-tag">OFERTA</span></span>
-            <small>Sem anúncios + 300 <i class="gem"></i> + skin lendária</small>
+      <!-- HUB (menu principal do Bloop World) -->
+      <section id="menu" class="screen hub">
+        <div class="hub-bg" aria-hidden="true"><i class="hub-blob b1"></i><i class="hub-blob b2"></i><i class="hub-blob b3"></i></div>
+        <header class="hub-top">
+          <button class="hub-profile" id="hub-profile" aria-label="Perfil" data-i18n-aria="hub.profile">
+            <span class="hub-ava"><canvas id="hub-ava"></canvas></span>
+            <span class="hub-who"><b id="hub-name">Jogador</b><small class="hub-brand">BLOOP <em>WORLD</em></small></span>
           </button>
+          <div class="spacer"></div>
+          <div class="pill hub-pill"><i class="coin"></i><span data-bind="coins">0</span></div>
+          <button class="pill hub-pill gem-pill" data-open="shop" data-tab="gems" aria-label="Comprar gemas" data-i18n-aria="hub.buyGems"><i class="gem"></i><span data-bind="gems">0</span><b class="plus">+</b></button>
+          <button class="icon-btn hub-gear" data-open="settings" aria-label="Ajustes" data-i18n-aria="hub.settings" data-icon="gear"></button>
+        </header>
+        <div class="hub-quick">
+          <nav class="hub-qbtns">
+            <button class="qb" data-open="daily" aria-label="Diário" data-i18n-aria="hub.daily"><span class="plate round plate-gold" data-icon="gift"></span><small data-i18n="hub.daily">Diário</small><em class="badge hidden" data-badge="daily"></em></button>
+            <button class="qb" data-open="missions" aria-label="Missões" data-i18n-aria="hub.missions"><span class="plate round plate-cyan" data-icon="target"></span><small data-i18n="hub.missions">Missões</small><em class="badge hidden" data-badge="missions"></em></button>
+            <button class="qb" data-open="inbox" aria-label="Correio" data-i18n-aria="hub.inbox"><span class="plate round plate-pink" data-icon="mail"></span><small data-i18n="hub.inbox">Correio</small><em class="badge hidden" data-badge="inbox"></em></button>
+            <button class="qb" id="btn-free" aria-label="Grátis" data-i18n-aria="hub.free"><span class="plate round plate-green" data-icon="video"></span><small data-i18n="hub.free">Grátis</small><em class="badge hidden" data-badge="free"></em></button>
+            <button class="qb" data-open="redeem" aria-label="Código" data-i18n-aria="hub.code"><span class="plate round plate-violet" data-icon="ticket"></span><small data-i18n="hub.code">Código</small></button>
+          </nav>
+          <button class="hub-offer starter-chip hidden" id="starter-offer" data-open="shop" data-tab="offers">
+            <span class="ho-ico" data-icon="chest" data-size="34"></span><span class="ho-txt"><b data-i18n="hub.starter">Pacote</b><small data-i18n="hub.offerTag">OFERTA</small></span>
+          </button>
+          <button class="hub-offer flash-btn" data-open="shop" data-tab="offers" aria-label="Oferta relâmpago" data-i18n-aria="hub.flash">
+            <span class="ho-ico" data-icon="fire" data-size="34"></span><span class="ho-txt"><b data-i18n="hub.offer">Oferta</b><small class="rail-timer" id="rail-timer">00:00:00</small></span>
+          </button>
+        </div>
+        <div class="hub-stage" id="hub-stage">
+          <div class="hub-viewport"><div class="hub-track" id="hub-track"></div></div>
+          <button class="hub-arrow prev" aria-label="Jogo anterior" data-i18n-aria="hub.prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4L7 12L15 20" /></svg></button>
+          <button class="hub-arrow next" aria-label="Próximo jogo" data-i18n-aria="hub.next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L17 12L9 20" /></svg></button>
+        </div>
+        <div class="hub-dots" id="hub-dots"></div>
+        <nav class="hub-nav" id="hub-nav"></nav>
+        <!-- extras do Bloop Orbit (o hub move para dentro da carta do Orbit) -->
+        <div id="orbit-extras" class="orbit-extras">
           <div class="loadout" id="loadout"></div>
-          <button class="btn btn-play" id="btn-play">JOGAR</button>
-          <div class="menu-row">
-            <button class="tile" data-open="shop" data-tab="skins"><span class="tile-ico plate plate-pink" data-icon="bag"></span>Loja<em class="badge hidden" data-badge="shop"></em></button>
-            <button class="tile" data-open="missions"><span class="tile-ico plate plate-cyan" data-icon="target"></span>Missões<em class="badge hidden" data-badge="missions"></em></button>
-            <button class="tile" data-open="daily"><span class="tile-ico plate plate-gold" data-icon="gift"></span>Diário<em class="badge hidden" data-badge="daily"></em></button>
-            <button class="tile" id="btn-creator"><span class="tile-ico plate plate-violet" data-icon="user"></span>Criar<em class="badge hidden"></em></button>
-            <button class="tile" id="btn-free"><span class="tile-ico plate plate-green" data-icon="video"></span>Grátis<em class="badge hidden" data-badge="free"></em></button>
-            <button class="tile" id="btn-race"><span class="tile-ico plate plate-violet" data-icon="rocket"></span>Corrida</button>
-            <button class="tile" id="btn-ranking"><span class="tile-ico plate plate-orange" data-icon="trophy"></span>Ranking</button>
+          <div class="ox-row">
+            <span class="ox-best"><span data-icon="trophy" data-size="22"></span><b data-bind="best">0</b></span>
+            <button class="ox-btn" id="btn-race"><span data-icon="rocket" data-size="24"></span><span data-i18n="orbit.race">Corrida</span></button>
+            <button class="ox-btn" id="btn-ranking"><span data-icon="trophy" data-size="24"></span><span data-i18n="orbit.ranking">Ranking</span></button>
+            <button class="ox-btn" data-open="shop" data-tab="upgrades"><span data-icon="arrow-up" data-size="24"></span><span data-i18n="orbit.upgrades">Melhorias</span><em class="badge hidden" data-badge="upgrades"></em></button>
           </div>
         </div>
       </section>
@@ -113,7 +119,7 @@
           <button class="btn btn-gold" id="btn-double"><span data-icon="video"></span> Dobrar moedas</button>
           <button class="btn btn-play small" id="btn-again">JOGAR DE NOVO</button>
           <div class="row">
-            <button class="btn btn-ghost" id="btn-home"><span data-icon="home"></span> Menu</button>
+            <button class="btn btn-ghost" id="btn-home"><span data-icon="home"></span> <span data-i18n="over.home">Menu</span></button>
             <button class="btn btn-ghost" id="btn-share"><span data-icon="megaphone"></span> Desafiar</button>
           </div>
         </div>
@@ -123,9 +129,9 @@
       <section id="pause" class="screen modal-screen">
         <div class="panel">
           <div class="panel-art plate plate-violet round" data-icon="pause"></div>
-          <h2>PAUSADO</h2>
-          <button class="btn btn-play small" id="btn-resume"><span data-icon="play"></span> CONTINUAR</button>
-          <button class="btn btn-ghost" id="btn-quit">Sair para o menu</button>
+          <h2 data-i18n="pause.title">PAUSADO</h2>
+          <button class="btn btn-play small" id="btn-resume"><span data-icon="play"></span> <span data-i18n="pause.resume">CONTINUAR</span></button>
+          <button class="btn btn-ghost" id="btn-quit" data-i18n="pause.quit">Sair para o menu</button>
         </div>
       </section>
 
@@ -172,35 +178,44 @@
       <!-- CONFIG -->
       <section id="settings" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2><span data-icon="gear"></span> AJUSTES</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <header class="panel-head"><h2><span data-icon="gear"></span> <span data-i18n="settings.title">AJUSTES</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
           <div class="profile">
             <div class="plate round plate-pink profile-ava" data-icon="user"></div>
             <div class="profile-info">
-              <label class="name-field"><input id="profile-name" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Seu apelido" /><span data-icon="pencil" data-size="22"></span></label>
+              <label class="name-field"><input id="profile-name" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Seu apelido" data-i18n-ph="settings.nick" /><span data-icon="pencil" data-size="22"></span></label>
               <div class="profile-meta"><span id="profile-id">ID —</span><span id="profile-status" class="net">Conectando...</span></div>
             </div>
           </div>
-          <label class="toggle"><span><span class="plate round sm plate-cyan" data-icon="sound"></span>Efeitos sonoros</span><input type="checkbox" data-setting="sound" /><i></i></label>
-          <label class="toggle"><span><span class="plate round sm plate-pink" data-icon="music"></span>Música</span><input type="checkbox" data-setting="music" /><i></i></label>
-          <label class="toggle"><span><span class="plate round sm plate-violet" data-icon="vibration"></span>Vibração</span><input type="checkbox" data-setting="haptics" /><i></i></label>
+          <button class="toggle lang-row" data-open="lang"><span><span class="plate round sm plate-cyan lang-globe"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" /><path d="M7 24H41M24 7C17 13 17 35 24 41M24 7C31 13 31 35 24 41" /></svg></span><span data-i18n="settings.lang">Idioma</span></span><b class="lang-cur" id="lang-cur">Português</b></button>
+          <label class="toggle"><span><span class="plate round sm plate-cyan" data-icon="sound"></span><span data-i18n="settings.sound">Efeitos sonoros</span></span><input type="checkbox" data-setting="sound" /><i></i></label>
+          <label class="toggle"><span><span class="plate round sm plate-pink" data-icon="music"></span><span data-i18n="settings.music">Música</span></span><input type="checkbox" data-setting="music" /><i></i></label>
+          <label class="toggle"><span><span class="plate round sm plate-violet" data-icon="vibration"></span><span data-i18n="settings.haptics">Vibração</span></span><input type="checkbox" data-setting="haptics" /><i></i></label>
           <div class="toggle quality-row">
-            <span><span class="plate round sm plate-gold" data-icon="bolt"></span>Gráficos</span>
-            <select id="sel-quality" aria-label="Qualidade gráfica">
+            <span><span class="plate round sm plate-gold" data-icon="bolt"></span><span data-i18n="settings.gfx">Gráficos</span></span>
+            <select id="sel-quality" aria-label="Qualidade gráfica" data-i18n-aria="settings.gfxAria">
               <option value="auto">Auto</option>
-              <option value="3">Alto</option>
-              <option value="2">Médio</option>
-              <option value="1">Baixo</option>
-              <option value="0">Mínimo</option>
+              <option value="3" data-i18n="quality.3">Alto</option>
+              <option value="2" data-i18n="quality.2">Médio</option>
+              <option value="1" data-i18n="quality.1">Baixo</option>
+              <option value="0" data-i18n="quality.0">Mínimo</option>
             </select>
           </div>
           <div class="row settings-row">
-            <button class="btn btn-ghost" data-open="redeem"><span data-icon="ticket"></span> Resgatar código</button>
-            <button class="btn btn-ghost" data-open="credits"><span data-icon="heart"></span> Créditos</button>
+            <button class="btn btn-ghost" data-open="redeem"><span data-icon="ticket"></span> <span data-i18n="settings.redeem">Resgatar código</span></button>
+            <button class="btn btn-ghost" data-open="credits"><span data-icon="heart"></span> <span data-i18n="settings.credits">Créditos</span></button>
           </div>
-          <button class="btn btn-ghost" id="btn-restore">Restaurar compras</button>
-          <button class="btn btn-ghost" id="btn-privacy-ads">Privacidade dos anúncios</button>
-          <a class="link" href="./privacy.html" target="_blank" rel="noopener">Política de privacidade</a>
+          <button class="btn btn-ghost" id="btn-restore" data-i18n="settings.restore">Restaurar compras</button>
+          <button class="btn btn-ghost" id="btn-privacy-ads" data-i18n="settings.adPrivacy">Privacidade dos anúncios</button>
+          <a class="link" href="./privacy.html" target="_blank" rel="noopener" data-i18n="settings.privacy">Política de privacidade</a>
           <p class="muted tiny" id="version">v1.0.0</p>
+        </div>
+      </section>
+
+      <!-- IDIOMA -->
+      <section id="lang" class="screen modal-screen">
+        <div class="panel">
+          <header class="panel-head"><h2><span data-i18n="settings.langTitle">IDIOMA</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
+          <div class="lang-grid" id="lang-grid"></div>
         </div>
       </section>
 
@@ -266,7 +281,8 @@
             <div class="team-mark"><span class="tm-team">TEAM</span><span class="tm-ross">ROSS</span></div>
             <div class="team-stars"><span data-icon="sparkle" data-size="16"></span><span data-icon="star" data-size="22"></span><span data-icon="sparkle" data-size="16"></span></div>
           </div>
-          <div class="credits-game"><span>BLOOP</span> <span class="o">ORBIT</span></div>
+          <div class="credits-game"><span>BLOOP</span> <span class="o">WORLD</span></div>
+          <p class="muted credits-sub">Bloop Orbit e outros minigames</p>
           <p class="muted tiny" id="credits-version">v1.0.0</p>
           <div class="credits-block">
             <h3>Criação, código e arte</h3>
