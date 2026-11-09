@@ -5,6 +5,7 @@
  *  gradientes e camadas criados só ao mudar de rodada/tamanho).
  * ============================================================ */
 import type { DisasterGame, Player } from './game';
+import { drawGrade, drawLight, drawSoftShadow, drawSpecular, drawVignette } from '../../gfx/light';
 import { R } from './game';
 import { GROUND_Y, shade, type Body } from './world';
 
@@ -257,6 +258,11 @@ export class Drawer {
     if (storm) {
       x.fillStyle = 'rgba(30,36,70,0.28)';
       x.fillRect(0, 0, cw, ch);
+      // nuvens pesadas no topo, horizonte mais claro (céu dramático)
+      if (g.q.grade) drawGrade(x, cw, ch * 0.7, 'rgba(14,12,40,0.55)', 'rgba(14,12,40,0)', 1, 'source-over');
+    } else if (g.q.dynLights && !g.night) {
+      // sol de fim de tarde por trás do cenário
+      drawLight(x, '255,236,190', cw * 0.8, ch * 0.16, Math.max(cw, ch) * 0.45, 0.55);
     }
 
     let sx = 0;
@@ -437,7 +443,10 @@ export class Drawer {
     for (const s of g.strikes) {
       if (!s.on) continue;
       if (s.flash > 0) {
-        if (s.kind === 'bolt') this.bolt(x, s.x, top, s.ty);
+        if (s.kind === 'bolt') {
+          this.bolt(x, s.x, top, s.ty);
+          if (g.q.dynLights) drawLight(x, '220,230,255', s.x, s.ty - 60, 420, Math.min(1, s.flash * 2.2), 1.1);
+        }
         else {
           x.fillStyle = s.kind === 'rock' ? 'rgba(200,170,130,.5)' : 'rgba(255,200,80,.55)';
           x.beginPath();
@@ -508,6 +517,7 @@ export class Drawer {
       x.fillStyle = `rgba(255,250,235,${Math.min(1, mt.flash * 1.2)})`;
       x.fillRect(0, 0, cw, ch);
     }
+    if (g.q.grade) drawVignette(x, cw, ch, storm ? 0.55 : 0.32, storm ? '8,6,30' : '30,16,40');
     if (g.timeScale < 0.8) {
       x.fillStyle = `rgba(0,0,0,${(0.8 - g.timeScale) * 0.4})`;
       x.fillRect(0, 0, cw, ch * 0.08);
@@ -673,11 +683,8 @@ export class Drawer {
     const sys = 1 - sq * 0.6;
     const bob = run * 3;
     x.globalAlpha = alpha;
-    // sombra
-    x.fillStyle = 'rgba(0,0,0,.18)';
-    x.beginPath();
-    x.ellipse(p.x, p.y, 10, 3, 0, 0, TAU);
-    x.fill();
+    // sombra de contato
+    drawSoftShadow(x, p.x, p.y, 11, 3.4, g.q.softShadows ? 0.3 : 0.18, g.q.softShadows);
     x.save();
     x.translate(p.x, p.y);
     x.scale(p.face * sxs, sys);
@@ -925,6 +932,29 @@ export class Drawer {
       x.strokeStyle = 'rgba(255,160,40,.35)';
       x.lineWidth = 16;
       x.stroke();
+    }
+    if (g.q.dynLights) {
+      const t2 = g.time;
+      if (f.kind === 'lava') {
+        // lava emissiva: ilumina o cenário acima da superfície
+        for (let px = Math.floor(firstX / 160) * 160 + 80; px <= lastX; px += 160) {
+          const fl = 0.75 + 0.25 * Math.sin(t2 * 3 + px * 0.05);
+          drawLight(x, '255,120,30', px, g.surfaceAt(px), 150, 0.55 * fl, 0.7);
+        }
+      } else if (f.kind === 'water') {
+        // reflexo do céu logo abaixo da superfície + brilhos especulares
+        x.strokeStyle = 'rgba(255,255,255,.22)';
+        x.lineWidth = 7;
+        x.save();
+        x.translate(0, 9);
+        x.stroke();
+        x.restore();
+        for (let i = 0; i < 9; i++) {
+          const px = firstX + ((i * 131.7 + t2 * 18) % Math.max(1, lastX - firstX));
+          const tw = Math.sin(t2 * 4 + i * 1.7);
+          if (tw > 0.2) drawSpecular(x, px, g.surfaceAt(px) + 3, 7 * tw, 0.8);
+        }
+      }
     }
     // bolhas/espuma soltas
     const t = g.time;
