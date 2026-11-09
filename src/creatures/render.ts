@@ -1123,7 +1123,7 @@ const HATS = new Set(['beanie', 'party', 'tophat', 'crown', 'tiara', 'leafhat', 
 
 function drawBackProps(c: C, g: Geo, d: CreatureDesign, p: Pal): void {
   for (const pr of d.props) {
-    if (pr === 'cape') shape(c, p.acc, (c) => { c.moveTo(-g.w * 0.7, g.neckY - 6); c.quadraticCurveTo(-g.w - 10, g.bottom, -g.w - 6, g.bottom + 4); c.lineTo(g.w + 6, g.bottom + 4); c.quadraticCurveTo(g.w + 10, g.bottom, g.w * 0.7, g.neckY - 6); c.closePath(); });
+    if (pr === 'cape') shape(c, luma(p.acc) > 0.8 ? p.acc2 : p.acc, (c) => { c.moveTo(-g.w * 0.7, g.neckY - 6); c.quadraticCurveTo(-g.w - 10, g.bottom, -g.w - 6, g.bottom + 4); c.lineTo(g.w + 6, g.bottom + 4); c.quadraticCurveTo(g.w + 10, g.bottom, g.w * 0.7, g.neckY - 6); c.closePath(); });
     if (pr === 'ring') stroke(c, p.acc2, 4, (c) => ell(c, 0, 6, 42, 9, -0.15));
     if (pr === 'pole') { shape(c, '#ffd84a', (c) => rr(c, -3, -48, 6, 100, 3)); }
     if (pr === 'balloon') {
@@ -1135,6 +1135,8 @@ function drawBackProps(c: C, g: Geo, d: CreatureDesign, p: Pal): void {
     if (pr === 'spout') for (const s of [-1, 0, 1]) stroke(c, '#9ff0ff', 3, (c) => { c.moveTo(0, g.top - 4); c.quadraticCurveTo(s * 6, g.top - 20, s * 14, g.top - 16); });
   }
 }
+
+const TALL_TOPS = new Set(['unihorn', 'antlers', 'flame', 'crystals', 'propeller', 'bolt', 'lure', 'spikes', 'crest', 'leaves', 'flower', 'tuft', 'curl', 'sprout', 'vfin', 'knobs', 'antennae', 'fin']);
 
 function drawHat(c: C, g: Geo, pr: string, p: Pal, hasOther: boolean): void {
   const T = g.top;
@@ -1253,7 +1255,17 @@ function drawHat(c: C, g: Geo, pr: string, p: Pal, hasOther: boolean): void {
 function drawFrontProps(c: C, g: Geo, d: CreatureDesign, p: Pal): void {
   const props = d.props;
   const hats = props.filter((x) => HATS.has(x));
+  // topo alto (chifre, chama, antenas...) + chapéu: o chapéu fica de lado, charmoso
+  const tilt = hats.length > 0 && TALL_TOPS.has(d.top) && !hats.includes('headband') && !hats.includes('nemes');
+  if (tilt) {
+    c.save();
+    c.translate(-g.hw * 0.55, g.top + 4);
+    c.rotate(-0.42);
+    c.scale(0.8, 0.8);
+    c.translate(0, -g.top);
+  }
   hats.forEach((h, i) => drawHat(c, g, h, p, i > 0));
+  if (tilt) c.restore();
   const hx = g.w + 3;
   const hy = g.handY;
   for (const pr of props) {
@@ -1845,8 +1857,8 @@ export function renderCreatureIcon(id: string, px: number, opts: { locked?: bool
   // criatura num canvas separado (para silhueta)
   const layer = makeCanvas(S);
   const lc = layer.getContext('2d')!;
-  lc.translate(S / 2, S * 0.53);
-  const k = (S / 100) * 0.92;
+  lc.translate(S / 2, S * 0.56);
+  const k = (S / 100) * 1.12;
   lc.scale(k, k);
   paintCreature(lc, cr, 'all');
   if (opts.locked) {

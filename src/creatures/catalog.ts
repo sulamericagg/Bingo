@@ -198,7 +198,7 @@ const TABLE: string[] = [
   'Pétalia|blob|leaves|sparkle|smile|hearts|bfwings|flower+wand|#ffd1f0|Fadinha-bichinho que faz flores nascerem com a varinha.',
   'Florália|bunny|bunny|star|smile|hearts|bfwings|crown+flower|#ffa6e0|Rainha do Jardim das Fadas: coelha de asas de flor que cuida do jardim.',
   // 20 Agentes Secretos
-  'Espiãozito|bean|none|dot|smile|none|feet|sunglasses|#3a4256|Feijãozinho que acha que ninguém o vê.',
+  'Espiãozito|bean|none|dot|smile|none|feet|sunglasses|#5a6a96|Feijãozinho que acha que ninguém o vê.',
   'Camuflito|dino|crest|big|smile|spots|tail|none|#5ef07a|Camaleão que muda de cor para brincar de esconde-esconde.',
   'Guaxinito|bear|bear|big|smile|mask|fluffytail|none|#8f9aa8|Guaxinim de máscara natural, expert em achar biscoitos.',
   'Agentuim|penguin|none|wink|smile|belly|flippers|bowtie+sunglasses|#14181f|Pinguim de gravata-borboleta em missão ultrassecreta.',
@@ -292,7 +292,7 @@ const TABLE: string[] = [
   'Miaunilo|cat|cat|lash|cat|none|tail|pearls|#ffd84a|Gatinha dourada de colar que cochila em pirâmides.',
   'Faixinha|bean|none|big|smile|bands|arms|none|#f4ead0|Múmia fofinha enrolada em ataduras de algodão.',
   'Feneco|fox|bigears|sparkle|cat|belly|fluffytail|pearls|#f0c890|Raposinha-do-deserto de orelhas gigantes.',
-  'Esfinginha|cat|mane|star|smile|none|bigwings|nemes|#ffd84a|Rainha da Aventura Egípcia: esfinge de asas douradas que faz charadas fofas.',
+  'Esfinginha|cat|none|star|smile|none|bigwings|nemes|#e8b878|Rainha da Aventura Egípcia: esfinge de asas douradas que faz charadas fofas.',
   // 36 Viagem no Tempo
   'Segundinho|egg|none|dot|smile|none|feet|hourglass|#ffb347|Ovinho que carrega uma ampulheta para não se atrasar.',
   'Mamutinho|bear|bigears|big|trunk|none|feet|none|#a07a5a|Mamute bebê que viajou de um passado geladinho.',
@@ -430,7 +430,7 @@ const TABLE: string[] = [
   'Buraquinho|blob|none|big|ooh|swirl|none|none|#3a2a7a|Buraquinho negro que só engole tristeza.',
   'Saturnino|blob|none|happy|smile|bands|none|ring|#ffb36b|Planetinha de anel que gira de alegria.',
   'Nebulina|cloud|curl|sparkle|smile|stars|wings|tiara|#ff3cac|Nebulosa que faz estrelas novas com um sopro.',
-  'Galaxileão|cat|mane|star|cat|stars|bigwings|crown+cape|#ffd84a|Rei das Lendas do Universo: leão alado de galáxias que guarda as constelações.',
+  'Galaxileão|cat|mane|star|cat|stars|bigwings|crown+cape|#6a5cf0|Rei das Lendas do Universo: leão alado de galáxias que guarda as constelações.',
   // 59 Aniversário de 5 Anos
   'Festinho|blob|none|dot|smile|none|feet|candle|#ff5cc8|Bolinho de festa que faz um pedido a cada vela.',
   'Presentinho|cube|none|happy|smile|bands|feet|bow|#5ef0ff|Presente que se abre sozinho de tanta empolgação.',
