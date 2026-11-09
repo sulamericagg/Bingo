@@ -85,6 +85,20 @@ export const sfx = {
     const b = 700 + Math.random() * 200;
     for (let i = 0; i < 4; i++) tone(b + (i % 2) * 180, 0.07, 'triangle', 0.08, 1.2, i * 0.075);
   },
+  /** vozinha fofa ao cutucar ("ui!", "hihi", "oba") — sintetizada */
+  chirp(): void {
+    const k = Math.floor(Math.random() * 3);
+    const b = 620 + Math.random() * 180;
+    if (k === 0) {
+      tone(b, 0.16, 'triangle', 0.13, 1.9);
+    } else if (k === 1) {
+      tone(b * 1.3, 0.09, 'sine', 0.12, 1.25);
+      tone(b * 1.45, 0.11, 'sine', 0.12, 1.2, 0.11);
+    } else {
+      tone(b * 0.9, 0.1, 'triangle', 0.12, 1.4);
+      tone(b * 1.2, 0.18, 'triangle', 0.12, 0.8, 0.1);
+    }
+  },
   boing(): void {
     tone(220, 0.28, 'sine', 0.22, 2.6);
   },

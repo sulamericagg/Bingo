@@ -699,3 +699,120 @@
     height: 28px;
   }
 }
+
+/* ---------- fala (microfone) ---------- */
+.pet-mic {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 62px;
+  padding: 6px 0 4px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #ffe0f0);
+  border: 2.5px solid var(--ink) !important;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: transform 0.08s;
+}
+.pet-mic:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+.pet-mic[data-st='listening'],
+.pet-mic[data-st='capturing'],
+.pet-mic[data-st='playing'],
+.pet-mic[data-st='starting'] {
+  background: linear-gradient(180deg, #ff9ec7, #ff5cc8);
+  color: #fff;
+}
+.pet-mic[data-st='listening']::after,
+.pet-mic[data-st='capturing']::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 24px;
+  border: 3px solid #ff5cc8;
+  animation: petMic 1.1s ease-out infinite;
+  pointer-events: none;
+}
+.pet-mic[data-st='capturing']::after {
+  border-color: #3ee07a;
+  animation-duration: 0.5s;
+}
+@keyframes petMic {
+  from {
+    opacity: 1;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+.pet-scr.night .pet-mic {
+  opacity: 0.6;
+}
+.pet-priv {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+  font-size: 13.5px !important;
+  background: #eefbf3;
+  border: 2px solid #3ee07a;
+  border-radius: 14px;
+  padding: 8px 10px;
+}
+.pet-priv .ico {
+  flex: none;
+}
+.pet-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin: 0 0 12px;
+  font-weight: 700;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.pet-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.pet-switch i {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 14px;
+  background: #d9d0ee;
+  border: 2.5px solid var(--ink);
+  transition: background 0.2s;
+}
+.pet-switch i::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--ink);
+  transition: transform 0.2s;
+}
+.pet-switch input:checked + i {
+  background: #3ee07a;
+}
+.pet-switch input:checked + i::after {
+  transform: translateX(19px);
+}
