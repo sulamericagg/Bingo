@@ -45,7 +45,58 @@ export interface SaveData {
   avatar: AvatarSave;
   /** Peças/paletas compradas do criador (as grátis não precisam estar aqui). */
   ownedParts: string[];
+  /** Bichinho virtual "Casa do Bloop" (src/pet). */
+  pet: PetSave;
 }
+
+/** Estado do bichinho virtual (ver src/pet/state.ts). Status 0..100. */
+export interface PetSave {
+  food: number;
+  clean: number;
+  fun: number;
+  energy: number;
+  /** XP total de cuidado (o nível é derivado) */
+  xp: number;
+  /** maior nível já alcançado (desbloqueios cosméticos não se perdem) */
+  bestLevel: number;
+  /** último instante (ms) em que o desgaste foi calculado */
+  last: number;
+  /** comidas guardadas na despensa: id -> quantidade */
+  pantry: Record<string, number>;
+  /** decoração equipada */
+  decor: { wall: string; floor: string; items: string[] };
+  /** itens de decoração comprados */
+  owned: string[];
+  /** anúncios assistidos por item de decoração */
+  adViews: Record<string, number>;
+  /** já explicamos e pedimos permissão de notificação */
+  notifAsked: boolean;
+  notifOn: boolean;
+  /** brilho do polimento até (ms) */
+  shineUntil: number;
+  /** limite diário de XP (anti-farm) */
+  xpDay: number;
+  xpToday: number;
+}
+
+export const defaultPet = (): PetSave => ({
+  food: 80,
+  clean: 70,
+  fun: 75,
+  energy: 90,
+  xp: 0,
+  bestLevel: 1,
+  last: Date.now(),
+  pantry: { cookie: 3, apple: 2 },
+  decor: { wall: 'wp_dots', floor: 'fl_wood', items: [] },
+  owned: ['wp_dots', 'fl_wood'],
+  adViews: {},
+  notifAsked: false,
+  notifOn: false,
+  shineUntil: 0,
+  xpDay: 0,
+  xpToday: 0,
+});
 
 export interface AvatarSave {
   parts: Record<'body' | 'material' | 'pattern' | 'eyes' | 'mouth' | 'head' | 'face' | 'back' | 'aura', string>;
@@ -88,6 +139,7 @@ const defaults = (): SaveData => ({
   tips: {},
   avatar: defaultAvatar(),
   ownedParts: [],
+  pet: defaultPet(),
 });
 
 function load(): SaveData {
@@ -105,6 +157,11 @@ function load(): SaveData {
       const oa = (o && o.avatar) || {};
       m.avatar = { parts: { ...da.parts, ...oa.parts }, colors: { ...da.colors, ...oa.colors } };
       m.ownedParts = Array.isArray(o?.ownedParts) ? o.ownedParts : [];
+      const dp = defaultPet();
+      const op = (o && o.pet) || {};
+      m.pet = { ...dp, ...op, pantry: { ...(op.pantry ?? dp.pantry) }, adViews: { ...op.adViews }, decor: { ...dp.decor, ...op.decor } };
+      if (!Array.isArray(m.pet.owned)) m.pet.owned = dp.owned;
+      if (!Array.isArray(m.pet.decor.items)) m.pet.decor.items = [];
       if (!m.ownedSkins.includes('custom')) m.ownedSkins.push('custom');
       return m;
     }

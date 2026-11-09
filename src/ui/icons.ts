@@ -62,7 +62,21 @@ export type IconName =
   | 'link'
   | 'heart'
   | 'tag'
-  | 'cloud-off';
+  | 'cloud-off'
+  // Casa do Bloop (bichinho virtual)
+  | 'pet'
+  | 'food'
+  | 'bath'
+  | 'bed'
+  | 'ball'
+  | 'sponge'
+  | 'shower'
+  | 'towel'
+  | 'cloth'
+  | 'paint'
+  | 'smile'
+  | 'drop'
+  | 'lamp';
 
 export interface IconOpts {
   /** Lado em px. Sem valor, usa 1.25em (acompanha o texto). */
@@ -550,6 +564,82 @@ const ICONS: Record<IconName, string> = {
     line('M10 6L40 44', '#ff4f6a', 4.5) +
     hl('<ellipse cx="20" cy="15" rx="5" ry="2.4" transform="rotate(-20 20 15)"/>', 0.7),
 
+  /* ---------- Casa do Bloop ---------- */
+  pet:
+    sil('<path d="M5 24L24 7L43 24V40Q43 43 40 43H8Q5 43 5 40Z"/>', 'violet') +
+    sil('<path d="M24 38C24 38 13 31.5 13 24C13 20.5 15.8 18 18.8 18C21 18 22.6 19.3 24 21C25.4 19.3 27 18 29.2 18C32.2 18 35 20.5 35 24C35 31.5 24 38 24 38Z"/>', 'pink', 2) +
+    hl('<path d="M10 23L24 10.5L22 14L12 23.5Z"/>', 0.5) +
+    hl('<ellipse cx="18.5" cy="22.5" rx="2.6" ry="1.6" transform="rotate(-30 18.5 22.5)"/>', 0.8),
+
+  food:
+    sil('<path d="M5 24H43Q43 41 24 42Q5 41 5 24Z"/>', 'cyan') +
+    sil('<circle cx="17" cy="19" r="7.5"/><circle cx="29" cy="17" r="8"/>', 'red', 2.5) +
+    line('M29 9Q30 5 33 4', '#3ee07a', 2.6) +
+    hl('<ellipse cx="26" cy="13.5" rx="2.6" ry="1.6" transform="rotate(-30 26 13.5)"/><rect x="9" y="27" width="10" height="2.6" rx="1.3"/>', 0.7),
+
+  bath:
+    sil('<path d="M3 22H45V27Q45 40 34 40H14Q3 40 3 27Z"/>', 'white') +
+    sil('<rect x="11" y="39" width="5" height="5" rx="2"/><rect x="32" y="39" width="5" height="5" rx="2"/>', 'violet', 2) +
+    sil('<circle cx="15" cy="16" r="6"/><circle cx="25" cy="12" r="7.5"/><circle cx="35" cy="17" r="5"/>', 'cyan', 2.5) +
+    hl('<circle cx="23" cy="9.5" r="2"/><circle cx="13.5" cy="14" r="1.5"/><rect x="8" y="25" width="14" height="2.6" rx="1.3"/>', 0.85),
+
+  bed:
+    sil('<path d="M30 6A15 15 0 1 0 43 28A12 12 0 1 1 30 6Z"/>', 'gold') +
+    sil('<rect x="4" y="30" width="30" height="13" rx="6.5"/>', 'violet', 2.5) +
+    hl('<ellipse cx="22" cy="13" rx="3" ry="1.8" transform="rotate(-40 22 13)"/><rect x="9" y="33" width="12" height="2.4" rx="1.2"/>', 0.7),
+
+  ball:
+    sil('<circle cx="24" cy="24" r="19"/>', 'orange') +
+    `<path d="M8 17Q24 26 40 17M10 33Q24 24 38 33" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>` +
+    hl('<ellipse cx="16" cy="13" rx="5" ry="2.8" transform="rotate(-35 16 13)"/>', 0.75),
+
+  sponge:
+    sil('<rect x="6" y="14" width="36" height="24" rx="8"/>', 'gold') +
+    ink('<circle cx="15" cy="24" r="2.2"/><circle cx="26" cy="21" r="1.8"/><circle cx="33" cy="29" r="2.4"/><circle cx="20" cy="31" r="1.6"/>') +
+    sil('<circle cx="37" cy="10" r="5"/><circle cx="12" cy="9" r="3.4"/>', 'cyan', 2) +
+    hl('<rect x="10" y="17" width="14" height="2.6" rx="1.3"/><circle cx="36" cy="8.5" r="1.4"/>', 0.7),
+
+  shower:
+    line('M10 44V14Q10 6 18 6H24', '#c8b9f5', 4) +
+    sil('<path d="M17 12H37L33 20H21Z"/>', 'silver', 2.5) +
+    sil('<path d="M21 26L19 32M27 26V33M33 26L35 32M23 37L22 41M31 37L32 41"/>', 'cyan', 1.8) +
+    `<g stroke="#5ef0ff" stroke-width="3.4" stroke-linecap="round"><path d="M21 26L19 32M27 26V33M33 26L35 32M23 37L22 41M31 37L32 41"/></g>`,
+
+  towel:
+    sil('<rect x="8" y="5" width="32" height="38" rx="6"/>', 'pink') +
+    sil('<rect x="8" y="30" width="32" height="6"/>', 'white', 1.5) +
+    `<path d="M14 10V26M20 10V26M26 10V26M32 10V26" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" stroke-linecap="round"/>` +
+    hl('<rect x="11" y="7.5" width="12" height="2.4" rx="1.2"/>', 0.7),
+
+  cloth:
+    sil('<path d="M6 30Q8 14 22 12Q36 10 40 22Q42 34 30 38Q16 42 6 30Z"/>', 'violet') +
+    `<path d="M14 28Q22 20 34 22" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="2.6" stroke-linecap="round"/>` +
+    twinkle(39, 8, 6) +
+    twinkle(10, 12, 4, '#ffe680'),
+
+  paint:
+    sil('<rect x="5" y="6" width="32" height="13" rx="4.5"/>', 'pink') +
+    line('M37 12.5H42V25H24V31', '#c8b9f5', 3.2) +
+    sil('<rect x="20" y="30" width="8" height="14" rx="3"/>', 'gold', 2.5) +
+    hl('<rect x="9" y="9" width="16" height="2.6" rx="1.3"/>', 0.75),
+
+  smile:
+    sil('<circle cx="24" cy="24" r="19"/>', 'gold') +
+    ink('<ellipse cx="17" cy="19" rx="2.6" ry="3.6"/><ellipse cx="31" cy="19" rx="2.6" ry="3.6"/>') +
+    `<path d="M14 27Q24 38 34 27Z" fill="${INK}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>` +
+    '<path d="M18.5 31.5Q24 35 29.5 31.5Q24 30 18.5 31.5Z" fill="#ff6f92"/>' +
+    hl('<ellipse cx="15" cy="12" rx="4.5" ry="2.4" transform="rotate(-35 15 12)"/>', 0.75),
+
+  drop:
+    sil('<path d="M24 4Q38 21 38 30A14 14 0 0 1 10 30Q10 21 24 4Z"/>', 'cyan') +
+    hl('<ellipse cx="18" cy="30" rx="2.6" ry="5" transform="rotate(20 18 30)"/>', 0.75) +
+    twinkle(38, 9, 4.5),
+
+  lamp:
+    sil('<path d="M14 6H34L40 24H8Z"/>', 'gold') +
+    sil('<rect x="21.5" y="24" width="5" height="12"/>', 'silver', 2) +
+    sil('<rect x="12" y="36" width="24" height="7" rx="3.5"/>', 'violet', 2.5) +
+    hl('<path d="M16.5 9H21L17.5 21H12.5Z"/>', 0.55),
 };
 
 export const ICON_NAMES = Object.keys(ICONS) as IconName[];
