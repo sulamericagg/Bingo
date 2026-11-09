@@ -163,6 +163,11 @@ class RallyGame {
   private pauseEl!: HTMLDivElement;
   private toastsEl!: HTMLDivElement;
   private trayEl!: HTMLDivElement;
+  /** indicadores de pedal (metade esquerda = freio, direita = acelerador) + dica nas primeiras corridas */
+  private pedalB!: HTMLElement;
+  private pedalG!: HTMLElement;
+  private pedalsEl!: HTMLElement;
+  private pedalState = -1;
   private garageIdx = 0;
   private resultCoins = 0;
   private doubled = false;
@@ -264,7 +269,14 @@ class RallyGame {
     this.hudEl.innerHTML = `
       <button class="rl-ibtn rl-pause" aria-label="${t('rally.pause', 'Pausar')}">${icon('pause', { size: 26 })}</button>
       <button class="rl-ibtn rl-emote-btn" aria-label="${t('rally.emotes', 'Recadinhos')}"></button>
-      <div class="rl-tray"></div>`;
+      <div class="rl-tray"></div>
+      <div class="rl-pedals">
+        <div class="rl-pd brake"><span>${t('rally.hint.brake', 'Segure: frear')}</span>${icon('hand-tap', { size: 40 })}</div>
+        <div class="rl-pd gas"><span>${t('rally.hint.gas', 'Segure: acelerar')}</span>${icon('hand-tap', { size: 40 })}</div>
+      </div>`;
+    this.pedalB = this.hudEl.querySelector<HTMLElement>('.rl-pd.brake')!;
+    this.pedalG = this.hudEl.querySelector<HTMLElement>('.rl-pd.gas')!;
+    this.pedalsEl = this.hudEl.querySelector<HTMLElement>('.rl-pedals')!;
     const emBtn = this.hudEl.querySelector<HTMLButtonElement>('.rl-emote-btn')!;
     emBtn.appendChild(this.emoteImg('joinha', 30));
     this.trayEl = this.hudEl.querySelector<HTMLDivElement>('.rl-tray')!;
@@ -488,6 +500,16 @@ class RallyGame {
     this.popups.length = 0;
     this.ptrs.clear();
     this.mood = 'idle';
+    // tutorial curtinho: nas 3 primeiras corridas os pedais aparecem grandes com nome e pulsando
+    let tut = 0;
+    try {
+      tut = Number(localStorage.getItem('bo-rally-tut') || 0);
+      localStorage.setItem('bo-rally-tut', String(tut + 1));
+    } catch {
+      /* sem storage */
+    }
+    this.pedalsEl.classList.toggle('tut', tut < 3);
+    this.pedalState = -1;
     audio.unlock();
   }
 
@@ -686,6 +708,14 @@ class RallyGame {
       if (this.myEmoteT > 0) this.myEmoteT -= dt;
     }
     this.lobby.update(dt, steps, car.x, car.speed, this.state === 'play');
+    // pedais acendem quando apertados (feedback imediato do toque)
+    const ps = (this.inp.gas ? 1 : 0) + (this.inp.brake ? 2 : 0);
+    if (ps !== this.pedalState) {
+      this.pedalState = ps;
+      this.pedalG.classList.toggle('on', this.inp.gas);
+      this.pedalB.classList.toggle('on', this.inp.brake);
+      if (this.inp.gas && this.pedalsEl.classList.contains('tut') && this.runT > 3) this.pedalsEl.classList.remove('tut');
+    }
     // ronco do motor: acompanha o acelerador e a velocidade (respeita "Som" via sfxBus)
     if (this.state === 'play' && !car.crashed) {
       audio.engineStart();

@@ -816,3 +816,13 @@
 .pet-switch input:checked + i::after {
   transform: translateX(19px);
 }
+
+/* alvo de toque maior para o botão de preço (visual igual) */
+.pet-buy {
+  position: relative;
+}
+.pet-buy::before {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
