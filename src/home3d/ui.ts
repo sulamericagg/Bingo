@@ -73,6 +73,27 @@ const CSS = `
 .h3-side{position:absolute;right:max(10px,env(safe-area-inset-right));top:56px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 .h3-left{position:absolute;left:max(10px,env(safe-area-inset-left));top:56px;display:flex;flex-direction:column;gap:6px}
 .h3-emote{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);pointer-events:none}
+.h3-full .h3-row2{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.h3-full .h3-later{display:none}
+.h3-full .h3-later.on{display:inline-flex;animation:h3pop .3s}
+@keyframes h3pop{from{transform:scale(.6);opacity:0}}
+.h3-load-back{position:absolute;left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top))}
+@media (orientation:portrait){
+.h3-top{flex-wrap:wrap;row-gap:6px}
+.h3-title{font-size:13px;max-width:calc(100% - 110px);overflow:hidden;text-overflow:ellipsis}
+.h3-tools{margin-left:0;width:100%;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px}
+.h3-tools .h3-btn{flex:none}
+.h3-prog{top:112px}
+.h3-row{left:10px;right:10px;transform:none;max-width:none;bottom:auto;top:138px}
+.h3-act{width:64px;height:64px;font-size:11px}
+.h3-act.big{width:78px;height:78px}
+.h3-act.small{width:54px;height:54px}
+.h3-act svg{width:24px;height:24px}
+.h3-joy{width:58%;height:48%}
+.h3-side,.h3-left{top:112px}
+.h3-cat{max-height:42%}
+.h3-toast{font-size:16px;white-space:normal;text-align:center;max-width:86%}
+}
 `;
 let cssEl: HTMLStyleElement | null = null;
 export function ensureCss(): void {
@@ -134,23 +155,49 @@ export function esc(s: string): string {
 export function isLandscape(): boolean {
   return window.matchMedia('(orientation: landscape)').matches || window.innerWidth > window.innerHeight;
 }
+/** Promessa com prazo: resolve com `fb` se demorar (ex.: plugin de orientação que não responde). */
+function within<T>(p: Promise<T>, ms: number, fb: T): Promise<T> {
+  return new Promise((res) => {
+    const tm = setTimeout(() => res(fb), ms);
+    p.then(
+      (v) => (clearTimeout(tm), res(v)),
+      () => (clearTimeout(tm), res(fb)),
+    );
+  });
+}
+/**
+ * Pede paisagem. NUNCA espera o plugin sem prazo (antes: se o lock não respondesse, ficava só o fundo
+ * azul do 3D para sempre). Mostra o aviso na hora, com "Voltar" e, depois de 2 s,
+ * "Continuar assim mesmo" (o 3D funciona em retrato — o celular pode estar com a rotação travada).
+ */
 export async function askLandscape(root: HTMLElement, skip: boolean): Promise<boolean> {
-  await lockOrientation('landscape');
+  if (skip) return true;
+  void within(lockOrientation('landscape'), 1500, undefined);
   // a rotação nativa leva um instante para refletir em innerWidth/innerHeight
-  if (!skip && !isLandscape()) await new Promise((r) => setTimeout(r, 400));
-  if (skip || isLandscape()) return true;
+  if (!isLandscape()) await new Promise((r) => setTimeout(r, 450));
+  if (isLandscape()) return true;
   const box = el(
     'div',
-    'h3-full',
-    `<div class="h3-phone"><i></i></div><h2>${esc(t('home3d.rotate.title', 'Vire o telefone!'))}</h2><p>${esc(t('home3d.rotate.text', 'O modo 3D da casa fica melhor deitado. Gire o aparelho para começar.'))}</p>`,
+    'h3-full h3-rotate',
+    `<div class="h3-phone"><i></i></div><h2>${esc(t('home3d.rotate.title', 'Vire o telefone!'))}</h2><p>${esc(t('home3d.rotate.text2', 'O modo 3D fica melhor deitado. Se o seu celular não girar, toque em "Continuar assim mesmo".'))}</p>`,
   );
+  const row = el('div', 'h3-row2');
   const cancel = button(t('home3d.rotate.back', 'Voltar'), 'exit');
-  box.appendChild(cancel);
+  cancel.dataset.act = 'back';
+  const anyway = button(t('home3d.rotate.anyway', 'Continuar assim mesmo'), 'check');
+  anyway.classList.add('sel', 'h3-later');
+  row.append(cancel, anyway);
+  box.appendChild(row);
   root.appendChild(box);
+  const showT = setTimeout(() => anyway.classList.add('on'), 2000);
   return new Promise((res) => {
     const mq = window.matchMedia('(orientation: landscape)');
+    let fin = false;
     const done = (ok: boolean) => {
-      mq.removeEventListener('change', chk);
+      if (fin) return;
+      fin = true;
+      clearTimeout(showT);
+      mq.removeEventListener?.('change', chk);
       window.removeEventListener('resize', chk);
       box.remove();
       res(ok);
@@ -158,9 +205,14 @@ export async function askLandscape(root: HTMLElement, skip: boolean): Promise<bo
     const chk = () => {
       if (isLandscape()) done(true);
     };
-    mq.addEventListener('change', chk);
+    mq.addEventListener?.('change', chk);
     window.addEventListener('resize', chk);
     cancel.onclick = () => done(false);
+    anyway.onclick = () => {
+      // joga em retrato: solta a trava de paisagem para a tela não girar no meio do jogo
+      restorePortrait();
+      done(true);
+    };
   });
 }
 export function unlockOrientation(): void {
@@ -172,7 +224,9 @@ export class Loading {
   readonly box: HTMLDivElement;
   private bar: HTMLElement;
   private step: HTMLElement;
-  constructor(root: HTMLElement) {
+  /** Voltar sempre visível no carregamento (e o botão voltar do Android clica nele). */
+  readonly back: HTMLButtonElement;
+  constructor(root: HTMLElement, onBack: () => void) {
     const cols = ['#ff7ad9', '#ffd84a', '#46d9e6', '#4fd67a', '#8a5cff'];
     const bars = cols.map((c, i) => `<b style="left:${i * 24}px;height:${40 + i * 12}px;background:${c};animation-delay:${i * 0.12}s;transform-origin:bottom"></b>`).join('');
     this.box = el(
@@ -182,11 +236,23 @@ export class Loading {
     );
     this.bar = this.box.querySelector('.h3-bar i')!;
     this.step = this.box.querySelector('.h3-step')!;
+    this.back = button(t('home3d.rotate.back', 'Voltar'), 'exit', 'h3-btn h3-load-back');
+    this.back.dataset.act = 'back';
+    this.back.onclick = onBack;
+    this.box.appendChild(this.back);
     root.appendChild(this.box);
   }
   set(p: number, label: string): void {
     this.bar.style.width = Math.round(Math.min(1, p) * 100) + '%';
     this.step.textContent = label;
+  }
+  /** Demorou demais: mostra o erro com um botão grande de voltar. */
+  fail(title: string, text: string, onBack: () => void): void {
+    this.box.innerHTML = `<h2>${esc(title)}</h2><p>${esc(text)}</p>`;
+    const b = button(t('home3d.fallback.back', 'Ficar no 2D'), 'exit');
+    b.dataset.act = 'back';
+    b.onclick = onBack;
+    this.box.appendChild(b);
   }
   remove(): void {
     this.box.remove();
