@@ -185,6 +185,11 @@ function scanTs(file) {
     let i = skipWs(src, m.index + 2);
     const k = readConcat(src, i);
     if (!k) continue; // t(variavel, ...) — infra (langs.ts) ou dinâmica
+    if (k.partial) {
+      // t('prefixo.' + id, ...) — chave dinâmica por concatenação (precisa de entrada em scanDynamicData)
+      dynamicCalls.push({ key: k.value + '${…}', fallback: src.slice(k.end, k.end + 60).split('\n')[0], where: `${rel}:${lineOf(src, m.index)}` });
+      continue;
+    }
     i = skipWs(src, k.end);
     if (src[i] !== ',') continue;
     i = skipWs(src, i + 1);
@@ -326,6 +331,78 @@ async function scanBundledData() {
   for (const x of mi.matchAll(/kind: '(gems|coins|tickets)', id: '', amount: [^,]+, name: '([^']*)'/g)) out[`mpass.kind.${x[1]}`] = x[2];
   // cosméticos do Bloop Banda
   for (const c of m.COSMETICS) out[`band.cos.${c.kind}.${c.id}`] = c.name;
+  Object.assign(out, await scanRecordedData(esbuild));
+  return out;
+}
+
+/** pares `chave: 'texto'` de um objeto literal escrito numa linha (ex.: ({ cake: 'Bolo', ... } as Record<...>)) */
+const objPairs = (txt) => Object.fromEntries([...txt.matchAll(/(?:'([\w-]+)'|([\w-]+)): '((?:[^'\\]|\\.)*)'/g)].map((x) => [x[1] ?? x[2], x[3].replace(/\\'/g, "'")]));
+const lineWith = (file, needle) => fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n').find((l) => l.includes(needle)) ?? '';
+
+/**
+ * Chaves montadas por concatenação (t('home.opt.' + k, pt) etc.): empacota os módulos com um t() que
+ * GRAVA cada chamada e executa os rótulos; o que não dá para executar sem DOM/three.js é lido da fonte.
+ */
+async function scanRecordedData(esbuild) {
+  const rec = {};
+  globalThis.__i18nRec = rec;
+  const r = await esbuild.build({
+    stdin: {
+      contents: `
+        import * as HC from './src/home/catalog';
+        import { FINISHES, finishName } from './src/home/paint';
+        export function run() {
+          for (const f of [...HC.PLANET_FIELDS, ...HC.EXTERIOR_FIELDS]) { f.label(); f.options?.forEach((o) => o()); }
+          HC.DECOR_OPTS.forEach((o) => o());
+          HC.FURN_CATS.forEach((c) => c.label());
+          HC.FURNITURE.forEach((f) => f.name());
+          HC.FLOORS.forEach((x) => HC.floorName(x));
+          HC.WALLS.forEach((x) => HC.wallName(x));
+          HC.ROOM_IDS.forEach((x) => HC.roomName(x));
+          FINISHES.forEach((x) => finishName(x));
+        }`,
+      resolveDir: ROOT,
+      loader: 'ts',
+    },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'neutral',
+    logLevel: 'error',
+    loader: { '.css': 'empty', '.png': 'empty', '.svg': 'empty' },
+    plugins: [
+      {
+        name: 'rec-i18n',
+        setup(b) {
+          b.onResolve({ filter: /(^|\/)i18n(\/index)?$/ }, () => ({ path: 'rec-i18n', namespace: 'rec' }));
+          b.onLoad({ filter: /.*/, namespace: 'rec' }, () => ({
+            contents: `export const t = (k, pt) => { if (typeof k === 'string' && typeof pt === 'string') globalThis.__i18nRec[k] = pt; return pt; };
+              export const fmt = (n) => String(n); export const getLang = () => 'pt'; export const lang = () => 'pt';`,
+            loader: 'js',
+          }));
+        },
+      },
+    ],
+  });
+  const m = await import('data:text/javascript;base64,' + Buffer.from(r.outputFiles[0].text).toString('base64'));
+  m.run();
+  const out = { ...rec };
+  // Casa 3D (src/home3d): nomes dos móveis K(..., 'Nome'), sujeiras/comidas e pisos/paredes
+  const ad = fs.readFileSync(path.join(ROOT, 'src/home3d/adapter.ts'), 'utf8');
+  for (const x of ad.matchAll(/^\s*([\w]+): K\([^']*'((?:[^'\\]|\\.)*)'/gm)) out[`home3d.furn.${x[1]}`] = x[2];
+  for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Bolo no chão'")))) out[`home3d.mess.${k}`] = v;
+  for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Fatia de bolo'")))) out[`home3d.food.${k}`] = v;
+  const bs = fs.readFileSync(path.join(ROOT, 'src/home3d/build.ts'), 'utf8');
+  const surf = objPairs(bs.slice(bs.indexOf('function surfName'), bs.indexOf('function surfName') + 700));
+  const list = (n) => [...(new RegExp(`${n} = \\[([^\\]]*)\\]`).exec(ad)?.[1] ?? '').matchAll(/'([\w-]+)'/g)].map((x) => x[1]);
+  for (const s of list('FLOOR_STYLES')) if (surf[s]) out[`home3d.floor.${s}`] = surf[s];
+  for (const s of list('WALL_STYLES')) if (surf[s]) out[`home3d.wall.${s}`] = surf[s];
+  // modelos de cômodo (home.tpl.<id>) e estilos do Bloop Banda (band.style.<id>)
+  const rm = fs.readFileSync(path.join(ROOT, 'src/home/room.ts'), 'utf8');
+  for (const x of rm.matchAll(/\{ id: '([\w-]+)', name: '((?:[^'\\]|\\.)*)'/g)) out[`home.tpl.${x[1]}`] = x[2];
+  const bm = fs.readFileSync(path.join(ROOT, 'src/games/band/model.ts'), 'utf8');
+  const sn = bm.slice(bm.indexOf('STYLE_NAMES'), bm.indexOf('};', bm.indexOf('STYLE_NAMES')));
+  for (const [k, v] of Object.entries(objPairs(sn))) out[`band.style.${k}`] = v;
   return out;
 }
 
@@ -380,7 +457,7 @@ async function main() {
     lines.push(`  ${c.key}`);
     for (const u of c.uses) lines.push(`     ${u.where}  ${JSON.stringify(u.text)}`);
   }
-  const unknownDyn = dynamicCalls.filter((d) => !/^`?(creature|season|skin|trail|song|mpass|mtheme|band\.cos|part|pass\.motif)\./.test(d.key));
+  const unknownDyn = dynamicCalls.filter((d) => !/^`?(creature|season|skin|trail|song|mpass|mtheme|band\.cos|band\.style|part|pass\.motif|home|home3d)\./.test(d.key));
   lines.push(`\n== Chamadas dinâmicas (chave ou texto não-literal): ${dynamicCalls.length}`);
   for (const d of dynamicCalls) lines.push(`  ${d.where}  t(${JSON.stringify(d.key)}, ${d.fallback.trim()})`);
 

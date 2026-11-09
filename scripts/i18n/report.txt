@@ -1,8 +1,8 @@
-Chaves: 3322 (1516 de t()/HTML + 1806 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 3701 (1516 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 
-== Chamadas dinâmicas (chave ou texto não-literal): 22
+== Chamadas dinâmicas (chave ou texto não-literal): 37
   src/creatures/collection.ts:35  t("creature.${c.id}", c.name)
   src/creatures/collection.ts:36  t("creature.${c.id}.desc", c.desc)
   src/creatures/collection.ts:37  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
@@ -13,12 +13,27 @@ Chaves: 3322 (1516 de t()/HTML + 1806 de dados: bichinhos/temporadas/skins/rastr
   src/game/skins.ts:193  t("trail.${tr.id}", tr.name)
   src/game/skins.ts:194  t("trail.${tr.id}.desc", tr.desc)
   src/games/band/cosmetics.ts:144  t("band.cos.${c.kind}.${c.id}", c.name)
+  src/games/band/model.ts:75  t("band.style.${…}", + s, STYLE_NAMES[s]) : extStyle?.(s) ?? t('band.style.' + s)
+  src/games/band/model.ts:75  t("band.style.${…}", + s, s.charAt(0).toUpperCase() + s.slice(1)));)
+  src/games/band/model.ts:170  t("song.${…}", + s.id, s.title);)
+  src/home/catalog.ts:57  t("home.opt.${…}", + k, pt);)
+  src/home/catalog.ts:115  t("home.floor.${…}", + id, ({ wood: 'Taco', tile: 'Piso', carpet: 'Carpete', che)
+  src/home/catalog.ts:116  t("home.wall.${…}", + id, ({ paint: 'Pintura', stripes: 'Listras', dots: 'Bolin)
+  src/home/catalog.ts:168  t("home.furn.${…}", + kind, pt) + (v ? t('home.furn.v' + v, VNAME[v]) : ''),)
+  src/home/catalog.ts:168  t("home.furn.v${…}", + v, VNAME[v]) : ''),)
+  src/home/paint.ts:14  t("home.paint.fin.${…}", + f, ({ solid: 'Lisa', gradient: 'Degradê', stripes: 'Listr)
+  src/home/screen.ts:894  t("home.tpl.${…}", + tp.id, tp.name))}</button>`).join('')}${passData())
+  src/home3d/build.ts:223  t("home3d.furn.${…}", + k, KINDS[k].name))}`);)
+  src/home3d/fps.ts:711  t("home3d.furn.${…}", + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state)
+  src/home3d/fps.ts:712  t("home3d.mess.${…}", + tg.decal.m.kind, messName(tg.decal.m.kind as MessKind));)
+  src/home3d/fps.ts:713  t("home3d.food.${…}", + tg.food.kind, foodName(tg.food.kind));)
   src/music/season-music-data.ts:163  t("mtheme.s${String(season).padStart(2, '0')}", SEASON_MUSIC[season]?.split('|')
   src/music/songs/index.ts:88  t("song.${s.id}", s.title)
   src/music/songs/index.ts:89  t("song.${s.id}.band", s.band)
   src/music/songs/index.ts:90  t("song.style.${style}", STYLES[style as StyleId]?.name ?? style)
   src/music/songs/index.ts:91  t("song.stage.${stage}", STAGES[stage]?.name ?? stage)
   src/pass/catalog.ts:110  t("pass.motif.${motifSlug(m)}", m)
+  src/pass/home/catalog.ts:131  t("home.furn.${…}", + it.furn!.kind, FURN_BASE[it.furn!.kind].pt), m: motif });)
   src/pass/music/index.ts:329  t("mpass.kind.${r.kind}", r.name)
   src/pass/music/index.ts:330  t("song.${r.id}", r.name)
   src/pass/music/index.ts:337  t("mpass.fam.${a.family}", AURA_FAMILY_NAME[a.family])
@@ -27,14 +42,14 @@ Chaves: 3322 (1516 de t()/HTML + 1806 de dados: bichinhos/temporadas/skins/rastr
   src/pass/music/index.ts:346  t("mpass.${r.id}", r.name)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 1113 / 1120 / 0 / 0
-  es: 1113 / 1120 / 0 / 0
-  de: 1113 / 1120 / 0 / 0
-  fr: 1113 / 1120 / 0 / 0
-  it: 1113 / 1120 / 0 / 0
-  ja: 1113 / 1120 / 0 / 0
-  ko: 1113 / 1120 / 0 / 0
-  ru: 1113 / 1120 / 0 / 0
-  tr: 1113 / 1120 / 0 / 0
-  id: 1113 / 1120 / 0 / 0
-  zh: 1113 / 1120 / 0 / 0
+  en: 1492 / 1120 / 0 / 0
+  es: 1492 / 1120 / 0 / 0
+  de: 1492 / 1120 / 0 / 0
+  fr: 1492 / 1120 / 0 / 0
+  it: 1492 / 1120 / 0 / 0
+  ja: 1492 / 1120 / 0 / 0
+  ko: 1492 / 1120 / 0 / 0
+  ru: 1492 / 1120 / 0 / 0
+  tr: 1492 / 1120 / 0 / 0
+  id: 1492 / 1120 / 0 / 0
+  zh: 1492 / 1120 / 0 / 0
