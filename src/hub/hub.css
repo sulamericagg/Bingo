@@ -129,6 +129,7 @@ body.hub-qmin .hub-play {
   height: 44px !important;
 }
 .hub-who {
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -137,7 +138,7 @@ body.hub-qmin .hub-play {
 }
 .hub-who b {
   font-size: 15px;
-  max-width: 96px;
+  max-width: min(96px, 100%);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -544,6 +545,11 @@ body.hub-qmin .hub-play {
 .hub-nav::-webkit-scrollbar {
   display: none;
 }
+.hub-nav.more {
+  /* há mais itens à direita: a borda some aos poucos e convida a rolar */
+  -webkit-mask-image: linear-gradient(90deg, #000 82%, rgba(0, 0, 0, 0.25));
+  mask-image: linear-gradient(90deg, #000 82%, rgba(0, 0, 0, 0.25));
+}
 .hub-nav:empty {
   display: none;
 }
@@ -717,6 +723,30 @@ body.hub-qmin .hub-play {
   }
   .ox-btn [data-icon] {
     display: none;
+  }
+  /* 5 atalhos + oferta não cabem em 320–370 px: a oferta perde o ícone e os atalhos encolhem */
+  .qb {
+    flex: none;
+    width: 40px;
+  }
+  .qb .plate {
+    width: 36px;
+    height: 36px;
+  }
+  .hub-offer .ho-ico {
+    display: none;
+  }
+  .hub-offer {
+    padding: 0 8px;
+  }
+}
+@media (max-width: 340px) {
+  /* telas de 320 px: só o avatar (o nome já aparece no perfil) para as moedas não cobrirem o nome */
+  .hub-who {
+    display: none;
+  }
+  .hub-profile {
+    padding: 3px;
   }
 }
 
