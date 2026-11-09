@@ -22,6 +22,8 @@ import { hubPause, initHub } from './hub/hub';
 import { registerOrbit } from './hub/orbit-def';
 import { registerCorePanels } from './hub/core-panels';
 import { registerPet } from './pet/register';
+import { petCoinBonus } from './pet/state';
+import { registerTubo } from './games/tubo/register';
 
 async function boot(): Promise<void> {
   // garante a fonte antes do primeiro texto no canvas
@@ -44,7 +46,9 @@ async function boot(): Promise<void> {
   registerOrbit({ play: () => ui.playOrbit() });
   registerCorePanels(ui);
   // Minigames e painéis dos outros módulos (o líder liga depois do merge):
-  // registerTubo();
+  registerTubo();
+  // bônus de moedas do bichinho para minigames que leem window.petCoinBonus(coins) -> moedas extras
+  (window as any).petCoinBonus = (coins: number) => Math.round(coins * petCoinBonus());
   // registerRally();
   // registerTycoon();
   registerPet();
