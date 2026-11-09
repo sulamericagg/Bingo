@@ -1722,31 +1722,43 @@ export class Game {
     x.fillRect(0, 0, cw, ch);
 
     const camPx = this.camY * this.scale * d;
-    // nebulosa
-    x.globalCompositeOperation = 'lighter';
+    // nebulosa: padrão vertical contínuo (duas nuvens por período, que se sobrepõem)
     const nebSize = Math.max(cw, ch) * 1.1;
-    for (const [neb, alpha] of [[this.nebulas[bi % BIOMES.length], 1 - bf], [this.nebulas[(bi + 1) % BIOMES.length], bf]] as const) {
-      if (alpha <= 0.01 || !this.q.nebula) continue;
-      x.globalAlpha = alpha;
-      const oy = ((-camPx * 0.08) % (nebSize * 1.6) + nebSize * 1.6) % (nebSize * 1.6) - nebSize * 0.8;
-      x.drawImage(neb, cw / 2 - nebSize * 0.6, oy - nebSize * 0.3, nebSize, nebSize);
-      x.drawImage(neb, cw / 2 - nebSize * 0.3, oy - nebSize * 1.9, nebSize, nebSize);
+    if (this.q.nebula) {
+      x.globalCompositeOperation = 'lighter';
+      const period = nebSize * 1.6;
+      const base = (((-camPx * 0.08) % period) + period) % period;
+      for (let k = 0; k < 2; k++) {
+        const alpha = k === 0 ? 1 - bf : bf;
+        if (alpha <= 0.01) continue;
+        const neb = this.nebulas[(bi + k) % BIOMES.length];
+        x.globalAlpha = alpha;
+        for (let ps = base - period; ps < ch; ps += period) {
+          if (ps + nebSize > 0 && ps < ch) x.drawImage(neb, cw / 2 - nebSize * 0.6, ps, nebSize, nebSize);
+          const py2 = ps + nebSize * 0.8;
+          if (py2 + nebSize > 0 && py2 < ch) x.drawImage(neb, cw / 2 - nebSize * 0.35, py2, nebSize, nebSize);
+        }
+      }
+      x.globalAlpha = 1;
+      x.globalCompositeOperation = 'source-over';
     }
-    x.globalAlpha = 1;
-    x.globalCompositeOperation = 'source-over';
 
-    // planeta distante decorativo
-    const far = this.farPlanets[bi % BIOMES.length];
-    if (far && this.q.farPlanet) {
+    // planeta distante decorativo (troca de bioma em fade cruzado, sem "pulo")
+    if (this.q.farPlanet) {
       const span = ch * 2.2;
-      const fy = ((-camPx * 0.05) % span + span) % span - far.size;
-      x.globalAlpha = 0.55 * (1 - bf);
-      const fx = cw * 0.78;
-      x.drawImage(far.atmo, fx - far.atmo.width / 2, fy - far.atmo.height / 2);
-      if (far.ringBack) x.drawImage(far.ringBack, fx - far.ringBack.width / 2, fy - far.ringBack.height / 2);
-      x.drawImage(far.surface, fx - far.size / 2, fy - far.size / 2);
-      x.drawImage(far.light, fx - far.size / 2, fy - far.size / 2);
-      if (far.ringFront) x.drawImage(far.ringFront, fx - far.ringFront.width / 2, fy - far.ringFront.height / 2);
+      for (let k = 0; k < 2; k++) {
+        const fa = 0.55 * (k === 0 ? 1 - bf : bf);
+        const far = this.farPlanets[(bi + k) % BIOMES.length];
+        if (!far || fa <= 0.01) continue;
+        const fy = (((-camPx * 0.05) % span) + span) % span - far.size;
+        x.globalAlpha = fa;
+        const fx = cw * 0.78;
+        x.drawImage(far.atmo, fx - far.atmo.width / 2, fy - far.atmo.height / 2);
+        if (far.ringBack) x.drawImage(far.ringBack, fx - far.ringBack.width / 2, fy - far.ringBack.height / 2);
+        x.drawImage(far.surface, fx - far.size / 2, fy - far.size / 2);
+        x.drawImage(far.light, fx - far.size / 2, fy - far.size / 2);
+        if (far.ringFront) x.drawImage(far.ringFront, fx - far.ringFront.width / 2, fy - far.ringFront.height / 2);
+      }
       x.globalAlpha = 1;
     }
 
