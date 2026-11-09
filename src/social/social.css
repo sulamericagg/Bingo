@@ -12,7 +12,7 @@
   background: rgba(8, 3, 26, 0.72);
   padding: calc(10px + var(--safe-top, 0px)) 10px calc(10px + var(--safe-bot, 0px));
   pointer-events: auto;
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
   animation: sc-fade 0.18s ease-out;
 }
@@ -83,7 +83,7 @@
   border: 0;
   border-radius: 999px;
   padding: 7px 14px;
-  font: 600 15px Fredoka, system-ui, sans-serif;
+  font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif);
   color: #d9ccff;
   background: rgba(255, 255, 255, 0.08);
   cursor: pointer;
@@ -112,7 +112,7 @@
   border: 0;
   border-radius: 16px;
   padding: 11px 16px;
-  font: 700 17px Fredoka, system-ui, sans-serif;
+  font: 700 17px var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
   background: linear-gradient(180deg, #ff8ad8, #e0308f);
   box-shadow: 0 4px 0 #9b1462, inset 0 2px 0 rgba(255, 255, 255, 0.4);
@@ -142,7 +142,7 @@
   border-radius: 16px;
   background: #fff;
   color: #2a0b5c;
-  font: 600 15px Fredoka, system-ui, sans-serif;
+  font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   display: flex;
   gap: 8px;
@@ -201,7 +201,7 @@
   border: 0;
   background: none;
   color: #c6b6ff;
-  font: 900 18px/1 Fredoka, system-ui;
+  font: 900 18px/1 var(--font, 'Fredoka', system-ui, sans-serif);
   cursor: pointer;
 }
 .sc-msg.mine .sc-more { display: none; }
@@ -229,7 +229,7 @@
   padding: 6px 12px 6px 6px;
   background: #fff;
   color: #2a0b5c;
-  font: 600 14px Fredoka, system-ui, sans-serif;
+  font: 600 14px var(--font, 'Fredoka', system-ui, sans-serif);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -247,7 +247,7 @@
   background: rgba(10, 4, 30, 0.6);
   color: #fff;
   padding: 10px 12px;
-  font: 500 16px Fredoka, system-ui, sans-serif;
+  font: 500 16px var(--font, 'Fredoka', system-ui, sans-serif);
   user-select: text;
   -webkit-user-select: text;
 }
@@ -273,7 +273,7 @@
   background: none;
   padding: 10px 12px;
   border-radius: 10px;
-  font: 600 15px Fredoka, system-ui, sans-serif;
+  font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif);
   color: #2a0b5c;
   text-align: left;
   cursor: pointer;
@@ -380,7 +380,7 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  font: 700 10.5px Fredoka, system-ui, sans-serif;
+  font: 700 10.5px var(--font, 'Fredoka', system-ui, sans-serif);
   transform: translate(0, 0) scale(0.3);
   transition: transform 0.22s cubic-bezier(0.2, 1.5, 0.4, 1);
   transition-delay: calc(var(--i) * 18ms);

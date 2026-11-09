@@ -66,10 +66,12 @@ export function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, 
     const hw = ho.w * w;
     const hh = ho.h * h;
     const hit = front > ho.x + ho.w * 0.3;
+    // a casa do meio é a "firme" (o Bloop está nela): só balança, não tomba
+    const sturdy = ho === HOUSES[1];
     const tip = hit ? Math.min(1, (front - ho.x - ho.w * 0.3) * 4) : 0;
     x.save();
     x.translate(hx + hw, gy);
-    x.rotate(tip * tip * 1.3);
+    x.rotate(sturdy ? (hit && tip < 1 ? Math.sin(time * 18) * 0.015 : 0) : tip * tip * 1.3);
     x.translate(-hx - hw, -gy);
     x.fillStyle = '#2a1a3a';
     x.fillRect(hx - 2, gy - hh - 2, hw + 4, hh + 4);

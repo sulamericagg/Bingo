@@ -98,8 +98,9 @@ export const BOT_NAMES = ['Pipoca', 'Nino', 'Lulu', 'Tico', 'Bibi', 'Zuzu', 'Mel
 export const PLOT_COLORS = ['#3ee07a', '#ff9a2e', '#3fb8ff', '#ff5cc8'];
 
 /** Prêmio em moedas por colocação (1º..4º). */
-export const PLACE_COINS = [150, 100, 70, 50];
-export const TURBO_BONUS = 60;
+// economia (nov/2026): partida de 4,5 min pagava 11-47 moedas/min; agora ~27-85/min, alinhado aos outros jogos
+export const PLACE_COINS = [300, 220, 160, 120];
+export const TURBO_BONUS = 80;
 
 /* -------------------- Minha Fábrica (ociosa) -------------------- */
 

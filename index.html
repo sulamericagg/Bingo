@@ -17,12 +17,12 @@
     <div id="ui">
       <!-- HUD -->
       <section id="hud" class="screen">
-        <button class="icon-btn" id="btn-pause" aria-label="Pausar" data-icon="pause"></button>
+        <button class="icon-btn" id="btn-pause" aria-label="Pausar" data-i18n-aria="hud.pause" data-icon="pause"></button>
         <div class="hud-score" id="hud-score">0</div>
         <div class="pill hud-coins"><i class="coin"></i><span id="hud-coins">0</span></div>
         <div id="tutorial" class="tutorial hidden">
           <div class="hand" data-icon="hand-tap" data-size="72"></div>
-          <div>Toque para <b>pular</b>!<br /><small>Mire no próximo planeta</small></div>
+          <div><span data-i18n="tut.tap1">Toque para</span> <b data-i18n="tut.tap2">pular</b>!<br /><small data-i18n="tut.aim">Mire no próximo planeta</small></div>
         </div>
         <div id="banner-biome" class="biome-banner"></div>
         <div id="speed-toast" class="speed-toast"></div>
@@ -30,9 +30,9 @@
         <div id="tip-card" class="tip-card hidden" role="alert">
           <div class="tip-art"><span data-icon="asteroid" data-size="54"></span><span class="tip-warn" data-icon="warning" data-size="28"></span></div>
           <div class="tip-text">
-            <b>Cuidado com os asteroides!</b>
-            <p>Asteroides giram em volta do planeta. Pule <em>ANTES</em> que ele chegue em você!</p>
-            <p class="tip-hint"><span data-icon="star" data-size="18"></span> Dica: pouso <em>PERFEITO</em> destrói os asteroides do planeta.</p>
+            <b data-i18n="tip.title">Cuidado com os asteroides!</b>
+            <p data-i18n="tip.body">Asteroides giram em volta do planeta. Pule ANTES que ele chegue em você!</p>
+            <p class="tip-hint"><span data-icon="star" data-size="18"></span> <span data-i18n="tip.hint">Dica: pouso PERFEITO destrói os asteroides do planeta.</span></p>
           </div>
           <i class="tip-bar"></i>
         </div>
@@ -88,39 +88,39 @@
       <!-- CONTINUAR -->
       <section id="revive" class="screen modal-screen">
         <div class="panel revive-panel">
-          <h2>CONTINUAR?</h2>
+          <h2 data-i18n="revive.title">CONTINUAR?</h2>
           <div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="ring-bg" /><circle cx="50" cy="50" r="44" class="ring-fg" id="revive-ring" /></svg><span id="revive-count">5</span></div>
-          <button class="btn btn-green" id="btn-revive-ad"><span data-icon="video"></span> Continuar grátis</button>
-          <button class="btn btn-gem" id="btn-revive-gem"><span data-icon="gem"></span> <span id="revive-cost">15</span> Continuar</button>
-          <button class="link" id="btn-revive-skip">Não, obrigado</button>
+          <button class="btn btn-green" id="btn-revive-ad"><span data-icon="video"></span> <span data-i18n="revive.free">Continuar grátis</span></button>
+          <button class="btn btn-gem" id="btn-revive-gem"><span data-icon="gem"></span> <span id="revive-cost">15</span> <span data-i18n="revive.gem">Continuar</span></button>
+          <button class="link" id="btn-revive-skip" data-i18n="revive.skip">Não, obrigado</button>
         </div>
       </section>
 
       <!-- FIM DE JOGO -->
       <section id="over" class="screen modal-screen">
         <div class="panel over-panel">
-          <div class="newbest hidden" id="over-newbest"><span data-icon="crown"></span> NOVO RECORDE! <span data-icon="party"></span></div>
+          <div class="newbest hidden" id="over-newbest"><span data-icon="crown"></span> <span data-i18n="over.newBest">NOVO RECORDE!</span> <span data-icon="party"></span></div>
           <h2 id="over-title">FIM DE JOGO</h2>
           <div class="over-score" id="over-score">0</div>
-          <div class="over-best">Recorde: <b id="over-best">0</b></div>
+          <div class="over-best"><span data-i18n="over.best">Recorde:</span> <b id="over-best">0</b></div>
           <div class="stats four">
-            <div><span class="stat-ico" data-icon="planet"></span><b id="over-planets">0</b><small>planetas</small></div>
-            <div><span class="stat-ico" data-icon="star"></span><b id="over-perfects">0</b><small>perfeitos</small></div>
-            <div><span class="stat-ico" data-icon="asteroid"></span><b id="over-asteroids">0</b><small>asteroides</small></div>
-            <div><span class="stat-ico" data-icon="gem"></span><b id="over-gems">0</b><small>gemas</small></div>
+            <div><span class="stat-ico" data-icon="planet"></span><b id="over-planets">0</b><small data-i18n="over.planets">planetas</small></div>
+            <div><span class="stat-ico" data-icon="star"></span><b id="over-perfects">0</b><small data-i18n="over.perfects">perfeitos</small></div>
+            <div><span class="stat-ico" data-icon="asteroid"></span><b id="over-asteroids">0</b><small data-i18n="over.asteroids">asteroides</small></div>
+            <div><span class="stat-ico" data-icon="gem"></span><b id="over-gems">0</b><small data-i18n="over.gems">gemas</small></div>
           </div>
           <div class="coin-sum" id="coin-sum">
-            <div class="cs-row"><span>Moedas coletadas</span><b id="cs-base">0</b></div>
-            <div class="cs-row" id="cs-up-row"><span><span data-icon="arrow-up" data-size="18"></span> Bônus melhoria</span><b id="cs-up">+0</b></div>
-            <div class="cs-row" id="cs-dbl-row"><span><span data-icon="coins" data-size="18"></span> Dobrador 2x</span><b id="cs-dbl">+0</b></div>
-            <button class="cs-row cs-upsell hidden" id="cs-upsell" data-open="shop" data-tab="upgrades"><span><span data-icon="lock" data-size="18"></span> Dobrador 2x</span><b>Ganhe o dobro</b></button>
-            <div class="cs-total"><span>Total</span><b><i class="coin"></i><span id="over-coins">0</span></b></div>
+            <div class="cs-row"><span data-i18n="over.coinsCollected">Moedas coletadas</span><b id="cs-base">0</b></div>
+            <div class="cs-row" id="cs-up-row"><span><span data-icon="arrow-up" data-size="18"></span> <span data-i18n="over.upgBonus">Bônus melhoria</span></span><b id="cs-up">+0</b></div>
+            <div class="cs-row" id="cs-dbl-row"><span><span data-icon="coins" data-size="18"></span> <span data-i18n="over.doubler">Dobrador 2x</span></span><b id="cs-dbl">+0</b></div>
+            <button class="cs-row cs-upsell hidden" id="cs-upsell" data-open="shop" data-tab="upgrades"><span><span data-icon="lock" data-size="18"></span> <span data-i18n="over.doubler">Dobrador 2x</span></span><b data-i18n="over.getDouble">Ganhe o dobro</b></button>
+            <div class="cs-total"><span data-i18n="over.total">Total</span><b><i class="coin"></i><span id="over-coins">0</span></b></div>
           </div>
           <button class="btn btn-gold" id="btn-double"><span data-icon="video"></span> Dobrar moedas</button>
-          <button class="btn btn-play small" id="btn-again">JOGAR DE NOVO</button>
+          <button class="btn btn-play small" id="btn-again" data-i18n="over.again">JOGAR DE NOVO</button>
           <div class="row">
             <button class="btn btn-ghost" id="btn-home"><span data-icon="home"></span> <span data-i18n="over.home">Menu</span></button>
-            <button class="btn btn-ghost" id="btn-share"><span data-icon="megaphone"></span> Desafiar</button>
+            <button class="btn btn-ghost" id="btn-share"><span data-icon="megaphone"></span> <span data-i18n="over.challenge">Desafiar</span></button>
           </div>
         </div>
       </section>
@@ -139,17 +139,17 @@
       <section id="shop" class="screen modal-screen">
         <div class="panel big">
           <header class="panel-head">
-            <h2><span data-icon="bag"></span> LOJA</h2>
+            <h2><span data-icon="bag"></span> <span data-i18n="shop.title">LOJA</span></h2>
             <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
             <div class="pill"><i class="gem"></i><span data-bind="gems">0</span></div>
-            <button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button>
+            <button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button>
           </header>
           <nav class="tabs five">
-            <button data-tab="offers"><span data-icon="tag"></span>Ofertas<em class="dot"></em></button>
-            <button data-tab="skins" class="active"><span data-icon="user"></span>Personagens</button>
-            <button data-tab="trails"><span data-icon="comet"></span>Rastros</button>
-            <button data-tab="upgrades"><span data-icon="arrow-up"></span>Melhorias</button>
-            <button data-tab="gems"><span data-icon="gem"></span>Gemas</button>
+            <button data-tab="offers"><span data-icon="tag"></span><span data-i18n="shop.tab.offers">Ofertas</span><em class="dot"></em></button>
+            <button data-tab="skins" class="active"><span data-icon="user"></span><span data-i18n="shop.tab.skins">Personagens</span></button>
+            <button data-tab="trails"><span data-icon="comet"></span><span data-i18n="shop.tab.trails">Rastros</span></button>
+            <button data-tab="upgrades"><span data-icon="arrow-up"></span><span data-i18n="shop.tab.upgrades">Melhorias</span></button>
+            <button data-tab="gems"><span data-icon="gem"></span><span data-i18n="shop.tab.gems">Gemas</span></button>
           </nav>
           <div class="shop-body" id="shop-body"></div>
         </div>
@@ -158,20 +158,20 @@
       <!-- DIÁRIO -->
       <section id="daily" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2><span data-icon="calendar"></span> PRESENTE DIÁRIO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
-          <p class="muted">Volte todo dia! O 7º dia é o melhor <span data-icon="sparkle"></span></p>
+          <header class="panel-head"><h2><span data-icon="calendar"></span> <span data-i18n="daily.title">PRESENTE DIÁRIO</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
+          <p class="muted"><span data-i18n="daily.sub">Volte todo dia! O 7º dia é o melhor</span> <span data-icon="sparkle"></span></p>
           <div class="daily-grid" id="daily-grid"></div>
           <button class="btn btn-green" id="btn-daily">Pegar</button>
-          <button class="btn btn-gold" id="btn-daily2"><span data-icon="video"></span> Pegar em DOBRO</button>
+          <button class="btn btn-gold" id="btn-daily2"><span data-icon="video"></span> <span data-i18n="daily.double">Pegar em DOBRO</span></button>
         </div>
       </section>
 
       <!-- MISSÕES -->
       <section id="missions" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2><span data-icon="target"></span> MISSÕES DO DIA</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <header class="panel-head"><h2><span data-icon="target"></span> <span data-i18n="missions.title">MISSÕES DO DIA</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
           <div id="mission-list"></div>
-          <p class="muted">Novas missões todo dia à meia-noite.</p>
+          <p class="muted" data-i18n="missions.sub">Novas missões todo dia à meia-noite.</p>
         </div>
       </section>
 
@@ -222,25 +222,25 @@
       <!-- CORREIO -->
       <section id="inbox" class="screen modal-screen">
         <div class="panel tall">
-          <header class="panel-head"><h2><span data-icon="mail"></span> CORREIO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <header class="panel-head"><h2><span data-icon="mail"></span> <span data-i18n="inbox.title">CORREIO</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
           <div class="list-body" id="inbox-list"></div>
-          <button class="btn btn-green hidden" id="btn-claim-all"><span data-icon="gift"></span> Pegar tudo</button>
+          <button class="btn btn-green hidden" id="btn-claim-all"><span data-icon="gift"></span> <span data-i18n="inbox.claimAll">Pegar tudo</span></button>
         </div>
       </section>
 
       <!-- RESGATAR CÓDIGO + DESAFIOS -->
       <section id="redeem" class="screen modal-screen">
         <div class="panel tall">
-          <header class="panel-head"><h2><span data-icon="ticket"></span> RESGATAR CÓDIGO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <header class="panel-head"><h2><span data-icon="ticket"></span> <span data-i18n="redeem.title">RESGATAR CÓDIGO</span></h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
           <div class="list-body">
             <div class="code-box">
-              <p class="muted">Digite um código de evento, presente ou desafio:</p>
+              <p class="muted" data-i18n="redeem.sub">Digite um código de evento, presente ou desafio:</p>
               <input id="code-input" class="code-input" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="EX.: BLOOP2026" />
               <div id="code-msg" class="code-msg" aria-live="polite"></div>
-              <button class="btn btn-green" id="btn-redeem"><span data-icon="check"></span> Resgatar</button>
+              <button class="btn btn-green" id="btn-redeem"><span data-icon="check"></span> <span data-i18n="redeem.btn">Resgatar</span></button>
             </div>
-            <div class="section-title"><span data-icon="target" data-size="18"></span> Desafios ativos</div>
-            <p class="muted small-note">Cumpra o desafio do vídeo/post e ganhe um código com prêmios exclusivos.</p>
+            <div class="section-title"><span data-icon="target" data-size="18"></span> <span data-i18n="redeem.challenges">Desafios ativos</span></div>
+            <p class="muted small-note" data-i18n="redeem.challengesSub">Cumpra o desafio do vídeo/post e ganhe um código com prêmios exclusivos.</p>
             <div id="challenge-list"></div>
           </div>
         </div>
@@ -249,7 +249,7 @@
       <!-- TURBO (compra rápida) -->
       <section id="boost" class="screen modal-screen">
         <div class="panel">
-          <header class="panel-head"><h2 id="boost-title">TURBO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-icon="close"></button></header>
+          <header class="panel-head"><h2 id="boost-title">TURBO</h2><button class="icon-btn close" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button></header>
           <div id="boost-body"></div>
         </div>
       </section>
@@ -257,42 +257,42 @@
       <!-- PACOTE INICIAL (popup) -->
       <section id="starter" class="screen modal-screen">
         <div class="panel starter-panel">
-          <button class="icon-btn close starter-x" data-close aria-label="Fechar" data-icon="close"></button>
-          <div class="starter-ribbon">OFERTA ÚNICA</div>
+          <button class="icon-btn close starter-x" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button>
+          <div class="starter-ribbon" data-i18n="starter.ribbon">OFERTA ÚNICA</div>
           <div class="starter-art"><canvas id="starter-skin"></canvas></div>
-          <h2>Pacote Inicial</h2>
+          <h2 data-i18n="prod.starter_pack">Pacote Inicial</h2>
           <ul class="starter-list">
-            <li><span data-icon="no-ads" data-size="30"></span> Sem anúncios para sempre</li>
-            <li><span data-icon="gem-pile" data-size="30"></span><span><b id="starter-gems">300</b> gemas</span></li>
-            <li><span data-icon="coins" data-size="30"></span><span><b id="starter-coins">3000</b> moedas</span></li>
-            <li><span data-icon="crown" data-size="30"></span> Skin lendária Galáxia</li>
+            <li><span data-icon="no-ads" data-size="30"></span> <span data-i18n="starter.noAds">Sem anúncios para sempre</span></li>
+            <li><span data-icon="gem-pile" data-size="30"></span><span><b id="starter-gems">300</b> <span data-i18n="starter.gems">gemas</span></span></li>
+            <li><span data-icon="coins" data-size="30"></span><span><b id="starter-coins">3000</b> <span data-i18n="starter.coins">moedas</span></span></li>
+            <li><span data-icon="crown" data-size="30"></span> <span data-i18n="starter.skin">Skin lendária Galáxia</span></li>
           </ul>
           <button class="btn btn-gold" id="btn-starter-buy">Pegar por R$ 9,90</button>
-          <button class="link" data-close>Agora não</button>
+          <button class="link" data-close data-i18n="common.notNow">Agora não</button>
         </div>
       </section>
 
       <!-- CRÉDITOS -->
       <section id="credits" class="screen modal-screen">
         <div class="panel credits-panel">
-          <button class="icon-btn close starter-x" data-close aria-label="Fechar" data-icon="close"></button>
+          <button class="icon-btn close starter-x" data-close aria-label="Fechar" data-i18n-aria="common.close" data-icon="close"></button>
           <div class="team-logo">
-            <small>UM JOGO DA</small>
+            <small data-i18n="credits.by">UM JOGO DA</small>
             <div class="team-mark"><span class="tm-team">TEAM</span><span class="tm-ross">ROSS</span></div>
             <div class="team-stars"><span data-icon="sparkle" data-size="16"></span><span data-icon="star" data-size="22"></span><span data-icon="sparkle" data-size="16"></span></div>
           </div>
           <div class="credits-game"><span>BLOOP</span> <span class="o">WORLD</span></div>
-          <p class="muted credits-sub">Bloop Orbit e outros minigames</p>
+          <p class="muted credits-sub" data-i18n="credits.sub">Bloop Orbit e outros minigames</p>
           <p class="muted tiny" id="credits-version">v1.0.0</p>
           <div class="credits-block">
-            <h3>Criação, código e arte</h3>
+            <h3 data-i18n="credits.h1">Criação, código e arte</h3>
             <p>TEAM Ross</p>
-            <h3>Música e sons</h3>
-            <p>Sintetizados pelo próprio jogo</p>
-            <h3>Agradecimentos</h3>
-            <p>A todos que jogam, compartilham, mandam ideias e encaram os desafios. Vocês fazem o Bloop pular mais alto!</p>
+            <h3 data-i18n="credits.h2">Música e sons</h3>
+            <p data-i18n="credits.p2">Sintetizados pelo próprio jogo</p>
+            <h3 data-i18n="credits.h3">Agradecimentos</h3>
+            <p data-i18n="credits.p3">A todos que jogam, compartilham, mandam ideias e encaram os desafios. Vocês fazem o Bloop pular mais alto!</p>
           </div>
-          <p class="credits-love"><span data-icon="heart" data-size="20"></span> Feito com carinho no Brasil</p>
+          <p class="credits-love"><span data-icon="heart" data-size="20"></span> <span data-i18n="credits.love">Feito com carinho no Brasil</span></p>
         </div>
       </section>
 

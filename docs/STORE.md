@@ -70,12 +70,12 @@ O app mostra o preço real cadastrado na Play Store; a coluna "Preço sugerido" 
 | `trail_neon` | Rastro Fita Neon (mítico) | Não consumível | R$ 7,90 | Rastro mítico Fita Neon |
 | `coin_doubler` | Dobrador de Moedas | Não consumível | R$ 14,90 | 2x moedas em todas as partidas, para sempre |
 | `boost_bundle` | Kit Turbo | Consumível | R$ 6,90 | 5 Escudos + 5 Ímãs + 5 Largadas Turbo |
-| `vip_pack` | Pacote VIP | Não consumível | R$ 39,90 | Sem anúncios + Dobrador de Moedas + 1.000 gemas + skin lendária Rei Dourado |
-| `mega_bundle` | Mega Pacote | Consumível | R$ 59,90 | 2.500 gemas + 25.000 moedas + 10 de cada turbo |
+| `vip_pack` | Pacote VIP | Não consumível | R$ 39,90 | Sem anúncios + Dobrador de Moedas + 600 gemas + skin lendária Rei Dourado |
+| `mega_bundle` | Mega Pacote | Consumível | R$ 59,90 | 2.000 gemas + 10.000 moedas + 5 de cada turbo |
 | `part_galaxy` | Peça: Material Galáxia (Crie seu Bloop) | Não consumível | R$ 7,90 | Material mítico Galáxia para o personagem personalizado |
 | `part_flame_hair` | Peça: Cabelo de Fogo (Crie seu Bloop) | Não consumível | R$ 9,90 | Cabelo de fogo animado para o personagem personalizado |
 | `part_phoenix_wings` | Peça: Asas de Fênix (Crie seu Bloop) | Não consumível | R$ 12,90 | Asas de fênix animadas para o personagem personalizado |
-| `flash_gems` | Oferta Relâmpago | Consumível | R$ 9,90 | 650 gemas + bônus do dia (moedas ou turbos; gira todo dia, ver `FLASH_BONUSES`) |
+| `flash_gems` | Oferta Relâmpago | Consumível | R$ 9,90 | 350 gemas + bônus do dia (moedas ou turbos; gira todo dia, ver `FLASH_BONUSES`) |
 
 Descrição sugerida para cada produto na Play Console: copie a coluna "O que entrega" e termine com "— Bloop Orbit, da TEAM Ross."
 

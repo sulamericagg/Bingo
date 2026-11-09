@@ -1,5 +1,5 @@
 /* Queda Giratória — HUD e telas (paleta quente/doce) */
-.tubo-root { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; font-family: 'Fredoka', system-ui, sans-serif; color: #fff; background: #ff9f80; z-index: 50; }
+.tubo-root { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; font-family: var(--font, 'Fredoka', system-ui, sans-serif); color: #fff; background: #ff9f80; z-index: 50; }
 .tubo-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .tubo-hud { position: absolute; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 0; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
 .tubo-hud > * { pointer-events: auto; }

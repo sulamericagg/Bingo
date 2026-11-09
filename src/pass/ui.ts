@@ -10,7 +10,7 @@ import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
 import { detectInitialTier } from '../core/quality';
 import { save } from '../core/storage';
-import { SEASONS, type SeasonInfo } from '../creatures/seasons';
+import { SEASONS, seasonTheme, type SeasonInfo } from '../creatures/seasons';
 import type { AvatarData } from '../game/avatar';
 import { renderAvatarPreview } from '../game/preview';
 import { fmt, t } from '../i18n';
@@ -340,7 +340,7 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
   const info = h('div', 'pp-hero-info');
   const left = live ? seasonLeftMs(s) : Date.parse(s.start) - Date.now();
   info.innerHTML = `<div class="pp-season">${t('pass.seasonN', 'Temporada {n}', { n: s.index + 1 })} · ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}</div>
-    <div class="pp-theme">${s.theme}</div>
+    <div class="pp-theme">${seasonTheme(s)}</div>
     <div class="pp-count ${live && left < 3 * 86400000 ? 'hot' : ''}">${icon('clock', { size: 16 })}${live ? t('pass.endsIn', 'Termina em {t}', { t: durText(left) }) : t('pass.startsIn', 'Começa em {t}', { t: durText(left) })}</div>`;
   hero.appendChild(info);
 
@@ -521,7 +521,7 @@ function confirmBuy(s: SeasonInfo): void {
   const sh = sheet();
   const ps = passSeason(s.index);
   const creatures = ps.levels.filter((L) => L.prem.kind === 'creature').map((L) => L.prem);
-  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-pass', 44)}<div><b>${t('pass.buyTitle', 'Passe Estelar Premium')}</b><small>${s.theme}</small></div></div>
+  sh.box.innerHTML = `<div class="ps-head">${passIcon('p-pass', 44)}<div><b>${t('pass.buyTitle', 'Passe Estelar Premium')}</b><small>${seasonTheme(s)}</small></div></div>
     <ul class="ps-list">
       <li>${passIcon('p-paw', 22)}${t('pass.b1', '5 bichinhos exclusivos (o primeiro já no nível 1!)')}</li>
       <li>${passIcon('p-emote', 22)}${t('pass.b2', 'Dancinhas, olhos, bocas, efeitos e músicas')}</li>
@@ -615,7 +615,7 @@ function renderHistory(body: HTMLElement): void {
     card.style.setProperty('--s-a', info.palette[1]);
     card.style.setProperty('--s-b', info.palette[2]);
     card.style.setProperty('--s-bg', info.palette[0]);
-    card.innerHTML = `<div class="ph-head"><div><b>${info.theme}</b><small>${t('pass.seasonN', 'Temporada {n}', { n: info.index + 1 })} · ${t('pass.level', 'Nível')} ${lvReached}${sv.premium ? ' · Premium' : ''}</small></div><div class="ph-count">${got.length}/${items.length}</div></div>`;
+    card.innerHTML = `<div class="ph-head"><div><b>${seasonTheme(info)}</b><small>${t('pass.seasonN', 'Temporada {n}', { n: info.index + 1 })} · ${t('pass.level', 'Nível')} ${lvReached}${sv.premium ? ' · Premium' : ''}</small></div><div class="ph-count">${got.length}/${items.length}</div></div>`;
     const strip = h('div', 'ph-strip');
     const highlight = items.filter((i) => i.r.kind === 'creature' || (i.track === 'free' && i.level === 1));
     for (const it of highlight) {

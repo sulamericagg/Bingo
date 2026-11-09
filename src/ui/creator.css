@@ -26,7 +26,7 @@
     radial-gradient(120% 60% at 50% 0%, rgba(140, 90, 255, 0.35), rgba(140, 90, 255, 0) 60%),
     linear-gradient(180deg, #1d0b4a 0%, #120632 55%, #0b0420 100%);
   color: #fff;
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
 }
 .cr.on {
   display: flex;

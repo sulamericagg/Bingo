@@ -261,13 +261,25 @@ export class World {
     return this.surfaceBelow(x, -2000);
   }
 
+  /** dentro da área de uma casa (térreo), mesmo que ela tenha levado uns trancos */
+  insideHouse(px: number, py: number): boolean {
+    for (const h of this.houses) {
+      if (px < h.x + 6 || px > h.x + h.w - 6 || py < h.top - 4 || py > GROUND_Y + 2) continue;
+      const c = this.bodies[h.ceil];
+      if (c.alive && c.y + c.h < h.top + 30) return true;
+    }
+    return false;
+  }
+
   isSheltered(px: number, py: number): boolean {
     for (const h of this.houses) {
       if (px < h.x + 8 || px > h.x + h.w - 8 || py < h.top || py > GROUND_Y + 2) continue;
       const a = this.bodies[h.wallL];
       const b = this.bodies[h.wallR];
       const c = this.bodies[h.ceil];
-      if (a.awake || b.awake || c.awake || a.tip || b.tip) continue;
+      // tolera paredes "acordadas" por um tranco, desde que continuem no lugar e em pé
+      if (!a.alive || !b.alive || !c.alive || a.tip || b.tip) continue;
+      if (Math.abs(a.x - h.x) > 6 || Math.abs(b.x - (h.x + h.w - 12)) > 6 || Math.abs(Math.sin(a.ang || 0)) > 0.12 || Math.abs(Math.sin(b.ang || 0)) > 0.12) continue;
       if (Math.abs(c.y + c.h - h.top) > 6) continue;
       return true;
     }

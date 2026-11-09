@@ -10,6 +10,7 @@
 import { t as tr } from '../i18n';
 import { tap } from '../core/haptics';
 import socialCss from './social.css?inline';
+import { gameFont } from '../i18n/font';
 
 export const EMOTE_CODES = ['joinha', 'vamos', 'uau', 'oi', 'gg', 'rindo', 'coracao', 'boa'] as const;
 export type EmoteCode = (typeof EMOTE_CODES)[number];
@@ -188,7 +189,7 @@ export function drawEmoteIcon(x: CanvasRenderingContext2D, code: string, k = 0):
       x.beginPath();
       x.roundRect(-17, -12, 34, 24, 8);
       fillInk(x, '#8a5cff');
-      x.font = '900 17px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(900, 17);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       x.lineWidth = 4;
@@ -251,13 +252,13 @@ export function drawEmoteIcon(x: CanvasRenderingContext2D, code: string, k = 0):
 
 /* ---------------- balão ---------------- */
 
-const FONT = '700 15px Fredoka, system-ui, sans-serif';
+const FONT = (): string => gameFont(700, 15);
 const widthCache = new Map<string, number>();
 
 function labelWidth(x: CanvasRenderingContext2D, label: string): number {
   let w = widthCache.get(label);
   if (w === undefined) {
-    x.font = FONT;
+    x.font = FONT();
     w = x.measureText(label).width;
     widthCache.set(label, w);
   }
@@ -314,7 +315,7 @@ export function drawEmoteBubble(ctx: CanvasRenderingContext2D, code: string, x: 
   drawEmoteIcon(ctx, code, t);
   ctx.restore();
   // texto
-  ctx.font = FONT;
+  ctx.font = FONT();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = INK;

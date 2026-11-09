@@ -80,10 +80,14 @@ export const PRODUCTS: ProductDef[] = [
   // vantagens
   { id: 'coin_doubler', kind: 'doubler', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 14,90', coinDoubler: true },
   { id: 'boost_bundle', kind: 'boosts', consumable: true, gems: 0, coins: 0, fallbackPrice: 'R$ 6,90', boosts: { shield: 5, magnet: 5, headstart: 5 } },
-  { id: 'vip_pack', kind: 'vip', consumable: false, gems: 1000, coins: 0, fallbackPrice: 'R$ 39,90', noAds: true, coinDoubler: true, skin: 'king', badge: 'best', wasPrice: 'R$ 69,90' },
-  { id: 'mega_bundle', kind: 'bundle', consumable: true, gems: 2500, coins: 25000, fallbackPrice: 'R$ 59,90', boosts: { shield: 10, magnet: 10, headstart: 10 }, badge: 'popular', wasPrice: 'R$ 99,90' },
+  // Pacotes especiais: ~1,4-1,7x o valor dos pacotes normais (vantagem clara, sem "absurdo" que desvaloriza as gemas).
+  // vip: 600 gemas (~R$ 23) + sem anúncios (R$ 14,90) + dobrador (R$ 14,90) + skin (~R$ 12,90) ≈ R$ 66 → por R$ 39,90
+  { id: 'vip_pack', kind: 'vip', consumable: false, gems: 600, coins: 0, fallbackPrice: 'R$ 39,90', noAds: true, coinDoubler: true, skin: 'king', badge: 'best', wasPrice: 'R$ 64,90' },
+  // mega: 2000 gemas (~R$ 71 na taxa do pacote de R$ 99,90) + 10.000 moedas (~400 gemas) + 5 de cada turbo ≈ R$ 87 → por R$ 59,90
+  { id: 'mega_bundle', kind: 'bundle', consumable: true, gems: 2000, coins: 10000, fallbackPrice: 'R$ 59,90', boosts: { shield: 5, magnet: 5, headstart: 5 }, badge: 'popular', wasPrice: 'R$ 89,90' },
   // oferta relâmpago diária (bônus do dia em FLASH_BONUSES)
-  { id: 'flash_gems', kind: 'flash', consumable: true, gems: 650, coins: 0, fallbackPrice: 'R$ 9,90', badge: 'sale', wasPrice: 'R$ 19,90' },
+  // relâmpago (1x/dia): 350 gemas por R$ 9,90 = 35 gemas/R$ (o melhor pacote normal dá 30/R$; o de R$ 9,90 dá 22/R$) + bônus do dia
+  { id: 'flash_gems', kind: 'flash', consumable: true, gems: 350, coins: 0, fallbackPrice: 'R$ 9,90', badge: 'sale', wasPrice: 'R$ 14,90' },
 ];
 
 /** Bônus da Oferta relâmpago — gira todo dia (índice = dia % length). */

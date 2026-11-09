@@ -9,6 +9,7 @@ import { BELT_SPEED, COFRE, ITEMS, LINE_ROW, PLOT_H, PLOT_W, TURBO_INDEX } from 
 import { BELT_ITEM, HELPER_ITEM, PAD_POS, stars, UPG_ITEM, type Plot, type SimFx } from './sim';
 import { BELT_FRAMES, buildFloor, buildSky, charSprite, getSheet, ISLAND_DEPTH, ISLAND_PAD, rr, INK, STAR_TIERS, type Sheet } from './sprites';
 import { drawLight, drawSoftShadow } from '../../gfx/light';
+import { gameFont } from '../../i18n/font';
 
 const COST_LABEL: string[] = [];
 const FREE = () => t('tycoon.free', 'Grátis');
@@ -417,7 +418,7 @@ export class FactoryView implements SimFx {
     }
     if (!this.showPrices && p.idx !== this.me) return;
     const label = COST_LABEL[i] || (COST_LABEL[i] = it.cost === 0 ? FREE() : fmtShort(it.cost));
-    x.font = `700 ${Math.round(S * 0.27)}px Fredoka, system-ui, sans-serif`;
+    x.font = gameFont(700, Math.round(S * 0.27));
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineWidth = S * 0.08;
@@ -450,7 +451,7 @@ export class FactoryView implements SimFx {
         this.bankS[p.idx] = fmtShort(b);
       }
       const s = this.bankS[p.idx];
-      x.font = `700 ${Math.round(S * 0.3)}px Fredoka, system-ui, sans-serif`;
+      x.font = gameFont(700, Math.round(S * 0.3));
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       const tw = x.measureText(s).width + S * 0.3;
@@ -578,7 +579,7 @@ export class FactoryView implements SimFx {
     }
     x.globalAlpha = 1;
     // textos flutuantes
-    x.font = `700 ${Math.round(S * 0.42)}px Fredoka, system-ui, sans-serif`;
+    x.font = gameFont(700, Math.round(S * 0.42));
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.lineJoin = 'round';

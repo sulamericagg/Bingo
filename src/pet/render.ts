@@ -9,6 +9,7 @@ import { drawPlayer, type PlayerPose } from '../game/character';
 import type { Skin } from '../game/skins';
 import { decorById, type FoodShape } from './catalog';
 import type { Mood } from './state';
+import { gameFont } from '../i18n/font';
 
 export type Room = 'kitchen' | 'bath' | 'bed' | 'play';
 export const ROOMS: Room[] = ['kitchen', 'bath', 'bed', 'play'];
@@ -173,7 +174,7 @@ export class Fx {
           break;
         case PK.Zzz: {
           const fs = Math.round(s * (1.4 - u * 0.6));
-          c.font = `700 ${fs}px Fredoka, system-ui, sans-serif`;
+          c.font = gameFont(700, fs);
           c.textAlign = 'center';
           c.lineJoin = 'round';
           c.strokeStyle = '#2a0b5c';

@@ -6,6 +6,7 @@
 import { TAU } from './math';
 import { A, al, circ, ell, glowAt, heart, hsl, lin, mix, PI, rad, rrect, star4, star5 } from './avatar-gfx';
 import type { DC } from './avatar-mat';
+import { gameFont } from '../i18n/font';
 
 type Fn = (d: DC) => void;
 /** layer: 0 = atrás do corpo, 1 = na frente */
@@ -231,7 +232,7 @@ export const EYES: Record<string, Fn> = {
       const u = (t * 0.4) % 1;
       x.fillStyle = d.c.ink;
       A(x, Math.sin(u * PI));
-      x.font = `700 ${Math.round(R * (0.22 + u * 0.15))}px Fredoka, sans-serif`;
+      x.font = gameFont(700, Math.round(R * (0.22 + u * 0.15)));
       x.fillText('z', R * (0.7 + u * 0.3), -R * (0.6 + u * 0.5));
       A(x, 1);
     }
@@ -330,7 +331,7 @@ export const EYES: Record<string, Fn> = {
       glowAt(x, col, 0, 0, R * 0.42, 0.5);
       x.fillStyle = col;
       if (p.mood === 'dead') {
-        x.font = `700 ${Math.round(R * 0.3)}px Fredoka, sans-serif`;
+        x.font = gameFont(700, Math.round(R * 0.3));
         x.textAlign = 'center';
         x.textBaseline = 'middle';
         x.fillText('x', 0, 0);
