@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+    <title>Fábrica Estelar (dev)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      html,body{margin:0;height:100%;background:#111;overflow:hidden;font-family:Fredoka,system-ui,sans-serif}
+      #root{position:fixed;inset:0}
+      #card{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff}
+      #card canvas{border-radius:18px}
+      #card button{font:inherit;font-size:20px;padding:10px 24px;border-radius:14px;border:0;background:#ffcf2e}
+    </style>
+  </head>
+  <body>
+    <div id="card"><canvas id="show" width="340" height="200"></canvas><div id="badge"></div><button id="go">JOGAR</button></div>
+    <div id="root"></div>
+    <script type="module">
+      import { listGames } from '/src/hub/registry.ts';
+      import { registerTycoon, tycoonIdleReady } from '/src/games/tycoon/register.ts';
+      registerTycoon();
+      const g = listGames().find((x) => x.id === 'tycoon');
+      const cv = document.getElementById('show');
+      const ctx = cv.getContext('2d');
+      const loop = (ms) => {
+        const gr = ctx.createLinearGradient(0, 0, 0, cv.height);
+        gr.addColorStop(0, g.theme.bg[0]);
+        gr.addColorStop(1, g.theme.bg[1]);
+        ctx.fillStyle = gr;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        g.drawShowcase(ctx, cv.width, cv.height, ms / 1000);
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+      document.getElementById('badge').textContent = g.name + ' — idle pronto: ' + tycoonIdleReady();
+      const root = document.getElementById('root');
+      const start = async () => {
+        document.getElementById('card').style.display = 'none';
+        await g.launch(root, () => (document.getElementById('card').style.display = 'flex'));
+      };
+      document.getElementById('go').onclick = start;
+      if (new URLSearchParams(location.search).has('tymode')) start();
+    </script>
+  </body>
+</html>
