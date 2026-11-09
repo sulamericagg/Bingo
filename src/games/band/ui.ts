@@ -160,6 +160,7 @@ export class Screens {
   /* ------------------------------ músicas ------------------------------ */
 
   private density = new Map<string, number>();
+  private io: IntersectionObserver | null = null;
   private rating(s: SongDef, inst: Instrument, d: Difficulty): number {
     const k = s.id + inst + d;
     let v = this.density.get(k);
@@ -201,7 +202,7 @@ export class Screens {
         .map((s) => {
           const lock = !isUnlocked(s);
           const best = getBest(s.id, bs.inst, bs.diff);
-          const dif = INSTRUMENTS.map((i) => `<span class="bb-dif ${i === bs.inst ? 'me' : ''}" title="${esc(instName(i))}">${bandIcon(INST_ICON[i], 14)}<i style="--n:${this.rating(s, i, bs.diff)}"></i></span>`).join('');
+          const dif = INSTRUMENTS.map((i) => `<span class="bb-dif ${i === bs.inst ? 'me' : ''}" title="${esc(instName(i))}">${bandIcon(INST_ICON[i], 14)}<i data-i="${i}" style="--n:${this.density.get(s.id + i + bs.diff) ?? 0}"></i></span>`).join('');
           const mins = Math.floor(s.durationSec / 60);
           const secs = String(Math.round(s.durationSec % 60)).padStart(2, '0');
           return `<button class="bb-song ${lock ? 'locked' : ''}" data-id="${esc(s.id)}">
@@ -211,6 +212,22 @@ export class Screens {
           </button>`;
         })
         .join('');
+      // dificuldade por instrumento: só calcula para os cards visíveis (charts são compostos sob demanda)
+      this.io?.disconnect();
+      this.io = new IntersectionObserver(
+        (ents) => {
+          for (const en of ents) {
+            if (!en.isIntersecting) continue;
+            const card = en.target as HTMLElement;
+            this.io?.unobserve(card);
+            const s = songById(card.dataset.id!);
+            if (!s) continue;
+            setTimeout(() => card.querySelectorAll<HTMLElement>('.bb-dif i').forEach((el) => el.style.setProperty('--n', String(this.rating(s, el.dataset.i as Instrument, bs.diff)))), 0);
+          }
+        },
+        { root: list },
+      );
+      list.querySelectorAll('.bb-song').forEach((c) => this.io!.observe(c));
     };
     render();
     list.onclick = (e) => {
@@ -847,6 +864,7 @@ export class Screens {
   }
 
   destroy(): void {
+    this.io?.disconnect();
     this.calibStop?.();
     this.studioClose?.();
     this.leaveNet();
