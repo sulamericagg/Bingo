@@ -2,6 +2,7 @@
 import { CATALOG_BOOSTS, CATALOG_SKINS, CATALOG_TRAILS } from '../shared/catalog';
 import { normalizeCode, packIsEmpty, sanitizePack, type RewardPack } from '../shared/reward';
 import { handleLogin, requireAdmin } from './auth';
+import { adminLeaderboard, adminRemove, adminUnban } from './leaderboard';
 import {
   deleteChallenge,
   deleteCode,
@@ -393,5 +394,21 @@ route('POST', '/presets', async (req, env) => {
 
 route('DELETE', '/presets/([^/]+)', async (_req, env, [id]) => {
   await putPresets(env, (await getPresets(env)).filter((p) => p.id !== id));
+  return json({ ok: true });
+});
+
+/* ---- Ranking ---- */
+route('GET', '/leaderboard', async (_req, env, _p, url) => {
+  const scope = url.searchParams.get('scope') === 'week' ? 'week' : 'all';
+  return json({ scope, ...(await adminLeaderboard(env, scope, url.searchParams.get('week') ?? undefined)) });
+});
+
+route('DELETE', '/leaderboard/([^/]+)', async (_req, env, [id], url) => {
+  if (!PLAYER_ID_RE.test(id)) throw new HttpError(400, 'bad_id', 'id inválido');
+  return json(await adminRemove(env, id, url.searchParams.get('ban') === '1'));
+});
+
+route('POST', '/leaderboard/unban/([^/]+)', async (_req, env, [id]) => {
+  await adminUnban(env, id);
   return json({ ok: true });
 });

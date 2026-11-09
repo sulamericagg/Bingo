@@ -14,6 +14,7 @@ import { initAds } from './services/ads';
 import { initBilling } from './services/billing';
 import { initOnline } from './services/online';
 import { playIntro } from './ui/intro';
+import { initRace } from './ui/race';
 import { UI } from './ui/ui';
 
 async function boot(): Promise<void> {
@@ -27,6 +28,7 @@ async function boot(): Promise<void> {
   const intro = playIntro(); // abertura do estúdio: roda por cima enquanto o jogo monta
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);
+  initRace(game);
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
 
   const onHide = () => {

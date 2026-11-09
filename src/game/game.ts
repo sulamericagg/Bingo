@@ -3,7 +3,7 @@ import { bus } from '../core/events';
 import { FpsLimiter, migrateLowFx, QualityGovernor, type QualityMode, type QualitySettings } from '../core/quality';
 import * as haptics from '../core/haptics';
 import { persist, save } from '../core/storage';
-import { angleDiff, chance, clamp, lerp, makeCanvas, mixHex, pick, rand, TAU } from './math';
+import { angleDiff, clamp, lerp, makeCanvas, mixHex, rand, rng, TAU } from './math';
 import { Particles, PType } from './particles';
 import { emitTrail } from './trails';
 import { skinById, trailById, type Skin, type Trail } from './skins';
@@ -183,7 +183,68 @@ export interface RunResult {
   canRevive: boolean;
   asteroids: number;
   maxSpeedTier: number;
+  /** duração da corrida em segundos (tempo jogando, para o anti-trapaça do ranking) */
+  duration: number;
 }
+
+/* ---------------- Corrida Orbital (multiplayer) ---------------- */
+
+export interface RaceOpponent {
+  slot: number;
+  name: string;
+  skin: string;
+  /** cor da etiqueta de nome */
+  color: string;
+}
+
+export interface RaceConfig {
+  /** seed compartilhada: todos jogam no MESMO mundo */
+  seed: number;
+  durationSec: number;
+  opponents: RaceOpponent[];
+}
+
+/** Progresso de um adversário: planeta (índice n no mundo da seed) e se ainda está vivo. */
+export interface GhostUpdate {
+  slot: number;
+  p: number;
+  alive: boolean;
+}
+
+/** Progresso do jogador local na corrida. */
+export interface RaceProgress {
+  score: number;
+  /** planeta atual (índice n) */
+  p: number;
+  alive: boolean;
+  /** s jogando desde a largada */
+  t: number;
+  coins: number;
+  gems: number;
+  perfects: number;
+  planets: number;
+}
+
+interface Ghost {
+  slot: number;
+  name: string;
+  skin: Skin;
+  color: string;
+  p: number;
+  alive: boolean;
+  x: number;
+  y: number;
+  fromX: number;
+  fromY: number;
+  hop: number;
+  ang: number;
+  fade: number;
+  vy: number;
+  spin: number;
+  placed: boolean;
+}
+
+const GHOST_HOP = 0.42;
 
 export class Game {
   readonly canvas: HTMLCanvasElement;
@@ -310,6 +371,15 @@ export class Game {
   private q: QualitySettings;
   private limiter = new FpsLimiter(60);
 
+  // mundo com seed (determinístico) — partículas e enfeites continuam em Math.random
+  private wr: () => number = Math.random;
+  private worldSeed = 0;
+  private runTime = 0;
+
+  // corrida multiplayer
+  private race: { cfg: RaceConfig; ghosts: Ghost[]; ended: boolean } | null = null;
+  private ghostSpr = new Map<string, HTMLCanvasElement>();
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false })!;
@@ -376,6 +446,7 @@ export class Game {
   }
 
   private buildSprites(): void {
+    this.ghostSpr.clear();
     const S = this.S;
     this.coinSpr = buildCoin(9 * S);
     this.gemSpr = buildGem(11 * S);
@@ -420,7 +491,23 @@ export class Game {
 
   /* ============================== mundo ============================== */
 
-  reset(state: GameState): void {
+  private wRand(a: number, b: number): number {
+    return a + this.wr() * (b - a);
+  }
+
+  private wChance(p: number): boolean {
+    return this.wr() < p;
+  }
+
+  private wPick<T>(arr: readonly T[]): T {
+    return arr[Math.floor(this.wr() * arr.length)];
+  }
+
+  /** Recomeça o mundo. Sem `seed`, sorteia uma nova (modo normal: cada partida é diferente). */
+  reset(state: GameState, seed?: number): void {
+    this.worldSeed = (seed ?? Math.random() * 4294967296) >>> 0;
+    this.wr = rng(this.worldSeed);
+    this.runTime = 0;
     this.planets = [];
     this.pickups = [];
     this.texts = [];
@@ -480,26 +567,26 @@ export class Game {
     const flavor = bIdx % BIOMES.length;
     const biome = BIOMES[flavor];
     const d = Math.min(1.5, clamp(n / 70, 0, 1) + loop * 0.15);
-    let r = n === 0 ? 52 : clamp(rand(38, 54) - n * 0.32, 24, 56) + rand(-4, 4);
+    let r = n === 0 ? 52 : clamp(this.wRand(38, 54) - n * 0.32, 24, 56) + this.wRand(-4, 4);
     if (flavor === 1 && n > 0) r = Math.max(22, r * 0.84); // Mar Estelar: menores
     r = Math.round(r);
     let x = W / 2;
     let y = 0;
     if (prev) {
-      const gap = Math.max(prev.r + r + 85, rand(175, 235) + Math.min(n * 0.7, 45));
+      const gap = Math.max(prev.r + r + 85, this.wRand(175, 235) + Math.min(n * 0.7, 45));
       for (let tries = 0; tries < 20; tries++) {
-        x = rand(r + 22, W - r - 22);
+        x = this.wRand(r + 22, W - r - 22);
         const dx = Math.abs(x - prev.baseX);
         if (n < 3 ? dx < 70 : dx > 40 && dx < 250) break;
       }
       y = prev.y - gap;
     }
-    const dir = chance(0.5) ? 1 : -1;
+    const dir = this.wChance(0.5) ? 1 : -1;
     // o giro cresce pouco com n: a rampa principal vem do multiplicador global `speed`
-    let spin = n < 2 ? 1.15 * dir : dir * (1.25 + Math.min(n * 0.014, 1.0) + loop * 0.1) * rand(0.85, 1.15);
+    let spin = n < 2 ? 1.15 * dir : dir * (1.25 + Math.min(n * 0.014, 1.0) + loop * 0.1) * this.wRand(0.85, 1.15);
     if (flavor === 1 && n > 0) spin *= 1.15; // Mar Estelar: giram mais rápido
-    const kind: PlanetKind = n === 0 ? 'rocky' : pick(biome.kinds);
-    const well = flavor === 4 && n > 0 && !!prev && !prev.well && chance(0.3);
+    const kind: PlanetKind = n === 0 ? 'rocky' : this.wPick(biome.kinds);
+    const well = flavor === 4 && n > 0 && !!prev && !prev.well && this.wChance(0.3);
     const toxic = kind === 'toxic' && n >= 40 && !well;
     const fragChance = flavor === 0 && loop === 0 ? 0.1 : 0.16 + d * 0.12 + (flavor === 2 ? 0.15 : 0);
     const p: Planet = {
@@ -508,42 +595,42 @@ export class Game {
       y,
       baseX: x,
       r,
-      rot: rand(0, TAU),
+      rot: this.wRand(0, TAU),
       spin,
       kind,
-      palIdx: Math.floor(Math.random() * PLANET_PALETTES[kind].length),
-      seed: Math.floor(Math.random() * 1e9),
-      ringed: (kind === 'gas' || kind === 'rocky' || kind === 'ice') && chance(0.3),
+      palIdx: Math.floor(this.wr() * PLANET_PALETTES[kind].length),
+      seed: Math.floor(this.wr() * 1e9),
+      ringed: (kind === 'gas' || kind === 'rocky' || kind === 'ice') && this.wChance(0.3),
       sprite: null,
       visited: false,
-      fragile: n >= 12 && !well && !toxic && chance(Math.min(0.6, fragChance)),
+      fragile: n >= 12 && !well && !toxic && this.wChance(Math.min(0.6, fragChance)),
       crackT: 0,
       destroyed: false,
       driftAmp: 0,
       driftFreq: 0,
-      driftPh: rand(0, TAU),
+      driftPh: this.wRand(0, TAU),
       asteroids: [],
       pulse: 0,
       biome: bIdx,
       toxic,
-      toxT: rand(0, 1.2),
+      toxT: this.wRand(0, 1.2),
       well,
     };
     const astChance = flavor === 0 && loop === 0 ? 0.3 : Math.min(0.75, 0.25 + d * 0.35);
     // asteroides não se somam a planetas frágeis no primeiro ciclo (perigo demais de uma vez)
-    if (n >= 7 && !well && (!p.fragile || loop > 0) && chance(astChance)) this.addAsteroids(p, d, loop);
+    if (n >= 7 && !well && (!p.fragile || loop > 0) && this.wChance(astChance)) this.addAsteroids(p, d, loop);
     const driftChance = 0.18 + d * 0.2 + (flavor === 3 ? 0.3 : flavor === 4 ? 0.12 : 0);
-    if (n >= 20 && !well && chance(Math.min(0.75, driftChance))) {
-      const amp = rand(28, 70);
+    if (n >= 20 && !well && this.wChance(Math.min(0.75, driftChance))) {
+      const amp = this.wRand(28, 70);
       p.baseX = clamp(x, r + 15 + amp, W - r - 15 - amp);
       if (p.baseX > W - r - 15 - amp || p.baseX < r + 15 + amp) p.baseX = W / 2;
       p.driftAmp = Math.min(amp, W / 2 - r - 15);
-      p.driftFreq = rand(0.6, 1.1 + Math.min(d, 1) * 0.4);
+      p.driftFreq = this.wRand(0.6, 1.1 + Math.min(d, 1) * 0.4);
       p.x = p.baseX + Math.sin(p.driftPh) * p.driftAmp;
     }
     if (prev) {
       // trilha de moedas no caminho ideal
-      const count = n < 3 ? 3 : 3 + Math.floor(Math.random() * 3);
+      const count = n < 3 ? 3 : 3 + Math.floor(this.wr() * 3);
       const ax = prev.baseX;
       const ay = prev.y;
       const bx = p.baseX;
@@ -551,15 +638,15 @@ export class Game {
       const dist = Math.hypot(bx - ax, by - ay);
       const t0 = (prev.r + 35) / dist;
       const t1 = 1 - (p.r + 35) / dist;
-      const gemAt = n > 3 && chance(0.07) ? Math.floor(count / 2) : -1;
+      const gemAt = n > 3 && this.wChance(0.07) ? Math.floor(count / 2) : -1;
       // power-up raro no meio do caminho
-      const upChance = 0.05 + (save.upgrades?.shield ?? 0) * 0.008;
-      const powerAt = n >= 6 && n - this.lastPowerN >= 8 && gemAt < 0 && chance(upChance) ? Math.floor(count / 2) : -1;
+      const upChance = 0.05 + (this.race ? 0 : (save.upgrades?.shield ?? 0) * 0.008); // corrida: mundo igual para todos
+      const powerAt = n >= 6 && n - this.lastPowerN >= 8 && gemAt < 0 && this.wChance(upChance) ? Math.floor(count / 2) : -1;
       if (powerAt >= 0) this.lastPowerN = n;
       for (let i = 0; i < count; i++) {
         const t = lerp(t0, t1, count === 1 ? 0.5 : i / (count - 1));
-        const kind: PickupKind = i === gemAt ? 'gem' : i === powerAt ? (chance(0.5) ? 'shield' : 'magnet') : 'coin';
-        this.pickups.push({ x: lerp(ax, bx, t), y: lerp(ay, by, t), kind, taken: false, t: rand(0, 6), pull: 0, vx: 0, vy: 0, home: 0 });
+        const kind: PickupKind = i === gemAt ? 'gem' : i === powerAt ? (this.wChance(0.5) ? 'shield' : 'magnet') : 'coin';
+        this.pickups.push({ x: lerp(ax, bx, t), y: lerp(ay, by, t), kind, taken: false, t: this.wRand(0, 6), pull: 0, vx: 0, vy: 0, home: 0 });
       }
     }
     return p;
@@ -569,22 +656,22 @@ export class Game {
   private addAsteroids(p: Planet, d: number, loop: number): void {
     const early = this.astGen < 2 && loop === 0;
     this.astGen++;
-    let count = early ? 1 : 1 + (p.n > 25 && chance(0.5) ? 1 : 0) + (p.n > 45 && chance(0.4) ? 1 : 0);
+    let count = early ? 1 : 1 + (p.n > 25 && this.wChance(0.5) ? 1 : 0) + (p.n > 45 && this.wChance(0.4) ? 1 : 0);
     let as: number;
     if (early) {
       // primeiras aparições: lentos e num planeta calmo
       p.spin = Math.sign(p.spin) * Math.min(Math.abs(p.spin), 1.2);
       as = 0.4;
-    } else as = rand(0.6, 1.0 + Math.min(d, 1.4) * 0.7);
+    } else as = this.wRand(0.6, 1.0 + Math.min(d, 1.4) * 0.7);
     const s = Math.abs(p.spin);
     // janela mínima (s) entre duas passagens de asteroide pelo jogador
     const minWin = lerp(1.9, 1.15, Math.min(1, d));
     while (count > 1 && (s + as) * count * minWin > TAU) count--;
     if ((s + as) * minWin > TAU) as = Math.max(0.25, TAU / minWin - s);
     const spd = -Math.sign(p.spin) * as;
-    const off = rand(0, TAU);
+    const off = this.wRand(0, TAU);
     for (let i = 0; i < count; i++)
-      p.asteroids.push({ ang: off + (i / count) * TAU, dist: p.r + PR + 2, speed: spd, size: 9, rot: 0, vr: rand(-3, 3), tti: Infinity, warned: false, kick: 0 });
+      p.asteroids.push({ ang: off + (i / count) * TAU, dist: p.r + PR + 2, speed: spd, size: 9, rot: 0, vr: this.wRand(-3, 3), tti: Infinity, warned: false, kick: 0 });
   }
 
   private attach(p: Planet, local: number): void {
@@ -603,7 +690,10 @@ export class Game {
    * Inicia a corrida. `loadout` vem da UI (consumíveis já descontados por ela).
    */
   start(loadout?: Loadout): void {
-    if (this.state !== 'menu') this.reset('play');
+    if (this.race) {
+      this.race = null;
+      this.reset('play');
+    } else if (this.state !== 'menu') this.reset('play');
     this.state = 'play';
     audio.setIntensity(0.2);
     bus.emit('state', 'play');
@@ -670,6 +760,7 @@ export class Game {
   }
 
   revive(): void {
+    if (this.race) return;
     let p = this.lastPlanet ?? this.planets[0];
     if (p.destroyed) {
       p.destroyed = false;
@@ -690,6 +781,107 @@ export class Game {
     this.fx.burst(this.px, this.py, 30, ['#ffffff', this.skin.light, '#fff36b'], 300, { type: PType.Star, size: 6 });
     this.addText(this.px, this.py - 40, 'DE VOLTA!', '#7dfcff', 30);
     bus.emit('state', 'play');
+  }
+
+  /* ============================== corrida ============================== */
+
+  /**
+   * Prepara uma Corrida Orbital: mundo gerado pela `seed` compartilhada (igual para
+   * todos) e adversários desenhados como "fantasmas". O jogador fica parado no
+   * primeiro planeta até `raceGo()` (contagem 3-2-1). Sem power-ups e sem "continuar".
+   */
+  startRace(cfg: RaceConfig): void {
+    this.race = { cfg, ghosts: [], ended: false };
+    this.reset('menu', cfg.seed);
+    this.showGuide = true;
+    const first = this.planets[0];
+    this.race.ghosts = cfg.opponents.map((o, i) => ({
+      slot: o.slot,
+      name: o.name,
+      skin: skinById(o.skin),
+      color: o.color,
+      p: 0,
+      alive: true,
+      x: first.x,
+      y: first.y,
+      fromX: first.x,
+      fromY: first.y,
+      hop: 1,
+      // espalhados ao redor do planeta (o jogador fica no topo)
+      ang: -Math.PI / 2 + [1.15, -1.15, 2.3, -2.3, 3.14][i % 5],
+      fade: 1,
+      vy: 0,
+      spin: 0,
+      placed: false,
+    }));
+    bus.emit('state', 'race-ready');
+  }
+
+  /** Largada (fim da contagem). */
+  raceGo(): void {
+    if (!this.race || this.state !== 'menu') return;
+    this.state = 'play';
+    this.runTime = 0;
+    audio.setIntensity(0.25);
+    bus.emit('state', 'play');
+  }
+
+  /** Atualiza o progresso dos adversários (vindo do servidor ou dos bots locais). */
+  setGhosts(list: GhostUpdate[]): void {
+    if (!this.race) return;
+    for (const u of list) {
+      const g = this.race.ghosts.find((q) => q.slot === u.slot);
+      if (!g) continue;
+      if (u.p !== g.p && g.alive) {
+        g.fromX = g.x;
+        g.fromY = g.y;
+        g.hop = u.p - g.p > 4 || u.p < g.p ? 1 : 0;
+        g.p = u.p;
+      }
+      if (!u.alive && g.alive) {
+        g.alive = false;
+        g.vy = -220;
+        g.spin = rand(-8, 8);
+        if (g.y > this.camY - 40 && g.y < this.camY + this.viewH + 40) {
+          this.fx.burst(g.x, g.y, 16, [g.skin.light, g.skin.dark, '#ffffff'], 260, { size: 4 });
+        }
+      }
+    }
+  }
+
+  /** Tempo esgotado: congela o jogador (se ainda vivo). `ended` = resultado na tela (some com as setas). */
+  raceStop(ended = false): void {
+    if (!this.race) return;
+    if (ended) this.race.ended = true;
+    if (this.state === 'play') {
+      this.state = 'over';
+      audio.setIntensity(0);
+    }
+  }
+
+  /** Sai do modo corrida e volta para o menu. */
+  exitRace(): void {
+    if (!this.race) return;
+    this.race = null;
+    this.reset('menu');
+  }
+
+  get inRace(): boolean {
+    return !!this.race;
+  }
+
+  get raceProgress(): RaceProgress {
+    const alive = this.state === 'play' || (this.state === 'over' && this.pState !== 'dead') || this.state === 'menu';
+    return {
+      score: this.score,
+      p: (this.planet ?? this.lastPlanet)?.n ?? 0,
+      alive: alive && this.pState !== 'dead',
+      t: Math.round(this.runTime * 10) / 10,
+      coins: this.coinsRun,
+      gems: this.gemsRun,
+      perfects: this.perfects,
+      planets: this.planetsRun,
+    };
   }
 
   /* ============================== loop ============================== */
@@ -728,6 +920,8 @@ export class Game {
     const tsTarget = this.slowT > 0 ? 0.5 : 1;
     this.timeScale = lerp(this.timeScale, tsTarget, Math.min(1, real * (this.state === 'dying' ? 1.2 : 6)));
     const dt = real * this.timeScale;
+
+    if (this.state === 'play') this.runTime += dt;
 
     // rampa de velocidade
     if (this.state === 'play') this.speed = lerp(this.speed, this.speedTarget(), Math.min(1, real * 0.8));
@@ -777,6 +971,7 @@ export class Game {
     this.updatePlayer(dt);
     this.updateWorld(dt);
     this.updateCamera(dt);
+    if (this.race) this.updateGhosts(dt);
 
     // efeitos
     this.fx.update(dt);
@@ -1442,7 +1637,14 @@ export class Game {
       canRevive: !this.revived && this.score > 0,
       asteroids: this.asteroidsRun,
       maxSpeedTier: this.maxSpeedTier,
+      duration: Math.round(this.runTime * 10) / 10,
     };
+    if (this.race) {
+      // corrida: sem "continuar"; a UI da corrida mostra a espera/resultado
+      res.canRevive = false;
+      bus.emit('race-dead', this.raceProgress);
+      return;
+    }
     bus.emit('gameover', res);
   }
 
@@ -1705,6 +1907,7 @@ export class Game {
     }
 
     this.fx.draw(x);
+    if (this.race) this.drawGhosts(x);
     this.drawHero(x);
 
     // textos flutuantes
@@ -1731,6 +1934,7 @@ export class Game {
     /* ---- pós ---- */
     x.setTransform(1, 0, 0, 1, 0, 0);
     if (this.q.vignette) x.drawImage(this.vignette, 0, 0);
+    if (this.race && !this.race.ended) this.drawGhostMarkers(x);
     if (this.warn > 0) {
       // bordas vermelhas pulsando quando um asteroide se aproxima
       x.globalAlpha = (0.2 + this.warn * 0.6) * (0.7 + 0.3 * Math.sin(this.time * 22));
@@ -2015,6 +2219,148 @@ export class Game {
       x.arc(this.px, this.py, PR * 1.7, 0, TAU);
       x.stroke();
     }
+  }
+
+  /* ============================== fantasmas ============================== */
+
+  private ghostSprite(skin: Skin): HTMLCanvasElement {
+    let c = this.ghostSpr.get(skin.id);
+    if (c) return c;
+    const R = PR * 0.92 * this.S;
+    const [cv, cx] = makeCanvas(R * 3.2, R * 3.2);
+    cx.translate(cv.width / 2, cv.height / 2);
+    drawPlayer(cx, skin, R, { t: 0, blink: 0, lookX: 0, lookY: -1, sx: 1, sy: 1, mood: 'idle', lx: LIGHT.x, ly: LIGHT.y, still: true });
+    this.ghostSpr.set(skin.id, cv);
+    c = cv;
+    return c;
+  }
+
+  private updateGhosts(dt: number): void {
+    const race = this.race!;
+    let minN = Infinity;
+    let maxN = -Infinity;
+    for (const p of this.planets) {
+      if (p.n < minN) minN = p.n;
+      if (p.n > maxN) maxN = p.n;
+    }
+    for (const g of race.ghosts) {
+      if (!g.alive) {
+        g.fade = Math.max(0, g.fade - dt * 0.9);
+        g.vy += 700 * dt;
+        g.y += g.vy * dt;
+        continue;
+      }
+      const pl = this.planets.find((q) => q.n === g.p && !q.destroyed) ?? this.planets.find((q) => q.n === g.p);
+      let tx: number;
+      let ty: number;
+      if (pl) {
+        const a = pl.rot + g.ang;
+        const dist = pl.r + PR * 0.92 - 1;
+        tx = pl.x + Math.cos(a) * dist;
+        ty = pl.y + Math.sin(a) * dist;
+      } else if (g.p > maxN) {
+        // à frente do que já foi gerado: "voando" acima da tela
+        tx = W / 2 + Math.cos(g.ang) * 80;
+        ty = this.camY - 120 - (g.p - maxN) * 40;
+      } else {
+        tx = W / 2;
+        ty = this.camY + this.viewH + 160;
+      }
+      if (!g.placed) {
+        g.x = g.fromX = tx;
+        g.y = g.fromY = ty;
+        g.placed = true;
+      }
+      if (g.hop < 1) {
+        g.hop = Math.min(1, g.hop + dt / GHOST_HOP);
+        const k = 1 - Math.pow(1 - g.hop, 2);
+        g.x = lerp(g.fromX, tx, k);
+        g.y = lerp(g.fromY, ty, k) - Math.sin(k * Math.PI) * 30;
+      } else {
+        g.x = tx;
+        g.y = ty;
+      }
+    }
+  }
+
+  private drawGhosts(x: CanvasRenderingContext2D): void {
+    const S = this.S;
+    const vt = this.camY - 60;
+    const vb = this.camY + this.viewH + 60;
+    for (const g of this.race!.ghosts) {
+      if (g.fade <= 0 || g.y < vt || g.y > vb) continue;
+      const pl = g.alive && g.hop >= 1 ? this.planets.find((q) => q.n === g.p) : null;
+      const rot = pl ? pl.rot + g.ang + Math.PI / 2 : g.alive ? Math.atan2(g.y - g.fromY, g.x - g.fromX) + Math.PI / 2 : this.time * g.spin;
+      const spr = this.ghostSprite(g.skin);
+      const s = spr.width / S;
+      x.globalAlpha = 0.5 * g.fade;
+      x.globalCompositeOperation = 'lighter';
+      x.drawImage(glow(g.color, 32), g.x - PR * 2, g.y - PR * 2, PR * 4, PR * 4);
+      x.globalCompositeOperation = 'source-over';
+      x.globalAlpha = 0.62 * g.fade;
+      x.save();
+      x.translate(g.x, g.y);
+      x.rotate(rot);
+      if (g.hop < 1) x.scale(0.82, 1.2);
+      x.drawImage(spr, -s / 2, -s / 2, s, s);
+      x.restore();
+      // etiqueta com o nome
+      x.globalAlpha = 0.92 * g.fade;
+      x.font = '600 11px Fredoka, system-ui, sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      const label = g.alive ? g.name : g.name + ' caiu';
+      const tw = x.measureText(label).width + 12;
+      const ly = g.y - PR - 16;
+      x.fillStyle = 'rgba(12,4,32,0.72)';
+      x.beginPath();
+      x.roundRect(g.x - tw / 2, ly - 8, tw, 16, 8);
+      x.fill();
+      x.strokeStyle = g.color;
+      x.lineWidth = 1.2;
+      x.stroke();
+      x.fillStyle = '#ffffff';
+      x.fillText(label, g.x, ly + 0.5);
+    }
+    x.globalAlpha = 1;
+  }
+
+  /** Setas na borda da tela para adversários fora de vista (acima = à frente). */
+  private drawGhostMarkers(x: CanvasRenderingContext2D): void {
+    const sc = this.scale * this.dpr;
+    const d = this.dpr;
+    const ahead: Ghost[] = [];
+    const behind: Ghost[] = [];
+    for (const g of this.race!.ghosts) {
+      if (!g.alive) continue;
+      if (g.y < this.camY + 10) ahead.push(g);
+      else if (g.y > this.camY + this.viewH - 10) behind.push(g);
+    }
+    const draw = (list: Ghost[], top: boolean) => {
+      list.sort((a, b) => (top ? b.p - a.p : a.p - b.p));
+      list.forEach((g, i) => {
+        const sx = clamp((g.x - this.camX) * sc, 40 * d, this.canvas.width - 40 * d);
+        const sy = top ? (226 + i * 24) * d : this.canvas.height - (92 + i * 24) * d;
+        x.font = `600 ${11 * d}px Fredoka, system-ui, sans-serif`;
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        const label = `${top ? '▲' : '▼'} ${g.name}`;
+        const tw = x.measureText(label).width + 14 * d;
+        x.globalAlpha = 0.85;
+        x.fillStyle = 'rgba(12,4,32,0.75)';
+        x.beginPath();
+        x.roundRect(sx - tw / 2, sy - 9 * d, tw, 18 * d, 9 * d);
+        x.fill();
+        x.strokeStyle = g.color;
+        x.lineWidth = 1.5 * d;
+        x.stroke();
+        x.fillStyle = '#ffffff';
+        x.fillText(label, sx, sy + 0.5 * d);
+      });
+    };
+    draw(ahead, true);
+    draw(behind, false);
+    x.globalAlpha = 1;
   }
 
   private nextTarget(): Planet | null {

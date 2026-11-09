@@ -15,6 +15,11 @@
   "kv_namespaces": [
     { "binding": "DATA", "id": "3c7cece821ee4d6297ce2db9f664b948" }
   ],
+  // Corrida Orbital: Durable Object com SQLite (disponível no plano grátis).
+  "durable_objects": {
+    "bindings": [{ "name": "RACE", "class_name": "RaceRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RaceRoom"] }],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em
   // Cloudflare → Workers & Pages → bloop-orbit → Settings → Variables and Secrets.

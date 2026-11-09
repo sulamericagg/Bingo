@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Teste ponta a ponta do Worker (API pública + admin) usando `wrangler dev --local`
+ * Teste ponta a ponta do Worker (API pública + admin + ranking + corrida via WebSocket) usando `wrangler dev --local`
  * (Miniflare, KV local temporário — não toca no KV real).
  *
  *   npm run test:server
@@ -193,6 +193,118 @@ async function main() {
   check('dashboard com números', r.data?.players === 3 && r.data.redemptions === 4 && r.data.active24h === 3, r.data);
   r = await call('GET', '/api/admin/players?q=tester', undefined, T);
   check('busca de jogadores', r.data?.total === 1 && r.data.items[0].id === pid && r.data.items[0].best === 50, r.data);
+
+  console.log('\nRanking');
+  const lbA = pid;
+  const lbB = pid2;
+  const lbC = crypto.randomUUID();
+  r = await call('POST', '/api/score', { id: lbA, name: 'Tester', score: 50, skin: 'bloop', duration: 30000 });
+  check('envia pontuação (entra no ranking)', r.status === 200 && r.data.ok && r.data.rank.all === 1 && r.data.rank.week === 1, r.data);
+  r = await call('POST', '/api/score', { id: lbB, name: 'Rival', score: 80, skin: 'king', duration: 40000 });
+  check('pontuação maior assume o 1º lugar', r.data?.rank?.all === 1, r.data);
+  r = await call('POST', '/api/score', { id: lbA, name: 'Tester', score: 40, skin: 'bloop', duration: 30000 });
+  check('pontuação menor não piora o recorde', r.data?.best?.all === 50 && r.data.rank.all === 2, r.data);
+  r = await call('POST', '/api/score', { id: lbC, name: 'Empate', score: 50, skin: 'ninja', duration: 30000 });
+  check('empate: quem fez antes fica na frente', r.data?.rank?.all === 3, r.data);
+  r = await call('GET', '/api/leaderboard?scope=all&me=' + lbA);
+  const lbAll = r.data;
+  check('GET ranking ordenado com posição do jogador', lbAll?.entries?.map((e) => e.score).join(',') === '80,50,50' && lbAll.me?.rank === 2 && lbAll.entries[1].me === true, lbAll);
+  check('ranking público não expõe ids', !JSON.stringify(lbAll).includes(lbB) && !JSON.stringify(lbAll).includes(lbC));
+  check('ranking traz nome e skin', lbAll?.entries?.[0]?.name === 'Rival' && lbAll.entries[0].skin === 'king', lbAll?.entries?.[0]);
+  r = await call('GET', '/api/leaderboard?scope=week');
+  check('ranking da semana', r.data?.scope === 'week' && /^\d{4}-W\d{2}$/.test(r.data.week) && r.data.entries.length === 3 && r.data.me === null, r.data);
+  r = await call('POST', '/api/score', { id: lbC, score: 5000, skin: 'bloop', duration: 20000 });
+  check('pontuação impossível para a duração → 422', r.status === 422, r.data);
+  r = await call('POST', '/api/score', { id: lbC, score: 30, skin: 'bloop' });
+  check('sem duração → 422', r.status === 422, r.data);
+  r = await call('POST', '/api/score', { id: 'x', score: 30, duration: 9000 });
+  check('id inválido → 400', r.status === 400, r.data);
+  r = await call('GET', '/api/admin/leaderboard?scope=all', undefined, T);
+  check('admin vê o ranking com ids', r.data?.entries?.length === 3 && r.data.entries[0].id === lbB, r.data);
+  r = await call('DELETE', '/api/admin/leaderboard/' + lbB + '?ban=1', undefined, T);
+  check('admin remove trapaceiro (geral + semana)', r.data?.removed === 2, r.data);
+  r = await call('GET', '/api/leaderboard?scope=all');
+  check('removido some do ranking público', r.data?.entries?.[0]?.score === 50 && r.data.entries.length === 2, r.data);
+  r = await call('POST', '/api/score', { id: lbB, score: 90, skin: 'king', duration: 40000 });
+  check('jogador bloqueado não envia mais', r.status === 403, r.data);
+  r = await call('GET', '/api/admin/leaderboard?scope=week', undefined, T);
+  check('lista de bloqueados', r.data?.banned?.includes(lbB) && r.data.entries.length === 2, r.data);
+  r = await call('POST', '/api/admin/leaderboard/unban/' + lbB, undefined, T);
+  r = await call('POST', '/api/score', { id: lbB, score: 90, skin: 'king', duration: 40000 });
+  check('desbloqueado volta a enviar', r.status === 200 && r.data.rank.all === 1, r.data);
+
+  console.log('\nCorrida Orbital (WebSocket)');
+  r = await call('GET', '/api/race/join');
+  check('join sem WebSocket → 426', r.status === 426, r.data);
+  const wsBase = BASE.replace(/^http/, 'ws') + '/api/race/join';
+  const mkClient = (name, skin, dieAt, closeAt = Infinity) =>
+    new Promise((resolve) => {
+      const c = { name, msgs: [], start: null, end: null, ticks: 0, lobbyMax: 0, welcome: null };
+      const ws = new WebSocket(wsBase);
+      let score = 0;
+      let iv;
+      const done = () => {
+        clearInterval(iv);
+        resolve(c);
+      };
+      ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', id: crypto.randomUUID(), name, skin, debug: true }));
+      ws.onmessage = (ev) => {
+        const m = JSON.parse(ev.data);
+        c.msgs.push(m.type);
+        if (m.type === 'welcome') c.welcome = m;
+        if (m.type === 'lobby') c.lobbyMax = Math.max(c.lobbyMax, m.players.length);
+        if (m.type === 'start') {
+          c.start = m;
+          const t0 = Date.now() + m.countdownMs;
+          iv = setInterval(() => {
+            const t = (Date.now() - t0) / 1000;
+            if (t < 0) return;
+            score = Math.floor(t * 2);
+            if (t >= closeAt) {
+              clearInterval(iv);
+              c.closed = true;
+              ws.close();
+              return;
+            }
+            ws.send(JSON.stringify({ type: 'state', score, p: score, alive: t < dieAt }));
+          }, 160);
+        }
+        if (m.type === 'tick') {
+          c.ticks++;
+          c.lastTick = m;
+          (c.tickLog ??= []).push(m);
+        }
+        if (m.type === 'end') {
+          c.end = m;
+          done();
+        }
+      };
+      ws.onclose = () => !c.closed && done();
+      ws.onerror = () => done();
+      setTimeout(() => {
+        try { ws.close(); } catch {}
+        done();
+      }, 45000);
+    });
+  const [ca, cb] = await Promise.all([mkClient('Alfa', 'bloop', 2.5), new Promise((res) => setTimeout(() => mkClient('Beta', 'king', 4).then(res), 300))]);
+  check('os 2 clientes caem na mesma sala', ca.welcome && cb.welcome && ca.welcome.room === cb.welcome.room && ca.welcome.you !== cb.welcome.you, [ca.welcome, cb.welcome]);
+  check('ambos recebem a MESMA seed', ca.start && cb.start && ca.start.seed === cb.start.seed && Number.isInteger(ca.start.seed), [ca.start?.seed, cb.start?.seed]);
+  check('bots completam a sala (5 jogadores, 3 bots em debug)', ca.start?.players?.length === 5 && ca.start.players.filter((p) => p.bot).length === 3 && ca.lobbyMax === 5, ca.start?.players);
+  check('nomes dos 2 humanos na lista', ['Alfa', 'Beta'].every((n) => ca.start?.players?.some((p) => p.name === n && !p.bot)));
+  check('classificação ao vivo chega (ticks)', ca.ticks >= 5 && cb.ticks >= 5 && ca.lastTick.s.length === 5, [ca.ticks, cb.ticks]);
+  const res = ca.end?.results ?? [];
+  check('resultado final com 5 colocações', res.length === 5 && res.map((x) => x.place).join() === '1,2,3,4,5', res);
+  check('resultado ordenado por pontos (empate: tempo vivo)', res.every((x, i) => i === 0 || res[i - 1].score > x.score || (res[i - 1].score === x.score && res[i - 1].tAlive >= x.tAlive)), res);
+  check('prêmios por colocação (100+5, 60, 40, 20, 20)', res.map((x) => `${x.coins}/${x.gems}`).join() === '100/5,60/0,40/0,20/0,20/0', res);
+  check('Beta (viveu mais) fica à frente de Alfa', res.findIndex((x) => x.name === 'Beta') < res.findIndex((x) => x.name === 'Alfa'), res);
+  check('os dois recebem o mesmo resultado', JSON.stringify(ca.end) === JSON.stringify(cb.end));
+  const [cq, cr] = await Promise.all([mkClient('Sai', 'bloop', 99, 1.5), new Promise((res) => setTimeout(() => mkClient('Fica', 'bloop', 3.5).then(res), 200))]);
+  const quitSlot = cq.welcome?.you;
+  const sawQuit = (cr.tickLog ?? []).some((m) => m.t < 3.4 && m.s.some((row) => row[0] === quitSlot && row[3] === 0));
+  check('desconexão no meio da corrida conta como queda', cq.welcome && cr.welcome?.room === cq.welcome.room && sawQuit, (cr.tickLog ?? []).slice(-1));
+  check('quem ficou recebe o resultado (com quem saiu)', cr.end?.results?.length === 5 && cr.end.results.some((x) => x.name === 'Sai'), cr.end);
+  const cs = await mkClient('Solo', 'bloop', 1);
+  check('jogador sozinho: 4 bots e resultado', cs.start?.players?.length === 5 && cs.start.players.filter((p) => p.bot).length === 4 && cs.end?.results?.length === 5, cs.start?.players);
 
   console.log('\nRate limit');
   let last;
