@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#0d0726" />
+<title>Painel Bloop Orbit</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🪐%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #0d0726;
+  --bg2: #170b3b;
+  --card: rgba(36, 22, 84, 0.72);
+  --card2: rgba(52, 33, 112, 0.6);
+  --line: rgba(160, 130, 255, 0.18);
+  --text: #f4efff;
+  --muted: #a99bd6;
+  --purple: #8b5cf6;
+  --pink: #ff4fd8;
+  --cyan: #22e1ff;
+  --yellow: #ffd84d;
+  --green: #3ee69a;
+  --red: #ff5a7a;
+  --radius: 18px;
+  --shadow: 0 10px 30px rgba(5, 0, 25, 0.45);
+  --nav-h: 66px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: 'Fredoka', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, #fff8 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 20%, #fff6 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 40% 80%, #fff5 50%, transparent 51%),
+    radial-gradient(1px 1px at 85% 65%, #fff7 50%, transparent 51%),
+    radial-gradient(1px 1px at 10% 90%, #fff5 50%, transparent 51%),
+    radial-gradient(900px 600px at 100% 0%, rgba(255, 79, 216, 0.16), transparent 60%),
+    radial-gradient(800px 600px at 0% 100%, rgba(34, 225, 255, 0.12), transparent 60%),
+    linear-gradient(160deg, #0d0726 0%, #1a0c45 55%, #0d0726 100%);
+  background-attachment: fixed;
+  background-size: 300px 300px, 260px 260px, 340px 340px, 280px 280px, 320px 320px, auto, auto, auto;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--cyan); }
+button, input, select, textarea { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.02em; }
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.1rem; }
+
+/* ---------- Botões / campos ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 0; border-radius: 14px; padding: 11px 18px; cursor: pointer;
+  font-weight: 600; font-size: 0.98rem; color: #fff;
+  background: linear-gradient(135deg, var(--purple), var(--pink));
+  box-shadow: 0 6px 18px rgba(255, 79, 216, 0.28), inset 0 -3px 0 rgba(0,0,0,.18);
+  transition: transform .12s, filter .12s, opacity .12s;
+  white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: translateY(1px) scale(.98); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.cyan { background: linear-gradient(135deg, #1aa6ff, var(--cyan)); color: #04122b; box-shadow: 0 6px 18px rgba(34,225,255,.25), inset 0 -3px 0 rgba(0,0,0,.15); }
+.btn.ghost { background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn.ghost:hover { background: rgba(255,255,255,0.1); }
+.btn.danger { background: rgba(255, 90, 122, 0.14); color: #ffb3c3; box-shadow: inset 0 0 0 1.5px rgba(255,90,122,.35); }
+.btn.sm { padding: 7px 12px; font-size: 0.86rem; border-radius: 11px; }
+.btn.icon { padding: 7px 10px; }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: var(--muted); }
+input[type=text], input[type=password], input[type=number], input[type=url], input[type=search], input[type=datetime-local], select, textarea {
+  width: 100%; padding: 11px 13px; border-radius: 12px; border: 1.5px solid var(--line);
+  background: rgba(10, 4, 34, 0.55); color: var(--text); outline: none; font-size: 1rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,225,255,.15); }
+textarea { resize: vertical; min-height: 70px; }
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+select option { background: #1a0c45; }
+input[type=datetime-local]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(.7); }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.row > * { flex: 1 1 160px; }
+.row.tight { flex-wrap: nowrap; }
+.row.tight > * { flex: 0 0 auto; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; color: var(--text); font-size: .95rem; }
+.switch input { display: none; }
+.switch .track { width: 44px; height: 26px; border-radius: 99px; background: rgba(255,255,255,.12); position: relative; transition: background .2s; flex: none; }
+.switch .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.switch input:checked + .track { background: linear-gradient(135deg, var(--green), var(--cyan)); }
+.switch input:checked + .track::after { transform: translateX(18px); }
+
+/* ---------- Cartões ---------- */
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; box-shadow: var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.card + .card { margin-top: 16px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; font-size: .78rem; font-weight: 600; background: rgba(255,255,255,.08); color: var(--muted); white-space: nowrap; }
+.pill.on { background: rgba(62,230,154,.15); color: var(--green); }
+.pill.off { background: rgba(255,90,122,.14); color: #ff9db1; }
+.pill.warn { background: rgba(255,216,77,.14); color: var(--yellow); }
+.pill.info { background: rgba(34,225,255,.12); color: var(--cyan); }
+.pill.pink { background: rgba(255,79,216,.14); color: #ff9be9; }
+
+/* ---------- Login ---------- */
+#login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login-card { width: min(400px, 100%); text-align: center; padding: 34px 26px; }
+.logo { font-size: 64px; filter: drop-shadow(0 0 22px rgba(255,79,216,.55)); animation: float 4s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-8px) rotate(-6deg); } }
+.brand { font-size: 1.9rem; font-weight: 700; background: linear-gradient(90deg, var(--yellow), var(--pink), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login-card form { display: flex; flex-direction: column; gap: 14px; margin-top: 22px; text-align: left; }
+.err { color: #ff9db1; font-size: .9rem; min-height: 1.2em; }
+
+/* ---------- Layout ---------- */
+#app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+.side { position: sticky; top: 0; height: 100vh; padding: 22px 14px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line); background: rgba(10, 4, 34, .4); backdrop-filter: blur(8px); }
+.side .brandrow { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
+.side .brandrow span:first-child { font-size: 32px; }
+.side .brandrow b { font-size: 1.15rem; display: block; line-height: 1.1; }
+.nav button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: 14px; background: transparent; color: var(--muted); font-size: 1rem; font-weight: 500; cursor: pointer; text-align: left; transition: background .15s, color .15s; }
+.nav button .ic { font-size: 1.25rem; width: 26px; text-align: center; }
+.nav button:hover { background: rgba(255,255,255,.05); color: var(--text); }
+.nav button.active { background: linear-gradient(135deg, rgba(139,92,246,.35), rgba(255,79,216,.25)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.side .spacer { flex: 1; }
+main { padding: 26px clamp(14px, 3vw, 36px) 40px; max-width: 1180px; width: 100%; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.page-head p { margin: 4px 0 0; }
+.topbar { display: none; }
+
+/* ---------- Painel ---------- */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.stat { padding: 16px 18px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); position: relative; overflow: hidden; }
+.stat::after { content: ''; position: absolute; right: -30px; top: -30px; width: 100px; height: 100px; border-radius: 50%; background: var(--glow, rgba(139,92,246,.25)); filter: blur(18px); }
+.stat .v { font-size: 2rem; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+.stat .l { color: var(--muted); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
+.quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.quick button { padding: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card2); color: var(--text); text-align: left; cursor: pointer; transition: transform .15s, border-color .15s; }
+.quick button:hover { transform: translateY(-2px); border-color: var(--pink); }
+.quick button b { display: block; font-size: 1.05rem; margin-top: 6px; }
+.quick button span { font-size: 1.6rem; }
+.toplist { list-style: none; margin: 0; padding: 0; }
+.toplist li { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed var(--line); }
+.toplist li:last-child { border: 0; }
+
+/* ---------- Tabelas ---------- */
+.table-wrap { overflow-x: auto; margin: 0 -6px; }
+table { width: 100%; border-collapse: collapse; font-size: .94rem; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: .82rem; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 8px; border-bottom: 1px solid rgba(160,130,255,.08); vertical-align: middle; }
+tr.sel td { background: rgba(139,92,246,.12); }
+tbody tr:hover td { background: rgba(255,255,255,.03); }
+td.clickable { cursor: pointer; }
+input[type=checkbox].ck { width: 19px; height: 19px; accent-color: var(--pink); cursor: pointer; }
+.uses-bar { height: 6px; width: 90px; border-radius: 9px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 4px; }
+.uses-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--pink)); }
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.empty { text-align: center; padding: 34px 10px; color: var(--muted); }
+.empty div { font-size: 42px; margin-bottom: 6px; }
+.actionbar { position: sticky; bottom: 14px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 12px 18px; margin-top: 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(139,92,246,.95), rgba(255,79,216,.92)); box-shadow: 0 12px 30px rgba(255,79,216,.35); flex-wrap: wrap; }
+.actionbar .btn { background: #fff; color: #5a1a9c; box-shadow: none; }
+
+/* ---------- Editor de pacote ---------- */
+.pack { display: flex; flex-direction: column; gap: 16px; }
+.pack .sect-title { font-size: .85rem; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.money { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.money .box { padding: 12px; border-radius: 14px; background: rgba(10,4,34,.4); border: 1px solid var(--line); }
+.money .box .lbl { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 8px; }
+.quickadd { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.quickadd button { flex: 1; padding: 5px 0; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--muted); cursor: pointer; font-size: .8rem; min-width: 46px; }
+.quickadd button:hover { color: #fff; border-color: var(--cyan); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border-radius: 99px; border: 1.5px solid var(--line); background: rgba(10,4,34,.4); cursor: pointer; font-size: .9rem; user-select: none; transition: border-color .15s, background .15s; }
+.chip input { display: none; }
+.chip .dot { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 0 0 2px rgba(255,255,255,.1); flex: none; }
+.chip .stripe { width: 26px; height: 12px; border-radius: 6px; flex: none; }
+.chip.on { border-color: var(--pink); background: rgba(255,79,216,.16); color: #fff; }
+.chip.on::after { content: '✓'; color: var(--pink); font-weight: 700; }
+.chip .r { font-size: .7rem; color: var(--muted); }
+.boosts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.boosts label.field { justify-content: flex-end; }
+.summary { padding: 12px 14px; border-radius: 14px; background: linear-gradient(135deg, rgba(34,225,255,.1), rgba(255,79,216,.1)); border: 1px dashed rgba(34,225,255,.35); font-size: .95rem; }
+.summary b { color: var(--yellow); }
+details.more summary { cursor: pointer; color: var(--muted); font-size: .9rem; padding: 4px 0; }
+
+/* ---------- Modal / toast ---------- */
+.modal-bg { position: fixed; inset: 0; background: rgba(5, 0, 20, .72); backdrop-filter: blur(4px); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 30px 14px; overflow-y: auto; animation: fade .15s; }
+@keyframes fade { from { opacity: 0; } }
+.modal { width: min(680px, 100%); background: linear-gradient(180deg, #24135a, #170b3b); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: 0 30px 80px rgba(0,0,0,.6); animation: pop .18s; }
+.modal.sm { width: min(420px, 100%); }
+@keyframes pop { from { transform: translateY(14px) scale(.98); opacity: 0; } }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.x { border: 0; background: rgba(255,255,255,.07); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 1.1rem; color: var(--muted); flex: none; }
+.toasts { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100% - 28px)); pointer-events: none; }
+.toast { padding: 12px 16px; border-radius: 14px; background: #2a1767; border: 1px solid var(--line); box-shadow: var(--shadow); animation: pop .2s; font-weight: 500; }
+.toast.ok { border-color: rgba(62,230,154,.5); }
+.toast.bad { border-color: rgba(255,90,122,.6); }
+.seg { display: inline-flex; padding: 4px; border-radius: 14px; background: rgba(10,4,34,.5); border: 1px solid var(--line); gap: 4px; flex-wrap: wrap; }
+.seg button { border: 0; padding: 8px 14px; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 500; }
+.seg button.on { background: linear-gradient(135deg, var(--purple), var(--pink)); color: #fff; }
+.target-opts { display: flex; flex-direction: column; gap: 8px; }
+.target-opts label { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--line); cursor: pointer; background: rgba(10,4,34,.35); }
+.target-opts label:has(input:checked) { border-color: var(--cyan); background: rgba(34,225,255,.08); }
+.target-opts input[type=radio] { accent-color: var(--cyan); width: 18px; height: 18px; }
+.target-opts input[type=number] { width: 80px; padding: 6px 8px; }
+.share { white-space: pre-wrap; padding: 14px; border-radius: 14px; background: rgba(10,4,34,.55); border: 1px solid var(--line); font-size: .95rem; line-height: 1.45; }
+.ch-card { display: flex; flex-direction: column; gap: 10px; }
+.ch-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.codebig { font-size: 1.25rem; font-weight: 700; letter-spacing: .06em; color: var(--yellow); }
+.list-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--pink); animation: spin .8s linear infinite; margin: 30px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .95rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-all; }
+.mobile-only { display: none; }
+
+/* ---------- Celular ---------- */
+@media (max-width: 820px) {
+  #app { grid-template-columns: 1fr; }
+  .side { position: fixed; top: auto; bottom: 0; left: 0; right: 0; height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 6px 6px env(safe-area-inset-bottom); flex-direction: row; z-index: 20; border-right: 0; border-top: 1px solid var(--line); background: rgba(13, 7, 38, .92); }
+  .side .brandrow, .side .spacer, .side .logout { display: none; }
+  .nav { display: flex; width: 100%; }
+  .nav button { flex-direction: column; gap: 2px; padding: 7px 2px; font-size: .68rem; text-align: center; justify-content: center; border-radius: 12px; }
+  .nav button .ic { font-size: 1.35rem; width: auto; }
+  main { padding: 0 14px calc(var(--nav-h) + 30px); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 2px 6px; position: sticky; top: 0; z-index: 10; background: linear-gradient(180deg, var(--bg) 70%, transparent); }
+  .topbar b { font-size: 1.1rem; }
+  .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat .v { font-size: 1.6rem; }
+  .card { padding: 15px; }
+  .hide-m { display: none; }
+  .mobile-only { display: initial; }
+  .boosts { grid-template-columns: 1fr 1fr 1fr; }
+  .money { grid-template-columns: 1fr; }
+  .modal { padding: 18px 16px; }
+  .modal-bg { padding: 12px 8px; }
+  .actionbar { bottom: calc(var(--nav-h) + 12px); }
+  .list-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="toasts" id="toasts"></div>
+
+<!-- LOGIN -->
+<section id="login" class="hidden">
+  <div class="card login-card">
+    <div class="logo">🪐</div>
+    <div class="brand">Bloop Orbit</div>
+    <div class="muted">Painel do administrador</div>
+    <form id="loginForm">
+      <label class="field">Senha
+        <input type="password" id="pw" autocomplete="current-password" placeholder="Digite a senha do painel" required />
+      </label>
+      <div class="err" id="loginErr"></div>
+      <button class="btn" type="submit" id="loginBtn">🚀 Entrar</button>
+    </form>
+    <p class="muted small" style="margin-top:18px">A senha é o segredo <b>ADMIN_PASSWORD</b> configurado na Cloudflare.</p>
+  </div>
+</section>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <aside class="side">
+    <div class="brandrow"><span>🪐</span><span><b>Bloop Orbit</b><span class="muted small">Painel admin</span></span></div>
+    <nav class="nav" id="nav">
+      <button data-tab="dash"><span class="ic">📊</span><span>Painel</span></button>
+      <button data-tab="players"><span class="ic">👥</span><span>Jogadores</span></button>
+      <button data-tab="gifts"><span class="ic">🎁</span><span>Presentes</span></button>
+      <button data-tab="codes"><span class="ic">🔑</span><span>Códigos</span></button>
+      <button data-tab="challenges"><span class="ic">🎬</span><span>Desafios</span></button>
+      <button data-tab="presets"><span class="ic">📦</span><span>Pacotes</span></button>
+    </nav>
+    <div class="spacer"></div>
+    <button class="btn ghost sm logout" onclick="logout()">↩ Sair</button>
+  </aside>
+  <main>
+    <div class="topbar"><b>🪐 Bloop Orbit</b><button class="btn ghost sm" onclick="logout()">Sair</button></div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<script>
+'use strict';
+/* ================= Estado ================= */
+const TOKEN_KEY = 'bo-admin-token';
+let token = '';
+try { token = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) {}
+let CATALOG = { skins: [], trails: [], boosts: [] };
+let PRESETS = [];
+const NAMES = {};
+let currentTab = 'dash';
+const players = { q: '', days: 0, sort: 'lastSeen', page: 1, size: 50, selected: new Set(), data: null };
+const codesState = { q: '', filter: 'all', batch: '' , items: [] };
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtN = (n) => Number(n || 0).toLocaleString('pt-BR');
+const fmtDate = (ms) => (ms ? new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+const fmtDay = (ms) => (ms ? new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+function ago(ms) {
+  if (!ms) return 'nunca';
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 90) return 'agora';
+  if (s < 3600) return Math.round(s / 60) + ' min atrás';
+  if (s < 86400) return Math.round(s / 3600) + ' h atrás';
+  const d = Math.round(s / 86400);
+  return d === 1 ? 'ontem' : d + ' dias atrás';
+}
+function toLocalInput(ms) {
+  if (!ms) return '';
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+}
+const fromLocalInput = (v) => (v ? new Date(v).getTime() : null);
+
+/* ================= API ================= */
+async function api(method, path, body) {
+  const res = await fetch('/api/admin' + path, {
+    method,
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (res.status === 401 && path !== '/login') { logout(true); throw new Error(data.message || 'Sessão expirada'); }
+  if (!res.ok) throw new Error(data.message || 'Erro ' + res.status);
+  return data;
+}
+
+/* ================= UI util ================= */
+function toast(msg, kind = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), kind === 'bad' ? 5000 : 3000);
+}
+function modal(html, cls = '') {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal ${cls}">${html}</div>`;
+  document.body.appendChild(bg);
+  document.body.style.overflow = 'hidden';
+  const close = () => { bg.remove(); if (!$('.modal-bg')) document.body.style.overflow = ''; };
+  bg.addEventListener('mousedown', (e) => { if (e.target === bg) close(); });
+  $$('[data-close]', bg).forEach((b) => b.addEventListener('click', close));
+  return { el: bg, close };
+}
+function ask(title, text, okLabel = 'Confirmar', danger = false) {
+  return new Promise((resolve) => {
+    const m = modal(`<div class="modal-head"><h3>${esc(title)}</h3></div><p class="muted">${esc(text)}</p>
+      <div class="modal-foot"><button class="btn ghost" data-close>Cancelar</button><button class="btn ${danger ? 'danger' : ''}" id="askOk">${esc(okLabel)}</button></div>`, 'sm');
+    $('#askOk', m.el).onclick = () => { m.close(); resolve(true); };
+    $$('[data-close]', m.el).forEach((b) => b.addEventListener('click', () => resolve(false)));
+  });
+}
+async function copy(text, msg = 'Copiado!') {
+  try { await navigator.clipboard.writeText(text); toast('📋 ' + msg); }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('📋 ' + msg); } catch (e2) { toast('Não foi possível copiar', 'bad'); }
+    ta.remove();
+  }
+}
+function download(name, content, type = 'text/csv') {
+  const blob = new Blob(['﻿' + content], { type: type + ';charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function busy(btn, fn) {
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳ Aguarde…';
+  try { return await fn(); } catch (e) { toast(e.message, 'bad'); } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+const spinner = () => '<div class="spinner"></div>';
+
+/* ================= Pacotes (resumo + editor) ================= */
+function plural(n, one, many) { return fmtN(n) + ' ' + (n === 1 ? one : many); }
+function packSummary(p) {
+  p = p || {};
+  const parts = [];
+  if (p.coins) parts.push('🪙 ' + plural(p.coins, 'moeda', 'moedas'));
+  if (p.gems) parts.push('💎 ' + plural(p.gems, 'gema', 'gemas'));
+  if (p.skins && p.skins.length) parts.push('🎨 ' + (p.skins.length === 1 ? 'skin ' : 'skins ') + p.skins.map((s) => NAMES['s:' + s] || s).join(', '));
+  if (p.trails && p.trails.length) parts.push('✨ ' + (p.trails.length === 1 ? 'rastro ' : 'rastros ') + p.trails.map((s) => NAMES['t:' + s] || s).join(', '));
+  const b = p.boosts || {};
+  if (b.shield) parts.push('🛡️ ' + plural(b.shield, 'escudo', 'escudos'));
+  if (b.magnet) parts.push('🧲 ' + plural(b.magnet, 'ímã', 'ímãs'));
+  if (b.headstart) parts.push('🚀 ' + plural(b.headstart, 'largada turbo', 'largadas turbo'));
+  if (p.noAds) parts.push('🚫 sem anúncios');
+  return parts.length ? parts.join(' · ') : '<span class="muted">nada ainda</span>';
+}
+const RARITY = { common: 'comum', rare: 'rara', epic: 'épica', legendary: 'lendária' };
+let peSeq = 0;
+function packEditor(host, initial, opts = {}) {
+  const id = 'pe' + ++peSeq;
+  const presetOpts = PRESETS.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  host.innerHTML = `
+  <div class="pack">
+    ${opts.noPresets ? '' : `<div class="row"><label class="field">📦 Começar de um pacote salvo
+      <select data-k="preset"><option value="">— escolher —</option>${presetOpts}</select></label></div>`}
+    <div class="money">
+      <div class="box"><div class="lbl">🪙 Moedas</div><input type="number" min="0" data-k="coins" placeholder="0" inputmode="numeric" />
+        <div class="quickadd">${[100, 500, 1000, 5000].map((v) => `<button type="button" data-add="coins" data-v="${v}">+${fmtN(v)}</button>`).join('')}</div></div>
+      <div class="box"><div class="lbl">💎 Gemas</div><input type="number" min="0" data-k="gems" placeholder="0" inputmode="numeric" />
+        <div class="quickadd">${[10, 50, 100, 500].map((v) => `<button type="button" data-add="gems" data-v="${v}">+${fmtN(v)}</button>`).join('')}</div></div>
+    </div>
+    <div><div class="sect-title"><span>🎨 Skins</span><span class="muted small" data-count="skins"></span></div>
+      <div class="chips" data-list="skins">${CATALOG.skins.map((s) => `<label class="chip" title="${esc(s.id)}"><input type="checkbox" value="${esc(s.id)}" /><span class="dot" style="background:radial-gradient(circle at 35% 30%, ${esc(s.colors[0])}, ${esc(s.colors[1])})"></span>${esc(s.name)} <span class="r">${esc(RARITY[s.rarity] || '')}</span></label>`).join('')}</div></div>
+    <div><div class="sect-title"><span>✨ Rastros</span><span class="muted small" data-count="trails"></span></div>
+      <div class="chips" data-list="trails">${CATALOG.trails.map((t) => `<label class="chip" title="${esc(t.id)}"><input type="checkbox" value="${esc(t.id)}" /><span class="stripe" style="background:linear-gradient(90deg, ${t.colors.map(esc).join(',')})"></span>${esc(t.name)}</label>`).join('')}</div></div>
+    <div><div class="sect-title"><span>⚡ Power-ups (quantidade)</span></div>
+      <div class="boosts">${CATALOG.boosts.map((b) => `<label class="field">${{ shield: '🛡️', magnet: '🧲', headstart: '🚀' }[b.id] || '⚡'} ${esc(b.name)}<input type="number" min="0" max="999" data-boost="${esc(b.id)}" placeholder="0" inputmode="numeric" /></label>`).join('')}</div></div>
+    <label class="switch"><input type="checkbox" data-k="noAds" /><span class="track"></span>🚫 Remover anúncios para sempre</label>
+    <details class="more"><summary>Mais opções (IDs extras, título e mensagem)</summary>
+      <div class="grid2" style="margin-top:10px">
+        <label class="field">Skins extras (IDs separados por vírgula)<input type="text" data-k="extraSkins" placeholder="ex.: dragao, unicornio" /></label>
+        <label class="field">Rastros extras (IDs)<input type="text" data-k="extraTrails" placeholder="ex.: neon" /></label>
+        ${opts.noText ? '' : `<label class="field">Título mostrado no jogo<input type="text" maxlength="60" data-k="title" placeholder="ex.: Pack Lendário" /></label>
+        <label class="field">Mensagem<input type="text" maxlength="300" data-k="message" placeholder="ex.: Valeu por jogar! 💜" /></label>`}
+      </div>
+    </details>
+    <div class="summary" data-summary></div>
+  </div>`;
+  const q = (s) => host.querySelector(s);
+  const known = { skins: new Set(CATALOG.skins.map((s) => s.id)), trails: new Set(CATALOG.trails.map((t) => t.id)) };
+  const splitIds = (v) => v.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+  function get() {
+    const p = {};
+    const coins = +q('[data-k=coins]').value || 0; if (coins > 0) p.coins = Math.floor(coins);
+    const gems = +q('[data-k=gems]').value || 0; if (gems > 0) p.gems = Math.floor(gems);
+    for (const kind of ['skins', 'trails']) {
+      const ids = $$(`[data-list=${kind}] input:checked`, host).map((i) => i.value);
+      const extra = splitIds(q(`[data-k=extra${kind === 'skins' ? 'Skins' : 'Trails'}]`).value);
+      const all = [...new Set([...ids, ...extra])];
+      if (all.length) p[kind] = all;
+    }
+    const boosts = {};
+    $$('[data-boost]', host).forEach((i) => { const n = Math.floor(+i.value || 0); if (n > 0) boosts[i.dataset.boost] = n; });
+    if (Object.keys(boosts).length) p.boosts = boosts;
+    if (q('[data-k=noAds]').checked) p.noAds = true;
+    const t = q('[data-k=title]'); if (t && t.value.trim()) p.title = t.value.trim();
+    const m = q('[data-k=message]'); if (m && m.value.trim()) p.message = m.value.trim();
+    return p;
+  }
+  function set(p) {
+    p = p || {};
+    q('[data-k=coins]').value = p.coins || '';
+    q('[data-k=gems]').value = p.gems || '';
+    for (const kind of ['skins', 'trails']) {
+      const ids = p[kind] || [];
+      $$(`[data-list=${kind}] input`, host).forEach((i) => { i.checked = ids.includes(i.value); });
+      q(`[data-k=extra${kind === 'skins' ? 'Skins' : 'Trails'}]`).value = ids.filter((i) => !known[kind].has(i)).join(', ');
+    }
+    $$('[data-boost]', host).forEach((i) => { i.value = (p.boosts && p.boosts[i.dataset.boost]) || ''; });
+    q('[data-k=noAds]').checked = !!p.noAds;
+    const t = q('[data-k=title]'); if (t) t.value = p.title || '';
+    const m = q('[data-k=message]'); if (m) m.value = p.message || '';
+    refresh();
+  }
+  function refresh() {
+    $$('.chip', host).forEach((c) => c.classList.toggle('on', c.querySelector('input').checked));
+    for (const kind of ['skins', 'trails']) {
+      const n = $$(`[data-list=${kind}] input:checked`, host).length;
+      q(`[data-count=${kind}]`).textContent = n ? n + ' selecionada' + (n > 1 ? 's' : '') : '';
+    }
+    q('[data-summary]').innerHTML = '🎁 O jogador vai ganhar: <b>' + packSummary(get()) + '</b>';
+    if (opts.onChange) opts.onChange(get());
+  }
+  host.addEventListener('input', refresh);
+  host.addEventListener('change', (e) => {
+    if (e.target.dataset.k === 'preset' && e.target.value) {
+      const pr = PRESETS.find((p) => p.id === e.target.value);
+      if (pr) { set(pr.pack); toast('📦 Pacote "' + pr.name + '" carregado'); }
+      e.target.value = '';
+    }
+    refresh();
+  });
+  host.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-add]');
+    if (!b) return;
+    const inp = q(`[data-k=${b.dataset.add}]`);
+    inp.value = (+inp.value || 0) + +b.dataset.v;
+    refresh();
+  });
+  set(initial || {});
+  return { get, set, isEmpty: () => { const p = get(); return !p.coins && !p.gems && !p.skins && !p.trails && !p.boosts && !p.noAds; } };
+}
+
+/* ================= Login ================= */
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#loginBtn');
+  $('#loginErr').textContent = '';
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/login', { password: $('#pw').value });
+    token = r.token;
+    try { localStorage.setItem(TOKEN_KEY, token); } catch (e2) {}
+    $('#pw').value = '';
+    await start();
+  } catch (err) {
+    $('#loginErr').textContent = err.message;
+  } finally { btn.disabled = false; }
+});
+function logout(expired) {
+  token = '';
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  $('#app').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+  $$('.modal-bg').forEach((m) => m.remove());
+  document.body.style.overflow = '';
+  if (expired === true) $('#loginErr').textContent = 'Sua sessão expirou. Entre novamente.';
+}
+async function start() {
+  if (!token) return logout();
+  try {
+    const [cat, pre] = await Promise.all([api('GET', '/catalog'), api('GET', '/presets')]);
+    CATALOG = cat; PRESETS = pre.items;
+    CATALOG.skins.forEach((s) => (NAMES['s:' + s.id] = s.name));
+    CATALOG.trails.forEach((t) => (NAMES['t:' + t.id] = t.name));
+  } catch (e) {
+    if (token) { $('#login').classList.remove('hidden'); $('#loginErr').textContent = e.message; }
+    return;
+  }
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  const hash = location.hash.slice(1);
+  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets'].includes(hash) ? hash : 'dash');
+}
+$('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
+function go(tab) {
+  currentTab = tab;
+  history.replaceState(null, '', '#' + tab);
+  $$('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  window.scrollTo(0, 0);
+  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets })[tab]();
+}
+const view = () => $('#view');
+
+/* ================= Painel ================= */
+async function viewDash() {
+  view().innerHTML = `<div class="page-head"><div><h2>Olá! 👋</h2><p class="muted">Resumo do seu jogo agora.</p></div><button class="btn ghost sm" onclick="viewDash()">↻ Atualizar</button></div><div id="dashBody">${spinner()}</div>`;
+  let s;
+  try { s = await api('GET', '/stats'); } catch (e) { $('#dashBody').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  const stat = (ic, label, v, glow) => `<div class="stat" style="--glow:${glow}"><div class="l">${ic} ${label}</div><div class="v">${fmtN(v)}</div></div>`;
+  const plats = Object.entries(s.platforms || {}).map(([k, v]) => `<span class="pill info">${esc(k === 'android' ? '🤖 Android' : k === 'web' ? '🌐 Web' : k)}: ${fmtN(v)}</span>`).join(' ') || '<span class="muted">—</span>';
+  $('#dashBody').innerHTML = `
+    <div class="stats">
+      ${stat('👥', 'Jogadores', s.players, 'rgba(139,92,246,.35)')}
+      ${stat('🔥', 'Ativos 24h', s.active24h, 'rgba(255,79,216,.35)')}
+      ${stat('📅', 'Ativos 7 dias', s.active7d, 'rgba(34,225,255,.3)')}
+      ${stat('🌱', 'Novos 7 dias', s.new7d, 'rgba(62,230,154,.3)')}
+      ${stat('🔑', 'Códigos ativos', s.activeCodes, 'rgba(255,216,77,.3)')}
+      ${stat('✅', 'Resgates', s.redemptions, 'rgba(62,230,154,.3)')}
+      ${stat('🎬', 'Desafios ativos', s.activeChallenges, 'rgba(255,79,216,.3)')}
+      ${stat('🎁', 'Presentes ativos', s.gifts, 'rgba(139,92,246,.35)')}
+    </div>
+    <div class="card"><div class="card-head"><h3>⚡ Ações rápidas</h3></div>
+      <div class="quick">
+        <button onclick="openGiftModal({type:'all'})"><span>🎁</span><b>Presente para todos</b><span class="muted small" style="font-size:.85rem">Moedas, gemas, skins…</span></button>
+        <button onclick="go('codes')"><span>🔑</span><b>Criar código</b><span class="muted small" style="font-size:.85rem">Personalizado ou em lote</span></button>
+        <button onclick="go('challenges')"><span>🎬</span><b>Novo desafio</b><span class="muted small" style="font-size:.85rem">"Assista o vídeo e ganhe"</span></button>
+        <button onclick="go('players')"><span>👥</span><b>Ver jogadores</b><span class="muted small" style="font-size:.85rem">Buscar e presentear</span></button>
+      </div></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card" style="margin:0"><div class="card-head"><h3>🏆 Maiores recordes</h3></div>
+        ${s.top && s.top.length ? `<ul class="toplist">${s.top.map((p, i) => `<li><span>${['🥇', '🥈', '🥉', '4º', '5º'][i]} ${esc(p.name)}</span><b>${fmtN(p.best)}</b></li>`).join('')}</ul>` : '<div class="empty"><div>🌌</div>Nenhum jogador ainda</div>'}</div>
+      <div class="card" style="margin:0"><div class="card-head"><h3>📱 Plataformas</h3></div><div class="ch-meta">${plats}</div>
+        <p class="muted small" style="margin-top:14px">Códigos criados: <b>${fmtN(s.codes)}</b> · Desafios: <b>${fmtN(s.challenges)}</b></p></div>
+    </div>`;
+}
+
+/* ================= Jogadores ================= */
+async function viewPlayers() {
+  view().innerHTML = `
+    <div class="page-head"><div><h2>👥 Jogadores</h2><p class="muted">Selecione jogadores para enviar presentes.</p></div>
+      <button class="btn" onclick="openGiftModal()">🎁 Enviar presente</button></div>
+    <div class="card">
+      <div class="row" style="margin-bottom:14px">
+        <label class="field" style="flex:2 1 220px">Buscar<input type="search" id="pq" placeholder="Nome ou ID…" value="${esc(players.q)}" /></label>
+        <label class="field">Atividade<select id="pdays">
+          <option value="0">Todos</option><option value="1">Ativos 24h</option><option value="7">Ativos 7 dias</option><option value="30">Ativos 30 dias</option></select></label>
+        <label class="field">Ordenar<select id="psort">
+          <option value="lastSeen">Visto por último</option><option value="best">Recorde</option><option value="runs">Partidas</option><option value="created">Mais novos</option><option value="name">Nome</option></select></label>
+      </div>
+      <div id="plist">${spinner()}</div>
+    </div>
+    <div id="pbar"></div>`;
+  $('#pdays').value = String(players.days);
+  $('#psort').value = players.sort;
+  let t;
+  $('#pq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { players.q = e.target.value; players.page = 1; loadPlayers(); }, 250); });
+  $('#pdays').addEventListener('change', (e) => { players.days = +e.target.value; players.page = 1; loadPlayers(); });
+  $('#psort').addEventListener('change', (e) => { players.sort = e.target.value; players.page = 1; loadPlayers(); });
+  loadPlayers();
+}
+async function loadPlayers() {
+  const qs = new URLSearchParams({ q: players.q, days: players.days, sort: players.sort, page: players.page, size: players.size });
+  try { players.data = await api('GET', '/players?' + qs); } catch (e) { $('#plist').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  renderPlayers();
+}
+function renderPlayers() {
+  const d = players.data;
+  if (!$('#plist')) return;
+  if (!d.items.length) {
+    $('#plist').innerHTML = `<div class="empty"><div>🌌</div>${players.q || players.days ? 'Nenhum jogador encontrado.' : 'Ainda não há jogadores. Eles aparecem aqui quando abrem o jogo conectado à internet.'}</div>`;
+  } else {
+    const allSel = d.items.every((p) => players.selected.has(p.id));
+    const pages = Math.max(1, Math.ceil(d.total / d.size));
+    $('#plist').innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th><input type="checkbox" class="ck" id="pall" ${allSel ? 'checked' : ''} title="Selecionar página" /></th><th>Nome</th><th>Recorde</th><th class="hide-m">Partidas</th><th class="hide-m">Plataforma</th><th>Visto</th></tr></thead>
+      <tbody>${d.items.map((p) => `<tr class="${players.selected.has(p.id) ? 'sel' : ''}" data-id="${esc(p.id)}">
+        <td><input type="checkbox" class="ck" data-pid="${esc(p.id)}" ${players.selected.has(p.id) ? 'checked' : ''} /></td>
+        <td class="clickable" data-open="${esc(p.id)}"><b>${esc(p.name)}</b><div class="muted small mono">${esc(p.id.slice(0, 8))}…</div></td>
+        <td><b>${fmtN(p.best)}</b></td><td class="hide-m">${fmtN(p.runs)}</td>
+        <td class="hide-m">${p.platform === 'android' ? '🤖 Android' : p.platform === 'web' ? '🌐 Web' : esc(p.platform)}</td>
+        <td class="small">${ago(p.lastSeen)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="pager"><span class="muted small">${fmtN(d.total)} jogador${d.total === 1 ? '' : 'es'} · página ${d.page} de ${pages}</span>
+        <span class="row tight" style="flex:0 0 auto;gap:8px"><button class="btn ghost sm" id="pprev" ${d.page <= 1 ? 'disabled' : ''}>← Anterior</button><button class="btn ghost sm" id="pnext" ${d.page >= pages ? 'disabled' : ''}>Próxima →</button></span></div>`;
+    $('#pall').onchange = (e) => { d.items.forEach((p) => (e.target.checked ? players.selected.add(p.id) : players.selected.delete(p.id))); renderPlayers(); };
+    $$('[data-pid]').forEach((c) => (c.onchange = () => { c.checked ? players.selected.add(c.dataset.pid) : players.selected.delete(c.dataset.pid); renderPlayers(); }));
+    $$('[data-open]').forEach((c) => (c.onclick = () => openPlayer(c.dataset.open)));
+    $('#pprev').onclick = () => { players.page--; loadPlayers(); };
+    $('#pnext').onclick = () => { players.page++; loadPlayers(); };
+  }
+  const n = players.selected.size;
+  $('#pbar').innerHTML = n ? `<div class="actionbar"><b>✅ ${n} selecionado${n > 1 ? 's' : ''}</b><span class="row tight" style="flex:0 0 auto;gap:8px">
+    <button class="btn sm" style="background:rgba(255,255,255,.2);color:#fff" id="pclear">Limpar</button><button class="btn sm" id="pgift">🎁 Enviar presente</button></span></div>` : '';
+  if (n) {
+    $('#pclear').onclick = () => { players.selected.clear(); renderPlayers(); };
+    $('#pgift').onclick = () => openGiftModal({ type: 'players' });
+  }
+}
+async function openPlayer(id) {
+  const m = modal(`<div class="modal-head"><h3>👤 Jogador</h3><button class="x" data-close>✕</button></div><div id="pd">${spinner()}</div>`);
+  try {
+    const { player: p, pending } = await api('GET', '/players/' + encodeURIComponent(id));
+    $('#pd', m.el).innerHTML = `<dl class="kv">
+      <dt>Nome</dt><dd><b>${esc(p.name)}</b></dd>
+      <dt>ID</dt><dd class="mono small">${esc(p.id)} <button class="btn ghost sm icon" id="cpid">📋</button></dd>
+      <dt>Recorde</dt><dd>${fmtN(p.best)}</dd><dt>Partidas</dt><dd>${fmtN(p.runs)}</dd>
+      <dt>Moedas / Gemas</dt><dd>🪙 ${fmtN(p.coins)} · 💎 ${fmtN(p.gems)}</dd>
+      <dt>Plataforma</dt><dd>${esc(p.platform)} ${esc(p.version)}</dd>
+      <dt>Primeiro acesso</dt><dd>${fmtDate(p.created)}</dd><dt>Visto por último</dt><dd>${fmtDate(p.lastSeen)} (${ago(p.lastSeen)})</dd>
+      <dt>Códigos usados</dt><dd>${p.redeemed.length ? p.redeemed.map((c) => `<span class="pill">${esc(c)}</span>`).join(' ') : '—'}</dd>
+      <dt>Presentes pendentes</dt><dd>${pending.length ? pending.map((g) => `<div>🎁 ${esc(g.title)} — <span class="muted small">${packSummary(g.reward)}</span></div>`).join('') : '—'}</dd></dl>
+      <div class="modal-foot"><button class="btn" id="pgone">🎁 Enviar presente</button></div>`;
+    $('#cpid', m.el).onclick = () => copy(p.id, 'ID copiado');
+    $('#pgone', m.el).onclick = () => { m.close(); openGiftModal({ type: 'players', ids: [p.id], label: p.name }); };
+  } catch (e) { $('#pd', m.el).innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* ================= Presentes ================= */
+function openGiftModal(pre = {}) {
+  const selCount = pre.ids ? pre.ids.length : players.selected.size;
+  const selLabel = pre.label ? esc(pre.label) : `${selCount} jogador${selCount === 1 ? '' : 'es'} selecionado${selCount === 1 ? '' : 's'}`;
+  const def = pre.type || (selCount ? 'players' : 'all');
+  const m = modal(`<div class="modal-head"><h3>🎁 Enviar presente</h3><button class="x" data-close>✕</button></div>
+    <div class="pack">
+      <div><div class="sect-title">Para quem?</div><div class="target-opts">
+        <label class="${selCount ? '' : 'hidden'}"><input type="radio" name="tg" value="players" /> 👤 ${selLabel}</label>
+        <label><input type="radio" name="tg" value="all" /> 🌍 Todos os jogadores</label>
+        <label><input type="radio" name="tg" value="active" /> 🔥 Ativos nos últimos <input type="number" id="gdays" min="1" max="365" value="7" /> dias</label>
+      </div></div>
+      <div class="grid2">
+        <label class="field">Título<input type="text" id="gtitle" maxlength="60" placeholder="ex.: Presente de Natal 🎄" /></label>
+        <label class="field">Validade<select id="gexp"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option><option value="0">Sem validade</option></select></label>
+      </div>
+      <label class="field">Mensagem (opcional)<input type="text" id="gmsg" maxlength="300" placeholder="ex.: Obrigado por jogar Bloop Orbit! 💜" /></label>
+      <div id="gpack"></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" data-close>Cancelar</button><button class="btn" id="gsend">🎁 Enviar presente</button></div>`);
+  const radio = $(`input[name=tg][value=${def}]`, m.el);
+  if (radio) radio.checked = true;
+  const ed = packEditor($('#gpack', m.el), {}, { noText: true });
+  $('#gsend', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+    if (ed.isEmpty()) throw new Error('Escolha pelo menos uma recompensa.');
+    const type = $('input[name=tg]:checked', m.el).value;
+    const target = type === 'players' ? { type, ids: pre.ids || [...players.selected] } : type === 'active' ? { type, days: +$('#gdays', m.el).value || 7 } : { type };
+    const who = type === 'players' ? selLabel : type === 'all' ? 'TODOS os jogadores' : `jogadores ativos nos últimos ${target.days} dias`;
+    if (!(await ask('Confirmar envio', `Enviar ${packSummary(ed.get()).replace(/<[^>]+>/g, '')} para ${who.replace(/<[^>]+>/g, '')}?`, '🎁 Enviar'))) return;
+    const r = await api('POST', '/gifts', { target, title: $('#gtitle', m.el).value, message: $('#gmsg', m.el).value, reward: ed.get(), expiresDays: +$('#gexp', m.el).value });
+    m.close();
+    toast(`🎁 Presente enviado para ${fmtN(r.recipients)} jogador${r.recipients === 1 ? '' : 'es'}!`);
+    if (type === 'players' && !pre.ids) players.selected.clear();
+    if (currentTab === 'gifts') viewGifts(); else if (currentTab === 'players') renderPlayers();
+  });
+}
+async function viewGifts() {
+  view().innerHTML = `<div class="page-head"><div><h2>🎁 Presentes</h2><p class="muted">Os jogadores recebem na próxima vez que abrirem o jogo com internet.</p></div>
+    <button class="btn" onclick="openGiftModal()">＋ Novo presente</button></div><div id="glist">${spinner()}</div>`;
+  let r;
+  try { r = await api('GET', '/gifts'); } catch (e) { $('#glist').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  if (!r.items.length) { $('#glist').innerHTML = `<div class="card empty"><div>🎁</div>Nenhum presente ativo. Que tal alegrar seus jogadores?</div>`; return; }
+  $('#glist').innerHTML = `<div class="list-grid">${r.items.map((g) => `<div class="card" style="margin:0"><div class="ch-card">
+    <div class="card-head" style="margin:0"><h3>${esc(g.title)}</h3><span class="pill ${g.expiresAt && g.expiresAt < Date.now() ? 'off' : 'on'}">${g.expiresAt ? 'até ' + fmtDay(g.expiresAt) : 'sem validade'}</span></div>
+    ${g.message ? `<div class="muted">${esc(g.message)}</div>` : ''}
+    <div class="summary">${packSummary(g.reward)}</div>
+    <div class="ch-meta"><span class="pill info">👥 ${esc(g.label)}</span><span class="pill">${fmtN(g.count)} jogador${g.count === 1 ? '' : 'es'}</span><span class="muted small">enviado ${fmtDate(g.sentAt)}</span></div>
+    <div><button class="btn danger sm" data-del="${esc(g.id)}">Cancelar presente</button></div></div></div>`).join('')}</div>`;
+  $$('[data-del]').forEach((b) => (b.onclick = async () => {
+    if (!(await ask('Cancelar presente?', 'Quem ainda não resgatou não vai mais receber. Quem já resgatou fica com o prêmio.', 'Cancelar presente', true))) return;
+    await busy(b, () => api('DELETE', '/gifts/' + b.dataset.del)); toast('Presente cancelado'); viewGifts();
+  }));
+}
+
+/* ================= Códigos ================= */
+async function viewCodes() {
+  view().innerHTML = `<div class="page-head"><div><h2>🔑 Códigos</h2><p class="muted">Os jogadores digitam o código no jogo e ganham o pacote.</p></div></div>
+    <div class="card"><div class="card-head"><h3>✨ Criar código</h3>
+      <div class="seg" id="cmode"><button data-m="custom" class="on">Personalizado</button><button data-m="random">Aleatório</button><button data-m="batch">Lote</button></div></div>
+      <div class="pack">
+        <div class="row">
+          <label class="field" data-show="custom">Código<input type="text" id="ccode" maxlength="40" placeholder="ex.: BLOOP2026" style="text-transform:uppercase" /></label>
+          <label class="field hidden" data-show="random batch">Prefixo<input type="text" id="cprefix" maxlength="8" value="BLP" style="text-transform:uppercase" /></label>
+          <label class="field hidden" data-show="batch">Quantidade<input type="number" id="ccount" min="2" max="1000" value="20" /></label>
+          <label class="field">Usos no total<input type="number" id="cmax" min="0" placeholder="0 = ilimitado" /></label>
+        </div>
+        <div class="row">
+          <label class="field">Começa em (opcional)<input type="datetime-local" id="cstart" /></label>
+          <label class="field">Expira em (opcional)<input type="datetime-local" id="cexp" /></label>
+          <label class="field" style="flex:2 1 220px">Anotações<input type="text" id="cnotes" maxlength="200" placeholder="ex.: Live de sexta, sorteio Instagram…" /></label>
+        </div>
+        <p class="muted small" id="chint" style="margin:-6px 0 0">Cada jogador só pode usar o mesmo código uma vez. "Usos no total" limita quantos jogadores diferentes podem usar.</p>
+        <div id="cpack"></div>
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <label class="switch" style="flex:0 0 auto"><input type="checkbox" id="cactive" checked /><span class="track"></span>Ativo</label>
+          <button class="btn" id="ccreate" style="flex:0 0 auto">🔑 Criar código</button></div>
+      </div></div>
+    <div class="card"><div class="card-head"><h3>📋 Seus códigos</h3><button class="btn ghost sm" id="ccsv">⬇ Baixar CSV</button></div>
+      <div class="row" style="margin-bottom:12px">
+        <label class="field" style="flex:2 1 200px">Buscar<input type="search" id="cq" placeholder="Código ou anotação…" value="${esc(codesState.q)}" /></label>
+        <label class="field">Mostrar<select id="cfilter"><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Desativados</option><option value="expired">Expirados</option><option value="full">Esgotados</option></select></label>
+        <label class="field">Lote<select id="cbatch"><option value="">Todos</option></select></label>
+      </div>
+      <div id="clist">${spinner()}</div></div>`;
+  let mode = 'custom';
+  $('#cmode').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    mode = b.dataset.m;
+    $$('#cmode button').forEach((x) => x.classList.toggle('on', x === b));
+    $$('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show.split(' ').includes(mode)));
+    $('#cmax').placeholder = mode === 'batch' ? '1 por código' : '0 = ilimitado';
+    $('#ccreate').innerHTML = mode === 'batch' ? '🔑 Gerar lote' : '🔑 Criar código';
+  };
+  const ed = packEditor($('#cpack'), {});
+  $('#ccreate').onclick = (e) => busy(e.currentTarget, async () => {
+    if (ed.isEmpty()) throw new Error('Escolha pelo menos uma recompensa.');
+    if (mode === 'custom' && !$('#ccode').value.trim()) throw new Error('Digite o código (ou use "Aleatório").');
+    const body = {
+      reward: ed.get(),
+      maxUses: $('#cmax').value === '' ? (mode === 'batch' ? 1 : 0) : +$('#cmax').value,
+      startsAt: fromLocalInput($('#cstart').value), expiresAt: fromLocalInput($('#cexp').value),
+      active: $('#cactive').checked, notes: $('#cnotes').value,
+    };
+    if (mode === 'custom') body.code = $('#ccode').value;
+    else body.prefix = $('#cprefix').value;
+    if (mode === 'batch') body.count = Math.max(2, Math.min(1000, +$('#ccount').value || 2));
+    const r = await api('POST', '/codes', body);
+    showCreatedCodes(r.codes, ed.get());
+    $('#ccode').value = '';
+    loadCodes();
+  });
+  $('#cq').oninput = (e) => { codesState.q = e.target.value; renderCodes(); };
+  $('#cfilter').value = codesState.filter;
+  $('#cfilter').onchange = (e) => { codesState.filter = e.target.value; renderCodes(); };
+  $('#cbatch').onchange = (e) => { codesState.batch = e.target.value; renderCodes(); };
+  $('#ccsv').onclick = () => {
+    const rows = filteredCodes();
+    download('codigos-bloop-orbit.csv', 'codigo;premio;usos;limite;ativo;expira;lote;anotacoes\n' + rows.map((c) => [c.code, c.summary, c.uses, c.maxUses || 'ilimitado', c.active ? 'sim' : 'não', c.expiresAt ? fmtDate(c.expiresAt) : '', c.batch || '', c.notes].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n'));
+  };
+  loadCodes();
+}
+function showCreatedCodes(codes, pack) {
+  const many = codes.length > 1;
+  const m = modal(`<div class="modal-head"><h3>🎉 ${many ? fmtN(codes.length) + ' códigos criados' : 'Código criado'}</h3><button class="x" data-close>✕</button></div>
+    ${many ? `<textarea readonly class="mono" style="min-height:220px">${esc(codes.join('\n'))}</textarea>` : `<div style="text-align:center;padding:10px"><div class="codebig mono" style="font-size:clamp(1.2rem,6vw,2rem)">${esc(codes[0])}</div></div>`}
+    <div class="summary" style="margin-top:12px">🎁 ${packSummary(pack)}</div>
+    <div class="modal-foot">${many ? '<button class="btn ghost" id="mcsv">⬇ Baixar CSV</button>' : ''}<button class="btn cyan" id="mcopy">📋 Copiar</button></div>`);
+  $('#mcopy', m.el).onclick = () => copy(codes.join('\n'), many ? 'Códigos copiados' : 'Código copiado');
+  if (many) $('#mcsv', m.el).onclick = () => download('lote-codigos.csv', 'codigo\n' + codes.join('\n'));
+}
+async function loadCodes() {
+  try { codesState.items = (await api('GET', '/codes')).items; } catch (e) { $('#clist').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const batches = [...new Set(codesState.items.map((c) => c.batch).filter(Boolean))];
+  const sel = $('#cbatch');
+  if (sel) {
+    sel.innerHTML = '<option value="">Todos</option>' + batches.map((b) => { const n = codesState.items.filter((c) => c.batch === b).length; return `<option value="${esc(b)}">Lote ${esc(b)} (${n})</option>`; }).join('');
+    sel.value = batches.includes(codesState.batch) ? codesState.batch : '';
+    codesState.batch = sel.value;
+  }
+  renderCodes();
+}
+function codeStatus(c) {
+  const now = Date.now();
+  if (!c.active) return ['off', 'Desativado'];
+  if (c.expiresAt && c.expiresAt <= now) return ['off', 'Expirado'];
+  if (c.maxUses && c.uses >= c.maxUses) return ['warn', 'Esgotado'];
+  if (c.startsAt && c.startsAt > now) return ['info', 'Agendado'];
+  return ['on', 'Ativo'];
+}
+function filteredCodes() {
+  const q = codesState.q.trim().toLowerCase();
+  const now = Date.now();
+  return codesState.items.filter((c) => {
+    if (q && !(c.code.toLowerCase().includes(q) || c.notes.toLowerCase().includes(q) || c.key.toLowerCase().includes(q.replace(/[-\s]/g, '')))) return false;
+    if (codesState.batch && c.batch !== codesState.batch) return false;
+    const f = codesState.filter;
+    if (f === 'active') return codeStatus(c)[1] === 'Ativo';
+    if (f === 'inactive') return !c.active;
+    if (f === 'expired') return !!c.expiresAt && c.expiresAt <= now;
+    if (f === 'full') return !!c.maxUses && c.uses >= c.maxUses;
+    return true;
+  });
+}
+function renderCodes() {
+  const el = $('#clist'); if (!el) return;
+  const rows = filteredCodes();
+  if (!rows.length) { el.innerHTML = `<div class="empty"><div>🔑</div>${codesState.items.length ? 'Nenhum código com esse filtro.' : 'Nenhum código ainda. Crie o primeiro acima!'}</div>`; return; }
+  const shown = rows.slice(0, 300);
+  el.innerHTML = `${codesState.batch ? `<div class="row" style="margin-bottom:10px;gap:8px"><span class="muted small" style="flex:1 1 auto">Ações para o lote inteiro:</span>
+      <button class="btn ghost sm" style="flex:0 0 auto" data-bulk="enable">Ativar todos</button><button class="btn ghost sm" style="flex:0 0 auto" data-bulk="disable">Desativar todos</button><button class="btn danger sm" style="flex:0 0 auto" data-bulk="delete">Excluir lote</button></div>` : ''}
+    <div class="table-wrap"><table><thead><tr><th>Código</th><th class="hide-m">Prêmio</th><th>Usos</th><th class="hide-m">Expira</th><th>Status</th><th></th></tr></thead><tbody>
+    ${shown.map((c) => { const [k, l] = codeStatus(c); const pct = c.maxUses ? Math.min(100, (c.uses / c.maxUses) * 100) : 0; return `<tr>
+      <td><b class="mono">${esc(c.code)}</b> <button class="btn ghost sm icon" data-copy="${esc(c.code)}" title="Copiar">📋</button>
+        <div class="muted small">${c.challengeId ? '🎬 ' : ''}${c.batch ? 'Lote ' + esc(c.batch) + ' · ' : ''}${esc(c.notes)}</div><div class="muted small mobile-only">${esc(c.summary)}</div></td>
+      <td class="hide-m small">${esc(c.summary)}</td>
+      <td><b>${fmtN(c.uses)}</b><span class="muted">${c.maxUses ? ' / ' + fmtN(c.maxUses) : ' / ∞'}</span>${c.maxUses ? `<div class="uses-bar"><i style="width:${pct}%"></i></div>` : ''}</td>
+      <td class="hide-m small">${c.expiresAt ? fmtDate(c.expiresAt) : '—'}</td>
+      <td><span class="pill ${k}">${l}</span></td>
+      <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm icon" data-info="${esc(c.key)}" title="Detalhes">👁</button>
+        <button class="btn ghost sm icon" data-toggle="${esc(c.key)}" data-on="${c.active ? 1 : 0}" title="${c.active ? 'Desativar' : 'Ativar'}">${c.active ? 'Pausar' : 'Ativar'}</button>
+        <button class="btn danger sm icon" data-del="${esc(c.key)}" title="Excluir">🗑</button></td></tr>`; }).join('')}
+    </tbody></table></div>${rows.length > shown.length ? `<p class="muted small">Mostrando ${shown.length} de ${fmtN(rows.length)}. Use a busca ou baixe o CSV.</p>` : ''}`;
+  $$('[data-copy]', el).forEach((b) => (b.onclick = () => copy(b.dataset.copy, 'Código copiado')));
+  $$('[data-toggle]', el).forEach((b) => (b.onclick = () => busy(b, async () => { await api('PATCH', '/codes/' + encodeURIComponent(b.dataset.toggle), { active: b.dataset.on !== '1' }); toast(b.dataset.on === '1' ? 'Código desativado' : 'Código ativado'); await loadCodes(); })));
+  $$('[data-del]', el).forEach((b) => (b.onclick = async () => {
+    if (!(await ask('Excluir código?', 'O código deixa de funcionar imediatamente. Isso não pode ser desfeito.', 'Excluir', true))) return;
+    await busy(b, () => api('DELETE', '/codes/' + encodeURIComponent(b.dataset.del))); toast('Código excluído'); loadCodes();
+  }));
+  $$('[data-info]', el).forEach((b) => (b.onclick = () => openCode(b.dataset.info)));
+  $$('[data-bulk]', el).forEach((b) => (b.onclick = async () => {
+    const a = b.dataset.bulk;
+    if (a === 'delete' && !(await ask('Excluir o lote inteiro?', 'Todos os códigos deste lote deixam de funcionar.', 'Excluir lote', true))) return;
+    await busy(b, () => api('POST', '/codes/bulk', { action: a, batch: codesState.batch })); toast('Lote atualizado'); loadCodes();
+  }));
+}
+async function openCode(key) {
+  const m = modal(`<div class="modal-head"><h3>🔑 Código</h3><button class="x" data-close>✕</button></div><div id="cd">${spinner()}</div>`);
+  try {
+    const { code: c } = await api('GET', '/codes/' + encodeURIComponent(key));
+    $('#cd', m.el).innerHTML = `<div class="codebig mono" style="margin-bottom:12px">${esc(c.code)}</div>
+      <div class="pack">
+        <div class="row"><label class="field">Usos no total<input type="number" id="ecmax" min="0" value="${c.maxUses}" /></label>
+          <label class="field">Começa em<input type="datetime-local" id="ecstart" value="${toLocalInput(c.startsAt)}" /></label>
+          <label class="field">Expira em<input type="datetime-local" id="ecexp" value="${toLocalInput(c.expiresAt)}" /></label></div>
+        <label class="field">Anotações<input type="text" id="ecnotes" maxlength="200" value="${esc(c.notes)}" /></label>
+        <div id="ecpack"></div>
+        <label class="switch"><input type="checkbox" id="ecactive" ${c.active ? 'checked' : ''} /><span class="track"></span>Ativo</label>
+        <div><div class="sect-title">Últimos resgates (${fmtN(c.uses)} no total)</div>
+          ${c.recent && c.recent.length ? `<ul class="toplist">${c.recent.slice(0, 15).map((r) => `<li><span>${esc(r.n)}</span><span class="muted small">${fmtDate(r.t)}</span></li>`).join('')}</ul>` : '<span class="muted small">Ninguém usou ainda.</span>'}</div>
+      </div>
+      <div class="modal-foot"><button class="btn ghost" data-close>Fechar</button><button class="btn" id="ecsave">💾 Salvar</button></div>`;
+    $$('[data-close]', m.el).forEach((b) => b.addEventListener('click', m.close));
+    const ed = packEditor($('#ecpack', m.el), c.reward);
+    $('#ecsave', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+      if (ed.isEmpty()) throw new Error('O pacote está vazio.');
+      await api('PATCH', '/codes/' + encodeURIComponent(c.key), { maxUses: +$('#ecmax', m.el).value || 0, startsAt: fromLocalInput($('#ecstart', m.el).value), expiresAt: fromLocalInput($('#ecexp', m.el).value), notes: $('#ecnotes', m.el).value, active: $('#ecactive', m.el).checked, reward: ed.get() });
+      m.close(); toast('💾 Código salvo'); loadCodes();
+    });
+  } catch (e) { $('#cd', m.el).innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* ================= Desafios ================= */
+async function viewChallenges() {
+  const in7 = toLocalInput(Date.now() + 7 * 86400000);
+  view().innerHTML = `<div class="page-head"><div><h2>🎬 Desafios</h2><p class="muted">"Quem assistir o vídeo ganha um código." O código é criado automaticamente.</p></div></div>
+    <div class="card"><div class="card-head"><h3>✨ Novo desafio</h3></div>
+      <div class="pack">
+        <div class="grid2"><label class="field">Título<input type="text" id="xtitle" maxlength="80" placeholder="ex.: Vídeo novo no TikTok!" /></label>
+          <label class="field">Link do vídeo / post<input type="url" id="xlink" placeholder="https://www.tiktok.com/@…" /></label></div>
+        <label class="field">Descrição (aparece no jogo)<textarea id="xdesc" maxlength="600" placeholder="ex.: Assista até o final, o código aparece no fim do vídeo 👀"></textarea></label>
+        <div class="row">
+          <label class="field">Código (opcional)<input type="text" id="xcode" maxlength="40" placeholder="automático" style="text-transform:uppercase" /></label>
+          <label class="field">Usos no total<input type="number" id="xmax" min="0" placeholder="0 = ilimitado" /></label>
+          <label class="field">Começa em<input type="datetime-local" id="xstart" /></label>
+          <label class="field">Termina em<input type="datetime-local" id="xend" value="${in7}" /></label></div>
+        <div id="xpack"></div>
+        <div style="text-align:right"><button class="btn" id="xcreate">🎬 Criar desafio</button></div>
+      </div></div>
+    <h3 style="margin:22px 0 12px">📋 Seus desafios</h3><div id="xlist">${spinner()}</div>`;
+  const ed = packEditor($('#xpack'), {});
+  $('#xcreate').onclick = (e) => busy(e.currentTarget, async () => {
+    if (!$('#xtitle').value.trim()) throw new Error('Dê um título ao desafio.');
+    if (ed.isEmpty()) throw new Error('Escolha pelo menos uma recompensa.');
+    const r = await api('POST', '/challenges', { title: $('#xtitle').value, link: $('#xlink').value, description: $('#xdesc').value, code: $('#xcode').value, maxUses: +$('#xmax').value || 0, startsAt: fromLocalInput($('#xstart').value), endsAt: fromLocalInput($('#xend').value), reward: ed.get() });
+    ['#xtitle', '#xlink', '#xdesc', '#xcode', '#xmax'].forEach((s) => ($(s).value = ''));
+    showShare(r.challenge, r.shareText, true);
+    loadChallenges();
+  });
+  loadChallenges();
+}
+function showShare(ch, text, isNew) {
+  const m = modal(`<div class="modal-head"><h3>${isNew ? '🎉 Desafio criado!' : '📣 Texto para divulgar'}</h3><button class="x" data-close>✕</button></div>
+    <div style="text-align:center;margin-bottom:14px"><div class="muted small">Código do desafio</div><div class="codebig mono" style="font-size:clamp(1.2rem,6vw,2rem)">${esc(ch.code)}</div></div>
+    <div class="sect-title muted small">Texto pronto para as redes sociais:</div>
+    <textarea id="shtxt" style="min-height:210px">${esc(text)}</textarea>
+    <div class="modal-foot"><button class="btn ghost" id="shcode">📋 Copiar só o código</button><button class="btn cyan" id="shcopy">📋 Copiar texto</button></div>`);
+  $('#shcode', m.el).onclick = () => copy(ch.code, 'Código copiado');
+  $('#shcopy', m.el).onclick = () => copy($('#shtxt', m.el).value, 'Texto copiado');
+}
+async function loadChallenges() {
+  let r;
+  try { r = await api('GET', '/challenges'); } catch (e) { $('#xlist').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  if (!r.items.length) { $('#xlist').innerHTML = `<div class="card empty"><div>🎬</div>Nenhum desafio ainda. Crie um acima e divulgue nas redes!</div>`; return; }
+  const now = Date.now();
+  $('#xlist').innerHTML = `<div class="list-grid">${r.items.map((c) => {
+    const st = !c.active ? ['off', 'Desativado'] : c.endsAt && c.endsAt <= now ? ['off', 'Encerrado'] : c.startsAt && c.startsAt > now ? ['info', 'Agendado'] : ['on', 'No ar'];
+    return `<div class="card" style="margin:0"><div class="ch-card">
+      <div class="card-head" style="margin:0"><h3>${esc(c.title)}</h3><span class="pill ${st[0]}">${st[1]}</span></div>
+      ${c.description ? `<div class="muted small">${esc(c.description)}</div>` : ''}
+      ${c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener" class="small" style="word-break:break-all">🔗 ${esc(c.link)}</a>` : ''}
+      <div class="ch-meta"><span class="codebig mono">${esc(c.code)}</span><button class="btn ghost sm icon" data-copy="${esc(c.code)}">📋</button></div>
+      <div class="summary small">${packSummary(c.reward)}</div>
+      <div class="ch-meta"><span class="pill pink">✅ ${fmtN(c.uses)}${c.maxUses ? ' / ' + fmtN(c.maxUses) : ''} resgates</span>
+        <span class="muted small">${c.startsAt ? fmtDay(c.startsAt) : 'agora'} → ${c.endsAt ? fmtDay(c.endsAt) : 'sem fim'}</span></div>
+      <div class="row" style="gap:8px"><button class="btn cyan sm" data-share="${esc(c.id)}">📣 Divulgar</button>
+        <button class="btn ghost sm" data-toggle="${esc(c.id)}" data-on="${c.active ? 1 : 0}">${c.active ? 'Desativar' : 'Ativar'}</button>
+        <button class="btn danger sm" data-del="${esc(c.id)}">🗑 Excluir</button></div></div></div>`; }).join('')}</div>`;
+  const byId = Object.fromEntries(r.items.map((c) => [c.id, c]));
+  $$('#xlist [data-copy]').forEach((b) => (b.onclick = () => copy(b.dataset.copy, 'Código copiado')));
+  $$('#xlist [data-share]').forEach((b) => (b.onclick = () => showShare(byId[b.dataset.share], byId[b.dataset.share].shareText)));
+  $$('#xlist [data-toggle]').forEach((b) => (b.onclick = () => busy(b, async () => { await api('PATCH', '/challenges/' + b.dataset.toggle, { active: b.dataset.on !== '1' }); loadChallenges(); })));
+  $$('#xlist [data-del]').forEach((b) => (b.onclick = async () => {
+    if (!(await ask('Excluir desafio?', 'O desafio e o código dele serão apagados.', 'Excluir', true))) return;
+    await busy(b, () => api('DELETE', '/challenges/' + b.dataset.del)); toast('Desafio excluído'); loadChallenges();
+  }));
+}
+
+/* ================= Pacotes salvos ================= */
+async function viewPresets() {
+  view().innerHTML = `<div class="page-head"><div><h2>📦 Pacotes salvos</h2><p class="muted">Monte pacotes uma vez e reutilize em presentes, códigos e desafios.</p></div>
+    <button class="btn" onclick="openPreset()">＋ Novo pacote</button></div><div id="prlist">${spinner()}</div>`;
+  try { PRESETS = (await api('GET', '/presets')).items; } catch (e) { $('#prlist').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  if (!PRESETS.length) { $('#prlist').innerHTML = `<div class="card empty"><div>📦</div>Nenhum pacote salvo.</div>`; return; }
+  $('#prlist').innerHTML = `<div class="list-grid">${PRESETS.map((p) => `<div class="card" style="margin:0"><div class="ch-card">
+    <div class="card-head" style="margin:0"><h3>📦 ${esc(p.name)}</h3>${p.updatedAt ? '' : '<span class="pill">exemplo</span>'}</div>
+    <div class="summary small">${packSummary(p.pack)}</div>
+    ${p.pack.message ? `<div class="muted small">💬 ${esc(p.pack.message)}</div>` : ''}
+    <div class="row" style="gap:8px"><button class="btn sm" data-gift="${esc(p.id)}">🎁 Presentear</button><button class="btn ghost sm" data-edit="${esc(p.id)}">✏️ Editar</button><button class="btn danger sm" data-del="${esc(p.id)}">🗑</button></div>
+  </div></div>`).join('')}</div>`;
+  $$('#prlist [data-edit]').forEach((b) => (b.onclick = () => openPreset(PRESETS.find((p) => p.id === b.dataset.edit))));
+  $$('#prlist [data-gift]').forEach((b) => (b.onclick = () => { openGiftModal({ type: 'all' }); const sel = $('.modal-bg:last-child [data-k=preset]'); if (sel) { sel.value = b.dataset.gift; sel.dispatchEvent(new Event('change', { bubbles: true })); } }));
+  $$('#prlist [data-del]').forEach((b) => (b.onclick = async () => {
+    if (!(await ask('Excluir pacote?', 'Códigos e presentes já criados não mudam.', 'Excluir', true))) return;
+    await busy(b, () => api('DELETE', '/presets/' + b.dataset.del)); toast('Pacote excluído'); viewPresets();
+  }));
+}
+function openPreset(p) {
+  const m = modal(`<div class="modal-head"><h3>${p ? '✏️ Editar pacote' : '📦 Novo pacote'}</h3><button class="x" data-close>✕</button></div>
+    <div class="pack"><label class="field">Nome do pacote<input type="text" id="prname" maxlength="40" placeholder="ex.: Pack Lendário" value="${esc(p ? p.name : '')}" /></label><div id="prpack"></div></div>
+    <div class="modal-foot"><button class="btn ghost" data-close>Cancelar</button><button class="btn" id="prsave">💾 Salvar pacote</button></div>`);
+  const ed = packEditor($('#prpack', m.el), p ? p.pack : {}, { noPresets: true });
+  $('#prsave', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+    if (!$('#prname', m.el).value.trim()) throw new Error('Dê um nome ao pacote.');
+    if (ed.isEmpty()) throw new Error('Escolha pelo menos uma recompensa.');
+    await api('POST', '/presets', { id: p ? p.id : undefined, name: $('#prname', m.el).value, pack: ed.get() });
+    m.close(); toast('💾 Pacote salvo'); viewPresets();
+  });
+}
+
+start();
+</script>
+</body>
+</html>

@@ -14,3 +14,7 @@ android/capacitor-cordova-android-plugins/build/
 keystore.properties
 # outputs
 release/
+
+# Cloudflare Worker
+.wrangler/
+.dev.vars
