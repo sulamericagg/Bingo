@@ -57,6 +57,7 @@ const DASH: number[] = [5, 7];
 /** camadas de estrelas por starLayers (1 = só a do meio) */
 const STAR_SETS: number[][] = [[1], [0, 1], [0, 1, 2]];
 const NO_DASH: number[] = [];
+const STAR_PARALLAX = [0.04, 0.1, 0.2];
 
 interface Biome {
   top: string;
@@ -360,6 +361,16 @@ export class Game {
   private nebulas: HTMLCanvasElement[] = [];
   private farPlanets: PlanetSprite[] = [];
   private vignette!: HTMLCanvasElement;
+  /** fundo (degradê + nebulosa + planeta distante + vinheta) num canvas opaco, refeito só quando muda */
+  private bd!: HTMLCanvasElement;
+  private bdx!: CanvasRenderingContext2D;
+  private bdK = 1;
+  private bdKey = new Float64Array(6).fill(NaN);
+  /** bitmap do personagem (ver QualitySettings.heroCache) */
+  private heroC!: HTMLCanvasElement;
+  private heroX!: CanvasRenderingContext2D;
+  private heroAge = 1e9;
+  private heroPose: PlayerPose = { t: 0, blink: 0, lookX: 0, lookY: -1, sx: 1, sy: 1, mood: 'idle', lx: 0, ly: -1 };
 
   private skin: Skin = skinById(save.skin);
   private trail: Trail = trailById(save.trail);
@@ -425,6 +436,7 @@ export class Game {
   refreshCosmetics(): void {
     this.skin = skinById(save.skin);
     this.trail = trailById(save.trail);
+    this.heroAge = 1e9;
   }
 
   resize(): void {
@@ -458,6 +470,8 @@ export class Game {
     this.magnetPickSpr = buildMagnetPickup(13 * S);
     this.wellSpr = buildWellDisc(60 * S, 77);
     this.meteorSpr = buildMeteor(150 * this.dpr, 6 * this.dpr);
+    [this.heroC, this.heroX] = makeCanvas(PR * 7 * S, PR * 7 * S);
+    this.heroAge = 1e9;
     for (const p of this.planets) p.sprite = null;
     const d = this.dpr;
     this.starTiles = [
@@ -471,14 +485,20 @@ export class Game {
       const pals = PLANET_PALETTES[k];
       return buildPlanetSprite(k, pals[0], 110 * d, 900 + i, i % 2 === 0);
     });
-    const [v, vx] = makeCanvas(this.canvas.width, this.canvas.height);
     const cw = this.canvas.width;
     const ch = this.canvas.height;
-    const g = vx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.35, cw / 2, ch / 2, Math.max(cw, ch) * 0.75);
+    const k = this.bdK;
+    [this.bd, this.bdx] = makeCanvas(cw * k, ch * k);
+    this.bdKey.fill(NaN);
+    // vinheta: só um degradê, na resolução do fundo (é desenhada dentro dele)
+    const [v, vx] = makeCanvas(this.bd.width, this.bd.height);
+    const vw = v.width;
+    const vh = v.height;
+    const g = vx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.35, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
     g.addColorStop(0, 'rgba(0,0,0,0)');
     g.addColorStop(1, 'rgba(0,0,10,0.55)');
     vx.fillStyle = g;
-    vx.fillRect(0, 0, cw, ch);
+    vx.fillRect(0, 0, vw, vh);
     this.vignette = v;
     // meia resolução: é só um degradê, desenhado esticado
     this.edgeRed = buildEdgeTint(cw / 2, ch / 2, '#ff1f3d');
@@ -1713,61 +1733,15 @@ export class Game {
     /* ---- fundo ---- */
     const bi = Math.floor(this.bgPhase);
     const bf = this.bgPhase - bi;
-    const b0 = BIOMES[bi % BIOMES.length];
-    const b1 = BIOMES[(bi + 1) % BIOMES.length];
-    const g = x.createLinearGradient(0, 0, 0, ch);
-    g.addColorStop(0, mixHex(b0.top, b1.top, bf));
-    g.addColorStop(1, mixHex(b0.bot, b1.bot, bf));
-    x.fillStyle = g;
-    x.fillRect(0, 0, cw, ch);
-
     const camPx = this.camY * this.scale * d;
-    // nebulosa: padrão vertical contínuo (duas nuvens por período, que se sobrepõem)
-    const nebSize = Math.max(cw, ch) * 1.1;
-    if (this.q.nebula) {
-      x.globalCompositeOperation = 'lighter';
-      const period = nebSize * 1.6;
-      const base = (((-camPx * 0.08) % period) + period) % period;
-      for (let k = 0; k < 2; k++) {
-        const alpha = k === 0 ? 1 - bf : bf;
-        if (alpha <= 0.01) continue;
-        const neb = this.nebulas[(bi + k) % BIOMES.length];
-        x.globalAlpha = alpha;
-        for (let ps = base - period; ps < ch; ps += period) {
-          if (ps + nebSize > 0 && ps < ch) x.drawImage(neb, cw / 2 - nebSize * 0.6, ps, nebSize, nebSize);
-          const py2 = ps + nebSize * 0.8;
-          if (py2 + nebSize > 0 && py2 < ch) x.drawImage(neb, cw / 2 - nebSize * 0.35, py2, nebSize, nebSize);
-        }
-      }
-      x.globalAlpha = 1;
-      x.globalCompositeOperation = 'source-over';
-    }
-
-    // planeta distante decorativo (troca de bioma em fade cruzado, sem "pulo")
-    if (this.q.farPlanet) {
-      const span = ch * 2.2;
-      for (let k = 0; k < 2; k++) {
-        const fa = 0.55 * (k === 0 ? 1 - bf : bf);
-        const far = this.farPlanets[(bi + k) % BIOMES.length];
-        if (!far || fa <= 0.01) continue;
-        const fy = (((-camPx * 0.05) % span) + span) % span - far.size;
-        x.globalAlpha = fa;
-        const fx = cw * 0.78;
-        x.drawImage(far.atmo, fx - far.atmo.width / 2, fy - far.atmo.height / 2);
-        if (far.ringBack) x.drawImage(far.ringBack, fx - far.ringBack.width / 2, fy - far.ringBack.height / 2);
-        x.drawImage(far.surface, fx - far.size / 2, fy - far.size / 2);
-        x.drawImage(far.light, fx - far.size / 2, fy - far.size / 2);
-        if (far.ringFront) x.drawImage(far.ringFront, fx - far.ringFront.width / 2, fy - far.ringFront.height / 2);
-      }
-      x.globalAlpha = 1;
-    }
+    this.drawBackdrop(bi, bf, camPx, cw, ch);
+    x.drawImage(this.bd, 0, 0, cw, ch);
 
     // estrelas parallax
-    const factors = [0.04, 0.1, 0.2];
     for (const i of STAR_SETS[this.q.starLayers - 1]) {
       const tile = this.starTiles[i];
       const ts = tile.width;
-      const off = ((-camPx * factors[i]) % ts + ts) % ts;
+      const off = ((-camPx * STAR_PARALLAX[i]) % ts + ts) % ts;
       x.globalAlpha = i === 2 ? 0.75 + 0.25 * Math.sin(this.time * 2) : 1;
       for (let ty = off - ts; ty < ch; ty += ts) for (let tx = 0; tx < cw; tx += ts) x.drawImage(tile, tx, ty);
     }
@@ -1945,7 +1919,6 @@ export class Game {
 
     /* ---- pós ---- */
     x.setTransform(1, 0, 0, 1, 0, 0);
-    if (this.q.vignette) x.drawImage(this.vignette, 0, 0);
     if (this.race && !this.race.ended) this.drawGhostMarkers(x);
     if (this.warn > 0) {
       // bordas vermelhas pulsando quando um asteroide se aproxima
@@ -1959,6 +1932,85 @@ export class Game {
       x.fillStyle = this.flashColor;
       x.fillRect(0, 0, cw, ch);
       x.globalAlpha = 1;
+    }
+  }
+
+  /**
+   * Fundo lento (degradê do bioma, nebulosa, planeta distante e vinheta) num canvas opaco.
+   * Só é redesenhado quando algo muda (nebulosa em passos de 2 px, planeta distante de 1 px):
+   * ~10-20 vezes/s jogando em vez de 60, e no menu/pausa quase nunca. Por frame fica uma
+   * única cópia opaca de tela cheia no lugar de 3-6 passadas com transparência/aditivo.
+   */
+  private drawBackdrop(bi: number, bf: number, camPx: number, cw: number, ch: number): void {
+    const k = this.bdK;
+    const nebSize = Math.max(cw, ch) * 1.1;
+    const period = nebSize * 1.6;
+    const nebOff = Math.round(((((-camPx * 0.08) % period) + period) % period) / 2) * 2;
+    const span = ch * 2.2;
+    const farOff = Math.round((((-camPx * 0.05) % span) + span) % span);
+    const q = this.q;
+    const key = this.bdKey;
+    const k0 = bi;
+    const k1 = Math.round(bf * 96);
+    const k2 = q.nebula ? Math.round(nebOff * k) : -1;
+    const k3 = q.farPlanet ? Math.round(farOff * k) : -1;
+    const k4 = (q.vignette ? 1 : 0) + (q.nebula ? 2 : 0) + (q.farPlanet ? 4 : 0);
+    if (key[0] === k0 && key[1] === k1 && key[2] === k2 && key[3] === k3 && key[4] === k4) return;
+    key[0] = k0;
+    key[1] = k1;
+    key[2] = k2;
+    key[3] = k3;
+    key[4] = k4;
+    const x = this.bdx;
+    x.setTransform(k, 0, 0, k, 0, 0);
+    x.globalAlpha = 1;
+    x.globalCompositeOperation = 'source-over';
+    const b0 = BIOMES[bi % BIOMES.length];
+    const b1 = BIOMES[(bi + 1) % BIOMES.length];
+    const g = x.createLinearGradient(0, 0, 0, ch);
+    g.addColorStop(0, mixHex(b0.top, b1.top, bf));
+    g.addColorStop(1, mixHex(b0.bot, b1.bot, bf));
+    x.fillStyle = g;
+    x.fillRect(0, 0, cw, ch);
+
+    // nebulosa: padrão vertical contínuo (duas nuvens por período, que se sobrepõem)
+    if (q.nebula) {
+      x.globalCompositeOperation = 'lighter';
+      for (let j = 0; j < 2; j++) {
+        const alpha = j === 0 ? 1 - bf : bf;
+        if (alpha <= 0.01) continue;
+        const neb = this.nebulas[(bi + j) % BIOMES.length];
+        x.globalAlpha = alpha;
+        for (let ps = nebOff - period; ps < ch; ps += period) {
+          if (ps + nebSize > 0 && ps < ch) x.drawImage(neb, cw / 2 - nebSize * 0.6, ps, nebSize, nebSize);
+          const py2 = ps + nebSize * 0.8;
+          if (py2 + nebSize > 0 && py2 < ch) x.drawImage(neb, cw / 2 - nebSize * 0.35, py2, nebSize, nebSize);
+        }
+      }
+      x.globalAlpha = 1;
+      x.globalCompositeOperation = 'source-over';
+    }
+
+    // planeta distante decorativo (troca de bioma em fade cruzado, sem "pulo")
+    if (q.farPlanet) {
+      for (let j = 0; j < 2; j++) {
+        const fa = 0.55 * (j === 0 ? 1 - bf : bf);
+        const far = this.farPlanets[(bi + j) % BIOMES.length];
+        if (!far || fa <= 0.01) continue;
+        const fy = farOff - far.size;
+        x.globalAlpha = fa;
+        const fx = cw * 0.78;
+        x.drawImage(far.atmo, fx - far.atmo.width / 2, fy - far.atmo.height / 2);
+        if (far.ringBack) x.drawImage(far.ringBack, fx - far.ringBack.width / 2, fy - far.ringBack.height / 2);
+        x.drawImage(far.surface, fx - far.size / 2, fy - far.size / 2);
+        x.drawImage(far.light, fx - far.size / 2, fy - far.size / 2);
+        if (far.ringFront) x.drawImage(far.ringFront, fx - far.ringFront.width / 2, fy - far.ringFront.height / 2);
+      }
+      x.globalAlpha = 1;
+    }
+    if (q.vignette) {
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      x.drawImage(this.vignette, 0, 0);
     }
   }
 
@@ -2199,22 +2251,40 @@ export class Game {
     }
     const cos = Math.cos(-rot);
     const sin = Math.sin(-rot);
-    const pose: PlayerPose = {
-      t: this.time,
-      blink: this.blink,
-      lookX,
-      lookY,
-      sx: this.sx,
-      sy: this.sy,
-      mood: this.pState === 'dead' ? 'dead' : this.pState === 'fly' ? 'fly' : this.happyT > 0 ? 'happy' : 'idle',
-      lx: LIGHT.x * cos - LIGHT.y * sin,
-      ly: LIGHT.x * sin + LIGHT.y * cos,
-    };
+    const pose = this.heroPose;
+    pose.t = this.time;
+    pose.blink = this.blink;
+    pose.lookX = lookX;
+    pose.lookY = lookY;
+    pose.mood = this.pState === 'dead' ? 'dead' : this.pState === 'fly' ? 'fly' : this.happyT > 0 ? 'happy' : 'idle';
+    pose.lx = LIGHT.x * cos - LIGHT.y * sin;
+    pose.ly = LIGHT.x * sin + LIGHT.y * cos;
     x.save();
     x.translate(this.px, this.py);
     x.rotate(rot);
     if (this.inv > 0 && Math.floor(this.time * 12) % 2 === 0) x.globalAlpha = 0.6;
-    drawPlayer(x, this.skin, PR, pose);
+    const every = this.q.heroCache;
+    if (every > 0) {
+      // aparelhos fracos: o vetor do personagem (corpo, material, padrão, rosto, peças)
+      // vai para um bitmap redesenhado a cada `every` frames; squash/giro seguem suaves.
+      if (++this.heroAge >= every) {
+        this.heroAge = 0;
+        const hc = this.heroC;
+        const hx = this.heroX;
+        hx.setTransform(1, 0, 0, 1, 0, 0);
+        hx.clearRect(0, 0, hc.width, hc.height);
+        hx.setTransform(this.S, 0, 0, this.S, hc.width / 2, hc.height / 2);
+        pose.sx = pose.sy = 1;
+        drawPlayer(hx, this.skin, PR, pose);
+      }
+      const hw = this.heroC.width / this.S;
+      x.scale(this.sx, this.sy);
+      x.drawImage(this.heroC, -hw / 2, -hw / 2, hw, hw);
+    } else {
+      pose.sx = this.sx;
+      pose.sy = this.sy;
+      drawPlayer(x, this.skin, PR, pose);
+    }
     x.restore();
     x.globalAlpha = 1;
     if (this.shield && this.pState !== 'dead') {

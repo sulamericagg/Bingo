@@ -426,11 +426,26 @@ button {
   max-width: 460px;
   align-self: center;
 }
+/* 7 blocos: 4 em cima + 3 embaixo (grade de 12 colunas). Único lugar com regras da fileira. */
 .menu-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-top: 18px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.menu-row > .tile {
+  grid-column: span 3;
+  min-width: 0;
+}
+.menu-row > .tile:nth-child(n + 5) {
+  grid-column: span 4;
+  flex-direction: row;
+  justify-content: center;
+  gap: 8px;
+}
+.menu-row > .tile:nth-child(n + 5) .tile-ico.plate {
+  width: 36px;
+  height: 36px;
 }
 .tile {
   position: relative;
@@ -3020,4 +3035,39 @@ button {
 }
 .quality-row select option {
   color: #1a0b3a;
+}
+
+/* menu em telas baixas: fileira de 7 blocos mais compacta para caber acima do banner */
+@media (max-height: 760px) {
+  .menu-row .tile {
+    padding: 6px 2px 5px;
+    gap: 3px;
+  }
+  .menu-row .tile-ico.plate {
+    width: 40px;
+    height: 40px;
+  }
+  .menu-row > .tile:nth-child(n + 5) {
+    padding: 5px 4px;
+  }
+  .menu-row > .tile:nth-child(n + 5) .tile-ico.plate {
+    width: 32px;
+    height: 32px;
+  }
+  #menu .btn-play {
+    padding: 13px;
+    font-size: 30px;
+  }
+  #menu .offer {
+    padding: 7px 12px;
+    margin-bottom: 10px;
+  }
+}
+@media (max-height: 600px) {
+  .menu-bottom {
+    margin-bottom: 12px;
+  }
+  .logo-small {
+    display: none;
+  }
 }
