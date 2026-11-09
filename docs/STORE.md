@@ -85,7 +85,7 @@ Descrição sugerida para cada produto na Play Console: copie a coluna "O que en
 
 | ID do produto | Plano base | Nome na loja | Renovação | Preço sugerido | O que entrega |
 |---|---|---|---|---|---|
-| `clube_bloop` | `mensal` | Clube Bloop | Mensal (automática) | R$ 19,90/mês | Passe Estelar Premium e Passe da Casa Premium de todo mês inclusos + zero anúncios (banner e intersticial) enquanto ativo + 300 gemas por mês + 15 gemas por dia (resgatar no Passe) + moldura de perfil exclusiva |
+| `clube_bloop` | `mensal` | Clube Bloop | Mensal (automática) | R$ 19,90/mês | Os 3 passes premium do mês inclusos (Estelar, Casa e Musical) + zero anúncios (banner e intersticial) enquanto ativo + 300 gemas por mês + 15 gemas por dia (resgatar no Passe) + moldura de perfil exclusiva |
 
 O app confere a assinatura a cada abertura (`getPurchases` SUBS, `isActive`/`expirationDate`). Sem a data, vale 3 dias e é reconferida. Na versão web o botão avisa "Assinatura disponível no app Android". Configuração e regras: `CLUB` em `src/config.ts`; detalhes do passe em `docs/PASSE.md`.
 

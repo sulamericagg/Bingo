@@ -10,12 +10,21 @@ import { registerPanel } from '../hub/registry';
 import { t } from '../i18n';
 import { claimableCount, currentTheme, startPass } from './state';
 import { homeClaimableCount, startHomePass } from './home/state';
+import { musicClaimableCount, startMusicPass } from './mstate';
+
+export { ownedMusicItems, ownsMusicItem } from './mstate';
+export { drawEquippedAura, triggerDance, equipAura, equipDance } from './equip';
 
 export { currentTheme, runXp, isPremium, passLevel } from './state';
 
 /** Abre a tela do passe (aba opcional: 'rewards' | 'weekly' | 'history' | 'club'). */
-export function openPass(tab?: 'rewards' | 'weekly' | 'history' | 'club', which?: 'star' | 'home'): void {
+export function openPass(tab?: 'rewards' | 'weekly' | 'history' | 'club', which?: 'star' | 'home' | 'music'): void {
   import('./ui').then((m) => m.openPassUI(tab, which));
+}
+
+/** Abre direto no Passe Musical (botão no Bloop Banda). */
+export function openMusicPass(tab?: 'rewards' | 'weekly' | 'history' | 'club'): void {
+  openPass(tab, 'music');
 }
 
 /** Abre direto no Passe da Casa (botão no construtor da casa). */
@@ -44,6 +53,7 @@ export function registerPass(): void {
   done = true;
   startPass();
   startHomePass();
+  startMusicPass();
   registerPanel({
     id: 'pass',
     get label() {
@@ -52,11 +62,11 @@ export function registerPass(): void {
     icon: 'star',
     navOrder: 20,
     open: () => openPass(),
-    badge: () => claimableCount() + homeClaimableCount(),
+    badge: () => claimableCount() + homeClaimableCount() + musicClaimableCount(),
   });
   // pop-up da temporada (1x por temporada) e "últimos 3 dias" — depois da abertura
   setTimeout(() => import('./announce').then((m) => m.maybeAnnounce()), 2500);
-  bus.on('pass-open', (tab?: 'rewards' | 'weekly' | 'history' | 'club', which?: 'star' | 'home') => openPass(tab, which));
+  bus.on('pass-open', (tab?: 'rewards' | 'weekly' | 'history' | 'club', which?: 'star' | 'home' | 'music') => openPass(tab, which));
 }
 
 void currentTheme;

@@ -10,7 +10,7 @@
 - Cartelas de 10 níveis. Premium nível 1 = bichinho comum (bem fofo); níveis 20/30/40 = médio/raro/épico; nível 50 = lendário, o "rei" da temporada. Toda cartela tem bichinho + itens variados.
 - Trilha grátis: nível 1 para todos (olhos nas temporadas pares, música nas ímpares), dancinha grátis no nível 25, 20 gemas a cada 10 níveis, moedas e ingressos nos níveis pares.
 - Recompensas do passe são exclusivas: nunca vendidas. Ao trocar de temporada o nível zera; os itens ficam. A aba Histórico mostra o que foi ganho e o que foi perdido.
-- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura `clube_bloop`, plano `mensal`, R$ 19,90/mês): Passe Estelar e Passe da Casa de todo mês inclusos, zero anúncios, 300 gemas/mês + 15/dia, moldura exclusiva.
+- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura `clube_bloop`, plano `mensal`, R$ 19,90/mês): os 3 passes do mês inclusos (Estelar, Casa e Musical), zero anúncios, 300 gemas/mês + 15/dia, moldura exclusiva.
 - Tempo sem anúncios: 3 vídeos premiados = 30 min sem intersticial/banner, acumula até 2h.
 - Teste: `?debug&season=NN` força a temporada (0..59); `&daysleft=2` simula o fim; `&announce` / `&announce=end` força o pop-up.
 
@@ -146,7 +146,7 @@
 
 Segundo passe mensal (mesmo calendário e temas). 50 níveis, trilha grátis + premium, tudo exclusivo (nunca vendido) para a casa e o planeta: móveis, tintas especiais (purpurina, degradê, estampa, animada), papéis de parede, pisos, tapetes, luminárias, quadros, enfeites de planeta, portas, telhados, janelas, cercas, jardins, kits de cômodo completos, kits de festa (bolo temático + torta melequenta com cor de respingo especial) e skins de ferramentas de limpeza.
 
-- Premium: **800 gemas** (pular nível: 120). Combo **"Passes do Mês"** (Estelar + Casa): **1450 gemas** (economiza 300). O **Clube Bloop inclui os dois**. Premium da casa também tira os anúncios na temporada. Devolve 600 gemas ao longo da trilha.
+- Premium: **800 gemas** (pular nível: 120). Combo **"Passes do Mês"** (Estelar + Casa + Musical): **1950 gemas** (economiza 600; só aparece se nenhum premium do mês foi comprado). O **Clube Bloop inclui os três**. Premium da casa também tira os anúncios na temporada. Devolve 600 gemas ao longo da trilha.
 - Cartelas de 10 com destaque no fim de cada uma: 10 = tinta animada · 20 = kit de cômodo completo (inclui os móveis da temporada) · 30 = monumento de planeta animado · 40 = kit de festa · **50 = peça-mestra** (sala completa / estátua animada / aquário gigante / fonte mágica / árvore gigante / carrossel). Premium nível 1 = móvel temático. Grátis: tinta no nível 1 para todos, jardim (15), ferramenta de limpeza (25), papel de parede (35), gemas a cada 10, moedas nos pares.
 - XP da casa (eventos do bus, teto diário 2500 XP): `home-build` +40, `home-paint` +30, `home-clean` +25, `party-host` +300, `party-join` +150, `home-visit-help` +120; + 40% do XP de cada partida (`run-end`). 5 desafios semanais da casa (1.500–2.500 XP; giram por semana ISO).
 - Payloads: `home-build {item?}`, `home-paint {room?}`, `home-clean {count?}` (conta por sujeira), `party-host {guests?}`, `party-join {hostId?}`, `home-visit-help {kind?}`. Emitidos pelo passe: `hpass`, `hpass-xp`, `home-item-grant {id, item}`.
@@ -221,3 +221,78 @@ Segundo passe mensal (mesmo calendário e temas). 50 níveis, trilha grátis + p
 | 58 | Parque de Diversões | Fonte Mágica de Carrossel | Kit Sala Parque de Diversões | Escrivaninha de Roda-gigante |
 | 59 | Lendas do Universo | Árvore Gigante de Supernova | Kit Banheiro Lendas do Universo | Cadeira de Galáxia |
 | 60 | Aniversário de 5 Anos | Carrossel de Vela | Kit Salão de Festa Aniversário de 5 Anos | Vaso de Bolo |
+
+# Passe Musical
+
+Terceiro passe mensal (Bloop Banda). Conteúdo gerado em `src/pass/music/index.ts` (agente "canções"): músicas originais do tema (1 grátis + 2 premium + a MEGA no nível 50), auras animadas, danças, skins de instrumento, pistas de notas e variante de palco. Estado/tela: `src/pass/mstate.ts` + aba "Musical" na tela dos passes.
+
+- Premium: **800 gemas** (pular nível: 120). Entra no combo "Passes do Mês" e no Clube Bloop.
+- XP: cada partida do Bloop Banda (`run-end` com `game: 'band'`) dá +120 (+80 se vencer) + 40% do XP de qualquer partida. 5 desafios semanais musicais (músicas tocadas, batalhas vencidas, `stats.notes`, `stats.perfects`, danças no menu, partidas).
+- Save: `save.mpass` (progresso), `save.musicItems` (ids ganhos), `save.equip` {aura, dance}.
+- **Equipar:** auras e danças ganhas (ou do kit inicial grátis) têm botão "Equipar" na tela do passe. A aura aparece atrás do Bloop na vitrine do hub (`src/hub/orbit-def.ts`) e no Orbit (`src/game/game.ts`, fora dos aparelhos fracos); tocar no Bloop da vitrine faz a dança equipada (`showcase-tap` → `triggerDance()`, emite `dance-play`). Hooks: `drawEquippedAura`, `triggerDance`, `danceFrameNow`/`drawDanceFxNow` (`src/pass/equip.ts`).
+- **Bloop Banda:** `ownedMusicItems()` / `ownsMusicItem(id)` (exportados de `src/pass/register.ts`) — músicas (`sNN-k`, `sNN-mega`), skins (`instSkin(id)`, `highwaySkin(id)`), palcos (`stageVariant(id)`). Abrir direto: `openMusicPass()`.
+
+| # | Tema musical | MEGA (nível 50) | Banda |
+|---|---|---|---|
+| 1 | Pop Natalino Estelar | Sinos na Via Láctea | Coral Bloopinho Estelar |
+| 2 | Eletrônica da Virada | Contagem Regressiva Infinita | DJ Meia-Noite e os Confetes |
+| 3 | Samba Estelar | Sambódromo de Saturno | Unidos da Órbita Feliz |
+| 4 | Reggae da Selva | Cipó Balança Devagarinho | Tucanos do Sol Nascente |
+| 5 | K-pop de Confeitaria | Brigadeiro Supernova | Esquadrão Açúcar Bloop |
+| 6 | Lo-fi Submarino | Bolhas de Coral às Três da Tarde | Pérola Sonolenta |
+| 7 | Forró Espacial | Arrasta-Pé na Lua Cheia | Trio Fogueira Cósmica |
+| 8 | Synthwave Robótico | Engrenagem do Coração | Robôs de Néon |
+| 9 | Rock Jurássico | O Rugido do T-Rex Elétrico | Os Fósseis Barulhentos |
+| 10 | Punk Pirata | Abordagem no Cinturão de Asteroides | Capitã Âncora e os Marujos Rápidos |
+| 11 | Metal Assombrado | A Abóbora que Ninguém Domou | Caldeirão Uivante |
+| 12 | Orquestra do Gelo | Sinfonia do Iglu Gigante | Orquestra Aurora Polar |
+| 13 | Metal Pesado I | Escamas de Fogo e Trovão | Dragões de Ferro Fofo |
+| 14 | Rock de Arena I | Mil Lanternas no Estádio | Os Microfones Voadores |
+| 15 | Punk Radical | Manobra Impossível | Skate Cometa |
+| 16 | Chiptune 8-bit I | Fase Bônus Infinita | Os Cartuchos Saltitantes |
+| 17 | Orquestral Encantado | O Feitiço da Torre Mais Alta | Filarmônica da Varinha |
+| 18 | Axé Lunar | Pula-Pula na Cratera | Banda Leãozinho Lunar |
+| 19 | Eletrônica Neon | Avenida de Hologramas | Pixel Prisma e Neon Kid |
+| 20 | Pop das Fadas | Asinhas de Orvalho | As Fadinhas Faísca |
+| 21 | Groove Secreto | Código Secreto no Salão | Agência Groove Zero-Zero |
+| 22 | Metal Vulcânico | Erupção Total | Magma Moleque |
+| 23 | Batidão do Circo | Malabarismo no Batidão | MC Trapézio e a Lona Louca |
+| 24 | Rock dos Samurais | Lâmina de Luz Estelar | Samurais do Riff |
+| 25 | Reggae Tropical | Rede Entre Dois Coqueiros | Conchinha Raiz |
+| 26 | Chiptune Maluco | Explosão no Tubo de Ensaio | Doutor Bolha e os Bits Malucos |
+| 27 | Pop Arco-íris | Escudo de Sete Cores | Cavaleiros do Refrão |
+| 28 | Sertanejo Espacial | Ferradura de Cometa | Dupla Pôr do Sol e Poeira |
+| 29 | Orquestra do Olimpo | Pégaso Sobre o Olimpo | Coro das Constelações |
+| 30 | Rock de Herói | Supersalto Final | Liga dos Capas Elétricas |
+| 31 | Funk na Cozinha | Panqueca na Gravidade Zero | MC Cupcake Cósmico |
+| 32 | K-pop Cristal | Coração de Ametista | Quinteto Geodo |
+| 33 | Lo-fi do Pijama | Cobertor de Estrelinhas | Pantufas Lo-fi Clube |
+| 34 | Synthwave Ninja | Sombra no Telhado de Néon | Ninja Cassete |
+| 35 | Groove Gelatina | Tremelique Universal | Pudim Groove Orquestra |
+| 36 | Metal das Pirâmides | Maldição do Escaravelho Dourado | Esfinge Trovejante |
+| 37 | Eletrônica do Futuro | Portal do Amanhã | Ampulheta Digital |
+| 38 | Chiptune Brinquedo | Ioiô Hiperveloz | Bloquinhos de Oito Bits |
+| 39 | Lo-fi Outonal | Folhas Caindo na Janela | Esquilo Sonolento |
+| 40 | Eletrônica Abissal | Luz no Fundo do Abismo | Água-Viva Eletrônica |
+| 41 | Axé da Torcida | Gol de Bicicleta Espacial | Torcida Trio Estelar |
+| 42 | Rock a Vapor | Caldeira a Todo Vapor | Os Engrenados |
+| 43 | K-pop das Lanternas | Lanterna Vermelha no Céu | Brilho Lunar Turma |
+| 44 | Pop Gelado | Escorregando no Gelo | Pinguins de Gravata |
+| 45 | Chiptune Alienígena | Disco Voador de Pelúcia | Os Antenas Fofas |
+| 46 | Forró dos Insetos | Xote do Vagalume | Besouro do Triângulo |
+| 47 | Orquestra Real | Coroação nas Estrelas | Real Orquestra Galáctica |
+| 48 | Metal das Profundezas | O Polvo Gigante Acordou | Tentáculos de Aço |
+| 49 | Punk Turbo | Volta Mais Rápida do Universo | Os Pneus Faiscantes |
+| 50 | Lo-fi nas Nuvens | Cochilo em Cima da Nuvem | Algodão Celeste |
+| 51 | Groove Detetive | A Pista Está Quente | Detetive Lupa Clube |
+| 52 | Reggae dos Cogumelos | Chapéu de Cogumelo | Esporos Positivos |
+| 53 | Samba Olímpico | Medalha de Ouro no Pandeiro | Acadêmicos da Gravidade |
+| 54 | Batidão das Poções | Poção do Passinho | MC Caldeirinho |
+| 55 | Metal Robótico | Punho de Titânio | Colossos de Lata |
+| 56 | Synthwave das Miragens | Oásis de Pixels | Duna Cromada |
+| 57 | Eletrônica Boreal | Cortina de Luz Polar | Boreal Bloop |
+| 58 | Axé do Parque | Montanha-Russa do Axé | Carrossel Elétrico |
+| 59 | Rock de Arena II | Lenda de Cem Galáxias | Supernova Rock Clube |
+| 60 | Festa de Todos os Estilos | Cinco Anos de Bagunça Estelar | Todo Mundo Bloop |
+
+Verificação do conteúdo musical (nada se repete em 5 anos): ok.

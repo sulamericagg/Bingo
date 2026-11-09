@@ -130,7 +130,14 @@ export const PASS = {
   /** Passe da Casa (premium separado) e combo "Passes do Mês" (os dois, com desconto) */
   homePriceGems: 800,
   homeSkipGems: 120,
-  bundlePriceGems: 1450,
+  /** combo "Passes do Mês": Estelar + Casa + Musical (950 + 800 + 800 = 2.550) */
+  bundlePriceGems: 1950,
+  /** Passe Musical */
+  musicPriceGems: 800,
+  musicSkipGems: 120,
+  musicRunShare: 0.4,
+  /** bônus por partida do Bloop Banda (game 'band'): base + vitória */
+  bandXp: { base: 120, win: 80 },
   /** XP do Passe da Casa: parte do XP de partidas + atividades da casa (teto diário) */
   homeRunShare: 0.4,
   homeXp: { 'home-build': 40, 'home-paint': 30, 'home-clean': 25, 'party-host': 300, 'party-join': 150, 'home-visit-help': 120 } as Record<string, number>,

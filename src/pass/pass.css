@@ -227,3 +227,13 @@
 .pp-hero.home { box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-b) 60%, transparent), 0 10px 30px rgba(0, 0, 0, 0.45); }
 .pp-buy.bundle { background: linear-gradient(180deg, #8affc0, #2fd47a); box-shadow: 0 4px 0 #168a4a, 0 0 18px rgba(62, 224, 122, 0.45); color: #053a17 !important; }
 .pp-buy span small { display: block; font-size: 12px; font-weight: 700; opacity: 0.85; }
+
+/* Passe Musical: prévias */
+.pv-music { border-radius: 12px; display: grid; place-items: center; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.pv-music.song { border-radius: 50%; animation: pp-spin 6s linear infinite; }
+.pv-music.hw { border-radius: 8px; transform: perspective(60px) rotateX(18deg); }
+.pp-band { color: var(--s-b); }
+.pp-play.on { background: color-mix(in srgb, var(--s-b) 45%, transparent); }
+.pp-seg-b { font-size: 13px; padding: 9px 4px; }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pv-music.song { animation: none; } }

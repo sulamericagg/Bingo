@@ -30,7 +30,7 @@ L.push(`- XP: toda partida de qualquer minigame (\`bus 'run-end'\`: ${PASS.runXp
 L.push('- Cartelas de 10 níveis. Premium nível 1 = bichinho comum (bem fofo); níveis 20/30/40 = médio/raro/épico; nível 50 = lendário, o "rei" da temporada. Toda cartela tem bichinho + itens variados.');
 L.push('- Trilha grátis: nível 1 para todos (olhos nas temporadas pares, música nas ímpares), dancinha grátis no nível 25, 20 gemas a cada 10 níveis, moedas e ingressos nos níveis pares.');
 L.push('- Recompensas do passe são exclusivas: nunca vendidas. Ao trocar de temporada o nível zera; os itens ficam. A aba Histórico mostra o que foi ganho e o que foi perdido.');
-L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): Passe Estelar e Passe da Casa de todo mês inclusos, zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
+L.push(`- Quem tem o Premium da temporada não vê intersticial/banner até o fim dela. **Clube Bloop** (assinatura \`${CLUB.productId}\`, plano \`${CLUB.basePlan}\`, ${CLUB.fallbackPrice}): os 3 passes do mês inclusos (Estelar, Casa e Musical), zero anúncios, ${CLUB.gemsOnRenew} gemas/mês + ${CLUB.gemsDaily}/dia, moldura exclusiva.`);
 L.push(`- Tempo sem anúncios: ${AD_FREE.videos} vídeos premiados = ${AD_FREE.minutes} min sem intersticial/banner, acumula até ${AD_FREE.maxMinutes / 60}h.`);
 L.push('- Teste: `?debug&season=NN` força a temporada (0..59); `&daysleft=2` simula o fim; `&announce` / `&announce=end` força o pop-up.', '');
 L.push('## As 60 temporadas', '');
@@ -57,7 +57,7 @@ const hc = await bundle('src/pass/home/catalog.ts', 'home.mjs');
 const CAT = { furniture: 'Móvel', paint: 'Tinta', wallpaper: 'Papel de parede', floor: 'Piso', rug: 'Tapete', lamp: 'Luminária', wallart: 'Quadro/parede', planet: 'Enfeite de planeta', door: 'Porta', roof: 'Telhado', window: 'Janela', fence: 'Cerca', garden: 'Jardim', roomkit: 'Kit de cômodo', party: 'Festa', cleaning: 'Ferramenta de limpeza', showpiece: 'Peça-mestra' };
 L.push('', '# Passe da Casa', '');
 L.push(`Segundo passe mensal (mesmo calendário e temas). ${PASS.levels} níveis, trilha grátis + premium, tudo exclusivo (nunca vendido) para a casa e o planeta: móveis, tintas especiais (purpurina, degradê, estampa, animada), papéis de parede, pisos, tapetes, luminárias, quadros, enfeites de planeta, portas, telhados, janelas, cercas, jardins, kits de cômodo completos, kits de festa (bolo temático + torta melequenta com cor de respingo especial) e skins de ferramentas de limpeza.`, '');
-L.push(`- Premium: **${PASS.homePriceGems} gemas** (pular nível: ${PASS.homeSkipGems}). Combo **"Passes do Mês"** (Estelar + Casa): **${PASS.bundlePriceGems} gemas** (economiza ${PASS.priceGems + PASS.homePriceGems - PASS.bundlePriceGems}). O **Clube Bloop inclui os dois**. Premium da casa também tira os anúncios na temporada. Devolve 600 gemas ao longo da trilha.`);
+L.push(`- Premium: **${PASS.homePriceGems} gemas** (pular nível: ${PASS.homeSkipGems}). Combo **"Passes do Mês"** (Estelar + Casa + Musical): **${PASS.bundlePriceGems} gemas** (economiza ${PASS.priceGems + PASS.homePriceGems + PASS.musicPriceGems - PASS.bundlePriceGems}; só aparece se nenhum premium do mês foi comprado). O **Clube Bloop inclui os três**. Premium da casa também tira os anúncios na temporada. Devolve 600 gemas ao longo da trilha.`);
 L.push('- Cartelas de 10 com destaque no fim de cada uma: 10 = tinta animada · 20 = kit de cômodo completo (inclui os móveis da temporada) · 30 = monumento de planeta animado · 40 = kit de festa · **50 = peça-mestra** (sala completa / estátua animada / aquário gigante / fonte mágica / árvore gigante / carrossel). Premium nível 1 = móvel temático. Grátis: tinta no nível 1 para todos, jardim (15), ferramenta de limpeza (25), papel de parede (35), gemas a cada 10, moedas nos pares.');
 L.push(`- XP da casa (eventos do bus, teto diário ${PASS.homeDailyCap} XP): ${Object.entries(PASS.homeXp).map(([k, v]) => `\`${k}\` +${v}`).join(', ')}; + ${Math.round(PASS.homeRunShare * 100)}% do XP de cada partida (\`run-end\`). 5 desafios semanais da casa (1.500–2.500 XP; giram por semana ISO).`);
 L.push('- Payloads: `home-build {item?}`, `home-paint {room?}`, `home-clean {count?}` (conta por sujeira), `party-host {guests?}`, `party-join {hostId?}`, `home-visit-help {kind?}`. Emitidos pelo passe: `hpass`, `hpass-xp`, `home-item-grant {id, item}`.');
@@ -74,5 +74,22 @@ for (const s of SEASONS) {
   const lv = hc.homePassSeason(s.index).levels;
   L.push(`| ${s.index + 1} | ${s.theme} | ${lv[49].prem.name} | ${lv[19].prem.name} | ${lv[0].prem.name} |`);
 }
+// ---------------- Passe Musical ----------------
+const mp = await bundle('src/pass/music/index.ts', 'music.mjs');
+const smd = await bundle('src/music/season-music-data.ts', 'smd.mjs');
+L.push('', '# Passe Musical', '');
+L.push(`Terceiro passe mensal (Bloop Banda). Conteúdo gerado em \`src/pass/music/index.ts\` (agente "canções"): músicas originais do tema (1 grátis + 2 premium + a MEGA no nível 50), auras animadas, danças, skins de instrumento, pistas de notas e variante de palco. Estado/tela: \`src/pass/mstate.ts\` + aba "Musical" na tela dos passes.`, '');
+L.push(`- Premium: **${PASS.musicPriceGems} gemas** (pular nível: ${PASS.musicSkipGems}). Entra no combo "Passes do Mês" e no Clube Bloop.`);
+L.push(`- XP: cada partida do Bloop Banda (\`run-end\` com \`game: 'band'\`) dá +${PASS.bandXp.base} (+${PASS.bandXp.win} se vencer) + ${Math.round(PASS.musicRunShare * 100)}% do XP de qualquer partida. 5 desafios semanais musicais (músicas tocadas, batalhas vencidas, \`stats.notes\`, \`stats.perfects\`, danças no menu, partidas).`);
+L.push('- Save: `save.mpass` (progresso), `save.musicItems` (ids ganhos), `save.equip` {aura, dance}.');
+L.push('- **Equipar:** auras e danças ganhas (ou do kit inicial grátis) têm botão "Equipar" na tela do passe. A aura aparece atrás do Bloop na vitrine do hub (`src/hub/orbit-def.ts`) e no Orbit (`src/game/game.ts`, fora dos aparelhos fracos); tocar no Bloop da vitrine faz a dança equipada (`showcase-tap` → `triggerDance()`, emite `dance-play`). Hooks: `drawEquippedAura`, `triggerDance`, `danceFrameNow`/`drawDanceFxNow` (`src/pass/equip.ts`).');
+L.push('- **Bloop Banda:** `ownedMusicItems()` / `ownsMusicItem(id)` (exportados de `src/pass/register.ts`) — músicas (`sNN-k`, `sNN-mega`), skins (`instSkin(id)`, `highwaySkin(id)`), palcos (`stageVariant(id)`). Abrir direto: `openMusicPass()`.', '');
+L.push('| # | Tema musical | MEGA (nível 50) | Banda |', '|---|---|---|---|');
+for (let i = 0; i < 60; i++) {
+  const tx = smd.seasonMusicText(i);
+  L.push(`| ${i + 1} | ${tx.theme} | ${tx.megaTitle} | ${tx.megaBand} |`);
+}
+const errs = mp.verifyMusicPass();
+L.push('', `Verificação do conteúdo musical (nada se repete em 5 anos): ${errs.length ? errs.length + ' problemas' : 'ok'}.`);
 writeFileSync('docs/PASSE.md', L.join('\n') + '\n');
 console.log('docs/PASSE.md ok', creatures ? '(com nomes reais das criaturas)' : '(nomes provisórios: catálogo de criaturas ainda ausente)');

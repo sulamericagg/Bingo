@@ -61,6 +61,12 @@ export interface SaveData {
   hpass: PassSave;
   /** Itens exclusivos do Passe da Casa ganhos (ids 'hSS_cat_n'), para o construtor da casa. */
   homeItems: string[];
+  /** Passe Musical (src/pass/mstate.ts) — mesma forma dos outros passes. */
+  mpass: PassSave;
+  /** Itens do Passe Musical ganhos (músicas, auras, danças, skins de instrumento/pista, palcos). */
+  musicItems: string[];
+  /** Aura e dança equipadas ('' = nenhuma). Aura aparece atrás do Bloop; dança vira emote. */
+  equip: { aura: string; dance: string };
   /** Bichinhos colecionáveis obtidos (ids 'sNN-raridade', ver creatures/catalog.ts). */
   creatures: string[];
   /** Bichinhos ainda não vistos na Coleção (badge). */
@@ -204,6 +210,9 @@ const defaults = (): SaveData => ({
   adFree: { until: 0, videos: 0 },
   hpass: defaultPass(),
   homeItems: [],
+  mpass: defaultPass(),
+  musicItems: [],
+  equip: { aura: '', dance: '' },
   creatures: [],
   creaturesNew: [],
   companion: '',
@@ -241,6 +250,10 @@ function load(): SaveData {
       m.hpass = { ...defaultPass(), ...(o && o.hpass) };
       m.hpass.cur = { ...emptyPassSeason(), ...m.hpass.cur };
       m.homeItems = Array.isArray(o?.homeItems) ? o.homeItems : [];
+      m.mpass = { ...defaultPass(), ...(o && o.mpass) };
+      m.mpass.cur = { ...emptyPassSeason(), ...m.mpass.cur };
+      m.musicItems = Array.isArray(o?.musicItems) ? o.musicItems : [];
+      m.equip = { aura: '', dance: '', ...(o && o.equip) };
       m.creatures = Array.isArray(o?.creatures) ? o.creatures : [];
       m.creaturesNew = Array.isArray(o?.creaturesNew) ? o.creaturesNew : [];
       if (typeof m.companion !== 'string') m.companion = '';
