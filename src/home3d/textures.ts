@@ -6,7 +6,9 @@ import * as THREE from 'three';
 import { gameFont } from '../i18n/font';
 import { MESS_COLORS, parsePaintSpec, type MessKind } from './adapter';
 
-export const INK = '#2a0b5c';
+import { INK, canvas, shade } from '../3d/common/tex';
+
+export { INK, canvas, shade };
 const texCache = new Map<string, THREE.Texture>();
 const owned = new Set<THREE.Texture>();
 
@@ -18,28 +20,6 @@ export function disposeTextures(): void {
   for (const t of owned) t.dispose();
   owned.clear();
   texCache.clear();
-}
-export function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  return [c, c.getContext('2d')!];
-}
-export function shade(hex: string, t: number): string {
-  const n = parseInt(hex.slice(1, 7), 16);
-  let r = (n >> 16) & 255,
-    g = (n >> 8) & 255,
-    b = n & 255;
-  if (t > 0) {
-    r += (255 - r) * t;
-    g += (255 - g) * t;
-    b += (255 - b) * t;
-  } else {
-    r *= 1 + t;
-    g *= 1 + t;
-    b *= 1 + t;
-  }
-  return '#' + ((1 << 24) | (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)).toString(16).slice(1);
 }
 function rng(seed: number): () => number {
   let a = seed >>> 0;

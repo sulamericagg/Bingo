@@ -17,30 +17,9 @@ import { buildModel, disposeModels, type ModelParts } from './models';
 import { blobTexture, canvas, disposeTextures, drawWallpaper, floorTexture, paintFill, splatTexture, track } from './textures';
 import type { MessItem3D, RoomItem3D } from './types';
 
-/* ---------------- qualidade ---------------- */
-export interface Q3 {
-  tier: Tier;
-  pr: number;
-  shadows: boolean;
-  standard: boolean;
-  maxBodies: number;
-  seg: number;
-  pointLight: boolean;
-  particles: number;
-}
-export function q3For(tier: Tier): Q3 {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  switch (tier) {
-    case 0:
-      return { tier, pr: Math.min(dpr, 0.6), shadows: false, standard: false, maxBodies: 6, seg: 1, pointLight: false, particles: 0.35 };
-    case 1:
-      return { tier, pr: Math.min(dpr, 0.8), shadows: false, standard: false, maxBodies: 10, seg: 1, pointLight: false, particles: 0.6 };
-    case 2:
-      return { tier, pr: Math.min(dpr, 1.0), shadows: false, standard: true, maxBodies: 16, seg: 2, pointLight: true, particles: 0.85 };
-    default:
-      return { tier, pr: Math.min(dpr, 1.5), shadows: true, standard: true, maxBodies: 24, seg: 2, pointLight: true, particles: 1 };
-  }
-}
+/* ---------------- qualidade (compartilhada: src/3d/common/quality.ts) ---------------- */
+import { q3For, type Q3 } from '../3d/common/quality';
+export { q3For, type Q3 };
 
 /* ---------------- grupos de colisão ---------------- */
 export const G = { STATIC: 1, ITEM: 2, PLAYER: 4, FOOD: 8, DEBRIS: 16, BOT: 32 };
