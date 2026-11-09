@@ -66,6 +66,8 @@ const SB = new THREE.Vector3(1, 1, 1);
 const RAY = new THREE.Ray();
 const BOX = new THREE.Box3();
 const HIT = new THREE.Vector3();
+const TV = new THREE.Vector3();
+const AIMP = new THREE.Vector3();
 
 ICON.knife = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l9-9"/><path d="M13 11l6-7c2 3 1 6-2 9l-2 1z"/></svg>';
 ICON.spray = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="7" height="12" rx="3"/><path d="M8 9V6h5l3-2"/><path d="M18 8h.01M20 11h.01M18 13h.01"/></svg>';
@@ -673,23 +675,77 @@ class KitchenFps implements Renderer {
     const h = this.held();
     if (!h || !this.me) return;
     if (!this.sim.o.client) this.me.hold = null;
-    const sp = 3 + power * 8;
-    this.launch(h, sp, 1 + power * 1.6, !!this.sim.o.client, this.me.id);
+    this.throwVel(power, TV);
+    const l = this.spawnHeld(h, !!this.sim.o.client, this.me.id);
+    l.body.velocity.set(TV.x, TV.y, TV.z);
     this.hand?.play('throw');
     sfx.whoosh();
     if (power > 0.7) this.shake = Math.max(this.shake, 0.2);
   }
-  /** cria o corpo físico de um item saindo da mão */
-  private launch(it: Item, speed: number, up: number, local: boolean, by = 0): void {
+  /** ponto de saída do arremesso (na mão) */
+  private handPoint(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(0.12, -0.14, -0.4).applyMatrix4(this.camera.matrixWorld);
+  }
+  /**
+   * Velocidade do arremesso. Mira assistida (diversão > precisão): se a mira aponta para uma
+   * estação ou um colega (até ~9 m), calcula a parábola que cai lá; a força deixa o arco mais reto.
+   */
+  private throwVel(power: number, out: THREE.Vector3): boolean {
     const cam = this.camera;
     cam.getWorldDirection(FWD);
-    V.set(0.12, -0.14, -0.4).applyMatrix4(cam.matrixWorld);
-    // não nasce dentro da bancada
-    const l = this.addLoose(it, V.x, Math.max(V.y, 0.2), V.z, local, by);
-    l.body.velocity.set(FWD.x * speed + this.vx, FWD.y * speed + up, FWD.z * speed + this.vz);
+    const S0 = this.handPoint(V2);
+    RAY.origin.copy(cam.position);
+    RAY.direction.copy(FWD);
+    let best = 9;
+    let found = false;
+    const s = this.sim;
+    for (const st of s.st) {
+      if (!st.fx && !st.fy) continue;
+      BOX.min.set(st.x * T, 0, st.y * T);
+      BOX.max.set((st.x + 1) * T, H + 0.5, (st.y + 1) * T);
+      if (RAY.intersectBox(BOX, HIT)) {
+        const d = HIT.distanceTo(RAY.origin);
+        if (d < best) {
+          best = d;
+          found = true;
+          AIMP.set((st.x + 0.5) * T, restY(st) + 0.12, (st.y + 0.5) * T);
+        }
+      }
+    }
+    for (const p of s.players) {
+      if (p === this.me) continue;
+      V.set(p.x * T, 0.85, p.y * T);
+      const along = (V.x - RAY.origin.x) * FWD.x + (V.y - RAY.origin.y) * FWD.y + (V.z - RAY.origin.z) * FWD.z;
+      if (along > 0.5 && along < best && RAY.distanceSqToPoint(V) < 0.3) {
+        best = along;
+        found = true;
+        AIMP.copy(V);
+      }
+    }
+    const g = this.world.gravity;
+    if (found && power < 0.97) {
+      const dist = AIMP.distanceTo(S0);
+      const tf = Math.max(0.28, Math.min(1.15, dist / (3.2 + power * 6)));
+      out.set((AIMP.x - S0.x) / tf - 0.5 * g.x * tf, (AIMP.y - S0.y) / tf - 0.5 * g.y * tf, (AIMP.z - S0.z) / tf - 0.5 * g.z * tf);
+      return true;
+    }
+    const sp = 3 + power * 8;
+    out.set(FWD.x * sp + this.vx, FWD.y * sp + 1 + power * 1.6, FWD.z * sp + this.vz);
+    return false;
+  }
+  /** solta o que está na mão com corpo físico (velocidade definida por quem chama) */
+  private spawnHeld(it: Item, local: boolean, by: number): Loose {
+    const S0 = this.handPoint(V);
+    const l = this.addLoose(it, S0.x, Math.max(S0.y, 0.2), S0.z, local, by);
     l.body.angularVelocity.set((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9);
     if (local) this.pendingThrow = 2.5;
-    else this.sim.dropAt(it, V.x / T, V.z / T);
+    else this.sim.dropAt(it, S0.x / T, S0.z / T);
+    return l;
+  }
+  private launch(it: Item, speed: number, up: number, local: boolean, by = 0): void {
+    this.camera.getWorldDirection(FWD);
+    const l = this.spawnHeld(it, local, by);
+    l.body.velocity.set(FWD.x * speed + this.vx, FWD.y * speed + up, FWD.z * speed + this.vz);
   }
   private addLoose(it: Item, x: number, y: number, z: number, local: boolean, by: number): Loose {
     const old = this.loose.get(it);
@@ -1377,13 +1433,11 @@ class KitchenFps implements Renderer {
   }
   /** arco do arremesso: bolinhas + anel onde vai cair */
   private arc(power: number): void {
-    const cam = this.camera;
-    cam.getWorldDirection(FWD);
-    V.set(0.12, -0.14, -0.4).applyMatrix4(cam.matrixWorld);
-    const sp = 3 + power * 8;
-    let vx = FWD.x * sp + this.vx;
-    let vy = FWD.y * sp + 1 + power * 1.6;
-    let vz = FWD.z * sp + this.vz;
+    const assisted = this.throwVel(power, TV);
+    this.handPoint(V);
+    let vx = TV.x;
+    let vy = TV.y;
+    let vz = TV.z;
     const g = this.world.gravity;
     let x = V.x;
     let y = V.y;
@@ -1404,7 +1458,7 @@ class KitchenFps implements Renderer {
       if (y <= floorY || (st && !st.fx && !st.fy && y < H + 0.6)) {
         this.landRing.visible = true;
         this.landRing.position.set(x, Math.max(floorY, 0) + 0.02, z);
-        (this.landRing.material as THREE.MeshBasicMaterial).color.set(st && (st.fx || st.fy) ? '#7dff9a' : '#ff5c7a');
+        (this.landRing.material as THREE.MeshBasicMaterial).color.set(assisted || (st && (st.fx || st.fy)) ? '#7dff9a' : '#ff5c7a');
         break;
       }
       if (i % 2 === 0) {
