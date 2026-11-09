@@ -25,6 +25,7 @@ import { registerPet } from './pet/register';
 import { petCoinBonus } from './pet/state';
 import { registerTubo } from './games/tubo/register';
 import { registerRally } from './games/rally/register';
+import { registerTycoon } from './games/tycoon/register';
 import { registerPass } from './pass/register';
 
 async function boot(): Promise<void> {
@@ -52,7 +53,7 @@ async function boot(): Promise<void> {
   // bônus de moedas do bichinho para minigames que leem window.petCoinBonus(coins) -> moedas extras
   (window as any).petCoinBonus = (coins: number) => Math.round(coins * petCoinBonus());
   registerRally();
-  // registerTycoon();
+  registerTycoon();
   registerPet();
   // registerCreatures();
   // registerSocial();
