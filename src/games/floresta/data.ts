@@ -128,9 +128,9 @@ export const planerMult = (lvl: number): number => 1 + lvl * 0.3;
 export const beltSpeed = (lvl: number): number => 1.6 + lvl * 0.45; // m/s
 export const sawTime = (lvl: number): number => Math.max(0.18, 1.1 / (1 + lvl * 0.35));
 /** segundos até o toco virar muda */
-export const replantDelay = (nursery: number, planters: number): number => Math.max(1.5, 14 / (1 + nursery * 0.4 + planters * 0.5));
+export const replantDelay = (nursery: number, planters: number): number => Math.max(1.5, 9 / (1 + nursery * 0.4 + planters * 0.5));
 /** segundos para a muda crescer */
-export const growTime = (nursery: number): number => Math.max(8, 40 / (1 + nursery * 0.25));
+export const growTime = (nursery: number): number => Math.max(8, 28 / (1 + nursery * 0.25));
 
 export type HelperId = 'bots' | 'drones' | 'planters';
 export const HELPERS: { id: HelperId; name: () => string; desc: () => string; base: number; growth: number; max: number }[] = [

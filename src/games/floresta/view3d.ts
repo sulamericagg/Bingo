@@ -264,7 +264,7 @@ class View3D implements View {
       path.position.set(x0 + len / 2, 0.02, 0);
       this.scene.add(path);
       // arbustos e flores nas bordas do corredor
-      const bush = this.mat(B.night ? '#7a6ad0' : '#4fae5a');
+      const bush = this.mat(B.id === 'bosque' || B.id === 'pinheiral' || B.id === 'tropical' ? '#4fae5a' : B.mid);
       for (let i = 0; i < len / 5; i++) {
         const m = new THREE.Mesh(this.geo('sphere'), i % 4 === 0 ? this.mat(B.night ? '#ff86b6' : '#ffd34a') : bush);
         const s = i % 4 === 0 ? 0.25 : 0.6 + ((i * 13) % 5) * 0.12;

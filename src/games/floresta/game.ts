@@ -109,6 +109,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
         const m = await import('./view3d');
         if (this.destroyed) return;
         this.sim.mode3d = true;
+        this.sim.me.yaw = Math.PI / 2;
         this.is3d = true;
         this.view = await m.createView3D(this.wrap, this.sim, this.gov.tier);
       } catch (e) {
