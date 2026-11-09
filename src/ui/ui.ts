@@ -37,6 +37,7 @@ import { priceOf, restore, type Granted } from '../services/billing';
 import { shareScore } from '../services/share';
 import { celebrate, celebrating } from './celebrate';
 import { $, $$, COIN, GEM, clock, countUp, esc, fmt, msToMidnight } from './dom';
+import { TIER_LABELS, type QualityMode } from '../core/quality';
 import { hydrateIcons, icon, type IconName } from './icons';
 import { OnlineUI, bindOnlineBadges } from './online-ui';
 import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
@@ -204,6 +205,7 @@ export class UI {
   /* ============================== bindings ============================== */
 
   private bind(): void {
+    this.bindQuality();
     const canvas = this.game.canvas;
     const press = (e: Event) => {
       e.preventDefault();
@@ -288,11 +290,10 @@ export class UI {
 
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.onchange = () => {
-        const k = inp.dataset.setting as 'sound' | 'music' | 'haptics' | 'lowFx';
+        const k = inp.dataset.setting as 'sound' | 'music' | 'haptics';
         save[k] = inp.checked;
         persist();
         audio.applySettings();
-        if (k === 'lowFx') this.game.setLowFx(inp.checked);
         if (k === 'haptics' && inp.checked) haptics.tap('medium');
       };
     });
@@ -823,7 +824,20 @@ export class UI {
     });
   }
 
+  private bindQuality(): void {
+    const sel = $<HTMLSelectElement>('#sel-quality');
+    sel.onchange = () => {
+      const v = sel.value;
+      this.game.setQuality(v === 'auto' ? 'auto' : (Number(v) as QualityMode));
+      this.renderSettings();
+    };
+    bus.on('quality', () => this.renderSettings());
+  }
+
   private renderSettings(): void {
+    const sel = $<HTMLSelectElement>('#sel-quality');
+    sel.value = String(this.game.quality.mode);
+    sel.options[0].textContent = `Auto (${TIER_LABELS[this.game.quality.tier]})`;
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.checked = !!save[inp.dataset.setting as 'sound'];
     });

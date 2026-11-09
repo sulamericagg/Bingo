@@ -180,7 +180,16 @@
           <label class="toggle"><span><span class="plate round sm plate-cyan" data-icon="sound"></span>Efeitos sonoros</span><input type="checkbox" data-setting="sound" /><i></i></label>
           <label class="toggle"><span><span class="plate round sm plate-pink" data-icon="music"></span>Música</span><input type="checkbox" data-setting="music" /><i></i></label>
           <label class="toggle"><span><span class="plate round sm plate-violet" data-icon="vibration"></span>Vibração</span><input type="checkbox" data-setting="haptics" /><i></i></label>
-          <label class="toggle"><span><span class="plate round sm plate-gold" data-icon="bolt"></span>Modo economia (celular fraco)</span><input type="checkbox" data-setting="lowFx" /><i></i></label>
+          <div class="toggle quality-row">
+            <span><span class="plate round sm plate-gold" data-icon="bolt"></span>Gráficos</span>
+            <select id="sel-quality" aria-label="Qualidade gráfica">
+              <option value="auto">Auto</option>
+              <option value="3">Alto</option>
+              <option value="2">Médio</option>
+              <option value="1">Baixo</option>
+              <option value="0">Mínimo</option>
+            </select>
+          </div>
           <div class="row settings-row">
             <button class="btn btn-ghost" data-open="redeem"><span data-icon="ticket"></span> Resgatar código</button>
             <button class="btn btn-ghost" data-open="credits"><span data-icon="heart"></span> Créditos</button>

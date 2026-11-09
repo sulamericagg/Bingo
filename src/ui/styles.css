@@ -3009,3 +3009,15 @@ button {
 #toast {
   z-index: 60;
 }
+
+.quality-row select {
+  font: 600 15px Fredoka, system-ui, sans-serif;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+.quality-row select option {
+  color: #1a0b3a;
+}
