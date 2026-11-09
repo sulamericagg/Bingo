@@ -41,6 +41,10 @@ export interface Body {
   /** 0 = madeira/leve (flutua), 1 = pesado */
   heavy: number;
   wet: number;
+  /** base no início do passo (colisão varrida com plataformas finas) */
+  py: number;
+  /** encostou em algo por baixo neste passo */
+  rest: boolean;
 }
 
 export interface Ladder {
@@ -75,6 +79,8 @@ export interface Pickup {
 
 export const GROUND_Y = 0;
 export const GRAV_BODY = 1500;
+/** velocidade máxima dos corpos (px/s) */
+const MAX_FALL = 720;
 
 export class World {
   W = 1600;
@@ -111,7 +117,7 @@ export class World {
   private body(x: number, y: number, w: number, h: number, kind: BodyKind, color: string, color2 = color, heavy = 1): number {
     if (this.bodies.length >= this.maxBodies) return -1;
     const id = this.bodies.length;
-    this.bodies.push({ id, x, y, w, h, vx: 0, vy: 0, kind, color, color2, awake: false, still: 0, tip: 0, tipT: 0, ang: 0, va: 0, alive: true, check: Math.random() * 0.3, heavy, wet: 0 });
+    this.bodies.push({ id, x, y, w, h, vx: 0, vy: 0, kind, color, color2, awake: false, still: 0, tip: 0, tipT: 0, ang: 0, va: 0, alive: true, check: Math.random() * 0.3, heavy, wet: 0, py: y + h, rest: false });
     return id;
   }
 
@@ -175,12 +181,13 @@ export class World {
       bag[j] = tmp;
     }
     let x = 70;
+    let free = 0; // fim da última construção (casas/torres não nascem sobrepostas)
     const slot = (this.W - 140) / Math.max(1, bag.length);
     for (const k of bag) {
-      const jitter = r() * slot * 0.25;
-      if (k === 'h') this.house(r, x + jitter, r() < 0.35 ? 2 : 1);
-      else if (k === 't') this.tower(r, x + jitter, 3 + Math.floor(r() * 3));
-      else this.tree(r, x + jitter + 40);
+      const at = Math.max(x + r() * slot * 0.25, free);
+      if (k === 'h') free = at + 12 + this.house(r, at, r() < 0.35 ? 2 : 1);
+      else if (k === 't') free = at + 12 + this.tower(r, at, 3 + Math.floor(r() * 3));
+      else this.tree(r, at + 40);
       x += slot;
     }
     // plataformas flutuantes (andaimes/nuvens)
@@ -190,7 +197,15 @@ export class World {
       this.solid(fx, fy, 70 + r() * 40, 10, 'plat', true);
     }
     // caixas soltas
-    for (let i = 0; i < m.crates; i++) this.body(60 + r() * (this.W - 120), GROUND_Y - 26, 26, 26, 'crate', '#c98a4a', '#8a5a2a', 0);
+    // (sem nascer dentro de paredes/torres: antes uma caixa podia surgir sobreposta e "explodir" ao acordar)
+    for (let i = 0; i < m.crates; i++) {
+      for (let k = 0; k < 10; k++) {
+        const cx = 60 + r() * (this.W - 120);
+        if (k < 9 && this.bodies.some((o) => cx + 26 > o.x - 2 && cx < o.x + o.w + 2 && o.y + o.h > GROUND_Y - 30)) continue;
+        this.body(cx, GROUND_Y - 26, 26, 26, 'crate', '#c98a4a', '#8a5a2a', 0);
+        break;
+      }
+    }
     // power-up de pulo duplo
     this.pickups.push({ x: 100 + r() * (this.W - 200), y: -40, taken: false });
     if (sc.difficulty >= 3) this.pickups.push({ x: 100 + r() * (this.W - 200), y: -40, taken: false });
@@ -369,7 +384,12 @@ export class World {
         b.vy *= 1 - Math.min(1, 2.5 * dt);
         if (fluidPush !== 0 && Math.abs(b.x - fluidFront) < 260) b.vx += fluidPush * dt * 2.5;
       }
-      if (b.vy > 900) b.vy = 900;
+      // velocidade terminal: no máx. ~12 px por subpasso de 1/60 s (lajes têm 12 px: sem atravessar)
+      if (b.vy > MAX_FALL) b.vy = MAX_FALL;
+      else if (b.vy < -MAX_FALL) b.vy = -MAX_FALL;
+      if (b.vx > MAX_FALL) b.vx = MAX_FALL;
+      else if (b.vx < -MAX_FALL) b.vx = -MAX_FALL;
+      b.py = b.y + b.h;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.ang += b.va * dt;
@@ -378,14 +398,25 @@ export class World {
       else if (b.ang < -0.5) b.ang = -0.5;
       if (b.x < -150) b.x = -150;
       if (b.x > this.W + 150) b.x = this.W + 150;
+      b.rest = false;
       this.collideStatic(b);
       for (let j = 0; j < bs.length; j++) if (j !== i) this.collideBodies(b, bs[j]);
-      const sp = Math.abs(b.vx) + Math.abs(b.vy);
-      if (sp < 20 && sub === 0) {
+      // apoiado: a inclinação (só visual) volta a zero — a colisão é sempre da caixa reta,
+      // então um bloco "torto" parado parecia flutuar/afundar
+      if (b.rest) {
+        const k = Math.min(1, 6 * dt);
+        b.ang -= b.ang * k;
+        b.va -= b.va * k;
+      }
+      // dormir: limiar independente do passo (a gravidade de um passo não conta como movimento)
+      const sp = Math.abs(b.vx) + Math.abs(b.vy) - GRAV_BODY * dt;
+      if (sp < 20 && sub === 0 && Math.abs(b.ang) < 0.08) {
         b.still += dt;
         if (b.still > 0.4) {
           b.awake = false;
           b.vx = b.vy = 0;
+          b.va = 0;
+          b.ang = 0;
           b.still = 0;
         }
       } else b.still = 0;
@@ -402,7 +433,8 @@ export class World {
     }
     for (let i = 0; i < this.bodies.length; i++) {
       const o = this.bodies[i];
-      if (o === b || !o.alive || o.tip) continue;
+      // escada não segura nada (antes o chapéu da torre ficava flutuando preso na escada)
+      if (o === b || !o.alive || o.tip || o.kind === 'ladder') continue;
       if (Math.abs(o.y - bottom) < 3) {
         const ov = Math.min(b.x + b.w, o.x + o.w) - Math.max(b.x, o.x);
         if (ov > Math.min(b.w, o.w) * 0.2) return true;
@@ -414,12 +446,20 @@ export class World {
   private collideStatic(b: Body): void {
     for (let i = 0; i < this.solids.length; i++) {
       const s = this.solids[i];
-      if (b.x + b.w <= s.x || b.x >= s.x + s.w || b.y + b.h <= s.y || b.y >= s.y + s.h) continue;
+      if (b.x + b.w <= s.x || b.x >= s.x + s.w) continue;
       if (s.oneWay) {
-        if (b.vy >= 0 && b.y + b.h - b.vy * 0.02 <= s.y + 6) {
+        // varrido: a base cruzou o topo da plataforma neste passo (não depende do fps)
+        if (b.vy >= 0 && b.py <= s.y + 2 && b.y + b.h >= s.y) {
           b.y = s.y - b.h;
           this.land(b);
         }
+        continue;
+      }
+      if (b.y + b.h <= s.y || b.y >= s.y + s.h) continue;
+      if (b.py <= s.y + 2) {
+        // vinha de cima: sempre resolve para cima (nunca "afunda" e sai por baixo/lado)
+        b.y = s.y - b.h;
+        this.land(b);
         continue;
       }
       const dx1 = b.x + b.w - s.x;
@@ -444,14 +484,15 @@ export class World {
   }
 
   private land(b: Body): void {
+    b.rest = true;
     if (b.vy > 0) b.vy = b.vy > 300 ? -b.vy * 0.15 : 0;
     b.vx *= 0.82;
     b.va += b.vx * 0.002;
-    b.ang *= 0.8;
   }
 
   private collideBodies(b: Body, o: Body): void {
-    if (!o.alive || o.kind === 'ladder' || b.kind === 'ladder') return;
+    // corpo tombando é só animação (gira em volta do canto): sua caixa reta não empurra ninguém
+    if (!o.alive || o.kind === 'ladder' || b.kind === 'ladder' || o.tip) return;
     if (b.x + b.w <= o.x || b.x >= o.x + o.w || b.y + b.h <= o.y || b.y >= o.y + o.h) return;
     const dx1 = b.x + b.w - o.x;
     const dx2 = o.x + o.w - b.x;
@@ -463,18 +504,29 @@ export class World {
     if (!o.awake && !o.tip && impact > 260) this.push(o, b.vx * 0.5, Math.min(0, b.vy * 0.2));
     const oMove = o.awake ? 0.5 : 0;
     if (my <= mx) {
+      // vertical: quem está EM CIMA sai da sobreposição (empurrar o de baixo para baixo
+      // enterrava pilhas no chão e as fazia tremer sem nunca dormir)
       if (dy1 < dy2) {
-        b.y -= my * (1 - oMove);
-        if (oMove) o.y += my * oMove;
-        if (b.vy > o.vy) {
-          const v = (b.vy + o.vy) * 0.5;
-          b.vy = o.awake ? v : 0;
-          if (o.awake) o.vy = v;
-        }
+        b.y -= my;
+        b.rest = true;
+        // apoio: o de cima não desce mais rápido que o de baixo (sem passar velocidade para
+        // baixo — antes a média "bombeava" a pilha e ela tremia acordada para sempre)
+        const lim = o.awake ? Math.max(0, o.vy) : 0;
+        if (b.vy > lim) b.vy = lim;
         b.vx *= 0.85;
+      } else if (o.awake && !o.tip) {
+        o.y -= my;
+        o.rest = true;
+        const lim = Math.max(0, b.vy);
+        if (o.vy > lim) o.vy = lim;
+      } else if (b.rest) {
+        // b já está apoiado (chão/plataforma): quem sai é o de cima — antes b era empurrado
+        // para dentro do chão e ficava "brigando" com ele para sempre (parede tombada enterrada)
+        o.y -= my;
+        this.wake(o);
+        if (o.vy > 0) o.vy = 0;
       } else {
-        b.y += my * (1 - oMove);
-        if (oMove) o.y -= my * oMove;
+        b.y += my;
         if (b.vy < 0) b.vy = 0;
       }
     } else {
