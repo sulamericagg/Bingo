@@ -309,7 +309,7 @@ export default {
   "over.best": "Rekord:",
   "over.challenge": "Duell",
   "over.coinsCollected": "Gesammelte Münzen",
-  "over.doubleN": "Münzen verdoppeln +{n}",
+  "over.doubleN": "Münzen x2 +{n}",
   "over.doubled": "Münzen verdoppelt!",
   "over.doubler": "2x-Verdoppler",
   "over.gems": "Edelsteine",
