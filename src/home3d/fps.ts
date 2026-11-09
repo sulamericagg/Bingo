@@ -32,6 +32,10 @@ const SPEED = 2.7;
 const UP = new THREE.Vector3(0, 1, 0);
 const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
+const AIM_M = new THREE.Matrix4();
+const AIM_R = new THREE.Ray();
+const AIM_B = new THREE.Box3();
+const AIM_P = new THREE.Vector3();
 
 export class Fps {
   yaw = 0;
@@ -180,6 +184,32 @@ export class Fps {
       }
     }
     if (tg.type === 'mate') tg.type = 'none';
+    // mira assistida: caixa do móvel inteira conta (pernas finas, vãos de cadeira)
+    if (tg.type === 'none' || tg.type === 'wall') {
+      const ray = this.ray.ray;
+      let best: ItemRec | null = null,
+        bd = Math.min(tg.dist, 2.6);
+      for (const it of this.eng.items) {
+        if (it.info.flat || it.info.wall || it === this.held?.item || !it.obj.visible) continue;
+        if (it.obj.position.distanceToSquared(this.eng.camera.position) > 12) continue;
+        AIM_M.copy(it.obj.matrixWorld).invert();
+        AIM_R.copy(ray).applyMatrix4(AIM_M);
+        AIM_B.min.set(-it.dims.w / 2, 0, -it.dims.d / 2);
+        AIM_B.max.set(it.dims.w / 2, it.dims.h, it.dims.d / 2);
+        if (AIM_R.intersectBox(AIM_B, AIM_P)) {
+          AIM_P.applyMatrix4(it.obj.matrixWorld);
+          const d = AIM_P.distanceTo(ray.origin);
+          if (d < bd) (bd = d), (best = it);
+        }
+      }
+      if (best) {
+        tg.type = 'item';
+        tg.item = best;
+        tg.wall = undefined;
+        tg.dist = bd;
+        tg.point.copy(ray.origin).addScaledVector(ray.direction, bd);
+      }
+    }
   }
 
   /* ---------------- botões ---------------- */
@@ -315,8 +345,8 @@ export class Fps {
   private holdPos(out: THREE.Vector3, it?: ItemRec): THREE.Vector3 {
     const cam = this.eng.camera;
     const dist = it ? 0.7 + Math.max(it.dims.w, it.dims.d) * 0.6 : 0.45;
-    cam.getWorldDirection(V);
-    out.copy(cam.position).addScaledVector(V, dist);
+    cam.getWorldDirection(AIM_P);
+    out.copy(cam.position).addScaledVector(AIM_P, dist);
     if (it) out.y = Math.max(0.05, Math.min(out.y - it.dims.h * 0.35, 1.9 - it.dims.h));
     else out.addScaledVector(UP, -0.12);
     return out;
