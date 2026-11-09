@@ -227,8 +227,22 @@ function load(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = defaults();
-      const o = JSON.parse(raw);
+      let o = JSON.parse(raw);
+      if (!o || typeof o !== 'object' || Array.isArray(o)) o = {};
       const m = { ...d, ...o } as SaveData;
+      // campos corrompidos não podem derrubar o save inteiro (antes: exceção → save zerado)
+      const mm = m as unknown as Record<string, unknown>;
+      const dd = d as unknown as Record<string, unknown>;
+      for (const k of Object.keys(dd)) {
+        const dv = dd[k];
+        const v = mm[k];
+        if (typeof dv === 'number' && (typeof v !== 'number' || !Number.isFinite(v))) mm[k] = dv;
+        else if (typeof dv === 'boolean' && typeof v !== 'boolean') mm[k] = dv;
+        else if (Array.isArray(dv) && !Array.isArray(v)) mm[k] = dv;
+        else if (dv && typeof dv === 'object' && !Array.isArray(dv) && (!v || typeof v !== 'object' || Array.isArray(v))) mm[k] = dv;
+      }
+      if (m.coins < 0) m.coins = 0;
+      if (m.gems < 0) m.gems = 0;
       // objetos aninhados: mescla para manter compatibilidade com saves antigos
       m.upgrades = { ...d.upgrades, ...(o && o.upgrades) };
       m.boosts = { ...d.boosts, ...(o && o.boosts) };
@@ -262,7 +276,13 @@ function load(): SaveData {
       return m;
     }
   } catch {
-    /* storage indisponível */
+    // JSON ilegível: guarda uma cópia antes que o próximo persist sobrescreva
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) localStorage.setItem(KEY + '-corrupt', raw.slice(0, 200000));
+    } catch {
+      /* storage indisponível */
+    }
   }
   return defaults();
 }
@@ -274,12 +294,31 @@ export function persist(): void {
   if (pending) return;
   pending = window.setTimeout(() => {
     pending = 0;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(save));
-    } catch {
-      /* ignora */
-    }
+    writeSave();
   }, 50);
+}
+
+/** Caches grandes e recriáveis que podem ser apagados se o armazenamento lotar. */
+const EVICTABLE = /^(bw-home-thumb|bw-home-cache|bo-cache|bw-cache|.*-thumb|.*-corrupt)/;
+
+function writeSave(): void {
+  const json = JSON.stringify(save);
+  try {
+    localStorage.setItem(KEY, json);
+    return;
+  } catch {
+    /* provavelmente QuotaExceeded */
+  }
+  // armazenamento cheio: libera caches recriáveis e tenta de novo (o save do jogador é o mais importante)
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k !== KEY && EVICTABLE.test(k)) localStorage.removeItem(k);
+    }
+    localStorage.setItem(KEY, json);
+  } catch (e) {
+    console.warn('[save] não foi possível gravar', e);
+  }
 }
 
 export function persistNow(): void {
@@ -287,11 +326,7 @@ export function persistNow(): void {
     clearTimeout(pending);
     pending = 0;
   }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(save));
-  } catch {
-    /* ignora */
-  }
+  writeSave();
 }
 
 /** Dia local como número (para diário e missões). */
