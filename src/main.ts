@@ -33,6 +33,7 @@ import { registerRally } from './games/rally/register';
 import { registerTycoon } from './games/tycoon/register';
 import { registerDisaster } from './games/disaster/register';
 import { registerBand } from './games/band/register';
+import { registerFloresta } from './games/floresta/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { registerSocial } from './social/register';
@@ -94,6 +95,7 @@ async function boot(): Promise<void> {
   registerTycoon();
   registerDisaster();
   registerBand();
+  registerFloresta();
   registerPet();
   registerCreatures();
   wireGlue();
