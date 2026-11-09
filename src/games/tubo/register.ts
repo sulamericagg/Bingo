@@ -9,8 +9,12 @@ import { drawTuboShowcase } from './showcase';
 export function registerTubo(): void {
   registerGame({
     id: 'tubo',
-    name: t('tubo.name', 'Queda Giratória'),
-    tagline: t('tubo.tagline', 'Mergulhe pelas aberturas e fuja do vermelho!'),
+    get name() {
+      return t('tubo.name', 'Queda Giratória');
+    },
+    get tagline() {
+      return t('tubo.tagline', 'Mergulhe pelas aberturas e fuja do vermelho!');
+    },
     icon: 'target',
     theme: {
       bg: ['#ffc07a', '#ff5e8a'],

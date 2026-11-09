@@ -2,6 +2,8 @@
  * AGENDA DAS 60 TEMPORADAS DO PASSE (dez/2026 → nov/2031), uma por mês.
  * Fonte única de verdade para Passe (temas, cores do HUD, pop-ups) e Criaturas.
  */
+import { t } from '../i18n';
+
 export interface SeasonInfo {
   index: number; // 0..59
   id: string; // 's00'..'s59'
@@ -88,4 +90,9 @@ export const SEASONS: SeasonInfo[] = THEMES.map(([theme, palette], i) => {
 export function seasonAt(date = new Date()): SeasonInfo | null {
   const t = date.getTime();
   return SEASONS.find((s) => t >= Date.parse(s.start) && t < Date.parse(s.end)) ?? null;
+}
+
+/** Tema traduzido para exibição (chave season.<id>.theme; o pt-BR fica nos dados). */
+export function seasonTheme(s: Pick<SeasonInfo, 'id' | 'theme'>): string {
+  return t(`season.${s.id}.theme`, s.theme);
 }

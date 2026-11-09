@@ -132,8 +132,12 @@ export function drawTycoonShowcase(x: CanvasRenderingContext2D, w: number, h: nu
 export function registerTycoon(): void {
   registerGame({
     id: 'tycoon',
-    name: t('tycoon.name', 'Fábrica Estelar'),
-    tagline: t('tycoon.tagline', 'Construa a fábrica de estrelas mais brilhante!'),
+    get name() {
+      return t('tycoon.name', 'Fábrica Estelar');
+    },
+    get tagline() {
+      return t('tycoon.tagline', 'Construa a fábrica de estrelas mais brilhante!');
+    },
     icon: 'star',
     theme: {
       bg: ['#0f5a3a', '#1d2a14'],

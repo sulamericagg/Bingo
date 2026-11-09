@@ -4,7 +4,7 @@
   inset: 0;
   overflow: hidden;
   background: #120b3a;
-  font-family: 'Fredoka', system-ui, sans-serif;
+  font-family: var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
   touch-action: none;
   user-select: none;

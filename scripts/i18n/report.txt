@@ -1,0 +1,26 @@
+Chaves: 1760 (1010 de t()/HTML + 750 de dados: bichinhos/temporadas/skins/rastros)
+
+== Conflitos (mesma chave, textos diferentes): 0
+
+== Chamadas dinâmicas (chave ou texto não-literal): 8
+  src/creatures/collection.ts:35  t("creature.${c.id}", c.name)
+  src/creatures/collection.ts:36  t("creature.${c.id}.desc", c.desc)
+  src/creatures/collection.ts:37  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
+  src/creatures/seasons.ts:97  t("season.${s.id}.theme", s.theme)
+  src/game/skins.ts:191  t("skin.${s.id}", s.name)
+  src/game/skins.ts:192  t("skin.${s.id}.desc", s.desc)
+  src/game/skins.ts:193  t("trail.${tr.id}", tr.name)
+  src/game/skins.ts:194  t("trail.${tr.id}.desc", tr.desc)
+
+== Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
+  en: 68 / 600 / 0 / 0
+  es: 68 / 600 / 0 / 0
+  de: 68 / 600 / 0 / 0
+  fr: 68 / 600 / 0 / 0
+  it: 68 / 600 / 0 / 0
+  ja: 68 / 600 / 0 / 0
+  ko: 68 / 600 / 0 / 0
+  ru: 68 / 600 / 0 / 0
+  tr: 68 / 600 / 0 / 0
+  id: 68 / 600 / 0 / 0
+  zh: 68 / 600 / 0 / 0

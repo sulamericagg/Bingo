@@ -72,7 +72,9 @@ export function registerPet(): void {
   tick();
   registerPanel({
     id: 'pet',
-    label: t('pet.panel', 'Bichinho'),
+    get label() {
+      return t('pet.panel', 'Bichinho');
+    },
     icon: 'pet',
     navOrder: 30,
     open: () => void openPetScreen(),

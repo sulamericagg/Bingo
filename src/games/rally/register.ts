@@ -125,8 +125,12 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, t: numb
 export function registerRally(): void {
   registerGame({
     id: 'rally',
-    name: t('rally.name', 'Rally Lunar'),
-    tagline: t('rally.tagline', 'Acelere pelas colinas e vá o mais longe possível!'),
+    get name() {
+      return t('rally.name', 'Rally Lunar');
+    },
+    get tagline() {
+      return t('rally.tagline', 'Acelere pelas colinas e vá o mais longe possível!');
+    },
     icon: 'car',
     theme: { bg: ['#ff9a5a', '#1d6f74'], accent: '#ff8a3d', accent2: '#2fb7b0', title: ['#ffe0b0', '#ff8a3d'] },
     drawShowcase,

@@ -44,6 +44,7 @@ import { Terrain, CHUNK_LEN } from './terrain';
 import { coinSprite, drawBackdrop, drawCar, drawCarShadow, emoteSprite, EMOTES, fuelSprite, groundPattern, INK, rgbOf, type CarPose } from './draw';
 import { glowSprite } from '../../gfx/light';
 import { Lobby, type RemotePeer } from './net';
+import { gameFont } from '../../i18n/font';
 
 type State = 'garage' | 'play' | 'over' | 'results';
 
@@ -1021,7 +1022,7 @@ class RallyGame {
       const pop = p.t < 0.15 ? p.t / 0.15 : 1;
       x.globalAlpha = Math.max(0, a);
       const sz = (p.big ? 30 : 22) * (0.6 + 0.4 * pop);
-      x.font = `800 ${sz.toFixed(0)}px Fredoka, system-ui, sans-serif`;
+      x.font = gameFont(800, sz.toFixed(0));
       const sx = w / 2;
       const sy = h * 0.26 + p.y * 38 - p.t * 24;
       x.lineWidth = 6;
@@ -1039,7 +1040,7 @@ class RallyGame {
       x.save();
       x.translate(w / 2, h * 0.3);
       x.scale(k * s, k * s);
-      x.font = '900 64px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(900, 64);
       x.lineWidth = 12;
       x.strokeStyle = INK;
       const txt = t('rally.ops', 'Ops!');
@@ -1139,7 +1140,7 @@ class RallyGame {
       x.globalAlpha = 1;
       // etiqueta com nome
       const ty = sy - S * 1.75;
-      x.font = '700 13px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(700, 13);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       const tw = x.measureText(pr.name).width + 16;
@@ -1169,7 +1170,7 @@ class RallyGame {
       x.lineTo(-d * 4, 9);
       x.closePath();
       x.fill();
-      x.font = '700 11px Fredoka, system-ui, sans-serif';
+      x.font = gameFont(700, 11);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
       x.fillStyle = '#fff';
@@ -1198,7 +1199,7 @@ class RallyGame {
     // distância
     x.textAlign = 'center';
     x.textBaseline = 'middle';
-    x.font = '900 34px Fredoka, system-ui, sans-serif';
+    x.font = gameFont(900, 34);
     x.lineWidth = 8;
     x.strokeStyle = INK;
     x.strokeText(this.distStr, w / 2, top + 22);
@@ -1225,7 +1226,7 @@ class RallyGame {
     const cy = top + 62;
     x.drawImage(this.sCoin, 14, cy - 14, 28, 28);
     x.textAlign = 'left';
-    x.font = '800 20px Fredoka, system-ui, sans-serif';
+    x.font = gameFont(800, 20);
     x.lineWidth = 5;
     x.strokeStyle = INK;
     if (this.coinInt !== this.coins) {
