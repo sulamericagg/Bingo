@@ -42,6 +42,8 @@ import {
 } from './rings';
 import { RED, ZONES, ZONE_LEN, zoneAt } from './zones';
 
+/** valor de cada moeda coletada no tubo */
+const COIN_VALUE = 3;
 const BEST_KEY = 'bo-tubo-best';
 const COMBO_WIN = 2.2; // s entre pousar e mergulhar para manter o combo
 const FIRE_AT = 3;
@@ -231,6 +233,8 @@ class TuboGame implements MiniGameHandle {
   private offs: (() => void)[] = [];
 
   constructor(root: HTMLElement, private exitFn: () => void) {
+    if (import.meta.env.DEV) (window as unknown as { __tuboGame?: unknown; __tuboHit?: unknown }).__tuboGame = this;
+    if (import.meta.env.DEV) (window as unknown as { __tuboHit?: unknown }).__tuboHit = hitTest;
     try {
       this.best = Math.max(0, parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0);
     } catch {
@@ -546,6 +550,7 @@ class TuboGame implements MiniGameHandle {
     }
     const pts = Math.min(this.combo, 10);
     this.score += pts;
+    if (r.idx + 1 > this.depth) this.coinsRun += 1; // cada anel novo também paga 1 moeda
     this.depth = Math.max(this.depth, r.idx + 1);
     this.popup('+' + pts, this.combo >= 3 ? '#fff3a0' : '#ffffff', this.combo >= 3 ? 1.15 : 0.95);
     this.shatter(r, forced);
@@ -621,7 +626,8 @@ class TuboGame implements MiniGameHandle {
       audio.gem();
       return;
     }
-    this.coinsRun++;
+    // economia equilibrada entre jogos (nov/2026): moeda do tubo vale 3 (antes 1 → ~12 moedas/min, o mais "pão-duro" do hub)
+    this.coinsRun += COIN_VALUE;
     this.fx.spawn(PK.Coin, x, y, 0, 0, 0.55, 1, '#ffd23e');
     audio.coin(this.coinsRun);
   }

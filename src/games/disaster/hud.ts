@@ -162,9 +162,10 @@ export class Hud {
 
   resultCard(survived: boolean, coins: number, alive: number): void {
     const g = this.g;
+    if (survived && g.newBest) audio.record();
     if (survived)
       this.showCard(
-        `${icon('trophy', { size: 72 })}<div class="big">${t('dz.survived', 'Sobreviveu!')}</div><div class="sub">${icon('coin', { size: 18 })} +${fmt(coins)} &nbsp; ${icon('fire', { size: 18 })} ${t('dz.streak', 'Sequência {n}', { n: g.streak })}</div>`,
+        `${icon('trophy', { size: 72 })}<div class="big">${g.newBest ? t('dz.record', 'Novo recorde!') : t('dz.survived', 'Sobreviveu!')}</div><div class="sub">${icon('coin', { size: 18 })} +${fmt(coins)} &nbsp; ${icon('fire', { size: 18 })} ${t('dz.streak', 'Sequência {n}', { n: g.streak })}</div>`,
         3.8,
       );
     else
@@ -192,7 +193,11 @@ export class Hud {
         : p === 'prepare'
           ? g.finale
             ? t('dz.ph.run', 'Corra ao bunker!')
-            : t('dz.ph.prepare', 'Suba em algum lugar!')
+            : g.sc.disasters[0] === 'tornado'
+              ? t('dz.ph.house', 'Entre numa casa!')
+              : g.sc.disasters[0] === 'terremoto' || g.sc.disasters[0] === 'meteoros' || g.sc.disasters[0] === 'raios'
+                ? t('dz.ph.open', 'Fique no aberto!')
+                : t('dz.ph.prepare', 'Suba em algum lugar!')
           : p === 'warn'
             ? t('dz.ph.warn', 'Alerta!')
             : p === 'disaster'
@@ -201,13 +206,13 @@ export class Hud {
                 ? t('dz.ph.impact', 'Impacto!')
                 : t('dz.ph.next', 'Próximo cenário');
     this.phaseLbl.textContent = lbl;
-    if (p === 'prepare' && !g.finale) this.toast(t('dz.tip.prepare', 'Explore e suba em casas, torres ou árvores!'));
+    // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
+    if (p === 'prepare' && !g.finale) this.toast(DISASTERS[g.sc.disasters[0]].hint());
     if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
   }
 
-  tick(): void {
+  tick(dt = 1 / 60): void {
     const g = this.g;
-    const dt = 1 / 60;
     if (this.cardTimer > 0) {
       this.cardTimer -= dt;
       if (this.cardTimer <= 0) this.card.classList.remove('on');
