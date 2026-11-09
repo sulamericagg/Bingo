@@ -60,3 +60,55 @@ Branch `wip/qa` · base `53a6e63` · 09/11/2026
 - **Mínimo:** Android 8+ (WebView 90+), 2 GB de RAM. Os jogos 2D rodam no nível Mínimo a 30+ fps. A Casa 3D mostra o aviso "O 3D pode ficar lento" em aparelhos de nível 0.
 - **Recomendado para a Casa 3D:** 4 GB de RAM e GPU da classe Adreno 610 / Mali-G52 ou melhor.
 - **Testar no aparelho real antes de publicar:** rotação para paisagem no 3D e volta ao retrato, permissão de notificação no Android 13+, microfone do bichinho, voltar em cada painel, compra real com conta de teste do Play.
+
+## 5. Casa offline e 3D (v1.1.1)
+
+Relato do dono no APK real (backend Cloudflare ainda não publicado, ou seja, app sem servidor):
+"O da casa, como não tem conexão, não funciona" e "cliquei num quadrado na casa e ficou a tela azul infinito".
+
+**Causas encontradas**
+
+1. **Tela azul infinita (3D).** Ao tocar em "Entrar em 3D", o 3D colocava o fundo azul-escuro na tela e
+   *esperava* `ScreenOrientation.lock('landscape')` antes de mostrar qualquer coisa. Se o plugin não respondesse
+   (ou a WebView travasse a promessa), não aparecia nem aviso nem botão: só o azul, para sempre. Reproduzido no
+   Playwright com `lock()` que nunca resolve: versão antiga = 20 s sem nenhum botão; versão nova = aviso com
+   "Voltar" em 0,8 s. Além disso, o carregamento não tinha botão de voltar nem prazo, e o aviso "Vire o telefone"
+   só saía girando o aparelho (com a rotação travada no celular, não saía nunca).
+2. **Casa "não funciona" sem conexão.** A entrada da Casa esperava a rede (`getHome` → até 8 s por chamada,
+   2 chamadas em série) e depois abria a tela obrigatória "Escolha seu @", que sem servidor não tem como ser
+   concluída. Com o backend não publicado, a resposta do servidor não era JSON e o @ aparecia como
+   "Esse formato não vale" (parecia erro do jogador). Amigos também forçava o @. Mudanças feitas antes do fim do
+   carregamento eram sobrescritas pela casa que chegava depois.
+
+**Correções**
+
+- Casa **offline-first**: abre na hora com o cache do aparelho (`bw-home-cache-v1` / `bloop-home-v1`); a versão do
+  servidor só entra em segundo plano, se for mais nova e a pessoa ainda não tiver mexido.
+- **@ opcional**: sem trava na entrada nem em Amigos; ele só é pedido para recursos online (botão "Escolher @").
+- Toda chamada da API tem prazo; depois de uma falha, 15 s sem novas esperas; resposta sem JSON = sem rede.
+- Salvar é otimista (aparelho primeiro) e fica numa **fila de sincronização** (evento `online` e a cada 30 s).
+- Chip **"Offline — suas mudanças ficam salvas no aparelho"** no topo.
+- **Festa com robôs** na hora quando offline (antes esperava o WebSocket); Amigos offline mostra estado vazio
+  amigável com "Festa com amigos-robô".
+- Todo painel da Casa tem um **X** de fechar.
+- 3D: aviso de girar aparece na hora com **Voltar** e, após 2 s, **"Continuar assim mesmo"** (3D jogável em
+  **retrato**, HUD adaptado); carregamento com **Voltar** sempre visível e **prazo de 12 s** ("O 3D está
+  demorando" + "Ficar no 2D"); falha de WebGL ao montar volta ao 2D com aviso; voltar do Android sempre sai do 3D.
+
+**Testes (build de produção, `vite preview`, 412×915 retrato, todas as `/api/**` bloqueadas)**
+
+| Cenário | Resultado |
+|---|---|
+| API abortada, WebGL ligado | PASSOU: Casa abre em ~0,16 s, construir/planeta/fachada/pintar/móveis/limpar/salvar local/festa com robôs (≤0,1 s)/amigos/permissões/@/3D em retrato/voltar |
+| API lenta (8 s e falha), WebGL ligado | PASSOU (mesmo roteiro) |
+| API abortada, WebGL desligado | PASSOU: 3D mostra "Sem 3D neste aparelho" + "Ficar no 2D" |
+| API lenta, WebGL desligado | PASSOU |
+| Lock de orientação que nunca responde | antes: preso; depois: aviso + Voltar em 0,8 s |
+| WebGL some ao criar o motor | volta ao 2D com "O 3D não funcionou neste aparelho" |
+| CPU 300× mais lenta no carregamento | aparece "O 3D está demorando" com "Ficar no 2D" |
+
+O roteiro toca em todos os botões das barras do planeta e do cômodo e verifica que qualquer overlay em tela cheia
+fecha em até 15 s. Sem erros de página em nenhum cenário.
+
+**Ainda testar no aparelho real:** girar com a rotação travada (o app pede paisagem; se não girar, usar
+"Continuar assim mesmo") e liberar peça por vídeo sem internet (o anúncio é de outro módulo).

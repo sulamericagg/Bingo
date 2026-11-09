@@ -3,7 +3,7 @@
  *  Vistas: planeta (casa vista do espaço) · cômodos · construtor · pintar fachada.
  * ============================================================ */
 import './home.css';
-import type { FriendInfo, HomeDesign, HomeRole, MessItem, PartySession } from './api';
+import type { FriendInfo, HomeDesign, HomeRole, HomeState, MessItem, PartySession } from './api';
 import {
   EXTERIOR_FIELDS, FLOORS, FURN_CATS, FURNITURE, PALETTE, PLANET_FIELDS, ROOM_IDS, WALLS, colorCost, costOfField, countCombinations, floorName,
   furnById, hashStr, normalizeDesign, num, randomDesign, roomName, sciBig, surface, wallName, type Cost, type Field, type RoomId,
@@ -13,7 +13,7 @@ import { RoomScene, FOODS, TEMPLATES, drawFood, type CleanTool, type RoomHost } 
 import { planetSceneCanvas, drawHouse } from './render-planet';
 import { RW, RH, drawFurn } from './render-room';
 import { Painter, FINISHES, finishCost, finishName, type Finish, type PaintTool } from './paint';
-import { getApi, loadMyHome, cacheHome, owns, grant, bump, stats, markDirtyPenalty, roleFor, can, sendDesign, open3D, isMock, type DesignEvent } from './service';
+import { getApi, loadMyHomeLocal, fetchMyHomeNewer, netState, onNet, cacheHome, owns, grant, bump, stats, markDirtyPenalty, roleFor, can, sendDesign, open3D, isMock, type DesignEvent } from './service';
 import { openFriends, openHandle, openPermissions, roleName, type SocialUi } from './social';
 import { hsfx, partyMusic } from './sfx';
 import { t, fmt } from '../i18n';
@@ -122,30 +122,43 @@ export async function openHome(o: OpenOpts = {}): Promise<void> {
       refreshBar();
     }),
   );
+  unsub.push(onNet(refreshNet));
   refreshWallet();
   cancelAnimationFrame(raf);
   last = performance.now();
   raf = requestAnimationFrame(loop);
-  await loadMine();
-  const api = await getApi();
-  const after = async () => {
-    if (o.visit) await visit(o.visit, !!o.party);
-    else if (o.party) await startParty(o.party);
-    else if (o.tab === 'friends') showFriends();
-    else if (o.tab === 'build') setView('build');
-    else if (o.tab === 'rooms') enterRooms(o.room);
-  };
-  if (!api.myHandle() && !sessionStorage.getItem('hm-handle-skip')) {
-    openHandle(ui, {
-      first: true,
-      done: (h) => {
-        if (!h) sessionStorage.setItem('hm-handle-skip', '1');
-        S.name = h ?? S.name;
-        refreshTop();
-        void after();
-      },
-    });
-  } else await after();
+  // OFFLINE-FIRST: a casa abre NA HORA com o que está no aparelho; nada aqui espera a rede.
+  // O @ é opcional (só para recursos online) — nunca bloqueia a entrada.
+  loadMine();
+  refreshNet();
+  void getApi().then(() => {
+    refreshNet();
+    S.name = S.isOwner ? myHandleNow() || S.name : S.name;
+    refreshTop();
+  });
+  if (o.visit) await visit(o.visit, !!o.party);
+  else if (o.party) await startParty(o.party);
+  else if (o.tab === 'friends') showFriends();
+  else if (o.tab === 'build') setView('build');
+  else if (o.tab === 'rooms') enterRooms(o.room);
+}
+let apiNow: import('./api').HomeApi | null = null;
+function myHandleNow(): string {
+  try {
+    return apiNow?.myHandle() ?? '';
+  } catch {
+    return '';
+  }
+}
+void getApi().then((a) => (apiNow = a));
+/** chip "Offline — suas mudanças ficam salvas no aparelho" */
+function refreshNet(): void {
+  if (!root) return;
+  const el = root.querySelector('.hm-net') as HTMLElement | null;
+  if (!el) return;
+  const off = netState() === 'offline';
+  el.hidden = !off;
+  el.innerHTML = off ? `<i></i>${esc(t('home.offline.chip', 'Offline — suas mudanças ficam salvas no aparelho'))}` : '';
 }
 export function closeHome(): boolean {
   if (!isOpen) return false;
@@ -188,6 +201,7 @@ function build(): void {
   root.innerHTML = `<canvas class="hm-cv"></canvas>
     <div class="hm-top"><button class="hm-btn hm-ibtn hm-back" aria-label="${esc(t('home.back', 'Voltar'))}">${hicon('back', 26)}</button><div class="hm-title"></div><div class="hm-wallet"><span class="hm-coins"></span><span class="hm-gems"></span></div></div>
     <div class="hm-rooms" hidden></div>
+    <div class="hm-net" hidden></div>
     <div class="hm-banner" hidden></div>
     <div class="hm-bar"></div>
     <div class="hm-sheet"></div>
@@ -332,13 +346,30 @@ function persistMess(): void {
   }, 900);
 }
 
-async function loadMine(): Promise<void> {
-  const st = await loadMyHome();
-  const api = await getApi();
+let homeGen = 0;
+let busy3d = false;
+function loadMine(): void {
+  const st = loadMyHomeLocal();
+  const gen = ++homeGen;
   S.ownerId = S.myId;
   S.isOwner = true;
   S.role = 'build';
-  S.name = api.myHandle() ?? '';
+  S.name = myHandleNow();
+  applyMine(st);
+  // casa suja deixa o bichinho um pouco tristinho (de leve, 1x por dia)
+  if (S.mess.length >= 6 && markDirtyPenalty(Date.now())) addStat('fun', -4);
+  setView('planet');
+  // em segundo plano: se o servidor tiver uma versão MAIS NOVA (outro aparelho) e a pessoa ainda
+  // não mexeu em nada, troca sem travar a tela
+  const snap0 = lastSnap;
+  void fetchMyHomeNewer(st.updatedAt).then((nw) => {
+    if (!nw || gen !== homeGen || !isOpen || !S.isOwner || session || lastSnap !== snap0 || undo.length) return;
+    applyMine(nw);
+    cacheHome(S.design, S.mess);
+    setView(view);
+  });
+}
+function applyMine(st: HomeState): void {
   S.design = st.design;
   S.mess = st.mess;
   undo = [];
@@ -349,13 +380,10 @@ async function loadMine(): Promise<void> {
   scene.host.isOwner = true;
   scene.host.role = 'build';
   scene.setRoom('living');
-  // casa suja deixa o bichinho um pouco tristinho (de leve, 1x por dia)
-  if (S.mess.length >= 6 && markDirtyPenalty(Date.now())) addStat('fun', -4);
-  setView('planet');
 }
 async function goHome(): Promise<void> {
   leaveParty();
-  await loadMine();
+  loadMine();
 }
 async function visit(id: string, party: boolean, f?: FriendInfo): Promise<void> {
   leaveParty();
@@ -550,8 +578,13 @@ function action(a: string, b: HTMLElement): void {
       });
       break;
     case '3d':
-      void open3D({ design: S.design, mess: S.mess, ownerId: S.ownerId, isOwner: S.isOwner, role: S.role, session, room: scene.room, handle: S.name }).then((ok) => {
-        if (!ok) return toast(t('home.3d.soon', 'O modo 3D chega em breve!'), 'cube');
+      if (busy3d) break;
+      busy3d = true;
+      toast(t('home.3d.loading', 'Abrindo o 3D...'), 'cube');
+      void open3D({ design: S.design, mess: S.mess, ownerId: S.ownerId, isOwner: S.isOwner, role: S.role, session, room: scene.room, handle: S.name }).then((res) => {
+        busy3d = false;
+        if (res === 'none') return toast(t('home.3d.fail', 'Não deu para abrir o 3D agora. Sua casa continua no 2D!'), 'cube');
+        if (res === 'webgl' || res === 'error' || res === 'timeout') toast(t('home.3d.back2d', 'O 3D não funcionou neste aparelho. Voltamos para o 2D!'), 'cube');
         // o 3D escreve as mudanças de volta em S.design/S.mess: redesenha e salva (antes: edições do 3D se perdiam)
         if (!root) return;
         scene.host.design = S.design;
@@ -1280,31 +1313,19 @@ function loop(now: number): void {
 
 /* ---------------- abrir amigos ---------------- */
 function showFriends(): void {
-  void getApi().then((api) => {
-    const h = api.myHandle();
-    if (!h) {
-      openHandle(ui, {
-        first: true,
-        done: (nh) => {
-          if (nh) {
-            S.name = nh;
-            refreshTop();
-            showFriends();
-          }
-        },
-      });
-      return;
-    }
-    void openFriends(ui, h, () =>
-      openHandle(ui, {
-        first: false,
-        done: (nh) => {
-          if (nh) S.name = nh;
-          refreshTop();
-          showFriends();
-        },
-      }),
-    );
+  // o @ é opcional: a lista abre sempre (offline mostra um estado vazio com festa de robôs)
+  const edit = (): void =>
+    openHandle(ui, {
+      first: !myHandleNow(),
+      done: (nh) => {
+        if (nh) S.name = nh;
+        refreshTop();
+        showFriends();
+      },
+    });
+  void openFriends(ui, myHandleNow() || null, edit, () => {
+    ui.close();
+    void startParty(S.ownerId);
   });
 }
 export function openHandleEditor(): void {

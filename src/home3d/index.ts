@@ -50,7 +50,7 @@ export async function open3D(opts: Open3DOpts): Promise<Close3DResult> {
   const root = el('div', 'h3');
   document.body.appendChild(root);
   // botão voltar do Android: fecha o 3D (ou o aviso/carregamento) em vez de fechar a casa 2D por baixo
-  backAction = () => root.querySelector<HTMLElement>('.h3-full button, .h3-full [data-act="back"]')?.click();
+  backAction = () => (root.querySelector<HTMLElement>('.h3-full [data-act="back"]') ?? root.querySelector<HTMLElement>('.h3-full button'))?.click();
   const onBack = () => {
     backAction();
     // ainda aberto (ex.: carregando): continua na pilha até o 3D realmente fechar
@@ -90,51 +90,102 @@ export async function open3D(opts: Open3DOpts): Promise<Close3DResult> {
 
 let backAction: () => void = () => {};
 
+class Abort3D extends Error {
+  constructor(readonly reason: Close3DResult['reason']) {
+    super('abort3d:' + reason);
+  }
+}
+
 async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> {
-  const loading = new Loading(root);
-  loading.set(0.04, t('home3d.load.start', 'Preparando o pincel mágico...'));
-  await frame();
+  // carregamento com saída garantida: Voltar sempre visível + prazo de 12 s (antes: tela azul infinita)
+  let aborted: Close3DResult['reason'] | null = null;
+  let wake!: () => void;
+  const abortP = new Promise<void>((r) => (wake = r));
+  const abort = (why: Close3DResult['reason']) => {
+    if (aborted) return;
+    aborted = why;
+    wake();
+  };
+  const loading = new Loading(root, () => abort('declined'));
+  const watchdog = setTimeout(
+    () =>
+      loading.fail(
+        t('home3d.slow.title', 'O 3D está demorando'),
+        t('home3d.slow.text', 'Este aparelho está demorando para montar o 3D. Sua casa continua no 2D!'),
+        () => abort('timeout'),
+      ),
+    12000,
+  );
+  const tick = async () => {
+    await Promise.race([frame(), abortP, new Promise((r) => setTimeout(r, 250))]);
+    if (aborted) throw new Abort3D(aborted);
+  };
+  let eng: Engine | null = null;
   const design = cloneDesign(opts.design);
   const mess = cloneMess(opts.mess);
   const editable = !!(opts.editable ?? opts.isOwner);
   const session = opts.party ?? opts.session ?? null;
   const role = opts.role ?? roleFor(design, editable, opts.viewerId);
-  const stage = el('div', 'h3-layer');
-  root.insertBefore(stage, loading.box);
-  const eng = new Engine(stage, design, mess, { editable, role });
-  // 3) geração procedural em passos
-  const steps = eng.buildSteps();
-  const total = design.rooms.length * 2 + 4;
-  let i = 0;
-  for (let s = steps.next(); !s.done; s = steps.next()) {
-    i++;
-    const [k, room] = String(s.value).split(':');
-    const label =
-      k === 'room'
-        ? t('home3d.load.room', 'Levantando paredes: {room}', { room: roomName(room) })
-        : k === 'items'
-          ? t('home3d.load.items', 'Trazendo os móveis: {room}', { room: roomName(room) })
-          : k === 'physics'
-            ? t('home3d.load.physics', 'Ligando a gravidade...')
-            : k === 'mess'
-              ? t('home3d.load.mess', 'Espalhando a bagunça...')
-              : t('home3d.load.shaders', 'Acendendo as luzes...');
-    loading.set(i / total, label);
-    await frame();
+  let party: Party | null = null;
+  let hud!: HTMLElement;
+  let input!: FpsInput;
+  let acts!: Actions;
+  let toast!: Toast;
+  let fps!: Fps;
+  let startRoom!: ReturnType<Engine['roomById']> & object;
+  let build!: Build;
+  try {
+    loading.set(0.04, t('home3d.load.start', 'Preparando o pincel mágico...'));
+    await tick();
+    const stage = el('div', 'h3-layer');
+    root.insertBefore(stage, loading.box);
+    eng = new Engine(stage, design, mess, { editable, role });
+    // 3) geração procedural em passos
+    const steps = eng.buildSteps();
+    const total = design.rooms.length * 2 + 4;
+    let i = 0;
+    for (let s = steps.next(); !s.done; s = steps.next()) {
+      i++;
+      const [k, room] = String(s.value).split(':');
+      const label =
+        k === 'room'
+          ? t('home3d.load.room', 'Levantando paredes: {room}', { room: roomName(room) })
+          : k === 'items'
+            ? t('home3d.load.items', 'Trazendo os móveis: {room}', { room: roomName(room) })
+            : k === 'physics'
+              ? t('home3d.load.physics', 'Ligando a gravidade...')
+              : k === 'mess'
+                ? t('home3d.load.mess', 'Espalhando a bagunça...')
+                : t('home3d.load.shaders', 'Acendendo as luzes...');
+      loading.set(i / total, label);
+      await tick();
+    }
+    // 4) modos
+    party = session || opts.partyMode ? new Party(eng, session, true, opts.viewerId ?? 'me', opts.skin ?? save.skin) : null;
+    hud = el('div', 'h3-layer');
+    root.appendChild(hud);
+    input = new FpsInput(hud);
+    acts = new Actions(hud);
+    toast = new Toast(hud);
+    fps = new Fps(eng, input, acts, party, handColors(opts.skin));
+    startRoom = (eng.roomById(opts.room ?? (party ? 'party' : 'living')) ?? eng.rooms[0])!;
+    fps.spawn(startRoom);
+    build = new Build(eng, hud, startRoom);
+    loading.set(1, t('home3d.load.done', 'Pronto!'));
+    await tick();
+  } catch (err) {
+    clearTimeout(watchdog);
+    try {
+      party?.dispose();
+      input?.dispose();
+      eng?.dispose();
+    } catch {
+      /* */
+    }
+    if (err instanceof Abort3D) return { design: opts.design, mess: opts.mess, cleaned: 0, broken: 0, reason: err.reason };
+    throw err;
   }
-  // 4) modos
-  const party = session || opts.partyMode ? new Party(eng, session, true, opts.viewerId ?? 'me', opts.skin ?? save.skin) : null;
-  const hud = el('div', 'h3-layer');
-  root.appendChild(hud);
-  const input = new FpsInput(hud);
-  const acts = new Actions(hud);
-  const toast = new Toast(hud);
-  const fps = new Fps(eng, input, acts, party, handColors(opts.skin));
-  const startRoom = eng.roomById(opts.room ?? (party ? 'party' : 'living')) ?? eng.rooms[0];
-  fps.spawn(startRoom);
-  const build = new Build(eng, hud, startRoom);
-  loading.set(1, t('home3d.load.done', 'Pronto!'));
-  await frame();
+  clearTimeout(watchdog);
   loading.remove();
 
   /* ---------------- HUD ---------------- */

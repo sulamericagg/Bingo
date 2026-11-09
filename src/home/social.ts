@@ -5,7 +5,7 @@ import type { FriendInfo, HomeAccess, HomeDesign, HomeRole } from './api';
 import { t } from '../i18n';
 import { esc } from '../ui/dom';
 import { hicon } from './icons';
-import { getApi, DEFAULT_ACCESS } from './service';
+import { getApi, DEFAULT_ACCESS, netState } from './service';
 import { planetSceneCanvas } from './render-planet';
 import { normalizeDesign } from './catalog';
 import { drawPlayer, type PlayerPose } from '../game/character';
@@ -22,7 +22,12 @@ export interface SocialUi {
 }
 
 function open(ui: SocialUi, html: string): HTMLElement {
-  ui.sheet.innerHTML = `<div class="hm-card">${html}</div>`;
+  // todo painel tem um X (nunca fica uma janela sem saída)
+  ui.sheet.innerHTML = `<div class="hm-card"><button class="hm-x" aria-label="${esc(t('home.close', 'Fechar'))}">${hicon('close', 20)}</button>${html}</div>`;
+  (ui.sheet.querySelector('.hm-x') as HTMLElement).onclick = () => {
+    hsfx.click();
+    ui.close();
+  };
   ui.sheet.classList.add('on');
   ui.sheet.onclick = (e) => {
     if (e.target === ui.sheet) ui.close();
@@ -93,7 +98,7 @@ export function openHandle(ui: SocialUi, opts: { first: boolean; done: (h: strin
       const msg =
         r.reason === 'taken' ? t('home.handle.taken', 'Ops, @{h} já tem dono.', { h: v }) :
         r.reason === 'blocked' ? t('home.handle.blocked', 'Esse não pode. Tente outro!') :
-        r.reason === 'network' ? t('home.handle.net', 'Sem internet agora. Tente de novo daqui a pouco.') :
+        r.reason === 'network' ? t('home.handle.net2', 'Sem internet agora. Escolha seu @ depois — sua casa funciona offline!') :
         t('home.handle.invalid', 'Esse formato não vale.');
       setState('bad', msg);
       showSugs(r.suggestions ?? []);
@@ -140,8 +145,11 @@ export function openHandle(ui: SocialUi, opts: { first: boolean; done: (h: strin
  *  AMIGOS
  * ============================================================ */
 let tab: 'list' | 'req' | 'add' = 'list';
-export async function openFriends(ui: SocialUi, myHandle: string | null, editHandle: () => void): Promise<void> {
+export async function openFriends(ui: SocialUi, myHandle: string | null, editHandle: () => void, botParty?: () => void): Promise<void> {
   const api = await getApi();
+  const offlineBox = (msg: string) =>
+    `<div class="hm-empty">${hicon('friends', 30)}<br>${esc(msg)}</div>${botParty ? `<div class="hm-row" style="justify-content:center"><button class="hm-btn hm-pink hm-botparty">${hicon('party', 18)} ${esc(t('home.friends.botparty', 'Festa com amigos-robô'))}</button></div>` : ''}`;
+  const wireBot = (el: HTMLElement) => el.querySelector('.hm-botparty')?.addEventListener('click', () => botParty?.());
   const card = open(
     ui,
     `<h2>${hicon('friends', 30)} ${esc(t('home.friends.title', 'Amigos'))}</h2>
@@ -160,10 +168,16 @@ export async function openFriends(ui: SocialUi, myHandle: string | null, editHan
     card.querySelectorAll('.hm-tabs button').forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.t === tab));
     body.innerHTML = `<div class="hm-empty">${esc(t('home.loading', 'Carregando...'))}</div>`;
     if (tab === 'list') {
-      const list = await api.friends();
+      const list = (await api.friends()).slice();
       list.sort((a, b) => Number(b.online) - Number(a.online) || b.houseMess - a.houseMess);
       if (!list.length) {
-        body.innerHTML = `<div class="hm-empty">${esc(t('home.friends.none', 'Você ainda não tem amigos aqui. Adicione pelo @!'))}</div>`;
+        body.innerHTML =
+          netState() === 'offline'
+            ? offlineBox(t('home.friends.offline', 'Sem internet agora. Seus amigos aparecem aqui quando a conexão voltar. Enquanto isso, que tal uma festa com robôs?'))
+            : !myHandle
+              ? offlineBox(t('home.friends.nohandle', 'Escolha seu @ (botão acima) para seus amigos te acharem. Ou faça uma festa com robôs!'))
+              : `<div class="hm-empty">${esc(t('home.friends.none', 'Você ainda não tem amigos aqui. Adicione pelo @!'))}</div>`;
+        wireBot(body);
         return;
       }
       body.innerHTML = '';
@@ -173,7 +187,8 @@ export async function openFriends(ui: SocialUi, myHandle: string | null, editHan
       badge.hidden = !reqs.length;
       badge.textContent = String(reqs.length);
       if (!reqs.length) {
-        body.innerHTML = `<div class="hm-empty">${esc(t('home.friends.noreq', 'Nenhum pedido agora.'))}</div>`;
+        body.innerHTML = netState() === 'offline' ? offlineBox(t('home.friends.offline2', 'Sem internet agora. Os pedidos aparecem quando a conexão voltar.')) : `<div class="hm-empty">${esc(t('home.friends.noreq', 'Nenhum pedido agora.'))}</div>`;
+        wireBot(body);
         return;
       }
       body.innerHTML = '';
@@ -210,7 +225,7 @@ export async function openFriends(ui: SocialUi, myHandle: string | null, editHan
         found.innerHTML = `<div class="hm-empty">${esc(t('home.friends.searching', 'Procurando...'))}</div>`;
         const f = await api.searchPlayer(h);
         if (!f) {
-          found.innerHTML = `<div class="hm-empty">${esc(t('home.friends.notfound', 'Ninguém com @{h}. Confira as letras!', { h }))}</div>`;
+          found.innerHTML = netState() === 'offline' ? `<div class="hm-empty">${esc(t('home.friends.net', 'Sem internet. Tente depois.'))}</div>` : `<div class="hm-empty">${esc(t('home.friends.notfound', 'Ninguém com @{h}. Confira as letras!', { h }))}</div>`;
           return;
         }
         found.innerHTML = '';

@@ -61,7 +61,7 @@ export interface Close3DResult {
   mess: MessItem[];
   cleaned: number;
   broken: number;
-  reason: 'exit' | 'webgl' | 'declined' | 'error';
+  reason: 'exit' | 'webgl' | 'declined' | 'error' | 'timeout';
 }
 
 /**

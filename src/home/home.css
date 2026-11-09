@@ -197,3 +197,21 @@
   display: flex; gap: 8px; align-items: center;
 }
 .hm-combo { color: #fff; text-align: center; font-size: 12px; opacity: 0.9; text-shadow: 0 1px 0 var(--ink); }
+
+/* v1.1.1: X em todo painel + chip offline */
+.hm-card { position: relative; }
+.hm-x {
+  position: sticky; top: 0; float: right; margin: -4px -4px 0 6px; z-index: 2;
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff !important; border: 2.5px solid var(--ink) !important; box-shadow: 0 3px 0 var(--ink);
+}
+.hm-x:active { transform: translateY(3px); box-shadow: none; }
+.hm-net {
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(58px + var(--st)); z-index: 4;
+  max-width: calc(100% - 24px); display: flex; align-items: center; gap: 6px;
+  background: #fff8e0; color: var(--ink); border: 2px solid var(--ink); border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; box-shadow: 0 2px 0 var(--ink);
+}
+.hm-net i { width: 9px; height: 9px; border-radius: 50%; background: #ffb300; border: 1.5px solid var(--ink); flex: none; }
+.hm-rooms:not([hidden]) + .hm-net { top: calc(98px + var(--st)); font-size: 11px; padding: 2px 8px; }
