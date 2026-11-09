@@ -236,7 +236,6 @@ export class Drawer {
     const x = g.ctx;
     const c = g.cam;
     const w = g.world;
-    const dpr = g.dpr;
     const cw = g.canvas.width;
     const ch = g.canvas.height;
     this.particles.budget = g.q.particleBudget;
@@ -270,16 +269,9 @@ export class Drawer {
     const top = c.y - c.vh / 2 + sy;
 
     // parallax
-    const ls = this.layerScale;
-    const drawLayer = (img: HTMLCanvasElement, f: number, baseY: number) => {
-      const iw = (img.width / ls) * c.scale * dpr;
-      const ih = (img.height / ls) * c.scale * dpr;
-      const ox = -((left * f * c.scale * dpr) % iw) - (left < 0 ? iw : 0);
-      const oy = (baseY - top * f - 420) * c.scale * dpr + (1 - f) * 0;
-      for (let px = ox - iw; px < cw; px += iw) if (px + iw > 0) x.drawImage(img, px, oy, iw, ih);
-    };
-    if (this.far && g.q.starLayers >= 2) drawLayer(this.far, 0.25, -40 + top * 0.25 * 0 - 0);
-    if (this.mid) drawLayer(this.mid, 0.5, 40);
+    const refTop = 150 - c.vh;
+    if (this.far && g.q.starLayers >= 2) this.layer(this.far, 0.2, 70, left, top, refTop, w.map.far);
+    if (this.mid) this.layer(this.mid, 0.45, 50, left, top, refTop, w.map.mid);
 
     // mundo
     const ps = c.ps;
@@ -470,7 +462,7 @@ export class Drawer {
       const py = GROUND_Y - 900 * (1 - k) - 20;
       this.rock(x, px, py, 70, true, 1);
     }
-    if (mt.ring >= 0 && mt.ring < 2600) {
+    if (mt.ring >= 0 && mt.ring < 3000) {
       x.strokeStyle = `rgba(255,240,200,${Math.max(0, 0.8 - mt.ring / 2600)})`;
       x.lineWidth = 26;
       x.beginPath();
@@ -520,6 +512,24 @@ export class Drawer {
       x.fillStyle = `rgba(0,0,0,${(0.8 - g.timeScale) * 0.4})`;
       x.fillRect(0, 0, cw, ch * 0.08);
       x.fillRect(0, ch * 0.92, cw, ch * 0.08);
+    }
+  }
+
+  /** camada de fundo com parallax; y0 = base da camada no mundo (com a câmera no chão) */
+  private layer(img: HTMLCanvasElement, f: number, y0: number, left: number, top: number, refTop: number, fill: string): void {
+    const g = this.g;
+    const x = g.ctx;
+    const k = g.cam.scale * g.dpr;
+    const iw = (img.width / this.layerScale) * k;
+    const ih = (img.height / this.layerScale) * k;
+    let ox = -((left * f * k) % iw);
+    if (ox > 0) ox -= iw;
+    const oy = (y0 - 420 - refTop - (top - refTop) * f) * k;
+    const cw = g.canvas.width;
+    for (let px = ox; px < cw; px += iw) x.drawImage(img, px, oy, iw + 1, ih);
+    if (oy + ih < g.canvas.height) {
+      x.fillStyle = fill;
+      x.fillRect(0, oy + ih - 1, cw, g.canvas.height - oy - ih + 1);
     }
   }
 
@@ -831,35 +841,36 @@ export class Drawer {
 
   private volcano(x: CanvasRenderingContext2D, vx: number, erupting: boolean): void {
     const g = this.g;
-    x.fillStyle = '#5a3a3a';
+    const top = -330;
+    x.fillStyle = '#8a6a78';
     x.beginPath();
-    x.moveTo(vx - 420, GROUND_Y);
-    x.lineTo(vx - 70, -470);
-    x.lineTo(vx + 70, -470);
-    x.lineTo(vx + 420, GROUND_Y);
+    x.moveTo(vx - 300, GROUND_Y);
+    x.lineTo(vx - 50, top);
+    x.lineTo(vx + 50, top);
+    x.lineTo(vx + 300, GROUND_Y);
     x.fill();
-    x.fillStyle = '#704848';
+    x.fillStyle = '#9d7d8a';
     x.beginPath();
-    x.moveTo(vx - 70, -470);
-    x.lineTo(vx + 10, -470);
-    x.lineTo(vx - 120, GROUND_Y);
-    x.lineTo(vx - 300, GROUND_Y);
+    x.moveTo(vx - 50, top);
+    x.lineTo(vx + 5, top);
+    x.lineTo(vx - 90, GROUND_Y);
+    x.lineTo(vx - 220, GROUND_Y);
     x.fill();
     if (erupting) {
       x.fillStyle = '#ff7a1f';
       x.beginPath();
-      x.moveTo(vx - 60, -470);
-      x.lineTo(vx + 60, -470);
-      x.lineTo(vx + 40, -380);
-      x.lineTo(vx + 10, -420);
-      x.lineTo(vx - 20, -330);
-      x.lineTo(vx - 40, -430);
+      x.moveTo(vx - 44, top);
+      x.lineTo(vx + 44, top);
+      x.lineTo(vx + 30, top + 70);
+      x.lineTo(vx + 8, top + 40);
+      x.lineTo(vx - 14, top + 110);
+      x.lineTo(vx - 30, top + 30);
       x.fill();
-      if (Math.random() < 0.3 * g.q.particleBudget) this.particles.burst(vx, -480, 2, 'fire', 260);
-      x.fillStyle = 'rgba(90,80,90,.5)';
+      if (Math.random() < 0.3 * g.q.particleBudget) this.particles.burst(vx, top - 8, 2, 'fire', 220);
+      x.fillStyle = 'rgba(90,80,90,.45)';
       for (let i = 0; i < 4; i++) {
         x.beginPath();
-        x.arc(vx + Math.sin(g.time + i) * 30 - i * 20, -520 - i * 50 - ((g.time * 30) % 50), 40 + i * 12, 0, TAU);
+        x.arc(vx + Math.sin(g.time + i) * 24 - i * 16, top - 40 - i * 40 - ((g.time * 24) % 40), 30 + i * 10, 0, TAU);
         x.fill();
       }
     }

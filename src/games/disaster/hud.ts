@@ -30,7 +30,7 @@ const CSS = `
 .dz-card.on{transform:translate(-50%,-50%) scale(1);opacity:1}
 .dz-card .big{font-size:clamp(30px,9vw,54px);font-weight:700;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;text-shadow:0 4px 0 #2a0b5c,0 0 24px rgba(255,120,40,.6);letter-spacing:.5px}
 .dz-card .sub{margin-top:8px;font-size:clamp(14px,4vw,18px);font-weight:600;background:rgba(30,15,70,.78);display:inline-block;padding:6px 14px;border-radius:14px}
-.dz-card .ico{display:block;margin:0 auto 6px}
+.dz-card>.ico{display:block;margin:0 auto 6px}.dz-card .sub .ico{vertical-align:-3px}
 .dz-card.alert .big{color:#fff;text-shadow:0 4px 0 #2a0b5c,0 0 30px rgba(255,40,40,.9)}
 .dz-toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);background:rgba(30,15,70,.85);border-radius:14px;padding:6px 14px;font-weight:600;font-size:14px;opacity:0;transition:opacity .25s;text-align:center;max-width:86vw}
 .dz-toast.on{opacity:1}

@@ -332,7 +332,12 @@ export class World {
         }
         if (fluidAt) {
           const s = fluidAt(b.x + b.w * 0.5);
-          if (b.y + b.h > s + 4 && fluidPush !== 0 && Math.abs(b.x + b.w * 0.5 - fluidFront) < 160) this.push(b, fluidPush * 0.5, -40);
+          if (b.y + b.h > s + 4) {
+            b.wet += dt;
+            // torres (blocos) aguentam mais tempo antes de ceder
+            const hold = b.kind === 'block' || b.kind === 'cap' ? 3.5 + (b.id % 5) : 0.15;
+            if (b.wet > hold && fluidPush !== 0) this.push(b, fluidPush * 0.5, -40);
+          }
         }
         if (!b.awake) continue;
       }
@@ -343,7 +348,7 @@ export class World {
         const s = fluidAt(b.x + b.w * 0.5);
         if (b.y + b.h > s) {
           sub = Math.min(1, (b.y + b.h - s) / b.h);
-          b.wet = 1;
+          b.wet = Math.max(b.wet, 1);
         }
       }
       b.vy += GRAV_BODY * dt * (1 - sub * (b.heavy ? 0.85 : 1.5));

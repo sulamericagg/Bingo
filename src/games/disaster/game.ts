@@ -166,6 +166,7 @@ export class DisasterGame implements MiniGameHandle {
   rng = mulberry(1);
   /** dev/screenshots: seu Bloop é controlado pela IA */
   autoMe = false;
+  private nameOff = Math.floor(Math.random() * 14);
 
   // sessão
   progress = loadProgress();
@@ -236,7 +237,7 @@ export class DisasterGame implements MiniGameHandle {
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
     // retrato: ~690 unidades de altura; paisagem: ~900 de largura
-    const scale = Math.max(h / 690, w / 900);
+    const scale = Math.max(h / 600, w / 820);
     this.cam.scale = scale;
     this.cam.vw = w / scale;
     this.cam.vh = h / scale;
@@ -338,7 +339,7 @@ export class DisasterGame implements MiniGameHandle {
       if (!self) {
         const pool = SKINS.filter((s) => s.id !== 'custom');
         skin = prev && !prev.self ? prev.skin : pool[Math.floor(Math.random() * pool.length)];
-        name = prev && !prev.self ? prev.name : BOT_NAMES[(i * 3 + Math.floor(Math.random() * 5)) % BOT_NAMES.length];
+        name = prev && !prev.self ? prev.name : BOT_NAMES[(this.nameOff + i) % BOT_NAMES.length];
       }
       const x = Math.max(40, Math.min(W - 40, sx + (i - n / 2) * 34 + (Math.random() - 0.5) * 20));
       const p: Player = {
@@ -398,12 +399,12 @@ export class DisasterGame implements MiniGameHandle {
   private nextPhase(): void {
     switch (this.phase) {
       case 'intro':
-        this.setPhase('prepare', this.finale ? 26 + this.sc.difficulty * 2 : 15);
+        this.setPhase('prepare', this.finale ? 18 + this.sc.difficulty : 15);
         break;
       case 'prepare':
         if (this.finale) {
           this.startMeteor();
-          this.setPhase('impact', 5.5);
+          this.setPhase('impact', 7.5);
         } else {
           this.setPhase('warn', 2.6);
           this.hud.disasterCard(this.sc.disasters[0]);
@@ -599,8 +600,8 @@ export class DisasterGame implements MiniGameHandle {
     if (f.dir !== 0) {
       const d = (x - f.front) * f.dir; // >0: ainda não chegou
       if (d > 40) return 9999;
-      const bump = d > -160 ? f.crest * Math.max(0, 1 - Math.abs(d + 50) / 110) : 0;
-      const ramp = Math.min(1, (-d + 40) / 180);
+      const bump = d > -220 ? f.crest * Math.max(0, 1 - Math.abs(d + 60) / 120) * Math.min(1, (40 - d) / 50) : 0;
+      const ramp = Math.min(1, (-d + 40) / 70);
       return GROUND_Y - f.level * ramp - bump - Math.sin(x * 0.035 + this.time * 2.4) * 4;
     }
     return GROUND_Y - f.level - Math.sin(x * 0.03 + this.time * 2) * 3 - Math.sin(x * 0.011 - this.time * 1.3) * 3;
@@ -642,7 +643,7 @@ export class DisasterGame implements MiniGameHandle {
           this.strikeTimer = Math.max(0.4, 0.95 - df * 0.09) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('vulcao')) {
           this.spawnStrike('bomb', 1.7, 36);
-          this.strikeTimer = Math.max(0.5, 1.4 - df * 0.14) * (0.7 + this.rng() * 0.6);
+          this.strikeTimer = Math.max(0.6, 1.8 - df * 0.16) * (0.7 + this.rng() * 0.6);
         } else if (this.active.has('terremoto')) {
           this.spawnStrike('rock', 1.3, 22);
           this.strikeTimer = Math.max(0.6, 1.6 - df * 0.15) * (0.7 + this.rng() * 0.6);
@@ -699,7 +700,7 @@ export class DisasterGame implements MiniGameHandle {
       }
       if (m.ring >= 0) {
         const prev = m.ring;
-        m.ring += dt * 900;
+        m.ring += dt * 460;
         m.flash = Math.max(0, m.flash - dt * 0.7);
         for (const b of w.bodies) {
           if (!b.alive) continue;
@@ -736,7 +737,7 @@ export class DisasterGame implements MiniGameHandle {
     s.flash = 0;
     if (kind === 'bomb') {
       s.sx = w.W * 0.86;
-      s.sy = -620;
+      s.sy = -340;
     } else {
       s.sx = x - 260;
       s.sy = s.ty - 700;
@@ -778,8 +779,9 @@ export class DisasterGame implements MiniGameHandle {
     const acc = p.onGround ? 2000 : 1200;
     if (dir) {
       p.vx += dir * acc * dt;
-      if (p.vx > RUN) p.vx = RUN;
-      if (p.vx < -RUN) p.vx = -RUN;
+      const max = p.bot && !p.self ? RUN * (0.7 + p.bot.skill * 0.3) : RUN;
+      if (p.vx > max) p.vx = max;
+      if (p.vx < -max) p.vx = -max;
       p.face = dir;
     } else {
       const fr = p.onGround ? 14 : 3;
@@ -995,7 +997,8 @@ export class DisasterGame implements MiniGameHandle {
     if (p.self && p.ghostT > 0.8) {
       const i = p.input;
       p.vx += ((i.r ? 1 : 0) - (i.l ? 1 : 0)) * 600 * dt;
-      p.vy += (i.j ? -500 : 60) * dt;
+      if (i.j) p.vy -= 500 * dt;
+      else p.vy += (p.y - 110 - p.gy) * 1.2 * dt;
     } else if (p.ghostT < 0.8) p.vy -= 60 * dt;
     else p.vy += Math.sin(this.time * 2 + p.outOrder) * 40 * dt;
     p.vx *= 1 - Math.min(1, dt * 1.5);
@@ -1079,8 +1082,8 @@ export class DisasterGame implements MiniGameHandle {
     if (this.finale) {
       const bk = w.bunker!;
       b.gx = bk.x + 60 + (p.outOrder % 3) * 30 + b.lazy * 80;
-      // bots lentos ficam para trás às vezes
-      if (b.skill < 0.5 && this.rng() < 0.15) b.gx = p.x;
+      // bots distraídos demoram a sair e às vezes param
+      if (this.phaseT < b.lazy * 3.5 || (b.skill < 0.55 && this.rng() < 0.12)) b.gx = p.x;
       b.gy = p.y;
       return;
     }
@@ -1157,11 +1160,17 @@ export class DisasterGame implements MiniGameHandle {
     const fx = m.ghost ? m.gx : m.x;
     const fy = m.ghost ? m.gy : m.y;
     let tx = fx + m.vx * 0.25;
-    let ty = fy - c.vh * 0.12;
-    if (this.phase === 'impact' && this.meteor.t >= 0 && this.meteor.t < 1.8 && !m.safe) {
-      tx = (tx + this.meteor.x) * 0.5;
+    let ty = fy - c.vh * 0.08;
+    const mt = this.meteor;
+    if (mt.t >= 0) {
+      // câmera de cinema: queda do meteoro, depois acompanha a onda de choque até você
+      const d = tx - mt.x;
+      if (mt.t < 2.4) {
+        tx = mt.x;
+        ty = GROUND_Y - c.vh * 0.3;
+      } else if (mt.ring >= 0 && mt.ring < Math.abs(d)) tx = mt.x + Math.sign(d) * mt.ring;
     }
-    const k = Math.min(1, dt * 5);
+    const k = Math.min(1, dt * (mt.t >= 0 && mt.t < 2.4 ? 3 : 5));
     c.x += (tx - c.x) * k;
     c.y += (ty - c.y) * k;
     const half = c.vw / 2;
