@@ -26,6 +26,7 @@
 .hm-scr button { font-family: inherit; border: 0; cursor: pointer; color: var(--ink); -webkit-tap-highlight-color: transparent; }
 .hm-cv { position: absolute; inset: 0; touch-action: none; }
 .hm-ico { display: block; flex: none; }
+.hm-scr [hidden] { display: none !important; }
 
 .hm-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;

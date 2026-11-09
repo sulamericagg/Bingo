@@ -1197,8 +1197,8 @@ function loop(now: number): void {
     const top = view === 'build' ? 50 : 60;
     const bottom = view === 'build' ? barH() : barH() + 30;
     const ah = Math.max(160, H - top - bottom);
-    const R = Math.min(W * 0.28, ah * 0.3);
-    const img = planetSceneCanvas(S.design, Math.round(W * dpr), Math.round(H * dpr), { R: R * dpr, cy: (top + ah * 0.6) * dpr, name: S.name, mess: Math.min(1, S.mess.length / 12) });
+    const R = Math.min(W * 0.33, ah * 0.27);
+    const img = planetSceneCanvas(S.design, Math.round(W * dpr), Math.round(H * dpr), { R: R * dpr, cy: (top + ah * 0.63) * dpr, name: S.name, mess: Math.min(1, S.mess.length / 12) });
     ctx.drawImage(img, 0, 0, W, H);
     if (pop > 0) {
       pop = Math.max(0, pop - step * 2.5);
