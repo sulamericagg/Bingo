@@ -35,8 +35,22 @@ export interface FriendRequest {
  * catálogo (src/home/catalog.ts) com combinações > 10^12 (1 trilhão). O servidor só
  * armazena o JSON (limite 16 KB) sem interpretar.
  */
+/** Permissões que o dono dá a cada amigo. Padrão para amigos: 'clean'. */
+export type HomeRole = 'view' | 'clean' | 'decorate' | 'build';
+export interface HomeAccess {
+  visits: 'friends' | 'nobody';
+  /** papel padrão de qualquer amigo */
+  defaultRole: HomeRole;
+  /** papel por amigo (id) — sobrescreve o padrão */
+  roles: Record<string, HomeRole>;
+}
+
 export interface HomeDesign {
   v: 1;
+  /** opcional (designs antigos não têm): quem pode visitar/ajudar/construir */
+  access?: HomeAccess;
+  /** pintura livre das paredes/pisos (pinceladas/rolo): por cômodo, lista compacta */
+  paint?: Record<string, { wall: string; strokes?: string }>;
   planet: Record<string, string | number>;
   exterior: Record<string, string | number>;
   rooms: RoomDesign[];
