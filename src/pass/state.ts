@@ -18,7 +18,8 @@ import { dayNumber, emptyPassSeason, persist, persistNow, save, type PassSeasonS
 import { SEASONS, seasonAt, type SeasonInfo } from '../creatures/seasons';
 import type { RunReport } from '../hub/registry';
 import { clubActive, setPassPremiumCheck } from '../services/ads';
-import { passSeason, type PassLevel, type Reward } from './catalog';
+import { passSeason, realCreatureId, type PassLevel, type Reward } from './catalog';
+import { loadSeasonCreatureNames } from './creatures-bridge';
 import { isoWeek, MILESTONES, progressFrom, weeklyChallenges, type ChallengeDef } from './challenges';
 
 const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
@@ -129,7 +130,7 @@ export function grantReward(r: Reward): void {
       break;
     case 'creature':
       if (!save.passItems.includes(r.id)) save.passItems.push(r.id);
-      bus.emit('creature-grant', { id: r.id, source: 'pass' });
+      bus.emit('creature-grant', { id: realCreatureId(r.id), passId: r.id, source: 'pass' });
       bus.emit('inventory');
       break;
     default:
@@ -337,6 +338,7 @@ export function startPass(): void {
   });
   const s = ensureSeason();
   const theme = s ?? upcomingSeason();
+  if (theme) loadSeasonCreatureNames(theme.index);
   if (theme) bus.emit('season-theme', { index: theme.index, id: theme.id, theme: theme.theme, palette: theme.palette });
   dailyLogin();
   document.addEventListener('visibilitychange', () => {

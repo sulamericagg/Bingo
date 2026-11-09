@@ -138,6 +138,9 @@ export const creatureId = (season: number, r: PassRarity) => `s${NN(season)}-${r
 
 /** Nomes das criaturas (preenchidos pelo catálogo real quando carregado; ver creatures-bridge.ts). */
 export const creatureNames = new Map<string, string>();
+/** id do passe ('sNN-raridade') → id real do catálogo de criaturas (quando diferente). */
+export const creatureRealIds = new Map<string, string>();
+export const realCreatureId = (id: string): string => creatureRealIds.get(id) ?? id;
 
 const RAR_LABEL = (): Record<PassRarity, string> => ({
   common: t('pass.rar.common', 'Comum'),

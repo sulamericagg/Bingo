@@ -68,11 +68,11 @@ export const PRODUCTS: ProductDef[] = [
   // Gemas (moeda premium). Pacotes maiores rendem MUITO mais por real (bônus progressivo).
   // IDs antigos mantidos (gems_small..gems_mega); preços/quantidades re-escalonados em nov/2026.
   { id: 'gems_small', kind: 'gems', consumable: true, gems: 100, coins: 0, fallbackPrice: 'R$ 4,90' },
-  { id: 'gems_medium', kind: 'gems', consumable: true, gems: 220, coins: 0, fallbackPrice: 'R$ 9,90', bonusPct: 10 },
-  { id: 'gems_large', kind: 'gems', consumable: true, gems: 600, coins: 0, fallbackPrice: 'R$ 24,90', badge: 'popular', bonusPct: 20 },
-  { id: 'gems_mega', kind: 'gems', consumable: true, gems: 1300, coins: 0, fallbackPrice: 'R$ 49,90', bonusPct: 30 },
-  { id: 'gems_ultra', kind: 'gems', consumable: true, gems: 2800, coins: 0, fallbackPrice: 'R$ 99,90', bonusPct: 40 },
-  { id: 'gems_galaxy', kind: 'gems', consumable: true, gems: 6000, coins: 0, fallbackPrice: 'R$ 199,90', badge: 'best', bonusPct: 50 },
+  { id: 'gems_medium', kind: 'gems', consumable: true, gems: 220, coins: 0, fallbackPrice: 'R$ 9,90', bonusPct: 9 },
+  { id: 'gems_large', kind: 'gems', consumable: true, gems: 600, coins: 0, fallbackPrice: 'R$ 24,90', badge: 'popular', bonusPct: 18 },
+  { id: 'gems_mega', kind: 'gems', consumable: true, gems: 1300, coins: 0, fallbackPrice: 'R$ 49,90', bonusPct: 27 },
+  { id: 'gems_ultra', kind: 'gems', consumable: true, gems: 2800, coins: 0, fallbackPrice: 'R$ 99,90', bonusPct: 37 },
+  { id: 'gems_galaxy', kind: 'gems', consumable: true, gems: 6000, coins: 0, fallbackPrice: 'R$ 199,90', badge: 'best', bonusPct: 47 },
   // cosméticos míticos (permanentes)
   { id: 'skin_phoenix', kind: 'cosmetic', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 12,90', skin: 'phoenix' },
   { id: 'skin_lava_golem', kind: 'cosmetic', consumable: false, gems: 0, coins: 0, fallbackPrice: 'R$ 12,90', skin: 'lava' },

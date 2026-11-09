@@ -6,7 +6,7 @@
  *  Contrato: seasonCreatures(i): SeasonCreatures; renderCreatureIcon(id, px).
  * ============================================================ */
 import type { SeasonCreatures } from '../creatures/api';
-import { creatureNames, rng, type PassRarity } from './catalog';
+import { creatureNames, creatureRealIds, realCreatureId, rng, type PassRarity } from './catalog';
 
 const catalogMods = import.meta.glob('../creatures/catalog.ts');
 const renderMods = import.meta.glob('../creatures/render.ts');
@@ -32,7 +32,12 @@ function loadRen(): Promise<RenderMod | null> {
 export async function loadSeasonCreatureNames(index: number): Promise<SeasonCreatures | null> {
   const m = await loadCat();
   const sc = m?.seasonCreatures?.(index) ?? null;
-  if (sc) for (const r of ['common', 'medio', 'rare', 'epic', 'legendary'] as const) creatureNames.set(`s${String(index).padStart(2, '0')}-${r}`, sc[r].name);
+  if (sc)
+    for (const r of ['common', 'medio', 'rare', 'epic', 'legendary'] as const) {
+      const k = `s${String(index).padStart(2, '0')}-${r}`;
+      creatureNames.set(k, sc[r].name);
+      creatureRealIds.set(k, sc[r].id);
+    }
   return sc;
 }
 
@@ -41,7 +46,7 @@ export async function creatureIcon(id: string, px: number, palette: [string, str
   const m = await loadRen();
   if (m?.renderCreatureIcon) {
     try {
-      const out = m.renderCreatureIcon(id, px);
+      const out = m.renderCreatureIcon(realCreatureId(id), px);
       if (typeof out === 'string') {
         const span = document.createElement('span');
         span.innerHTML = out;

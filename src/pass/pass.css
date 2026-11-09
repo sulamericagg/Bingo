@@ -31,10 +31,11 @@
   background: rgba(255, 255, 255, 0.12);
   display: grid; place-items: center;
 }
-.pp-title { display: flex; align-items: center; gap: 6px; font-size: 19px; flex: 1; min-width: 0; }
+.pp-title { display: flex; align-items: center; gap: 6px; font-size: 17px; flex: 1; min-width: 0; }
 .pp-title b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-wallet { display: flex; gap: 6px; font-size: 13px; font-weight: 600; }
-.pp-wallet span { display: flex; align-items: center; gap: 3px; background: rgba(0, 0, 0, 0.35); padding: 4px 8px; border-radius: 99px; }
+.pp-wallet { display: flex; gap: 4px; font-size: 12px; font-weight: 600; }
+@media (max-width: 400px) { .pp-wallet span:nth-child(3) { display: none; } }
+.pp-wallet span { display: flex; align-items: center; gap: 3px; background: rgba(0, 0, 0, 0.35); padding: 4px 7px; border-radius: 99px; }
 .pp-wallet i.gem, .pp-wallet i.coin { width: 16px; height: 16px; }
 .pp-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: calc(24px + var(--safe-bot, 0px)); -webkit-overflow-scrolling: touch; }
 

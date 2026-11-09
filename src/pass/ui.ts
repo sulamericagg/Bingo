@@ -143,10 +143,13 @@ function rewardVisual(r: Reward, px: number, s: SeasonInfo, live = false): HTMLE
     case 'aura': {
       const av = CUTE_BASE();
       av.parts[r.kind] = r.id;
-      const zoom = r.kind === 'aura' ? 0.8 : 1.35;
-      const c = renderAvatarPreview(av, px, 0.6, { zoom, focusY: r.kind === 'aura' ? 0 : 0.05 });
+      // cards pequenos: zoom no rosto; detalhe: corpo inteiro
+      const small = px < 80;
+      const zoom = r.kind === 'aura' ? (small ? 1.05 : 0.85) : small ? 2.1 : 1.3;
+      const focusY = r.kind === 'aura' ? 0 : small ? (r.kind === 'eyes' ? -0.02 : 0.3) : 0.05;
+      const c = renderAvatarPreview(av, px, 0.6, { zoom, focusY });
       wrap.appendChild(c);
-      if (live) animated.push({ c, draw: (time) => renderAvatarPreview(av, px, time, { zoom, target: c, focusY: r.kind === 'aura' ? 0 : 0.05 }) });
+      if (live) animated.push({ c, draw: (time) => renderAvatarPreview(av, px, time, { zoom, target: c, focusY }) });
       break;
     }
     case 'emote': {
@@ -587,7 +590,7 @@ function renderWeekly(body: HTMLElement, live: boolean): void {
 function chRow(text: string, prog: number, target: number, xp: number, done: boolean, game?: string): HTMLElement {
   const row = h('div', 'pp-ch' + (done ? ' done' : ''));
   const p = Math.min(1, prog / target);
-  const ic = game === 'orbit' ? 'planet' : game === 'rally' ? 'rocket' : game === 'tycoon' ? 'coins' : game === 'tubo' ? 'target' : 'star';
+  const ic = game === 'orbit' ? 'planet' : game === 'rally' ? 'rocket' : game === 'tycoon' ? 'coins' : game === 'tubo' ? 'target' : game === 'pet' ? 'heart' : 'star';
   row.innerHTML = `<div class="ch-ic">${done ? icon('check', { size: 26 }) : icon(ic as any, { size: 26 })}</div>
     <div class="ch-main"><div class="ch-t">${text}</div><div class="ch-bar"><i style="width:${p * 100}%"></i></div><small>${fmt(Math.floor(prog * 10) / 10)}/${fmt(target)}</small></div>
     <div class="ch-xp"><b>+${fmt(xp)}</b><small>XP</small></div>`;

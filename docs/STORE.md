@@ -60,9 +60,11 @@ O app mostra o preço real cadastrado na Play Store; a coluna "Preço sugerido" 
 | `starter_pack` | Pacote Inicial | Não consumível | R$ 9,90 | Sem anúncios + 300 gemas + 3.000 moedas + skin lendária Galáxia |
 | `remove_ads` | Sem Anúncios | Não consumível | R$ 14,90 | Remove banners e intersticiais para sempre (vídeos premiados continuam opcionais) |
 | `gems_small` | 100 Gemas | Consumível | R$ 4,90 | 100 gemas |
-| `gems_medium` | 550 Gemas | Consumível | R$ 19,90 | 550 gemas |
-| `gems_large` | 1.200 Gemas | Consumível | R$ 39,90 | 1.200 gemas |
-| `gems_mega` | 3.000 Gemas | Consumível | R$ 89,90 | 3.000 gemas |
+| `gems_medium` | 220 Gemas | Consumível | R$ 9,90 | 220 gemas (+9% por real) |
+| `gems_large` | 600 Gemas | Consumível | R$ 24,90 | 600 gemas (+18% por real) — mais popular |
+| `gems_mega` | 1.300 Gemas | Consumível | R$ 49,90 | 1.300 gemas (+27% por real) |
+| `gems_ultra` | 2.800 Gemas | Consumível | R$ 99,90 | 2.800 gemas (+37% por real) — **novo** |
+| `gems_galaxy` | 6.000 Gemas | Consumível | R$ 199,90 | 6.000 gemas (+47% por real) — melhor custo-benefício — **novo** |
 | `skin_phoenix` | Skin Fênix (mítica) | Não consumível | R$ 12,90 | Skin mítica Fênix |
 | `skin_lava_golem` | Skin Golem de Lava (mítica) | Não consumível | R$ 12,90 | Skin mítica Golem de Lava |
 | `trail_neon` | Rastro Fita Neon (mítico) | Não consumível | R$ 7,90 | Rastro mítico Fita Neon |
@@ -76,6 +78,16 @@ O app mostra o preço real cadastrado na Play Store; a coluna "Preço sugerido" 
 | `flash_gems` | Oferta Relâmpago | Consumível | R$ 9,90 | 650 gemas + bônus do dia (moedas ou turbos; gira todo dia, ver `FLASH_BONUSES`) |
 
 Descrição sugerida para cada produto na Play Console: copie a coluna "O que entrega" e termine com "— Bloop Orbit, da TEAM Ross."
+
+**Re-escalonamento das gemas (nov/2026):** os IDs `gems_small..gems_mega` continuam os mesmos; mude no Play Console o preço de `gems_medium` (R$ 19,90 → R$ 9,90), `gems_large` (R$ 39,90 → R$ 24,90) e `gems_mega` (R$ 89,90 → R$ 49,90) e crie `gems_ultra` e `gems_galaxy`. Pacotes maiores rendem mais gemas por real (bônus de 9% a 47% por real em relação ao pacote de R$ 4,90). O Passe Estelar custa 950 gemas (≈ pacote de R$ 49,90) e devolve 1.000 gemas ao longo da trilha.
+
+## Assinatura (Play Console → Monetizar → Produtos → Assinaturas)
+
+| ID do produto | Plano base | Nome na loja | Renovação | Preço sugerido | O que entrega |
+|---|---|---|---|---|---|
+| `clube_bloop` | `mensal` | Clube Bloop | Mensal (automática) | R$ 19,90/mês | Passe Estelar Premium de todo mês incluso + zero anúncios (banner e intersticial) enquanto ativo + 300 gemas por mês + 15 gemas por dia (resgatar no Passe) + moldura de perfil exclusiva |
+
+O app confere a assinatura a cada abertura (`getPurchases` SUBS, `isActive`/`expirationDate`). Sem a data, vale 3 dias e é reconferida. Na versão web o botão avisa "Assinatura disponível no app Android". Configuração e regras: `CLUB` em `src/config.ts`; detalhes do passe em `docs/PASSE.md`.
 
 ### Observações
 
