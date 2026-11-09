@@ -3,6 +3,7 @@
  *  joystick + olhar, botões de ação grandes, paleta, avisos.
  *  Todo texto via t('home3d.*'); fonte via var(--font).
  * ============================================================ */
+import { lockOrientation, restorePortrait } from '../core/orientation';
 import { t } from '../i18n';
 
 const CSS = `
@@ -134,12 +135,9 @@ export function isLandscape(): boolean {
   return window.matchMedia('(orientation: landscape)').matches || window.innerWidth > window.innerHeight;
 }
 export async function askLandscape(root: HTMLElement, skip: boolean): Promise<boolean> {
-  try {
-    const so = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
-    if (so?.lock) await so.lock('landscape').catch(() => undefined);
-  } catch {
-    /* sem suporte */
-  }
+  await lockOrientation('landscape');
+  // a rotação nativa leva um instante para refletir em innerWidth/innerHeight
+  if (!skip && !isLandscape()) await new Promise((r) => setTimeout(r, 400));
   if (skip || isLandscape()) return true;
   const box = el(
     'div',
@@ -166,13 +164,7 @@ export async function askLandscape(root: HTMLElement, skip: boolean): Promise<bo
   });
 }
 export function unlockOrientation(): void {
-  try {
-    const so = screen.orientation as ScreenOrientation & { unlock?: () => void; lock?: (o: string) => Promise<void> };
-    if (so?.lock) void so.lock('portrait').catch(() => so.unlock?.());
-    else so?.unlock?.();
-  } catch {
-    /* */
-  }
+  restorePortrait();
 }
 
 /* ---------------- carregando ---------------- */

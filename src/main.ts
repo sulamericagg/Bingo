@@ -9,6 +9,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { audio } from './core/audio';
 import { bus } from './core/events';
 import { isNative } from './core/platform';
+import { restorePortrait } from './core/orientation';
 import { persistNow, save } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
@@ -84,6 +85,7 @@ async function boot(): Promise<void> {
     StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
     StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
     StatusBar.hide().catch(() => {});
+    restorePortrait(); // manifest libera a rotação (casa 3D em paisagem); o app em si fica em retrato
     App.addListener('pause', onHide);
     App.addListener('resume', () => audio.resume());
     App.addListener('backButton', () => {

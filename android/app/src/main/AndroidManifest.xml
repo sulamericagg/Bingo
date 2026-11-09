@@ -20,7 +20,7 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullUser"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -46,4 +46,6 @@
     <!-- Bichinho que repete a fala: o WebView repassa o getUserMedia para estas permissões -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Lembretes do bichinho (local-notifications) no Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

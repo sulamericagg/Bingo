@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone pequeno das notificações (silhueta branca do Bloop: corpo + olhos vazados) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,3C7,3 3.5,7 3.5,12.5C3.5,17.5 6.5,21 12,21C17.5,21 20.5,17.5 20.5,12.5C20.5,7 17,3 12,3ZM9,10.5a1.5,1.8 0,1 0,0.01 0ZM15,10.5a1.5,1.8 0,1 0,0.01 0ZM8.5,15C9.5,16.5 14.5,16.5 15.5,15C14,15.8 10,15.8 8.5,15Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,1.2a1.3,1.3 0,1 1,-0.01 0Z" />
+</vector>
