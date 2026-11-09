@@ -63,9 +63,39 @@ function persist(): void {
 
 type Res<T> = { ok: true; status: number; data: T } | { ok: false; status: number; data: any };
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<Res<T> | null> {
+/* Estado da rede da Casa: 'down' depois de uma falha (sem internet, timeout, servidor que não
+ * responde JSON — ex.: backend ainda não publicado). Enquanto 'down', novas chamadas falham NA HORA
+ * por 15 s (sem esperar o timeout de novo) — a interface nunca fica presa esperando a rede. */
+export type HomeNet = 'unknown' | 'ok' | 'down';
+let net: HomeNet = 'unknown';
+let downAt = 0;
+const netCbs = new Set<(s: HomeNet) => void>();
+function setNet(s: HomeNet): void {
+  if (s === 'down') downAt = Date.now();
+  if (s === net) return;
+  net = s;
+  for (const cb of netCbs) {
+    try {
+      cb(s);
+    } catch {
+      /* */
+    }
+  }
+}
+export function homeNet(): HomeNet {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'down';
+  return net;
+}
+export function onHomeNet(cb: (s: HomeNet) => void): () => void {
+  netCbs.add(cb);
+  return () => netCbs.delete(cb);
+}
+
+async function req<T>(method: string, path: string, body?: unknown, force = false): Promise<Res<T> | null> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return setNet('down'), null;
+  if (!force && net === 'down' && Date.now() - downAt < 15_000) return null;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ONLINE.timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), Math.min(ONLINE.timeoutMs, 6000));
   try {
     const res = await fetch(`${apiBase()}/api${path}`, {
       method,
@@ -74,13 +104,22 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<Res
       signal: ctrl.signal,
     });
     let data: any = null;
+    let json = false;
     try {
       data = await res.json();
+      json = data !== null && typeof data === 'object';
     } catch {
       /* */
     }
+    // sem JSON (página de erro / 404 do provedor / index.html) = servidor indisponível, não "inválido"
+    if (!json || res.status >= 500) {
+      setNet('down');
+      return null;
+    }
+    setNet('ok');
     return res.ok ? { ok: true, status: res.status, data: data as T } : { ok: false, status: res.status, data };
   } catch {
+    setNet('down');
     return null; // sem rede / timeout
   } finally {
     clearTimeout(timer);
@@ -260,9 +299,9 @@ async function getHome(ownerId?: string): Promise<HomeState | null> {
   return st;
 }
 
-async function putDesign(body: Record<string, unknown>): Promise<boolean> {
+async function putDesign(body: Record<string, unknown>, force = false): Promise<boolean> {
   for (let tries = 0; tries < 2; tries++) {
-    const r = await req<{ ok: boolean }>('PUT', '/home/design', body);
+    const r = await req<{ ok: boolean }>('PUT', '/home/design', body, force);
     if (!r) return false;
     if (r.ok) return true;
     if (r.status !== 429) return false;
@@ -274,17 +313,19 @@ async function putDesign(body: Record<string, unknown>): Promise<boolean> {
 async function flushPending(id: string): Promise<void> {
   if (!cache.pendingDesign || !id) return;
   const d = cache.pendingDesign;
-  if (await putDesign({ id, design: d })) {
+  if (await putDesign({ id, design: d }, true)) {
     if (cache.pendingDesign === d) cache.pendingDesign = null;
     persist();
   }
 }
 
 async function saveDesign(design: HomeDesign): Promise<boolean> {
-  const id = await myId();
-  cache.home = { ownerId: id, mess: cache.home?.mess ?? [], ...(cache.home ?? {}), design, updatedAt: Date.now() } as HomeState;
+  // grava no aparelho ANTES de qualquer rede (otimista); o envio fica na fila se falhar
+  cache.home = { ownerId: cache.home?.ownerId ?? '', mess: cache.home?.mess ?? [], ...(cache.home ?? {}), design, updatedAt: Date.now() } as HomeState;
   cache.pendingDesign = design;
   persist();
+  const id = await myId();
+  if (id && cache.home.ownerId !== id) (cache.home.ownerId = id), persist();
   if (!id) return false;
   const ok = await putDesign({ id, design });
   if (ok && cache.pendingDesign === design) {
@@ -352,7 +393,7 @@ class PartyImpl implements PartySession {
   }
 
   async connect(): Promise<void> {
-    const who = await me().catch(() => null);
+    const who = homeNet() === 'down' ? null : await me().catch(() => null);
     if (!who?.id) {
       this.reason = 'network';
       return this.updateBots();
@@ -366,7 +407,7 @@ class PartyImpl implements PartySession {
       setTimeout(() => {
         if (!this.online) this.reason ??= 'network';
         finish();
-      }, 5000);
+      }, 3500);
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl('/party/' + this.hostId));
@@ -548,11 +589,34 @@ export const homeApi: HomeApi = {
 };
 export default homeApi;
 
+/** Há mudanças da casa ainda não enviadas ao servidor (ficam salvas no aparelho). */
+export const hasPendingSync = (): boolean => !!cache.pendingDesign;
+
+let syncing = false;
+/** Fila de sincronização: reenvia o design pendente quando a rede volta. Nunca lança. */
+export async function syncNow(): Promise<void> {
+  if (syncing || !cache.pendingDesign) return;
+  syncing = true;
+  try {
+    await flushPending(await myId());
+  } catch {
+    /* */
+  } finally {
+    syncing = false;
+  }
+}
+
 // em segundo plano: recupera o @nome (outro aparelho/reinstalação) e reenvia design pendente
-if (typeof window !== 'undefined')
+if (typeof window !== 'undefined') {
   setTimeout(() => {
     refreshHandle().catch(() => {});
-    myId()
-      .then((id) => flushPending(id))
-      .catch(() => {});
+    void syncNow();
   }, 4000);
+  window.addEventListener('online', () => {
+    downAt = 0;
+    void syncNow();
+  });
+  setInterval(() => {
+    if (cache.pendingDesign) void syncNow();
+  }, 30_000);
+}
