@@ -130,6 +130,11 @@ export function hubVisible(): boolean {
   return !!menu && menu.classList.contains('on') && !hostActive;
 }
 
+/** Hub visível e livre (sem painel/modal por cima) — hora boa para pop-ups automáticos. */
+export function hubIdle(): boolean {
+  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, .celebrate, .item-sheet');
+}
+
 /** Inicia o jogo selecionado (botão JOGAR / Espaço). */
 export function playSelected(): void {
   const d = selectedGame();

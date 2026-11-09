@@ -5,7 +5,9 @@
  *   ?debug&announce força o pop-up (teste).
  * ============================================================ */
 import './pass.css';
+import { pushBack } from '../core/back';
 import { persist, save } from '../core/storage';
+import { hubIdle } from '../hub/hub';
 import { seasonTheme, type SeasonInfo } from '../creatures/seasons';
 import { t } from '../i18n';
 import { icon } from '../ui/icons';
@@ -36,7 +38,7 @@ function art(w: number, hgt: number, s: SeasonInfo): HTMLCanvasElement {
   return c;
 }
 
-export async function maybeAnnounce(): Promise<void> {
+export async function maybeAnnounce(tries = 0): Promise<void> {
   const s = activeSeason();
   if (!s || document.querySelector('.pa-overlay, .pass-panel')) return;
   const force = /[?&]debug\b/.test(location.search) && /[?&]announce\b/.test(location.search);
@@ -47,6 +49,11 @@ export async function maybeAnnounce(): Promise<void> {
   else if (!seen.includes(s.id)) kind = 'new';
   else if (left < 3 * DAY && !seen.includes(s.id + '-end')) kind = 'end';
   if (!kind) return;
+  // nunca por cima de um jogo/painel aberto: espera o hub ficar livre
+  if (!hubIdle()) {
+    if (tries < 60) setTimeout(() => void maybeAnnounce(tries + 1), 4000);
+    return;
+  }
   seen.push(kind === 'new' ? s.id : s.id + '-end');
   if (seen.length > 40) seen.splice(0, seen.length - 40);
   persist();
@@ -81,7 +88,11 @@ export async function maybeAnnounce(): Promise<void> {
   card.append(kingBox, body);
   ov.appendChild(card);
   document.body.appendChild(ov);
-  const close = () => ov.remove();
+  const popB = pushBack(() => ov.remove());
+  const close = () => {
+    popB();
+    ov.remove();
+  };
   later.onclick = close;
   ov.onclick = (e) => e.target === ov && close();
   go.onclick = () => {
