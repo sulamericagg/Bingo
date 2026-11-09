@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Rally Lunar (dev)</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0620; font-family: 'Fredoka', system-ui, sans-serif; color: #fff; }
+  #app { position: absolute; inset: 0; }
+  #hub { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  #hub canvas { border-radius: 20px; }
+  #hub button { font: 700 20px 'Fredoka', sans-serif; padding: 12px 28px; border-radius: 16px; border: 0; background: #ff8a3d; color: #fff; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+  import { registerRally } from '../../src/games/rally/register.ts';
+  import { listGames } from '../../src/hub/registry.ts';
+  registerRally();
+  const def = listGames().find((g) => g.id === 'rally');
+  const app = document.getElementById('app');
+  const q = new URLSearchParams(location.search);
+  function hub() {
+    app.innerHTML = '<div id="hub"><canvas width="320" height="220"></canvas><b></b><button>Jogar</button></div>';
+    app.querySelector('b').textContent = def.name + ' — ' + def.tagline;
+    const c = app.querySelector('canvas');
+    const x = c.getContext('2d');
+    let raf = 0;
+    const loop = (t) => { def.drawShowcase(x, 320, 220, t / 1000); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    app.querySelector('button').onclick = () => { cancelAnimationFrame(raf); play(); };
+  }
+  async function play() {
+    app.innerHTML = '';
+    await def.launch(app, () => hub());
+  }
+  if (q.has('hub')) hub(); else play();
+</script>
+</body>
+</html>

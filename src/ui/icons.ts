@@ -76,7 +76,8 @@ export type IconName =
   | 'paint'
   | 'smile'
   | 'drop'
-  | 'lamp';
+  | 'lamp'
+  | 'car';
 
 export interface IconOpts {
   /** Lado em px. Sem valor, usa 1.25em (acompanha o texto). */
@@ -558,6 +559,13 @@ const ICONS: Record<IconName, string> = {
     `<path d="M22 31L34 17" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="24" cy="18.5" r="2.6" fill="#fff"/><circle cx="32" cy="29.5" r="2.6" fill="#fff"/>` +
     hl('<rect x="16" y="11.5" width="18" height="2.4" rx="1.2"/>', 0.55) +
     `</g>`,
+
+  car:
+    sil('<path d="M5 30Q5 22 12 21L17 13Q19 10 23 10H31Q35 10 37 14L40 21Q44 22 44 27V31Q44 34 41 34H8Q5 34 5 30Z"/>', 'orange') +
+    `<path d="M20 14H26V21H16Z M29 14H33L36 21H29Z" fill="#bff3ff" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>` +
+    sil('<circle cx="14" cy="35" r="6.5"/><circle cx="35" cy="35" r="6.5"/>', 'cyan', 2.5) +
+    ink('<circle cx="14" cy="35" r="2.2"/><circle cx="35" cy="35" r="2.2"/>') +
+    hl('<rect x="9" y="24" width="12" height="2.4" rx="1.2"/>', 0.6),
 
   'cloud-off':
     sil('<path d="M13 38C7.5 38 4 34 4 29.5C4 25 7.5 21.5 12 21.5C12.5 14 18 9 25 9C31.5 9 36.5 13.5 37.5 19.5C42 20 45 24 45 28.5C45 33.5 41 38 36 38Z"/>', 'silver') +
