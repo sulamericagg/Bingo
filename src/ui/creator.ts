@@ -172,7 +172,7 @@ export function closeCreator(force = true): boolean {
   if (!open) return false;
   if (!force && dirty() && performance.now() - exitArmed > 2500) {
     exitArmed = performance.now();
-    toast('Alterações não salvas — toque de novo para sair', 'warning');
+    toast(t('creator.unsaved', 'Alterações não salvas — toque de novo para sair'), 'warning');
     return true;
   }
   open = false;
@@ -493,7 +493,7 @@ async function buyPart(p: Part): Promise<void> {
   const pr = p.price;
   if (ownsPart(p.id)) return;
   if (pr.event) {
-    toast('Exclusivo de evento — vença os desafios para ganhar!', 'trophy');
+    toast(t('creator.eventOnly', 'Exclusivo de evento — vença os desafios para ganhar!'), 'trophy');
     return;
   }
   if (pr.iap) {
@@ -502,14 +502,14 @@ async function buyPart(p: Part): Promise<void> {
     const def: ProductDef = { id: pp.id, kind: 'vip', consumable: false, gems: 0, coins: 0, fallbackPrice: pp.fallbackPrice };
     const r = await buy(def);
     if (r === 'ok') unlockPart(p.id);
-    else if (r === 'pending') toast('Pagamento pendente — você recebe assim que confirmar', 'clock');
-    else if (r === 'unavailable') toast('Compra disponível no app Android', 'bag');
-    else if (r === 'error') toast('Não foi possível concluir a compra', 'warning');
+    else if (r === 'pending') toast(t('shop.pending', 'Pagamento pendente — você recebe assim que confirmar'), 'clock');
+    else if (r === 'unavailable') toast(t('common.androidOnly', 'Disponível no app Android'), 'bag');
+    else if (r === 'error') toast(t('shop.buyError', 'Não foi possível concluir a compra'), 'warning');
     return;
   }
   if (pr.ads) {
     const ok = await showRewarded();
-    if (!ok) return toast('Vídeo indisponível agora', 'video');
+    if (!ok) return toast(t('ads.videoUnavailable', 'Vídeo indisponível agora'), 'video');
     const k = 'part:' + p.id;
     save.adProgress[k] = (save.adProgress[k] ?? 0) + 1;
     persist();
@@ -522,8 +522,8 @@ async function buyPart(p: Part): Promise<void> {
     return;
   }
   if (!spend(pr)) {
-    if (pr.gems) toast('Gemas insuficientes — toque nas gemas lá em cima', 'gem');
-    else toast('Moedas insuficientes — jogue mais para ganhar!', 'coin');
+    if (pr.gems) toast(t('shop.noGems', 'Gemas insuficientes'), 'gem');
+    else toast(t('shop.noCoinsPlay', 'Moedas insuficientes — jogue mais ou pegue grátis'), 'coin');
     haptics.tap('heavy');
     return;
   }
@@ -635,11 +635,11 @@ function saveAndUse(): void {
   audio.unlock2();
   haptics.success();
   if (reverted) {
-    toast('Salvo! Peças em teste voltaram ao normal', 'check');
+    toast(t('creator.savedTrial', 'Salvo! Peças em teste voltaram ao normal'), 'check');
     renderAll();
     return;
   }
-  toast('Seu Bloop está pronto!', 'party');
+  toast(t('creator.ready', 'Seu Bloop está pronto!'), 'party');
   setTimeout(() => closeCreator(true), 450);
 }
 

@@ -402,13 +402,13 @@ export class UI {
       };
     });
     $('#lo-video', box).onclick = async () => {
-      if (this.freeShield) return this.toast('Escudo grátis pronto para a próxima partida!', 'shield');
+      if (this.freeShield) return this.toast(t('orbit.freeShieldArmed', 'Escudo grátis pronto para a próxima partida!'), 'shield');
       const ok = await showRewarded();
-      if (!ok) return this.toast('Vídeo indisponível agora', 'video');
+      if (!ok) return this.toast(t('ads.videoUnavailable', 'Vídeo indisponível agora'), 'video');
       this.freeShield = true;
       audio.unlock2();
       haptics.success();
-      this.toast('Escudo grátis na próxima partida!', 'shield');
+      this.toast(t('orbit.freeShieldGot', 'Escudo grátis na próxima partida!'), 'shield');
       this.renderLoadout();
     };
   }
@@ -549,7 +549,7 @@ export class UI {
     this.base = base;
     if (ok) this.doRevive();
     else {
-      this.toast('Vídeo indisponível agora', 'video');
+      this.toast(t('ads.videoUnavailable', 'Vídeo indisponível agora'), 'video');
       this.showResults();
     }
   }
@@ -743,12 +743,12 @@ export class UI {
   private async freeCoins(): Promise<void> {
     const st = this.freeState();
     if (st.n >= FREE_LIMIT) {
-      this.toast('Volte amanhã para mais moedas grátis!', 'clock');
+      this.toast(t('free.comeBack', 'Volte amanhã para mais moedas grátis!'), 'clock');
       return;
     }
     const ok = await showRewarded();
     if (!ok) {
-      this.toast('Vídeo indisponível agora', 'video');
+      this.toast(t('ads.videoUnavailable', 'Vídeo indisponível agora'), 'video');
       return;
     }
     st.n++;
@@ -769,7 +769,7 @@ export class UI {
       if (mult > 1) {
         const ok = await showRewarded();
         if (!ok) {
-          this.toast('Vídeo indisponível agora', 'video');
+          this.toast(t('ads.videoUnavailable', 'Vídeo indisponível agora'), 'video');
           return;
         }
       }
