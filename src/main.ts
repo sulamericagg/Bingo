@@ -26,6 +26,8 @@ import { petCoinBonus } from './pet/state';
 import { registerTubo } from './games/tubo/register';
 import { registerRally } from './games/rally/register';
 import { registerTycoon } from './games/tycoon/register';
+import { registerCreatures } from './creatures/register';
+import { wireGlue } from './hub/glue';
 import { registerPass } from './pass/register';
 
 async function boot(): Promise<void> {
@@ -55,7 +57,8 @@ async function boot(): Promise<void> {
   registerRally();
   registerTycoon();
   registerPet();
-  // registerCreatures();
+  registerCreatures();
+  wireGlue();
   // registerSocial();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };

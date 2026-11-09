@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Galeria de bichinhos</title>
+<style>
+  body { margin: 0; background: #12082e; color: #fff; font: 12px/1.25 system-ui, sans-serif; padding: 12px; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: stretch; }
+  .season { width: 110px; font-weight: 700; font-size: 13px; display: flex; align-items: center; }
+  .card { width: 150px; text-align: center; background: #1f1248; border-radius: 10px; padding: 4px; }
+  .card b { display: block; font-size: 12px; }
+  .card small { opacity: .7; }
+  .big { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .big .card { width: auto; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="./creatures.ts"></script>
+</body>
+</html>

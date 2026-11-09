@@ -702,3 +702,5 @@ function esc(s: string): string {
 function toast(msg: string): void {
   bus.emit('toast', msg);
 }
+
+export { defaultProfile };

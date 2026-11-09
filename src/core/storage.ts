@@ -57,6 +57,14 @@ export interface SaveData {
   club: { expires: number; lastRenewGrant: number; lastDrip: number };
   /** Tempo sem anúncios ganho com vídeos premiados (ms epoch) + vídeos acumulados para o próximo bloco. */
   adFree: { until: number; videos: number };
+  /** Bichinhos colecionáveis obtidos (ids 'sNN-raridade', ver creatures/catalog.ts). */
+  creatures: string[];
+  /** Bichinhos ainda não vistos na Coleção (badge). */
+  creaturesNew: string[];
+  /** Companheiro equipado nos minigames ('' = nenhum). */
+  companion: string;
+  /** Bichinho usado como foto de perfil ('' = avatar padrão). */
+  profileCreature: string;
 }
 
 export interface PassSeasonSave {
@@ -190,6 +198,10 @@ const defaults = (): SaveData => ({
   tickets: 0,
   club: { expires: 0, lastRenewGrant: 0, lastDrip: 0 },
   adFree: { until: 0, videos: 0 },
+  creatures: [],
+  creaturesNew: [],
+  companion: '',
+  profileCreature: '',
 });
 
 export const emptyPassSeason = (): PassSeasonSave => ({ xp: 0, premium: false, free: [], prem: [] });
@@ -220,6 +232,10 @@ function load(): SaveData {
       m.passItems = Array.isArray(o?.passItems) ? o.passItems : [];
       m.club = { expires: 0, lastRenewGrant: 0, lastDrip: 0, ...(o && o.club) };
       m.adFree = { until: 0, videos: 0, ...(o && o.adFree) };
+      m.creatures = Array.isArray(o?.creatures) ? o.creatures : [];
+      m.creaturesNew = Array.isArray(o?.creaturesNew) ? o.creaturesNew : [];
+      if (typeof m.companion !== 'string') m.companion = '';
+      if (typeof m.profileCreature !== 'string') m.profileCreature = '';
       if (!m.ownedSkins.includes('custom')) m.ownedSkins.push('custom');
       return m;
     }
