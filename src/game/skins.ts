@@ -1,7 +1,10 @@
 /* ============================================================
  *  CATÁLOGO DE COSMÉTICOS — skins + rastros
  *  Tudo é desenhado proceduralmente (ver character.ts / trails.ts).
+ *  Nomes/descrições ficam em pt-BR nos dados; exiba com skinName()/trailName()/…
+ *  (traduz por t('skin.<id>') etc. — ids nunca são traduzidos).
  * ============================================================ */
+import { t } from '../i18n';
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
@@ -160,11 +163,11 @@ export interface RarityInfo {
 export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 
 export const RARITY_INFO: Record<Rarity, RarityInfo> = {
-  common: { label: 'Comum', color: '#8fa3c8', glow: '#9fb4e0', gradient: ['#6b7ca3', '#8fa3c8'], order: 0 },
-  rare: { label: 'Raro', color: '#3f8cff', glow: '#4fa8ff', gradient: ['#2f6bff', '#4fc3ff'], order: 1 },
-  epic: { label: 'Épico', color: '#b05cff', glow: '#c06bff', gradient: ['#8a3dff', '#d16bff'], order: 2 },
-  legendary: { label: 'Lendário', color: '#ffb300', glow: '#ffc23d', gradient: ['#ffb300', '#ff3c7a'], order: 3 },
-  mythic: { label: 'Mítico', color: '#ff3dce', glow: '#ff5ce1', gradient: ['#ff3dce', '#3de8ff'], order: 4 },
+  common: { get label() { return t('rarity.common', 'Comum'); }, color: '#8fa3c8', glow: '#9fb4e0', gradient: ['#6b7ca3', '#8fa3c8'], order: 0 },
+  rare: { get label() { return t('rarity.rare', 'Raro'); }, color: '#3f8cff', glow: '#4fa8ff', gradient: ['#2f6bff', '#4fc3ff'], order: 1 },
+  epic: { get label() { return t('rarity.epic', 'Épico'); }, color: '#b05cff', glow: '#c06bff', gradient: ['#8a3dff', '#d16bff'], order: 2 },
+  legendary: { get label() { return t('rarity.legendary', 'Lendário'); }, color: '#ffb300', glow: '#ffc23d', gradient: ['#ffb300', '#ff3c7a'], order: 3 },
+  mythic: { get label() { return t('rarity.mythic', 'Mítico'); }, color: '#ff3dce', glow: '#ff5ce1', gradient: ['#ff3dce', '#3de8ff'], order: 4 },
 };
 
 /** Skins agrupadas por raridade (na ordem do catálogo). */
@@ -183,6 +186,15 @@ export function trailsByRarity(): Record<Rarity, Trail[]> {
 
 /** true se o item só sai por evento (código promocional / presente). */
 export const isEventOnly = (p: Price): boolean => !!p.event;
+
+/** Nome/descrição traduzidos para exibição (chaves skin.<id>, skin.<id>.desc, trail.<id>, trail.<id>.desc). */
+export const skinName = (s: Skin): string => t(`skin.${s.id}`, s.name);
+export const skinDesc = (s: Skin): string | undefined => (s.desc ? t(`skin.${s.id}.desc`, s.desc) : undefined);
+export const trailName = (tr: Trail): string => t(`trail.${tr.id}`, tr.name);
+export const trailDesc = (tr: Trail): string | undefined => (tr.desc ? t(`trail.${tr.id}.desc`, tr.desc) : undefined);
+export const cosmeticName = (item: Skin | Trail, isSkin: boolean): string => (isSkin ? skinName(item as Skin) : trailName(item as Trail));
+export const cosmeticDesc = (item: Skin | Trail, isSkin: boolean): string | undefined =>
+  isSkin ? skinDesc(item as Skin) : trailDesc(item as Trail);
 
 export const skinById = (id: string): Skin => SKINS.find((s) => s.id === id) ?? SKINS[0];
 export const trailById = (id: string): Trail => TRAILS.find((t) => t.id === id) ?? TRAILS[0];
