@@ -437,7 +437,9 @@ export class World {
       if (o === b || !o.alive || o.tip || o.kind === 'ladder') continue;
       if (Math.abs(o.y - bottom) < 3) {
         const ov = Math.min(b.x + b.w, o.x + o.w) - Math.max(b.x, o.x);
-        if (ov > Math.min(b.w, o.w) * 0.2) return true;
+        // mesmo critério da colisão (qualquer apoio de verdade): antes um bloco com apoio
+        // estreito era acordado a cada 0,2 s, a colisão o segurava, ele dormia... para sempre
+        if (ov > 2) return true;
       }
     }
     return false;
@@ -523,7 +525,7 @@ export class World {
         // b já está apoiado (chão/plataforma): quem sai é o de cima — antes b era empurrado
         // para dentro do chão e ficava "brigando" com ele para sempre (parede tombada enterrada)
         o.y -= my;
-        this.wake(o);
+        if (my > 1) this.wake(o); // encostinho de <1 px não acorda (evita ping-pong de acordar/dormir)
         if (o.vy > 0) o.vy = 0;
       } else {
         b.y += my;

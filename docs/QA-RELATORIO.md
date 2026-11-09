@@ -60,3 +60,25 @@ Branch `wip/qa` · base `53a6e63` · 09/11/2026
 - **Mínimo:** Android 8+ (WebView 90+), 2 GB de RAM. Os jogos 2D rodam no nível Mínimo a 30+ fps. A Casa 3D mostra o aviso "O 3D pode ficar lento" em aparelhos de nível 0.
 - **Recomendado para a Casa 3D:** 4 GB de RAM e GPU da classe Adreno 610 / Mali-G52 ou melhor.
 - **Testar no aparelho real antes de publicar:** rotação para paisagem no 3D e volta ao retrato, permissão de notificação no Android 13+, microfone do bichinho, voltar em cada painel, compra real com conta de teste do Play.
+
+## Correções de física (v1.1.1)
+
+Relato do dono após jogar o APK: "física cagada" no **Desastre** e no jogo que **pula**. Tudo abaixo foi reproduzido e medido com `scripts/dev/physics-check.mjs` (Chromium headless com tempo virtual a 30/60/120 fps, engasgos de GC simulados e CPU 4x mais lenta via CDP). Uso: `NODE_PATH=$(npm root -g) node scripts/dev/physics-check.mjs [--quick]`.
+
+**Sobreviva aos Desastres**
+- **Jogo congelava no nível Mínimo.** Com `fpsCap 30` numa tela de 60 Hz, o laço descartava *todos* os quadros (o tempo do quadro descartado era jogado fora). Agora o tempo é acumulado; a física roda em subpassos de no máx. 1/60 s e engasgos são cortados em 0,1 s. Relógio da rodada em 52 s de teste: antes 0,0 s, depois 52,4 s.
+- **Altura do pulo dependia do fps** (99 / 104 / 107 px a 30 / 60 / 120 Hz). Gravidade agora integrada de forma exata: 109,4 px em todas as taxas, inclusive com engasgo de 180 ms.
+- **Blocos enterrados no chão e pilhas tremendo sem dormir.** A colisão empurrava o bloco de BAIXO para dentro do chão e a média de velocidades "bombeava" a pilha. Agora quem está em cima sai da sobreposição e nenhuma velocidade é passada para baixo. Quadros com bloco dentro do chão (cenário 1, 60 fps): 1002 → 0. Blocos ainda acordados 6 s depois do fim: 13 → 0.
+- **Parede tombando** colidia como caixa reta em pé (empurrava vizinhos para dentro do chão); agora a animação de tombar não colide. **Escada** segurava o chapéu da torre no ar depois que a torre caía. **Casas/torres/caixas** podiam nascer sobrepostas e "explodir" ao acordar. Sobreposições profundas: ~4900 → <20 quadros.
+- Plataformas finas com colisão varrida e velocidade terminal de 720 px/s (nada atravessa laje de 12 px). Inclinação visual volta a zero quando o bloco apoia.
+- **Controles:** toque rápido de pulo (entre dois quadros) não se perde; deslizar o dedo de uma seta para a outra troca de direção; teclas/botões soltam ao perder o foco ou ir para o fundo; andar + pular ao mesmo tempo (multitoque por `pointerId`).
+
+**Queda Giratória**
+- O quique de "tontura" (1,4× mais alto) perdia a altura extra **no meio do ar** quando a tontura acabava: o Bloop despencava ~0,6 raio num único quadro. A altura agora é fixada no começo de cada quique, numa parábola de verdade.
+- Toques durante a tontura (0,22 s após quicar) ou durante o mergulho eram ignorados (23 de 39 toques no teste). Agora ficam guardados e viram mergulho assim que possível: 0 toques perdidos.
+- Queda entre anéis com integração exata (233 ms em 30/60/120 Hz; pouso sempre exatamente na superfície).
+
+**Bloop Orbit**
+- Em velocidade alta e fps baixo (20 fps, engasgo), o Bloop **atravessava planetas pequenos** sem pousar (passo de 65 px). O voo agora roda em subpassos de 1/120 s: captura e trajetória iguais em 20/30/60/120 fps.
+
+Pendências conhecidas: as caixas continuam colidindo como retângulos retos (a inclinação é só visual e zera quando o bloco apoia); o jogador ainda atravessa paredes de casa pelo lado (de propósito, para poder entrar nas casas).
