@@ -246,6 +246,7 @@ export class Build {
     if (this.sel && this.sel !== it) this.tint(this.sel, null);
     this.sel = it;
     if (it) this.tint(it, '#ffd84a');
+    if (!it && !this.ghost) this.showFoot(null, true);
     this.renderSide();
   }
   private tint(it: ItemRec, col: string | null): void {
@@ -261,9 +262,10 @@ export class Build {
     }
     if (!this.tintMats.has(it)) {
       this.tintMats.set(it, it.solid.material as THREE.Material);
-      it.solid.material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: col, emissiveIntensity: 0.3 });
+      it.solid.material = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, transparent: true, opacity: 0.85 });
     }
     (it.solid.material as THREE.MeshLambertMaterial).emissive.set(col);
+    (it.solid.material as THREE.MeshLambertMaterial).color.set(col);
   }
   private rotateSel(): void {
     const it = this.ghost ?? this.sel;
@@ -322,6 +324,7 @@ export class Build {
     }
     this.tint(g, null);
     this.ghost = null;
+    this.showFoot(null, true);
     this.eng.changed = true;
     this.eng.burst(g.obj.position.x, 0.2, g.obj.position.z, 18, 'spark', '#ffe27a', 2);
     sfx.fix();
@@ -332,12 +335,31 @@ export class Build {
     if (!g) return;
     this.ghost = null;
     this.tint(g, null);
+    this.showFoot(null, true);
     const arr = g.room.design.items;
     arr.splice(arr.indexOf(g.data), 1);
     this.eng.removeItem(g);
     this.renderSide();
   }
   /** encaixe + checagem de sobreposição (AABB no plano do cômodo) */
+  private foot: THREE.Mesh | null = null;
+  private footMat = new THREE.MeshBasicMaterial({ color: '#5dff8a', transparent: true, opacity: 0.45, depthWrite: false });
+  /** pegada colorida no chão (verde = cabe, vermelho = não cabe) */
+  private showFoot(it: ItemRec | null, ok: boolean): void {
+    if (!this.foot) {
+      this.foot = new THREE.Mesh(this.eng.planeGeo, this.footMat);
+      this.foot.rotation.x = -Math.PI / 2;
+      this.foot.renderOrder = 3;
+      this.eng.scene.add(this.foot);
+    }
+    this.foot.visible = !!it && !it.info.wall && !it.info.ceil;
+    if (!it) return;
+    const r3 = (it.data.r3 ?? 0) % 2;
+    this.foot.scale.set((r3 ? it.dims.d : it.dims.w) + 0.12, (r3 ? it.dims.w : it.dims.d) + 0.12, 1);
+    this.foot.rotation.z = it.room.rotY;
+    this.foot.position.set(it.homeP.x, 0.035, it.homeP.z);
+    this.footMat.color.set(ok ? '#5dff8a' : '#ff5c5c');
+  }
   private checkValid(it: ItemRec): boolean {
     let ok = true;
     if (!it.info.wall && !it.info.flat && !it.info.ceil) {
@@ -360,6 +382,7 @@ export class Build {
     }
     this.valid = ok;
     this.tint(it, ok ? '#5dff8a' : '#ff5c5c');
+    this.showFoot(it, ok);
     return ok;
   }
 
@@ -546,6 +569,8 @@ export class Build {
       it.solid!.material = m;
     }
     this.eng.scene.remove(this.grid);
+    if (this.foot) this.eng.scene.remove(this.foot);
+    this.footMat.dispose();
     this.grid.geometry.dispose();
     (this.grid.material as THREE.Material).dispose();
     this.ui.remove();

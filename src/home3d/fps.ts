@@ -401,9 +401,10 @@ export class Fps {
     }
     if (!this.tinted.has(it)) {
       this.tinted.set(it, it.solid.material as THREE.Material);
-      it.solid.material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: col, emissiveIntensity: 0.35, transparent: true, opacity: 0.8 });
+      it.solid.material = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, transparent: true, opacity: 0.8 });
     }
     (it.solid.material as THREE.MeshLambertMaterial).emissive.set(col);
+    (it.solid.material as THREE.MeshLambertMaterial).color.set(col);
   }
   private placeDecor(): void {
     const it = this.held?.item;
@@ -514,7 +515,7 @@ export class Fps {
     if (this.held?.item === it) this.held = null;
     // pedacinhos de desenho animado voando
     const col = itemColor(it.data);
-    const mats = [this.eng.pieceMat(col), this.eng.pieceMat('#fffaf0'), this.eng.pieceMat('#ffd84a')];
+    const mats = [this.eng.pieceMat(col), this.eng.pieceMat(it.kind === 'plant' || it.kind === 'cactus' ? '#4fd67a' : '#fffaf0'), this.eng.pieceMat('#ffd84a')];
     for (let i = 0; i < 9; i++) {
       const s = 0.07 + Math.random() * 0.08;
       const m = new THREE.Mesh(this.eng.boxGeo(), mats[i % 3]);

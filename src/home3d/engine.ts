@@ -842,14 +842,19 @@ export class Engine {
   setBroken(it: ItemRec, effects: boolean): void {
     it.state = 'broken';
     it.obj.visible = false;
-    if (it.body) it.body.collisionResponse = false, it.body.sleep();
+    if (it.body) {
+      it.body.collisionResponse = false;
+      it.body.type = CANNON.Body.KINEMATIC;
+      it.body.velocity.setZero();
+      it.body.angularVelocity.setZero();
+    }
     const g = new THREE.Group();
     const col = itemColor(it.data);
-    const mat = this.pieceMat(col);
+    const mats = [this.pieceMat(col), this.pieceMat(it.kind === 'plant' || it.kind === 'cactus' ? '#4fd67a' : '#fffaf0')];
     const n = 6;
     for (let i = 0; i < n; i++) {
       const s = 0.06 + ((i * 37) % 10) / 100;
-      const m = new THREE.Mesh(this.boxGeo(), mat);
+      const m = new THREE.Mesh(this.boxGeo(), mats[i % 2]);
       m.scale.set(s, s * 0.6, s);
       const a = (i / n) * 6.28;
       m.position.set(Math.cos(a) * it.dims.w * 0.3, s * 0.3, Math.sin(a) * it.dims.d * 0.3);
@@ -1028,7 +1033,7 @@ export class Engine {
         continue;
       }
       const b = it.body;
-      if (!b || b.type !== CANNON.Body.DYNAMIC) continue;
+      if (!b || b.type !== CANNON.Body.DYNAMIC || it.state === 'broken') continue;
       if (b.sleepState !== CANNON.Body.SLEEPING) {
         awake++;
         // nunca sai de casa
