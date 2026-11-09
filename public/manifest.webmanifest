@@ -1,6 +1,6 @@
 {
-  "name": "Bloop Orbit",
-  "short_name": "Bloop Orbit",
+  "name": "Bloop World",
+  "short_name": "Bloop World",
   "start_url": "./",
   "display": "fullscreen",
   "orientation": "portrait",

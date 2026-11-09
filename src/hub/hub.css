@@ -145,9 +145,10 @@ body.has-banner {
   text-overflow: ellipsis;
 }
 .hub-brand {
-  font-size: 10px;
+  white-space: nowrap;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.6px;
   color: var(--hub-accent2);
 }
 .hub-brand em {
@@ -155,6 +156,7 @@ body.has-banner {
   color: var(--hub-title2);
 }
 .hub-pill {
+  flex: none;
   font-size: 16px;
   padding: 5px 10px 5px 6px;
   gap: 5px;
@@ -310,7 +312,7 @@ body.has-banner {
   --c-title1: #fff;
   --c-title2: #ff8ad8;
   position: relative;
-  flex: 0 0 min(calc(100vw - 32px), 430px);
+  flex: 0 0 min(calc(100vw - 32px), 440px);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -717,11 +719,6 @@ body.has-banner {
   }
   .ox-btn [data-icon] {
     display: none;
-  }
-}
-@media (min-width: 700px) {
-  .hub-card {
-    flex-basis: min(46vw, 440px);
   }
 }
 

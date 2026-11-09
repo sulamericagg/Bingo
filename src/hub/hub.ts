@@ -303,7 +303,7 @@ function buildCards(): void {
   const defs: MiniGameDef[] = [...listGames()];
   if (defs.length < 2) defs.push(soonDef());
   // move a área de extras para fora antes de recriar as cartas
-  extras.forEach((el) => el.remove());
+  extras.forEach((el) => park().appendChild(el));
   track.innerHTML = '';
   dots.innerHTML = '';
   cards = defs.map((def, i) => {
@@ -376,13 +376,25 @@ function select(i: number, instant: boolean): void {
   layout(!instant);
 }
 
+/** extras de cartas inativas ficam aqui (no DOM, escondidos) para os ids continuarem achaveis */
+let parkEl: HTMLElement | null = null;
+function park(): HTMLElement {
+  if (!parkEl) {
+    parkEl = document.createElement('div');
+    parkEl.hidden = true;
+    parkEl.className = 'hub-park';
+    (menu ?? document.body).appendChild(parkEl);
+  }
+  return parkEl;
+}
+
 function mountExtras(): void {
   const c = cards[idx];
   if (!c) return;
   const slot = c.el.querySelector('.hc-extras') as HTMLElement;
   extras.forEach((el, id) => {
     if (id === c.def.id) slot.appendChild(el);
-    else el.remove();
+    else park().appendChild(el);
   });
   c.el.classList.toggle('has-extras', extras.has(c.def.id));
 }
