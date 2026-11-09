@@ -298,8 +298,9 @@ export function toolModel(kind: 'axe' | 'saw' | 'laser', level: number, color: s
     tip.position.set(0, 0, -0.62);
   } else {
     // cortador a laser: corpo arredondado + cano + ponta brilhante
-    box(0.12, 0.14, 0.3, color, 0, 0.05, 0);
-    box(0.07, 0.15, 0.07, '#2a2238', 0, -0.06, 0.08);
+    box(0.09, 0.1, 0.24, color, 0, 0.05, 0);
+    box(0.1, 0.03, 0.2, '#ffffff', 0, 0.115, -0.01);
+    box(0.06, 0.13, 0.06, '#2a2238', 0, -0.05, 0.07);
     const barrel = new THREE.Mesh(base.cyl, lambert('#e8eaf8'));
     barrel.scale.set(0.035, 0.24, 0.035);
     barrel.rotation.x = Math.PI / 2;
@@ -310,7 +311,7 @@ export function toolModel(kind: 'axe' | 'saw' | 'laser', level: number, color: s
     glow.position.set(0, 0.07, -0.38);
     g.add(glow);
     spin = glow;
-    for (const s of [-1, 1]) box(0.02, 0.06, 0.12, '#ffffff', s * 0.07, 0.1, -0.02, 0.4);
+    for (const s of [-1, 1]) box(0.015, 0.05, 0.1, '#ffffff', s * 0.05, 0.06, -0.02, 0.4);
     tip.position.set(0, 0.07, -0.4);
   }
   g.add(tip);
@@ -564,8 +565,8 @@ export function vehicleModel(v: number): VehModel {
     // cabine na frente
     box(1.1, 0.8, 1.7, col, L * 0.5 - 0.6, 1.1, 0);
     box(0.5, 0.25, 1.5, shade(col, 0.2), L * 0.5 - 0.3, 1.6, 0);
-    for (const s of [-1, 1]) box(0.06, 0.5, 0.06, '#ffffff', L * 0.5 - 0.1, 1.95, s * 0.72);
-    box(0.06, 0.06, 1.5, '#ffffff', L * 0.5 - 0.1, 2.2, 0);
+    for (const s of [-1, 1]) box(0.04, 0.32, 0.04, INK, L * 0.5 - 0.1, 1.86, s * 0.74);
+    box(0.04, 0.04, 1.5, INK, L * 0.5 - 0.1, 2.02, 0);
     // cabine aberta: santantônio atrás do banco
     for (const s of [-1, 1]) box(0.1, 0.9, 0.1, '#ffffff', L * 0.5 - 1.1, 2.1, s * 0.8);
     box(0.1, 0.1, 1.7, '#ffffff', L * 0.5 - 1.1, 2.55, 0);

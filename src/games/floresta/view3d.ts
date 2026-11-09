@@ -1097,7 +1097,7 @@ class View3D implements View {
       const g = new THREE.Group();
       g.add(new THREE.Mesh(side, this.track(lambert('#9a6a3c'))));
       g.add(new THREE.Mesh(cap, this.track(new THREE.MeshLambertMaterial({ vertexColors: true }))));
-      g.scale.setScalar(0.5);
+      g.scale.setScalar(0.3);
       this.heldGroup.add(g);
       this.heldLogs.push(g);
     }
@@ -1226,7 +1226,7 @@ class View3D implements View {
     }
     if (this.vmSpin) {
       if (kind === 'saw') this.vmSpin.position.z = chopping ? ((this.time * 6) % 0.11) - 0.055 : 0;
-      else this.vmSpin.scale.setScalar(chopping ? 1.4 + Math.sin(this.time * 40) * 0.4 : 1);
+      else this.vmSpin.scale.setScalar(0.04 * (chopping ? 1.6 + Math.sin(this.time * 40) * 0.5 : 1));
     }
     // laser: raio da ponta até o alvo
     this.beam.visible = chopping && kind === 'laser';
@@ -1245,8 +1245,8 @@ class View3D implements View {
     this.handL.visible = false;
     if (holding && !this.driving) {
       let tx = 0;
-      let ty = -0.3;
-      let tz = -0.62;
+      let ty = -0.33;
+      let tz = -0.72;
       if (this.throwAnim > 0) {
         const k = 1 - this.throwAnim;
         ty += Math.sin(k * Math.PI) * 0.15 - k * 0.1;
@@ -1260,8 +1260,8 @@ class View3D implements View {
         const h = this.held[i];
         g.visible = !!h;
         if (!h) continue;
-        g.position.set(0, i * 0.3, -i * 0.04);
-        g.rotation.set(0, i * 0.15, 0);
+        g.position.set(0, i * 0.17, -i * 0.03);
+        g.rotation.set(0, i * 0.12, 0);
         const side = g.children[0] as THREE.Mesh;
         const key = h.sp * 8 + h.rare;
         if (side.userData.k !== key) {
@@ -1273,10 +1273,10 @@ class View3D implements View {
       this.handR.visible = true;
       this.handL.visible = true;
       const hp = this.heldGroup.position;
-      this.handR.position.set(hp.x + 0.27, hp.y - 0.04, hp.z + 0.12);
-      this.handR.rotation.set(0, 0, 0.5);
-      this.handL.position.set(hp.x - 0.27, hp.y - 0.04, hp.z + 0.12);
-      this.handL.rotation.set(0, 0, -0.5);
+      this.handR.position.set(hp.x + 0.2, hp.y - 0.02, hp.z + 0.06);
+      this.handR.rotation.set(0, 0, 0.45);
+      this.handL.position.set(hp.x - 0.2, hp.y - 0.02, hp.z + 0.06);
+      this.handL.rotation.set(0, 0, -0.45);
     }
     // volante
     this.wheel.visible = this.driving && this.vehLvl >= 2;
