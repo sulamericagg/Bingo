@@ -265,7 +265,7 @@ export class Shop {
     card.onclick = () => {
       if (ev) {
         // exclusivo de evento: vai direto para o resgate de código
-        this.host.toast('Exclusivo de evento: resgate com um código de desafio', 'ticket');
+        this.host.toast(t('shop.eventOnly', 'Exclusivo de evento: só com código de desafio'), 'ticket');
         this.host.open('redeem');
       } else this.openSheet(item, isSkin);
     };

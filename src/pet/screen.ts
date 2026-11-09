@@ -1131,7 +1131,7 @@ async function onMicButton(): Promise<void> {
 
 async function beginVoice(): Promise<void> {
   if (room === 'bed' && !lampOn) toggleLamp();
-  const err = await startVoice();
+  const err = await startVoice(() => isOpen);
   if (err === 'denied') toast(t('pet.voice.denied', 'Sem permissão do microfone. Dá para liberar nas configurações do aparelho.'), 'warning');
   else if (err === 'nosound') toast(t('pet.voice.nosound', 'Ligue o som do jogo para ouvir a vozinha!'), 'sound');
   else if (err) toast(t('pet.voice.failed', 'Não consegui abrir o microfone agora.'), 'warning');
