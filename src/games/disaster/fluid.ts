@@ -42,7 +42,7 @@ interface Phys {
 
 const PHYS: Record<FluidKind, Phys> = {
   water: { c: 230, damp: 0.9, k: 1.6, swell: 2.2, stir: 28, foam: 0.0035, flow: 1.25 },
-  lava: { c: 70, damp: 2.8, k: 2.5, swell: 1.3, stir: 9, foam: 0, flow: 0.6 },
+  lava: { c: 70, damp: 2.8, k: 2.5, swell: 2.3, stir: 9, foam: 0, flow: 0.6 },
   goo: { c: 115, damp: 2.0, k: 2.2, swell: 1.6, stir: 12, foam: 0.002, flow: 0.8 },
   snow: { c: 45, damp: 7, k: 4, swell: 0, stir: 0, foam: 0, flow: 1.1 },
 };
@@ -52,6 +52,24 @@ export const FLUID_DX = [2.9, 2.4, 2.0, 1.7];
 const MAX_COLS = 1500;
 /** desnível máximo de uma coluna em relação ao repouso */
 const MAX_D = 70;
+
+/* tabelas (montadas uma vez): seno rápido e o perfil da onda — o perfil é avaliado em
+   ~700-1300 colunas por passo, e exp/cos/sin por coluna custava ~1 ms/quadro em CPU fraca */
+const SN = 4096;
+const SK = SN / (Math.PI * 2);
+const SIN = new Float32Array(SN);
+for (let i = 0; i < SN; i++) SIN[i] = Math.sin(i / SK);
+function fsin(a: number): number {
+  return SIN[((a * SK) | 0) & (SN - 1)];
+}
+/** cauda atrás da crista, por unidade de distância (0..TAIL) */
+const TAIL = 1400;
+const TAILT = new Float32Array(TAIL + 1);
+for (let s = 0; s <= TAIL; s++) TAILT[s] = Math.exp(-s / 120) * (0.72 + 0.28 * Math.cos(s * 0.055)) + 0.1 * Math.sin(s * 0.045) * Math.exp(-s / 380);
+/** face (0..1 → altura relativa) */
+const FACE = 128;
+const FACET = new Float32Array(FACE + 1);
+for (let i = 0; i <= FACE; i++) FACET[i] = Math.sqrt(Math.sin((i / FACE) * 1.5707963));
 
 interface Room {
   /** índices das colunas internas (entre as paredes) */
@@ -158,26 +176,26 @@ export class FluidSim {
       const C = this.crest;
       // tsunami: parede de água; avalanche: rampa larga rolando
       const fw = this.kind === 'snow' ? 140 : 52;
+      const ramp = u < 84 ? (u + 6) / 90 : 1;
       if (u < fw - 6) {
-        const k = (u + 6) / fw;
-        const s = Math.sin(k * 1.5707963);
-        H = (L * Math.min(1, (u + 6) / 90) + C) * Math.sqrt(s);
+        // face da onda: parede de água subindo do chão
+        H = (L * ramp + C) * FACET[(((u + 6) / fw) * FACE) | 0];
       } else {
         // atrás da crista: cai para o nível com ondulações (onda "ondular")
-        const s = u - fw + 6;
-        H = L * Math.min(1, (u + 6) / 90) + C * Math.exp(-s / 120) * (0.72 + 0.28 * Math.cos(s * 0.055)) + C * 0.1 * Math.sin(s * 0.045) * Math.exp(-s / 380);
+        const s = (u - fw + 6) | 0;
+        H = L * ramp + (s < TAIL ? C * TAILT[s] : 0);
       }
       if (this.kind === 'snow') {
         // neve: monte granuloso que viaja com a frente
         const q = x - this.front * 0.92;
-        H += (2.6 * Math.sin(q * 0.13) * Math.sin(q * 0.047) + 1.6 * Math.sin(q * 0.31)) * Math.min(1, H / 30);
+        H += (2.6 * fsin(q * 0.13) * fsin(q * 0.047) + 1.6 * fsin(q * 0.31)) * Math.min(1, H / 30);
       }
     }
     if (H < 0.5) return 0;
     const sw = this.ph.swell;
     if (sw > 0) {
       const t = this.time;
-      H += sw * (Math.sin(x * 0.045 - t * 1.7) + 0.6 * Math.sin(x * 0.018 + t * 1.1)) * Math.min(1, H / 24);
+      H += sw * (fsin(x * 0.045 - t * 1.7) + 0.6 * fsin(x * 0.018 + t * 1.1)) * (H < 24 ? H / 24 : 1);
     }
     return H > 0.5 ? H : 0;
   }
@@ -233,7 +251,7 @@ export class FluidSim {
       const hh = rm.h;
       for (let i = rm.i0; i <= rm.i1; i++) {
         if (hh < 3) rest[i] = 0;
-        else rest[i] = hh + 0.6 * Math.sin(i * 0.4 + this.time * 2.1) * Math.min(1, hh / 10);
+        else rest[i] = hh + 0.6 * fsin(i * 0.4 + this.time * 2.1) * Math.min(1, hh / 10);
       }
       for (let i = rm.wl0; i <= rm.wl1; i++) wall[i] = 1;
       for (let i = rm.wr0; i <= rm.wr1; i++) wall[i] = 1;

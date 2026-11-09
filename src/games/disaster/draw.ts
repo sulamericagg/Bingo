@@ -5,7 +5,7 @@
  *  gradientes e camadas criados só ao mudar de rodada/tamanho).
  * ============================================================ */
 import type { DisasterGame, Player } from './game';
-import { drawGrade, drawLight, drawSoftShadow, drawSpecular, drawVignette } from '../../gfx/light';
+import { drawGrade, drawLight, drawSoftShadow, drawSpecular, drawVignette, glowSprite } from '../../gfx/light';
 import { R } from './game';
 import { GROUND_Y, shade, type Body } from './world';
 
@@ -129,6 +129,7 @@ export class Drawer {
   private rain = new Float32Array(160);
   private fGrad: CanvasGradient | null = null;
   private fGradKind = '';
+  private lavaGlow: HTMLCanvasElement | null = null;
 
   constructor(g: DisasterGame) {
     this.g = g;
@@ -1062,7 +1063,10 @@ export class Drawer {
       for (let i = i0 - (i0 % st); i <= i1; i += st) {
         if (i < 0 || !wet[i]) continue;
         const a = fo[i];
-        if (a < 0.12) continue;
+        if (a < 0.12 || i + 1 >= s.n) continue;
+        // na face íngreme da onda a espuma vira cortina (riscos), não bolinhas empilhadas
+        const sl = rest[i + 1] + dd[i + 1] - rest[i] - dd[i];
+        if (sl > dx * 1.6 || sl < -dx * 1.6) continue;
         const h = Math.sin(i * 12.9898) * 43758.5453;
         const j = h - Math.floor(h);
         const r = (1.3 + a * 3.4) * (0.7 + j * 0.6);
@@ -1214,12 +1218,17 @@ export class Drawer {
     // ---- luz ----
     if (g.q.dynLights) {
       if (kind === 'lava') {
+        // lava emissiva: ilumina o cenário acima da superfície (sprite em cache: sem string por quadro)
+        const spr = this.lavaGlow || (this.lavaGlow = glowSprite('255,120,30'));
+        x.globalCompositeOperation = 'lighter';
         for (let px = Math.floor(x0 / 160) * 160 + 80; px <= x1; px += 160) {
           const py = s.surf(px);
           if (py > 5000) continue;
-          const fl = 0.75 + 0.25 * Math.sin(t * 3 + px * 0.05);
-          drawLight(x, '255,120,30', px, py, 150, 0.55 * fl, 0.7);
+          x.globalAlpha = 0.55 * (0.75 + 0.25 * Math.sin(t * 3 + px * 0.05));
+          x.drawImage(spr, px - 150, py - 105, 300, 210);
         }
+        x.globalAlpha = 1;
+        x.globalCompositeOperation = 'source-over';
       } else if (kind === 'water') {
         for (let i = 0; i < 7; i++) {
           const px = x0 + ((i * 131.7 + t * 18) % (x1 - x0));
