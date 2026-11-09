@@ -20,7 +20,7 @@ const CSS = `
 @keyframes rec-fall{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),70vh) rotate(var(--r));opacity:0}}
 `;
 let cssDone = false;
-let lastAt = 0;
+let lastAt = -1e9;
 
 /** Mostra a comemoração. `detail` = valor do recorde já formatado (ex.: "1.240 m"). */
 export function celebrateRecord(detail = ''): void {

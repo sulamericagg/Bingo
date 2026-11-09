@@ -148,7 +148,7 @@ export class Hud {
 
   roundCard(): void {
     const g = this.g;
-    this.scn.textContent = g.scenarioTitle();
+    this.scn.textContent = (g.training ? t('dz.train', 'Treino') + ' · ' : '') + g.scenarioTitle();
     const stars = '<span style="color:#ffe14d">' + '★'.repeat(g.sc.difficulty) + '</span>';
     this.showCard(
       `${dzIcon(g.finale ? 'bunker' : 'house', 64)}<div class="big">${t('dz.round', 'Cenário {n}', { n: g.sc.n })}</div><div class="sub">${g.sc.map.name()} &nbsp;${stars}</div>`,
@@ -171,7 +171,7 @@ export class Hud {
       );
     else
       this.showCard(
-        `${dzIcon('ghost', 72)}<div class="big">${t('dz.lost', 'Quase!')}</div><div class="sub">${t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive })}</div>`,
+        `${dzIcon('ghost', 72)}<div class="big">${t('dz.lost', 'Quase!')}</div><div class="sub">${g.training ? t('dz.train.lost', 'Tudo bem, é treino! Fique perto da seta verde.') : t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive })}</div>`,
         3.8,
       );
   }
@@ -208,7 +208,7 @@ export class Hud {
                 : t('dz.ph.next', 'Próximo cenário');
     this.phaseLbl.textContent = lbl;
     // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
-    if (p === 'prepare' && !g.finale) this.toast(DISASTERS[g.sc.disasters[0]].hint());
+    if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + DISASTERS[g.sc.disasters[0]].hint() : DISASTERS[g.sc.disasters[0]].hint());
     if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
   }
 
