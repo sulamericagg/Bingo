@@ -557,7 +557,7 @@ export class Screens {
       ['highway', t('band.cos.tab.highway', 'Pista'), 'highway'],
       ['note', t('band.cos.tab.note', 'Notas'), 'note'],
       ['line', t('band.cos.tab.line', 'Teclas'), 'keys'],
-      ['inst', t('band.cos.tab.inst', 'Instrumentos'), 'guitar'],
+      ['inst', t('band.cos.tab.inst', 'Pintura'), 'guitar'],
       ['fx', t('band.cos.tab.fx', 'Palco'), 'star'],
     ];
     const kind = this.customTab;

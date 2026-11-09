@@ -43,6 +43,9 @@ export interface Member {
   y: number;
   R: number;
   ops: string;
+  /** fontes em cache (recalculadas no layout) */
+  fo?: string;
+  fn?: string;
 }
 
 interface StageLook {
@@ -359,6 +362,14 @@ export class Stage {
   }
 
   layoutMembers(ms: Member[], landscapeSplit: number): void {
+    this.placeMembers(ms, landscapeSplit);
+    for (const m of ms) {
+      m.fo = gameFont(700, Math.round(m.R * 0.62));
+      m.fn = gameFont(700, Math.max(9, Math.round(m.R * 0.42)));
+    }
+  }
+
+  private placeMembers(ms: Member[], landscapeSplit: number): void {
     // landscapeSplit > 0: membros dos dois lados da pista (largura central livre)
     const n = ms.length;
     const fy = this.floorY;
@@ -492,7 +503,7 @@ export class Stage {
       x.fill();
       x.stroke();
       x.globalAlpha = 1 - k * 0.6;
-      x.font = gameFont(700, Math.round(R * 0.62));
+      x.font = m.fo ?? '';
       x.textAlign = 'center';
       x.lineWidth = 3;
       x.strokeStyle = INK;
@@ -502,7 +513,7 @@ export class Stage {
       x.globalAlpha = 1;
     }
     // nome
-    x.font = gameFont(700, Math.max(9, Math.round(R * 0.42)));
+    x.font = m.fn ?? '';
     x.textAlign = 'center';
     x.fillStyle = m.me ? '#ffe14d' : 'rgba(255,255,255,.85)';
     x.fillText(m.name, m.x, this.floorY + R * 0.62);

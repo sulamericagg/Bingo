@@ -748,7 +748,7 @@ export class Hero {
       sx = 0.9;
       sy = 1.12;
     }
-    const sq = this.land * 0.32 + (pressK > 0 && Math.abs(this.pressLane - this.pos) < 0.5 ? pressK * 0.18 : 0);
+    const sq = this.land * 0.22 + (pressK > 0 && Math.abs(this.pressLane - this.pos) < 0.5 ? pressK * 0.12 : 0);
     sx += sq;
     sy -= sq * 0.8;
     const footY = hw.py - lw * 0.08;
