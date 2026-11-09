@@ -7,7 +7,8 @@ import { tap } from '../../core/haptics';
 import { fmt, t } from '../../i18n';
 import { BELT_SPEED, COFRE, ITEMS, LINE_ROW, PLOT_H, PLOT_W, TURBO_INDEX } from './data';
 import { BELT_ITEM, HELPER_ITEM, PAD_POS, stars, UPG_ITEM, type Plot, type SimFx } from './sim';
-import { BELT_FRAMES, buildFloor, buildSky, charSprite, getSheet, ISLAND_DEPTH, ISLAND_PAD, rr, INK, type Sheet } from './sprites';
+import { BELT_FRAMES, buildFloor, buildSky, charSprite, getSheet, ISLAND_DEPTH, ISLAND_PAD, rr, INK, STAR_TIERS, type Sheet } from './sprites';
+import { drawLight, drawSoftShadow } from '../../gfx/light';
 
 const COST_LABEL: string[] = [];
 const FREE = () => t('tycoon.free', 'Grátis');
@@ -71,7 +72,14 @@ const FT = {
 export interface ViewOpts {
   glows: boolean;
   budget: number; // 0..1
+  /** leitura ao vivo das flags de luz (segue o governor) */
+  fx?: () => { dynLights: boolean; softShadows: boolean };
 }
+
+const STAR_RGB = STAR_TIERS.map((h) => {
+  const n = parseInt(h.slice(1), 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+});
 
 export class FactoryView implements SimFx {
   ctx: CanvasRenderingContext2D;
@@ -346,16 +354,21 @@ export class FactoryView implements SimFx {
     const cf = p.colFlash[l];
     const cw = col.width * (1 + cf * 0.06);
     const chh = col.height * (1 - cf * 0.05);
+    const fx = this.opts.fx?.();
+    if (fx?.softShadows) drawSoftShadow(x, ox + 6.6 * S, oy + (row + 1.0) * S - S * 0.04, cw * 0.46, S * 0.12, 0.35, true);
     x.drawImage(col, ox + 6.6 * S - cw / 2, oy + (row + 1.0) * S - chh, cw, chh);
     // estrelas desta linha
     const glows = this.opts.glows;
     const yy = oy + (row + 0.42) * S;
+    const lit = !!fx?.dynLights;
     for (let i = 0; i < stars.n; i++) {
       if (stars.plot[i] !== p.idx || stars.line[i] !== l) continue;
       const tier = stars.tier[i];
       const img = glows && tier >= 1 ? sh.starGlow[tier] : sh.star[tier];
       const sxp = ox + stars.x[i] * S;
       const bob = Math.sin(stars.spin[i]) * S * 0.04;
+      // a estrela ilumina a esteira embaixo dela (poça de luz achatada)
+      if (lit) drawLight(x, STAR_RGB[tier], sxp, yy + S * 0.36, S * (0.55 + tier * 0.06), 0.55, 0.38);
       x.drawImage(img, sxp - img.width / 2, yy - img.height / 2 + bob);
     }
     // polidores
@@ -375,6 +388,7 @@ export class FactoryView implements SimFx {
       }
       const w = img.width * pp;
       const h = img.height * pp;
+      if (fx?.softShadows) drawSoftShadow(x, cx, oy + (row + 0.95) * S - S * 0.03, w * 0.42, S * 0.1, 0.3 * pp, true);
       x.drawImage(img, cx - w / 2, oy + (row + 0.95) * S - h, w, h);
     }
   }

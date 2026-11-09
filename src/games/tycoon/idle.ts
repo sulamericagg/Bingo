@@ -61,7 +61,7 @@ export function startIdle(root: HTMLElement, onBack: () => void, quality: Qualit
     for (const id of idleItems(ts.lv)) plot.buildNow(ITEM_INDEX[id], anim ? view.time : -99, anim ? view : null);
   };
   const q = quality.settings;
-  const view = new FactoryView(cv, { glows: q.glows, budget: q.particleBudget });
+  const view = new FactoryView(cv, { glows: q.glows, budget: q.particleBudget, fx: () => quality.settings });
   view.showPrices = false;
   view.drawPads = false;
   const limiter = new FpsLimiter(q.fpsCap);

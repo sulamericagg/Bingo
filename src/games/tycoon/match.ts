@@ -77,7 +77,7 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
   const meBrain = DEBUG && qs.has('tybot') ? makeBrain(2, rnd) : null;
 
   const q = quality.settings;
-  const view = new FactoryView(cv, { glows: q.glows, budget: q.particleBudget });
+  const view = new FactoryView(cv, { glows: q.glows, budget: q.particleBudget, fx: () => quality.settings });
   view.me = 0;
   const limiter = new FpsLimiter(q.fpsCap);
 
