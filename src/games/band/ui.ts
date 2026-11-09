@@ -462,6 +462,14 @@ export class Screens {
       this.g.setBandPreview(slots);
     }
     const peers = net.lobbyPeers();
+    const nowS = performance.now() / 1000;
+    for (const p of peers) {
+      const m = this.g.members.find((x) => x.pid === p.id);
+      if (m && p.emote && m.emote !== p.emote) {
+        m.emote = p.emote;
+        m.emoteT = nowS;
+      }
+    }
     const allReady = peers.every((p) => (p.s.rd ?? 0) > 0);
     const status = !net.ses ? t('band.connecting', 'Procurando amigos…') : net.online ? (peers.length ? t('band.friendsIn', '{n} amigo(s) na sala', { n: peers.length }) : t('band.waiting', 'Esperando amigos… (bots completam a banda)')) : t('band.offline', 'Sem internet: sua banda toca com bots');
     const s = this.lobbySong;

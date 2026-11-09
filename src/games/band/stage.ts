@@ -361,8 +361,14 @@ export class Stage {
     return c;
   }
 
-  layoutMembers(ms: Member[], landscapeSplit: number): void {
+  layoutMembers(ms: Member[], landscapeSplit: number, span = 1): void {
     this.placeMembers(ms, landscapeSplit);
+    if (span < 1)
+      for (const m of ms) {
+        m.x = this.rx + (m.x - this.rx) * span;
+        m.R *= 0.85;
+        m.y = this.floorY - m.R * (m.inst === 'drums' ? 1.5 : 1.08);
+      }
     for (const m of ms) {
       m.fo = gameFont(700, Math.round(m.R * 0.62));
       m.fn = gameFont(700, Math.max(9, Math.round(m.R * 0.42)));

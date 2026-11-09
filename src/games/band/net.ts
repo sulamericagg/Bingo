@@ -150,7 +150,12 @@ export class BandNet {
       if (!m.remote) {
         continue;
       }
-      const p = this.peers.find((q) => q.id === m.pid);
+      let p: PeerState | null = null;
+      for (const q of this.peers)
+        if (q.id === m.pid) {
+          p = q;
+          break;
+        }
       if (!p) continue;
       const h = p.s.h ?? 0;
       const mm = p.s.m ?? 0;

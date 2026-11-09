@@ -259,7 +259,7 @@ export class BandGame implements MiniGameHandle {
     const L = this.mode === 'play' ? LANES[this.diff] : 5;
     if (this.mode === 'menu') {
       this.stage.layout(0, 0, w, h * (this.portrait ? 0.5 : 1), this.dpr);
-      this.stage.layoutMembers(this.members, 0);
+      this.stage.layoutMembers(this.members, 0, this.portrait ? 1 : 0.5);
       return;
     }
     if (this.portrait) {

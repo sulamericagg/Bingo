@@ -111,7 +111,7 @@
 }
 
 /* saguão */
-.bb-lobby{flex:1;overflow-y:auto;padding:0 12px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;justify-content:flex-end;max-width:620px;width:100%;margin:0 auto;box-sizing:border-box}
+.bb-lobby{flex:1;overflow-y:auto;padding:0 12px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;max-width:620px;width:100%;margin:0 auto;box-sizing:border-box}
 .bb-status{text-align:center;font-size:13px;background:rgba(0,0,0,.3);border-radius:12px;padding:6px;margin-bottom:8px}
 .bb-status.on{background:rgba(47,191,113,.35)}
 .bb-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -189,3 +189,11 @@
 .bb-ed-play{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bb-st-play.on{background:linear-gradient(180deg,#ff8fd8,#c9268a)}
 .bb-codebox{font-family:monospace;font-size:12px;word-break:break-all;background:rgba(0,0,0,.3);border-radius:10px;padding:8px;user-select:text;-webkit-user-select:text}
+
+.bb-lobby>:first-child{margin-top:auto}
+.bb-studio>*,.bb-cus>*,.bb-lobby>*{flex-shrink:0}
+@media (orientation:landscape){
+  .bb-ui.bb-s-home{background:linear-gradient(90deg,rgba(18,10,46,0) 40%,rgba(18,10,46,.92) 58%)}
+  .bb-logo{align-self:flex-start;text-align:left;margin-top:60px}
+  .bb-starbtn{bottom:auto;top:max(70px,calc(env(safe-area-inset-top) + 64px))}
+}
