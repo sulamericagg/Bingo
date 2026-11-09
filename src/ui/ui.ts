@@ -42,6 +42,7 @@ import { TIER_LABELS, type QualityMode } from '../core/quality';
 import { hydrateIcons, icon, type IconName } from './icons';
 import { closeCreator } from './creator';
 import { closePetScreen } from '../pet/register';
+import { closeHome } from '../home/register';
 import { OnlineUI, bindOnlineBadges } from './online-ui';
 import { BOOST_INFO, Shop, productTitle, type ShopTab } from './shop';
 import { hubBack, playSelected } from '../hub/hub';
@@ -185,6 +186,7 @@ export class UI {
     if (hubBack()) return true;
     if (closeCreator(false)) return true;
     if (closePetScreen()) return true;
+    if (closeHome()) return true;
     if (document.querySelector('#shop .item-sheet')) {
       this.shop.closeSheet();
       return true;

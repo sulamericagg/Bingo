@@ -30,6 +30,7 @@ import { registerDisaster } from './games/disaster/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { registerSocial } from './social/register';
+import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
 
 async function boot(): Promise<void> {
@@ -63,6 +64,7 @@ async function boot(): Promise<void> {
   registerCreatures();
   wireGlue();
   registerSocial();
+  registerHome();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
 
