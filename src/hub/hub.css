@@ -895,3 +895,29 @@ body.hub-qmin .hub-play {
 .hc-best.on {
   display: inline-flex;
 }
+
+/* ---------- paisagem baixa (web/tablet deitado): JOGAR ficava cortado ---------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hc-show {
+    min-height: 40px;
+    margin-top: 6px;
+  }
+  .hc-title {
+    font-size: 22px;
+  }
+  .hc-tag,
+  .hc-best {
+    display: none;
+  }
+  .hc-body {
+    padding: 2px 10px 8px;
+  }
+  .hc-extras:not(:empty) {
+    margin-top: 4px;
+  }
+  .hub-play {
+    font-size: 20px;
+    padding: 6px;
+    margin-top: 6px;
+  }
+}
