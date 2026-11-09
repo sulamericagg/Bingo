@@ -10,6 +10,12 @@ export const enum PType {
   Spark,
   Ring,
   Chunk,
+  // rastros (trails.ts)
+  Note,
+  Petal,
+  Pixel,
+  Ribbon,
+  Smoke,
 }
 
 export interface Particle {
@@ -155,6 +161,13 @@ export class Particles {
             x.fill();
             break;
           }
+          case PType.Note:
+          case PType.Petal:
+          case PType.Pixel:
+          case PType.Ribbon:
+          case PType.Smoke:
+            drawTrailShape(x, p, s, t);
+            break;
           default: {
             x.save();
             x.translate(p.x, p.y);
@@ -194,4 +207,53 @@ export class Particles {
     x.globalAlpha = 1;
     x.globalCompositeOperation = 'source-over';
   }
+}
+
+/** Formas extras usadas pelos rastros (trails.ts). */
+function drawTrailShape(x: CanvasRenderingContext2D, p: Particle, s: number, t: number): void {
+  switch (p.type) {
+    case PType.Smoke: {
+      const r = p.size * (0.7 + (1 - t) * 1.6);
+      x.globalAlpha = t * 0.5;
+      x.drawImage(glow(p.color, 32), p.x - r, p.y - r, r * 2, r * 2);
+      return;
+    }
+    case PType.Ribbon: {
+      x.strokeStyle = p.color;
+      x.lineWidth = Math.max(0.5, s);
+      x.lineCap = 'round';
+      x.beginPath();
+      x.moveTo(p.x, p.y);
+      x.lineTo(p.x + Math.cos(p.rot) * p.size2, p.y + Math.sin(p.rot) * p.size2);
+      x.stroke();
+      return;
+    }
+    case PType.Pixel: {
+      const q = Math.max(1, Math.round(s));
+      x.fillStyle = p.color;
+      x.fillRect(Math.round(p.x - q / 2), Math.round(p.y - q / 2), q, q);
+      return;
+    }
+  }
+  x.save();
+  x.translate(p.x, p.y);
+  x.rotate(p.rot);
+  x.fillStyle = p.color;
+  x.beginPath();
+  if (p.type === PType.Note) {
+    x.ellipse(-s * 0.3, s * 0.55, s * 0.42, s * 0.3, -0.45, 0, TAU);
+    x.rect(s * 0.02, -s * 0.95, s * 0.16, s * 1.5);
+    x.fill();
+    x.beginPath();
+    x.moveTo(s * 0.18, -s * 0.95);
+    x.quadraticCurveTo(s * 0.75, -s * 0.6, s * 0.55, -s * 0.05);
+    x.quadraticCurveTo(s * 0.55, -s * 0.45, s * 0.18, -s * 0.5);
+  } else {
+    x.scale(1, 0.55 + 0.45 * Math.abs(Math.sin(p.rot * 2)));
+    x.moveTo(0, -s);
+    x.quadraticCurveTo(s * 0.85, -s * 0.2, 0, s);
+    x.quadraticCurveTo(-s * 0.85, -s * 0.2, 0, -s);
+  }
+  x.fill();
+  x.restore();
 }

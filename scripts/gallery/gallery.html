@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Galeria de cosméticos</title>
+<style>
+  body { margin: 0; background: #12082e; color: #fff; font: 13px/1.3 system-ui, sans-serif; padding: 16px; }
+  h2 { margin: 18px 0 8px; font-size: 16px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .card { background: #1f1248; border-radius: 12px; padding: 6px; text-align: center; width: var(--w, 170px); }
+  .card small { display: block; opacity: 0.75; }
+  .r-common { color: #8fa3c8 } .r-rare { color: #3f8cff } .r-epic { color: #c06bff } .r-legendary { color: #ffb300 } .r-mythic { color: #ff5ce1 }
+  canvas { display: block; margin: 0 auto; }
+  .space { background: radial-gradient(circle at 30% 30%, #2a1170, #0d0526); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="./gallery.ts"></script>
+</body>
+</html>

@@ -459,7 +459,7 @@ export class UI {
         const r = (item as Skin).rarity;
         const tag = document.createElement('span');
         tag.className = `rarity r-${r}`;
-        tag.textContent = { common: 'comum', rare: 'raro', epic: 'épico', legendary: 'lendário' }[r];
+        tag.textContent = { common: 'comum', rare: 'raro', epic: 'épico', legendary: 'lendário', mythic: 'mítico' }[r];
         card.appendChild(tag);
       }
       const name = document.createElement('div');
