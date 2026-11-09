@@ -1,4 +1,5 @@
 /* Tela Coleção dos bichinhos (prefixo crc-) */
+.crc-overlay, .crc-overlay * { box-sizing: border-box; }
 .crc-overlay {
   position: fixed;
   inset: 0;

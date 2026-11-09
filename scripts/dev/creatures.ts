@@ -38,7 +38,7 @@ async function main() {
     const g = document.createElement('div');
     g.className = 'big';
     const part = Number(q.get('legend') || 0);
-    for (let s = part * 30; s < part * 30 + 30; s++) g.append(cell(`s${String(s).padStart(2, '0')}-legendary`, 200, 1.3, false));
+    for (let s = part * 30; s < part * 30 + 30; s++) g.append(cell(`s${String(s).padStart(2, '0')}-legendary`, 150, 1.3, false));
     app.append(g);
   } else if (q.has('icons')) {
     const s0 = Number(q.get('icons')) * 12;

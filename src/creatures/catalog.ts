@@ -94,7 +94,7 @@ const TABLE: string[] = [
   'Batuquim|cube|none|happy|open|zigzag|arms|headband|#ffe14f|Tamborzinho que marca o ritmo com a barriga.',
   'Serpentino|bean|curl|wink|tongue|stripes|tail|mask|#3cd6ff|Feito de serpentina enrolada, desenrola quando ri.',
   'Lantejoula|fish|fin|sparkle|smile|dots|fins|tiara|#ff5cc8|Peixinho de lantejoulas que brilha no bloco.',
-  'Plumário|bird|crest|star|beak|hearts|bigwings|crown|#9b3cff|Rei do Carnaval Galáctico: abre um leque de penas que brilham como neon.',
+  'Plumário|bird|crest|star|beak|hearts|bigwings|crown|#2fc8c0|Rei do Carnaval Galáctico: abre um leque de penas que brilham como neon.',
   // 03 Selva Encantada
   'Folhuxo|sprout|leaves|dot|smile|none|feet|flower|#6dff8a|Brotinho que dança quando chove na selva.',
   'Macaquim|bear|bear|big|grin|belly|tail|leafhat|#b67a4a|Macaquinho que se pendura no cipó pelo rabo.',

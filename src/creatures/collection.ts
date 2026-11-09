@@ -68,7 +68,7 @@ function cellHtml(c: CreatureFull): string {
     <canvas data-id="${c.id}" width="1" height="1" style="width:${ICON_PX}px;height:${ICON_PX}px"></canvas>
     ${owned ? '' : '<span class="crc-q">?</span>'}
     ${isNew ? `<span class="crc-new">${t('creatures.new', 'Novo')}</span>` : ''}
-    <span class="crc-name">${owned ? creatureName(c) : '???'}</span>
+    <span class="crc-name">${owned ? creatureName(c) : t('creatures.seasonShort', 'Temp. {n}', { n: c.season + 1 })}</span>
   </button>`;
 }
 
@@ -76,7 +76,18 @@ function renderList(): void {
   if (!root) return;
   const list = root.querySelector<HTMLElement>('.crc-list')!;
   let html = '';
-  for (const s of SEASONS) {
+  if (filter !== 'all') {
+    // filtro de raridade: grade única com todas as temporadas
+    const all = CREATURES.filter((c) => c.rarity === filter);
+    const items = all.filter((c) => !onlyMine || ownsCreature(c.id));
+    const got = all.filter((c) => ownsCreature(c.id)).length;
+    const [rc] = RARITY_COLORS[filter];
+    if (items.length)
+      html = `<section class="crc-season" style="--sa:${rc};--sb:${rc};--sbg:#1a0c40">
+        <header><b>${rarityLabel(filter)}</b><span></span><em>${got}/${all.length}</em></header>
+        <div class="crc-grid">${items.map(cellHtml).join('')}</div>
+      </section>`;
+  } else for (const s of SEASONS) {
     const items = CREATURES.slice(s.index * 5, s.index * 5 + 5).filter((c) => (filter === 'all' || c.rarity === filter) && (!onlyMine || ownsCreature(c.id)));
     if (!items.length) continue;
     const got = CREATURES.slice(s.index * 5, s.index * 5 + 5).filter((c) => ownsCreature(c.id)).length;
@@ -238,8 +249,18 @@ function openDetail(id: string): void {
   cv.style.width = cv.style.height = `${size}px`;
   const ctx = cv.getContext('2d')!;
   if (!owned) {
-    const sil = renderCreatureIcon(id, size, { locked: true, backdrop: false });
-    ctx.drawImage(sil, 0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr, 0, 0, dpr, (size / 2) * dpr, size * 0.52 * dpr);
+    drawCreature(ctx, id, size * 0.78, 0, { still: true });
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#0d0624';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.font = `700 ${56 * dpr}px Fredoka, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', cv.width / 2, cv.height * 0.55);
     return;
   }
   cancelAnimationFrame(raf);
