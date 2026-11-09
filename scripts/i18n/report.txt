@@ -13,7 +13,7 @@ Chaves: 1692 (942 de t()/HTML + 750 de dados: bichinhos/temporadas/skins/rastros
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
   en: 0 / 660 / 0 / 0
-  es: 1032 / 660 / 0 / 0
+  es: 0 / 660 / 0 / 0
   de: 1032 / 660 / 0 / 0
   fr: 1032 / 660 / 0 / 0
   it: 1032 / 660 / 0 / 0
