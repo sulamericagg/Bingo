@@ -1,4 +1,4 @@
-# Material promocional (vídeos + imagens)
+# Material promocional do Bloop World (vídeos + imagens)
 
 Pipeline automático que gera trailers editados e artes de loja/redes sociais **a partir do jogo real**
 (mesmo código, mesmos sprites, personagens e rastros). Pode ser rodado de novo a qualquer momento —
@@ -16,8 +16,8 @@ NODE_PATH=$(npm root -g) node scripts/promo/make-all.mjs <pastaDeSaida>
 
 Requisitos: `node_modules` instalado (Vite), Playwright + Chromium (global ou local:
 `npm i -g playwright && npx playwright install chromium`) e `ffmpeg` com `libx264` e `aac`.
-Tempo típico: 4–7 min. Não precisa de `vite build`: o script sobe um servidor Vite próprio
-(porta 4341 ou a próxima livre), abre o jogo com `?debug` e controla tudo.
+Tempo típico: ~10–15 min com `--jobs=3` (4 núcleos). Não precisa de `vite build`: o script sobe um servidor Vite próprio
+(porta 4341 ou a próxima livre), abre o app com `?debug&nointro` e controla tudo.
 
 ### Card de desafio (código promocional)
 
@@ -30,77 +30,79 @@ NODE_PATH=$(npm root -g) node scripts/promo/challenge-card.mjs \
 Opções extras: `--skin <id>` (personagem em destaque, padrão `campeao`), `--where "texto"` (onde
 resgatar; padrão "Resgate dentro do jogo"), `--w/--h`.
 
-## O que é gerado
+## O que é gerado (Bloop World — hub com 6 jogos)
 
 ```
 <saida>/videos/
-  trailer-vertical-1080x1920.mp4    ~28 s  Reels / TikTok / Shorts (H.264 + AAC)
-  youtube-horizontal-1920x1080.mp4  ~28 s  YouTube / vídeo da Google Play
-  short-loop-1080x1080.mp4           10 s  post de feed, loop sem emenda
+  trailer-vertical-1080x1920.mp4     ~37 s  Reels/TikTok/Shorts (H.264 + AAC)
+  youtube-horizontal-1920x1080.mp4   ~37 s  YouTube (vertical no centro + painéis laterais)
+  playstore-promo-1920x1080.mp4      ~30 s  "vídeo promocional" da Play Store (subir no YouTube)
+  short-loop-1080x1080.mp4            10 s  post de feed, loop sem emenda
+  teasers/teaser-<jogo>-1080x1920.mp4 15 s  um por jogo: orbit, tubo, rally, tycoon, disaster, band
 <saida>/images/store/
-  01..06-*.png (1080x1920)   screenshots da Play Store com título
-  07-criador.png             só se existir #btn-creator no jogo
-  08-corrida.png             só se existir #btn-race no jogo
-  feature-graphic-1024x500.png
-<saida>/images/social/
-  instagram-post-{1,2,3}-1080x1080.png, story-{1,2}-1080x1920.png,
-  youtube-thumbnail-1280x720.png, x-header-1500x500.png
+  phone/01..08-*-1080x1920.png        hub, Orbit, Banda, Desastres, Queda, bichinho, casa, passes
+  tablet-7/*-1200x1920.png  (4)       capturas feitas na proporção do tablet
+  tablet-10/*-1600x2560.png (4)
+  feature-graphic-1024x500.png        logo Bloop World + vitrines dos jogos + personagens
+  en/, es/                            feature graphic + 2 primeiros screenshots com títulos traduzidos
+<saida>/images/social/   instagram-post-{1,2,3}, story-{1,2}, youtube-thumbnail, x-header
 <saida>/images/challenge/desafio-exemplo-1080x1920.png
-<saida>/images/brand/teamross-1024.png (+ versão com fundo transparente)
+<saida>/images/brand/    teamross-1024(.png/-transparente), icon-bloopworld-{1024,512,foreground-1024}.png
 ```
+
+O ícone `icon-bloopworld-*` é uma **opção** de ícone no estilo hub (Bloop sobre um mundinho com selos
+dos jogos em órbita). `assets/icon-*.png` não é alterado — o líder decide se troca.
 
 ### Roteiro do trailer (125 BPM, cortes nas batidas)
 
-1. Gancho (0–2,4 s): "SÓ UM TOQUE." sobre ação.
-2. "POUSO PERFEITO!" com câmera lenta automática no pouso.
-3. "5 GALÁXIAS": 4 cortes rápidos, cada um na virada de bioma (warp), com o nome da galáxia.
-4. "35+ PERSONAGENS": 4 cortes com skins diferentes (o número vem do catálogo `SKINS`).
-5. "DESTRUA ASTEROIDES!", "CADA VEZ MAIS RÁPIDO!" (trecho acelerado 1,55x),
-   "CORRIDA COM 5 JOGADORES" (só se `#btn-race` existir), "QUAL É O SEU RECORDE?".
-6. Cartão final animado: logo, "Um jogo da TEAM Ross", selo "Grátis na Google Play"
-   (texto próprio — **não** usamos a arte oficial do selo do Google).
+1. "UM MUNDO DE JOGOS" sobre o carrossel do hub passando pelos 6 jogos.
+2. "6 JOGOS": cortes rápidos Orbit → Queda Giratória → Rally Lunar → Fábrica Estelar → Desastres → Banda.
+3. "SEU BICHINHO FALA COM VOCÊ", "MONTE SUA CASA E SEU PLANETA", "FESTA COM GUERRA DE COMIDA EM 3D",
+   "TOQUE NA BANDA COM SEUS AMIGOS", "SOBREVIVA AOS DESASTRES", "300 CRIATURAS", "PASSES TODO MÊS".
+4. Cartão final: logo Bloop World, "Um mundo de jogos", "Um jogo da TEAM Ross", pílula "Grátis na Google
+   Play" (texto próprio — **não** usamos a arte oficial do selo do Google).
 
-Transições `xfade` (flash branco, zoom, whip/smooth, blur), zoom lento em cada corte, textos com
-animação "pop". Música sintetizada pelo próprio script (`lib/music.mjs`: bumbo, palmas, chimbal,
-baixo, pad e arpejo em I–V–vi–IV) com whooshes nos cortes e impactos nos destaques — 100% original,
-sem direitos de terceiros.
+O vídeo da Play Store usa um corte próprio (~30 s: hub, 6 jogos com o nome de cada um, bichinho, casa 3D,
+criaturas). Os teasers mostram ~12 s de jogo com uma chamada + cartão final do jogo ("Um dos 6 jogos do
+Bloop World"). Música sintetizada pelo próprio script (`lib/music.mjs`) — 100% original.
 
 ## Como funciona
 
 | Arquivo | Papel |
 |---|---|
-| `scripts/promo/make-all.mjs` | Orquestra tudo; lista de clipes, roteiro, textos e imagens. |
-| `scripts/promo/lib/capture.mjs` | Abre o jogo, injeta o save, **relógio virtual** (rAF/`performance.now`), `Math.random` com semente e o **bot**. Cada quadro é um screenshot enviado ao ffmpeg. |
-| `scripts/promo/lib/edit.mjs` | Cortes/transições, textos, versão horizontal (fundo desfocado + painéis), loop. |
+| `scripts/promo/make-all.mjs` | Orquestra tudo: lista de telas, roteiros, textos, imagens. |
+| `scripts/promo/lib/scene.mjs` | Captura genérica de qualquer tela do app: relógio virtual, `Math.random` com semente, save injetado, rede bloqueada. |
+| `scripts/promo/lib/recipes.mjs` | **Receitas** por tela (hub, tubo, rally, tycoon, disaster, band, pet, home, home3d, creatures, pass): como abrir e o "bot" de cada jogo. |
+| `scripts/promo/lib/capture.mjs` | Bot do Bloop Orbit (pousos perfeitos, câmera lenta) — o Orbit é aberto pelo hub. |
+| `scripts/promo/lib/edit.mjs` | Cortes/transições, textos, versão horizontal, loop. |
 | `scripts/promo/lib/music.mjs` | Trilha + efeitos sintetizados (WAV). |
-| `scripts/promo/promo.html` + `promo.ts` | Página de composição (canvas) que importa os módulos do jogo: textos, cartões finais, screenshots da loja, posts, etc. |
-| `scripts/promo/teamross.ts` | Marca do estúdio (monograma "TR" com órbita). Troque aqui quando houver logo oficial. |
-| `scripts/promo/challenge-card.mjs` | CLI do card de desafio. |
+| `scripts/promo/l10n.mjs` | Títulos das artes da loja em pt/en/es. |
+| `scripts/promo/promo.html` + `promo.ts` | Composição (canvas) com os módulos do jogo: textos, cartões, screenshots, ícone, posts. Usa as **vitrines** (`drawShowcase`) dos jogos do registro do hub. |
+| `scripts/promo/teamross.ts` | Marca do estúdio. |
+| `scripts/promo/challenge-card.mjs` | CLI do card de desafio (marca Bloop World). |
 
 Detalhes:
 
-- **Determinismo:** o tempo do jogo só avança quando o capturador manda (30 qps, com sub-passos de
-  16,7 ms), então a gravação é suave mesmo numa máquina lenta e o resultado se repete entre execuções.
-- **Bot "humano":** mira no centro do próximo planeta (pousos perfeitos, coleta as moedas da trilha),
-  espera um pouco em cada planeta e às vezes erra de propósito (pouso na borda). Durante a gravação o
-  Bloop atropela asteroides em vez de morrer e planetas frágeis não explodem com ele em cima. Se ainda
-  assim morrer, o clipe é regravado com outra semente.
-- **Biomas:** cada clipe pode começar em qualquer planeta (`startN`; 20 planetas por bioma), por isso
-  os cortes mostram o warp de entrada em cada galáxia sem jogar minutos.
-- **Câmera lenta / aceleração:** feitas na captura (o relógio virtual anda mais devagar/rápido), não
-  no ffmpeg — ficam 100% fluidas.
-- **Limpeza da tela:** botão de pausa, tutorial, banners e toasts são escondidos; anúncios não carregam
-  (toda rede externa é bloqueada); o save injetado desliga som/dicas e mostra um jogador veterano.
-- **Recursos opcionais:** `#btn-race` e `#btn-creator` são detectados no DOM; textos e screenshots
-  correspondentes só aparecem se existirem. Contagens (personagens, rastros, galáxias) são lidas do código.
+- **Telas gravadas:** tudo roda no app real (`index.html?debug&nointro`; casa 3D em
+  `scripts/dev/home3d.html?auto=party&skip`, Chromium com `--use-gl=swiftshader`). Jogos são abertos com
+  `__bloop.launchGame(def)` e o handle do jogo fica em `window.__h`; painéis com `panel.open()`.
+- **Bots:** Queda Giratória mergulha só quando há abertura embaixo; Rally acelera e solta quando o carro
+  inclina; Desastres usa `autoMe`; Banda usa `autoplay` numa música grátis; Fábrica usa `?tymode=match`
+  (acelerado 2x); Orbit usa o bot antigo.
+- **Robustez:** cada tela é tentada 2x (Orbit 3x); se falhar, é pulada com aviso e os vídeos/imagens
+  seguem sem ela. O resumo final lista os avisos.
+- **Relógio virtual:** `performance.now` só anda quando o capturador manda. Laços de benchmark
+  (`while (performance.now() - t0 < X)`, ex.: `core/quality.ts`) travariam a página; depois de 400 leituras
+  sem passo o relógio "escorrega" 0,5 ms por leitura, o que só afeta esses laços.
+- **Saves injetados:** jogador veterano (moedas, gemas), qualidade fixa no máximo (`bo-quality=3`),
+  Desastres fora do modo treino; a Coleção recebe ~2/3 das criaturas.
 
 ## Ajustes comuns
 
-- Trocar personagens/rastros dos clipes: lista `CLIPS`/`STILLS` em `make-all.mjs`.
-- Trocar textos: chamadas `add(...)` (vídeo) e `store` (screenshots) em `make-all.mjs`.
-- Layouts das artes: funções `K.<tipo>` em `promo.ts`.
-- Pré-visualizar uma arte: `npx vite` e abrir `/scripts/promo/promo.html`, depois no console
-  `__promo.render({kind:'post',variant:1,w:1080,h:1080})`.
+- Trocar/ajustar uma tela: `RECIPES` em `lib/recipes.mjs`; duração das capturas em `CLIP_SEC` (make-all).
+- Trocar textos dos vídeos: `trailerPlan`/`storePlan`/`GAME_HOOK` em `make-all.mjs`.
+- Títulos dos screenshots e traduções: `l10n.mjs`.
+- Layouts: funções `K.<tipo>` em `promo.ts` (`store`, `featureworld`, `gameend`, `icon`, `post`...).
 
 ## Limitações conhecidas
 
