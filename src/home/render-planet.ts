@@ -4,6 +4,7 @@
  * ============================================================ */
 import type { HomeDesign } from './api';
 import { mulberry, num, pal, hashStr } from './catalog';
+import { FINISHES, finishFill } from './paint';
 import { INK, TAU, alpha, circ, ell, fs, heartPath, makeCanvas, rr, shade, star } from './gfx';
 
 type Rec = Record<string, string | number>;
@@ -777,6 +778,15 @@ export function drawHouse(c: CanvasRenderingContext2D, E: Rec, name: string, Rc:
   c.save();
   rr(c, -W / 2, -H, W, H, 4);
   c.clip();
+  const fin = num(E, 'wfin');
+  if (fin) {
+    c.save();
+    c.translate(-W / 2, -H);
+    c.fillStyle = finishFill(c, Number(E.wcol) || 0, FINISHES[fin] ?? 'solid', H);
+    c.globalAlpha = 0.9;
+    c.fillRect(0, 0, W, H);
+    c.restore();
+  }
   wallTex(c, wall, W, H, wcol);
   // sombra lateral
   c.fillStyle = alpha(INK, 0.12);

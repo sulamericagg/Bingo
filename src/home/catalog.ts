@@ -84,6 +84,7 @@ export const EXTERIOR_FIELDS: Field[] = [
   { key: 'floors', group: 'base', label: L('f.floors', 'Andares'), options: opts('floors', [['1', '1 andar'], ['2', '2 andares'], ['3', '3 andares']]) },
   { key: 'wall', group: 'walls', label: L('f.wall', 'Parede'), options: opts('wall', [['paint', 'Pintada'], ['brick', 'Tijolinho'], ['wood', 'Tábuas'], ['stone', 'Pedra'], ['log', 'Tronco'], ['tile', 'Azulejo'], ['stripe', 'Listrada'], ['dots', 'Bolinhas']]) },
   { key: 'wcol', group: 'walls', label: L('f.wcol', 'Cor da parede'), color: true },
+  { key: 'wfin', group: 'walls', label: L('f.wfin', 'Acabamento'), options: opts('wfin', [['solid', 'Lisa'], ['gradient', 'Degradê'], ['stripes', 'Listras'], ['stars', 'Estrelas'], ['glitter', 'Glitter']]) },
   { key: 'roof', group: 'roof', label: L('f.roof', 'Telhado'), options: opts('roof', [['gable', 'Triângulo'], ['flat', 'Reto'], ['dome', 'Cúpula'], ['tall', 'Bruxinha'], ['hip', 'Chalé'], ['mush', 'Cogumelo'], ['saw', 'Serrinha'], ['onion', 'Cebola']]) },
   { key: 'rfcol', group: 'roof', label: L('f.rfcol', 'Cor do telhado'), color: true },
   { key: 'chim', group: 'roof', label: L('f.chim', 'Chaminé'), options: opts('chim', [['none', 'Sem'], ['brick', 'Tijolo'], ['pipe', 'Cano'], ['round', 'Redonda'], ['heart', 'Fumaça coração']]) },
@@ -235,7 +236,7 @@ export function starterDesign(): HomeDesign {
   return {
     v: 1,
     planet: { shape: 0, size: 1, terrain: 0, tcol: 5, water: 1, path: 1, sky: 0, ring: 1, rcol: 2, moons: 1, clouds: 1, veg: 1, d0: 1, d1: 3, d2: 0, d3: 2, d4: 4, d5: 0 },
-    exterior: { found: 0, floors: 0, wall: 0, wcol: 14, roof: 0, rfcol: 0, chim: 1, door: 0, dcol: 16, win: 0, wn: 1, wfcol: 18, porch: 1, balc: 0, tower: 0, garden: 2, fence: 1, fcol: 18, sign: 1, mail: 1, lights: 0 },
+    exterior: { found: 0, floors: 0, wall: 0, wcol: 14, wfin: 0, roof: 0, rfcol: 0, chim: 1, door: 0, dcol: 16, win: 0, wn: 1, wfcol: 18, porch: 1, balc: 0, tower: 0, garden: 2, fence: 1, fcol: 18, sign: 1, mail: 1, lights: 0 },
     rooms: ROOM_IDS.map((id) => starterRoom(id)),
   };
 }
