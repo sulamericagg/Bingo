@@ -285,6 +285,8 @@ details.more summary { cursor: pointer; color: var(--muted); font-size: .9rem; p
       <button data-tab="challenges"><span class="ic">🎬</span><span>Desafios</span></button>
       <button data-tab="presets"><span class="ic">📦</span><span>Pacotes</span></button>
       <button data-tab="ranking"><span class="ic">🏆</span><span>Ranking</span></button>
+      <button data-tab="moderation"><span class="ic">&#9873;</span><span>Moderação</span></button>
+      <button data-tab="champs"><span class="ic">&#9733;</span><span>Campeonatos</span></button>
     </nav>
     <div class="spacer"></div>
     <button class="btn ghost sm logout" onclick="logout()">↩ Sair</button>
@@ -543,7 +545,7 @@ async function start() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   const hash = location.hash.slice(1);
-  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets', 'ranking'].includes(hash) ? hash : 'dash');
+  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets', 'ranking', 'moderation', 'champs'].includes(hash) ? hash : 'dash');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
 function go(tab) {
@@ -551,9 +553,130 @@ function go(tab) {
   history.replaceState(null, '', '#' + tab);
   $$('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
-  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets, ranking: viewRanking })[tab]();
+  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets, ranking: viewRanking, moderation: viewModeration, champs: viewChamps })[tab]();
 }
 const view = () => $('#view');
+
+
+/* ================= Moderação (chat) ================= */
+const modState = { room: 'global' };
+const ROOMS = ['global', 'game-orbit', 'game-tubo', 'game-rally', 'game-tycoon'];
+async function viewModeration() {
+  view().innerHTML = `<div class="page-head"><div><h2>Moderação</h2><p class="muted">Chat kid-safe: denúncias, mensagens recentes, banir/silenciar jogadores e palavras extras do filtro.</p></div>
+      <button class="btn ghost sm" onclick="viewModeration()">Atualizar</button></div>
+    <div class="card"><div class="card-head"><h3>Denúncias</h3></div><div id="mdReports">${spinner()}</div></div>
+    <div class="card"><div class="card-head"><h3>Mensagens recentes</h3>
+      <select id="mdRoom">${ROOMS.map((r) => `<option ${r === modState.room ? 'selected' : ''}>${r}</option>`).join('')}</select></div><div id="mdRecent">${spinner()}</div></div>
+    <div class="card"><div class="card-head"><h3>Banidos e silenciados</h3></div><div id="mdBans">${spinner()}</div>
+      <div class="row" style="margin-top:12px;gap:8px;display:flex;flex-wrap:wrap"><input id="mdPid" type="text" placeholder="ID do jogador" style="flex:1;min-width:220px" />
+      <input id="mdMin" type="number" min="0" placeholder="minutos (0 = sempre)" style="width:170px" />
+      <button class="btn sm" id="mdMute">Silenciar</button><button class="btn danger sm" id="mdBan">Banir</button></div></div>
+    <div class="card"><div class="card-head"><h3>Palavras extras bloqueadas</h3></div>
+      <p class="muted small">Uma por linha. O filtro já cobre palavrões/insultos em pt/en/es, leetspeak, letras repetidas/separadas e dados pessoais.</p>
+      <textarea id="mdWords" rows="6" style="width:100%"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" id="mdSaveWords">Salvar palavras</button>
+      <input id="mdTest" type="text" placeholder="Testar uma mensagem..." style="flex:1;min-width:200px" /><button class="btn ghost sm" id="mdTestBtn">Testar</button></div>
+      <div id="mdTestOut" class="muted small" style="margin-top:6px"></div></div>`;
+  $('#mdRoom').onchange = (e) => { modState.room = e.target.value; loadRecent(); };
+  const act = (kind) => (e) => busy(e.currentTarget, async () => {
+    const pid = $('#mdPid').value.trim();
+    if (!pid) throw new Error('Informe o ID do jogador');
+    await api('POST', '/social/chat/' + kind, { pid, minutes: Number($('#mdMin').value || 0), purge: kind === 'ban' });
+    toast(kind === 'ban' ? 'Jogador banido do chat' : 'Jogador silenciado'); loadBans(); loadRecent();
+  });
+  $('#mdMute').onclick = act('mute');
+  $('#mdBan').onclick = act('ban');
+  $('#mdSaveWords').onclick = (e) => busy(e.currentTarget, async () => {
+    const words = $('#mdWords').value.split(/\n|,/).map((w) => w.trim()).filter(Boolean);
+    const r = await api('PUT', '/social/chat/words', { words });
+    $('#mdWords').value = r.words.join('\n'); toast('Palavras salvas (valem em até 5 min)');
+  });
+  $('#mdTestBtn').onclick = (e) => busy(e.currentTarget, async () => {
+    const r = await api('POST', '/social/chat/test', { text: $('#mdTest').value });
+    $('#mdTestOut').textContent = r.ok ? 'Passa como: ' + r.text : 'Recusada (' + r.reason + ')';
+  });
+  api('GET', '/social/chat/words').then((r) => { if ($('#mdWords')) $('#mdWords').value = r.words.join('\n'); }).catch(() => {});
+  loadReports(); loadRecent(); loadBans();
+}
+function pidCell(pid, name) {
+  return `<b>${esc(name || '—')}</b><div class="muted small mono" title="${esc(pid)}">${esc(String(pid).slice(0, 13))}…</div>`;
+}
+function fillPid(pid) { const i = $('#mdPid'); if (i) { i.value = pid; i.scrollIntoView({ behavior: 'smooth', block: 'center' }); i.focus(); } }
+async function loadReports() {
+  let d; try { d = await api('GET', '/social/reports'); } catch (e) { $('#mdReports').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#mdReports')) return;
+  $('#mdReports').innerHTML = d.items.length ? `<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Denunciado</th><th>Mensagem</th><th class="hide-m">Motivo</th><th></th></tr></thead><tbody>
+    ${d.items.map((r) => `<tr><td class="small">${fmtDate(r.t)}<div class="muted small">${esc(r.room)}</div></td><td>${pidCell(r.pid, r.name)}</td><td class="small">${esc(r.text)}</td><td class="hide-m small">${esc(r.reason)}</td>
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-pick="${esc(r.pid)}">Agir</button> <button class="btn ghost sm" data-del="${esc(r.key)}">Arquivar</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">Nenhuma denúncia. Ótimo sinal!</div>';
+  $$('#mdReports [data-pick]').forEach((b) => (b.onclick = () => fillPid(b.dataset.pick)));
+  $$('#mdReports [data-del]').forEach((b) => (b.onclick = () => busy(b, async () => { await api('DELETE', '/social/reports/' + encodeURIComponent(b.dataset.del)); loadReports(); })));
+}
+async function loadRecent() {
+  const room = modState.room;
+  let d; try { d = await api('GET', '/social/chat/recent?room=' + encodeURIComponent(room)); } catch (e) { $('#mdRecent').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#mdRecent')) return;
+  $('#mdRecent').innerHTML = `<p class="muted small">${fmtN(d.online)} online agora em ${esc(room)}</p>` + (d.msgs.length ? `<div class="table-wrap"><table><tbody>
+    ${d.msgs.slice().reverse().map((m) => `<tr><td class="small">${fmtDate(m.t)}</td><td>${pidCell(m.pid, m.name)}</td><td>${m.q ? '<span class="pill">atalho: ' + esc(m.q) + '</span>' : esc(m.text)}</td>
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-pick="${esc(m.pid)}">Agir</button> <button class="btn danger sm" data-rm="${esc(m.id)}">Apagar</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">Sem mensagens nesta sala.</div>');
+  $$('#mdRecent [data-pick]').forEach((b) => (b.onclick = () => fillPid(b.dataset.pick)));
+  $$('#mdRecent [data-rm]').forEach((b) => (b.onclick = () => busy(b, async () => { await api('POST', '/social/chat/delete', { room, ids: [b.dataset.rm] }); loadRecent(); })));
+}
+async function loadBans() {
+  let d; try { d = await api('GET', '/social/chat/bans'); } catch (e) { $('#mdBans').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#mdBans')) return;
+  const rows = [...d.bans.map((b) => ({ ...b, kind: 'Banido' })), ...d.mutes.map((b) => ({ ...b, kind: 'Silenciado' }))];
+  $('#mdBans').innerHTML = rows.length ? rows.map((b) => `<div class="pill" style="margin:3px;display:inline-flex;gap:6px;align-items:center">${b.kind}: <span class="mono">${esc(b.pid.slice(0, 13))}…</span>
+      <span class="muted small">${b.until ? 'até ' + fmtDate(b.until) : 'sem prazo'}</span><button class="btn ghost sm" style="padding:2px 8px" data-unban="${esc(b.pid)}">liberar</button></div>`).join('')
+    : '<span class="muted small">Ninguém banido ou silenciado.</span>';
+  $$('#mdBans [data-unban]').forEach((b) => (b.onclick = () => busy(b, async () => { await api('POST', '/social/chat/unban', { pid: b.dataset.unban }); toast('Liberado'); loadBans(); })));
+}
+
+/* ================= Campeonatos ================= */
+const CH_GAMES = { orbit: 'Bloop Orbit', tubo: 'Tubo', rally: 'Rally', tycoon: 'Tycoon' };
+const CH_STATUS = { signup: 'Inscrições', live: 'Ao vivo', done: 'Encerrado', cancelled: 'Cancelado' };
+async function viewChamps() {
+  const sel = (i, v) => `<select data-g="${i}">${Object.entries(CH_GAMES).map(([k, n]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
+  view().innerHTML = `<div class="page-head"><div><h2>Campeonatos</h2><p class="muted">Regulares a cada 3 h (automáticos) + especiais criados aqui. Inscrição com Fichas de Campeonato (não compráveis); prêmio em moedas bancado pelo jogo.</p></div>
+      <button class="btn ghost sm" onclick="viewChamps()">Atualizar</button></div>
+    <div class="card"><div class="card-head"><h3>Criar campeonato especial</h3></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+        <label class="field">Nome<input id="chName" type="text" maxlength="40" placeholder="Copa das Férias" /></label>
+        <label class="field">Começa em<input id="chStart" type="datetime-local" /></label>
+        <label class="field">Minutos por rodada<input id="chMin" type="number" min="5" value="30" /></label>
+        <label class="field">Prêmio base (moedas)<input id="chBase" type="number" min="0" value="1000" /></label>
+        <label class="field">+ moedas por inscrito<input id="chPer" type="number" min="0" value="100" /></label>
+        <label class="field">Fichas para entrar<input id="chEntry" type="number" min="1" max="5" value="1" /></label>
+        <label class="field">Rodada 1 (classificatória)${sel(0, 'orbit')}</label>
+        <label class="field">Rodada 2 (semifinal)${sel(1, 'tubo')}</label>
+        <label class="field">Rodada 3 (final)${sel(2, 'rally')}</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="chCreate">Criar</button></div></div>
+    <div class="card"><div class="card-head"><h3>Agenda</h3><label class="switch"><input type="checkbox" id="chRegular" /><span class="track"></span>Pausar campeonatos regulares</label></div><div id="chList">${spinner()}</div></div>`;
+  const d0 = new Date(Date.now() + 2 * 3600_000); d0.setMinutes(0, 0, 0);
+  $('#chStart').value = toLocalInput(d0.getTime());
+  $('#chCreate').onclick = (e) => busy(e.currentTarget, async () => {
+    const games = $$('[data-g]').map((s) => s.value);
+    await api('POST', '/social/champs', { name: $('#chName').value, games, startAt: fromLocalInput($('#chStart').value), roundMinutes: Number($('#chMin').value), prizeBase: Number($('#chBase').value), prizePer: Number($('#chPer').value), entry: Number($('#chEntry').value) });
+    toast('Campeonato criado'); viewChamps();
+  });
+  let d; try { d = await api('GET', '/social/champs'); } catch (e) { $('#chList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#chList')) return;
+  $('#chRegular').checked = d.regularOff;
+  $('#chRegular').onchange = (e) => api('POST', '/social/champs/regular', { off: e.target.checked }).then(() => { toast('Salvo'); viewChamps(); }).catch((err) => toast(err.message, 'bad'));
+  $('#chList').innerHTML = d.items.length ? `<div class="table-wrap"><table><thead><tr><th>Nome</th><th>Início</th><th>Rodadas</th><th>Inscritos</th><th>Prêmio</th><th>Status</th><th></th></tr></thead><tbody>
+    ${d.items.map((c) => `<tr><td><b>${esc(c.name)}</b>${c.special ? ' <span class="pill">especial</span>' : ''}<div class="muted small mono">${esc(c.id)}</div></td>
+      <td class="small">${fmtDate(c.rounds[0].start)}</td><td class="small">${c.rounds.map((r) => CH_GAMES[r.game] || r.game).join(' → ')}</td>
+      <td>${fmtN(c.signups)}</td><td>${fmtN(c.prize)}</td>
+      <td class="small">${CH_STATUS[c.status]}${c.status === 'live' ? ' (rodada ' + (c.round + 1) + ')' : ''}${c.results && c.results[0] ? '<div class="muted small">1º ' + esc(c.results[0].name) + '</div>' : ''}${c.cancelReason ? '<div class="muted small">' + esc(c.cancelReason) + '</div>' : ''}</td>
+      <td>${c.status === 'signup' || c.status === 'live' ? `<button class="btn danger sm" data-cancel="${esc(c.id)}">Cancelar</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div><p class="muted small">Cancelar devolve as fichas a todos os inscritos (eles resgatam no jogo).</p>` : '<div class="empty">Nada agendado.</div>';
+  $$('#chList [data-cancel]').forEach((b) => (b.onclick = async () => {
+    if (!(await ask('Cancelar campeonato?', 'As fichas serão devolvidas a todos os inscritos.', 'Cancelar campeonato', true))) return;
+    busy(b, async () => { await api('POST', '/social/champs/' + b.dataset.cancel + '/cancel', {}); toast('Cancelado'); viewChamps(); });
+  }));
+}
 
 /* ================= Ranking ================= */
 const rankState = { scope: 'all' };
