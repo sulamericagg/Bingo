@@ -1,0 +1,10 @@
+{
+  "name": "Bloop Orbit",
+  "short_name": "Bloop Orbit",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#0b0620",
+  "theme_color": "#0b0620",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }]
+}

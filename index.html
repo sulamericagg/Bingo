@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0620" />
+    <meta name="description" content="Bloop Orbit — pule de planeta em planeta! Um toque, infinitas galáxias." />
+    <meta property="og:title" content="Bloop Orbit" />
+    <meta property="og:description" content="Pule de planeta em planeta. Quantos você consegue?" />
+    <meta property="og:image" content="./og.png" />
+    <link rel="icon" href="./icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Bloop Orbit</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="ui">
+      <!-- HUD -->
+      <section id="hud" class="screen">
+        <button class="icon-btn" id="btn-pause" aria-label="Pausar">❚❚</button>
+        <div class="hud-score" id="hud-score">0</div>
+        <div class="pill hud-coins"><i class="coin"></i><span id="hud-coins">0</span></div>
+        <div id="tutorial" class="tutorial hidden">
+          <div class="hand">👆</div>
+          <div>Toque para <b>pular</b>!<br /><small>Mire no próximo planeta</small></div>
+        </div>
+        <div id="banner-biome" class="biome-banner"></div>
+      </section>
+
+      <!-- MENU -->
+      <section id="menu" class="screen">
+        <header class="topbar">
+          <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
+          <button class="pill gem-pill" data-open="shop" data-tab="gems"><i class="gem"></i><span data-bind="gems">0</span><b class="plus">+</b></button>
+          <div class="spacer"></div>
+          <button class="icon-btn" data-open="settings" aria-label="Configurações">⚙</button>
+        </header>
+        <div class="logo">
+          <div class="logo-small">✦ ✦ ✦</div>
+          <h1><span>BLOOP</span><span class="o">ORBIT</span></h1>
+          <div class="best">🏆 Recorde <b data-bind="best">0</b></div>
+        </div>
+        <div class="menu-bottom">
+          <button class="offer hidden" id="starter-offer" data-open="shop" data-tab="gems">
+            <span class="offer-tag">OFERTA</span>
+            <span>Pacote Inicial</span>
+            <small>Sem anúncios + 300 💎 + skin lendária</small>
+          </button>
+          <button class="btn btn-play" id="btn-play">JOGAR</button>
+          <div class="menu-row">
+            <button class="tile" data-open="shop" data-tab="skins"><span class="tile-ico">🛍️</span>Loja<em class="badge hidden" data-badge="shop"></em></button>
+            <button class="tile" data-open="missions"><span class="tile-ico">🎯</span>Missões<em class="badge hidden" data-badge="missions"></em></button>
+            <button class="tile" data-open="daily"><span class="tile-ico">🎁</span>Diário<em class="badge hidden" data-badge="daily"></em></button>
+            <button class="tile" id="btn-free"><span class="tile-ico">🎬</span>Grátis<em class="badge hidden" data-badge="free"></em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTINUAR -->
+      <section id="revive" class="screen modal-screen">
+        <div class="panel revive-panel">
+          <h2>CONTINUAR?</h2>
+          <div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="ring-bg" /><circle cx="50" cy="50" r="44" class="ring-fg" id="revive-ring" /></svg><span id="revive-count">5</span></div>
+          <button class="btn btn-green" id="btn-revive-ad">🎬 Continuar grátis</button>
+          <button class="btn btn-gem" id="btn-revive-gem">💎 <span id="revive-cost">15</span> Continuar</button>
+          <button class="link" id="btn-revive-skip">Não, obrigado</button>
+        </div>
+      </section>
+
+      <!-- FIM DE JOGO -->
+      <section id="over" class="screen modal-screen">
+        <div class="panel over-panel">
+          <div class="newbest hidden" id="over-newbest">🎉 NOVO RECORDE! 🎉</div>
+          <h2 id="over-title">FIM DE JOGO</h2>
+          <div class="over-score" id="over-score">0</div>
+          <div class="over-best">Recorde: <b id="over-best">0</b></div>
+          <div class="stats">
+            <div><i class="coin"></i><b id="over-coins">0</b><small>moedas</small></div>
+            <div><span>⭐</span><b id="over-perfects">0</b><small>perfeitos</small></div>
+            <div><span>🪐</span><b id="over-planets">0</b><small>planetas</small></div>
+          </div>
+          <button class="btn btn-gold" id="btn-double">🎬 Dobrar moedas</button>
+          <button class="btn btn-play small" id="btn-again">JOGAR DE NOVO</button>
+          <div class="row">
+            <button class="btn btn-ghost" id="btn-home">⌂ Menu</button>
+            <button class="btn btn-ghost" id="btn-share">📣 Desafiar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAUSA -->
+      <section id="pause" class="screen modal-screen">
+        <div class="panel">
+          <h2>PAUSADO</h2>
+          <button class="btn btn-play small" id="btn-resume">CONTINUAR</button>
+          <button class="btn btn-ghost" id="btn-quit">Sair para o menu</button>
+        </div>
+      </section>
+
+      <!-- LOJA -->
+      <section id="shop" class="screen modal-screen">
+        <div class="panel big">
+          <header class="panel-head">
+            <h2>LOJA</h2>
+            <div class="pill"><i class="coin"></i><span data-bind="coins">0</span></div>
+            <div class="pill"><i class="gem"></i><span data-bind="gems">0</span></div>
+            <button class="icon-btn close" data-close>✕</button>
+          </header>
+          <nav class="tabs">
+            <button data-tab="skins" class="active">Personagens</button>
+            <button data-tab="trails">Rastros</button>
+            <button data-tab="gems">💎 Gemas</button>
+          </nav>
+          <div class="shop-body" id="shop-body"></div>
+        </div>
+      </section>
+
+      <!-- DIÁRIO -->
+      <section id="daily" class="screen modal-screen">
+        <div class="panel">
+          <header class="panel-head"><h2>PRESENTE DIÁRIO</h2><button class="icon-btn close" data-close>✕</button></header>
+          <p class="muted">Volte todo dia! O 7º dia é o melhor 😉</p>
+          <div class="daily-grid" id="daily-grid"></div>
+          <button class="btn btn-green" id="btn-daily">Pegar</button>
+          <button class="btn btn-gold" id="btn-daily2">🎬 Pegar em DOBRO</button>
+        </div>
+      </section>
+
+      <!-- MISSÕES -->
+      <section id="missions" class="screen modal-screen">
+        <div class="panel">
+          <header class="panel-head"><h2>MISSÕES DO DIA</h2><button class="icon-btn close" data-close>✕</button></header>
+          <div id="mission-list"></div>
+          <p class="muted">Novas missões todo dia à meia-noite.</p>
+        </div>
+      </section>
+
+      <!-- CONFIG -->
+      <section id="settings" class="screen modal-screen">
+        <div class="panel">
+          <header class="panel-head"><h2>AJUSTES</h2><button class="icon-btn close" data-close>✕</button></header>
+          <label class="toggle"><span>🔊 Efeitos sonoros</span><input type="checkbox" data-setting="sound" /><i></i></label>
+          <label class="toggle"><span>🎵 Música</span><input type="checkbox" data-setting="music" /><i></i></label>
+          <label class="toggle"><span>📳 Vibração</span><input type="checkbox" data-setting="haptics" /><i></i></label>
+          <label class="toggle"><span>⚡ Modo economia (celular fraco)</span><input type="checkbox" data-setting="lowFx" /><i></i></label>
+          <button class="btn btn-ghost" id="btn-restore">Restaurar compras</button>
+          <button class="btn btn-ghost" id="btn-privacy-ads">Privacidade dos anúncios</button>
+          <a class="link" href="./privacy.html" target="_blank" rel="noopener">Política de privacidade</a>
+          <p class="muted tiny" id="version">v1.0.0</p>
+        </div>
+      </section>
+
+      <div id="toast"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
