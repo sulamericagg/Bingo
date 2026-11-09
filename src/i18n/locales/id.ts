@@ -90,7 +90,7 @@ export default {
   "band.inst.bass": "Bas",
   "band.inst.drums": "Drum",
   "band.inst.guitar": "Gitar",
-  "band.inst.keys": "Keyboard",
+  "band.inst.keys": "Tuts",
   "band.inst.vocals": "Vokal",
   "band.j.good": "Bagus",
   "band.j.great": "Hebat!",

@@ -5,8 +5,12 @@ import { t } from '../../i18n';
 export function registerDisaster(): void {
   registerGame({
     id: 'disaster',
-    name: t('dz.name', 'Sobreviva aos Desastres'),
-    tagline: t('dz.tagline', 'Suba, corra e escape de 100 desastres!'),
+    get name() {
+      return t('dz.name', 'Sobreviva aos Desastres');
+    },
+    get tagline() {
+      return t('dz.tagline', 'Suba, corra e escape de 100 desastres!');
+    },
     icon: 'warning',
     theme: { bg: ['#25427e', '#0d1830'], accent: '#ff8a1f', accent2: '#ffc94d', title: ['#ffe08a', '#ff7a2e'] },
     drawShowcase,

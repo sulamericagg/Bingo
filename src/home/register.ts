@@ -49,7 +49,7 @@ let done = false;
 export function registerHome(): void {
   if (done) return;
   done = true;
-  registerPanel({ id: 'casa', label: t('home.panel', 'Casa'), icon: 'home', navOrder: 35, open: () => void openHome() });
+  registerPanel({ id: 'casa', get label() { return t('home.panel', 'Casa'); }, icon: 'home', navOrder: 35, open: () => void openHome() });
   // entrada "amigos" dentro da Casa (sem lugar na barra inferior)
-  registerPanel({ id: 'amigos', label: t('home.panel.friends', 'Amigos'), icon: 'user', open: () => void openFriendsPanel() });
+  registerPanel({ id: 'amigos', get label() { return t('home.panel.friends', 'Amigos'); }, icon: 'user', open: () => void openFriendsPanel() });
 }
