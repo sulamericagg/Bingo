@@ -482,6 +482,9 @@ class RallyGame {
   private startRun(): void {
     const id = rallySave().sel;
     this.makeCar(id);
+    // rodinhas de bicicleta: nas primeiras corridas o carro tende a se endireitar sozinho (some aos poucos)
+    const runs = rallySave().runs;
+    this.car.assistBoost = runs < 3 ? 0.85 : runs < 4 ? 0.6 : runs < 5 ? 0.35 : 0;
     this.state = 'play';
     this.garageEl.classList.remove('on');
     this.resultsEl.classList.remove('on');
@@ -1311,6 +1314,6 @@ class RallyGame {
 }
 
 function upIcon(k: UpgradeKey): string {
-  const n = k === 'motor' ? 'bolt' : k === 'tires' ? 'refresh' : k === 'susp' ? 'arrow-up' : 'fire';
+  const n = k === 'motor' ? 'bolt' : k === 'tires' ? 'refresh' : k === 'susp' ? 'arrow-up' : k === 'gyro' ? 'shield' : 'fire';
   return icon(n, { size: 20 });
 }
