@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dev — Bloop Banda: músicas</title>
+<style>
+  html, body { margin: 0; background: #120a24; color: #fff; font-family: 'Fredoka', system-ui, sans-serif; }
+  .wrap { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 12px; padding: 12px; }
+  @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } }
+  #list { height: 80vh; overflow: auto; background: #1d1238; border-radius: 12px; padding: 6px; }
+  #list div { padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  #list div:hover { background: #2e1d55; } #list div.on { background: #ff5cc8; color: #120a24; }
+  #list small { opacity: .7; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  button, select { font: inherit; border: 0; border-radius: 10px; padding: 6px 12px; background: #3cf0ff; color: #120a24; cursor: pointer; }
+  label { background: #2e1d55; padding: 4px 8px; border-radius: 8px; }
+  canvas { background: #0a0614; border-radius: 12px; display: block; max-width: 100%; }
+  h2 { margin: 6px 0; font-size: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><input id="q" placeholder="filtrar…" style="width:100%;font:inherit;padding:6px;border-radius:8px;border:0;margin-bottom:6px" /><div id="list"></div></div>
+  <div>
+    <h2 id="title">Escolha uma música</h2>
+    <div id="meta"></div>
+    <div class="row"><button id="play">Tocar</button><button id="stop">Parar</button><span id="time">0.0 s</span></div>
+    <div class="row" id="mutes"></div>
+    <div class="row" id="misses"></div>
+    <div class="row">Chart: <select id="inst"></select><select id="diff"></select><span id="stats"></span></div>
+    <canvas id="hw" width="420" height="420"></canvas>
+    <h2>Danças e auras</h2>
+    <div class="row"><select id="dance"></select><select id="aura"></select></div>
+    <canvas id="fx" width="420" height="260"></canvas>
+  </div>
+</div>
+<script type="module" src="./songs.ts"></script>
+</body>
+</html>
