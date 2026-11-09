@@ -273,6 +273,8 @@ export function initHub(o: HubOptions): void {
     refreshProfile();
   });
   bus.on('hub-show', onShow);
+  bus.on('quality', () => setTimeout(syncFxClass, 0));
+  syncFxClass();
   bus.on('run-end', () => setTimeout(refreshBests, 0));
   bus.on('player', refreshProfile);
   bus.on('profile', refreshProfile);
@@ -289,10 +291,16 @@ export function initHub(o: HubOptions): void {
 }
 
 function onShow(): void {
+  syncFxClass();
   refreshProfile();
   refreshBests();
   refreshNavBadges();
   layout(false);
+}
+
+/** Nível Mínimo: congela as animações decorativas do fundo do hub (blobs gigantes custam composição). */
+function syncFxClass(): void {
+  if (opts) document.body.classList.toggle('hub-qmin', opts.getTier() === 0);
 }
 
 function syncOrbit(): void {

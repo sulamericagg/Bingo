@@ -81,6 +81,10 @@ body.has-banner {
   opacity: 0.25;
   animation-delay: -9s;
 }
+body.hub-qmin .hub-blob,
+body.hub-qmin .hub-play {
+  animation: none;
+}
 @keyframes hubFloat {
   to {
     transform: translate3d(6vmax, 4vmax, 0) scale(1.08);
