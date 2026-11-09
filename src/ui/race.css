@@ -2,25 +2,6 @@
  *  Corrida Orbital + Ranking (src/ui/race.ts)
  * ============================================================ */
 
-/* menu: 6 blocos em 2 linhas de 3 quando os botões de corrida/ranking existem */
-.menu-row:has(#btn-race) {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 14px;
-}
-.menu-row:has(#btn-race) .tile {
-  flex-direction: row;
-  justify-content: flex-start;
-  gap: 7px;
-  padding: 7px 8px;
-  border-radius: 16px;
-  font-size: 14px;
-  min-width: 0;
-}
-.menu-row:has(#btn-race) .tile-ico.plate {
-  width: 36px;
-  height: 36px;
-}
 #btn-race {
   background: linear-gradient(180deg, rgba(255, 92, 200, 0.55), rgba(140, 30, 150, 0.6));
   border-color: rgba(255, 170, 230, 0.55);

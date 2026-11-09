@@ -518,6 +518,14 @@ export function buildNebula(size: number, colors: string[], seed: number): HTMLC
     x.fillStyle = g;
     x.fillRect(0, 0, size, size);
   }
+  // Bordas 100% transparentes: sem isso as nuvens que vazam do quadro deixavam uma
+  // "faixa" retangular mais clara visível na tela (a borda do canvas esticado).
+  x.globalCompositeOperation = 'destination-in';
+  const m = x.createRadialGradient(size / 2, size / 2, size * 0.28, size / 2, size / 2, size * 0.5);
+  m.addColorStop(0, 'rgba(0,0,0,1)');
+  m.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = m;
+  x.fillRect(0, 0, size, size);
   return c;
 }
 
