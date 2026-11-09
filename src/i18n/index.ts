@@ -16,12 +16,14 @@ export function registerLocale(lang: Lang, dict: Dict): void {
 
 export function setLang(lang: Lang): void {
   current = lang;
+  // via globalThis: este módulo também entra no Worker (shared/catalog → skins), que não tem DOM
+  const g = globalThis as unknown as { localStorage?: { setItem(k: string, v: string): void }; document?: { documentElement: { lang: string } } };
   try {
-    localStorage.setItem('bo-lang', lang);
+    g.localStorage?.setItem('bo-lang', lang);
   } catch {
     /* */
   }
-  document.documentElement.lang = lang;
+  if (g.document) g.document.documentElement.lang = lang;
 }
 
 export function getLang(): Lang {

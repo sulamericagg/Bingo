@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { icon } from '../ui/icons';
 import { getPlayer } from '../services/online';
 import { tap } from '../core/haptics';
+import { homeApi } from '../services/home';
 import { api, me, wsUrl } from './net';
 import { openProfile } from './profile';
 import { emoteThumb, openSheet, popMenu, skinThumb, toast, type Sheet } from './sheet';
@@ -392,7 +393,18 @@ function showAgeGate(): void {
 
 /* ---------------- amigos ---------------- */
 
+let friendsSynced = 0;
 function showFriends(): void {
+  // lista do servidor (amigos de verdade); re-renderiza quando chegar
+  if (Date.now() - friendsSynced > 30_000) {
+    friendsSynced = Date.now();
+    homeApi
+      .friends()
+      .then(() => {
+        if (state?.tab === 'friends' && document.body.contains(state.sheet.body)) showFriends();
+      })
+      .catch(() => {});
+  }
   const body = state!.sheet.body;
   body.innerHTML = '';
   const mine = document.createElement('button');
@@ -405,7 +417,7 @@ function showFriends(): void {
     const e = document.createElement('div');
     e.className = 'sc-empty';
     e.innerHTML = icon('heart', { size: 56 });
-    e.append(t('friends.empty', 'Toque no nome de alguém no chat ou no ranking para ver o perfil e adicionar como amigo.'));
+    e.append(t('friends.empty2', 'Adicione amigos pelo @nome ou tocando em quem jogou com você.'));
     body.appendChild(e);
     return;
   }

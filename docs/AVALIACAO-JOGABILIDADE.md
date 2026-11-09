@@ -13,11 +13,11 @@ Sobreviva aos Desastres rodou os 100 cenários × 2 perfis simulados a 30 Hz. Os
 
 | Jogo | Diversão | Clareza | Resposta ao toque | Apelo infantil | Ganchos de retorno |
 |---|---|---|---|---|---|
-| Bloop Orbit | 8 | 8 | 9 | 8 | 8 |
-| Queda Giratória (Tubo) | 7 | 8 | 9 | 8 | 5 |
-| Rally Lunar | 8 | 6 → 8 | 9 | 9 | 7 |
+| Bloop Orbit | 8 | 8 | 9 | 8 | 8 → 9 |
+| Queda Giratória (Tubo) | 7 → 8 | 8 | 9 | 8 | 5 → 7 |
+| Rally Lunar | 8 → 9 | 6 → 8 | 9 | 9 | 7 → 8 |
 | Fábrica Estelar (Tycoon) | 6 | 6 | 8 | 7 | 7 |
-| Sobreviva aos Desastres | 7 | 5 → 7 | 7 → 8 | 9 | 6 |
+| Sobreviva aos Desastres | 7 → 8 | 5 → 8 | 7 → 8 | 9 | 6 → 7 |
 | Casa do Bloop (pet) | 7 | 7 | 8 | 9 | 8 |
 
 ### Bloop Orbit — o carro-chefe e o mais redondo
@@ -140,3 +140,73 @@ Gemas por real dos pacotes normais: de 20/R$ a 30/R$.
 3. **Rally**: uma ajuda automática de equilíbrio nas 3 primeiras corridas (o carro tende a pousar de rodas). Também uma dica de "solte o acelerador no ar" quando o carro inclinar demais.
 4. **Tubo**: começar a apertar mais cedo (anéis vermelhos a partir de ~10 anéis), com uma meta de curto prazo por partida ("chegue ao anel 30") e recompensa visível.
 5. **Ganchos de retorno comuns a todos os jogos**: uma missão diária por jogo, recorde pessoal sempre visível no card do hub e celebração de "Novo recorde!" padronizada. A fanfarra `audio.record()` já existe.
+
+
+---
+
+## Segunda rodada (versão final): recomendações 2–5 implementadas
+
+### 2. Desastres: Treino + bots mais espertos
+**Treino**: as 3 primeiras rodadas que o jogador vê. Elas trazem:
+- +8 s de preparo;
+- fluidos 20% mais baixos e mais lentos;
+- ondas 25% mais lentas;
+- golpes 35% mais espaçados e tornado 25% mais lento;
+- seta verde pulando sobre o lugar seguro, presa na borda quando o lugar está fora da tela;
+- "Treino ·" no título e dicas de incentivo ("Siga a seta verde…", "Tudo bem, é treino!").
+
+**Bots**:
+- no tornado, procuram uma casa pela área (não pela checagem rígida de abrigo) e ficam lá dentro;
+- no terremoto, nos meteoros e nos raios, escolhem um ponto aberto de verdade (nada em cima) e longe das sombras marcadas;
+- nos fluidos, preferem superfícies acima do nível final esperado.
+
+| Medida (bots) | Antes | Depois |
+|---|---|---|
+| Cenários 1–13 sem treino (expert / criança) | 33% / 29% | — |
+| Cenários 1–13 com treino (expert / criança) | — | **79% / 42%** |
+| Sobrevivência geral, sem treino (expert / criança) | 33% / 31% | 32% / 29% |
+| Bots no tornado | 6% | 19% |
+| Moedas/min | ~51 | ~51 |
+
+Nos fluidos e nos golpes, os bots oscilam dentro do ruído; a IA continua sendo o ponto fraco.
+
+### 3. Rally: "rodinhas"
+- **Nas primeiras corridas**: o carro tende a se endireitar sozinho no ar e em empinadas fortes. A ajuda vale 0,85 nas 3 primeiras corridas e some até a 5ª.
+- **Melhoria permanente "Anti-capotar"** (`gyro`, por veículo): até +0,35 de ajuda, a 0,7x o preço das outras melhorias.
+
+Bot criança antes e depois da ajuda:
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Corridas que terminam capotando | **100%** | **0%** |
+| Duração média da corrida | 17 s | 62 s |
+| Distância média | 148 m | 401 m |
+
+O expert não piorou: 618 m → 883 m.
+
+### 4. Tubo: tensão e metas curtas
+- **Curva mais cedo**: vermelho a partir do anel 4, rotação sobe mais rápido e os segmentos vermelhos ficam mais largos.
+- **Pressão pelo tempo**: +1 anel "equivalente" de dificuldade a cada ~9 s, com teto de 30.
+- **Metas por partida** no HUD: "Anel N" (um pouco acima do seu melhor anel) e "Combo xN". Cada uma vale +15 moedas, com aviso, som e vibração.
+
+Bot criança, com reação de 120–380 ms e toques impacientes:
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Mortes | ninguém morria em 70–150 s | partidas de ~36–60 s |
+| Primeira partida | — | 43–100 s |
+| Moedas/min | — | 46–59 |
+
+Faixa alvo: 60–120 s. Ficou um pouco abaixo para o bot "impaciente".
+
+### 5. Ganchos de retorno comuns
+- **Recorde no card do hub** (`src/hub/bests.ts`): Orbit e Tubo em pontos, Rally em metros, Desastres pela melhor sequência e Fábrica pelas vitórias. Atualiza ao voltar de um jogo.
+- **Comemoração padrão** (`src/ui/record.ts`, `celebrateRecord()`): faixa dourada, confete, fanfarra e vibração, sem bloquear o toque. Usada pelos 5 jogos.
+- **Missão diária de cada jogo**:
+  - tipos novos: `tubo_rings`, `rally_dist`, `dz_survive` e `ty_play`, que escutam o `run-end`;
+  - as 3 missões do dia vêm de 3 jogos diferentes, uma fácil, uma média e uma difícil.
+
+### Riscos que continuam
+- A IA dos bots dos Desastres ainda é fraca nos fluidos e nos cenários duplos, que seguem perto de 0%.
+- O Tubo pode ter ficado um pouco curto para crianças muito impacientes. Vale testar com crianças.
+- A Fábrica continua sem instrumentação.

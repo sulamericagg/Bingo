@@ -91,6 +91,9 @@ export async function sync(req: Request, env: Env): Promise<Response> {
     p.lastSeen = now;
     await putPlayer(env, p);
   }
+  await env.FRIENDS.get(env.FRIENDS.idFromName('hub'))
+    .touch(id)
+    .catch(() => {});
   const inbox = pendingGiftsFor(p, await getGifts(env)).map(giftOut);
   return json({ name: p.name, inbox });
 }

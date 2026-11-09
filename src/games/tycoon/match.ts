@@ -1,6 +1,7 @@
 /* ============================================================
  *  FÁBRICA ESTELAR — partida versus (você + 3 bots/jogadores).
  * ============================================================ */
+import { celebrateRecord } from '../../ui/record';
 import { audio } from '../../core/audio';
 import { addCoins } from '../../core/economy';
 import { success, tap } from '../../core/haptics';
@@ -476,6 +477,7 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     const ts = tycoonSave();
     ts.matches++;
     if (won) ts.wins++;
+    if (ts.best > 0 && Math.floor(me.score) > ts.best) celebrateRecord(t('record.pts', '{n} pontos', { n: fmt(Math.floor(me.score)) }));
     ts.best = Math.max(ts.best, Math.floor(me.score));
     persistTycoon();
     reportRun({

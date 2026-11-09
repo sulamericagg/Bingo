@@ -54,3 +54,7 @@
 .tubo-ov.busy .tubo-timer i { animation-play-state: paused; }
 @keyframes tubo-timer { to { transform: scaleX(0); } }
 .tubo-root.is-over .tubo-hud .tubo-btn-round { visibility: hidden; }
+/* metas curtas da partida */
+.tubo-goals { position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 92px); display: flex; gap: 6px; pointer-events: none; }
+.tubo-goals span { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(60, 20, 70, .45); transition: background .15s, transform .15s; }
+.tubo-goals span.ok { background: rgba(40, 170, 90, .85); transform: scale(1.06); }

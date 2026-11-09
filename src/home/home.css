@@ -1,0 +1,199 @@
+/* CASA, PLANETA & AMIGOS — interface (prefixo hm-). Mesma linguagem do jogo. */
+.hm-scr {
+  --ink: #2a0b5c;
+  --st: 0px;
+  --sb: 0px;
+  position: fixed;
+  inset: 0;
+  z-index: 62;
+  display: none;
+  overflow: hidden;
+  background: #1a0d40;
+  color: var(--ink);
+  font-family: 'Fredoka', system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+@supports (padding: env(safe-area-inset-top)) {
+  .hm-scr {
+    --st: env(safe-area-inset-top, 0px);
+    --sb: env(safe-area-inset-bottom, 0px);
+  }
+}
+.hm-scr.on { display: block; animation: hmIn 0.3s cubic-bezier(0.2, 1.2, 0.4, 1); }
+@keyframes hmIn { from { opacity: 0; transform: scale(0.97); } }
+.hm-scr button { font-family: inherit; border: 0; cursor: pointer; color: var(--ink); -webkit-tap-highlight-color: transparent; }
+.hm-cv { position: absolute; inset: 0; touch-action: none; }
+.hm-ico { display: block; flex: none; }
+.hm-scr [hidden] { display: none !important; }
+
+.hm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #efe6ff);
+  font-size: 15px; font-weight: 700; line-height: 1.1;
+  box-shadow: inset 0 -3px 0 rgba(42, 11, 92, 0.12), 0 3px 0 var(--ink);
+  border: 2.5px solid var(--ink) !important;
+  transition: transform 0.08s;
+}
+.hm-btn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--ink); }
+.hm-btn[disabled] { opacity: 0.45; pointer-events: none; }
+.hm-btn.on { background: linear-gradient(180deg, #fff6a0, #ffd23d); }
+.hm-go { background: linear-gradient(180deg, #8dffb4, #2fd06a); }
+.hm-pink { background: linear-gradient(180deg, #ffd0ef, #ff7ad9); }
+.hm-blue { background: linear-gradient(180deg, #d0f8ff, #5ec8ff); }
+.hm-gold { background: linear-gradient(180deg, #fff3a0, #ffb300); }
+.hm-ibtn { width: 44px; height: 44px; padding: 0; border-radius: 14px; }
+
+/* topo */
+.hm-top {
+  position: absolute; top: calc(8px + var(--st)); left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 8px; z-index: 3; pointer-events: none;
+}
+.hm-top > * { pointer-events: auto; }
+.hm-title {
+  flex: 1; min-width: 0; color: #fff; font-weight: 700; font-size: 18px;
+  text-shadow: 0 2px 0 var(--ink), 0 0 6px rgba(42, 11, 92, 0.6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hm-title small { display: block; font-size: 12px; opacity: 0.9; }
+.hm-wallet { display: flex; gap: 6px; }
+.hm-wallet span {
+  display: inline-flex; align-items: center; gap: 4px; background: rgba(255, 255, 255, 0.92);
+  border: 2px solid var(--ink); border-radius: 12px; padding: 3px 8px; font-weight: 700; font-size: 14px;
+}
+
+/* abas dos cômodos */
+.hm-rooms {
+  position: absolute; top: calc(60px + var(--st)); left: 0; right: 0; z-index: 3;
+  display: flex; gap: 6px; padding: 0 8px; overflow-x: auto; scrollbar-width: none;
+}
+.hm-rooms::-webkit-scrollbar { display: none; }
+.hm-rooms button {
+  flex: none; padding: 6px 10px; border-radius: 12px; font-weight: 700; font-size: 13px;
+  background: rgba(255, 255, 255, 0.85); border: 2px solid var(--ink) !important; position: relative;
+}
+.hm-rooms button.on { background: #fff27a; }
+.hm-rooms button i.dot {
+  position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%;
+  background: #ff5c7a; border: 2px solid var(--ink);
+}
+
+/* barra inferior */
+.hm-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  padding: 8px 8px calc(10px + var(--sb));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.0), rgba(255, 255, 255, 0.0));
+  display: flex; flex-direction: column; gap: 6px;
+}
+.hm-bar.panel { background: #fff8ff; border-top: 3px solid var(--ink); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 0 rgba(42, 11, 92, 0.15); }
+.hm-row { display: flex; gap: 6px; align-items: center; }
+.hm-row.wrap { flex-wrap: wrap; justify-content: center; }
+.hm-row.scroll { overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; }
+.hm-row.scroll::-webkit-scrollbar { display: none; }
+.hm-row .grow { flex: 1; }
+.hm-act { flex-direction: column; gap: 2px; font-size: 12px; padding: 6px 8px; min-width: 64px; }
+
+/* chips e opções */
+.hm-chip {
+  flex: none; padding: 6px 10px; border-radius: 999px; font-weight: 700; font-size: 13px;
+  background: #efe6ff; border: 2px solid var(--ink) !important;
+}
+.hm-chip.on { background: #8a5cff; color: #fff !important; }
+.hm-opt {
+  flex: none; position: relative; min-width: 66px; padding: 7px 9px; border-radius: 12px;
+  background: #fff; border: 2px solid var(--ink) !important; font-weight: 600; font-size: 13px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+.hm-opt.on { background: #fff27a; box-shadow: 0 0 0 3px #8a5cff, 0 2px 0 var(--ink); }
+.hm-opt .price {
+  display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 11px; margin-top: 2px; opacity: 0.85;
+}
+.hm-opt.locked { background: #f1ecfa; }
+.hm-sw {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--ink) !important; position: relative; padding: 0;
+}
+.hm-sw.on { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #8a5cff; }
+.hm-sw .lk { position: absolute; right: -6px; bottom: -6px; }
+.hm-lbl { font-weight: 700; font-size: 13px; color: #5326cc; margin: 2px 2px 0; }
+.hm-scrollv { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.hm-furn {
+  flex: none; width: 74px; padding: 4px; border-radius: 12px; background: #fff; border: 2px solid var(--ink) !important;
+  display: flex; flex-direction: column; align-items: center; font-size: 11px; font-weight: 600; position: relative;
+}
+.hm-furn canvas { width: 60px; height: 52px; }
+.hm-furn .price { display: flex; align-items: center; gap: 2px; font-size: 11px; }
+
+/* barra de progresso */
+.hm-prog { flex: 1; height: 18px; border: 2.5px solid var(--ink); border-radius: 10px; background: #fff; overflow: hidden; position: relative; }
+.hm-prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #5ef0ff, #8a5cff); transition: width 0.15s; }
+.hm-prog b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+
+/* folhas/modais */
+.hm-sheet {
+  position: absolute; inset: 0; z-index: 10; display: none; background: rgba(26, 8, 60, 0.55);
+  align-items: flex-end; justify-content: center;
+}
+.hm-sheet.on { display: flex; animation: hmFade 0.2s; }
+@keyframes hmFade { from { opacity: 0; } }
+.hm-card {
+  width: 100%; max-width: 520px; max-height: 92%; overflow-y: auto; background: #fff8ff;
+  border: 3px solid var(--ink); border-bottom: 0; border-radius: 22px 22px 0 0;
+  padding: 14px 14px calc(16px + var(--sb)); box-shadow: 0 -4px 0 rgba(42, 11, 92, 0.2);
+  animation: hmUp 0.28s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+@keyframes hmUp { from { transform: translateY(40px); } }
+.hm-card h2 { margin: 0 0 6px; font-size: 21px; display: flex; align-items: center; gap: 8px; }
+.hm-card p { margin: 4px 0 8px; font-size: 14px; line-height: 1.3; }
+.hm-tabs { display: flex; gap: 6px; margin: 4px 0 10px; }
+.hm-tabs button { flex: 1; padding: 8px 4px; border-radius: 12px; background: #efe6ff; font-weight: 700; font-size: 14px; border: 2px solid var(--ink) !important; position: relative; }
+.hm-tabs button.on { background: #8a5cff; color: #fff !important; }
+.hm-tabs button b.badge { position: absolute; top: -8px; right: -6px; background: #ff5c7a; color: #fff; border: 2px solid var(--ink); border-radius: 10px; font-size: 11px; padding: 0 5px; }
+
+/* @nome */
+.hm-handle { display: flex; align-items: center; gap: 4px; border: 3px solid var(--ink); border-radius: 16px; background: #fff; padding: 4px 10px; transition: background 0.2s, box-shadow 0.2s; }
+.hm-handle b { font-size: 24px; color: #8a5cff; }
+.hm-handle input { flex: 1; min-width: 0; border: 0; outline: 0; font: 600 22px 'Fredoka', system-ui, sans-serif; color: var(--ink); background: transparent; padding: 6px 0; }
+.hm-handle.ok { background: #e3ffe9; box-shadow: 0 0 0 4px #2fd06a; }
+.hm-handle.bad { background: #ffe6ea; box-shadow: 0 0 0 4px #ff5c7a; animation: hmShake 0.3s; }
+@keyframes hmShake { 30% { transform: translateX(-4px); } 60% { transform: translateX(4px); } }
+.hm-status { min-height: 22px; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 6px; margin: 6px 2px; }
+.hm-status.ok { color: #17994a; }
+.hm-status.bad { color: #c21d3c; }
+.hm-rules { font-size: 13px; background: #efe6ff; border-radius: 12px; padding: 8px 10px; margin: 8px 0; }
+.hm-rules li { margin: 2px 0; }
+.hm-rules ul { margin: 0; padding-left: 18px; }
+
+/* amigos */
+.hm-friend { display: flex; align-items: center; gap: 8px; padding: 8px; border: 2.5px solid var(--ink); border-radius: 16px; background: #fff; margin-bottom: 8px; }
+.hm-friend canvas.av { width: 48px; height: 48px; border-radius: 50%; background: #efe6ff; border: 2px solid var(--ink); flex: none; }
+.hm-friend canvas.th { width: 54px; height: 54px; border-radius: 12px; border: 2px solid var(--ink); flex: none; }
+.hm-friend .who { flex: 1; min-width: 0; }
+.hm-friend .who b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-friend .who small { font-size: 12px; opacity: 0.8; display: flex; align-items: center; gap: 4px; }
+.hm-friend .av-wrap { position: relative; flex: none; }
+.hm-dot { position: absolute; right: 0; bottom: 0; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--ink); background: #b9b3cc; }
+.hm-dot.on { background: #2fd06a; }
+.hm-friend .acts { display: flex; flex-direction: column; gap: 4px; }
+.hm-friend .acts .hm-btn { padding: 5px 8px; font-size: 12px; border-radius: 12px; }
+.hm-messbar { margin-top: 3px; background: #fff0c8; border: 2px solid var(--ink); border-radius: 10px; padding: 3px 6px; font-size: 12px; font-weight: 600; display: flex; gap: 4px; align-items: center; }
+.hm-empty { text-align: center; padding: 18px 8px; opacity: 0.8; }
+.hm-seg { display: flex; gap: 3px; }
+.hm-seg button { padding: 5px 6px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #efe6ff; border: 2px solid var(--ink) !important; }
+.hm-seg button.on { background: #fff27a; }
+
+/* toast */
+.hm-toast {
+  position: absolute; left: 50%; top: calc(110px + var(--st)); transform: translate(-50%, -20px); z-index: 20;
+  background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 8px 14px; font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.25s; max-width: 90%;
+  box-shadow: 0 4px 0 var(--ink);
+}
+.hm-toast.on { opacity: 1; transform: translate(-50%, 0); }
+.hm-banner {
+  position: absolute; left: 10px; right: 10px; top: calc(104px + var(--st)); z-index: 2;
+  background: #fff0c8; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 10px; font-weight: 700; font-size: 14px;
+  display: flex; gap: 8px; align-items: center;
+}
+.hm-combo { color: #fff; text-align: center; font-size: 12px; opacity: 0.9; text-shadow: 0 1px 0 var(--ink); }

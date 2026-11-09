@@ -238,6 +238,9 @@ export class RaceRoom extends DurableObject<Env> {
       this.send(s, { type: 'start', seed: this.seed, countdownMs: RACE.countdownMs, durationSec: RACE.durationSec, players: this.playerList(s.debug), you: s.slot });
     }
     this.raceStart = Date.now() + RACE.countdownMs;
+    // amizades: quem correu junto pode se adicionar pelo id (docs/CASA-AMIGOS.md)
+    const humans = this.slots.filter((s) => !s.bot && s.id).map((s) => s.id);
+    if (humans.length > 1) this.ctx.waitUntil(this.env.FRIENDS.get(this.env.FRIENDS.idFromName('hub')).met(humans).catch(() => {}));
     this.later(RACE.countdownMs, () => {
       this.phase = 'race';
       for (const s of this.slots) s.last = Date.now();

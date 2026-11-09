@@ -437,6 +437,8 @@ export class Drawer {
 
     if (g.tornado.on) this.tornado(x, g.tornado.x, g.tornado.r, g.time, top);
     if (g.fluid) this.fluid(x, x0, x1, top + c.vh + 20);
+    // treino: seta verde pulando sobre o lugar seguro (presa na borda se estiver fora da tela)
+    if (g.safe) this.safeArrow(x, g.safe.x, g.safe.y, x0, x1, g.time);
     // fantasminhas por cima de tudo
     for (const p of g.players) if (p.ghost) this.ghost(x, p.gx, p.gy, p.color, p.face, g.time + p.outOrder, p.self ? p.name : '');
 
@@ -715,6 +717,31 @@ export class Drawer {
       x.arc(p.x, p.y - R, R + 5, 0, TAU);
       x.stroke();
     }
+  }
+
+  private safeArrow(x: CanvasRenderingContext2D, sx: number, sy: number, x0: number, x1: number, time: number): void {
+    const off = sx < x0 + 75 || sx > x1 - 75; // x0/x1 têm 60 de margem fora da tela
+    const ax = Math.max(x0 + 84, Math.min(x1 - 84, sx));
+    const bob = Math.abs(Math.sin(time * 5)) * 10;
+    const ay = (off ? this.g.me.y - 40 : sy - 46) - bob;
+    x.save();
+    x.translate(ax, ay);
+    if (off) x.rotate(sx < x0 ? Math.PI / 2 : -Math.PI / 2);
+    x.fillStyle = '#3ee07a';
+    x.strokeStyle = '#1a5a32';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.moveTo(-9, -22);
+    x.lineTo(9, -22);
+    x.lineTo(9, -6);
+    x.lineTo(18, -6);
+    x.lineTo(0, 12);
+    x.lineTo(-18, -6);
+    x.lineTo(-9, -6);
+    x.closePath();
+    x.stroke();
+    x.fill();
+    x.restore();
   }
 
   /** retângulos (x0,y0,x1,y1) das etiquetas já desenhadas neste quadro */

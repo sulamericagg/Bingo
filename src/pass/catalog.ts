@@ -14,7 +14,7 @@ import { SEASONS, type SeasonInfo } from '../creatures/seasons';
 import { t } from '../i18n';
 
 export type PassRarity = 'common' | 'medio' | 'rare' | 'epic' | 'legendary';
-export type RewardKind = 'creature' | 'eyes' | 'mouth' | 'aura' | 'emote' | 'music' | 'frame' | 'banner' | 'gems' | 'coins' | 'tickets';
+export type RewardKind = 'home' | 'creature' | 'eyes' | 'mouth' | 'aura' | 'emote' | 'music' | 'frame' | 'banner' | 'gems' | 'coins' | 'tickets';
 
 export interface Reward {
   kind: RewardKind;
@@ -39,7 +39,7 @@ export interface PassSeason {
 }
 
 /** 4 substantivos por tema (mesma ordem de SEASONS). Usados como "Olhos de X", "Aura de Y"... */
-const MOTIFS: string[][] = [
+export const MOTIFS: string[][] = [
   ['Estrela-guia', 'Pinheiro', 'Sininho', 'Rena'],
   ['Fogos', 'Contagem', 'Meia-noite', 'Confete'],
   ['Serpentina', 'Pandeiro', 'Purpurina', 'Folia'],
@@ -181,6 +181,8 @@ function nameFor(kind: RewardKind, motif: string, theme: string, n: number, amou
       return amount === 1 ? t('pass.n.ticket', '1 Ingresso') : t('pass.n.tickets', '{n} Ingressos', { n: amount });
     case 'creature':
       return creatureNames.get(id) ?? t('pass.n.creature', 'Bichinho {m}', { m: motif });
+    case 'home':
+      return id;
   }
 }
 
