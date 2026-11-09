@@ -57,6 +57,8 @@ export interface Player {
   jbuf: number;
   /** recarga do "tum" de objeto leve caindo (s) */
   bonk: number;
+  /** quanto tempo aguentou no desastre antes de cair (s) */
+  outT?: number;
   sq: number; // squash & stretch (-1..1)
   runT: number;
   alive: boolean;
@@ -514,7 +516,8 @@ export class DisasterGame implements MiniGameHandle {
       this.sessionSurvived++;
       this.newBest = this.streak > 1 && this.streak > this.progress.best;
       this.progress.best = Math.max(this.progress.best, this.streak);
-      let coins = 20 + this.sc.difficulty * 6 + Math.min(10, this.streak - 1) * 5 + (this.finale ? 40 : 0);
+      // economia (nov/2026): rodadas de ~70 s pagavam ~15 moedas/min; agora ~40-50/min, perto dos outros jogos
+      let coins = 70 + this.sc.difficulty * 15 + Math.min(10, this.streak - 1) * 6 + (this.finale ? 60 : 0);
       try {
         const bonus = (window as unknown as { petCoinBonus?: (c: number) => number }).petCoinBonus;
         if (typeof bonus === 'function') coins += Math.max(0, Math.round(bonus(coins) || 0));
@@ -528,9 +531,12 @@ export class DisasterGame implements MiniGameHandle {
       success();
     } else {
       this.streak = 0;
-      this.roundCoins = 3;
-      this.sessionCoins += 3;
-      addCoins(3);
+      // perdeu, mas ganha pelo tempo que aguentou durante o desastre (nunca sai de mãos vazias)
+      const held = Math.max(0, Math.min(60, (me.outT || 0)));
+      const c = 8 + Math.round(held * 0.6);
+      this.roundCoins = c;
+      this.sessionCoins += c;
+      addCoins(c);
     }
     saveProgress(this.progress);
     reportRun({
@@ -1029,6 +1035,7 @@ export class DisasterGame implements MiniGameHandle {
     p.vy = -80;
     this.outCount++;
     p.outOrder = this.outCount;
+    p.outT = this.phase === 'disaster' || this.phase === 'impact' ? this.phaseT + (this.dIndex > 0 ? this.disasterDur() : 0) : 0;
     this.draw.particles.burst(p.x, p.y - 12, 16, 'puff', 140);
     if (p.self) {
       audio.hit();

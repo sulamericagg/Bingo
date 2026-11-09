@@ -172,6 +172,7 @@ class RallyGame {
     private exitFn: () => void,
   ) {
     this.skin = skinById(save.skin === 'custom' ? 'custom' : save.skin);
+    if (import.meta.env.DEV) (window as unknown as { __rally?: unknown }).__rally = this;
     this.quality = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (_t, s) => this.applyQuality(s) });
     this.q = this.quality.settings;
     this.limiter.cap = this.q.fpsCap;
@@ -685,6 +686,11 @@ class RallyGame {
       if (this.myEmoteT > 0) this.myEmoteT -= dt;
     }
     this.lobby.update(dt, steps, car.x, car.speed, this.state === 'play');
+    // ronco do motor: acompanha o acelerador e a velocidade (respeita "Som" via sfxBus)
+    if (this.state === 'play' && !car.crashed) {
+      audio.engineStart();
+      audio.engineSet(this.inp.gas && this.fuel > 0 ? 1 : this.inp.brake ? 0.35 : 0, Math.min(1, car.speed / 16));
+    } else audio.engineStop();
     for (let i = 0; i < MAX_DUST; i++) {
       if (this.dl[i] <= 0) continue;
       this.dl[i] -= dt;
@@ -770,6 +776,29 @@ class RallyGame {
       <button class="rl-btn rl-alt rl-small" data-a="exit">${icon('home', { size: 22 })}<span>${t('rally.exit', 'Sair')}</span></button>
     </div>`;
     this.resultsEl.classList.add('on');
+    if (this.newBest) audio.record();
+    // total "conta" de 0 até o valor (com tic que sobe de tom) — recompensa que se sente
+    const tc0 = this.resultsEl.querySelector<HTMLElement>('.rl-tc');
+    const total = this.resultCoins;
+    if (tc0 && total > 0) {
+      const t0 = performance.now();
+      const dur = Math.min(900, 300 + total * 6);
+      let lastShown = -1;
+      const run = (now: number) => {
+        if (this.doubled || !tc0.isConnected) return;
+        const k = Math.min(1, (now - t0) / dur);
+        const v = Math.round(total * (1 - Math.pow(1 - k, 3)));
+        if (v !== lastShown) {
+          if (lastShown >= 0 && (v - lastShown > 0) && Math.floor(v / Math.max(1, total / 12)) !== Math.floor(lastShown / Math.max(1, total / 12))) audio.tick(Math.floor((12 * v) / total));
+          lastShown = v;
+          tc0.textContent = '+' + fmt(v);
+        }
+        if (k < 1) requestAnimationFrame(run);
+        else audio.coin(6);
+      };
+      tc0.textContent = '+0';
+      requestAnimationFrame(run);
+    }
     this.resultsEl.onclick = async (e) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a;
       if (!a) return;
@@ -1204,6 +1233,7 @@ class RallyGame {
     if (this.state !== 'play' || this.paused) return;
     this.paused = true;
     this.ptrs.clear();
+    audio.engineStop();
     this.pauseEl.classList.add('on');
   }
 
@@ -1223,6 +1253,7 @@ class RallyGame {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    audio.engineStop();
     cancelAnimationFrame(this.raf);
     for (const f of this.offs) f();
     this.lobby.destroy();
