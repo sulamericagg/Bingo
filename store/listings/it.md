@@ -6,33 +6,37 @@ Bloop World: Minigiochi
 
 ## Descrizione breve (≤80)
 
-Salta, corri, costruisci e coccola il tuo cucciolo in un mondo di minigiochi!
+6 minigiochi, un cucciolo che parla, case con amici e 300 creature!
 
 ## Descrizione completa (≤4000)
 
-Benvenuto in Bloop World, il mondo di minigiochi di TEAM Ross! Un'unica app piena di giochi veloci e colorati, per tutte le età.
+Benvenuto in Bloop World, l'hub di minigiochi di TEAM Ross! Un'app piena di giochi veloci e colorati per tutte le età.
 
-I GIOCHI
-• Bloop Orbit: un tocco per saltare di pianeta in pianeta. Fai atterraggi PERFETTI ed evita gli asteroidi!
-• Caduta Rotante: fai girare la torre e tuffati nei varchi senza toccare il rosso.
-• Rally Lunare: sfreccia sulle colline della Luna, fai capriole e potenzia la tua auto in garage.
-• Fabbrica Stellare: costruisci macchine, raccogli stelle e lancia il Razzo TURBO prima dei rivali.
-• Modalità sopravvivenza ai disastri: scappa da catastrofi buffe e resta l'ultimo in piedi!
+6 GIOCHI
+• Bloop Orbit — un tocco per saltare da un pianeta all'altro. Fai atterraggi PERFETTI ed evita gli asteroidi!
+• Caduta Rotante — fai girare la torre e tuffati nei buchi senza toccare il rosso.
+• Rally Lunare — sfreccia sulle colline della luna, fai acrobazie e potenzia il tuo mezzo in garage.
+• Fabbrica Stellare — costruisci macchine, raccogli stelle e lancia il Razzo TURBO prima dei rivali.
+• Sopravvivi ai Disastri — sali, corri e sfuggi a terremoti, tsunami, meteore e tanto altro!
+• Bloop Band — forma la tua band, suona a ritmo con gli amici e crea le tue canzoni in studio.
 
 UN CUCCIOLO CHE TI RISPONDE
-Dagli da mangiare, fagli il bagnetto, coccolalo, decora la sua stanza e gioca a palla. Parla vicino al telefono e lui ripete con una vocina buffa: la tua voce resta solo nella memoria del dispositivo, non viene registrata né inviata.
+Dagli da mangiare, fagli il bagno, coccolalo e gioca a palla. Parla vicino al telefono e lui ti ripete con una vocina buffa: la tua voce resta solo nella memoria del dispositivo e non viene mai registrata né inviata.
+
+CASE E PIANETI
+Costruisci e arreda la tua casa e il tuo pianeta con migliaia di combinazioni. Visita gli amici, aiutali a riordinare, organizza feste con battaglie di cibo ed entra nella modalità 3D (sui dispositivi compatibili).
 
 COLLEZIONA E CREA
-• 300 cuccioli da collezionare: 5 nuovi a ogni stagione mensile
-• Pass Stellare mensile con premi gratis e percorso Premium facoltativo
+• 300 creature da collezionare, con novità a ogni stagione mensile
+• 3 pass mensili — Stellare, Casa e Musica — con premi gratuiti e percorso Premium facoltativo
 • Editor del personaggio: crea il tuo Bloop pezzo per pezzo
-• Decine di skin e scie, da comune a mitico
+• Skin, scie, aure e balletti
 
-GIOCA CON GLI ALTRI
-• Campionati con tabellone e premi in monete
-• Corse e classifiche settimanali
-• Chat sicura: filtro automatico, Modalità sicura con frasi rapide per i minori di 13 anni, pulsanti per silenziare, bloccare e segnalare
+GIOCA CON GLI AMICI
+• Campionati a eliminazione con premi in monete
+• Gare e classifiche
+• Chat sicura: filtro automatico, Modalità Sicura con sole frasi rapide per i minori di 13 anni, e pulsanti per silenziare, bloccare e segnalare. Alle feste in casa, solo emote.
 
-Disponibile in 12 lingue. Gratis; contiene pubblicità e acquisti in-app facoltativi. Chiedi aiuto a un adulto prima di acquistare.
+Disponibile in 12 lingue. Le funzioni online (amici, feste, band con amici, chat, classifiche) richiedono internet. Gratis da giocare; contiene pubblicità e acquisti in-app facoltativi. Chiedi a un genitore prima di acquistare.
 
-Fatto con affetto in Brasile da TEAM Ross.
+Fatto con amore in Brasile da TEAM Ross.
