@@ -12,6 +12,7 @@ import { persistNow } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
 import { initBilling } from './services/billing';
+import { initRace } from './ui/race';
 import { UI } from './ui/ui';
 
 async function boot(): Promise<void> {
@@ -24,6 +25,7 @@ async function boot(): Promise<void> {
 
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);
+  initRace(game);
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui };
 
   const onHide = () => {

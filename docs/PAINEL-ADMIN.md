@@ -138,3 +138,56 @@ type Gift = { id; title; message; reward: RewardPack; sentAt: number; expiresAt:
 `GET|POST /gifts` (`{target:{type:'all'}|{type:'active',days}|{type:'players',ids}, title, message, reward, expiresDays}`) · `DELETE /gifts/:id` ·
 `GET|POST /codes` (`{code? | prefix?, count?, reward, maxUses, startsAt?, expiresAt?, active, notes}`) · `GET|PATCH|DELETE /codes/:code` · `POST /codes/bulk {action, keys? | batch?}` ·
 `GET|POST /challenges` · `PATCH|DELETE /challenges/:id` · `GET|POST /presets` · `DELETE /presets/:id`.
+
+---
+
+## 7. Ranking global e Corrida Orbital (multiplayer)
+
+### Ranking (painel → **Ranking**)
+- Mostra o placar **Geral** (melhor pontuação de cada jogador) e o da **Semana** (zera toda segunda-feira, 00:00 de Brasília).
+- **Remover** tira o jogador do placar geral e da semana atual. Deixe marcado *Bloquear novos envios* para trapaceiros: o jogo dele não consegue mais enviar pontuações (dá para **desbloquear** depois).
+- O servidor já rejeita pontuações impossíveis para o tempo de partida (mais de ~8 pontos por segundo).
+
+### Corrida Orbital
+- Botão **Corrida** no menu: 5 jogadores, 60 segundos, todos no **mesmo mundo** (mesma seed). Quem fizer mais pontos vence (empate: quem ficou mais tempo vivo).
+- Espera até ~5 s por jogadores reais; as vagas restantes são completadas com **bots** com nomes e skins de jogadores normais.
+- Prêmios: 1º 100 moedas + 5 gemas · 2º 60 · 3º 40 · 4º/5º 20 (mais as moedas coletadas na corrida).
+- Sem internet (ou se o servidor estiver fora), a corrida acontece **offline** com 4 bots — o modo sempre funciona.
+
+> **Primeiro deploy com a Corrida:** o `wrangler.jsonc` cria o Durable Object `RaceRoom` (migração `v1`, SQLite — funciona no plano grátis). Não precisa fazer nada no painel da Cloudflare: o `npx wrangler deploy` cria sozinho.
+
+### Limites do plano grátis
+- **KV:** cada placar é **uma** chave (`lb:all`, `lb:week:AAAA-Wnn`). Só gravamos quando a pontuação entra no top 200 ou bate o recorde do próprio jogador (o jogo também só envia quando é um novo recorde). Ainda assim conta nas **1.000 escritas/dia** — com muitos jogadores batendo recordes, considere o plano pago.
+- **Durable Objects (grátis):** ~100 mil requisições/dia e 13.000 GB-s/dia de duração. Cada corrida mantém uma sala ativa por ~70 s (≈ 9 GB-s) → algo como **1.000+ corridas por dia** no plano grátis. Mensagens de WebSocket recebidas contam como requisições (20 mensagens = 1 requisição).
+
+### Para desenvolvedores
+
+```
+server/leaderboard.ts    ← ranking (KV) + rotas admin do ranking
+server/race.ts           ← Durable Object RaceRoom (lobby + salas) e GET /api/race/join
+shared/race.ts           ← regras, protocolo e modelo dos bots (servidor + modo offline)
+shared/leaderboard.ts    ← tipos, semana ISO, limite de plausibilidade
+src/services/leaderboard.ts / multiplayer.ts  ← clientes
+src/ui/race.ts + race.css                     ← telas (sala, HUD, resultado, ranking)
+```
+
+| Chave KV | Valor |
+|---|---|
+| `lb:all` | `{ entries: [{ id, name, score, skin, t }], updated }` (top 200) |
+| `lb:week:<AAAA-Wnn>` | igual, expira em 21 dias |
+| `lb:banned` | lista de ids bloqueados |
+
+| Rota | Corpo / query | Resposta |
+|---|---|---|
+| `POST /api/score` | `{ id, name, score, skin, duration (ms) }` | `{ ok, rank: { all, week }, best: { all, week } }` · 422 se impossível · 403 se bloqueado |
+| `GET /api/leaderboard` | `?scope=all\|week&me=<id>` | `{ scope, week, total, entries: [{ rank, name, score, skin, me? }] (top 100), me: { rank, score } \| null }` (sem ids) |
+| `GET /api/race/join` | WebSocket | protocolo abaixo |
+| `GET /api/admin/leaderboard` | `?scope=all\|week` | `{ entries (com ids), banned, week }` |
+| `DELETE /api/admin/leaderboard/:id` | `?ban=1` | `{ removed }` |
+| `POST /api/admin/leaderboard/unban/:id` | — | `{ ok }` |
+
+**Protocolo da corrida (JSON por WebSocket):**
+- cliente → `{type:'hello', id, name, skin, debug?}` (1ª mensagem) · `{type:'state', score, p, alive}` ~6×/s (p = índice do planeta atual) · `{type:'leave'}`
+- servidor → `{type:'welcome', you, room}` · `{type:'lobby', players:[{slot,name,skin,bot?}], startsInMs}` · `{type:'start', seed, countdownMs, durationSec, players, you}` · `{type:'tick', t, s:[[slot, score, p, vivo 0/1, tempoVivo×10]]}` (5×/s) · `{type:'end', results:[{slot,name,skin,score,tAlive,place,coins,gems}]}` · `{type:'error', code:'full'|'started'|'no_hello'}`
+- `bot: true` só é enviado para clientes com `debug` (abra o jogo com `?debug`).
+- Sem mensagens por 6 s = desconectado (conta como queda). Se todos os humanos caírem, os bots são "adiantados" até os 60 s e o resultado sai na hora.

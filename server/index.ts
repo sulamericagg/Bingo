@@ -6,7 +6,9 @@
  */
 import adminHtml from './admin.html';
 import { handleAdminApi } from './admin-api';
+import { getLeaderboard, submitScore } from './leaderboard';
 import { challenges, claim, redeem, register, sync } from './public';
+import { raceJoin } from './race';
 import { HttpError, json } from './util';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
@@ -35,6 +37,8 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/inbox/claim': claim,
   'POST /api/redeem': redeem,
   'GET /api/challenges': challenges,
+  'POST /api/score': submitScore,
+  'GET /api/leaderboard': getLeaderboard,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -63,6 +67,8 @@ function adminPage(): Response {
   });
 }
 
+export { RaceRoom } from './race';
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -73,6 +79,14 @@ export default {
     if (path.startsWith('/api/admin/') || path === '/api/admin') {
       try {
         return await handleAdminApi(req, env, url);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    if (path === '/api/race/join') {
+      try {
+        return await raceJoin(req, env);
       } catch (e) {
         return errorResponse(e);
       }

@@ -284,6 +284,7 @@ details.more summary { cursor: pointer; color: var(--muted); font-size: .9rem; p
       <button data-tab="codes"><span class="ic">🔑</span><span>Códigos</span></button>
       <button data-tab="challenges"><span class="ic">🎬</span><span>Desafios</span></button>
       <button data-tab="presets"><span class="ic">📦</span><span>Pacotes</span></button>
+      <button data-tab="ranking"><span class="ic">🏆</span><span>Ranking</span></button>
     </nav>
     <div class="spacer"></div>
     <button class="btn ghost sm logout" onclick="logout()">↩ Sair</button>
@@ -542,7 +543,7 @@ async function start() {
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   const hash = location.hash.slice(1);
-  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets'].includes(hash) ? hash : 'dash');
+  go(['dash', 'players', 'gifts', 'codes', 'challenges', 'presets', 'ranking'].includes(hash) ? hash : 'dash');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
 function go(tab) {
@@ -550,9 +551,47 @@ function go(tab) {
   history.replaceState(null, '', '#' + tab);
   $$('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
-  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets })[tab]();
+  ({ dash: viewDash, players: viewPlayers, gifts: viewGifts, codes: viewCodes, challenges: viewChallenges, presets: viewPresets, ranking: viewRanking })[tab]();
 }
 const view = () => $('#view');
+
+/* ================= Ranking ================= */
+const rankState = { scope: 'all' };
+async function viewRanking() {
+  view().innerHTML = `<div class="page-head"><div><h2>🏆 Ranking</h2><p class="muted">Placar global do jogo. Remova quem trapaceou (e bloqueie novos envios, se quiser).</p></div>
+      <button class="btn ghost sm" onclick="viewRanking()">↻ Atualizar</button></div>
+    <div class="card"><div class="card-head"><h3 id="rkTitle">Placar</h3>
+      <div class="seg" id="rkScope"><button data-s="all" class="${rankState.scope === 'all' ? 'on' : ''}">Geral</button><button data-s="week" class="${rankState.scope === 'week' ? 'on' : ''}">Semana</button></div></div>
+      <div id="rkList">${spinner()}</div></div>
+    <div class="card"><div class="card-head"><h3>🚫 Bloqueados</h3></div><div id="rkBanned" class="muted small">—</div></div>`;
+  $$('#rkScope button').forEach((b) => (b.onclick = () => { rankState.scope = b.dataset.s; viewRanking(); }));
+  let d;
+  try { d = await api('GET', '/leaderboard?scope=' + rankState.scope); } catch (e) { $('#rkList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (!$('#rkList')) return;
+  $('#rkTitle').textContent = rankState.scope === 'week' ? 'Semana ' + d.week : 'Todos os tempos';
+  const medal = (i) => ['🥇', '🥈', '🥉'][i] || (i + 1) + 'º';
+  $('#rkList').innerHTML = d.entries.length
+    ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Nome</th><th>Pontos</th><th class="hide-m">Skin</th><th class="hide-m">Quando</th><th></th></tr></thead><tbody>
+      ${d.entries.map((e, i) => `<tr><td>${medal(i)}</td><td><b>${esc(e.name)}</b><div class="muted small mono">${esc(e.id.slice(0, 8))}…</div></td><td><b>${fmtN(e.score)}</b></td>
+        <td class="hide-m small">${esc(NAMES['s:' + e.skin] || e.skin)}</td><td class="hide-m small">${fmtDate(e.t)}</td>
+        <td><button class="btn danger sm" data-rm="${esc(e.id)}" data-name="${esc(e.name)}">Remover</button></td></tr>`).join('')}
+      </tbody></table></div><p class="muted small">${fmtN(d.entries.length)} no placar (máx. 200; o jogo mostra o top 100).</p>`
+    : '<div class="empty"><div>🌌</div>Ninguém no placar ainda.</div>';
+  $$('#rkList [data-rm]').forEach((b) => (b.onclick = () => {
+    const m = modal(`<div class="modal-head"><h3>Remover do ranking?</h3><button class="x" data-close>✕</button></div>
+      <p class="muted">Remove <b>${esc(b.dataset.name)}</b> do placar geral e da semana atual.</p>
+      <label class="switch"><input type="checkbox" id="rkBan" checked /><span class="track"></span>Bloquear novos envios deste jogador (trapaça)</label>
+      <div class="modal-foot"><button class="btn ghost" data-close>Cancelar</button><button class="btn danger" id="rkOk">Remover</button></div>`, 'sm');
+    $('#rkOk', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+      const r = await api('DELETE', '/leaderboard/' + encodeURIComponent(b.dataset.rm) + ($('#rkBan', m.el).checked ? '?ban=1' : ''));
+      m.close(); toast(r.removed ? 'Removido do ranking' : 'Já não estava no ranking'); viewRanking();
+    });
+  }));
+  $('#rkBanned').innerHTML = d.banned.length
+    ? d.banned.map((id) => `<span class="pill" style="margin:3px">${esc(id.slice(0, 8))}… <button class="btn ghost sm" style="padding:2px 8px" data-unban="${esc(id)}">desbloquear</button></span>`).join('')
+    : 'Nenhum jogador bloqueado.';
+  $$('#rkBanned [data-unban]').forEach((b) => (b.onclick = () => busy(b, async () => { await api('POST', '/leaderboard/unban/' + encodeURIComponent(b.dataset.unban)); toast('Desbloqueado'); viewRanking(); })));
+}
 
 /* ================= Painel ================= */
 async function viewDash() {
