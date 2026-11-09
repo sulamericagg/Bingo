@@ -1,0 +1,21 @@
+Chaves: 1288 (628 de t()/HTML + 660 de dados: bichinhos/temporadas)
+
+== Conflitos (mesma chave, textos diferentes): 0
+
+== Chamadas dinâmicas (chave ou texto não-literal): 3
+  src/creatures/collection.ts:34  t("creature.${c.id}", c.name)
+  src/creatures/collection.ts:35  t("creature.${c.id}.desc", c.desc)
+  src/creatures/collection.ts:36  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
+
+== Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
+  en: 628 / 660 / 0 / 0
+  es: 628 / 660 / 0 / 0
+  de: 628 / 660 / 0 / 0
+  fr: 628 / 660 / 0 / 0
+  it: 628 / 660 / 0 / 0
+  ja: 628 / 660 / 0 / 0
+  ko: 628 / 660 / 0 / 0
+  ru: 628 / 660 / 0 / 0
+  tr: 628 / 660 / 0 / 0
+  id: 628 / 660 / 0 / 0
+  zh: 628 / 660 / 0 / 0
