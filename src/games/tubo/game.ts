@@ -341,7 +341,7 @@ class TuboGame implements MiniGameHandle {
       return c;
     });
     this.coinSpr = makeCoinSprite(Math.ceil(this.geo.R * 0.62 * this.dpr));
-    this.glowSpr = makeGlowSprite(64, '255,170,60');
+    this.glowSpr = makeGlowSprite(64, '255,120,40');
     this.cloudSpr = makeCloudSprite(Math.round(120 * Math.min(this.dpr, 1.5)));
     // reescala o mundo se o tamanho mudou no meio da partida
     if (old && old.spacing !== this.geo.spacing) {
@@ -912,7 +912,7 @@ class TuboGame implements MiniGameHandle {
       const n = this.q.particleBudget >= 0.8 ? 2 : 1;
       for (let i = 0; i < n; i++) {
         const c = Math.random();
-        this.fx.spawn(PK.Flame, this.cx + (Math.random() - 0.5) * g.R * 1.2, this.footY - g.R * (0.4 + Math.random()), (Math.random() - 0.5) * 40, -40 - Math.random() * 60, 0.45, g.R * (0.35 + Math.random() * 0.3), c < 0.33 ? '#fff3a0' : c < 0.66 ? '#ffb340' : '#ff6a3d');
+        this.fx.spawn(PK.Flame, this.cx + (Math.random() - 0.5) * g.R * 1.4, this.footY - g.R * (1.2 + Math.random() * 0.8), (Math.random() - 0.5) * 50, -80 - Math.random() * 80, 0.4, g.R * (0.3 + Math.random() * 0.25), c < 0.33 ? '#fff3a0' : c < 0.66 ? '#ffb340' : '#ff6a3d');
       }
     }
     // olhos
@@ -1079,13 +1079,14 @@ class TuboGame implements MiniGameHandle {
       } else {
         x.save();
         x.translate(0, r.y);
-        drawPipe(x, g, st, yTop - r.y, 0, false);
+        drawPipe(x, g, this.styles[zoneAt(this.ringI)], yTop - r.y, 0, false);
         x.restore();
       }
     }
 
+    this.drawParticles(x, true);
     this.drawHero(x);
-    this.drawParticles(x);
+    this.drawParticles(x, false);
     x.restore();
 
     // textos flutuantes
@@ -1184,12 +1185,10 @@ class TuboGame implements MiniGameHandle {
     const fy = this.footY;
     // brilho do Turbo / escudo
     if (this.fire > 0 && this.q.glows) {
-      x.globalCompositeOperation = 'lighter';
-      x.globalAlpha = 0.75;
+      x.globalAlpha = 0.55 + Math.sin(this.pose.t * 14) * 0.1;
       const s = R * 4.2;
       x.drawImage(this.glowSpr, -s / 2, fy - R - s / 2, s, s);
       x.globalAlpha = 1;
-      x.globalCompositeOperation = 'source-over';
     }
     x.save();
     x.translate(0, fy - R * 1.04 * p.sy);
@@ -1218,12 +1217,13 @@ class TuboGame implements MiniGameHandle {
     }
   }
 
-  private drawParticles(x: CanvasRenderingContext2D): void {
+  private drawParticles(x: CanvasRenderingContext2D, flames: boolean): void {
     const f = this.fx;
     const cx = this.cx;
     const add = this.q.glows;
     for (let i = 0; i < f.n; i++) {
       const k = f.kind[i];
+      if ((k === PK.Flame) !== flames) continue;
       const life = f.life[i] / f.max[i];
       const px = f.x[i] - cx;
       const py = f.y[i];
@@ -1241,13 +1241,11 @@ class TuboGame implements MiniGameHandle {
         x.globalAlpha = 1;
         x.drawImage(this.coinSpr, px - cw / 2, py - cw / 2, cw, cw);
       } else {
-        if (k === PK.Flame && add) x.globalCompositeOperation = 'lighter';
-        x.globalAlpha = k === PK.Flame ? life * 0.8 : life;
+        x.globalAlpha = k === PK.Flame ? life * (add ? 0.9 : 0.7) : life;
         x.fillStyle = f.col[i];
         x.beginPath();
         x.arc(px, py, f.size[i] * (k === PK.Flame ? 0.4 + life * 0.6 : 1), 0, TAU);
         x.fill();
-        x.globalCompositeOperation = 'source-over';
       }
     }
     x.globalAlpha = 1;

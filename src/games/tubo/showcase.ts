@@ -94,7 +94,7 @@ export function drawTuboShowcase(ctx: CanvasRenderingContext2D, w: number, h: nu
     ctx.restore();
   }
   // personagem
-  const R = geo.R;
+  const R = geo.R * 1.35;
   let foot: number;
   let sq = 0;
   if (p <= SMASH_AT) {
