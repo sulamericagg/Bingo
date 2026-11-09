@@ -16,6 +16,7 @@ import { SKINS, type Skin } from '../game/skins';
 import { drawAvatar, type AvatarData } from '../game/avatar';
 import { save } from '../core/storage';
 import { drawEmoteBubble } from '../social/emotes';
+import { t } from '../i18n';
 
 export type RoomMode = 'look' | 'edit' | 'paint' | 'clean' | 'party';
 export type CleanTool = 'sponge' | 'mop' | 'vacuum' | 'bag' | 'hand';
@@ -214,7 +215,7 @@ export class RoomScene {
 
   constructor(public host: RoomHost) {
     this.painter = new Painter(0, 0, RW, WALL_Y - 8);
-    this.me = this.mkChar(host.myId, save.skin === 'custom' ? 'bloop' : save.skin, 'Você', false, save.skin === 'custom' ? (save.avatar as unknown as AvatarData) : undefined);
+    this.me = this.mkChar(host.myId, save.skin === 'custom' ? 'bloop' : save.skin, t('home.you', 'Você'), false, save.skin === 'custom' ? (save.avatar as unknown as AvatarData) : undefined);
     this.me.x = 180;
     this.me.y = 380;
   }
