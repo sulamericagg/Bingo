@@ -1,9 +1,13 @@
-# Bloop Studio — formato das criações (v1)
+# Bloop Studio — formato das criações (v2)
 
 Contrato compartilhado em **`src/studio/format.ts`** (sem dependências; roda no app, no Worker e no
 servidor). Usado pelo Bloop Studio (editor/jogar/loja), pelo estúdio de machinima (`src/cinema`) e pelo
 futuro servidor da Loja de Criações. **Mudanças só aditivas** (campos opcionais novos). Mudança
 incompatível ⇒ subir `FORMAT_VERSION` e converter em `migrate()`.
+
+**Versões:** v1 = peças, juntas, fichas. **v2** = + `scripts` (Blocos de lógica), + `game` (Jogo da
+Comunidade), + papel `collect`. Toda criação v1 continua válida: `migrate()` só troca `v: 1 → 2`
+(não há campo removido nem renomeado). Leitores antigos podem ignorar `scripts`/`game`.
 
 ## Convenções
 
@@ -33,6 +37,8 @@ Creation {
   seed?: number            // semente do mundo infinito
   from?: string            // id da criação original (remix)
   deps?: Creation[]        // criações importadas embutidas (1 nível) — mapa abre offline
+  scripts?: Script[]       // v2: Blocos de lógica
+  game?: GameMeta          // v2: { title, desc ≤200, tags ≤5, maxPlayers 1..16 }
   created?, updated?: number
 }
 ```
@@ -51,7 +57,8 @@ material (padrão 0), `g?` grupo, `layer?` (0..7), `phys?` (`'static'` padrão �
 
 Papéis (`role`): `seat` assento do motorista · `wheel` roda · `thruster` propulsor (veículo voador) ·
 `spawn` ponto de início · `checkpoint` · `goal` bandeira de chegada · `button` · `zone` área-gatilho
-(invisível ao jogar) · `light` lâmpada · `hazard` (encostou, volta ao checkpoint).
+(invisível ao jogar) · `light` lâmpada · `hazard` (encostou: "morre", perde vida, volta ao checkpoint) ·
+`collect` (v2, coletável: some ao tocar e dispara o evento `collect`).
 
 Grupo (`g`): peças com o mesmo `g` são selecionadas juntas e, ao jogar, viram **um só corpo**.
 
@@ -73,6 +80,43 @@ Grupo (`g`): peças com o mesmo `g` são selecionadas juntas e, ao jogar, viram 
   ding/pop/boing/whoosh/fanfare/boom), `score` (`n` pontos), `motor` (liga/desliga o motor da `joint`),
   `win` (vence o mapa).
 
+### Blocos de lógica — `Script` (v2)
+
+Programação em **blocos empilhados**, sem código do usuário (nada de `eval`). Interpretador
+determinístico em `src/studio/play/vm.ts`: cada evento cria uma linha; orçamento de **600 passos por
+quadro** (120 por linha, 48 linhas no máximo) — um "repetir" sem "esperar" nunca trava o jogo. O
+sorteio usa semente (`seed` da criação), então a mesma partida sorteia igual.
+
+```ts
+Script { id, name?, on: ScriptEvent, body: Block[] }
+ScriptEvent { k: 'start'|'touch'|'zone'|'every'|'collect'|'die'|'button'|'message', part?, sec?, msg? }
+Expr = number | { v: 'nomeDaVariável' } | { q: 'score'|'time'|'lives'|'team'|'players' }
+     | { op: '+'|'-'|'*'|'/'|'rand'|'min'|'max', a: Expr, b: Expr }
+Cond { op: '<'|'>'|'='|'!='|'<='|'>=', a: Expr, b: Expr }
+```
+
+Blocos (`part` ausente = "esta peça", a que disparou o evento):
+
+| Bloco | Campos | Faz |
+| --- | --- | --- |
+| `move` / `rotate` | `part?`, `d` (m) / `r` (graus), `t?` s | desliza / gira a peça (vira cinemática) |
+| `force` | `part?`, `d` | empurrão (peça dinâmica; Δv = d) |
+| `teleport` · `spawn` · `door` · `light` | `part` | leva o jogador · cria cópia física · abre/fecha · liga/desliga |
+| `destroy` · `color` | `part?`, (`c`) | some com a peça · muda a cor |
+| `motor` | `joint` | liga/desliga motor |
+| `sound` · `say` | `snd` · `text` (≤60, `{score}` `{lives}` `{time}` `{variável}`) | som · texto pequeno no canto (filtrado) |
+| `score` · `lives` | `n: Expr` | soma pontos · define vidas (0 vidas = perdeu) |
+| `checkpoint` · `team` | `part?` · `team` 0/1/2 | salva checkpoint · entra no time |
+| `match` | `on: 'start'|'win'|'lose'` | recomeça · vence · perde |
+| `set` / `change` | `v`, `e: Expr` | variável = / += (≤ 32 variáveis, nome ≤ 16) |
+| `if` | `c`, `then[]`, `else?[]` | condição |
+| `repeat` | `n: Expr` (≤ 1000), `body[]` | repetir |
+| `wait` | `sec: Expr` | espera |
+| `send` | `msg` | dispara o evento `message` com esse nome |
+
+Limites: 64 scripts, 1024 blocos no total, profundidade 8. `validate()` remove blocos inválidos
+(peça/junta inexistente, tipo desconhecido) e limita números.
+
 ## Limites (`LIMITS`)
 
 Teto do formato: 2000 peças, 64 juntas, 64 fichas, 32 materiais, 256 pontos por traço, 24 deps,
@@ -92,9 +136,26 @@ Teto do formato: 2000 peças, 64 juntas, 64 fichas, 32 materiais, 256 pontos por
 
 Números são arredondados ao serializar (mm, 0,1°, traços em cm).
 
+## Link de compartilhar
+
+`src/studio/share.ts` — abre na **versão web** do jogo (sem APK):
+
+- `<web>/#/studio/p/<id>` — criação ou jogo publicado na Loja (id da listagem);
+- `<web>/#/studio/c/<código>` — criação pequena embutida: `código = serialize(c)` (`B1.` + deflate + base64url),
+  até 6000 letras; maior que isso o app pede para publicar.
+
+`<web>` = origem da página; no Android, `ONLINE.nativeApiBase` (o Worker serve a versão web). O
+fragmento (`#`) não vai para o servidor. Ao abrir, `registerStudio()` espera o hub e abre o estúdio
+jogando o mapa (ou "experimentando" o objeto/veículo).
+
 ## Loja (servidor, futuro)
 
 Interface do cliente em `src/studio/store-api.ts` (`StudioStoreApi`); o mock local está em
 `src/studio/store-mock.ts`. O servidor deve: revalidar com `validate()`, recalcular `hashCreation()`,
 filtrar nome com `shared/moderation.ts`, aplicar a regra de moedas `CREATOR_REWARD` (uso único por
 jogador e criação, sem autouso, teto diário) e os relatórios/ocultar autor.
+
+Jogos da Comunidade: `submitForReview(creation, thumbnails[3])` → `ReviewTicket { id, status }`
+(`pending` até o classificador de imagem das miniaturas + denúncias + fila do admin aprovarem;
+o mock aprova na hora), `reviewStatus(id)`, `favorite(id, on)`, `submitScore(id, {score, timeSec})`,
+`leaderboard(id)`; `browse({ section: 'games', tag, favorites })`.

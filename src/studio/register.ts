@@ -1,9 +1,15 @@
 /* Registro do Bloop Studio no hub. Só a vitrine (leve) entra no pacote
  * principal; editor + three.js são carregados ao abrir, cannon-es ao Testar. */
-import { registerGame, type MiniGameHandle } from '../hub/registry';
+import { listGames, registerGame, type MiniGameHandle } from '../hub/registry';
 import { t } from '../i18n';
+import { parseShareHash, type ShareLink } from './share';
+
+/** link recebido (#/studio/p/<id> ou #/studio/c/<código>) esperando o hub ficar pronto */
+let pending: ShareLink | null = null;
 
 export function registerStudio(): void {
+  pending = typeof location !== 'undefined' ? parseShareHash(location.hash) : null;
+  if (pending) void openWhenReady();
   registerGame({
     id: 'studio',
     get name() {
@@ -17,9 +23,29 @@ export function registerStudio(): void {
     drawShowcase,
     async launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
       const m = await import('./studio');
-      return m.launch(root, exit);
+      const link = pending;
+      pending = null;
+      return m.launch(root, exit, { link: link ?? undefined });
     },
   });
+}
+
+/** espera o hub aparecer (depois da abertura/onboarding) e abre o estúdio no link */
+async function openWhenReady(): Promise<void> {
+  for (let i = 0; i < 240; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (document.querySelector('.ob-root') || !document.querySelector('#menu.on')) continue;
+    const def = listGames().find((g) => g.id === 'studio');
+    if (!def) continue;
+    try {
+      history.replaceState(null, '', location.pathname + location.search);
+    } catch {
+      /* */
+    }
+    const hub = await import('../hub/hub');
+    void hub.launchGame(def);
+    return;
+  }
 }
 
 const TAU = Math.PI * 2;

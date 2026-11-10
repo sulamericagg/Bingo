@@ -17,6 +17,9 @@ import { starterName } from '../starters';
 import type { Studio } from '../studio';
 import { esc } from '../studio';
 import { sicon } from './sicons';
+import { BlocksEditor } from './blocks';
+import { GAME_TAGS } from '../store-api';
+import { linkFor, MAX_INLINE, shareUrl } from '../share';
 
 export type PanelId = 'add' | 'paint' | 'pen' | 'mech' | 'logic' | 'layers' | 'world' | 'library' | 'store' | 'info' | 'publish';
 
@@ -58,6 +61,7 @@ export const roleName = (r: PartRole): string =>
     zone: t('studio.role.zone', 'Zona'),
     light: t('studio.role.light', 'Luz'),
     hazard: t('studio.role.hazard', 'Perigo'),
+    collect: t('studio.role.collect', 'Coletável'),
   })[r];
 
 const catName = (c: StoreCategory): string =>
@@ -87,6 +91,18 @@ const actName = (k: ActionKind): string =>
     win: t('studio.actk.win', 'Vencer'),
   })[k];
 
+const tagName = (g: string): string =>
+  ({
+    corrida: t('studio.tag.race', 'Corrida'),
+    obstaculos: t('studio.tag.obby', 'Obstáculos'),
+    fisica: t('studio.tag.physics', 'Física'),
+    captura: t('studio.tag.ctf', 'Captura'),
+    enigma: t('studio.tag.puzzle', 'Enigma'),
+    festa: t('studio.tag.party', 'Festa'),
+    aventura: t('studio.tag.adventure', 'Aventura'),
+    coleta: t('studio.tag.collect', 'Coleta'),
+  })[g] ?? g;
+
 const kindName = (k: Creation['kind']): string => (k === 'map' ? t('studio.kind.map', 'Mapa') : k === 'vehicle' ? t('studio.kind.vehicle', 'Veículo') : t('studio.kind.object', 'Objeto'));
 
 export class Panels {
@@ -96,10 +112,12 @@ export class Panels {
   private title: HTMLElement;
   private radialEl: HTMLElement | null = null;
   private sheet: HTMLElement | null = null;
-  private storeQ: { sort: StoreSort; category?: StoreCategory } = { sort: 'trending' };
+  private storeQ: { sort: StoreSort; category?: StoreCategory; section: 'games' | 'creations'; tag?: string; fav?: boolean } = { sort: 'trending', section: 'games' };
   private detail: StoreListing | null = null;
   private editRule: number | null = null;
   private pickBanner: HTMLElement;
+  private logicTab: 'blocks' | 'rules' = 'blocks';
+  private blocks: BlocksEditor;
 
   constructor(private s: Studio) {
     this.el = document.createElement('div');
@@ -114,6 +132,7 @@ export class Panels {
     this.pickBanner.className = 'bs-pick';
     this.pickBanner.hidden = true;
     s.ui.appendChild(this.pickBanner);
+    this.blocks = new BlocksEditor({ ed: s.editor, pick: (m) => this.pick(m), rerender: () => this.render(), sheet: (h) => this.openSheet(h), closeSheet: () => this.closeSheet() });
   }
 
   /* --------------------------------- básico --------------------------------- */
@@ -122,6 +141,7 @@ export class Panels {
     this.current = id;
     this.el.classList.add('on');
     this.el.dataset.p = id;
+    this.s.el.classList.toggle('wide', ['logic', 'store', 'library', 'publish', 'info'].includes(id));
     if (id !== 'store') this.detail = null;
     this.render();
     this.s.refreshChrome();
@@ -133,6 +153,7 @@ export class Panels {
   closeAll(): void {
     this.current = null;
     this.el.classList.remove('on');
+    this.s.el.classList.remove('wide');
     this.closeRadial();
     this.s.editor.cancelPick();
     this.s.refreshChrome();
@@ -166,7 +187,7 @@ export class Panels {
       paint: () => t('studio.tool.paint', 'Pintar'),
       pen: () => t('studio.tool.pen', 'Caneta 3D'),
       mech: () => t('studio.tool.mech', 'Mecânica'),
-      logic: () => t('studio.tool.logic', 'Fichas'),
+      logic: () => t('studio.tool.logic', 'Lógica'),
       layers: () => t('studio.tool.layers', 'Camadas'),
       world: () => t('studio.tool.world', 'Mundo'),
       library: () => t('studio.library', 'Minhas criações'),
@@ -299,7 +320,7 @@ export class Panels {
         <button data-ph="none" class="${ph === 'none' ? 'on' : ''}">${t('studio.phys.none', 'Fantasma')}</button></div></div>`);
       this.on(p, '[data-ph]', (b) => ed.setPhys(b.dataset.ph as 'static'));
       const role = sel[0].role;
-      const roles: PartRole[] = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard'];
+      const roles: PartRole[] = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect'];
       const r = this.h(`<div><h4>${t('studio.roleTitle', 'Papel ao jogar')}</h4><div class="bs-chips">
         <button class="bs-chip${!role ? ' on' : ''}" data-r="">${t('studio.role.none', 'Nenhum')}</button>
         ${roles.map((x) => `<button class="bs-chip${role === x ? ' on' : ''}" data-r="${x}">${roleName(x)}</button>`).join('')}</div></div>`);
@@ -375,7 +396,7 @@ export class Panels {
     if (!ch || !ed.doc) return;
     if (!this.s.canAdd(5)) return;
     const s = ch.s ?? [1, 1, 1];
-    const r = Math.max(0.3, Math.min(0.6, s[1] * 0.8));
+    const r = Math.max(0.25, Math.min(0.55, s[1] * 0.45));
     ed.change('kit', () => {
       let id = ed.doc.parts.reduce((m, p) => Math.max(m, p.id), 0) + 1;
       const tire = ed.materialIndex({ c: '#2e2440', k: 'rubber' });
@@ -392,6 +413,12 @@ export class Panels {
   /* --------------------------------- fichas --------------------------------- */
 
   private renderLogic(): void {
+    const tabs = this.h(`<div class="bs-seg"><button data-lt="blocks" class="${this.logicTab === 'blocks' ? 'on' : ''}">${t('studio.blocks', 'Blocos')}</button><button data-lt="rules" class="${this.logicTab === 'rules' ? 'on' : ''}">${t('studio.rules', 'Fichas simples')}</button></div>`);
+    this.on(tabs, '[data-lt]', (b) => {
+      this.logicTab = b.dataset.lt as 'blocks';
+      this.render();
+    });
+    if (this.logicTab === 'blocks') return this.blocks.render(this.body);
     const ed = this.s.editor;
     const rules = ed.doc.logic;
     const pn = (id?: number) => {
@@ -679,18 +706,33 @@ export class Panels {
   private async renderStore(): Promise<void> {
     if (this.detail) return this.renderDetail(this.detail);
     const q = this.storeQ;
+    const games = q.section === 'games';
+    const sec = this.h(`<div class="bs-seg bs-secs"><button data-sec="games" class="${games ? 'on' : ''}">${sicon('play', 16)}${t('studio.games', 'Jogos da Comunidade')}</button><button data-sec="creations" class="${!games ? 'on' : ''}">${sicon('box', 16)}${t('studio.creations', 'Criações')}</button></div>`);
+    this.on(sec, '[data-sec]', (b) => {
+      this.storeQ = { sort: 'trending', section: b.dataset.sec as 'games' };
+      this.render();
+    });
     const top = this.h(`<div>
       <div class="bs-seg">${(['trending', 'new', 'top'] as StoreSort[]).map((x) => `<button data-sort="${x}" class="${q.sort === x ? 'on' : ''}">${x === 'trending' ? t('studio.sort.trending', 'Em alta') : x === 'new' ? t('studio.sort.new', 'Novos') : t('studio.sort.top', 'Mais curtidos')}</button>`).join('')}</div>
-      <div class="bs-chips bs-cats"><button class="bs-chip${!q.category ? ' on' : ''}" data-cat="">${t('studio.cat.all', 'Tudo')}</button>${STORE_CATEGORIES.map((c) => `<button class="bs-chip${q.category === c ? ' on' : ''}" data-cat="${c}">${catName(c)}</button>`).join('')}</div>
+      ${games
+        ? `<div class="bs-chips bs-cats"><button class="bs-chip${!q.tag && !q.fav ? ' on' : ''}" data-tag="">${t('studio.cat.all', 'Tudo')}</button><button class="bs-chip${q.fav ? ' on' : ''}" data-fav>★ ${t('studio.favs', 'Favoritos')}</button>${GAME_TAGS.map((g) => `<button class="bs-chip${q.tag === g ? ' on' : ''}" data-tag="${g}">${tagName(g)}</button>`).join('')}</div>`
+        : `<div class="bs-chips bs-cats"><button class="bs-chip${!q.category ? ' on' : ''}" data-cat="">${t('studio.cat.all', 'Tudo')}</button>${STORE_CATEGORIES.filter((c) => c !== 'maps').map((c) => `<button class="bs-chip${q.category === c ? ' on' : ''}" data-cat="${c}">${catName(c)}</button>`).join('')}</div>`}
       <div class="bs-row2"><button class="bs-btn bs-accent" data-pub>${sicon('upload', 18)}${t('studio.publishThis', 'Publicar a minha')}</button><button class="bs-btn" data-mine>${sicon('user', 18)}${t('studio.myPubs', 'Minhas publicações')}</button></div></div>`);
     this.on(top, 'button', (b) => {
       if (b.dataset.sort) this.storeQ.sort = b.dataset.sort as StoreSort;
       else if (b.dataset.cat !== undefined) this.storeQ.category = (b.dataset.cat || undefined) as StoreCategory | undefined;
+      else if (b.dataset.tag !== undefined) {
+        this.storeQ.tag = b.dataset.tag || undefined;
+        this.storeQ.fav = false;
+      } else if (b.hasAttribute('data-fav')) {
+        this.storeQ.fav = !this.storeQ.fav;
+        this.storeQ.tag = undefined;
+      }
       else if (b.hasAttribute('data-pub')) return this.open('publish');
       else if (b.hasAttribute('data-mine')) return void this.renderMine();
       this.render();
     });
-    const page = await store().browse({ sort: q.sort, category: q.category, limit: 40 });
+    const page = await store().browse({ sort: q.sort, category: games ? undefined : q.category, section: q.section, tag: q.tag, favorites: q.fav, limit: 40 });
     if (this.current !== 'store' || this.detail) return;
     const grid = this.h(`<div class="bs-shop">${page.items.map((l) => this.cardHtml(l)).join('') || `<p class="bs-hint">${t('studio.storeEmpty', 'Nada nesta categoria ainda.')}</p>`}</div>`);
     this.on(grid, '[data-id]', (b) => {
@@ -723,7 +765,10 @@ export class Panels {
   }
 
   private cardHtml(l: StoreListing): string {
-    const th = l.thumb ?? this.thumbCache.get(l.id);
+    const th = l.game?.thumbs[0] ?? l.thumb ?? this.thumbCache.get(l.id);
+    if (l.game)
+      return `<button class="bs-item bs-gitem" data-id="${l.id}"><div class="bs-thumb" style="${th ? `background-image:url(${th})` : ''}"><i class="bs-tag">${sicon('play', 10)} ${l.plays}</i></div>
+      <b>${esc(l.official ? starterName(l.id, l.game.title) : l.game.title)}</b><small>${esc(l.author.name)} · ♥ ${l.likes} · ★ ${l.favorites ?? 0}</small></button>`;
     return `<button class="bs-item" data-id="${l.id}"><div class="bs-thumb" style="${th ? `background-image:url(${th})` : ''}">${l.kind === 'map' ? `<i class="bs-tag">${kindName('map')}</i>` : l.kind === 'vehicle' ? `<i class="bs-tag v">${kindName('vehicle')}</i>` : ''}</div>
       <b>${esc(l.official ? starterName(l.id, l.name) : l.name)}</b><small>${esc(l.author.name)} · ♥ ${l.likes}</small></button>`;
   }
@@ -734,18 +779,26 @@ export class Panels {
       this.detail = null;
       this.render();
     });
-    const th = l.thumb ?? this.thumbCache.get(l.id);
-    const name = l.official ? starterName(l.id, l.name) : l.name;
+    const th = l.game?.thumbs[0] ?? l.thumb ?? this.thumbCache.get(l.id);
+    const name = l.official ? starterName(l.id, l.game?.title ?? l.name) : l.game?.title ?? l.name;
     const isMap = this.s.editor.doc.kind === 'map';
+    const shots = l.game?.thumbs.length ? l.game.thumbs : th ? [th] : [];
+    const board = l.game ? await store().leaderboard(l.id) : [];
     const d = this.h(`<div class="bs-detail">
-      <div class="bs-thumb big" style="${th ? `background-image:url(${th})` : ''}"></div>
+      <div class="bs-shots">${shots.map((u) => `<div class="bs-thumb big" style="background-image:url(${u})"></div>`).join('') || '<div class="bs-thumb big"></div>'}</div>
       <h3>${esc(name)}</h3>
+      ${l.game ? `<p class="bs-gdesc">${esc(l.game.desc)}</p><div class="bs-chips">${l.game.tags.map((g) => `<span class="bs-gtag">${tagName(g)}</span>`).join('')}<span class="bs-gtag p">${t('studio.maxPlayers', 'até {n} jogadores', { n: l.game.maxPlayers })}</span></div>` : ''}
       <p class="bs-by">${t('studio.by', 'por')} <b>${esc(l.author.name)}</b>${l.official ? ' ✓' : ''} · ${kindName(l.kind)} · ${l.parts} ${t('studio.partsWord', 'peças')}</p>
       <p class="bs-stats">♥ ${l.likes} · ${t('studio.uses', '{n} usos', { n: l.uses })}${l.kind === 'map' ? ' · ' + t('studio.plays', '{n} partidas', { n: l.plays }) : ''}</p>
       <div class="bs-row2">
         ${l.kind === 'map' ? `<button class="bs-btn bs-accent" data-a="play">${sicon('play', 18)}${t('studio.playMap', 'Jogar mapa')}</button>` : `<button class="bs-btn bs-accent" data-a="use">${sicon('mapadd', 18)}${isMap ? t('studio.useInMap', 'Usar no meu mapa') : t('studio.useInNewMap', 'Usar num mapa novo')}</button>`}
         <button class="bs-btn${l.liked ? ' on' : ''}" data-a="like">${sicon('heart', 18)}${l.liked ? t('studio.liked', 'Curtido') : t('studio.like', 'Curtir')}</button>
       </div>
+      <div class="bs-row2">
+        <button class="bs-btn${l.fav ? ' on' : ''}" data-a="fav">${sicon('fly', 18)}${l.fav ? t('studio.faved', 'Favorito') : t('studio.fav', 'Favoritar')}</button>
+        <button class="bs-btn" data-a="share">${sicon('link', 18)}${t('studio.share', 'Compartilhar')}</button>
+      </div>
+      ${l.game ? `<div class="bs-board"><h4>${sicon('flag', 14)} ${t('studio.board', 'Placar')}</h4>${board.length ? board.slice(0, 5).map((e, i) => `<div class="bs-li${e.me ? ' me' : ''}"><b>${i + 1}º</b><span>${esc(e.name)}</span><small>★ ${e.score} · ${e.timeSec}s</small></div>`).join('') : `<p class="bs-hint">${t('studio.boardEmpty', 'Ninguém no placar ainda — seja o primeiro!')}</p>`}</div>` : ''}
       <div class="bs-row2">
         ${l.kind !== 'map' ? `<button class="bs-btn" data-a="test">${sicon('play', 18)}${t('studio.tryIt', 'Experimentar')}</button>` : ''}
         <button class="bs-btn" data-a="remix">${sicon('remix', 18)}${t('studio.remix', 'Copiar e editar')}</button>
@@ -763,6 +816,17 @@ export class Panels {
         return;
       }
       if (a === 'report') return this.reportSheet(l);
+      if (a === 'fav') {
+        l.fav = !l.fav;
+        l.favorites = await store().favorite(l.id, l.fav);
+        this.render();
+        return;
+      }
+      if (a === 'share') {
+        const r = await shareUrl(linkFor({ id: l.id }), name);
+        if (r === 'copied') notify(t('studio.linkCopied', 'Link copiado!'), { icon: 'link', kind: 'good' });
+        return;
+      }
       if (a === 'hide') {
         this.confirm(t('studio.hideConfirm', 'Ocultar tudo de {n}? Você pode desfazer depois em Minhas publicações.', { n: l.author.name }), async () => {
           await store().hideAuthor(l.author.id);
@@ -860,11 +924,35 @@ export class Panels {
       <div class="bs-thumb big" style="background-image:url(${th})"></div>
       <label>${t('studio.name', 'Nome')}<input maxlength="32" value="${esc(doc.name)}"></label>
       <div class="bs-chips">${STORE_CATEGORIES.map((c) => `<button class="bs-chip${c === cat ? ' on' : ''}" data-cat="${c}">${catName(c)}</button>`).join('')}</div>
+      ${doc.kind === 'map' ? `<label class="bs-toggle"><input type="checkbox" data-game ${doc.game || doc.scripts?.length ? 'checked' : ''}> ${t('studio.asGame', 'Publicar como Jogo da Comunidade')}</label>
+      <div class="bs-gform" ${doc.game || doc.scripts?.length ? '' : 'hidden'}>
+        <label>${t('studio.gameTitle', 'Título do jogo')}<input data-gt maxlength="32" value="${esc(doc.game?.title ?? doc.name)}"></label>
+        <label>${t('studio.gameDesc', 'Como jogar')}<textarea data-gd maxlength="200" rows="3">${esc(doc.game?.desc ?? '')}</textarea></label>
+        <div class="bs-chips">${GAME_TAGS.map((g) => `<button class="bs-chip${doc.game?.tags.includes(g) ? ' on' : ''}" data-gtag="${g}">${tagName(g)}</button>`).join('')}</div>
+        <div class="bs-step"><span>${t('studio.players', 'Jogadores')}</span><button data-mp="-1">−</button><b data-mpv>${doc.game?.maxPlayers ?? 4}</b><button data-mp="1">+</button></div>
+        <div class="bs-shots small">${this.s.thumbs3().map((u) => `<div class="bs-thumb" style="background-image:url(${u})"></div>`).join('')}</div>
+        <p class="bs-hint">${t('studio.reviewHint', 'As 3 fotos são tiradas do seu mapa. Jogos passam por uma revisão de segurança antes de aparecer para todos.')}</p>
+      </div>` : ''}
       <p class="bs-hint">${t('studio.pubRules', 'Grátis. Todo mundo poderá ver, jogar e usar no mapa deles — e você ganha moedas quando usarem. Nada de dados pessoais no nome. Hoje: {a}/{b}', { a: today, b: lim })}</p>
       <button class="bs-btn bs-accent bs-wide" data-go>${sicon('upload', 18)}${t('studio.publishNow', 'Publicar na Loja')}</button></div>`);
     this.on(f, '[data-cat]', (b) => {
       chosen = b.dataset.cat as StoreCategory;
       f.querySelectorAll('[data-cat]').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    const gtags = new Set(doc.game?.tags ?? []);
+    let mp = doc.game?.maxPlayers ?? 4;
+    f.querySelector('[data-game]')?.addEventListener('change', (e) => {
+      (f.querySelector('.bs-gform') as HTMLElement).hidden = !(e.target as HTMLInputElement).checked;
+    });
+    this.on(f, '[data-gtag]', (b) => {
+      const g = b.dataset.gtag!;
+      if (gtags.has(g)) gtags.delete(g);
+      else if (gtags.size < 5) gtags.add(g);
+      b.classList.toggle('on', gtags.has(g));
+    });
+    this.on(f, '[data-mp]', (b) => {
+      mp = Math.max(1, Math.min(16, mp + Number(b.dataset.mp)));
+      f.querySelector('[data-mpv]')!.textContent = String(mp);
     });
     f.querySelector('[data-go]')!.addEventListener('click', async () => {
       const name = (f.querySelector('input') as HTMLInputElement).value.trim();
@@ -872,9 +960,26 @@ export class Panels {
       if (!name || !fm.ok || fm.filtered) return notify(t('studio.badName', 'Escolha outro nome'), { icon: 'warning', kind: 'warn' });
       if (today >= lim && !isPro()) return this.paywall('publish');
       if (name !== doc.name) this.s.editor.change('rename', () => (doc.name = name));
+      const asGame = !!(f.querySelector('[data-game]') as HTMLInputElement | null)?.checked;
+      if (asGame) {
+        const title = (f.querySelector('[data-gt]') as HTMLInputElement).value.trim();
+        const desc = (f.querySelector('[data-gd]') as HTMLTextAreaElement).value.trim();
+        const bad = (x: string) => !!x && (!filterMessage(x).ok || filterMessage(x).filtered);
+        if (!title || bad(title) || bad(desc)) return notify(t('studio.badName', 'Escolha outro nome'), { icon: 'warning', kind: 'warn' });
+        this.s.editor.change('game', () => (doc.game = { title, desc, tags: [...gtags], maxPlayers: mp }));
+      }
       doc.thumbnail = th;
       await this.s.save(true);
       const full = (await loadMine(doc.id)) ?? doc;
+      if (asGame) {
+        const tk = await store().submitForReview(full, this.s.thumbs3(), lim);
+        if ('error' in tk) return tk.error === 'daily-limit' && !isPro() ? this.paywall('publish') : notify(t('studio.pubFail', 'Não deu para publicar'), { icon: 'warning', kind: 'warn' });
+        await markPublished(doc.id, tk.id);
+        notify(tk.status === 'approved' ? t('studio.gamePublished', 'Seu jogo está nos Jogos da Comunidade!') : t('studio.gamePending', 'Enviado para revisão — avisamos quando aprovar'), { icon: 'party', kind: 'good' });
+        this.storeQ = { sort: 'new', section: 'games' };
+        this.open('store');
+        return;
+      }
       const r = await store().publish(full, chosen, lim);
       if (!r.ok) {
         if (r.error === 'daily-limit') return isPro() ? notify(t('studio.dailyLimit', 'Limite de publicações de hoje'), { icon: 'clock', kind: 'warn' }) : this.paywall('publish');
@@ -882,7 +987,7 @@ export class Panels {
       }
       await markPublished(doc.id, r.listing.id);
       notify(t('studio.published', 'Publicado na Loja de Criações!'), { icon: 'party', kind: 'good' });
-      this.storeQ = { sort: 'new' };
+      this.storeQ = { sort: 'new', section: 'creations' };
       this.open('store');
     });
   }
@@ -896,7 +1001,7 @@ export class Panels {
       <label>${t('studio.name', 'Nome')}<input maxlength="32" value="${esc(d.name)}"></label>
       <p class="bs-stats">${kindName(d.kind)} · ${d.parts.length} ${t('studio.partsWord', 'peças')} · ${d.joints.length} ${t('studio.jointsWord', 'juntas')} · ${d.logic.length} ${t('studio.rulesWord', 'fichas')}<br>${Math.round(jsonBytes(d) / 1024)} KB · hash ${hashCreation(d)}</p>
       <div class="bs-row2"><button class="bs-btn" data-a="copy">${sicon('copy', 18)}${t('studio.copyCode', 'Copiar código')}</button><button class="bs-btn" data-a="paste">${sicon('paste', 18)}${t('studio.pasteCode', 'Colar código')}</button></div>
-      <button class="bs-btn bs-wide" data-a="pub">${sicon('upload', 18)}${t('studio.publish', 'Publicar')}</button></div>`);
+      <div class="bs-row2"><button class="bs-btn" data-a="share">${sicon('link', 18)}${t('studio.share', 'Compartilhar')}</button><button class="bs-btn bs-accent" data-a="pub">${sicon('upload', 18)}${t('studio.publish', 'Publicar')}</button></div></div>`);
     const inp = f.querySelector('input')!;
     inp.addEventListener('change', () => {
       const v = inp.value.trim();
@@ -910,6 +1015,7 @@ export class Panels {
     this.on(f, '[data-a]', async (b) => {
       const a = b.dataset.a;
       if (a === 'pub') return this.open('publish');
+      if (a === 'share') return this.share();
       if (a === 'copy') {
         const { thumbnail: _t, ...rest } = d;
         void _t;
@@ -940,6 +1046,28 @@ export class Panels {
         }
       }
     });
+  }
+
+  /** link: publicada → #/studio/p/<id>; pequena → código embutido; grande → pede para publicar */
+  async share(): Promise<void> {
+    const d = this.s.editor.doc;
+    const mine = (await store().mine()).find((l) => l.id === d.id);
+    let url: string | null = null;
+    if (mine) url = linkFor({ id: mine.id });
+    else {
+      const { thumbnail: _t, ...rest } = d;
+      void _t;
+      const code = await serialize(rest);
+      if (code.length <= MAX_INLINE) url = linkFor({ code });
+    }
+    if (!url) {
+      this.confirm(t('studio.shareBig', 'Essa criação é grande demais para caber no link. Publicar na Loja para compartilhar?'), () => this.open('publish'));
+      return;
+    }
+    const r = await shareUrl(url, d.game?.title ?? d.name);
+    if (r === 'copied') notify(t('studio.linkCopied', 'Link copiado!'), { icon: 'link', kind: 'good' });
+    else if (r === 'fail') notify(t('studio.codeFail', 'Não deu para copiar'), { icon: 'warning', kind: 'warn' });
+    (window as unknown as { __lastShare?: string }).__lastShare = url;
   }
 
   /* --------------------------------- radial --------------------------------- */

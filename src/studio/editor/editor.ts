@@ -744,6 +744,7 @@ export class Editor {
       zone: ['#8a5cff', '▢'],
       light: ['#ffd34a', '✦'],
       hazard: ['#ff5a2e', '!'],
+      collect: ['#ffd34a', '◆'],
     };
     const [bg, g] = S[role];
     const c = document.createElement('canvas');

@@ -16,6 +16,37 @@ export interface StoreAuthor {
   name: string;
 }
 
+/** Etiquetas dos Jogos da Comunidade */
+export const GAME_TAGS = ['corrida', 'obstaculos', 'fisica', 'captura', 'enigma', 'festa', 'aventura', 'coleta'] as const;
+export type GameTag = (typeof GAME_TAGS)[number];
+
+/** Mapa publicado como JOGO: título/descrição/etiquetas + 3 fotos tiradas do mapa. */
+export interface GameListing {
+  title: string;
+  desc: string;
+  tags: string[];
+  maxPlayers: number;
+  /** 3 miniaturas (ângulos diferentes) — no servidor passam por classificador de imagem + fila de revisão */
+  thumbs: string[];
+}
+
+/** Moderação no servidor: classificador de imagem nas miniaturas + denúncias + fila do admin. */
+export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'needs-changes';
+export interface ReviewTicket {
+  /** id da listagem */
+  id: string;
+  status: ReviewStatus;
+  /** motivo amigável quando rejeitado / pede mudanças */
+  reason?: string;
+}
+
+export interface ScoreEntry {
+  name: string;
+  score: number;
+  timeSec: number;
+  me?: boolean;
+}
+
 export interface StoreListing {
   /** id da listagem (= id da criação publicada) */
   id: string;
@@ -39,10 +70,22 @@ export interface StoreListing {
   official?: boolean;
   /** mundo (mapas) */
   worldKind?: Creation['worldKind'];
+  /** é um Jogo da Comunidade */
+  game?: GameListing;
+  favorites?: number;
+  /** eu favoritei */
+  fav?: boolean;
+  /** estado da revisão (só aparece para o autor) */
+  review?: ReviewStatus;
 }
 
 export interface BrowseQuery {
   sort: StoreSort;
+  /** 'games' = Jogos da Comunidade; 'creations' = peças para usar no mapa */
+  section?: 'games' | 'creations';
+  tag?: string;
+  /** só os meus favoritos */
+  favorites?: boolean;
   category?: StoreCategory;
   kind?: CreationKind;
   /** busca por nome */
@@ -114,4 +157,13 @@ export interface StudioStoreApi {
   claimEarnings(): Promise<number>;
   /** publicações feitas hoje (para o limite diário) */
   publishedToday(): Promise<number>;
+
+  /* ---- Jogos da Comunidade ---- */
+  /** envia um mapa (com creation.game preenchido) + 3 miniaturas para revisão; aparece na loja quando aprovado */
+  submitForReview(c: Creation, thumbnails: string[], dailyLimit: number): Promise<ReviewTicket | { error: PublishError }>;
+  reviewStatus(id: string): Promise<ReviewTicket | null>;
+  favorite(id: string, on: boolean): Promise<number>;
+  /** placar do jogo (por jogador: melhor pontuação / tempo) */
+  submitScore(id: string, r: { score: number; timeSec: number }): Promise<{ rank: number }>;
+  leaderboard(id: string): Promise<ScoreEntry[]>;
 }

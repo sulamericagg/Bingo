@@ -27,10 +27,12 @@ import { localAuthor, store } from './store-mock';
 import { sicon } from './ui/sicons';
 import { Panels, type PanelId } from './ui/panels';
 import type { PlaySession } from './play/session';
+import type { ShareLink } from './share';
+import { deserialize } from './format';
 
 export interface StudioOptions {
-  /** abrir direto uma criação da loja (ex.: "Jogar mapa" de fora) */
-  openId?: string;
+  /** link de compartilhar recebido (#/studio/p/<id> ou #/studio/c/<código>) */
+  link?: ShareLink;
 }
 
 const LAST = 'bs-last';
@@ -69,6 +71,7 @@ export class Studio {
   private redoBtn!: HTMLButtonElement;
   private nameEl!: HTMLButtonElement;
   private disposed = false;
+  private playingListing: string | null = null;
 
   constructor(
     root: HTMLElement,
@@ -164,10 +167,37 @@ export class Studio {
     }
     await this.openDoc(doc);
     this.loop();
-    if (o.openId) {
-      const r = await store().get(o.openId);
-      if (r) void this.playStoreMap(r.creation);
-    } else if (first) this.panels.open('library');
+    if (o.link) await this.openLink(o.link);
+    else if (first) this.panels.open('library');
+  }
+
+  /** abre um link de compartilhar: joga (mapas) ou experimenta (objetos/veículos) */
+  async openLink(l: ShareLink): Promise<void> {
+    let c: Creation | null = null;
+    if (l.id) c = (await store().get(l.id))?.creation ?? null;
+    else if (l.code) c = (await deserialize(l.code).catch(() => null))?.creation ?? null;
+    if (!c) {
+      notify(t('studio.linkBad', 'Esse link não abriu (criação não encontrada)'), { icon: 'warning', kind: 'warn' });
+      return;
+    }
+    remember(c);
+    notify(t('studio.linkOpen', '“{n}” de {a}', { n: c.game?.title ?? c.name, a: c.author || '?' }), { icon: 'link' });
+    await this.playStoreMap(c.kind === 'map' ? c : { ...c, worldKind: c.kind === 'vehicle' ? 'infinite' : c.worldKind ?? 'flat' }, !!l.id);
+  }
+
+  /** 3 fotos do mapa (ângulos diferentes) para o Jogo da Comunidade */
+  thumbs3(): string[] {
+    const g = this.editor.group;
+    const vis = g.visible;
+    g.visible = true;
+    const dirs: [number, number, number][] = [
+      [0.75, 0.55, 1],
+      [0.05, 1.6, 0.25],
+      [-1, 0.35, -0.6],
+    ];
+    const out = dirs.map((d) => captureThumb(this.renderer, g, 240, 160, d));
+    g.visible = vis;
+    return out;
   }
 
   async openDoc(doc: Creation): Promise<void> {
@@ -305,7 +335,7 @@ export class Studio {
       standard: this.standard,
       exitLabel: sicon('back', 18) + `<span>${exitLabel}</span>`,
       onExit: () => this.stopPlay(),
-      onWin: (sec) => this.onWin(doc, sec),
+      onWin: (sec, score) => this.onWin(doc, sec, score),
     }, doc);
   }
 
@@ -327,15 +357,20 @@ export class Studio {
   }
 
   /** "Jogar mapa" da loja: joga sem mexer no que está editando */
-  async playStoreMap(c: Creation): Promise<void> {
-    void store().recordUse(c.id, 'play');
+  async playStoreMap(c: Creation, listed = true): Promise<void> {
+    if (listed) void store().recordUse(c.id, 'play');
+    this.playingListing = listed ? c.id : null;
     this.resume = { doc: this.editor.doc, world: this.world.kind, seed: (this.world as unknown as { gen?: { seed: number } }).gen?.seed ?? 1, hist: true };
     if (c.deps) for (const d of c.deps) remember(d);
     this.setWorld(c.worldKind ?? defaultWorld(c.kind), c.seed ?? 1);
     await this.startPlay(c, t('studio.back', 'Voltar'));
   }
 
-  private onWin(doc: Creation, sec: number): void {
+  private onWin(doc: Creation, sec: number, score = 0): void {
+    if (this.playingListing === doc.id)
+      void store()
+        .submitScore(doc.id, { score, timeSec: sec })
+        .then((r) => setTimeout(() => notify(t('studio.rank', 'Seu lugar no placar: {n}º', { n: r.rank }), { icon: 'trophy', kind: 'good' }), 2600));
     // recompensa pequena: 1× por mapa por dia (sem fazenda de moedas)
     const key = 'bs-win:' + doc.id;
     let last = -1;
@@ -354,7 +389,6 @@ export class Studio {
       }
       setTimeout(() => notify(t('studio.winCoins', '+5 moedas por completar o mapa'), { icon: 'coin', kind: 'good' }), 1300);
     }
-    void sec;
   }
 
   /* ---------------------------------- interface ---------------------------------- */
@@ -405,7 +439,7 @@ export class Studio {
       ['paint', 'paint', t('studio.tool.paint', 'Pintar')],
       ['pen', 'pen', t('studio.tool.pen', 'Caneta 3D'), true],
       ['mech', 'mech', t('studio.tool.mech', 'Mecânica')],
-      ['logic', 'logic', t('studio.tool.logic', 'Fichas'), true],
+      ['logic', 'logic', t('studio.tool.logic', 'Lógica'), true],
       ['measure', 'measure', t('studio.tool.measure', 'Medir')],
       ['layers', 'layers', t('studio.tool.layers', 'Camadas')],
       ['world', 'world', t('studio.tool.world', 'Mundo')],

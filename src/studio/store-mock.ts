@@ -10,7 +10,7 @@ import { profile } from '../services/profile';
 import { hashCreation, jsonBytes, LIMITS, validate, type Creation } from './format';
 import { cachePut, preload, resolveSync } from './library';
 import { starters, starterName, TEAM } from './starters';
-import type { BrowseQuery, Earnings, PublishResult, ReportReason, StoreCategory, StoreListing, StorePage, StudioStoreApi, UseReceipt } from './store-api';
+import type { BrowseQuery, Earnings, PublishError, PublishResult, ReportReason, ReviewTicket, ScoreEntry, StoreCategory, StoreListing, StorePage, StudioStoreApi, UseReceipt } from './store-api';
 
 const KEY = 'bs-store';
 interface MockState {
@@ -22,10 +22,12 @@ interface MockState {
   pubDay: number;
   pubCount: number;
   earned: number;
+  favs: string[];
+  scores: Record<string, ScoreEntry[]>;
 }
 
 function load(): MockState {
-  const d: MockState = { pub: [], likes: [], used: [], reported: [], hidden: [], pubDay: 0, pubCount: 0, earned: 0 };
+  const d: MockState = { pub: [], likes: [], used: [], reported: [], hidden: [], pubDay: 0, pubCount: 0, earned: 0, favs: [], scores: {} };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (o && typeof o === 'object') return { ...d, ...o };
@@ -75,24 +77,31 @@ export class MockStore implements StudioStoreApi {
       created: 1767225600000 + i * 3600_000,
       official: true,
       worldKind: m.c.worldKind,
+      favorites: Math.round(m.likes / 3),
+      game: m.c.game ? { ...m.c.game, title: starterName(m.c.id, m.c.game.title), thumbs: [] } : undefined,
     }));
   }
   private all(): StoreListing[] {
     const hidden = new Set(this.s.hidden);
     const rep = new Set(this.s.reported.map((r) => r.id));
     const liked = new Set(this.s.likes);
+    const favs = new Set(this.s.favs);
     return [...this.s.pub, ...this.starterListings()]
-      .filter((l) => !hidden.has(l.author.id) && !rep.has(l.id))
-      .map((l) => ({ ...l, liked: liked.has(l.id), likes: l.likes + (liked.has(l.id) ? 1 : 0) }));
+      .filter((l) => !hidden.has(l.author.id) && !rep.has(l.id) && (!l.review || l.review === 'approved'))
+      .map((l) => ({ ...l, liked: liked.has(l.id), likes: l.likes + (liked.has(l.id) ? 1 : 0), fav: favs.has(l.id), favorites: (l.favorites ?? 0) + (favs.has(l.id) ? 1 : 0) }));
   }
 
   async browse(q: BrowseQuery): Promise<StorePage> {
     let items = this.all();
+    if (q.section === 'games') items = items.filter((l) => !!l.game);
+    else if (q.section === 'creations') items = items.filter((l) => !l.game);
+    if (q.tag) items = items.filter((l) => l.game?.tags.includes(q.tag!));
+    if (q.favorites) items = items.filter((l) => l.fav);
     if (q.category) items = items.filter((l) => l.category === q.category);
     if (q.kind) items = items.filter((l) => l.kind === q.kind);
     if (q.text) {
       const t = q.text.toLowerCase();
-      items = items.filter((l) => l.name.toLowerCase().includes(t) || l.author.name.toLowerCase().includes(t));
+      items = items.filter((l) => l.name.toLowerCase().includes(t) || (l.game?.title ?? '').toLowerCase().includes(t) || l.author.name.toLowerCase().includes(t));
     }
     const now = Date.now();
     const score = (l: StoreListing) => (l.likes + l.uses * 2 + l.plays) / Math.pow(1 + (now - l.created) / 86400_000 / 30, 0.6);
@@ -121,7 +130,7 @@ export class MockStore implements StudioStoreApi {
     return { listing, creation: v };
   }
 
-  async publish(c: Creation, category: StoreCategory, dailyLimit: number): Promise<PublishResult> {
+  async publish(c: Creation, category: StoreCategory, dailyLimit: number, thumbs?: string[]): Promise<PublishResult> {
     const day = dayNumber();
     if (this.s.pubDay !== day) {
       this.s.pubDay = day;
@@ -152,7 +161,17 @@ export class MockStore implements StudioStoreApi {
       plays: existing?.plays ?? 0,
       created: existing?.created ?? Date.now(),
       worldKind: pc.worldKind,
+      favorites: existing?.favorites ?? 0,
     };
+    if (pc.game) {
+      const g = pc.game;
+      const bad = [g.title, g.desc, ...g.tags].some((x) => x && (!filterMessage(x).ok || filterMessage(x).filtered));
+      if (bad) return { ok: false, error: 'name' };
+      listing.game = { ...g, thumbs: (thumbs ?? []).slice(0, 3) };
+      listing.name = g.title;
+      // no servidor: 'pending' até o classificador de imagem + revisão aprovarem. Offline: aprovado na hora.
+      listing.review = 'approved';
+    }
     this.s.pub = [listing, ...this.s.pub.filter((l) => l.id !== pc.id)];
     if (!existing) this.s.pubCount++;
     this.save();
@@ -211,6 +230,39 @@ export class MockStore implements StudioStoreApi {
   }
   async claimEarnings(): Promise<number> {
     return 0;
+  }
+  async submitForReview(c: Creation, thumbnails: string[], dailyLimit: number): Promise<ReviewTicket | { error: PublishError }> {
+    if (!c.game) return { error: 'invalid' };
+    const r = await this.publish(c, 'maps', dailyLimit, thumbnails);
+    if (!r.ok) return { error: r.error };
+    return { id: r.listing.id, status: r.listing.review ?? 'approved' };
+  }
+  async reviewStatus(id: string): Promise<ReviewTicket | null> {
+    const l = this.s.pub.find((x) => x.id === id);
+    return l ? { id, status: l.review ?? 'approved' } : null;
+  }
+  async favorite(id: string, on: boolean): Promise<number> {
+    this.s.favs = this.s.favs.filter((x) => x !== id);
+    if (on) this.s.favs.push(id);
+    this.save();
+    return this.all().find((x) => x.id === id)?.favorites ?? 0;
+  }
+  async submitScore(id: string, r: { score: number; timeSec: number }): Promise<{ rank: number }> {
+    const me = localAuthor();
+    const list = (this.s.scores[id] ??= []);
+    const prev = list.find((e) => e.me);
+    const better = !prev || r.score > prev.score || (r.score === prev.score && r.timeSec < prev.timeSec);
+    if (better) {
+      if (prev) list.splice(list.indexOf(prev), 1);
+      list.push({ name: me.name, score: Math.round(r.score), timeSec: Math.round(r.timeSec * 10) / 10, me: true });
+    }
+    list.sort((a, b) => b.score - a.score || a.timeSec - b.timeSec);
+    this.s.scores[id] = list.slice(0, 20);
+    this.save();
+    return { rank: list.findIndex((e) => e.me) + 1 };
+  }
+  async leaderboard(id: string): Promise<ScoreEntry[]> {
+    return [...(this.s.scores[id] ?? [])];
   }
   async publishedToday(): Promise<number> {
     return this.s.pubDay === dayNumber() ? this.s.pubCount : 0;

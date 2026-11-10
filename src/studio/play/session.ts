@@ -21,6 +21,8 @@ import { primGeometry } from '../render/geo';
 import { materialFor } from '../render/mats';
 import { CH, RES, type WorldView } from '../world/terrain';
 import { BloopAvatar } from './avatar';
+import { ScriptVM, walkBlocks, type VmHost } from './vm';
+import { filterMessage } from '../../../shared/moderation';
 
 type CannonNS = typeof CANNON;
 type BodyU = CANNON.Body & { userData?: { pid?: number; cluster?: string } };
@@ -110,6 +112,13 @@ interface Inst {
   lit: Map<number, boolean>;
   inside: Set<number>;
   timers: { rule: LogicRule; next: number }[];
+  /** blocos de lógica desta instância */
+  vm?: ScriptVM;
+  /** corpos estáticos por peça (para "destruir") */
+  sbodies: Map<number, CANNON.Body>;
+  /** peças vigiadas por eventos "ao tocar" / coletáveis */
+  touchIn: Set<number>;
+  gone: Set<number>;
 }
 
 const SND: Record<SoundId, () => void> = {
@@ -134,6 +143,7 @@ export class PlaySession {
   private avatar: BloopAvatar;
   private me: CANNON.Body;
   private meMat: CANNON.Material;
+  private solid: CANNON.Material;
   private anchor: CANNON.Body;
   private grounded = false;
   private groundVel = new THREE.Vector3();
@@ -147,6 +157,12 @@ export class PlaySession {
   private goals: Trig[] = [];
   private hazards: Trig[] = [];
   private buttons: Trig[] = [];
+  private collects: Trig[] = [];
+  private touches: Trig[] = [];
+  private lives = -1;
+  private livesStart = -1;
+  private team = 0;
+  private lost = false;
   private zones: Trig[] = [];
   private lights: { pid: number; inst: Inst; light: THREE.PointLight }[] = [];
   private spawned: { body: CANNON.Body; obj: THREE.Object3D }[] = [];
@@ -183,7 +199,9 @@ export class PlaySession {
     w.defaultContactMaterial.restitution = 0.05;
     this.world = w;
     this.meMat = new C.Material('me');
-    w.addContactMaterial(new C.ContactMaterial(this.meMat, w.defaultMaterial, { friction: 0, restitution: 0 }));
+    this.solid = new C.Material('solid');
+    w.addContactMaterial(new C.ContactMaterial(this.meMat, this.solid, { friction: 0, restitution: 0 }));
+    w.addContactMaterial(new C.ContactMaterial(this.solid, this.solid, { friction: 0.4, restitution: 0.05 }));
     this.anchor = new C.Body({ mass: 0 });
     w.addBody(this.anchor);
     h.scene.add(this.root);
@@ -199,7 +217,7 @@ export class PlaySession {
     this.root.add(this.avatar.root);
     this.me = new C.Body({ mass: 1, material: this.meMat, fixedRotation: true, linearDamping: 0.05, allowSleep: false });
     this.me.addShape(new C.Sphere(0.45));
-    w.addBody(this.me);
+    this.world.addBody(this.me);
     this.respawn(true);
 
     // HUD
@@ -222,7 +240,14 @@ export class PlaySession {
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
     this.fire('start');
+    for (const inst of this.insts) inst.vm?.emit('start');
     this.updateChip();
+  }
+
+  /** todo corpo do mundo usa o material "sólido" (o Bloop desliza sem grudar em nada) */
+  private add(b: CANNON.Body): void {
+    if (!b.material) b.material = this.solid;
+    this.world.addBody(b);
   }
 
   /* ------------------------------ chão / mundo ------------------------------ */
@@ -234,12 +259,12 @@ export class PlaySession {
       const b = new C.Body({ mass: 0 });
       b.addShape(new C.Plane());
       b.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-      this.world.addBody(b);
+      this.add(b);
     } else if (k === 'void') {
       const b = new C.Body({ mass: 0 });
       b.addShape(new C.Cylinder(7, 6, 0.8, 24));
       b.position.set(0, -0.4, 0);
-      this.world.addBody(b);
+      this.add(b);
     }
   }
 
@@ -273,7 +298,7 @@ export class PlaySession {
           b.addShape(new C.Heightfield(data, { elementSize: es }));
           b.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
           b.position.set(x0, 0, z0 + CH);
-          this.world.addBody(b);
+          this.add(b);
           this.hf.set(k, b);
         }
       for (const [k, b] of this.hf)
@@ -294,7 +319,7 @@ export class PlaySession {
         const b = new C.Body({ mass: 0 });
         b.addShape(new C.Cylinder(tr.r, tr.r * 1.2, tr.h, 8));
         b.position.set(tr.x, tr.y + tr.h / 2, tr.z);
-        this.world.addBody(b);
+        this.add(b);
         this.trees.set(k, b);
       }
       for (const [k, b] of this.trees)
@@ -308,7 +333,7 @@ export class PlaySession {
   /* --------------------------------- montagem --------------------------------- */
 
   private addInstance(c: Creation, m: THREE.Matrix4, depth: number): Inst {
-    const inst: Inst = { c, m, pose: new Map(), clusterOf: new Map(), meshes: new Map(), joints: [], rules: c.logic, lit: new Map(), inside: new Set(), timers: [] };
+    const inst: Inst = { c, m, pose: new Map(), clusterOf: new Map(), meshes: new Map(), joints: [], rules: c.logic, lit: new Map(), inside: new Set(), timers: [], sbodies: new Map(), touchIn: new Set(), gone: new Set() };
     this.insts.push(inst);
     const pm = new THREE.Matrix4();
     for (const p of c.parts) {
@@ -328,13 +353,13 @@ export class PlaySession {
         let tp = this.instTemplates.get(rc.id);
         if (!tp) this.instTemplates.set(rc.id, (tp = { m: [], c: rc }));
         tp.m.push(wm);
-        const sub: Inst = { c: rc, m: wm, pose: new Map(), clusterOf: new Map(), meshes: new Map(), joints: [], rules: [], lit: new Map(), inside: new Set(), timers: [] };
+        const sub: Inst = { c: rc, m: wm, pose: new Map(), clusterOf: new Map(), meshes: new Map(), joints: [], rules: [], lit: new Map(), inside: new Set(), timers: [], sbodies: new Map(), touchIn: new Set(), gone: new Set() };
         for (const q of rc.parts) {
           const qm = new THREE.Matrix4().multiplyMatrices(wm, partMatrix(q, pm));
           const pose: Pose = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
           qm.decompose(pose.p, pose.q, pose.s);
           sub.pose.set(q.id, pose);
-          if (q.t !== 'ref' && q.phys !== 'none' && !q.hide && q.role !== 'zone') this.staticBody(q, pose);
+          if (q.t !== 'ref' && q.phys !== 'none' && !q.hide && q.role !== 'zone') this.staticBody(q, pose, sub);
         }
       } else this.addInstance(rc, wm, depth + 1);
     }
@@ -356,6 +381,19 @@ export class PlaySession {
           const tp = c.parts.find((p) => p.id === a.part);
           if (tp) for (const q of grp(tp)) moving.set(q.id, 'kinematic');
         }
+    // blocos: o que eles mexem vira cinemático (mover/girar/porta) ou dinâmico (força); cor/destruir = malha própria
+    const scriptSpecial = new Set<number>();
+    for (const sc of c.scripts ?? [])
+      walkBlocks(sc.body, (b) => {
+        const pid = 'part' in b ? (b.part ?? sc.on.part) : undefined;
+        if (pid == null) return;
+        const tp = c.parts.find((p) => p.id === pid);
+        if (!tp) return;
+        if (b.k === 'move' || b.k === 'rotate' || b.k === 'door') for (const q of grp(tp)) moving.set(q.id, 'kinematic');
+        else if (b.k === 'force') {
+          for (const q of grp(tp)) if (!moving.has(q.id)) moving.set(q.id, 'dynamic');
+        } else if (b.k === 'color' || b.k === 'destroy' || b.k === 'light') scriptSpecial.add(pid);
+      });
     // aglomerados
     const byKey = new Map<string, Part[]>();
     for (const p of c.parts) {
@@ -378,7 +416,7 @@ export class PlaySession {
         continue;
       }
       if (p.hide) continue;
-      const special = p.role === 'light' || p.role === 'button' || c.logic.some((r) => r.do.some((a) => a.k === 'light' && a.part === p.id));
+      const special = p.role === 'light' || p.role === 'button' || p.role === 'collect' || scriptSpecial.has(p.id) || c.logic.some((r) => r.do.some((a) => a.k === 'light' && a.part === p.id));
       if (special) {
         const o = buildPart(p, c, this.h.resolve, { detail: this.h.detail, edit: false });
         o.position.copy(pose.p);
@@ -396,17 +434,25 @@ export class PlaySession {
         this.batch.addObject(o, new THREE.Matrix4());
         disposeTree(o);
       }
-      if (p.phys !== 'none') this.staticBody(p, pose);
+      if (p.phys !== 'none' && p.role !== 'collect') this.staticBody(p, pose, inst);
       const tr: Trig = { part: p, box: this.boxOf(p, inst), inst };
       if (p.role === 'checkpoint') this.checkpoints.push(tr);
       if (p.role === 'goal') this.goals.push(tr);
       if (p.role === 'hazard') this.hazards.push(tr);
       if (p.role === 'button') this.buttons.push(tr);
+      if (p.role === 'collect') this.collects.push(tr);
     }
     if (this.goals.length) this.hasGoal = true;
     // juntas
     for (const j of c.joints) this.addJoint(inst, j);
     for (const r of c.logic) if (r.on.k === 'timer') inst.timers.push({ rule: r, next: r.on.sec ?? 3 });
+    if (c.scripts?.length) {
+      inst.vm = new ScriptVM(c.scripts, this.vmHost(inst), (c.seed ?? 7) + this.insts.length);
+      for (const pid of inst.vm.watchedParts('touch')) {
+        const q = c.parts.find((x) => x.id === pid);
+        if (q) this.touches.push({ part: q, box: this.boxOf(q, inst), inst });
+      }
+    }
     return inst;
   }
 
@@ -517,12 +563,13 @@ export class PlaySession {
     }
   }
 
-  private staticBody(p: Part, pose: Pose): CANNON.Body {
+  private staticBody(p: Part, pose: Pose, inst?: Inst): CANNON.Body {
     const b = new this.C.Body({ mass: 0 });
     b.position.set(pose.p.x, pose.p.y, pose.p.z);
     this.addShapes(b, p, pose, pose.p, new THREE.Quaternion());
     (b as BodyU).userData = { pid: p.id };
-    this.world.addBody(b);
+    inst?.sbodies.set(p.id, b);
+    this.add(b);
     this.bodies.push(b);
     return b;
   }
@@ -564,7 +611,7 @@ export class PlaySession {
     }
     if (!body.shapes.length) body.addShape(new C.Sphere(0.05));
     (body as BodyU).userData = { cluster: key };
-    this.world.addBody(body);
+    this.add(body);
     this.root.add(obj);
     const cl: Cluster = { key, parts, kind, body, obj, p0: ctr.clone(), q0: q.clone() };
     this.clusters.push(cl);
@@ -718,7 +765,7 @@ export class PlaySession {
     const side = new THREE.Vector3(1.6 + v.size * 0.15, 0.6, 0).applyQuaternion(new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w));
     this.me.position.set(b.position.x + side.x, b.position.y + side.y + 0.5, b.position.z + side.z);
     this.me.velocity.set(0, 0, 0);
-    this.world.addBody(this.me);
+    this.add(this.me);
     for (const w of v.wheels) {
       v.rv?.applyEngineForce(0, w.idx);
       v.rv?.setBrake(v.mass * 2, w.idx);
@@ -962,7 +1009,7 @@ export class PlaySession {
     body.position.set(p.x, p.y, p.z);
     body.quaternion.set(pose.q.x, pose.q.y, pose.q.z, pose.q.w);
     this.addShapes(body, part, { ...pose, p }, p, pose.q);
-    this.world.addBody(body);
+    this.add(body);
     const o = buildPart({ ...part, hide: undefined }, inst.c, this.h.resolve, { detail: this.h.detail, edit: false });
     o.scale.copy(pose.s);
     o.visible = true;
@@ -981,6 +1028,127 @@ export class PlaySession {
     sfx.pop();
   }
 
+  /** caiu / encostou num perigo: evento "ao morrer", vidas, volta ao checkpoint */
+  private die(): void {
+    this.respawn();
+    for (const inst of this.insts) inst.vm?.emit('die');
+    if (this.lives > 0) {
+      this.lives--;
+      this.updateChip();
+      if (this.lives === 0) this.lose();
+    }
+  }
+
+  private lose(): void {
+    if (this.lost || this.won) return;
+    this.lost = true;
+    sfx.bump();
+    bigMoment(t('studio.play.lose', 'Fim de jogo!'), { icon: 'warning', sub: t('studio.play.again', 'Tentando de novo…') });
+    setTimeout(() => !this.disposed && this.restart(), 2200);
+  }
+
+  /** recomeça a partida (bloco "iniciar partida" ou depois de perder) */
+  private restart(): void {
+    this.lost = false;
+    this.won = false;
+    this.score = 0;
+    this.time = 0;
+    this.lives = this.livesStart;
+    this.checkpoint = null;
+    this.respawn(true);
+    this.updateChip();
+  }
+
+  private vmHost(inst: Inst): VmHost {
+    const S = this;
+    const cl = (pid: number) => inst.clusterOf.get(pid);
+    const D = Math.PI / 180;
+    return {
+      move(pid, d, tt) {
+        const c = cl(pid);
+        if (!c || c.kind !== 'kinematic') return;
+        const p = new THREE.Vector3(c.body.position.x, c.body.position.y, c.body.position.z);
+        const q = q3(c.body.quaternion);
+        const off = new THREE.Vector3(...d).applyMatrix4(new THREE.Matrix4().extractRotation(inst.m));
+        c.anim = { t: 0, dur: Math.max(1 / 60, tt), fp: p, fq: q, tp: p.clone().add(off), tq: q.clone() };
+      },
+      rotate(pid, r, tt) {
+        const c = cl(pid);
+        if (!c || c.kind !== 'kinematic') return;
+        const p = new THREE.Vector3(c.body.position.x, c.body.position.y, c.body.position.z);
+        const q = q3(c.body.quaternion);
+        const rq = new THREE.Quaternion().setFromEuler(new THREE.Euler(r[0] * D, r[1] * D, r[2] * D));
+        c.anim = { t: 0, dur: Math.max(1 / 60, tt), fp: p, fq: q, tp: p.clone(), tq: rq.multiply(q) };
+      },
+      teleport: (pid) => S.doAction(inst, { k: 'teleport', part: pid }),
+      spawn: (pid) => S.spawnCopy(inst, pid),
+      destroy(pid) {
+        if (inst.gone.has(pid)) return;
+        inst.gone.add(pid);
+        const c = cl(pid);
+        if (c) {
+          S.world.removeBody(c.body);
+          c.obj.visible = false;
+        }
+        const m = inst.meshes.get(pid);
+        if (m) m.visible = false;
+        const b = inst.sbodies.get(pid);
+        if (b) S.world.removeBody(b);
+        sfx.poof();
+      },
+      sound: (snd) => SND[(snd as SoundId) in SND ? (snd as SoundId) : 'ding'](),
+      say(text) {
+        const f = filterMessage(text);
+        if (f.ok) notify(f.text, { icon: 'megaphone', key: 'say' + text });
+      },
+      score(n) {
+        S.score += n;
+        S.updateChip();
+      },
+      color(pid, c) {
+        const part = inst.c.parts.find((x) => x.id === pid);
+        const m = inst.meshes.get(pid);
+        if (!part || !m) return;
+        const k = (inst.c.materials[part.m ?? 0] ?? inst.c.materials[0]).k;
+        m.traverse((x) => {
+          const mm = x as THREE.Mesh;
+          if (mm.isMesh) mm.material = materialFor({ c, k });
+        });
+      },
+      force(pid, d) {
+        const c = cl(pid);
+        if (!c || c.kind !== 'dynamic') return;
+        const v = new THREE.Vector3(...d).multiplyScalar(c.body.mass);
+        c.body.wakeUp();
+        c.body.applyImpulse(new S.C.Vec3(v.x, v.y, v.z));
+      },
+      door: (pid) => S.doAction(inst, { k: 'door', part: pid }),
+      light: (pid) => S.setLight(inst, pid, !inst.lit.get(pid)),
+      motor: (j) => S.doAction(inst, { k: 'motor', joint: j }),
+      checkpoint(pid) {
+        const pose = pid != null ? inst.pose.get(pid) : null;
+        if (pose) S.checkpoint = pose.p.clone().add(new THREE.Vector3(0, Math.abs(pose.s.y) / 2 + 0.6, 0));
+        else S.checkpoint = new THREE.Vector3(S.me.position.x, S.me.position.y + 0.2, S.me.position.z);
+        notify(t('studio.play.checkpoint', 'Checkpoint!'), { icon: 'check', kind: 'good', key: 'cp' });
+      },
+      team(tm) {
+        S.team = tm;
+      },
+      lives(n) {
+        S.lives = S.livesStart = Math.max(0, Math.round(n));
+        S.updateChip();
+      },
+      match(on) {
+        if (on === 'win') S.win();
+        else if (on === 'lose') S.lose();
+        else S.restart();
+      },
+      read(q) {
+        return q === 'score' ? S.score : q === 'time' ? S.time : q === 'lives' ? S.lives : q === 'team' ? S.team : 1;
+      },
+    };
+  }
+
   private win(): void {
     if (this.won) return;
     this.won = true;
@@ -989,6 +1157,7 @@ export class PlaySession {
     tap('heavy');
     bigMoment(t('studio.play.win', 'Chegou!'), { icon: 'trophy', sub: this.timeStr() });
     this.h.onWin?.(this.time, this.score);
+    void this.lost;
   }
 
   private timeStr(): string {
@@ -997,8 +1166,9 @@ export class PlaySession {
   }
   private updateChip(): void {
     const parts: string[] = [];
-    if (this.hasGoal) parts.push('⏱ ' + this.timeStr());
+    if (this.hasGoal || this.insts.some((i) => i.vm)) parts.push('⏱ ' + this.timeStr());
     if (this.score) parts.push('★ ' + this.score);
+    if (this.lives >= 0) parts.push('♥ ' + this.lives);
     this.chip.hidden = !parts.length;
     this.chip.textContent = parts.join('   ');
   }
@@ -1081,6 +1251,7 @@ export class PlaySession {
     sfx.click();
     tap('light');
     for (const r of b.inst.rules) if (r.on.k === 'button' && r.on.part === b.part.id) this.run(b.inst, r);
+    b.inst.vm?.emit('button', b.part.id);
   }
 
   /* --------------------------------- quadro --------------------------------- */
@@ -1125,7 +1296,7 @@ export class PlaySession {
     if (this.driving) this.drive(this.driving, dt, jx, jy);
     else this.walk(dt, jx, jy);
 
-    this.world.step(1 / 60, dt, this.h.tier <= 1 ? 2 : 3);
+    this.world.step(1 / 60, dt, 4);
     this.detectGround();
 
     // sincroniza malhas
@@ -1153,7 +1324,7 @@ export class PlaySession {
     this.h.world.update(focus);
     this.triggers(dt, focus);
     this.camera(dt, focus);
-    if (this.hasGoal && !this.won) this.updateChip();
+    if ((this.hasGoal || this.insts[0]?.vm) && !this.won) this.updateChip();
   }
 
   private focus(): THREE.Vector3 {
@@ -1197,7 +1368,7 @@ export class PlaySession {
     this.avatar.animate(dt, hs, !this.grounded, false);
     // caiu do mundo
     const gh = this.h.world.heightAt(me.position.x, me.position.z);
-    if (me.position.y < (Number.isFinite(gh) ? gh - 25 : -25)) this.respawn();
+    if (me.position.y < (Number.isFinite(gh) ? gh - 25 : -25)) this.die();
   }
 
   private detectGround(): void {
@@ -1226,8 +1397,8 @@ export class PlaySession {
     const near = (b: THREE.Box3, pad: number) => b.distanceToPoint(pos) < pad;
     if (!this.driving) {
       for (const h of this.hazards)
-        if (near(h.box, 0.5)) {
-          this.respawn();
+        if (near(h.box, 0.5) && !h.inst.gone.has(h.part.id)) {
+          this.die();
           notify(t('studio.play.ouch', 'Ops! De volta ao checkpoint'), { icon: 'warning', kind: 'warn', key: 'ouch' });
           break;
         }
@@ -1243,6 +1414,25 @@ export class PlaySession {
       }
     }
     for (const g of this.goals) if (near(g.box, 0.6)) this.win();
+    // coletáveis e "ao tocar"
+    for (const c of this.collects) {
+      if (c.inst.gone.has(c.part.id) || !near(c.box, 0.7)) continue;
+      c.inst.gone.add(c.part.id);
+      const m = c.inst.meshes.get(c.part.id);
+      if (m) m.visible = false;
+      sfx.pop();
+      tap('light');
+      for (const inst of this.insts) inst.vm?.emit('collect', c.part.id);
+    }
+    for (const tc of this.touches) {
+      const on = !tc.inst.gone.has(tc.part.id) && near(tc.box, 0.65);
+      const was = tc.inst.touchIn.has(tc.part.id);
+      if (on && !was) {
+        tc.inst.touchIn.add(tc.part.id);
+        tc.inst.vm?.emit('touch', tc.part.id);
+      } else if (!on && was) tc.inst.touchIn.delete(tc.part.id);
+    }
+    for (const inst of this.insts) inst.vm?.update(dt);
     // zonas (entrar)
     for (const z of this.zones) {
       const inside = z.box.containsPoint(pos);
@@ -1250,6 +1440,7 @@ export class PlaySession {
       if (inside && !was) {
         z.inst.inside.add(z.part.id);
         for (const r of z.inst.rules) if (r.on.k === 'zone' && r.on.part === z.part.id) this.run(z.inst, r);
+        z.inst.vm?.emit('zone', z.part.id);
       } else if (!inside && was) z.inst.inside.delete(z.part.id);
     }
     // timers
@@ -1338,7 +1529,7 @@ export class PlaySession {
   /** para testes automatizados (?debug) */
   debug(): Record<string, unknown> {
     const f = this.focus();
-    return { pos: [f.x, f.y, f.z], driving: !!this.driving, vehicles: this.vehicles.length, won: this.won, score: this.score, bodies: this.world.bodies.length, grounded: this.grounded, act: this.actBtn.hidden ? '' : this.actBtn.textContent };
+    return { vars: Object.fromEntries(this.insts[0]?.vm?.vars ?? []), lives: this.lives, gone: [...(this.insts[0]?.gone ?? [])], pos: [f.x, f.y, f.z], driving: !!this.driving, vehicles: this.vehicles.length, won: this.won, score: this.score, bodies: this.world.bodies.length, grounded: this.grounded, act: this.actBtn.hidden ? '' : this.actBtn.textContent };
   }
   /** testes: entra no veículo mais perto / aperta o botão mais perto / teletransporta */
   debugAct(): void {
@@ -1348,6 +1539,10 @@ export class PlaySession {
     if (this.driving) this.leave();
     this.me.position.set(x, y, z);
     this.me.velocity.set(0, 0, 0);
+  }
+  /** testes: avança a simulação `sec` segundos em passos de 1/60 (sem esperar quadros) */
+  debugAdvance(sec: number): void {
+    for (let i = 0; i < Math.round(sec * 60); i++) this.update(1 / 60);
   }
   /** testes: força o joystick (x, y frente+) por alguns quadros */
   debugKeys(codes: string[]): void {

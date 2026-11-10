@@ -11,7 +11,8 @@
  *  do assento (part.role 'seat'). Rotação: Euler XYZ em graus.
  * ============================================================ */
 
-export const FORMAT_VERSION = 1;
+/** v1: peças, juntas, fichas. v2: + `scripts` (Blocos de lógica), + `game` (Jogo da Comunidade), + papel 'collect'. */
+export const FORMAT_VERSION = 2;
 
 export type Vec3 = [number, number, number];
 export type CreationKind = 'object' | 'vehicle' | 'map';
@@ -26,7 +27,7 @@ export const FINISHES = ['plastic', 'metal', 'glass', 'wood', 'neon', 'rubber'] 
 export type Finish = (typeof FINISHES)[number];
 
 /** Papel especial de uma peça na hora de JOGAR. */
-export const ROLES = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard'] as const;
+export const ROLES = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect'] as const;
 export type PartRole = (typeof ROLES)[number];
 
 /** Física por peça: 'static' (padrão, parada e sólida), 'dynamic' (cai/empurra), 'none' (só visual, atravessável). */
@@ -143,6 +144,74 @@ export interface LogicRule {
   do: Action[];
 }
 
+/* ------------------- Blocos de lógica (v2, scripts) -------------------
+ * Programação em blocos empilhados, SEM código do usuário (nada de eval):
+ * um interpretador determinístico com limite de passos por quadro roda isso.
+ * `part` ausente nos blocos = "esta peça" (a que disparou o evento). */
+
+export const SCRIPT_EVENTS = ['start', 'touch', 'zone', 'every', 'collect', 'die', 'button', 'message'] as const;
+export type ScriptEventKind = (typeof SCRIPT_EVENTS)[number];
+export interface ScriptEvent {
+  k: ScriptEventKind;
+  /** peça (touch/zone/collect/button); collect sem peça = qualquer coletável */
+  part?: number;
+  /** segundos (every) */
+  sec?: number;
+  /** nome da mensagem (message) */
+  msg?: string;
+}
+
+/** Expressão numérica: número, variável, conta ou leitura do jogo. */
+export type Expr = number | { v: string } | { op: '+' | '-' | '*' | '/' | 'rand' | 'min' | 'max'; a: Expr; b: Expr } | { q: 'score' | 'time' | 'lives' | 'team' | 'players' };
+export interface Cond {
+  op: '<' | '>' | '=' | '!=' | '<=' | '>=';
+  a: Expr;
+  b: Expr;
+}
+
+export type Block =
+  | { k: 'move'; part?: number; d: Vec3; t?: number }
+  | { k: 'rotate'; part?: number; r: Vec3; t?: number }
+  | { k: 'teleport'; part: number }
+  | { k: 'spawn'; part: number }
+  | { k: 'destroy'; part?: number }
+  | { k: 'sound'; snd: SoundId }
+  | { k: 'say'; text: string }
+  | { k: 'score'; n: Expr }
+  | { k: 'color'; part?: number; c: string }
+  | { k: 'force'; part?: number; d: Vec3 }
+  | { k: 'door'; part: number }
+  | { k: 'light'; part: number }
+  | { k: 'motor'; joint: number }
+  | { k: 'checkpoint'; part?: number }
+  | { k: 'set'; v: string; e: Expr }
+  | { k: 'change'; v: string; e: Expr }
+  | { k: 'if'; c: Cond; then: Block[]; else?: Block[] }
+  | { k: 'repeat'; n: Expr; body: Block[] }
+  | { k: 'wait'; sec: Expr }
+  | { k: 'team'; team: 0 | 1 | 2 }
+  | { k: 'lives'; n: Expr }
+  | { k: 'match'; on: 'start' | 'win' | 'lose' }
+  | { k: 'send'; msg: string };
+export type BlockKind = Block['k'];
+export const BLOCK_KINDS: BlockKind[] = ['move', 'rotate', 'teleport', 'spawn', 'destroy', 'sound', 'say', 'score', 'color', 'force', 'door', 'light', 'motor', 'checkpoint', 'set', 'change', 'if', 'repeat', 'wait', 'team', 'lives', 'match', 'send'];
+
+export interface Script {
+  id: number;
+  name?: string;
+  on: ScriptEvent;
+  body: Block[];
+}
+
+/** Metadados de um mapa publicado como JOGO (Jogos da Comunidade). */
+export interface GameMeta {
+  title: string;
+  desc: string;
+  tags: string[];
+  /** 1..16 (hoje o jogo é solo; o servidor usará isso para salas) */
+  maxPlayers: number;
+}
+
 export interface Creation {
   /** versão do formato */
   v: number;
@@ -166,6 +235,10 @@ export interface Creation {
   seed?: number;
   /** criação de onde esta foi copiada (remix) */
   from?: string;
+  /** v2: blocos de lógica */
+  scripts?: Script[];
+  /** v2: metadados de jogo (mapas publicados como Jogo da Comunidade) */
+  game?: GameMeta;
   /** criações importadas embutidas (para o mapa abrir sem rede). Só 1 nível: deps não têm deps. */
   deps?: Creation[];
   /** ms desde 1970 */
@@ -194,6 +267,16 @@ export const LIMITS = {
   bytes: 512 * 1024,
   thumbBytes: 40 * 1024,
   refDepth: 3,
+  /** blocos de lógica */
+  scripts: 64,
+  blocks: 1024,
+  blockDepth: 8,
+  vars: 32,
+  varLen: 16,
+  textLen: 60,
+  repeatMax: 1000,
+  gameDesc: 200,
+  gameTags: 5,
 } as const;
 
 /* -------------------------------- criação -------------------------------- */
@@ -274,7 +357,7 @@ export function validate(input: unknown, depth = 0): ValidateResult {
   const errors: string[] = [];
   if (!input || typeof input !== 'object') return { ok: false, errors: ['not-object'], creation: null };
   const o = input as Record<string, unknown>;
-  const v = isNum(o.v) ? o.v : 0;
+  const v = isNum(o.v) ? o.v : 0; // v1 continua válido (v2 só acrescenta campos)
   if (v < 1 || v > FORMAT_VERSION) errors.push('version');
   const id = typeof o.id === 'string' && ID_RE.test(o.id) ? o.id : '';
   if (!id) return { ok: false, errors: ['id'], creation: null };
@@ -417,6 +500,8 @@ export function validate(input: unknown, depth = 0): ValidateResult {
       logic.push({ id: Math.floor(L.id as number), on: trig, do: acts });
     }
 
+  const scripts = sanitizeScripts(o.scripts, ids, jids, errors);
+
   const c: Creation = {
     v: FORMAT_VERSION,
     id,
@@ -436,6 +521,18 @@ export function validate(input: unknown, depth = 0): ValidateResult {
   if (typeof o.from === 'string' && ID_RE.test(o.from)) c.from = o.from;
   if (isNum(o.created)) c.created = o.created;
   if (isNum(o.updated)) c.updated = o.updated;
+  if (scripts.length) c.scripts = scripts;
+  const gm = o.game as Record<string, unknown> | undefined;
+  if (gm && typeof gm === 'object') {
+    const title = str(gm.title, LIMITS.nameLen);
+    if (title)
+      c.game = {
+        title,
+        desc: str(gm.desc, LIMITS.gameDesc),
+        tags: Array.isArray(gm.tags) ? gm.tags.map((x) => str(x, 16)).filter(Boolean).slice(0, LIMITS.gameTags) : [],
+        maxPlayers: isNum(gm.maxPlayers) ? clamp(Math.round(gm.maxPlayers), 1, 16) : 1,
+      };
+  }
   if (Array.isArray(o.deps) && depth === 0) {
     const deps: Creation[] = [];
     for (const d of o.deps.slice(0, LIMITS.deps)) {
@@ -449,6 +546,153 @@ export function validate(input: unknown, depth = 0): ValidateResult {
   }
   if (jsonBytes(c) > LIMITS.bytes) errors.push('bytes');
   return { ok: errors.length === 0, errors, creation: c };
+}
+
+/* ------------------------- validação dos blocos ------------------------- */
+
+const VAR_RE = /^[A-Za-zÀ-ÿ0-9_ ]{1,16}$/;
+const OPS = ['+', '-', '*', '/', 'rand', 'min', 'max'];
+const CMP = ['<', '>', '=', '!=', '<=', '>='];
+const QS = ['score', 'time', 'lives', 'team', 'players'];
+
+function sanitizeExpr(x: unknown, depth = 0): Expr {
+  if (isNum(x)) return clamp(x, -1e6, 1e6);
+  if (!x || typeof x !== 'object' || depth > 4) return 0;
+  const o = x as Record<string, unknown>;
+  if (typeof o.v === 'string' && VAR_RE.test(o.v)) return { v: o.v };
+  if (typeof o.q === 'string' && QS.includes(o.q)) return { q: o.q as 'score' };
+  if (typeof o.op === 'string' && OPS.includes(o.op)) return { op: o.op as '+', a: sanitizeExpr(o.a, depth + 1), b: sanitizeExpr(o.b, depth + 1) };
+  return 0;
+}
+
+function sanitizeScripts(raw: unknown, ids: Set<number>, jids: Set<number>, errors: string[]): Script[] {
+  if (!Array.isArray(raw)) return [];
+  let budget: number = LIMITS.blocks;
+  const vars = new Set<string>();
+  const okPart = (p: unknown, opt: boolean): number | undefined | null => (p == null ? (opt ? undefined : null) : isNum(p) && ids.has(p) ? p : null);
+  const varName = (v: unknown): string | null => {
+    if (typeof v !== 'string' || !VAR_RE.test(v)) return null;
+    if (!vars.has(v) && vars.size >= LIMITS.vars) return null;
+    vars.add(v);
+    return v;
+  };
+  const list = (arr: unknown, depth: number): Block[] => {
+    const out: Block[] = [];
+    if (!Array.isArray(arr) || depth > LIMITS.blockDepth) return out;
+    for (const r of arr) {
+      if (budget <= 0) {
+        errors.push('blocks-limit');
+        break;
+      }
+      const b = block(r, depth);
+      if (b) {
+        budget--;
+        out.push(b);
+      } else errors.push('block');
+    }
+    return out;
+  };
+  const cond = (x: unknown): Cond => {
+    const o = (x ?? {}) as Record<string, unknown>;
+    return { op: CMP.includes(o.op as string) ? (o.op as '<') : '=', a: sanitizeExpr(o.a), b: sanitizeExpr(o.b) };
+  };
+  const block = (r: unknown, depth: number): Block | null => {
+    if (!r || typeof r !== 'object') return null;
+    const b = r as Record<string, unknown>;
+    const v3 = (x: unknown) => vec(x, 100, [0, 0, 0])!;
+    switch (b.k) {
+      case 'move':
+      case 'rotate':
+      case 'force': {
+        const part = okPart(b.part, true);
+        if (part === null) return null;
+        const out: Record<string, unknown> = { k: b.k };
+        if (part != null) out.part = part;
+        if (b.k === 'rotate') out.r = vec(b.r, 3600, [0, 90, 0]);
+        else out.d = v3(b.d);
+        if (b.k !== 'force' && isNum(b.t)) out.t = clamp(b.t, 0, 60);
+        return out as Block;
+      }
+      case 'destroy':
+      case 'color':
+      case 'checkpoint': {
+        const part = okPart(b.part, true);
+        if (part === null) return null;
+        const out: Record<string, unknown> = { k: b.k };
+        if (part != null) out.part = part;
+        if (b.k === 'color') out.c = typeof b.c === 'string' && HEX.test(b.c) ? b.c.toLowerCase() : '#ff5cc8';
+        return out as Block;
+      }
+      case 'teleport':
+      case 'spawn':
+      case 'door':
+      case 'light': {
+        const part = okPart(b.part, false);
+        return part == null ? null : ({ k: b.k, part } as Block);
+      }
+      case 'motor':
+        return isNum(b.joint) && jids.has(b.joint) ? { k: 'motor', joint: b.joint } : null;
+      case 'sound':
+        return { k: 'sound', snd: (SOUNDS as readonly string[]).includes(b.snd as string) ? (b.snd as SoundId) : 'ding' };
+      case 'say': {
+        const text = str(b.text, LIMITS.textLen);
+        return text ? { k: 'say', text } : null;
+      }
+      case 'score':
+        return { k: 'score', n: sanitizeExpr(b.n) };
+      case 'lives':
+        return { k: 'lives', n: sanitizeExpr(b.n) };
+      case 'wait':
+        return { k: 'wait', sec: sanitizeExpr(b.sec) };
+      case 'set':
+      case 'change': {
+        const v = varName(b.v);
+        return v ? ({ k: b.k, v, e: sanitizeExpr(b.e) } as Block) : null;
+      }
+      case 'if': {
+        const out: Block = { k: 'if', c: cond(b.c), then: list(b.then, depth + 1) };
+        if (Array.isArray(b.else)) out.else = list(b.else, depth + 1);
+        return out;
+      }
+      case 'repeat':
+        return { k: 'repeat', n: sanitizeExpr(b.n), body: list(b.body, depth + 1) };
+      case 'team':
+        return { k: 'team', team: b.team === 1 || b.team === 2 ? b.team : 0 };
+      case 'match':
+        return { k: 'match', on: b.on === 'win' || b.on === 'lose' ? b.on : 'start' };
+      case 'send': {
+        const msg = str(b.msg, LIMITS.varLen);
+        return msg ? { k: 'send', msg } : null;
+      }
+    }
+    return null;
+  };
+  const out: Script[] = [];
+  const sids = new Set<number>();
+  for (const r of raw.slice(0, LIMITS.scripts)) {
+    const o = r as Record<string, unknown>;
+    const on = (o?.on ?? {}) as Record<string, unknown>;
+    if (!isNum(o?.id) || sids.has(o.id) || !(SCRIPT_EVENTS as readonly string[]).includes(on.k as string)) {
+      errors.push('script');
+      continue;
+    }
+    const ev: ScriptEvent = { k: on.k as ScriptEventKind };
+    if (on.part != null) {
+      if (!isNum(on.part) || !ids.has(on.part)) {
+        errors.push('script-part');
+        continue;
+      }
+      ev.part = on.part;
+    }
+    if (ev.k === 'every') ev.sec = clamp(isNum(on.sec) ? on.sec : 1, 0.1, 600);
+    if (ev.k === 'message') ev.msg = str(on.msg, LIMITS.varLen) || 'oi';
+    const sc: Script = { id: Math.floor(o.id as number), on: ev, body: list(o.body, 0) };
+    const nm = str(o.name, LIMITS.nameLen);
+    if (nm) sc.name = nm;
+    sids.add(sc.id);
+    out.push(sc);
+  }
+  return out;
 }
 
 /* --------------------------- (de)serialização --------------------------- */
@@ -535,8 +779,9 @@ export async function deserialize(s: string): Promise<ValidateResult> {
   return validate(migrate(obj));
 }
 
-/** Atualiza versões antigas do formato (hoje só existe a v1). */
+/** Atualiza versões antigas do formato. v1 → v2 é compatível (só campos novos opcionais). */
 export function migrate(o: unknown): unknown {
+  if (o && typeof o === 'object' && (o as { v?: number }).v === 1) return { ...(o as object), v: 2 };
   return o;
 }
 

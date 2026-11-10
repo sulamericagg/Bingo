@@ -150,7 +150,7 @@ export class Batcher {
 /* -------------------------------- miniatura -------------------------------- */
 
 /** Foto 3/4 da criação (data URL webp/jpeg ≤ 40 KB). */
-export function captureThumb(r: THREE.WebGLRenderer, obj: THREE.Object3D, w = 192, h = 144): string {
+export function captureThumb(r: THREE.WebGLRenderer, obj: THREE.Object3D, w = 192, h = 144, dir: [number, number, number] = [0.75, 0.55, 1]): string {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#bfe6ff');
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7ab0, 1.6));
@@ -165,7 +165,7 @@ export function captureThumb(r: THREE.WebGLRenderer, obj: THREE.Object3D, w = 19
   const rad = Math.max(0.5, box.getSize(new THREE.Vector3()).length() / 2);
   const cam = new THREE.PerspectiveCamera(35, w / h, 0.05, rad * 20);
   const dist = rad / Math.sin((35 * D2R) / 2) * 0.95;
-  cam.position.copy(ctr).add(new THREE.Vector3(0.75, 0.55, 1).normalize().multiplyScalar(dist));
+  cam.position.copy(ctr).add(new THREE.Vector3(...dir).normalize().multiplyScalar(dist));
   cam.lookAt(ctr);
   const rt = new THREE.WebGLRenderTarget(w, h, { colorSpace: THREE.SRGBColorSpace });
   const prev = r.getRenderTarget();

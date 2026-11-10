@@ -385,6 +385,37 @@ function course(): Creation {
   b.add('box', [0, 2.06, -41], [3, 0.12, 3], b.m('#4fd67a', 'neon'), { role: 'goal' });
   b.add('cylinder', [-1.3, 3.5, -42.2], [0.14, 3, 0.14], b.m('#c8ccd8', 'metal'), { phys: 'none' });
   b.add('box', [-0.75, 4.6, -42.2], [1.0, 0.7, 0.05], b.m('#ffd34a'), { phys: 'none' });
+  b.c.game = { title: 'Percurso do Botão', desc: 'Pule nas plataformas, aperte o botão para abrir a porta e desvie do giratório até a chegada!', tags: ['obstaculos', 'aventura'], maxPlayers: 8 };
+  return b.c;
+}
+
+/** minigame feito só com Blocos de lógica: moedas, vidas, tempo e plataforma que gira */
+function coinHunt(): Creation {
+  const b = new B('st_coins', 'map', 'Caça às Moedas', 'flat');
+  const grass = b.m('#7ccf62');
+  const plat = b.m('#8a5cff');
+  const gold = b.m('#ffd34a', 'metal');
+  const lava = b.m('#ff5a2e', 'neon');
+  b.add('box', [0, 0.05, -10], [40, 0.1, 40], lava, { role: 'hazard' });
+  b.add('box', [0, 0.5, 6], [8, 1, 6], grass);
+  b.add('cylinder', [0, 1.06, 6], [1.4, 0.12, 1.4], b.m('#4fd67a'), { role: 'spawn' });
+  const spots: [number, number, number][] = [
+    [0, 1, -1], [5, 1.5, -4], [9, 2, -9], [4, 2.5, -14], [-3, 2.5, -16], [-8, 2, -11], [-7, 1.5, -5], [0, 3, -9],
+  ];
+  const coins: number[] = [];
+  for (const [x, y, z] of spots) {
+    b.add('box', [x, y - 0.5, z], [3.2, 1, 3.2], plat);
+    coins.push(b.add('cylinder', [x, y + 0.6, z], [0.7, 0.12, 0.7], gold, { r: [90, 0, 0], role: 'collect', name: 'moeda' }));
+  }
+  const spinner = b.add('box', [0, 3.05, -9], [3.4, 0.25, 0.8], b.m('#ff5cc8'), { name: 'giratório' });
+  b.c.scripts = [
+    { id: 1, on: { k: 'start' }, body: [{ k: 'lives', n: 3 }, { k: 'set', v: 'moedas', e: 0 }, { k: 'say', text: 'Pegue 8 moedas! Você tem {lives} vidas' }] },
+    { id: 2, on: { k: 'collect' }, body: [{ k: 'change', v: 'moedas', e: 1 }, { k: 'score', n: 10 }, { k: 'sound', snd: 'ding' }, { k: 'say', text: 'Moedas: {moedas}/8' }, { k: 'if', c: { op: '>=', a: { v: 'moedas' }, b: 8 }, then: [{ k: 'sound', snd: 'fanfare' }, { k: 'match', on: 'win' }] }] },
+    { id: 3, on: { k: 'every', sec: 1 }, body: [{ k: 'rotate', part: spinner, r: [0, 60, 0], t: 1 }] },
+    { id: 4, on: { k: 'die' }, body: [{ k: 'say', text: 'Ai! Restam {lives} vidas' }] },
+  ];
+  b.c.game = { title: 'Caça às Moedas', desc: 'Pule de plataforma em plataforma e pegue as 8 moedas sem cair na lava. 3 vidas!', tags: ['coleta', 'obstaculos'], maxPlayers: 4 };
+  void coins;
   return b.c;
 }
 
@@ -436,6 +467,7 @@ export function starters(): StarterMeta[] {
     [fountain(), 'nature', 188, 150],
     [sculpture(), 'art', 260, 90],
     [course(), 'maps', 1220, 0],
+    [coinHunt(), 'maps', 980, 0],
     [rampPark(k), 'maps', 640, 0],
   ];
   cached = list.map(([c, category, likes, uses]) => ({ c, category, likes, uses }));
@@ -466,6 +498,7 @@ export function starterName(id: string, fallback: string): string {
     st_doodle: () => t('studio.st.doodle', 'Rabisco Espiral'),
     st_course: () => t('studio.st.course', 'Percurso do Botão'),
     st_rampark: () => t('studio.st.rampark', 'Parque de Rampas'),
+    st_coins: () => t('studio.st.coins', 'Caça às Moedas'),
   };
   return N[id]?.() ?? fallback;
 }

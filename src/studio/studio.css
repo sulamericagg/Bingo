@@ -198,3 +198,49 @@
 .bs-actbtn{right:calc(var(--edge-r,10px) + 88px);bottom:calc(var(--edge-b,10px) + 26px);min-width:72px;height:72px;padding:0 10px;border-radius:36px;background:linear-gradient(180deg,#ff7ad6,#ff3fa3);font-size:15px;animation:bs-pulse 1.2s ease-in-out infinite}
 @keyframes bs-pulse{50%{transform:scale(1.06)}}
 .bs-round:active{transform:scale(.92)}
+
+/* --------------------------- blocos de lógica --------------------------- */
+.bs-panel[data-p=logic]{width:min(470px,60vw)}
+.bs-script{border-radius:14px;background:#f7f3ff;box-shadow:inset 0 0 0 1.5px #e8defc;padding:6px;display:flex;flex-direction:column;gap:4px}
+.bs-script.open{background:#fff;box-shadow:inset 0 0 0 2px #ffb02e}
+.bs-hat{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:6px 6px 8px;border-radius:14px 14px 6px 6px;background:linear-gradient(180deg,#ffc94a,#ffa62e);color:#4a2a00;font-weight:800;font-size:12.5px;cursor:pointer}
+.bs-hat small{font-size:11px;opacity:.7;margin-right:2px}
+.bs-pc{min-height:30px;padding:2px 9px;border-radius:9px;background:rgba(255,255,255,.92);color:#2a0b5c !important;font-weight:800;font-size:12px;display:inline-flex;align-items:center;gap:4px;box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.08)}
+.bs-evk{background:#4a2a00;color:#fff !important}
+.bs-dot{width:16px;height:16px;border-radius:50%;display:inline-block;box-shadow:inset 0 0 0 2px rgba(0,0,0,.15)}
+.bs-stack,.bs-bnest{display:flex;flex-direction:column;gap:3px}
+.bs-bnest{margin-left:16px;padding-left:8px;border-left:4px solid #ffd77a;min-height:8px}
+.bs-brow{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:4px 5px;border-radius:10px;color:#fff;font-size:12px;font-weight:700}
+.bs-brow small{font-weight:700;opacity:.9}
+.bs-bname{min-height:30px;padding:0 6px;background:transparent;color:#fff !important;font-weight:800;font-size:12.5px;border-radius:8px}
+.bs-bname:active{background:rgba(0,0,0,.15)}
+.c-motion{background:#3f8aff}.c-looks{background:#a35cff}.c-game{background:#ff8a2e}.c-control{background:#e0a400}.c-vars{background:#22b07a}
+.bs-blk{display:inline-flex;align-items:center;min-height:32px;padding:3px 10px;border-radius:9px;color:#fff !important;font-size:12px;font-weight:800}
+.bs-bprev{display:flex;flex-wrap:wrap;gap:3px;padding:2px 4px;cursor:pointer}
+.bs-bprev .bs-blk{min-height:22px;font-size:10.5px;padding:1px 7px}
+.bs-badd{align-self:flex-start;min-height:30px;padding:0 10px;border-radius:9px;background:#fff;color:#8a5cff !important;font-weight:800;font-size:12px;display:flex;align-items:center;gap:4px;box-shadow:inset 0 0 0 1.5px #d8c8ff;border:1.5px dashed transparent}
+.bs-belse{margin-left:4px;font-size:12px;font-weight:800;color:#b07a00}
+.bs-tin{height:42px;border-radius:12px;border:2px solid #e2d8ff;padding:0 10px;font:inherit;font-weight:700;color:#2a0b5c}
+.bs-step input{width:84px;height:38px;border-radius:10px;border:2px solid #e2d8ff;text-align:center;font:inherit;font-weight:800;color:#2a0b5c}
+.bs-step .ax{width:22px;text-align:center}.ax.a0{color:#ff4f6a}.ax.a1{color:#22b07a}.ax.a2{color:#3f8aff}
+.bs-sheet h4{margin:4px 0 2px;font-size:12px;color:#6a4ab0}
+
+/* --------------------------- jogos da comunidade --------------------------- */
+.bs-secs button{display:flex;align-items:center;justify-content:center;gap:5px}
+.bs-gitem .bs-thumb{aspect-ratio:3/2}
+.bs-shots{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.bs-shots .bs-thumb.big{flex:none;width:92%;scroll-snap-align:start}
+.bs-shots.small .bs-thumb{flex:1;aspect-ratio:3/2}
+.bs-gdesc{margin:0;font-size:13px;line-height:1.35;color:#4a3a70}
+.bs-gtag{font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;background:#ffe3f6;color:#c22f86}
+.bs-gtag.p{background:#e6f4ff;color:#2a6ab0}
+.bs-board{display:flex;flex-direction:column;gap:3px}
+.bs-board .bs-li.me{background:#fff3c8}
+.bs-board .bs-li b{width:26px;color:#d23f9a}
+.bs-gform{display:flex;flex-direction:column;gap:7px;padding:8px;border-radius:14px;background:#f7f3ff}
+.bs-gform textarea{border-radius:12px;border:2px solid #e2d8ff;padding:6px 10px;font:inherit;font-weight:600;color:#2a0b5c;resize:none}
+
+/* painéis grandes (lógica, loja…): ocupam a altura toda e escondem a doca */
+.bs-root.wide .bs-dock,.bs-root.wide .bs-selchip{display:none}
+.bs-root.wide .bs-panel{bottom:var(--edge-b,10px)}
+.bs-panel[data-p=store],.bs-panel[data-p=publish]{width:min(440px,56vw)}
