@@ -101,6 +101,7 @@ export class Atelier implements Stage {
     this.camera.add(fill, fill.target);
     this.scene.add(hemi, this.sun, this.sun.target, this.camera);
     this.buildRoom();
+    this.world.addEventListener('preStep', this.preStep);
     this.particles = makeParticles(this.scene, eng.q);
     this.hand = new Hand(this.camera, handColors());
     this.hand.visible = false;
@@ -601,12 +602,26 @@ export class Atelier implements Stage {
     this.pos.z = Math.max(-ROOM + 0.4, Math.min(ROOM - 0.4, this.pos.z));
   }
 
+  /** forças a cada sub-passo da física (o cannon zera as forças depois de cada um) */
+  private preStep = (): void => {
+    const g = 9.82;
+    const tm0 = performance.now() / 1000;
+    for (const c of this.creations) {
+      if (!c.spawned || !c.recipe.fly || this.held?.c === c) continue;
+      const home = this.homes.get(c.id);
+      if (!home) continue;
+      const b = c.body;
+      const ty = home.y + Math.sin((tm0 + c.id) * 2.1) * 0.12;
+      const m = b.mass;
+      b.applyForce(new CANNON.Vec3((home.x - b.position.x) * m * 6 - b.velocity.x * m * 2.4, m * g + (ty - b.position.y) * m * 14 - b.velocity.y * m * 3.2, (home.z - b.position.z) * m * 6 - b.velocity.z * m * 2.4));
+    }
+  };
+
   /* ----------------------------- quadro ----------------------------- */
   update(dt: number): void {
     // física (passo fixo)
     this.timeAcc += dt;
     // forças: voadores pairam, veículo pilotado anda
-    const g = 9.82;
     const [jx, jy] = this.ctrl.dir();
     for (const c of this.creations) {
       if (!c.spawned) continue;
@@ -626,9 +641,6 @@ export class Atelier implements Stage {
           home.x += Math.sin(tm * 0.37) * 0.25 * dt;
           home.z += Math.cos(tm * 0.29) * 0.25 * dt;
         }
-        const ty = home.y + Math.sin(tm * 2.1) * 0.12;
-        const m = b.mass;
-        b.applyForce(new CANNON.Vec3((home.x - b.position.x) * m * 6 - b.velocity.x * m * 2.4, m * g + (ty - b.position.y) * m * 14 - b.velocity.y * m * 3.2, (home.z - b.position.z) * m * 6 - b.velocity.z * m * 2.4));
         // fica de pé e encara a direção do voo
         const q = b.quaternion;
         const up = q.vmult(new CANNON.Vec3(0, 1, 0));

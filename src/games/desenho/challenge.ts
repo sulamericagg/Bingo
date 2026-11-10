@@ -156,6 +156,10 @@ export class Challenge implements Stage {
     this.particles = makeParticles(this.scene, eng.q);
     this.particles.floorY = -50;
     this.buildStage();
+    // empuxo a cada sub-passo da física (o cannon zera as forças depois de cada um)
+    this.world.addEventListener('preStep', () => {
+      if (this.started) this.buoyancy(1 / 60);
+    });
     // papel transparente por cima de tudo
     const r = layer.getBoundingClientRect();
     const k = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
@@ -610,7 +614,6 @@ export class Challenge implements Stage {
       }
       // carro
       if (lv.kind === 'car') for (const c of this.creations) if (c.isVehicle && c.spawned) c.drive(this.gas, 0);
-      this.buoyancy(dt);
     }
     if (this.started) this.world.step(1 / 60, dt, 4);
     for (const c of this.creations) c.sync(c.spawned ? 1 : Math.max(0.02, elasticOut(c.grow)));

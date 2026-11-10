@@ -3,7 +3,7 @@
 const CSS = `
 .dv-root{position:absolute;inset:0;overflow:hidden;background:#bfe6ff;font-family:var(--font,Fredoka,system-ui,sans-serif);color:#2a1e3a;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;--ink:#2a1e3a;--cream:#fff7e8;--hot:#ff5e3a}
 .dv-root *{box-sizing:border-box}
-.dv-root button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;cursor:pointer}
+:where(.dv-root) :where(button){font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;cursor:pointer}
 .dv-gl{position:absolute;inset:0;width:100%;height:100%;display:block}
 .dv-layer{position:absolute;inset:0;z-index:1}
 .dv-grow{flex:1}
@@ -87,7 +87,6 @@ const CSS = `
 .dv-chip.on{background:#8be04e;animation:none}
 @keyframes dvWiggle{0%,100%{transform:rotate(0)}10%{transform:rotate(-4deg)}20%{transform:rotate(4deg)}30%{transform:rotate(0)}}
 .dv-bum{position:relative;height:62px;border:3.5px solid var(--ink);border-radius:20px;background:linear-gradient(#ffb36b,#ff5e3a 55%,#e8323a);box-shadow:0 5px 0 var(--ink);color:#fff;font-size:30px;font-weight:700;letter-spacing:1px;overflow:hidden}
-.dv-root .dv-bum{color:#fff}
 .dv-bum span{-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;display:inline-block}
 .dv-bum:not([disabled]) span{animation:dvBumPulse 1.1s ease-in-out infinite}
 .dv-bum:active{transform:translateY(3px);box-shadow:0 2px 0 var(--ink)}
@@ -180,7 +179,7 @@ const CSS = `
 .dv-lvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;width:100%;max-width:900px;margin-top:10px}
 .dv-lv{position:relative;border:3px solid var(--ink);border-radius:16px;background:#fff;color:var(--ink);box-shadow:0 4px 0 var(--ink);padding:8px 6px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:104px}
 .dv-lv b{position:absolute;left:6px;top:4px;font-size:15px;color:#8a5cff}
-.dv-lv .dv-ic{color:#ff5e3a}
+.dv-lv>.dv-ic{color:#ff5e3a}
 .dv-lv span{font-size:13px;font-weight:700;line-height:1.1;text-align:center}
 .dv-lv em{display:flex;gap:1px}
 .dv-lv em i{color:#ddd3ea}

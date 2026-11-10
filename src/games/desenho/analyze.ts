@@ -594,10 +594,11 @@ function detectWings(solid: Uint8Array, gw: number, _gh: number, bx0: number, bx
   }
   const sorted = widths.filter((w) => w > 0).sort((a, b) => a - b);
   if (sorted.length < 6) return false;
-  const med = sorted[Math.floor(sorted.length / 2)];
+  // corpo estreito (quartil de baixo) e "braços" bem mais largos no meio/alto
+  const narrow = sorted[Math.floor(sorted.length * 0.25)];
   const mx = sorted[sorted.length - 1];
   const at = widths.indexOf(mx) / widths.length;
-  return mx >= med * 1.7 && at > 0.1 && at < 0.8 && bx1 - bx0 > (by1 - by0) * 0.9;
+  return mx >= narrow * 2 && at > 0.1 && at < 0.8 && bx1 - bx0 > (by1 - by0) * 0.9;
 }
 
 /** perfil do torno: um traço aberto + eixo (simetria = centro do papel) */

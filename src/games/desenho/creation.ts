@@ -99,7 +99,10 @@ export class Creation {
         this.onLand(v);
       }
     });
-    if (b.wheels.length) this.makeWheels();
+    if (b.wheels.length) {
+      this.body.angularDamping = 0.6; // carrinho não empina à toa
+      this.makeWheels();
+    }
     o.scene.add(this.group);
     this.sync();
   }
@@ -182,7 +185,7 @@ export class Creation {
       // (o motor da dobradiça gira B em relação a A no sentido oposto ao eixo: + anda para +x)
       const sp = throttle * top - w.side * steer * top * 0.7;
       w.hinge.setMotorSpeed(sp);
-      w.hinge.setMotorMaxForce(Math.abs(throttle) + Math.abs(steer) > 0.05 ? this.mass() * 9 : this.mass() * 2.5);
+      w.hinge.setMotorMaxForce(Math.abs(throttle) + Math.abs(steer) > 0.05 ? this.mass() * 5 : this.mass() * 2.5);
       w.body.wakeUp();
     }
     if (Math.abs(throttle) + Math.abs(steer) > 0.05) this.body.wakeUp();
