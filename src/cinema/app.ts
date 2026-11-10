@@ -524,6 +524,12 @@ class CinemaApp {
     if (shot.fx.length || shot.sfx.length)
       html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${f.kind}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
     html += `<div class="cin-head"></div>`;
+    // coluna de rótulos do tamanho do maior nome (ícone + miniatura + texto), sem cortar
+    const names = [t('cin.tab.camera', 'Câmera'), t('cin.tab.lines', 'Falas'), t('cin.tab.fx', 'Efeitos'), ...shot.actors.map((a) => castById(a.cast)?.name ?? '')];
+    const mx = document.createElement('canvas').getContext('2d')!;
+    mx.font = `500 11px ${getComputedStyle(host).fontFamily || 'sans-serif'}`;
+    const lw = Math.min(150, Math.max(64, Math.ceil(Math.max(...names.map((n) => mx.measureText(n).width)) + 34)));
+    host.style.setProperty('--lblw', `${lw}px`);
     host.innerHTML = html;
     host.querySelectorAll<HTMLElement>('[data-lane]').forEach((l) => {
       const c = castById(l.dataset.lane);
