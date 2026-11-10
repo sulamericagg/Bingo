@@ -21,7 +21,7 @@ import { notify } from '../ui/notify';
 import { canRecord, cleanupShared, MAX_REC_MS, Recorder, shareOrSave } from './media';
 import { canAdBonus, consumeMirror, FREE_DAILY_MS, flushMirror, fmtLeft, grantAdBonus, mirrorLeftMs, mirrorSave, mirrorUnlimited, setDebugUnlimited, setMirrorPref } from './quota';
 import { composeShot, drawFrame, mirrorAvatar, SCENES, STICKERS, type Expr, type FrameState, type SceneId, type StickerId } from './render';
-import { approach, neutralRig, RIG_KEYS, RigFilter, type Rig } from './rig';
+import { approach, neutralRig, RIG_KEYS, RigFilter, type Rig, type RigKey } from './rig';
 import type { FaceTracker } from './tracker';
 import { FREE_VOICES, VoiceFx, VOICES, type MouthFromVoice, type VoiceId } from './voice-fx';
 
@@ -59,8 +59,6 @@ let cx: CanvasRenderingContext2D;
 let W = 540;
 let H = 960;
 let video: HTMLVideoElement;
-let small: HTMLCanvasElement;
-let smallX: CanvasRenderingContext2D;
 let tier = 2;
 
 let session: Session = 'off';
@@ -75,7 +73,8 @@ let popBackFn: (() => void) | null = null;
 let offs: (() => void)[] = [];
 let sessionToken = 0;
 
-const raw: Rig = neutralRig();
+/** último alvo filtrado (chega a cada detecção); `rig` é o que se desenha, interpolado a cada quadro */
+const tgt: Rig = neutralRig();
 const rig: Rig = neutralRig();
 const filter = new RigFilter();
 let debugFace: Rig | null = null;
@@ -85,6 +84,7 @@ let faceAt = 0;
 let faceGrace = 600;
 let lastDetect = 0;
 let detectMs = 0;
+let lastRes = 0;
 let lastDraw = 0;
 let lastFrame = 0;
 let t0 = 0;
@@ -222,8 +222,6 @@ function build(): void {
   cv.height = H;
   cx = cv.getContext('2d')!;
   video = $<HTMLVideoElement>('.mr-pip');
-  small = document.createElement('canvas');
-  smallX = small.getContext('2d', { willReadFrequently: false })!;
   root.addEventListener('click', onClick);
   root.addEventListener('scroll', () => root && (root.scrollTop = root.scrollLeft = 0));
 }
@@ -428,7 +426,7 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
   if (mode === 'cam') {
     try {
       if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
-      camStream = await md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } }, audio: false });
+      camStream = await md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 30, max: 30 } }, audio: false });
     } catch (e) {
       camErr = errName(e);
       camStream = null;
@@ -454,7 +452,10 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
         const mod = await import('./tracker');
         const tr = await mod.createFaceTracker();
         if (!root) tr.close();
-        else tracker = tr;
+        else {
+          tracker = tr;
+          tr.onResult = onTrack;
+        }
       } catch (e) {
         console.warn('[espelho] rastreamento indisponível', e);
         trackerFailed = true;
@@ -544,6 +545,20 @@ function stopSession(): void {
 
 /* ============================== laço ============================== */
 
+/** canais que precisam responder rápido (piscar, boca) */
+const FAST: Partial<Record<RigKey, boolean>> = { blinkL: true, blinkR: true, jaw: true, round: true, wide: true };
+
+/** resultado de uma detecção (chega fora do rAF; do worker ou de uma tarefa depois do quadro) */
+function onTrack(found: boolean, r: Rig, costMs: number): void {
+  detectMs = detectMs ? detectMs * 0.8 + costMs * 0.2 : costMs;
+  if (!found || debugFace) return;
+  const t = performance.now();
+  const gap = lastRes ? (t - lastRes) / 1000 : 1 / 15;
+  lastRes = t;
+  faceAt = t;
+  filter.apply(r, tgt, gap);
+}
+
 function loop(now: number): void {
   if (!root) return;
   raf = requestAnimationFrame(loop);
@@ -561,37 +576,25 @@ function loop(now: number): void {
     }
   }
 
-  // rastreamento (quadro reduzido, ~12–24 por segundo conforme a qualidade)
-  const hz = tier <= 0 ? 12 : tier === 1 ? 18 : 24;
-  const interval = Math.max(1000 / hz, detectMs * 1.5);
+  // rastreamento: o quadro reduzido vai para o worker (ou roda depois deste quadro);
+  // ~12–20 por segundo conforme a qualidade, mais devagar se o aparelho não der conta.
+  const hz = tier <= 0 ? 12 : tier === 1 ? 15 : 20;
+  const interval = Math.max(1000 / hz, detectMs * 1.2);
   faceGrace = Math.max(600, interval * 2.5);
-  let gotFace = false;
   if (debugFace) {
-    Object.assign(raw, debugFace);
-    gotFace = true;
-  } else if (tracker && camStream && video.readyState >= 2 && now - lastDetect >= interval) {
+    filter.apply(debugFace, tgt, dt);
+    faceAt = now;
+  } else if (tracker && camStream && video.readyState >= 2 && !tracker.busy && now - lastDetect >= interval) {
     lastDetect = now;
     const vw = video.videoWidth || 640;
     const vh = video.videoHeight || 480;
-    const sw = tier <= 0 ? 224 : 288;
-    const sh = Math.round((sw * vh) / vw);
-    if (small.width !== sw || small.height !== sh) {
-      small.width = sw;
-      small.height = sh;
-    }
-    smallX.drawImage(video, 0, 0, sw, sh);
-    const a = performance.now();
-    try {
-      gotFace = tracker.detect(small, now, raw);
-    } catch (e) {
-      console.warn('[espelho] detect', e);
-    }
-    detectMs = detectMs * 0.8 + (performance.now() - a) * 0.2;
+    const sw = tier <= 0 ? 224 : 256;
+    tracker.submit(video, sw, Math.round((sw * vh) / vw), now);
   }
-  if (gotFace) {
-    faceAt = now;
-    filter.apply(raw, rig, debugFace ? dt : Math.max(dt, interval / 1000));
-  } else if (now - faceAt > faceGrace) {
+  if (faceAt > 0 && now - faceAt <= faceGrace) {
+    // entre detecções o Bloop desliza até o último alvo (60 fps, sem degraus)
+    for (const k of RIG_KEYS) rig[k] = approach(rig[k], tgt[k], FAST[k] ? 40 : 22, dt);
+  } else {
     // sem rosto: volta ao neutro, pisca sozinho e balança de leve (modo só microfone fica vivo)
     for (const k of RIG_KEYS) rig[k] = approach(rig[k], 0, 5, dt);
     rig.yaw = Math.sin(ts * 0.6) * 0.12;
@@ -603,6 +606,7 @@ function loop(now: number): void {
     const b = blinkT >= 0 ? Math.max(0, 1 - Math.abs(ts - blinkT - 0.08) / 0.08) : 0;
     rig.blinkL = rig.blinkR = b;
     filter.reset();
+    lastRes = 0;
   }
   if (camStream && tracker && session === 'on') {
     if (now - faceAt > 2500) {
@@ -623,7 +627,8 @@ function loop(now: number): void {
   bounce += bounceV * dt;
   frame.bounce = Math.max(-0.4, Math.min(0.6, bounce));
 
-  const drawEvery = tier <= 0 ? 1000 / 24 : 1000 / 30;
+  // o desenho é barato (Canvas 2D): todo quadro (60 fps); só o nível Mínimo fica em 30
+  const drawEvery = tier <= 0 ? 1000 / 30 : 0;
   if (now - lastDraw >= drawEvery - 2) {
     lastDraw = now;
     frame.t = ts;
