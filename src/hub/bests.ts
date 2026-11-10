@@ -39,6 +39,10 @@ export function bestLabel(id: string): string {
       const w = s.tycoon?.wins ?? 0;
       return w ? t('best.tycoon', 'Vitórias: {n}', { n: fmt(w) }) : '';
     }
+    case 'cor': {
+      const b = lsNum('bw-cor', 'bestAcc');
+      return b ? t('best.cor', 'Melhor precisão: {n}%', { n: b.toFixed(1).replace('.', t('cor.decimal', ',')) }) : '';
+    }
     default:
       return '';
   }
