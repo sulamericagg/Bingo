@@ -200,6 +200,7 @@ export class Chunk {
         const k = Math.round(z / RAIL_Z);
         if (Math.abs(z - k * RAIL_Z) < 9) continue;
         if (Math.hypot(x, z - 14) < 22) continue;
+        if (Math.abs(x) < 30 && z > 34 && z < 58) continue; // garagem inicial
         const cp = gen.nearestCamp(x, z, 30);
         if (cp && Math.hypot(x - cp.x, z - cp.z) < 26) continue;
         if (this.nt >= this.tstate.length) break;

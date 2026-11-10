@@ -12,7 +12,8 @@ import { addCoins } from '../../../core/economy';
 import { reportRun } from '../../../hub/registry';
 import type { QualitySettings, Tier } from '../../../core/quality';
 import { short } from '../data';
-import { lambert, toolModel, windTime } from '../fps/models';
+import { handTexture, lambert, myHandColors, toolModel, windTime } from '../fps/models';
+import { Forearm } from '../../../3d/common/hand';
 import { CH, WATER_Y, type Camp } from './gen';
 import { WBIOMES, WSPECIES, ORES } from './biomes';
 import type { Chunk } from './chunk';
@@ -204,6 +205,8 @@ export class WorldGame {
   carryVal = 0;
   private ore = 0;
   private hand: THREE.Group;
+  private handMesh: THREE.Mesh;
+  private arm: Forearm;
   private tools: THREE.Object3D[] = [];
   driving = -1;
   private camYawOff = 0;
@@ -331,6 +334,14 @@ export class WorldGame {
       this.tools.push(o);
     }
     tn.scale.setScalar(0.8);
+    // mão do Bloop + antebraço que sai da borda (mesmo estilo do 3D clássico)
+    const col = myHandColors();
+    const hm = new THREE.MeshBasicMaterial({ map: handTexture(col), transparent: true, alphaTest: 0.05, depthTest: false, toneMapped: false, fog: false });
+    this.handMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.24), hm);
+    this.handMesh.renderOrder = 11;
+    this.camera.add(this.handMesh);
+    this.arm = new Forearm(col, 1, 9, 0.05);
+    this.camera.add(this.arm.mesh);
 
     this.px = this.save.px;
     this.pz = this.save.pz;
@@ -631,14 +642,14 @@ export class WorldGame {
       this.tYaw = this.yaw = v.yaw - Math.PI / 2;
       this.tPitch = this.pitch = -0.15;
       v.speed = 0;
-      this.hand.visible = true;
+      this.hand.visible = this.handMesh.visible = this.arm.mesh.visible = true;
       this.hud.toast(t('floresta.w.exitVeh', 'Saiu do veículo'));
       return;
     }
     const v = this.nearVeh();
     if (!v) return;
     this.driving = this.vehs.indexOf(v);
-    this.hand.visible = false;
+    this.hand.visible = this.handMesh.visible = this.arm.mesh.visible = false;
     this.camYawOff = 0;
     // descarrega na caçamba o que estiver carregando
     if (this.carry && VDEFS[v.k].cap) {
@@ -904,6 +915,9 @@ export class WorldGame {
     if (!pet) {
       audio.tick(Math.floor(Math.random() * 3));
       tap('light');
+      this.shake = Math.max(this.shake, 0.09);
+      // lascas claras do miolo + casca
+      this.burst(5, p.x, p.y + 1.1, p.z, '#ffe2b0', 3.5);
     }
     if (nh <= 0) {
       this.chopHp.delete(k);
@@ -1091,6 +1105,13 @@ export class WorldGame {
     if (this.tool === 0) this.hand.rotation.set(-0.2 - arc * 1.3, 0.25, 0.15 + arc * 0.3);
     else if (this.tool === 1) this.hand.rotation.set(-0.9 - arc * 0.8, 0.1, 0.2);
     else this.hand.rotation.set(-0.3 - arc * 0.6, 0, 0.1);
+    // mão na empunhadura (um pouco acima da origem do cabo) + antebraço até fora do quadro
+    this.hand.updateMatrix();
+    _v.set(0, this.tool === 1 ? 0.05 : 0.02, 0).applyMatrix4(this.hand.matrix);
+    this.handMesh.position.copy(_v);
+    this.handMesh.visible = this.arm.mesh.visible = this.hand.visible;
+    _v.y -= 0.034;
+    this.arm.set(_v, this.camera, 0.72, 0);
   }
 
   /* ------------------------------ veículos ------------------------------ */
@@ -1428,10 +1449,12 @@ export class WorldGame {
         case 'stay':
           break;
         case 'follow': {
-          const a = (p.i - 1) * 0.8 + Math.PI;
-          const back = leader ? leader.yaw : -this.yaw - Math.PI / 2;
-          tx = lx + Math.cos(back + a) * (3 + p.i * 0.6);
-          tz = lz - Math.sin(back + a) * (3 + p.i * 0.6);
+          // atrás de você (ou do veículo), em leque
+          const bx = leader ? -Math.cos(leader.yaw) : Math.sin(this.yaw);
+          const bz = leader ? Math.sin(leader.yaw) : Math.cos(this.yaw);
+          const back = leader ? leader.m.len * 0.6 + 2.5 : 2.6;
+          tx = lx + bx * back + bz * (p.i - 1) * 1.6;
+          tz = lz + bz * back - bx * (p.i - 1) * 1.6;
           const d = Math.hypot(tx - p.x, tz - p.z);
           if (d > 60) {
             p.x = tx;
@@ -1753,8 +1776,8 @@ export class WorldGame {
     this.py = this.world.heightAt(x, z);
     if (this.driving >= 0) this.vehs[this.driving].y = Math.max(this.py, this.vehs[this.driving].k === VK.Boat ? WATER_Y : -99);
     for (const p of this.pets) {
-      p.x = x + p.i;
-      p.z = z + 2;
+      p.x = x + Math.sin(this.yaw) * 3 + (p.i - 1) * 1.5;
+      p.z = z + Math.cos(this.yaw) * 3;
     }
   }
   /** acha um ponto do bioma b perto de (x,z) */
