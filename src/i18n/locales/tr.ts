@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "Domates",
   "cozinha.ing.tortilla": "Tortilla",
   "cozinha.mode3dFps": "Birinci şahıs — tam kaos!",
-  "cozinha.mode3dFpsD": "Şef sensin: gerçek fizikle al, at ve pişir"
+  "cozinha.mode3dFpsD": "Şef sensin: gerçek fizikle al, at ve pişir",
+  "hub.loadBack": "Geri",
 } as Record<string, string>;

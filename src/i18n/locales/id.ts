@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "Tomat",
   "cozinha.ing.tortilla": "Tortila",
   "cozinha.mode3dFps": "Orang pertama — kacau total!",
-  "cozinha.mode3dFpsD": "Kamu kokinya: ambil, lempar, dan masak dengan fisika sungguhan"
+  "cozinha.mode3dFpsD": "Kamu kokinya: ambil, lempar, dan masak dengan fisika sungguhan",
+  "hub.loadBack": "Kembali",
 } as Record<string, string>;

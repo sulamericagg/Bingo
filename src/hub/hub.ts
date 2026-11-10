@@ -157,25 +157,44 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   menu.classList.remove('on');
   host.classList.add('on');
   host.style.setProperty('--gh-accent', def.theme.accent);
-  hostRoot.innerHTML = `<div class="gh-loading"><i></i><i></i><i></i></div>`;
+  // O jogo entra na tela JÁ (alguns mostram uma escolha antes de terminar de abrir, ex.: 2D/3D);
+  // o carregamento fica por cima só até o jogo desenhar algo, com botão de voltar depois de 4 s.
+  const root = document.createElement('div');
+  root.className = 'gh-game';
+  const loader = document.createElement('div');
+  loader.className = 'gh-loading';
+  loader.innerHTML = `<i></i><i></i><i></i><button class="gh-load-back" hidden>${t('hub.loadBack', 'Voltar')}</button>`;
+  hostRoot.innerHTML = '';
+  hostRoot.append(root, loader);
+  const hideLoader = () => loader.remove();
+  const mo = new MutationObserver(() => {
+    if (root.childElementCount) hideLoader();
+  });
+  mo.observe(root, { childList: true, subtree: true });
+  const backTimer = window.setTimeout(() => {
+    const b = loader.querySelector<HTMLButtonElement>('.gh-load-back');
+    if (b) {
+      b.hidden = false;
+      b.onclick = () => closeHost();
+    }
+  }, 4000);
   syncOrbit();
   try {
-    const root = document.createElement('div');
-    root.className = 'gh-game';
     const h = await def.launch(root, () => closeHost());
     if (!hostActive || hostDef !== def) {
       h.destroy();
       return;
     }
     handle = h;
-    hostRoot.innerHTML = '';
-    hostRoot.appendChild(root);
+    hideLoader();
   } catch (e) {
     console.warn('[hub] falha ao abrir', def.id, e);
     closeHost();
     toast(t('hub.launchFail', 'Não deu para abrir o jogo agora'));
   } finally {
     launching = false;
+    mo.disconnect();
+    clearTimeout(backTimer);
   }
 }
 

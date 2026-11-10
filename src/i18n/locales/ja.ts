@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "トマト",
   "cozinha.ing.tortilla": "トルティーヤ",
   "cozinha.mode3dFps": "一人称視点 — 大さわぎ！",
-  "cozinha.mode3dFpsD": "きみがシェフ：本物の物理でつかんで、なげて、料理しよう"
+  "cozinha.mode3dFpsD": "きみがシェフ：本物の物理でつかんで、なげて、料理しよう",
+  "hub.loadBack": "もどる",
 } as Record<string, string>;

@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "番茄",
   "cozinha.ing.tortilla": "玉米饼",
   "cozinha.mode3dFps": "第一人称 — 超级混乱!",
-  "cozinha.mode3dFpsD": "你就是大厨：用真实物理去拿、扔、做菜"
+  "cozinha.mode3dFpsD": "你就是大厨：用真实物理去拿、扔、做菜",
+  "hub.loadBack": "返回",
 } as Record<string, string>;

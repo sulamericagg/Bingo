@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "토마토",
   "cozinha.ing.tortilla": "토르티야",
   "cozinha.mode3dFps": "1인칭 — 완전 대혼란!",
-  "cozinha.mode3dFpsD": "네가 셰프야: 진짜 물리로 잡고, 던지고, 요리해"
+  "cozinha.mode3dFpsD": "네가 셰프야: 진짜 물리로 잡고, 던지고, 요리해",
+  "hub.loadBack": "뒤로",
 } as Record<string, string>;

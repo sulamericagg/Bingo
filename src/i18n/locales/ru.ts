@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "Помидор",
   "cozinha.ing.tortilla": "Тортилья",
   "cozinha.mode3dFps": "От первого лица — полный хаос!",
-  "cozinha.mode3dFpsD": "Ты шеф: хватай, кидай и готовь с настоящей физикой"
+  "cozinha.mode3dFpsD": "Ты шеф: хватай, кидай и готовь с настоящей физикой",
+  "hub.loadBack": "Назад",
 } as Record<string, string>;

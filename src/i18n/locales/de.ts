@@ -2993,5 +2993,6 @@ export default {
   "cozinha.ing.tomate": "Tomate",
   "cozinha.ing.tortilla": "Tortilla",
   "cozinha.mode3dFps": "Ego-Perspektive — totales Chaos!",
-  "cozinha.mode3dFpsD": "Du bist der Koch: nehmen, werfen und kochen mit echter Physik"
+  "cozinha.mode3dFpsD": "Du bist der Koch: nehmen, werfen und kochen mit echter Physik",
+  "hub.loadBack": "Zurück",
 } as Record<string, string>;
