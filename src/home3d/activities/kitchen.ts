@@ -505,7 +505,7 @@ class Prep {
       {
         id: 'blender',
         hit: (ray) => hitBox(ray, this.rig.root, lMin, lMax),
-        label: () => t('act.lbl.blender', 'Liquidificador') + (this.blend.length ? ' · ' + t('act.lbl.items', '{n} coisas', { n: this.blend.length }) : ' · ' + t('act.lbl.empty', 'vazio')),
+        label: () => t('act.lbl.blender', 'Liquidificador') + (this.blend.length ? ' · ' + t('act.lbl.items', '{n} coisas', { n: this.blend.length }) : ' · ' + t('act.lbl.emptyM', 'vazio')),
         acts: (h) => (!h && this.blend.length && this.blending <= 0 ? [{ id: 'k-blend', label: t('act.btn.blend', 'BATER'), icon: 'rotate', size: 'big' }] : []),
         tap: (id) => (id === 'k-blend' ? (this.startBlend(), true) : false),
         place: (p) => (k.ctx.props.isFood(p) ? this.rig.world(this.blendL.x, this.blendL.y + 0.55, this.blendL.z) : null),

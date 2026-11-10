@@ -132,34 +132,34 @@ const R = (id: string, name: () => string, hint: () => string, test: (L: Bit[]) 
 
 /** ordem importa: o primeiro que bater ganha (do mais específico ao mais geral) */
 export const RECIPES: Recipe[] = [
-  R('choccake', () => t('act.rec.choccake', 'Bolo de chocolate'), () => t('act.hint.choccake', 'Forno: farinha, ovo e chocolate'), (L) => made(L, 'choccake')),
-  R('cake', () => t('act.rec.cake', 'Bolo fofinho'), () => t('act.hint.cake', 'Forno: farinha e ovo (leite ajuda)'), (L) => made(L, 'cake')),
-  R('pizza', () => t('act.rec.pizza', 'Pizza'), () => t('act.hint.pizza', 'Forno: farinha, queijo e tomate'), (L) => made(L, 'pizza')),
-  R('pancake', () => t('act.rec.pancake', 'Panqueca'), () => t('act.hint.pancake', 'Frigideira: farinha, ovo e leite'), (L) => made(L, 'pancake')),
-  R('popcorn', () => t('act.rec.popcorn', 'Pipoca'), () => t('act.hint.popcorn', 'Milho na frigideira quente... cuidado!'), (L) => made(L, 'popcorn')),
-  R('smoothie', () => t('act.rec.smoothie', 'Vitamina'), () => t('act.hint.smoothie', 'Liquidificador: fruta com leite'), (L) => L.some((b) => b.m.includes('blend')) && has(L, 'leite') && kinds(L, 'fruit') >= 1),
-  R('juice', () => t('act.rec.juice', 'Suco natural'), () => t('act.hint.juice', 'Liquidificador: só frutas'), (L) => L.some((b) => b.m.includes('blend')) && kinds(L, 'fruit') >= 1),
-  R('fruitsalad', () => t('act.rec.fruitsalad', 'Salada de frutas'), () => t('act.hint.fruitsalad', 'Duas frutas cortadas no prato'), (L) => kinds(L, 'fruit', (b) => b.cook < 0.3 && b.cut > 0) >= 2),
-  R('burger', () => t('act.rec.burger', 'Hambúrguer'), () => t('act.hint.burger', 'Pão + carne frita'), (L) => has(L, 'pao') && has(L, 'carne', (b) => cooked(b, 'fry'))),
-  R('grilledcheese', () => t('act.rec.grilledcheese', 'Misto quente'), () => t('act.hint.grilledcheese', 'Pão e queijo na frigideira'), (L) => has(L, 'pao') && has(L, 'queijo') && L.some((b) => (b.ing === 'pao' || b.ing === 'queijo') && cooked(b, 'fry'))),
-  R('sandwich', () => t('act.rec.sandwich', 'Sanduíche'), () => t('act.hint.sandwich', 'Pão com recheio no prato'), (L) => has(L, 'pao') && L.some((b) => ['queijo', 'alface', 'tomate', 'carne', 'tofu', 'ovo'].includes(b.ing))),
-  R('omelet', () => t('act.rec.omelet', 'Omelete'), () => t('act.hint.omelet', 'Ovo + legume ou queijo na frigideira'), (L) => (made(L, 'friedegg') || has(L, 'ovo', (b) => cooked(b, 'fry'))) && L.some((b) => !b.made && b.ing !== 'ovo' && cooked(b, 'fry'))),
-  R('friedegg', () => t('act.rec.friedegg', 'Ovo frito'), () => t('act.hint.friedegg', 'Quebre um ovo na frigideira'), (L) => made(L, 'friedegg') || has(L, 'ovo', (b) => cooked(b, 'fry'))),
-  R('sugo', () => t('act.rec.sugo', 'Macarrão ao sugo'), () => t('act.hint.sugo', 'Panela: macarrão e tomate'), (L) => has(L, 'macarrao', (b) => cooked(b, 'boil')) && has(L, 'tomate')),
-  R('pasta', () => t('act.rec.pasta', 'Macarronada'), () => t('act.hint.pasta', 'Macarrão na panela'), (L) => has(L, 'macarrao', (b) => cooked(b, 'boil'))),
-  R('mash', () => t('act.rec.mash', 'Purê de batata'), () => t('act.hint.mash', 'Panela: batata e leite'), (L) => has(L, 'batata', (b) => cooked(b, 'boil')) && (has(L, 'leite') || has(L, 'queijo'))),
-  R('fries', () => t('act.rec.fries', 'Batata frita'), () => t('act.hint.fries', 'Batata cortada na frigideira'), (L) => has(L, 'batata', (b) => b.cut > 0 && cooked(b, 'fry'))),
-  R('ricevegs', () => t('act.rec.ricevegs', 'Arroz com legumes'), () => t('act.hint.ricevegs', 'Panela: arroz e legumes'), (L) => has(L, 'arroz', (b) => cooked(b)) && kinds(L, 'veg', (b) => cooked(b)) >= 1),
-  R('soup', () => t('act.rec.soup', 'Sopa de legumes'), () => t('act.hint.soup', 'Panela: dois legumes ou mais'), (L) => kinds(L, 'veg', (b) => cooked(b, 'boil')) >= 2),
-  R('rice', () => t('act.rec.rice', 'Arroz soltinho'), () => t('act.hint.rice', 'Arroz na panela'), (L) => has(L, 'arroz', (b) => cooked(b, 'boil'))),
-  R('steakonion', () => t('act.rec.steakonion', 'Bife acebolado'), () => t('act.hint.steakonion', 'Frigideira: carne e cebola'), (L) => has(L, 'carne', (b) => cooked(b, 'fry')) && has(L, 'cebola', (b) => cooked(b))),
-  R('steak', () => t('act.rec.steak', 'Bife'), () => t('act.hint.steak', 'Carne na frigideira'), (L) => has(L, 'carne', (b) => cooked(b))),
-  R('tofu', () => t('act.rec.tofu', 'Tofu grelhado'), () => t('act.hint.tofu', 'Tofu na frigideira'), (L) => has(L, 'tofu', (b) => cooked(b))),
-  R('mushrooms', () => t('act.rec.mushrooms', 'Cogumelos salteados'), () => t('act.hint.mushrooms', 'Cogumelos na frigideira'), (L) => has(L, 'cogumelo', (b) => cooked(b, 'fry'))),
-  R('stirfry', () => t('act.rec.stirfry', 'Legumes salteados'), () => t('act.hint.stirfry', 'Frigideira: dois legumes ou mais'), (L) => kinds(L, 'veg', (b) => cooked(b, 'fry')) >= 2),
-  R('corn', () => t('act.rec.corn', 'Milho cozido'), () => t('act.hint.corn', 'Milho na panela'), (L) => has(L, 'milho', (b) => cooked(b, 'boil'))),
-  R('salad', () => t('act.rec.salad', 'Salada'), () => t('act.hint.salad', 'Dois legumes crus e cortados'), (L) => kinds(L, 'veg', (b) => b.cook < 0.3) >= 2 && L.some((b) => b.cut > 0 && b.cook < 0.3)),
-  R('toast', () => t('act.rec.toast', 'Torrada'), () => t('act.hint.toast', 'Pão na frigideira'), (L) => has(L, 'pao', (b) => cooked(b))),
+  R('choccake', () => t('act.rec.choccake', 'Bolo de chocolate'), () => t('act.rh.choccake', 'Forno: farinha, ovo e chocolate'), (L) => made(L, 'choccake')),
+  R('cake', () => t('act.rec.cake', 'Bolo fofinho'), () => t('act.rh.cake', 'Forno: farinha e ovo (leite ajuda)'), (L) => made(L, 'cake')),
+  R('pizza', () => t('act.rec.pizza', 'Pizza'), () => t('act.rh.pizza', 'Forno: farinha, queijo e tomate'), (L) => made(L, 'pizza')),
+  R('pancake', () => t('act.rec.pancake', 'Panqueca'), () => t('act.rh.pancake', 'Frigideira: farinha, ovo e leite'), (L) => made(L, 'pancake')),
+  R('popcorn', () => t('act.rec.popcorn', 'Pipoca'), () => t('act.rh.popcorn', 'Milho na frigideira quente... cuidado!'), (L) => made(L, 'popcorn')),
+  R('smoothie', () => t('act.rec.smoothie', 'Vitamina'), () => t('act.rh.smoothie', 'Liquidificador: fruta com leite'), (L) => L.some((b) => b.m.includes('blend')) && has(L, 'leite') && kinds(L, 'fruit') >= 1),
+  R('juice', () => t('act.rec.juice', 'Suco natural'), () => t('act.rh.juice', 'Liquidificador: só frutas'), (L) => L.some((b) => b.m.includes('blend')) && kinds(L, 'fruit') >= 1),
+  R('fruitsalad', () => t('act.rec.fruitsalad', 'Salada de frutas'), () => t('act.rh.fruitsalad', 'Duas frutas cortadas no prato'), (L) => kinds(L, 'fruit', (b) => b.cook < 0.3 && b.cut > 0) >= 2),
+  R('burger', () => t('act.rec.burger', 'Hambúrguer'), () => t('act.rh.burger', 'Pão + carne frita'), (L) => has(L, 'pao') && has(L, 'carne', (b) => cooked(b, 'fry'))),
+  R('grilledcheese', () => t('act.rec.grilledcheese', 'Misto quente'), () => t('act.rh.grilledcheese', 'Pão e queijo na frigideira'), (L) => has(L, 'pao') && has(L, 'queijo') && L.some((b) => (b.ing === 'pao' || b.ing === 'queijo') && cooked(b, 'fry'))),
+  R('sandwich', () => t('act.rec.sandwich', 'Sanduíche'), () => t('act.rh.sandwich', 'Pão com recheio no prato'), (L) => has(L, 'pao') && L.some((b) => ['queijo', 'alface', 'tomate', 'carne', 'tofu', 'ovo'].includes(b.ing))),
+  R('omelet', () => t('act.rec.omelet', 'Omelete'), () => t('act.rh.omelet', 'Ovo + legume ou queijo na frigideira'), (L) => (made(L, 'friedegg') || has(L, 'ovo', (b) => cooked(b, 'fry'))) && L.some((b) => !b.made && b.ing !== 'ovo' && cooked(b, 'fry'))),
+  R('friedegg', () => t('act.rec.friedegg', 'Ovo frito'), () => t('act.rh.friedegg', 'Quebre um ovo na frigideira'), (L) => made(L, 'friedegg') || has(L, 'ovo', (b) => cooked(b, 'fry'))),
+  R('sugo', () => t('act.rec.sugo', 'Macarrão ao sugo'), () => t('act.rh.sugo', 'Panela: macarrão e tomate'), (L) => has(L, 'macarrao', (b) => cooked(b, 'boil')) && has(L, 'tomate')),
+  R('pasta', () => t('act.rec.pasta', 'Macarronada'), () => t('act.rh.pasta', 'Macarrão na panela'), (L) => has(L, 'macarrao', (b) => cooked(b, 'boil'))),
+  R('mash', () => t('act.rec.mash', 'Purê de batata'), () => t('act.rh.mash', 'Panela: batata e leite'), (L) => has(L, 'batata', (b) => cooked(b, 'boil')) && (has(L, 'leite') || has(L, 'queijo'))),
+  R('fries', () => t('act.rec.fries', 'Batata frita'), () => t('act.rh.fries', 'Batata cortada na frigideira'), (L) => has(L, 'batata', (b) => b.cut > 0 && cooked(b, 'fry'))),
+  R('ricevegs', () => t('act.rec.ricevegs', 'Arroz com legumes'), () => t('act.rh.ricevegs', 'Panela: arroz e legumes'), (L) => has(L, 'arroz', (b) => cooked(b)) && kinds(L, 'veg', (b) => cooked(b)) >= 1),
+  R('soup', () => t('act.rec.soup', 'Sopa de legumes'), () => t('act.rh.soup', 'Panela: dois legumes ou mais'), (L) => kinds(L, 'veg', (b) => cooked(b, 'boil')) >= 2),
+  R('rice', () => t('act.rec.rice', 'Arroz soltinho'), () => t('act.rh.rice', 'Arroz na panela'), (L) => has(L, 'arroz', (b) => cooked(b, 'boil'))),
+  R('steakonion', () => t('act.rec.steakonion', 'Bife acebolado'), () => t('act.rh.steakonion', 'Frigideira: carne e cebola'), (L) => has(L, 'carne', (b) => cooked(b, 'fry')) && has(L, 'cebola', (b) => cooked(b))),
+  R('steak', () => t('act.rec.steak', 'Bife'), () => t('act.rh.steak', 'Carne na frigideira'), (L) => has(L, 'carne', (b) => cooked(b))),
+  R('tofu', () => t('act.rec.tofu', 'Tofu grelhado'), () => t('act.rh.tofu', 'Tofu na frigideira'), (L) => has(L, 'tofu', (b) => cooked(b))),
+  R('mushrooms', () => t('act.rec.mushrooms', 'Cogumelos salteados'), () => t('act.rh.mushrooms', 'Cogumelos na frigideira'), (L) => has(L, 'cogumelo', (b) => cooked(b, 'fry'))),
+  R('stirfry', () => t('act.rec.stirfry', 'Legumes salteados'), () => t('act.rh.stirfry', 'Frigideira: dois legumes ou mais'), (L) => kinds(L, 'veg', (b) => cooked(b, 'fry')) >= 2),
+  R('corn', () => t('act.rec.corn', 'Milho cozido'), () => t('act.rh.corn', 'Milho na panela'), (L) => has(L, 'milho', (b) => cooked(b, 'boil'))),
+  R('salad', () => t('act.rec.salad', 'Salada'), () => t('act.rh.salad', 'Dois legumes crus e cortados'), (L) => kinds(L, 'veg', (b) => b.cook < 0.3) >= 2 && L.some((b) => b.cut > 0 && b.cook < 0.3)),
+  R('toast', () => t('act.rec.toast', 'Torrada'), () => t('act.rh.toast', 'Pão na frigideira'), (L) => has(L, 'pao', (b) => cooked(b))),
 ];
 export const RECIPE = new Map(RECIPES.map((r) => [r.id, r]));
 
@@ -191,7 +191,7 @@ export function funnyName(L: Bit[]): string {
   const ad = adj(main);
   if (L.every(isBurnt)) return t('act.funny.charcoal', 'Carvão de {a}', { a });
   if (!second) {
-    const pool = [t('act.funny.goo', 'Gororoba de {a} {adj}', { a, adj: ad }), t('act.funny.lonely', '{A} {adj} solitári{o}', { A: bitName(main), adj: ad, o: ING.get(main.ing)?.g === 'f' ? 'a' : 'o' }), t('act.funny.chef', 'Surpresa do chef: {a} {adj}', { a, adj: ad })];
+    const pool = [t('act.funny.goo', 'Gororoba de {a} {adj}', { a, adj: ad }), t('act.funny.lonely', 'Só {a} {adj} e mais nada', { a, adj: ad }), t('act.funny.chef', 'Surpresa do chef: {a} {adj}', { a, adj: ad })];
     return pool[h % pool.length];
   }
   const b = lc(bitName(second));
