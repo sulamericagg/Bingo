@@ -3081,3 +3081,45 @@ button {
     display: none;
   }
 }
+
+/* ---------- avisos compactos (feedback: mensagens não podem tapar a visão) ---------- */
+.biome-banner {
+  top: calc(88px + var(--safe-top));
+  padding: 4px 14px;
+  font-size: 15px;
+  border-radius: 999px;
+}
+.biome-banner.show {
+  animation-duration: 1.5s;
+}
+.speed-toast {
+  top: calc(120px + var(--safe-top));
+  font-size: 12px;
+  padding: 3px 10px 3px 8px;
+}
+.tip-card {
+  top: calc(120px + var(--safe-top));
+  width: min(300px, calc(100% - 32px));
+  gap: 8px;
+  padding: 7px 10px 9px;
+  border-radius: 14px;
+  align-items: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.tip-card .tip-art svg {
+  width: 30px;
+  height: 30px;
+}
+.tip-card .tip-warn svg {
+  width: 16px;
+  height: 16px;
+}
+.tip-card .tip-text b {
+  font-size: 14px;
+}
+.tip-card .tip-text p {
+  font-size: 12px;
+}
+.tip-card .tip-hint {
+  display: none;
+}

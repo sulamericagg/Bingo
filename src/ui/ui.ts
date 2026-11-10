@@ -29,6 +29,8 @@ import {
 } from '../core/economy';
 import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
+import { renderControlsSettings } from './touch';
+import { notify } from './notify';
 import { isNative } from '../core/platform';
 import { dayNumber, persist, save, type Mission } from '../core/storage';
 import type { Game, Loadout, RunResult } from '../game/game';
@@ -87,7 +89,6 @@ export class UI {
   private coins: RunCoins | null = null;
   private reviveTimer = 0;
   private doubled = false;
-  private toastTimer = 0;
   private tipTimer = 0;
   private speedTimer = 0;
   private railTimer = 0;
@@ -889,6 +890,8 @@ export class UI {
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.checked = !!save[inp.dataset.setting as 'sound'];
     });
+    const cs = document.getElementById('controls-settings');
+    if (cs) renderControlsSettings(cs);
     this.online.renderProfile();
   }
 
@@ -911,12 +914,9 @@ export class UI {
 
   /* ============================== feedback ============================== */
 
+  /** Aviso compacto no topo (src/ui/notify.ts). */
   toast(msg: string, ico?: IconName): void {
-    const el = $('#toast');
-    el.innerHTML = (ico ? icon(ico, { size: 24 }) : '') + `<span>${esc(msg)}</span>`;
-    el.classList.add('show');
-    clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => el.classList.remove('show'), 2400);
+    notify(msg, { icon: ico });
   }
 
   /** Recompensa voando: ícone + número (aceita texto puro por compatibilidade). */
