@@ -1,5 +1,11 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.casa.name": "マイホーム",
+  "intro3d.casa.tag": "好きに飾って友だちを招こう！",
+  "intro3d.pet.name": "マイペット",
+  "intro3d.pet.tag": "お世話して、遊んで、いっぱいかわいがろう！",
+  "intro3d.skip": "タップでスキップ",
+  "settings.intro": "ゲーム開始アニメーション",
   "acc.conflict": "別のを選んでね",
   "acc.noHandle": "@を選ぼう",
   "acc.pending": "確認待ち",

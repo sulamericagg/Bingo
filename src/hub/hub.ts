@@ -23,7 +23,7 @@ import { renderSkinPreview } from '../game/preview';
 import { skinById } from '../game/skins';
 import { icon, iconDataUri, type IconName } from '../ui/icons';
 import { bestLabel } from './bests';
-import { introEnabled, setIntroEnabled, startIntro } from './intro-hook';
+import { introEnabled, panelIntro, setIntroEnabled, startIntro } from './intro-hook';
 import { listGames, listPanels, type HubTheme, type MiniGameDef, type MiniGameHandle } from './registry';
 
 /* ============================== tipos públicos ============================== */
@@ -148,6 +148,13 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   haptics.tap('medium');
   remember(def.id);
   if (inlineGames.has(def.id)) {
+    // jogo embutido (Orbit): a intro cobre a tela e o jogo começa quando ela termina
+    const intro = startIntro(document.body, def, opts.getTier(), true);
+    if (intro) {
+      launching = true;
+      await intro.done;
+      launching = false;
+    }
     await def.launch(host, () => {});
     return;
   }
@@ -705,6 +712,9 @@ function buildNav(): void {
       const p = listPanels().find((x) => x.id === b.dataset.panel);
       if (!p) return;
       haptics.tap('light');
+      // Bichinho / Casa: a tela abre por baixo enquanto a intro toca por cima
+      const pi = panelIntro(p.id);
+      if (pi) startIntro(document.body, pi, opts.getTier(), true);
       p.open();
     };
   });

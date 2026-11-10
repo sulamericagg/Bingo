@@ -38,7 +38,7 @@ export function orbit(k: Kit): Shot {
     }
   });
   // cinturão de asteroides
-  const N = k.hi ? 46 : 24;
+  const N = k.hi ? 36 : 20;
   const ast = new THREE.InstancedMesh(k.ownGeo(new THREE.DodecahedronGeometry(0.25, 0)), k.solid('#b79cff', { flat: true }), N);
   k.scene.add(ast);
   const aD = Array.from({ length: N }, (_, i) => ({ a: (i / N) * Math.PI * 2, r: 9 + Math.sin(i * 7.1) * 2.5, y: Math.sin(i * 3.3) * 1.6, s: 0.5 + ((i * 37) % 10) / 10 }));
@@ -54,18 +54,18 @@ export function orbit(k: Kit): Shot {
 
   const path = k.path([
     { t: 0, p: [-3.5, 2.2, 7.5], l: [0, 2.2, 0], fov: 44 },
-    { t: 1.5, p: [3, 4.5, 9], l: [6, 3.2, -2], fov: 50 },
-    { t: 3.0, p: [11, 3.4, 9.5], l: [13.5, 2.4, -1] },
-    { t: 4.8, p: [12.2, 4.4, 11.2], l: [13.6, 2.2, -1.2], fov: 46 },
+    { t: 1.5, p: [3, 4.8, 9.5], l: [6, 4.2, -2], fov: 50 },
+    { t: 3.0, p: [11, 3.8, 8.5], l: [13.5, 2.6, -1] },
+    { t: 5.2, p: [12.8, 4.2, 6.8], l: [13.9, 2.0, -1.2], fov: 46 },
   ]);
   return {
-    dur: 3.3,
+    dur: 3.6,
     update(t, dt) {
       for (const pl of planets) pl.m.rotation.y += pl.spin * dt;
       for (let i = 0; i < N; i++) {
         const d = aD[i];
         const a = d.a + t * 0.12;
-        setInst(ast, i, 7 + Math.cos(a) * d.r * 1.3, d.y + 1, -3 + Math.sin(a) * d.r * 0.7, t * d.s, t * d.s * 0.7, 0, d.s);
+        setInst(ast, i, 7 + Math.cos(a) * d.r * 1.4, d.y + 1, -7 + Math.sin(a) * d.r * 0.6, t * d.s, t * d.s * 0.7, 0, d.s);
       }
       ast.instanceMatrix.needsUpdate = true;
       let sq = 0;

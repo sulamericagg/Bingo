@@ -1,5 +1,11 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.casa.name": "我的家",
+  "intro3d.casa.tag": "按你的风格装饰，招待朋友！",
+  "intro3d.pet.name": "我的宠物",
+  "intro3d.pet.tag": "照顾它、陪它玩、给它满满的爱！",
+  "intro3d.skip": "点击跳过",
+  "settings.intro": "游戏开场动画",
   "acc.conflict": "换一个",
   "acc.noHandle": "选择你的 @",
   "acc.pending": "待确认",

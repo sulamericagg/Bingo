@@ -1,5 +1,11 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.casa.name": "Mi Casa",
+  "intro3d.casa.tag": "¡Decora a tu manera y recibe a tus amigos!",
+  "intro3d.pet.name": "Mi Mascota",
+  "intro3d.pet.tag": "¡Cuida, juega y llénala de cariño!",
+  "intro3d.skip": "Toca para saltar",
+  "settings.intro": "Animación de apertura de los juegos",
   "acc.conflict": "elige otro",
   "acc.noHandle": "Elige tu @",
   "acc.pending": "pendiente",
