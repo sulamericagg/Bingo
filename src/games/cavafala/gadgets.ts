@@ -71,7 +71,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'ponte', kind: 'struct', beh: 'bridge', main: '#b07a40', acc: '#ffd34a', starter: true,
     name: () => t('cavafala.g.ponte', 'Ponte'), desc: () => t('cavafala.gd.ponte', 'Atravessa buracos e ravinas'),
-    words: ['ponte', 'bridge', 'puente', 'passarela', 'pinguela', 'pontezinha'],
+    words: ['ponte', 'bridge', 'puente', 'puente', 'passarela', 'pinguela', 'pontezinha'],
     cost: { [M.Terra]: 30, [M.Pedra]: 8 },
     parts: () => {
       const p: Part[] = [];
@@ -86,7 +86,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'escada', kind: 'struct', beh: 'stairs', main: '#c8714a', acc: '#ffffff', starter: true,
     name: () => t('cavafala.g.escada', 'Escada'), desc: () => t('cavafala.gd.escada', 'Sobe em lugares altos'),
-    words: ['escada', 'stairs', 'ladder', 'escadaria', 'degraus', 'degrau', 'escalera', 'staircase'],
+    words: ['escada', 'stairs', 'escalera', 'ladder', 'escadaria', 'degraus', 'degrau', 'escalera', 'staircase'],
     cost: { [M.Terra]: 22, [M.Argila]: 8 },
     parts: () => {
       const p: Part[] = [];
@@ -105,7 +105,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'trampolim', kind: 'struct', beh: 'trampoline', main: '#3ab0ff', acc: '#ff4f6a', starter: true, arena: true,
     name: () => t('cavafala.g.trampolim', 'Trampolim'), desc: () => t('cavafala.gd.trampolim', 'Pula muuuito alto'),
-    words: ['trampolim', 'trampoline', 'cama elastica', 'pula pula', 'trampolin', 'bounce pad', 'pulapula'],
+    words: ['trampolim', 'trampoline', 'trampolin', 'cama elastica', 'pula pula', 'trampolin', 'bounce pad', 'pulapula'],
     cost: { [M.Argila]: 14, [M.Terra]: 10 },
     parts: () => {
       const p: Part[] = [T(1.1, 0.12, 0, 0.55, -1.6, 'acc', [H, 0, 0]), Cy(1.02, 1.02, 0.06, 0, 0.55, -1.6, 'main')];
@@ -130,7 +130,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'bloco', kind: 'struct', beh: 'block', main: '#9a6a3f', acc: '#ffffff', terrain: true,
     name: () => t('cavafala.g.bloco', 'Bloco'), desc: () => t('cavafala.gd.bloco', 'Um bloco de terra (devolve material ao mapa)'),
-    words: ['bloco', 'cubo', 'block', 'cube', 'tijolo', 'brick', 'caixa', 'box', 'pedregulho'],
+    words: ['bloco', 'cubo', 'bloque', 'block', 'cube', 'tijolo', 'brick', 'caixa', 'box', 'pedregulho'],
     cost: { [M.Terra]: 12 },
     parts: () => [B(2, 2, 2, 0, 1, -2.2, 'main')],
   },
@@ -186,21 +186,21 @@ export const GADGETS: GDef[] = [
   {
     id: 'abrigo', kind: 'struct', beh: 'shelter', main: '#ffd7a8', acc: '#e8504a',
     name: () => t('cavafala.g.abrigo', 'Abrigo'), desc: () => t('cavafala.gd.abrigo', 'Uma casinha para se proteger'),
-    words: ['abrigo', 'casinha', 'cabana', 'shelter', 'barraca', 'tenda', 'hut', 'iglu', 'igloo', 'cabaninha'],
+    words: ['abrigo', 'casinha', 'refugio', 'cabana', 'shelter', 'barraca', 'tenda', 'hut', 'iglu', 'igloo', 'cabaninha'],
     cost: { [M.Terra]: 24, [M.Argila]: 10, [M.Pedra]: 6 },
     parts: () => [B(0.25, 2, 3, -1.4, 1, -2.5, 'main'), B(0.25, 2, 3, 1.4, 1, -2.5, 'main'), B(3, 2, 0.25, 0, 1, -3.9, 'main'), B(3.4, 0.3, 3.6, 0, 2.15, -2.5, 'acc', [0, 0, 0]), K(2.2, 1.2, 0, 2.9, -2.5, 'acc', [0, PI / 4, 0])],
   },
   {
     id: 'poste', kind: 'struct', beh: 'lamp', main: '#3a2a5a', acc: '#fff3b0',
     name: () => t('cavafala.g.poste', 'Poste de Luz'), desc: () => t('cavafala.gd.poste', 'Ilumina cavernas e a noite'),
-    words: ['poste', 'poste de luz', 'lamp post', 'lampiao', 'luminaria', 'street lamp', 'postinho'],
+    words: ['poste', 'poste de luz', 'farola', 'lamp post', 'lampiao', 'luminaria', 'street lamp', 'postinho'],
     cost: { [M.Pedra]: 8, [M.Cristal]: 2 },
     parts: () => [Cy(0.08, 0.12, 3, 0, 1.5, -2, 'main'), Cy(0.3, 0.4, 0.2, 0, 0.1, -2, 'main'), S(0.3, 0, 3.2, -2, 'acc', undefined, { glow: 1.2 }), K(0.4, 0.3, 0, 3.55, -2, 'main')],
   },
   {
     id: 'elevador', kind: 'struct', beh: 'elevator', main: '#ffd34a', acc: '#3a2a5a',
     name: () => t('cavafala.g.elevador', 'Elevador'), desc: () => t('cavafala.gd.elevador', 'Plataforma que sobe e desce'),
-    words: ['elevador', 'elevator', 'lift', 'sobe desce', 'plataforma que sobe', 'ascensor'],
+    words: ['elevador', 'elevator', 'ascensor', 'lift', 'sobe desce', 'plataforma que sobe', 'ascensor'],
     cost: { [M.Pedra]: 12, [M.Argila]: 8 },
     parts: () => [B(2.2, 0.25, 2.2, 0, 0.15, -2.2, 'main'), B(0.2, 6, 0.2, -1.2, 3, -3.3, 'acc'), B(0.2, 6, 0.2, 1.2, 3, -3.3, 'acc'), B(2.6, 0.2, 0.2, 0, 6, -3.3, 'acc')],
   },
@@ -219,7 +219,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'boneco', kind: 'struct', beh: 'decoy', main: '#ffffff', acc: '#ff8a3a', arena: true,
     name: () => t('cavafala.g.boneco', 'Boneco Isca'), desc: () => t('cavafala.gd.boneco', 'Engana os rivais: eles atacam o boneco'),
-    words: ['boneco', 'espantalho', 'decoy', 'isca', 'dummy', 'boneco de neve', 'snowman', 'sosia'],
+    words: ['boneco', 'espantalho', 'muneco', 'decoy', 'isca', 'dummy', 'boneco de neve', 'snowman', 'sosia'],
     cost: { [M.Terra]: 8, [M.Grama]: 6 },
     parts: () => [S(0.55, 0, 0.55, -2, 'main'), S(0.4, 0, 1.35, -2, 'main'), S(0.08, -0.13, 1.45, -2.35, 'dark'), S(0.08, 0.13, 1.45, -2.35, 'dark'), K(0.07, 0.35, 0, 1.33, -2.5, 'acc', [-H, 0, 0])],
   },
@@ -255,28 +255,28 @@ export const GADGETS: GDef[] = [
   {
     id: 'broca', kind: 'tool', beh: 'drill', main: '#ffcc33', acc: '#3a2a5a', starter: true,
     name: () => t('cavafala.g.broca', 'Broca Turbo'), desc: () => t('cavafala.gd.broca', 'Cava mais rápido e fura pedra'),
-    words: ['broca turbo', 'broca', 'furadeira', 'perfuratriz', 'drill', 'turbo drill', 'super broca', 'britadeira', 'perfuradora'],
+    words: ['broca turbo', 'broca', 'taladro', 'taladro turbo', 'furadeira', 'perfuratriz', 'drill', 'turbo drill', 'super broca', 'britadeira', 'perfuradora'],
     cost: { [M.Pedra]: 14, [M.Ouro]: 3 },
     parts: () => [B(0.14, 0.24, 0.3, 0, -0.06, 0.05, 'acc'), Cy(0.1, 0.1, 0.25, 0, 0.06, -0.15, 'main', [H, 0, 0]), K(0.09, 0.32, 0, 0.06, -0.42, 'metal', [-H, 0, 0], { spin: 'z' }), T(0.08, 0.02, 0, 0.06, -0.33, 'acc')],
   },
   {
     id: 'pa', kind: 'tool', beh: 'shovel', main: '#8d8f99', acc: '#b07a40',
     name: () => t('cavafala.g.pa', 'Pá Gigante'), desc: () => t('cavafala.gd.pa', 'Cava buracos enormes (mais devagar)'),
-    words: ['pa gigante', 'pa', 'pazona', 'shovel', 'giant shovel', 'pa grande', 'escavadora de mao'],
+    words: ['pa gigante', 'pa', 'pala', 'pala gigante', 'pazona', 'shovel', 'giant shovel', 'pa grande', 'escavadora de mao'],
     cost: { [M.Terra]: 12, [M.Pedra]: 6 },
     parts: () => [Cy(0.03, 0.03, 0.7, 0, 0.1, -0.2, 'acc', [H * 0.8, 0, 0]), B(0.32, 0.04, 0.38, 0, 0.32, -0.6, 'main', [-0.3, 0, 0]), B(0.2, 0.05, 0.05, 0, -0.1, 0.12, 'acc')],
   },
   {
     id: 'escudo', kind: 'tool', beh: 'shield', main: '#7ff0ff', acc: '#ffffff', arena: true,
     name: () => t('cavafala.g.escudo', 'Escudo de Bolhas'), desc: () => t('cavafala.gd.escudo', 'Uma bolha que bloqueia empurrões'),
-    words: ['escudo de bolhas', 'escudo', 'shield', 'bubble shield', 'protecao', 'escudo bolha', 'campo de forca'],
+    words: ['escudo de bolhas', 'escudo', 'escudo de burbujas', 'shield', 'bubble shield', 'protecao', 'escudo bolha', 'campo de forca'],
     cost: { [M.Areia]: 10, [M.Cristal]: 3 },
     parts: () => [Cy(0.3, 0.3, 0.05, 0, 0.1, -0.12, 'main', [H, 0, 0], { glass: true }), T(0.3, 0.03, 0, 0.1, -0.12, 'acc', [0, 0, 0]), S(0.07, 0, 0.1, -0.16, 'acc', undefined, { glow: 0.8 })],
   },
   {
     id: 'ima', kind: 'tool', beh: 'magnet', main: '#e8504a', acc: '#d8dce8',
     name: () => t('cavafala.g.ima', 'Ímã'), desc: () => t('cavafala.gd.ima', 'Puxa coisas e Bloops para perto'),
-    words: ['ima', 'magnet', 'imantado', 'atrator', 'iman', 'imazao'],
+    words: ['ima', 'magnet', 'iman', 'imantado', 'atrator', 'iman', 'imazao'],
     cost: { [M.Pedra]: 10, [M.Ouro]: 3 },
     parts: () => [T(0.18, 0.06, 0, 0.1, -0.3, 'main', [H, 0, 0], { d: [0.18, 0.06, PI] } as Partial<Part>), B(0.12, 0.12, 0.12, -0.18, 0.1, -0.3, 'acc'), B(0.12, 0.12, 0.12, 0.18, 0.1, -0.3, 'acc'), B(0.1, 0.24, 0.1, 0, -0.06, 0, 'dark')],
   },
@@ -290,35 +290,35 @@ export const GADGETS: GDef[] = [
   {
     id: 'lanterna', kind: 'tool', beh: 'flashlight', main: '#3a7bd5', acc: '#fff3b0',
     name: () => t('cavafala.g.lanterna', 'Lanterna'), desc: () => t('cavafala.gd.lanterna', 'Ilumina o escuro'),
-    words: ['lanterna', 'flashlight', 'lamparina', 'luz', 'lampada', 'farol de mao', 'torch', 'lanterninha'],
+    words: ['lanterna', 'flashlight', 'linterna', 'lamparina', 'luz', 'lampada', 'farol de mao', 'torch', 'lanterninha'],
     cost: { [M.Cristal]: 3, [M.Pedra]: 4 },
     parts: () => [Cy(0.05, 0.05, 0.3, 0, 0.05, -0.1, 'main', [H, 0, 0]), Cy(0.09, 0.06, 0.12, 0, 0.05, -0.3, 'main', [H, 0, 0]), Cy(0.08, 0.08, 0.02, 0, 0.05, -0.37, 'acc', [H, 0, 0], { glow: 1.5 })],
   },
   {
     id: 'regador', kind: 'tool', beh: 'watering', main: '#5ab0ff', acc: '#ffd34a',
     name: () => t('cavafala.g.regador', 'Regador'), desc: () => t('cavafala.gd.regador', 'Rega plantas e jardins'),
-    words: ['regador', 'watering can', 'mangueira', 'hose', 'regadeira', 'borrifador', 'aguador'],
+    words: ['regador', 'watering can', 'regadera', 'mangueira', 'hose', 'regadeira', 'borrifador', 'aguador'],
     cost: { [M.Argila]: 8, [M.Areia]: 4 },
     parts: () => [Cy(0.15, 0.17, 0.28, 0, 0.05, -0.15, 'main'), Cy(0.025, 0.03, 0.35, 0, 0.12, -0.38, 'main', [-1, 0, 0]), Cy(0.06, 0.03, 0.05, 0, 0.26, -0.52, 'acc', [-1, 0, 0]), T(0.1, 0.02, 0, 0.22, -0.05, 'acc', [0, H, 0])],
   },
   {
     id: 'foguete', kind: 'tool', beh: 'rocket', main: '#ffffff', acc: '#e8504a', uses: 1,
     name: () => t('cavafala.g.foguete', 'Foguete'), desc: () => t('cavafala.gd.foguete', 'Um impulso enorme para cima (uso único)'),
-    words: ['foguete', 'rocket', 'foguetinho', 'rojao', 'missil'],
+    words: ['foguete', 'rocket', 'cohete', 'foguetinho', 'rojao', 'missil'],
     cost: { [M.Argila]: 6, [M.Ouro]: 2, [M.Areia]: 6 },
     parts: () => [Cy(0.09, 0.09, 0.5, 0, 0.25, 0, 'main'), K(0.09, 0.2, 0, 0.6, 0, 'acc'), B(0.03, 0.15, 0.15, 0.1, 0.05, 0, 'acc'), B(0.03, 0.15, 0.15, -0.1, 0.05, 0, 'acc'), S(0.04, 0, 0.35, -0.09, 'glass')],
   },
   {
     id: 'robo', kind: 'tool', beh: 'digbot', main: '#ffcf2e', acc: '#3a2a5a', uses: 2,
     name: () => t('cavafala.g.robo', 'Robô Cavador'), desc: () => t('cavafala.gd.robo', 'Um robozinho que cava sozinho onde você mirar'),
-    words: ['robo cavador', 'robo', 'robot', 'robozinho', 'minerador', 'escavadeira', 'digger', 'toupeira', 'tatu', 'robo escavador'],
+    words: ['robo cavador', 'robo', 'robot excavador', 'robot', 'robozinho', 'minerador', 'escavadeira', 'digger', 'toupeira', 'tatu', 'robo escavador'],
     cost: { [M.Pedra]: 10, [M.Ouro]: 2, [M.Cristal]: 2 },
     parts: () => [B(0.3, 0.22, 0.34, 0, 0.11, -0.2, 'main'), S(0.1, 0, 0.28, -0.25, 'acc'), S(0.035, -0.04, 0.3, -0.34, 'glass', undefined, { glow: 1 }), S(0.035, 0.04, 0.3, -0.34, 'glass', undefined, { glow: 1 }), K(0.06, 0.14, 0, 0.1, -0.44, 'metal', [-H, 0, 0], { spin: 'z' })],
   },
   {
     id: 'carrinho', kind: 'vehicle', beh: 'cart', main: '#ff4f6a', acc: '#ffd34a',
     name: () => t('cavafala.g.carrinho', 'Carrinho'), desc: () => t('cavafala.gd.carrinho', 'Anda rápido e dá trombadas (USAR monta/desce)'),
-    words: ['carrinho', 'carro', 'cart', 'car', 'kart', 'go kart', 'carrinho de mina', 'vagonete', 'carrinho de mao', 'buggy'],
+    words: ['carrinho', 'carro', 'carrito', 'cart', 'car', 'kart', 'go kart', 'carrinho de mina', 'vagonete', 'carrinho de mao', 'buggy'],
     cost: { [M.Pedra]: 10, [M.Terra]: 12, [M.Argila]: 6 },
     parts: () => [B(1.3, 0.4, 1.9, 0, 0.45, 0, 'main'), B(1.1, 0.4, 0.5, 0, 0.75, -0.6, 'acc'), ...wheel(-0.72, 0.28, -0.65), ...wheel(0.72, 0.28, -0.65), ...wheel(-0.72, 0.28, 0.65), ...wheel(0.72, 0.28, 0.65), S(0.1, -0.4, 0.6, -0.97, 'glass', undefined, { glow: 1 }), S(0.1, 0.4, 0.6, -0.97, 'glass', undefined, { glow: 1 })],
   },
@@ -326,14 +326,14 @@ export const GADGETS: GDef[] = [
   {
     id: 'canhao', kind: 'weapon', beh: 'foam', main: '#ff8a3a', acc: '#ffffff', starter: true, arena: true,
     name: () => t('cavafala.g.canhao', 'Canhão de Espuma'), desc: () => t('cavafala.gd.canhao', 'Bolas de espuma que empurram'),
-    words: ['canhao de espuma', 'canhao', 'foam cannon', 'cannon', 'lanca espuma', 'espumador', 'canhao espuma', 'arma de espuma'],
+    words: ['canhao de espuma', 'canhao', 'canon de espuma', 'canon', 'foam cannon', 'cannon', 'lanca espuma', 'espumador', 'canhao espuma', 'arma de espuma'],
     cost: { [M.Argila]: 10, [M.Areia]: 8 },
     parts: () => [B(0.18, 0.2, 0.36, 0, 0, 0, 'main'), Cy(0.08, 0.1, 0.42, 0, 0.06, -0.36, 'main', [H, 0, 0]), T(0.1, 0.025, 0, 0.06, -0.57, 'acc'), S(0.12, 0, 0.2, 0.05, 'acc', undefined, { glass: true }), B(0.08, 0.16, 0.08, 0, -0.14, 0.08, 'dark')],
   },
   {
     id: 'bolhas', kind: 'weapon', beh: 'bubble', main: '#7ff0ff', acc: '#ff8fd8', arena: true,
     name: () => t('cavafala.g.bolhas', 'Lançador de Bolhas'), desc: () => t('cavafala.gd.bolhas', 'Prende o alvo numa bolha flutuante'),
-    words: ['lancador de bolhas', 'bubble launcher', 'bubble gun', 'arma de bolhas', 'soprador de bolhas', 'bolhas', 'bolha', 'bolheiro'],
+    words: ['lancador de bolhas', 'bubble launcher', 'lanzaburbujas', 'burbujas', 'bubble gun', 'arma de bolhas', 'soprador de bolhas', 'bolhas', 'bolha', 'bolheiro'],
     cost: { [M.Areia]: 12, [M.Cristal]: 2 },
     parts: () => [B(0.16, 0.18, 0.3, 0, 0, 0, 'acc'), Cy(0.06, 0.06, 0.25, 0, 0.05, -0.27, 'acc', [H, 0, 0]), T(0.13, 0.025, 0, 0.05, -0.43, 'main', [0, 0, 0]), S(0.09, 0.12, 0.2, -0.1, 'main', undefined, { glass: true }), S(0.06, -0.1, 0.24, -0.02, 'main', undefined, { glass: true })],
   },
@@ -347,7 +347,7 @@ export const GADGETS: GDef[] = [
   {
     id: 'confete', kind: 'weapon', beh: 'confetti', main: '#ffd34a', acc: '#ff4f6a',
     name: () => t('cavafala.g.confete', 'Canhão de Confete'), desc: () => t('cavafala.gd.confete', 'Leque de confete que empurra de leve'),
-    words: ['canhao de confete', 'confete', 'confetti', 'confetti cannon', 'lanca confete', 'serpentina', 'festa'],
+    words: ['canhao de confete', 'confete', 'confeti', 'confetti', 'confetti cannon', 'lanca confete', 'serpentina', 'festa'],
     cost: { [M.Grama]: 8, [M.Areia]: 6 },
     parts: () => [B(0.16, 0.18, 0.3, 0, 0, 0, 'acc'), K(0.16, 0.36, 0, 0.06, -0.34, 'main', [H, 0, 0]), S(0.03, 0.05, 0.09, -0.5, '#5ab0ff'), S(0.03, -0.05, 0.03, -0.5, '#5ad6a0')],
   },
@@ -361,14 +361,14 @@ export const GADGETS: GDef[] = [
   {
     id: 'luva', kind: 'weapon', beh: 'glove', main: '#e8504a', acc: '#ffffff', arena: true,
     name: () => t('cavafala.g.luva', 'Luva de Mola'), desc: () => t('cavafala.gd.luva', 'Um soquinho de mola que empurra longe'),
-    words: ['luva de mola', 'luva', 'luva de boxe', 'boxing glove', 'punho', 'soco', 'glove', 'luvona'],
+    words: ['luva de mola', 'luva', 'guante', 'luva de boxe', 'boxing glove', 'punho', 'soco', 'glove', 'luvona'],
     cost: { [M.Argila]: 8, [M.Terra]: 8 },
     parts: () => [S(0.17, 0, 0.05, -0.3, 'main', [1, 0.9, 1.1]), S(0.07, 0.15, 0.08, -0.25, 'main'), Cy(0.1, 0.1, 0.12, 0, 0.05, -0.1, 'acc', [H, 0, 0]), T(0.06, 0.02, 0, 0.05, 0.05, 'metal')],
   },
   {
     id: 'martelo', kind: 'weapon', beh: 'hammer', main: '#ffd34a', acc: '#5ab0ff', arena: true,
     name: () => t('cavafala.g.martelo', 'Martelo de Espuma'), desc: () => t('cavafala.gd.martelo', 'Pancada fofa que joga para cima'),
-    words: ['martelo de espuma', 'martelo', 'hammer', 'marreta', 'foam hammer', 'martelao'],
+    words: ['martelo de espuma', 'martelo', 'martillo', 'hammer', 'marreta', 'foam hammer', 'martelao'],
     cost: { [M.Areia]: 8, [M.Terra]: 8 },
     parts: () => [Cy(0.035, 0.035, 0.7, 0, 0.25, 0, 'acc'), Cy(0.16, 0.16, 0.45, 0, 0.62, 0, 'main', [0, 0, H])],
   },
