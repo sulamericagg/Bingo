@@ -89,7 +89,7 @@ export function renderControlsSettings(host: HTMLElement): void {
     ),
     row(t('controls.lefty', 'Modo canhoto (trocar lados)'), sw(controls.lefty, (v) => setControl('lefty', v))),
     row(t('controls.gyro', 'Mirar com giroscópio'), sw(controls.gyro, (v) => setControl('gyro', v))),
-    row(t('controls.haptics', 'Vibração'), sw(hapticsOn(), (v) => setHaptics(v))),
+    row(t('settings.haptics', 'Vibração'), sw(hapticsOn(), (v) => setHaptics(v))),
   );
 }
 
