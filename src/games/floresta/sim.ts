@@ -54,6 +54,8 @@ export interface Tree {
   /** cliente (não-anfitrião) chegou a hp 0 e espera confirmação */
   pend: number;
   seed: number;
+  /** plantada à mão: cresce mais rápido */
+  fast?: boolean;
 }
 
 export interface Log {
@@ -652,9 +654,10 @@ export class Sim {
           }
           break;
         case TS.Sapling:
-          t.grow += dt / growTime(nursery);
+          t.grow += (dt / growTime(nursery)) * (t.fast ? 2.2 : 1);
           if (t.grow >= 1) {
             t.grow = 1;
+            t.fast = false;
             t.state = TS.Grown;
             const r = mulberry(t.seed + ((this.time * 1000) | 0));
             this.rollTree(t, r);
@@ -1043,6 +1046,53 @@ export class Sim {
     const b = this.canBuild();
     return b >= 0 && Math.abs(this.me.x - gateX(b + 1)) < 5;
   }
+  /** toco ao alcance para plantar uma muda com as mãos */
+  nearStump(r = 2.6): Tree | null {
+    let best: Tree | null = null;
+    let bd = r;
+    for (const t of this.trees) {
+      if (t.state !== TS.Stump || t.biome >= this.s.unlocked) continue;
+      const d = Math.abs(t.x - this.me.x) + (this.mode3d ? Math.abs(t.z - this.me.z) : 0);
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+  /** planta a muda no toco: nasce na hora e cresce mais rápido que a natural */
+  plantByHand(): boolean {
+    const t = this.nearStump();
+    if (!t) return false;
+    t.timer = 0;
+    t.fast = true;
+    return true;
+  }
+  /** perto da serra (minigame de serrar na mão) */
+  nearSaw(): boolean {
+    const x = this.me.x;
+    // 2D: logo antes do funil (que descarrega sozinho ao encostar); 3D: perto do funil ou da serra
+    return this.mode3d ? Math.abs(x - INTAKE_X) < 6 || Math.abs(x - SAW_X) < 4.5 : x > INTAKE_X + 3 && x < INTAKE_X + 12;
+  }
+  /**
+   * Serrar na mão: n toras (valor total val) viram tábuas na hora.
+   * quality 0..1 (minigame): até +50% de tábuas e +25% de valor.
+   */
+  handSaw(n: number, val: number, quality: number): number {
+    if (n <= 0) return 0;
+    const m = this.s.mach;
+    const per = planksPerLog(m.saw);
+    const planks = Math.max(n, Math.round(n * per * (1 + quality * 0.5)));
+    const pv = ((val / n) * 0.6 * planerMult(m.planer) * (1 + quality * 0.25) * n * per) / planks;
+    const tot = this.s.planks * this.s.plankVal + planks * pv;
+    this.s.planks += planks;
+    this.s.plankVal = tot / this.s.planks;
+    this.s.planksMade += planks;
+    this.sessionPlanks += planks;
+    this.emit('saw', SAW_X, 1.2, 0, 0, planks);
+    return planks;
+  }
+
   nearSell(): boolean {
     return this.me.x < PALLET_X + 4;
   }

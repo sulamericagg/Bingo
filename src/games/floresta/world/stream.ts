@@ -478,6 +478,45 @@ export class World {
     return hit;
   }
 
+  /**
+   * Primeiro tronco/pedra que cruza o segmento a→b (no plano), com folga r.
+   * Devolve a fração 0..1 do segmento (1 = livre). Usado pela câmera de perseguição.
+   */
+  segmentHit(ax: number, az: number, bx: number, bz: number, r: number): number {
+    let best = 1;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const L2 = dx * dx + dz * dz || 1e-6;
+    const test = (px: number, pz: number, rad: number) => {
+      let t = ((px - ax) * dx + (pz - az) * dz) / L2;
+      if (t < 0 || t > 1) return;
+      const qx = ax + dx * t - px;
+      const qz = az + dz * t - pz;
+      const d2 = qx * qx + qz * qz;
+      const R = rad + r;
+      if (d2 >= R * R) return;
+      // recua até a borda do círculo
+      t -= Math.sqrt(R * R - d2) / Math.sqrt(L2);
+      if (t < best) best = Math.max(0, t);
+    };
+    const x0 = Math.floor(Math.min(ax, bx) / CH);
+    const x1 = Math.floor(Math.max(ax, bx) / CH);
+    const z0 = Math.floor(Math.min(az, bz) / CH);
+    const z1 = Math.floor(Math.max(az, bz) / CH);
+    for (let cz = z0; cz <= z1; cz++)
+      for (let cx = x0; cx <= x1; cx++) {
+        const c = this.chunks.get(World.key(cx, cz));
+        if (!c) continue;
+        for (let i = 0; i < c.nt; i++) {
+          if (c.tstate[i] !== TState.Grown) continue;
+          const o = i * TREE_STRIDE;
+          test(c.trees[o], c.trees[o + 2], 0.45 * c.trees[o + 4]);
+        }
+        for (let i = 0; i < c.nr; i++) test(c.rocks[i * 5], c.rocks[i * 5 + 2], c.rocks[i * 5 + 3]);
+      }
+    return best;
+  }
+
   /* ------------------------------ escavação ------------------------------ */
 
   /**

@@ -17,7 +17,7 @@ import { flIcon } from './icons';
 import { loadSave, writeSave } from './save';
 import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
-import { Hud, type HudHost } from './hud';
+import { Hud, type CtxKind, type HudHost } from './hud';
 import { forestSolo } from './touchcfg';
 
 /** visão (2D ou 3D) */
@@ -29,6 +29,8 @@ export interface View {
   /** joystick (tela) → direção no mundo */
   toWorld?(jx: number, jy: number, out: { mx: number; mz: number }): void;
   toggleCam?(): void;
+  /** 3D: entrega as toras das mãos (minigame da serra) */
+  takeHeld?(): { n: number; val: number };
 }
 
 export interface LaunchOpts {
@@ -316,11 +318,45 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
 
   /* ------------------------------ ações ------------------------------ */
 
-  onAction(kind: 'sell' | 'build'): void {
+  carried(): number {
+    return this.is3d ? this.sim.held3d : this.sim.me.carry;
+  }
+
+  onAction(kind: CtxKind): void {
     const s = this.sim;
+    if (kind === 'plant') {
+      if (s.plantByHand()) {
+        audio.coin(1);
+        tap('light');
+        this.hud.toast(t('floresta.planted', 'Muda plantada! Ela cresce rapidinho'), 'eco');
+      }
+      return;
+    }
+    if (kind === 'saw') {
+      this.hud.sawGame((q) => {
+        let n = 0;
+        let val = 0;
+        if (this.is3d && this.view?.takeHeld) ({ n, val } = this.view.takeHeld());
+        else {
+          n = s.me.carry;
+          val = s.me.carryVal;
+          s.me.carry = 0;
+          s.me.carryVal = 0;
+        }
+        const p = s.handSaw(n, val, q);
+        if (p > 0) {
+          audio.record();
+          success();
+          this.hud.toast(t('floresta.sawDone', '+{n} tábuas serradas na mão', { n: p }), q >= 0.8 ? 'eco' : '');
+          if (s.s.tutorial === 1) s.s.tutorial = 2;
+        }
+      });
+      return;
+    }
     if (kind === 'sell') {
       const v = s.sellAll();
       if (v > 0) {
+        this.hud.cashFly();
         audio.cash();
         success();
         if (s.s.tutorial === 2) s.s.tutorial = 3;
