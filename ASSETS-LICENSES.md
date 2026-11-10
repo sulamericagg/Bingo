@@ -13,3 +13,12 @@ toda a geometria e todas as texturas são geradas em código no próprio disposi
 
 Se no futuro algum modelo/textura externo for adicionado, usar **somente CC0**
 (Poly Haven, Quaternius), registrar aqui: nome, URL de origem, licença e tamanho.
+
+## Bloop Espelho (rastreamento de rosto, no aparelho)
+
+| Asset | Origem | Licença | Tamanho |
+|---|---|---|---|
+| `public/mediapipe/face_landmarker.task` (Face Landmarker float16 v1, com blendshapes) | https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task | Apache-2.0 (Google MediaPipe) | 3,6 MB |
+| `mediapipe/vision_wasm_internal.{js,wasm}` (copiados no build de `@mediapipe/tasks-vision@0.10.35` pelo `vite.config.ts`) | npm `@mediapipe/tasks-vision` | Apache-2.0 | 11,2 MB + 0,3 MB |
+
+Tudo roda localmente; nenhuma imagem da câmera sai do aparelho.
