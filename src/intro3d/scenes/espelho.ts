@@ -12,7 +12,8 @@ export function espelho(k: Kit): Shot {
   k.scene.add(warm);
   const room = k.build('esp-room', (b) => {
     b.sharp(16, 0.1, 10, 0, -0.1, 2, '#3a2060');
-    b.sharp(16, 8, 0.2, 0, 0, -1.6, '#5a3490');
+    b.sharp(16, 8, 0.2, 0, 0, -6.5, '#5a3490');
+    b.box(1.2, 1.2, 0.3, 0, 0, -1.25, '#ffd34a');
     // penteadeira
     b.box(5.2, 1.0, 1.4, 0, 0, 0.4, '#ff9ec7');
     b.box(5.4, 0.12, 1.6, 0, 1.0, 0.4, '#ffffff');
@@ -43,21 +44,22 @@ export function espelho(k: Kit): Shot {
   }
   // reflexo: Bloop atrás do vidro (mundo espelhado em z = -1.2)
   const MOODS: PlayerPose['mood'][] = ['happy', 'idle', 'fly', 'happy'];
-  const front = MOODS.map((m) => k.bloop(1.9, m));
-  const back = MOODS.map((m) => k.bloop(1.9, m));
+  const front = MOODS.map((m) => k.bloop(1.6, m));
+  const back = MOODS.map((m) => k.bloop(1.6, m));
   back.forEach((s) => ((s.material as THREE.SpriteMaterial).color.set('#c8b8ff'), ((s.material as THREE.SpriteMaterial).opacity = 0.85), ((s.material as THREE.SpriteMaterial).transparent = true)));
   // vidro: plano levemente azulado na frente do reflexo + faixa de brilho
-  const glass = solidMesh(k, k.ownGeo(new THREE.PlaneGeometry(4.0, 3.3)), '#9fb8ff', { opacity: 0.22, rough: 0.05, metal: 0.6 });
+  const glass = solidMesh(k, k.ownGeo(new THREE.PlaneGeometry(4.0, 3.3)), '#9fb8ff', { opacity: 0.22, rough: 0.5, metal: 0 });
   glass.position.set(0, 2.85, -1.2);
   (glass.material as THREE.Material).depthWrite = false;
-  const shine = k.beam('#ffffff', 0.7, 5, 0.0);
+  const shineM = k.own(new THREE.MeshBasicMaterial({ map: k.beamTexture(), color: '#ffffff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const shine = new THREE.Mesh(k.ownGeo(new THREE.PlaneGeometry(0.7, 3.4)), shineM);
   shine.rotation.z = 0.5;
-  // recorta a faixa de brilho dentro do vidro com um grupo simples (posição varre x)
+  k.scene.add(shine);
   const path = k.path([
-    { t: 0, p: [0, 3.2, 7.5], l: [0, 2.7, -1.2], fov: 44 },
-    { t: 1.6, p: [-2.2, 2.6, 5.2], l: [0.3, 2.3, -1] },
-    { t: 3.0, p: [1.6, 2.4, 5.0], l: [0, 2.4, -1], fov: 48 },
-    { t: 5.0, p: [1.2, 2.6, 5.6], l: [0, 2.6, -1], fov: 46 },
+    { t: 0, p: [-0.5, 3.2, 7.5], l: [0, 2.7, -1.2], fov: 44 },
+    { t: 1.6, p: [-2.6, 2.5, 5.6], l: [0.2, 2.4, -1] },
+    { t: 3.0, p: [-1.6, 2.5, 6.0], l: [0.2, 2.6, -1], fov: 48 },
+    { t: 5.0, p: [-1.4, 2.7, 6.4], l: [0.2, 2.8, -1], fov: 46 },
   ]);
   const FACE = [0, 0.8, 1.5, 2.2]; // troca de careta
   let face = -1;
@@ -83,8 +85,8 @@ export function espelho(k: Kit): Shot {
       const bob = Math.sin(t * 6) * 0.06;
       front.forEach((s, i) => {
         s.visible = i === fi;
-        s.position.set(0, 2.2 + bob, 0.8);
-        s.scale.set(1.9 * pose[0] * pop, 1.9 * pose[1] / pop, 1);
+        s.position.set(0.7, 1.95 + bob, 1.0);
+        s.scale.set(1.6 * pose[0] * pop, 1.6 * pose[1] / pop, 1);
         (s.material as THREE.SpriteMaterial).rotation = pose[2] + Math.sin(t * 3) * 0.05;
       });
       // reflexo: a mesma careta, um instante atrasado (o espelho "imita")
@@ -93,14 +95,14 @@ export function espelho(k: Kit): Shot {
       for (let i = 0; i < FACE.length; i++) if (lag >= FACE[i]) bi = i;
       back.forEach((s, i) => {
         s.visible = i === bi;
-        s.position.set(0, 2.2 + Math.sin(lag * 6) * 0.06, -3.2);
-        s.scale.set(-1.9 * pose[0], 1.9 * pose[1], 1);
+        s.position.set(0.7, 1.95 + Math.sin(lag * 6) * 0.06, -3.4);
+        s.scale.set(-1.6 * pose[0], 1.6 * pose[1], 1);
         (s.material as THREE.SpriteMaterial).rotation = -pose[2];
       });
       // brilho varrendo o vidro (duas passadas)
       const sw = (t % 1.6) / 1.6;
-      shine.position.set(-3 + sw * 6, 5.0, -1.15);
-      shine.children.forEach((c) => (((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = Math.sin(sw * Math.PI) * 0.35));
+      shine.position.set(-1.6 + sw * 3.2, 2.85, -1.15);
+      shineM.opacity = Math.sin(sw * Math.PI) * 0.4;
       // lâmpadas piscando em onda; tudo acende forte no fim
       bulbs.forEach((g, i) => ((g.material as THREE.SpriteMaterial).opacity = 0.45 + 0.45 * Math.max(0, Math.sin(t * 8 - i * 0.7)) + (t > 2.6 ? 0.3 : 0)));
       if (t > 2.6 && Math.random() < 0.5) k.fxAdd.emit((Math.random() - 0.5) * 4, 1.3 + Math.random() * 3.3, -1.0, 0, 0.3, 0.4, { tile: 1, color: '#ffffff', life: 0.7, size: 0.18, grow: -0.2 });

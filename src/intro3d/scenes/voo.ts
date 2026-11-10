@@ -32,9 +32,9 @@ export function voo(k: Kit): Shot {
   win.position.set(0.95, 0.25, 0);
   win.rotation.z = 0.7;
   plane.add(win);
-  const pilot = k.bloop(1.0, 'fly', plane);
+  const pilot = k.bloop(1.15, 'fly', plane);
   pilot.position.set(1.05, 0.55, 0.55);
-  const alarm = k.glow('#ff2a3a', 2.6, 0, plane);
+  const alarm = k.glow('#ff2a3a', 3.4, 0, plane);
   alarm.position.set(1.0, 0.95, 0);
   const alarmL = new THREE.PointLight('#ff2a3a', 0, 6, 1.4);
   alarmL.position.set(1.0, 1.0, 0.6);
@@ -43,10 +43,10 @@ export function voo(k: Kit): Shot {
   const engR = new THREE.Vector3(2.6, -0.62, 2.2);
   const W = new THREE.Vector3();
   const path = k.path([
-    { t: 0, p: [-9, 2.5, 7], l: [2, 0, 0], fov: 48 },
-    { t: 1.5, p: [-3, 1.2, 9.5], l: [2, -0.4, 0] },
-    { t: 3.0, p: [-6.5, 1.6, 5.5], l: [1.5, 0.2, 0], fov: 50 },
-    { t: 5.0, p: [-7.2, 2.0, 5.8], l: [1.6, 0.6, 0], fov: 46 },
+    { t: 0, p: [-6, 2.0, 4.5], l: [1.5, 0.2, 0], fov: 48 },
+    { t: 1.5, p: [-1, 0.8, 6.5], l: [2, -0.6, 0] },
+    { t: 3.0, p: [-4.5, 1.4, 3.6], l: [1.2, 0.0, 0], fov: 50 },
+    { t: 5.0, p: [-5.0, 1.6, 4.0], l: [1.2, 0.3, 0], fov: 46 },
   ]);
   let blink = -1;
   return {
