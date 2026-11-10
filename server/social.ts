@@ -12,6 +12,7 @@ import { requireAdmin } from './auth';
 import { champHub, CHAMP_GAMES, champUnwrap } from './champ';
 import { ChatRoom, KNOWN_ROOMS, ROOM_RE } from './chat';
 import { banKey, buildExtra, filterMessage, KV_WORDS, loadExtraWords, muteKey, safeName } from './moderation';
+import { resolveHandle } from './friends';
 import { cleanName, HttpError, json, num, PLAYER_ID_RE, randomId, readJson } from './util';
 
 const text = (v: unknown, max: number) =>
@@ -64,6 +65,10 @@ export async function profilePut(req: Request, env: Env): Promise<Response> {
     t: Date.now(),
   };
   await env.DATA.put('prof:' + id, JSON.stringify(p), { metadata: { t: p.t } });
+  // cópia resumida no FriendsHub: lista de amigos e busca de @ sem ler o KV a cada vez
+  await env.FRIENDS.get(env.FRIENDS.idFromName('hub'))
+    .setProfile(id, { name: p.name, skin: p.skin, ...(p.avatar ? { avatar: p.avatar } : {}), ...(p.creature ? { creature: p.creature } : {}) })
+    .catch(() => {});
   return json({ ok: true });
 }
 
@@ -80,7 +85,8 @@ export async function profileGet(req: Request, env: Env): Promise<Response> {
 export async function chatReport(req: Request, env: Env): Promise<Response> {
   const b = await readJson(req);
   const reporter = String(b.reporter ?? '');
-  const pid = String(b.pid ?? '');
+  // denúncia vinda da busca de amigos: só o @ (a busca nunca expõe o id)
+  const pid = b.handle && !b.pid ? ((await resolveHandle(env, String(b.handle))) ?? '') : String(b.pid ?? '');
   if (!PLAYER_ID_RE.test(reporter) || !PLAYER_ID_RE.test(pid)) throw new HttpError(400, 'bad_id', 'Jogador inválido.');
   const rl = 'rl:report:' + reporter;
   const n = Number((await env.DATA.get(rl)) ?? 0);
@@ -93,6 +99,7 @@ export async function chatReport(req: Request, env: Env): Promise<Response> {
     room: ROOM_RE.test(String(b.room)) ? String(b.room) : 'global',
     msgId: text(b.msgId, 16),
     reason: text(b.reason, 20) || 'outro',
+    ...(b.handle ? { handle: text(b.handle, 17) } : {}),
     t: Date.now(),
   };
   await env.DATA.put(`report:${Date.now().toString().padStart(14, '0')}:${randomId(6)}`, '1', { metadata: meta, expirationTtl: 30 * 86400 });
