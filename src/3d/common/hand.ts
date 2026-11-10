@@ -434,6 +434,8 @@ export class Hand {
   squashY = 1;
   /** escala da mão conforme a tela (1 = paisagem de referência) */
   k = 1;
+  /** tamanho extra da mão (1 = padrão). A casa 3D usa menos quando o celular está em pé. */
+  sizeMul = 1;
   private lagX = new Spring(140, 13);
   private lagY = new Spring(140, 13);
   private rotS = new Spring(90, 11);
@@ -503,7 +505,7 @@ export class Hand {
       const d = 0.5;
       const hh = Math.tan((cam.fov * Math.PI) / 360) * d;
       const hw = hh * cam.aspect;
-      const s = Math.min(hh * 0.94, hw * 1.18);
+      const s = Math.min(hh * 0.94, hw * 1.18) * this.sizeMul;
       this.k = s / 0.34;
       this.base.set(Math.min(0.27 * this.k, hw - s * 0.5), -hh + s * 0.48, -d);
     }

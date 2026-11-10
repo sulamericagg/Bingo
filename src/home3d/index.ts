@@ -21,7 +21,9 @@ import { Decor } from './decor';
 import { Party } from './party';
 import { handColors } from './hand';
 import { disposeSfx, sfx } from './sfx';
-import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, ICON, Loading, lockTip, removeCss, Toast, unlockOrientation } from './ui';
+import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, ICON, isLandscape, Loading, lockTip, playsPortrait, removeCss, Toast, unlockOrientation } from './ui';
+import { lockOrientation } from '../core/orientation';
+import { bus } from '../core/events';
 import { splatTexture } from './textures';
 import type { Close3DResult, Open3DOpts } from './types';
 import type { HomeDesign, MessItem } from '../home/api';
@@ -169,7 +171,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     root.appendChild(hud);
     input = new FpsInput(hud);
     acts = new Actions(hud);
-    toast = new Toast(hud);
+    toast = new Toast(hud, true);
     fps = new Fps(eng, input, acts, party, handColors(opts.skin));
     startRoom = (eng.roomById(opts.room ?? (party ? 'party' : 'living')) ?? eng.rooms[0])!;
     fps.spawn(startRoom);
@@ -222,8 +224,30 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     toolDefs.push({ id: 'cleanup', label: t('home3d.party.cleanup', 'Hora de limpar!'), icon: 'party' });
     toolDefs.push({ id: 'emote', label: t('home3d.emote', 'Emote'), icon: 'emote' });
   }
+  /** em pé ou na festa: só a ferramenta atual + menu pequeno (antes: 6–7 pílulas tapando o topo) */
+  let menuOpen = false;
+  const compact = () => mode === 'fps' && (!!party || hud.clientWidth < hud.clientHeight * 1.15 || hud.clientWidth < 620);
   const renderTools = () => {
     tools.innerHTML = '';
+    const small = compact();
+    top.classList.toggle('compact', small);
+    let host: HTMLElement = tools;
+    if (small) {
+      const cur = toolDefs.find((d) => d.id === fps.tool) ?? toolDefs[0];
+      const tb = button(cur.label, cur.icon);
+      tb.classList.add('sel', 'h3-tcur');
+      tb.insertAdjacentHTML('beforeend', `<i class="car">${menuOpen ? '▴' : '▾'}</i>`);
+      tb.onclick = () => {
+        sfx.click();
+        menuOpen = !menuOpen;
+        renderTools();
+      };
+      tools.appendChild(tb);
+      if (!menuOpen) return;
+      host = el('div', 'h3-tmenu');
+      host.dataset.touchIgnore = '1';
+      tools.appendChild(host);
+    } else menuOpen = false;
     for (const d of toolDefs) {
       if (mode === 'build' && d.id !== 'build' && d.id !== 'decor') continue;
       const allowed = !d.need || canUse(role, d.need);
@@ -239,6 +263,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
         b.onclick = () => {
           sfx.click();
           tap('light');
+          menuOpen = false;
           if (flying) return;
           if (d.id === 'build') setMode(mode === 'build' ? 'fps' : 'build');
           else if (d.id === 'decor' && mode === 'build') decor.toggleCatalog();
@@ -264,9 +289,21 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
           }
           renderTools();
         };
-      tools.appendChild(b);
+      host.appendChild(b);
     }
   };
+  // girou o aparelho: refaz o topo (compacto em pé) e, se não foi escolha do jogador, pede paisagem de novo
+  let lastLock = 0;
+  const onOrient = () => {
+    renderTools();
+    if (playsPortrait() || opts.skipRotate || isLandscape() || closed) return;
+    const now = performance.now();
+    if (now - lastLock < 1500) return;
+    lastLock = now;
+    void lockOrientation('landscape');
+  };
+  window.addEventListener('resize', onOrient);
+  const offResume = bus.on('app-resume', () => setTimeout(onOrient, 300));
   const fixWheelZ = () => requestAnimationFrame(() => document.querySelectorAll<HTMLElement>('.sc-wheel').forEach((w) => (w.style.zIndex = '9500')));
   let myEmote = '';
   let myEmoteT = 0;
@@ -484,8 +521,11 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     build.dispose();
     party?.dispose();
     input.dispose();
+    toast.dispose();
     eng.dispose();
     disposeSfx();
+    window.removeEventListener('resize', onOrient);
+    offResume?.();
     if (opts.debug) delete (window as unknown as { __home3d?: unknown }).__home3d;
     resolveExit(res);
   };

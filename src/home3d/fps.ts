@@ -28,7 +28,7 @@ export interface Target {
   dist: number;
 }
 const EYE = 1.02;
-const RAD = 0.27;
+const RAD = 0.3;
 const SPEED = 2.7;
 const UP = new THREE.Vector3(0, 1, 0);
 const V = new THREE.Vector3();
@@ -96,29 +96,60 @@ export class Fps {
     acts.onTap = (id) => this.tap(id);
   }
 
+  /**
+   * Nasce num lugar livre perto do meio do cômodo, OLHANDO para o que interessa (bolo/mesa da festa,
+   * TV, sofá, cama...), a 2–3,5 m dele: nunca de cara para uma parede ou dentro de um móvel.
+   */
   spawn(room: RoomRec): void {
-    // lugar livre mais perto da frente do cômodo
-    let best = new THREE.Vector3(ROOM_W / 2, 0, ROOM_D - 1),
-      bs = -1e9;
     const items = this.eng.items.filter((i) => i.room === room && !i.info.wall && !i.info.flat && !i.info.ceil);
-    for (let x = 0.7; x <= ROOM_W - 0.7; x += 0.35)
-      for (let z = 1.2; z <= ROOM_D - 0.5; z += 0.3) {
-        const w = room.group.localToWorld(new THREE.Vector3(x, 0, z));
-        let clear = 9;
-        for (const it of items) {
-          const d = Math.hypot(it.homeP.x - w.x, it.homeP.z - w.z) - Math.max(it.dims.w, it.dims.d) / 2;
-          clear = Math.min(clear, d);
+    const loc = (v: THREE.Vector3) => room.group.worldToLocal(v.clone());
+    const foot = items.map((it) => {
+      const c = loc(it.homeP);
+      const q = quarterOf(it.data) % 2;
+      return { x: c.x, z: c.z, hx: (q ? it.dims.d : it.dims.w) / 2, hz: (q ? it.dims.w : it.dims.d) / 2, tall: it.dims.h > 0.95 };
+    });
+    // foco: bolo da festa > mesa de festa > o móvel mais "de sala" > centro
+    const pref = ['partytable', 'tv', 'sofa', 'bed', 'bunk', 'fireplace', 'aquarium', 'table', 'piano', 'arcade', 'bathtub', 'stove', 'counter', 'desk'];
+    let focusW: THREE.Vector3 | null = this.party?.cake && this.eng.roomAt(this.party.cake.pos.x, this.party.cake.pos.z) === room ? this.party.cake.pos.clone() : null;
+    if (!focusW)
+      for (const k of pref) {
+        const it = items.find((i) => i.kind === k);
+        if (it) {
+          focusW = it.homeP.clone().setY(Math.min(1, it.dims.h * 0.7));
+          break;
         }
-        const score = Math.min(clear, 0.9) * 4 + z * 0.4 - Math.abs(x - ROOM_W / 2) * 0.3;
+      }
+    const focus = focusW ? loc(focusW) : new THREE.Vector3(ROOM_W / 2, 0.8, ROOM_D / 2);
+    const m = WALL_T + RAD + 0.2;
+    let best = new THREE.Vector3(ROOM_W / 2, 0, ROOM_D / 2),
+      bs = -1e9;
+    const blocked = (x: number, z: number) => foot.some((f) => Math.abs(x - f.x) < f.hx + RAD + 0.12 && Math.abs(z - f.z) < f.hz + RAD + 0.12);
+    const sight = (x: number, z: number) => {
+      // nada alto entre o jogador e o foco
+      for (let k = 0.15; k < 0.9; k += 0.12) {
+        const px = x + (focus.x - x) * k,
+          pz = z + (focus.z - z) * k;
+        if (foot.some((f) => f.tall && Math.abs(px - f.x) < f.hx && Math.abs(pz - f.z) < f.hz)) return false;
+      }
+      return true;
+    };
+    for (let x = m; x <= ROOM_W - m; x += 0.25)
+      for (let z = m; z <= ROOM_D - m; z += 0.25) {
+        if (blocked(x, z)) continue;
+        const d = Math.hypot(focus.x - x, focus.z - z);
+        let clear = 9;
+        for (const f of foot) clear = Math.min(clear, Math.max(Math.abs(x - f.x) - f.hx, Math.abs(z - f.z) - f.hz));
+        // olhando para o foco, quanto espaço até a parede atrás dele?
+        const score = -Math.abs(d - 2.7) * 1.4 + Math.min(clear, 0.8) * 1.5 - Math.hypot(x - ROOM_W / 2, z - ROOM_D / 2) * 0.25 + (sight(x, z) ? 2 : 0) + (d < 1.8 ? -4 : 0);
         if (score > bs) (bs = score), best.set(x, 0, z);
       }
-    const p = room.group.localToWorld(best);
+    const p = room.group.localToWorld(best.clone());
     this.body.position.set(p.x, RAD + 0.02, p.z);
     this.body.velocity.setZero();
-    const c = room.center;
-    this.yaw = Math.atan2(-(c.x - p.x), -(c.z - p.z));
-    if (Math.hypot(c.x - p.x, c.z - p.z) < 0.5) this.yaw = room.rotY;
-    this.pitch = -0.12;
+    const f = room.group.localToWorld(focus.clone());
+    this.yaw = Math.atan2(-(f.x - p.x), -(f.z - p.z));
+    const dist = Math.max(0.5, Math.hypot(f.x - p.x, f.z - p.z));
+    this.pitch = Math.max(-0.38, Math.min(0, Math.atan2(f.y - EYE, dist)));
     this.yawGoal = this.yaw;
     this.pitchGoal = this.pitch;
   }
@@ -593,11 +624,11 @@ export class Fps {
   /* ---------------- laço ---------------- */
   update(dt: number): void {
     if (!this.active) return;
-    const [lx, ly] = this.input.consumeLook();
+    // olhar: o módulo de toque já suaviza (sub-quadro, sem atraso); aqui só aplica
+    const [lx, ly] = this.input.consumeLook(dt);
     this.yawGoal -= lx;
     this.pitchGoal = Math.max(-1.25, Math.min(1.2, this.pitchGoal - ly));
-    // segue o alvo com amortecimento curto (suave, mas sem atraso perceptível)
-    const ks = 1 - Math.exp(-dt * 28);
+    const ks = 1;
     const py = this.yaw,
       pp = this.pitch;
     this.yaw += (this.yawGoal - this.yaw) * ks;
@@ -673,6 +704,7 @@ export class Fps {
     } else if (this.tool === 'hand' && !this.held && !this.ext?.busy) this.hand.setPose('open'); // [casa-ativ] busy
     else if (this.tool === 'clean') this.updatePose();
     this.hand.visible = !this.decor?.mv;
+    this.hand.sizeMul = this.eng.camera.aspect < 1 ? 0.62 : 0.88;
     this.hand.scrub += (scrub - this.hand.scrub) * Math.min(1, dt * 12);
     this.hand.update(dt, speed, this.lastLook[0], this.lastLook[1]);
     // peças quebradas somem
@@ -689,7 +721,9 @@ export class Fps {
       }
     }
     // HUD
-    this.acts.set(this.buttons());
+    // um botão de ação por vez (festa) / no máximo dois: o principal e um pequeno
+    const bl = this.buttons();
+    this.acts.set(this.party ? bl.filter((b, i) => i === 0 || b.id === 'drop').slice(0, 2) : bl.slice(0, 2));
     const tg = this.target;
     let label = '';
     if (tg.type === 'item' && tg.item && tg.dist < 3) label = t('home3d.furn.' + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state === 'broken' ? ' · ' + t('home3d.state.broken', 'quebrado') : tg.item.state === 'moved' ? ' · ' + t('home3d.state.moved', 'fora do lugar') : '');
