@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "Bedava",
   "hub.inbox": "Posta",
   "hub.launchFail": "Oyun şu an açılamadı",
+  "hub.rotate": "Ekranı döndür",
   "hub.loadBack": "Geri",
   "hub.missions": "Görevler",
   "hub.next": "Sonraki oyun",

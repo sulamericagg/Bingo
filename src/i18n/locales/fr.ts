@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "Gratuit",
   "hub.inbox": "Courrier",
   "hub.launchFail": "Impossible d'ouvrir le jeu pour l'instant",
+  "hub.rotate": "Pivoter l'écran",
   "hub.loadBack": "Retour",
   "hub.missions": "Missions",
   "hub.next": "Jeu suivant",

@@ -965,16 +965,46 @@ function bindGlGuard(): void {
 let o3d: MutationObserver | null = null;
 let o3dTimer = 0;
 let o3dState: 'portrait' | 'landscape' = 'portrait';
+let o3dRetry: number[] = [];
+let rotBtn: HTMLButtonElement | null = null;
+const isLand = () => window.innerWidth > window.innerHeight;
+/** Pede paisagem e confere se girou de verdade; se não girou, tenta de novo e,
+ *  em último caso, libera o sensor ('any') para o jogador girar com a mão. */
+function wantLandscape(): void {
+  o3dRetry.forEach(clearTimeout);
+  o3dRetry = [];
+  void lockOrientation('landscape');
+  o3dRetry.push(
+    window.setTimeout(() => { if (o3dState === 'landscape' && !isLand()) void lockOrientation('landscape'); }, 900),
+    window.setTimeout(() => { if (o3dState === 'landscape' && !isLand()) void lockOrientation('any'); }, 2200),
+  );
+}
+function ensureRotBtn(show: boolean): void {
+  if (!rotBtn) {
+    rotBtn = document.createElement('button');
+    rotBtn.className = 'gh-rot';
+    rotBtn.setAttribute('aria-label', t('hub.rotate', 'Girar tela'));
+    rotBtn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4h7a3 3 0 0 1 3 3v3" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M14.5 8.5 17 11l2.5-2.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="4" y="11" width="13" height="9" rx="2" fill="none" stroke="#fff" stroke-width="2.4"/></svg>';
+    rotBtn.onclick = () => {
+      if (isLand()) void lockOrientation('portrait');
+      else void lockOrientation('landscape');
+    };
+    host.appendChild(rotBtn);
+  }
+  rotBtn.hidden = !show;
+}
 function watch3d(root: HTMLElement): void {
   unwatch3d();
   o3dState = 'portrait';
   const check = () => {
     o3dTimer = 0;
-    const cv = root.querySelector<HTMLCanvasElement>('canvas[data-engine^="three"]');
+    const cv = root.querySelector<HTMLCanvasElement>('canvas[data-engine^="three"]:not([data-intro])');
     const want = cv && cv.isConnected && cv.offsetWidth > 0 ? 'landscape' : 'portrait';
+    ensureRotBtn(want === 'landscape');
     if (want === o3dState) return;
     o3dState = want;
-    void lockOrientation(want);
+    if (want === 'landscape') wantLandscape();
+    else void lockOrientation('portrait');
   };
   o3d = new MutationObserver(() => {
     if (!o3dTimer) o3dTimer = window.setTimeout(check, 120);
@@ -983,6 +1013,9 @@ function watch3d(root: HTMLElement): void {
   check();
 }
 function unwatch3d(): void {
+  o3dRetry.forEach(clearTimeout);
+  o3dRetry = [];
+  if (rotBtn) rotBtn.hidden = true;
   o3d?.disconnect();
   o3d = null;
   if (o3dTimer) clearTimeout(o3dTimer);

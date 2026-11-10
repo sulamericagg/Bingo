@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "Gratis",
   "hub.inbox": "Surat",
   "hub.launchFail": "Game belum bisa dibuka sekarang",
+  "hub.rotate": "Putar layar",
   "hub.loadBack": "Kembali",
   "hub.missions": "Misi",
   "hub.next": "Game berikutnya",

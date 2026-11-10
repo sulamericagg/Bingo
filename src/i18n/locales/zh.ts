@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "免费",
   "hub.inbox": "邮箱",
   "hub.launchFail": "暂时打不开游戏",
+  "hub.rotate": "旋转屏幕",
   "hub.loadBack": "返回",
   "hub.missions": "任务",
   "hub.next": "下一个游戏",

@@ -56,6 +56,7 @@ export function playIntro(el: HTMLElement, o: IntroOpts): Promise<void> {
   el.style.setProperty('--i3-bg1', th.bg[1]);
   el.innerHTML = '';
   const cv = document.createElement('canvas');
+  cv.setAttribute('data-intro', '1');
   cv.className = 'i3-cv';
   const flash = document.createElement('div');
   flash.className = 'i3-flash';

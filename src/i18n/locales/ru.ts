@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "Даром",
   "hub.inbox": "Почта",
   "hub.launchFail": "Сейчас не удалось открыть игру",
+  "hub.rotate": "Повернуть экран",
   "hub.loadBack": "Назад",
   "hub.missions": "Задания",
   "hub.next": "Следующая игра",

@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "無料",
   "hub.inbox": "メール",
   "hub.launchFail": "いまはゲームをひらけないよ",
+  "hub.rotate": "画面を回転",
   "hub.loadBack": "もどる",
   "hub.missions": "ミッション",
   "hub.next": "次のゲーム",

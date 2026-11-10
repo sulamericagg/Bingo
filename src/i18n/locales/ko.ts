@@ -2618,6 +2618,7 @@ export default {
   "hub.free": "무료",
   "hub.inbox": "우편함",
   "hub.launchFail": "지금은 게임을 열 수 없어요",
+  "hub.rotate": "화면 회전",
   "hub.loadBack": "뒤로",
   "hub.missions": "미션",
   "hub.next": "다음 게임",
