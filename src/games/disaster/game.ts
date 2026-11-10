@@ -3,6 +3,7 @@
  *  jogadores (você + bots + visitantes online), desastres e HUD.
  *  Desenho em draw.ts; mundo/física em world.ts.
  * ============================================================ */
+import { isSolo } from '../../ui/touch';
 import { t } from '../../i18n';
 import { save } from '../../core/storage';
 import { addCoins } from '../../core/economy';
@@ -322,6 +323,7 @@ export class DisasterGame implements MiniGameHandle {
     this.keys.l = this.keys.r = this.keys.j = this.keys.u = false;
     this.touch.l = this.touch.r = this.touch.j = false;
     this.jumpTap = false;
+    this.hud?.joy.reset();
   }
 
   /* ------------------------------ online ------------------------------ */
@@ -383,7 +385,8 @@ export class DisasterGame implements MiniGameHandle {
     const old = this.players;
     this.players = [];
     const meSkin = SKINS.find((s) => s.id === save.skin) ?? SKINS[0];
-    const n = 8 - Math.min(3, this.peers.length);
+    // "Jogar sozinho": sem bots (visitantes online reais continuam aparecendo como fantasmas)
+    const n = isSolo('disaster') ? 1 : 8 - Math.min(3, this.peers.length);
     const W = this.world.W;
     const sx = this.world.spawnX;
     for (let i = 0; i < n; i++) {
@@ -703,11 +706,13 @@ export class DisasterGame implements MiniGameHandle {
 
     // entrada do jogador
     const mi = this.me.input;
-    mi.l = this.keys.l || this.touch.l;
-    mi.r = this.keys.r || this.touch.r;
+    // joystick flutuante (src/ui/touch): horizontal anda, para cima sobe escada
+    const js = this.hud.joy.read();
+    mi.l = this.keys.l || this.touch.l || js.x < -0.3;
+    mi.r = this.keys.r || this.touch.r || js.x > 0.3;
     // toque rápido (apertou e soltou entre dois quadros) ainda conta como pulo
     mi.j = this.keys.j || this.touch.j || this.jumpTap;
-    mi.u = this.keys.u || this.touch.j || this.jumpTap;
+    mi.u = this.keys.u || this.touch.j || this.jumpTap || (js.active && js.y < -0.6);
     this.jumpTap = false;
 
     for (const p of this.players) {

@@ -54,6 +54,18 @@ export class Lobby {
   private flipReact = -1;
   /** só para testes: força bots a aparecerem logo */
   fastBots = false;
+  /** "Jogar sozinho": nenhum bot aparece (visitantes reais continuam) */
+  private solo = false;
+
+  setSolo(on: boolean): void {
+    this.solo = on;
+    if (!on) return;
+    for (const p of [...this.peers.values()]) {
+      if (!p.bot) continue;
+      this.peers.delete(p.id);
+      this.botCount--;
+    }
+  }
 
   constructor(private terrain: Terrain) {}
 
@@ -171,7 +183,7 @@ export class Lobby {
   /** passo de jogo (bots + suavização). gravity/grip do lugar de cada carro */
   update(dt: number, steps: number, playerX: number, playerSpeed: number, running: boolean): void {
     // bots aparecem quando não há ninguém de verdade
-    if (running && this.realCount <= 0) {
+    if (running && this.realCount <= 0 && !this.solo) {
       this.botTimer -= dt * (this.fastBots ? 6 : 1);
       if (this.botTimer <= 0 && this.botCount < 2 && playerX > 40) {
         this.spawnBot(playerX);

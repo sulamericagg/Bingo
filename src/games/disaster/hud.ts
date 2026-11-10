@@ -10,13 +10,14 @@ import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
 import { DISASTERS, type DisasterId } from './scenarios';
-import { dzIcon } from './icons';
+import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
+import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
 const CSS = `
 .dz-root{position:fixed;inset:0;overflow:hidden;background:#0e1a33;touch-action:none;user-select:none;-webkit-user-select:none;font-family:'Fredoka',system-ui,sans-serif;color:#fff}
 .dz-canvas{position:absolute;inset:0;display:block}
 .dz-hud{position:absolute;inset:0;pointer-events:none}
-.dz-top{position:absolute;left:0;right:0;top:0;padding:max(10px,env(safe-area-inset-top)) 10px 0;display:flex;align-items:flex-start;gap:8px}
+.dz-top{position:absolute;left:0;right:0;top:0;padding:max(10px,env(safe-area-inset-top)) var(--edge-r,10px) 0 var(--edge-l,10px);display:flex;align-items:flex-start;gap:8px}
 .dz-btn{pointer-events:auto;border:0;cursor:pointer;font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.25);border-radius:14px;display:flex;align-items:center;justify-content:center}
 .dz-home{width:44px;height:44px;flex:none}
 .dz-mid{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
@@ -27,16 +28,9 @@ const CSS = `
 .dz-phase b{font-size:18px;min-width:2.2em;text-align:right}
 .dz-alive{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .dz-chip{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 8px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:4px}
-.dz-card{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%) scale(.6);opacity:0;text-align:center;transition:transform .35s cubic-bezier(.2,1.6,.4,1),opacity .25s;pointer-events:none;width:min(92vw,520px)}
-.dz-card.on{transform:translate(-50%,-50%) scale(1);opacity:1}
-.dz-card .big{font-size:clamp(30px,9vw,54px);font-weight:700;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;text-shadow:0 4px 0 #2a0b5c,0 0 24px rgba(255,120,40,.6);letter-spacing:.5px}
-.dz-card .sub{margin-top:8px;font-size:clamp(14px,4vw,18px);font-weight:600;background:rgba(30,15,70,.78);display:inline-block;padding:6px 14px;border-radius:14px}
-.dz-card>.ico{display:block;margin:0 auto 6px}.dz-card .sub .ico{vertical-align:-3px}
-.dz-card.alert .big{color:#fff;text-shadow:0 4px 0 #2a0b5c,0 0 30px rgba(255,40,40,.9)}
-.dz-toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);background:rgba(30,15,70,.85);border-radius:14px;padding:6px 14px;font-weight:600;font-size:14px;opacity:0;transition:opacity .25s;text-align:center;max-width:86vw}
-.dz-toast.on{opacity:1}
-.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 14px max(14px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end;pointer-events:none}
-.dz-ctrl .grp{display:flex;gap:12px}
+.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) var(--edge-b,14px) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
+.dz-ctrl.lefty{justify-content:flex-start}
+.dz-solo{display:flex;justify-content:center;margin:4px 0 2px}
 .dz-pad{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(30,15,70,.5);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;touch-action:none}
 .dz-pad.on{background:rgba(255,176,58,.6);transform:scale(.94)}
 .dz-pad.jump{width:84px;height:84px}
@@ -51,7 +45,7 @@ const CSS = `
 .dz-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
 .dz-big:disabled{opacity:.5}
-@media (orientation:landscape) and (max-height:500px){.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}.dz-card{top:34%}}
+@media (orientation:landscape) and (max-height:500px){.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -65,10 +59,9 @@ export class Hud {
   private phaseNum: HTMLElement;
   private alive: HTMLElement;
   private streak: HTMLElement;
-  private card: HTMLElement;
-  private toastEl: HTMLElement;
-  private cardTimer = 0;
-  private toastTimer = 0;
+  /** joystick flutuante (andar/subir escada) — src/ui/touch */
+  joy: Joystick;
+  private offCtl: () => void;
   private lastNum = -1;
   private lastAlive = '';
 
@@ -88,11 +81,8 @@ export class Hud {
         <div class="dz-mid"><div class="dz-scn"></div><div class="dz-phase"><span class="lbl"></span><b></b></div></div>
         <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div></div>
       </div>
-      <div class="dz-card"></div>
-      <div class="dz-toast"></div>
       <div class="dz-ctrl">
-        <div class="grp"><div class="dz-pad left">${icon('arrow-up')}</div><div class="dz-pad right">${icon('arrow-up')}</div></div>
-        <div class="dz-pad jump">${icon('arrow-up')}</div>
+        <div class="dz-pad jump" data-touch-ignore>${icon('arrow-up')}</div>
       </div>`;
     g.root.appendChild(el);
     this.el = el;
@@ -102,8 +92,19 @@ export class Hud {
     this.phaseNum = el.querySelector('.dz-phase b')!;
     this.alive = el.querySelector('.dz-chip.a span')!;
     this.streak = el.querySelector('.dz-chip.s span')!;
-    this.card = el.querySelector('.dz-card')!;
-    this.toastEl = el.querySelector('.dz-toast')!;
+    // joystick flutuante na metade esquerda (direita no modo canhoto); pular fica do outro lado
+    this.joy = createJoystick(g.root, { zoneTop: 0.18, deadZone: 0.18, mouse: false });
+    const ctl = el.querySelector('.dz-ctrl') as HTMLElement;
+    const side = () => ctl.classList.toggle('lefty', controls.lefty);
+    side();
+    this.offCtl = onControlsChange(side);
+    // avisos logo abaixo da barra do topo
+    requestAnimationFrame(() => {
+      const top = el.querySelector('.dz-top') as HTMLElement | null;
+      if (!top || !top.isConnected) return;
+      const pad = parseFloat(getComputedStyle(top).paddingTop) || 10;
+      setNotifyTop(top.getBoundingClientRect().bottom - pad + 16);
+    });
     el.querySelector('.dz-home')!.addEventListener('click', () => {
       audio.click();
       g.requestExit();
@@ -157,52 +158,37 @@ export class Hud {
       p.addEventListener('pointercancel', up);
       p.addEventListener('lostpointercapture', up);
     };
-    pad('.dz-pad.left', 'l');
-    pad('.dz-pad.right', 'r');
     pad('.dz-pad.jump', 'j');
-  }
-
-  private showCard(html: string, dur: number, alert = false): void {
-    this.card.innerHTML = html;
-    this.card.classList.toggle('alert', alert);
-    this.card.classList.add('on');
-    this.cardTimer = dur;
   }
 
   roundCard(): void {
     const g = this.g;
     this.scn.textContent = (g.training ? t('dz.train', 'Treino') + ' · ' : '') + g.scenarioTitle();
-    const stars = '<span style="color:#ffe14d">' + '★'.repeat(g.sc.difficulty) + '</span>';
-    this.showCard(
-      `${dzIcon(g.finale ? 'bunker' : 'house', 64)}<div class="big">${t('dz.round', 'Cenário {n}', { n: g.sc.n })}</div><div class="sub">${g.sc.map.name()} &nbsp;${stars}</div>`,
-      2.4,
-    );
+    // faixa curta no topo (antes: cartão grande no meio da tela)
+    bigMoment(t('dz.round', 'Cenário {n}', { n: g.sc.n }), { sub: g.sc.map.name() + ' ' + '★'.repeat(g.sc.difficulty), ms: 1200 });
   }
 
   disasterCard(d: DisasterId): void {
     const info = DISASTERS[d];
-    this.showCard(`${dzIcon(d, 72)}<div class="big">${info.name()}!</div><div class="sub">${info.hint()}</div>`, 2.8, true);
+    bigMoment(info.name() + '!', { icon: 'warning', color: 'linear-gradient(90deg,#ff5a3c,#c8193c)', ms: 1200 });
+    notify(info.hint(), { kind: 'warn', key: 'dz-hint', ms: 3000 });
   }
 
   resultCard(survived: boolean, coins: number, alive: number): void {
     const g = this.g;
     if (survived && g.newBest) celebrateRecord(t('dz.recDetail', 'Sequência {n}', { n: g.streak }));
-    if (survived)
-      this.showCard(
-        `${icon('trophy', { size: 72 })}<div class="big">${g.newBest ? t('dz.record', 'Novo recorde!') : t('dz.survived', 'Sobreviveu!')}</div><div class="sub">${icon('coin', { size: 18 })} +${fmt(coins)} &nbsp; ${icon('fire', { size: 18 })} ${t('dz.streak', 'Sequência {n}', { n: g.streak })}</div>`,
-        3.8,
-      );
-    else
-      this.showCard(
-        `${dzIcon('ghost', 72)}<div class="big">${t('dz.lost', 'Quase!')}</div><div class="sub">${g.training ? t('dz.train.lost', 'Tudo bem, é treino! Fique perto da seta verde.') : t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive })}</div>`,
-        3.8,
-      );
+    if (survived) {
+      bigMoment(g.newBest ? t('dz.record', 'Novo recorde!') : t('dz.survived', 'Sobreviveu!'), { icon: 'trophy', sub: '+' + fmt(coins), ms: 1200 });
+      notify(t('dz.streak', 'Sequência {n}', { n: g.streak }), { icon: 'fire', kind: 'good' });
+    } else {
+      bigMoment(t('dz.lost', 'Quase!'), { color: 'linear-gradient(90deg,#5b6bb0,#2c3f7a)', ms: 1100 });
+      notify(g.training ? t('dz.train.lost', 'Tudo bem, é treino! Fique perto da seta verde.') : g.players.length > 1 ? t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive }) : t('dz.lostsolo', 'Na próxima você consegue!'), { ms: 3000 });
+    }
   }
 
+  /** aviso compacto no topo (src/ui/notify) */
   toast(msg: string): void {
-    this.toastEl.textContent = msg;
-    this.toastEl.classList.add('on');
-    this.toastTimer = 2.4;
+    notify(msg, { key: 'dz-hint', ms: 3000 });
   }
 
   onPhase(): void {
@@ -233,18 +219,13 @@ export class Hud {
     // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
     if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + DISASTERS[g.sc.disasters[0]].hint() : DISASTERS[g.sc.disasters[0]].hint());
     if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
+    // objetivo atual num chip minúsculo no canto (fica até a rodada acabar)
+    if (p === 'prepare') objective(g.finale ? t('dz.tip.bunker', 'Siga para a direita e entre no bunker!') : DISASTERS[g.sc.disasters[0]].hint(), { icon: 'warning' });
+    else if (p === 'end' || p === 'intro') objective(null);
   }
 
-  tick(dt = 1 / 60): void {
+  tick(_dt = 1 / 60): void {
     const g = this.g;
-    if (this.cardTimer > 0) {
-      this.cardTimer -= dt;
-      if (this.cardTimer <= 0) this.card.classList.remove('on');
-    }
-    if (this.toastTimer > 0) {
-      this.toastTimer -= dt;
-      if (this.toastTimer <= 0) this.toastEl.classList.remove('on');
-    }
     const n = Math.max(0, Math.ceil(g.phaseDur - g.phaseT));
     if (n !== this.lastNum) {
       this.lastNum = n;
@@ -273,11 +254,16 @@ export class Hud {
       <div class="row"><span>${t('dz.sum.survived', 'Sobreviveu')}</span><b>${fmt(g.sessionSurvived)}</b></div>
       <div class="row"><span>${t('dz.sum.best', 'Melhor sequência')}</span><b>${icon('fire', { size: 16 })}${fmt(g.progress.best)}</b></div>
       <div class="row"><span>${t('dz.sum.coins', 'Moedas')}</span><b class="cn">${icon('coin', { size: 16 })}${fmt(g.sessionCoins)}</b></div>
+      <div class="dz-solo"></div>
       <div class="acts">
         ${canDouble ? `<button class="dz-big dbl">${icon('video', { size: 22 })}${t('dz.sum.double', 'Dobrar moedas')}</button>` : ''}
         <button class="dz-big alt cont">${icon('play', { size: 20 })}${t('dz.sum.continue', 'Continuar jogando')}</button>
         <button class="dz-big alt out">${icon('home', { size: 20 })}${t('dz.sum.exit', 'Voltar ao menu')}</button>
       </div></div>`;
+    m.dataset.touchIgnore = '';
+    m.querySelector('.dz-solo')!.appendChild(
+      soloToggle('disaster', () => notify(t('solo.next', 'Vale a partir da próxima rodada'), { key: 'solo' }), t('dz.solo.sub', 'sem bots na cidade')),
+    );
     this.el.appendChild(m);
     const dbl = m.querySelector('.dbl') as HTMLButtonElement | null;
     dbl?.addEventListener('click', async () => {
@@ -303,6 +289,10 @@ export class Hud {
   }
 
   destroy(): void {
+    this.joy.destroy();
+    this.offCtl();
+    clearNotify();
+    resetNotifyTop();
     this.el.remove();
   }
 }

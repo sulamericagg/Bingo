@@ -1,7 +1,7 @@
 /* Queda Giratória — HUD e telas (paleta quente/doce) */
 .tubo-root { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; font-family: var(--font, 'Fredoka', system-ui, sans-serif); color: #fff; background: #ff9f80; z-index: 50; }
 .tubo-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.tubo-hud { position: absolute; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 0; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
+.tubo-hud { position: absolute; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 12px) var(--edge-r, 14px) 0 var(--edge-l, 14px); display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
 .tubo-hud > * { pointer-events: auto; }
 .tubo-btn-round { width: 46px; height: 46px; border-radius: 50%; border: 0; background: rgba(120, 30, 70, 0.28); display: grid; place-items: center; cursor: pointer; box-shadow: inset 0 -3px 0 rgba(0,0,0,.12); }
 .tubo-score { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; }
@@ -10,15 +10,15 @@
 .tubo-coins { display: flex; align-items: center; gap: 6px; background: rgba(120, 30, 70, 0.28); padding: 6px 12px 6px 8px; border-radius: 999px; font-weight: 700; font-size: 18px; transition: transform .12s; }
 .tubo-coins.bump { animation: tubo-bump .25s; }
 @keyframes tubo-bump { 40% { transform: scale(1.18); } }
-.tubo-shield { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 66px); right: 14px; display: flex; align-items: center; gap: 4px; padding: 4px 10px 4px 6px; border-radius: 999px; background: rgba(70, 160, 220, .45); font-weight: 600; font-size: 14px; opacity: 0; transform: scale(.6); transition: opacity .2s, transform .2s; pointer-events: none; }
+.tubo-shield { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 66px); right: var(--edge-r, 14px); display: flex; align-items: center; gap: 4px; padding: 4px 10px 4px 6px; border-radius: 999px; background: rgba(70, 160, 220, .45); font-weight: 600; font-size: 14px; opacity: 0; transform: scale(.6); transition: opacity .2s, transform .2s; pointer-events: none; }
 .tubo-shield.on { opacity: 1; transform: none; }
-.tubo-combo { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 112px); text-align: center; font-size: 28px; font-weight: 700; opacity: 0; pointer-events: none; -webkit-text-stroke: 1.5px #b8336a; paint-order: stroke fill; text-shadow: 0 3px 0 #b8336a; }
+.tubo-combo { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 112px); text-align: center; font-size: 20px; font-weight: 700; opacity: 0; pointer-events: none; -webkit-text-stroke: 1.5px #b8336a; paint-order: stroke fill; text-shadow: 0 3px 0 #b8336a; }
 .tubo-combo.on { animation: tubo-combo .5s both; }
 .tubo-combo.hot { color: #fff3a0; text-shadow: 0 3px 0 #e2562e, 0 0 16px rgba(255,180,60,.8); }
 @keyframes tubo-combo { 0% { opacity: 0; transform: scale(.5); } 50% { opacity: 1; transform: scale(1.25); } 100% { opacity: 1; transform: scale(1); } }
 .tubo-zone { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 9%); text-align: center; opacity: 0; pointer-events: none; }
-.tubo-zone small { display: block; font-size: 16px; font-weight: 600; opacity: .9; }
-.tubo-zone b { display: block; font-size: 30px; font-weight: 700; -webkit-text-stroke: 1.5px #b8336a; paint-order: stroke fill; text-shadow: 0 3px 0 #b8336a; }
+.tubo-zone small { display: block; font-size: 13px; font-weight: 600; opacity: .9; }
+.tubo-zone b { display: block; font-size: 22px; font-weight: 700; -webkit-text-stroke: 1.5px #b8336a; paint-order: stroke fill; text-shadow: 0 3px 0 #b8336a; }
 .tubo-zone small { text-shadow: 0 2px 0 #b8336a; }
 .tubo-zone.on { animation: tubo-zone 2.4s both; }
 @keyframes tubo-zone { 0% { opacity: 0; transform: translateY(20px); } 15%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-16px); } }

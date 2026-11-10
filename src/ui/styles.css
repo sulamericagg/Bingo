@@ -1,5 +1,26 @@
 /* pilha de fontes por idioma (Fredoka só tem latim) — manter igual a src/i18n/font.ts */
 :root { --font: 'Fredoka', system-ui, sans-serif; }
+/* Margens seguras de borda para HUDs de jogo (docs/CONTROLES.md). No WebView do Capacitor o env()
+   costuma vir 0 mesmo com a barra de 3 botões do Android em cima do jogo → piso de 44–48 px no lado
+   da barra (direita/esquerda em paisagem, embaixo em retrato) só em telas de toque. */
+:root {
+  --edge-t: max(env(safe-area-inset-top, 0px), 8px);
+  --edge-l: max(env(safe-area-inset-left, 0px), 12px);
+  --edge-r: max(env(safe-area-inset-right, 0px), 12px);
+  --edge-b: max(env(safe-area-inset-bottom, 0px), 12px);
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  :root {
+    --edge-l: max(env(safe-area-inset-left, 0px), 44px);
+    --edge-r: max(env(safe-area-inset-right, 0px), 48px);
+    --edge-b: max(env(safe-area-inset-bottom, 0px), 14px);
+  }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  :root {
+    --edge-b: max(env(safe-area-inset-bottom, 0px), 44px);
+  }
+}
 :root:lang(ja) { --font: 'Fredoka', 'Noto Sans JP', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic', 'Noto Sans CJK JP', system-ui, sans-serif; }
 :root:lang(ko) { --font: 'Fredoka', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', system-ui, sans-serif; }
 :root:lang(zh) { --font: 'Fredoka', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
@@ -3080,4 +3101,46 @@ button {
   .logo-small {
     display: none;
   }
+}
+
+/* ---------- avisos compactos (feedback: mensagens não podem tapar a visão) ---------- */
+.biome-banner {
+  top: calc(88px + var(--safe-top));
+  padding: 4px 14px;
+  font-size: 15px;
+  border-radius: 999px;
+}
+.biome-banner.show {
+  animation-duration: 1.5s;
+}
+.speed-toast {
+  top: calc(120px + var(--safe-top));
+  font-size: 12px;
+  padding: 3px 10px 3px 8px;
+}
+.tip-card {
+  top: calc(120px + var(--safe-top));
+  width: min(300px, calc(100% - 32px));
+  gap: 8px;
+  padding: 7px 10px 9px;
+  border-radius: 14px;
+  align-items: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.tip-card .tip-art svg {
+  width: 30px;
+  height: 30px;
+}
+.tip-card .tip-warn svg {
+  width: 16px;
+  height: 16px;
+}
+.tip-card .tip-text b {
+  font-size: 14px;
+}
+.tip-card .tip-text p {
+  font-size: 12px;
+}
+.tip-card .tip-hint {
+  display: none;
 }

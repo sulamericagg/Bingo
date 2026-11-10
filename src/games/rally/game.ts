@@ -46,6 +46,8 @@ import { coinSprite, drawBackdrop, drawCar, drawCarShadow, emoteSprite, EMOTES, 
 import { glowSprite } from '../../gfx/light';
 import { Lobby, type RemotePeer } from './net';
 import { gameFont } from '../../i18n/font';
+import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
+import { controls, edges, isSolo, soloToggle } from '../../ui/touch';
 
 type State = 'garage' | 'play' | 'over' | 'results';
 
@@ -198,6 +200,8 @@ class RallyGame {
     this.lobby = new Lobby(this.terrain);
     this.lobby.onJoin = (p) => this.peerJoined(p);
     this.lobby.onLeave = (p) => this.toast(t('rally.peer.left', '{name} saiu da corrida', { name: p.name }), false);
+    this.lobby.setSolo(isSolo('rally'));
+    setNotifyTop(92); // abaixo do HUD (distância / combustível)
     void this.lobby.start(this.seed);
 
     this.buildDom();
@@ -273,7 +277,7 @@ class RallyGame {
       <button class="rl-ibtn rl-pause" aria-label="${t('rally.pause', 'Pausar')}">${icon('pause', { size: 26 })}</button>
       <button class="rl-ibtn rl-emote-btn" aria-label="${t('rally.emotes', 'Recadinhos')}"></button>
       <div class="rl-tray"></div>
-      <div class="rl-pedals">
+      <div class="rl-pedals${controls.lefty ? ' lefty' : ''}">
         <div class="rl-pd brake"><span>${t('rally.hint.brake', 'Segure: frear')}</span>${icon('hand-tap', { size: 40 })}</div>
         <div class="rl-pd gas"><span>${t('rally.hint.gas', 'Segure: acelerar')}</span>${icon('hand-tap', { size: 40 })}</div>
       </div>`;
@@ -349,14 +353,9 @@ class RallyGame {
     return img;
   }
 
+  /** aviso compacto no topo (src/ui/notify) — antes era uma pílula grande no meio da pista */
   private toast(text: string, visitor: boolean, iconName: 'user' | 'planet' | 'trophy' = 'user'): void {
-    const d = document.createElement('div');
-    d.className = 'rl-toast';
-    d.innerHTML = `${icon(iconName, { size: 26 })}<span></span>${visitor ? `<em>${t('rally.visitor', 'visitante')}</em>` : ''}`;
-    d.querySelector('span')!.textContent = text;
-    this.toastsEl.appendChild(d);
-    setTimeout(() => d.remove(), 3200);
-    while (this.toastsEl.children.length > 3) this.toastsEl.firstElementChild!.remove();
+    notify(visitor ? `${text} · ${t('rally.visitor', 'visitante')}` : text, { icon: iconName });
   }
 
   private peerJoined(p: RemotePeer): void {
@@ -432,6 +431,10 @@ class RallyGame {
         <div class="rl-ups ${have ? '' : 'locked'}">${rows}</div>
         ${action}
       </div>`;
+    const solo = document.createElement('div');
+    solo.className = 'rl-solo';
+    solo.appendChild(soloToggle('rally', (on) => this.lobby.setSolo(on), t('rally.solo.sub', 'sem carros-fantasma')));
+    this.garageEl.appendChild(solo);
     this.garageEl.onclick = (e) => this.garageClick(e);
   }
 
@@ -866,7 +869,11 @@ class RallyGame {
     const down = (e: PointerEvent) => {
       if (this.state !== 'play' || this.paused) return;
       this.trayEl.classList.remove('on');
-      this.ptrs.set(e.pointerId, e.clientX < this.w * 0.5 ? 'brake' : 'gas');
+      // faixa colada à borda (barra de navegação do Android em paisagem): ignora toque acidental
+      const E = edges();
+      if (e.clientX < E.l * 0.5 || e.clientX > this.w - E.r * 0.5) return;
+      // modo canhoto (Ajustes > Controles): acelerar fica à esquerda
+      this.ptrs.set(e.pointerId, e.clientX < this.w * 0.5 !== controls.lefty ? 'brake' : 'gas');
       try {
         cv.setPointerCapture(e.pointerId);
       } catch {
@@ -1027,10 +1034,10 @@ class RallyGame {
       const a = p.t < 1.2 ? 1 : 1 - (p.t - 1.2) / 0.4;
       const pop = p.t < 0.15 ? p.t / 0.15 : 1;
       x.globalAlpha = Math.max(0, a);
-      const sz = (p.big ? 30 : 22) * (0.6 + 0.4 * pop);
+      const sz = (p.big ? 24 : 18) * (0.6 + 0.4 * pop);
       x.font = gameFont(800, sz.toFixed(0));
       const sx = w / 2;
-      const sy = h * 0.26 + p.y * 38 - p.t * 24;
+      const sy = h * 0.19 + p.y * 30 - p.t * 20;
       x.lineWidth = 6;
       x.strokeStyle = INK;
       x.strokeText(p.text, sx, sy);
@@ -1044,10 +1051,10 @@ class RallyGame {
       const k = Math.min(1, this.oopsT * 4);
       const s = 1 + Math.sin(this.oopsT * 12) * 0.08 * (1 - Math.min(1, this.oopsT));
       x.save();
-      x.translate(w / 2, h * 0.3);
+      x.translate(w / 2, h * 0.22);
       x.scale(k * s, k * s);
-      x.font = gameFont(900, 64);
-      x.lineWidth = 12;
+      x.font = gameFont(900, 42);
+      x.lineWidth = 9;
       x.strokeStyle = INK;
       const txt = t('rally.ops', 'Ops!');
       x.strokeText(txt, 0, 0);
@@ -1246,8 +1253,11 @@ class RallyGame {
     // pedais
     const pr = Math.min(56, w * 0.13);
     const by = h - pr - 28 - this.safeB;
-    this.drawPedal(x, 24 + pr, by, pr, false, this.inp.brake);
-    this.drawPedal(x, w - 24 - pr, by, pr, true, this.inp.gas);
+    const E = edges();
+    const L = Math.max(24, E.l) + pr,
+      Rx = w - Math.max(24, E.r) - pr; // modo canhoto: acelerar à esquerda
+    this.drawPedal(x, controls.lefty ? Rx : L, by, pr, false, this.inp.brake);
+    this.drawPedal(x, controls.lefty ? L : Rx, by, pr, true, this.inp.gas);
   }
 
   private drawPedal(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, gas: boolean, on: boolean): void {
@@ -1315,6 +1325,8 @@ class RallyGame {
       }
     }
     this.destroyed = true;
+    clearNotify();
+    resetNotifyTop();
     audio.engineStop();
     cancelAnimationFrame(this.raf);
     for (const f of this.offs) f();
