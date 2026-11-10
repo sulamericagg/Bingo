@@ -18,13 +18,42 @@ import { api } from './net';
 import { installChampionshipListener } from './champ-context';
 import { dailyFicha, persistSocial, social } from './store';
 import { getPlayer } from '../services/online';
+import { friendBadge, startFriendAlerts } from './friend-alerts';
 
 export { addFichas, getFichas } from './store';
 
 let champBadge = 0;
 
-export function openSocial(tab: 'chat' | 'friends' | 'settings' = 'chat'): void {
-  import('./chat-ui').then((m) => m.openSocialPanel(tab));
+export function openSocial(tab: 'chat' | 'friends' | 'settings' = 'chat', prefillHandle?: string): void {
+  const go = () => import('./chat-ui').then((m) => m.openSocialPanel(tab));
+  if (prefillHandle) import('./friends-ui').then((f) => f.setFriendPrefill(prefillHandle)).then(go);
+  else go();
+}
+
+/** Link/QR do @ de alguém: ?amigo=<handle> (web) ou bloopworld://amigo/<handle> e https://…/?amigo= (app). */
+export function handleFromLink(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const raw = u.searchParams.get('amigo') ?? new URLSearchParams(u.hash.replace(/^#/, '')).get('amigo') ?? (u.protocol === 'bloopworld:' ? (u.host === 'amigo' ? u.pathname.slice(1) : null) : null);
+    const h = (raw ?? '').trim().replace(/^@+/, '').toLowerCase();
+    return /^[a-z0-9_.]{3,16}$/.test(h) ? h : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Abre Amigos com o @ do link preenchido (chamado no boot, depois do onboarding, e quando o app abre por link). */
+export function openFriendLink(url: string): boolean {
+  const h = handleFromLink(url);
+  if (!h) return false;
+  openSocial('friends', h);
+  if (url === location.href) {
+    // tira o ?amigo= da barra (recarregar não reabre)
+    const u = new URL(location.href);
+    u.searchParams.delete('amigo');
+    history.replaceState(null, '', u.pathname + u.search + u.hash);
+  }
+  return true;
 }
 export function openChampionshipsPanel(): void {
   import('./champ-ui').then((m) => m.openChampionships());
@@ -67,8 +96,11 @@ export function registerSocial(): void {
     },
     icon: 'user',
     navOrder: 50,
-    open: () => openSocial('chat'),
+    // pedido de amizade/convite pendente: abre direto em Amigos
+    open: () => openSocial(friendBadge() > 0 ? 'friends' : 'chat'),
+    badge: () => friendBadge(),
   });
+  startFriendAlerts();
   dailyFicha();
   installChampionshipListener();
   // recordes por jogo (perfil)

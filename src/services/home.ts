@@ -14,7 +14,10 @@
 import { ONLINE } from '../config';
 import type {
   FriendInfo,
+  FriendInvite,
   FriendRequest,
+  HandleHit,
+  InviteKind,
   HandleCheck,
   HomeApi,
   HomeDesign,
@@ -37,11 +40,13 @@ interface Cache {
   pendingDesign: HomeDesign | null;
   friends: FriendInfo[];
   requests: FriendRequest[];
+  invites: FriendInvite[];
+  hidden: boolean;
   migrated: boolean;
 }
 
 function load(): Cache {
-  const d: Cache = { handle: null, home: null, pendingDesign: null, friends: [], requests: [], migrated: false };
+  const d: Cache = { handle: null, home: null, pendingDesign: null, friends: [], requests: [], invites: [], hidden: false, migrated: false };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (o && typeof o === 'object') return { ...d, ...o };
@@ -186,10 +191,12 @@ function fetchFriends(): Promise<boolean> {
   const p = (async () => {
     const id = await myId();
     if (!id) return false;
-    const r = await req<{ friends: FriendInfo[]; requests: FriendRequest[] }>('GET', '/friends?id=' + id);
+    const r = await req<{ friends: FriendInfo[]; requests: FriendRequest[]; invites?: FriendInvite[]; hidden?: boolean }>('GET', '/friends?id=' + id);
     if (!r?.ok) return false;
     cache.friends = r.data.friends ?? [];
     cache.requests = r.data.requests ?? [];
+    cache.invites = r.data.invites ?? [];
+    cache.hidden = !!r.data.hidden;
     persist();
     await migrateLocalFriends(id);
     syncSocial();
@@ -228,7 +235,7 @@ async function addFriend(handleOrId: string): Promise<'sent' | 'already' | 'not_
   if (!id) return 'network';
   const raw = handleOrId.trim();
   const byId = !raw.startsWith('@') && raw.includes('-') && ID_RE.test(raw);
-  const r = await req<{ result: string }>('POST', '/friends/request', byId ? { id, to: raw } : { id, handle: norm(raw) });
+  const r = await req<{ result: string }>('POST', '/friends/request', byId ? { id, to: raw } : { id, handle: norm(raw) }, true);
   if (!r) return 'network';
   lastFetch = null;
   const res = r.ok ? r.data.result : 'not_found';
@@ -242,7 +249,7 @@ async function addFriend(handleOrId: string): Promise<'sent' | 'already' | 'not_
 
 async function respond(fromId: string, accept: boolean): Promise<boolean> {
   const id = await myId();
-  const r = id ? await req<{ ok: boolean }>('POST', '/friends/respond', { id, from: fromId, accept }) : null;
+  const r = id ? await req<{ ok: boolean }>('POST', '/friends/respond', { id, from: fromId, accept }, true) : null;
   if (!r?.ok || !r.data.ok) return false;
   cache.requests = cache.requests.filter((x) => x.from.id !== fromId);
   lastFetch = null;
@@ -275,6 +282,72 @@ async function blockPlayer(target: string, on: boolean): Promise<boolean> {
   lastFetch = null;
   return true;
 }
+
+/* ---------------- busca de @, convites, visibilidade, denúncia ---------------- */
+
+async function searchHandles(q: string): Promise<HandleHit[] | 'rate' | null> {
+  const id = await myId();
+  if (!id) return null;
+  // force: a busca é o jeito de descobrir que a rede voltou (não espera os 15 s de "fora do ar")
+  const r = await req<{ items: HandleHit[] }>('GET', `/handles/search?id=${id}&q=${encodeURIComponent(q)}`, undefined, true);
+  if (!r) return null;
+  if (!r.ok) return r.status === 429 ? 'rate' : [];
+  return r.data.items ?? [];
+}
+
+async function invites(): Promise<FriendInvite[]> {
+  await fetchFriends();
+  return cache.invites;
+}
+
+async function invite(friendId: string, kind: InviteKind, game?: string): Promise<'sent' | 'not_friend' | 'wait' | 'network'> {
+  const id = await myId();
+  const r = id ? await req<{ result: 'sent' | 'not_friend' | 'wait' }>('POST', '/friends/invite', { id, to: friendId, kind, ...(game ? { game } : {}) }, true) : null;
+  if (!r) return 'network';
+  return r.ok ? r.data.result : 'not_friend';
+}
+
+async function clearInvite(fromId: string): Promise<void> {
+  cache.invites = cache.invites.filter((x) => x.from.id !== fromId);
+  persist();
+  const id = await myId();
+  if (id) await req('POST', '/friends/invite/clear', { id, from: fromId });
+}
+
+async function setDiscoverable(on: boolean): Promise<boolean> {
+  const id = await myId();
+  const r = id ? await req<{ ok: boolean }>('POST', '/friends/visibility', { id, hidden: !on }, true) : null;
+  if (!r?.ok) return false;
+  cache.hidden = !on;
+  persist();
+  return true;
+}
+
+async function report(target: { id?: string; handle?: string; name?: string }, reason: string): Promise<boolean> {
+  const id = await myId();
+  if (!id) return false;
+  const r = await req<{ ok: boolean }>('POST', '/chat/report', { reporter: id, ...(target.id ? { pid: target.id } : { handle: target.handle }), name: target.name ?? '', reason }, true);
+  return !!r?.ok;
+}
+
+/** Bloqueia pelo @ (resultado da busca não tem id). */
+export async function blockHandle(handle: string): Promise<boolean> {
+  const id = await myId();
+  const r = id ? await req<{ ok: boolean }>('POST', '/friends/block', { id, handle: norm(handle), on: true }, true) : null;
+  lastFetch = null;
+  return !!r?.ok;
+}
+
+/** Força a próxima leitura de amigos/pedidos/convites a ir ao servidor (avisos em segundo plano). */
+export function refreshFriendsNow(): Promise<boolean> {
+  lastFetch = null;
+  return fetchFriends();
+}
+export const cachedSocial = (): { friends: FriendInfo[]; requests: FriendRequest[]; invites: FriendInvite[] } => ({
+  friends: cache.friends,
+  requests: cache.requests,
+  invites: cache.invites,
+});
 
 /* ---------------- casas ---------------- */
 
@@ -587,6 +660,13 @@ export const homeApi: HomeApi = {
   joinParty,
   saveFriendDesign,
   blockPlayer,
+  searchHandles,
+  invites,
+  invite,
+  clearInvite,
+  discoverable: () => !cache.hidden,
+  setDiscoverable,
+  report,
 };
 export default homeApi;
 

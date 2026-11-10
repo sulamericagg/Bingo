@@ -8,7 +8,6 @@ import { t } from '../i18n';
 import { icon } from '../ui/icons';
 import { getPlayer } from '../services/online';
 import { tap } from '../core/haptics';
-import { homeApi } from '../services/home';
 import { api, me, wsUrl } from './net';
 import { openProfile } from './profile';
 import { emoteThumb, openSheet, popMenu, skinThumb, toast, type Sheet } from './sheet';
@@ -106,6 +105,7 @@ function show(tab: Tab): void {
   if (tab === 'chat') showChat();
   else if (tab === 'friends') showFriends();
   else showSettings();
+  if (tab !== 'friends') state.sheet.body.classList.remove('fr-body');
 }
 
 /* ---------------- chat ---------------- */
@@ -393,49 +393,13 @@ function showAgeGate(): void {
 
 /* ---------------- amigos ---------------- */
 
-let friendsSynced = 0;
 function showFriends(): void {
-  // lista do servidor (amigos de verdade); re-renderiza quando chegar
-  if (Date.now() - friendsSynced > 30_000) {
-    friendsSynced = Date.now();
-    homeApi
-      .friends()
-      .then(() => {
-        if (state?.tab === 'friends' && document.body.contains(state.sheet.body)) showFriends();
-      })
-      .catch(() => {});
-  }
-  const body = state!.sheet.body;
-  body.innerHTML = '';
-  const mine = document.createElement('button');
-  mine.className = 'sc-btn violet wide';
-  mine.style.marginBottom = '12px';
-  mine.innerHTML = icon('user', { size: 22 }) + t('friends.myprofile', 'Meu perfil');
-  mine.onclick = () => openProfile();
-  body.appendChild(mine);
-  if (!social.friends.length) {
-    const e = document.createElement('div');
-    e.className = 'sc-empty';
-    e.innerHTML = icon('heart', { size: 56 });
-    e.append(t('friends.empty2', 'Adicione amigos pelo @nome ou tocando em quem jogou com você.'));
-    body.appendChild(e);
-    return;
-  }
-  for (const f of social.friends) {
-    const row = document.createElement('div');
-    row.className = 'sc-row';
-    const av = document.createElement('button');
-    av.className = 'sc-av';
-    av.appendChild(skinThumb(f.skin, 36));
-    const lbl = document.createElement('div');
-    lbl.className = 'lbl';
-    lbl.textContent = f.name;
-    const open = () => openProfile(f.id, { name: f.name, skin: f.skin });
-    av.onclick = open;
-    lbl.onclick = open;
-    row.append(av, lbl);
-    body.appendChild(row);
-  }
+  const st = state!;
+  const body = st.sheet.body;
+  void import('./friends-ui').then((m) => {
+    if (state !== st || st.tab !== 'friends') return;
+    m.renderFriendsTab({ body, close: () => st.sheet.close(), alive: () => state === st && st.tab === 'friends' && document.body.contains(body) });
+  });
 }
 
 /* ---------------- ajustes ---------------- */

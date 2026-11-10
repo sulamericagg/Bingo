@@ -283,6 +283,11 @@ function openForm(o: FormOpts): Promise<void> {
         const r = await claimHandle(h);
         busy = false;
         goBtn.disabled = false;
+        if (r === 'locked') {
+          setMsg(handleMsg, t('ob.handleLocked', 'Seu @ continua @{h} (dá para trocar 1x a cada 30 dias).', { h: profile.handle }), 'bad');
+          handleIn.value = profile.handle;
+          return;
+        }
         if (r === 'taken' || r === 'blocked' || r === 'invalid') {
           setMsg(handleMsg, r === 'taken' ? t('ob.taken', '@{h} já tem dono. Que tal um destes?', { h }) : t('ob.handleBlocked', 'Esse @ não pode. Tente outro!'), 'bad');
           showSugs(localSuggestions(h));

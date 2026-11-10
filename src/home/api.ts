@@ -31,6 +31,25 @@ export interface FriendRequest {
   at: number;
 }
 
+/** Resultado da busca de @ (o servidor nunca manda o id de quem você ainda não é amigo). */
+export interface HandleHit {
+  handle: string;
+  name: string;
+  skin: string;
+  avatar?: unknown;
+  creature?: string;
+  online: boolean;
+  /** relação comigo: amigo / pedido enviado / pedido recebido */
+  rel: 'friend' | 'sent' | 'received' | null;
+}
+export type InviteKind = 'party' | 'house' | 'game';
+export interface FriendInvite {
+  from: FriendInfo;
+  kind: InviteKind;
+  game?: string;
+  at: number;
+}
+
 /* ---------- casa & planeta ---------- */
 /**
  * Design modular. Cada campo é um índice/ID de peça + cor. O agente da casa define o
@@ -140,4 +159,15 @@ export interface HomeApi {
   saveFriendDesign?(ownerId: string, design: HomeDesign): Promise<boolean>;
   /** (opcional) bloqueia/desbloqueia no servidor (desfaz amizade e some com pedidos) */
   blockPlayer?(id: string, on: boolean): Promise<boolean>;
+  /** (opcional) busca de @ enquanto digita: até 10 parecidos. 'rate' = muitas buscas seguidas; null = sem rede */
+  searchHandles?(q: string): Promise<HandleHit[] | 'rate' | null>;
+  /** (opcional) convites recebidos de amigos (festa/casa/jogo) */
+  invites?(): Promise<FriendInvite[]>;
+  invite?(friendId: string, kind: InviteKind, game?: string): Promise<'sent' | 'not_friend' | 'wait' | 'network'>;
+  clearInvite?(fromId: string): Promise<void>;
+  /** (opcional) aparecer na busca de @ (padrão: sim) */
+  discoverable?(): boolean;
+  setDiscoverable?(on: boolean): Promise<boolean>;
+  /** (opcional) denunciar jogador (por id ou, vindo da busca, pelo @) */
+  report?(target: { id?: string; handle?: string; name?: string }, reason: string): Promise<boolean>;
 }

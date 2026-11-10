@@ -42,7 +42,7 @@ import { registerCaca } from './caca/register';
 import { registerMontaLeva } from './games/montaleva/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
-import { registerSocial } from './social/register';
+import { openFriendLink, registerSocial } from './social/register';
 import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
 import { registerMirror } from './mirror/register';
@@ -170,6 +170,9 @@ async function boot(): Promise<void> {
     console.error('[onboarding]', e);
     document.querySelector('.ob-root')?.remove();
   }
+  // link/QR de amigo (?amigo=<@>) — abre Amigos com o @ preenchido
+  openFriendLink(location.href);
+  if (isNative) App.addListener('appUrlOpen', (e) => void openFriendLink(e.url));
   initAds();
   initBilling();
   registerPass();

@@ -212,31 +212,25 @@ export async function openFriends(ui: SocialUi, myHandle: string | null, editHan
         body.appendChild(row);
       }
     } else {
-      body.innerHTML = `<p>${esc(t('home.friends.addhint', 'Digite o @ exato do seu amigo:'))}</p>
+      body.innerHTML = `<p>${esc(t('home.friends.addhint2', 'Digite o @ do seu amigo (aparecem os parecidos):'))}</p>
         <label class="hm-handle"><b>@</b><input maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
         <div class="hm-row" style="margin-top:8px"><span class="grow"></span><button class="hm-btn hm-blue hm-find">${hicon('search', 18)} ${esc(t('home.friends.search', 'Procurar'))}</button></div>
         <div class="hm-found" style="margin-top:10px"></div>
         <p style="font-size:12px;opacity:.8">${esc(t('home.friends.safe', 'Só adicione quem você conhece de verdade. Na festa ninguém escreve: só emotes!'))}</p>`;
       const inp = body.querySelector('input') as HTMLInputElement;
       const found = body.querySelector('.hm-found') as HTMLElement;
-      const go = async () => {
-        const h = inp.value.trim().toLowerCase().replace(/^@/, '');
-        if (h.length < 3) return;
-        found.innerHTML = `<div class="hm-empty">${esc(t('home.friends.searching', 'Procurando...'))}</div>`;
-        const f = await api.searchPlayer(h);
-        if (!f) {
-          found.innerHTML = netState() === 'offline' ? `<div class="hm-empty">${esc(t('home.friends.net', 'Sem internet. Tente depois.'))}</div>` : `<div class="hm-empty">${esc(t('home.friends.notfound', 'Ninguém com @{h}. Confira as letras!', { h }))}</div>`;
-          return;
-        }
-        found.innerHTML = '';
+      let seq = 0;
+      let timer = 0;
+      const addRow = (f: { handle: string; name: string; skin: string; avatar?: unknown; online?: boolean; rel?: string | null }) => {
         const row = document.createElement('div');
         row.className = 'hm-friend';
-        row.innerHTML = `<div class="av-wrap"><canvas class="av"></canvas></div><div class="who"><b>${esc(f.name)}</b><small>@${esc(f.handle)}</small></div><div class="acts"><button class="hm-btn hm-go">${hicon('plus', 16)} ${esc(t('home.friends.add', 'Adicionar'))}</button></div>`;
+        const done = f.rel === 'friend' || f.rel === 'sent';
+        row.innerHTML = `<div class="av-wrap"><canvas class="av"></canvas>${f.online !== undefined ? `<i class="hm-dot ${f.online ? 'on' : ''}"></i>` : ''}</div><div class="who"><b>@${esc(f.handle)}</b><small>${esc(f.name)}</small></div><div class="acts"><button class="hm-btn hm-go" ${done ? 'disabled' : ''}>${hicon(done ? 'check' : 'plus', 16)} ${esc(f.rel === 'friend' ? t('fr.isfriend', 'Amigo') : f.rel === 'sent' ? t('fr.sent', 'Enviado') : t('home.friends.add', 'Adicionar'))}</button></div>`;
         drawFace(row.querySelector('canvas')!, f.skin, f.avatar);
         row.querySelector('button')!.addEventListener('click', async (e) => {
           const b = e.currentTarget as HTMLButtonElement;
           b.disabled = true;
-          const r = await api.addFriend(f.handle);
+          const r = await api.addFriend('@' + f.handle);
           const msg =
             r === 'sent' ? t('home.friends.sent', 'Pedido enviado para @{h}!', { h: f.handle }) :
             r === 'already' ? t('home.friends.already', 'Vocês já são amigos!') :
@@ -244,11 +238,40 @@ export async function openFriends(ui: SocialUi, myHandle: string | null, editHan
             r === 'not_found' ? t('home.friends.notfound2', 'Não encontrado.') : t('home.friends.net', 'Sem internet. Tente depois.');
           ui.toast(msg);
           if (r === 'sent') hsfx.done();
+          else if (r !== 'already') b.disabled = false;
         });
         found.appendChild(row);
       };
+      // busca enquanto digita (prefixo + parecidos); sem a busca no servidor, cai no @ exato
+      const go = async () => {
+        const h = inp.value.trim().toLowerCase().replace(/^@/, '');
+        const my = ++seq;
+        if (h.length < 2) return void (found.innerHTML = '');
+        found.innerHTML = `<div class="hm-empty">${esc(t('home.friends.searching', 'Procurando...'))}</div>`;
+        const hits = api.searchHandles ? await api.searchHandles(h) : null;
+        if (my !== seq) return;
+        if (Array.isArray(hits) && hits.length) {
+          found.innerHTML = '';
+          hits.forEach(addRow);
+          return;
+        }
+        const f = h.length >= 3 && !Array.isArray(hits) ? await api.searchPlayer(h) : null;
+        if (my !== seq) return;
+        if (!f) {
+          found.innerHTML =
+            hits === 'rate' ? `<div class="hm-empty">${esc(t('fr.search.rate', 'Calma! Muitas buscas seguidas. Espere um pouquinho.'))}</div>` :
+            netState() === 'offline' ? `<div class="hm-empty">${esc(t('home.friends.net', 'Sem internet. Tente depois.'))}</div>` : `<div class="hm-empty">${esc(t('home.friends.notfound', 'Ninguém com @{h}. Confira as letras!', { h }))}</div>`;
+          return;
+        }
+        found.innerHTML = '';
+        addRow(f);
+      };
       body.querySelector('.hm-find')!.addEventListener('click', go);
       inp.addEventListener('keydown', (e) => e.key === 'Enter' && go());
+      inp.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = window.setTimeout(go, 260);
+      });
       inp.addEventListener('input', () => (inp.value = inp.value.toLowerCase().replace(/\s/g, '')));
     }
   };

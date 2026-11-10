@@ -585,9 +585,11 @@ export async function friendsRemove(req: Request, env: Env): Promise<Response> {
   return json({ ok: await hub(env).remove(requireId(b.id), requireId(b.friend, 'friend')) });
 }
 
-/** POST /api/friends/block { id, target, on } */
+/** POST /api/friends/block { id, target | handle, on } */
 export async function friendsBlock(req: Request, env: Env): Promise<Response> {
   const b = await readJson(req);
-  await hub(env).block(requireId(b.id), requireId(b.target, 'target'), b.on !== false);
+  // da busca de amigos vem só o @ (a busca nunca expõe o id)
+  const target = b.handle && !b.target ? ((await resolveHandle(env, String(b.handle))) ?? '') : String(b.target ?? '');
+  await hub(env).block(requireId(b.id), requireId(target, 'target'), b.on !== false);
   return json({ ok: true });
 }
