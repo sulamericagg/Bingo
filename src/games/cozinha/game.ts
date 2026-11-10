@@ -153,6 +153,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   }
 
   /* ======================= 1b) mapa de fases ======================= */
+  const litStars = (n: number, size = 12) => `<span class="cz-ministars">${Array.from({ length: n }, () => `<i class="on">${icon('star', { size })}</i>`).join('')}</span>`;
   const starsRow = (n: number, size = 14) => [0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}">${icon('star', { size })}</i>`).join('');
   const helpersFor = (lv: Level | null): number => {
     if (sv.solo) return 0;
@@ -262,7 +263,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <div class="cz-note" style="text-align:left">${esc(WORLDS[lv.world].name())}${lv.special !== 'none' ? ' · ' + esc(specialName(lv.special)) : ''}</div>
       <div class="cz-menu-list">${lv.menu.map((r) => `<span${news.recipes.includes(r) ? ' class="cz-new"' : ''}>${esc(RECIPES[r].name())}</span>`).join('')}</div>
       ${news.recipes.length || news.procs.length ? `<div class="cz-newrow">${t('cozinha.new', 'Novo!')} ${news.procs.map((p) => esc(procName(p))).join(', ')}</div>` : ''}
-      ${lv.tutorial ? `<div class="cz-note">${t('cozinha.tutNote', 'Sem relógio: siga a seta verde e as dicas no topo.')}</div>` : `<div class="cz-goals"><span>${starsRow(1, 12)} ${fmt(g[0])}</span><span>${starsRow(2, 12)} ${fmt(g[1])}</span><span>${starsRow(3, 12)} ${fmt(g[2])}</span></div>`}
+      ${lv.tutorial ? `<div class="cz-note">${t('cozinha.tutNote', 'Sem relógio: siga a seta verde e as dicas no topo.')}</div>` : `<div class="cz-goals"><span>${litStars(1)} ${fmt(g[0])}</span><span>${litStars(2)} ${fmt(g[1])}</span><span>${litStars(3)} ${fmt(g[2])}</span></div>`}
       <div class="cz-note">${hp === 0 ? (sv.solo ? t('cozinha.soloOn', 'Sozinho: sem ajudantes') : t('cozinha.noHelpers', 'Sem ajudantes nesta fase')) : t('cozinha.helpersN', 'Ajudantes: {n} (toque neles e dê ordens)', { n: hp })}</div>
       <div class="cz-row"><button class="cz-btn cz-grow" data-a="close">${t('cozinha.back', 'Voltar')}</button><button class="cz-btn cz-green cz-big cz-grow" data-a="go">${icon('play', { size: 22 })}${t('cozinha.play', 'Jogar')}</button></div>
     </div>`;
@@ -457,7 +458,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           ${owned ? `<span class="cz-pill">${icon('check', { size: 18 })}</span>` : locked ? `<span class="cz-pill">${icon('lock', { size: 18 })}${t('cozinha.locked', 'Dia {n}', { n: p.minDay })}</span>` : `<button class="cz-btn cz-gold" data-p="${i}" ${sv.cash < p.cost ? 'disabled' : ''}>${icon('coin', { size: 18 })}${fmt(p.cost)}</button>`}</div>`;
       });
     } else {
-      body += `<div class="cz-note">${t('cozinha.staffNote', 'Ajudantes robôs trabalham com você (e com seus amigos). Toque neles no restaurante para dar folga.')}</div>`;
+      body += `<div class="cz-note">${t('cozinha.staffNote2', 'Ajudantes só fazem o que você mandar: no jogo, toque neles e escolha uma tarefa. No saguão, toque para dar folga.')}</div>`;
       for (const r of ROLES) {
         const have = sv.staff.filter((x) => x === r).length;
         const cost = HIRE_COST(sv.staff.length);
@@ -1228,7 +1229,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       ${rec ? `<div class="cz-sub" style="color:#ffe14a;font-weight:700">${t('cozinha.record', 'Novo recorde!')}</div>` : ''}
       <div class="cz-card">
         <div class="cz-stat"><span>${t('cozinha.score', 'Pontos (caixa)')}</span><b>${icon('coin', { size: 18 })}${fmt(sim.cash)}</b></div>
-        <div class="cz-goals">${[0, 1, 2].map((i) => `<span class="${sim.cash >= g[i] ? 'on' : ''}">${starsRow(i + 1, 11)} ${fmt(g[i])}</span>`).join('')}</div>
+        <div class="cz-goals">${[0, 1, 2].map((i) => `<span class="${sim.cash >= g[i] ? 'on' : ''}">${litStars(i + 1, 11)} ${fmt(g[i])}</span>`).join('')}</div>
         <div class="cz-stat"><span>${t('cozinha.served', 'Pratos servidos')}</span><b>${sim.served}</b></div>
         <div class="cz-stat"><span>${t('cozinha.missed', 'Clientes que foram embora')}</span><b>${sim.missed}</b></div>
         ${sim.workBot ? `<div class="cz-stat"><span>${t('cozinha.youDid', 'Feito por você')}</span><b>${100 - share}%</b></div>` : ''}
