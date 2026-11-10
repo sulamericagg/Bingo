@@ -126,7 +126,7 @@ export class Props {
         break;
       case 'made':
         geo = madeGeo(o.made!);
-        r = o.made === 'popcorn' ? 0.018 : o.made === 'friedegg' ? 0.05 : o.made === 'pancake' ? 0.06 : 0.1;
+        r = o.made === 'popcorn' ? 0.03 : o.made === 'friedegg' ? 0.05 : o.made === 'pancake' ? 0.06 : 0.1;
         shape = o.made === 'popcorn' ? new CANNON.Sphere(r) : new CANNON.Cylinder(r, r, r * 0.9, 10);
         mass = o.made === 'popcorn' ? 0.02 : 0.5;
         break;

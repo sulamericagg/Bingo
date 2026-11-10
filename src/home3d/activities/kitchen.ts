@@ -923,6 +923,7 @@ export class Kitchen {
             ctx.hand(p);
             sfx.pick();
           },
+          'fridge',
         );
         this.pickT = 0;
         return true;
@@ -1011,7 +1012,7 @@ export class Kitchen {
     this.prep?.update(dt);
     this.trash?.update();
     // fecha a fileira da geladeira quando se afasta
-    if (this.ctx.ui.picking && this.fridges.length) {
+    if (this.ctx.ui.picking && this.ctx.ui.pickOwner === 'fridge' && this.fridges.length) {
       const cam = this.ctx.eng.camera.position;
       const near = this.fridges.some((f) => Math.hypot(f.item.obj.position.x - cam.x, f.item.obj.position.z - cam.z) < 3);
       this.pickT = near ? 0 : this.pickT + dt;

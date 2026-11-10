@@ -388,7 +388,8 @@ export class Extras {
     const k = item.kind;
     return {
       id: 'x-' + k,
-      hit: (_r, tg) => itemHit(item, tg),
+      // espelho fica na parede (atrás da pia): caixa de mira um pouco maior
+      hit: (r, tg) => (item.info.wall ? hitBox(r, item.obj, v3(-item.dims.w / 2 - 0.1, -0.15, -0.1), v3(item.dims.w / 2 + 0.1, item.dims.h + 0.1, 0.35), 3) : itemHit(item, tg)),
       label: () => t('home3d.furn.' + k, item.info.name) + ((k === 'speaker' || k === 'piano' || k === 'guitar') && this.music.on ? ' · ♪' : ''),
       acts: (h) => {
         if (h || item.state === 'broken') return [];

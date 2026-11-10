@@ -202,7 +202,7 @@ export function madeGeo(m: string): THREE.BufferGeometry {
         b.sph(0.024, 0.008, 0.006, 0.004, '#ffc21f', 1, 0.55, 1, 10);
         break;
       case 'popcorn':
-        for (let i = 0; i < 5; i++) b.sph(0.01, Math.cos(i * 1.3) * 0.008, (i % 2) * 0.006, Math.sin(i * 1.3) * 0.008, i === 2 ? '#ffe27a' : c, 1, 1, 1, 5);
+        for (let i = 0; i < 6; i++) b.sph(0.016, Math.cos(i * 1.3) * 0.014, (i % 2) * 0.01, Math.sin(i * 1.3) * 0.014, i === 2 ? '#ffe27a' : c, 1, 1, 1, 6);
         break;
       default:
         b.sph(0.05, 0, 0, 0, c, 1, 1, 1, 8);

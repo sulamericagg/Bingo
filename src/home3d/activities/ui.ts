@@ -154,8 +154,11 @@ export class ActUI {
     if (!on) this.closePick();
   }
   /* ---------- fileira de escolha ---------- */
-  openPick(items: PickItem[], onPick: (id: string) => void): void {
+  /** quem abriu a fileira (a geladeira fecha só a dela) */
+  pickOwner = '';
+  openPick(items: PickItem[], onPick: (id: string) => void, owner = ''): void {
     this.closePick();
+    this.pickOwner = owner;
     const box = el('div', 'ha-pick');
     for (const it of items) {
       const b = el('button', '', `${it.color ? `<i style="background:${it.color}"></i>` : ''}${esc(it.label)}`);
