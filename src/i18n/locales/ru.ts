@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "За мной",
   "cozinha.cmd.good": "Да! Он слушается с небольшой задержкой.",
   "cozinha.cmd.nothing": "Сейчас нечего: {x}",
+  "cozinha.cmd.oops": "{n} немного напутал!",
   "cozinha.cmd.serve": "Отнести",
   "cozinha.cmd.stay": "Стоять",
   "cozinha.cmd.tired": "{n} устал: поработай сам!",

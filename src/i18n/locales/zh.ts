@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "跟随",
   "cozinha.cmd.good": "对！它会稍微慢一点听话。",
   "cozinha.cmd.nothing": "现在没有可{x}的",
+  "cozinha.cmd.oops": "{n}有点手忙脚乱！",
   "cozinha.cmd.serve": "上菜",
   "cozinha.cmd.stay": "待着",
   "cozinha.cmd.tired": "{n}累了：你自己做一点吧！",

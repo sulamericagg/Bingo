@@ -64,7 +64,7 @@ export class Brain {
   /** errinho planejado nesta tarefa */
   private oops = false;
   /** avisos (latido/bip) para o jogo tocar som */
-  onBark: ((p: Player, kind: '?' | '!' | 'no' | 'ok') => void) | null = null;
+  onBark: ((p: Player, kind: '?' | '!' | 'no' | 'ok' | 'oops') => void) | null = null;
 
   constructor(
     readonly sim: Sim,
@@ -349,7 +349,9 @@ export class Brain {
         // cansou no meio (você termina!)
         p.emote = 'uau';
         p.emoteT = 1.6;
-        return this.finish();
+        this.finish();
+        this.onBark?.(p, 'oops');
+        return;
       }
       this.setGoal(st.i, A.Act);
       return;
@@ -386,7 +388,11 @@ export class Brain {
         return;
       }
       if (h) return void this.putDown();
-      if (this.taskT > 1.5 && this.goal >= 0 && sim.st[this.goal].k === 'counter') return this.finish(); // entregou
+      if (this.taskT > 1.5 && this.goal >= 0 && sim.st[this.goal].k === 'counter') {
+        this.finish(); // entregou
+        if (this.oops) this.onBark?.(p, 'oops'); // ...o ingrediente errado
+        return;
+      }
       const crate = st && st.k === 'crate' ? st.i : this.near((q) => q.k === 'crate' && q.ing === this.fetchIng);
       if (crate < 0) return this.finish();
       this.setGoal(crate, A.Pick);

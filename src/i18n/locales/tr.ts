@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "Takip et",
   "cozinha.cmd.good": "Evet! Biraz gecikmeyle itaat eder.",
   "cozinha.cmd.nothing": "Şu an {x} için bir şey yok",
+  "cozinha.cmd.oops": "{n} biraz karıştırdı!",
   "cozinha.cmd.serve": "Teslim et",
   "cozinha.cmd.stay": "Bekle",
   "cozinha.cmd.tired": "{n} yoruldu: biraz da sen yap!",

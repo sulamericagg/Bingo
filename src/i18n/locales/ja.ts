@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "ついてくる",
   "cozinha.cmd.good": "いいね！少し遅れて言うことを聞くよ。",
   "cozinha.cmd.nothing": "今は{x}するものがない",
+  "cozinha.cmd.oops": "{n}がちょっとドジした！",
   "cozinha.cmd.serve": "届ける",
   "cozinha.cmd.stay": "待て",
   "cozinha.cmd.tired": "{n}は疲れてる：少し自分でやろう！",

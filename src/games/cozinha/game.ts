@@ -541,7 +541,15 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         b.pet = true;
         b.owner = me;
         b.slow = net.online && net.humans.length ? 1.25 : 1;
-        b.onBark = (_p, k) => (k === 'no' ? audio.fail() : k === '!' ? audio.tick(2) : k === 'ok' ? audio.coin(1) : audio.click());
+        b.onBark = (q, k) => {
+          if (k === 'oops') {
+            audio.fail();
+            banner(t('cozinha.cmd.oops', '{n} se atrapalhou um pouquinho!', { n: q.name }), '', 1600);
+          } else if (k === 'no') audio.fail();
+          else if (k === '!') audio.tick(2);
+          else if (k === 'ok') audio.coin(1);
+          else audio.click();
+        };
         brains.push(b);
       });
       if (qs.has('czauto')) brains.push(new Brain(sim, me, mulberry(5)));

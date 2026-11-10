@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "Ikuti",
   "cozinha.cmd.good": "Ya! Dia patuh dengan sedikit jeda.",
   "cozinha.cmd.nothing": "Tidak ada untuk {x} sekarang",
+  "cozinha.cmd.oops": "{n} sedikit keliru!",
   "cozinha.cmd.serve": "Antar",
   "cozinha.cmd.stay": "Diam",
   "cozinha.cmd.tired": "{n} lelah: kerjakan sendiri sedikit!",

@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "Segui",
   "cozinha.cmd.good": "Sì! Obbedisce con un pizzico di ritardo.",
   "cozinha.cmd.nothing": "Niente da {x} ora",
+  "cozinha.cmd.oops": "{n} si è un po’ confuso!",
   "cozinha.cmd.serve": "Consegna",
   "cozinha.cmd.stay": "Resta",
   "cozinha.cmd.tired": "{n} è stanco: fai un po’ tu!",

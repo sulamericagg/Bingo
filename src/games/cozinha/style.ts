@@ -80,7 +80,7 @@ const CSS = `
 .cz-tip.cz-pop{animation:czTipPop .35s cubic-bezier(.3,1.6,.6,1)}
 @keyframes czTipPop{from{transform:translateX(-50%) scale(.85)}}
 .cz-skip{pointer-events:auto;border:0;border-radius:9px;background:#2a0b5c;color:#fff;font:inherit;font-size:11px;font-weight:700;padding:4px 8px;cursor:pointer;opacity:.75}
-@media (orientation:portrait){.cz-tip{top:calc(env(safe-area-inset-top,0px) + 132px);max-width:92vw}.cz-toasts{top:calc(env(safe-area-inset-top,0px) + 168px)}}
+@media (orientation:portrait){.cz-pets{top:calc(env(safe-area-inset-top,0px) + 176px)}.cz-cmd{top:calc(env(safe-area-inset-top,0px) + 160px)}.cz-tip{top:calc(env(safe-area-inset-top,0px) + 132px);max-width:92vw}.cz-toasts{top:calc(env(safe-area-inset-top,0px) + 168px)}}
 .cz-pets{position:absolute;left:calc(env(safe-area-inset-left,0px) + 6px);top:calc(env(safe-area-inset-top,0px) + 128px);display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:6}
 .cz-chip{pointer-events:auto;position:relative;width:46px;height:50px;border-radius:14px;border:3px solid #2a0b5c;background:linear-gradient(#fff6e0,#ffd9a0);box-shadow:0 3px 0 #2a0b5c;padding:0;cursor:pointer;touch-action:manipulation}
 .cz-chip .cz-chipface{width:36px;height:45px;position:absolute;left:2px;bottom:0}

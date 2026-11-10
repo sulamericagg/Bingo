@@ -402,6 +402,7 @@ export default {
   "cozinha.cmd.follow": "따라오기",
   "cozinha.cmd.good": "좋아요! 조금 늦게 말을 들어요.",
   "cozinha.cmd.nothing": "지금은 {x}할 게 없어요",
+  "cozinha.cmd.oops": "{n}이(가) 살짝 실수했어요!",
   "cozinha.cmd.serve": "배달",
   "cozinha.cmd.stay": "기다려",
   "cozinha.cmd.tired": "{n}이(가) 지쳤어요: 직접 좀 해요!",
