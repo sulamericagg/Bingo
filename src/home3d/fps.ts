@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { t } from '../i18n';
-import { canUse, itemColor, KINDS, newMessId, parsePaintSpec, placeToXY, ROOM_D, ROOM_W, WALL_T, type MessKind } from './adapter';
+import { canUse, itemColor, KINDS, newMessId, parsePaintSpec, placeToXY, quarterOf, ROOM_D, ROOM_W, WALL_T, type MessKind } from './adapter';
+import type { Decor } from './decor';
 import { G, type DecalRec, type Engine, type ItemRec, type RoomRec, type WallRec } from './engine';
 import { Hand, type HandColors } from './hand';
 import { splatColor, type Food, type Party } from './party';
@@ -53,9 +54,13 @@ export class Fps {
   private stepT = 0;
   private fxT = 0;
   private paintT = 0;
-  private decorRot = 0;
-  private decorValid = true;
   private lastLook: [number, number] = [0, 0];
+  /** olhar suavizado: o dedo move o alvo, a câmera segue (sem tranco em celular fraco) */
+  private yawGoal = 0;
+  private pitchGoal = -0.08;
+  /** câmera recua/sobe enquanto move um móvel (0..1) */
+  private pull = 0;
+  decor: Decor | null = null;
   active = true;
   /** callbacks para a sessão */
   onToast?: (s: string) => void;
@@ -112,6 +117,53 @@ export class Fps {
     this.yaw = Math.atan2(-(c.x - p.x), -(c.z - p.z));
     if (Math.hypot(c.x - p.x, c.z - p.z) < 0.5) this.yaw = room.rotY;
     this.pitch = -0.12;
+    this.yawGoal = this.yaw;
+    this.pitchGoal = this.pitch;
+  }
+  /** pose do olho (para a Vista aérea voar de volta) */
+  eyePose(): { p: THREE.Vector3; q: THREE.Quaternion } {
+    const p = new THREE.Vector3(this.body.position.x, this.body.position.y - RAD + EYE, this.body.position.z);
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    return { p, q };
+  }
+  /** se um móvel foi colocado em cima do jogador, empurra o jogador para fora (nunca fica preso dentro) */
+  private unstick(): void {
+    const b = this.body.position;
+    const room = this.eng.roomAt(b.x, b.z);
+    if (!room) return;
+    const l = room.group.worldToLocal(V.set(b.x, 0, b.z));
+    for (const it of this.eng.items) {
+      if (it.room !== room || it.info.flat || it.info.wall || it.info.ceil || it.state !== 'home' || !it.obj.visible || it.dims.h < 0.3) continue;
+      const c = room.group.worldToLocal(V2.copy(it.homeP));
+      const q = quarterOf(it.data) % 2;
+      const hx = (q ? it.dims.d : it.dims.w) / 2 - 0.04,
+        hz = (q ? it.dims.w : it.dims.d) / 2 - 0.04;
+      const dx = l.x - c.x,
+        dz = l.z - c.z;
+      if (Math.abs(dx) >= hx || Math.abs(dz) >= hz) continue;
+      // sai pelo lado mais perto
+      const ox = hx - Math.abs(dx),
+        oz = hz - Math.abs(dz);
+      if (ox < oz) l.x = c.x + Math.sign(dx || 1) * (hx + RAD + 0.08);
+      else l.z = c.z + Math.sign(dz || 1) * (hz + RAD + 0.08);
+      l.x = Math.max(WALL_T + RAD, Math.min(ROOM_W - WALL_T - RAD, l.x));
+      l.z = Math.max(WALL_T + RAD, Math.min(ROOM_D - WALL_T - RAD, l.z));
+      const w = room.group.localToWorld(l.clone());
+      b.x = w.x;
+      b.z = w.z;
+      this.body.velocity.setZero();
+      return;
+    }
+  }
+  /** toque curto na tela: escolhe o móvel sob o dedo (menu de decorar) */
+  screenTap(x: number, y: number): void {
+    const d = this.decor;
+    if (!d || !this.active || d.mv || this.held) return;
+    if (this.tool !== 'hand' && this.tool !== 'decor') return;
+    if (!canUse(this.eng.role, 'decorate')) return;
+    const it = d.pickAt(x, y);
+    if (it && it.obj.position.distanceTo(this.eng.camera.position) > 7) return;
+    d.select(it);
   }
   get pos(): THREE.Vector3 {
     return V2.set(this.body.position.x, 0, this.body.position.z);
@@ -123,7 +175,8 @@ export class Fps {
     if (!on) this.drop(false);
   }
   setTool(tl: FpsTool): void {
-    if (this.held && tl !== 'hand' && tl !== 'decor') this.drop(false);
+    if (this.held && tl !== 'hand') this.drop(false);
+    if (tl !== 'decor' && tl !== 'hand') this.decor?.reset();
     this.tool = tl;
     this.updatePose();
   }
@@ -149,7 +202,7 @@ export class Fps {
       if (!ud?.type) continue;
       if (this.held?.item && ud.item === this.held.item) continue;
       if (this.held?.food && ud.food === this.held.food) continue;
-      if (ud.type === 'item' && (ud.item as ItemRec).info.flat) {
+      if (ud.type === 'item' && (ud.item as ItemRec).info.flat && this.tool !== 'decor') {
         // tapete: deixa passar para sujeira por cima
         continue;
       }
@@ -222,12 +275,10 @@ export class Fps {
       L.push({ id: 'paint', label: t('home3d.act.paint', 'PINTAR'), icon: 'paint', size: 'big', hold: true });
       return L;
     }
+    if (this.decor?.mv || this.decor?.sel || this.decor?.drawerOpen) return L;
     if (this.tool === 'decor') {
-      if (this.held?.item) {
-        L.push({ id: 'place', label: t('home3d.act.place', 'COLOCAR'), icon: 'check', size: 'big' });
-        L.push({ id: 'rot', label: t('home3d.act.rotate', 'GIRAR'), icon: 'rotate' });
-        L.push({ id: 'cancel', label: t('home3d.act.cancel', 'VOLTAR'), icon: 'exit', size: 'small' });
-      } else if (it && !it.info.wall && !it.info.ceil && it.state !== 'broken') L.push({ id: 'move', label: t('home3d.act.move', 'MOVER'), icon: 'grab', size: 'big' });
+      L.push({ id: 'catalog', label: t('home3d.act.catalog', 'CATÁLOGO'), icon: 'plus', size: 'big' });
+      if (it && it.state !== 'broken' && tg.dist < 4) L.push({ id: 'move', label: t('home3d.act.move', 'MOVER'), icon: 'move' });
       return L;
     }
     if (this.held) {
@@ -298,24 +349,10 @@ export class Fps {
         }
         break;
       case 'move':
-        if (tg.item && canUse(this.eng.role, 'decorate')) this.pickItem(tg.item, true);
+        if (tg.item && canUse(this.eng.role, 'decorate')) this.decor?.startMove(tg.item);
         break;
-      case 'rot':
-        this.decorRot = (this.decorRot + 1) % 4;
-        sfx.click();
-        break;
-      case 'place':
-        this.placeDecor();
-        break;
-      case 'cancel':
-        if (this.held?.item) {
-          const it = this.held.item;
-          this.held = null;
-          this.eng.homeItem(it);
-          it.body && (it.body.collisionResponse = true);
-          this.tintItem(it, null);
-          this.updatePose();
-        }
+      case 'catalog':
+        this.decor?.openCatalog();
         break;
     }
   }
@@ -327,8 +364,8 @@ export class Fps {
     sfx.pick();
     this.updatePose();
   }
-  private pickItem(it: ItemRec, decor = false): void {
-    if (!decor && !it.info.light) return;
+  private pickItem(it: ItemRec): void {
+    if (!it.info.light) return;
     if (it.state === 'broken') return;
     this.held = { item: it };
     if (it.body) {
@@ -337,7 +374,6 @@ export class Fps {
       it.body.wakeUp();
     }
     it.state = 'held';
-    this.decorRot = Math.round(((new THREE.Euler().setFromQuaternion(it.obj.quaternion, 'YXZ').y - it.room.rotY) / (Math.PI / 2)) % 4 + 4) % 4;
     this.hand.play('grab');
     sfx.pick();
     this.updatePose();
@@ -364,44 +400,6 @@ export class Fps {
       return;
     }
     const it = this.held.item!;
-    if (this.tool === 'decor') {
-      // fantasma no chão onde a mira aponta (encaixe 10 cm)
-      const room = it.room;
-      cam.getWorldDirection(V);
-      const o = cam.position;
-      let tt = V.y < -0.05 ? -o.y / V.y : 2.2;
-      tt = Math.max(0.8, Math.min(3.2, tt));
-      const p = V2.copy(o).addScaledVector(V, tt);
-      const loc = room.group.worldToLocal(p.clone());
-      const half = this.decorRot % 2 ? it.dims.d / 2 : it.dims.w / 2;
-      const halfz = this.decorRot % 2 ? it.dims.w / 2 : it.dims.d / 2;
-      loc.x = Math.round(loc.x * 10) / 10;
-      loc.z = Math.round(loc.z * 10) / 10;
-      const inside = loc.x - half > WALL_T && loc.x + half < ROOM_W - WALL_T && loc.z - halfz > WALL_T && loc.z + halfz < ROOM_D - WALL_T;
-      loc.x = Math.max(WALL_T + half, Math.min(ROOM_W - WALL_T - half, loc.x));
-      loc.z = Math.max(WALL_T + halfz, Math.min(ROOM_D - WALL_T - halfz, loc.z));
-      const w = room.group.localToWorld(loc.clone().setY(0));
-      it.obj.position.lerp(w, Math.min(1, dt * 18));
-      const q = new THREE.Quaternion().setFromAxisAngle(UP, (this.decorRot * Math.PI) / 2 + room.rotY);
-      it.obj.quaternion.slerp(q, Math.min(1, dt * 14));
-      // colide com outros móveis do cômodo?
-      let ok = inside;
-      for (const o2 of this.eng.items) {
-        if (o2 === it || o2.room !== room || o2.info.wall || o2.info.flat || o2.info.ceil || o2.state === 'broken') continue;
-        const ol = room.group.worldToLocal(o2.obj.position.clone());
-        const oy = Math.round(((new THREE.Euler().setFromQuaternion(o2.obj.quaternion, 'YXZ').y - room.rotY) / (Math.PI / 2)) % 2 + 2) % 2;
-        const ohx = oy ? o2.dims.d / 2 : o2.dims.w / 2,
-          ohz = oy ? o2.dims.w / 2 : o2.dims.d / 2;
-        if (Math.abs(ol.x - loc.x) < ohx + half - 0.02 && Math.abs(ol.z - loc.z) < ohz + halfz - 0.02) {
-          ok = false;
-          break;
-        }
-      }
-      this.decorValid = ok;
-      this.tintItem(it, ok ? '#7dff9a' : '#ff6a6a');
-      (this as unknown as { decorLoc: THREE.Vector3 }).decorLoc = loc;
-      return;
-    }
     this.holdPos(V, it);
     // mantém dentro do cômodo atual
     const room = this.eng.roomAt(this.body.position.x, this.body.position.z);
@@ -416,51 +414,6 @@ export class Fps {
     const q = new THREE.Quaternion().setFromAxisAngle(UP, this.yaw + Math.sin(this.eng.time * 2) * 0.05);
     it.obj.quaternion.slerp(q, Math.min(1, dt * 10));
     if (it.body) this.eng.syncBodyFromObj(it);
-  }
-  private tinted = new Map<ItemRec, THREE.Material>();
-  private tintItem(it: ItemRec, col: string | null): void {
-    if (!it.solid) return;
-    if (col === null) {
-      const m = this.tinted.get(it);
-      if (m) {
-        (it.solid.material as THREE.Material).dispose();
-        it.solid.material = m;
-        this.tinted.delete(it);
-      }
-      return;
-    }
-    if (!this.tinted.has(it)) {
-      this.tinted.set(it, it.solid.material as THREE.Material);
-      it.solid.material = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, transparent: true, opacity: 0.8 });
-    }
-    (it.solid.material as THREE.MeshLambertMaterial).emissive.set(col);
-    (it.solid.material as THREE.MeshLambertMaterial).color.set(col);
-  }
-  private placeDecor(): void {
-    const it = this.held?.item;
-    if (!it) return;
-    if (!this.decorValid) {
-      sfx.thud();
-      this.onToast?.(t('home3d.toast.noSpace', 'Não cabe aqui'));
-      return;
-    }
-    const loc = (this as unknown as { decorLoc: THREE.Vector3 }).decorLoc;
-    const xy = placeToXY(it.kind, { x: loc.x, y: 0, z: loc.z });
-    // mess que apontava para este item precisa seguir a nova posição
-    for (const m of this.eng.mess) if (m.moved && m.moved.itemId === it.data.id && m.moved.ox === it.data.x && m.moved.oy === it.data.y) (m.moved.ox = xy.x), (m.moved.oy = xy.y);
-    it.data.x = xy.x;
-    it.data.y = xy.y;
-    it.data.r3 = this.decorRot;
-    it.data.flip = this.decorRot === 2;
-    this.tintItem(it, null);
-    this.held = null;
-    if (it.body) it.body.collisionResponse = true;
-    this.eng.rehome(it);
-    it.fromMess = false;
-    this.eng.changed = true;
-    this.eng.burst(it.obj.position.x, 0.1, it.obj.position.z, 12, 'poof', '#ffffff', 1.2);
-    sfx.drop();
-    this.updatePose();
   }
   private throwHeld(): void {
     const cam = this.eng.camera;
@@ -501,9 +454,7 @@ export class Fps {
       this.party.launch(h.food, from, new THREE.Vector3(0, gentle ? -0.5 : 0, 0), false);
     } else if (h.item) {
       const it = h.item;
-      this.tintItem(it, null);
-      if (this.tool === 'decor') this.eng.homeItem(it);
-      else if (it.body) {
+      if (it.body) {
         it.body.type = CANNON.Body.DYNAMIC;
         it.body.collisionResponse = true;
         it.body.mass = Math.max(1, it.dims.w * it.dims.d * it.dims.h * 30);
@@ -638,9 +589,16 @@ export class Fps {
   update(dt: number): void {
     if (!this.active) return;
     const [lx, ly] = this.input.consumeLook();
-    this.yaw -= lx;
-    this.pitch = Math.max(-1.25, Math.min(1.2, this.pitch - ly));
-    this.lastLook = [lx, ly];
+    this.yawGoal -= lx;
+    this.pitchGoal = Math.max(-1.25, Math.min(1.2, this.pitchGoal - ly));
+    // segue o alvo com amortecimento curto (suave, mas sem atraso perceptível)
+    const ks = 1 - Math.exp(-dt * 28);
+    const py = this.yaw,
+      pp = this.pitch;
+    this.yaw += (this.yawGoal - this.yaw) * ks;
+    this.pitch += (this.pitchGoal - this.pitch) * ks;
+    this.lastLook = [this.yaw - py, this.pitch - pp].map((v) => -v) as [number, number];
+    this.unstick();
     // movimento com aceleração suave
     const [mx, my] = this.input.dir();
     const fx = -Math.sin(this.yaw),
@@ -670,12 +628,32 @@ export class Fps {
     cam.rotation.order = 'YXZ';
     cam.rotation.set(this.pitch, this.yaw, -bobX * 0.4);
     cam.position.set(this.body.position.x + rx * bobX, this.body.position.y - RAD + EYE + bobY, this.body.position.z + rz * bobX);
+    // movendo móvel: câmera sobe e recua um pouco (vê o cômodo), sem atravessar paredes
+    this.pull += ((this.decor?.mv ? 1 : 0) - this.pull) * Math.min(1, dt * 5);
+    if (this.pull > 0.001) {
+      const here = this.eng.roomAt(cam.position.x, cam.position.z);
+      V.set(cam.position.x - fx * 0.55 * this.pull, cam.position.y + 0.5 * this.pull, cam.position.z - fz * 0.55 * this.pull);
+      if (here) {
+        const l = here.group.worldToLocal(V.clone());
+        const m = WALL_T + 0.18;
+        l.x = Math.max(m, Math.min(ROOM_W - m, l.x));
+        l.z = Math.max(m, Math.min(ROOM_D - m, l.z));
+        V.copy(here.group.localToWorld(l));
+      }
+      cam.position.copy(V);
+      cam.rotation.x = this.pitch - 0.22 * this.pull;
+    }
     cam.updateMatrixWorld();
     // luz quente segue o cômodo atual
     const room = this.eng.roomAt(cam.position.x, cam.position.z);
     if (room && this.eng.point) this.eng.point.position.lerp(V.set(room.center.x, 2.3, room.center.z), Math.min(1, dt * 3));
     this.aim();
     this.updateHeld(dt);
+    // fantasma segue a mira (centro da tela) no chão
+    if (this.decor?.mv) {
+      this.ray.setFromCamera(new THREE.Vector2(0, 0), cam);
+      this.decor.aimRay(this.ray.ray, { minD: 1.1, maxD: 4.2 });
+    }
     // limpar / pintar segurando
     const holdClean = this.acts.held.has('clean');
     const holdPaint = this.acts.held.has('paint') || (this.tool === 'paint' && this.input.key('Space'));
@@ -689,6 +667,7 @@ export class Fps {
       scrub = 0.7;
     } else if (this.tool === 'hand' && !this.held) this.hand.setPose('open');
     else if (this.tool === 'clean') this.updatePose();
+    this.hand.visible = !this.decor?.mv;
     this.hand.scrub += (scrub - this.hand.scrub) * Math.min(1, dt * 12);
     this.hand.update(dt, speed, this.lastLook[0], this.lastLook[1]);
     // peças quebradas somem
@@ -717,10 +696,6 @@ export class Fps {
   /** espalha comida/sujeira no próprio jogador: devolve true se tinha algo na mão */
   dispose(): void {
     for (const p of this.pieces) this.eng.scene.remove(p.m);
-    for (const [it, m] of this.tinted) {
-      (it.solid!.material as THREE.Material).dispose();
-      it.solid!.material = m;
-    }
     this.hand.dispose();
   }
 }

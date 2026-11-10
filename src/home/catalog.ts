@@ -107,8 +107,13 @@ export const EXTERIOR_FIELDS: Field[] = [
 /* ---------------- cômodos ---------------- */
 export const ROOM_IDS = ['living', 'kitchen', 'bedroom', 'bath', 'party'] as const;
 export type RoomId = (typeof ROOM_IDS)[number];
+/** cômodos extras (Ampliar casa no 3D): id "x<linha>_<coluna>" — mesma regra de src/home3d/engine.ts */
+export const EXTRA_ROOM_RE = /^x([01])_(-?\d{1,2})$/;
+export const isExtraRoom = (r: string): boolean => EXTRA_ROOM_RE.test(r);
 export const roomName = (r: string): string =>
-  r === 'kitchen' ? t('home.room.kitchen', 'Cozinha') : r === 'bath' ? t('home.room.bath', 'Banheiro') : r === 'bedroom' ? t('home.room.bedroom', 'Quarto') : r === 'party' ? t('home.room.party', 'Salão de festa') : t('home.room.living', 'Sala');
+  isExtraRoom(r)
+    ? t('home3d.room.extra', 'Cômodo novo {n}', { n: (r[1] === '0' ? 'N' : 'S') + (Number(EXTRA_ROOM_RE.exec(r)![2]) + 1) })
+    : r === 'kitchen' ? t('home.room.kitchen', 'Cozinha') : r === 'bath' ? t('home.room.bath', 'Banheiro') : r === 'bedroom' ? t('home.room.bedroom', 'Quarto') : r === 'party' ? t('home.room.party', 'Salão de festa') : t('home.room.living', 'Sala');
 
 export const FLOORS = ['wood', 'tile', 'carpet', 'checker', 'stone', 'grass', 'stars', 'hex', 'stripes', 'dots', 'marble', 'candy'] as const;
 export const WALLS = ['paint', 'stripes', 'dots', 'brick', 'wood', 'stars', 'hearts', 'waves', 'tile', 'check', 'clouds', 'space'] as const;
@@ -335,5 +340,10 @@ export function normalizeDesign(d: HomeDesign | null | undefined): HomeDesign {
     if (!rd) return base;
     return { id, floor: rd.floor || base.floor, wall: rd.wall || base.wall, items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) };
   });
+  // cômodos comprados no 3D (Ampliar casa) vêm depois dos 5 de sempre
+  for (const rd of d.rooms ?? []) {
+    if (!rd || !isExtraRoom(rd.id) || rooms.some((r) => r.id === rd.id) || rooms.length >= 12) continue;
+    rooms.push({ id: rd.id as RoomId, floor: rd.floor || 'wood:15', wall: rd.wall || 'paint:14', items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) });
+  }
   return { v: 1, planet: { ...s.planet, ...d.planet }, exterior: { ...s.exterior, ...d.exterior }, rooms };
 }

@@ -511,6 +511,11 @@ function enterRooms(r?: RoomId): void {
   scene.setMode(session ? 'party' : 'look');
   setView('room');
 }
+/** botão grande do 3D (é o gancho principal): cubinho girando + brilho pulsando */
+function btn3d(): string {
+  const f = ['f', 'b', 'l', 'r', 't', 'd'].map((k) => `<i class="${k}"></i>`).join('');
+  return `<button class="hm-btn hm-3d" data-a="3d"><span class="cube3d" aria-hidden="true"><span class="cb">${f}</span></span><span class="tx"><b>${esc(t('home.3d', 'Entrar em 3D'))}</b><small>${esc(t('home.3d.sub', 'Ande e decore por dentro!'))}</small></span></button>`;
+}
 function btn(ic: HomeIcon, label: string, cls = '', attrs = ''): string {
   return `<button class="hm-btn hm-act ${cls}" ${attrs}>${hicon(ic, 26)}<span>${esc(label)}</span></button>`;
 }
@@ -528,13 +533,13 @@ function refreshBar(): void {
     }
     const combos = sciBig(countCombinations().total);
     bar.innerHTML = `<div class="hm-row wrap">
+      ${btn3d()}
       ${btn('sofa', t('home.enter', 'Entrar'), 'hm-blue', 'data-a="enter"')}
       ${mine || can(S.role, 'build') ? btn('build', t('home.build', 'Construir'), 'hm-gold', 'data-a="build"') : ''}
       ${!mine && messN && can(S.role, 'clean') ? btn('sponge', t('home.help', 'Ajudar a limpar'), 'hm-gold', 'data-a="clean"') : ''}
       ${btn('party', t('home.party', 'Festa!'), 'hm-pink', 'data-a="party"')}
       ${mine ? btn('friends', t('home.friends', 'Amigos'), '', 'data-a="friends"') : btn('house', t('home.myhouse', 'Minha casa'), '', 'data-a="home"')}
       ${mine ? btn('lock', t('home.perm', 'Permissões'), '', 'data-a="perm"') : ''}
-      ${btn('cube', t('home.3d', 'Entrar em 3D'), '', 'data-a="3d"')}
     </div>${mine ? `<div class="hm-combo">${esc(t('home.combos', 'Mais de {n} casas diferentes possíveis', { n: combos }))}</div>` : ''}`;
   } else if (view === 'room') roomBar(bar);
   else if (view === 'build') buildBar(bar);
@@ -581,7 +586,7 @@ function action(a: string, b: HTMLElement): void {
       if (busy3d) break;
       busy3d = true;
       toast(t('home.3d.loading', 'Abrindo o 3D...'), 'cube');
-      void open3D({ design: S.design, mess: S.mess, ownerId: S.ownerId, isOwner: S.isOwner, role: S.role, session, room: scene.room, handle: S.name }).then((res) => {
+      void open3D({ design: S.design, mess: S.mess, ownerId: S.ownerId, isOwner: S.isOwner, role: S.role, session, room: scene.room, handle: S.name, shop: shop3d }).then((res) => {
         busy3d = false;
         if (res === 'none') return toast(t('home.3d.fail', 'Não deu para abrir o 3D agora. Sua casa continua no 2D!'), 'cube');
         if (res === 'webgl' || res === 'error' || res === 'timeout') toast(t('home.3d.back2d', 'O 3D não funcionou neste aparelho. Voltamos para o 2D!'), 'cube');
@@ -807,7 +812,8 @@ function firstMessRoom(): RoomId {
 }
 function renderRoomTabs(): void {
   const el = $('.hm-rooms');
-  el.innerHTML = ROOM_IDS.map((r) => `<button data-r="${r}" class="${r === scene.room ? 'on' : ''}">${esc(roomName(r))}${S.mess.some((m) => m.room === r) ? '<i class="dot"></i>' : ''}</button>`).join('');
+  const ids = [...ROOM_IDS, ...S.design.rooms.map((r) => r.id).filter((id) => !(ROOM_IDS as readonly string[]).includes(id))] as RoomId[];
+  el.innerHTML = ids.map((r) => `<button data-r="${r}" class="${r === scene.room ? 'on' : ''}">${esc(roomName(r))}${S.mess.some((m) => m.room === r) ? '<i class="dot"></i>' : ''}</button>`).join('');
   el.onclick = (e) => {
     const b = (e.target as HTMLElement).closest('[data-r]') as HTMLElement | null;
     if (!b) return;
@@ -859,11 +865,11 @@ function roomBar(bar: HTMLElement): void {
   if (m === 'look') {
     const messN = scene.messCountHere();
     bar.innerHTML = `<div class="hm-row wrap">
+      ${btn3d()}
       ${scene.canDo('decorate') ? btn('sofa', t('home.decorate', 'Decorar'), 'hm-blue', 'data-a="mode" data-m="edit"') : ''}
       ${scene.canDo('decorate') ? btn('roller', t('home.paint', 'Pintar'), 'hm-pink', 'data-a="mode" data-m="paint"') : ''}
       ${scene.canDo('clean') ? btn('sponge', messN ? t('home.clean.n', 'Limpar ({n})', { n: messN }) : t('home.clean', 'Limpar'), messN ? 'hm-gold' : '', 'data-a="mode" data-m="clean"') : ''}
       ${btn('party', t('home.party', 'Festa!'), 'hm-pink', 'data-a="party"')}
-      ${btn('cube', t('home.3d', 'Entrar em 3D'), '', 'data-a="3d"')}
     </div>`;
   } else if (m === 'party') {
     bar.className = 'hm-bar panel';
@@ -1002,6 +1008,21 @@ async function acquire(key: string, cost: Cost): Promise<boolean> {
   hsfx.coin();
   return true;
 }
+/** loja para o 3D: ele mesmo pergunta; aqui só cobra e libera */
+const shop3d = {
+  owns,
+  coins: () => save.coins,
+  async buy(key: string, cost: Cost): Promise<boolean> {
+    if (cost.kind === 'free' || owns(key)) return true;
+    if (cost.kind === 'pass' || cost.kind === 'event') return false;
+    if (cost.kind === 'video') {
+      if (!(await showRewarded())) return false;
+    } else if (!spend(cost.kind === 'coins' ? { coins: cost.n } : { gems: cost.n })) return false;
+    grant(key);
+    hsfx.coin();
+    return true;
+  },
+};
 async function buyThen(key: string, cost: Cost, fn: () => void): Promise<void> {
   if (await acquire(key, cost)) {
     fn();

@@ -54,6 +54,21 @@ export interface Open3DOpts {
   debug?: boolean;
   /** força abrir mesmo em aparelho Mínimo / sem confirmação */
   force?: boolean;
+  /**
+   * loja do 2D (moedas/itens liberados). Sem isso (página de teste) tudo é grátis.
+   * O 3D mostra a própria confirmação e só depois chama buy().
+   */
+  shop?: Shop3D;
+}
+
+/** preço no formato do catálogo 2D (src/home/catalog.ts Cost) */
+export type Cost3D = { kind: 'free' } | { kind: 'coins'; n: number } | { kind: 'gems'; n: number } | { kind: 'video' } | { kind: 'pass' } | { kind: 'event' };
+export interface Shop3D {
+  /** chave já liberada ('furn:<id>', 'room:<id>'...) */
+  owns(key: string): boolean;
+  /** cobra (moedas/gemas/vídeo) SEM perguntar e libera a chave; false = não deu */
+  buy(key: string, cost: Cost3D): Promise<boolean>;
+  coins(): number;
 }
 
 export interface Close3DResult {

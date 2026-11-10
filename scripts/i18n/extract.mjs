@@ -392,7 +392,7 @@ async function scanRecordedData(esbuild) {
   for (const x of ad.matchAll(/^\s*([\w]+): K\([^']*'((?:[^'\\]|\\.)*)'/gm)) out[`home3d.furn.${x[1]}`] = x[2];
   for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Bolo no chão'")))) out[`home3d.mess.${k}`] = v;
   for (const [k, v] of Object.entries(objPairs(lineWith('src/home3d/fps.ts', "cake: 'Fatia de bolo'")))) out[`home3d.food.${k}`] = v;
-  const bs = fs.readFileSync(path.join(ROOT, 'src/home3d/build.ts'), 'utf8');
+  const bs = fs.readFileSync(path.join(ROOT, 'src/home3d/decor.ts'), 'utf8');
   const surf = objPairs(bs.slice(bs.indexOf('function surfName'), bs.indexOf('function surfName') + 700));
   const list = (n) => [...(new RegExp(`${n} = \\[([^\\]]*)\\]`).exec(ad)?.[1] ?? '').matchAll(/'([\w-]+)'/g)].map((x) => x[1]);
   for (const s of list('FLOOR_STYLES')) if (surf[s]) out[`home3d.floor.${s}`] = surf[s];
