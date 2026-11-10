@@ -22,7 +22,7 @@ import { sfx } from '../../3d/common/sfx';
 import { roomEnv } from '../../3d/common/pbr';
 import { Actions, FpsInput, ICON, Toast, ensureCss, el, type ActDef } from '../../home3d/ui';
 import { ING_INDEX, INGS, PROC_TIME, RECIPES, compIng, ingName } from './data';
-import { blitIng, charSprite } from './art';
+import { blitIng, charSprite, drawPetIcon } from './art';
 import { buildKitchen, H, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
 import { GK, Items3D } from './fps-items';
 import { Render2D } from './render2d';
@@ -84,6 +84,9 @@ const CSS = `
 .czf-layer .h3-tgt{top:calc(50% + 24px)}
 .czf-hint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);font-size:13px;font-weight:600;padding:4px 12px;border-radius:12px;background:#2a0b5caa;pointer-events:none;white-space:nowrap;transition:opacity .4s}
 @media (orientation:portrait){.czf-hint{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 140px)}}
+.czf-layer .h3-toast{top:calc(env(safe-area-inset-top,0px) + 112px);font-size:14px;padding:5px 12px;border-radius:12px;box-shadow:0 0 0 3px #2a0b5c inset,0 3px 0 #2a0b5c55}
+.czf-garrow{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;pointer-events:none;display:none;filter:drop-shadow(0 2px 0 #2a0b5c)}
+.czf-garrow svg{width:100%;height:100%}
 `;
 let cssEl: HTMLStyleElement | null = null;
 
@@ -173,6 +176,12 @@ class KitchenFps implements Renderer {
   private lastTips = 0;
   private time = 0;
   private hintT = 9;
+  /** guia (treino/dica): estação a destacar */
+  guide: { st: number; strong: boolean } | null = null;
+  private gOutline: THREE.LineSegments;
+  private gArrow: HTMLDivElement;
+  /** olhar suavizado: delta ainda não aplicado */
+  private lookPend: [number, number] = [0, 0];
   private onKey = (e: KeyboardEvent) => this.key(e, true);
   private onKeyUp = (e: KeyboardEvent) => this.key(e, false);
   private ctxLost = (e: Event) => {
@@ -217,7 +226,9 @@ class KitchenFps implements Renderer {
     this.tgtEl = el('div', 'h3-tgt');
     this.hint = el('div', 'czf-hint');
     this.hint.textContent = t('cozinha.fps.hint', 'Arraste à direita para olhar · segure JOGAR para mirar');
-    this.layer.append(this.ret, this.tgtEl, this.hint);
+    this.gArrow = el('div', 'czf-garrow', '<svg viewBox="0 0 40 40"><path d="M20 38L4 18h9V3h14v15h9z" fill="#3effa0" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/></svg>');
+    this.layer.append(this.ret, this.tgtEl, this.hint, this.gArrow);
+
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
 
@@ -247,6 +258,10 @@ class KitchenFps implements Renderer {
     this.outline.renderOrder = 6;
     this.outline.visible = false;
     this.scene.add(this.outline);
+    this.gOutline = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: '#3effa0', transparent: true, depthTest: false }));
+    this.gOutline.renderOrder = 6;
+    this.gOutline.visible = false;
+    this.scene.add(this.gOutline);
     const rg = new THREE.RingGeometry(0.16, 0.21, 20);
     this.ring = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: '#ffe14a', transparent: true, depthTest: false, side: THREE.DoubleSide }));
     this.ring.renderOrder = 6;
@@ -452,7 +467,15 @@ class KitchenFps implements Renderer {
     }
     const auto = qs.has('czauto');
     // olhar
-    const [lx, ly] = this.input.consumeLook();
+    // olhar suavizado (filtro exponencial curto: tira o tremido do dedo sem atrasar)
+    const [rlx, rly] = this.input.consumeLook();
+    this.lookPend[0] += rlx;
+    this.lookPend[1] += rly;
+    const kl = 1 - Math.exp(-dt * 22);
+    const lx = this.lookPend[0] * kl;
+    const ly = this.lookPend[1] * kl;
+    this.lookPend[0] -= lx;
+    this.lookPend[1] -= ly;
     this.yaw -= lx;
     this.pitch = Math.max(-1.3, Math.min(1.1, this.pitch - ly));
     this.lastLook[0] = lx;
@@ -1365,6 +1388,20 @@ class KitchenFps implements Renderer {
         e.position.set(p.x * T, 1.35 + hop, p.y * T);
         e.scale.set(0.8, 0.6, 1);
       }
+      if (p.bot && p.pet && !(p.emote && p.emoteT > 0)) {
+        const e = this.sprite();
+        const kind = p.pet;
+        e.material = this.smat('pet' + kind, () => {
+          const c = document.createElement('canvas');
+          c.width = 96;
+          c.height = 112;
+          drawPetIcon(c.getContext('2d')!, kind, 48, 46, 40, 0);
+          return c;
+        });
+        e.center.set(0.5, 0);
+        e.position.set(p.x * T, 1.38 + hop + Math.sin(time * 4 + bi) * 0.03, p.y * T);
+        e.scale.set(0.34, 0.4, 1);
+      }
       if (p.acting > 0 && p.bot && !p.hold) {
         const st = p.target >= 0 ? s.st[p.target] : null;
         if (st?.k === 'sink' && Math.random() < dt * 8) this.parts.burst((st.x + 0.5) * T, H, (st.y + 0.5) * T, 1, 'foam', '#e0feff', 0.6);
@@ -1535,6 +1572,54 @@ class KitchenFps implements Renderer {
       this.ring.scale.setScalar(1 + Math.sin(time * 8) * 0.12);
     } else this.ring.visible = false;
     this.ret.classList.toggle('hot', hot);
+    // guia: contorno verde + seta (na estação, ou na borda da tela apontando)
+    const g = this.guide;
+    const go = this.gOutline;
+    if (g && g.st >= 0 && this.fps) {
+      const st = s.st[g.st];
+      const top = st.k === 'oven' ? 0.72 : st.k === 'blender' ? 0.62 : st.k === 'pot' ? 0.45 : 0.3;
+      const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+      go.visible = g.st !== this.tgSt;
+      go.position.set((st.x + 0.5) * T, H + top / 2 - 0.05, (st.y + 0.5) * T);
+      const k = g.strong ? 1 + pulse * 0.08 : 1;
+      go.scale.set(T * 0.98 * k, (top + 0.12) * k, T * 0.98 * k);
+      (go.material as THREE.LineBasicMaterial).opacity = g.strong ? 0.7 + pulse * 0.3 : 0.35 + pulse * 0.3;
+      if (g.strong) {
+        V.set((st.x + 0.5) * T, H + top + 0.35 + Math.abs(Math.sin(time * 5)) * 0.15, (st.y + 0.5) * T).project(this.camera);
+        const behind = V.z > 1;
+        let sx = ((V.x + 1) / 2) * this.w;
+        let sy = ((1 - V.y) / 2) * this.h;
+        if (behind) {
+          sx = this.w - sx;
+          sy = this.h - sy;
+        }
+        const m = 40;
+        const inside = !behind && sx > m && sx < this.w - m && sy > m + 90 && sy < this.h - m;
+        let rot = 0;
+        if (!inside) {
+          const cx = this.w / 2;
+          const cy = this.h / 2;
+          let dx = sx - cx;
+          let dy = sy - cy;
+          if (behind && Math.abs(dx) < 1 && Math.abs(dy) < 1) dx = 1;
+          const ang = Math.atan2(dy, dx);
+          const kx = (this.w / 2 - m) / Math.max(1e-3, Math.abs(Math.cos(ang)));
+          const ky = (this.h / 2 - m - 50) / Math.max(1e-3, Math.abs(Math.sin(ang)));
+          const r = Math.min(kx, ky);
+          dx = Math.cos(ang) * r;
+          dy = Math.sin(ang) * r;
+          sx = cx + dx;
+          sy = cy + dy + 25;
+          rot = (ang * 180) / Math.PI - 90;
+        }
+        const a = this.gArrow;
+        a.style.display = 'block';
+        a.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) rotate(${rot.toFixed(1)}deg)`;
+      } else this.gArrow.style.display = 'none';
+    } else {
+      go.visible = false;
+      this.gArrow.style.display = 'none';
+    }
   }
 
   /* ======================= HUD ======================= */
@@ -1643,6 +1728,7 @@ class KitchenFps implements Renderer {
     this.kit?.dispose();
     this.parts.dispose();
     this.flames.dispose();
+    (this.gOutline.material as THREE.Material).dispose();
     this.outline.geometry.dispose();
     (this.outline.material as THREE.Material).dispose();
     for (const m of [this.ring, this.landRing, this.puddleMesh]) {

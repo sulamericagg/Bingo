@@ -61,9 +61,32 @@ export class Render2D {
   me: Player | null = null;
   /** guia: estação a destacar (seta grande no treino; brilho de dica no jogo) */
   guide: { st: number; strong: boolean } | null = null;
-  /** destaque do ajudante selecionado para comando */
-  aimStation(): number {
-    return this.me ? this.me.target : -1;
+  /** ajudante selecionado (anel de destaque) */
+  selected: Player | null = null;
+  /** ajudante tocado na tela (coordenadas do elemento) */
+  pickPlayer(cx: number, cy: number): Player | null {
+    if (!this.sim) return null;
+    const { T, ox, oy } = this.v;
+    let best: Player | null = null;
+    let bd = T * 0.95;
+    for (const p of this.sim.players) {
+      if (!p.bot) continue;
+      const d = Math.hypot(ox + p.x * T - cx, oy + p.y * T - T * 0.45 - cy);
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+    return best;
+  }
+  /** estação sob o toque (-1 = nenhuma) */
+  pickStation(cx: number, cy: number): number {
+    if (!this.sim) return -1;
+    const { T, ox, oy } = this.v;
+    const gx = Math.floor((cx - ox) / T);
+    const gy = Math.floor((cy - oy) / T);
+    const s = this.sim.st.find((q) => q.x === gx && q.y === gy);
+    return s ? s.i : -1;
   }
 
   constructor(
@@ -785,6 +808,17 @@ export class Render2D {
     x.fillStyle = p === this.me ? '#ffe14a' : '#ffffff';
     x.fillText(p.name, px, ny);
     if (p.emote) drawEmoteBubble(x, p.emote, px + T * 0.4, py - T * 1.3, T / 60, time);
+    if (p === this.selected) {
+      x.save();
+      x.strokeStyle = '#ffe14a';
+      x.lineWidth = 3;
+      x.setLineDash([6, 4]);
+      x.lineDashOffset = -time * 20;
+      x.beginPath();
+      x.ellipse(px, py + T * 0.05, T * 0.48, T * 0.22, 0, 0, TAU);
+      x.stroke();
+      x.restore();
+    }
     if (p.bot && p.pet) {
       const bob = Math.sin(time * 4 + p.id) * T * 0.04;
       const pop = p.pet === '?' || p.pet === '!' ? 1 + Math.max(0, Math.sin(time * 14)) * 0.12 : 1;
