@@ -40,6 +40,9 @@ export interface WorldSave {
   goals: { day: string; week: string; d: Record<string, number>; w: Record<string, number>; claimed: string[] };
   stats: { km: number; craters: number; holes: number; trees: number; ores: number; planted: number };
   pets: number;
+  coins: number;
+  /** jogar sozinho: sem ajudantes */
+  solo: boolean;
 }
 
 const KEY = 'bw-floresta-mundo';
@@ -53,7 +56,9 @@ export function freshWorld(seed = 20261110): WorldSave {
     inv: { tnt: 3, confetti: 1, seeds: 10 },
     goals: { day: '', week: '', d: {}, w: {}, claimed: [] },
     stats: { km: 0, craters: 0, holes: 0, trees: 0, ores: 0, planted: 0 },
-    pets: 1,
+    pets: 3,
+    coins: 0,
+    solo: false,
   };
 }
 
@@ -84,7 +89,9 @@ export function loadWorld(): WorldSave {
     if (o.inv) for (const k of Object.keys(d.inv) as (keyof WorldSave['inv'])[]) d.inv[k] = num(o.inv[k], d.inv[k]);
     if (o.goals && typeof o.goals === 'object') d.goals = { ...d.goals, ...o.goals };
     if (o.stats) for (const k of Object.keys(d.stats) as (keyof WorldSave['stats'])[]) d.stats[k] = num(o.stats[k], 0);
-    d.pets = Math.max(0, Math.min(3, num(o.pets, 1)));
+    d.pets = Math.max(0, Math.min(3, num(o.pets, 3)));
+    d.coins = Math.max(0, num(o.coins, 0));
+    d.solo = o.solo === true;
   } catch {
     /* corrompido: recomeça */
   }

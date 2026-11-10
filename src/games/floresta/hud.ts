@@ -48,6 +48,8 @@ export class Hud {
   private tab: Tab = 'tools';
   private last = { b: -1, p: -1, c: -1, h: -1, ctx: '', n: -1 };
   private bannerT = 0;
+  private hintT = 0;
+  private hintTxt = '\u0000';
   private lastBiome = -1;
   private offs: (() => void)[] = [];
 
@@ -73,7 +75,7 @@ export class Hud {
       </div>
       <div class="fl-emotes">${EMOTES.map(([c, i]) => `<button class="fl-btn round" data-emote="${c}">${flIcon(i, 28)}</button>`).join('')}</div>
       <div class="fl-banner"></div>
-      <div class="fl-hint"></div>
+      <button class="fl-hint" data-a="hint"><b data-v="goal"></b><span data-v="tip"></span></button>
       <div class="fl-toast"></div>
       <div class="fl-bottom">
         <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
@@ -106,6 +108,7 @@ export class Hud {
       else if (a === 'emote') this.q('.fl-emotes').classList.toggle('show');
       else if (a === 'cam') host.onToggleCam();
       else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
+      else if (a === 'hint') this.expandHint();
     });
     this.bindChop();
     this.bindJoy();
@@ -230,20 +233,40 @@ export class Hud {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner.classList.remove('show');
     }
-    // dicas do começo
+    // dicas do começo: pílula pequena no canto (abre por ~4 s, depois vira só o chip do objetivo)
     const tut = s.s.tutorial;
     let hint = '';
-    if (tut === 0) hint = t('floresta.tut0', 'Vá até uma árvore e segure Cortar!');
-    else if (tut === 1) hint = this.host.is3d ? t('floresta.tut1fps', 'Pegue as toras e jogue no funil amarelo da serraria') : t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
-    else if (tut === 2) hint = t('floresta.tut2', 'Venda as tábuas na barraca e compre ferramentas na loja');
-    if (hint !== (this as any)._hint) {
-      (this as any)._hint = hint;
-      this.hint.textContent = hint;
+    let goal = '';
+    if (tut === 0) {
+      hint = t('floresta.tut0', 'Vá até uma árvore e segure Cortar!');
+      goal = t('floresta.goal0', 'Cortar uma árvore');
+    } else if (tut === 1) {
+      hint = this.host.is3d ? t('floresta.tut1fps', 'Pegue as toras e jogue no funil amarelo da serraria') : t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
+      goal = t('floresta.goal1', 'Levar toras à serraria');
+    } else if (tut === 2) {
+      hint = t('floresta.tut2', 'Venda as tábuas na barraca e compre ferramentas na loja');
+      goal = t('floresta.goal2', 'Vender tábuas');
+    }
+    if (hint !== this.hintTxt) {
+      this.hintTxt = hint;
+      this.hint.querySelector('[data-v="goal"]')!.textContent = goal ? t('floresta.goal', 'Objetivo: {g}', { g: goal }) : '';
+      this.hint.querySelector('[data-v="tip"]')!.textContent = hint;
+      this.hint.classList.toggle('none', !hint);
+      if (hint) this.expandHint();
+    }
+    if (this.hintT > 0) {
+      this.hintT -= dt;
+      if (this.hintT <= 0) this.hint.classList.remove('open');
     }
     if (this.modal && this.tab && (this as any)._shopB !== b) {
       (this as any)._shopB = b;
       this.renderShop();
     }
+  }
+
+  private expandHint(): void {
+    this.hint.classList.add('open');
+    this.hintT = 3.6;
   }
 
   showBanner(title: string, sub = ''): void {

@@ -25,6 +25,7 @@ const B_DESERTO = 8;
 const B_SAVANA = 6;
 const B_NEVADO = 1;
 const B_CRISTAL = 5;
+const B_MONTANHA = 10;
 
 export interface Camp {
   j: number;
@@ -127,8 +128,8 @@ export class WorldGen {
     const c = fbm(x / 760, z / 760, s + 1, 3);
     const hills = (fbm(x / 130, z / 130, s + 2, 4) - 0.5) * 16;
     const mnt = ridged(x / 330, z / 330, s + 3, 4);
-    const mask = smoothstep(0.5, 0.7, c) * (1 - w[B_PANTANO]) * (1 - w[B_DESERTO] * 0.6);
-    let h = (c - 0.4) * 36 + hills + mnt * mnt * 78 * mask + w[B_NEVADO] * 6 + w[B_CRISTAL] * 4;
+    const mask = Math.min(1, smoothstep(0.5, 0.7, c) + w[B_MONTANHA] * 0.9) * (1 - w[B_PANTANO]) * (1 - w[B_DESERTO] * 0.6);
+    let h = (c - 0.4) * 36 + hills + mnt * mnt * 78 * mask + w[B_NEVADO] * 6 + w[B_CRISTAL] * 4 + w[B_MONTANHA] * (8 + mnt * 22);
     // rios: faixa estreita onde o ruído passa por 0.5
     const rv = fbm(x / 430 + 3.3, z / 430 - 1.7, s + 4, 3);
     const d = Math.abs(rv - 0.5);

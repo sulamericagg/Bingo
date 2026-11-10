@@ -18,11 +18,11 @@
 .fl-health .bar i{display:block;height:100%;background:linear-gradient(90deg,#ffcf2e,#3ee07a);border-radius:6px;transition:width .4s}
 .fl-health.happy{box-shadow:0 0 0 2px #7aff8a,0 0 14px rgba(122,255,138,.6)}
 .fl-right{margin-left:auto;display:flex;gap:6px}
-.fl-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 92px);transform:translateX(-50%);background:rgba(42,11,92,.8);border:3px solid #fff6d6;border-radius:18px;padding:8px 18px;font-weight:800;font-size:20px;text-align:center;opacity:0;transition:opacity .4s;white-space:nowrap;pointer-events:none}
-.fl-banner small{display:block;font-size:13px;opacity:.85}
+.fl-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 54px);transform:translateX(-50%);background:rgba(42,11,92,.72);border:2px solid rgba(255,246,214,.6);border-radius:12px;padding:3px 12px;font-weight:800;font-size:14px;text-align:center;opacity:0;transition:opacity .4s;white-space:nowrap;pointer-events:none}
+.fl-banner small{display:block;font-size:11px;opacity:.85}
 .fl-banner.show{opacity:1}
-.fl-toast{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 190px);transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:92%}
-.fl-toast div{background:rgba(42,11,92,.85);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:6px 12px;font-weight:700;font-size:14px;text-align:center;animation:flToast 3.2s forwards;display:flex;align-items:center;gap:6px}
+.fl-toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 54px);transform:translateX(-50%);display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none;width:auto;max-width:70%}
+.fl-toast div{background:rgba(42,11,92,.78);border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:3px 10px;font-weight:700;font-size:12.5px;text-align:center;animation:flToast 3.2s forwards;display:flex;align-items:center;gap:6px}
 .fl-toast div.eco{border-color:#7aff8a}
 @keyframes flToast{0%{opacity:0;transform:translateY(10px)}10%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0}}
 .fl-bottom{position:absolute;left:0;right:0;bottom:0;height:200px;padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -36,8 +36,11 @@
 .fl-cam{pointer-events:auto;position:absolute;right:140px;bottom:calc(env(safe-area-inset-bottom,0px) + 30px)}
 .fl-emotes{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 96px);display:none;flex-direction:column;gap:6px;pointer-events:auto}
 .fl-emotes.show{display:flex}
-.fl-hint{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 132px);transform:translateX(-50%);background:#fff6d6;color:#2a0b5c;border:3px solid #2a0b5c;border-radius:16px;padding:8px 14px;font-weight:800;font-size:15px;text-align:center;max-width:86%;pointer-events:none;box-shadow:0 4px 0 rgba(42,11,92,.4)}
-.fl-hint:empty{display:none}
+.fl-hint{position:absolute;left:8px;top:calc(env(safe-area-inset-top,0px) + 54px);pointer-events:auto;border:none;font:inherit;color:#fff;text-align:left;background:rgba(20,8,48,.6);border-radius:10px;padding:3px 9px;max-width:min(260px,58vw);display:flex;flex-direction:column;gap:1px;-webkit-tap-highlight-color:transparent;cursor:pointer;transition:opacity .3s}
+.fl-hint b{font-size:11.5px;font-weight:800;color:#ffd34a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-hint span{font-size:12.5px;font-weight:600;line-height:1.25;display:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-height:0;opacity:0;transition:opacity .3s}
+.fl-hint.open span{max-height:3em;opacity:1}
+.fl-hint.none{display:none}
 .fl-modal{position:absolute;inset:0;background:rgba(20,8,48,.62);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:20;padding:12px}
 .fl-card{background:linear-gradient(#fff9ec,#ffeccc);color:#2a0b5c;border:4px solid #2a0b5c;border-radius:24px;width:min(560px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 0 rgba(42,11,92,.45)}
 .fl-card h2{margin:0;padding:12px 16px 6px;font-size:22px;display:flex;align-items:center;gap:8px}
@@ -71,9 +74,9 @@
   .fl-chop{width:96px;height:96px;bottom:12px}
   .fl-ctx{bottom:118px}
   .fl-cam{right:122px;bottom:16px}
-  .fl-toast{bottom:120px}
-  .fl-banner{top:56px}
-  .fl-hint{top:96px}
+  .fl-toast{top:50px}
+  .fl-banner{top:50px}
+  .fl-hint{top:50px}
   .fl-emotes{top:56px}
   .fl-card{max-height:96vh}
   .fl-mode canvas{height:90px}
@@ -103,4 +106,44 @@
   .fl-acts{right:122px;bottom:10px;flex-direction:row-reverse}
   .fl-act{width:62px;height:62px}
   .fl-timber{font-size:36px;top:28%}
+}
+@media (orientation:portrait){
+  .fl-hint{top:calc(env(safe-area-inset-top,0px) + 100px)}
+  .fl-toast,.fl-banner{top:calc(env(safe-area-inset-top,0px) + 100px)}
+}
+/* ---------- mundo aberto ---------- */
+.fw-hud{position:absolute;inset:0;z-index:5;pointer-events:none}
+.fw-hud *{box-sizing:border-box}
+.fw-touch{position:absolute;inset:0;pointer-events:auto;touch-action:none}
+.fw-joy{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);opacity:0;transition:opacity .15s;pointer-events:none}
+.fw-joy.on{opacity:1}
+.fw-joy i{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 2px 6px rgba(0,0,0,.3);transform:translate(-50%,-50%)}
+.fw-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 6px) 0 calc(env(safe-area-inset-left,0px) + 6px);display:flex;gap:5px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.fw-top .fl-pill{min-height:30px;font-size:13px;padding:2px 9px 2px 3px;pointer-events:none}
+.fw-top .fl-btn.round{width:38px;height:38px}
+.fw-biome{padding-left:9px!important;font-size:12px!important;opacity:.9}
+.fw-nav i{display:flex;transition:transform .2s}
+.fw-right{margin-left:auto;display:flex;gap:5px}
+.fw-toasts{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 48px);transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:center;max-width:64%}
+.fw-toasts div{background:rgba(20,8,48,.7);border-radius:10px;padding:3px 10px;font-weight:700;font-size:12.5px;text-align:center;animation:flToast 2.6s forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.fw-toasts div.gold{color:#ffd34a}
+.fw-toasts div.warn{color:#ff9aa8}
+.fw-toasts div.biome{color:#bfffc8;font-size:14px}
+.fw-cmd{position:absolute;right:calc(env(safe-area-inset-right,0px) + 6px);top:calc(env(safe-area-inset-top,0px) + 50px);display:none;flex-direction:column;gap:6px;align-items:stretch;background:rgba(20,8,48,.55);padding:6px;border-radius:14px;max-width:62vw}
+.fw-cmd.show{display:flex}
+.fw-cmd .fl-btn{min-height:36px;font-size:13px;padding:4px 10px;justify-content:flex-start}
+.fw-btns{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:250px;height:200px;pointer-events:none}
+.fw-btns .hide{display:none!important}
+.fw-use{pointer-events:auto;position:absolute;right:0;bottom:0;width:92px;height:92px;border-radius:50%;border:none;font:inherit;color:#3a1a00;font-weight:800;font-size:12px;background:radial-gradient(circle at 40% 35%,#fff3a8,#ffb02e 75%);box-shadow:0 5px 0 #8a4a00,0 7px 14px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
+.fw-use span{display:flex}
+.fw-use.on{transform:translateY(3px);box-shadow:0 2px 0 #8a4a00}
+.fw-tool{position:absolute;right:104px;bottom:4px;width:52px!important;height:52px!important}
+.fw-up{position:absolute;right:104px;bottom:62px;width:52px!important;height:52px!important}
+.fw-down{position:absolute;right:104px;bottom:2px;width:52px!important;height:52px!important}
+.fw-veh{position:absolute;right:0;bottom:104px;font-size:12px;min-height:38px;padding:4px 10px;white-space:nowrap}
+.fw-sell{position:absolute;right:0;bottom:150px;font-size:13px;min-height:38px;padding:4px 12px}
+@media (orientation:portrait){
+  .fw-btns{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+  .fw-toasts{top:calc(env(safe-area-inset-top,0px) + 86px);max-width:92%}
+  .fw-cmd{top:calc(env(safe-area-inset-top,0px) + 86px)}
 }
