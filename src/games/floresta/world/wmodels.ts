@@ -436,21 +436,41 @@ export function petModel(color: string): { g: THREE.Group; body: THREE.Object3D;
   return { g, body, tool };
 }
 
-/** pá (primeira pessoa), cabo ao longo de +Y */
+/** pá (primeira pessoa), cabo ao longo de +Y: cabo roliço, empunhadura em D, lâmina de espada com bisel */
 export function shovelModel(): THREE.Group {
   const g = new THREE.Group();
-  const stick = new THREE.Mesh(base.cyl, lambert('#a8743c'));
-  stick.scale.set(0.035, 0.9, 0.035);
-  stick.position.y = 0.35;
+  const wood = lambert('#b07a40');
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.95, 10), wood);
+  stick.position.y = 0.36;
   g.add(stick);
-  const blade = new THREE.Mesh(base.box, lambert('#c0c8d8'));
-  blade.scale.set(0.24, 0.3, 0.03);
+  // empunhadura em D
+  const d = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.016, 6, 14, Math.PI), lambert(INK));
+  d.position.y = -0.12;
+  d.rotation.z = Math.PI;
+  g.add(d);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.15, 8), lambert(INK));
+  bar.rotation.z = Math.PI / 2;
+  bar.position.y = -0.19;
+  g.add(bar);
+  // colar metálico
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.05, 0.12, 10), lambert('#8a8aa0'));
+  col.position.y = 0.86;
+  g.add(col);
+  // lâmina (forma de espada, ponta arredondada) extrudada com bisel
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.12, 0);
+  sh.lineTo(0.12, 0);
+  sh.quadraticCurveTo(0.14, 0.2, 0.08, 0.3);
+  sh.quadraticCurveTo(0, 0.38, -0.08, 0.3);
+  sh.quadraticCurveTo(-0.14, 0.2, -0.12, 0);
+  const bg = new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2, curveSegments: 8 });
+  // leve concavidade
+  const p = bg.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) + p.getX(i) * p.getX(i) * 1.6);
+  bg.computeVertexNormals();
+  const blade = new THREE.Mesh(bg, lambert('#c8d2e4', 0.06));
   blade.position.y = 0.9;
   g.add(blade);
-  const grip = new THREE.Mesh(base.box, lambert(INK));
-  grip.scale.set(0.16, 0.05, 0.05);
-  grip.position.y = -0.12;
-  g.add(grip);
   return g;
 }
 

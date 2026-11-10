@@ -11,7 +11,7 @@ import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { WBIOMES, WSPECIES, NB } from './biomes';
 import type { WorldSave } from './wsave';
 import { rockGeometry, wTreeGeometry } from './wmodels';
-import { bushGeometry, lambert, stumpGeometry } from '../fps/models';
+import { addWind, bushGeometry, lambert, stumpGeometry } from '../fps/models';
 
 export interface StreamQ {
   /** raio em pedaços */
@@ -130,6 +130,7 @@ export class World {
   ) {
     this.gen = new WorldGen(save.seed);
     this.groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    addWind(this.treeMat);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {
       this.nearT.push(new Inst(wTreeGeometry(s, 0, q.lite), this.treeMat, scene, cap, true));

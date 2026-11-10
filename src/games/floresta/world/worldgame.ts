@@ -12,7 +12,7 @@ import { addCoins } from '../../../core/economy';
 import { reportRun } from '../../../hub/registry';
 import type { QualitySettings, Tier } from '../../../core/quality';
 import { short } from '../data';
-import { lambert, toolModel } from '../fps/models';
+import { lambert, toolModel, windTime } from '../fps/models';
 import { CH, WATER_Y, type Camp } from './gen';
 import { WBIOMES, WSPECIES, ORES } from './biomes';
 import type { Chunk } from './chunk';
@@ -720,6 +720,7 @@ export class WorldGame {
 
   step(dt: number): void {
     this.time += dt;
+    windTime.value = this.time;
     const c = this.hud.ctl;
     // olhar suavizado (alvo ← dedo; câmera persegue o alvo)
     // o módulo compartilhado já suaviza (sub-quadro, sem atraso de lerp)

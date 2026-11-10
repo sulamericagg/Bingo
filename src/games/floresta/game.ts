@@ -102,6 +102,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.autoMe = !!opts.auto;
     this.sim.onFell = (tr) => this.announceFell(tr);
     this.sim.setSolo(forestSolo());
+    if (location.search.includes('debug')) (window as any).__flgame = this;
   }
 
   async start(): Promise<void> {

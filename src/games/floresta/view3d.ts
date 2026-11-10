@@ -25,7 +25,7 @@ import { createLook, type LookDrag } from '../../ui/touch';
 import { guideStep } from './guide';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundH } from './fps/terrain';
 import {
-  INK, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
+  INK, addWind, windTime, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
   myHandColors, steeringWheel, stumpGeometry, toolModel, treeGeometry, vehicleModel, type VehModel,
 } from './fps/models';
 
@@ -319,7 +319,9 @@ class View3D implements View {
     this.vmCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
     this.scene.fog = new THREE.Fog(0xbfe8ff, 26, 78);
     this.treeMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    addWind(this.treeMat);
     this.glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x3a3a70 }));
+    addWind(this.glowMat);
 
     // física
     this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -20, 0) });
@@ -2481,6 +2483,7 @@ class View3D implements View {
     this.time += dt;
     const sim = this.sim;
     sim.held3d = this.held.length;
+    windTime.value = this.time;
     this.stepGuide(dt);
     if (this.look) {
       const [dx, dy] = this.look.consume(dt);
