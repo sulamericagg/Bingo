@@ -37,6 +37,7 @@ import { registerFloresta } from './games/floresta/register';
 import { registerVoo } from './games/voo/register';
 import { registerCozinha } from './games/cozinha/register';
 import { registerCor } from './games/cor/register';
+import { registerCinema } from './cinema/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { registerSocial } from './social/register';
@@ -110,6 +111,7 @@ async function boot(): Promise<void> {
   wireGlue();
   registerSocial();
   registerHome();
+  registerCinema();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui, listGames, listPanels, launchGame, closeHost, save, bus };
 
