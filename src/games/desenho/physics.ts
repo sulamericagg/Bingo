@@ -21,9 +21,14 @@ export function addParts(b: CANNON.Body, parts: PhysPart[], scale: number): void
   for (const p of parts) {
     if (p.k === 'poly') {
       const n = p.pts.length;
+      // vértices centrados na peça (o cannon espera a origem da forma dentro dela)
+      let cx = 0,
+        cy = 0;
+      for (const [x, y] of p.pts) (cx += x / n), (cy += y / n);
+      const cz = (p.z0 + p.z1) / 2;
       const verts: CANNON.Vec3[] = [];
-      for (const [x, y] of p.pts) verts.push(new CANNON.Vec3(x * scale, y * scale, p.z0 * scale));
-      for (const [x, y] of p.pts) verts.push(new CANNON.Vec3(x * scale, y * scale, p.z1 * scale));
+      for (const [x, y] of p.pts) verts.push(new CANNON.Vec3((x - cx) * scale, (y - cy) * scale, (p.z0 - cz) * scale));
+      for (const [x, y] of p.pts) verts.push(new CANNON.Vec3((x - cx) * scale, (y - cy) * scale, (p.z1 - cz) * scale));
       const faces: number[][] = [];
       // topo (z1) CCW visto de +z; base invertida
       faces.push(Array.from({ length: n }, (_, i) => n + i));
@@ -33,7 +38,7 @@ export function addParts(b: CANNON.Body, parts: PhysPart[], scale: number): void
         faces.push([i, j, n + j, n + i]);
       }
       try {
-        b.addShape(new CANNON.ConvexPolyhedron({ vertices: verts, faces }));
+        b.addShape(new CANNON.ConvexPolyhedron({ vertices: verts, faces }), new CANNON.Vec3(cx * scale, cy * scale, cz * scale));
       } catch {
         /* peça degenerada: ignora */
       }

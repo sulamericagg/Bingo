@@ -142,24 +142,24 @@ function drawingTexture(an: Analysis, art: HTMLCanvasElement, k: number, tier: n
 }
 
 /* ----------------------------- INFLAR ----------------------------- */
-function heightField(an: Analysis, thick: number): Float32Array {
+function heightField(an: Analysis, thick: number, f: Float32Array): Float32Array {
   const { gw, gh, cs, solid, dist } = an;
   const n = gw * gh;
   const H = new Float32Array(n);
   const R = Math.max(0.5, an.maxDist - 0.5) * cs;
   for (let i = 0; i < n; i++) {
     if (!solid[i]) continue;
-    const d = Math.max(0, dist[i] - 0.5) * cs + cs * 0.25;
+    const d = Math.max(0, dist[i] - 0.3) * cs;
     H[i] = Math.sqrt(Math.max(0, d * (2 * R - d))) * thick;
   }
-  // suaviza o vinco do eixo medial (só no miolo; a borda continua redonda)
+  // suaviza (some o vinco do eixo medial e os degraus da grade)
   const T = new Float32Array(n);
   for (let pass = 0; pass < 3; pass++) {
     T.set(H);
     for (let y = 1; y < gh - 1; y++)
       for (let x = 1; x < gw - 1; x++) {
         const i = y * gw + x;
-        if (!solid[i] || dist[i] < 2.2) continue;
+        if (!solid[i]) continue;
         let s = T[i] * 2;
         let c = 2;
         for (const j of [i - 1, i + 1, i - gw, i + gw, i - gw - 1, i - gw + 1, i + gw - 1, i + gw + 1])
@@ -170,13 +170,18 @@ function heightField(an: Analysis, thick: number): Float32Array {
         H[i] = s / c;
       }
   }
+  // borda: a altura vai a zero seguindo o campo suave (contorno redondo, sem dentes)
+  const R2 = Math.max(cs, R * thick);
+  for (let i = 0; i < n; i++) {
+    const g = Math.max(0, Math.min(1, (f[i] - 0.5) / 0.5));
+    H[i] = Math.max(H[i], R2 * 0.18) * Math.sqrt(g);
+  }
   return H;
 }
 
-function inflateGeo(an: Analysis, map: Mapping, uv: { u: (x: number) => number; v: (y: number) => number }, H: Float32Array): THREE.BufferGeometry {
-  const { gw, gh, cs, ox, oy, solid } = an;
+function inflateGeo(an: Analysis, map: Mapping, uv: { u: (x: number) => number; v: (y: number) => number }, H: Float32Array, f: Float32Array): THREE.BufferGeometry {
+  const { gw, gh, cs, ox, oy } = an;
   const n = gw * gh;
-  const f = smoothField(solid, gw, gh);
   const pos: number[] = [];
   const uvs: number[] = [];
   const ind: number[] = [];
@@ -193,7 +198,7 @@ function inflateGeo(an: Analysis, map: Mapping, uv: { u: (x: number) => number; 
     if (arr[c] >= 0) return arr[c];
     const lx = ox + ((c % gw) + 0.5) * cs;
     const ly = oy + (((c / gw) | 0) + 0.5) * cs;
-    const h = Math.max(H[c], cs * 0.15);
+    const h = Math.max(H[c], cs * 0.05);
     arr[c] = add(lx, ly, back ? -h : h);
     return arr[c];
   };
@@ -710,8 +715,9 @@ export function build(d: Drawing, art: HTMLCanvasElement, k: number, an0: Analys
     const T = drawingTexture(an, art, k, tier, enclosedFill);
     texs.push(T.tex);
     if (mat === 'inflate') {
-      const H = heightField(an, 0.62);
-      geo = inflateGeo(an, o.map, T, H);
+      const F = smoothField(an.solid, an.gw, an.gh);
+      const H = heightField(an, 0.62, F);
+      geo = inflateGeo(an, o.map, T, H, F);
       material = makeMat(tier, { map: T.tex, rough: 0.42 });
       parts = planarParts(an, o.map, tier, (pc) => {
         let mh = 0;

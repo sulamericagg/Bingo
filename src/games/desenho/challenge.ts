@@ -223,7 +223,9 @@ export class Challenge implements Stage {
       m.receiveShadow = m.castShadow = sh;
       this.scene.add(m);
       const n = poly.length;
-      const verts = [...poly.map(([a, b]) => new CANNON.Vec3(a, b, -DEPTH)), ...poly.map(([a, b]) => new CANNON.Vec3(a, b, DEPTH))];
+      const pcx = poly.reduce((m, q) => m + q[0], 0) / n;
+      const pcy = poly.reduce((m, q) => m + q[1], 0) / n;
+      const verts = [...poly.map(([a, b]) => new CANNON.Vec3(a - pcx, b - pcy, -DEPTH)), ...poly.map(([a, b]) => new CANNON.Vec3(a - pcx, b - pcy, DEPTH))];
       let pp = poly;
       const area = pp.reduce((s2, p, i) => s2 + (pp[(i + n - 1) % n][0] + p[0]) * (pp[(i + n - 1) % n][1] - p[1]), 0);
       const ccw = area < 0;
@@ -237,6 +239,7 @@ export class Challenge implements Stage {
       }
       const b = new CANNON.Body({ mass: 0, material: this.mats.ground });
       b.addShape(new CANNON.ConvexPolyhedron({ vertices: verts, faces }));
+      b.position.set(pcx, pcy, 0);
       this.world.addBody(b);
     }
     // bola
@@ -361,13 +364,21 @@ export class Challenge implements Stage {
   /* ----------------------------- câmera / mapeamento ----------------------------- */
   private fit(): void {
     const cam = this.camera;
-    const a = this.eng.w / this.eng.h;
+    const W = this.eng.w;
+    const H = this.eng.h;
+    const a = W / H;
     const tan = Math.tan(((cam.fov / 2) * Math.PI) / 180);
-    const needH = 9.8;
-    const needW = 17.2;
-    const D = Math.max(needH / (2 * tan), needW / (2 * tan * a));
-    cam.position.set(8, 4.6, D);
-    cam.lookAt(8, 4.6, 0);
+    // o palco cabe na área livre entre as ferramentas (esquerda), o painel (direita) e a barra do topo
+    const L = Math.min(W * 0.1, 70);
+    const R = Math.min(W * 0.26, 205);
+    const T = Math.min(H * 0.14, 54);
+    const needH = 9.6;
+    const needW = 17;
+    const visH = Math.max(needH * (H / (H - T)), (needW * (W / (W - L - R))) / a);
+    const D = visH / (2 * tan);
+    const ppm = H / visH;
+    cam.position.set(8 + (R - L) / 2 / ppm, 4.6 + T / 2 / ppm, D);
+    cam.lookAt(cam.position.x, cam.position.y, 0);
     cam.aspect = a;
     cam.updateProjectionMatrix();
   }

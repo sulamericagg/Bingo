@@ -34,6 +34,9 @@ export class Engine {
   /** tremida de câmera (s) */
   shake = 0;
   onFrame: (dt: number) => void = () => {};
+  /** painel por cima da cena: desenha raramente (poupa bateria e CPU para o traço) */
+  idle = false;
+  private skip = 0;
 
   constructor(private host: HTMLElement) {
     this.gov = new QualityGovernor({ initial: detectInitialTier(), mode: loadMode(), emit: false, persist: false, onChange: (t) => this.applyTier(t) });
@@ -103,6 +106,7 @@ export class Engine {
     const t0 = performance.now();
     const st = this.stage;
     if (!st) return;
+    if (this.idle && this.skip++ % 10 !== 0) return;
     st.update(dt);
     this.onFrame(dt);
     const cam = st.camera;

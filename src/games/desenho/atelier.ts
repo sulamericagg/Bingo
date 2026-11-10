@@ -154,7 +154,7 @@ export class Atelier implements Stage {
     const q = this.eng.q;
     const std = q.standard;
     const M = (o: { color?: string; map?: THREE.Texture; rough?: number; emissive?: string }) =>
-      std ? new THREE.MeshStandardMaterial({ color: o.color ?? '#fff', map: o.map, roughness: o.rough ?? 0.8, emissive: o.emissive ?? '#000' }) : new THREE.MeshLambertMaterial({ color: o.color ?? '#fff', map: o.map, emissive: o.emissive ?? '#000' });
+      std ? new THREE.MeshStandardMaterial({ color: o.color ?? '#fff', map: o.map ?? null, roughness: o.rough ?? 0.8, emissive: o.emissive ?? '#000' }) : new THREE.MeshLambertMaterial({ color: o.color ?? '#fff', map: o.map ?? null, emissive: o.emissive ?? '#000' });
     // chão de madeira
     const wt = woodTex(q.tier >= 2 ? 512 : 256, 6);
     const fmap = wt.map.clone();
@@ -432,6 +432,7 @@ export class Atelier implements Stage {
   /** painel de desenho aberto por cima: some o HUD e os controles */
   setDrawing(open: boolean): void {
     this.drawOpen = open;
+    this.eng.idle = open;
     this.hud.classList.toggle('dv-off', open || this.menuMode);
     this.ctrl.show(!open && !this.menuMode);
     this.hand.visible = !open && !this.menuMode && !this.pilot;

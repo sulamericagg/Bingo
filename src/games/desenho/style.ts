@@ -32,8 +32,8 @@ const CSS = `
 .dv-holding .dv-throw{display:flex}
 .dv-ctx{position:absolute;left:50%;bottom:var(--edge-b,12px);transform:translate(-50%,130%);display:flex;gap:6px;padding:6px;border-radius:20px;background:rgba(255,255,255,.82);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);transition:transform .2s cubic-bezier(.3,1.4,.5,1)}
 .dv-hasc .dv-ctx{transform:translate(-50%,0)}
-.dv-cb{pointer-events:auto;width:48px;height:50px;border:0;border-radius:13px;background:#f3ecff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:10px;font-weight:700;color:var(--ink)}
-.dv-cb span{max-width:46px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dv-cb{pointer-events:auto;width:58px;height:50px;border:0;border-radius:13px;background:#f3ecff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:10px;font-weight:700;color:var(--ink)}
+.dv-cb span{max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dv-cb.tc-pressed{background:#ffe08a}
 .dv-cb.dv-red{background:#ffe0e4;color:#c4183c}
 .dv-cb.dv-go{background:#d6ffe0;color:#0b6b30;display:none}
@@ -46,7 +46,7 @@ const CSS = `
 .dv-draw{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;gap:12px;padding:var(--edge-t,8px) var(--edge-r,12px) var(--edge-b,12px) var(--edge-l,12px);transition:opacity .2s;perspective:900px}
 .dv-draw.dv-hide{opacity:0;pointer-events:none}
 .dv-draw.dv-hide *{pointer-events:none!important}
-.dv-sheet{background:radial-gradient(ellipse at center,rgba(255,240,220,.55),rgba(60,30,90,.55));-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.dv-sheet{background:radial-gradient(ellipse at center,rgba(255,236,214,.78),rgba(70,36,100,.78))}
 .dv-paper{position:relative;flex:none;border-radius:6px;background:#fffaf0;box-shadow:0 2px 0 #e9dcc3,0 4px 0 #ddcca9,0 12px 26px rgba(40,10,60,.35);transform:rotate(-.6deg);overflow:hidden}
 .dv-sheet .dv-paper{background-image:linear-gradient(rgba(120,160,220,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(120,160,220,.13) 1px,transparent 1px);background-size:24px 24px;background-color:#fffaf0}
 .dv-sheet .dv-paper::before{content:'';position:absolute;left:50%;top:-6px;width:84px;height:22px;margin-left:-42px;background:rgba(255,220,120,.75);transform:rotate(2deg);box-shadow:0 1px 2px rgba(0,0,0,.15);z-index:2;pointer-events:none}
@@ -142,7 +142,7 @@ const CSS = `
 /* ---------- telas (menu, galeria, fases, resultado) ---------- */
 .dv-ov{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;padding:var(--edge-t,8px) var(--edge-r,12px) var(--edge-b,12px) var(--edge-l,12px);animation:dvFade .25s;overflow-y:auto;touch-action:pan-y}
 @keyframes dvFade{from{opacity:0}}
-.dv-dim{background:rgba(42,20,70,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);color:#fff}
+.dv-dim{background:rgba(42,20,70,.8);color:#fff}
 .dv-menu{justify-content:space-between;background:linear-gradient(180deg,rgba(255,250,240,.0) 30%,rgba(60,20,90,.55))}
 .dv-m-exit{position:absolute;left:var(--edge-l,12px);top:var(--edge-t,8px)}
 .dv-logo{margin-top:4px;text-align:center;line-height:.9;transform:rotate(-2deg)}
