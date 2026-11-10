@@ -120,6 +120,8 @@ export function playIntro(el: HTMLElement, o: IntroOpts): Promise<void> {
     let titled = false;
     let finished = false;
     let skipped = -1;
+    let skipWall = 0;
+    const wall0 = performance.now();
     const resize = () => {
       const w = el.clientWidth || window.innerWidth;
       const h = el.clientHeight || window.innerHeight;
@@ -146,6 +148,7 @@ export function playIntro(el: HTMLElement, o: IntroOpts): Promise<void> {
       e.preventDefault();
       if (skipped >= 0 || tau >= dissIn) return;
       skipped = tau;
+      skipWall = performance.now();
       sting?.stop();
       // pula direto para a dissolução (rápida)
       if (!titled) card.classList.add('in', 'fast');
@@ -196,6 +199,8 @@ export function playIntro(el: HTMLElement, o: IntroOpts): Promise<void> {
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
       step(dt);
+      // aparelho lento (dt preso em 50 ms): o relógio de parede garante que pular/terminar não demora
+      if (!finished && ((skipWall && now - skipWall > 450) || now - wall0 > (end + 2.5) * 1000)) finish();
       if (!finished) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame((n) => {

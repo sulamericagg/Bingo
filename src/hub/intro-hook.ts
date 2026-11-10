@@ -67,8 +67,16 @@ export function startIntro(parent: HTMLElement, def: IntroInfo, tier: number, fi
   // cobre na hora com as cores do jogo (o módulo chega em seguida)
   el.style.cssText = `position:${fixed ? 'fixed' : 'absolute'};inset:0;z-index:${fixed ? 9000 : 6};overflow:hidden;background:radial-gradient(circle at 50% 45%,${def.theme.bg[0]},${def.theme.bg[1]})`;
   parent.appendChild(el);
+  // toque antes do módulo chegar = pula a intro inteira
+  let early = false;
+  const onEarly = () => (early = true);
+  el.addEventListener('pointerdown', onEarly);
   const done = import('../intro3d')
-    .then((m) => m.playIntro(el, { id: def.id, name: def.name, tagline: def.tagline, theme: def.theme, tier, short }))
+    .then((m) => {
+      el.removeEventListener('pointerdown', onEarly);
+      if (early || !el.isConnected) return;
+      return m.playIntro(el, { id: def.id, name: def.name, tagline: def.tagline, theme: def.theme, tier, short });
+    })
     .catch((e) => console.warn('[intro3d]', e))
     .finally(() => el.remove());
   return { done };
