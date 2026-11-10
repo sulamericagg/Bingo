@@ -150,7 +150,18 @@ export function dimsOf(kind: Kind, v: number): { w: number; d: number; h: number
   return { w: k.w * s, d: k.d * s, h: k.h * (v === 2 ? 1.04 : 1) };
 }
 
-/* ---------------- posições ---------------- */
+/* ---------------- posições ----------------
+ * MAPEAMENTO 2D → 3D (igual ao que o jogador vê no 2D, src/home/room.ts):
+ *  - o 2D desenha cada móvel de FRENTE com a base em (x, y): x = centro, y = borda da FRENTE no chão.
+ *    O arrasto do 2D limita a base de chão a y ∈ [FY0, FY1] (WALL_Y+20 .. RH-2).
+ *  - 3D: a faixa [FY0, FY1] cobre o piso interno inteiro (parede do fundo → parede da frente).
+ *    y = FY0 → móvel encostado na parede do fundo; a FRENTE do móvel fica em zFront(y) e o centro
+ *    em zFront - profundidade/2 (antes o centro ia direto em y, então tudo "flutuava" no meio do
+ *    cômodo e camas/sofás com giro atravessavam paredes, já que o limite usava a largura sem giro).
+ *  - giro: r3 (quartos de volta). Camas e beliches são desenhados DE LADO no 2D (cabeceira à
+ *    esquerda), então no 3D ganham +1/4 de volta de base; o flip do 2D vira r3 = 2 só nesses.
+ *  - a 20 cm de uma parede ou menos → encosta (o 2D não tem paredes laterais visíveis).
+ */
 export interface Place3D {
   /** coordenadas LOCAIS do cômodo (m): x 0..ROOM_W, z 0..ROOM_D (0 = parede do fundo), y = altura da base */
   x: number;
@@ -160,35 +171,98 @@ export interface Place3D {
   yaw: number;
 }
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+/** faixa do chão no 2D (base dos móveis) */
+export const FY0 = 250;
+export const FY1 = 418;
+/** piso interno (entre as paredes) */
+export const IN_X0 = WALL_T;
+export const IN_X1 = ROOM_W - WALL_T;
+export const IN_Z0 = WALL_T;
+export const IN_Z1 = ROOM_D - WALL_T;
+/** folga entre móvel e parede */
+export const GAP = 0.015;
+/** distância até a parede abaixo da qual o móvel encosta */
+export const WALL_SNAP = 0.2;
+/** móveis desenhados de lado no 2D: base de 1/4 de volta no 3D */
+const SIDE_KINDS: Partial<Record<Kind, 1>> = { bed: 1, bunk: 1 };
+export const isSideKind = (k: Kind): boolean => !!SIDE_KINDS[k];
+/** quartos de volta efetivos do item (0..3) */
+export function quarterOf(it: { id: string; r3?: number; flip?: boolean }): number {
+  const { kind } = kindOf(it.id);
+  const r3 = it.r3 ?? (it.flip && isSideKind(kind) ? 2 : 0);
+  return (((r3 + (SIDE_KINDS[kind] ?? 0)) % 4) + 4) % 4;
+}
+/** meia-largura (x) e meia-profundidade (z) da pegada no cômodo para um giro */
+export function halfExt(kind: Kind, v: number, q: number): { hx: number; hz: number } {
+  const dm = dimsOf(kind, v);
+  return q % 2 ? { hx: dm.d / 2, hz: dm.w / 2 } : { hx: dm.w / 2, hz: dm.d / 2 };
+}
+/** prende o centro dentro do piso e encosta nas paredes próximas */
+export function fitInRoom(x: number, z: number, hx: number, hz: number, snap = WALL_SNAP): { x: number; z: number } {
+  const x0 = IN_X0 + hx + GAP,
+    x1 = IN_X1 - hx - GAP,
+    z0 = IN_Z0 + hz + GAP,
+    z1 = IN_Z1 - hz - GAP;
+  x = x0 > x1 ? ROOM_W / 2 : clamp(x, x0, x1);
+  z = z0 > z1 ? ROOM_D / 2 : clamp(z, z0, z1);
+  if (snap > 0) {
+    if (x - x0 < snap) x = x0;
+    else if (x1 - x < snap) x = x1;
+    if (z - z0 < snap) z = z0;
+    else if (z1 - z < snap) z = z1;
+  }
+  return { x, z };
+}
+/** y da base no 2D → z da frente do móvel no 3D */
+export const yToFrontZ = (y: number): number => IN_Z0 + clamp((y - FY0) / (FY1 - FY0), 0, 1) * (IN_Z1 - IN_Z0);
+export const frontZToY = (z: number): number => FY0 + clamp((z - IN_Z0) / (IN_Z1 - IN_Z0), 0, 1) * (FY1 - FY0);
 
 export function itemToPlace(it: RoomItem3D): Place3D {
   const { kind, v } = kindOf(it.id);
   const k = KINDS[kind];
   const dm = dimsOf(kind, v);
-  const x = clamp(it.x / PX, dm.w / 2 + WALL_T + 0.02, ROOM_W - dm.w / 2 - WALL_T - 0.02);
-  const r3 = ((it.r3 ?? (it.flip ? 2 : 0)) % 4 + 4) % 4;
-  const yaw = (r3 * Math.PI) / 2;
   if (k.wall) {
+    const x = clamp(it.x / PX, IN_X0 + dm.w / 2 + GAP, IN_X1 - dm.w / 2 - GAP);
     const h = clamp(WALL_H * (1 - it.y / FLOOR_Y0), 0.6 + dm.h / 2, WALL_H - dm.h / 2 - 0.05) - dm.h / 2;
     return { x, y: h, z: WALL_T + dm.d / 2 + 0.006, yaw: 0 };
   }
-  if (k.ceil) return { x, y: WALL_H - dm.h - 0.25, z: clamp(((it.y - FLOOR_Y0) / (420 - FLOOR_Y0)) * ROOM_D, 0.8, ROOM_D - 0.8), yaw: 0 };
-  const half = (r3 % 2 ? dm.w : dm.d) / 2;
-  const z = clamp(((it.y - FLOOR_Y0) / (420 - FLOOR_Y0)) * ROOM_D, half + WALL_T + 0.02, ROOM_D - half - WALL_T - 0.02);
-  return { x, y: 0, z, yaw };
+  if (k.ceil) {
+    const x = clamp(it.x / PX, 0.8, ROOM_W - 0.8);
+    const z = it.y > FY0 ? clamp(yToFrontZ(it.y), 0.8, ROOM_D - 0.8) : ROOM_D / 2;
+    return { x, y: WALL_H - dm.h - 0.25, z, yaw: 0 };
+  }
+  const q = quarterOf(it);
+  const { hx, hz } = halfExt(kind, v, q);
+  const p = fitInRoom(it.x / PX, yToFrontZ(it.y) - hz, hx, hz);
+  return { x: p.x, y: 0, z: p.z, yaw: (q * Math.PI) / 2 };
 }
-/** posição 3D local → (x, y) do 2D */
+/** centro local (m) de um item → (x, y) do 2D (inverso de itemToPlace) */
+export function placeItemXY(it: { id: string; r3?: number; flip?: boolean }, p: { x: number; y: number; z: number }): { x: number; y: number } {
+  const { kind, v } = kindOf(it.id);
+  const k = KINDS[kind];
+  const x = Math.round(clamp(p.x, 0, ROOM_W) * PX);
+  if (k.wall) return { x, y: Math.round(clamp(FLOOR_Y0 * (1 - (p.y + dimsOf(kind, v).h / 2) / WALL_H), 10, FLOOR_Y0 - 10)) };
+  if (k.ceil) return { x, y: Math.round(frontZToY(p.z)) };
+  const { hz } = halfExt(kind, v, quarterOf(it));
+  return { x, y: Math.round(frontZToY(p.z + hz)) };
+}
+/** grava giro no item mantendo o flip do 2D coerente */
+export function setQuarter(it: RoomItem3D, r3: number): void {
+  it.r3 = ((r3 % 4) + 4) % 4;
+  if (isSideKind(kindOf(it.id).kind)) it.flip = it.r3 === 2;
+}
+/** ponto local 3D → (x, y) do 2D (sujeira, móvel derrubado) — mesmo mapeamento do chão dos móveis */
 export function placeToXY(kind: Kind, p: { x: number; y: number; z: number }): { x: number; y: number } {
   const k = KINDS[kind];
   const x = Math.round(clamp(p.x, 0, ROOM_W) * PX);
   if (k.wall) return { x, y: Math.round(clamp(FLOOR_Y0 * (1 - (p.y + KINDS[kind].h / 2) / WALL_H), 10, FLOOR_Y0 - 10)) };
-  return { x, y: Math.round(FLOOR_Y0 + (clamp(p.z, 0, ROOM_D) / ROOM_D) * (420 - FLOOR_Y0)) };
+  return localToFloorXY(p.x, p.z);
 }
 export function floorXYToLocal(x: number, y: number): { x: number; z: number } {
-  return { x: clamp(x / PX, 0.1, ROOM_W - 0.1), z: clamp(((y - FLOOR_Y0) / (420 - FLOOR_Y0)) * ROOM_D, 0.1, ROOM_D - 0.1) };
+  return { x: clamp(x / PX, 0.1, ROOM_W - 0.1), z: clamp(yToFrontZ(y), 0.1, ROOM_D - 0.1) };
 }
 export function localToFloorXY(x: number, z: number): { x: number; y: number } {
-  return { x: Math.round(clamp(x, 0, ROOM_W) * PX), y: Math.round(FLOOR_Y0 + (clamp(z, 0, ROOM_D) / ROOM_D) * (420 - FLOOR_Y0)) };
+  return { x: Math.round(clamp(x, 0, ROOM_W) * PX), y: Math.round(frontZToY(z)) };
 }
 /** altura na parede do fundo → y do 2D (y < FLOOR_Y0) */
 export function wallHToY(h: number): number {
