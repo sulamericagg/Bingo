@@ -1130,34 +1130,6 @@ button {
   transform: translateX(22px);
 }
 
-/* toast */
-#toast {
-  position: absolute;
-  left: 50%;
-  bottom: calc(90px + var(--safe-bot));
-  transform: translateX(-50%) translateY(20px);
-  padding: 12px 20px;
-  border-radius: 16px;
-  background: rgba(10, 4, 30, 0.9);
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
-  font-weight: 600;
-  opacity: 0;
-  transition: all 0.25s;
-  white-space: nowrap;
-  max-width: 92vw;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#toast > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
 /* recompensa */
 .reward-fly {
   position: fixed;
@@ -2730,12 +2702,24 @@ button {
   background: var(--danger);
 }
 .settings-row .btn {
-  font-size: 15px;
+  font-size: 14px;
+  letter-spacing: 0;
   padding: 11px 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap; /* "Resgatar código" quebrava em 2 linhas com o ícone sozinho à esquerda */
+}
+.settings-row .btn > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-row .btn [data-icon],
+.settings-row .btn .ico {
+  flex: none;
 }
 
 /* ---------- celebração ---------- */
@@ -3052,9 +3036,7 @@ button {
     margin-top: 12px;
   }
 }
-#toast {
-  z-index: 60;
-}
+
 
 .quality-row select {
   font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif);
