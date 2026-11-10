@@ -6,6 +6,7 @@ import { t, fmt } from '../../i18n';
 import { BIOMES, BUILDS, HELPERS, MACHINES, TOOLS, VEHICLES, helperCost, machineCost, prestigeMult, short } from './data';
 import { flIcon, type FlIcon } from './icons';
 import type { Sim } from './sim';
+import { joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from './touchcfg';
 
 export interface HudHost {
   sim: Sim;
@@ -69,6 +70,8 @@ export class Hud {
         <div class="fl-health" title="${t('floresta.health', 'Floresta saudável')}">${flIcon('leaf', 26)}<div class="bar"><i></i></div><span data-v="hp">100%</span></div>
         <div class="fl-right">
           <div class="fl-pill fl-players" data-v="players"></div>
+          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 26)}</button>
+          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 26)}</button>
           <button class="fl-btn round" data-a="emote" aria-label="${t('floresta.emote', 'Emotes')}">${flIcon('emote', 28)}</button>
           <button class="fl-btn round gold" data-a="shop" aria-label="${t('floresta.shop', 'Loja')}">${flIcon('shop', 28)}</button>
         </div>
@@ -77,8 +80,9 @@ export class Hud {
       <div class="fl-banner"></div>
       <button class="fl-hint" data-a="hint"><b data-v="goal"></b><span data-v="tip"></span></button>
       <div class="fl-toast"></div>
+      <div class="fl-joyzone"></div>
+      <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
       <div class="fl-bottom">
-        <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
         <button class="fl-btn gold fl-ctx hide" data-a="ctx"></button>
         <button class="fl-chop" aria-label="${t('floresta.chop', 'Cortar')}">${flIcon(TOOLS[host.sim.s.tool].kind === 'axe' ? 'axe' : TOOLS[host.sim.s.tool].kind === 'saw' ? 'saw' : 'laser', 52)}<span>${t('floresta.chop', 'Cortar')}</span></button>
       </div>`;
@@ -109,6 +113,7 @@ export class Hud {
       else if (a === 'cam') host.onToggleCam();
       else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
       else if (a === 'hint') this.expandHint();
+      else if (a === 'ctl') openControls(this.el);
     });
     this.bindChop();
     this.bindJoy();
@@ -133,42 +138,91 @@ export class Hud {
   }
 
   private bindJoy(): void {
+    const zone = this.q('.fl-joyzone');
     const j = this.q('.fl-joy');
     const knob = j.firstElementChild as HTMLElement;
+    const h3 = this.host.is3d;
     let id = -1;
+    let bx = 0;
+    let by = 0;
+    let sx = 0;
+    let sy = 0;
+    const applyCfg = () => {
+      const c = touchCfg();
+      const R = joyRadius(c);
+      j.style.setProperty('--jr', R + 'px');
+      this.el.classList.toggle('lefty', c.lefty);
+    };
+    applyCfg();
+    this.offs.push(onTouchCfg(applyCfg));
+    const rest = () => {
+      j.classList.remove('live');
+      j.style.left = j.style.top = '';
+      knob.style.transform = '';
+    };
+    const place = (x: number, y: number) => {
+      const r = this.el.getBoundingClientRect();
+      j.style.left = x - r.left + 'px';
+      j.style.top = y - r.top + 'px';
+    };
     const move = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
-      const r = j.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const R = r.width / 2 - 10;
-      let dx = (e.clientX - cx) / R;
-      let dy = this.host.is3d ? (e.clientY - cy) / R : 0;
-      const L = Math.hypot(dx, dy);
-      if (L > 1) {
-        dx /= L;
-        dy /= L;
+      const R = joyRadius();
+      let dx = e.clientX - bx;
+      let dy = h3 ? e.clientY - by : 0;
+      const d = Math.hypot(dx, dy);
+      // passou do raio: a base vem junto (a direção nunca inverte)
+      if (d > R && touchCfg().floating) {
+        const k = (d - R) / d;
+        bx += dx * k;
+        by += dy * k;
+        place(bx, by);
+        dx = e.clientX - bx;
+        dy = h3 ? e.clientY - by : 0;
       }
-      this.host.joy.x = Math.abs(dx) < 0.12 ? 0 : dx;
-      this.host.joy.y = Math.abs(dy) < 0.12 ? 0 : dy;
-      knob.style.transform = `translate(${dx * R}px,${dy * (r.height / 2 - 10)}px)`;
+      const [ox, oy] = shapeStick(dx, dy, R);
+      // suavização leve
+      sx += (ox - sx) * 0.65;
+      sy += (oy - sy) * 0.65;
+      if (Math.abs(ox) < 1e-3) sx = 0;
+      if (Math.abs(oy) < 1e-3) sy = 0;
+      this.host.joy.x = sx;
+      this.host.joy.y = sy;
+      const dd = Math.min(R, Math.hypot(dx, dy));
+      const n = Math.hypot(dx, dy) || 1;
+      knob.style.transform = `translate(${(dx / n) * dd}px,${(dy / n) * dd}px)`;
     };
     const up = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
       id = -1;
+      sx = sy = 0;
       this.host.joy.x = this.host.joy.y = 0;
-      knob.style.transform = '';
+      rest();
     };
-    j.addEventListener('pointerdown', (e) => {
+    zone.addEventListener('pointerdown', (e) => {
+      if (id >= 0) return;
       e.preventDefault();
       id = e.pointerId;
-      j.setPointerCapture?.(id);
+      zone.setPointerCapture?.(id);
+      j.classList.add('live');
+      if (touchCfg().floating) {
+        // a base nasce exatamente sob o polegar: entrada inicial = zero
+        bx = e.clientX;
+        by = e.clientY;
+        place(bx, by);
+      } else {
+        const r = j.getBoundingClientRect();
+        bx = r.left + r.width / 2;
+        by = r.top + r.height / 2;
+      }
       move(e);
     });
-    j.addEventListener('pointermove', move);
-    j.addEventListener('pointerup', up);
-    j.addEventListener('pointercancel', up);
+    zone.addEventListener('pointermove', move);
+    zone.addEventListener('pointerup', up);
+    zone.addEventListener('pointercancel', up);
+    zone.addEventListener('lostpointercapture', up);
   }
+
 
   /* ------------------------------ por quadro (barato) ------------------------------ */
 

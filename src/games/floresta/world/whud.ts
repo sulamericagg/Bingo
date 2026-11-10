@@ -8,6 +8,7 @@
  * ============================================================ */
 import { t } from '../../../i18n';
 import { flIcon } from '../icons';
+import { joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from '../touchcfg';
 
 const svg = (body: string, size = 30) => `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
 const INK = '#2a0b5c';
@@ -35,7 +36,7 @@ export interface WControls {
   down: boolean;
 }
 
-export type WAct = 'exit' | 'tool' | 'veh' | 'sell' | 'pets' | 'cmdChop' | 'cmdFetch' | 'cmdFollow' | 'solo' | 'cam';
+export type WAct = 'ctl' | 'exit' | 'tool' | 'veh' | 'sell' | 'pets' | 'cmdChop' | 'cmdFetch' | 'cmdFollow' | 'solo' | 'cam';
 
 export class WorldHud {
   el: HTMLDivElement;
@@ -66,6 +67,7 @@ export class WorldHud {
         <div class="fl-pill fw-biome"><span data-v="biome"></span></div>
         <div class="fl-pill fw-nav"><i data-v="arrow">${WICONS.arrow}</i><span data-v="camp"></span></div>
         <div class="fw-right">
+          <button class="fl-btn round" data-tap="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 22)}</button>
           <button class="fl-btn round" data-tap="pets" aria-label="${t('floresta.w.pets', 'Ajudantes')}">${WICONS.paw}</button>
         </div>
       </div>
@@ -101,18 +103,35 @@ export class WorldHud {
 
   private bindTouch(): void {
     const pad = this.q('.fw-touch');
-    const R = 56;
+    const cfg = () => {
+      const c = touchCfg();
+      this.joyEl.style.setProperty('--jr', joyRadius(c) + 'px');
+      this.el.classList.toggle('lefty', c.lefty);
+    };
+    cfg();
+    this.offs.push(onTouchCfg(cfg));
+    let sx = 0;
+    let sy = 0;
     this.on(pad, 'pointerdown', (e) => {
       e.preventDefault();
       const w = window.innerWidth;
-      if (e.clientX < w * 0.42 && this.joy.id < 0) {
+      const c = touchCfg();
+      const inJoy = c.lefty ? e.clientX > w * 0.55 : e.clientX < w * 0.45;
+      if (inJoy && this.joy.id < 0) {
         this.joy.id = e.pointerId;
-        this.joy.x = e.clientX;
-        this.joy.y = e.clientY;
-        this.joyEl.style.left = e.clientX + 'px';
-        this.joyEl.style.top = e.clientY + 'px';
         this.joyEl.classList.add('on');
+        if (c.floating) {
+          this.joy.x = e.clientX;
+          this.joy.y = e.clientY;
+          this.joyEl.style.left = e.clientX + 'px';
+          this.joyEl.style.top = e.clientY + 'px';
+        } else {
+          const r = this.joyEl.getBoundingClientRect();
+          this.joy.x = r.left + r.width / 2;
+          this.joy.y = r.top + r.height / 2;
+        }
         this.knob.style.transform = 'translate(-50%,-50%)';
+        sx = sy = 0;
       } else if (this.look.id < 0) {
         this.look.id = e.pointerId;
         this.look.x = e.clientX;
@@ -122,12 +141,13 @@ export class WorldHud {
     });
     this.on(pad, 'pointermove', (e) => {
       if (e.pointerId === this.joy.id) {
+        const R = joyRadius();
         let dx = e.clientX - this.joy.x;
         let dy = e.clientY - this.joy.y;
         const d = Math.hypot(dx, dy);
-        // joystick "segue" o dedo se passar muito do raio
-        if (d > R * 1.6) {
-          const k = (d - R * 1.6) / d;
+        // passou do raio: a base vem junto (a direção nunca inverte)
+        if (d > R && touchCfg().floating) {
+          const k = (d - R) / d;
           this.joy.x += dx * k;
           this.joy.y += dy * k;
           this.joyEl.style.left = this.joy.x + 'px';
@@ -140,11 +160,12 @@ export class WorldHud {
         const nx = dd > 0 ? dx / dd : 0;
         const ny = dd > 0 ? dy / dd : 0;
         this.knob.style.transform = `translate(calc(-50% + ${nx * cl}px), calc(-50% + ${ny * cl}px))`;
-        // zona morta + curva suave
-        const m = Math.max(0, (dd / R - 0.12) / 0.88);
-        const k = Math.min(1, m) ** 1.3;
-        this.ctl.mx = nx * k;
-        this.ctl.my = ny * k;
+        const [ox, oy] = shapeStick(dx, dy, R);
+        sx += (ox - sx) * 0.65;
+        sy += (oy - sy) * 0.65;
+        if (!ox && !oy) sx = sy = 0;
+        this.ctl.mx = sx;
+        this.ctl.my = sy;
       } else if (e.pointerId === this.look.id) {
         this.ctl.lookDX += e.clientX - this.look.x;
         this.ctl.lookDY += e.clientY - this.look.y;
@@ -157,6 +178,7 @@ export class WorldHud {
         this.joy.id = -1;
         this.ctl.mx = this.ctl.my = 0;
         this.joyEl.classList.remove('on');
+        this.joyEl.style.left = this.joyEl.style.top = '';
       } else if (e.pointerId === this.look.id) this.look.id = -1;
     };
     this.on(pad, 'pointerup', up);
@@ -202,7 +224,8 @@ export class WorldHud {
         if (!ok || moved || performance.now() - t0 > 900) return;
         const r = b.getBoundingClientRect();
         if (e.clientX < r.left - 6 || e.clientX > r.right + 6 || e.clientY < r.top - 6 || e.clientY > r.bottom + 6) return;
-        this.onAct(b.dataset.tap as WAct);
+        if (b.dataset.tap === 'ctl') openControls(this.el);
+        else this.onAct(b.dataset.tap as WAct);
       };
       this.on(b, 'pointerup', (e) => end(e, true));
       this.on(b, 'pointercancel', (e) => end(e, false));

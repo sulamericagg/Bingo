@@ -26,9 +26,22 @@
 .fl-toast div.eco{border-color:#7aff8a}
 @keyframes flToast{0%{opacity:0;transform:translateY(10px)}10%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0}}
 .fl-bottom{position:absolute;left:0;right:0;bottom:0;height:200px;padding-bottom:env(safe-area-inset-bottom,0px)}
-.fl-joy{pointer-events:auto;position:absolute;left:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.16);border:3px solid rgba(255,255,255,.35)}
+.fl-joyzone{pointer-events:auto;position:absolute;left:0;top:calc(env(safe-area-inset-top,0px) + 96px);bottom:0;width:45%;touch-action:none}
+.fl-hud.lefty .fl-joyzone{left:auto;right:0}
+.fl-joy{--jr:56px;pointer-events:none;position:absolute;left:calc(max(56px,9vw) + env(safe-area-inset-left,0px) + var(--jr));top:calc(100% - 18vh - env(safe-area-inset-bottom,0px) - var(--jr));width:calc(var(--jr)*2 + 20px);height:calc(var(--jr)*2 + 20px);transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,255,255,.16);border:3px solid rgba(255,255,255,.35);opacity:.45;transition:opacity .25s}
+.fl-joy.live{opacity:1;transition:opacity .08s}
+.fl-hud.lefty .fl-joy:not(.live){left:calc(100% - max(56px,9vw) - env(safe-area-inset-right,0px) - var(--jr))}
 .fl-joy i{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:linear-gradient(#fff,#d2bdff);box-shadow:0 4px 0 #5326cc}
-.fl-joy.h{height:96px;border-radius:48px;width:170px}
+.fl-joy.h{height:96px;border-radius:48px}
+.fl-hud.lefty .fl-chop{right:auto;left:18px}
+.fl-hud.lefty .fl-ctx{right:auto;left:18px}
+.fl-ctlpanel{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:20;pointer-events:auto;background:rgba(20,8,48,.92);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:calc(100% - 64px);overflow:auto;min-width:220px}
+.fl-ctlpanel .hd{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.fl-ctlpanel .x{background:none;border:none;color:#fff;font-size:18px;cursor:pointer}
+.fl-ctlpanel label{opacity:.85;font-weight:700;margin-top:2px}
+.fl-ctlpanel .seg{display:flex;gap:3px}
+.fl-ctlpanel .seg button{flex:1;border:none;border-radius:8px;padding:5px 6px;font:inherit;font-size:12px;font-weight:700;background:rgba(255,255,255,.14);color:#fff;cursor:pointer}
+.fl-ctlpanel .seg button.on{background:#ffd34a;color:#2a0b5c}
 .fl-chop{pointer-events:auto;position:absolute;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:112px;height:112px;border-radius:50%;border:none;background:radial-gradient(circle at 40% 35%,#ffb48a,#ff6a3a 60%,#c2361d);box-shadow:0 6px 0 #6a1a0a,0 8px 18px rgba(0,0,0,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;font-family:inherit}
 .fl-chop.on{transform:translateY(4px) scale(.97);box-shadow:0 2px 0 #6a1a0a}
 .fl-ctx{pointer-events:auto;position:absolute;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 146px);max-width:58vw}
@@ -69,8 +82,6 @@
 .fl-players{display:flex;gap:2px;align-items:center}
 @media (orientation:landscape) and (max-height:500px){
   .fl-bottom{height:150px}
-  .fl-joy{width:116px;height:116px;bottom:12px;left:14px}
-  .fl-joy.h{width:150px;height:84px}
   .fl-chop{width:96px;height:96px;bottom:12px}
   .fl-ctx{bottom:118px}
   .fl-cam{right:122px;bottom:16px}
@@ -115,8 +126,12 @@
 .fw-hud{position:absolute;inset:0;z-index:5;pointer-events:none}
 .fw-hud *{box-sizing:border-box}
 .fw-touch{position:absolute;inset:0;pointer-events:auto;touch-action:none}
-.fw-joy{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);opacity:0;transition:opacity .15s;pointer-events:none}
-.fw-joy.on{opacity:1}
+.fw-joy{--jr:56px;position:absolute;left:calc(max(56px,9vw) + env(safe-area-inset-left,0px) + var(--jr));top:calc(100% - 18vh - env(safe-area-inset-bottom,0px) - var(--jr));width:calc(var(--jr)*2);height:calc(var(--jr)*2);transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);opacity:.35;transition:opacity .25s;pointer-events:none}
+.fw-joy.on{opacity:1;transition:opacity .08s}
+.fw-hud.lefty .fw-joy:not(.on){left:calc(100% - max(56px,9vw) - env(safe-area-inset-right,0px) - var(--jr))}
+.fw-hud.lefty .fw-btns{right:auto;left:calc(env(safe-area-inset-left,0px) + 10px)}
+.fw-hud.lefty .fw-use,.fw-hud.lefty .fw-veh,.fw-hud.lefty .fw-sell{right:auto;left:0}
+.fw-hud.lefty .fw-tool,.fw-hud.lefty .fw-up,.fw-hud.lefty .fw-down{right:auto;left:104px}
 .fw-joy i{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 2px 6px rgba(0,0,0,.3);transform:translate(-50%,-50%)}
 .fw-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 6px) 0 calc(env(safe-area-inset-left,0px) + 6px);display:flex;gap:5px;align-items:center;flex-wrap:wrap;pointer-events:none}
 .fw-top .fl-pill{min-height:30px;font-size:13px;padding:2px 9px 2px 3px;pointer-events:none}

@@ -21,6 +21,7 @@ import { VK, looseLogGeometry, petModel, shovelModel, tntModel, wVehicleModel, t
 import { loadWorld, writeWorld, type WorldSave } from './wsave';
 import { WorldHud, WICONS, type WAct } from './whud';
 import { flIcon } from '../icons';
+import { touchCfg } from '../touchcfg';
 
 const TAU = Math.PI * 2;
 const EYE = 1.6;
@@ -722,7 +723,7 @@ export class WorldGame {
     const ldx = c.lookDX;
     const ldy = c.lookDY;
     c.lookDX = c.lookDY = 0;
-    const sens = 0.0052 * (1 + Math.min(1.2, Math.abs(ldx) / 40) * 0.4);
+    const sens = 0.0052 * touchCfg().sens * (1 + Math.min(1.2, Math.abs(ldx) / 40) * 0.4);
     if (this.driving >= 0) {
       this.camYawOff = clamp(this.camYawOff - ldx * sens, -2.6, 2.6);
       this.tPitch = clamp(this.tPitch - ldy * 0.004, -0.9, 0.4);
@@ -731,7 +732,7 @@ export class WorldGame {
       if (this.camIdle > 1.6) this.camYawOff *= 1 - damp(2, dt);
     } else {
       this.tYaw -= ldx * sens;
-      this.tPitch = clamp(this.tPitch - ldy * 0.0045, -1.3, 1.2);
+      this.tPitch = clamp(this.tPitch - ldy * 0.0045 * touchCfg().sens, -1.3, 1.2);
     }
     const lk = damp(18, dt);
     this.yaw += (this.tYaw - this.yaw) * lk;

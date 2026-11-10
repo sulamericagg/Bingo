@@ -21,6 +21,7 @@ import { BIOMES, BUILDS, INTAKE_X, RARES, SPECIES, TOOLS, VEHICLES, WORLD_Z, gat
 import { PALLET_X, PLANER_X, SAW_X, SELL_X, TS, type Ev, type Sim, type Tree } from './sim';
 import { flIcon } from './icons';
 import type { View } from './game';
+import { touchCfg } from './touchcfg';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundH } from './fps/terrain';
 import {
   INK, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
@@ -1898,8 +1899,9 @@ class View3D implements View {
     };
     const move = (e: PointerEvent) => {
       if (e.pointerId !== this.drag.id) return;
-      const dx = (e.clientX - this.drag.x) * 0.0062;
-      const dy = (e.clientY - this.drag.y) * 0.0055;
+      const sens = touchCfg().sens;
+      const dx = (e.clientX - this.drag.x) * 0.0062 * sens;
+      const dy = (e.clientY - this.drag.y) * 0.0055 * sens;
       this.lookDX += dx;
       this.lookDY += dy;
       if (this.driving) this.headYaw = Math.max(-2.2, Math.min(2.2, this.headYaw - dx));
