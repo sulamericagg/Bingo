@@ -6,7 +6,7 @@ name: Publicar servidor (Cloudflare)
 on:
   push:
     branches: [claude/viral-game-apk-web-echogw]
-    paths: ['server/**', 'shared/**', 'src/**', 'wrangler.jsonc', 'package.json', 'package-lock.json', '.github/workflows/deploy-server.yml']
+    paths: ['server/**', 'shared/**', 'src/**', 'public/**', 'index.html', 'wrangler.jsonc', 'package.json', 'package-lock.json', '.github/workflows/deploy-server.yml']
   workflow_dispatch:
 
 concurrency: deploy-server
