@@ -6,8 +6,7 @@
   z-index: 60;
   display: flex;
   justify-content: center;
-  background: rgba(8, 3, 24, 0.72);
-  backdrop-filter: blur(3px);
+  background: rgba(8, 3, 24, 0.86);
   font-family: var(--font, 'Fredoka', system-ui, sans-serif);
   color: #fff;
 }

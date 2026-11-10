@@ -15,9 +15,7 @@
   color: #fff;
 }
 .ob-root.ob-edit {
-  background: rgba(5, 2, 18, 0.72);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(5, 2, 18, 0.82);
 }
 .ob-root.on {
   opacity: 1;

@@ -543,9 +543,8 @@
   z-index: 6; /* acima do hub (#menu.hub > * tem z-index 1) */
   align-items: center;
   justify-content: center;
-  background: rgba(5, 2, 18, 0.55);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(5, 2, 18, 0.72);
+  /* sem backdrop-filter: borrar o hub animado por trás custava ~2/3 dos quadros (19 fps → 62 fps com CPU 4x) */
 }
 .rk-panel {
   animation: popIn 0.3s ease both;

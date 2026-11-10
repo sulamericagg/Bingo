@@ -581,9 +581,11 @@ button {
 .modal-screen {
   align-items: center;
   justify-content: center;
-  background: rgba(5, 2, 18, 0.55);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(5, 2, 18, 0.72);
+  /* sem backdrop-filter: borrar o hub animado por trás custava ~2/3 dos quadros (19 fps → 62 fps com CPU 4x) */
+}
+.modal-screen.on {
+  animation: fadeIn 0.18s ease-out;
 }
 .modal-screen.on .panel {
   animation: popIn 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
@@ -2744,9 +2746,7 @@ button {
   display: grid;
   place-items: center;
   padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bot));
-  background: rgba(5, 2, 18, 0.72);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(5, 2, 18, 0.8);
   opacity: 0;
   transition: opacity 0.2s;
 }
