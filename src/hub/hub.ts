@@ -132,8 +132,11 @@ export function hubVisible(): boolean {
 
 /** Hub visível e livre (sem painel/modal por cima) — hora boa para pop-ups automáticos. */
 export function hubIdle(): boolean {
-  return hubVisible() && !document.querySelector('.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .celebrate, .item-sheet, .ob-root, .beta-sheet-bg');
+  return hubVisible() && !document.querySelector(COVER_SEL + ', .ob-root, .beta-sheet-bg');
 }
+
+/** Painéis/telas que cobrem o hub: com um deles aberto a vitrine e as animações do fundo param. */
+const COVER_SEL = '.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .rank.on, .celebrate, .item-sheet, .h3';
 
 /** Inicia o jogo selecionado (botão JOGAR / Espaço). */
 export function playSelected(): void {
@@ -327,9 +330,18 @@ function onShow(): void {
   layout(false);
 }
 
-/** Nível Mínimo: congela as animações decorativas do fundo do hub (blobs gigantes custam composição). */
+/**
+ * Classes de qualidade do hub:
+ *  - hub-qmin (Mínimo): congela as animações decorativas (blobs gigantes custam composição);
+ *  - hub-lowfx (Baixo/Mínimo): sem backdrop-filter, blobs parados, brilhos animados desligados;
+ *  - hub-qhi (Alto): degradê mítico desliza liso; abaixo disso ele anda em passos (8 repinturas/s).
+ */
 function syncFxClass(): void {
-  if (opts) document.body.classList.toggle('hub-qmin', opts.getTier() === 0);
+  if (!opts) return;
+  const tier = opts.getTier();
+  document.body.classList.toggle('hub-qmin', tier === 0);
+  document.body.classList.toggle('hub-lowfx', tier <= 1);
+  document.body.classList.toggle('hub-qhi', tier >= 3);
 }
 
 function syncOrbit(): void {
@@ -473,11 +485,28 @@ function layout(animate: boolean): void {
   if (!vw || !cw) return;
   const gap = 14;
   const x = (vw - cw) / 2 - idx * (cw + gap);
+  // leituras antes das escritas (sem layout forçado em sequência)
+  const boxes = cards.map((k, j) => (Math.abs(j - idx) <= 1 ? readBox(k) : null));
+  if (animate) setMoving(true);
   track.classList.toggle('instant', !animate);
   track.style.transform = `translate3d(${x}px,0,0)`;
   stage.style.setProperty('--cw', `${cw}px`);
   baseX = x;
-  for (const k of cards) sizeCanvas(k);
+  // só a carta ativa e as vizinhas têm canvas no tamanho real (as outras nem aparecem na tela)
+  cards.forEach((k, j) => {
+    const b = boxes[j];
+    if (b) sizeCanvas(k, b[0], b[1]);
+  });
+}
+
+/** will-change só enquanto o trilho se move (arrasto/transição) — camada grande sem custo parado. */
+let moveT = 0;
+function setMoving(on: boolean): void {
+  clearTimeout(moveT);
+  if (on) {
+    track.classList.add('moving');
+    moveT = window.setTimeout(() => track.classList.remove('moving'), 450);
+  } else track.classList.remove('moving');
 }
 
 function applyTheme(el: HTMLElement, th: HubTheme, p: string): void {
@@ -493,6 +522,9 @@ function applyTheme(el: HTMLElement, th: HubTheme, p: string): void {
 /* ---------------- swipe ---------------- */
 
 let baseX = 0;
+/** arrastando o carrossel agora: a vitrine não redesenha (o quadro todo fica para o compositor) */
+let dragActive = false;
+let dragRaf = 0;
 function bindSwipe(): void {
   const vp = track.parentElement!;
   let sx = 0;
@@ -512,6 +544,9 @@ function bindSwipe(): void {
     st = performance.now();
     pid = e.pointerId;
     dx = 0;
+    // prepara a camada do trilho já no toque (o arrasto começa sem re-rasterizar)
+    clearTimeout(moveT);
+    track.classList.add('moving');
   });
   vp.addEventListener('pointermove', (e) => {
     if (!tracking || e.pointerId !== pid) return;
@@ -526,20 +561,32 @@ function bindSwipe(): void {
           /* */
         }
         track.classList.add('instant');
+        clearTimeout(moveT);
+        track.classList.add('moving');
+        dragActive = true;
       } else if (Math.abs(dy) > 14) tracking = false;
       return;
     }
-    track.style.transform = `translate3d(${baseX + dx}px,0,0)`;
+    // um write de transform por quadro, nada mais (sem layout nem redesenho durante o arrasto)
+    if (!dragRaf)
+      dragRaf = requestAnimationFrame(() => {
+        dragRaf = 0;
+        if (dragActive) track.style.transform = `translate3d(${baseX + dx}px,0,0)`;
+      });
   });
   const end = (e: PointerEvent) => {
     if (!tracking || e.pointerId !== pid) return;
     tracking = false;
     if (!dragging) {
+      setMoving(true); // solta a camada daqui a pouco
       // toque simples na vitrine (canvas) → emote/dança do Bloop (Passe Musical)
       if ((e.target as HTMLElement | null)?.tagName === 'CANVAS') bus.emit('showcase-tap', cards[idx]?.def.id);
       return;
     }
     dragging = false;
+    dragActive = false;
+    if (dragRaf) cancelAnimationFrame(dragRaf);
+    dragRaf = 0;
     swallow = true;
     setTimeout(() => (swallow = false), 0);
     const v = dx / Math.max(1, performance.now() - st);
@@ -568,15 +615,18 @@ function bindSwipe(): void {
 let last = 0;
 let acc = 0;
 let covered = false;
-let frameN = 0;
+let coverT = 0;
 
-function sizeCanvas(c: CardView): void {
+function readBox(c: CardView): [number, number] {
   const box = c.cv.parentElement!;
-  const w = Math.max(1, box.clientWidth);
-  const h = Math.max(1, box.clientHeight);
+  return [Math.max(1, box.clientWidth), Math.max(1, box.clientHeight)];
+}
+
+function sizeCanvas(c: CardView, w: number, h: number): void {
   if (w === c.w && h === c.h) return;
   const tier = opts.getTier();
-  const dpr = Math.min(window.devicePixelRatio || 1, tier >= 3 ? 2 : tier >= 2 ? 1.5 : 1);
+  // teto de resolução por nível (a vitrine é decorativa: 1,25–1,5x já fica nítida no celular)
+  const dpr = Math.min(window.devicePixelRatio || 1, tier >= 3 ? 2 : tier >= 2 ? 1.5 : tier >= 1 ? 1.25 : 1);
   c.cv.width = Math.round(w * dpr);
   c.cv.height = Math.round(h * dpr);
   c.w = w;
@@ -588,30 +638,63 @@ function sizeCanvas(c: CardView): void {
 let rafId = 0;
 /** (re)liga o loop da vitrine — ele dorme sozinho quando o hub some (minigame/partida/2º plano). */
 function kickFrame(): void {
-  if (!rafId) rafId = requestAnimationFrame(frame);
+  if (rafId || coverT) return;
+  rafId = requestAnimationFrame(frame);
 }
 
+/** Algum painel/tela cobre o hub? Atualiza a classe que pausa as animações CSS do fundo. */
+function checkCovered(): boolean {
+  const c = !!document.querySelector(COVER_SEL);
+  if (c !== covered) {
+    covered = c;
+    document.body.classList.toggle('hub-covered', c);
+  }
+  return c;
+}
+
+/** Quadros por segundo da vitrine: Alto 60, Médio/Baixo 30, Mínimo 24. */
+function showcaseStep(): number {
+  const tier = opts.getTier();
+  return tier >= 3 ? 0 : tier >= 1 ? 1 / 31 : 1 / 25;
+}
+
+let lastCheck = 0;
 function frame(now: number): void {
   rafId = 0;
   if (!hubVisible() || document.hidden) {
     last = 0;
+    if (covered) {
+      covered = false;
+      document.body.classList.remove('hub-covered');
+    }
     return;
   }
+  // coberto por painel: a vitrine dorme de vez (nada de rAF); confere de novo a cada 300 ms
+  if (now - lastCheck > 250 || covered) {
+    lastCheck = now;
+    if (checkCovered()) {
+      last = 0;
+      coverT = window.setTimeout(() => {
+        coverT = 0;
+        kickFrame();
+      }, 300);
+      return;
+    }
+  }
   rafId = requestAnimationFrame(frame);
-  if ((frameN++ & 15) === 0) covered = !!document.querySelector('.modal-screen.on, .cr-root.on, .rank.on');
   const dt = Math.min(0.1, (now - (last || now)) / 1000);
   last = now;
-  // nível Mínimo: 30 fps; coberto por modal: 10 fps
-  const step = covered ? 0.1 : opts.getTier() === 0 ? 1 / 31 : 0;
+  // durante o arrasto do carrossel o quadro é só do compositor
+  if (dragActive) return;
   acc += dt;
-  if (acc < step) return;
+  if (acc < showcaseStep()) return;
   acc = 0;
   const ts = now / 1000;
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i];
     const active = i === idx;
-    // cartas vizinhas: um quadro só (sem custo contínuo)
-    if (!active && c.drawn) continue;
+    // cartas vizinhas: um quadro só (sem custo contínuo); as distantes nem são desenhadas
+    if (!active && (c.drawn || Math.abs(i - idx) > 1)) continue;
     if (!c.ctx || !c.w) continue;
     drawCard(c, active ? ts : 1.3);
     c.drawn = true;
