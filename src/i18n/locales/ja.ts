@@ -1,5 +1,6 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.espelho.tag": "変顔をするとBloopがまねするよ！",
   "intro3d.casa.name": "マイホーム",
   "intro3d.casa.tag": "好きに飾って友だちを招こう！",
   "intro3d.pet.name": "マイペット",

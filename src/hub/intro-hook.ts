@@ -49,6 +49,12 @@ const PANEL_INTROS: Record<string, () => IntroInfo> = {
     tagline: t('intro3d.casa.tag', 'Decore do seu jeito e receba os amigos!'),
     theme: { bg: ['#8fd3ff', '#3a5cc8'], accent: '#ff9a3d', accent2: '#ffd84a', title: ['#fff6d6', '#ffd27a'] },
   }),
+  espelho: () => ({
+    id: 'espelho',
+    name: t('mirror.title', 'Bloop Espelho'),
+    tagline: t('intro3d.espelho.tag', 'Faça caretas e o Bloop imita você!'),
+    theme: { bg: ['#8a5cff', '#2a1450'], accent: '#ff5fa2', accent2: '#ffd34a', title: ['#ffffff', '#ffd6f0'] },
+  }),
 };
 export function panelIntro(id: string): IntroInfo | null {
   return PANEL_INTROS[id]?.() ?? null;
