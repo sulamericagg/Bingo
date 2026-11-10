@@ -39,6 +39,10 @@ export function bestLabel(id: string): string {
       const w = s.tycoon?.wins ?? 0;
       return w ? t('best.tycoon', 'Vitórias: {n}', { n: fmt(w) }) : '';
     }
+    case 'voo': {
+      const b = lsNum('bw-voo', 'best');
+      return b ? t('best.voo', 'Recorde: {n} pts', { n: fmt(b) }) : '';
+    }
     default:
       return '';
   }
