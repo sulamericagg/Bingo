@@ -253,6 +253,7 @@ export class Chores {
   beds: Bed[] = [];
   washer: Washer | null = null;
   private wardrobes: { item: ItemRec; spot: Spot }[] = [];
+  private tables: { item: ItemRec; spot: Spot }[] = [];
   private messT = 20;
   constructor(readonly ctx: Ctx) {
     this.mat = ctx.props.newMat();
@@ -266,6 +267,8 @@ export class Chores {
     for (const it of ctx.items(['bed', 'bunk'])) if (!this.beds.some((b) => b.item === it)) this.beds.push(new Bed(this, it));
     this.wardrobes = this.wardrobes.filter((w) => ctx.eng.items.includes(w.item));
     for (const it of ctx.items(['wardrobe', 'toybox', 'bookcase'])) if (!this.wardrobes.some((w) => w.item === it)) this.wardrobes.push({ item: it, spot: this.wardrobeSpot(it) });
+    this.tables = this.tables.filter((w) => ctx.eng.items.includes(w.item));
+    for (const it of ctx.items(['table', 'partytable', 'desk', 'counter', 'stool'])) if (!this.tables.some((w) => w.item === it)) this.tables.push({ item: it, spot: this.tableSpot(it) });
     if (first) {
       const room = ctx.eng.roomById('bath') ?? ctx.eng.roomById('bedroom');
       const near = ctx.items(['bathtub', 'toilet', 'wardrobe']).find((i) => i.room === room)?.obj.position;
@@ -293,6 +296,28 @@ export class Chores {
       placeLabel: () => t('act.btn.putAway', 'GUARDAR'),
     };
   }
+  /** pôr a mesa: solta em cima do tampo onde a mira aponta */
+  private tableSpot(item: ItemRec): Spot {
+    const pt = new THREE.Vector3();
+    return {
+      id: 'table',
+      hit: (_r, tg) => {
+        const d = itemHit(item, tg);
+        if (d !== null) pt.copy(tg.point);
+        return d;
+      },
+      label: () => t('home3d.furn.' + item.kind, item.info.name),
+      acts: () => [],
+      place: () => {
+        const l = item.obj.worldToLocal(pt.clone());
+        l.x = Math.max(-item.dims.w / 2 + 0.15, Math.min(item.dims.w / 2 - 0.15, l.x));
+        l.z = Math.max(-item.dims.d / 2 + 0.15, Math.min(item.dims.d / 2 - 0.15, l.z));
+        l.y = item.dims.h + 0.06;
+        return item.obj.localToWorld(l);
+      },
+      placeLabel: () => t('act.btn.onTable', 'NA MESA'),
+    };
+  }
   /** GUARDAR no guarda-roupa */
   putAway(p: Prop): boolean {
     const ctx = this.ctx;
@@ -315,6 +340,7 @@ export class Chores {
     for (const b of this.beds) L.push(b.spot);
     if (this.washer) L.push(this.washer.spot);
     for (const w of this.wardrobes) L.push(w.spot);
+    for (const w of this.tables) L.push(w.spot);
     return L;
   }
   update(dt: number): void {

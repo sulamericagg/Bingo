@@ -51,7 +51,13 @@ export class Dishes {
     C.lerp(C2.set(base), k);
     return C;
   }
+  /** prato embaixo de uma comida solta */
+  plateUnder(f: Prop): Prop | null {
+    if (!this.ctx.props.isFood(f)) return null;
+    return this.ctx.props.list.find((p) => p.kind === 'plate' && !p.dish && !p.held && this.foodsOn(p).includes(f)) ?? null;
+  }
   serve(plate: Prop): boolean {
+    if (plate.kind !== 'plate' || plate.dish) return false;
     const foods = this.foodsOn(plate);
     if (!foods.length) return false;
     const bits = foods.map((f) => this.ctx.props.bit(f));
@@ -140,6 +146,7 @@ export class Dishes {
   /** botões quando mira um prato (não segurando nada) */
   aimActs(p: Prop): ActDef[] {
     const L: ActDef[] = [];
+    if (this.plateUnder(p)) L.push({ id: 'd-serve', label: t('act.btn.serve', 'SERVIR'), icon: 'check', size: 'big' });
     if (p.dish) {
       L.push({ id: 'd-eat', label: t('act.btn.eat', 'COMER'), icon: 'eat', size: 'big' });
       L.push({ id: 'p-pick', label: t('home3d.act.pick', 'PEGAR'), icon: 'grab' });
@@ -161,7 +168,7 @@ export class Dishes {
     if (!p) return false;
     if (id === 'd-eat') return this.eat(p), true;
     if (id === 'd-pet') return this.toPet(p), true;
-    if (id === 'd-serve') return this.serve(p), true;
+    if (id === 'd-serve') return this.serve(p.kind === 'plate' ? p : (this.plateUnder(p) ?? p)), true;
     return false;
   }
   label(p: Prop): string {

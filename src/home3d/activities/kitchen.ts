@@ -561,7 +561,7 @@ class Prep {
     const o = { ing: p.ing, cut: p.cut + 1, cook: p.cook, m: p.m, garden: p.garden };
     ctx.props.remove(p);
     for (let i = 0; i < pieces; i++) {
-      const q = ctx.props.spawn('ing', o, at.clone().add(v3((i - (pieces - 1) / 2) * 0.05, 0.03, (Math.random() - 0.5) * 0.04)), v3((i - (pieces - 1) / 2) * 0.8, 1 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6));
+      const q = ctx.props.spawn('ing', o, at.clone().add(v3((i - (pieces - 1) / 2) * 0.05, 0.03, (Math.random() - 0.5) * 0.04)), v3((i - (pieces - 1) / 2) * 0.25, 0.5 + Math.random() * 0.3, (Math.random() - 0.5) * 0.15));
       if (q.cook) ctx.props.tint(q);
     }
     sfx.swish();

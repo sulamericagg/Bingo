@@ -54,6 +54,8 @@ export const INGS: IngDef[] = [
   D('chocolate', 'm', 'bake', '#7b4a2b', '#a8714a', 0.05, 'mud'),
 ];
 export const ING = new Map(INGS.map((i) => [i.id, i]));
+// um pouco maiores que o real: leitura melhor na tela do celular
+for (const i of INGS) i.r = Math.round(i.r * 1.2 * 1000) / 1000;
 export const GARDEN_SEEDS = INGS.filter((i) => i.garden).map((i) => i.id);
 
 export function ingName(id: string): string {
