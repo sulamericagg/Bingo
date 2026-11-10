@@ -142,8 +142,8 @@ function wq(tier: Tier): WQ {
   return [
     { radius: 2, near: 20, deco: 0, lite: true, perFrame: 1, pr: Math.min(dpr, 0.6), shadows: false, fogMul: 0.85, particles: 0.4 },
     { radius: 2, near: 30, deco: 0.4, lite: true, perFrame: 1, pr: Math.min(dpr, 0.75), shadows: false, fogMul: 0.95, particles: 0.6 },
-    { radius: 3, near: 40, deco: 0.8, lite: false, perFrame: 2, pr: Math.min(dpr, 1), shadows: false, fogMul: 1, particles: 0.85 },
-    { radius: 4, near: 56, deco: 1, lite: false, perFrame: 2, pr: Math.min(dpr, 1.5), shadows: true, fogMul: 1, particles: 1 },
+    { radius: 3, near: 40, deco: 0.8, lite: false, perFrame: 1, pr: Math.min(dpr, 1), shadows: false, fogMul: 1, particles: 0.85 },
+    { radius: 4, near: 56, deco: 1, lite: false, perFrame: 1, pr: Math.min(dpr, 1.5), shadows: true, fogMul: 1, particles: 1 },
   ][tier];
 }
 
