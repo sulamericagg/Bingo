@@ -19,6 +19,7 @@ import { Hand, handColors } from '../../3d/common/hand';
 import { Particles, PT } from '../../3d/common/particles';
 import { q3For, type Q3 } from '../../3d/common/quality';
 import { sfx } from '../../3d/common/sfx';
+import { roomEnv } from '../../3d/common/pbr';
 import { Actions, FpsInput, ICON, Toast, ensureCss, el, type ActDef } from '../../home3d/ui';
 import { ING_INDEX, INGS, PROC_TIME, RECIPES, compIng, ingName } from './data';
 import { blitIng, charSprite } from './art';
@@ -194,8 +195,10 @@ class KitchenFps implements Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.q.standard ? 0.92 : 1.12;
+    this.renderer.shadowMap.enabled = this.q.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     cv.addEventListener('webglcontextlost', this.ctxLost, false);
     // tickets dos pedidos (mesmo desenho do 2D) por cima
     this.overlay = document.createElement('canvas');
@@ -218,8 +221,20 @@ class KitchenFps implements Renderer {
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
 
-    this.hemi = new THREE.HemisphereLight('#fff4e6', '#e6cfb4', this.q.standard ? 1.8 : 1.55);
-    this.sun = new THREE.DirectionalLight('#fff1d6', this.q.standard ? 1.6 : 1.3);
+    this.hemi = new THREE.HemisphereLight('#fff4e6', '#d9c2a8', this.q.standard ? 1.05 : 1.7);
+    this.sun = new THREE.DirectionalLight('#ffe8c8', this.q.standard ? 1.9 : 1.4);
+    if (this.q.standard) {
+      // reflexos: ambiente procedural (sem download) — inox e louça brilham de verdade
+      this.scene.environment = roomEnv(this.renderer);
+      this.scene.environmentIntensity = 0.55;
+    }
+    if (this.q.shadows) {
+      this.sun.castShadow = true;
+      this.sun.shadow.mapSize.set(1024, 1024);
+      this.sun.shadow.bias = -0.0006;
+      this.sun.shadow.normalBias = 0.02;
+      this.sun.shadow.radius = 3;
+    }
     this.scene.add(this.hemi, this.sun, this.sun.target, this.camera);
     this.parts = new Particles(Math.round(260 + 200 * this.q.particles));
     this.parts.budget = this.q.particles;
@@ -283,6 +298,19 @@ class KitchenFps implements Renderer {
     const DZ = sim.rows * T;
     this.sun.position.set(W * 0.3, 10, DZ + 4);
     this.sun.target.position.set(W / 2, 0, DZ / 2);
+    if (this.q.shadows) {
+      const sc = this.sun.shadow.camera;
+      const ext = Math.max(W, DZ) * 0.75 + 1;
+      sc.left = sc.bottom = -ext;
+      sc.right = sc.top = ext;
+      sc.near = 1;
+      sc.far = 30;
+      sc.updateProjectionMatrix();
+    }
+    // luz quente de preenchimento (lâmpadas pendentes)
+    const fill = new THREE.PointLight('#ffd9a0', this.q.standard ? 3 : 2, Math.max(W, DZ) * 1.2, 1.6);
+    fill.position.set(W / 2, WALL_H - 0.6, DZ / 2);
+    this.scene.add(fill);
     if (this.q.pointLight) {
       this.fireLight = new THREE.PointLight('#ff7a2e', 0, 6, 1.4);
       this.scene.add(this.fireLight);
