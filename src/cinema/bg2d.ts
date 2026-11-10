@@ -888,7 +888,7 @@ export function bgBitmap(id: string, light: string, ppu: number): HTMLCanvasElem
     x.fillRect(BG_X0, BG_Y0, BG_W, BG_H);
     x.globalCompositeOperation = 'source-over';
   }
-  if (cache.size > 6) cache.delete(cache.keys().next().value!);
+  if (cache.size > 4) cache.delete(cache.keys().next().value!);
   cache.set(key, cv);
   return cv;
 }

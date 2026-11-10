@@ -10,7 +10,7 @@
  *  (onde entram balões, efeitos e marca d'água).
  * ============================================================ */
 import * as THREE from 'three';
-import { bgBitmap, bgDef, BG_H, BG_W, BG_X0, BG_Y0 } from './bg2d';
+import { bgBitmap, bgDef, BG_W, BG_X0, BG_Y0 } from './bg2d';
 import { actorH, ease, type ActorEval, type Renderer3D } from './engine';
 import { FLOOR_Y, STAGE_W, type Cam3dPreset, type CamKey, type CastMember, type Project, type ShotRef } from './format';
 import type { ActorScreen } from './fx2d';
@@ -441,6 +441,18 @@ class Actor3D {
   }
 }
 
+function disposeTree(g: THREE.Object3D): void {
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    m.geometry?.dispose();
+    const mat = m.material as THREE.MeshBasicMaterial | undefined;
+    if (mat && mat.map) {
+      mat.map.dispose();
+      mat.dispose();
+    }
+  });
+}
+
 function mixHex(a: string, b: string, k: number): string {
   const A = parseInt(a.slice(1, 7), 16);
   const B = parseInt(b.slice(1, 7), 16);
@@ -472,39 +484,53 @@ export class Scene3D implements Renderer3D {
     this.scene.add(this.hemi, this.sun, this.set);
   }
 
+  /** Cenários em cache (troca de cena numa transição não reconstrói nada a cada quadro). */
+  private sets = new Map<string, { g: THREE.Group; sky: THREE.Color; night: boolean; dusk: boolean }>();
   private buildSet(ref: ShotRef): void {
     const sc = ref.scene;
     const key = `${sc.bg}|${sc.light}|${sc.studio ? sc.studio.name + JSON.stringify(sc.studio.json).length : ''}`;
     if (key === this.setKey) return;
     this.setKey = key;
-    this.set.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose();
-      const mat = m.material as THREE.MeshBasicMaterial | undefined;
-      if (mat && mat.map) {
-        mat.map.dispose();
-        mat.dispose();
-      }
-    });
-    this.set.clear();
+    let e = this.sets.get(key);
+    if (e) this.sets.delete(key);
+    else e = this.makeSet(ref);
+    this.sets.set(key, e);
+    // no máximo 3 cenários vivos
+    while (this.sets.size > 3) {
+      const [k0, old] = this.sets.entries().next().value!;
+      this.sets.delete(k0);
+      this.set.remove(old.g);
+      disposeTree(old.g);
+    }
+    for (const v of this.sets.values()) {
+      v.g.visible = v === e;
+      if (!v.g.parent) this.set.add(v.g);
+    }
+    this.scene.background = e.sky;
+    this.scene.fog = new THREE.Fog(e.sky, 14, 40);
+    this.hemi.intensity = e.night ? 0.7 : 1.6;
+    this.hemi.color.set(e.dusk ? 0xffc9a0 : e.night ? 0x8899ff : 0xffffff);
+    this.sun.intensity = e.night ? 0.5 : 1.6;
+  }
+
+  private makeSet(ref: ShotRef): { g: THREE.Group; sky: THREE.Color; night: boolean; dusk: boolean } {
+    const sc = ref.scene;
+    const g = new THREE.Group();
     const def = bgDef(sc.bg);
     const night = sc.light === 'night';
     const dusk = sc.light === 'dusk';
-    this.scene.background = new THREE.Color(def.sky).multiplyScalar(night ? 0.35 : dusk ? 0.8 : 1);
-    this.scene.fog = new THREE.Fog(this.scene.background as THREE.Color, 14, 40);
-    this.hemi.intensity = night ? 0.7 : 1.6;
-    this.hemi.color.set(dusk ? 0xffc9a0 : night ? 0x8899ff : 0xffffff);
-    this.sun.intensity = night ? 0.5 : 1.6;
+    const sky = new THREE.Color(def.sky).multiplyScalar(night ? 0.35 : dusk ? 0.8 : 1);
+    const out = { g, sky, night, dusk };
     // chão
     const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 48), toon(def.floor));
     floor.rotation.x = -Math.PI / 2;
-    this.set.add(floor);
+    g.add(floor);
     const studio = sc.studio ? loadStudioSet(sc.studio.json) : null;
     if (studio) {
-      this.set.add(studio);
-      return;
+      g.add(studio);
+      return out;
     }
-    // painel do fundo: a parte de cima (sem chão) do cenário 2D
+    // painel do fundo: a parte de cima (sem chão) do cenário 2D, espelhada nas laterais
     const bm = bgBitmap(sc.bg, sc.light, 60);
     const ppu = bm.width / BG_W;
     const cut = document.createElement('canvas');
@@ -514,24 +540,27 @@ export class Scene3D implements Renderer3D {
     cut.getContext('2d')!.drawImage(bm, 0, 0, bm.width, topH, 0, 0, bm.width, topH);
     const tex = new THREE.CanvasTexture(cut);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.MirroredRepeatWrapping;
+    tex.repeat.x = 3;
+    tex.offset.x = -1;
     const wW = BG_W * U * 1.25;
     const wH = (FLOOR_Y - 0.25 - BG_Y0) * U * 1.25;
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(wW, wH), new THREE.MeshBasicMaterial({ map: tex, fog: false }));
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(wW * 3, wH), new THREE.MeshBasicMaterial({ map: tex, fog: false }));
     back.position.set(wx(BG_X0 + BG_W / 2), wH / 2, -3.6);
-    this.set.add(back);
-    void BG_H;
+    g.add(back);
     const sd = SETS[sc.bg] ?? { props: [] };
     if (sd.walls)
       for (const s of [-1, 1]) {
         const w = new THREE.Mesh(new THREE.PlaneGeometry(9, wH), new THREE.MeshToonMaterial({ color: sd.walls, gradientMap: toonGrad(), side: THREE.DoubleSide }));
         w.position.set(s * wW * 0.5, wH / 2, 0.9);
         w.rotation.y = (s * Math.PI) / 2;
-        this.set.add(w);
+        g.add(w);
       }
     for (const [name, x, z, ry, s] of sd.props) {
       const f = P[name] as (c?: string) => THREE.Group;
-      this.set.add(at(f(), x, z, ry ?? 0, s ?? 1));
+      g.add(at(f(), x, z, ry ?? 0, s ?? 1));
     }
+    return out;
   }
 
   private actorFor(c: CastMember): Actor3D {
@@ -567,8 +596,11 @@ export class Scene3D implements Renderer3D {
     switch (preset) {
       case 'closeup': {
         const h = head(k.focus) ?? c.clone().setY(1.1);
-        const d = 3.3 / zoom;
-        return { pos: new THREE.Vector3(h.x + Math.sin(yaw) * d, h.y + 0.25, h.z + Math.cos(yaw) * d), tgt: h.clone().add(new THREE.Vector3(0, -0.1, 0)), fov: 34 };
+        const d = 3.6 / zoom;
+        // de frente para o rosto (meio caminho entre a plateia e para onde o ator olha)
+        const fa = list.find((s) => s.cast.id === k.focus);
+        const ang = yaw + ((fa?.face ?? 0) * Math.PI) / 6;
+        return { pos: new THREE.Vector3(h.x + Math.sin(ang) * d, h.y + 0.35, h.z + Math.cos(ang) * d), tgt: h.clone().add(new THREE.Vector3(0, 0.05, 0)), fov: 34 };
       }
       case 'ots': {
         const B = head(k.focus) ?? c.clone();
@@ -580,9 +612,9 @@ export class Scene3D implements Renderer3D {
         const side = new THREE.Vector3(-dir.z, 0, dir.x);
         if (side.z < 0) side.multiplyScalar(-1);
         const pos = A.clone()
-          .add(dir.multiplyScalar(2.5 / zoom))
-          .add(side.multiplyScalar(1.25))
-          .add(new THREE.Vector3(0, 0.45, 0));
+          .add(dir.multiplyScalar(3.0 / zoom))
+          .add(side.multiplyScalar(1.7))
+          .add(new THREE.Vector3(0, 0.75, 0));
         return { pos, tgt: B.clone().add(new THREE.Vector3(0, -0.1, 0)), fov: 40 };
       }
       case 'orbit': {
@@ -674,7 +706,9 @@ export class Scene3D implements Renderer3D {
   dispose(): void {
     for (const a of this.actors.values()) a.dispose();
     this.actors.clear();
+    disposeTree(this.set);
     this.set.clear();
+    this.sets.clear();
     this.gl.dispose();
     this.gl.forceContextLoss();
   }

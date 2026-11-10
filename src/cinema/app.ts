@@ -19,7 +19,7 @@ import { cleanText, isPro, maxProjects, maxSeconds, paywall } from './gates';
 import { renderPanel, stopPanelAudio, TABS, type PanelCtx } from './panels';
 import { actorThumb } from './rig2d';
 import { confirm, menu, sheet, youCast } from './sheets';
-import { addShotAfter, canRedo, canUndo, castById, cur, flushSave, gotoShot, mutate, onChange, openState, redo, S, setTime, trackOf, undo } from './state';
+import { addShotAfter, editActorKey, canRedo, canUndo, castById, cur, flushSave, gotoShot, mutate, onChange, openState, redo, S, setTime, trackOf, undo } from './state';
 import { copyClips, deleteProject, listProjects, loadProject, saveProject, type ProjectMeta } from './store';
 import { TEMPLATES } from './templates';
 import { startTutorial, stopTutorial, tutEvent } from './tutorial';
@@ -50,7 +50,7 @@ class CinemaApp {
   private lastTimeTxt = '';
   private dragging = false;
   private frameN = 0;
-  private thumbKeys = new Map<string, string>();
+  private thumbs = new Map<string, { key: string; cv: HTMLCanvasElement }>();
   private thumb3d = new Map<string, HTMLCanvasElement>();
   lastExport: ExportResult | null = null;
 
@@ -427,7 +427,7 @@ class CinemaApp {
       drag.moved = true;
       const x = Math.max(-1, Math.min(17, drag.sx + dx / drag.ppu));
       const z = Math.max(-3, Math.min(3, drag.sz + (dy / drag.ppu) * 0.9));
-      import('./state').then((m) => m.editActorKey(drag!.id, { x: Math.round(x * 20) / 20, z: Math.round(z * 20) / 20 }, false));
+      editActorKey(drag.id, { x: Math.round(x * 20) / 20, z: Math.round(z * 20) / 20 }, false);
     });
     const up = (e: PointerEvent) => {
       if (!drag || e.pointerId !== drag.pid) return;
@@ -457,9 +457,9 @@ class CinemaApp {
     }
     html += `<button class="cin-addshot" data-add="shot">＋<small>${t('cin.ed.addShot', 'plano')}</small></button>`;
     host.innerHTML = html;
-    // miniaturas (2D: redesenha só o que mudou; 3D: foto da prévia)
-    const old = this.thumbKeys;
-    this.thumbKeys = new Map();
+    // miniaturas (2D: só redesenha o plano que mudou; 3D: foto da prévia)
+    const castSig = JSON.stringify(S.p.cast);
+    const keep = new Map<string, { key: string; cv: HTMLCanvasElement }>();
     for (const r of S.r.flat) {
       const cv = host.querySelector<HTMLCanvasElement>(`canvas[data-shot="${r.shot.id}"]`);
       if (!cv) continue;
@@ -473,12 +473,23 @@ class CinemaApp {
         }
         continue;
       }
-      const key = JSON.stringify(r.shot) + r.scene.bg + r.scene.light + S.p.cast.length;
-      this.thumbKeys.set(r.shot.id, key);
-      void old;
-      const tt = r.start + Math.min(r.shot.dur * 0.5, r.shot.transition.kind === 'cut' ? 1.2 : r.shot.transition.dur + 0.4);
-      S.r.draw(x, 192, 108, tt, { budget: 0.3, bgScale: 0.8 });
+      const prev = r.gi > 0 ? S.r.flat[r.gi - 1].shot.id : '';
+      const key = JSON.stringify(r.shot) + r.scene.bg + r.scene.light + castSig + prev;
+      const hit = this.thumbs.get(r.shot.id);
+      if (hit && hit.key === key) x.drawImage(hit.cv, 0, 0);
+      else {
+        const tt = r.start + Math.min(r.shot.dur * 0.5, r.shot.transition.kind === 'cut' ? 1.2 : r.shot.transition.dur + 0.4);
+        S.r.draw(x, 192, 108, tt, { budget: 0.3, bgScale: 0.8 });
+        const c2 = hit?.cv ?? document.createElement('canvas');
+        c2.width = 192;
+        c2.height = 108;
+        c2.getContext('2d')!.drawImage(cv, 0, 0);
+        keep.set(r.shot.id, { key, cv: c2 });
+        continue;
+      }
+      keep.set(r.shot.id, hit);
     }
+    this.thumbs = keep;
     S.dirty = true;
     host.querySelector<HTMLElement>('.cin-shot.on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     host.onclick = (e) => {

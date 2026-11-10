@@ -291,7 +291,7 @@ interface FaceState {
   open: number;
   blink: number;
 }
-const FS: FaceState = { expr: 'neutral', open: 0, blink: 0 };
+const FS: FaceState & { flip: number } = { expr: 'neutral', open: 0, blink: 0, flip: 1 };
 
 function eyeOpen(d: DC, sd: number, sc: number, lid: number, slant: number, lookX: number, lookY: number, pupil = 1): void {
   const { x, R, c } = d;
@@ -467,7 +467,11 @@ function cinEyes(d: DC): void {
       x.fillStyle = d.c.ink;
       x.globalAlpha *= S(u * PI);
       x.font = gameFont(700, Math.round(R * (0.28 + u * 0.18)));
-      x.fillText('z', R * (0.75 + u * 0.35), -R * (0.6 + u * 0.55));
+      x.save();
+      x.translate(R * (0.75 + u * 0.35), -R * (0.6 + u * 0.55));
+      x.scale(FS.flip, 1);
+      x.fillText('z', 0, 0);
+      x.restore();
       x.globalAlpha = 1;
       break;
     }
@@ -545,7 +549,11 @@ function cinEyes(d: DC): void {
       brows(d, 0.02, -0.04, 0.12, -1);
       x.fillStyle = d.c.ink;
       x.font = gameFont(700, Math.round(R * 0.55));
-      x.fillText('?', R * 0.85, -R * 0.75 + S(t * 3) * R * 0.05);
+      x.save();
+      x.translate(R * 0.85, -R * 0.75 + S(t * 3) * R * 0.05);
+      x.scale(FS.flip, 1);
+      x.fillText('?', 0, 0);
+      x.restore();
       break;
   }
 }
@@ -892,6 +900,7 @@ export function drawActor2D(x: CanvasRenderingContext2D, cast: CastMember, h: nu
   FS.expr = a.expr;
   FS.open = a.talk;
   FS.blink = a.blink;
+  FS.flip = flip < 0 ? -1 : 1;
   PP.t = a.t;
   PP.blink = a.blink;
   PP.lookX = r.lookX;
@@ -987,6 +996,7 @@ export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: num
   FS.expr = expr;
   FS.open = open;
   FS.blink = blink;
+  FS.flip = 1;
   x.lineCap = 'round';
   x.lineJoin = 'round';
   const own = expr === 'neutral';
