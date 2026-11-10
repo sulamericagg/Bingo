@@ -31,6 +31,8 @@ export interface CreationOpts {
   matDef: CANNON.Material;
   matBouncy: CANNON.Material;
   scale?: number;
+  /** teto da massa (kg) — o ateliê limita para arremessos; os desafios usam massa real */
+  maxMass?: number;
 }
 
 interface WheelRt {
@@ -115,7 +117,7 @@ export class Creation {
   mass(): number {
     const b = this.sh.built;
     // veículos: chassi mais leve (o motor das rodas dá conta)
-    return massFor(b.volume, densityOf(b.mat) * (b.wheels.length ? 0.35 : 1), this.scale);
+    return massFor(b.volume, densityOf(b.mat) * (b.wheels.length ? 0.35 : 1), this.scale, this.o?.maxMass ?? 40);
   }
 
   private makeWheels(): void {
@@ -177,7 +179,8 @@ export class Creation {
   drive(throttle: number, steer: number): void {
     const top = 14;
     for (const w of this.wheels) {
-      const sp = -(throttle * top) + w.side * steer * top * 0.7;
+      // (o motor da dobradiça gira B em relação a A no sentido oposto ao eixo: + anda para +x)
+      const sp = throttle * top - w.side * steer * top * 0.7;
       w.hinge.setMotorSpeed(sp);
       w.hinge.setMotorMaxForce(Math.abs(throttle) + Math.abs(steer) > 0.05 ? this.mass() * 9 : this.mass() * 2.5);
       w.body.wakeUp();

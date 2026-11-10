@@ -549,7 +549,7 @@ function buildTube(d: Drawing, an: Analysis, o: BuildOpts) {
     let avgW = 0;
     for (let i = 2; i < p.length; i += 3) avgW += ptWidth(st, p[i]);
     avgW /= Math.max(1, p.length / 3);
-    const r = o.flat ? Math.max(0.05, Math.min(0.13, (avgW / 2) * s)) : Math.max(0.012, (avgW / 2) * s * 1.05);
+    const r = o.flat ? Math.max(0.05, Math.min(0.09, (avgW / 2) * s)) : Math.max(0.012, (avgW / 2) * s * 1.05);
     const col = PALETTE[st.c];
     colors.push(col);
     if (pts.length < 2 || L < 3) {
@@ -609,6 +609,8 @@ function buildTube(d: Drawing, an: Analysis, o: BuildOpts) {
       const m = a.clone().add(b).multiplyScalar(0.5);
       parts.push({ k: 'box', h: [l / 2 + r * 0.4, r, r], p: [m.x, m.y, m.z], q: [q.x, q.y, q.z, q.w] });
     }
+    // pontas redondas (a bola sobe na ponte em vez de bater numa quina)
+    for (const e of [cp[0], cp[cp.length - 1]]) parts.push({ k: 'sphere', r: r * 1.05, p: [e.x, e.y, e.z] });
   }
   if (!geos.length) return null;
   const g = mergeGeometries(geos.map((x) => (x.index ? x.toNonIndexed() : x)), false)!;
@@ -776,7 +778,21 @@ export function build(d: Drawing, art: HTMLCanvasElement, k: number, an0: Analys
   // centro de massa → origem local
   const vc = volumeCentroid(geo);
   if (!volume) volume = vc.v;
-  const c = vc.c;
+  let c = vc.c;
+  if (mat === 'tube') {
+    // malha aberta (tubos + esferas): o centro de massa vem das peças físicas
+    const acc = new THREE.Vector3();
+    let m = 0;
+    for (const p of parts) {
+      const v = p.k === 'box' ? p.h[0] * p.h[1] * p.h[2] : p.k === 'sphere' ? p.r ** 3 : 0;
+      if (p.k === 'poly') continue;
+      acc.x += p.p[0] * v;
+      acc.y += p.p[1] * v;
+      acc.z += p.p[2] * v;
+      m += v;
+    }
+    if (m > 0) c = acc.multiplyScalar(1 / m);
+  }
   geo.translate(-c.x, -c.y, -c.z);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();

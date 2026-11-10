@@ -11,7 +11,7 @@ import type { Particles } from '../../3d/common/particles';
 import type { Q3 } from '../../3d/common/quality';
 import { sfx } from '../../3d/common/sfx';
 import { t } from '../../i18n';
-import { notify, objective } from '../../ui/notify';
+import { notify, objective, setNotifyAlign } from '../../ui/notify';
 import { bindButton, type BoundButton } from '../../ui/touch';
 import { analyze } from './analyze';
 import type { Mapping } from './build';
@@ -24,7 +24,7 @@ import type { Level } from './levels';
 import { renderDrawing } from './paper';
 import { strokeLen, type Drawing, type Stroke } from './strokes';
 
-const WATER_RHO = 300;
+const WATER_RHO = 600;
 
 /** frente das plataformas: terra em camadas com pedrinhas e grama recortada no topo (papel) */
 function soilTex(w: number, h: number, top: number): THREE.CanvasTexture {
@@ -186,6 +186,7 @@ export class Challenge implements Stage {
       bindButton(q('.dv-ped-r'), { onPress: () => (this.gas = 1), onRelease: () => (this.gas = 0), haptic: 'light' }),
     );
     objective(lv.goal(), { icon: 'target' });
+    setNotifyAlign('center');
     this.setInk();
     if (lv.tip) setTimeout(() => !this.done && notify(lv.tip!(), { icon: 'pencil', ms: 4500 }), 700);
   }
@@ -406,6 +407,7 @@ export class Challenge implements Stage {
       const n = lv.marbles.n * lv.marbles.at.length;
       this.marbleMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(lv.marbles.r, 14, 10), this.M(lv.marbles.color, { rough: 0.15 }), n);
       this.marbleMesh.count = 0;
+      this.marbleMesh.frustumCulled = false;
       this.marbleMesh.castShadow = sh;
       this.scene.add(this.marbleMesh);
     }
@@ -504,7 +506,7 @@ export class Challenge implements Stage {
       lift++;
     }
     const recipe = { d: dd, mat: built.mat, vehicle: this.lv.kind === 'car', fly: false };
-    const c = new Creation(recipe, built, { world: this.world, scene: this.scene, pos, plane2d: true, shadows: this.eng.q.shadows, matDef: this.mats.def, matBouncy: this.mats.bouncy });
+    const c = new Creation(recipe, built, { world: this.world, scene: this.scene, pos, plane2d: true, shadows: this.eng.q.shadows, matDef: this.mats.def, matBouncy: this.mats.bouncy, maxMass: 3000 });
     c.onLand = (v) => landFx(this.particles, c.mesh.position.clone(), v);
     c.grow = 0;
     this.creations.push(c);
@@ -532,7 +534,11 @@ export class Challenge implements Stage {
   private start(): void {
     if (this.started) return;
     this.started = true;
-    if (this.ball && this.lv.ball?.vx) this.ball.body.velocity.set(this.lv.ball.vx, 0, 0);
+    if (this.ball && this.lv.ball?.vx) {
+      // já rolando (sem derrapar e perder velocidade no começo)
+      this.ball.body.velocity.set(this.lv.ball.vx, 0, 0);
+      this.ball.body.angularVelocity.set(0, 0, -this.lv.ball.vx / this.lv.ball.r);
+    }
   }
 
   private addPin(c: Creation, p: THREE.Vector3): void {
@@ -668,7 +674,7 @@ export class Challenge implements Stage {
       tx.colorSpace = THREE.SRGBColorSpace;
       const m = new THREE.Mesh(new THREE.BoxGeometry(w.s, w.s, w.s), this.M('#ffffff', { map: tx }));
       m.castShadow = this.eng.q.shadows;
-      const b = new CANNON.Body({ mass: w.m * 8, material: this.mats.def });
+      const b = new CANNON.Body({ mass: w.m, material: this.mats.def });
       b.addShape(new CANNON.Box(new CANNON.Vec3(w.s / 2, w.s / 2, w.s / 2)));
       b.position.set(w.x, w.y, 0);
       b.linearFactor.set(1, 1, 0);
@@ -680,27 +686,47 @@ export class Challenge implements Stage {
     sfx.whoosh();
   }
 
+  /**
+   * Empuxo distribuído: uma grade de pontos na caixa da criação (no referencial dela); cada ponto
+   * debaixo d'água empurra para cima ONDE está — o lado mais afundado empurra mais, então barcos
+   * largos se endireitam sozinhos (centro de empuxo de verdade, sem custo).
+   */
   private buoyancy(dt: number): void {
     const w = this.lv.water;
     if (!w) return;
-    const apply = (body: CANNON.Body, ymin: number, ymax: number, vol: number) => {
-      const p = body.position;
-      if (p.x < w.x0 || p.x > w.x1) return;
-      const f = Math.max(0, Math.min(1, (w.top - ymin) / Math.max(0.05, ymax - ymin)));
-      if (f <= 0) return;
-      body.applyForce(new CANNON.Vec3(0, WATER_RHO * vol * f * 9.82, 0), p);
-      const k = Math.max(0, 1 - 2.2 * f * dt);
-      body.velocity.scale(k, body.velocity);
-      body.angularVelocity.scale(Math.max(0, 1 - 1.5 * f * dt), body.angularVelocity);
+    const NX = 6;
+    const NY = 3;
+    const lp = new CANNON.Vec3();
+    const rel = new CANNON.Vec3();
+    const apply = (body: CANNON.Body, vol: number, bb: THREE.Box3, sc: number) => {
+      if (body.position.x < w.x0 - 1 || body.position.x > w.x1 + 1) return;
+      const sx = ((bb.max.x - bb.min.x) * sc) / NX;
+      const sy = ((bb.max.y - bb.min.y) * sc) / NY;
+      let fsum = 0;
+      for (let a = 0; a < NX; a++)
+        for (let c = 0; c < NY; c++) {
+          lp.set(bb.min.x * sc + (a + 0.5) * sx, bb.min.y * sc + (c + 0.5) * sy, 0);
+          body.quaternion.vmult(lp, rel);
+          const wx = body.position.x + rel.x;
+          if (wx < w.x0 || wx > w.x1) continue;
+          const wy = body.position.y + rel.y;
+          const f = Math.max(0, Math.min(1, (w.top - wy) / Math.max(0.05, sy) + 0.5));
+          if (f <= 0) continue;
+          body.applyForce(new CANNON.Vec3(0, (WATER_RHO * vol * f * 9.82) / (NX * NY), 0), new CANNON.Vec3(rel.x, rel.y, 0));
+          fsum += f / (NX * NY);
+        }
+      if (fsum <= 0) return;
+      body.velocity.scale(Math.max(0, 1 - 4 * fsum * dt), body.velocity);
+      // um balão afundado sobe rápido, mas não vira foguete
+      if (body.velocity.y > 2.2) body.velocity.y = 2.2;
+      body.angularVelocity.scale(Math.max(0, 1 - 2 * fsum * dt), body.angularVelocity);
     };
-    for (const c of this.creations) {
-      if (!c.spawned) continue;
-      const b = c.worldBox(this.box3);
-      apply(c.body, b.min.y, b.max.y, c.built.volume * c.scale ** 3);
-    }
+    for (const c of this.creations) if (c.spawned) apply(c.body, c.built.volume * c.scale ** 3, c.built.geo.boundingBox!, c.scale);
     for (const d of this.weights) {
       const s = (d.body.shapes[0] as CANNON.Box).halfExtents.y;
-      apply(d.body, d.body.position.y - s, d.body.position.y + s, (2 * s) ** 3);
+      this.box3.min.set(-s, -s, -s);
+      this.box3.max.set(s, s, s);
+      apply(d.body, (2 * s) ** 3, this.box3, 1);
     }
   }
 
@@ -801,6 +827,7 @@ export class Challenge implements Stage {
 
   dispose(): void {
     objective(null);
+    setNotifyAlign('left');
     for (const c of this.creations) c.remove();
     this.btns.forEach((b) => b.destroy());
     this.draw.destroy();

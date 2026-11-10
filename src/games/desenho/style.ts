@@ -16,6 +16,7 @@ const CSS = `
 .dv-btn[disabled]{opacity:.45;pointer-events:none}
 /* ---------- HUD do ateliê ---------- */
 .dv-hud,.dv-chud{position:absolute;inset:0;pointer-events:none;z-index:4;transition:opacity .2s}
+.dv-chud{z-index:7}
 .dv-hud.dv-off{opacity:0}
 .dv-hud.dv-off *{pointer-events:none!important}
 .dv-top{position:absolute;left:var(--edge-l,12px);right:var(--edge-r,12px);top:var(--edge-t,8px);display:flex;align-items:center;gap:8px;pointer-events:none}

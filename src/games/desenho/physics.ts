@@ -63,6 +63,6 @@ export function rebuildShapes(b: CANNON.Body, parts: PhysPart[], scale: number, 
   b.aabbNeedsUpdate = true;
 }
 
-export function massFor(volume: number, density: number, scale: number): number {
-  return Math.max(0.15, Math.min(40, volume * scale ** 3 * density));
+export function massFor(volume: number, density: number, scale: number, max = 40): number {
+  return Math.max(0.15, Math.min(max, volume * scale ** 3 * density));
 }
