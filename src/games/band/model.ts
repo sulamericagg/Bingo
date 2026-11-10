@@ -18,6 +18,14 @@ export const WIN_PERFECT = 0.05;
 export const WIN_GREAT = 0.095;
 export const WIN_GOOD = 0.14;
 
+/** Janelas por dificuldade: fácil perdoa bem o dedo, médio meio-termo, difícil/expert precisos. */
+export const WINDOWS: Record<Difficulty, { perfect: number; great: number; good: number }> = {
+  facil: { perfect: 0.085, great: 0.15, good: 0.22 },
+  medio: { perfect: 0.065, great: 0.115, good: 0.17 },
+  dificil: { perfect: 0.05, great: 0.09, good: 0.13 },
+  expert: { perfect: 0.04, great: 0.075, good: 0.11 },
+};
+
 export const J_PERFECT = 0;
 export const J_GREAT = 1;
 export const J_GOOD = 2;

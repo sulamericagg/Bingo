@@ -26,9 +26,7 @@ import {
   J_PERFECT,
   J_POINTS,
   LANES,
-  WIN_GOOD,
-  WIN_GREAT,
-  WIN_PERFECT,
+  WINDOWS,
   type Difficulty,
   type Instrument,
   type Phrase,
@@ -565,7 +563,7 @@ export class BandGame implements MiniGameHandle {
     let bd = 9;
     for (let i = this.next; i < this.notes.length; i++) {
       const n = this.notes[i];
-      if (n.t > tt + WIN_GOOD) break;
+      if (n.t > tt + WINDOWS[this.diff].good) break;
       if (n.j !== J_NONE || n.lane !== lane) continue;
       const d = Math.abs(n.t - tt);
       if (d < bd) {
@@ -573,8 +571,9 @@ export class BandGame implements MiniGameHandle {
         best = i;
       }
     }
-    if (best >= 0 && bd <= WIN_GOOD) {
-      const j = bd <= WIN_PERFECT ? J_PERFECT : bd <= WIN_GREAT ? J_GREAT : J_GOOD;
+    if (best >= 0 && bd <= WINDOWS[this.diff].good) {
+      const w = WINDOWS[this.diff];
+      const j = bd <= w.perfect ? J_PERFECT : bd <= w.great ? J_GREAT : J_GOOD;
       this.hit(this.notes[best], j);
     }
     // pula até a tecla se estiver longe (e não houver pulo planejado)
@@ -740,7 +739,7 @@ export class BandGame implements MiniGameHandle {
         this.next++;
         continue;
       }
-      if (n.t < st - bs.calib / 1000 - WIN_GOOD) {
+      if (n.t < st - bs.calib / 1000 - WINDOWS[this.diff].good) {
         this.miss(n);
         this.next++;
       } else break;
