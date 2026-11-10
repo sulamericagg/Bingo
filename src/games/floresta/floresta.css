@@ -162,3 +162,57 @@
   .fw-toasts{top:calc(env(safe-area-inset-top,0px) + 86px);max-width:92%}
   .fw-cmd{top:calc(env(safe-area-inset-top,0px) + 86px)}
 }
+/* ---------- margens seguras (barra de navegação do Android; env() costuma ser 0 no WebView) ---------- */
+.fl-hud,.fl-fps,.fw-hud{--edgeL:12px;--edgeR:12px;--edgeB:max(env(safe-area-inset-bottom,0px),14px)}
+@media (orientation:landscape){
+  .fl-hud,.fl-fps,.fw-hud{--edgeL:max(env(safe-area-inset-left,0px),48px);--edgeR:max(env(safe-area-inset-right,0px),48px);--edgeB:max(env(safe-area-inset-bottom,0px),10px)}
+}
+@media (orientation:portrait){
+  .fl-hud,.fl-fps,.fw-hud{--edgeB:max(env(safe-area-inset-bottom,0px),48px)}
+}
+.fl-top{padding-left:var(--edgeL);padding-right:var(--edgeR)}
+.fl-chop{right:var(--edgeR);bottom:var(--edgeB)}
+.fl-ctx{right:var(--edgeR);bottom:calc(var(--edgeB) + 124px)}
+.fl-hud.lefty .fl-chop,.fl-hud.lefty .fl-ctx{right:auto;left:var(--edgeL)}
+.fl-acts{right:calc(var(--edgeR) + 130px);bottom:var(--edgeB)}
+.fl-lefty .fl-acts{right:auto!important;left:calc(var(--edgeL) + 130px)}
+.fl-joyzone{bottom:0;top:calc(env(safe-area-inset-top,0px) + 96px)}
+.fl-hud:not(.lefty) .fl-joyzone{left:0}
+/* emotes: popover horizontal compacto sob o botão, longe das bordas */
+.fl-emotes{right:calc(var(--edgeR) + 40px);top:calc(env(safe-area-inset-top,0px) + 54px);flex-direction:row;gap:4px;background:rgba(20,8,48,.75);padding:5px;border-radius:14px}
+.fl-emotes .fl-btn.round{width:38px;height:38px}
+.fl-ctlpanel{right:var(--edgeR)}
+.fw-top{padding-left:var(--edgeL);padding-right:var(--edgeR)}
+.fw-btns{right:var(--edgeR);bottom:var(--edgeB)}
+.fw-hud.lefty .fw-btns{right:auto;left:var(--edgeL)}
+.fw-cmd{right:var(--edgeR)}
+@media (orientation:landscape) and (max-height:500px){
+  .fl-chop{width:92px;height:92px}
+  .fl-ctx{bottom:calc(var(--edgeB) + 100px)}
+  .fl-acts{right:calc(var(--edgeR) + 104px);bottom:var(--edgeB)}
+  .fl-emotes{top:50px}
+}
+@media (orientation:portrait){
+  .fl-acts{right:var(--edgeR);bottom:calc(var(--edgeB) + 130px);flex-direction:column-reverse}
+  .fl-ctx{right:calc(var(--edgeR) + 124px);bottom:var(--edgeB)}
+  .fl-emotes{top:calc(env(safe-area-inset-top,0px) + 100px)}
+}
+
+.fl-hint{left:var(--edgeL);top:calc(env(safe-area-inset-top,0px) + 58px)}
+.fl-hint.hid{opacity:0;pointer-events:none}
+@media (orientation:landscape) and (max-height:500px){
+  .fl-top{gap:5px}
+  .fl-top .fl-btn.round{width:38px;height:38px}
+  .fl-top .fl-pill,.fl-top .fl-health{min-height:30px;font-size:13px;padding:2px 8px 2px 3px}
+  .fl-top .fl-pill .ico,.fl-top .fl-health .ico{width:22px;height:22px}
+  .fl-health .bar{width:46px}
+  .fl-hint{top:calc(env(safe-area-inset-top,0px) + 52px)}
+}
+@media (orientation:portrait){
+  .fl-hint{top:calc(env(safe-area-inset-top,0px) + 112px)}
+  .fl-toast,.fl-banner{top:calc(env(safe-area-inset-top,0px) + 112px)}
+}
+.fl-players:empty{display:none}
+/* dicas/avisos logo abaixo da barra de cima, qualquer que seja a altura dela */
+.fl-hud .fl-hint{top:calc(var(--toph,52px) + 6px)}
+.fl-hud .fl-toast,.fl-hud .fl-banner{top:calc(var(--toph,52px) + 6px)}

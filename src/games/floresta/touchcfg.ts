@@ -15,6 +15,10 @@ export interface TouchCfg {
 }
 
 const KEY = 'bw-floresta-touch';
+
+/** ícone de engrenagem (configurações de controle) */
+export const GEAR_SVG = (size = 24): string =>
+  `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><path d="M21 4h6l1 6 4 2 5-4 4 4-4 5 2 4 6 1v6l-6 1-2 4 4 5-4 4-5-4-4 2-1 6h-6l-1-6-4-2-5 4-4-4 4-5-2-4-6-1v-6l6-1 2-4-4-5 4-4 5 4 4-2z" fill="#d8e0f0" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/><circle cx="24" cy="24" r="6" fill="#8a5cff" stroke="#2a0b5c" stroke-width="3"/></svg>`;
 let cur: TouchCfg | null = null;
 const subs = new Set<(c: TouchCfg) => void>();
 

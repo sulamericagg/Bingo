@@ -6,7 +6,7 @@ import { t, fmt } from '../../i18n';
 import { BIOMES, BUILDS, HELPERS, MACHINES, TOOLS, VEHICLES, helperCost, machineCost, prestigeMult, short } from './data';
 import { flIcon, type FlIcon } from './icons';
 import type { Sim } from './sim';
-import { joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from './touchcfg';
+import { GEAR_SVG, joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from './touchcfg';
 
 export interface HudHost {
   sim: Sim;
@@ -70,8 +70,7 @@ export class Hud {
         <div class="fl-health" title="${t('floresta.health', 'Floresta saudável')}">${flIcon('leaf', 26)}<div class="bar"><i></i></div><span data-v="hp">100%</span></div>
         <div class="fl-right">
           <div class="fl-pill fl-players" data-v="players"></div>
-          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 26)}</button>
-          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 26)}</button>
+          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${GEAR_SVG(26)}</button>
           <button class="fl-btn round" data-a="emote" aria-label="${t('floresta.emote', 'Emotes')}">${flIcon('emote', 28)}</button>
           <button class="fl-btn round gold" data-a="shop" aria-label="${t('floresta.shop', 'Loja')}">${flIcon('shop', 28)}</button>
         </div>
@@ -106,10 +105,22 @@ export class Hud {
       const a = b.dataset.a;
       if (b.dataset.emote) {
         host.onEmote(b.dataset.emote);
-        this.q('.fl-emotes').classList.remove('show');
+        this.closeEmotes();
       } else if (a === 'exit') host.onExit();
       else if (a === 'shop') this.openShop();
-      else if (a === 'emote') this.q('.fl-emotes').classList.toggle('show');
+      else if (a === 'emote') {
+        const e = this.q('.fl-emotes');
+        if (e.classList.toggle('show')) {
+          // logo abaixo do botão, alinhado à direita dele (longe das bordas)
+          const r = b.getBoundingClientRect();
+          const hr = this.el.getBoundingClientRect();
+          e.style.top = r.bottom - hr.top + 6 + 'px';
+          e.style.right = Math.max(0, hr.right - r.right) + 'px';
+          this.hint.classList.add('hid');
+          clearTimeout(this.emoteTo);
+          this.emoteTo = window.setTimeout(() => this.closeEmotes(), 3000);
+        }
+      }
       else if (a === 'cam') host.onToggleCam();
       else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
       else if (a === 'hint') this.expandHint();
@@ -117,6 +128,14 @@ export class Hud {
     });
     this.bindChop();
     this.bindJoy();
+    const top = this.q('.fl-top');
+    const setTop = () => this.el.style.setProperty('--toph', top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 'px');
+    setTop();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(setTop);
+      ro.observe(top);
+      this.offs.push(() => ro.disconnect());
+    }
   }
 
   private bindChop(): void {
@@ -152,6 +171,7 @@ export class Hud {
       const R = joyRadius(c);
       j.style.setProperty('--jr', R + 'px');
       this.el.classList.toggle('lefty', c.lefty);
+      this.el.parentElement?.classList.toggle('fl-lefty', c.lefty);
     };
     applyCfg();
     this.offs.push(onTouchCfg(applyCfg));
@@ -316,6 +336,13 @@ export class Hud {
       (this as any)._shopB = b;
       this.renderShop();
     }
+  }
+
+  private emoteTo = 0;
+  private closeEmotes(): void {
+    clearTimeout(this.emoteTo);
+    this.q('.fl-emotes').classList.remove('show');
+    this.hint.classList.remove('hid');
   }
 
   private expandHint(): void {
@@ -498,6 +525,7 @@ export class Hud {
   }
 
   destroy(): void {
+    clearTimeout(this.emoteTo);
     for (const f of this.offs) f();
     this.el.remove();
   }

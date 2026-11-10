@@ -8,7 +8,7 @@
  * ============================================================ */
 import { t } from '../../../i18n';
 import { flIcon } from '../icons';
-import { joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from '../touchcfg';
+import { GEAR_SVG, joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from '../touchcfg';
 
 const svg = (body: string, size = 30) => `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
 const INK = '#2a0b5c';
@@ -67,7 +67,7 @@ export class WorldHud {
         <div class="fl-pill fw-biome"><span data-v="biome"></span></div>
         <div class="fl-pill fw-nav"><i data-v="arrow">${WICONS.arrow}</i><span data-v="camp"></span></div>
         <div class="fw-right">
-          <button class="fl-btn round" data-tap="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${flIcon('wheel', 22)}</button>
+          <button class="fl-btn round" data-tap="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${GEAR_SVG(22)}</button>
           <button class="fl-btn round" data-tap="pets" aria-label="${t('floresta.w.pets', 'Ajudantes')}">${WICONS.paw}</button>
         </div>
       </div>
