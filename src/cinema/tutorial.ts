@@ -18,6 +18,7 @@ const STEPS: { ev: TutEvent; text: () => string }[] = [
 const KEY = 'cin-tut';
 
 let step = -1;
+const done = new Set<TutEvent>();
 let timer = 0;
 let shown = 0;
 let hide: (() => void) | null = null;
@@ -38,6 +39,7 @@ function write(n: number): void {
 }
 
 function show(): void {
+  while (step >= 0 && step < STEPS.length && done.has(STEPS[step].ev)) step++;
   if (step < 0 || step >= STEPS.length) return;
   hide?.();
   hide = notify(`${step + 1}/${STEPS.length} · ${STEPS[step].text()}`, { icon: 'hand-tap', ms: 4500, key: `cin-tut-${step}-${shown}` });
@@ -54,7 +56,6 @@ export function startTutorial(): void {
   timer = window.setTimeout(show, 900);
 }
 
-const done = new Set<TutEvent>();
 export function tutEvent(ev: TutEvent): void {
   if (step < 0 || step >= STEPS.length) return;
   done.add(ev);
