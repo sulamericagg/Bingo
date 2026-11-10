@@ -121,6 +121,16 @@ async function boot(): Promise<void> {
     audio.suspend();
     persistNow();
   };
+  // versão web: pede para a tela não apagar (Wake Lock API), e renova ao voltar para a aba
+  const wake = () => {
+    const wl = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<unknown> } }).wakeLock;
+    if (wl && !document.hidden) wl.request('screen').catch(() => undefined);
+  };
+  if (!isNative) {
+    wake();
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('pointerdown', wake, { once: true });
+  }
   document.addEventListener('visibilitychange', () => (document.hidden ? onHide() : audio.resume()));
 
   if (isNative) {
