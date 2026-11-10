@@ -6,7 +6,7 @@
  */
 import { isNative } from './platform';
 
-type Lock = 'portrait' | 'landscape';
+type Lock = 'portrait' | 'landscape' | 'any';
 
 async function plugin() {
   return (await import('@capacitor/screen-orientation')).ScreenOrientation;

@@ -10,7 +10,7 @@
  * Tudo vive dentro de <section id="menu"> (index.html), então qualquer tela que
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
-import { restorePortrait } from '../core/orientation';
+import { lockOrientation, restorePortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
@@ -153,6 +153,8 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   }
   launching = true;
   hostActive = true;
+  // dentro dos jogos o celular pode girar (3D em paisagem); o menu volta a ficar em pé no closeHost
+  void lockOrientation('any');
   hostDef = def;
   hideBanner();
   menu.classList.remove('on');
