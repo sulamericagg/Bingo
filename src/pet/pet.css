@@ -826,3 +826,17 @@
   position: absolute;
   inset: -12px -6px;
 }
+
+/* deitado (web/tablet 915x412): a bandeja cobria o bichinho e o "Falar" ficava em cima da 1ª comida.
+   Bandeja vai para a direita, o bichinho fica livre no meio. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .pet-tray {
+    left: auto;
+    right: 10px;
+    width: min(40vw, 420px);
+    bottom: calc(64px + var(--sb));
+  }
+  .pet-shelf {
+    padding: 6px 6px 8px;
+  }
+}
