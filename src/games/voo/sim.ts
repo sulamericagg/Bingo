@@ -85,6 +85,7 @@ export interface Player {
   react: number;
   sayT: number;
   say: string;
+  stuck: number;
   stats: Stats;
 }
 export interface Pax {
@@ -275,7 +276,7 @@ export class Sim {
     const [x, z] = spawn[role] ?? [0, 3];
     const p: Player = {
       idx: this.players.length, name, skin, role, bot, remote, x, z, vx: 0, vz: 0, yaw: Math.PI, hold: -1, seated: false, stun: 0, busy: -1,
-      actKind: '', actTarget: -1, actProg: 0, spraying: false, walk: 0, cmd: null, react: 0, sayT: 0, say: '',
+      actKind: '', actTarget: -1, actProg: 0, spraying: false, walk: 0, cmd: null, react: 0, sayT: 0, say: '', stuck: 0,
       stats: { fires: 0, fixes: 0, calmed: 0, pilotSec: 0, patched: 0, falls: 0 },
     };
     this.players.push(p);
@@ -391,9 +392,10 @@ export class Sim {
     const noise = (k: number) => (r() * 2 - 1) * k;
     if (Math.abs(sx) > 0.04) f.roll += sx * 0.85 * dt;
     else if (pilot) f.roll *= Math.exp(-0.35 * dt); // autonivelamento suave (justo no celular)
-    if (!pilot) {
-      f.roll += noise(0.05) * dt * 8 * dt + Math.sin(this.time * 0.13) * 0.012 * dt;
-      f.pitch -= 0.0035 * dt;
+    if (!pilot && this.noPilotT > 5) {
+      // sem ninguém no manche: deriva lenta (dá para sair um pouco, mas não para sempre)
+      f.roll += Math.sin(this.time * 0.13 + this.opts.seed) * 0.01 * dt;
+      f.pitch -= 0.0016 * dt;
     }
     f.roll += noise(turb * 1.6) * dt;
     f.pitch += noise(turb * 0.5) * dt - sy * 0.32 * dt;
@@ -588,7 +590,7 @@ export class Sim {
     const scale = 1 / (1 + 0.14 * (crew - 1));
     this.nextEmerT = (lerp(26, 12, pr) + this.rnd() * 8) * scale;
     const act = this.active().filter((e) => e.kind !== 'panic');
-    const cap = 1 + Math.floor(pr * 3.2) + (crew >= 3 ? 1 : 0);
+    const cap = 1 + Math.floor(pr * (crew === 1 ? 2 : 3.2)) + (crew >= 3 ? 1 : 0);
     if (act.length >= cap) {
       this.nextEmerT = 4;
       return;
@@ -700,11 +702,11 @@ export class Sim {
       e.age += dt;
       switch (e.kind) {
         case 'fire': {
-          e.sev = Math.min(1.2, e.sev + dt * (e.spot === 'engL' || e.spot === 'engR' ? 0.02 : 0.026));
-          this.hull -= dt * 0.38 * e.sev;
+          e.sev = Math.min(1.2, e.sev + dt * (e.spot === 'engL' || e.spot === 'engR' ? 0.015 : 0.019));
+          this.hull -= dt * 0.22 * e.sev;
           if (e.sev >= 1) {
             e.hot += dt;
-            if (e.hot > 9) {
+            if (e.hot > 14 && this.active().filter((x) => x.kind === 'fire').length < 3) {
               e.hot = 0;
               const used = new Set(this.active().map((x) => x.spot));
               const near = FIRE_SPOTS.filter((s) => !used.has(s) && Math.abs(SPOTS[s as keyof typeof SPOTS].z - e.z) < 7);
@@ -819,7 +821,7 @@ export class Sim {
     const act = this.active();
     let alarms = 0;
     for (const e of act) if (e.kind !== 'turb' && e.kind !== 'panic' && e.kind !== 'gear') alarms++;
-    const base = 0.0035 + alarms * 0.0055 + this.turb * 0.03 + (Math.abs(f.roll) > 0.5 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0);
+    const base = 0.002 + alarms * 0.003 + this.turb * 0.025 + (Math.abs(f.roll) > 0.5 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0);
     let standing = 0;
     for (const p of this.pax) {
       p.bob += dt;
@@ -829,12 +831,12 @@ export class Sim {
         p.panic = Math.max(0, p.panic - dt * 0.05);
       } else {
         let near = 0;
-        for (const e of act) if (e.kind === 'fire' && Math.abs(e.z - p.sz) < 3) near += 0.02;
+        for (const e of act) if (e.kind === 'fire' && Math.abs(e.z - p.sz) < 3) near += 0.01;
         p.panic = clamp(p.panic + dt * (base + near) * (0.6 + ((p.seat * 37) % 10) / 12), 0, 1);
       }
       if (!p.standing && p.panic > 0.75) p.standing = true;
       if (p.standing && p.panic < 0.45) p.standing = false;
-      const tx = p.standing ? (p.sz < 3 ? Math.sign(p.sx) * 0.3 : Math.sign(p.sx) * 0.18) : p.sx;
+      const tx = p.standing ? Math.sign(p.sx) * (p.sz < 3 ? 0.42 : 0.34) : p.sx;
       p.x += (tx - p.x) * Math.min(1, dt * 3);
       p.z += (p.sz - p.z) * Math.min(1, dt * 3);
       if (p.standing) standing++;
@@ -964,9 +966,12 @@ export class Sim {
       const dx = p.x - q.x;
       const dz = p.z - q.z;
       const d = Math.hypot(dx, dz);
-      if (d < 0.42 && d > 1e-4) {
-        p.x += (dx / d) * (0.42 - d) * 0.6;
-        p.z += (dz / d) * (0.42 - d) * 0.6;
+      if (d < 0.3 && d > 1e-4) {
+        // dá para se espremer e passar (devagar)
+        p.x += (dx / d) * (0.3 - d) * 0.22;
+        p.z += (dz / d) * (0.3 - d) * 0.22;
+        p.vx *= 0.9;
+        p.vz *= 0.9;
       }
     }
     for (const q of this.players) {
@@ -1380,6 +1385,15 @@ export class Sim {
       this.botMove.x = dx / d;
       this.botMove.z = dz / d;
       p.yaw = Math.atan2(dx, dz);
+      // travado? desvia de lado por um instante
+      const sp = Math.hypot(p.vx, p.vz);
+      p.stuck = sp < 0.4 ? p.stuck + 1 / 60 : Math.max(0, p.stuck - 1 / 30);
+      if (p.stuck > 0.7) {
+        const side = Math.sin(this.time * 2 + p.idx) > 0 ? 1 : -1;
+        this.botMove.x += -this.botMove.z * side * 1.2;
+        this.botMove.z += this.botMove.x * side * 0.4;
+        if (p.stuck > 2.5) p.stuck = 0;
+      }
     }
     return Math.hypot(tx - p.x, tz - p.z) < 0.25;
   }
@@ -1443,6 +1457,7 @@ export class Sim {
       this.botDone(p);
       return;
     }
+    if (p.busy >= 0 && (p.busy !== e.id || Math.hypot(e.x - p.x, e.z - p.z) > REACH + 1.2)) p.busy = -1;
     let need: ItemKind | '' = '';
     if (e.kind === 'fire') need = 'ext';
     else if (e.kind === 'bird' || (e.kind === 'leak' && e.stage === 0)) need = 'tape';
@@ -1479,6 +1494,7 @@ export class Sim {
     const reach = e.kind === 'fire' ? 2.0 : REACH - 0.15;
     const near = Math.hypot(sx - p.x, sz - p.z) < reach;
     if (!near) {
+      p.busy = -1;
       this.walkTo(p, ax, az);
       return;
     }

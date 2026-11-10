@@ -11,7 +11,7 @@ export const NOSE_Z = -4.0;
 export const TAIL_Z = 21.0;
 export const CEIL = 2.3;
 export const P_RAD = 0.26;
-export const REACH = 1.45;
+export const REACH = 1.6;
 
 /** caixas sólidas no piso (x0, x1, z0, z1) */
 export type Box = [number, number, number, number];
