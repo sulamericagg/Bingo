@@ -41,7 +41,7 @@ export function bestLabel(id: string): string {
     }
     case 'cor': {
       const b = lsNum('bw-cor', 'bestAcc');
-      return b ? t('best.cor', 'Melhor precisão: {n}%', { n: b.toFixed(1) }) : '';
+      return b ? t('best.cor', 'Melhor precisão: {n}%', { n: b.toFixed(1).replace('.', t('cor.decimal', ',')) }) : '';
     }
     default:
       return '';
