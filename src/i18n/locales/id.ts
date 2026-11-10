@@ -3686,4 +3686,7 @@ export default {
   "upg.shield": "Perisai",
   "upg.shield.desc": "Peluang mulai dengan perisai dan kebal lebih lama setelah tabrakan.",
   "upg.shield.fx": "peluang {n}%",
+  "home3d.act.painting": "MENGECAT",
+  "home3d.paint.dragHint": "Geser jari di dinding, lantai, atau perabot",
+  "home3d.paint.undo": "Urungkan",
 } as Record<string, string>;

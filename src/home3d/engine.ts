@@ -220,7 +220,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class Engine {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.05, 80);
+  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.04, 80);
   readonly world = new CANNON.World({ gravity: new CANNON.Vec3(0, -14, 0), allowSleep: true });
   readonly gov: QualityGovernor;
   q: Q3;
@@ -350,6 +350,10 @@ export class Engine {
     this.renderer.domElement.style.width = w + 'px';
     this.renderer.domElement.style.height = h + 'px';
     this.camera.aspect = w / Math.max(1, h);
+    // em pé: abre o campo de visão (senão o 3D fica "colado" na parede, superzoom).
+    // Mantém ~64° na horizontal, sem passar de 96° na vertical (olho de peixe).
+    const a = this.camera.aspect;
+    this.camera.fov = a >= 1.25 ? 70 : Math.min(96, Math.max(70, (2 * Math.atan(Math.tan((64 * Math.PI) / 360) / a) * 180) / Math.PI));
     this.camera.updateProjectionMatrix();
   }
   private ctxLost = (e: Event) => {
@@ -1092,7 +1096,9 @@ export class Engine {
   }
   /** tile: 0 espuma, 1 brilho, 2 fumaça, 3 pedacinho */
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, o: { tile?: number; color?: string; life?: number; size?: number; grow?: number; grav?: number }): void {
-    if (this.pts.length >= this.PMAX) this.pts.shift();
+    // teto de partículas por qualidade (celular fraco: ~110)
+    const cap = Math.max(80, Math.round(this.PMAX * this.q.particles));
+    while (this.pts.length >= cap) this.pts.shift();
     const c = TMPC.set(o.color ?? '#ffffff');
     this.pts.push({ x, y, z, vx, vy, vz, life: o.life ?? 0.8, max: o.life ?? 0.8, size: o.size ?? 0.08, grow: o.grow ?? 0, tile: o.tile ?? 0, r: c.r, g: c.g, b: c.b, grav: o.grav ?? 0 });
   }

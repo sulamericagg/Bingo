@@ -3686,4 +3686,7 @@ export default {
   "upg.shield": "Щит",
   "upg.shield.desc": "Шанс начать со щитом и дольше быть неуязвимым после удара.",
   "upg.shield.fx": "шанс {n}%",
+  "home3d.act.painting": "КРАШУ",
+  "home3d.paint.dragHint": "Води пальцем по стенам, полу или мебели",
+  "home3d.paint.undo": "Отменить",
 } as Record<string, string>;

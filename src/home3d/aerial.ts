@@ -8,8 +8,9 @@
 import * as THREE from 'three';
 import { t } from '../i18n';
 import { ROOM_D, ROOM_W, WALL_H } from './adapter';
-import { extraId, freeSlots, HOUSE, MAX_ROOMS, roomFrame, type Engine, type RoomRec } from './engine';
+import { extraId, freeSlots, HOUSE, MAX_ROOMS, roomFrame, type Engine, type ItemRec, type RoomRec } from './engine';
 import type { Decor } from './decor';
+import type { Paint3D } from './paint3d';
 import { sfx } from './sfx';
 import { button, el } from './ui';
 
@@ -46,6 +47,11 @@ export class Aerial {
   readonly ui: HTMLDivElement;
   private left: HTMLDivElement;
   onToast?: (s: string) => void;
+  /** pintar arrastando o dedo (Vista aérea) */
+  paint: Paint3D | null = null;
+  painting = false;
+  private paintPid = -1;
+  private paintXY: [number, number] = [0, 0];
   /** comprar um cômodo extra (o index liga na loja); true = pago */
   buyRoom?: (id: string, price: number) => Promise<boolean>;
   /** cômodo novo pronto (index avisa o resto: festa, salvar) */
@@ -111,6 +117,8 @@ export class Aerial {
   }
   exit(): void {
     this.active = false;
+    this.painting = false;
+    this.paintPid = -1;
     this.flyTo = null;
     this.fly = 1;
     this.ui.style.display = 'none';
@@ -272,6 +280,11 @@ export class Aerial {
       this.dragGhost = null;
       return;
     }
+    if (this.painting && this.paint && !this.decor.mv) {
+      this.paintPid = e.pointerId;
+      this.paintXY = [e.clientX, e.clientY];
+      return;
+    }
     // tocar no móvel já escolhido = começar a arrastar na hora
     const d = this.decor;
     if (!d.mv && d.sel && this.eng.editable !== undefined) {
@@ -302,6 +315,10 @@ export class Aerial {
       this.mid0 = mid;
       this.pinch0 = d;
       this.ang0 = ang;
+      return;
+    }
+    if (e.pointerId === this.paintPid) {
+      this.paintXY = [e.clientX, e.clientY];
       return;
     }
     if (this.dragGhost && this.decor.mv) {
@@ -336,6 +353,11 @@ export class Aerial {
     const pt = this.ptrs.get(e.pointerId);
     if (!pt) return;
     this.ptrs.delete(e.pointerId);
+    if (e.pointerId === this.paintPid) {
+      this.paintPid = -1;
+      this.paint?.end();
+      return;
+    }
     if (this.ptrs.size >= 1) {
       this.pinch0 = 0;
       const [a] = [...this.ptrs.values()];
@@ -366,6 +388,22 @@ export class Aerial {
     const it = this.decor.pickAt(e.clientX, e.clientY);
     this.decor.select(it);
   };
+  /** pinta o que está sob o dedo: parede (uv), móvel ou chão */
+  private paintAt(x: number, y: number, dt: number): void {
+    const p = this.paint;
+    if (!p) return;
+    this.setRay(x, y);
+    const hits = this.ray.intersectObjects(this.eng.pickables, false);
+    for (const h of hits) {
+      const ud = h.object.userData;
+      if (ud?.type === 'wall' && h.uv) return p.spray({ wall: ud.wall, uv: h.uv, point: h.point }, dt);
+      if (ud?.type === 'item' && !(ud.item as ItemRec).info.flat) return p.spray({ item: ud.item, point: h.point }, dt);
+    }
+    const f = this.floorAt(x, y);
+    const room = f && this.eng.roomAt(f.x, f.z);
+    p.spray(room && f ? { floor: room, point: f } : null, dt);
+    // segurar parado também conta (chão/móvel trocam de cor depois de um instante)
+  }
   private wheel = (e: WheelEvent) => {
     e.preventDefault();
     this.dist = Math.max(4, Math.min(28, this.dist * (1 + Math.sign(e.deltaY) * 0.1)));
@@ -374,6 +412,7 @@ export class Aerial {
   /* ---------------- laço ---------------- */
   update(dt: number): void {
     if (!this.active) return;
+    if (this.paintPid >= 0) this.paintAt(this.paintXY[0], this.paintXY[1], dt);
     const cam = this.eng.camera;
     const goal = this.flyTo ?? this.orbitPose({ p: new THREE.Vector3(), q: new THREE.Quaternion() });
     if (this.fly < 1) {

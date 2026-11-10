@@ -3686,4 +3686,7 @@ export default {
   "upg.shield": "シールド",
   "upg.shield.desc": "シールドつきでスタートする確率と、ぶつかった後の無敵時間がアップ。",
   "upg.shield.fx": "確率{n}%",
+  "home3d.act.painting": "ぬり中",
+  "home3d.paint.dragHint": "壁・床・家具を指でなぞってね",
+  "home3d.paint.undo": "元に戻す",
 } as Record<string, string>;

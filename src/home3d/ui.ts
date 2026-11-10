@@ -4,6 +4,8 @@
  *  Todo texto via t('home3d.*'); fonte via var(--font).
  * ============================================================ */
 import { lockOrientation, restorePortrait } from '../core/orientation';
+import { FpsControls } from '../ui/touch';
+import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../ui/notify';
 import { t } from '../i18n';
 
 const CSS = `
@@ -12,7 +14,9 @@ const CSS = `
 .h3-canvas{position:absolute;inset:0;display:block}
 .h3-layer{position:absolute;inset:0}
 .h3-btn{font:inherit;font-weight:700;border:0;cursor:pointer;color:#2a0b5c;background:#fff;border-radius:999px;box-shadow:0 4px 0 #2a0b5c33,0 0 0 3px #2a0b5c inset;padding:8px 14px;display:inline-flex;align-items:center;gap:6px;font-size:14px;transition:transform .08s}
-.h3-btn:active,.h3-btn.on{transform:scale(.93)}
+.h3-btn:active,.h3-btn.on{transform:scale(.9)}
+.h3-btn,.h3-pb,.h3-mb,.h3-act,.h3-drawer .card,.h3-drawer .tab{transition:transform .16s cubic-bezier(.3,1.7,.5,1),background-color .15s,box-shadow .15s}
+.h3-layer.painting .h3-left{display:none}
 .h3-btn svg{width:20px;height:20px;flex:none}
 .h3-btn.sel{background:#ffd84a}
 .h3-btn.lock{opacity:.5}
@@ -25,12 +29,8 @@ const CSS = `
 .h3-title{font-weight:700;font-size:15px;text-shadow:0 2px 0 #2a0b5c;padding:4px 10px;background:#2a0b5c88;border-radius:12px;white-space:nowrap}
 .h3-ret{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px #2a0b5c;pointer-events:none;transition:transform .12s,border-color .12s}
 .h3-ret.hot{transform:scale(1.35);border-color:#ffd84a}
-.h3-tgt{position:absolute;left:50%;top:calc(50% + 22px);transform:translateX(-50%);font-weight:700;font-size:14px;padding:3px 10px;border-radius:10px;background:#2a0b5caa;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .15s}
+.h3-tgt{position:absolute;left:50%;top:calc(50% + 18px);transform:translateX(-50%);font-weight:600;font-size:11px;padding:2px 8px;opacity:.9;border-radius:10px;background:#2a0b5caa;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .15s}
 .h3-tgt.on{opacity:1}
-.h3-joy{position:absolute;left:0;bottom:0;width:42%;height:70%}
-.h3-joy .base{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;background:#ffffff22;border:3px solid #ffffff66;display:none}
-.h3-joy .knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #2a0b5c inset,0 4px 0 #2a0b5c55}
-.h3-joy .hint{position:absolute;left:max(24px,env(safe-area-inset-left));bottom:calc(var(--safe-bot,0px) + 22px);width:96px;height:96px;border-radius:50%;border:3px dashed #ffffff55;opacity:.8}
 .h3-acts{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:calc(var(--safe-bot,env(safe-area-inset-bottom,0px)) + 12px);display:flex;flex-direction:column-reverse;align-items:flex-end;gap:10px;pointer-events:none}
 .h3-act{pointer-events:auto;font:inherit;font-weight:700;border:0;border-radius:50%;width:76px;height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:#2a0b5c;background:#fff;box-shadow:0 5px 0 #2a0b5c55,0 0 0 4px #2a0b5c inset;cursor:pointer;transition:transform .08s;position:relative}
 .h3-act svg{width:28px;height:28px}
@@ -132,21 +132,36 @@ const CSS = `
 .h3-full .h3-later.on{display:inline-flex;animation:h3pop .3s}
 @keyframes h3pop{from{transform:scale(.6);opacity:0}}
 .h3-load-back{position:absolute;left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top))}
+.h3-top.compact .h3-btn{padding:6px 10px;font-size:13px}
+.h3-top.compact>.h3-btn:first-child span{display:none}
+.h3-top.compact>.h3-btn:first-child{padding:6px 8px}
+.h3-tools{position:relative}
+.h3-pchip{position:absolute;left:50%;transform:translateX(-50%);top:calc(max(8px,env(safe-area-inset-top)) + 74px);display:flex;gap:6px;align-items:flex-start;justify-content:center;flex-wrap:wrap;width:min(92vw,420px);z-index:4;pointer-events:none}
+.h3-pchip>*{pointer-events:auto}
+.h3-pchip .cur,.h3-pchip .un{font:inherit;font-weight:700;font-size:12px;border:0;border-radius:999px;background:#2a0b5cdd;color:#fff;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;box-shadow:0 0 0 2px #ffffff55;cursor:pointer;transition:transform .08s}
+.h3-pchip .cur i{width:26px;height:26px;border-radius:50%;border:3px solid #fff;display:block}
+.h3-pchip .un{padding:5px;width:34px;height:34px;justify-content:center}
+.h3-pchip .un svg{width:20px;height:20px}
+.h3-pchip .un.off{opacity:.4}
+.h3-pchip button:active{transform:scale(.9)}
+.h3-pchip .pan{flex-basis:100%;background:#2a0b5cee;border-radius:14px;padding:8px;box-shadow:0 0 0 2px #ffffff44;display:flex;flex-direction:column;gap:6px;animation:h3pop .16s}
+.h3-pchip .fins,.h3-pchip .cols{display:flex;flex-wrap:wrap;gap:5px}
+.h3-pchip .h3-sw{width:26px;height:26px;padding:0}
+.h3-tcur .car{font-style:normal;font-size:11px;margin-left:2px;opacity:.7}
+.h3-tmenu{position:absolute;right:0;top:calc(100% + 6px);display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:6px;border-radius:16px;background:#2a0b5cee;box-shadow:0 0 0 2px #ffffff55,0 8px 20px #0006;z-index:7;animation:h3pop .15s;min-width:150px}
+.h3-tmenu .h3-btn{justify-content:flex-start;font-size:13px;padding:6px 10px}
 @media (orientation:portrait){
-.h3-top{flex-wrap:wrap;row-gap:6px}
-.h3-title{font-size:13px;max-width:calc(100% - 110px);overflow:hidden;text-overflow:ellipsis}
-.h3-tools{margin-left:0;width:100%;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px}
-.h3-tools .h3-btn{flex:none}
-.h3-prog{top:112px}
-.h3-row{left:10px;right:10px;transform:none;max-width:none;bottom:auto;top:138px}
-.h3-act{width:64px;height:64px;font-size:11px}
-.h3-act.big{width:78px;height:78px}
-.h3-act.small{width:54px;height:54px}
-.h3-act svg{width:24px;height:24px}
-.h3-joy{width:58%;height:48%}
-.h3-side,.h3-left{top:112px}
+.h3-title{font-size:12px;max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+.h3-prog{top:60px}
+.h3-row{left:10px;right:10px;transform:none;max-width:none;bottom:auto;top:96px}
+.h3-act{width:60px;height:60px;font-size:10px}
+.h3-act.big{width:72px;height:72px}
+.h3-act.small{width:50px;height:50px}
+.h3-act svg{width:22px;height:22px}
+.h3-side,.h3-left{top:60px}
 .h3-cat{max-height:42%}
-.h3-toast{font-size:16px;white-space:normal;text-align:center;max-width:86%}
+.h3-toast{font-size:14px;white-space:normal;text-align:center;max-width:86%}
+.h3-ret{width:18px;height:18px;margin:-9px 0 0 -9px}
 }
 `;
 let cssEl: HTMLStyleElement | null = null;
@@ -191,6 +206,7 @@ export const ICON: Record<string, string> = {
   swap: P('<path d="M4 8h13l-3-3M20 16H7l3 3"/>'),
   box: P('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'),
   x: P('<path d="M6 6l12 12M18 6L6 18"/>'),
+  undo: P('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>'),
   sofa: P('<path d="M4 11V8a2 2 0 012-2h12a2 2 0 012 2v3"/><path d="M2 13a2 2 0 014 0v2h12v-2a2 2 0 014 0v5H2z"/><path d="M5 18v2M19 18v2"/>'),
   star: P('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
   bulb: P('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/>'),
@@ -233,7 +249,11 @@ function within<T>(p: Promise<T>, ms: number, fb: T): Promise<T> {
  * azul do 3D para sempre). Mostra o aviso na hora, com "Voltar" e, depois de 2 s,
  * "Continuar assim mesmo" (o 3D funciona em retrato — o celular pode estar com a rotação travada).
  */
+/** o jogador escolheu jogar em pé ("Continuar assim mesmo"): não insistimos em paisagem */
+let portraitChosen = false;
+export const playsPortrait = (): boolean => portraitChosen;
 export async function askLandscape(root: HTMLElement, skip: boolean): Promise<boolean> {
+  portraitChosen = false;
   if (skip) return true;
   void within(lockOrientation('landscape'), 1500, undefined);
   // a rotação nativa leva um instante para refletir em innerWidth/innerHeight
@@ -273,6 +293,7 @@ export async function askLandscape(root: HTMLElement, skip: boolean): Promise<bo
     cancel.onclick = () => done(false);
     anyway.onclick = () => {
       // joga em retrato: solta a trava de paisagem para a tela não girar no meio do jogo
+      portraitChosen = true;
       restorePortrait();
       done(true);
     };
@@ -343,145 +364,49 @@ export function fallback(root: HTMLElement, title: string, text: string, tryAnyw
   });
 }
 
-/* ---------------- entrada FPS: joystick + olhar + teclado ---------------- */
-export class FpsInput {
-  moveX = 0;
-  moveY = 0;
-  lookDX = 0;
-  lookDY = 0;
-  enabled = true;
-  private keys = new Set<string>();
-  private joyId = -1;
-  private lookId = -1;
-  private jx = 0;
-  private jy = 0;
-  private lx = 0;
-  private ly = 0;
-  /** início do toque de olhar (para reconhecer toque curto = escolher) */
-  private l0 = { x: 0, y: 0, t: 0, moved: 0 };
-  /** toque curto fora dos botões (escolher móvel) */
+/* ---------------- entrada FPS: módulo compartilhado (src/ui/touch) + toque curto ----------------
+ * Joystick flutuante (anel apagado sempre visível onde ele vai aparecer), arrastar para olhar
+ * suave (preferências de Controles), WASD. Aqui só soma o "toque curto" (escolher móvel).
+ */
+export class FpsInput extends FpsControls {
+  /** toque curto fora dos botões e fora da zona do joystick */
   onTap?: (x: number, y: number) => void;
-  readonly joy: HTMLDivElement;
-  private base: HTMLDivElement;
-  private knob: HTMLDivElement;
-  private hint: HTMLDivElement;
+  private t0: { id: number; x: number; y: number; t: number; moved: number } | null = null;
   constructor(
-    private layer: HTMLElement,
-    private sens = 0.0055,
+    private host: HTMLElement,
+    sens?: number,
   ) {
-    this.joy = el('div', 'h3-joy', '<div class="hint"></div><div class="base"><div class="knob"></div></div>');
-    this.base = this.joy.querySelector('.base')!;
-    this.knob = this.joy.querySelector('.knob')!;
-    this.hint = this.joy.querySelector('.hint')!;
-    layer.appendChild(this.joy);
-    layer.addEventListener('pointerdown', this.down);
-    window.addEventListener('pointermove', this.move);
-    window.addEventListener('pointerup', this.up);
-    window.addEventListener('pointercancel', this.up);
-    window.addEventListener('keydown', this.kd);
-    window.addEventListener('keyup', this.ku);
+    super(host, { joystick: { zoneWidth: 0.42, zoneTop: 0.3, hint: true }, look: sens ? { baseSens: sens } : {} });
+    host.addEventListener('pointerdown', this.tDown);
+    window.addEventListener('pointermove', this.tMove);
+    window.addEventListener('pointerup', this.tUp);
   }
-  private down = (e: PointerEvent) => {
+  private tDown = (e: PointerEvent) => {
     if (!this.enabled) return;
-    const tgt = e.target as HTMLElement;
-    if (tgt.closest('button,.h3-row,.h3-cat,.h3-drawer,.h3-pop,.h3-mbar,.h3-ask,.h3-coach,.h3-top')) return;
-    const r = this.layer.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    if (x < r.width * 0.42 && e.clientY - r.top > r.height * 0.3 && this.joyId < 0 && e.pointerType !== 'mouse') {
-      this.joyId = e.pointerId;
-      this.jx = e.clientX;
-      this.jy = e.clientY;
-      this.base.style.display = 'block';
-      this.base.style.left = x + 'px';
-      this.base.style.top = e.clientY - r.top + 'px';
-      this.hint.style.display = 'none';
-    } else if (this.lookId < 0) {
-      this.lookId = e.pointerId;
-      this.lx = e.clientX;
-      this.ly = e.clientY;
-      this.l0 = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
-    } else if (this.joyId < 0 && e.pointerType === 'mouse') {
-      /* */
-    }
+    const tg = e.target as HTMLElement;
+    if (tg.closest?.('button,[data-touch-ignore]')) return;
+    const r = this.host.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width,
+      fy = (e.clientY - r.top) / r.height;
+    const inJoy = fy > 0.3 && (this.joy.side === 'left' ? fx < 0.42 : fx > 0.58);
+    if (inJoy) return;
+    this.t0 = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
   };
-  private move = (e: PointerEvent) => {
-    if (e.pointerId === this.joyId) {
-      let dx = e.clientX - this.jx,
-        dy = e.clientY - this.jy;
-      const d = Math.hypot(dx, dy),
-        R = 50;
-      if (d > R) (dx *= R / d), (dy *= R / d);
-      this.knob.style.transform = `translate(${dx}px,${dy}px)`;
-      // zona morta + curva suave: andar devagar fica fácil, empurrar tudo = correr
-      const m = Math.min(1, d / R);
-      const k = m < 0.14 ? 0 : Math.pow((m - 0.14) / 0.86, 1.25) / Math.max(1e-6, m);
-      this.moveX = (dx / R) * k;
-      this.moveY = (-dy / R) * k;
-    } else if (e.pointerId === this.lookId) {
-      const dx = e.clientX - this.lx,
-        dy = e.clientY - this.ly;
-      this.l0.moved = Math.max(this.l0.moved, Math.hypot(e.clientX - this.l0.x, e.clientY - this.l0.y));
-      // ignora o tremidinho do começo de um toque (senão um toque vira olhar)
-      if (this.l0.moved > 6) {
-        this.lookDX += dx * this.sens;
-        this.lookDY += dy * this.sens;
-      }
-      this.lx = e.clientX;
-      this.ly = e.clientY;
-    }
+  private tMove = (e: PointerEvent) => {
+    const t = this.t0;
+    if (t && e.pointerId === t.id) t.moved = Math.max(t.moved, Math.hypot(e.clientX - t.x, e.clientY - t.y));
   };
-  private up = (e: PointerEvent) => {
-    if (e.pointerId === this.joyId) {
-      this.joyId = -1;
-      this.moveX = this.moveY = 0;
-      this.base.style.display = 'none';
-      this.knob.style.transform = '';
-    } else if (e.pointerId === this.lookId) {
-      this.lookId = -1;
-      if (e.type === 'pointerup' && this.l0.moved < 10 && performance.now() - this.l0.t < 380) this.onTap?.(e.clientX, e.clientY);
-    }
+  private tUp = (e: PointerEvent) => {
+    const t = this.t0;
+    if (!t || e.pointerId !== t.id) return;
+    this.t0 = null;
+    if (this.enabled && t.moved < 10 && performance.now() - t.t < 380) this.onTap?.(e.clientX, e.clientY);
   };
-  private kd = (e: KeyboardEvent) => {
-    this.keys.add(e.code);
-  };
-  private ku = (e: KeyboardEvent) => {
-    this.keys.delete(e.code);
-  };
-  key(code: string): boolean {
-    return this.keys.has(code);
-  }
-  /** direção final (joystick ou WASD) */
-  dir(): [number, number] {
-    let x = this.moveX,
-      y = this.moveY;
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) y = 1;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y = -1;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x = -1;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x = 1;
-    const l = Math.hypot(x, y);
-    if (l > 1) (x /= l), (y /= l);
-    return [x, y];
-  }
-  consumeLook(): [number, number] {
-    const r: [number, number] = [this.lookDX, this.lookDY];
-    this.lookDX = this.lookDY = 0;
-    return r;
-  }
-  show(on: boolean): void {
-    this.joy.style.display = on ? '' : 'none';
-    this.enabled = on;
-    if (!on) {
-      this.joyId = this.lookId = -1;
-      this.moveX = this.moveY = 0;
-    }
-  }
-  dispose(): void {
-    this.layer.removeEventListener('pointerdown', this.down);
-    window.removeEventListener('pointermove', this.move);
-    window.removeEventListener('pointerup', this.up);
-    window.removeEventListener('pointercancel', this.up);
-    window.removeEventListener('keydown', this.kd);
-    window.removeEventListener('keyup', this.ku);
+  override dispose(): void {
+    super.dispose();
+    this.host.removeEventListener('pointerdown', this.tDown);
+    window.removeEventListener('pointermove', this.tMove);
+    window.removeEventListener('pointerup', this.tUp);
   }
 }
 
@@ -499,6 +424,8 @@ export class Actions {
   private sig = '';
   held = new Set<string>();
   onTap?: (id: string) => void;
+  /** botão de segurar foi solto (ms = quanto tempo ficou apertado) — toque curto = liga/desliga */
+  onRelease?: (id: string, ms: number) => void;
   constructor(layer: HTMLElement) {
     this.box = el('div', 'h3-acts');
     layer.appendChild(this.box);
@@ -523,7 +450,9 @@ export class Actions {
         const id = a.id;
         // toque vale ao SOLTAR dentro do botão (dedo que passa por cima arrastando não aciona nada)
         let armed = false;
+        let t0 = 0;
         b.addEventListener('pointerdown', (e) => {
+          t0 = performance.now();
           e.stopPropagation();
           e.preventDefault();
           b!.classList.add('on');
@@ -543,8 +472,10 @@ export class Actions {
         b.addEventListener('pointerup', (e) => {
           e.stopPropagation();
           const fire = armed && !a.hold;
+          const hold = armed && a.hold;
           rel();
           if (fire) this.onTap?.(id);
+          if (hold) this.onRelease?.(id, performance.now() - t0);
         });
         b.addEventListener('pointerleave', rel);
         b.addEventListener('pointercancel', rel);
@@ -559,13 +490,27 @@ export class Actions {
 export class Toast {
   private el: HTMLDivElement;
   private tm = 0;
-  constructor(layer: HTMLElement) {
+  /** corner = avisos pequenos do app (src/ui/notify.ts), usados pela Casa 3D */
+  constructor(
+    layer: HTMLElement,
+    private corner = false,
+  ) {
     this.el = el('div', 'h3-toast');
-    layer.appendChild(this.el);
+    if (!corner) layer.appendChild(this.el);
+    else setNotifyTop(54);
+  }
+  dispose(): void {
+    if (!this.corner) return;
+    clearNotify();
+    resetNotifyTop();
   }
   private last = '';
   private lastT = 0;
   show(text: string, ms = 1400): void {
+    if (this.corner) {
+      notify(text, { ms: Math.max(1600, ms + 600) });
+      return;
+    }
     // mesmo aviso repetido em seguida: não pisca de novo
     const now = performance.now();
     if (text === this.last && now - this.lastT < 1200 && this.el.classList.contains('on')) return;
@@ -577,6 +522,7 @@ export class Toast {
     this.tm = window.setTimeout(() => this.el.classList.remove('on'), ms);
   }
 }
+
 
 /** dica com cadeado sobre um botão bloqueado */
 export function lockTip(layer: HTMLElement, anchor: HTMLElement, text: string): void {

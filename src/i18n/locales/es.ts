@@ -3686,4 +3686,7 @@ export default {
   "upg.shield": "Escudo",
   "upg.shield.desc": "Probabilidad de empezar con escudo y más tiempo invencible tras un golpe.",
   "upg.shield.fx": "{n}% de probabilidad",
+  "home3d.act.painting": "PINTANDO",
+  "home3d.paint.dragHint": "Arrastra el dedo por paredes, piso o muebles",
+  "home3d.paint.undo": "Deshacer",
 } as Record<string, string>;

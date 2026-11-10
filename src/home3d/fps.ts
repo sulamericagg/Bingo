@@ -8,6 +8,7 @@ import * as CANNON from 'cannon-es';
 import { t } from '../i18n';
 import { canUse, itemColor, KINDS, newMessId, parsePaintSpec, placeToXY, quarterOf, ROOM_D, ROOM_W, WALL_T, type MessKind } from './adapter';
 import type { Decor } from './decor';
+import type { Paint3D, PaintHit } from './paint3d';
 import { G, type DecalRec, type Engine, type ItemRec, type RoomRec, type WallRec } from './engine';
 import { Hand, type HandColors } from './hand';
 import { splatColor, type Food, type Party } from './party';
@@ -28,7 +29,7 @@ export interface Target {
   dist: number;
 }
 const EYE = 1.02;
-const RAD = 0.27;
+const RAD = 0.3;
 const SPEED = 2.7;
 const UP = new THREE.Vector3(0, 1, 0);
 const V = new THREE.Vector3();
@@ -53,7 +54,8 @@ export class Fps {
   private bob = 0;
   private stepT = 0;
   private fxT = 0;
-  private paintT = 0;
+  private paintPress = false;
+  paint: Paint3D | null = null;
   private lastLook: [number, number] = [0, 0];
   /** olhar suavizado: o dedo move o alvo, a câmera segue (sem tranco em celular fraco) */
   private yawGoal = 0;
@@ -61,6 +63,7 @@ export class Fps {
   /** câmera recua/sobe enquanto move um móvel (0..1) */
   private pull = 0;
   decor: Decor | null = null;
+  private extBtns = false;
   active = true;
   /** callbacks para a sessão */
   onToast?: (s: string) => void;
@@ -94,31 +97,66 @@ export class Fps {
     this.hand = new Hand(eng.camera, colors);
     this.ray.far = 3.2;
     acts.onTap = (id) => this.tap(id);
+    // toque curto no PINTAR liga/desliga o spray; segurar pinta só enquanto segura
+    acts.onRelease = (id, ms) => {
+      if (id === 'paint' && this.paint && ms < 280) this.paint.latched = !this.paint.latched;
+    };
   }
 
+  /**
+   * Nasce num lugar livre perto do meio do cômodo, OLHANDO para o que interessa (bolo/mesa da festa,
+   * TV, sofá, cama...), a 2–3,5 m dele: nunca de cara para uma parede ou dentro de um móvel.
+   */
   spawn(room: RoomRec): void {
-    // lugar livre mais perto da frente do cômodo
-    let best = new THREE.Vector3(ROOM_W / 2, 0, ROOM_D - 1),
-      bs = -1e9;
     const items = this.eng.items.filter((i) => i.room === room && !i.info.wall && !i.info.flat && !i.info.ceil);
-    for (let x = 0.7; x <= ROOM_W - 0.7; x += 0.35)
-      for (let z = 1.2; z <= ROOM_D - 0.5; z += 0.3) {
-        const w = room.group.localToWorld(new THREE.Vector3(x, 0, z));
-        let clear = 9;
-        for (const it of items) {
-          const d = Math.hypot(it.homeP.x - w.x, it.homeP.z - w.z) - Math.max(it.dims.w, it.dims.d) / 2;
-          clear = Math.min(clear, d);
+    const loc = (v: THREE.Vector3) => room.group.worldToLocal(v.clone());
+    const foot = items.map((it) => {
+      const c = loc(it.homeP);
+      const q = quarterOf(it.data) % 2;
+      return { x: c.x, z: c.z, hx: (q ? it.dims.d : it.dims.w) / 2, hz: (q ? it.dims.w : it.dims.d) / 2, tall: it.dims.h > 0.95 };
+    });
+    // foco: bolo da festa > mesa de festa > o móvel mais "de sala" > centro
+    const pref = ['partytable', 'tv', 'sofa', 'bed', 'bunk', 'fireplace', 'aquarium', 'table', 'piano', 'arcade', 'bathtub', 'stove', 'counter', 'desk'];
+    let focusW: THREE.Vector3 | null = this.party?.cake && this.eng.roomAt(this.party.cake.pos.x, this.party.cake.pos.z) === room ? this.party.cake.pos.clone() : null;
+    if (!focusW)
+      for (const k of pref) {
+        const it = items.find((i) => i.kind === k);
+        if (it) {
+          focusW = it.homeP.clone().setY(Math.min(1, it.dims.h * 0.7));
+          break;
         }
-        const score = Math.min(clear, 0.9) * 4 + z * 0.4 - Math.abs(x - ROOM_W / 2) * 0.3;
+      }
+    const focus = focusW ? loc(focusW) : new THREE.Vector3(ROOM_W / 2, 0.8, ROOM_D / 2);
+    const m = WALL_T + RAD + 0.2;
+    let best = new THREE.Vector3(ROOM_W / 2, 0, ROOM_D / 2),
+      bs = -1e9;
+    const blocked = (x: number, z: number) => foot.some((f) => Math.abs(x - f.x) < f.hx + RAD + 0.12 && Math.abs(z - f.z) < f.hz + RAD + 0.12);
+    const sight = (x: number, z: number) => {
+      // nada alto entre o jogador e o foco
+      for (let k = 0.15; k < 0.9; k += 0.12) {
+        const px = x + (focus.x - x) * k,
+          pz = z + (focus.z - z) * k;
+        if (foot.some((f) => f.tall && Math.abs(px - f.x) < f.hx && Math.abs(pz - f.z) < f.hz)) return false;
+      }
+      return true;
+    };
+    for (let x = m; x <= ROOM_W - m; x += 0.25)
+      for (let z = m; z <= ROOM_D - m; z += 0.25) {
+        if (blocked(x, z)) continue;
+        const d = Math.hypot(focus.x - x, focus.z - z);
+        let clear = 9;
+        for (const f of foot) clear = Math.min(clear, Math.max(Math.abs(x - f.x) - f.hx, Math.abs(z - f.z) - f.hz));
+        // olhando para o foco, quanto espaço até a parede atrás dele?
+        const score = -Math.abs(d - 2.7) * 1.4 + Math.min(clear, 0.8) * 1.5 - Math.hypot(x - ROOM_W / 2, z - ROOM_D / 2) * 0.25 + (sight(x, z) ? 2 : 0) + (d < 1.8 ? -4 : 0);
         if (score > bs) (bs = score), best.set(x, 0, z);
       }
-    const p = room.group.localToWorld(best);
+    const p = room.group.localToWorld(best.clone());
     this.body.position.set(p.x, RAD + 0.02, p.z);
     this.body.velocity.setZero();
-    const c = room.center;
-    this.yaw = Math.atan2(-(c.x - p.x), -(c.z - p.z));
-    if (Math.hypot(c.x - p.x, c.z - p.z) < 0.5) this.yaw = room.rotY;
-    this.pitch = -0.12;
+    const f = room.group.localToWorld(focus.clone());
+    this.yaw = Math.atan2(-(f.x - p.x), -(f.z - p.z));
+    const dist = Math.max(0.5, Math.hypot(f.x - p.x, f.z - p.z));
+    this.pitch = Math.max(-0.38, Math.min(0, Math.atan2(f.y - EYE, dist)));
     this.yawGoal = this.yaw;
     this.pitchGoal = this.pitch;
   }
@@ -184,7 +222,7 @@ export class Fps {
   }
   private updatePose(): void {
     const tl = this.tool;
-    if (tl === 'paint') this.hand.setPose('roller', parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5');
+    if (tl === 'paint') this.hand.setPose('roller', this.paint?.color ?? parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5');
     else if (tl === 'clean') this.hand.setPose(this.target.decal?.vacuum ? 'vacuum' : 'sponge');
     else if (tl === 'decor') this.hand.setPose(this.held ? 'grab' : 'build');
     else this.hand.setPose(this.held ? 'grab' : 'open');
@@ -270,13 +308,14 @@ export class Fps {
   /* ---------------- botões ---------------- */
   private buttons(): ActDef[] {
     const ex = this.ext?.buttons(); // [casa-ativ]
+    this.extBtns = !!ex;
     if (ex) return ex;
     const tg = this.target;
     const role = this.eng.role;
     const L: ActDef[] = [];
     const it = tg.item;
     if (this.tool === 'paint') {
-      L.push({ id: 'paint', label: t('home3d.act.paint', 'PINTAR'), icon: 'paint', size: 'big', hold: true });
+      L.push({ id: 'paint', label: this.paint?.latched ? t('home3d.act.painting', 'PINTANDO') : t('home3d.act.paint', 'PINTAR'), icon: 'paint', size: 'big', hold: true });
       return L;
     }
     if (this.decor?.mv || this.decor?.sel || this.decor?.drawerOpen) return L;
@@ -559,33 +598,40 @@ export class Fps {
       this.onCleaned?.(this.eng.cleaned);
     }
   }
-  private paintStep(dt: number): void {
-    const w = this.target.wall;
-    if (!w || !this.target.uv || this.target.dist > 3.4) return;
-    this.paintT -= dt;
-    if (this.paintT > 0) return;
-    this.paintT = 1 / 30;
-    const uv = this.target.uv;
-    const fresh = this.eng.paintAt(w, uv.x, uv.y, 0.42, this.paintColor);
-    if (fresh && Math.random() < 0.35) sfx.paint();
-    if (Math.random() < 0.3) {
-      const p = this.target.point;
-      this.eng.emit(p.x, p.y, p.z, w.normal.x * 0.4, -0.3, w.normal.z * 0.4, { tile: 3, color: parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5', life: 0.5, size: 0.025, grav: 6 });
+  /** o que está na mira para pintar: parede (uv), móvel ou chão (até ~3,4 m) */
+  private paintHit(): PaintHit | null {
+    const tg = this.target;
+    if (tg.type === 'wall' && tg.wall && tg.uv && tg.dist < 3.4) return { wall: tg.wall, uv: tg.uv, point: tg.point, normal: tg.normal };
+    if (tg.type === 'item' && tg.item && tg.dist < 3.4 && tg.item.state !== 'broken') return { item: tg.item, point: tg.point };
+    const cam = this.eng.camera;
+    cam.getWorldDirection(V);
+    if (V.y < -0.08) {
+      const k = -cam.position.y / V.y;
+      if (k < 3.6) {
+        const p = cam.position.clone().addScaledVector(V, k);
+        const room = this.eng.roomAt(p.x, p.z);
+        if (room) return { floor: room, point: p };
+      }
     }
-    const room = w.room;
+    return null;
+  }
+  private paintStep(dt: number): void {
+    const pt = this.paint;
+    if (!pt) return;
+    const h = this.paintHit();
+    pt.spray(h, dt);
+    const room = h?.wall?.room;
+    if (!room) return;
     const prog = this.eng.paintProgress(room);
     this.onProgress?.(room, prog);
     if (prog >= 0.9) {
       this.eng.finishPaint(room);
       this.onProgress?.(room, 1);
       sfx.sparkle();
-      this.onToast?.(t('home3d.toast.painted', 'Parede novinha!'), );
-      for (const ww of room.walls) {
-        for (let i = 0; i < 6; i++) {
-          const c = room.group.localToWorld(new THREE.Vector3(Math.random() * ROOM_W, 0.4 + Math.random() * 2, Math.random() * ROOM_D));
-          this.eng.burst(c.x, c.y, c.z, 4, 'spark', '#fff4a0', 1.2);
-        }
-        void ww;
+      this.onToast?.(t('home3d.toast.painted', 'Parede novinha!'));
+      for (let i = 0; i < 24; i++) {
+        const c = room.group.localToWorld(new THREE.Vector3(Math.random() * ROOM_W, 0.4 + Math.random() * 2, Math.random() * ROOM_D));
+        this.eng.burst(c.x, c.y, c.z, 4, 'spark', '#fff4a0', 1.2);
       }
     }
   }
@@ -593,11 +639,11 @@ export class Fps {
   /* ---------------- laço ---------------- */
   update(dt: number): void {
     if (!this.active) return;
-    const [lx, ly] = this.input.consumeLook();
+    // olhar: o módulo de toque já suaviza (sub-quadro, sem atraso); aqui só aplica
+    const [lx, ly] = this.input.consumeLook(dt);
     this.yawGoal -= lx;
     this.pitchGoal = Math.max(-1.25, Math.min(1.2, this.pitchGoal - ly));
-    // segue o alvo com amortecimento curto (suave, mas sem atraso perceptível)
-    const ks = 1 - Math.exp(-dt * 28);
+    const ks = 1;
     const py = this.yaw,
       pp = this.pitch;
     this.yaw += (this.yawGoal - this.yaw) * ks;
@@ -661,7 +707,12 @@ export class Fps {
     }
     // limpar / pintar segurando
     const holdClean = this.acts.held.has('clean');
-    const holdPaint = this.acts.held.has('paint') || (this.tool === 'paint' && this.input.key('Space'));
+    // pintar: segurar o botão pinta; toque curto liga/desliga o spray (dá para olhar e andar pintando)
+    const pressed = this.acts.held.has('paint');
+    if (!pressed && this.paintPress) this.paint?.end();
+    this.paintPress = pressed;
+    if (this.tool !== 'paint' && this.paint) this.paint.latched = false;
+    const holdPaint = pressed || !!this.paint?.latched || (this.tool === 'paint' && this.input.key('Space'));
     let scrub = 0;
     if ((holdClean || (this.tool === 'clean' && this.input.key('Space'))) && this.target.decal && this.target.dist < 2.8) {
       this.cleanStep(dt, this.target.decal);
@@ -670,9 +721,12 @@ export class Fps {
     } else if (holdPaint && this.tool === 'paint') {
       this.paintStep(dt);
       scrub = 0.7;
+    } else if (this.tool === 'paint') {
+      this.paint?.end();
     } else if (this.tool === 'hand' && !this.held && !this.ext?.busy) this.hand.setPose('open'); // [casa-ativ] busy
     else if (this.tool === 'clean') this.updatePose();
     this.hand.visible = !this.decor?.mv;
+    this.hand.sizeMul = this.eng.camera.aspect < 1 ? 0.62 : 0.88;
     this.hand.scrub += (scrub - this.hand.scrub) * Math.min(1, dt * 12);
     this.hand.update(dt, speed, this.lastLook[0], this.lastLook[1]);
     // peças quebradas somem
@@ -689,7 +743,10 @@ export class Fps {
       }
     }
     // HUD
-    this.acts.set(this.buttons());
+    // um botão de ação por vez (festa) / no máximo dois: o principal e um pequeno
+    const bl = this.buttons();
+    // (botões das atividades da casa [casa-ativ] vêm prontos: não corta)
+    this.acts.set(this.extBtns ? bl : this.party ? bl.filter((b, i) => i === 0 || b.id === 'drop').slice(0, 2) : bl.slice(0, 2));
     const tg = this.target;
     let label = '';
     if (tg.type === 'item' && tg.item && tg.dist < 3) label = t('home3d.furn.' + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state === 'broken' ? ' · ' + t('home3d.state.broken', 'quebrado') : tg.item.state === 'moved' ? ' · ' + t('home3d.state.moved', 'fora do lugar') : '');

@@ -328,7 +328,7 @@ export class Party {
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(0.8, 0.85, 1);
     const tag = new THREE.Sprite(tagMat);
-    tag.scale.set(0.7, 0.15, 1);
+    tag.scale.set(0.5, 0.11, 1);
     const frost = new THREE.Sprite(frostMat);
     frost.scale.set(0.42, 0.42, 1);
     const shadow = new THREE.Mesh(this.eng.planeGeo, this.eng.matShadow);

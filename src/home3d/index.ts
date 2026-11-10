@@ -18,10 +18,14 @@ import { Engine } from './engine';
 import { Fps, type FpsTool } from './fps';
 import { Aerial, roomName, roomPrice } from './aerial';
 import { Decor } from './decor';
+import { FURNITURE } from '../home/catalog';
+import { Paint3D } from './paint3d';
 import { Party } from './party';
 import { handColors } from './hand';
 import { disposeSfx, sfx } from './sfx';
-import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, ICON, Loading, lockTip, removeCss, Toast, unlockOrientation } from './ui';
+import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, ICON, isLandscape, Loading, lockTip, playsPortrait, removeCss, Toast, unlockOrientation } from './ui';
+import { lockOrientation } from '../core/orientation';
+import { bus } from '../core/events';
 import { splatTexture } from './textures';
 import type { Close3DResult, Open3DOpts } from './types';
 import type { HomeDesign, MessItem } from '../home/api';
@@ -169,7 +173,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     root.appendChild(hud);
     input = new FpsInput(hud);
     acts = new Actions(hud);
-    toast = new Toast(hud);
+    toast = new Toast(hud, true);
     fps = new Fps(eng, input, acts, party, handColors(opts.skin));
     startRoom = (eng.roomById(opts.room ?? (party ? 'party' : 'living')) ?? eng.rooms[0])!;
     fps.spawn(startRoom);
@@ -222,15 +226,37 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     toolDefs.push({ id: 'cleanup', label: t('home3d.party.cleanup', 'Hora de limpar!'), icon: 'party' });
     toolDefs.push({ id: 'emote', label: t('home3d.emote', 'Emote'), icon: 'emote' });
   }
+  /** em pé ou na festa: só a ferramenta atual + menu pequeno (antes: 6–7 pílulas tapando o topo) */
+  let menuOpen = false;
+  const compact = () => mode === 'fps' && (!!party || hud.clientWidth < hud.clientHeight * 1.15 || hud.clientWidth < 620);
   const renderTools = () => {
     tools.innerHTML = '';
+    const small = compact();
+    top.classList.toggle('compact', small);
+    let host: HTMLElement = tools;
+    if (small) {
+      const cur = toolDefs.find((d) => d.id === fps.tool) ?? toolDefs[0];
+      const tb = button(cur.label, cur.icon);
+      tb.classList.add('sel', 'h3-tcur');
+      tb.insertAdjacentHTML('beforeend', `<i class="car">${menuOpen ? '▴' : '▾'}</i>`);
+      tb.onclick = () => {
+        sfx.click();
+        menuOpen = !menuOpen;
+        renderTools();
+      };
+      tools.appendChild(tb);
+      if (!menuOpen) return;
+      host = el('div', 'h3-tmenu');
+      host.dataset.touchIgnore = '1';
+      tools.appendChild(host);
+    } else menuOpen = false;
     for (const d of toolDefs) {
-      if (mode === 'build' && d.id !== 'build' && d.id !== 'decor') continue;
+      if (mode === 'build' && d.id !== 'build' && d.id !== 'decor' && d.id !== 'paint') continue;
       const allowed = !d.need || canUse(role, d.need);
       const label = mode === 'build' && d.id === 'build' ? t('home3d.tool.walk', 'Andar') : mode === 'build' && d.id === 'decor' ? t('home3d.tool.catalog', 'Catálogo') : d.id === 'cleanup' && party?.phase === 'clean' ? t('home3d.party.fight', 'Guerra de comida!') : d.label;
       const b = button(label, d.id === 'build' && mode === 'build' ? 'eye' : d.icon);
       b.dataset.tool = d.id;
-      if ((fps.tool === d.id && mode === 'fps') || (mode === 'build' && d.id === 'decor' && decor.drawerOpen)) b.classList.add('sel');
+      if ((fps.tool === d.id && mode === 'fps') || (mode === 'build' && ((d.id === 'decor' && decor.drawerOpen) || (d.id === 'paint' && build.painting)))) b.classList.add('sel');
       if (!allowed) {
         b.classList.add('lock');
         b.insertAdjacentHTML('beforeend', `<span class="lk">${ICON.lock}</span>`);
@@ -239,9 +265,20 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
         b.onclick = () => {
           sfx.click();
           tap('light');
+          menuOpen = false;
           if (flying) return;
           if (d.id === 'build') setMode(mode === 'build' ? 'fps' : 'build');
-          else if (d.id === 'decor' && mode === 'build') decor.toggleCatalog();
+          else if (d.id === 'decor' && mode === 'build') {
+            build.painting = false;
+            palRow.style.display = 'none';
+            decor.toggleCatalog();
+          } else if (d.id === 'paint' && mode === 'build') {
+            build.painting = !build.painting;
+            build.ui.classList.toggle('painting', build.painting);
+            decor.reset();
+            palRow.style.display = build.painting ? '' : 'none';
+            if (build.painting) toast.show(t('home3d.paint.dragHint', 'Arraste o dedo nas paredes, no chão ou nos móveis'));
+          }
           else if (d.id === 'emote')
             openEmoteWheel((code) => {
               myEmote = code;
@@ -264,15 +301,39 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
           }
           renderTools();
         };
-      tools.appendChild(b);
+      host.appendChild(b);
     }
   };
+  // girou o aparelho: refaz o topo (compacto em pé) e, se não foi escolha do jogador, pede paisagem de novo
+  let lastLock = 0;
+  const onOrient = () => {
+    renderTools();
+    if (playsPortrait() || opts.skipRotate || isLandscape() || closed) return;
+    const now = performance.now();
+    if (now - lastLock < 1500) return;
+    lastLock = now;
+    void lockOrientation('landscape');
+  };
+  window.addEventListener('resize', onOrient);
+  // toque fora do menu de ferramentas fecha o menu (sem acionar nada embaixo)
+  hud.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!menuOpen || (e.target as HTMLElement).closest('.h3-tools')) return;
+      menuOpen = false;
+      renderTools();
+    },
+    true,
+  );
+  const offResume = bus.on('app-resume', () => setTimeout(onOrient, 300));
   const fixWheelZ = () => requestAnimationFrame(() => document.querySelectorAll<HTMLElement>('.sc-wheel').forEach((w) => (w.style.zIndex = '9500')));
   let myEmote = '';
   let myEmoteT = 0;
-  // paleta de tintas (mesmo formato do 2D: "<corIdx>:<acabamento>")
-  let paintIdx = 12;
-  let paintFin: Finish = 'solid';
+  // TINTA: chip pequeno no canto (cor atual + desfazer); toque abre a paleta. Formato do 2D "<corIdx>:<acabamento>"
+  const paint = new Paint3D(eng);
+  fps.paint = paint;
+  build.paint = paint;
+  paint.spec = '12:solid';
   const finName: Record<Finish, string> = {
     solid: t('home3d.fin.solid', 'Lisa'),
     gradient: t('home3d.fin.gradient', 'Degradê'),
@@ -280,35 +341,54 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     stars: t('home3d.fin.stars', 'Estrelas'),
     glitter: t('home3d.fin.glitter', 'Glitter'),
   };
-  const setPaint = () => {
-    fps.paintColor = paintIdx + ':' + paintFin;
-    fps.setTool('paint');
-  };
-  for (const f of FINISHES) {
-    const b = el('button', 'h3-chip' + (f === paintFin ? ' sel' : ''), esc(finName[f]));
-    b.dataset.fin = f;
-    b.onclick = () => {
-      palRow.querySelectorAll('[data-fin]').forEach((x) => x.classList.remove('sel'));
-      b.classList.add('sel');
-      paintFin = f;
-      setPaint();
-      sfx.click();
-    };
-    palRow.appendChild(b);
-  }
-  PALETTE.forEach((p, idx) => {
-    const sw = el('div', 'h3-sw');
-    sw.style.background = p;
-    if (idx === paintIdx) sw.classList.add('sel');
+  palRow.className = 'h3-pchip';
+  palRow.dataset.touchIgnore = '1';
+  let palOpen = false;
+  const renderPal = () => {
+    palRow.innerHTML = '';
+    const sw = el('button', 'cur', `<i style="background:${paint.swatch()}"></i><span>${esc(finName[(paint.spec.split(':')[1] as Finish) ?? 'solid'] ?? '')}</span>`);
+    sw.type = 'button';
     sw.onclick = () => {
-      palRow.querySelectorAll('.h3-sw.sel').forEach((x) => x.classList.remove('sel'));
-      sw.classList.add('sel');
-      paintIdx = idx;
-      setPaint();
       sfx.click();
+      palOpen = !palOpen;
+      renderPal();
     };
-    palRow.appendChild(sw);
-  });
+    const un = el('button', 'un' + (paint.canUndo() ? '' : ' off'), ICON.undo);
+    un.type = 'button';
+    un.setAttribute('aria-label', t('home3d.paint.undo', 'Desfazer'));
+    un.onclick = () => paint.doUndo();
+    palRow.append(sw, un);
+    if (!palOpen) return;
+    const pan = el('div', 'pan');
+    const fins = el('div', 'fins');
+    for (const f of FINISHES) {
+      const b = el('button', 'h3-chip' + (paint.spec.endsWith(':' + f) ? ' sel' : ''), esc(finName[f]));
+      b.type = 'button';
+      b.onclick = () => {
+        paint.setFinish(f);
+        fps.setTool('paint');
+        sfx.click();
+      };
+      fins.appendChild(b);
+    }
+    const grid = el('div', 'cols');
+    PALETTE.forEach((c, idx) => {
+      const d = el('button', 'h3-sw' + (idx === paint.colorIdx ? ' sel' : ''));
+      d.type = 'button';
+      d.style.background = c;
+      d.onclick = () => {
+        palOpen = false;
+        paint.setColor(idx);
+        if (mode === 'fps') fps.setTool('paint');
+        sfx.pick();
+      };
+      grid.appendChild(d);
+    });
+    pan.append(fins, grid);
+    palRow.appendChild(pan);
+  };
+  paint.onChange = renderPal;
+  renderPal();
   const updateProg = (room = eng.roomAt(eng.camera.position.x, eng.camera.position.z), p?: number) => {
     const v = p ?? (room ? eng.paintProgress(room) : 0);
     (prog.firstElementChild as HTMLElement).style.width = Math.round(v * 100) + '%';
@@ -377,6 +457,9 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   };
   const setMode = (m: 'fps' | 'build', instant = false) => {
     decor.reset();
+    paint.latched = false;
+    paint.end();
+    menuOpen = false;
     if (m === 'build') {
       mode = m;
       const r = eng.roomAt(eng.camera.position.x, eng.camera.position.z) ?? startRoom;
@@ -395,7 +478,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
         fps.setActive(true);
         decor.spawnAt = fpsSpawn;
         ret.style.display = tgt.style.display = '';
-        if (fps.tool === 'paint') palRow.style.display = '';
+        palRow.style.display = fps.tool === 'paint' ? '' : 'none';
         renderTools();
       });
     } else {
@@ -484,8 +567,11 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     build.dispose();
     party?.dispose();
     input.dispose();
+    toast.dispose();
     eng.dispose();
     disposeSfx();
+    window.removeEventListener('resize', onOrient);
+    offResume?.();
     if (opts.debug) delete (window as unknown as { __home3d?: unknown }).__home3d;
     resolveExit(res);
   };
@@ -546,7 +632,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     }
   };
   raf = requestAnimationFrame(loop);
-  if (opts.debug || location.search.includes('debug')) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, decor, party, stats, setMode, close, THREE, acts: acts3?.debugApi() }; // [casa-ativ] acts
+  if (opts.debug || location.search.includes('debug')) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, decor, paint, party, stats, setMode, close, THREE, acts: acts3?.debugApi(), catalogIds: () => FURNITURE.map((f) => f.id) }; // [casa-ativ] acts
   void esc;
   const res = await done;
   window.removeEventListener('keydown', onKey);
