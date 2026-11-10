@@ -19,8 +19,13 @@ const s = joy.read(); // { x, y, mag, active }  x: direita +, y: BAIXO + (use -s
 joy.destroy();
 ```
 
-- Aparece **onde o polegar toca** na zona (metade esquerda abaixo de `zoneTop`; no modo canhoto vai
-  para a direita sozinho). Fora do toque mostra um anel apagado onde costuma ficar.
+- **Flutuante (padrão):** a base aparece **onde o polegar toca** na zona (metade esquerda abaixo de
+  `zoneTop`; no modo canhoto vai para a direita sozinho), então a direção nunca "vira" por o dedo cair
+  fora do centro. Fora do toque mostra um anel apagado na posição de descanso.
+- **Fixo** (preferência): a base fica parada na posição escolhida; se o polegar cair longe dela (> 1,1 R),
+  a base vem até o dedo em vez de começar puxando para o lado errado.
+- Posição de descanso/fixa = preferência `joyPos` (fração da tela, medida a partir da borda do lado do
+  joystick), sempre limitada a ficar **bem dentro da tela** e fora das margens `--edge-*`.
 - Zona morta radial (`deadZone`, padrão 0.1), curva expo (`expo`), saída suavizada por **mola
   criticamente amortecida** (`smoothing` = ω, padrão 30 ≈ 0,13 s), raio pelo **tamanho físico** da tela
   × preferência "Tamanho do joystick"; se o dedo passa muito do anel, o anel acompanha.
@@ -76,11 +81,50 @@ aperta visualmente na hora, área mínima 56 px.
 ## 5. Preferências (Ajustes → Controles)
 
 `renderControlsSettings(host)` desenha a seção no painel de Ajustes global (já ligado em `src/ui/ui.ts`
-no `#controls-settings`): sensibilidade da câmera (Baixa/Média/Alta), inverter vertical, tamanho do
-joystick (P/M/G), modo canhoto, giroscópio e vibração. Ler: `controls.sens`, `controls.lefty`…;
-ouvir mudanças: `onControlsChange(fn)`. Guardado em `localStorage['bw-controls']`.
+no `#controls-settings`), com opções grandes:
 
-## 6. "Jogar sozinho, sem bots"
+| Opção | Campo | Valores |
+| --- | --- | --- |
+| Analógico | `joyMode` | `'float'` (padrão) / `'fixed'` |
+| Tamanho do joystick | `joySize` | `'S'` / `'M'` / `'G'` (`JOY_MUL`; raio em px: `joyRadius()`) |
+| Posição do analógico | `joyPos` | `{x, y}` em fração da tela — prévia ao vivo: "Arraste o analógico para onde for confortável" |
+| Sensibilidade da câmera | `lookSens` | multiplicador 0.4–2.5 (controle deslizante, padrão 1) |
+| Modo canhoto | `lefty` | joystick à direita, ações à esquerda |
+| Inverter vertical / Giroscópio | `invertY` / `gyro` | |
+| Vibração | `save.haptics` | |
+| Restaurar padrão | — | volta tudo |
+
+API para os jogos (Floresta, Cozinha, Casa, Voo… podem ler mesmo sem usar o `Joystick`):
+
+```ts
+import { getControlPrefs, onControlPrefs, joyRadius } from '../../ui/touch';
+const p = getControlPrefs();          // { joyMode, joySize, joyPos, lookSens, lefty, invertY, gyro }
+const off = onControlPrefs((p) => relayout(p));   // chame off() ao sair
+const yawPerPx = 0.0055 * p.lookSens;
+```
+
+Guardado em `localStorage['bw-controls']` (o formato antigo `sens: low|mid|high` é migrado sozinho).
+
+## 6. Margens de borda (`--edge-*`) — barra de navegação do Android
+
+No WebView do Capacitor `env(safe-area-inset-*)` costuma ser **0** mesmo com a barra de 3 botões do
+Android por cima do jogo (direita em paisagem, embaixo em retrato) → botões colados na borda eram
+apertados sem querer (recadinho disparado, jogo fechado). `src/ui/styles.css` define em `:root`:
+
+| Var | Toque + paisagem | Toque + retrato | Mouse |
+| --- | --- | --- | --- |
+| `--edge-l` | max(inset, 44px) | max(inset, 12px) | 12px |
+| `--edge-r` | max(inset, 48px) | max(inset, 12px) | 12px |
+| `--edge-b` | max(inset, 14px) | max(inset, 44px) | 12px |
+| `--edge-t` | max(inset, 8px) | max(inset, 8px) | 8px |
+
+Regras: todo botão/HUD de jogo usa `left: var(--edge-l)` / `right: var(--edge-r)` /
+`bottom: var(--edge-b)` (não `12px` fixo). Em JS (canvas, zonas de toque): `edges()` → `{t,l,r,b}` em px.
+O joystick já respeita (descanso fora das margens; toque na faixa da barra não vira joystick).
+Barras de recadinhos/emotes: **popover compacto** que abre num botão e fecha no próximo toque — nunca uma
+coluna permanente na borda.
+
+## 7. "Jogar sozinho, sem bots"
 
 ```ts
 import { isSolo, soloToggle } from '../../ui/touch';
@@ -90,25 +134,27 @@ if (!isSolo('meu-jogo')) spawnBots();
 
 Lembrado por jogo (`localStorage['bw-solo']`). Visitantes online **reais** continuam aparecendo.
 
-## 7. Avisos (`src/ui/notify.ts`)
+## 8. Avisos (`src/ui/notify.ts`)
 
 | Função | Uso |
 | --- | --- |
-| `notify(texto, { icon, kind, ms, key })` | pílula pequena no topo; máx. 2 visíveis, fila curta, repetidos viram "×2", some em ~2,2 s |
+| `notify(texto, { icon, kind, ms, key })` | pílula pequena (12,5 px, semitransparente) no **cantinho superior esquerdo**, abaixo do HUD; máx. 2 visíveis, fila curta, repetidos viram "×2", some em ~3,2 s |
+| `objective(texto \| null, { icon })` | chip minúsculo e persistente no canto superior direito com o objetivo atual |
+| `setNotifyAlign('left' \| 'center')` | centraliza os avisos (jogo com HUD ocupando o canto esquerdo) |
 | `bigMoment(texto, { icon, sub, side, color })` | "momento grande" (rodada, recorde) — faixa curta no topo, ≤ 1,2 s |
 | `tipChip(texto, { anchor, id })` | dica dispensável colada a um controle |
 | `setNotifyTop(px)` / `resetNotifyTop()` | coloca os avisos logo abaixo do HUD do jogo |
 | `clearNotify()` | limpa tudo ao sair do jogo |
 
-**Regra:** nada de texto grande no centro durante o jogo. Contagens 3-2-1 e títulos de rodada vão para
+**Regra:** nada de caixa de dica no centro durante o jogo ("tinha que ser no cantinho"). Contagens 3-2-1 e títulos de rodada vão para
 o terço de cima, pequenos, e somem rápido.
 
 ## Onde já está aplicado
 
 | Jogo | Mudança |
 | --- | --- |
-| Desastres (`src/games/disaster`) | joystick flutuante (andar/subir escada) no lugar das setas; pular do outro lado (troca no canhoto); cartões do meio → `bigMoment` + `notify`; "Jogar sozinho" no resumo |
-| Rally (`src/games/rally`) | avisos via `notify`; textos flutuantes e "Ops!" menores e mais altos; "Jogar sozinho" na garagem (sem carros-fantasma); canhoto troca acelerar/frear |
-| Fábrica Estelar (`src/games/tycoon`) | joystick de arrastar com raio físico, zona morta, mola, anel que acompanha e cancelamento seguro; 3-2-1 menor e no alto |
-| Tubo (`src/games/tubo`) | combo e faixa de zona menores |
+| Desastres (`src/games/disaster`) | joystick flutuante (andar/subir escada) no lugar das setas; pular do outro lado (troca no canhoto); cartões do meio → `bigMoment` + `notify` + `objective`; `--edge-*`; "Jogar sozinho" no resumo |
+| Rally (`src/games/rally`) | avisos via `notify`; textos flutuantes e "Ops!" menores e mais altos; "Jogar sozinho" na garagem (sem carros-fantasma); canhoto troca acelerar/frear; recadinhos em popover; `--edge-*` |
+| Fábrica Estelar (`src/games/tycoon`) | joystick de arrastar com raio físico, zona morta, mola, anel que acompanha e cancelamento seguro; 3-2-1 menor e no alto; `--edge-*` |
+| Tubo (`src/games/tubo`) | combo e faixa de zona menores; `--edge-*` |
 | Global (`src/ui/ui.ts`) | `UI.toast` usa `notify`; seção Controles no Ajustes |

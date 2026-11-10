@@ -7,4 +7,5 @@ export { Spring2 } from './spring';
 export { controls, setControl, onControlsChange, getControlPrefs, onControlPrefs, CONTROL_DEFAULTS, isSolo, setSolo, JOY_MUL, type ControlPrefs, type JoyMode, type JoySize } from './settings';
 export { renderControlsSettings, soloToggle } from './settings-ui';
 export { surfaceOf } from './surface';
+export { edges, type Edges } from './css';
 export { FpsControls, type FpsControlsOptions } from './fps';

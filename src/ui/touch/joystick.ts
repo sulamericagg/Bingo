@@ -4,7 +4,7 @@
  * criticamente amortecida, raio que acompanha o tamanho físico da tela, volta ao centro suave.
  */
 import { tap } from '../../core/haptics';
-import { ensureTouchCss } from './css';
+import { edges, ensureTouchCss } from './css';
 import { controls, JOY_MUL, onControlsChange } from './settings';
 import { Spring2 } from './spring';
 import { surfaceOf, type TouchClaimer } from './surface';
@@ -115,9 +115,11 @@ export class Joystick implements TouchClaimer {
     const r = this.surface.getBoundingClientRect();
     const R = this.R,
       p = controls.joyPos;
-    const fx = Math.max(R + 18, Math.min(r.width / 2 - R * 0.5, p.x * r.width));
+    const E = edges();
+    const ed = this.side === 'left' ? E.l : E.r;
+    const fx = Math.max(R + ed + 8, Math.min(r.width / 2 - R * 0.5, p.x * r.width));
     this.homeX = this.side === 'left' ? fx : r.width - fx;
-    this.homeY = Math.max(r.height * 0.3 + R, Math.min(r.height - R - 18, p.y * r.height));
+    this.homeY = Math.max(r.height * 0.3 + R, Math.min(r.height - R - E.b - 8, p.y * r.height));
   }
   private placeHome(): void {
     this.calcHome();
@@ -129,6 +131,9 @@ export class Joystick implements TouchClaimer {
     if (e.pointerType === 'mouse' && !this.o.mouse) return false;
     if (this.o.zone) return this.o.zone(x, y, rect);
     if (y < rect.height * this.o.zoneTop) return false;
+    // faixa da barra de navegação do sistema: não começa joystick ali
+    const E = edges();
+    if (x < E.l * 0.5 || x > rect.width - E.r * 0.5 || y > rect.height - E.b * 0.5) return false;
     const w = rect.width * this.o.zoneWidth;
     return this.side === 'left' ? x < w : x > rect.width - w;
   }

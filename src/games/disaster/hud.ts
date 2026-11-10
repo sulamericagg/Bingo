@@ -17,7 +17,7 @@ const CSS = `
 .dz-root{position:fixed;inset:0;overflow:hidden;background:#0e1a33;touch-action:none;user-select:none;-webkit-user-select:none;font-family:'Fredoka',system-ui,sans-serif;color:#fff}
 .dz-canvas{position:absolute;inset:0;display:block}
 .dz-hud{position:absolute;inset:0;pointer-events:none}
-.dz-top{position:absolute;left:0;right:0;top:0;padding:max(10px,env(safe-area-inset-top)) 10px 0;display:flex;align-items:flex-start;gap:8px}
+.dz-top{position:absolute;left:0;right:0;top:0;padding:max(10px,env(safe-area-inset-top)) var(--edge-r,10px) 0 var(--edge-l,10px);display:flex;align-items:flex-start;gap:8px}
 .dz-btn{pointer-events:auto;border:0;cursor:pointer;font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.25);border-radius:14px;display:flex;align-items:center;justify-content:center}
 .dz-home{width:44px;height:44px;flex:none}
 .dz-mid{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
@@ -28,7 +28,7 @@ const CSS = `
 .dz-phase b{font-size:18px;min-width:2.2em;text-align:right}
 .dz-alive{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .dz-chip{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 8px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:4px}
-.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 14px max(14px,env(safe-area-inset-bottom));display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
+.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) var(--edge-b,14px) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
 .dz-ctrl.lefty{justify-content:flex-start}
 .dz-solo{display:flex;justify-content:center;margin:4px 0 2px}
 .dz-pad{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(30,15,70,.5);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;touch-action:none}

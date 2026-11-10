@@ -47,7 +47,7 @@ import { glowSprite } from '../../gfx/light';
 import { Lobby, type RemotePeer } from './net';
 import { gameFont } from '../../i18n/font';
 import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
-import { controls, isSolo, soloToggle } from '../../ui/touch';
+import { controls, edges, isSolo, soloToggle } from '../../ui/touch';
 
 type State = 'garage' | 'play' | 'over' | 'results';
 
@@ -869,6 +869,9 @@ class RallyGame {
     const down = (e: PointerEvent) => {
       if (this.state !== 'play' || this.paused) return;
       this.trayEl.classList.remove('on');
+      // faixa colada à borda (barra de navegação do Android em paisagem): ignora toque acidental
+      const E = edges();
+      if (e.clientX < E.l * 0.5 || e.clientX > this.w - E.r * 0.5) return;
       // modo canhoto (Ajustes > Controles): acelerar fica à esquerda
       this.ptrs.set(e.pointerId, e.clientX < this.w * 0.5 !== controls.lefty ? 'brake' : 'gas');
       try {
@@ -1250,8 +1253,9 @@ class RallyGame {
     // pedais
     const pr = Math.min(56, w * 0.13);
     const by = h - pr - 28 - this.safeB;
-    const L = 24 + pr,
-      Rx = w - 24 - pr; // modo canhoto: acelerar à esquerda
+    const E = edges();
+    const L = Math.max(24, E.l) + pr,
+      Rx = w - Math.max(24, E.r) - pr; // modo canhoto: acelerar à esquerda
     this.drawPedal(x, controls.lefty ? Rx : L, by, pr, false, this.inp.brake);
     this.drawPedal(x, controls.lefty ? L : Rx, by, pr, true, this.inp.gas);
   }

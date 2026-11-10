@@ -25,13 +25,13 @@ export interface NotifyOptions {
 }
 
 const CSS = `
-#nt-root{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9500;display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;max-width:min(62vw,300px)}
+#nt-root{position:fixed;left:var(--edge-l,10px);top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9500;display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;max-width:min(62vw,300px)}
 #nt-root.center{left:0;right:0;max-width:none;align-items:center;padding:0 12px}
 .nt{display:flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px 4px 7px;border-radius:12px;background:rgba(16,6,40,.62);color:#fff;font:600 12.5px/1.25 var(--font,'Fredoka',system-ui,sans-serif);box-shadow:0 2px 6px rgba(0,0,0,.22),inset 0 0 0 1.5px var(--nt-c,rgba(255,255,255,.18));transform:translateX(-10px);opacity:0;transition:transform .18s ease-out,opacity .25s;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .nt.on{transform:none;opacity:1}
 .nt.out{opacity:0;transform:translateX(-8px)}
 .nt svg,.nt img{width:16px;height:16px;flex:none}
-.nt-obj{position:fixed;right:calc(10px + env(safe-area-inset-right,0px));top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9499;display:flex;align-items:center;gap:5px;max-width:min(46vw,220px);padding:3px 9px 3px 6px;border-radius:999px;background:rgba(16,6,40,.55);color:#fff;font:600 11.5px/1.2 var(--font,'Fredoka',system-ui,sans-serif);pointer-events:none;opacity:0;transition:opacity .2s}
+.nt-obj{position:fixed;right:var(--edge-r,10px);top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9499;display:flex;align-items:center;gap:5px;max-width:min(46vw,220px);padding:3px 9px 3px 6px;border-radius:999px;background:rgba(16,6,40,.55);color:#fff;font:600 11.5px/1.2 var(--font,'Fredoka',system-ui,sans-serif);pointer-events:none;opacity:0;transition:opacity .2s}
 .nt-obj.on{opacity:1}
 .nt-obj span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .nt-obj svg{width:14px;height:14px;flex:none}
@@ -42,7 +42,7 @@ const CSS = `
 .nt-big.on{transform:translate(-50%,0) scale(1);opacity:1}
 .nt-big small{font-weight:600;font-size:12px;opacity:.85}
 .nt-big svg{width:20px;height:20px}
-.nt-big.side{left:auto;right:calc(8px + env(safe-area-inset-right,0px));top:calc(var(--nt-top,56px) + 44px + env(safe-area-inset-top,0px));transform:translateX(120%);border-radius:16px 0 0 16px}
+.nt-big.side{left:auto;right:var(--edge-r,8px);top:calc(var(--nt-top,56px) + 44px + env(safe-area-inset-top,0px));transform:translateX(120%);border-radius:16px 0 0 16px}
 .nt-big.side.on{transform:none}
 .nt-chip{position:fixed;z-index:9502;display:flex;align-items:center;gap:6px;max-width:min(70vw,260px);padding:5px 6px 5px 10px;border-radius:12px;background:rgba(255,255,255,.95);color:#2a0b5c;font:600 12px/1.25 var(--font,'Fredoka',system-ui,sans-serif);box-shadow:0 3px 10px rgba(0,0,0,.3);opacity:0;transition:opacity .2s;pointer-events:auto;touch-action:manipulation}
 .nt-chip.on{opacity:1}

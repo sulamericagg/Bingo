@@ -17,3 +17,33 @@ export function ensureTouchCss(): void {
   s.textContent = CSS;
   document.head.appendChild(s);
 }
+
+/* ---------- margens seguras de borda (--edge-*), em px ---------- */
+export interface Edges {
+  t: number;
+  l: number;
+  r: number;
+  b: number;
+}
+let edgeCache: Edges | null = null;
+if (typeof window !== 'undefined') {
+  const inval = () => (edgeCache = null);
+  window.addEventListener('resize', inval);
+  window.addEventListener('orientationchange', inval);
+}
+/**
+ * Valores atuais de --edge-t/l/r/b (src/ui/styles.css) em px — use para não pôr controles nem
+ * zonas de toque embaixo da barra de navegação do Android (ver docs/CONTROLES.md).
+ */
+export function edges(): Edges {
+  if (edgeCache) return edgeCache;
+  if (typeof document === 'undefined' || !document.body) return { t: 8, l: 12, r: 12, b: 12 };
+  const p = document.createElement('div');
+  p.style.cssText =
+    'position:fixed;visibility:hidden;pointer-events:none;left:0;top:0;width:0;height:0;padding:var(--edge-t,8px) var(--edge-r,12px) var(--edge-b,12px) var(--edge-l,12px)';
+  document.body.appendChild(p);
+  const cs = getComputedStyle(p);
+  edgeCache = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+  p.remove();
+  return edgeCache;
+}
