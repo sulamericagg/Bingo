@@ -52,6 +52,8 @@ const passPremiumCheck = (): boolean => passPremiumChecks.some((f) => f());
 export function setPassPremiumCheck(fn: () => boolean): void {
   passPremiumChecks.push(fn);
 }
+/** true = algum passe premium (Estelar, Casa ou Musical) da temporada vigente está ativo. */
+export const passPremiumActive = (): boolean => passPremiumCheck();
 
 /** ms restantes de tempo sem anúncios ganho com vídeos. */
 export const adFreeLeftMs = (now = Date.now()): number => Math.max(0, save.adFree.until - now);

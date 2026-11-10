@@ -77,7 +77,8 @@ export type IconName =
   | 'smile'
   | 'drop'
   | 'lamp'
-  | 'car';
+  | 'car'
+  | 'camera';
 
 export interface IconOpts {
   /** Lado em px. Sem valor, usa 1.25em (acompanha o texto). */
@@ -637,6 +638,13 @@ const ICONS: Record<IconName, string> = {
     `<path d="M14 27Q24 38 34 27Z" fill="${INK}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>` +
     '<path d="M18.5 31.5Q24 35 29.5 31.5Q24 30 18.5 31.5Z" fill="#ff6f92"/>' +
     hl('<ellipse cx="15" cy="12" rx="4.5" ry="2.4" transform="rotate(-35 15 12)"/>', 0.75),
+
+  camera:
+    sil('<path d="M6 16Q6 12 10 12H15L18 7H30L33 12H38Q42 12 42 16V36Q42 40 38 40H10Q6 40 6 36Z"/>', 'cyan') +
+    sil('<circle cx="24" cy="26" r="9"/>', 'violet', 2.5) +
+    hl('<circle cx="21" cy="23" r="3"/>', 0.8) +
+    `<circle cx="36" cy="18" r="2.2" fill="#ff4f8b"/>` +
+    hl('<path d="M10 15H14L12 18H9Z"/>', 0.6),
 
   drop:
     sil('<path d="M24 4Q38 21 38 30A14 14 0 0 1 10 30Q10 21 24 4Z"/>', 'cyan') +

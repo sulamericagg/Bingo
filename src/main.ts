@@ -41,6 +41,7 @@ import { wireGlue } from './hub/glue';
 import { registerSocial } from './social/register';
 import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
+import { registerMirror } from './mirror/register';
 import { runOnboarding } from './ui/onboarding';
 import { initBeta, openReportSheet } from './ui/beta';
 import { initProfileSync, profile } from './services/profile';
@@ -52,6 +53,7 @@ function whereNow(): string {
   if (isHostActive()) return 'game:' + (selectedGame()?.id ?? '?');
   const map: [string, string][] = [
     ['.ob-root', 'onboarding'],
+    ['.mr-root', 'mirror'],
     ['.pet-scr.on', 'pet'],
     ['.h3', 'house3d'],
     ['.hm-scr.on', 'house'],
@@ -101,6 +103,7 @@ async function boot(): Promise<void> {
   registerCozinha();
   registerCor();
   registerPet();
+  registerMirror({ getTier: () => game.quality.tier });
   registerCreatures();
   wireGlue();
   registerSocial();
