@@ -136,6 +136,12 @@ export function bloopCanvas(mood: PlayerPose['mood'] = 'happy', size = 256, look
 /** geometria estática pré-computada uma vez por sessão (as cenas reabrem sem recalcular) */
 const geoCache = new Map<string, THREE.BufferGeometry>();
 
+/** tira chaves undefined (o three avisa no console para cada uma) */
+function def<T extends object>(o: T): T {
+  for (const k of Object.keys(o) as (keyof T)[]) if (o[k] === undefined) delete o[k];
+  return o;
+}
+
 /* ------------------------------ o kit ------------------------------ */
 export interface Shot {
   /** duração da ação (s); o título entra perto do fim */
@@ -185,8 +191,8 @@ export class Kit {
   /** material com cor por vértice (Standard no Médio/Alto, Lambert abaixo) */
   std(o: { rough?: number; metal?: number; emissive?: string; ei?: number; flat?: boolean; side?: THREE.Side } = {}): THREE.Material {
     const m = this.hi
-      ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: o.rough ?? 0.65, metalness: o.metal ?? 0, flatShading: o.flat, side: o.side })
-      : new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: o.flat, side: o.side });
+      ? new THREE.MeshStandardMaterial(def({ vertexColors: true, roughness: o.rough ?? 0.65, metalness: o.metal ?? 0, flatShading: o.flat, side: o.side }))
+      : new THREE.MeshLambertMaterial(def({ vertexColors: true, flatShading: o.flat, side: o.side }));
     if (o.emissive) {
       (m as THREE.MeshStandardMaterial).emissive.set(o.emissive);
       (m as THREE.MeshStandardMaterial).emissiveIntensity = o.ei ?? 1;
@@ -197,8 +203,8 @@ export class Kit {
   solid(color: string, o: { rough?: number; metal?: number; emissive?: string; ei?: number; flat?: boolean; side?: THREE.Side; opacity?: number } = {}): THREE.Material {
     const tr = o.opacity !== undefined;
     const m = this.hi
-      ? new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0, flatShading: o.flat, side: o.side, transparent: tr, opacity: o.opacity ?? 1 })
-      : new THREE.MeshLambertMaterial({ color, flatShading: o.flat, side: o.side, transparent: tr, opacity: o.opacity ?? 1 });
+      ? new THREE.MeshStandardMaterial(def({ color, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0, flatShading: o.flat, side: o.side, transparent: tr, opacity: o.opacity ?? 1 }))
+      : new THREE.MeshLambertMaterial(def({ color, flatShading: o.flat, side: o.side, transparent: tr, opacity: o.opacity ?? 1 }));
     if (o.emissive) {
       (m as THREE.MeshStandardMaterial).emissive.set(o.emissive);
       (m as THREE.MeshStandardMaterial).emissiveIntensity = o.ei ?? 1;
@@ -217,7 +223,7 @@ export class Kit {
   }
   /** cor sólida sem luz (brilhos, emissivos) */
   basic(color: string | number, o: { add?: boolean; opacity?: number; side?: THREE.Side; vc?: boolean; depthWrite?: boolean; map?: THREE.Texture } = {}): THREE.MeshBasicMaterial {
-    const m = new THREE.MeshBasicMaterial({
+    const m = new THREE.MeshBasicMaterial(def({
       color,
       vertexColors: o.vc,
       transparent: o.add || o.opacity !== undefined,
@@ -227,7 +233,7 @@ export class Kit {
       side: o.side,
       map: o.map,
       fog: !o.add,
-    });
+    }));
     return this.own(m);
   }
   own<T extends THREE.Material>(m: T): T {
