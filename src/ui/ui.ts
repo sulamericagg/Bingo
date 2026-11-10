@@ -187,7 +187,7 @@ export class UI {
   back(): boolean {
     if (celebrating()) return true;
     // folha "Reportar bug" aberta por cima de um jogo: o voltar fecha a folha (antes abria o "Sair do jogo?" por trás dela)
-    if (document.querySelector('.beta-sheet-bg') && popBack()) return true;
+    if (document.querySelector('.beta-sheet-bg, .fake-ad') && popBack()) return true;
     if (hubBack()) return true;
     if (popBack()) return true;
     if (closeCreator(false)) return true;
