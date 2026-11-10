@@ -140,6 +140,12 @@ function ensureDefs(): void {
   (document.body ?? document.documentElement).prepend(d.firstChild!);
 }
 
+/** Tira as definições SVG da página ao sair do jogo (antes ficavam no <body> para sempre). */
+export function removeFlIconDefs(): void {
+  document.getElementById('fl-icon-defs')?.remove();
+  defsDone = false;
+}
+
 export function flIcon(name: FlIcon, size = 32): string {
   ensureDefs();
   return `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
