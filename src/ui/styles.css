@@ -3144,3 +3144,28 @@ button {
 .tip-card .tip-hint {
   display: none;
 }
+
+/* Fim de jogo do Orbit deitado (web/tablet 915x412): "JOGAR DE NOVO" e "Menu" ficavam abaixo da dobra.
+   Placar e estatísticas à esquerda; moedas e botões à direita. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #over .over-panel {
+    max-width: 760px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-flow: row dense;
+    column-gap: 16px;
+    align-content: center;
+    padding: 14px 18px;
+  }
+  #over .over-panel > * {
+    grid-column: 1;
+  }
+  #over .over-panel > .coin-sum,
+  #over .over-panel > .btn,
+  #over .over-panel > .row {
+    grid-column: 2;
+  }
+  #over .over-score {
+    font-size: 64px;
+  }
+}
