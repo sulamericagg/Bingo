@@ -145,6 +145,8 @@
 .hm-furn {
   flex: none; width: 74px; padding: 4px; border-radius: 12px; background: #fff; border: 2px solid var(--ink) !important;
   display: flex; flex-direction: column; align-items: center; font-size: 11px; font-weight: 600; position: relative;
+  /* cartões da mesma fileira com a mesma altura (nome em 2 linhas deixava a fileira "dentada") */
+  align-self: stretch; justify-content: space-between;
 }
 .hm-furn canvas { width: 60px; height: 52px; }
 .hm-furn .price { display: flex; align-items: center; gap: 2px; font-size: 11px; }
@@ -239,3 +241,26 @@
 }
 .hm-net i { width: 9px; height: 9px; border-radius: 50%; background: #ffb300; border: 1.5px solid var(--ink); flex: none; }
 .hm-rooms:not([hidden]) + .hm-net { top: calc(98px + var(--st)); font-size: 11px; padding: 2px 8px; }
+
+/* deitado e baixo (web/tablet 915x412): painel de Decorar/Pintar/Limpar/Festa vira coluna à esquerda;
+   antes ocupava a altura toda e o cômodo ficava com ~50 px (invisível) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .hm-scr .hm-bar.panel {
+    right: auto;
+    top: calc(96px + var(--st, 0px));
+    width: min(46vw, 440px);
+    overflow-y: auto;
+    border-top: 0;
+    border-right: 3px solid var(--ink);
+    border-radius: 0 18px 0 0;
+  }
+  /* aviso "Offline" no canto direito (no meio ele cobria o botão Fita do painel) */
+  .hm-scr .hm-net,
+  .hm-scr .hm-rooms:not([hidden]) + .hm-net {
+    left: auto;
+    right: var(--edge-r, 8px);
+    transform: none;
+    top: calc(54px + var(--st));
+    max-width: 46vw;
+  }
+}

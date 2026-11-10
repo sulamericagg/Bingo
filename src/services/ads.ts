@@ -12,6 +12,7 @@ import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import { icon } from '../ui/icons';
 import { isNative } from '../core/platform';
+import { pushBack } from '../core/back';
 import { persist, save } from '../core/storage';
 
 declare global {
@@ -452,6 +453,8 @@ function fakeAd(reward: boolean): Promise<boolean> {
     document.body.appendChild(el);
     const count = el.querySelector('.fake-ad-count')!;
     const close = el.querySelector<HTMLButtonElement>('.fake-ad-close')!;
+    // voltar do Android / Escape fecha o anúncio de teste (antes fechava o painel por baixo dele)
+    const pop = pushBack(() => close.click());
     const timer = setInterval(() => {
       left--;
       count.innerHTML = left > 0 ? String(left) : icon('check', { size: 52 });
@@ -462,6 +465,7 @@ function fakeAd(reward: boolean): Promise<boolean> {
     }, 1000);
     close.onclick = () => {
       clearInterval(timer);
+      pop();
       el.remove();
       resolve(left <= 0);
     };

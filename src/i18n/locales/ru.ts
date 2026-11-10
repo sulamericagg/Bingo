@@ -1165,6 +1165,7 @@ export default {
   "creator.color2": "Цвет деталей",
   "creator.count": "Открыто деталей ({slot}): {n}/{total}",
   "creator.eventOnly": "Только в событиях — выиграй задания!",
+  "creator.eventBtn": "Только в событии",
   "creator.flying": "В полёте",
   "creator.haveAll": "«{name}» — у тебя уже всё есть!",
   "creator.random": "Случайно",

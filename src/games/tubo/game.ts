@@ -300,7 +300,7 @@ class TuboGame implements MiniGameHandle {
       if (e.code === 'Space' || e.code === 'ArrowDown') {
         e.preventDefault();
         this.onTap();
-      } else if (e.code === 'Escape' || e.code === 'KeyP') this.togglePause();
+      } else if (e.code === 'KeyP') this.togglePause(); // Escape = voltar do hub (mostra "Sair do jogo?")
     };
     window.addEventListener('keydown', key);
     el.addEventListener('click', this.onClick);
@@ -842,13 +842,23 @@ class TuboGame implements MiniGameHandle {
 
   private togglePause(): void {
     if (this.mode === 'paused') this.resume();
-    else this.pause();
+    else this.pause(true);
   }
 
-  pause(): void {
+  /**
+   * Pausa. Chamado pelo hub (voltar / app em segundo plano) sem cartão próprio: o hub já mostra
+   * "Sair do jogo?" e os dois cartões ficavam um atrás do outro. O botão de pausa do HUD usa o cartão.
+   */
+  pause(card = false): void {
+    if (this.mode === 'paused' && !card) {
+      this.hud.ov.classList.remove('on');
+      this.hud.ov.innerHTML = '';
+      return;
+    }
     if (this.mode !== 'hop' && this.mode !== 'smash' && this.mode !== 'fall' && this.mode !== 'ready') return;
     this.prevMode = this.mode;
     this.mode = 'paused';
+    if (!card) return;
     const ov = this.hud.ov;
     ov.innerHTML = `
       <div class="tubo-card tubo-pop">

@@ -10,7 +10,7 @@ const CSS = `
 .tcs{display:flex;flex-direction:column;gap:8px;margin:6px 0}
 .tcs h3{margin:6px 0 0;font-size:15px;letter-spacing:.5px;opacity:.85;text-transform:uppercase}
 .tcs-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}
-.tcs-row>span{font-weight:600}
+.tcs-row>span{font-weight:600;text-align:left;flex:1;min-width:0}
 .tcs-seg{display:flex;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.2);flex:none}
 .tcs-seg button{font:inherit;font-weight:700;font-size:13px;border:0;background:transparent;color:inherit;padding:8px 10px;min-width:44px;min-height:40px;cursor:pointer;touch-action:manipulation}
 .tcs-seg button.on{background:#5ef0ff;color:#1a0b3d}
@@ -95,6 +95,8 @@ function posPreview(): HTMLElement {
   const W = window.innerWidth || 400,
     H = window.innerHeight || 800;
   box.style.aspectRatio = `${W} / ${H}`;
+  // em retrato a prévia ficava com ~330 px de altura (metade do painel): limita a ~200 px
+  box.style.width = `min(100%, ${Math.round(Math.min(150, (200 * W) / H))}px)`;
   box.innerHTML = '<i class="tcs-pos-joy"><b></b></i><i class="tcs-pos-btn"></i>';
   const joy = box.querySelector('.tcs-pos-joy') as HTMLElement;
   const btn = box.querySelector('.tcs-pos-btn') as HTMLElement;

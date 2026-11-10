@@ -43,7 +43,10 @@
 .pp-hero { position: relative; margin: 0 12px; border-radius: 22px; overflow: hidden; background: var(--s-bg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-a) 55%, transparent), 0 10px 30px rgba(0, 0, 0, 0.45); }
 .pp-art { display: block; width: 100%; }
 .pp-king { position: absolute; right: 6px; top: 8px; display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
-.pp-king-tag { display: flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; background: rgba(0, 0, 0, 0.55); padding: 2px 8px; border-radius: 99px; color: #ffe27a; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-king-tag { display: flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; background: rgba(0, 0, 0, 0.55); padding: 2px 8px; border-radius: 99px; color: #ffe27a; max-width: 130px; white-space: nowrap; overflow: hidden; }
+/* reticências precisam de um filho de texto (num flex o texto solto era só cortado: "Bichinho Estrela-gu") */
+.pp-king-tag span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pp-king-tag svg { flex: none; }
 .pp-hero-info { position: absolute; left: 14px; top: 12px; max-width: 58%; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
 .pp-season { font-size: 12px; font-weight: 600; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.04em; }
 .pp-theme { font-size: 25px; font-weight: 800; line-height: 1.05; margin: 3px 0 7px; background: linear-gradient(180deg, #fff, var(--s-b)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5)); }

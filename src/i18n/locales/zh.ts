@@ -1165,6 +1165,7 @@ export default {
   "creator.color2": "细节色",
   "creator.count": "已解锁{slot}部件 {n}/{total}",
   "creator.eventOnly": "活动限定 — 赢得挑战即可获得!",
+  "creator.eventBtn": "活动限定",
   "creator.flying": "飞行",
   "creator.haveAll": "“{name}”——你已经全部拥有啦!",
   "creator.random": "随机",

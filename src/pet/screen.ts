@@ -18,6 +18,7 @@ import { COIN, GEM, esc } from '../ui/dom';
 import { icon, installIconCss, type IconName } from '../ui/icons';
 import { DECOR, FOODS, decorById, type DecorDef, type DecorKind, type FoodDef } from './catalog';
 import { requestNotifPermission } from './notify';
+import { notify } from '../ui/notify';
 import {
   FOAM_MAX,
   Fx,
@@ -327,12 +328,9 @@ function refreshHud(): void {
   if (room === 'kitchen') refreshShelf();
 }
 
+/** Aviso em pílula pequena no canto (padrão do app, ui/notify) — antes era uma faixa grande no meio da tela. */
 function toast(msg: string, ico?: IconName): void {
-  const el = $('.pet-toast');
-  el.innerHTML = (ico ? icon(ico, { size: 24 }) : '') + `<span>${esc(msg)}</span>`;
-  el.classList.remove('show');
-  void el.offsetWidth;
-  el.classList.add('show');
+  notify(msg, { icon: ico });
 }
 
 /** Balão de fala do bichinho (o que ele quer agora). */

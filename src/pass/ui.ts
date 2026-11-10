@@ -693,7 +693,7 @@ function renderHero(s: SeasonInfo, live: boolean): HTMLElement {
   const king = h('div', 'pp-king');
   const kr: Reward = M.levels(s.index)[49].prem;
   king.appendChild(rewardVisual(kr, 108, s));
-  king.appendChild(h('div', 'pp-king-tag', `${icon('crown', { size: 14 })}${kr.name}`));
+  king.appendChild(h('div', 'pp-king-tag', `${icon('crown', { size: 14 })}<span>${kr.name}</span>`));
   hero.appendChild(king);
   const months = [t('m.1', 'Janeiro'), t('m.2', 'Fevereiro'), t('m.3', 'Março'), t('m.4', 'Abril'), t('m.5', 'Maio'), t('m.6', 'Junho'), t('m.7', 'Julho'), t('m.8', 'Agosto'), t('m.9', 'Setembro'), t('m.10', 'Outubro'), t('m.11', 'Novembro'), t('m.12', 'Dezembro')];
   const d = new Date(Date.parse(s.start) + 86400000);

@@ -541,3 +541,48 @@
 .rl-pedals.lefty {
   flex-direction: row-reverse;
 }
+
+/* garagem deitada (915x412 etc.): "Recorde" e "Jogar sozinho" ficavam por cima do nome do carro
+   e o "Acelerar!" saía da tela. Painel em 2 colunas (carro + botão | melhorias). */
+@media (orientation: landscape) and (max-height: 520px) {
+  .rl-garage .rl-best {
+    position: static;
+    transform: none;
+    align-self: center;
+    margin-top: 2px;
+    font-size: 14px;
+  }
+  .rl-solo {
+    top: calc(8px + var(--rl-safe));
+  }
+  .rl-garage .rl-panel {
+    width: min(100%, 720px);
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: 1fr 1.25fr;
+    column-gap: 12px;
+    align-items: start;
+    padding: 10px 12px;
+  }
+  .rl-garage .rl-panel > .rl-carsel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .rl-garage .rl-panel > .rl-ups {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: 0;
+    gap: 4px;
+  }
+  .rl-garage .rl-panel > .rl-big {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: end;
+    margin-top: 8px;
+  }
+  .rl-garage .rl-row {
+    min-height: 36px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+}

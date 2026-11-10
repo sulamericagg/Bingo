@@ -1165,6 +1165,7 @@ export default {
   "creator.color2": "Detay rengi",
   "creator.count": "{slot}: {n}/{total} parça açık",
   "creator.eventOnly": "Etkinliğe özel — görevleri kazanarak al!",
+  "creator.eventBtn": "Sadece etkinlik",
   "creator.flying": "Uçuyor",
   "creator.haveAll": "\"{name}\" — hepsi sende var!",
   "creator.random": "Rastgele",

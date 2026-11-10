@@ -19,6 +19,7 @@ import { hsfx, partyMusic } from './sfx';
 import { t, fmt } from '../i18n';
 import { esc } from '../ui/dom';
 import { installIconCss } from '../ui/icons';
+import { notify } from '../ui/notify';
 import { bus } from '../core/events';
 import { save } from '../core/storage';
 import { addCoins as addCoinsRaw, spend } from '../core/economy';
@@ -243,13 +244,9 @@ const ui: SocialUi = {
   },
 };
 
-let toastT = 0;
+/** Aviso em pílula pequena no canto (padrão do app, ui/notify) — antes era um cartão grande no meio. */
 function toast(msg: string, ic: HomeIcon = 'star'): void {
-  const el = $('.hm-toast');
-  el.innerHTML = hicon(ic, 22) + `<span>${esc(msg)}</span>`;
-  el.classList.add('on');
-  clearTimeout(toastT);
-  toastT = window.setTimeout(() => el.classList.remove('on'), 2400);
+  notify(msg, { iconHtml: hicon(ic, 16) });
 }
 function refreshWallet(): void {
   if (!root) return;
@@ -273,9 +270,21 @@ function resize(): void {
 function barH(): number {
   return ($('.hm-bar') as HTMLElement).offsetHeight || 120;
 }
+/** Tela deitada e baixa (web/tablet): os painéis de Decorar/Pintar/Limpar/Festa viram coluna à esquerda (CSS). */
+function sidePanel(bar: HTMLElement): boolean {
+  return bar.classList.contains('panel') && W > H && H <= 520;
+}
 function layoutScene(): void {
   if (!root) return;
   const top = view === 'room' ? 100 : 60;
+  const bar = $('.hm-bar') as HTMLElement;
+  if (view === 'room' && sidePanel(bar)) {
+    // antes o painel (≈290 px) era descontado da altura e o cômodo sumia em 915x412
+    const left = bar.offsetWidth;
+    scene.layout(W - left, H, top, 8, dpr);
+    scene.ox += left;
+    return;
+  }
   scene.layout(W, H, top, barH() + 4, dpr);
 }
 

@@ -15,9 +15,7 @@
   color: #fff;
 }
 .ob-root.ob-edit {
-  background: rgba(5, 2, 18, 0.72);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(5, 2, 18, 0.82);
 }
 .ob-root.on {
   opacity: 1;
@@ -193,5 +191,20 @@
   .ob-skin canvas {
     width: 52px;
     height: 52px;
+  }
+}
+/* paisagem / telas baixas (915x412): o "Bora jogar!" ficava fora da tela, só achava rolando */
+@media (max-height: 500px) {
+  .ob-card h2 {
+    font-size: 20px;
+  }
+  .ob-rules {
+    font-size: 11px;
+  }
+  .ob-go {
+    position: sticky;
+    bottom: 4px;
+    z-index: 2;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
   }
 }
