@@ -136,7 +136,7 @@ export function hubIdle(): boolean {
 }
 
 /** Painéis/telas que cobrem o hub: com um deles aberto a vitrine e as animações do fundo param. */
-const COVER_SEL = '.modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .rank.on, .celebrate, .item-sheet, .h3';
+const COVER_SEL = '.mr-root, .modal-screen.on, .sc-overlay, .crc-overlay, .pass-panel, .pa-overlay, .pet-scr.on, .hm-scr.on, .rk-screen.on, .cr-root.on, #creator.on, .rank.on, .celebrate, .item-sheet, .h3';
 
 /** Inicia o jogo selecionado (botão JOGAR / Espaço). */
 export function playSelected(): void {
