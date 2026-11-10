@@ -53,7 +53,7 @@ export function tycoon(k: Kit): Shot {
   big.position.set(0, 9.5, -9);
   const bigGlow = k.glow('#ffd84a', 9, 0.6);
   bigGlow.position.set(0, 9.5, -9.4);
-  const b = new Actor(k, 1.8, 'happy');
+  const b = new Actor(k, 2.3, 'happy');
   const BX = 6.2;
   let pressed = -1;
   let big0 = false;
@@ -61,8 +61,8 @@ export function tycoon(k: Kit): Shot {
     { t: 0, p: [-9, 1.8, 5.5], l: [-4, 1.6, 0], fov: 50 },
     { t: 1.4, p: [-1, 2.4, 6.5], l: [2, 1.8, 0] },
     { t: 2.4, p: [6, 3, 8], l: [4, 2.6, -1] },
-    { t: 3.3, p: [3, 5.2, 12], l: [2, 5.0, -4], fov: 50 },
-    { t: 5.2, p: [3.5, 5.6, 13.2], l: [2, 5.3, -4], fov: 47 },
+    { t: 3.3, p: [4.5, 4.6, 10.5], l: [3, 4.4, -3], fov: 50 },
+    { t: 5.2, p: [5, 4.9, 11.2], l: [3, 4.7, -3], fov: 47 },
   ]);
   const press = new THREE.Mesh(k.ownGeo(new THREE.BoxGeometry(1.4, 0.4, 1.2)), k.solid('#ffcf2e', { metal: 0.4, rough: 0.35 }));
   k.scene.add(press);
