@@ -153,8 +153,6 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   }
   launching = true;
   hostActive = true;
-  // dentro dos jogos o celular pode girar (3D em paisagem); o menu volta a ficar em pé no closeHost
-  void lockOrientation('any');
   hostDef = def;
   hideBanner();
   menu.classList.remove('on');
@@ -169,6 +167,10 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   loader.innerHTML = `<i></i><i></i><i></i><button class="gh-load-back" hidden>${t('hub.loadBack', 'Voltar')}</button>`;
   hostRoot.innerHTML = '';
   hostRoot.append(root, loader);
+  // orientação previsível: jogos 2D em pé; quando um jogo mostra uma cena 3D (canvas do three.js),
+  // a tela trava deitada sozinha (ver watch3d). Nada gira no meio da partida.
+  watch3d(root);
+
   const hideLoader = () => loader.remove();
   const mo = new MutationObserver(() => {
     if (root.childElementCount) hideLoader();
@@ -205,6 +207,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
 export function closeHost(): void {
   // sair antes do jogo terminar de abrir (ex.: "Sair" na escolha 2D/3D) não pode travar o JOGAR
   launching = false;
+  unwatch3d();
   if (!hostActive) return;
   hideConfirm();
   const h = handle;
@@ -811,4 +814,32 @@ function bindGlGuard(): void {
   document.addEventListener('visibilitychange', () => window.setTimeout(recover, 250));
   window.addEventListener('focus', () => window.setTimeout(recover, 250));
   bus.on('app-resume', () => window.setTimeout(recover, 250));
+}
+
+/* ---------------- orientação automática por cena ---------------- */
+let o3d: MutationObserver | null = null;
+let o3dTimer = 0;
+let o3dState: 'portrait' | 'landscape' = 'portrait';
+function watch3d(root: HTMLElement): void {
+  unwatch3d();
+  o3dState = 'portrait';
+  const check = () => {
+    o3dTimer = 0;
+    const cv = root.querySelector<HTMLCanvasElement>('canvas[data-engine^="three"]');
+    const want = cv && cv.isConnected && cv.offsetWidth > 0 ? 'landscape' : 'portrait';
+    if (want === o3dState) return;
+    o3dState = want;
+    void lockOrientation(want);
+  };
+  o3d = new MutationObserver(() => {
+    if (!o3dTimer) o3dTimer = window.setTimeout(check, 120);
+  });
+  o3d.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  check();
+}
+function unwatch3d(): void {
+  o3d?.disconnect();
+  o3d = null;
+  if (o3dTimer) clearTimeout(o3dTimer);
+  o3dTimer = 0;
 }
