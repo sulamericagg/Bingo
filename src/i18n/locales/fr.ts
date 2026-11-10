@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "portée +{n} %",
   "upg.shield": "Bouclier",
   "upg.shield.desc": "Chance de commencer avec un bouclier et plus de temps invincible après un choc.",
-  "upg.shield.fx": "{n} % de chance",
+  "upg.shield.fx": "{n} % de chance"
 } as Record<string, string>;

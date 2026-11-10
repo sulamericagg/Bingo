@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "радиус +{n}%",
   "upg.shield": "Щит",
   "upg.shield.desc": "Шанс начать со щитом и дольше быть неуязвимым после удара.",
-  "upg.shield.fx": "шанс {n}%",
+  "upg.shield.fx": "шанс {n}%"
 } as Record<string, string>;

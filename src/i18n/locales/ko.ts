@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "범위 +{n}%",
   "upg.shield": "방패",
   "upg.shield.desc": "방패를 들고 시작할 확률과 부딪힌 뒤 무적 시간이 늘어나요.",
-  "upg.shield.fx": "확률 {n}%",
+  "upg.shield.fx": "확률 {n}%"
 } as Record<string, string>;

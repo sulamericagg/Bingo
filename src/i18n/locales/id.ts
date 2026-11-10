@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "jangkauan +{n}%",
   "upg.shield": "Perisai",
   "upg.shield.desc": "Peluang mulai dengan perisai dan kebal lebih lama setelah tabrakan.",
-  "upg.shield.fx": "peluang {n}%",
+  "upg.shield.fx": "peluang {n}%"
 } as Record<string, string>;

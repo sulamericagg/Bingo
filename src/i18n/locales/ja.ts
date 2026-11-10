@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "範囲 +{n}%",
   "upg.shield": "シールド",
   "upg.shield.desc": "シールドつきでスタートする確率と、ぶつかった後の無敵時間がアップ。",
-  "upg.shield.fx": "確率{n}%",
+  "upg.shield.fx": "確率{n}%"
 } as Record<string, string>;

@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "menzil +%{n}",
   "upg.shield": "Kalkan",
   "upg.shield.desc": "Kalkanla başlama şansı ve çarpmadan sonra daha uzun yenilmezlik.",
-  "upg.shield.fx": "%{n} şans",
+  "upg.shield.fx": "%{n} şans"
 } as Record<string, string>;

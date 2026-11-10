@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "raggio +{n}%",
   "upg.shield": "Scudo",
   "upg.shield.desc": "Probabilità di partire con lo scudo e più tempo invincibile dopo un colpo.",
-  "upg.shield.fx": "{n}% di probabilità",
+  "upg.shield.fx": "{n}% di probabilità"
 } as Record<string, string>;

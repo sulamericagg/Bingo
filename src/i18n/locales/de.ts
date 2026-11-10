@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "Reichweite +{n}%",
   "upg.shield": "Schild",
   "upg.shield.desc": "Chance, mit Schild zu starten, und länger unverwundbar nach einem Treffer.",
-  "upg.shield.fx": "{n}% Chance",
+  "upg.shield.fx": "{n}% Chance"
 } as Record<string, string>;

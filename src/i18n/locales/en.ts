@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "range +{n}%",
   "upg.shield": "Shield",
   "upg.shield.desc": "Chance to start with a shield and stay invincible longer after a hit.",
-  "upg.shield.fx": "{n}% chance",
+  "upg.shield.fx": "{n}% chance"
 } as Record<string, string>;

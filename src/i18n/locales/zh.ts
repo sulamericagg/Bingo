@@ -3685,5 +3685,5 @@ export default {
   "upg.magnet.fx": "范围 +{n}%",
   "upg.shield": "护盾",
   "upg.shield.desc": "有几率带着护盾开局,撞击后无敌时间更长。",
-  "upg.shield.fx": "{n}%几率",
+  "upg.shield.fx": "{n}%几率"
 } as Record<string, string>;
