@@ -6,12 +6,12 @@ import './cinema.css';
 import type { MiniGameHandle } from '../hub/registry';
 import { pushBack } from '../core/back';
 import { detectInitialTier, settingsFor, type QualitySettings, type Tier } from '../core/quality';
-import { t } from '../i18n';
+import { fmtDec, t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { bindButton, edges } from '../ui/touch';
 import { actx, Mixer, Playback, preloadProjectClips } from './audio';
-import { BACKGROUNDS } from './data';
+import { BACKGROUNDS, FX } from './data';
 import { Renderer } from './engine';
 import { canExportVideo, exportGif, exportVideo, probeDuration, safeFileName, shareFile, saveFile, type ExportResult } from './export';
 import { cleanupShared } from '../mirror/media';
@@ -29,7 +29,7 @@ import { presetById } from './data';
 const fmtT = (s: number) => {
   const m = Math.floor(s / 60);
   const r = s - m * 60;
-  return `${m}:${r < 10 ? '0' : ''}${r.toFixed(1).replace('.', ',')}`;
+  return `${m}:${r < 10 ? '0' : ''}${fmtDec(r)}`;
 };
 
 class CinemaApp {
@@ -455,7 +455,7 @@ class CinemaApp {
         const bg = BACKGROUNDS.find((b) => b.id === r.scene.bg);
         html += `<div class="cin-scn">${t('cin.ed.scene', 'Cena {n}', { n: r.si + 1 })} · ${bg?.name ?? ''}</div>`;
       }
-      html += `<button class="cin-shot ${r.gi === ref.gi ? 'on' : ''}" data-gi="${r.gi}"><canvas width="192" height="108" data-shot="${r.shot.id}"></canvas><span>${r.gi + 1} · ${r.shot.dur.toFixed(1).replace('.', ',')}s</span>${r.shot.transition.kind !== 'cut' ? '<i>⇢</i>' : ''}</button>`;
+      html += `<button class="cin-shot ${r.gi === ref.gi ? 'on' : ''}" data-gi="${r.gi}"><canvas width="192" height="108" data-shot="${r.shot.id}"></canvas><span>${r.gi + 1} · ${fmtDec(r.shot.dur)}s</span>${r.shot.transition.kind !== 'cut' ? '<i>⇢</i>' : ''}</button>`;
     }
     html += `<button class="cin-addshot" data-add="shot">＋<small>${t('cin.ed.addShot', 'plano')}</small></button>`;
     host.innerHTML = html;
@@ -514,7 +514,7 @@ class CinemaApp {
     const pct = (tt: number) => `${(tt / shot.dur) * 100}%`;
     let ruler = '';
     const step = shot.dur > 12 ? 2 : shot.dur > 5 ? 1 : 0.5;
-    for (let s = 0; s <= shot.dur + 1e-6; s += step) ruler += `<b style="left:${pct(s)}">${s % 1 ? s.toFixed(1).replace('.', ',') : s}s</b>`;
+    for (let s = 0; s <= shot.dur + 1e-6; s += step) ruler += `<b style="left:${pct(s)}">${s % 1 ? fmtDec(s) : s}s</b>`;
     let html = `<div class="ruler">${ruler}</div>`;
     html += `<div class="cin-lane"><span class="lbl">🎥 ${t('cin.tab.camera', 'Câmera')}</span><div class="trk" data-trk="1">${shot.cam.map((k, i) => `<i class="cin-key cam" style="left:${pct(k.t)}" data-kind="cam" data-i="${i}"></i>`).join('')}</div></div>`;
     for (const a of shot.actors) {
@@ -524,7 +524,7 @@ class CinemaApp {
     }
     html += `<div class="cin-lane"><span class="lbl">💬 ${t('cin.tab.lines', 'Falas')}</span><div class="trk" data-trk="1">${shot.lines.map((l) => `<i class="cin-blk ${l.audio ? 'aud' : ''} ${l.id === S.selLine ? 'on' : ''}" style="left:${pct(l.t)};width:${pct(l.dur)}" data-kind="line" data-id="${l.id}">${esc(l.text || '…')}</i>`).join('')}</div></div>`;
     if (shot.fx.length || shot.sfx.length)
-      html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${f.kind}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
+      html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${FX.find((x) => x.id === f.kind)?.glyph ?? '✨'} ${esc(FX.find((x) => x.id === f.kind)?.name ?? f.kind)}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
     html += `<div class="cin-head"></div>`;
     // coluna de rótulos do tamanho do maior nome (ícone + miniatura + texto), sem cortar
     const names = [t('cin.tab.camera', 'Câmera'), t('cin.tab.lines', 'Falas'), t('cin.tab.fx', 'Efeitos'), ...shot.actors.map((a) => castById(a.cast)?.name ?? '')];
@@ -843,7 +843,7 @@ class CinemaApp {
   private resultSheet(blob: Blob, ext: string, dur: number): void {
     const url = URL.createObjectURL(blob);
     const name = safeFileName(S.p.title, ext);
-    const mb = (blob.size / 1048576).toFixed(1).replace('.', ',');
+    const mb = fmtDec(blob.size / 1048576);
     const media = ext === 'gif' ? `<img src="${url}" style="width:100%;border-radius:12px;display:block;margin-bottom:10px" alt="">` : `<video src="${url}" controls playsinline></video>`;
     sheet(
       `<h3>✅ ${t('cin.ex.done', 'Filme pronto!')}</h3>${media}

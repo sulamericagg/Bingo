@@ -3,7 +3,7 @@
  *  Falas, Câmera, Efeitos, Som, Plano. Cada render() refaz o HTML
  *  do painel; eventos por delegação (data-a / data-k).
  * ============================================================ */
-import { t } from '../i18n';
+import { fmtDec, t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { ownsPart, partName, partsOf, type Slot } from '../game/avatar';
@@ -56,7 +56,7 @@ export const TABS: { id: Tab; label: () => string }[] = [
 ];
 
 const proTag = (it: Item) => (it.pro && !isPro() ? '<b class="cin-pro">PRO</b>' : '');
-const fmt1 = (n: number) => n.toFixed(1).replace('.', ',');
+const fmt1 = (n: number) => fmtDec(n);
 const EASES: [Ease, () => string][] = [
   ['inout', () => t('cin.ease.inout', 'Suave')],
   ['linear', () => t('cin.ease.linear', 'Constante')],
