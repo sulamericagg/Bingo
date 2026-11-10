@@ -98,7 +98,7 @@ const fx = new Fx(260);
 const v = makeView();
 
 /** ponteiro atual sobre o canvas */
-const ptr = { x: 0, y: 0, down: false, sx: 0, sy: 0, moved: 0, id: -1, lastX: 0, lastY: 0, vx: 0, vy: 0, onPet: false, swipe: false, t0: 0 };
+const ptr = { x: 0, y: 0, down: false, sx: 0, sy: 0, moved: 0, id: -1, lastX: 0, lastY: 0, vx: 0, vy: 0, onPet: false, swipe: false, t0: 0, lt: 0 };
 
 /* animações do bichinho */
 let blinkT = 2;
@@ -1000,6 +1000,8 @@ function onPet(x: number, y: number, k = 1.1): boolean {
 
 function onDown(e: PointerEvent): void {
   audio.unlock();
+  // segundo dedo não rouba o gesto do primeiro
+  if (ptr.down && e.pointerId !== ptr.id) return;
   const [x, y] = local(e);
   ptr.down = true;
   ptr.id = e.pointerId;
@@ -1007,7 +1009,7 @@ function onDown(e: PointerEvent): void {
   ptr.y = ptr.sy = ptr.lastY = y;
   ptr.moved = 0;
   ptr.vx = ptr.vy = 0;
-  ptr.t0 = performance.now();
+  ptr.t0 = ptr.lt = performance.now();
   ptr.onPet = onPet(x, y);
   ptr.swipe = false;
   if (room === 'play' && Math.hypot(x - ball.x, y - ball.y) < ball.r * 1.5) {
@@ -1030,8 +1032,11 @@ function onMove(e: PointerEvent): void {
   const dx = x - ptr.lastX;
   const dy = y - ptr.lastY;
   const dist = Math.hypot(dx, dy);
-  ptr.vx = ptr.vx * 0.5 + (dx / 0.016) * 0.5;
-  ptr.vy = ptr.vy * 0.5 + (dy / 0.016) * 0.5;
+  const now = performance.now();
+  const dt = Math.max(0.008, Math.min(0.05, (now - ptr.lt) / 1000));
+  ptr.lt = now;
+  ptr.vx = ptr.vx * 0.5 + (dx / dt) * 0.5;
+  ptr.vy = ptr.vy * 0.5 + (dy / dt) * 0.5;
   ptr.x = x;
   ptr.y = y;
   ptr.lastX = x;
@@ -1042,17 +1047,6 @@ function onMove(e: PointerEvent): void {
     ball.y = Math.min(y, L.floorY + 4 - ball.r);
     return;
   }
-  // deslizar para trocar de cômodo (começando fora do bichinho)
-  if (!ptr.onPet && !ptr.swipe && Math.abs(x - ptr.sx) > 70 && Math.abs(x - ptr.sx) > 2 * Math.abs(y - ptr.sy)) {
-    ptr.swipe = true;
-    const i = ROOMS.indexOf(room) + (x < ptr.sx ? 1 : -1);
-    if (i >= 0 && i < ROOMS.length) {
-      setRoom(ROOMS[i], true);
-      tap('light');
-    }
-    return;
-  }
-  if (ptr.swipe) return;
   if (room === 'bath') bathRub(x, y, dist);
   else if (ptr.onPet && room === 'play' && dist > 2) tickle(dist);
   else if (ptr.onPet && room !== 'bed' && dist > 3 && ptr.moved > 30) tickle(dist * 0.5);
@@ -1083,7 +1077,27 @@ function onUp(e: PointerEvent): void {
     else kickBall(Math.max(-1800, Math.min(1800, ptr.vx)), Math.max(-2000, Math.min(600, ptr.vy)));
     return;
   }
-  if (!ptr.swipe && ptr.moved < 10 && ptr.onPet && !(room === 'bath' && stage !== 'done')) boop();
+  if (trySwipe(e)) return;
+  if (ptr.moved < 10 && ptr.onPet && !(room === 'bath' && stage !== 'done')) boop();
+}
+
+/** Troca de cômodo só com um "peteleco" rápido e decidido, começando longe do
+ *  bichinho, e nunca no meio do banho (esfregar não pode trocar de cômodo). */
+function trySwipe(e: PointerEvent): boolean {
+  if (ptr.onPet) return false;
+  if (room === 'bath' && stage !== 'done') return false;
+  const [x, y] = local(e);
+  const ddx = x - ptr.sx;
+  const ddy = y - ptr.sy;
+  const ms = performance.now() - ptr.t0;
+  const fast = Math.abs(ddx) / Math.max(1, ms) > 0.6; // px/ms
+  if (ms > 450 || Math.abs(ddx) < Math.min(140, L.W * 0.3) || Math.abs(ddx) < 2.5 * Math.abs(ddy) || !fast) return false;
+  const i = ROOMS.indexOf(room) + (ddx < 0 ? 1 : -1);
+  if (i < 0 || i >= ROOMS.length) return false;
+  ptr.swipe = true;
+  setRoom(ROOMS[i], true);
+  tap('light');
+  return true;
 }
 
 /* ============================================================
