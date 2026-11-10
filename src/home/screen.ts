@@ -270,9 +270,21 @@ function resize(): void {
 function barH(): number {
   return ($('.hm-bar') as HTMLElement).offsetHeight || 120;
 }
+/** Tela deitada e baixa (web/tablet): os painéis de Decorar/Pintar/Limpar/Festa viram coluna à esquerda (CSS). */
+function sidePanel(bar: HTMLElement): boolean {
+  return bar.classList.contains('panel') && W > H && H <= 520;
+}
 function layoutScene(): void {
   if (!root) return;
   const top = view === 'room' ? 100 : 60;
+  const bar = $('.hm-bar') as HTMLElement;
+  if (view === 'room' && sidePanel(bar)) {
+    // antes o painel (≈290 px) era descontado da altura e o cômodo sumia em 915x412
+    const left = bar.offsetWidth;
+    scene.layout(W - left, H, top, 8, dpr);
+    scene.ox += left;
+    return;
+  }
   scene.layout(W, H, top, barH() + 4, dpr);
 }
 
