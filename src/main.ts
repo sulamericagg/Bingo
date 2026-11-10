@@ -118,9 +118,13 @@ async function boot(): Promise<void> {
     StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
     StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
     StatusBar.hide().catch(() => {});
-    restorePortrait(); // manifest libera a rotação (casa 3D em paisagem); o app em si fica em retrato
+    restorePortrait(); // manifest já é retrato; a casa 3D trava paisagem via plugin quando abre
     App.addListener('pause', onHide);
-    App.addListener('resume', () => audio.resume());
+    App.addListener('resume', () => {
+      audio.resume();
+      // de volta ao app: menu sempre em pé (só a casa 3D pede paisagem, e ela trava sozinha)
+      if (!document.querySelector('.gh-game, .h3-canvas')) restorePortrait();
+    });
     App.addListener('backButton', () => {
       if (!ui.back()) App.minimizeApp();
     });

@@ -10,6 +10,7 @@
  * Tudo vive dentro de <section id="menu"> (index.html), então qualquer tela que
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
+import { restorePortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
@@ -214,6 +215,7 @@ export function closeHost(): void {
     console.warn('[hub] destroy', e);
   }
   hostRoot.innerHTML = '';
+  restorePortrait();
   host.classList.remove('on');
   menu.classList.add('on');
   refreshBests();
