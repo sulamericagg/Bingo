@@ -20,6 +20,17 @@ body.orbit-off #game {
   align-items: stretch;
   overflow: hidden;
   pointer-events: auto;
+  background: var(--hub-bg2);
+}
+
+/* ---------- fundo: bolhas de luz suaves (só transform) ----------
+ * A troca de cor do tema anima as variáveis SÓ aqui: animar no #menu (herdadas) recalculava
+ * o estilo do menu inteiro (milhares de nós) a cada quadro por 0,7 s em cada troca de jogo. */
+.hub-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
   background:
     radial-gradient(120% 70% at 50% 18%, var(--hub-bg1) 0%, transparent 70%),
     linear-gradient(180deg, var(--hub-bg1) -30%, var(--hub-bg2) 75%);
@@ -28,16 +39,7 @@ body.orbit-off #game {
     --hub-bg2 0.7s ease,
     --hub-accent 0.7s ease,
     --hub-accent2 0.7s ease,
-    --hub-title1 0.7s ease,
     --hub-title2 0.7s ease;
-}
-
-/* ---------- fundo: bolhas de luz suaves (só transform) ---------- */
-.hub-bg {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
 }
 .hub-bg::after {
   /* pontinhos discretos */
@@ -76,8 +78,55 @@ body.orbit-off #game {
   animation-delay: -9s;
 }
 body.hub-qmin .hub-blob,
-body.hub-qmin .hub-play {
+body.hub-qmin .hub-play,
+body.hub-lowfx .hub-blob,
+body.hub-lowfx .hub-offer::after {
   animation: none;
+}
+/* painel aberto por cima do hub: nada se mexe por baixo (o blur do modal não precisa ser refeito) */
+body.hub-covered .hub-bg > *,
+body.hub-covered .hub-top *,
+body.hub-covered .hub-quick *,
+body.hub-covered .hub-quick *::after,
+body.hub-covered .hub-stage *,
+body.hub-covered .hub-nav * {
+  animation-play-state: paused !important;
+}
+/* Baixo/Mínimo: backdrop-filter é caro em GPU fraca — fundo mais opaco no lugar */
+body.hub-lowfx .pill,
+body.hub-lowfx .modal-screen,
+body.hub-lowfx .item-sheet,
+body.hub-lowfx .celebrate,
+body.hub-lowfx .gh-load-back {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body.hub-lowfx .pill {
+  background: rgba(10, 4, 30, 0.72);
+}
+body.hub-lowfx .modal-screen {
+  background: rgba(5, 2, 18, 0.78);
+}
+body.hub-lowfx .item-sheet {
+  background: rgba(8, 3, 26, 0.88);
+}
+body.hub-lowfx .celebrate {
+  background: rgba(5, 2, 18, 0.86);
+}
+/* degradê "mítico" anima background-position = repintura a cada quadro (loja/passe abertos).
+ * Fora do Alto ele anda em passos; no Baixo fica parado. */
+body:not(.hub-qhi) .r-mythic {
+  animation-timing-function: steps(24);
+}
+body.hub-lowfx .r-mythic {
+  animation: none;
+}
+/* sem sombras gigantes nas cartas laterais (paint grande a cada troca) */
+body.hub-lowfx .hub-card {
+  box-shadow: 0 8px 0 rgba(10, 2, 30, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+body.hub-lowfx .hub-card.active {
+  box-shadow: 0 8px 0 rgba(10, 2, 30, 0.55), 0 0 30px -8px var(--c-accent), inset 0 2px 0 rgba(255, 255, 255, 0.3);
 }
 @keyframes hubFloat {
   to {
@@ -298,6 +347,9 @@ body.hub-qmin .hub-play {
   gap: 14px;
   height: 100%;
   transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.05); /* antes 0,55 s: o carrossel parecia "pesado" */
+}
+/* camada própria só enquanto se move (toque/arrasto/transição) */
+.hub-track.moving {
   will-change: transform;
 }
 .hub-track.instant {

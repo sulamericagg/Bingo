@@ -687,6 +687,8 @@ const pose: PlayerPose = { t: 0, blink: 0, lookX: 0, lookY: 0, sx: 1, sy: 1, moo
 function loop(ts: number): void {
   if (!open) return;
   raf = requestAnimationFrame(loop);
+  // aparelho fraco (classe do hub): 30 fps bastam para a prévia
+  if (document.body.classList.contains('hub-lowfx') && ts - lastTs < 31) return;
   const dt = Math.min(0.05, (ts - lastTs) / 1000);
   lastTs = ts;
   clock += dt;
@@ -697,11 +699,32 @@ function loop(ts: number): void {
   drawStage();
 }
 
+/** tamanho do palco em cache (ResizeObserver): ler getBoundingClientRect a cada quadro forçava layout */
+let stageW = 0;
+let stageH = 0;
+let stageRO: ResizeObserver | null = null;
+function stageSize(): [number, number] {
+  if (!stageRO && typeof ResizeObserver !== 'undefined') {
+    stageRO = new ResizeObserver((es) => {
+      const r = es[es.length - 1].contentRect;
+      stageW = r.width;
+      stageH = r.height;
+    });
+    stageRO.observe(stageCv);
+  }
+  if (!stageRO || !stageW) {
+    const rect = stageCv.getBoundingClientRect();
+    stageW = rect.width;
+    stageH = rect.height;
+  }
+  return [stageW, stageH];
+}
+
 function drawStage(): void {
-  const rect = stageCv.getBoundingClientRect();
-  const W = Math.max(1, Math.round(rect.width));
-  const H = Math.max(1, Math.round(rect.height));
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const [stW, stH] = stageSize();
+  const W = Math.max(1, Math.round(stW));
+  const H = Math.max(1, Math.round(stH));
+  const dpr = Math.min(document.body.classList.contains('hub-lowfx') ? 1.5 : 2, window.devicePixelRatio || 1);
   if (stageCv.width !== Math.round(W * dpr) || stageCv.height !== Math.round(H * dpr)) {
     stageCv.width = Math.round(W * dpr);
     stageCv.height = Math.round(H * dpr);

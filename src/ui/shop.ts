@@ -185,6 +185,59 @@ const BADGE_TEXT: Record<string, string> = {
   get sale() { return t('shop.badge.sale', 'PROMOÇÃO'); },
 };
 
+/* ============================== prévias (cache + sob demanda) ============================== */
+
+/**
+ * Desenhar ~45 personagens vetoriais a cada abertura da loja travava o toque por centenas de ms
+ * em celular fraco. Agora: cada prévia é desenhada uma vez (cache) e só quando o card chega
+ * perto da tela (IntersectionObserver); reabrir a loja/trocar de aba só reaproveita os bitmaps.
+ */
+const previewCache = new Map<string, HTMLCanvasElement>();
+function cachedPreview(item: Skin | Trail, isSkin: boolean): HTMLCanvasElement {
+  const k = (isSkin ? 's:' : 't:') + item.id;
+  let c = previewCache.get(k);
+  if (!c) {
+    c = isSkin ? renderSkinPreview(item as Skin, 92) : renderTrailPreview(item as Trail, 92);
+    previewCache.set(k, c);
+  }
+  if (!c.isConnected) return c;
+  // já está na tela (não deveria): devolve uma cópia barata
+  const cp = document.createElement('canvas');
+  cp.width = c.width;
+  cp.height = c.height;
+  cp.style.cssText = c.style.cssText;
+  cp.getContext('2d')?.drawImage(c, 0, 0);
+  return cp;
+}
+
+let previewIO: IntersectionObserver | null = null;
+const pending = new WeakMap<Element, () => void>();
+function lazyPreview(item: Skin | Trail, isSkin: boolean): HTMLElement {
+  const k = (isSkin ? 's:' : 't:') + item.id;
+  const hit = previewCache.get(k);
+  if ((hit && !hit.isConnected) || typeof IntersectionObserver === 'undefined') return cachedPreview(item, isSkin);
+  const ph = document.createElement('canvas');
+  ph.width = ph.height = 1;
+  ph.style.width = ph.style.height = '92px';
+  previewIO ??= new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        previewIO!.unobserve(e.target);
+        const fn = pending.get(e.target);
+        pending.delete(e.target);
+        fn?.();
+      }
+    },
+    { rootMargin: '160px 0px' },
+  );
+  pending.set(ph, () => {
+    if (ph.isConnected) ph.replaceWith(cachedPreview(item, isSkin));
+  });
+  previewIO.observe(ph);
+  return ph;
+}
+
 /* ============================== loja ============================== */
 
 export class Shop {
@@ -214,6 +267,7 @@ export class Shop {
     const body = $('#shop-body');
     const keep = body.dataset.tab === this.tab ? body.scrollTop : 0;
     body.dataset.tab = this.tab;
+    previewIO?.disconnect(); // prévias pendentes da renderização anterior
     body.innerHTML = '';
     clearInterval(this.tick);
     this.tick = 0;
@@ -249,7 +303,7 @@ export class Shop {
     const card = document.createElement('div');
     card.className = `card rc-${item.rarity}` + (equipped ? ' equipped' : '') + (ev ? ' event' : '');
     card.style.setProperty('--rc', RARITY_INFO[item.rarity].color);
-    card.appendChild(isSkin ? renderSkinPreview(item as Skin, 92) : renderTrailPreview(item as Trail, 92));
+    card.appendChild(lazyPreview(item, isSkin));
     card.insertAdjacentHTML('beforeend', `<span class="rarity r-${item.rarity}">${RARITY_INFO[item.rarity].label}</span>`);
     if (ev) card.insertAdjacentHTML('beforeend', `<span class="event-tag">${icon('ticket')}Evento</span>`);
     card.insertAdjacentHTML('beforeend', `<div class="name">${esc(cosmeticName(item, isSkin))}</div>`);
