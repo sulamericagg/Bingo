@@ -55,7 +55,6 @@ export class Fps {
   private stepT = 0;
   private fxT = 0;
   private paintPress = false;
-  private paintPressT = 0;
   paint: Paint3D | null = null;
   private lastLook: [number, number] = [0, 0];
   /** olhar suavizado: o dedo move o alvo, a câmera segue (sem tranco em celular fraco) */
@@ -98,6 +97,10 @@ export class Fps {
     this.hand = new Hand(eng.camera, colors);
     this.ray.far = 3.2;
     acts.onTap = (id) => this.tap(id);
+    // toque curto no PINTAR liga/desliga o spray; segurar pinta só enquanto segura
+    acts.onRelease = (id, ms) => {
+      if (id === 'paint' && this.paint && ms < 280) this.paint.latched = !this.paint.latched;
+    };
   }
 
   /**
@@ -706,11 +709,7 @@ export class Fps {
     const holdClean = this.acts.held.has('clean');
     // pintar: segurar o botão pinta; toque curto liga/desliga o spray (dá para olhar e andar pintando)
     const pressed = this.acts.held.has('paint');
-    if (pressed && !this.paintPress) this.paintPressT = this.eng.time;
-    if (!pressed && this.paintPress) {
-      if (this.eng.time - this.paintPressT < 0.28 && this.paint) this.paint.latched = !this.paint.latched;
-      this.paint?.end();
-    }
+    if (!pressed && this.paintPress) this.paint?.end();
     this.paintPress = pressed;
     if (this.tool !== 'paint' && this.paint) this.paint.latched = false;
     const holdPaint = pressed || !!this.paint?.latched || (this.tool === 'paint' && this.input.key('Space'));

@@ -377,8 +377,8 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
       d.type = 'button';
       d.style.background = c;
       d.onclick = () => {
-        paint.setColor(idx);
         palOpen = false;
+        paint.setColor(idx);
         if (mode === 'fps') fps.setTool('paint');
         sfx.pick();
       };

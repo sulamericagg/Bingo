@@ -136,7 +136,8 @@ const CSS = `
 .h3-top.compact>.h3-btn:first-child span{display:none}
 .h3-top.compact>.h3-btn:first-child{padding:6px 8px}
 .h3-tools{position:relative}
-.h3-pchip{position:absolute;left:max(10px,env(safe-area-inset-left));top:calc(max(8px,env(safe-area-inset-top)) + 50px);display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;max-width:min(92vw,420px);z-index:4}
+.h3-pchip{position:absolute;left:50%;transform:translateX(-50%);top:calc(max(8px,env(safe-area-inset-top)) + 74px);display:flex;gap:6px;align-items:flex-start;justify-content:center;flex-wrap:wrap;width:min(92vw,420px);z-index:4;pointer-events:none}
+.h3-pchip>*{pointer-events:auto}
 .h3-pchip .cur,.h3-pchip .un{font:inherit;font-weight:700;font-size:12px;border:0;border-radius:999px;background:#2a0b5cdd;color:#fff;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;box-shadow:0 0 0 2px #ffffff55;cursor:pointer;transition:transform .08s}
 .h3-pchip .cur i{width:26px;height:26px;border-radius:50%;border:3px solid #fff;display:block}
 .h3-pchip .un{padding:5px;width:34px;height:34px;justify-content:center}
@@ -423,6 +424,8 @@ export class Actions {
   private sig = '';
   held = new Set<string>();
   onTap?: (id: string) => void;
+  /** botão de segurar foi solto (ms = quanto tempo ficou apertado) — toque curto = liga/desliga */
+  onRelease?: (id: string, ms: number) => void;
   constructor(layer: HTMLElement) {
     this.box = el('div', 'h3-acts');
     layer.appendChild(this.box);
@@ -447,7 +450,9 @@ export class Actions {
         const id = a.id;
         // toque vale ao SOLTAR dentro do botão (dedo que passa por cima arrastando não aciona nada)
         let armed = false;
+        let t0 = 0;
         b.addEventListener('pointerdown', (e) => {
+          t0 = performance.now();
           e.stopPropagation();
           e.preventDefault();
           b!.classList.add('on');
@@ -467,8 +472,10 @@ export class Actions {
         b.addEventListener('pointerup', (e) => {
           e.stopPropagation();
           const fire = armed && !a.hold;
+          const hold = armed && a.hold;
           rel();
           if (fire) this.onTap?.(id);
+          if (hold) this.onRelease?.(id, performance.now() - t0);
         });
         b.addEventListener('pointerleave', rel);
         b.addEventListener('pointercancel', rel);
