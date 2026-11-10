@@ -72,6 +72,7 @@ export class Hud {
   private fps: FpsControls | null = null;
   private joy2d: Joystick | null = null;
   private yoke!: Joystick;
+  private ctlSig = -1;
   private pr = { x: 0, y: 0, behind: false };
   private ctx: Ctx | null = null;
   private _hidden = false;
@@ -81,6 +82,10 @@ export class Hud {
   set hidden(v: boolean) {
     this._hidden = v;
     this.el.style.display = v ? 'none' : '';
+    if (v) {
+      objective(null);
+      this.lastTip = '\u0000';
+    }
   }
   face2d: [number, number] = [0, -1];
   /** tutorial: texto do objetivo e alvo (seta amarela) */
@@ -266,9 +271,15 @@ export class Hud {
     const me = s.players[s.me];
     // só os controles do lugar onde você está
     const sit = me.seated && !this.hidden;
-    this.yoke.setEnabled(sit);
-    this.fps?.show(!me.seated && !this.hidden && me.busy < 0);
-    this.joy2d?.setEnabled(!me.seated && !this.hidden && me.busy < 0);
+    const walk = !me.seated && !this.hidden && me.busy < 0;
+    // só troca quando muda (setEnabled reposiciona o joystick)
+    const sig = (sit ? 1 : 0) + (walk ? 2 : 0);
+    if (sig !== this.ctlSig) {
+      this.ctlSig = sig;
+      this.yoke.setEnabled(sit);
+      this.fps?.show(walk);
+      this.joy2d?.setEnabled(walk);
+    }
     let jx = 0;
     let jy = 0;
     if (this.fps) {

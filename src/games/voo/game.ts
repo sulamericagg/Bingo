@@ -285,6 +285,7 @@ export class VooGame implements MiniGameHandle, HudHost {
       sfx.swish();
     };
     const P = SPOTS.pilot;
+    if (s.phase !== 'cruise' && this.tut < 7) this.tut = 7; // passou do cruzeiro: encerra o tutorial
     switch (this.tut) {
       case 0:
         hud.tutText = t('voo.tut.sit', 'Sente no manche: vá até a cadeira da esquerda e toque em Pilotar');

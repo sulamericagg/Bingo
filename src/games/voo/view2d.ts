@@ -122,7 +122,8 @@ export class View2D {
     // câmera segue o jogador (ou a cabine)
     const tz = me.seated ? -1.2 : me.z;
     this.camZ += (Math.max(-1.5, Math.min(17.5, tz)) - this.camZ) * Math.min(1, dt * 4);
-    this.camX = 0;
+    // sentado: sobe o avião para o painel (PFD) não cobrir a cabine
+    this.camX += ((me.seated ? -(H * 0.2) / this.k : 0) - this.camX) * Math.min(1, dt * 4);
     this.shake = Math.max(0, this.shake - dt * 2);
     x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // chão lá embaixo / nuvens passando

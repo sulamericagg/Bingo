@@ -63,7 +63,8 @@ function folder(root: HTMLElement, coverHtml: string, sheets: string[], buttons:
       if (step >= pages.length) showButtons();
       else timer = window.setTimeout(advance, step === 1 ? 3600 : 4200);
       // folha atual "em cima" e reta
-      const cur = pages[step - 1];
+      const cur = pages[Math.min(step, pages.length) - 1];
+      pages.forEach((p) => p.classList.toggle('on', p === cur));
       if (cur) cur.style.transform = 'rotate(0deg)';
     };
     timer = window.setTimeout(advance, 900);
@@ -75,6 +76,7 @@ function folder(root: HTMLElement, coverHtml: string, sheets: string[], buttons:
         clearTimeout(timer);
         cover.classList.add('open');
         pages.slice(0, -1).forEach((p) => p.classList.add('gone'));
+        pages.forEach((p, i) => p.classList.toggle('on', i === pages.length - 1));
         step = pages.length;
         showButtons();
         (scr.querySelector('.voo-dnav.l') as HTMLElement).style.display = 'none';
