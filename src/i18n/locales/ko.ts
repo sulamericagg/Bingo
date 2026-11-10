@@ -618,6 +618,7 @@ export default {
   "creator.color2": "포인트 색",
   "creator.count": "{slot} 파츠 {n}/{total} 해제",
   "creator.eventOnly": "이벤트 한정 — 도전에서 이겨서 받아요!",
+  "creator.eventBtn": "이벤트 한정",
   "creator.flying": "비행",
   "creator.haveAll": "\"{name}\" — 이미 다 있어요!",
   "creator.random": "랜덤",

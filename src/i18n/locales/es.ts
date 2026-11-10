@@ -618,6 +618,7 @@ export default {
   "creator.color2": "Color de detalle",
   "creator.count": "{n}/{total} piezas de {slot} desbloqueadas",
   "creator.eventOnly": "Exclusivo de evento — ¡gana los desafíos para conseguirlo!",
+  "creator.eventBtn": "Solo en evento",
   "creator.flying": "Volando",
   "creator.haveAll": "\"{name}\": ¡ya lo tienes todo!",
   "creator.random": "Aleatorio",

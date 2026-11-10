@@ -468,7 +468,7 @@ function renderBuyBar(): void {
   b.className = 'cr-buy';
   if (pr.event) {
     b.classList.add('ev');
-    b.innerHTML = `${icon('trophy', { size: 22 })}${t('creator.eventOnly', 'Só em evento')}`;
+    b.innerHTML = `${icon('trophy', { size: 22 })}${t('creator.eventBtn', 'Só em evento')}`;
   } else if (pr.iap) {
     b.classList.add('iap');
     b.innerHTML = `${icon('bag', { size: 22 })}${t('creator.buy', 'Comprar')} ${PART_PRODUCTS.find((x) => x.part === p.id)?.fallbackPrice ?? ''}`;

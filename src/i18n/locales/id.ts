@@ -618,6 +618,7 @@ export default {
   "creator.color2": "Warna detail",
   "creator.count": "{n}/{total} bagian {slot} terbuka",
   "creator.eventOnly": "Eksklusif event — menangkan tantangan!",
+  "creator.eventBtn": "Khusus event",
   "creator.flying": "Terbang",
   "creator.haveAll": "\"{name}\" — kamu sudah punya semuanya!",
   "creator.random": "Acak",

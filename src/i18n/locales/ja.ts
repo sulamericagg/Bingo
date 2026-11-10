@@ -618,6 +618,7 @@ export default {
   "creator.color2": "サブカラー",
   "creator.count": "{slot}パーツ {n}/{total} 解放",
   "creator.eventOnly": "イベント限定 — チャレンジに勝ってゲット!",
+  "creator.eventBtn": "イベント限定",
   "creator.flying": "とんでる",
   "creator.haveAll": "「{name}」— もうぜんぶ持ってるよ!",
   "creator.random": "ランダム",
