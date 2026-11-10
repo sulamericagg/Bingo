@@ -755,6 +755,38 @@ export function drawPetIcon(x: CanvasRenderingContext2D, kind: string, cx: numbe
       x.fill();
       x.fillRect(-k * 1.1, k * 0.3, k * 2.2, k * 0.25);
       break;
+    case 'cook':
+      // panela no fogo
+      x.fillStyle = '#ff9a2e';
+      x.beginPath();
+      x.moveTo(-k * 0.5, k * 1.05);
+      x.quadraticCurveTo(0, k * 0.4, k * 0.5, k * 1.05);
+      x.fill();
+      x.fillStyle = '#5a5370';
+      rr(x, -k * 0.95, -k * 0.55, k * 1.9, k * 1.15, k * 0.3);
+      x.fill();
+      x.fillRect(-k * 1.25, -k * 0.5, k * 0.4, k * 0.18);
+      x.fillRect(k * 0.85, -k * 0.5, k * 0.4, k * 0.18);
+      break;
+    case 'fetch':
+      // cesta
+      x.fillStyle = '#c98a4a';
+      rr(x, -k, -k * 0.2, k * 2, k * 1.1, k * 0.25);
+      x.fill();
+      x.strokeStyle = '#8a5a30';
+      x.lineWidth = r * 0.14;
+      x.beginPath();
+      x.arc(0, -k * 0.2, k * 0.75, Math.PI, 0);
+      x.stroke();
+      x.fillStyle = '#e8434a';
+      x.beginPath();
+      x.arc(-k * 0.35, -k * 0.25, k * 0.35, 0, TAU);
+      x.fill();
+      x.fillStyle = '#5ac85a';
+      x.beginPath();
+      x.arc(k * 0.35, -k * 0.2, k * 0.3, 0, TAU);
+      x.fill();
+      break;
     case 'fire':
       x.fillStyle = '#ff5a2e';
       x.beginPath();

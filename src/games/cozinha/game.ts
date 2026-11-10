@@ -631,7 +631,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       follow: () => t('cozinha.cmd.follow', 'Seguir'),
       stay: () => t('cozinha.cmd.stay', 'Ficar'),
     };
-    const CMD_ICON: Record<Cmd, string> = { chop: 'chop', cook: 'fire', wash: 'wash', serve: 'serve', fetch: 'follow', fire: 'fire', follow: 'follow', stay: 'stay' };
+    const CMD_ICON: Record<Cmd, string> = { chop: 'chop', cook: 'cook', wash: 'wash', serve: 'serve', fetch: 'fetch', fire: 'fire', follow: 'follow', stay: 'stay' };
     const petIconCanvas = (kind: string, size: number): HTMLCanvasElement => {
       const c = document.createElement('canvas');
       c.width = c.height = size * 2;
@@ -674,6 +674,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
             banner(b.why === 'tired' ? t('cozinha.cmd.tired', '{n} está cansado: faça você um pouco!', { n: b.p.name }) : t('cozinha.cmd.nothing', 'Nada para {x} agora', { x: CMD_LABEL[c]().toLowerCase() }), '', 1500);
           } else if (petTutOn) {
             petTutOn = false;
+            petsEl.classList.remove('cz-teach');
             sv.petTut = true;
             persistCz();
             banner(t('cozinha.cmd.good', 'Isso! Ele obedece com um pouquinho de atraso.'), '', 2200);
@@ -739,6 +740,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         sim.ended = true;
       } else if (petTutOn) {
         petTutOn = false;
+        petsEl.classList.remove('cz-teach');
         sv.petTut = true;
         persistCz();
         setTip('', '');
@@ -1017,7 +1019,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           const hst = hintTarget(sim, me);
           g.guide = hst >= 0 ? { st: hst, strong: false } : null;
         }
-        if (petTutOn && !tut) setTip('pet', t('cozinha.petTip', 'Toque num ajudante (no canto) e dê uma ordem'));
+        if (petTutOn && !tut) setTip('pet', t('cozinha.petTip2', 'Toque no ajudante e dê uma ordem'));
         else if (!tut && tipId === 'pet') setTip('', '');
       }
       if (tut && tut.finished && !sim.ended) {

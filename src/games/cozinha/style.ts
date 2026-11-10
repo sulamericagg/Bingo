@@ -75,7 +75,7 @@ const CSS = `
 .cz-toast small{font-size:12px;opacity:.85;font-weight:600}
 .cz-toast.cz-out{opacity:0;transform:translateY(-8px)}
 @keyframes czToastIn{from{opacity:0;transform:translateY(-10px) scale(.9)}}
-.cz-tip{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 9px);transform:translateX(-50%);max-width:min(46vw,420px);display:flex;align-items:center;gap:6px;background:#fffbe8;color:#2a0b5c;border:2px solid #2a0b5c;border-radius:12px;padding:3px 4px 3px 10px;font-size:14px;font-weight:700;line-height:1.15;box-shadow:0 3px 0 #2a0b5c66;pointer-events:none;z-index:7}
+.cz-tip{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 9px);transform:translateX(-50%);max-width:min(40vw,360px);display:flex;align-items:center;gap:6px;background:#fffbe8;color:#2a0b5c;border:2px solid #2a0b5c;border-radius:12px;padding:3px 4px 3px 10px;font-size:13px;font-weight:700;line-height:1.15;box-shadow:0 3px 0 #2a0b5c66;pointer-events:none;z-index:7}
 .cz-tip span{flex:1;min-width:0}
 .cz-tip.cz-pop{animation:czTipPop .35s cubic-bezier(.3,1.6,.6,1)}
 @keyframes czTipPop{from{transform:translateX(-50%) scale(.85)}}

@@ -441,8 +441,8 @@ export class Brain {
     let ty = this.stayY;
     let near = 0.25;
     if (this.idleMode === 'follow' && o) {
-      tx = o.x - o.fx * 0.9;
-      ty = o.y - o.fy * 0.9;
+      tx = o.x - o.fx * 1.3;
+      ty = o.y - o.fy * 1.3;
       near = 1.1;
     }
     const dx = tx - p.x;
