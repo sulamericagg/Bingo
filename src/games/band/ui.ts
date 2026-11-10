@@ -307,7 +307,7 @@ export class Screens {
       this.g.activateStar();
     };
     const p = this.el.querySelector<HTMLButtonElement>('.bb-pause');
-    if (p) p.onclick = () => this.g.pause();
+    if (p) p.onclick = () => this.g.pause(true);
     const em = this.el.querySelector<HTMLButtonElement>('.bb-emote');
     if (em)
       em.onclick = () =>

@@ -436,11 +436,19 @@ export class BandGame implements MiniGameHandle {
     this.setMenuBand();
   }
 
-  pause(): void {
+  /**
+   * Pausa. Sem `card` (voltar do hub / app em segundo plano) não mostra o cartão próprio: o hub já
+   * mostra "Sair do jogo?" e os dois apareciam um atrás do outro. O botão de pausa do HUD usa o cartão.
+   */
+  pause(card = false): void {
+    if (this.paused && !card && this.mode === 'play') {
+      this.screens.show('hud');
+      return;
+    }
     if (this.mode !== 'play' || this.paused || this.ended || this.net) return;
     this.paused = true;
     this.actx?.suspend().catch(() => {});
-    this.screens.show('pause');
+    if (card) this.screens.show('pause');
   }
 
   resume(): void {
@@ -508,7 +516,8 @@ export class BandGame implements MiniGameHandle {
   private key(e: KeyboardEvent, down: boolean): void {
     if (this.mode !== 'play') return;
     const k = e.key.toLowerCase();
-    if (k === 'escape' && down) return this.pause();
+    // Escape = voltar do hub (mostra "Sair do jogo?")
+    if (k === 'escape') return;
     if (k === ' ' && down) {
       this.activateStar();
       e.preventDefault();
