@@ -175,3 +175,62 @@ export const APRONS: Cosmetic[] = [
   { id: 5, col: '#3b5bd1', stars: 80, name: () => t('cozinha.cos.navy', 'Marinheiro') },
   { id: 6, col: '#e8566b', stars: 120, name: () => t('cozinha.cos.checker', 'Xadrez junino') },
 ];
+
+/* ------------------------------ Desafio diário ------------------------------ */
+export function dayKey(d = new Date()): string {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+/** fase do dia: igual para todo mundo no mesmo dia (semente fixa), dificuldade média-alta */
+export function dailyLevel(key = dayKey()): Level {
+  const h = hash('d' + key);
+  const base = level(14 + (h % 34));
+  const w = (h >>> 8) % WORLDS.length;
+  const pool = WORLDS[w].pool;
+  const m = 3 + ((h >>> 4) % 2);
+  const start = (h >>> 12) % (pool.length - m + 1);
+  const menu = pool.slice(start, start + m).map((id) => RECIPE_INDEX[id]).filter((i) => i !== undefined);
+  const p = { ...base.p, len: 120, menu: menu.length };
+  return { ...base, n: 0, world: w, theme: WORLDS[w].theme, menu, special: (['rush', 'critic', 'none', 'none'] as Special[])[h % 4], p, seed: h };
+}
+
+/* ------------------------------ progresso do mapa ------------------------------ */
+export function totalStars(st: Record<string, number>): number {
+  let n = 0;
+  for (const k in st) n += st[k] | 0;
+  return n;
+}
+/** fase jogável? (anterior concluída e estrelas suficientes para o mundo) */
+export function levelOpen(n: number, st: Record<string, number>): boolean {
+  if (n <= 1) return true;
+  if (!((st[n - 1] ?? 0) > 0)) return false;
+  return totalStars(st) >= WORLDS[worldOf(n)[0]].stars;
+}
+export function worldIndex(n: number): number {
+  return worldOf(n)[0];
+}
+/** novidades desta fase: receitas e estações que aparecem pela 1ª vez */
+export function levelNews(n: number): { recipes: number[]; procs: string[] } {
+  const seenR = new Set<number>();
+  const seenP = new Set<string>();
+  const procsOf = (ri: number) => {
+    const out: string[] = [];
+    for (const c of RECIPES[ri].parts) {
+      const route = INGS[compIng(c)].routes[compRoute(c)];
+      for (let i = 0; i < compStage(c); i++) out.push(route[i]);
+    }
+    return out;
+  };
+  for (let i = 1; i < n; i++)
+    for (const ri of level(i).menu) {
+      seenR.add(ri);
+      for (const p of procsOf(ri)) seenP.add(p);
+    }
+  const recipes: number[] = [];
+  const procs: string[] = [];
+  for (const ri of level(n).menu) {
+    if (!seenR.has(ri)) recipes.push(ri);
+    for (const p of procsOf(ri))
+      if (!seenP.has(p) && !procs.includes(p)) procs.push(p);
+  }
+  return { recipes, procs };
+}
