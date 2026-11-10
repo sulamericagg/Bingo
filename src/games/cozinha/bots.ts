@@ -15,6 +15,13 @@ const enum A {
 
 const crews = new WeakMap<Sim, Brain[]>();
 
+/** comandos que o jogador dá aos ajudantes (como um bichinho fiel) */
+export type Cmd = 'follow' | 'stay' | 'wash' | 'chop' | 'serve' | 'fire' | 'cook' | 'fetch';
+/** tarefas do menu (ordem dos botões) */
+export const CMDS: Cmd[] = ['chop', 'cook', 'wash', 'serve', 'fetch'];
+/** teto: ajudantes fazem no máximo esta parte do trabalho */
+export const BOT_CAP = 0.3;
+
 export class Brain {
   private think = 0;
   private goal = -1; // estação alvo
@@ -31,6 +38,33 @@ export class Brain {
   private lastY = 0;
   private pressed = false;
   private actHold = 0;
+  /* ------------- modo bichinho (ajudante obediente) ------------- */
+  /** true = ajudante que só age por comando; false = piloto automático (teste/depuração) */
+  pet = false;
+  /** a quem obedece / segue */
+  owner: Player | null = null;
+  /** modo de espera: seguir ou ficar */
+  idleMode: 'follow' | 'stay' = 'follow';
+  /** tarefa em andamento (uma só, sem encadear) */
+  task: Cmd | '' = '';
+  private taskSt = -1;
+  private taskT = 0;
+  /** atraso de reação (s) antes de começar */
+  private react = 0;
+  private pending: { c: Cmd; st: number } | null = null;
+  private stayX = 0;
+  private stayY = 0;
+  private stillT = 0;
+  /** co-op: ainda mais devagar */
+  slow = 1;
+  /** motivo da última recusa (para o jogo mostrar um aviso) */
+  why: '' | 'tired' | 'nothing' = '';
+  /** ingrediente que vai buscar (tarefa 'fetch') */
+  private fetchIng = -1;
+  /** errinho planejado nesta tarefa */
+  private oops = false;
+  /** avisos (latido/bip) para o jogo tocar som */
+  onBark: ((p: Player, kind: '?' | '!' | 'no' | 'ok' | 'oops') => void) | null = null;
 
   constructor(
     readonly sim: Sim,
@@ -65,7 +99,20 @@ export class Brain {
       p.in.act = false;
       return;
     }
-    if (this.think <= 0) {
+    if (this.pet) {
+      if (this.react > 0) {
+        this.react -= dt;
+        p.in.mx = p.in.my = 0;
+        p.in.act = false;
+        if (this.react <= 0 && this.pending) this.begin(this.pending.c, this.pending.st);
+        return;
+      }
+      if (this.think <= 0) {
+        this.think = (0.35 + this.rnd() * 0.3) * this.slow;
+        this.petDecide();
+      }
+      if (this.goal < 0) return this.petIdle(dt);
+    } else if (this.think <= 0) {
       this.think = 0.22 + this.rnd() * 0.3;
       this.decide();
       if (this.rnd() < 0.006) {
@@ -141,6 +188,293 @@ export class Brain {
       p.in.act = true;
       this.actHold += dt;
     }
+  }
+
+  /* =========================== bichinho =========================== */
+  /** o jogador deu um comando. st = estação apontada (-1 = a mais adequada). false = não dá. */
+  command(c: Cmd, st = -1): boolean {
+    const sim = this.sim;
+    if (c === 'follow' || c === 'stay') {
+      this.idleMode = c;
+      this.stayX = this.p.x;
+      this.stayY = this.p.y;
+      this.pending = { c, st: -1 };
+      this.react = 0.5 + this.rnd() * 0.4;
+      this.p.pet = '?';
+      this.onBark?.(this.p, '?');
+      return true;
+    }
+    // teto de trabalho: ajudantes não fazem mais que BOT_CAP do total
+    const tot = sim.workHuman + sim.workBot;
+    if ((sim.workBot + 1) / (tot + 1) > BOT_CAP + 0.05 && tot > 2) {
+      this.why = 'tired';
+      return this.refuse();
+    }
+    const target = this.findTarget(c, st);
+    if (target < 0 && !(c === 'wash' && this.hasDishes())) {
+      this.why = 'nothing';
+      return this.refuse();
+    }
+    this.why = '';
+    if (c === 'fetch') this.fetchIng = this.wantIng(target);
+    this.pending = { c, st: target };
+    this.react = (0.8 + this.rnd() * 0.7) * this.slow;
+    this.goal = -1;
+    this.p.pet = '?';
+    this.onBark?.(this.p, '?');
+    return true;
+  }
+  /** há algo para essa ordem agora? (só para o menu ficar claro) */
+  available(c: Cmd): boolean {
+    if (c === 'follow' || c === 'stay') return true;
+    return this.findTarget(c, -1) >= 0 || (c === 'wash' && this.hasDishes());
+  }
+  private refuse(): boolean {
+    this.p.pet = 'no';
+    this.p.emoteT = 0;
+    this.taskT = -1.2; // mostra "não dá" por um tempinho
+    this.onBark?.(this.p, 'no');
+    return false;
+  }
+  private hasDishes(): boolean {
+    const sim = this.sim;
+    return sim.st.some((s) => (s.k === 'sink' || s.k === 'dirty') && s.n > 0);
+  }
+  /** alvo válido para o comando (respeita as regras: só o que o JOGADOR fez) */
+  private findTarget(c: Cmd, st: number): number {
+    const sim = this.sim;
+    const ok = (s: Station): boolean => {
+      if (!s || s.fire > 0 && c !== 'fire') return false;
+      if (c === 'chop') return s.k === 'board' && !!s.item && s.item.k === IK.Ing && sim.nextProc(s.item) === 'chop' && s.claim === 0;
+      if (c === 'serve') return (s.k === 'counter' || s.k === 'board') && !!s.item && s.item.k === IK.Plate && s.item.parts.length > 0 && !!sim.matchOrder(s.item.parts) && s.claim === 0;
+      if (c === 'fire') return s.fire > 0;
+      if (c === 'wash') return (s.k === 'sink' || s.k === 'dirty') && s.n > 0;
+      if (c === 'cook') return this.cookable(s);
+      if (c === 'fetch') return s.k === 'crate' && this.neededIngs().includes(s.ing);
+      return false;
+    };
+    if (st >= 0 && ok(sim.st[st])) return st;
+    const o = this.owner;
+    let best = -1;
+    let bd = 1e9;
+    for (const s of sim.st) {
+      if ((!s.fx && !s.fy) || !ok(s)) continue;
+      const d = o ? Math.hypot(s.x + 0.5 - o.x, s.y + 0.5 - o.y) : 0;
+      if (d < bd) {
+        bd = d;
+        best = s.i;
+      }
+    }
+    return best;
+  }
+  /** ingrediente cru/picado numa bancada que precisa ir ao fogo/forno/liquidificador, com o aparelho livre */
+  private cookable(s: Station): boolean {
+    const sim = this.sim;
+    if ((s.k !== 'counter' && s.k !== 'board') || !s.item || s.item.k !== IK.Ing || s.item.burnt || s.fire > 0 || s.claim !== 0) return false;
+    const np = sim.nextProc(s.item);
+    if (!np || np === 'chop') return false;
+    return sim.st.some((q) => COOKERS[q.k] === np && !q.item && q.fire <= 0 && (q.fx || q.fy));
+  }
+  /** ingredientes que os pedidos abertos ainda pedem */
+  private neededIngs(): number[] {
+    const out: number[] = [];
+    for (const o of this.sim.orders) for (const c of RECIPES[o.r].parts) if (!out.includes(compIng(c))) out.push(compIng(c));
+    return out;
+  }
+  private wantIng(crate: number): number {
+    const s = crate >= 0 ? this.sim.st[crate] : null;
+    return s ? s.ing : -1;
+  }
+  private begin(c: Cmd, st: number): void {
+    this.pending = null;
+    // errinhos de bichinho: às vezes se distrai, às vezes faz pela metade, às vezes pega a coisa errada
+    this.oops = this.rnd() < 0.22;
+    if (this.oops && (c === 'cook' || c === 'serve' || c === 'wash')) {
+      this.oops = false;
+      this.wander = 0.9 + this.rnd() * 0.8;
+      this.p.in.mx = this.rnd() * 2 - 1;
+      this.p.in.my = this.rnd() * 2 - 1;
+      this.p.emote = 'rindo';
+      this.p.emoteT = 1.6;
+    }
+    if (this.oops && c === 'fetch') {
+      // pega o ingrediente errado (vizinho)
+      const crates = this.sim.st.filter((q) => q.k === 'crate' && q.ing !== this.fetchIng && (q.fx || q.fy));
+      if (crates.length) {
+        const q = crates[Math.floor(this.rnd() * crates.length)];
+        st = q.i;
+        this.fetchIng = q.ing;
+      }
+    }
+    this.p.pet = '!';
+    this.onBark?.(this.p, '!');
+    this.taskT = -0.6; // mostra "!" um instante
+    if (c === 'follow' || c === 'stay') {
+      this.task = '';
+      return;
+    }
+    this.task = c;
+    this.taskSt = st;
+  }
+  private finish(): void {
+    this.task = '';
+    this.taskSt = -1;
+    this.goal = -1;
+    this.action = A.None;
+    this.p.force = -1;
+    this.p.in.act = false;
+    this.onBark?.(this.p, 'ok');
+  }
+  private petDecide(): void {
+    const sim = this.sim;
+    const p = this.p;
+    const h = p.hold;
+    if (!this.task) {
+      // sem tarefa: larga o que estiver segurando (não fica com nada) e espera
+      if (h) return void this.putDown();
+      this.goal = -1;
+      return;
+    }
+    this.taskT += 0.4;
+    if (this.taskT >= 0) p.pet = this.task;
+    if (this.taskT > 40) {
+      if (h) return void this.putDown();
+      return this.finish(); // desistiu (não achou jeito)
+    }
+    const st = this.taskSt >= 0 ? sim.st[this.taskSt] : null;
+    if (this.task === 'chop') {
+      if (h) return void this.putDown();
+      if (!st || !st.item || st.item.k !== IK.Ing || sim.nextProc(st.item) !== 'chop') return this.finish();
+      if (this.oops && st.item.prog > 0.5) {
+        // cansou no meio (você termina!)
+        p.emote = 'uau';
+        p.emoteT = 1.6;
+        this.finish();
+        this.onBark?.(p, 'oops');
+        return;
+      }
+      this.setGoal(st.i, A.Act);
+      return;
+    }
+    if (this.task === 'cook') {
+      if (h && h.k === IK.Ing) {
+        const np = sim.nextProc(h);
+        const cooker = this.near((q) => !!np && COOKERS[q.k] === np && !q.item && q.fire <= 0);
+        if (cooker < 0) return void this.putDown();
+        this.setGoal(cooker, A.Pick);
+        return;
+      }
+      if (h) return void this.putDown();
+      if (this.taskT > 1 && (!st || !this.cookable(st))) return this.finish(); // já colocou (ou alguém pegou)
+      if (st) this.setGoal(st.i, A.Pick);
+      return;
+    }
+    if (this.task === 'fetch') {
+      if (h && h.k === IK.Ing) {
+        // leva para a bancada livre mais perto de VOCÊ
+        const o = this.owner;
+        let best = -1;
+        let bd = 1e9;
+        for (const q of sim.st) {
+          if (q.k !== 'counter' || q.item || q.fire > 0 || (!q.fx && !q.fy)) continue;
+          const d = o ? Math.hypot(q.x + 0.5 - o.x, q.y + 0.5 - o.y) : 0;
+          if (d < bd) {
+            bd = d;
+            best = q.i;
+          }
+        }
+        if (best < 0) return void this.putDown();
+        this.setGoal(best, A.Pick);
+        return;
+      }
+      if (h) return void this.putDown();
+      if (this.taskT > 1.5 && this.goal >= 0 && sim.st[this.goal].k === 'counter') {
+        this.finish(); // entregou
+        if (this.oops) this.onBark?.(p, 'oops'); // ...o ingrediente errado
+        return;
+      }
+      const crate = st && st.k === 'crate' ? st.i : this.near((q) => q.k === 'crate' && q.ing === this.fetchIng);
+      if (crate < 0) return this.finish();
+      this.setGoal(crate, A.Pick);
+      return;
+    }
+    if (this.task === 'serve') {
+      if (h && h.k === IK.Plate) {
+        if (!sim.matchOrder(h.parts)) return void this.putDown();
+        this.setGoal(this.near((s) => s.k === 'window' || s.k === 'belt'), A.Pick);
+        return;
+      }
+      if (h) return void this.putDown();
+      if (this.taskT > 1 && (!st || !st.item || st.item.k !== IK.Plate)) return this.finish(); // entregou (ou alguém pegou)
+      if (st) this.setGoal(st.i, A.Pick);
+      return;
+    }
+    if (this.task === 'wash') {
+      if (!this.washJob()) {
+        if (h) return void this.putDown();
+        return this.finish();
+      }
+      return;
+    }
+    if (this.task === 'fire') {
+      const fire = this.near((s) => s.fire > 0);
+      if (fire < 0) {
+        if (h && h.k === IK.Ext) return void this.putDown();
+        return this.finish();
+      }
+      if (h && h.k === IK.Ext) return this.setGoal(fire, A.Act);
+      if (h) return void this.putDown();
+      if (this.extHeldByOther()) return this.finish();
+      const ext = this.near((s) => !!s.item && s.item.k === IK.Ext);
+      if (ext >= 0) return this.setGoal(ext, A.Pick);
+      const fl = sim.floor.find((it) => it.k === IK.Ext);
+      if (fl) return this.goFloor(fl);
+      return this.finish();
+    }
+  }
+  /** esperando: segue o dono ou fica parado; parado muito tempo → senta/dorme (fofo) */
+  private petIdle(dt: number): void {
+    const p = this.p;
+    const o = this.owner;
+    if (this.task) return; // indo pegar algo no chão (goFloor) — mantém o rumo
+    p.in.act = false;
+    p.force = -1;
+    if (this.taskT < 0) {
+      this.taskT += dt;
+      if (this.taskT >= 0) p.pet = '';
+    }
+    let tx = this.stayX;
+    let ty = this.stayY;
+    let near = 0.25;
+    if (this.idleMode === 'follow' && o) {
+      tx = o.x - o.fx * 1.3;
+      ty = o.y - o.fy * 1.3;
+      near = 1.1;
+    }
+    const dx = tx - p.x;
+    const dy = ty - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > near && this.sim.isFloor(tx, ty)) {
+      p.in.mx = (dx / d) * Math.min(1, d);
+      p.in.my = (dy / d) * Math.min(1, d);
+      this.stillT = 0;
+      if (this.taskT >= 0) p.pet = this.idleMode === 'follow' ? 'follow' : 'stay';
+    } else {
+      p.in.mx = p.in.my = 0;
+      this.stillT += dt;
+      if (this.taskT >= 0) p.pet = this.stillT > 9 ? 'sleep' : this.stillT > 4 ? 'sit' : this.idleMode === 'follow' ? 'follow' : 'stay';
+      if (o && this.stillT > 0.3) {
+        const fx = o.x - p.x;
+        const fy = o.y - p.y;
+        const fl = Math.hypot(fx, fy) || 1;
+        p.fx = fx / fl;
+        p.fy = fy / fl;
+      }
+    }
+  }
+  /** ícone de estado: tarefa atual */
+  get state(): string {
+    return this.task || this.p.pet;
   }
 
   private setGoal(st: number, a: A): void {

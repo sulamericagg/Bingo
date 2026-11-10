@@ -19,6 +19,8 @@ export interface HostCfg {
   packs: number[];
   portrait: boolean;
   go: number;
+  /** campanha: nº da fase (0 = modo sem fim, -1 = desafio diário) */
+  lv?: number;
 }
 
 /** código numérico de um item (0 = nada) */
@@ -135,6 +137,7 @@ export class Net {
     o.Cr = c.crew;
     o.go = c.go;
     o.Pt = c.portrait ? 1 : 0;
+    o.Lv = c.lv ?? 0;
     let u = 0;
     for (let i = UPS.length - 1; i >= 0; i--) u = u * 8 + Math.min(7, c.ups[UPS[i]]);
     o.U = u;
@@ -152,7 +155,7 @@ export class Net {
     }
     const packs: number[] = [];
     for (let i = 0; i < 16; i++) if ((s.Pk ?? 1) & (1 << i)) packs.push(i);
-    return { day: s.D ?? 1, seed: s.Sd ?? 1, crew: s.Cr ?? 1, ups, packs, portrait: !!s.Pt, go: s.go ?? 0 };
+    return { day: s.D ?? 1, seed: s.Sd ?? 1, crew: s.Cr ?? 1, ups, packs, portrait: !!s.Pt, go: s.go ?? 0, lv: s.Lv ?? 0 };
   }
 
   /* ------------------------------ partida ------------------------------ */
