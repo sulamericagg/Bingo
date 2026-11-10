@@ -25,6 +25,8 @@ const CSS = `
 .cz-act.cz-down{transform:translateY(4px);box-shadow:0 1px 0 #2a0b5c}
 .cz-pick{width:78px;height:78px;background:radial-gradient(circle at 40% 30%,#fff6b0,#ffcf2e 60%,#e98f00)}
 .cz-do{width:104px;height:104px;background:radial-gradient(circle at 40% 30%,#c9ffdc,#3ee07a 60%,#17994a)}
+.cz-act.cz-glow{animation:czGlow .6s infinite alternate;outline:4px solid #3effa0;outline-offset:3px}
+@keyframes czGlow{to{transform:scale(1.08)}}
 .cz-do.cz-off{filter:grayscale(.7) brightness(.85)}
 .cz-emo{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 136px)}
 .cz-banner{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:40px;font-weight:700;color:#fff36b;-webkit-text-stroke:4px #2a0b5c;paint-order:stroke fill;text-shadow:0 4px 0 #2a0b5c;pointer-events:none;animation:czPop .5s cubic-bezier(.3,1.6,.6,1);padding:0 12px}

@@ -989,11 +989,16 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           const stp = tut.step(me);
           g.guide = stp.st >= 0 ? { st: stp.st, strong: stp.strong } : null;
           setTip(stp.id, stp.txt);
+          // destaca só o botão que resolve o passo
+          const hold = /chop|wash|spray/.test(stp.id);
+          const aim = stp.st >= 0 && (me.target === stp.st || hold);
+          actBtn.classList.toggle('cz-glow', aim && hold && !rend.fps);
+          pickBtn.classList.toggle('cz-glow', aim && !hold && !rend.fps);
         } else if (lv && lv.n > 0 && lv.n <= 12) {
           const hst = hintTarget(sim, me);
           g.guide = hst >= 0 ? { st: hst, strong: false } : null;
         }
-        if (petTutOn && !tut) setTip('pet', t('cozinha.petTip2', 'Toque no ajudante e dê uma ordem'));
+        if (petTutOn && !tut) setTip('pet', t('cozinha.petTip3', 'Toque no ajudante: dê ordens'));
         else if (!tut && tipId === 'pet') setTip('', '');
       }
       if (tut && tut.finished && !sim.ended) {
