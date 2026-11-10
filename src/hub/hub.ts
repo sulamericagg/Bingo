@@ -182,7 +182,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   try {
     const h = await def.launch(root, () => closeHost());
     if (!hostActive || hostDef !== def) {
-      h.destroy();
+      h?.destroy();
       return;
     }
     handle = h;
@@ -192,7 +192,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
     closeHost();
     toast(t('hub.launchFail', 'Não deu para abrir o jogo agora'));
   } finally {
-    launching = false;
+    if (hostDef === def || !hostActive) launching = false;
     mo.disconnect();
     clearTimeout(backTimer);
   }
@@ -200,6 +200,8 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
 
 /** Fecha o minigame aberto e volta para o hub. */
 export function closeHost(): void {
+  // sair antes do jogo terminar de abrir (ex.: "Sair" na escolha 2D/3D) não pode travar o JOGAR
+  launching = false;
   if (!hostActive) return;
   hideConfirm();
   const h = handle;
@@ -505,7 +507,7 @@ function bindSwipe(): void {
     dx = e.clientX - sx;
     const dy = e.clientY - sy;
     if (!dragging) {
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         dragging = true;
         try {
           vp.setPointerCapture(pid);
