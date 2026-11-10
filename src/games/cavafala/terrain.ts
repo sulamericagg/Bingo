@@ -536,11 +536,11 @@ export class Terrain {
             gl = 1;
           }
           nrm.set(-gx / gl, -gy / gl, -gz / gl);
-          // material: canto mais sólido
+          // material: canto sólido mais perto da superfície
           let bm = 0;
-          let bv = -1e9;
+          let bv = 1e9;
           for (let bb = 0; bb < 8; bb++)
-            if (v[bb] > bv) {
+            if (v[bb] > 0 && v[bb] < bv) {
               bv = v[bb];
               bm = mc[((k + (bb >> 2)) * WP + (j + ((bb >> 1) & 1))) * WP + (i + (bb & 1))];
             }

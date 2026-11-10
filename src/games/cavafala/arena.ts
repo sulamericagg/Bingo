@@ -160,6 +160,7 @@ export class ArenaMode implements ModeCtl {
         bigMoment(t('cavafala.arena.go', 'Cava!'), { color: 'linear-gradient(90deg,#ff8a3a,#ffd34a)' });
         sfx.swish();
         notify(t('cavafala.arena.tip', 'Cave para juntar material e FALE para criar engenhocas!'), { ms: 4000 });
+        objective(null);
       }
       return;
     }

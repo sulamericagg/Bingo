@@ -83,6 +83,10 @@ export class RestoreMode implements ModeCtl {
   private sea: THREE.Mesh | null = null;
   private clouds: THREE.Group = new THREE.Group();
   private clearQ: [number, number, number][] = [];
+  /** de onde procurar o chão (abaixo do teto da caverna) */
+  private get topY(): number {
+    return this.th.cave ? 25 : 31;
+  }
 
   constructor(
     private w: World,
@@ -155,7 +159,7 @@ export class RestoreMode implements ModeCtl {
         z = Math.sin(a) * R + 4;
       if (Math.abs(z - this.L.ravZ) < 5) continue;
       if (Math.abs(x) > 30 || Math.abs(z) > 30) continue;
-      const y = T.groundY(x, z, 30);
+      const y = T.groundY(x, z, this.topY);
       if (y < 8) continue;
       const o = new THREE.Group();
       const tp = this.th.tree;
@@ -257,7 +261,7 @@ export class RestoreMode implements ModeCtl {
     const C1 = new THREE.Color(this.th.sky[0]).lerp(new THREE.Color(this.th.night[0]), dusk);
     const C2 = new THREE.Color(this.th.sky[1]).lerp(new THREE.Color(this.th.night[1]), dusk);
     const fog = new THREE.Color(this.th.fog).lerp(new THREE.Color(this.th.night[1]), dusk);
-    const light = this.th.cave ? 0.45 : 1 - dusk * 0.6;
+    const light = this.th.cave ? 0.68 - dusk * 0.2 : 1 - dusk * 0.6;
     this.w.setSky('#' + C1.getHexString(), '#' + C2.getHexString(), light, '#' + fog.getHexString());
     this.w.dayK = k;
   }
@@ -383,7 +387,7 @@ export class RestoreMode implements ModeCtl {
   respawn(): void {
     const a = this.w.me;
     a.body.p.copy(this.L.spawn);
-    a.body.p.y = this.w.T.groundY(a.body.p.x, a.body.p.z, 31) + 0.2;
+    a.body.p.y = this.w.T.groundY(a.body.p.x, a.body.p.z, this.topY) + 0.2;
     a.body.v.set(0, 0, 0);
   }
 
@@ -430,7 +434,7 @@ export class RestoreMode implements ModeCtl {
       for (let x = bb.min.x - E; x <= bb.max.x + E; x += 1.8)
         for (let z = bb.min.z - E; z <= bb.max.z + E; z += 1.8) {
           const out = Math.max(bb.min.x - x, x - bb.max.x, bb.min.z - z, z - bb.max.z, 0);
-          const top = this.w.T.groundY(x, z, 31, b.y);
+          const top = this.w.T.groundY(x, z, this.topY, b.y);
           if (top === -Infinity) continue;
           for (let y = top + 0.4; y >= b.y + 2 + out * 0.9; y -= 1.6) ops.push([x, y, z]);
         }
@@ -490,7 +494,7 @@ export class RestoreMode implements ModeCtl {
 
   private pinY(b: Building): number {
     const T = this.w.T;
-    const gy = T.groundY(b.x, b.z, 31, b.y - 2);
+    const gy = T.groundY(b.x, b.z, this.topY, b.y - 2);
     return Math.max(b.top.y + 1.2, gy + 1.8);
   }
   private updatePins(dt: number): void {

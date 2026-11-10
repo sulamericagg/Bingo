@@ -30,7 +30,7 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
   const ravHalf = 2.1;
   const plateau = floorY + 6.6 + th.cover;
   const edgeH = th.sea ? floorY - 1.6 : floorY + 1.2;
-  const ceil = th.cave ? 27.5 : 999;
+  const ceil = th.cave ? 31.6 : 999;
   const D = T.d;
   const Mm = T.m;
   for (let k = 0; k < n; k++)
@@ -43,7 +43,7 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
       let H = edgeH + (plateau - edgeH) * hill + (nz - 0.5) * 2.6 * (0.4 + hill * 0.6);
       // ondinhas de dunas no deserto
       if (th.id === 'deserto') H += Math.sin(x * 0.35 + z * 0.12) * 0.35 * hill;
-      const cH = ceil - fbm2(x * 0.09, z * 0.09, seed + 5, 3) * 4.5;
+      const cH = ceil - fbm2(x * 0.09, z * 0.09, seed + 5, 3) * 3;
       for (let j = 0; j < ny; j++) {
         const y = j * vs;
         const q = (k * ny + j) * n + i;
@@ -53,7 +53,7 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
         if (y > 1.4) d = Math.min(d, Math.max(-3, Math.min(3, rz)));
         // teto da caverna (+ estalactites)
         if (th.cave) {
-          const st = noise3(x * 0.25, 0, z * 0.25, seed + 3) > 0.72 ? 3 : 0;
+          const st = noise3(x * 0.25, 0, z * 0.25, seed + 3) > 0.74 ? 2.4 : 0;
           d = Math.max(d, Math.min(3, y - (cH - st)));
         }
         let m: number;
@@ -62,7 +62,7 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
           d = Math.max(d, 1);
         } else {
           const depth = H - y;
-          if (th.cave && y > cH - 4) m = noise3(x * 0.3, y * 0.3, z * 0.3, seed + 8) > 0.66 ? M.Cristal : M.Pedra;
+          if (th.cave && y > cH - 3.5) m = noise3(x * 0.3, y * 0.3, z * 0.3, seed + 8) > 0.66 ? M.Cristal : M.Pedra;
           else if (depth < 0.7 && y > floorY) m = th.id === 'deserto' ? M.Areia : M.Grama;
           else if (y < floorY - 0.1 && y > floorY - 0.7) m = M.Pedra; // calçamento da vila
           else if (y < floorY - 3.5) {
@@ -90,7 +90,7 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
   T.markAllDirty();
   // nasce do lado de cá da ravina, no alto do morro, olhando a vila
   const sz = -21;
-  const sy = T.groundY(0, sz, 30) + 0.2;
+  const sy = T.groundY(0, sz, th.cave ? 25 : 30) + 0.2;
   const L: TownLayout = { cx, cz, floorY, ravZ, ravHalf, spawn: new THREE.Vector3(0, sy, sz) };
   return { T, L };
 }
