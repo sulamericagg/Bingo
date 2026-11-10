@@ -67,6 +67,8 @@ export class Fps {
   onProgress?: (room: RoomRec | null, p: number) => void;
   onLabel?: (s: string) => void;
   onCleaned?: (n: number) => void;
+  /** [casa-ativ] gancho do módulo src/home3d/activities (botões/toques têm prioridade com a Mão) */
+  ext: { buttons(): ActDef[] | null; tap(id: string): boolean; readonly busy: boolean } | null = null;
 
   constructor(
     readonly eng: Engine,
@@ -267,6 +269,8 @@ export class Fps {
 
   /* ---------------- botões ---------------- */
   private buttons(): ActDef[] {
+    const ex = this.ext?.buttons(); // [casa-ativ]
+    if (ex) return ex;
     const tg = this.target;
     const role = this.eng.role;
     const L: ActDef[] = [];
@@ -310,6 +314,7 @@ export class Fps {
     return L;
   }
   private tap(id: string): void {
+    if (this.ext?.tap(id)) return; // [casa-ativ]
     const tg = this.target;
     switch (id) {
       case 'pick':
@@ -665,7 +670,7 @@ export class Fps {
     } else if (holdPaint && this.tool === 'paint') {
       this.paintStep(dt);
       scrub = 0.7;
-    } else if (this.tool === 'hand' && !this.held) this.hand.setPose('open');
+    } else if (this.tool === 'hand' && !this.held && !this.ext?.busy) this.hand.setPose('open'); // [casa-ativ] busy
     else if (this.tool === 'clean') this.updatePose();
     this.hand.visible = !this.decor?.mv;
     this.hand.scrub += (scrub - this.hand.scrub) * Math.min(1, dt * 12);

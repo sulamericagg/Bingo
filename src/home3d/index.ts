@@ -25,6 +25,7 @@ import { Actions, askLandscape, button, el, ensureCss, esc, fallback, FpsInput, 
 import { splatTexture } from './textures';
 import type { Close3DResult, Open3DOpts } from './types';
 import type { HomeDesign, MessItem } from '../home/api';
+import { initActivities, type Activities } from './activities'; // [casa-ativ]
 
 export type { Open3DOpts, Close3DResult, MessItem3D, RoomItem3D, Mode3D } from './types';
 
@@ -409,6 +410,30 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   setMode(opts.mode === 'build' && canUse(role, 'decorate') ? 'build' : 'fps', true);
   maybeCoach(hud, editable && canUse(role, 'decorate'));
 
+  /* [casa-ativ] vida em casa: cozinha livre, tarefas, preparar festa (src/home3d/activities) */
+  let acts3: Activities | null = null;
+  try {
+    acts3 = initActivities({
+      eng,
+      fps,
+      hud,
+      partyActive: () => !!party,
+      startParty: () => {
+        if (party) return;
+        party = new Party(eng, null, true, opts.viewerId ?? 'me', opts.skin ?? save.skin);
+        (fps as unknown as { party: Party }).party = party;
+        party.onToast = (s) => toast.show(s, 900);
+        party.onHitMe = (k) => splatScreen(k);
+        toolDefs.push({ id: 'cleanup', label: t('home3d.party.cleanup', 'Hora de limpar!'), icon: 'party' });
+        toolDefs.push({ id: 'emote', label: t('home3d.emote', 'Emote'), icon: 'emote' });
+        title.textContent = t('home3d.title.party', 'Festa!');
+        renderTools();
+      },
+    });
+  } catch (e) {
+    console.warn('[home3d] activities', e);
+  }
+
   /* ---------------- laço ---------------- */
   let raf = 0;
   let last = performance.now();
@@ -453,6 +478,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     if (!editable && eng.cleaned > 0) opts.onReward?.('clean', eng.cleaned);
     const res: Close3DResult = { design: s.design, mess: s.mess, cleaned: eng.cleaned, broken: eng.broken, reason };
     closeEmoteWheel();
+    acts3?.dispose(); // [casa-ativ]
     fps.dispose();
     decor.dispose();
     build.dispose();
@@ -485,8 +511,9 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     if (mode === 'fps' && !flying) fps.update(dt);
     else build.update(dt);
     decor.update(dt);
+    acts3?.update(dt, mode === 'fps' && !flying); // [casa-ativ]
     party?.update(dt, fps.pos, eng.camera.position, () => {
-      party.sendState(fps.pos, fps.held?.food?.kind, myEmoteT > 0 ? myEmote : undefined);
+      party?.sendState(fps.pos, fps.held?.food?.kind, myEmoteT > 0 ? myEmote : undefined);
     });
     if (myEmoteT > 0) myEmoteT -= dt;
     eng.step(dt);
@@ -519,7 +546,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     }
   };
   raf = requestAnimationFrame(loop);
-  if (opts.debug || location.search.includes('debug')) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, decor, party, stats, setMode, close, THREE };
+  if (opts.debug || location.search.includes('debug')) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, decor, party, stats, setMode, close, THREE, acts: acts3?.debugApi() }; // [casa-ativ] acts
   void esc;
   const res = await done;
   window.removeEventListener('keydown', onKey);
