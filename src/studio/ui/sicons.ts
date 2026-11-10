@@ -23,7 +23,7 @@ const P: Record<string, string> = {
   save: '<path d="M5 3h11l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M8 3v5h7V3M8 21v-6h8v6"/>',
   cam: '<path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   fly: '<path d="M12 3l3 7h6l-5 4 2 7-6-4-6 4 2-7-5-4h6z"/>',
-  orbit: '<ellipse cx="12" cy="12" rx="10" ry="4"/><circle cx="12" cy="12" r="3"/>',
+  orbit: '<circle cx="12" cy="12" r="2.5"/><path d="M20.5 9.5A9 9 0 1 0 21 13"/><path d="M21 5v4.5h-4.5"/>',
   dup: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   group: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/><path d="M3 15v4a2 2 0 0 0 2 2h4M21 9V5a2 2 0 0 0-2-2h-4" stroke-dasharray="2 2"/>',

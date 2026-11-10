@@ -209,7 +209,7 @@ export class Studio {
     this.scene.fog = new THREE.Fog(this.world.sky.clone(), this.world.fogFar * 0.45, this.world.fogFar);
     this.camera.far = Math.max(400, this.world.fogFar * 1.2);
     this.camera.updateProjectionMatrix();
-    this.editor?.setGridVisible(kind !== 'infinite' || true);
+    this.editor?.setGridSize(kind === 'void' ? 14 : 60);
   }
 
   /* ---------------------------------- limites ---------------------------------- */

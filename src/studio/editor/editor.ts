@@ -281,6 +281,7 @@ export class Editor {
         const k = 0.05;
         m.scale.set(1 + (2 * k) / Math.abs(s[0]), 1 + (2 * k) / Math.abs(s[1]), 1 + (2 * k) / Math.abs(s[2]));
         m.renderOrder = -1;
+        m.userData.outline = true;
         o = m;
         v.add(o);
       } else {
@@ -299,7 +300,7 @@ export class Editor {
     const b = new THREE.Box3();
     for (const id of this.sel) {
       const v = this.views.get(id);
-      if (v) b.expandByObject(v);
+      if (v) expandBox(b, v);
     }
     return b;
   }
@@ -770,6 +771,19 @@ export class Editor {
   setGridVisible(on: boolean): void {
     this.gridHelper.visible = on;
   }
+  /** grade de 0,5 m do tamanho da área de construção */
+  setGridSize(size: number): void {
+    this.helpers.remove(this.gridHelper);
+    this.gridHelper.geometry.dispose();
+    (this.gridHelper.material as THREE.Material).dispose();
+    this.gridHelper = new THREE.GridHelper(size, Math.round(size * 2), 0xffffff, 0xffffff);
+    const gm = this.gridHelper.material as THREE.LineBasicMaterial;
+    gm.transparent = true;
+    gm.opacity = 0.2;
+    gm.depthWrite = false;
+    this.gridHelper.position.y = 0.012;
+    this.helpers.add(this.gridHelper);
+  }
 
   /* ------------------------------ entrada (toque) ------------------------------ */
 
@@ -1180,6 +1194,19 @@ export class Editor {
     this.gridHelper.geometry.dispose();
     void materialFor;
   }
+}
+
+const _bb = new THREE.Box3();
+/** caixa do objeto sem o contorno de seleção */
+export function expandBox(b: THREE.Box3, o: THREE.Object3D): void {
+  o.updateWorldMatrix(true, true);
+  o.traverse((c) => {
+    const m = c as THREE.Mesh;
+    if (!m.isMesh || m.userData.outline) return;
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    _bb.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
+    b.union(_bb);
+  });
 }
 
 function refFor(A: THREE.Vector3): THREE.Vector3 {

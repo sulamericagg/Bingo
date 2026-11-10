@@ -8,6 +8,7 @@
 .bs-root.playing .bs-ui{display:none}
 .bs-root button{font:inherit;color:inherit;border:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .bs-ic{display:block;flex:none}
+.bs-root [hidden]{display:none !important}
 
 /* ------------------------------ barra de cima ------------------------------ */
 .bs-top{position:absolute;top:var(--edge-t,8px);left:var(--edge-l,10px);right:var(--edge-r,10px);height:44px;display:flex;align-items:center;gap:6px;pointer-events:none}

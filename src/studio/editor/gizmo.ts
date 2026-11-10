@@ -105,7 +105,7 @@ export class Gizmo {
   /** tamanho constante na tela */
   fit(cam: THREE.PerspectiveCamera): void {
     const d = cam.position.distanceTo(this.root.position);
-    const s = Math.max(0.05, d * Math.tan((cam.fov * Math.PI) / 360) * 0.36);
+    const s = Math.max(0.05, d * Math.tan((cam.fov * Math.PI) / 360) * 0.5);
     this.root.scale.setScalar(s);
   }
 
