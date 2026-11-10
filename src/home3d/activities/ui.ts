@@ -20,7 +20,7 @@ const CSS = `
 .ha-card b{display:block;font:800 15px/1.2 system-ui,sans-serif}
 .ha-card i{font-style:normal;color:#ffb300;font-size:15px;letter-spacing:1px}
 .ha-card small{display:block;font:700 11px system-ui,sans-serif;color:#7a5ca8}
-.ha-side{position:absolute;left:max(10px,env(safe-area-inset-left));top:calc(max(8px,env(safe-area-inset-top)) + 52px);display:flex;flex-direction:column;gap:5px;pointer-events:none;z-index:2}
+.ha-side{position:absolute;align-items:flex-start;left:max(10px,env(safe-area-inset-left));top:calc(max(8px,env(safe-area-inset-top)) + 52px);display:flex;flex-direction:column;gap:5px;pointer-events:none;z-index:2}
 .ha-needs{display:flex;gap:4px;background:#2a0b5c99;border-radius:10px;padding:4px 6px}
 .ha-need{width:24px;display:flex;flex-direction:column;align-items:center;gap:2px;font:800 9px system-ui,sans-serif;color:#fff}
 .ha-need span{font-size:12px;line-height:1}

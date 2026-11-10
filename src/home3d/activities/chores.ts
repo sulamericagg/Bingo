@@ -304,7 +304,8 @@ export class Chores {
       hit: (_r, tg) => {
         const d = itemHit(item, tg);
         if (d !== null) pt.copy(tg.point);
-        return d;
+        // reserva: utensílios em cima do tampo (tábua, liquidificador) têm prioridade
+        return d === null ? null : d + 0.4;
       },
       label: () => t('home3d.furn.' + item.kind, item.info.name),
       acts: () => [],

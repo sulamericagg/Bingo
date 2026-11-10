@@ -487,10 +487,11 @@ class Prep {
     this.rig.root.add(board, base, this.jar, this.juice);
     this.rig.addBody(this.boardL.clone(), [[new CANNON.Box(new CANNON.Vec3(0.21, 0.0125, 0.14)), new CANNON.Vec3(0, 0.0125, 0)]]);
     this.rig.addBody(this.blendL.clone(), [[new CANNON.Box(new CANNON.Vec3(0.09, 0.075, 0.09)), new CANNON.Vec3(0, 0.075, 0)], ...ringShapes(0.085, 0.25, 8, false).map(([s, o, q]) => [s, new CANNON.Vec3(o.x, o.y + 0.15, o.z), q] as [CANNON.Shape, CANNON.Vec3, CANNON.Quaternion?])]);
-    const bMin = v3(this.boardL.x - 0.23, h - 0.02, this.boardL.z - 0.16),
-      bMax = v3(this.boardL.x + 0.23, h + 0.16, this.boardL.z + 0.16);
-    const lMin = v3(this.blendL.x - 0.11, h, this.blendL.z - 0.11),
-      lMax = v3(this.blendL.x + 0.11, h + 0.42, this.blendL.z + 0.11);
+    // caixas de mira generosas (dedão no celular): pegam também a frente do tampo
+    const bMin = v3(this.boardL.x - 0.25, h - 0.25, this.boardL.z - 0.18),
+      bMax = v3(this.boardL.x + 0.25, h + 0.2, Math.max(this.boardL.z + 0.18, d / 2 + 0.04));
+    const lMin = v3(this.blendL.x - 0.13, h - 0.2, this.blendL.z - 0.13),
+      lMax = v3(this.blendL.x + 0.13, h + 0.45, Math.max(this.blendL.z + 0.13, d / 2 + 0.04));
     this.spots = [
       {
         id: 'board',
@@ -858,7 +859,9 @@ export class Kitchen {
     for (const s of [...this.stoves]) if (!s.rig.alive) (s.dispose(), this.stoves.splice(this.stoves.indexOf(s), 1));
     for (const it of stoveItems) if (!this.stoves.some((s) => s.rig.item === it)) this.stoves.push(new Stove(this, it));
     for (const s of [...this.sinks]) if (!s.rig.alive) (s.dispose(), this.sinks.splice(this.sinks.indexOf(s), 1));
-    for (const it of ctx.items('sink')) if (!this.sinks.some((s) => s.item === it)) this.sinks.push(new Sink(this, it));
+    const kroom = ctx.eng.roomById('kitchen');
+    const sinkItems = ctx.items('sink').filter((i) => i.room === kroom);
+    for (const it of sinkItems.length ? sinkItems : ctx.items('sink')) if (!this.sinks.some((s) => s.item === it)) this.sinks.push(new Sink(this, it));
     if (this.prep && !this.prep.rig.alive) (this.prep.dispose(), (this.prep = null));
     if (!this.prep) {
       const kitchen = ctx.eng.roomById('kitchen');
@@ -957,6 +960,8 @@ export class Kitchen {
   /** botões quando mira um ingrediente solto */
   aimActs(p: Prop): ActDef[] {
     const L: ActDef[] = [];
+    const sk = this.sinks.find((s) => s.inBasin().includes(p));
+    if (sk && p.dirty > 0) L.push({ id: 's-wash', label: t('act.btn.wash', 'LAVAR'), icon: 'clean', size: 'big', hold: true });
     if (this.prep && this.prep.onBoard().includes(p)) L.push({ id: 'k-chop', label: t('act.btn.chop', 'CORTAR'), icon: 'break', size: 'big', hold: true });
     const st = this.stoves.find((s) => s.inPan().includes(p));
     if (st) L.push({ id: 'k-stove', label: st.on ? t('act.btn.stoveOff', 'DESLIGAR FOGÃO') : t('act.btn.stoveOn', 'LIGAR FOGÃO'), icon: 'fix', size: 'small' });
@@ -969,19 +974,20 @@ export class Kitchen {
     }
     return false;
   }
-  aimHold(id: string, dt: number): void {
+  aimHold(id: string, dt: number, p?: Prop): void {
     if (id === 'k-chop') this.prep?.spots[0].hold?.(id, dt, null);
+    if (id === 's-wash') (this.sinks.find((s) => p && s.inBasin().includes(p)) ?? this.sinks[0])?.spots[0].hold?.(id, dt, null);
   }
   /** extintor */
   spray(dt: number): void {
     const ctx = this.ctx;
     const cam = ctx.eng.camera;
-    const dir = cam.getWorldDirection(V);
-    const o = cam.position;
+    const dir = cam.getWorldDirection(new THREE.Vector3());
+    const o = cam.position.clone();
     ctx.pose('grab');
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       const s = 3.5 + Math.random() * 1.5;
-      ctx.eng.emit(o.x + dir.x * 0.4, o.y + dir.y * 0.4 - 0.1, o.z + dir.z * 0.4, dir.x * s + (Math.random() - 0.5) * 0.6, dir.y * s + (Math.random() - 0.5) * 0.6, dir.z * s + (Math.random() - 0.5) * 0.6, { tile: 2, color: '#ffffff', life: 0.7, size: 0.08, grow: 0.5, grav: 1 });
+      ctx.eng.emit(o.x + dir.x * 0.4, o.y + dir.y * 0.4 - 0.12, o.z + dir.z * 0.4, dir.x * s + (Math.random() - 0.5) * 0.5, dir.y * s + (Math.random() - 0.5) * 0.5, dir.z * s + (Math.random() - 0.5) * 0.5, { tile: 0, color: '#ffffff', life: 0.6, size: 0.06, grow: 0.35, grav: 1.5 });
     }
     if (Math.random() < dt * 8) sfx.spray();
     let hit = false;

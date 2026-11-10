@@ -118,7 +118,7 @@ export class Dishes {
     this.ctx.props.setDirty(c, 1);
   }
   eat(c: Prop): void {
-    const d = c.dish;
+    const d = c?.dish;
     if (!d) return;
     const fps = this.ctx.fps;
     fps.hand.play('eat');

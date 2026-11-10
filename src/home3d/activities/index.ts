@@ -172,7 +172,8 @@ export class Activities {
     if (h) {
       const L: ActDef[] = [];
       const pl = this.placeTarget(h);
-      if (pl) L.push({ id: 'a-place', label: pl.label, icon: 'check', size: 'big' });
+      // geladeira: GUARDAR não é o botão grande (senão você devolve o que acabou de pegar)
+      if (pl) L.push({ id: 'a-place', label: pl.label, icon: 'check', size: pl.spot?.id === 'fridge' ? undefined : 'big' });
       if (h.kind === 'ext') L.push({ id: 'a-spray', label: t('act.btn.spray', 'BORRIFAR'), icon: 'clean', size: 'big', hold: true });
       if (h.kind === 'bag') L.push({ id: 'a-out', label: t('act.btn.takeOut', 'LEVAR PRA FORA'), icon: 'exit', size: 'big' });
       L.push(...this.party.heldActs(h), ...this.dishes.heldActs(h));
@@ -387,7 +388,7 @@ export class Activities {
         }
         const a = this.aim;
         if (a?.kind === 'spot') a.s.hold?.(id, dt, this.heldP);
-        else if (a?.kind === 'prop') this.kitchen.aimHold(id, dt);
+        else if (a?.kind === 'prop') this.kitchen.aimHold(id, dt, a.p);
       }
     }
     // pose da mão
