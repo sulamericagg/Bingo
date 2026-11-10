@@ -359,18 +359,9 @@ export function handTexture(col: HandColors, open = false): THREE.CanvasTexture 
   const c = cv.getContext('2d')!;
   c.lineJoin = 'round';
   c.lineCap = 'round';
-  // braço
-  c.fillStyle = col.light;
   c.strokeStyle = INK;
   c.lineWidth = 8;
-  c.beginPath();
-  c.moveTo(96, 262);
-  c.quadraticCurveTo(100, 200, 88, 160);
-  c.lineTo(176, 150);
-  c.quadraticCurveTo(178, 210, 196, 262);
-  c.closePath();
-  c.fill();
-  c.stroke();
+  // (o antebraço é uma malha à parte: Forearm em src/3d/common/hand.ts)
   const cx = 128;
   const cy = 120;
   const g = c.createRadialGradient(cx - 18, cy - 26, 6, cx, cy, 80);
@@ -413,6 +404,17 @@ export function handTexture(col: HandColors, open = false): THREE.CanvasTexture 
   c.beginPath();
   c.ellipse(cx + 26, cy - 20, 15, 8, -0.5, 0, TAU);
   c.fill();
+  // rim quente em cima, sombra fria embaixo (assenta no cenário)
+  c.strokeStyle = 'rgba(255,248,230,0.5)';
+  c.lineWidth = 5;
+  c.beginPath();
+  c.ellipse(cx, cy, 52, 44, 0, Math.PI * 1.1, Math.PI * 1.6);
+  c.stroke();
+  c.strokeStyle = 'rgba(30,10,60,0.2)';
+  c.lineWidth = 9;
+  c.beginPath();
+  c.ellipse(cx, cy, 51, 43, 0, Math.PI * 0.1, Math.PI * 0.8);
+  c.stroke();
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

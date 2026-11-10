@@ -7,6 +7,7 @@
  *  jogar e chutar toras, veículo dirigível com caçamba, funil, esteira.
  * ============================================================ */
 import * as THREE from 'three';
+import { Forearm } from '../../3d/common/hand';
 import * as CANNON from 'cannon-es';
 import { t } from '../../i18n';
 import { gameFont } from '../../i18n/font';
@@ -58,6 +59,8 @@ function qFor(tier: Tier): Q {
   ][tier];
 }
 
+const _w = new THREE.Vector3();
+const _vInv = new THREE.Matrix4();
 export async function createView3D(root: HTMLElement, sim: Sim, tier: Tier): Promise<View> {
   return new View3D(root, sim, tier);
 }
@@ -239,6 +242,8 @@ class View3D implements View {
   private toolLvl = -1;
   private handR!: THREE.Mesh;
   private handL!: THREE.Mesh;
+  private armR!: Forearm;
+  private armL!: Forearm;
   private heldGroup = new THREE.Group();
   private heldLogs: THREE.Group[] = [];
   private wheel!: THREE.Group;
@@ -1099,6 +1104,10 @@ class View3D implements View {
     this.handL.renderOrder = 10;
     this.vmCam.add(this.vmRoot);
     this.vmRoot.add(this.vmTool, this.handR, this.handL, this.heldGroup);
+    // antebraços completos saindo da borda da tela (nunca aparece o braço cortado)
+    this.armR = new Forearm(col, 1, 9, 0.05);
+    this.armL = new Forearm(col, -1, 9, 0.05);
+    this.vmCam.add(this.armR.mesh, this.armL.mesh);
     // toras nas mãos
     const side = this.trackG(logSideGeometry());
     const cap = this.trackG(logCapGeometry());
@@ -1262,8 +1271,12 @@ class View3D implements View {
         tz -= k * 0.4;
       }
       if (this.grabAnim > 0) ty -= Math.sin((1 - this.grabAnim) * Math.PI) * 0.15;
-      this.heldGroup.position.set(tx + lx + bx, ty + ly + by, tz);
-      this.heldGroup.rotation.set(0.1, 0, Math.sin(this.time * 2) * 0.02);
+      // peso: as toras afundam a cada passo e balançam devagar (inércia)
+      const nh = this.held.length;
+      const wk = Math.min(1, nh / 3);
+      ty -= 0.012 * wk + Math.abs(Math.sin(this.bob)) * 0.022 * walk * (0.5 + wk);
+      this.heldGroup.position.set(tx + lx * 0.6 + bx * 0.7, ty + ly * 0.6 + by, tz);
+      this.heldGroup.rotation.set(0.1 + Math.sin(this.time * 1.4) * 0.01, 0, Math.sin(this.time * 2) * 0.02 + Math.sin(this.bob) * 0.05 * walk);
       for (let i = 0; i < HAND_CAP; i++) {
         const g = this.heldLogs[i];
         const h = this.held[i];
@@ -1309,6 +1322,19 @@ class View3D implements View {
         this.handR.rotation.set(0, 0, 0.2);
         this.handL.rotation.set(0, 0, -0.2);
       }
+    }
+    this.updateArms();
+  }
+
+  /** antebraços: do pulso de cada mão até um cotovelo fora do quadro */
+  private updateArms(): void {
+    this.vmRoot.updateMatrixWorld(true);
+    _vInv.copy(this.vmCam.matrixWorld).invert();
+    for (const [h, a] of [[this.handR, this.armR], [this.handL, this.armL]] as const) {
+      a.mesh.visible = h.visible;
+      if (!h.visible) continue;
+      _w.set(0, -0.034, 0).applyMatrix4(h.matrixWorld).applyMatrix4(_vInv);
+      a.set(_w, this.vmCam, 0.72, 0);
     }
   }
 
@@ -2927,6 +2953,8 @@ class View3D implements View {
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();
     for (const tx of this.texs) tx.dispose();
+    this.armR?.dispose();
+    this.armL?.dispose();
     this.renderer.dispose();
   }
 }
