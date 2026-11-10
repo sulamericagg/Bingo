@@ -10,7 +10,7 @@
  * Tudo vive dentro de <section id="menu"> (index.html), então qualquer tela que
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
-import { lockOrientation, restorePortrait } from '../core/orientation';
+import { ensureLandscape, restorePortrait, setPrefersPortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
@@ -180,7 +180,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   hostRoot.append(root, loader);
   // orientação previsível: jogos 2D em pé; quando um jogo mostra uma cena 3D (canvas do three.js),
   // a tela trava deitada sozinha (ver watch3d). Nada gira no meio da partida.
-  watch3d(root);
+  watch3d(root, def.id);
 
   const hideLoader = () => loader.remove();
   const mo = new MutationObserver(() => {
@@ -961,60 +961,94 @@ function bindGlGuard(): void {
   bus.on('app-resume', () => window.setTimeout(recover, 250));
 }
 
-/* ---------------- orientação automática por cena ---------------- */
+/* ---------------- orientação automática por cena ----------------
+ * Paisagem quando há um canvas do three.js visível do jogo aberto (o three marca data-engine="three.js rNNN";
+ * o Cinema 3D marca "three-cinema"). Intros (data-intro) e a casa 3D (.h3-canvas, trava sozinha) não contam.
+ * Procura no host inteiro e em filhos do <body> (jogo que pendure o canvas fora da raiz). Observa também
+ * data-engine (o three marca o canvas DEPOIS de ele entrar no DOM). Só volta para retrato quando o 3D
+ * sumiu por ~600 ms (troca de cena/pausa não faz a tela piscar). Verificação, nova tentativa, aviso
+ * "Gire o celular" e relatório ficam em core/orientation (ensureLandscape). */
 let o3d: MutationObserver | null = null;
 let o3dTimer = 0;
 let o3dState: 'portrait' | 'landscape' = 'portrait';
-let o3dRetry: number[] = [];
+let o3dOff: (() => void) | null = null;
 let rotBtn: HTMLButtonElement | null = null;
 const isLand = () => window.innerWidth > window.innerHeight;
-/** Pede paisagem e confere se girou de verdade; se não girou, tenta de novo e,
- *  em último caso, libera o sensor ('any') para o jogador girar com a mão. */
-function wantLandscape(): void {
-  o3dRetry.forEach(clearTimeout);
-  o3dRetry = [];
-  void lockOrientation('landscape');
-  o3dRetry.push(
-    window.setTimeout(() => { if (o3dState === 'landscape' && !isLand()) void lockOrientation('landscape'); }, 900),
-    window.setTimeout(() => { if (o3dState === 'landscape' && !isLand()) void lockOrientation('any'); }, 2200),
-  );
+const SEL3D = 'canvas[data-engine^="three"]:not([data-intro]):not(.h3-canvas)';
+function visible3d(cv: HTMLCanvasElement): boolean {
+  if (!cv.isConnected || cv.closest('[data-intro]')) return false;
+  if (cv.offsetWidth > 0 && cv.offsetHeight > 0) return true;
+  const r = cv.getBoundingClientRect(); // position:fixed não tem offsetParent mas tem tamanho
+  return r.width > 0 && r.height > 0;
 }
-function ensureRotBtn(show: boolean): void {
+function find3d(root: HTMLElement): boolean {
+  const list = [...root.querySelectorAll<HTMLCanvasElement>(SEL3D)];
+  list.push(...document.body.querySelectorAll<HTMLCanvasElement>(`body > :not(#menu):not(.h3) ${SEL3D}, body > ${SEL3D}`));
+  return list.some(visible3d);
+}
+function ensureRotBtn(show: boolean, game: string): void {
   if (!rotBtn) {
     rotBtn = document.createElement('button');
     rotBtn.className = 'gh-rot';
     rotBtn.setAttribute('aria-label', t('hub.rotate', 'Girar tela'));
     rotBtn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4h7a3 3 0 0 1 3 3v3" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M14.5 8.5 17 11l2.5-2.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="4" y="11" width="13" height="9" rx="2" fill="none" stroke="#fff" stroke-width="2.4"/></svg>';
-    rotBtn.onclick = () => {
-      if (isLand()) void lockOrientation('portrait');
-      else void lockOrientation('landscape');
-    };
     host.appendChild(rotBtn);
   }
+  // em pé por escolha → girar volta a valer; deitado → o jogador quer em pé (lembrado por jogo)
+  rotBtn.onclick = () => {
+    if (isLand()) {
+      setPrefersPortrait(game, true);
+      restorePortrait();
+    } else {
+      setPrefersPortrait(game, false);
+      void ensureLandscape(game);
+    }
+  };
   rotBtn.hidden = !show;
 }
-function watch3d(root: HTMLElement): void {
+function watch3d(root: HTMLElement, game: string): void {
   unwatch3d();
   o3dState = 'portrait';
+  let lostAt = 0;
   const check = () => {
     o3dTimer = 0;
-    const cv = root.querySelector<HTMLCanvasElement>('canvas[data-engine^="three"]:not([data-intro])');
-    const want = cv && cv.isConnected && cv.offsetWidth > 0 ? 'landscape' : 'portrait';
-    ensureRotBtn(want === 'landscape');
+    if (!hostActive) return;
+    const has = find3d(root);
+    if (has) lostAt = 0;
+    const want = has ? 'landscape' : 'portrait';
+    ensureRotBtn(has, game);
     if (want === o3dState) return;
+    if (want === 'portrait') {
+      if (!lostAt) lostAt = performance.now();
+      if (performance.now() - lostAt < 600) {
+        o3dTimer = window.setTimeout(check, 650);
+        return;
+      }
+    }
     o3dState = want;
-    if (want === 'landscape') wantLandscape();
-    else void lockOrientation('portrait');
+    if (want === 'landscape') void ensureLandscape(game);
+    else restorePortrait();
   };
-  o3d = new MutationObserver(() => {
+  const kick = () => {
     if (!o3dTimer) o3dTimer = window.setTimeout(check, 120);
+  };
+  o3d = new MutationObserver(kick);
+  o3d.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'data-engine'] });
+  o3d.observe(document.body, { childList: true });
+  window.addEventListener('resize', kick);
+  // de volta ao app: reafirma a paisagem se o 3D está na tela
+  const offResume = bus.on('app-resume', () => {
+    if (o3dState === 'landscape') void ensureLandscape(game);
   });
-  o3d.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  o3dOff = () => {
+    window.removeEventListener('resize', kick);
+    offResume();
+  };
   check();
 }
 function unwatch3d(): void {
-  o3dRetry.forEach(clearTimeout);
-  o3dRetry = [];
+  o3dOff?.();
+  o3dOff = null;
   if (rotBtn) rotBtn.hidden = true;
   o3d?.disconnect();
   o3d = null;
