@@ -305,7 +305,7 @@ class RallyGame {
     });
     this.hudEl.querySelector('.rl-pause')!.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      this.pause();
+      this.pause(true);
     });
     for (const b of this.hudEl.querySelectorAll('button')) b.addEventListener('pointerdown', (ev) => ev.stopPropagation());
     el.appendChild(this.hudEl);
@@ -895,7 +895,7 @@ class RallyGame {
     const k = e.key;
     if (k === 'ArrowRight' || k === 'ArrowUp' || k === 'd' || k === 'w' || k === ' ') this.keys.gas = down;
     else if (k === 'ArrowLeft' || k === 'ArrowDown' || k === 'a' || k === 's') this.keys.brake = down;
-    else if (k === 'Escape' && down && this.state === 'play') this.pause();
+    // Escape = voltar do hub ("Sair do jogo?"); antes abria também a pausa própria atrás dele
   }
 
   /* ------------------------------ laço ------------------------------ */
@@ -1293,12 +1293,17 @@ class RallyGame {
 
   /* ------------------------------ ciclo ------------------------------ */
 
-  pause(): void {
+  /** Sem `card` (voltar do hub / segundo plano) não mostra o cartão próprio: o hub já mostra "Sair do jogo?". */
+  pause(card = false): void {
+    if (this.paused && !card) {
+      this.pauseEl.classList.remove('on');
+      return;
+    }
     if (this.state !== 'play' || this.paused) return;
     this.paused = true;
     this.ptrs.clear();
     audio.engineStop();
-    this.pauseEl.classList.add('on');
+    if (card) this.pauseEl.classList.add('on');
   }
 
   resume(): void {
