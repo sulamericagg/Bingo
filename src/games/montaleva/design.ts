@@ -31,7 +31,7 @@ export interface Analysis {
   group: number[];
   groups: number[][];
   /** pontos de conexão (meio da aresta compartilhada), em células */
-  links: { x: number; y: number; vertical: boolean }[];
+  links: { x: number; y: number; vertical: boolean; i: number }[];
   /** dobradiça → grupos vizinhos */
   hinges: Map<number, number[]>;
   /** roda/propulsor/balão → peça base */
@@ -64,7 +64,7 @@ export function analyze(parts: readonly Placed[]): Analysis {
         if (q.t === 'hinge') continue;
         if (!fullSide(p, s) || !fullSide(q, s + 2)) continue;
         par[find(i)] = find(j);
-        links.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5, vertical: s === 0 });
+        links.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5, vertical: s === 0, i });
       }
     }
   });
