@@ -14,6 +14,8 @@ import type { PlayerPose } from '../game/character';
 import { drawCreature } from '../creatures/render';
 import { gameFont } from '../i18n/font';
 import type { CastMember, ExprId, PoseId } from './format';
+import { lookSig, type MakeupLook } from '../makeup/format';
+import { drawLook, makeupOverlay } from '../makeup/render';
 
 const PI = Math.PI;
 
@@ -910,7 +912,7 @@ export function drawActor2D(x: CanvasRenderingContext2D, cast: CastMember, h: nu
   PP.mood = 'fly';
   x.save();
   x.translate(0, bottom * R * (1 - r.sy));
-  drawAvatar(x, avUse, R, PP);
+  drawAvatar(x, avUse, R, PP, makeupOverlay(cast.makeup));
   x.restore();
   if (shp.feet && r.dy >= 0.3) drawFeet(x, R, bottom, r, c.Pd, c.Ph, c.Pdd);
   if (r.hlf >= 0.5) drawArm(x, R, -1, r.hlx, r.hly, c.Pd, c.Pdd, hand);
@@ -939,7 +941,7 @@ const thumbCache = new Map<string, HTMLCanvasElement>();
 
 /** Miniatura do ator numa pose/expressão (cache por chave). */
 export function actorThumb(cast: CastMember, px: number, pose: PoseId, expr: ExprId, t = 0.35, key = ''): HTMLCanvasElement {
-  const k = `${cast.id}|${JSON.stringify(cast.avatar?.colors ?? cast.creature)}|${cast.avatar ? Object.values(cast.avatar.parts).join(',') : ''}|${px}|${pose}|${expr}|${key}`;
+  const k = `${cast.id}|${lookSig(cast.makeup)}|${JSON.stringify(cast.avatar?.colors ?? cast.creature)}|${cast.avatar ? Object.values(cast.avatar.parts).join(',') : ''}|${px}|${pose}|${expr}|${key}`;
   let cv = thumbCache.get(k);
   if (cv) return cv;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -987,9 +989,10 @@ function makeDC(x: CanvasRenderingContext2D, avd: AvatarData, R: number, t: numb
  * Rosto (olhos + boca + bochechas) centrado no meio do canvas (corpo de raio R),
  * para a textura projetada na frente do Bloop 3D. Fundo transparente.
  */
-export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: number, expr: ExprId, open: number, blink: number, t: number, lookX = 0, lookY = 0): void {
+export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: number, expr: ExprId, open: number, blink: number, t: number, lookX = 0, lookY = 0, makeup?: MakeupLook): void {
   install();
   const d = makeDC(x, avd, R, t);
+  if (makeup) drawLook(x, makeup, R, d.sh.fy);
   PP.blink = blink;
   PP.lookX = lookX;
   PP.lookY = lookY;

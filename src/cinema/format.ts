@@ -10,6 +10,7 @@
  *  Nada aqui acessa DOM: é importado pelo editor, pelo player e pelo exportador.
  * ============================================================ */
 import type { AvatarData } from '../game/avatar';
+import { parseLook, type MakeupLook } from '../makeup/format';
 
 export const FORMAT_ID = 'bloop-cinema';
 export const FORMAT_VERSION = 1;
@@ -47,6 +48,8 @@ export interface CastMember {
   voice: VoiceFxId;
   /** escala do personagem (0.7..1.3) */
   size?: number;
+  /** maquiagem / pintura facial (Estúdio de Maquiagem — src/makeup/format.ts) */
+  makeup?: MakeupLook;
 }
 
 export interface ActorKey {
@@ -284,6 +287,7 @@ export function parseProject(raw: unknown): Project | null {
       creature: typeof c.creature === 'string' ? c.creature : undefined,
       voice: (['normal', 'chipmunk', 'deep', 'robot', 'echo', 'giant'].includes(c.voice as string) ? c.voice : 'normal') as VoiceFxId,
       size: num(c.size, 1, 0.6, 1.4),
+      makeup: c.makeup ? (parseLook(c.makeup) ?? undefined) : undefined,
     }));
   p.scenes = arr<Record<string, unknown>>(o.scenes).map((s) => ({
     id: str(s.id, uid('sc'), 40),

@@ -1,0 +1,65 @@
+/* ============================================================
+ *  ESTÚDIO DE MAQUIAGEM — tela cheia, retrato primeiro;
+ *  em paisagem a prévia fica à esquerda e as ferramentas à direita.
+ * ============================================================ */
+.mk-root{position:fixed;inset:0;z-index:8500;display:grid;grid-template-rows:auto minmax(0,1fr) auto minmax(150px,37%);background:linear-gradient(180deg,#2a0b3c,#3d1255);color:#fff;font:600 14px/1.25 var(--font,'Fredoka',system-ui,sans-serif);padding:var(--edge-t,env(safe-area-inset-top,0px)) var(--edge-r,0) var(--edge-b,env(safe-area-inset-bottom,0px)) var(--edge-l,0);user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+.mk-root *{box-sizing:border-box}
+.mk-root button{font:inherit;color:inherit;cursor:pointer}
+.mk-root input{font:inherit}
+.mk-top{display:flex;align-items:center;gap:6px;padding:6px 8px}
+.mk-title{flex:1;min-width:0;font-weight:800;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-title small{font-weight:600;opacity:.7;font-size:13px;margin-left:4px}
+.mk-stage{position:relative;min-height:0;margin:0 8px;border-radius:20px;overflow:hidden;box-shadow:0 4px 0 #170733}
+.mk-cv{display:block;width:100%;height:100%;touch-action:none}
+.mk-cv.drop{cursor:crosshair}
+.mk-float{position:absolute;top:8px;display:flex;flex-direction:column;gap:6px}
+.mk-float.l{left:8px}
+.mk-float.r{right:8px}
+.mk-fb{display:flex;flex-direction:column;align-items:center;justify-content:center;width:56px;min-height:52px;border:0;border-radius:14px;background:rgba(20,6,50,.55);font-size:19px;line-height:1;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.mk-fb span{font-size:10px;font-weight:700;margin-top:3px;opacity:.9}
+.mk-fb.on{background:#ff5cc8;box-shadow:0 0 0 2px #fff inset}
+.mk-lights{position:absolute;left:0;right:0;bottom:6px;display:flex;gap:5px;justify-content:center;flex-wrap:nowrap;overflow-x:auto;padding:0 6px;scrollbar-width:none}
+.mk-chip{flex:none;border:0;border-radius:999px;padding:5px 9px;min-height:32px;background:rgba(20,6,50,.6);font-size:12.5px;font-weight:700;white-space:nowrap}
+.mk-chip.on{background:#ffd93b;color:#2a0b5c}
+.mk-tabs{display:flex;gap:4px;padding:8px 8px 0}
+.mk-tab{flex:1;border:0;border-radius:12px 12px 0 0;padding:9px 4px;background:rgba(255,255,255,.07);font-size:13px;font-weight:700;white-space:nowrap}
+.mk-tab.on{background:#4a1d78}
+.mk-panel{overflow-y:auto;background:#4a1d78;margin:0 8px 8px;border-radius:0 0 16px 16px;padding:10px;-webkit-overflow-scrolling:touch}
+.mk-panel h5{margin:10px 2px 6px;font-size:13px;opacity:.85}
+.mk-brushes{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px}
+.mk-brush{display:flex;flex-direction:column;align-items:center;gap:3px;border:0;border-radius:14px;padding:7px 2px;background:rgba(255,255,255,.08);font-size:11.5px;min-height:62px}
+.mk-brush i{font-style:normal;font-size:20px;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 60%,var(--c) 0 55%,transparent 56%)}
+.mk-brush.on{background:#ff5cc8;box-shadow:0 0 0 2px #fff inset}
+.mk-chips{display:flex;gap:6px;flex-wrap:wrap}
+.mk-panel .mk-chip{background:rgba(255,255,255,.1)}
+.mk-panel .mk-chip.on{background:#ffd93b;color:#2a0b5c}
+.mk-range{display:grid;grid-template-columns:84px 1fr 34px;align-items:center;gap:8px;margin-top:8px;font-size:13px}
+.mk-range input{width:100%;accent-color:#ff5cc8}
+.mk-range output{text-align:right;opacity:.8}
+.mk-range.sm{grid-column:1/-1;grid-template-columns:76px 1fr 30px;margin-top:2px;font-size:12px}
+.mk-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.mk-cur{width:40px;height:40px;border-radius:50%;box-shadow:0 0 0 3px #fff}
+.mk-pickbtn{position:relative;overflow:hidden}
+.mk-pickbtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.mk-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:6px;margin-top:8px}
+.mk-sw{aspect-ratio:1;border:0;border-radius:50%;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.mk-sw.on{box-shadow:0 0 0 3px #fff}
+.mk-layers{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.mk-layer{display:grid;grid-template-columns:1fr auto auto auto auto;gap:5px;align-items:center;padding:6px;border-radius:12px;background:rgba(255,255,255,.07)}
+.mk-layer.on{background:rgba(255,92,200,.28);box-shadow:0 0 0 2px #ff5cc8 inset}
+.mk-lname{border:0;background:none;text-align:left;font-weight:700;padding:6px 2px;min-height:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk-lname small{opacity:.6;font-weight:600}
+.mk-looks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.mk-look{position:relative;flex:none;width:84px;border:0;border-radius:14px;background:rgba(255,255,255,.08);padding:4px 2px 6px;display:flex;flex-direction:column;align-items:center;font-size:11.5px}
+.mk-look>button{border:0;background:none;display:flex;flex-direction:column;align-items:center;padding:0}
+.mk-look canvas,.mk-look img{width:72px;height:72px;display:block}
+.mk-look .mk-x{position:absolute;top:2px;right:2px;width:24px;height:24px;border:0;border-radius:8px;background:rgba(20,6,50,.6);font-size:12px}
+.mk-name{flex:1;min-width:120px;height:36px;border:0;border-radius:11px;padding:0 10px;background:rgba(255,255,255,.12);color:#fff;outline:none}
+@media (orientation:landscape) and (max-height:600px){
+  .mk-root{grid-template-columns:minmax(0,1fr) minmax(300px,44%);grid-template-rows:auto auto minmax(0,1fr)}
+  .mk-top{grid-column:1/-1}
+  .mk-stage{grid-row:2/4;margin-bottom:8px}
+  .mk-tabs{grid-column:2}
+  .mk-panel{grid-column:2}
+}
+.mk-lights .mk-chip{font-size:11.5px}

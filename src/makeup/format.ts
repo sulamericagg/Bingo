@@ -63,6 +63,20 @@ export const cloneLook = (l: MakeupLook): MakeupLook => JSON.parse(JSON.stringif
 export const lookIsEmpty = (l: MakeupLook | null | undefined): boolean => !l || l.layers.every((x) => !x.st.length);
 export const lookUsesPro = (l: MakeupLook): boolean => l.layers.length > FREE_LAYERS || l.layers.some((x) => x.st.some((s) => PRO_BRUSHES.has(s.b)));
 
+const sigs = new WeakMap<MakeupLook, string>();
+/** Assinatura curta do look (chave de cache de miniaturas/texturas). */
+export function lookSig(l: MakeupLook | null | undefined): string {
+  if (!l) return '';
+  let s = sigs.get(l);
+  if (s) return s;
+  const j = JSON.stringify(l.layers);
+  let h = 2166136261;
+  for (let i = 0; i < j.length; i++) h = Math.imul(h ^ j.charCodeAt(i), 16777619);
+  s = (h >>> 0).toString(36) + j.length.toString(36);
+  sigs.set(l, s);
+  return s;
+}
+
 /** Valida/limita um look vindo de arquivo, IndexedDB ou localStorage. */
 export function parseLook(raw: unknown): MakeupLook | null {
   if (!raw || typeof raw !== 'object') return null;

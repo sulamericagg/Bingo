@@ -17,6 +17,7 @@ import type { ActorScreen } from './fx2d';
 import { blendRig, drawBackTex, drawFaceTex, drawHeadTex, radiusFor, restRig, type Rig } from './rig2d';
 import { SHAPES } from '../game/avatar-gfx';
 import { drawCreature } from '../creatures/render';
+import { lookSig } from '../makeup/format';
 
 const U = 0.6; // metros por unidade do palco
 const INK = 0x2a0b5c;
@@ -216,7 +217,8 @@ export function loadStudioSet(json: unknown): THREE.Group | null {
 }
 
 /* ---------------------------- ator 3D ---------------------------- */
-const FACE_PX = 256;
+/** textura do rosto: 256 px; com maquiagem, maior conforme a qualidade (até 512) */
+let facePxMax = 256;
 
 class Actor3D {
   root = new THREE.Group();
@@ -225,6 +227,7 @@ class Actor3D {
   private faceTex: THREE.CanvasTexture;
   private faceCv: HTMLCanvasElement;
   private faceKey = '';
+  private facePx = 256;
   private arms: { up: THREE.Mesh; hand: THREE.Mesh }[] = [];
   private feet: THREE.Mesh[] = [];
   head: THREE.Sprite | null = null;
@@ -254,7 +257,8 @@ class Actor3D {
     this.shadow.position.y = 0.01;
     this.root.add(this.shadow, this.body);
     this.faceCv = document.createElement('canvas');
-    this.faceCv.width = this.faceCv.height = FACE_PX;
+    this.facePx = cast.makeup ? facePxMax : 256;
+    this.faceCv.width = this.faceCv.height = this.facePx;
     this.faceTex = new THREE.CanvasTexture(this.faceCv);
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
 
@@ -347,7 +351,7 @@ class Actor3D {
   }
 
   static sigOf(c: CastMember): string {
-    return JSON.stringify([c.kind, c.avatar, c.creature, c.size]);
+    return JSON.stringify([c.kind, c.avatar, c.creature, c.size, lookSig(c.makeup)]);
   }
   matches(c: CastMember): boolean {
     return Actor3D.sigOf(c) === this.sig;
@@ -420,10 +424,11 @@ class Actor3D {
       this.faceKey = key;
       const x = this.faceCv.getContext('2d')!;
       x.setTransform(1, 0, 0, 1, 0, 0);
-      x.clearRect(0, 0, FACE_PX, FACE_PX);
-      const Rpx = FACE_PX / 2.6;
-      x.translate(FACE_PX / 2, FACE_PX / 2);
-      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY);
+      const FP = this.facePx;
+      x.clearRect(0, 0, FP, FP);
+      const Rpx = FP / 2.6;
+      x.translate(FP / 2, FP / 2);
+      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY, this.cast.makeup);
       this.faceTex.needsUpdate = true;
     }
   }
@@ -474,6 +479,7 @@ export class Scene3D implements Renderer3D {
   readonly canvas: HTMLCanvasElement;
 
   constructor(tier: number) {
+    facePxMax = tier >= 2 ? 512 : tier === 1 ? 384 : 256;
     this.canvas = document.createElement('canvas');
     this.gl = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: tier >= 2, preserveDrawingBuffer: true, alpha: false, powerPreference: 'default' });
     this.gl.setPixelRatio(1);

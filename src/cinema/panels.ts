@@ -616,6 +616,16 @@ function castPanel(c: PanelCtx): void {
       clearThumbs();
     } else if (a === 'voice') {
       mutate(() => (m.voice = b.dataset.v as never));
+    } else if (a === 'makeup' && m.avatar) {
+      const { openMakeupStudio } = await import('../makeup/studio');
+      const look = await openMakeupStudio({ avatar: m.avatar, look: m.makeup, name: m.name });
+      if (look !== undefined) {
+        mutate(() => (look ? (m.makeup = look) : delete m.makeup));
+        clearThumbs();
+      }
+    } else if (a === 'unmakeup') {
+      mutate(() => delete m.makeup);
+      clearThumbs();
     } else if (a === 'remove' && (await confirm(t('cin.cast.removeQ', 'Tirar {n} do filme inteiro?', { n: m.name }), t('cin.del', 'Apagar')))) {
       mutate((p: Project) => {
         p.cast = p.cast.filter((x) => x.id !== m.id);
@@ -656,6 +666,7 @@ function castEditor(id: string): string {
   if (m.avatar) {
     for (const w of ['primary', 'secondary'] as const)
       html += `<h5>${w === 'primary' ? t('cin.cast.color1', 'Cor') : t('cin.cast.color2', 'Cor 2')}</h5><div class="cin-swatches">${SWATCHES.map((s) => `<button class="cin-sw ${m.avatar!.colors[w] === s ? 'on' : ''}" style="background:${s}" data-a="col" data-w="${w}" data-v="${s}" data-id="${id}" aria-label="${s}"></button>`).join('')}</div>`;
+    html += `<div class="cin-row" style="margin-top:8px"><button class="cin-btn pri sm" data-a="makeup" data-id="${id}">💄 ${m.makeup ? t('cin.cast.makeupEdit', 'Editar maquiagem') : t('cin.cast.makeup', 'Maquiagem')}</button>${m.makeup ? `<button class="cin-btn sm ghost" data-a="unmakeup" data-id="${id}">🧽 ${t('cin.cast.makeupOff', 'Tirar maquiagem')}</button>` : ''}</div>`;
     html += `<h5>${t('cin.cast.outfit', 'Roupa e acessórios')}</h5><p class="cin-hint">${t('cin.cast.outfitTip', 'Peças que você já tem no Crie seu Bloop.')}</p>`;
     for (const slot of OUTFIT) {
       const curP = m.avatar.parts[slot];
