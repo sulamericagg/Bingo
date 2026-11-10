@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { Hand, handColors } from '../../3d/common/hand';
 import { Particles, PT } from '../../3d/common/particles';
+import { disposeEnv, roomEnv } from '../../3d/common/pbr';
 import { q3For, type Q3 } from '../../3d/common/quality';
 import { canvas, INK } from '../../3d/common/tex';
 import type { Tier } from '../../core/quality';
@@ -49,7 +50,7 @@ function lightPoints(n: number): THREE.Points {
   g.setAttribute('size', new THREE.BufferAttribute(new Float32Array(n), 1));
   const m = new THREE.ShaderMaterial({
     uniforms: { pr: { value: 1 } },
-    vertexShader: `attribute vec3 color; attribute float size; uniform float pr; varying vec3 vC; void main(){ vC=color; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=size*pr*clamp(1800.0/max(1.0,-mv.z),0.6,4.0); }`,
+    vertexShader: `attribute vec3 color; attribute float size; uniform float pr; varying vec3 vC; void main(){ vC=color; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=size*pr*clamp(700.0/max(1.0,-mv.z),0.55,1.7); }`,
     fragmentShader: `varying vec3 vC; void main(){ vec2 d=gl_PointCoord-0.5; float r=length(d)*2.0; float a=smoothstep(1.0,0.0,r); a=a*a; gl_FragColor=vec4(vC*(0.6+a*1.4), a); if(a<0.02) discard; }`,
     transparent: true,
     depthWrite: false,
@@ -343,8 +344,12 @@ export class View3D {
     this.cabin.add(this.ext.group);
     this.ext.wins.visible = false;
     this.ext.darkWins.visible = false;
-    this.hemi = new THREE.HemisphereLight('#fff4e8', '#6a5a8a', q.standard ? 1.25 : 1.5);
-    this.cabin.add(this.hemi);
+    this.hemi = new THREE.HemisphereLight('#fff4e8', '#b8a8d8', q.standard ? 1.5 : 2.1);
+    this.cabin.add(this.hemi, new THREE.AmbientLight('#ffffff', q.standard ? 0.35 : 0.55));
+    if (q.standard) {
+      this.cabin.environment = roomEnv(this.r);
+      this.cabin.environmentIntensity = 0.55;
+    }
     this.sun = new THREE.DirectionalLight('#ffd0a0', q.standard ? 1.6 : 1.0);
     this.cabin.add(this.sun, this.sun.target);
     this.sun.target.position.set(0, 0, 8);
@@ -512,7 +517,7 @@ export class View3D {
     if (intro && this.cut < 6) {
       const tt = this.cut;
       const v = 18 + tt * 16;
-      pz = 250 - (18 * tt + 8 * tt * tt);
+      pz = -30 - (18 * tt + 8 * tt * tt);
       px = 0;
       hdg = 0;
       const lift = Math.max(0, tt - 2.6);
@@ -680,7 +685,7 @@ export class View3D {
     if (seated !== this.wasSeated) {
       this.wasSeated = seated;
       this.yaw = Math.PI;
-      this.pitch = seated ? -0.1 : -0.05;
+      this.pitch = seated ? -0.2 : -0.05;
     }
     this.yaw -= look.x;
     this.pitch = clamp(this.pitch - look.y, -1.2, 1.1);
@@ -697,7 +702,7 @@ export class View3D {
     this.shake = Math.max(0, this.shake - dt * 3);
     const shx = (Math.random() - 0.5) * this.shake * 0.06;
     const shy = (Math.random() - 0.5) * this.shake * 0.06;
-    if (seated) cam.position.set(SPOTS.pilot.x, 1.17, SPOTS.pilot.z + 0.12);
+    if (seated) cam.position.set(SPOTS.pilot.x, 1.34, SPOTS.pilot.z + 0.05);
     else cam.position.set(me.x, EYE + bob - stun * 0.55, me.z);
     cam.position.x += shx;
     cam.position.y += shy;
@@ -737,7 +742,7 @@ export class View3D {
       } else {
         // perseguição por trás e por baixo, rumo ao sol
         const k2 = k - 3.4;
-        c.position.set(P.x + 22 - k2 * 4, P.y - 6 + k2 * 2, P.z + 55 + k2 * 6);
+        c.position.set(P.x + 22 - k2 * 4, Math.max(2.5, P.y - 6 + k2 * 2), P.z + 55 + k2 * 6);
         c.lookAt(P.x, P.y + 2, P.z - 10);
       }
     } else if (this.ending) {
@@ -782,7 +787,7 @@ export class View3D {
     // luzes piscando na pane elétrica
     const flick = s.flicker && Math.random() < 0.12 ? 0.25 : 1;
     (cab.lights.material as THREE.MeshBasicMaterial).color.setScalar(flick);
-    this.hemi.intensity = (this.q.standard ? 1.25 : 1.5) * (0.75 + flick * 0.25);
+    this.hemi.intensity = (this.q.standard ? 1.5 : 2.1) * (0.75 + flick * 0.25);
     // manche, manetes, alavancas
     const me = s.players[s.me];
     const pilot = s.pilot;
@@ -965,9 +970,9 @@ export class View3D {
           (m.material as THREE.Material).depthTest = true;
         }
         this.hand.grip(_v);
-        m.position.copy(_v).add(_v2.set(0.0, 0.02, -0.02));
+        m.position.copy(_v).add(_v2.set(-0.02, it.kind === 'ext' ? 0.06 : 0.02, -0.04));
         m.rotation.set(0.15, it.kind === 'ext' ? 0.4 : 0.2, -0.2);
-        m.scale.setScalar(this.hand.k * 0.9);
+        m.scale.setScalar(this.hand.k * (it.kind === 'ext' ? 0.42 : 0.6));
       } else {
         if (m.parent !== this.cabin) {
           this.cabin.add(m);
@@ -1167,6 +1172,7 @@ export class View3D {
   }
 
   destroy(): void {
+    disposeEnv();
     this.r.dispose();
     this.fx.dispose();
     this.flames.dispose();

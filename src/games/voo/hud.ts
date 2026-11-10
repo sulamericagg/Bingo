@@ -71,7 +71,14 @@ export class Hud {
   private stickV = { x: 0, y: 0, on: false };
   private pr = { x: 0, y: 0, behind: false };
   private ctx: Ctx | null = null;
-  hidden = false;
+  private _hidden = false;
+  get hidden(): boolean {
+    return this._hidden;
+  }
+  set hidden(v: boolean) {
+    this._hidden = v;
+    this.el.style.display = v ? 'none' : '';
+  }
   face2d: [number, number] = [0, -1];
 
   constructor(
@@ -521,8 +528,7 @@ export class Hud {
     const s = h.sim;
     const f = s.f;
     const me = s.players[s.me];
-    this.el.style.display = this.hidden ? 'none' : '';
-    if (this.hidden) return;
+    if (this._hidden) return;
     // minijogo aberto pela sim
     if (s.miniOpen && !this.miniGame) this.openMini(s.miniOpen.kind, s.miniOpen.emer);
     if (this.miniGame) {
@@ -731,7 +737,7 @@ export class Hud {
       let px = this.pr.x;
       let py = this.pr.y;
       const m = 34;
-      let edge = this.pr.behind || px < m || px > W - m || py < m + 40 || py > H - m;
+      let edge = this.pr.behind || px < m || px > W - m || py < 86 || py > H - m;
       if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
       const em = d.querySelector('em') as HTMLElement;
       if (edge) {
@@ -740,9 +746,9 @@ export class Hud {
         let dx = px - cx;
         let dy = py - cy;
         if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
-        const k = Math.min((W / 2 - m) / Math.max(1, Math.abs(dx)), (H / 2 - m - 30) / Math.max(1, Math.abs(dy)));
+        const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
         px = cx + dx * k;
-        py = cy + dy * k + 15;
+        py = Math.max(90, cy + dy * k + 15);
         em.style.display = '';
         em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
       } else em.style.display = 'none';

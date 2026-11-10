@@ -107,15 +107,16 @@
 .voo-go .voo-btn{min-height:46px;font-size:17px;padding:6px 20px}
 .voo-note{font-size:11px;font-weight:600;opacity:.75}
 .voo-desk{background:radial-gradient(circle at 50% 30%,#8a5a3a,#5a3520 60%,#2e1a10);perspective:1400px}
-.voo-folder{position:relative;width:min(640px,94%);height:min(340px,86%);transform-style:preserve-3d;animation:vooFolderIn .5s cubic-bezier(.2,1.4,.4,1)}
+.voo-folder{position:relative;width:min(640px,94%);height:min(340px,86%);animation:vooFolderIn .5s cubic-bezier(.2,1.4,.4,1)}
 @keyframes vooFolderIn{from{transform:translateY(60px) rotate(-6deg) scale(.8);opacity:0}}
 .voo-back{position:absolute;inset:0;background:linear-gradient(#e8c27a,#cf9f52);border-radius:6px 18px 18px 18px;box-shadow:0 14px 30px rgba(0,0,0,.5),0 0 0 3px #7a5320 inset}
 .voo-back:before{content:'';position:absolute;left:0;top:-16px;width:34%;height:22px;background:#e8c27a;border-radius:10px 10px 0 0;box-shadow:0 0 0 3px #7a5320 inset}
 .voo-cover{position:absolute;inset:0;background:linear-gradient(135deg,#f2cf86,#d9a95a);border-radius:6px 18px 18px 18px;transform-origin:left center;transition:transform .9s cubic-bezier(.4,.1,.2,1);box-shadow:0 0 0 3px #7a5320 inset;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#5a3a10;backface-visibility:hidden;z-index:5}
-.voo-cover.open{transform:rotateY(-170deg)}
+.voo-cover{transform:perspective(1400px) rotateY(0deg)}
+.voo-cover.open{transform:perspective(1400px) rotateY(-170deg)}
 .voo-cover .ttl{font-size:28px;font-weight:900;letter-spacing:2px}
 .voo-sheet{position:absolute;left:4%;top:5%;width:92%;height:90%;background:#fffdf6;border-radius:4px;box-shadow:0 3px 8px rgba(0,0,0,.25);padding:12px 16px;color:#2a1a40;transform-origin:left center;transition:transform .7s cubic-bezier(.4,.1,.2,1),opacity .7s;backface-visibility:hidden;overflow:hidden;background-image:repeating-linear-gradient(transparent 0 25px,rgba(90,120,200,.15) 25px 26px)}
-.voo-sheet.gone{transform:rotateY(-160deg);opacity:0;pointer-events:none}
+.voo-sheet.gone{transform:perspective(1400px) rotateY(-160deg)!important;opacity:0;pointer-events:none}
 .voo-sheet h3{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:6px;border-bottom:2px dashed #c9b8a0;padding-bottom:4px}
 .voo-sheet .ln{display:flex;gap:8px;font-size:14px;font-weight:700;margin:3px 0;align-items:center}
 .voo-sheet .ln b{min-width:120px;color:#7a5a8a;font-size:12px;text-transform:uppercase}

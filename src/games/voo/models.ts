@@ -18,9 +18,10 @@ export const CG_Z = 10;
 export const WHEEL_Y = -2.67;
 
 export function mat(standard: boolean, opts: { rough?: number; metal?: number; emissive?: boolean; side?: THREE.Side } = {}): THREE.Material {
-  if (opts.emissive) return new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: opts.side });
-  if (standard) return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.72, metalness: opts.metal ?? 0.04, side: opts.side });
-  return new THREE.MeshLambertMaterial({ vertexColors: true, side: opts.side });
+  const side = opts.side ?? THREE.FrontSide;
+  if (opts.emissive) return new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side });
+  if (standard) return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.72, metalness: opts.metal ?? 0.04, side });
+  return new THREE.MeshLambertMaterial({ vertexColors: true, side });
 }
 
 function roundRectShape(w: number, h: number, r: number, cx = 0, cy = 0): THREE.Shape {
@@ -96,7 +97,7 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // ---------- piso ----------
   b.sharp(3.56, 0.06, 17.7, 0, -0.06, -1.2 + 17.7 / 2, cab.carpet);
   b.sharp(0.7, 0.012, 17.6, 0, 0, -1.2 + 17.6 / 2, shade(cab.carpet, 0.18));
-  b.sharp(3.56, 0.06, 2.8, 0, -0.06, -2.6, '#3a3f5a');
+  b.sharp(3.56, 0.06, 2.8, 0, -0.06, -2.6, '#7a80a4');
   b.sharp(3.56, 0.06, 4.5, 0, -0.06, 18.75, '#6b6f86');
   for (let z = 16.9; z < 21; z += 0.7) b.sharp(3.4, 0.012, 0.05, 0, 0, z, '#4f5266');
   // ---------- paredes (faixa de baixo, faixa das janelas com furos, curva de cima) ----------
@@ -158,15 +159,15 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   b.sharp(2.2, 0.06, 17.7, 0, 2.34, -1.2 + 17.7 / 2, '#f7f3fb');
   for (let z = 0; z < 16.5; z += 1.8) glow.cyl(0.07, 0.07, 0.02, 0, 2.32, z, '#fffbe8', 10);
   // ---------- cabine de comando ----------
-  const CK = '#4a4f6e';
-  b.sharp(3.56, 2.4, 0.12, 0, 0, -4.02, CK); // parede frontal baixa (atrás do painel)
+  const CK = '#8f96c4';
+  b.sharp(3.56, 1.08, 0.12, 0, 0, -4.02, CK); // parede frontal baixa (atrás do painel)
   // painel
-  b.box(3.0, 1.0, 0.45, 0, 0, -3.75, '#2c3048');
-  b.box(3.0, 0.1, 0.62, 0, 1.0, -3.68, '#1f2236'); // glare shield
+  b.box(3.0, 1.0, 0.45, 0, 0, -3.75, '#7d86b0');
+  b.box(3.0, 0.1, 0.62, 0, 1.0, -3.68, '#5d6596'); // glare shield
   // janelas: postes e teto
   for (const x of [-1.5, -0.74, 0, 0.74, 1.5]) b.sharp(0.09, 0.78, 0.09, x, 1.08, -3.98, CK);
   b.sharp(3.4, 0.5, 0.12, 0, 1.86, -3.98, CK);
-  b.sharp(3.4, 0.06, 2.9, 0, 2.18, -2.6, '#3e4360');
+  b.sharp(3.4, 0.06, 2.9, 0, 2.18, -2.6, '#b8bde0');
   for (const side of [-1, 1]) {
     const X = side * 1.7;
     b.sharp(0.08, 1.12, 2.8, X, 0, -2.6, CK);
@@ -176,9 +177,9 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
     // assentos dos pilotos
     const sx = side * 0.55;
     b.box(0.6, 0.12, 0.55, sx, 0.0, -2.85, '#2a2d40');
-    b.box(0.6, 0.18, 0.55, sx, 0.42, -2.85, '#3d405c');
-    b.box(0.62, 0.95, 0.16, sx, 0.55, -2.55, '#3d405c');
-    b.box(0.4, 0.22, 0.12, sx, 1.5, -2.55, '#55597c');
+    b.box(0.6, 0.18, 0.55, sx, 0.42, -2.85, '#7f8fe6');
+    b.box(0.62, 0.62, 0.16, sx, 0.55, -2.5, '#7f8fe6');
+    b.box(0.4, 0.18, 0.12, sx, 1.14, -2.5, '#f0ecfa');
     b.cyl(0.05, 0.05, 0.42, sx, 0, -2.85, '#888ba3', 8);
     b.box(0.08, 0.06, 0.4, sx - 0.32, 0.72, -2.85, '#2a2d40');
     b.box(0.08, 0.06, 0.4, sx + 0.32, 0.72, -2.85, '#2a2d40');
@@ -191,9 +192,9 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   b.sharp(0.9, 0.4, 0.12, 0, 2.0, -1.2, '#d8cfe8');
   b.box(0.06, 1.95, 0.85, -0.47, 0, -1.6, '#c3b6dc', 0.0); // porta aberta encostada
   // console central
-  metal.box(0.4, 0.8, 0.9, 0, 0, -3.05, '#2a2d40');
+  metal.box(0.4, 0.8, 0.9, 0, 0, -3.05, '#55608a');
   // painel de cima com botões
-  b.box(1.2, 0.08, 0.7, 0, 2.08, -3.2, '#2c3048');
+  b.box(1.2, 0.08, 0.7, 0, 2.08, -3.2, '#4f5680');
   const btnCols = ['#ff5c7a', '#ffd34a', '#3fe06c', '#46d9e6', '#ffffff'];
   for (let i = 0; i < 14; i++) glow.box(0.07, 0.03, 0.07, -0.45 + (i % 7) * 0.15, 2.05, -3.4 + Math.floor(i / 7) * 0.25, btnCols[i % 5]);
   for (let i = 0; i < 10; i++) glow.box(0.06, 0.06, 0.02, -1.2 + i * 0.12 + (i > 4 ? 1.2 : 0), 0.82, -3.53, btnCols[(i * 3) % 5]);
@@ -337,9 +338,9 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
     g.add(
       mk((y) => {
         y.box(0.08, 0.08, 0.3, 0, -0.04, 0.12, '#2a2d40');
-        y.box(0.34, 0.1, 0.06, 0, 0, 0.26, '#3d405c');
-        y.box(0.07, 0.2, 0.07, -0.18, 0, 0.26, '#3d405c');
-        y.box(0.07, 0.2, 0.07, 0.18, 0, 0.26, '#3d405c');
+        y.box(0.34, 0.1, 0.06, 0, 0, 0.26, '#5a6080');
+        y.box(0.07, 0.2, 0.07, -0.18, 0, 0.26, '#5a6080');
+        y.box(0.07, 0.2, 0.07, 0.18, 0, 0.26, '#5a6080');
         y.box(0.08, 0.05, 0.05, 0, 0.08, 0.29, '#ffd34a');
       }),
     );
@@ -923,9 +924,9 @@ export function groundTexture(size: number): THREE.CanvasTexture {
     }
   // florestas
   for (let i = 0; i < 70; i++) {
-    c.fillStyle = r() < 0.5 ? '#3f7a3c' : '#4a8a44';
+    c.fillStyle = r() < 0.5 ? '#5a9a4a' : '#6aa652';
     c.beginPath();
-    c.ellipse(r() * S, r() * S, S * (0.01 + r() * 0.03), S * (0.01 + r() * 0.025), r() * 3, 0, TAU);
+    c.ellipse(r() * S, r() * S, S * (0.006 + r() * 0.014), S * (0.005 + r() * 0.012), r() * 3, 0, TAU);
     c.fill();
   }
   // rio

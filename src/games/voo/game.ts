@@ -95,6 +95,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.bots = opts.bots ?? this.sv.bots;
     this.role = opts.role ?? 0;
     void lockOrientation('landscape');
+    if (location.search.includes('debug')) (window as unknown as { __voo: VooGame }).__voo = this;
   }
 
   async start(): Promise<void> {
