@@ -19,6 +19,7 @@ import { hsfx, partyMusic } from './sfx';
 import { t, fmt } from '../i18n';
 import { esc } from '../ui/dom';
 import { installIconCss } from '../ui/icons';
+import { notify } from '../ui/notify';
 import { bus } from '../core/events';
 import { save } from '../core/storage';
 import { addCoins as addCoinsRaw, spend } from '../core/economy';
@@ -243,13 +244,9 @@ const ui: SocialUi = {
   },
 };
 
-let toastT = 0;
+/** Aviso em pílula pequena no canto (padrão do app, ui/notify) — antes era um cartão grande no meio. */
 function toast(msg: string, ic: HomeIcon = 'star'): void {
-  const el = $('.hm-toast');
-  el.innerHTML = hicon(ic, 22) + `<span>${esc(msg)}</span>`;
-  el.classList.add('on');
-  clearTimeout(toastT);
-  toastT = window.setTimeout(() => el.classList.remove('on'), 2400);
+  notify(msg, { iconHtml: hicon(ic, 16) });
 }
 function refreshWallet(): void {
   if (!root) return;

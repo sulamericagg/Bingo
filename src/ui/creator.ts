@@ -39,6 +39,7 @@ import { RARITY_INFO, type Rarity } from '../game/skins';
 import { showRewarded } from '../services/ads';
 import { buy } from '../services/billing';
 import { ensureIconDefs, hydrateIcons, icon, type IconName } from './icons';
+import { notify } from './notify';
 import { t } from '../i18n';
 
 /* ---------------------------- ícones das abas (mesmo estilo de icons.ts) ---------------------------- */
@@ -116,7 +117,6 @@ let blinkT = 2;
 let flyPose = false;
 let dreamIdx = 0;
 let exitArmed = 0;
-let toastTimer = 0;
 
 function clone(a: AvatarData): AvatarData {
   return { parts: { ...a.parts }, colors: { ...a.colors } };
@@ -670,12 +670,9 @@ function refreshTile(): void {
 
 /* ---------------------------- toast local ---------------------------- */
 
+/** Aviso em pílula pequena no canto (padrão do app, ui/notify). */
 function toast(msg: string, ico?: IconName): void {
-  const el = $('.cr-toast');
-  el.innerHTML = (ico ? icon(ico, { size: 24 }) : '') + `<span>${esc(msg)}</span>`;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.classList.remove('show'), 2400);
+  notify(msg, { icon: ico });
 }
 
 /* ============================================================

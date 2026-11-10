@@ -16,6 +16,8 @@ import { icon, type IconName } from './icons';
 
 export interface NotifyOptions {
   icon?: IconName;
+  /** ícone pronto (SVG/HTML confiável, ex.: ícones da Casa) quando não é um IconName */
+  iconHtml?: string;
   /** cor do realce */
   kind?: 'info' | 'good' | 'warn' | 'bad';
   /** duração (ms). Padrão 3200, limitada a 1500..4500 */
@@ -94,7 +96,7 @@ function dur(o: NotifyOptions): number {
 function render(it: Item): void {
   const el = it.el!;
   el.className = 'nt on' + (it.o.kind && it.o.kind !== 'info' ? ' ' + it.o.kind : '');
-  el.innerHTML = (it.o.icon ? icon(it.o.icon, { size: 18 }) : '') + `<span>${esc(it.text)}</span>` + (it.n > 1 ? `<b class="n">×${it.n}</b>` : '');
+  el.innerHTML = (it.o.icon ? icon(it.o.icon, { size: 18 }) : it.o.iconHtml ?? '') + `<span>${esc(it.text)}</span>` + (it.n > 1 ? `<b class="n">×${it.n}</b>` : '');
 }
 
 function show(it: Item): void {
