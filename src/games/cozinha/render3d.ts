@@ -211,7 +211,7 @@ class KitchenFps implements Renderer {
       cssEl.textContent = CSS;
       document.head.appendChild(cssEl);
     }
-    this.gov = new QualityGovernor({ initial: detectInitialTier(), mode: loadMode(), emit: false, persist: false, onChange: (tr) => this.applyTier(tr) });
+    this.gov = new QualityGovernor({ initial: detectInitialTier(), mode: loadMode(), emit: false, persist: false, onChange: (tr) => this.applyTier(tr), onResScale: () => this.renderer.setPixelRatio(this.q.pr * this.gov.resScale) });
     this.q = q3For(this.gov.tier);
     this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
@@ -309,7 +309,7 @@ class KitchenFps implements Renderer {
 
   private applyTier(tr: Tier): void {
     this.q = q3For(tr);
-    this.renderer.setPixelRatio(this.q.pr);
+    this.renderer.setPixelRatio(this.q.pr * this.gov.resScale);
     this.parts.budget = this.flames.budget = this.q.particles;
     this.resizeGL();
   }

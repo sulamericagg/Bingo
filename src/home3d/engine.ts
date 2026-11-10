@@ -270,7 +270,7 @@ export class Engine {
     this.editable = opts.editable;
     this.role = opts.role;
     const initial = detectInitialTier();
-    this.gov = new QualityGovernor({ initial, mode: loadMode(), emit: false, persist: false, onChange: (t) => this.applyTier(t) });
+    this.gov = new QualityGovernor({ initial, mode: loadMode(), emit: false, persist: false, onChange: (t) => this.applyTier(t), onResScale: () => this.renderer.setPixelRatio(this.q.pr * this.gov.resScale) });
     this.q = q3For(this.gov.tier);
     this.renderer = new THREE.WebGLRenderer({ antialias: opts.antialias ?? this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
@@ -331,7 +331,7 @@ export class Engine {
   applyTier(t: Tier): void {
     const prevShadows = this.q.shadows;
     this.q = q3For(t);
-    this.renderer.setPixelRatio(this.q.pr);
+    this.renderer.setPixelRatio(this.q.pr * this.gov.resScale);
     this.resize();
     if (prevShadows !== this.q.shadows) {
       this.renderer.shadowMap.enabled = this.q.shadows;

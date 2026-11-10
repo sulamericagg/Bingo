@@ -1944,9 +1944,18 @@ class View3D implements View {
     out.mz = fz * -jy + fx * jx;
   }
 
+  private dprCap = 2;
+  private resK = 1;
   setQuality(q: QualitySettings): void {
-    this.renderer.setPixelRatio(Math.min(this.q.pr, q.dprCap));
+    this.dprCap = q.dprCap;
+    this.renderer.setPixelRatio(Math.min(this.q.pr, q.dprCap) * this.resK);
     this.q.particles = Math.min(1, q.particleBudget + 0.1);
+  }
+
+  /** resolução dinâmica (QualityGovernor.onResScale) */
+  setResScale(k: number): void {
+    this.resK = k;
+    this.renderer.setPixelRatio(Math.min(this.q.pr, this.dprCap) * k);
   }
 
   resize(): void {

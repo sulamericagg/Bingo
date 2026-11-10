@@ -1742,8 +1742,15 @@ export class WorldGame {
   setTier(tier: Tier, _s?: QualitySettings): void {
     const nq = wq(tier);
     Object.assign(this.q, nq);
-    this.renderer.setPixelRatio(nq.pr);
+    this.renderer.setPixelRatio(nq.pr * this.resK);
     this.resize();
+  }
+
+  private resK = 1;
+  /** resolução dinâmica (QualityGovernor.onResScale) */
+  setResScale(k: number): void {
+    this.resK = k;
+    this.renderer.setPixelRatio(this.q.pr * k);
   }
 
   resize(): void {

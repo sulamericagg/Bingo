@@ -93,7 +93,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.wrap.className = 'voo-root';
     root.appendChild(this.wrap);
     this.sv = loadSave();
-    this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier) => this.view && 'setTier' in this.view && (this.view as View3D).setTier(tier) });
+    this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier) => this.view && 'setTier' in this.view && (this.view as View3D).setTier(tier), onResScale: (k) => this.view && 'setResScale' in this.view && (this.view as View3D).setResScale(k) });
     this.bots = opts.bots ?? this.sv.bots;
     this.role = opts.role ?? 0;
     if (location.search.includes('debug')) (window as unknown as { __voo: VooGame }).__voo = this;

@@ -467,9 +467,15 @@ export class View3D {
     }
     for (const p of [this.lights, this.papi]) ((p.material as THREE.ShaderMaterial).uniforms.pr.value = this.q.pr * (h / 400));
   }
+  private resK = 1;
+  /** resolução dinâmica (QualityGovernor.onResScale) */
+  setResScale(k: number): void {
+    this.resK = k;
+    this.r.setPixelRatio(this.q.pr * k);
+  }
   setTier(tier: Tier): void {
     this.q = q3For(tier);
-    this.r.setPixelRatio(this.q.pr);
+    this.r.setPixelRatio(this.q.pr * this.resK);
     this.fx.budget = this.flames.budget = this.q.particles;
     this.resize();
   }
