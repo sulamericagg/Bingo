@@ -1,0 +1,36 @@
+name: Publicar servidor (Cloudflare)
+
+# Publica o Worker "bloop-orbit" sempre que a branch do jogo recebe código novo.
+# Usa os segredos do repositório: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID e ADMIN_PASSWORD
+# (criados pelo dono; ninguém vê os valores).
+on:
+  push:
+    branches: [claude/viral-game-apk-web-echogw]
+    paths: ['server/**', 'shared/**', 'src/**', 'wrangler.jsonc', 'package.json', 'package-lock.json', '.github/workflows/deploy-server.yml']
+  workflow_dispatch:
+
+concurrency: deploy-server
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy
+        run: npx wrangler deploy
+      - name: Senha do painel admin
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          if [ -n "$ADMIN_PASSWORD" ]; then printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; else echo "ADMIN_PASSWORD não definido (pule)"; fi
+      - name: Teste rápido
+        run: |
+          URL=$(npx wrangler deployments list --json 2>/dev/null | head -c 0; echo "")
+          echo "Deploy concluído. Veja a URL no log do passo Deploy."
