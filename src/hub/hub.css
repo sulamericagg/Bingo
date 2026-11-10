@@ -34,12 +34,17 @@ body.orbit-off #game {
   background:
     radial-gradient(120% 70% at 50% 18%, var(--hub-bg1) 0%, transparent 70%),
     linear-gradient(180deg, var(--hub-bg1) -30%, var(--hub-bg2) 75%);
-  transition:
-    --hub-bg1 0.7s ease,
-    --hub-bg2 0.7s ease,
-    --hub-accent 0.7s ease,
-    --hub-accent2 0.7s ease,
-    --hub-title2 0.7s ease;
+  /* Troca de tema SEM animar variáveis: animar as cores repintava a tela inteira (e as 3 bolhas de
+   * 70vmax) a cada quadro e a troca de jogo caía para ~14 quadros/s com CPU 4x. Agora as cores trocam
+   * na hora e uma cópia do fundo antigo (.hub-bg-fade) some com opacidade (só compositor). */
+}
+.hub-bg-fade {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(120% 70% at 50% 18%, var(--f-bg1) 0%, transparent 70%),
+    linear-gradient(180deg, var(--f-bg1) -30%, var(--f-bg2) 75%);
 }
 .hub-bg::after {
   /* pontinhos discretos */
@@ -352,6 +357,12 @@ body.hub-lowfx .hub-card.active {
 .hub-track.moving {
   will-change: transform;
 }
+/* a carta ativa e as vizinhas mudam de escala/opacidade na troca: camada própria enquanto o trilho
+   se move, senão cada quadro repintava o trilho inteiro (8 cartas lado a lado) */
+.hub-track.moving .hub-card.active,
+.hub-track.moving .hub-card.near {
+  will-change: transform, opacity;
+}
 .hub-track.instant {
   transition: none;
 }
@@ -570,7 +581,7 @@ body.hub-lowfx .hub-card.active {
   padding: 0;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.35);
-  transition: width 0.35s ease, background 0.35s ease;
+  transition: background 0.35s ease; /* largura sem transição: animá-la refazia o layout a cada quadro */
 }
 .hub-dot.on {
   width: 26px;
