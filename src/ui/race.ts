@@ -192,6 +192,9 @@ class RaceUI {
     this.root.classList.add('on');
     this.showOnly('rc-lobby');
     this.phase = 'lobby';
+    // voltar do Android = mesmo que o X/Cancelar (antes o voltar não fazia nada aqui e minimizava o app)
+    this.popRace?.();
+    this.popRace = pushBack(() => this.exit());
     this.players = [];
     this.rows = [];
     this.alive.clear();
@@ -220,6 +223,8 @@ class RaceUI {
   /** Volta para o menu (cancela/desiste). */
   exit(): void {
     if (this.phase === 'off') return;
+    this.popRace?.();
+    this.popRace = null;
     this.session?.leave();
     this.session = null;
     this.phase = 'off';
@@ -511,6 +516,7 @@ class RaceUI {
   /* ============================== Ranking ============================== */
 
   private popRank: (() => void) | null = null;
+  private popRace: (() => void) | null = null;
 
   openRanking(): void {
     if (!this.rank.classList.contains('on')) this.popRank = pushBack(() => this.closeRanking());
