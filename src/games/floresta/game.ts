@@ -8,7 +8,7 @@ import { gameFont } from '../../i18n/font';
 import { addCoins } from '../../core/economy';
 import { audio } from '../../core/audio';
 import { tap, success } from '../../core/haptics';
-import { QualityGovernor, type QualitySettings } from '../../core/quality';
+import { QualityGovernor, loadMode, type QualitySettings } from '../../core/quality';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import type { PeerState, PresenceSession } from '../../services/presence-api';
 import { SKINS } from '../../game/skins';
@@ -93,7 +93,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.wrap.className = 'fl-root';
     root.appendChild(this.wrap);
     this.sim = new Sim(loadSave(), opts.seed ?? WORLD_SEED);
-    this.gov = new QualityGovernor({ persist: false, emit: false, onChange: (_t, s) => this.view?.setQuality?.(s) });
+    this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (_t, s) => this.view?.setQuality?.(s) });
     this.autoMe = !!opts.auto;
     this.sim.onFell = (tr) => this.announceFell(tr);
   }

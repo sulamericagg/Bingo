@@ -18,6 +18,10 @@ interface Part {
   g: THREE.BufferGeometry;
   c: string;
   m: THREE.Matrix4;
+  /** luz "assada": escurece a parte de baixo (y local -1..1) — copas com volume */
+  ao?: number;
+  /** escurece os sulcos (atributo 'groove' 0..1 da geometria) — casca */
+  groove?: number;
 }
 const Q = new THREE.Quaternion();
 const E = new THREE.Euler();
@@ -40,12 +44,16 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
     const na = g.getAttribute('normal');
     nm.getNormalMatrix(p.m);
     c.set(p.c);
+    const ga = p.groove ? g.getAttribute('groove') : null;
     for (let i = 0; i < pa.count; i++) {
+      let k = 1;
+      if (p.ao) k *= 1 - p.ao + p.ao * Math.min(1, Math.max(0, (pa.getY(i) + 1) / 2));
+      if (ga) k *= 1 - (p.groove ?? 0) * ga.getX(i);
       v.fromBufferAttribute(pa, i).applyMatrix4(p.m);
       pos.push(v.x, v.y, v.z);
       v.fromBufferAttribute(na, i).applyMatrix3(nm).normalize();
       nor.push(v.x, v.y, v.z);
-      col.push(c.r, c.g, c.b);
+      col.push(c.r * k, c.g * k, c.b * k);
     }
     if (g !== p.g) g.dispose();
   }
@@ -55,6 +63,71 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
   out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   out.computeBoundingSphere();
   return out;
+}
+
+/** pseudo-ruído 3D suave e determinístico (sem tabela) */
+function n3(x: number, y: number, z: number): number {
+  return (Math.sin(x * 1.7 + y * 3.1) * Math.sin(y * 2.3 + z * 1.3) * Math.sin(z * 2.9 + x * 0.7) + Math.sin(x * 4.1 - z * 3.3 + y) * 0.35) * 0.5 + 0.5;
+}
+/** tufo de folhagem: esfera deformada por ruído, normais suaves, base em -1..1 */
+function clump(ws: number, hs: number, seed: number, amp = 0.18): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, ws, hs);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const k = 1 + (n3(x * 2.2 + seed, y * 2.2, z * 2.2 - seed) - 0.5) * 2 * amp - (y < -0.5 ? (-0.5 - y) * 0.35 : 0);
+    p.setXYZ(i, x * k, y * k, z * k);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+/** tronco com raízes (base alargada), sulcos de casca e leve curva; altura 1 */
+function trunkGeo(rs: number, hs: number, r0 = 0.2, r1 = 0.34, bend = 0.06): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(r0, r1, 1, rs, hs, false);
+  g.translate(0, 0.5, 0);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  const gr = new Float32Array(p.count);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const a = Math.atan2(z, x);
+    const ridge = Math.pow(Math.abs(Math.sin(a * 3.5 + y * 2)), 0.7);
+    const flare = 1 + Math.pow(Math.max(0, 0.18 - y) / 0.18, 2) * (0.45 + 0.25 * Math.max(0, Math.cos(a * 4)));
+    const k = (0.9 + ridge * 0.12) * flare;
+    gr[i] = 1 - ridge;
+    p.setXYZ(i, x * k + Math.sin(y * 3) * bend, y, z * k);
+  }
+  g.setAttribute('groove', new THREE.BufferAttribute(gr, 1));
+  g.computeVertexNormals();
+  return g;
+}
+/** galho: cone fino curvado (base na origem, ao longo de +Y) */
+function branchGeo(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.35, 1, 1, 5, 3, true);
+  g.translate(0, 0.5, 0);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) p.setX(i, p.getX(i) + p.getY(i) * p.getY(i) * 0.6);
+  g.computeVertexNormals();
+  return g;
+}
+/** camada de pinheiro: cone com saia recortada (pontas) e caimento */
+function pineTier(rs: number): THREE.BufferGeometry {
+  const g = new THREE.ConeGeometry(1, 1, rs, 2, false);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const a = Math.atan2(z, x);
+    const rim = y < -0.45 ? 1 : 0;
+    const k = 1 + rim * (Math.abs(Math.sin(a * rs * 0.5)) * 0.18 - 0.05);
+    p.setXYZ(i, x * k, y - rim * Math.abs(Math.sin(a * rs * 0.5)) * 0.12, z * k);
+  }
+  g.computeVertexNormals();
+  return g;
 }
 
 const base = {
@@ -70,6 +143,26 @@ const base = {
   oct: new THREE.OctahedronGeometry(1, 0),
   box: new THREE.BoxGeometry(1, 1, 1),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
+  bark: trunkGeo(9, 5),
+  barkLo: trunkGeo(6, 2),
+  branch: branchGeo(),
+  clumps: [clump(8, 6, 0.3), clump(8, 6, 2.1), clump(8, 6, 4.7)],
+  clumpLo: clump(6, 4, 1.3, 0.12),
+  pine: pineTier(12),
+  pineLo: pineTier(7),
+  frond: (() => {
+    // folha de palmeira: lâmina arqueada com folíolos (zigue-zague)
+    const g = new THREE.PlaneGeometry(1, 1, 1, 6);
+    g.rotateX(-Math.PI / 2);
+    const p = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const z = p.getZ(i) + 0.5;
+      const w = Math.sin(z * Math.PI) * (0.6 + (Math.round(z * 6) % 2) * 0.4);
+      p.setXYZ(i, p.getX(i) * w, -z * z * 0.8 + Math.abs(p.getX(i)) * 0.15, z);
+    }
+    g.computeVertexNormals();
+    return g;
+  })(),
 };
 
 export function crownColor(sp: Species, rare: number, two = false): string {
@@ -80,68 +173,95 @@ export function crownColor(sp: Species, rare: number, two = false): string {
 }
 
 /** árvore inteira numa geometria (origem na base do tronco) */
-export function treeGeometry(sp: Species, rare: number, lod = 0): THREE.BufferGeometry {
+export function treeGeometry(sp: Species, rare: number, lod = 0, lite = false): THREE.BufferGeometry {
   const h = sp.h;
   const L1 = crownColor(sp, rare);
   const L2 = crownColor(sp, rare, true);
   const T = rare === 1 ? '#d8a040' : sp.trunk;
+  const TD = shade(T, -0.25);
   const parts: Part[] = [];
-  const add = (g: THREE.BufferGeometry, c: string, m: THREE.Matrix4) => parts.push({ g, c, m });
-  const blob = lod ? base.ico : base.ico1;
+  const add = (g: THREE.BufferGeometry, c: string, m: THREE.Matrix4, ao = 0, groove = 0) => parts.push({ g, c, m, ao, groove });
+  const bark = lod || lite ? base.barkLo : base.bark;
+  const cl = (i: number) => (lod || lite ? base.clumpLo : base.clumps[i % 3]);
+  /** galho do tronco até a copa */
+  const branch = (y: number, a: number, len: number, r: number, tilt = 0.9) =>
+    add(base.branch, TD, new THREE.Matrix4().compose(P.set(0, y, 0), Q.setFromEuler(E.set(0, a, -tilt, 'YXZ')), S.set(r, len, r)));
   switch (sp.shape) {
     case 'pine':
-      add(base.trunk, T, mat4(0, 0, 0, 1, h * 0.45, 1));
-      for (let i = 0; i < (lod ? 3 : 4); i++) {
-        const w = h * (0.3 - i * 0.055);
-        add(base.cone, i % 2 ? L2 : L1, mat4(0, h * (0.42 + i * 0.16), 0, w, h * 0.3, w, 0, i * 0.4, 0));
+      add(bark, T, mat4(0, 0, 0, 0.8, h * 0.5, 0.8), 0, 0.35);
+      for (let i = 0; i < (lod ? 3 : 5); i++) {
+        const n = lod ? 3 : 5;
+        const f = i / n;
+        const w = h * (0.32 - f * 0.22);
+        add(lod ? base.pineLo : base.pine, i % 2 ? L2 : L1, mat4(0, h * (0.3 + f * 0.55) + h * 0.11, 0, w, h * (0.26 - f * 0.05), w, 0, i * 0.7, 0), 0.5);
       }
       break;
-    case 'palm':
-      for (let i = 0; i < 4; i++) add(base.trunk, i % 2 ? sp.trunkDark : T, mat4(-i * 0.12, (h * 0.88 * i) / 4, 0, 0.85 - i * 0.08, (h * 0.88) / 4 + 0.05, 0.85 - i * 0.08, 0, 0, 0.06 * i));
-      for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * TAU;
-        add(base.box, i % 2 ? L2 : L1, new THREE.Matrix4().compose(P.set(-0.45, h * 0.9, 0), Q.setFromEuler(E.set(0, a, 0)), S.set(1, 1, 1)).multiply(mat4(0, -0.5, h * 0.17, h * 0.07, 0.08, h * 0.36, 0.42, 0, 0)));
+    case 'palm': {
+      // tronco anelado e curvo
+      const seg = lod ? 3 : 6;
+      for (let i = 0; i < seg; i++) {
+        const t = i / seg;
+        add(lod ? base.barkLo : base.bark, i % 2 ? sp.trunkDark : T, mat4(-t * t * 0.6, h * 0.9 * t, 0, 0.8 - t * 0.25, (h * 0.9) / seg + 0.06, 0.8 - t * 0.25, 0, i, 0.12 * t), 0, 0.2);
       }
-      add(base.ico, '#8a5a34', mat4(-0.45, h * 0.88, 0, 0.5, 0.4, 0.5));
+      const n = lod ? 5 : 9;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU;
+        add(base.frond, i % 2 ? L2 : L1, new THREE.Matrix4().compose(P.set(-0.6, h * 0.9, 0), Q.setFromEuler(E.set(-0.25 - (i % 3) * 0.15, a, 0, 'YXZ')), S.set(h * 0.16, h * 0.3, h * 0.42)), 0);
+      }
+      for (let i = 0; i < 3; i++) add(base.clumpLo, '#7a4a24', mat4(-0.6 + Math.cos(i * 2.1) * 0.18, h * 0.86, Math.sin(i * 2.1) * 0.18, 0.18, 0.2, 0.18), 0.4);
       break;
+    }
     case 'mushroom':
-      add(base.trunk, T, mat4(0, 0, 0, 2.2, h * 0.65, 2.2));
-      add(base.cap, L1, mat4(0, h * 0.6, 0, h * 0.42, h * 0.34, h * 0.42));
-      add(base.cyl, L2, mat4(0, h * 0.6, 0, h * 0.4, 0.15, h * 0.4));
-      for (let i = 0; i < (lod ? 3 : 6); i++) {
-        const a = (i / 6) * TAU + 0.3;
-        add(base.ico, '#fff6f0', mat4(Math.cos(a) * h * 0.24, h * 0.83, Math.sin(a) * h * 0.24, h * 0.06, h * 0.035, h * 0.06));
+      add(bark, '#fff4e6', mat4(0, 0, 0, 2.2, h * 0.65, 2.2), 0, 0.08);
+      // saia (anel) no talo
+      add(base.cyl, '#fff8ee', mat4(0, h * 0.42, 0, h * 0.12, 0.05, h * 0.12));
+      add(base.cap, L1, mat4(0, h * 0.58, 0, h * 0.44, h * 0.34, h * 0.44), 0.35);
+      // lamelas sob o chapéu
+      add(base.cyl, shade(L2, 0.3), mat4(0, h * 0.58, 0, h * 0.42, 0.06, h * 0.42));
+      for (let i = 0; i < (lod ? 3 : 7); i++) {
+        const a = (i / 7) * TAU + 0.3;
+        const r = h * (i % 2 ? 0.28 : 0.2);
+        add(base.clumpLo, '#fff6f0', mat4(Math.cos(a) * r, h * (0.58 + 0.34 * Math.sqrt(1 - Math.pow(r / (h * 0.44), 2))) - 0.02, Math.sin(a) * r, h * 0.055, h * 0.022, h * 0.055));
       }
-      add(base.ico, '#fff6f0', mat4(0, h * 0.94, 0, h * 0.07, h * 0.03, h * 0.07));
+      add(base.clumpLo, '#fff6f0', mat4(0, h * 0.92, 0, h * 0.07, h * 0.025, h * 0.07));
       break;
     case 'crystal':
-      add(base.trunk, T, mat4(0, 0, 0, 1, h * 0.5, 1));
-      for (let i = 0; i < (lod ? 3 : 6); i++) {
-        const a = (i / 5) * TAU;
-        const r = i === 0 ? 0 : h * 0.16;
+      add(bark, T, mat4(0, 0, 0, 1, h * 0.5, 1), 0, 0.3);
+      for (let i = 0; i < (lod ? 3 : 7); i++) {
+        const a = (i / 6) * TAU;
+        const r = i === 0 ? 0 : h * 0.17;
         add(base.oct, i % 2 ? L2 : L1, mat4(Math.cos(a) * r, h * (i === 0 ? 0.78 : 0.6), Math.sin(a) * r, h * 0.1, h * (i === 0 ? 0.3 : 0.2), h * 0.1, Math.cos(a) * 0.3, 0, Math.sin(a) * 0.3));
       }
       break;
     default: {
-      add(base.trunk, T, mat4(0, 0, 0, 1.1, h * 0.62, 1.1));
-      // galhinho
-      add(base.trunk, T, mat4(0.15, h * 0.42, 0, 0.35, h * 0.22, 0.35, 0, 0, -0.8));
-      const blobs = sp.shape === 'cloud' ? 7 : lod ? 4 : 6;
+      add(bark, T, mat4(0, 0, 0, 1.1, h * 0.62, 1.1), 0, 0.35);
+      // galhos de verdade saindo do tronco para dentro da copa
+      const nb = lod ? 2 : 4;
+      for (let i = 0; i < nb; i++) branch(h * (0.4 + (i % 2) * 0.1), (i / nb) * TAU + 0.5, h * 0.32, 0.09 + (i % 2) * 0.02, 0.8 + (i % 2) * 0.25);
+      const cloud = sp.shape === 'cloud';
+      const blobs = cloud ? 7 : lod ? 4 : lite ? 5 : 7;
+      // miolo grande + tufos em volta (dois anéis), base escura e topo iluminado
+      add(cl(0), L2, mat4(0, h * 0.72, 0, h * 0.26, h * 0.24, h * 0.26), 0.55);
       for (let i = 0; i < blobs; i++) {
-        const a = (i / blobs) * TAU;
-        const r = i === 0 ? 0 : h * 0.18;
-        const s = h * (i === 0 ? 0.25 : 0.17);
-        add(blob, i % 2 ? L2 : L1, mat4(Math.cos(a) * r, h * (i === 0 ? 0.8 : 0.66 + (i % 3) * 0.04), Math.sin(a) * r, s, s * (sp.shape === 'cloud' ? 0.75 : 0.92), s));
+        const a = (i / blobs) * TAU + (i % 2) * 0.3;
+        const up = i % 2;
+        const r = h * (up ? 0.14 : 0.21);
+        const sz = h * (up ? 0.16 : 0.15) * (cloud ? 1.1 : 1);
+        add(cl(i + 1), up ? L1 : i % 3 ? L1 : L2, mat4(Math.cos(a) * r, h * (up ? 0.86 : 0.66), Math.sin(a) * r, sz, sz * (cloud ? 0.7 : 0.85), sz, 0, a, 0), 0.5);
       }
+      if (!lod) add(cl(2), L1, mat4(0, h * 0.95, 0, h * 0.13, h * 0.11, h * 0.13), 0.4);
       if (sp.shape === 'blossom' && !lod)
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 12; i++) {
           const a = i * 2.4;
-          add(base.ico, i % 2 ? '#ffffff' : '#ffe0ee', mat4(Math.cos(a) * h * 0.3, h * (0.66 + (i % 3) * 0.07), Math.sin(a) * h * 0.3, h * 0.04, h * 0.04, h * 0.04));
+          const yy = 0.62 + (i % 4) * 0.08;
+          add(base.ico, i % 2 ? '#ffffff' : '#ffd0e6', mat4(Math.cos(a) * h * 0.3, h * yy, Math.sin(a) * h * 0.3, h * 0.035, h * 0.03, h * 0.035));
         }
       if (sp.shape === 'round' && !lod)
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 6; i++) {
           const a = i * 1.9 + 0.5;
-          add(base.ico, '#ff5a6a', mat4(Math.cos(a) * h * 0.3, h * (0.62 + (i % 2) * 0.1), Math.sin(a) * h * 0.3, 0.16, 0.16, 0.16));
+          // maçãs com cabinho
+          add(base.clumpLo, '#ff4a5a', mat4(Math.cos(a) * h * 0.31, h * (0.6 + (i % 2) * 0.1), Math.sin(a) * h * 0.31, 0.15, 0.14, 0.15), 0.35);
+          add(base.cyl, '#5a3a1a', mat4(Math.cos(a) * h * 0.31, h * (0.6 + (i % 2) * 0.1) + 0.15, Math.sin(a) * h * 0.31, 0.015, 0.08, 0.015));
         }
     }
   }
@@ -150,36 +270,68 @@ export function treeGeometry(sp: Species, rare: number, lod = 0): THREE.BufferGe
 
 export function stumpGeometry(): THREE.BufferGeometry {
   const parts: Part[] = [];
-  parts.push({ g: base.cyl, c: '#ffffff', m: mat4(0, 0.25, 0, 0.36, 0.5, 0.36) });
-  parts.push({ g: base.cyl, c: '#ffe2b0', m: mat4(0, 0.51, 0, 0.3, 0.03, 0.3) });
-  for (let i = 0; i < 3; i++) {
-    const a = i * 2.1;
-    parts.push({ g: base.box, c: '#ffffff', m: mat4(Math.cos(a) * 0.32, 0.06, Math.sin(a) * 0.32, 0.2, 0.12, 0.3, 0, -a, 0) });
+  parts.push({ g: base.bark, c: '#ffffff', m: mat4(0, 0, 0, 1.2, 0.5, 1.2), groove: 0.35 });
+  // topo: anéis de crescimento
+  const rings = ['#ffe2b0', '#e8c28a', '#ffe2b0', '#e0b678', '#f5d6a0'];
+  rings.forEach((c, i) => parts.push({ g: base.cyl, c, m: mat4(0, 0.5 + i * 0.002, 0, 0.3 - i * 0.055, 0.02, 0.3 - i * 0.055) }));
+  for (let i = 0; i < 4; i++) {
+    const a = i * 1.7;
+    parts.push({ g: base.branch, c: '#dddddd', m: new THREE.Matrix4().compose(P.set(Math.cos(a) * 0.25, 0.08, Math.sin(a) * 0.25), Q.setFromEuler(E.set(0, -a, -1.35, 'YXZ')), S.set(0.1, 0.35, 0.1)) });
   }
   return mergeParts(parts);
 }
 
 export function bushGeometry(): THREE.BufferGeometry {
   const parts: Part[] = [];
-  parts.push({ g: base.ico, c: '#ffffff', m: mat4(0, 0.4, 0, 0.7, 0.55, 0.6) });
-  parts.push({ g: base.ico, c: '#dddddd', m: mat4(0.45, 0.3, 0.1, 0.45, 0.4, 0.45) });
-  parts.push({ g: base.ico, c: '#eeeeee', m: mat4(-0.4, 0.3, -0.1, 0.45, 0.38, 0.45) });
-  parts.push({ g: base.ico, c: '#ffd34a', m: mat4(0.2, 0.85, 0.3, 0.1, 0.1, 0.1) });
-  parts.push({ g: base.ico, c: '#ff86b6', m: mat4(-0.3, 0.75, 0.35, 0.1, 0.1, 0.1) });
+  parts.push({ g: base.clumps[0], c: '#ffffff', m: mat4(0, 0.4, 0, 0.7, 0.55, 0.6), ao: 0.5 });
+  parts.push({ g: base.clumps[1], c: '#dddddd', m: mat4(0.45, 0.3, 0.1, 0.45, 0.4, 0.45), ao: 0.5 });
+  parts.push({ g: base.clumps[2], c: '#eeeeee', m: mat4(-0.4, 0.3, -0.1, 0.45, 0.38, 0.45), ao: 0.5 });
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.3;
+    parts.push({ g: base.clumpLo, c: i % 2 ? '#ffd34a' : '#ff86b6', m: mat4(Math.cos(a) * 0.45, 0.7 + (i % 2) * 0.12, Math.sin(a) * 0.4 + 0.1, 0.07, 0.07, 0.07) });
+  }
   return mergeParts(parts);
 }
 
-/** tora: lateral (cor da casca via instanceColor) */
+/** tora: lateral com sulcos de casca (cor da casca via instanceColor) */
 export function logSideGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.3, 0.3, 1.3, 9, 1, true);
+  const g = new THREE.CylinderGeometry(0.3, 0.3, 1.3, 14, 3, true);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const a = Math.atan2(z, x);
+    const k = 0.93 + Math.pow(Math.abs(Math.sin(a * 4.5 + y * 1.5)), 0.6) * 0.09;
+    p.setXYZ(i, x * k, y, z * k);
+  }
+  g.computeVertexNormals();
+  // cor: sulcos mais escuros (multiplica a cor da instância)
+  const c = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const r = Math.hypot(p.getX(i), p.getZ(i)) / 0.3;
+    const k = 0.62 + (r - 0.93) * 4.2;
+    c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = Math.max(0.55, Math.min(1, k));
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   g.rotateZ(Math.PI / 2); // eixo ao longo de X
   return g;
 }
+/** pontas da tora: anéis de crescimento, cerne mais escuro, casca na borda */
 export function logCapGeometry(): THREE.BufferGeometry {
   const parts: Part[] = [];
+  const rings: [number, number, string][] = [
+    [0.3, 0.33, '#7a4a24'],
+    [0.255, 0.3, '#f2d29a'],
+    [0.235, 0.255, '#d9a868'],
+    [0.18, 0.235, '#f5d8a4'],
+    [0.165, 0.18, '#d9a868'],
+    [0.1, 0.165, '#e8be82'],
+    [0.088, 0.1, '#c8945a'],
+  ];
   for (const s of [-1, 1]) {
-    parts.push({ g: new THREE.CircleGeometry(0.3, 9), c: '#ffffff', m: mat4(s * 0.65, 0, 0, 1, 1, 1, 0, (s * Math.PI) / 2, 0) });
-    parts.push({ g: new THREE.RingGeometry(0.14, 0.17, 9), c: '#c89a60', m: mat4(s * 0.652, 0, 0, 1, 1, 1, 0, (s * Math.PI) / 2, 0) });
+    for (const [r0, r1, c] of rings) parts.push({ g: new THREE.RingGeometry(r0 * 0.94, r1 * 0.94, 14), c, m: mat4(s * 0.651, 0, 0, 1, 1, 1, 0, (s * Math.PI) / 2, 0) });
+    parts.push({ g: new THREE.CircleGeometry(0.088 * 0.94, 10), c: '#b8804a', m: mat4(s * 0.651, 0, 0, 1, 1, 1, 0, (s * Math.PI) / 2, 0) });
   }
   return mergeParts(parts);
 }

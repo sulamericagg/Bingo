@@ -48,14 +48,16 @@ interface Q {
   particles: number;
   deco: number;
   aa: boolean;
+  /** modelos mais leves (copas com menos polígonos) */
+  lite: boolean;
 }
 function qFor(tier: Tier): Q {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   return [
-    { pr: Math.min(dpr, 0.6), shadows: false, bodies: 8, particles: 0.35, deco: 0.4, aa: false },
-    { pr: Math.min(dpr, 0.8), shadows: false, bodies: 14, particles: 0.6, deco: 0.65, aa: false },
-    { pr: Math.min(dpr, 1.0), shadows: false, bodies: 24, particles: 0.85, deco: 0.85, aa: true },
-    { pr: Math.min(dpr, 1.5), shadows: true, bodies: 40, particles: 1, deco: 1, aa: true },
+    { pr: Math.min(dpr, 0.6), shadows: false, bodies: 8, particles: 0.35, deco: 0.4, aa: false, lite: true },
+    { pr: Math.min(dpr, 0.8), shadows: false, bodies: 14, particles: 0.6, deco: 0.65, aa: false, lite: true },
+    { pr: Math.min(dpr, 1.0), shadows: false, bodies: 24, particles: 0.85, deco: 0.85, aa: true, lite: false },
+    { pr: Math.min(dpr, 1.5), shadows: true, bodies: 40, particles: 1, deco: 1, aa: true, lite: false },
   ][tier];
 }
 
@@ -314,8 +316,8 @@ class View3D implements View {
     this.cam = new THREE.PerspectiveCamera(70, 1, 0.08, 100);
     this.vmCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
     this.scene.fog = new THREE.Fog(0xbfe8ff, 26, 78);
-    this.treeMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-    this.glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x3a3a70 }));
+    this.treeMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x3a3a70 }));
 
     // física
     this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -20, 0) });
@@ -526,7 +528,7 @@ class View3D implements View {
     const k = sp * 4 + rare;
     let g = this.treeGeo.get(k);
     if (!g) {
-      g = this.trackG(treeGeometry(SPECIES[sp], rare));
+      g = this.trackG(treeGeometry(SPECIES[sp], rare, 0, this.q.lite));
       this.treeGeo.set(k, g);
     }
     return g;
@@ -692,7 +694,7 @@ class View3D implements View {
   /* ------------------------------ toras ------------------------------ */
 
   private buildLogs(): void {
-    this.logSide = new THREE.InstancedMesh(this.trackG(logSideGeometry()), this.track(lambert('#ffffff')), MAX_LOG_INST);
+    this.logSide = new THREE.InstancedMesh(this.trackG(logSideGeometry()), this.track(new THREE.MeshLambertMaterial({ vertexColors: true })), MAX_LOG_INST);
     this.logCap = new THREE.InstancedMesh(this.trackG(logCapGeometry()), this.track(new THREE.MeshLambertMaterial({ vertexColors: true })), MAX_LOG_INST);
     for (const m of [this.logSide, this.logCap]) {
       m.frustumCulled = false;
@@ -1113,7 +1115,7 @@ class View3D implements View {
     const cap = this.trackG(logCapGeometry());
     for (let i = 0; i < HAND_CAP; i++) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(side, this.track(lambert('#9a6a3c'))));
+      g.add(new THREE.Mesh(side, this.track(new THREE.MeshLambertMaterial({ color: '#9a6a3c', vertexColors: true }))));
       g.add(new THREE.Mesh(cap, this.track(new THREE.MeshLambertMaterial({ vertexColors: true }))));
       g.scale.setScalar(0.3);
       this.heldGroup.add(g);
@@ -2855,7 +2857,7 @@ class View3D implements View {
       }
     }
     const carry = new THREE.Group();
-    const lg = new THREE.Mesh(this.trackG(logSideGeometry()), this.track(lambert('#9a6a3c')));
+    const lg = new THREE.Mesh(this.trackG(logSideGeometry()), this.track(new THREE.MeshLambertMaterial({ color: '#9a6a3c', vertexColors: true })));
     lg.scale.setScalar(0.7);
     carry.add(lg);
     carry.position.y = kind === 'drone' ? -0.45 : 1.75;
