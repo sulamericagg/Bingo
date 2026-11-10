@@ -582,7 +582,7 @@ export class Hud {
       const ft = t('voo.f.flaps', 'Flape {n}', { n: f.flaps });
       if (fb.textContent !== ft) fb.textContent = ft;
       const gb = this.q('[data-gear]');
-      const gt = s.gearStuck ? t('voo.f.gearStuck', 'Trem travado') : f.gear ? t('voo.f.gearUp', 'Subir trem') : t('voo.f.gearDown', 'Baixar trem');
+      const gt = s.gearStuck ? t('voo.f.gearStuck', 'Trem travado') : f.gear ? t('voo.f.gearIsDown', 'Trem: baixado') : t('voo.f.gearIsUp', 'Trem: recolhido');
       const gs = gb.querySelector('span')!;
       if (gs.textContent !== gt) gs.textContent = gt;
       gb.classList.toggle('warn', (s.phase === 'final' && !f.gear && f.alt < 600) || s.gearStuck);

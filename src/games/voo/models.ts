@@ -975,7 +975,7 @@ export function groundTexture(size: number): THREE.CanvasTexture {
 /** textura da pista (asfalto, eixo, cabeceira, zona de toque) */
 export function runwayTexture(): THREE.CanvasTexture {
   const [cv, c] = canvas(128, 2048);
-  c.fillStyle = '#4a4b55';
+  c.fillStyle = '#6e6f7c';
   c.fillRect(0, 0, 128, 2048);
   for (let i = 0; i < 3000; i++) {
     c.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},0.05)`;
@@ -1070,7 +1070,7 @@ export function treeGeo(): THREE.BufferGeometry {
   g.bevel = 0;
   g.ao = false;
   g.cyl(0.15, 0.2, 0.5, 0, 0, 0, '#7a4a2a', 5);
-  g.cyl(0.0, 0.7, 1.4, 0, 0.4, 0, '#3f8a44', 6);
+  g.cyl(0.0, 0.7, 1.4, 0, 0.4, 0, '#5cb85a', 6);
   return g.build();
 }
 export function houseGeo(): THREE.BufferGeometry {

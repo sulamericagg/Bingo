@@ -1168,7 +1168,7 @@ export class View3D {
     }
     if (Math.random() < dt * 6) this.wfx.emit(P.x + (Math.random() - 0.5) * 8, P.y + 3, P.z + (Math.random() - 0.5) * 20, 0, 3, 0, { tile: PT.Smoke, color: '#6a6470', life: 2.5, size: 4, grow: 4 });
     if (e.kind !== 'crash' && e.kind !== 'rough' && Math.random() < dt * 10)
-      this.wfx.emit(P.x + (Math.random() - 0.5) * 6, P.y + 8, P.z, (Math.random() - 0.5) * 10, 10, (Math.random() - 0.5) * 10, { tile: PT.Chunk, color: ['#ff5cae', '#ffd34a', '#46d9e6', '#7aff9a'][Math.floor(Math.random() * 4)], life: 2, size: 0.5, grav: 8 });
+      this.wfx.emit(P.x + (Math.random() - 0.5) * 6, P.y + 8, P.z, (Math.random() - 0.5) * 10, 10, (Math.random() - 0.5) * 10, { tile: PT.Chunk, color: ['#ff5cae', '#ffd34a', '#46d9e6', '#7aff9a'][Math.floor(Math.random() * 4)], life: 2.4, size: 1.4, grav: 8 });
   }
 
   destroy(): void {

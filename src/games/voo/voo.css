@@ -70,7 +70,7 @@
 .voo-flyb .voo-btn{min-height:38px;font-size:12px;padding:4px 10px;justify-content:flex-start}
 .voo-flyb .voo-btn.warn{background:linear-gradient(#ff8aa0,#c21d3c);animation:vooPulse .5s infinite alternate}
 .voo-pfd{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 6px);transform:translateX(-50%);width:min(300px,38vw);border-radius:16px;box-shadow:0 0 0 2px rgba(255,255,255,.35),0 6px 18px rgba(0,0,0,.4)}
-.voo-flytop{position:absolute;right:max(8px,env(safe-area-inset-right));top:calc(env(safe-area-inset-top,0px) + 132px);display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.voo-flytop{position:absolute;right:calc(max(16px,env(safe-area-inset-right)) + 74px);top:calc(env(safe-area-inset-top,0px) + 122px);display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .voo-banner{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);font-weight:900;font-size:26px;text-align:center;text-shadow:0 3px 0 #2a0b5c,0 0 20px rgba(0,0,0,.4);opacity:0;transition:opacity .3s;white-space:nowrap}
 .voo-banner small{display:block;font-size:14px;font-weight:700}
 .voo-banner.show{opacity:1}
