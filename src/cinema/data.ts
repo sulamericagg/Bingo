@@ -183,7 +183,7 @@ export const PRESETS: Preset[] = [
   { id: 'zeca', name: 'Zeca', av: av('b_egg', 'm_clay', 'p_none', 'e_sleepy', 'mo_tooth', 'h_beanie', 'f_glasses', 'k_none', '#9be15d', '#3ecf8e') },
   { id: 'gema', name: 'Vovó Gema', av: av('b_cloud', 'm_pearl', 'p_none', 'e_cute', 'mo_smile', 'h_none', 'f_glasses', 'k_none', '#e9dcff', '#9b6bff') },
   { id: 'bolha', name: 'Prof. Bolha', av: av('b_round', 'm_soft', 'p_belly', 'e_cute', 'mo_mustache', 'h_tophat', 'f_monocle', 'k_none', '#c9b8a3', '#8a5a3c') },
-  { id: 'faisca', name: 'Faísca', av: av('b_star', 'm_neon', 'p_none', 'e_star', 'mo_grin', 'h_none', 'f_none', 'k_cape', '#ff5c5c', '#ffd93b') },
+  { id: 'faisca', name: 'Faísca', av: av('b_star', 'm_soft', 'p_none', 'e_star', 'mo_grin', 'h_none', 'f_none', 'k_cape', '#ff5c5c', '#ffd93b') },
   { id: 'nina', name: 'Nina', av: av('b_heart', 'm_soft', 'p_hearts', 'e_big', 'mo_kiss', 'h_bow', 'f_blush', 'k_angel', '#ffb3d1', '#ff5c8a') },
   { id: 'robozinho', name: 'Bip', av: av('b_square', 'm_metal', 'p_circuit', 'e_robot', 'mo_robot', 'h_antenna', 'f_none', 'k_jetpack', '#b8c4d6', '#3fc8ff') },
 ];

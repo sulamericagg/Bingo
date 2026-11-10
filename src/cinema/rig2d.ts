@@ -941,8 +941,8 @@ export function actorThumb(cast: CastMember, px: number, pose: PoseId, expr: Exp
   x.scale(dpr, dpr);
   const rig = poseRig(pose, t, { ...REST });
   const isClose = key === 'face';
-  x.translate(px / 2, isClose ? px * 1.12 : px * 0.9);
-  const h = isClose ? px * 1.12 : px * 0.62;
+  x.translate(px / 2, isClose ? px * 1.12 : px * 0.93);
+  const h = isClose ? px * 1.12 : px * 0.7;
   drawActor2D(x, cast, h, { rig, expr, talk: 0, t, face: 0, blink: 0 });
   if (thumbCache.size > 400) thumbCache.clear();
   thumbCache.set(k, cv);

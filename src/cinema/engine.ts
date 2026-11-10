@@ -4,7 +4,7 @@
  *  com transições, balões e marca d'água. Puro: o mesmo T sempre
  *  gera o mesmo quadro (editor, reprodução e exportação).
  * ============================================================ */
-import { t as tr } from '../i18n';
+import { t } from '../i18n';
 import { BG_H, BG_W, BG_X0, BG_Y0, drawBg } from './bg2d';
 import { FLOOR_Y, flatShots, STAGE_H, STAGE_W, type ActorKey, type CamKey, type CastMember, type Ease, type ExprId, type PoseId, type Project, type Shot, type ShotRef, type VoiceFxId } from './format';
 import { drawBubbles, drawFx, drawWatermark, shakeOffset, type ActorScreen, type BubbleIn } from './fx2d';
@@ -366,7 +366,7 @@ export class Renderer {
     } else {
       this.renderShot(ctx, W, H, ref, local, o);
     }
-    if (o.watermark) drawWatermark(ctx, W, H, tr('cin.watermark', 'Feito no Bloop World'));
+    if (o.watermark) drawWatermark(ctx, W, H, t('cin.watermark', 'Feito no Bloop World'));
     ctx.restore();
   }
 
