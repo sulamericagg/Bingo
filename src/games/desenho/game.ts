@@ -190,14 +190,20 @@ class DesenhoGame implements MiniGameHandle {
     }
     if (load) this.drawUI.paper.load(load);
     a.setDrawing(true);
-    if (this.tut < 4) this.tutStep(this.tut === 3 ? 0 : this.tut);
+    objective(null);
+    if (this.tut < 3) this.tutStep(this.tut);
+    else {
+      this.drawUI.point(null);
+      this.drawUI.tip(null);
+    }
   }
   private closeDraw(): void {
     if (!this.drawUI) return;
     this.drawUI.show(false);
     this.drawUI.point(null);
     this.atelier?.setDrawing(false);
-    if (this.tut < 3) objective(null);
+    if (this.tut === 3 && this.sv.tut < 4) objective(t('dv.tut.3', 'Mire na criação e toque Pegar'), { icon: 'hand-tap' });
+    else objective(null);
   }
 
   private tutStep(n: number): void {

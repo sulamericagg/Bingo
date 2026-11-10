@@ -87,6 +87,7 @@ export class Creation {
     if (o.plane2d) {
       this.body.linearFactor.set(1, 1, 0);
       this.body.angularFactor.set(0, 0, 1);
+      this.body.angularDamping = 0.3;
     }
     this.body.addEventListener('collide', (e: { contact: CANNON.ContactEquation }) => {
       if (this.landed || !this.spawned) return;
@@ -113,7 +114,8 @@ export class Creation {
 
   mass(): number {
     const b = this.sh.built;
-    return massFor(b.volume, densityOf(b.mat), this.scale);
+    // veículos: chassi mais leve (o motor das rodas dá conta)
+    return massFor(b.volume, densityOf(b.mat) * (b.wheels.length ? 0.35 : 1), this.scale);
   }
 
   private makeWheels(): void {

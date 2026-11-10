@@ -208,7 +208,7 @@ const CSS = `
 .dv-lvname{display:flex;align-items:center;gap:8px;background:#fff;border:3px solid var(--ink);border-radius:999px;padding:3px 14px 3px 4px;box-shadow:0 3px 0 var(--ink);font-weight:700;font-size:15px}
 .dv-lvname b{width:28px;height:28px;border-radius:50%;background:#8a5cff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px}
 .dv-time{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.9);border:2.5px solid var(--ink);border-radius:999px;padding:3px 10px;font-weight:700;min-width:62px}
-.dv-pedals{position:absolute;left:var(--edge-l,12px);right:calc(var(--edge-r,12px) + 200px);bottom:var(--edge-b,12px);display:none;justify-content:space-between;pointer-events:none}
+.dv-pedals{position:absolute;left:calc(var(--edge-l,12px) + 66px);right:calc(var(--edge-r,12px) + 200px);bottom:var(--edge-b,12px);display:none;justify-content:space-between;pointer-events:none}
 .dv-drive .dv-pedals{display:flex}
 .dv-pedals .dv-act{opacity:1;width:88px;height:88px}
 @media (orientation:portrait){

@@ -549,7 +549,7 @@ function buildTube(d: Drawing, an: Analysis, o: BuildOpts) {
     let avgW = 0;
     for (let i = 2; i < p.length; i += 3) avgW += ptWidth(st, p[i]);
     avgW /= Math.max(1, p.length / 3);
-    const r = Math.max(0.012, (avgW / 2) * s * 1.05);
+    const r = o.flat ? Math.max(0.05, Math.min(0.13, (avgW / 2) * s)) : Math.max(0.012, (avgW / 2) * s * 1.05);
     const col = PALETTE[st.c];
     colors.push(col);
     if (pts.length < 2 || L < 3) {

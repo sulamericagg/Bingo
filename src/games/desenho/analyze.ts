@@ -640,6 +640,9 @@ function latheProfile(d: Drawing, pens: Stroke[]): { axis: number; pts: [number,
   const r0 = pts[0][0];
   const rn = pts[pts.length - 1][0];
   const wmax = Math.max(...pts.map((q) => q[0]));
-  const good = cross < pts.length * 0.1 && span > wmax * 0.7 && Math.min(r0, rn) < wmax * 0.3;
+  // o ponto no eixo tem que ser a BASE (o fundo do vaso), não a boca
+  const iAxis = r0 <= rn ? 0 : pts.length - 1;
+  const atBottom = pts[iAxis][1] >= y1 - span * 0.2;
+  const good = cross < pts.length * 0.1 && span > wmax * 0.7 && Math.min(r0, rn) < wmax * 0.3 && atBottom;
   return { axis, pts, stroke: s, fromSym, good };
 }

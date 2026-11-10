@@ -91,7 +91,7 @@ export function floodFill(x: CanvasRenderingContext2D, px: number, py: number, h
   const TOL = 64;
   const like = (i: number): boolean => {
     const a = d[i + 3];
-    if (a0 < 40) return a < 110; // região vazia: tudo que é "pouca tinta"
+    if (a0 < 40) return a < 48; // região vazia: qualquer tinta (mesmo a borda suave de um traço fino) é parede
     return a > 110 && Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) + Math.abs(a - a0) < TOL * 2;
   };
   const mark = new Uint8Array(W * H);
@@ -387,7 +387,7 @@ export class Paper {
     if (dist < 1.2) return;
     const dtm = Math.max(1, e.timeStamp - this.lt);
     const v = dist / dtm; // unidades lógicas por ms
-    const target = Math.max(0.15, Math.min(1, 1.05 - v * 0.33));
+    const target = Math.max(0.35, Math.min(1, 1.05 - v * 0.3));
     this.vw += (target - this.vw) * 0.35;
     if (s.t === 'pen' && this.inkMax < Infinity) {
       const add = dist * (s.m ? 2 : 1);

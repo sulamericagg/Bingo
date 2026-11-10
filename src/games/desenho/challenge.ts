@@ -25,6 +25,56 @@ import { renderDrawing } from './paper';
 import { strokeLen, type Drawing, type Stroke } from './strokes';
 
 const WATER_RHO = 300;
+
+/** frente das plataformas: terra em camadas com pedrinhas e grama recortada no topo (papel) */
+function soilTex(w: number, h: number, top: number): THREE.CanvasTexture {
+  const P = 40;
+  const c = document.createElement('canvas');
+  c.width = Math.max(16, Math.min(1024, Math.round(w * P)));
+  c.height = Math.max(16, Math.min(1024, Math.round(h * P)));
+  const x = c.getContext('2d')!;
+  const kx = c.width / w;
+  const ky = c.height / h;
+  const g = x.createLinearGradient(0, 0, 0, c.height);
+  g.addColorStop(0, '#d99a62');
+  g.addColorStop(1, '#a8673c');
+  x.fillStyle = g;
+  x.fillRect(0, 0, c.width, c.height);
+  // camadas onduladas
+  let seed = Math.round(w * 13 + h * 7 + top * 3);
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let k = 1; k < h * 1.4; k++) {
+    x.strokeStyle = k % 2 ? 'rgba(120,60,20,.22)' : 'rgba(255,220,170,.18)';
+    x.lineWidth = 3;
+    x.beginPath();
+    const y0 = (k / 1.4) * ky + 0.35 * ky;
+    for (let i = 0; i <= 20; i++) x.lineTo((i / 20) * c.width, y0 + Math.sin(i * 0.9 + k) * 4);
+    x.stroke();
+  }
+  for (let i = 0; i < w * h * 1.2; i++) {
+    x.fillStyle = rnd() < 0.5 ? 'rgba(90,50,25,.35)' : 'rgba(255,235,200,.35)';
+    x.beginPath();
+    x.ellipse(rnd() * c.width, 0.4 * ky + rnd() * (c.height - 0.4 * ky), 3 + rnd() * 5, 2 + rnd() * 3, rnd() * 3, 0, 7);
+    x.fill();
+  }
+  // grama com bordinha recortada
+  x.fillStyle = '#5fbf55';
+  x.beginPath();
+  x.moveTo(0, 0);
+  x.lineTo(c.width, 0);
+  const gh = 0.32 * ky;
+  for (let i = Math.ceil(w * 3); i >= 0; i--) {
+    const px = (i / (w * 3)) * c.width;
+    x.quadraticCurveTo(px + kx / 6, gh + 7, px, gh);
+  }
+  x.closePath();
+  x.fill();
+  x.fillStyle = '#7ad86a';
+  x.fillRect(0, 0, c.width, gh * 0.55);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 const DEPTH = 3;
 
 interface Dyn {
@@ -201,7 +251,7 @@ export class Challenge implements Stage {
     for (const [x0, y0, x1, y1] of lv.boxes) {
       const w = x1 - x0;
       const h = y1 - y0;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, DEPTH), [side, side, top, side, front, side]);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, DEPTH), [side, side, top, side, this.M('#ffffff', { map: soilTex(w, h, y1) }), side]);
       m.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0);
       m.receiveShadow = sh;
       m.castShadow = sh;

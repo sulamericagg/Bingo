@@ -94,6 +94,11 @@ export class Atelier implements Stage {
     sc.far = 20;
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.02;
+    // luz de preenchimento vinda da câmera: o desenho na frente das criações sempre aparece bem
+    const fill = new THREE.DirectionalLight('#ffffff', eng.q.standard ? 0.7 : 0.55);
+    fill.position.set(0.3, 0.5, 1);
+    fill.target.position.set(0, 0, -1);
+    this.camera.add(fill, fill.target);
     this.scene.add(hemi, this.sun, this.sun.target, this.camera);
     this.buildRoom();
     this.particles = makeParticles(this.scene, eng.q);
