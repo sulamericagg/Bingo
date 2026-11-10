@@ -16,8 +16,8 @@ const CSS = `
 .ty-timer.ty-hurry{background:#c21d3c;animation:tyPulse .6s infinite alternate}
 @keyframes tyPulse{to{transform:scale(1.08)}}
 .ty-wallet{font-size:20px}
-.ty-rank{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 58px);display:flex;flex-direction:column;gap:3px;width:150px}
-.ty-row{display:flex;align-items:center;gap:6px;background:rgba(42,11,92,.72);border-radius:10px;padding:2px 8px 2px 4px;font-size:13px;font-weight:600;position:relative;overflow:hidden;transition:transform .3s}
+.ty-rank{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 58px);display:flex;flex-direction:column;gap:3px;width:132px;opacity:.88;pointer-events:none}
+.ty-row{display:flex;align-items:center;gap:5px;background:rgba(42,11,92,.6);border-radius:10px;padding:1px 7px 1px 4px;font-size:12px;font-weight:600;position:relative;overflow:hidden;transition:transform .3s}
 .ty-row.ty-me{background:rgba(255,207,46,.92);color:#2a0b5c}
 .ty-row b{width:16px;text-align:center}
 .ty-row .ty-dot{width:10px;height:10px;border-radius:50%;border:2px solid #2a0b5c;flex:none}
