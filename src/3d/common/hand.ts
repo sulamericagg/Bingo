@@ -346,6 +346,7 @@ export class Forearm {
     const ey = -hh * 1.32 - 0.04 * k;
     const wx = (wrist.x * de) / Math.max(0.05, -wrist.z);
     const wy = (wrist.y * de) / Math.max(0.05, -wrist.z);
+    bend = Math.max(-1, Math.min(1, bend || 0));
     let ex = wx + this.side * (wy - ey) * (0.62 + bend * 0.25);
     ex = this.side > 0 ? Math.min(ex, hw * 1.4) : Math.max(ex, -hw * 1.4);
     FB.set(ex, ey, ze);
@@ -397,7 +398,7 @@ class Spring {
     private d: number,
   ) {}
   step(target: number, dt: number): number {
-    const h = Math.min(dt, 1 / 30);
+    const h = Math.max(0, Math.min(dt, 1 / 30));
     this.v += (target - this.x) * this.k * h;
     this.v *= Math.exp(-this.d * h);
     this.x += this.v * h;
@@ -493,6 +494,7 @@ export class Hand {
   }
   /** speed: 0..1 velocidade de andar; look: delta de giro da câmera neste frame */
   update(dt: number, speed: number, lookDX: number, lookDY: number): void {
+    dt = Math.max(0, Math.min(0.1, dt || 0));
     this.t += dt;
     this.arm.mesh.visible = this.mesh.visible;
     // enquadramento responsivo: tamanho e posição a partir do frustum (retrato/paisagem)
