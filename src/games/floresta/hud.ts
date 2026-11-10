@@ -380,8 +380,7 @@ export class Hud {
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (lock > 0) lock -= dt;
-      else {
+      if (now >= lock) {
         x += dir * speed * dt;
         if (x > 1) {
           x = 1;
@@ -399,12 +398,12 @@ export class Hud {
     go.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (lock > 0) return;
+      if (performance.now() < lock) return;
       const d = Math.abs(x - zc);
       const q = d < zw / 6 ? 1 : d < zw / 2 ? 0.5 : 0;
       total += q;
       round++;
-      lock = 0.35;
+      lock = performance.now() + 350;
       el.classList.remove('hit1', 'hit5', 'hit0');
       void el.offsetWidth;
       el.classList.add(q === 1 ? 'hit1' : q > 0 ? 'hit5' : 'hit0');

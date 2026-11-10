@@ -1070,7 +1070,9 @@ export class Sim {
   }
   /** perto da serra (minigame de serrar na mão) */
   nearSaw(): boolean {
-    return Math.abs(this.me.x - SAW_X) < 4.5;
+    const x = this.me.x;
+    // 2D: logo antes do funil (que descarrega sozinho ao encostar); 3D: perto do funil ou da serra
+    return this.mode3d ? Math.abs(x - INTAKE_X) < 6 || Math.abs(x - SAW_X) < 4.5 : x > INTAKE_X + 3 && x < INTAKE_X + 12;
   }
   /**
    * Serrar na mão: n toras (valor total val) viram tábuas na hora.
