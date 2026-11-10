@@ -244,8 +244,21 @@ export function hubBack(): boolean {
     return true;
   }
   handle?.pause?.();
-  hostConfirm.classList.add('on');
+  showConfirm();
   return true;
+}
+
+/** "Sair do jogo?": só fala em perder progresso quando o jogo diz que há partida em andamento. */
+function showConfirm(): void {
+  let live = false;
+  try {
+    live = !!handle?.inMatch?.();
+  } catch {
+    /* jogo com erro: texto neutro */
+  }
+  const msg = hostConfirm.querySelector<HTMLElement>('.gh-msg');
+  if (msg) msg.textContent = live ? t('hub.exitMsg', 'O progresso desta partida pode ser perdido.') : t('hub.exitMsgIdle', 'Você volta para o menu do Bloop World.');
+  hostConfirm.classList.add('on');
 }
 
 /** App foi para segundo plano: pausa o minigame aberto. */
@@ -253,7 +266,7 @@ export function hubPause(): void {
   if (!hostActive) return;
   handle?.pause?.();
   // ao voltar o jogador vê "Pausado — Continuar / Sair" em vez de uma tela congelada
-  if (handle) hostConfirm.classList.add('on');
+  if (handle) showConfirm();
 }
 
 /* ============================== init ============================== */
@@ -846,7 +859,7 @@ function buildHost(): void {
       <div class="panel gh-panel">
         <div class="panel-art plate plate-violet round">${icon('pause')}</div>
         <h2 data-i18n="hub.exitTitle">Sair do jogo?</h2>
-        <p class="muted" data-i18n="hub.exitMsg">O progresso desta partida pode ser perdido.</p>
+        <p class="muted gh-msg"></p>
         <button class="btn btn-play small" data-gh="resume"><span data-i18n="hub.resume">CONTINUAR</span></button>
         <button class="btn btn-ghost" data-gh="exit"><span data-i18n="hub.exitBtn">Sair para o menu</span></button>
       </div>

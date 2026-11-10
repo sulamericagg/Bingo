@@ -911,7 +911,11 @@ body.hub-lowfx .hub-card.active {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(5, 2, 18, 0.6);
+  background: rgba(5, 2, 18, 0.72);
+}
+/* cartão opaco: o .panel padrão é translúcido e o jogo (botões, textos) aparecia através dele */
+.gh-confirm .gh-panel {
+  background: linear-gradient(180deg, #3c1e82, #1a0b40);
 }
 .gh-confirm.on {
   display: flex;

@@ -2251,6 +2251,7 @@ export default {
   "hub.daily": "Подарок",
   "hub.exitBtn": "В меню",
   "hub.exitMsg": "Прогресс этой игры может пропасть.",
+  "hub.exitMsgIdle": "Ты вернёшься в меню Bloop World.",
   "hub.exitTitle": "Выйти из игры?",
   "hub.flash": "Молния-скидка",
   "hub.free": "Даром",

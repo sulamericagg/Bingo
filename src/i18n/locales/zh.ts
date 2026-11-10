@@ -2251,6 +2251,7 @@ export default {
   "hub.daily": "每日",
   "hub.exitBtn": "返回菜单",
   "hub.exitMsg": "本局进度可能会丢失。",
+  "hub.exitMsgIdle": "将返回 Bloop World 菜单。",
   "hub.exitTitle": "退出游戏?",
   "hub.flash": "限时特惠",
   "hub.free": "免费",

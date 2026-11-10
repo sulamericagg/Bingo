@@ -2251,6 +2251,7 @@ export default {
   "hub.daily": "Günlük",
   "hub.exitBtn": "Menüye dön",
   "hub.exitMsg": "Bu oyundaki ilerleme kaybolabilir.",
+  "hub.exitMsgIdle": "Bloop World menüsüne dönersin.",
   "hub.exitTitle": "Oyundan çıkılsın mı?",
   "hub.flash": "Şimşek fırsat",
   "hub.free": "Bedava",

@@ -17,6 +17,7 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
   injectTycoonCss();
   const quality = new QualityGovernor({});
   let child: MiniGameHandle | null = null;
+  let inMatch = false;
   let lobby: (() => void) | null = null;
   let dead = false;
 
@@ -25,6 +26,7 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
 
   function showLobby(): void {
     child = null;
+    inMatch = false;
     const ts = tycoonSave();
     const el = document.createElement('div');
     el.className = 'ty-root';
@@ -108,6 +110,7 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
   }
 
   function playMatch(): void {
+    inMatch = true;
     child = startMatch(root, { diff: tycoonSave().diff, onExit: showLobby, onAgain: playMatch }, quality);
   }
 
@@ -121,6 +124,7 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
     },
     pause: () => child?.pause?.(),
     resume: () => child?.resume?.(),
+    inMatch: () => inMatch && !!child,
   };
 
   if (auto === 'match' && qs.has('debug')) playMatch();

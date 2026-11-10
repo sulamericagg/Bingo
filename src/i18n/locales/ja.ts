@@ -2251,6 +2251,7 @@ export default {
   "hub.daily": "デイリー",
   "hub.exitBtn": "メニューへ",
   "hub.exitMsg": "このプレイの進みぐあいが消えるかも。",
+  "hub.exitMsgIdle": "Bloop World のメニューに戻ります。",
   "hub.exitTitle": "ゲームをやめる?",
   "hub.flash": "タイムセール",
   "hub.free": "無料",

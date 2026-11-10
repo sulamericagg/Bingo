@@ -840,6 +840,12 @@ class TuboGame implements MiniGameHandle {
 
   /* ============================== pausa / saída ============================== */
 
+  /** partida começada (depois do 1º toque) e ainda não acabou — para o "Sair do jogo?" do hub */
+  inMatch(): boolean {
+    const m = this.mode === 'paused' ? this.prevMode : this.mode;
+    return m === 'hop' || m === 'smash' || m === 'fall';
+  }
+
   private togglePause(): void {
     if (this.mode === 'paused') this.resume();
     else this.pause(true);
