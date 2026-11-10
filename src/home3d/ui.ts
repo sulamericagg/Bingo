@@ -14,7 +14,9 @@ const CSS = `
 .h3-canvas{position:absolute;inset:0;display:block}
 .h3-layer{position:absolute;inset:0}
 .h3-btn{font:inherit;font-weight:700;border:0;cursor:pointer;color:#2a0b5c;background:#fff;border-radius:999px;box-shadow:0 4px 0 #2a0b5c33,0 0 0 3px #2a0b5c inset;padding:8px 14px;display:inline-flex;align-items:center;gap:6px;font-size:14px;transition:transform .08s}
-.h3-btn:active,.h3-btn.on{transform:scale(.93)}
+.h3-btn:active,.h3-btn.on{transform:scale(.9)}
+.h3-btn,.h3-pb,.h3-mb,.h3-act,.h3-drawer .card,.h3-drawer .tab{transition:transform .16s cubic-bezier(.3,1.7,.5,1),background-color .15s,box-shadow .15s}
+.h3-layer.painting .h3-left{display:none}
 .h3-btn svg{width:20px;height:20px;flex:none}
 .h3-btn.sel{background:#ffd84a}
 .h3-btn.lock{opacity:.5}
@@ -134,6 +136,16 @@ const CSS = `
 .h3-top.compact>.h3-btn:first-child span{display:none}
 .h3-top.compact>.h3-btn:first-child{padding:6px 8px}
 .h3-tools{position:relative}
+.h3-pchip{position:absolute;left:max(10px,env(safe-area-inset-left));top:calc(max(8px,env(safe-area-inset-top)) + 50px);display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;max-width:min(92vw,420px);z-index:4}
+.h3-pchip .cur,.h3-pchip .un{font:inherit;font-weight:700;font-size:12px;border:0;border-radius:999px;background:#2a0b5cdd;color:#fff;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;box-shadow:0 0 0 2px #ffffff55;cursor:pointer;transition:transform .08s}
+.h3-pchip .cur i{width:26px;height:26px;border-radius:50%;border:3px solid #fff;display:block}
+.h3-pchip .un{padding:5px;width:34px;height:34px;justify-content:center}
+.h3-pchip .un svg{width:20px;height:20px}
+.h3-pchip .un.off{opacity:.4}
+.h3-pchip button:active{transform:scale(.9)}
+.h3-pchip .pan{flex-basis:100%;background:#2a0b5cee;border-radius:14px;padding:8px;box-shadow:0 0 0 2px #ffffff44;display:flex;flex-direction:column;gap:6px;animation:h3pop .16s}
+.h3-pchip .fins,.h3-pchip .cols{display:flex;flex-wrap:wrap;gap:5px}
+.h3-pchip .h3-sw{width:26px;height:26px;padding:0}
 .h3-tcur .car{font-style:normal;font-size:11px;margin-left:2px;opacity:.7}
 .h3-tmenu{position:absolute;right:0;top:calc(100% + 6px);display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:6px;border-radius:16px;background:#2a0b5cee;box-shadow:0 0 0 2px #ffffff55,0 8px 20px #0006;z-index:7;animation:h3pop .15s;min-width:150px}
 .h3-tmenu .h3-btn{justify-content:flex-start;font-size:13px;padding:6px 10px}
@@ -193,6 +205,7 @@ export const ICON: Record<string, string> = {
   swap: P('<path d="M4 8h13l-3-3M20 16H7l3 3"/>'),
   box: P('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'),
   x: P('<path d="M6 6l12 12M18 6L6 18"/>'),
+  undo: P('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>'),
   sofa: P('<path d="M4 11V8a2 2 0 012-2h12a2 2 0 012 2v3"/><path d="M2 13a2 2 0 014 0v2h12v-2a2 2 0 014 0v5H2z"/><path d="M5 18v2M19 18v2"/>'),
   star: P('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
   bulb: P('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/>'),

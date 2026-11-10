@@ -17,7 +17,7 @@ import {
   canUse, dimsOf, FLOOR_STYLES, ROOM_D, ROOM_W, itemColor, itemToPlace, KINDS, kindOf, PALETTE, placeItemXY, quarterOf, setQuarter, surface, WALL_STYLES, type Kind,
 } from './adapter';
 import type { Engine, ItemRec, RoomRec } from './engine';
-import { Ghost } from './ghost';
+import { Ghost, popObj } from './ghost';
 import { GRID, solveFloor, solveWall } from './placer';
 import { sfx } from './sfx';
 import type { Cost3D, RoomItem3D, Shop3D } from './types';
@@ -49,6 +49,10 @@ interface Moving {
 }
 
 const V = new THREE.Vector3();
+const BM = new THREE.Matrix4();
+const BR = new THREE.Ray();
+const BB = new THREE.Box3();
+const BP = new THREE.Vector3();
 const PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const thumbs = new Map<string, string>();
 export function furnThumb(id: string): string {
@@ -148,6 +152,26 @@ export class Decor {
       }
       if (ud?.type === 'wall') break;
     }
+    // mira assistida: a caixa inteira do móvel conta (balões, cadeiras vazadas, pernas finas)
+    {
+      let best: ItemRec | null = null,
+        bd = maxDist;
+      const wallHit = hits.find((h) => h.object.userData?.type === 'wall');
+      if (wallHit) bd = Math.min(bd, wallHit.distance + 0.05);
+      for (const it of this.eng.items) {
+        if (it.info.flat || it.state === 'broken' || !it.obj.visible) continue;
+        BM.copy(it.obj.matrixWorld).invert();
+        BR.copy(ray).applyMatrix4(BM);
+        BB.min.set(-it.dims.w / 2, 0, -it.dims.d / 2);
+        BB.max.set(it.dims.w / 2, it.dims.h, it.dims.d / 2);
+        if (BR.intersectBox(BB, BP)) {
+          BP.applyMatrix4(it.obj.matrixWorld);
+          const d = BP.distanceTo(ray.origin);
+          if (d < bd) (bd = d), (best = it);
+        }
+      }
+      if (best) return best;
+    }
     // chão: tapete cuja pegada contém o ponto
     const p = ray.intersectPlane(PLANE, V);
     if (!p || p.distanceTo(ray.origin) > maxDist) return null;
@@ -244,6 +268,7 @@ export class Decor {
       return;
     }
     this.apply(it, room, data, s.x, 0, s.z);
+    popObj(it.obj, 0.1, 300);
     sfx.click();
   }
   private recolor(it: ItemRec): void {
@@ -437,10 +462,12 @@ export class Decor {
       m.data.y = xy.y;
       m.room.design.items.push(m.data);
       const it = this.eng.addItem(m.room, m.data);
+      popObj(it.obj, 0.2);
       this.eng.burst(it.obj.position.x, 0.25, it.obj.position.z, 18, 'spark', '#ffe27a', 2);
     } else if (m.it) {
       this.apply(m.it, m.room, m.data, m.x, m.y, m.z);
       m.it.obj.visible = true;
+      popObj(m.it.obj);
       if (m.it.body) m.it.body.collisionResponse = true;
       this.eng.burst(m.it.obj.position.x, 0.15, m.it.obj.position.z, 12, 'poof', '#ffffff', 1.2);
     }

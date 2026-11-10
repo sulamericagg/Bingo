@@ -135,3 +135,19 @@ export class Ghost {
     for (const m of this.matFace.values()) m.dispose();
   }
 }
+
+/** "pop" de pronto: o objeto encolhe e estica rapidinho (easing elástico), volta a 1 */
+export function popObj(o: THREE.Object3D, amp = 0.14, ms = 420): void {
+  const t0 = performance.now();
+  const step = () => {
+    const t = (performance.now() - t0) / ms;
+    if (t >= 1 || !o.parent) {
+      o.scale.set(1, 1, 1);
+      return;
+    }
+    const e = Math.sin(t * Math.PI * 2.2) * Math.pow(1 - t, 2) * amp;
+    o.scale.set(1 - e * 0.6, 1 + e, 1 - e * 0.6);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}

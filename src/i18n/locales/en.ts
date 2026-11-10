@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "Shield",
   "upg.shield.desc": "Chance to start with a shield and stay invincible longer after a hit.",
   "upg.shield.fx": "{n}% chance",
+  "home3d.act.painting": "PAINTING",
+  "home3d.paint.dragHint": "Drag your finger over walls, floor or furniture",
+  "home3d.paint.undo": "Undo",
 } as Record<string, string>;

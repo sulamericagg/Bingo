@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "护盾",
   "upg.shield.desc": "有几率带着护盾开局,撞击后无敌时间更长。",
   "upg.shield.fx": "{n}%几率",
+  "home3d.act.painting": "刷漆中",
+  "home3d.paint.dragHint": "用手指在墙、地板或家具上拖动",
+  "home3d.paint.undo": "撤销",
 } as Record<string, string>;

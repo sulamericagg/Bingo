@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "방패",
   "upg.shield.desc": "방패를 들고 시작할 확률과 부딪힌 뒤 무적 시간이 늘어나요.",
   "upg.shield.fx": "확률 {n}%",
+  "home3d.act.painting": "칠하는 중",
+  "home3d.paint.dragHint": "벽, 바닥, 가구를 손가락으로 문질러요",
+  "home3d.paint.undo": "되돌리기",
 } as Record<string, string>;

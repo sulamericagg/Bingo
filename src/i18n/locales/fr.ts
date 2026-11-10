@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "Bouclier",
   "upg.shield.desc": "Chance de commencer avec un bouclier et plus de temps invincible après un choc.",
   "upg.shield.fx": "{n} % de chance",
+  "home3d.act.painting": "PEINTURE",
+  "home3d.paint.dragHint": "Glisse le doigt sur les murs, le sol ou les meubles",
+  "home3d.paint.undo": "Annuler",
 } as Record<string, string>;

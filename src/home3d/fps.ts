@@ -8,6 +8,7 @@ import * as CANNON from 'cannon-es';
 import { t } from '../i18n';
 import { canUse, itemColor, KINDS, newMessId, parsePaintSpec, placeToXY, quarterOf, ROOM_D, ROOM_W, WALL_T, type MessKind } from './adapter';
 import type { Decor } from './decor';
+import type { Paint3D, PaintHit } from './paint3d';
 import { G, type DecalRec, type Engine, type ItemRec, type RoomRec, type WallRec } from './engine';
 import { Hand, type HandColors } from './hand';
 import { splatColor, type Food, type Party } from './party';
@@ -53,7 +54,9 @@ export class Fps {
   private bob = 0;
   private stepT = 0;
   private fxT = 0;
-  private paintT = 0;
+  private paintPress = false;
+  private paintPressT = 0;
+  paint: Paint3D | null = null;
   private lastLook: [number, number] = [0, 0];
   /** olhar suavizado: o dedo move o alvo, a câmera segue (sem tranco em celular fraco) */
   private yawGoal = 0;
@@ -61,6 +64,7 @@ export class Fps {
   /** câmera recua/sobe enquanto move um móvel (0..1) */
   private pull = 0;
   decor: Decor | null = null;
+  private extBtns = false;
   active = true;
   /** callbacks para a sessão */
   onToast?: (s: string) => void;
@@ -215,7 +219,7 @@ export class Fps {
   }
   private updatePose(): void {
     const tl = this.tool;
-    if (tl === 'paint') this.hand.setPose('roller', parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5');
+    if (tl === 'paint') this.hand.setPose('roller', this.paint?.color ?? parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5');
     else if (tl === 'clean') this.hand.setPose(this.target.decal?.vacuum ? 'vacuum' : 'sponge');
     else if (tl === 'decor') this.hand.setPose(this.held ? 'grab' : 'build');
     else this.hand.setPose(this.held ? 'grab' : 'open');
@@ -301,13 +305,14 @@ export class Fps {
   /* ---------------- botões ---------------- */
   private buttons(): ActDef[] {
     const ex = this.ext?.buttons(); // [casa-ativ]
+    this.extBtns = !!ex;
     if (ex) return ex;
     const tg = this.target;
     const role = this.eng.role;
     const L: ActDef[] = [];
     const it = tg.item;
     if (this.tool === 'paint') {
-      L.push({ id: 'paint', label: t('home3d.act.paint', 'PINTAR'), icon: 'paint', size: 'big', hold: true });
+      L.push({ id: 'paint', label: this.paint?.latched ? t('home3d.act.painting', 'PINTANDO') : t('home3d.act.paint', 'PINTAR'), icon: 'paint', size: 'big', hold: true });
       return L;
     }
     if (this.decor?.mv || this.decor?.sel || this.decor?.drawerOpen) return L;
@@ -590,33 +595,40 @@ export class Fps {
       this.onCleaned?.(this.eng.cleaned);
     }
   }
-  private paintStep(dt: number): void {
-    const w = this.target.wall;
-    if (!w || !this.target.uv || this.target.dist > 3.4) return;
-    this.paintT -= dt;
-    if (this.paintT > 0) return;
-    this.paintT = 1 / 30;
-    const uv = this.target.uv;
-    const fresh = this.eng.paintAt(w, uv.x, uv.y, 0.42, this.paintColor);
-    if (fresh && Math.random() < 0.35) sfx.paint();
-    if (Math.random() < 0.3) {
-      const p = this.target.point;
-      this.eng.emit(p.x, p.y, p.z, w.normal.x * 0.4, -0.3, w.normal.z * 0.4, { tile: 3, color: parsePaintSpec(this.paintColor)?.col ?? '#ff9ad5', life: 0.5, size: 0.025, grav: 6 });
+  /** o que está na mira para pintar: parede (uv), móvel ou chão (até ~3,4 m) */
+  private paintHit(): PaintHit | null {
+    const tg = this.target;
+    if (tg.type === 'wall' && tg.wall && tg.uv && tg.dist < 3.4) return { wall: tg.wall, uv: tg.uv, point: tg.point, normal: tg.normal };
+    if (tg.type === 'item' && tg.item && tg.dist < 3.4 && tg.item.state !== 'broken') return { item: tg.item, point: tg.point };
+    const cam = this.eng.camera;
+    cam.getWorldDirection(V);
+    if (V.y < -0.08) {
+      const k = -cam.position.y / V.y;
+      if (k < 3.6) {
+        const p = cam.position.clone().addScaledVector(V, k);
+        const room = this.eng.roomAt(p.x, p.z);
+        if (room) return { floor: room, point: p };
+      }
     }
-    const room = w.room;
+    return null;
+  }
+  private paintStep(dt: number): void {
+    const pt = this.paint;
+    if (!pt) return;
+    const h = this.paintHit();
+    pt.spray(h, dt);
+    const room = h?.wall?.room;
+    if (!room) return;
     const prog = this.eng.paintProgress(room);
     this.onProgress?.(room, prog);
     if (prog >= 0.9) {
       this.eng.finishPaint(room);
       this.onProgress?.(room, 1);
       sfx.sparkle();
-      this.onToast?.(t('home3d.toast.painted', 'Parede novinha!'), );
-      for (const ww of room.walls) {
-        for (let i = 0; i < 6; i++) {
-          const c = room.group.localToWorld(new THREE.Vector3(Math.random() * ROOM_W, 0.4 + Math.random() * 2, Math.random() * ROOM_D));
-          this.eng.burst(c.x, c.y, c.z, 4, 'spark', '#fff4a0', 1.2);
-        }
-        void ww;
+      this.onToast?.(t('home3d.toast.painted', 'Parede novinha!'));
+      for (let i = 0; i < 24; i++) {
+        const c = room.group.localToWorld(new THREE.Vector3(Math.random() * ROOM_W, 0.4 + Math.random() * 2, Math.random() * ROOM_D));
+        this.eng.burst(c.x, c.y, c.z, 4, 'spark', '#fff4a0', 1.2);
       }
     }
   }
@@ -692,7 +704,16 @@ export class Fps {
     }
     // limpar / pintar segurando
     const holdClean = this.acts.held.has('clean');
-    const holdPaint = this.acts.held.has('paint') || (this.tool === 'paint' && this.input.key('Space'));
+    // pintar: segurar o botão pinta; toque curto liga/desliga o spray (dá para olhar e andar pintando)
+    const pressed = this.acts.held.has('paint');
+    if (pressed && !this.paintPress) this.paintPressT = this.eng.time;
+    if (!pressed && this.paintPress) {
+      if (this.eng.time - this.paintPressT < 0.28 && this.paint) this.paint.latched = !this.paint.latched;
+      this.paint?.end();
+    }
+    this.paintPress = pressed;
+    if (this.tool !== 'paint' && this.paint) this.paint.latched = false;
+    const holdPaint = pressed || !!this.paint?.latched || (this.tool === 'paint' && this.input.key('Space'));
     let scrub = 0;
     if ((holdClean || (this.tool === 'clean' && this.input.key('Space'))) && this.target.decal && this.target.dist < 2.8) {
       this.cleanStep(dt, this.target.decal);
@@ -701,6 +722,8 @@ export class Fps {
     } else if (holdPaint && this.tool === 'paint') {
       this.paintStep(dt);
       scrub = 0.7;
+    } else if (this.tool === 'paint') {
+      this.paint?.end();
     } else if (this.tool === 'hand' && !this.held && !this.ext?.busy) this.hand.setPose('open'); // [casa-ativ] busy
     else if (this.tool === 'clean') this.updatePose();
     this.hand.visible = !this.decor?.mv;
@@ -723,7 +746,8 @@ export class Fps {
     // HUD
     // um botão de ação por vez (festa) / no máximo dois: o principal e um pequeno
     const bl = this.buttons();
-    this.acts.set(this.party ? bl.filter((b, i) => i === 0 || b.id === 'drop').slice(0, 2) : bl.slice(0, 2));
+    // (botões das atividades da casa [casa-ativ] vêm prontos: não corta)
+    this.acts.set(this.extBtns ? bl : this.party ? bl.filter((b, i) => i === 0 || b.id === 'drop').slice(0, 2) : bl.slice(0, 2));
     const tg = this.target;
     let label = '';
     if (tg.type === 'item' && tg.item && tg.dist < 3) label = t('home3d.furn.' + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state === 'broken' ? ' · ' + t('home3d.state.broken', 'quebrado') : tg.item.state === 'moved' ? ' · ' + t('home3d.state.moved', 'fora do lugar') : '');

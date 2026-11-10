@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "Kalkan",
   "upg.shield.desc": "Kalkanla başlama şansı ve çarpmadan sonra daha uzun yenilmezlik.",
   "upg.shield.fx": "%{n} şans",
+  "home3d.act.painting": "BOYUYOR",
+  "home3d.paint.dragHint": "Parmağını duvarlarda, zeminde ya da mobilyalarda gezdir",
+  "home3d.paint.undo": "Geri al",
 } as Record<string, string>;

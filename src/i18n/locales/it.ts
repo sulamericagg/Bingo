@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "Scudo",
   "upg.shield.desc": "Probabilità di partire con lo scudo e più tempo invincibile dopo un colpo.",
   "upg.shield.fx": "{n}% di probabilità",
+  "home3d.act.painting": "DIPINGO",
+  "home3d.paint.dragHint": "Trascina il dito su pareti, pavimento o mobili",
+  "home3d.paint.undo": "Annulla",
 } as Record<string, string>;

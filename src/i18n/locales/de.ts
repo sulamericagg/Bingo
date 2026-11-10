@@ -3465,4 +3465,7 @@ export default {
   "upg.shield": "Schild",
   "upg.shield.desc": "Chance, mit Schild zu starten, und länger unverwundbar nach einem Treffer.",
   "upg.shield.fx": "{n}% Chance",
+  "home3d.act.painting": "MALT",
+  "home3d.paint.dragHint": "Zieh den Finger über Wände, Boden oder Möbel",
+  "home3d.paint.undo": "Rückgängig",
 } as Record<string, string>;
