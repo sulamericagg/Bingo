@@ -1,5 +1,11 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.casa.name": "나의 집",
+  "intro3d.casa.tag": "마음대로 꾸미고 친구를 초대하세요!",
+  "intro3d.pet.name": "나의 펫",
+  "intro3d.pet.tag": "돌보고, 놀아 주고, 사랑을 듬뿍 주세요!",
+  "intro3d.skip": "탭하여 건너뛰기",
+  "settings.intro": "게임 시작 애니메이션",
   "acc.conflict": "다른 걸 골라요",
   "acc.noHandle": "@를 골라요",
   "acc.pending": "확인 대기",
