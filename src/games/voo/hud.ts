@@ -12,6 +12,9 @@ import { emerHow, emerName, roleName, zoneName } from './data';
 import { hatIcon, vIcon } from './icons';
 import { drawNav, drawPFD } from './instruments';
 import { MiniGame } from './minigames';
+import { FpsControls, bindButton, createJoystick, type BoundButton, type Joystick } from '../../ui/touch';
+import { clearNotify, notify, objective, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
+import type { IconName } from '../../ui/icons';
 import type { Cmd, Ctx, Sim } from './sim';
 
 export interface HudHost {
@@ -37,7 +40,6 @@ export class Hud {
   readonly pfd: HTMLCanvasElement;
   readonly nav: HTMLCanvasElement;
   private q = <T extends HTMLElement>(s: string) => this.el.querySelector(s) as T;
-  private toasts!: HTMLElement;
   private mk = new Map<number, HTMLDivElement>();
   private says = new Map<number, HTMLDivElement>();
   private mini!: HTMLCanvasElement;
@@ -52,9 +54,7 @@ export class Hud {
   private ring!: SVGCircleElement;
   private tgt!: HTMLElement;
   private ret!: HTMLElement;
-  private hint!: HTMLElement;
   private banner!: HTMLElement;
-  private stick!: HTMLElement;
   private thrEl!: HTMLElement;
   private phase!: HTMLElement;
   private hullI!: HTMLElement;
@@ -68,7 +68,10 @@ export class Hud {
   private seated = false;
   private keys = new Set<string>();
   private offs: (() => void)[] = [];
-  private stickV = { x: 0, y: 0, on: false };
+  private btns: BoundButton[] = [];
+  private fps: FpsControls | null = null;
+  private joy2d: Joystick | null = null;
+  private yoke!: Joystick;
   private pr = { x: 0, y: 0, behind: false };
   private ctx: Ctx | null = null;
   private _hidden = false;
@@ -80,11 +83,17 @@ export class Hud {
     this.el.style.display = v ? 'none' : '';
   }
   face2d: [number, number] = [0, -1];
+  /** tutorial: texto do objetivo e alvo (seta amarela) */
+  tutText = '';
+  tutTarget: { x: number; y: number; z: number } | null = null;
+  private lastTip = '\u0000';
+  private tutMk: HTMLDivElement | null = null;
 
   constructor(
-    root: HTMLElement,
+    private surface: HTMLElement,
     private host: HudHost,
   ) {
+    const root = surface;
     this.pfd = document.createElement('canvas');
     this.pfd.width = 420;
     this.pfd.height = 280;
@@ -98,8 +107,6 @@ export class Hud {
     this.el.className = 'voo-hud';
     this.el.innerHTML = `
       <div class="voo-walk">
-        <div class="voo-look"></div>
-        <div class="voo-joy"><div class="hint"></div><div class="base"><div class="knob"></div></div></div>
         <div class="voo-ret"></div><div class="voo-tgt"></div>
         <div class="voo-acts">
           <button class="voo-act small off" data-thr>${vIcon('throw', 26)}<span>${t('voo.a.throw', 'Jogar')}</span></button>
@@ -107,7 +114,7 @@ export class Hud {
         </div>
       </div>
       <div class="voo-fly" style="display:none">
-        <div class="voo-stick"><span>${t('voo.f.yoke', 'Manche')}</span><i>${vIcon('yoke', 34)}</i></div>
+        <div class="voo-stickhint">${vIcon('yoke', 26)}<span>${t('voo.f.yokeHint', 'Arraste aqui: manche')}</span></div>
         <div class="voo-thr"><span>${t('voo.f.thr', 'Potência')}</span><i>70</i></div>
         <div class="voo-flyb">
           <button class="voo-btn ghost" data-flaps>${vIcon('flaps', 22)}<span></span></button>
@@ -130,13 +137,10 @@ export class Hud {
           <div class="voo-crew"></div>
         </div>
       </div>
-      <div class="voo-toasts"></div>
-      <div class="voo-hint"></div>
       <div class="voo-banner"></div>
       <div class="voo-mks"></div>`;
     root.appendChild(this.el);
     this.q('.voo-fly').prepend(this.pfd);
-    this.toasts = this.q('.voo-toasts');
     this.mini = this.q('.voo-mini');
     this.miniX = this.mini.getContext('2d')!;
     this.crewEl = this.q('.voo-crew');
@@ -147,20 +151,19 @@ export class Hud {
     this.ring = this.act.querySelector('circle')!;
     this.tgt = this.q('.voo-tgt');
     this.ret = this.q('.voo-ret');
-    this.hint = this.q('.voo-hint');
     this.banner = this.q('.voo-banner');
-    this.stick = this.q('.voo-stick');
     this.thrEl = this.q('.voo-thr');
     this.phase = this.q('[data-phase]');
     this.hullI = this.q('[data-hull]');
     this.panI = this.q('[data-pan]');
     if (!host.is3d) {
       this.ret.style.display = 'none';
-      this.q('.voo-look').style.display = 'none';
       this.q('[data-cam]').style.display = 'none';
     }
     this.buildCrew();
     this.bind();
+    setNotifyTop(66);
+    setNotifyAlign('center');
   }
 
   /* ------------------------------ entrada ------------------------------ */
@@ -179,123 +182,23 @@ export class Hud {
       else if (b.dataset.mate !== undefined) this.openMenu(+b.dataset.mate);
       else if (b.dataset.cmd !== undefined) this.doCmd(b.dataset.cmd);
     });
-    // ação (tocar ou segurar)
-    const act = this.act;
-    const down = (e: PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      act.setPointerCapture?.(e.pointerId);
-      act.classList.add('on');
-      h.actHeld = true;
-      h.onTap();
-    };
-    const up = () => {
-      act.classList.remove('on');
-      h.actHeld = false;
-    };
-    act.addEventListener('pointerdown', down);
-    act.addEventListener('pointerup', up);
-    act.addEventListener('pointercancel', up);
-    act.addEventListener('lostpointercapture', up);
-    this.thr.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      h.onThrow();
-    });
-    // joystick dinâmico
-    const joy = this.q('.voo-joy');
-    const base = joy.querySelector('.base') as HTMLElement;
-    const knob = joy.querySelector('.knob') as HTMLElement;
-    const jh = joy.querySelector('.hint') as HTMLElement;
-    let jid = -1;
-    let jx0 = 0;
-    let jy0 = 0;
-    joy.addEventListener('pointerdown', (e) => {
-      if (jid >= 0) return;
-      jid = e.pointerId;
-      joy.setPointerCapture?.(e.pointerId);
-      const r = joy.getBoundingClientRect();
-      jx0 = e.clientX;
-      jy0 = e.clientY;
-      base.style.display = 'block';
-      base.style.left = e.clientX - r.left + 'px';
-      base.style.top = e.clientY - r.top + 'px';
-      jh.style.display = 'none';
-    });
-    joy.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== jid) return;
-      let dx = e.clientX - jx0;
-      let dy = e.clientY - jy0;
-      const d = Math.hypot(dx, dy);
-      const R = 48;
-      if (d > R) (dx *= R / d), (dy *= R / d);
-      knob.style.transform = `translate(${dx}px,${dy}px)`;
-      h.joy.x = dx / R;
-      h.joy.y = -dy / R;
-    });
-    const jup = (e: PointerEvent) => {
-      if (e.pointerId !== jid) return;
-      jid = -1;
-      h.joy.x = h.joy.y = 0;
-      base.style.display = 'none';
-      knob.style.transform = '';
-    };
-    joy.addEventListener('pointerup', jup);
-    joy.addEventListener('pointercancel', jup);
-    // olhar (arrastar)
-    const look = this.q('.voo-look');
-    let lid = -1;
-    let lx = 0;
-    let ly = 0;
-    look.addEventListener('pointerdown', (e) => {
-      if (lid >= 0) return;
-      lid = e.pointerId;
-      look.setPointerCapture?.(e.pointerId);
-      lx = e.clientX;
-      ly = e.clientY;
-    });
-    look.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== lid) return;
-      h.look((e.clientX - lx) * 0.0058, (e.clientY - ly) * 0.0058);
-      lx = e.clientX;
-      ly = e.clientY;
-    });
-    const lup = (e: PointerEvent) => {
-      if (e.pointerId === lid) lid = -1;
-    };
-    look.addEventListener('pointerup', lup);
-    look.addEventListener('pointercancel', lup);
-    // manche (volta ao centro ao soltar)
-    const st = this.stick;
-    const knobS = st.querySelector('i') as HTMLElement;
-    let sid = -1;
-    const smove = (e: PointerEvent) => {
-      if (e.pointerId !== sid) return;
-      const r = st.getBoundingClientRect();
-      let dx = (e.clientX - (r.left + r.width / 2)) / (r.width * 0.4);
-      let dy = (e.clientY - (r.top + r.height / 2)) / (r.height * 0.4);
-      const d = Math.hypot(dx, dy);
-      if (d > 1) (dx /= d), (dy /= d);
-      this.stickV.x = dx;
-      this.stickV.y = -dy;
-      knobS.style.transform = `translate(${dx * r.width * 0.4}px,${dy * r.height * 0.4}px) rotate(${dx * 25}deg)`;
-    };
-    st.addEventListener('pointerdown', (e) => {
-      sid = e.pointerId;
-      st.setPointerCapture?.(e.pointerId);
-      this.stickV.on = true;
-      smove(e);
-    });
-    st.addEventListener('pointermove', smove);
-    const sup = (e: PointerEvent) => {
-      if (e.pointerId !== sid) return;
-      sid = -1;
-      this.stickV.x = this.stickV.y = 0;
-      this.stickV.on = false;
-      knobS.style.transform = '';
-    };
-    st.addEventListener('pointerup', sup);
-    st.addEventListener('pointercancel', sup);
+    // ação (tocar ou segurar) e jogar — botões compartilhados (disparam no toque)
+    this.btns.push(
+      bindButton(this.act, {
+        onPress: () => {
+          h.actHeld = true;
+          h.onTap();
+        },
+        onRelease: () => (h.actHeld = false),
+      }),
+      bindButton(this.thr, { onPress: () => h.onThrow() }),
+    );
+    // andar + olhar (3D) ou só andar (2D): controles compartilhados de src/ui/touch
+    this.fps = h.is3d ? new FpsControls(this.surface, { joystick: { zoneTop: 0.3 } }) : null;
+    this.joy2d = h.is3d ? null : createJoystick(this.surface, { zoneTop: 0.3, zoneWidth: 0.5 });
+    // manche: joystick flutuante que volta ao centro (só aparece sentado)
+    this.yoke = createJoystick(this.surface, { zoneTop: 0.25, zoneWidth: 0.42, expo: 0.55, smoothing: 22 });
+    this.yoke.setEnabled(false);
     // manete (fica onde soltar)
     const te = this.thrEl;
     let tid = -1;
@@ -335,7 +238,6 @@ export class Hud {
     const blur = () => {
       this.keys.clear();
       h.actHeld = false;
-      h.joy.x = h.joy.y = 0;
     };
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
@@ -357,29 +259,43 @@ export class Hud {
   }
 
   /** teclado/joystick → entrada da sim e do manche */
-  readInput(): void {
+  readInput(dt: number): void {
     const k = this.keys;
     const h = this.host;
     const s = h.sim;
-    let jx = h.joy.x;
-    let jy = h.joy.y;
-    if (k.has('KeyW') || k.has('ArrowUp')) jy = 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) jy = -1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) jx = -1;
-    if (k.has('KeyD') || k.has('ArrowRight')) jx = 1;
     const me = s.players[s.me];
+    // só os controles do lugar onde você está
+    const sit = me.seated && !this.hidden;
+    this.yoke.setEnabled(sit);
+    this.fps?.show(!me.seated && !this.hidden && me.busy < 0);
+    this.joy2d?.setEnabled(!me.seated && !this.hidden && me.busy < 0);
+    let jx = 0;
+    let jy = 0;
+    if (this.fps) {
+      [jx, jy] = this.fps.dir();
+      const [dy, dp] = this.fps.consumeLook(dt);
+      if (dy || dp) h.look(dy, dp);
+    } else if (this.joy2d) {
+      const j = this.joy2d.read();
+      jx = j.x;
+      jy = -j.y;
+      if (k.has('KeyW') || k.has('ArrowUp')) jy = 1;
+      if (k.has('KeyS') || k.has('ArrowDown')) jy = -1;
+      if (k.has('KeyA') || k.has('ArrowLeft')) jx = -1;
+      if (k.has('KeyD') || k.has('ArrowRight')) jx = 1;
+    }
     if (me.seated) {
-      let sx = this.stickV.x;
-      let sy = this.stickV.y;
-      if (!this.stickV.on) {
+      const y = this.yoke.read();
+      let sx = y.x;
+      let sy = -y.y;
+      if (!y.active) {
         if (k.has('KeyA') || k.has('ArrowLeft')) sx = -1;
         if (k.has('KeyD') || k.has('ArrowRight')) sx = 1;
         if (k.has('KeyW') || k.has('ArrowUp')) sy = 1;
         if (k.has('KeyS') || k.has('ArrowDown')) sy = -1;
       }
-      // curva suave: precisão perto do centro
-      s.ctrl.sx = Math.sign(sx) * Math.pow(Math.abs(sx), 1.6);
-      s.ctrl.sy = Math.sign(sy) * Math.pow(Math.abs(sy), 1.6);
+      s.ctrl.sx = sx;
+      s.ctrl.sy = sy;
       if (k.has('ShiftLeft') || k.has('KeyR')) s.ctrl.thr = Math.min(1, s.ctrl.thr + 0.01);
       if (k.has('ControlLeft') || k.has('KeyV')) s.ctrl.thr = Math.max(0, s.ctrl.thr - 0.01);
       s.input.mx = s.input.mz = 0;
@@ -471,13 +387,9 @@ export class Hud {
   /* ------------------------------ avisos ------------------------------ */
 
   toast(msg: string, ico: string, tone: string): void {
-    const d = document.createElement('div');
-    d.className = 'voo-toast ' + tone;
-    d.innerHTML = vIcon(ico, 22) + '<span></span>';
-    d.querySelector('span')!.textContent = msg;
-    this.toasts.appendChild(d);
-    while (this.toasts.children.length > 3) this.toasts.firstElementChild!.remove();
-    setTimeout(() => d.remove(), 3700);
+    // avisos compartilhados: pequenos, sem duplicados (contador ×2), fila
+    const icon: IconName = ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'info' ? 'sparkle' : 'warning';
+    notify(msg, { icon, kind: tone === 'bad' ? 'bad' : tone === 'good' ? 'good' : 'info', key: msg });
   }
   showBanner(txt: string, sub = '', sec = 2.4): void {
     this.banner.innerHTML = '';
@@ -569,11 +481,11 @@ export class Hud {
           c.kind === 'spray' ? 'ext' : c.kind === 'patch' ? 'tape' : c.kind === 'pump' ? 'fuel' : c.kind === 'rewire' ? 'spark' : c.kind === 'valve' ? 'pressure' : c.kind === 'crank' ? 'gear' : c.kind === 'door' ? 'door' : c.kind === 'give' || c.kind === 'hug' ? 'calm' : c.kind === 'sit' ? 'yoke' : c.kind === 'take' ? (c.target === 0 ? 'water' : 'snack') : 'hand';
         this.act.querySelector('.ic')!.innerHTML = vIcon(ico, 30);
         this.act.querySelector('.lb')!.textContent = c.label || t('voo.a.use', 'Usar');
-        this.act.classList.toggle('off', !c.kind);
+        this.act.classList.toggle('hide', !c.kind);
         this.tgt.textContent = c.kind ? c.label : '';
         this.ret.classList.toggle('hot', !!c.kind);
         const held = s.item(me.hold);
-        this.thr.classList.toggle('off', !held);
+        this.thr.classList.toggle('hide', !held);
       }
       const prog = me.actKind === 'spray' ? me.actProg : me.actProg;
       this.ring.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, h.actHeld && c.hold ? prog : 0))));
@@ -586,6 +498,10 @@ export class Hud {
       const gs = gb.querySelector('span')!;
       if (gs.textContent !== gt) gs.textContent = gt;
       gb.classList.toggle('warn', (s.phase === 'final' && !f.gear && f.alt < 600) || s.gearStuck);
+      // flapes e trem só fazem sentido na descida/aproximação
+      const late = s.phase !== 'cruise' || s.gearStuck;
+      gb.classList.toggle('hide', !late);
+      this.q('[data-flaps]').classList.toggle('hide', !late);
       const ti = this.thrEl.querySelector('i') as HTMLElement;
       const th = this.thrEl.clientHeight || 170;
       ti.style.top = 4 + (1 - s.ctrl.thr) * (th - 48) + 'px';
@@ -593,8 +509,11 @@ export class Hud {
       this.q('[data-cam]').classList.toggle('on', h.extCam());
     }
     // dica
-    const tip = this.tipText();
-    if (this.hint.textContent !== tip) this.hint.textContent = tip;
+    const tip = this.tutText || this.tipText();
+    if (tip !== this.lastTip) {
+      this.lastTip = tip;
+      objective(tip || null, { icon: this.tutText ? 'target' : 'sparkle' });
+    }
     // instrumentos
     this.instT -= dt;
     if (this.instT <= 0) {
@@ -714,6 +633,34 @@ export class Hud {
     }
   }
 
+  private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number }): void {
+    const h = this.host;
+    h.project(x, y, z, this.pr);
+    let px = this.pr.x;
+    let py = this.pr.y;
+    const m = 34;
+    let edge = this.pr.behind || px < m || px > W - m || py < 86 || py > H - m;
+    if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
+    const em = d.querySelector('em') as HTMLElement;
+    if (edge) {
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = px - cx;
+      let dy = py - cy;
+      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
+      const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
+      px = cx + dx * k;
+      py = Math.max(90, cy + dy * k + 15);
+      em.style.display = '';
+      em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+    } else em.style.display = 'none';
+    d.classList.toggle('edge', edge);
+    d.style.transform = `translate(${px}px,${py}px)`;
+    const lbl = `${Math.round(Math.hypot(x - me.x, z - me.z))} m`;
+    const sp = d.querySelector('span')!;
+    if (sp.textContent !== lbl) sp.textContent = lbl;
+  }
+
   private updateMarkers(): void {
     const h = this.host;
     const s = h.sim;
@@ -733,32 +680,22 @@ export class Hud {
         box.appendChild(d);
         this.mk.set(e.id, d);
       }
-      h.project(e.x, e.y + 0.45, e.z, this.pr);
-      let px = this.pr.x;
-      let py = this.pr.y;
-      const m = 34;
-      let edge = this.pr.behind || px < m || px > W - m || py < 86 || py > H - m;
-      if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
-      const em = d.querySelector('em') as HTMLElement;
-      if (edge) {
-        const cx = W / 2;
-        const cy = H / 2;
-        let dx = px - cx;
-        let dy = py - cy;
-        if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
-        const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
-        px = cx + dx * k;
-        py = Math.max(90, cy + dy * k + 15);
-        em.style.display = '';
-        em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
-      } else em.style.display = 'none';
-      d.classList.toggle('edge', edge);
+      this.placeMk(d, e.x, e.y + 0.45, e.z, W, H, me);
       d.classList.toggle('mine', me.busy === e.id || me.actTarget === e.id);
-      d.style.transform = `translate(${px}px,${py}px)`;
-      const dist = Math.hypot(e.x - me.x, e.z - me.z);
-      const lbl = `${Math.round(dist)} m`;
-      const sp = d.querySelector('span')!;
-      if (sp.textContent !== lbl) sp.textContent = lbl;
+    }
+    // alvo do tutorial
+    const tt = this.tutTarget;
+    if (tt) {
+      if (!this.tutMk) {
+        this.tutMk = document.createElement('div');
+        this.tutMk.className = 'voo-mk obj';
+        this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
+        box.appendChild(this.tutMk);
+      }
+      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
+    } else if (this.tutMk) {
+      this.tutMk.remove();
+      this.tutMk = null;
     }
     for (const [id, d] of this.mk)
       if (!seen.has(id)) {
@@ -781,7 +718,15 @@ export class Hud {
 
   destroy(): void {
     for (const f of this.offs) f();
+    for (const b of this.btns) b.destroy();
+    this.fps?.dispose();
+    this.joy2d?.destroy();
+    this.yoke.destroy();
     this.miniGame?.destroy();
+    objective(null);
+    clearNotify();
+    resetNotifyTop();
+    setNotifyAlign('left');
     this.el.remove();
   }
 }

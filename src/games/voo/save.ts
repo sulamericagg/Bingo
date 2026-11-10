@@ -16,11 +16,12 @@ export interface VooSave {
   mode: '' | '2d' | '3d';
   daily: { day: number; best: number; stars: number };
   seenIntro: boolean;
+  tutDone: boolean;
 }
 const KEY = 'bw-voo';
 
 export function freshSave(): VooSave {
-  return { v: 1, best: 0, stars: 0, flights: 0, landings: 0, perfects: 0, crashes: 0, livery: 'classic', cabin: 'classic', bots: 3, mode: '', daily: { day: 0, best: 0, stars: 0 }, seenIntro: false };
+  return { v: 1, best: 0, stars: 0, flights: 0, landings: 0, perfects: 0, crashes: 0, livery: 'classic', cabin: 'classic', bots: 3, mode: '', daily: { day: 0, best: 0, stars: 0 }, seenIntro: false, tutDone: false };
 }
 export function loadSave(): VooSave {
   try {

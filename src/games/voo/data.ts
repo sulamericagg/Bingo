@@ -71,7 +71,7 @@ export const SPOTS: Record<Exclude<SpotId, 'win'>, Spot> = {
   elec: { x: 1.7, z: -0.72, y: 1.3 },
   doorF: { x: -1.72, z: -0.72, y: 1.1 },
   doorR: { x: -1.72, z: 15.6, y: 1.1 },
-  oven: { x: 1.62, z: 5.25, y: 1.25 },
+  oven: { x: 1.5, z: 5.25, y: 1.62 },
   water: { x: -1.55, z: 4.35, y: 1.1 },
   snack: { x: -1.55, z: 5.35, y: 1.0 },
   engL: { x: -1.68, z: 10.6, y: 1.0 },

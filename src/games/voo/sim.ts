@@ -581,8 +581,10 @@ export class Sim {
 
   /* ------------------------------ emergências ------------------------------ */
 
+  /** tutorial: sem emergências aleatórias enquanto ensina */
+  paused = false;
   private schedule(dt: number): void {
-    if (this.opts.mode === 'training') return;
+    if (this.opts.mode === 'training' || this.paused) return;
     this.nextEmerT -= dt;
     if (this.nextEmerT > 0) return;
     const pr = this.progress;

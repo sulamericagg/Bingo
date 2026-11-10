@@ -10,13 +10,13 @@ import { addCoins } from '../../core/economy';
 import { pushBack } from '../../core/back';
 import { audio } from '../../core/audio';
 import { tap, success } from '../../core/haptics';
-import { lockOrientation, restorePortrait } from '../../core/orientation';
 import { QualityGovernor, detectInitialTier, loadMode } from '../../core/quality';
 import { save as globalSave } from '../../core/storage';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { displayName } from '../../services/leaderboard';
 import { sfx } from '../../3d/common/sfx';
-import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, roleName } from './data';
+import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS, roleName } from './data';
+import { bigMoment } from '../../ui/notify';
 import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
 import { hatIcon, vIcon } from './icons';
@@ -34,6 +34,8 @@ export interface LaunchOpts {
   seed?: number;
   /** pula dossiê e abertura (testes) */
   quick?: boolean;
+  /** força o tutorial guiado */
+  tutorial?: boolean;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -94,7 +96,6 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier) => this.view && 'setTier' in this.view && (this.view as View3D).setTier(tier) });
     this.bots = opts.bots ?? this.sv.bots;
     this.role = opts.role ?? 0;
-    void lockOrientation('landscape');
     if (location.search.includes('debug')) (window as unknown as { __voo: VooGame }).__voo = this;
   }
 
@@ -249,6 +250,15 @@ export class VooGame implements MiniGameHandle, HudHost {
     window.addEventListener('resize', ro);
     this.offs.push(() => window.removeEventListener('resize', ro));
     this.setBack(() => this.onExit());
+    // primeiro voo: tutorial guiado (um objetivo por vez + seta)
+    if ((!sv.tutDone && this.flightKind === 'normal') || this.opts.tutorial) {
+      this.tut = 0;
+      this.tutT = 0;
+      this.sim.paused = true;
+      const me = this.sim.players[this.sim.me];
+      me.x = 0.1;
+      me.z = -1.7;
+    }
     sv.flights++;
     writeSave(sv);
     if (!this.opts.quick) this.startCutscene();
@@ -259,6 +269,81 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.raf = requestAnimationFrame(this.loop);
   }
   private offs: (() => void)[] = [];
+  private tut = -1;
+  private tutT = 0;
+  private tutFire = -1;
+
+  /** tutorial do primeiro voo: um passo de cada vez, com seta amarela até o alvo */
+  private tutorial(dt: number): void {
+    const s = this.sim;
+    const hud = this.hud!;
+    const me = s.players[s.me];
+    this.tutT += dt;
+    const next = () => {
+      this.tut++;
+      this.tutT = 0;
+      sfx.swish();
+    };
+    const P = SPOTS.pilot;
+    switch (this.tut) {
+      case 0:
+        hud.tutText = t('voo.tut.sit', 'Sente no manche: vá até a cadeira da esquerda e toque em Pilotar');
+        hud.tutTarget = { x: P.x, y: 1.0, z: P.z };
+        if (me.seated) next();
+        break;
+      case 1:
+        hud.tutText = this.is3d ? t('voo.tut.fly', 'Arraste no lado esquerdo para mexer o manche. Siga a seta rosa!') : t('voo.tut.fly2d', 'Arraste no lado esquerdo para mexer o manche. Siga a seta rosa!');
+        hud.tutTarget = null;
+        if (this.tutT > 7) {
+          const e = s.startEmer('fire', 'oven');
+          if (e) (e.sev = 0.4), (this.tutFire = e.id);
+          next();
+        }
+        break;
+      case 2:
+        hud.tutText = t('voo.tut.stand', 'Fogo na copa! Toque em Levantar');
+        hud.tutTarget = null;
+        if (!me.seated) next();
+        break;
+      case 3: {
+        hud.tutText = t('voo.tut.ext', 'Pegue o extintor vermelho');
+        const ext = s.items.filter((i) => i.alive && i.kind === 'ext' && i.held < 0).sort((a, b) => Math.abs(a.z - me.z) - Math.abs(b.z - me.z))[0];
+        hud.tutTarget = ext ? { x: ext.x, y: ext.y + 0.3, z: ext.z } : null;
+        if (s.item(me.hold)?.kind === 'ext') next();
+        break;
+      }
+      case 4: {
+        const f = s.emer(this.tutFire);
+        hud.tutText = t('voo.tut.spray', 'Chegue perto do fogo e SEGURE o botão Apagar');
+        hud.tutTarget = f ? { x: f.x, y: f.y + 0.5, z: f.z } : null;
+        if (!f) next();
+        break;
+      }
+      case 5:
+        hud.tutText = t('voo.tut.back', 'Muito bem! Volte ao manche antes que o avião desvie');
+        hud.tutTarget = { x: P.x, y: 1.0, z: P.z };
+        if (me.seated) {
+          next();
+          if (!s.players.some((p) => p.bot)) this.tut = 7;
+          else s.startEmer('spark', 'elec');
+        }
+        break;
+      case 6:
+        hud.tutText = t('voo.tut.bots', 'Pane elétrica! Toque no retrato de um ajudante e mande consertar');
+        hud.tutTarget = null;
+        if (s.players.some((p) => p.bot && p.cmd)) next();
+        break;
+      case 7:
+        hud.tutText = '';
+        hud.tutTarget = null;
+        bigMoment(t('voo.tut.done', 'Treinamento feito! Agora é pra valer'), { icon: 'star' });
+        s.paused = false;
+        this.tut = -1;
+        this.sv.tutDone = true;
+        writeSave(this.sv);
+        break;
+    }
+  }
 
   private startCutscene(): void {
     this.cut = 0;
@@ -326,7 +411,8 @@ export class VooGame implements MiniGameHandle, HudHost {
       this.gov.sample(el, performance.now() - w0);
       return;
     }
-    this.hud!.readInput();
+    this.hud!.readInput(dt);
+    if (this.tut >= 0) this.tutorial(dt);
     // passos menores para o voo ficar estável
     const n = dt > 0.025 ? 2 : 1;
     for (let i = 0; i < n; i++) s.step(dt / n);
@@ -577,6 +663,5 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.view?.destroy();
     this.hud?.destroy();
     this.wrap.remove();
-    restorePortrait();
   }
 }

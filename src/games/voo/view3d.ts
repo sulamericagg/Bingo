@@ -1010,7 +1010,7 @@ export class View3D {
             ps.emit(sd * 6, -0.8, 12.4, 0, 0.5, 14, { tile: PT.Smoke, color: '#4a4a55', life: 1.2, size: 1.0, grow: 3 });
           } else {
             const r = 0.25 + e.sev * 0.25;
-            fl.emit(e.x + (Math.random() - 0.5) * r, e.y - 0.2, e.z + (Math.random() - 0.5) * r, (Math.random() - 0.5) * 0.3, 0.8 + Math.random() * 0.9, (Math.random() - 0.5) * 0.3, { tile: PT.Smoke, color: Math.random() < 0.4 ? '#ffd34a' : '#ff6a2a', life: 0.45 + Math.random() * 0.3, size: 0.2 + e.sev * 0.18, grow: -0.2 });
+            fl.emit(e.x + (Math.random() - 0.5) * r, e.y - 0.05, e.z + (Math.random() - 0.5) * r, (Math.random() - 0.5) * 0.3, 0.8 + Math.random() * 0.9, (Math.random() - 0.5) * 0.3, { tile: PT.Smoke, color: Math.random() < 0.4 ? '#ffd34a' : '#ff6a2a', life: 0.45 + Math.random() * 0.3, size: 0.2 + e.sev * 0.18, grow: -0.2 });
             if (Math.random() < 0.3) ps.emit(e.x, e.y + 0.3, e.z, (Math.random() - 0.5) * 0.2, 0.6, (Math.random() - 0.5) * 0.2, { tile: PT.Smoke, color: '#5a5060', life: 1.6, size: 0.25, grow: 0.5 });
           }
         }
