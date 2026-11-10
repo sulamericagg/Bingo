@@ -176,6 +176,14 @@ export class Sim {
 
   // net
   isHost = true;
+  /** 3D em primeira pessoa: a visão decide o alvo (mira), a coleta (mãos/veículo) e a entrega no funil */
+  fps = false;
+  /** árvore sob a mira (só com fps) */
+  aim = -1;
+  /** dirigindo um veículo (fps): a visão move o jogador */
+  driving = false;
+  /** altura do chão (3D com morros) */
+  groundY: ((x: number, z: number) => number) | null = null;
   /** chamado quando o anfitrião precisa anunciar uma queda (tree, dirx, dirz) */
   onFell: ((t: Tree) => void) | null = null;
   /** dano que pedi ao anfitrião (cumulativo) por árvore */
@@ -372,7 +380,7 @@ export class Sim {
       mx /= len;
       mz /= len;
     }
-    const sp = v.speed * (this.input.chop && m.target >= 0 ? 0.25 : 1);
+    const sp = (this.fps ? (this.driving ? 0 : VEHICLES[0].speed) : v.speed) * (this.input.chop && m.target >= 0 ? 0.25 : 1);
     m.vx += (mx * sp - m.vx) * Math.min(1, dt * 10);
     m.vz += (mz * sp - m.vz) * Math.min(1, dt * 10);
     m.x += m.vx * dt;
@@ -389,14 +397,17 @@ export class Sim {
     if (spd > 0.4) {
       m.walk += dt * spd * 1.6;
       if (Math.abs(m.vx) > 0.3) m.face = m.vx > 0 ? 1 : -1;
-      if (this.mode3d) m.yaw = Math.atan2(m.vx, m.vz);
+      if (this.mode3d && !this.fps) m.yaw = Math.atan2(m.vx, m.vz);
     }
     if (m.emoteT > 0) m.emoteT -= dt;
 
     // alvo de corte
-    m.target = this.findTarget(m.x, m.z, 2.6, this.mode3d ? m.yaw : m.face > 0 ? Math.PI / 2 : -Math.PI / 2);
+    if (this.fps) {
+      const a = this.trees[this.aim];
+      m.target = a && a.state === TS.Grown && a.biome < this.s.unlocked ? this.aim : -1;
+    } else m.target = this.findTarget(m.x, m.z, 2.6, this.mode3d ? m.yaw : m.face > 0 ? Math.PI / 2 : -Math.PI / 2);
     if (m.swing > 0) m.swing = Math.max(0, m.swing - dt * 4);
-    if (this.input.chop) {
+    if (this.input.chop && !this.driving) {
       m.swingT -= dt;
       if (m.swingT <= 0) {
         m.swingT = 1 / this.tool.rate;
@@ -404,12 +415,13 @@ export class Sim {
         if (m.target >= 0) {
           const t = this.trees[m.target];
           if (!this.mode3d) m.face = t.x >= m.x ? 1 : -1;
-          else m.yaw = Math.atan2(t.x - m.x, t.z - m.z);
+          else if (!this.fps) m.yaw = Math.atan2(t.x - m.x, t.z - m.z);
           this.hitTree(t, this.tool.dmg * (1 + this.s.seeds * 0.05), m.x, m.z, 0);
         } else this.emit('swing', m.x + m.face, 1, m.z);
       }
     } else m.swingT = Math.min(m.swingT, 0.05);
 
+    if (this.fps) return;
     // coleta de toras
     const reach = v.reach;
     if (m.carry < v.cap) {
@@ -632,8 +644,9 @@ export class Sim {
       if (this.mode3d && l.age > 0.05 && (l as any).body) continue; // o 3D move pela física
       l.vy -= 22 * dt;
       l.y += l.vy * dt;
-      if (l.y < 0.3) {
-        l.y = 0.3;
+      const gy = (this.groundY ? this.groundY(l.x, l.z) : 0) + 0.3;
+      if (l.y < gy) {
+        l.y = gy;
         l.vy = Math.abs(l.vy) > 2 ? -l.vy * 0.3 : 0;
         const f = Math.pow(0.25, dt);
         l.vx *= f;
@@ -649,6 +662,19 @@ export class Sim {
       if (l.z < -WORLD_Z) l.z = -WORLD_Z;
       if (l.z > WORLD_Z) l.z = WORLD_Z;
     }
+  }
+
+  /** fps: o jogador pegou a tora com as mãos (ou o veículo recolheu) */
+  takeLog(l: Log): void {
+    if (!l.on) return;
+    l.on = false;
+    this.emit('pickup', l.x, l.y, l.z, l.sp, 0);
+  }
+
+  /** fps: tora entregue no funil da serraria */
+  feed(val: number, sp: number): void {
+    this.pushQueue(val, sp);
+    this.emit('deliver', INTAKE_X, 2.2, 0, sp & 15);
   }
 
   /* ------------------------------ IA dos ajudantes ------------------------------ */

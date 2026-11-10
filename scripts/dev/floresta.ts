@@ -40,6 +40,7 @@ if (qs.get('showcase')) {
   if (qs.get('mach')) s.mach = { saw: 3, planer: 3, belt: 3, nursery: 3 };
   writeSave(s);
   const { launch } = await import('../../src/games/floresta/game');
+  (window as any).__gh = (await import('../../src/games/floresta/fps/terrain')).groundH;
   const mode = (qs.get('mode') as '2d' | '3d' | null) ?? undefined;
   const g = (await launch(app, () => (location.href = location.pathname), { mode, auto: !!qs.get('auto') })) as any;
   (window as any).fl = g;

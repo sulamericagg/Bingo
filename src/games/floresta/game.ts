@@ -143,7 +143,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
         <div style="padding:0 16px;font-weight:700">${t('floresta.chooseMode', 'Como você quer jogar?')}</div>
         <div class="fl-modes">
           <button class="fl-mode" data-m="2d"><canvas width="320" height="150"></canvas><b>${flIcon('square', 22)} 2D</b><span>${t('floresta.mode2d', 'Visão de lado, leve e rapidinho')}</span></button>
-          <button class="fl-mode" data-m="3d" ${gl ? '' : 'disabled'}><canvas width="320" height="150"></canvas><b>${flIcon('cube', 22)} 3D</b><span>${gl ? t('floresta.mode3d', 'Floresta em 3D com câmera livre') : t('floresta.no3d', '3D indisponível neste aparelho')}</span></button>
+          <button class="fl-mode" data-m="3d" ${gl ? '' : 'disabled'}><canvas width="320" height="150"></canvas><b>${flIcon('cube', 22)} 3D · ${t('floresta.firstPerson', 'Primeira pessoa')}</b><span>${gl ? t('floresta.mode3dFps', 'Corte, carregue, jogue toras e dirija o caminhão!') : t('floresta.no3d', '3D indisponível neste aparelho')}</span></button>
         </div></div>`;
       this.wrap.appendChild(m);
       const cvs = m.querySelectorAll('canvas');
@@ -562,6 +562,38 @@ function previewCard(c: HTMLCanvasElement, three: boolean, last: boolean): void 
       drawTree(x, SPECIES[(px * 10) % 2 > 1 ? 1 : 0], 0, 9 * s);
       x.restore();
     }
+    // primeira pessoa: machado na mão, no canto
+    x.save();
+    x.translate(W * 0.8, H * 0.98);
+    x.rotate(-0.5);
+    x.lineJoin = 'round';
+    x.strokeStyle = '#2a0b5c';
+    x.lineWidth = 4;
+    x.fillStyle = '#a8743c';
+    x.beginPath();
+    x.roundRect(-6, -78, 12, 80, 5);
+    x.fill();
+    x.stroke();
+    x.fillStyle = '#e0e8f4';
+    x.beginPath();
+    x.moveTo(-4, -76);
+    x.quadraticCurveTo(-40, -86, -44, -58);
+    x.quadraticCurveTo(-24, -60, -4, -52);
+    x.closePath();
+    x.fill();
+    x.stroke();
+    x.fillStyle = '#ffcf2e';
+    x.beginPath();
+    x.ellipse(0, -14, 20, 17, 0, 0, Math.PI * 2);
+    x.fill();
+    x.stroke();
+    x.restore();
+    // mira
+    x.strokeStyle = '#fff';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.arc(W / 2, H * 0.55, 7, 0, Math.PI * 2);
+    x.stroke();
   } else {
     x.fillStyle = '#6fae6a';
     x.beginPath();
