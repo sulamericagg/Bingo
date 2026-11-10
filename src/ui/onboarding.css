@@ -195,3 +195,18 @@
     height: 52px;
   }
 }
+/* paisagem / telas baixas (915x412): o "Bora jogar!" ficava fora da tela, só achava rolando */
+@media (max-height: 500px) {
+  .ob-card h2 {
+    font-size: 20px;
+  }
+  .ob-rules {
+    font-size: 11px;
+  }
+  .ob-go {
+    position: sticky;
+    bottom: 4px;
+    z-index: 2;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  }
+}
