@@ -328,8 +328,8 @@ export class World {
           if (d2 > near2 * 1.5) continue;
           const r = WSPECIES[sp].shape === 'cactus' ? 0.6 : 0.85;
           _m.compose(_p.set(x, y - 0.05, z), _q.setFromAxisAngle(UP, T[o + 3]), _s.set(r, 0.9, r));
-          const tc = new THREE.Color(WSPECIES[sp].trunk);
-          this.stumps.push(_m, tc.r, tc.g, tc.b);
+          _c.set(WSPECIES[sp].trunk);
+          this.stumps.push(_m, _c.r, _c.g, _c.b);
           continue;
         }
         const sc = T[o + 4] * (st === TState.Sapling ? 0.15 + c.tgrow[i] * 0.85 : 1) * (rare ? 1.15 : 1);

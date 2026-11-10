@@ -230,3 +230,4 @@
 .fl-pets.hide{display:none}
 .fl-lefty .fl-pets{right:auto;left:calc(var(--edgeL) + 104px)}
 @media (orientation:portrait){.fl-pets{right:var(--edgeR);bottom:calc(var(--edgeB) + 250px)}}
+.fw-top .fl-pill:has(> span:empty){display:none}

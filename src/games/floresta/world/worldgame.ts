@@ -1101,7 +1101,8 @@ export class WorldGame {
     const s = this.swing;
     const arc = s > 0.6 ? (1 - s) / 0.4 : s / 0.6;
     const bob = Math.sin(this.walkT) * 0.02 * Math.min(1, walk);
-    this.hand.position.set(0.32, -0.42 + bob - arc * 0.1, -0.62);
+    const ax = Math.min(1, this.camera.aspect / 1.6);
+    this.hand.position.set(0.06 + 0.26 * ax, -0.42 + bob - arc * 0.1 - (1 - ax) * 0.08, -0.62);
     if (this.tool === 0) this.hand.rotation.set(-0.2 - arc * 1.3, 0.25, 0.15 + arc * 0.3);
     else if (this.tool === 1) this.hand.rotation.set(-0.9 - arc * 0.8, 0.1, 0.2);
     else this.hand.rotation.set(-0.3 - arc * 0.6, 0, 0.1);

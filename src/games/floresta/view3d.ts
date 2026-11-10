@@ -2464,14 +2464,25 @@ class View3D implements View {
       this.guideArrow = a;
     }
     const a = this.guideArrow;
-    a.visible = true;
     let h = 2.6;
-    if (g.step === 'chop' || g.step === 'chop2') h = 9.5;
+    let ox = 0;
+    let oz = 0;
+    if (g.step === 'chop' || g.step === 'chop2') {
+      // na altura do tronco, um pouco à frente (desenhada por cima das folhas)
+      h = 3.4;
+      const dx = this.sim.me.x - g.tx;
+      const dz = this.sim.me.z - g.tz;
+      const L = Math.hypot(dx, dz) || 1;
+      ox = (dx / L) * 0.9;
+      oz = (dz / L) * 0.9;
+    }
     else if (g.step === 'pick') h = 1.6;
     else if (g.step === 'funnel') h = 4.6;
     else if (g.step === 'sell') h = 3.6;
     const y = groundH(g.tx, g.tz) + h + Math.abs(Math.sin(this.time * 3.2)) * 0.5;
-    a.position.set(g.tx, y, g.tz);
+    a.position.set(g.tx + ox, y, g.tz + oz);
+    // some quando você já está no alvo (não tapa a mira)
+    a.visible = Math.hypot(g.tx - this.sim.me.x, g.tz - this.sim.me.z) > 2.2;
     a.rotation.y += dt * 2;
     const d = Math.hypot(g.tx - this.sim.me.x, g.tz - this.sim.me.z);
     a.scale.setScalar(Math.max(1, d / 14));
