@@ -37,7 +37,7 @@
   max-width: 480px;
   max-height: 92%;
   overflow-y: auto;
-  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 16px calc(16px + var(--safe-bot, env(safe-area-inset-bottom, 0px)));
   border-radius: 24px 24px 0 0;
   background: linear-gradient(180deg, #3a1d82, #1a0c40);
   border-top: 2px solid rgba(190, 150, 255, 0.45);

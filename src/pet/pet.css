@@ -21,7 +21,7 @@
 @supports (padding: env(safe-area-inset-top)) {
   .pet-scr {
     --st: env(safe-area-inset-top, 0px);
-    --sb: env(safe-area-inset-bottom, 0px);
+    --sb: var(--safe-bot, env(safe-area-inset-bottom, 0px));
   }
 }
 .pet-scr.on {

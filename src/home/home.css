@@ -18,7 +18,7 @@
 @supports (padding: env(safe-area-inset-top)) {
   .hm-scr {
     --st: env(safe-area-inset-top, 0px);
-    --sb: env(safe-area-inset-bottom, 0px);
+    --sb: var(--safe-bot, env(safe-area-inset-bottom, 0px));
   }
 }
 .hm-scr.on { display: block; animation: hmIn 0.3s cubic-bezier(0.2, 1.2, 0.4, 1); }

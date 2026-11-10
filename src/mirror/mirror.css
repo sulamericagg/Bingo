@@ -2,7 +2,7 @@
 .mr-root {
   --ink: #2a0b5c;
   --st: env(safe-area-inset-top, 0px);
-  --sb: env(safe-area-inset-bottom, 0px);
+  --sb: var(--safe-bot, env(safe-area-inset-bottom, 0px));
   position: fixed;
   inset: 0;
   z-index: 58;
