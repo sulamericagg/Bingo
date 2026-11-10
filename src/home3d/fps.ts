@@ -118,7 +118,7 @@ export class Fps {
   }
   setActive(on: boolean): void {
     this.active = on;
-    this.hand.mesh.visible = on;
+    this.hand.visible = on;
     this.input.show(on);
     if (!on) this.drop(false);
   }
