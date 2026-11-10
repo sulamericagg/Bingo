@@ -80,7 +80,8 @@ export class Recorder {
   }
 }
 
-export const extOf = (b: Blob): string => (b.type.includes('mp4') ? 'mp4' : b.type.includes('webm') ? 'webm' : b.type.includes('png') ? 'png' : 'bin');
+export const extOf = (b: Blob): string =>
+  b.type.includes('mp4') ? 'mp4' : b.type.includes('webm') ? 'webm' : b.type.includes('png') ? 'png' : b.type.includes('gif') ? 'gif' : b.type.includes('jpeg') ? 'jpg' : b.type.includes('json') ? 'json' : 'bin';
 
 function stamp(): string {
   const d = new Date();

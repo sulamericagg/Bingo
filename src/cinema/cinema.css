@@ -84,10 +84,10 @@
 
 /* linha do tempo do plano */
 .cin-tl{position:relative;flex:none;max-height:134px;overflow-y:auto;margin:0 8px;border-radius:12px;background:rgba(10,3,30,.45);touch-action:pan-y}
-.cin-tl .ruler{position:sticky;top:0;height:16px;margin-left:58px;z-index:2;background:rgba(10,3,30,.85);font-size:9.5px;opacity:.8}
+.cin-tl .ruler{position:sticky;top:0;height:16px;margin-left:var(--lblw,58px);z-index:2;background:rgba(10,3,30,.85);font-size:9.5px;opacity:.8}
 .cin-tl .ruler b{position:absolute;top:1px;font-weight:500;transform:translateX(-50%)}
 .cin-lane{position:relative;display:flex;height:22px;align-items:center;border-top:1px solid rgba(255,255,255,.05)}
-.cin-lane .lbl{flex:none;width:58px;padding:0 5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85;display:flex;align-items:center;gap:3px}
+.cin-lane .lbl{flex:none;width:var(--lblw,58px);padding:0 5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85;display:flex;align-items:center;gap:3px}
 .cin-lane .lbl canvas{width:18px;height:18px;flex:none}
 .cin-lane .trk{position:relative;flex:1;height:100%}
 .cin-lane.sel{background:rgba(255,217,59,.1)}

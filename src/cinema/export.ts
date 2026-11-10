@@ -8,8 +8,7 @@
  *  Nada é enviado: o arquivo sai pelo menu de compartilhar do
  *  sistema (Android) ou download (web).
  * ============================================================ */
-import { Share } from '@capacitor/share';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { shareOrSave } from '../mirror/media';
 import { isNative } from '../core/platform';
 import type { Mixer, Playback } from './audio';
 import type { Renderer } from './engine';
@@ -281,19 +280,6 @@ function lzw(px: Uint8Array, minCode: number, out: number[]): void {
 /* ============================================================
  *  SALVAR / COMPARTILHAR
  * ============================================================ */
-interface FsPlugin {
-  writeFile(o: { path: string; data: string; directory: string; recursive?: boolean }): Promise<{ uri: string }>;
-}
-
-function blobToBase64(b: Blob): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1] ?? '');
-    r.onerror = () => rej(r.error);
-    r.readAsDataURL(b);
-  });
-}
-
 export function safeFileName(title: string, ext: string): string {
   const base =
     title
@@ -318,34 +304,17 @@ export function download(blob: Blob, name: string): void {
 }
 
 /**
- * Compartilha pelo menu do sistema. No Android usa @capacitor/share com um arquivo no cache
- * (precisa do plugin Filesystem nativo instalado); na web, Web Share com arquivo; senão baixa.
- * Devolve 'shared' | 'downloaded' | 'cancel'.
+ * Compartilha pelo menu do sistema — mesmo caminho do Bloop Espelho (src/mirror/media.ts):
+ * no Android grava o arquivo no cache (Filesystem, em pedaços) e abre o Share; na web, Web Share
+ * com arquivo ou download. Os temporários são apagados por cleanupShared() (ao abrir/sair do Cinema).
  */
-export async function shareFile(blob: Blob, name: string, title: string, text: string): Promise<'shared' | 'downloaded' | 'cancel'> {
-  if (isNative && Capacitor.isPluginAvailable('Filesystem')) {
-    try {
-      const fs = registerPlugin<FsPlugin>('Filesystem');
-      const data = await blobToBase64(blob);
-      const w = await fs.writeFile({ path: name, data, directory: 'CACHE', recursive: true });
-      await Share.share({ title, text, files: [w.uri], dialogTitle: title });
-      return 'shared';
-    } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      if (/cancel/i.test(msg)) return 'cancel';
-      console.warn('[cinema] share nativo', e);
-    }
-  }
-  const file = new File([blob], name, { type: blob.type });
-  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-  if (nav.share && nav.canShare?.({ files: [file] })) {
-    try {
-      await nav.share({ files: [file], title, text });
-      return 'shared';
-    } catch (e) {
-      if ((e as { name?: string })?.name === 'AbortError') return 'cancel';
-    }
-  }
+export async function shareFile(blob: Blob): Promise<'shared' | 'downloaded' | 'cancel' | 'error'> {
+  return shareOrSave(blob);
+}
+
+/** "Salvar no aparelho": no app não existe download — o menu do sistema tem "Salvar"/Arquivos/Galeria. */
+export async function saveFile(blob: Blob, name: string): Promise<'shared' | 'downloaded' | 'cancel' | 'error'> {
+  if (isNative) return shareOrSave(blob);
   download(blob, name);
   return 'downloaded';
 }

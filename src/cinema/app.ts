@@ -13,7 +13,8 @@ import { bindButton, edges } from '../ui/touch';
 import { actx, Mixer, Playback, preloadProjectClips } from './audio';
 import { BACKGROUNDS } from './data';
 import { Renderer } from './engine';
-import { canExportVideo, exportGif, exportVideo, probeDuration, safeFileName, shareFile, download, type ExportResult } from './export';
+import { canExportVideo, exportGif, exportVideo, probeDuration, safeFileName, shareFile, saveFile, type ExportResult } from './export';
+import { cleanupShared } from '../mirror/media';
 import { clone, newProject, parseProject, uid, type Project } from './format';
 import { cleanText, isPro, maxProjects, maxSeconds, paywall } from './gates';
 import { renderPanel, stopPanelAudio, TABS, type PanelCtx } from './panels';
@@ -63,6 +64,7 @@ class CinemaApp {
     this.el = document.createElement('div');
     this.el.className = 'cin-root';
     root.appendChild(this.el);
+    void cleanupShared();
     if (location.search.includes('debug')) (window as unknown as { __cinema: unknown }).__cinema = { app: this, S, TEMPLATES, probeDuration, mutate, setTime, gotoShot };
   }
 
@@ -182,7 +184,7 @@ class CinemaApp {
       void this.home();
     } else if (a === 'json') {
       const blob = new Blob([JSON.stringify(p, null, 1)], { type: 'application/json' });
-      await shareFile(blob, safeFileName(p.title, 'json'), p.title, t('cin.share.text', 'Fiz este filme no Bloop World!'));
+      await shareFile(blob);
     } else if (a === 'del' && (await confirm(t('cin.home.delQ', 'Apagar "{n}"? Não dá para desfazer.', { n: p.title }), t('cin.del', 'Apagar')))) {
       await deleteProject(id);
       void this.home();
@@ -524,6 +526,12 @@ class CinemaApp {
     if (shot.fx.length || shot.sfx.length)
       html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${f.kind}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
     html += `<div class="cin-head"></div>`;
+    // coluna de rótulos do tamanho do maior nome (ícone + miniatura + texto), sem cortar
+    const names = [t('cin.tab.camera', 'Câmera'), t('cin.tab.lines', 'Falas'), t('cin.tab.fx', 'Efeitos'), ...shot.actors.map((a) => castById(a.cast)?.name ?? '')];
+    const mx = document.createElement('canvas').getContext('2d')!;
+    mx.font = `500 11px ${getComputedStyle(host).fontFamily || 'sans-serif'}`;
+    const lw = Math.min(150, Math.max(64, Math.ceil(Math.max(...names.map((n) => mx.measureText(n).width)) + 34)));
+    host.style.setProperty('--lblw', `${lw}px`);
     host.innerHTML = html;
     host.querySelectorAll<HTMLElement>('[data-lane]').forEach((l) => {
       const c = castById(l.dataset.lane);
@@ -844,11 +852,13 @@ class CinemaApp {
        <p class="cin-hint" style="margin-top:8px">🔒 ${t('cin.ex.privacy', 'Nada é enviado pelo jogo: você escolhe para onde mandar.')}</p>`,
       async (a) => {
         if (a === 'share') {
-          const r = await shareFile(blob, name, S.p.title, t('cin.share.text', 'Fiz este filme no Bloop World!'));
+          const r = await shareFile(blob);
           if (r === 'downloaded') notify(t('cin.ex.saved', 'Arquivo salvo!'), { kind: 'good', icon: 'check' });
+          else if (r === 'error') notify(t('cin.ex.shareFail', 'Não deu para compartilhar. Tente de novo.'), { kind: 'warn' });
         } else if (a === 'save') {
-          download(blob, name);
-          notify(t('cin.ex.saved', 'Arquivo salvo!'), { kind: 'good', icon: 'check' });
+          const r = await saveFile(blob, name);
+          if (r === 'downloaded') notify(t('cin.ex.saved', 'Arquivo salvo!'), { kind: 'good', icon: 'check' });
+          else if (r === 'error') notify(t('cin.ex.shareFail', 'Não deu para compartilhar. Tente de novo.'), { kind: 'warn' });
         }
       },
       () => setTimeout(() => URL.revokeObjectURL(url), 30_000),
@@ -905,6 +915,7 @@ class CinemaApp {
 
   destroy(): void {
     this.alive = false;
+    void cleanupShared();
     if (this.cv) void flushSave();
     this.closeEditor();
     this.mixer?.dispose();
