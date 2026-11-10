@@ -73,8 +73,8 @@ function hueWord(h: number): string {
     [160, t('cor.hue.green', 'verde')],
     [195, t('cor.hue.cyan', 'ciano')],
     [255, t('cor.hue.blue', 'azul')],
-    [290, t('cor.hue.purple', 'roxo')],
-    [335, t('cor.hue.pink', 'rosa')],
+    [285, t('cor.hue.purple', 'roxo')],
+    [345, t('cor.hue.pink', 'rosa')],
     [361, t('cor.hue.red', 'vermelho')],
   ];
   return names.find(([lim]) => h < lim)![1];
@@ -186,6 +186,7 @@ class CorGame implements MiniGameHandle {
     const onResize = () => this.layout();
     window.addEventListener('resize', onResize);
     this.offs.push(() => window.removeEventListener('resize', onResize));
+    this.layout();
     this.menu();
   }
 
@@ -245,21 +246,19 @@ class CorGame implements MiniGameHandle {
     const dailyDone = s.dailyDay === today;
     d.innerHTML = `
       ${this.logo()}
-      <div class="pg-sub">${t('cor.tagline', 'Memorize a cor e pinte igualzinho!')}</div>
+      <div class="pg-sub pg-hide-land">${t('cor.tagline', 'Memorize a cor e pinte igualzinho!')}</div>
       <div class="pg-card">
         <div class="pg-row" style="justify-content:space-between"><span class="pg-pill">${icon('star', { size: 18 })}${t('cor.level', 'Nível {n}', { n: L.lv })}</span><span class="pg-pill">${icon('target', { size: 18 })}${s.bestAcc ? pct(s.bestAcc) + '%' : '—'}</span><span class="pg-pill">${icon('trophy', { size: 18 })}${s.wins}</span></div>
         <div class="pg-xp"><i style="width:${Math.round((L.cur / L.need) * 100)}%"></i></div>
       </div>
-      <div class="pg-card" style="gap:10px">
+      <div class="pg-modes">
         <button class="pg-mode pg-m1" data-m="duel"><span class="pg-mi">${icon('crown', { size: 34 })}</span><span><b>${t('cor.duel', 'Duelo')}</b><small>${t('cor.duelD', 'Contra robôs e amigos no mesmo celular (até 5)')}</small></span></button>
         <button class="pg-mode pg-m2" data-m="practice"><span class="pg-mi">${icon('paint', { size: 34 })}</span><span><b>${t('cor.practice', 'Treino')}</b><small>${t('cor.practiceD', 'Sozinho, escolha a categoria e o ritmo')}</small></span></button>
-        <button class="pg-mode pg-m3" data-m="daily"><span class="pg-mi">${icon('calendar', { size: 34 })}</span><span><b>${t('cor.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('cor.dailyDone', 'Hoje: {n} pts · sequência {d} dias', { n: fmt(s.dailyScore), d: s.dailyStreak }) : t('cor.dailyD', '10 itens iguais para todo mundo. Vale uma vez por dia!')}</small></span></button>
+        <button class="pg-mode pg-m3" data-m="daily"><span class="pg-mi">${icon('calendar', { size: 34 })}</span><span><b>${t('cor.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('cor.dailyDone', 'Hoje: {n} pts · dias seguidos: {d}', { n: fmt(s.dailyScore), d: s.dailyStreak }) : t('cor.dailyD', '10 itens iguais para todo mundo. Vale uma vez por dia!')}</small></span></button>
       </div>
-      <div class="pg-row" style="width:min(400px,100%)">
+      <div class="pg-row pg-bottom">
         <button class="pg-btn pg-grow" data-a="album">${icon('bag', { size: 20 })}${t('cor.album', 'Álbum')}</button>
         <button class="pg-btn pg-grow" data-a="records">${icon('trophy', { size: 20 })}${t('cor.records', 'Recordes')}</button>
-      </div>
-      <div class="pg-row" style="width:min(400px,100%)">
         <button class="pg-tog${s.hints ? ' on' : ''}" data-a="hints"><span>${t('cor.hints', 'Dicas em texto')}<small>${t('cor.hintsD', 'Descreve a cor (ajuda para daltonismo)')}</small></span><i></i></button>
       </div>
       <button class="pg-btn pg-ghost" data-a="exit">${icon('home', { size: 20 })}${t('cor.exit', 'Sair')}</button>`;
@@ -475,7 +474,7 @@ class CorGame implements MiniGameHandle {
     const land = W > H * 1.05;
     this.el.classList.toggle('pg-land', land);
     if (this.picker) {
-      const size = land ? Math.min(H - 24, W * 0.4, 360) : Math.min(W - 16 - 10 - 132, H * 0.33, 320);
+      const size = land ? Math.min(H - 24, W * 0.37, 340) : Math.min(W - 16 - 10 - 132, H * 0.33, 320);
       this.picker.resize(size);
     }
     this.fitStage();
@@ -802,7 +801,7 @@ class CorGame implements MiniGameHandle {
       s.dailyDay = today;
       s.dailyScore = Math.round(lead.total);
       s.dailyBest = Math.max(s.dailyBest, s.dailyScore);
-      dailyMsg = t('cor.dailyStreak', 'Sequência do desafio: {n} dias', { n: s.dailyStreak });
+      dailyMsg = t('cor.dailyStreak', 'Dias seguidos no desafio: {n}', { n: s.dailyStreak });
     }
     const score = Math.round(lead.total);
     let recPos = -1;

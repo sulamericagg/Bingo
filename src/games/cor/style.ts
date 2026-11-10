@@ -14,6 +14,7 @@ const CSS = `
 .pg-big{font-size:21px;padding:13px 18px;border-radius:18px;width:100%}
 .pg-ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px calc(env(safe-area-inset-bottom,0px) + 16px);overflow-y:auto;animation:pgFade .22s;z-index:5}
 .pg-ov>*{flex-shrink:0}
+.pg-ov{touch-action:pan-y}
 .pg-ov.pg-dim{background:rgba(20,8,48,.86);backdrop-filter:blur(2px)}
 .pg-ov.pg-center{justify-content:center}
 @keyframes pgFade{from{opacity:0}}
@@ -137,6 +138,17 @@ const CSS = `
 .pg-lb div b{width:24px;opacity:.8}
 .pg-lb div span{flex:1}
 .pg-lb div em{font-style:normal;opacity:.7;font-size:13px}
+.pg-modes{width:min(400px,100%);display:flex;flex-direction:column;gap:10px}
+.pg-bottom{width:min(400px,100%)}
+.pg-bottom .pg-tog{flex:1 1 100%}
+.pg-land .pg-modes{flex-direction:row;width:min(860px,100%)}
+.pg-land .pg-modes .pg-mode{flex:1;flex-direction:column;text-align:center;gap:6px}
+.pg-land .pg-bottom{width:min(860px,100%);flex-wrap:nowrap}
+.pg-land .pg-bottom .pg-tog{flex:1 1 auto}
+.pg-land .pg-logo{font-size:30px;margin-top:0}
+.pg-land .pg-hide-land{display:none}
+.pg-land .pg-pl span{display:none}
+.pg-land .pg-pl{justify-content:center}
 @media (max-height:640px){.pg-logo{font-size:32px}.pg-mode{padding:8px 12px}.pg-mode b{font-size:18px}}
 `;
 let done = false;
