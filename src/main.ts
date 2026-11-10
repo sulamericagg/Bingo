@@ -122,6 +122,7 @@ async function boot(): Promise<void> {
     App.addListener('pause', onHide);
     App.addListener('resume', () => {
       audio.resume();
+      bus.emit('app-resume');
       // de volta ao app: menu sempre em pé (só a casa 3D pede paisagem, e ela trava sozinha)
       if (!document.querySelector('.gh-game, .h3-canvas')) restorePortrait();
     });

@@ -244,12 +244,16 @@ export function hubBack(): boolean {
 
 /** App foi para segundo plano: pausa o minigame aberto. */
 export function hubPause(): void {
-  if (hostActive) handle?.pause?.();
+  if (!hostActive) return;
+  handle?.pause?.();
+  // ao voltar o jogador vê "Pausado — Continuar / Sair" em vez de uma tela congelada
+  if (handle) hostConfirm.classList.add('on');
 }
 
 /* ============================== init ============================== */
 
 export function initHub(o: HubOptions): void {
+  bindGlGuard();
   opts = o;
   menu = document.getElementById('menu')!;
   track = document.getElementById('hub-track')!;
@@ -779,3 +783,32 @@ function toast(msg: string): void {
 }
 
 export { defaultProfile };
+
+/* ---------------- tela desligada / 3D perdido ----------------
+ * Ao desligar a tela, o Android pode jogar fora o contexto WebGL dos jogos 3D
+ * e a cena volta só com o fundo (tela verde/escura, HUD por cima). Detectamos
+ * a perda em qualquer canvas do jogo aberto e, ao voltar, reabrimos o jogo
+ * (o progresso já fica salvo pelos próprios jogos). */
+let glLost = false;
+function bindGlGuard(): void {
+  document.addEventListener(
+    'webglcontextlost',
+    (e) => {
+      if (!hostActive || !(e.target as HTMLElement)?.closest?.('.gh-game')) return;
+      e.preventDefault(); // permite o navegador tentar restaurar
+      glLost = true;
+    },
+    true,
+  );
+  const recover = () => {
+    if (!glLost || document.hidden) return;
+    glLost = false;
+    const d = hostDef;
+    if (!d || !hostActive) return;
+    closeHost();
+    window.setTimeout(() => void launchGame(d), 60);
+  };
+  document.addEventListener('visibilitychange', () => window.setTimeout(recover, 250));
+  window.addEventListener('focus', () => window.setTimeout(recover, 250));
+  bus.on('app-resume', () => window.setTimeout(recover, 250));
+}
