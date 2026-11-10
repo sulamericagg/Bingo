@@ -235,7 +235,7 @@ function drawSticker(d: DC, id: StickerId, mx: number, my: number, open: number)
   const r = E!.rig;
   const fx = r.yaw * R * 0.24;
   const fy = d.ey + r.pitch * R * 0.2;
-  const top = -d.sh.top * R;
+  const top = d.sh.top * R; // sh.top já é negativo (y do topo)
   x.save();
   x.lineJoin = 'round';
   x.lineCap = 'round';
@@ -244,11 +244,11 @@ function drawSticker(d: DC, id: StickerId, mx: number, my: number, open: number)
       for (const s of [-1, 1]) {
         x.fillStyle = '#1b1430';
         x.beginPath();
-        x.roundRect(fx + s * d.ex - R * 0.2, fy - R * 0.13, R * 0.4, R * 0.27, R * 0.1);
+        x.roundRect(fx + s * d.ex - R * 0.22, fy - R * 0.19, R * 0.44, R * 0.37, R * 0.12);
         x.fill();
         x.fillStyle = 'rgba(255,255,255,.35)';
         x.beginPath();
-        x.roundRect(fx + s * d.ex - R * 0.14, fy - R * 0.09, R * 0.1, R * 0.06, R * 0.03);
+        x.roundRect(fx + s * d.ex - R * 0.15, fy - R * 0.13, R * 0.1, R * 0.07, R * 0.035);
         x.fill();
       }
       x.strokeStyle = '#1b1430';
@@ -667,8 +667,9 @@ export function drawFrame(x: CanvasRenderingContext2D, W: number, H: number, f: 
   const r = f.expr.rig;
   const R = Math.min(W * 0.3, H * 0.19);
   const cx = W / 2 + r.yaw * R * 0.3;
-  const floorY = f.scene === 'espaco' ? H * 0.8 : H * 0.8;
-  const cy = H * 0.56 + r.pitch * R * 0.18 + Math.sin(f.t * 2.1) * R * 0.02;
+  const baseY = H * 0.6;
+  const floorY = baseY + R * 1.1;
+  const cy = baseY + r.pitch * R * 0.18 + Math.sin(f.t * 2.1) * R * 0.02;
   // sombra no chão
   x.fillStyle = f.scene === 'espaco' ? 'rgba(140,120,255,.18)' : 'rgba(40,10,60,.22)';
   ellipse(x, cx, floorY, R * 0.9 * (1 - f.bounce * 0.3), R * 0.14);

@@ -76,14 +76,16 @@ export async function createFaceTracker(): Promise<FaceTracker> {
       out.lookY = Math.max(-1, Math.min(1, ly * 1.8));
       const m = r.facialTransformationMatrixes?.[0]?.data;
       if (m && m.length >= 16) {
-        // matriz coluna-maior (como Matrix4.fromArray do three.js); Euler YXZ.
-        // A imagem da câmera NÃO é espelhada → inverte virar/deitar para o espelho.
+        // matriz coluna-maior (como Matrix4.fromArray do three.js), câmera y-para-cima; Euler YXZ.
+        // A imagem da câmera NÃO é espelhada: no espelho o "virar" troca de sinal; o "deitar"
+        // troca de sinal no espelho e de novo ao passar para o canvas (y para baixo) → fica igual.
+        // (conferido com vídeo falso girado: imagem girada no horário → Bloop gira no anti-horário)
         const yaw = Math.atan2(m[8], m[10]);
         const pitch = Math.asin(Math.max(-1, Math.min(1, -m[9])));
         const roll = Math.atan2(m[1], m[5]);
         out.yaw = -yaw;
         out.pitch = pitch;
-        out.roll = -roll;
+        out.roll = roll;
       }
       return true;
     },

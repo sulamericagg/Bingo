@@ -19,11 +19,11 @@ import { rewardedAvailable, showRewarded } from '../services/ads';
 import { icon } from '../ui/icons';
 import { notify } from '../ui/notify';
 import { canRecord, cleanupShared, MAX_REC_MS, Recorder, shareOrSave } from './media';
-import { canAdBonus, consumeMirror, flushMirror, fmtLeft, grantAdBonus, mirrorLeftMs, mirrorSave, mirrorUnlimited, setDebugUnlimited, setMirrorPref } from './quota';
+import { canAdBonus, consumeMirror, FREE_DAILY_MS, flushMirror, fmtLeft, grantAdBonus, mirrorLeftMs, mirrorSave, mirrorUnlimited, setDebugUnlimited, setMirrorPref } from './quota';
 import { composeShot, drawFrame, mirrorAvatar, SCENES, STICKERS, type Expr, type FrameState, type SceneId, type StickerId } from './render';
 import { approach, neutralRig, RIG_KEYS, RigFilter, type Rig } from './rig';
 import type { FaceTracker } from './tracker';
-import { FREE_VOICES, VOICES, type MouthFromVoice, type VoiceFx, type VoiceId } from './voice-fx';
+import { FREE_VOICES, VoiceFx, VOICES, type MouthFromVoice, type VoiceId } from './voice-fx';
 
 const DEBUG = /[?&]debug\b/.test(location.search);
 
@@ -81,6 +81,8 @@ const filter = new RigFilter();
 let debugFace: Rig | null = null;
 const vm: MouthFromVoice = { open: 0, round: 0, wide: 0 };
 let faceAt = 0;
+/** quanto tempo sem rosto ainda conta como "rosto presente" (aparelho lento detecta menos vezes) */
+let faceGrace = 600;
 let lastDetect = 0;
 let detectMs = 0;
 let lastDraw = 0;
@@ -92,6 +94,7 @@ let prevLevel = 0;
 let nextBlink = 0;
 let blinkT = -1;
 let lastUi = 0;
+let quotaAt = 0;
 let tab: Tab = 'voice';
 let lastShot: Blob | null = null;
 let lastRec: Blob | null = null;
@@ -159,8 +162,13 @@ export function closeMirror(): boolean {
 }
 
 function onVis(): void {
+  if (!document.hidden) {
+    audio.suspend(); // o app religa a música ao voltar; aqui ela fica muda
+    return;
+  }
   // câmera/microfone NUNCA ficam ligados com o app em segundo plano
-  if (document.hidden && session !== 'off') {
+  // ('starting': o pedido de permissão do Android pausa o app; stillWanted decide quando ele responder)
+  if (session === 'on') {
     stopSession();
     showMsg('paused', t('mirror.msg.paused', 'A câmera desligou quando você saiu. Toque em Ligar para continuar.'));
   }
@@ -217,6 +225,7 @@ function build(): void {
   small = document.createElement('canvas');
   smallX = small.getContext('2d', { willReadFrequently: false })!;
   root.addEventListener('click', onClick);
+  root.addEventListener('scroll', () => root && (root.scrollTop = root.scrollLeft = 0));
 }
 
 function onClick(e: MouseEvent): void {
@@ -373,12 +382,12 @@ function showPaywall(why: 'time' | 'voice'): void {
     'mr-pay',
     `${icon(why === 'time' ? 'clock' : 'sound', { size: 52 })}
     <h2>${why === 'time' ? t('mirror.pay.timeTitle', 'Seu tempo de hoje acabou!') : t('mirror.pay.voiceTitle', 'Voz especial')}</h2>
-    <p>${t('mirror.pay.text', 'Assine o Clube Bloop ou tenha um Passe para usar sem limite')}${why === 'voice' ? ' ' + t('mirror.pay.voiceExtra', 'e liberar todas as vozes.') : '.'}</p>
+    <p>${why === 'time' ? t('mirror.pay.text', 'Assine o Clube Bloop ou tenha um Passe para usar sem limite.') : t('mirror.pay.voiceText', 'Assine o Clube Bloop ou tenha um Passe para liberar todas as vozes e usar sem limite.')}</p>
     <button class="mr-btn main" data-p="club">${icon('crown')}${t('mirror.pay.club', 'Clube Bloop')}</button>
     <button class="mr-btn gold" data-p="pass">${icon('star')}${t('mirror.pay.pass', 'Ver o Passe')}</button>
     ${adOk ? `<button class="mr-btn" data-p="ad">${icon('video')}${t('mirror.pay.ad', 'Ver um vídeo: +2 min')}</button>` : ''}
     <button class="mr-btn ghost" data-p="no">${t('mirror.pay.later', 'Agora não')}</button>
-    ${why === 'time' ? `<small>${t('mirror.pay.tomorrow', 'Amanhã tem mais 3 minutos grátis.')}</small>` : ''}`,
+    ${why === 'time' ? `<small>${t('mirror.pay.tomorrow', 'Amanhã tem mais {n} minutos grátis.', { n: Math.round(FREE_DAILY_MS / 60000) })}</small>` : ''}`,
   );
   bg.addEventListener('click', async (e) => {
     const p = (e.target as HTMLElement).closest<HTMLElement>('[data-p]')?.dataset.p;
@@ -425,7 +434,7 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
       camStream = null;
     }
   }
-  if (!stillWanted(token)) return;
+  if (!(await stillWanted(token))) return;
   try {
     if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
     micStream = await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
@@ -433,7 +442,7 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
     micErr = errName(e);
     micStream = null;
   }
-  if (!stillWanted(token)) return;
+  if (!(await stillWanted(token))) return;
 
   if (camStream) {
     video.srcObject = camStream;
@@ -451,7 +460,7 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
         trackerFailed = true;
       }
       root?.querySelector('.mr-loading')?.classList.remove('on');
-      if (!stillWanted(token)) return;
+      if (!(await stillWanted(token))) return;
     }
     if (!tracker) {
       // sem modelo: a câmera não serve para nada → desliga já
@@ -463,8 +472,6 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
     }
   }
   if (micStream) {
-    const { VoiceFx } = await import('./voice-fx');
-    if (!stillWanted(token)) return;
     fx = new VoiceFx(micStream);
     const v = mirrorSave().voice as VoiceId;
     fx.setVoice(VOICES.includes(v) && voiceAllowed(v) ? v : 'normal');
@@ -483,6 +490,7 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
     return;
   }
   session = 'on';
+  quotaAt = performance.now();
   filter.reset();
   faceAt = 0;
   if (mode === 'cam' && !camStream) {
@@ -498,7 +506,14 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
   refreshUi(true);
 }
 
-function stillWanted(token: number): boolean {
+/** O diálogo de permissão do Android pausa o app: espera um pouco ele voltar antes de decidir. */
+async function waitVisible(ms: number): Promise<void> {
+  const end = performance.now() + ms;
+  while (document.hidden && performance.now() < end) await new Promise((r) => setTimeout(r, 100));
+}
+
+async function stillWanted(token: number): Promise<boolean> {
+  if (document.hidden) await waitVisible(1500);
   if (root && token === sessionToken && !document.hidden) return true;
   // fechou a tela ou minimizou enquanto o Android pedia permissão: solta tudo
   camStream?.getTracks().forEach((tr) => tr.stop());
@@ -537,7 +552,9 @@ function loop(now: number): void {
   const ts = (now - t0) / 1000;
 
   if (session === 'on') {
-    consumeMirror(dt * 1000);
+    // relógio de parede (não o dt limitado do quadro): aparelho lento não ganha tempo extra
+    consumeMirror(Math.min(1000, now - quotaAt));
+    quotaAt = now;
     if (mirrorLeftMs() <= 0) {
       stopSession();
       showPaywall('time');
@@ -547,6 +564,7 @@ function loop(now: number): void {
   // rastreamento (quadro reduzido, ~12–24 por segundo conforme a qualidade)
   const hz = tier <= 0 ? 12 : tier === 1 ? 18 : 24;
   const interval = Math.max(1000 / hz, detectMs * 1.5);
+  faceGrace = Math.max(600, interval * 2.5);
   let gotFace = false;
   if (debugFace) {
     Object.assign(raw, debugFace);
@@ -573,7 +591,7 @@ function loop(now: number): void {
   if (gotFace) {
     faceAt = now;
     filter.apply(raw, rig, debugFace ? dt : Math.max(dt, interval / 1000));
-  } else if (now - faceAt > 600) {
+  } else if (now - faceAt > faceGrace) {
     // sem rosto: volta ao neutro, pisca sozinho e balança de leve (modo só microfone fica vivo)
     for (const k of RIG_KEYS) rig[k] = approach(rig[k], 0, 5, dt);
     rig.yaw = Math.sin(ts * 0.6) * 0.12;
@@ -594,7 +612,7 @@ function loop(now: number): void {
 
   // voz → boca
   const level = fx ? fx.poll(vm) : ((vm.open *= 0.8), (vm.round *= 0.8), (vm.wide *= 0.8), 0);
-  const faceLive = now - faceAt < 600;
+  const faceLive = now - faceAt < faceGrace;
   expr.open = Math.max(rig.jaw, vm.open * (faceLive ? 0.55 : 1));
   expr.round = Math.max(rig.round, faceLive ? 0 : vm.round);
   expr.wide = Math.max(rig.wide, faceLive ? 0 : vm.wide);
@@ -700,7 +718,7 @@ function installDebug(): void {
       cam: !!camStream,
       mic: !!micStream,
       tracker: tracker?.delegate ?? (trackerFailed ? 'failed' : null),
-      faceLive: performance.now() - faceAt < 600,
+      faceLive: performance.now() - faceAt < faceGrace,
       leftMs: mirrorLeftMs(),
       unlimited: mirrorUnlimited(),
       recording: rec.active,

@@ -598,7 +598,7 @@ function frame(now: number): void {
     return;
   }
   rafId = requestAnimationFrame(frame);
-  if ((frameN++ & 15) === 0) covered = !!document.querySelector('.modal-screen.on, .cr-root.on, .rank.on');
+  if ((frameN++ & 15) === 0) covered = !!document.querySelector('.modal-screen.on, .cr-root.on, .rank.on, .mr-root');
   const dt = Math.min(0.1, (now - (last || now)) / 1000);
   last = now;
   // nível Mínimo: 30 fps; coberto por modal: 10 fps
