@@ -85,6 +85,11 @@ export class Hud {
     if (v) {
       objective(null);
       this.lastTip = '\u0000';
+      // controles de toque fora durante abertura/fim
+      this.ctlSig = 0;
+      this.yoke?.setEnabled(false);
+      this.fps?.show(false);
+      this.joy2d?.setEnabled(false);
     }
   }
   face2d: [number, number] = [0, -1];

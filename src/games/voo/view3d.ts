@@ -670,8 +670,10 @@ export class View3D {
       // dentro da cabine: olhando o comandante
       const k = this.cut;
       const sh = k > 8.4 ? Math.sin(k * 40) * 0.01 * Math.max(0, 9.4 - k) : 0;
-      cam.position.set(-0.35 + sh, 1.2, -1.85);
-      _v.set(0.45, 0.82 + (k > 8.4 ? -0.1 : 0), -2.95);
+      // de frente para o comandante (entre o painel e os assentos)
+      const dolly = Math.min(1, Math.max(0, (k - 6) / 2.2));
+      cam.position.set(0.22 + sh - dolly * 0.12, 1.42 - dolly * 0.06, -3.48 + dolly * 0.06);
+      _v.set(0.5, 0.92 + (k > 8.4 ? -0.12 : 0), -2.85);
       cam.lookAt(_v);
       cam.rotation.z += sh * 2;
       this.hand.visible = false;
@@ -807,13 +809,13 @@ export class View3D {
       const sway = k > 7.6 && k < 8.3 ? Math.sin((k - 7.6) * 14) * 0.25 : 0;
       const yawn = k > 7.0 && k < 7.6 ? Math.sin(((k - 7.0) / 0.6) * Math.PI) * 0.15 : 0;
       cap.position.set(0.55, 0.42 - faint * 0.12, -2.88 - faint * 0.12);
-      cap.rotation.set(-faint * 0.75, Math.PI + sway * 0.3, sway + faint * 0.35);
+      cap.rotation.set(-faint * 0.75, sway * 0.3, sway - faint * 0.35);
       cap.scale.set(1 - yawn * 0.4, 1 + yawn, 1);
       cab.yokeR.rotation.z = Math.sin(k * 1.3) * 0.08 * (1 - faint) + faint * 0.3;
     } else {
       cap.geometry = this.capGeo[1];
       cap.position.set(0.55, 0.32, -3.0);
-      cap.rotation.set(-0.72, Math.PI, 0.35 + Math.sin(this.t * 0.9) * 0.03);
+      cap.rotation.set(-0.72, 0, -0.35 + Math.sin(this.t * 0.9) * 0.03);
       cap.scale.set(1 + Math.sin(this.t * 1.6) * 0.02, 1 - Math.sin(this.t * 1.6) * 0.02, 1);
       cab.yokeR.rotation.z = 0.3 + sx * 0.2;
     }
@@ -831,7 +833,7 @@ export class View3D {
       const m = v.mesh;
       if (p.seated) {
         m.position.set(SPOTS.pilot.x, 0.42, SPOTS.pilot.z + 0.02);
-        m.rotation.set(0, Math.PI, Math.sin(this.t * 0.8) * 0.03);
+        m.rotation.set(0, 0, Math.sin(this.t * 0.8) * 0.03);
         m.scale.setScalar(1);
       } else {
         const sp = Math.hypot(p.vx, p.vz);
