@@ -240,6 +240,9 @@ export const RECIPES: Recipe[] = [
   R('taco', () => t('cozinha.r.taco', 'Taco'), 'mex', 7, 'plate', d('tortilla'), d('carne'), d('tomate')),
   R('omelete', () => t('cozinha.r.omelete', 'Omelete de queijo'), 'lanche', 7, 'plate', d('ovo'), d('queijo'), d('cebola')),
   R('espetinho', () => t('cozinha.r.espetinho', 'Espetinho de frango'), 'br', 7, 'plate', d('frango'), d('pimentao'), d('cebola')),
+  // treino / primeiras fases (sempre no fim da lista: os índices viajam pela rede)
+  R('tomatePicado', () => t('cozinha.r.tomatePicado', 'Tomate picadinho'), 'salada', 0, 'bowl', d('tomate')),
+  R('torrada', () => t('cozinha.r.torrada', 'Pão com queijo'), 'lanche', 0, 'plate', d('pao'), d('queijo')),
 ];
 export const RECIPE_INDEX: Record<string, number> = {};
 RECIPES.forEach((r, i) => (RECIPE_INDEX[r.id] = i));
@@ -292,25 +295,38 @@ export const UPGRADES: Upgrade[] = [
 
 /* ------------------------------ ajudantes (bots) ------------------------------ */
 export type Role = 'cook' | 'chopper' | 'washer' | 'server';
-export const ROLES: Role[] = ['cook', 'chopper', 'washer', 'server'];
+/** papéis contratáveis (o 'cook' é o próprio jogador) */
+export const ROLES: Role[] = ['washer', 'chopper', 'server'];
 export const roleName = (r: Role): string =>
   r === 'cook' ? t('cozinha.role.cook', 'Cozinheiro') : r === 'chopper' ? t('cozinha.role.chopper', 'Picador') : r === 'washer' ? t('cozinha.role.washer', 'Lavador') : t('cozinha.role.server', 'Garçom');
 export const roleDesc = (r: Role): string =>
   r === 'cook'
-    ? t('cozinha.role.cookD', 'Faz pedidos inteiros do começo ao fim.')
+    ? t('cozinha.role.cookD2', 'Segue você e obedece comandos.')
     : r === 'chopper'
-      ? t('cozinha.role.chopperD', 'Deixa ingredientes picados prontos.')
+      ? t('cozinha.role.chopperD2', 'Pica o que VOCÊ colocar na tábua, quando você manda.')
       : r === 'washer'
-        ? t('cozinha.role.washerD', 'Lava pratos e apaga incêndios.')
-        : t('cozinha.role.serverD', 'Tira comida do fogo e leva pratos prontos.');
+        ? t('cozinha.role.washerD2', 'Lava a louça quando você manda.')
+        : t('cozinha.role.serverD2', 'Leva à janela um prato que VOCÊ terminou, quando você manda.');
 export const HIRE_COST = (n: number): number => 200 + n * 350;
 export const MAX_CREW = 5;
 
 /* ------------------------------ eventos e layouts ------------------------------ */
-export type Theme = 'classic' | 'boat' | 'space' | 'truck';
+export type Theme = 'classic' | 'boat' | 'space' | 'truck' | 'beach' | 'junina' | 'snow';
 export type Special = 'none' | 'rush' | 'critic' | 'outage';
 export const themeName = (th: Theme): string =>
-  th === 'boat' ? t('cozinha.th.boat', 'Cozinha no barco') : th === 'space' ? t('cozinha.th.space', 'Estação espacial') : th === 'truck' ? t('cozinha.th.truck', 'Food truck') : t('cozinha.th.classic', 'Restaurante');
+  th === 'boat'
+    ? t('cozinha.th.boat', 'Cozinha no barco')
+    : th === 'space'
+      ? t('cozinha.th.space', 'Estação espacial')
+      : th === 'truck'
+        ? t('cozinha.th.truck', 'Food truck')
+        : th === 'beach'
+          ? t('cozinha.th.beach', 'Quiosque na praia')
+          : th === 'junina'
+            ? t('cozinha.th.junina', 'Festa junina')
+            : th === 'snow'
+              ? t('cozinha.th.snow', 'Cabana na neve')
+              : t('cozinha.th.classic', 'Restaurante');
 export const specialName = (s: Special): string =>
   s === 'rush' ? t('cozinha.ev.rush', 'Hora do rush!') : s === 'critic' ? t('cozinha.ev.critic', 'Crítico VIP chegando!') : s === 'outage' ? t('cozinha.ev.outage', 'Apagão! Fogões desligados') : '';
 

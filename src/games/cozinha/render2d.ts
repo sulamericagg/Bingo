@@ -7,7 +7,7 @@ import { gameFont } from '../../i18n/font';
 import type { QualitySettings } from '../../core/quality';
 import { drawEmoteBubble } from '../../social/emotes';
 import { DECOR, INGS, RECIPES, compIng, compRoute, compStage, type Proc } from './data';
-import { INK, blitIng, charSprite, drawPlate } from './art';
+import { INK, blitIng, charSprite, drawPetIcon, drawPlate } from './art';
 import { COOKERS, FX, IK, type FxEv, type Item, type Player, type Sim, type Station } from './sim';
 
 const TAU = Math.PI * 2;
@@ -59,6 +59,12 @@ export class Render2D {
   budget = 1;
   /** jogador local (destaque do alvo) */
   me: Player | null = null;
+  /** guia: estação a destacar (seta grande no treino; brilho de dica no jogo) */
+  guide: { st: number; strong: boolean } | null = null;
+  /** destaque do ajudante selecionado para comando */
+  aimStation(): number {
+    return this.me ? this.me.target : -1;
+  }
 
   constructor(
     readonly cv: HTMLCanvasElement,
@@ -86,7 +92,7 @@ export class Render2D {
   }
   private layoutView(): void {
     const s = this.sim;
-    const ticketsH = Math.min(84, Math.max(62, this.h * 0.09));
+    const ticketsH = Math.min(88, Math.max(68, this.h * 0.095));
     const top = this.topPad + ticketsH + 6;
     const availW = this.w - 12;
     const availH = this.h - top - this.botPad - 8;
@@ -354,6 +360,23 @@ export class Render2D {
       x.roundRect(st.x * T + 2, st.y * T + 2, T - 4, T - Hf - 2, T * 0.12);
       x.stroke();
     }
+    // guia (brilho / seta)
+    const gd = this.guide;
+    if (gd && gd.st >= 0) {
+      const st = s.st[gd.st];
+      const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+      x.save();
+      x.lineWidth = gd.strong ? 4 + pulse * 3 : 3;
+      x.strokeStyle = gd.strong ? '#3effa0' : 'rgba(126,255,170,' + (0.45 + pulse * 0.4).toFixed(2) + ')';
+      x.shadowColor = '#3effa0';
+      x.shadowBlur = gd.strong ? 14 + pulse * 10 : 8;
+      x.beginPath();
+      const g = gd.strong ? pulse * 3 : 0;
+      x.roundRect(st.x * T - g, st.y * T - g, T + g * 2, T - Hf + g * 2, T * 0.14);
+      x.stroke();
+      x.restore();
+      if (gd.strong) this.drawArrow(x, (st.x + 0.5) * T, st.y * T - T * 0.1 - Math.abs(Math.sin(time * 5)) * T * 0.35, T);
+    }
     // itens no chão
     for (const it of s.floor) this.drawItem(x, it, it.x * T, it.y * T - it.z * T * 0.5, T * 0.6);
     // jogadores ordenados por y (sem alocar)
@@ -380,6 +403,32 @@ export class Render2D {
     this.drawTickets(x, time);
   }
 
+  /** seta grande apontando para baixo (ponta em cx,cy) */
+  drawArrow(x: CanvasRenderingContext2D, cx: number, cy: number, T: number): void {
+    const w = T * 0.42;
+    const h = T * 0.75;
+    x.save();
+    x.translate(cx, cy);
+    x.beginPath();
+    x.moveTo(0, 0);
+    x.lineTo(-w, -h * 0.5);
+    x.lineTo(-w * 0.42, -h * 0.5);
+    x.lineTo(-w * 0.42, -h);
+    x.lineTo(w * 0.42, -h);
+    x.lineTo(w * 0.42, -h * 0.5);
+    x.lineTo(w, -h * 0.5);
+    x.closePath();
+    x.fillStyle = '#3effa0';
+    x.shadowColor = 'rgba(0,0,0,.35)';
+    x.shadowBlur = 6;
+    x.fill();
+    x.shadowBlur = 0;
+    x.lineWidth = Math.max(2, T * 0.06);
+    x.strokeStyle = INK;
+    x.stroke();
+    x.restore();
+  }
+
   private drawBackdrop(x: CanvasRenderingContext2D, time: number): void {
     const s = this.sim;
     const g = x.createLinearGradient(0, 0, 0, this.h);
@@ -392,6 +441,17 @@ export class Render2D {
     } else if (s.theme === 'truck') {
       g.addColorStop(0, '#9fe08a');
       g.addColorStop(1, '#5a9e4a');
+    } else if (s.theme === 'beach') {
+      g.addColorStop(0, '#7fe3ff');
+      g.addColorStop(0.55, '#4fd1e8');
+      g.addColorStop(0.56, '#ffe7a8');
+      g.addColorStop(1, '#f5cf7a');
+    } else if (s.theme === 'junina') {
+      g.addColorStop(0, '#2a1a5a');
+      g.addColorStop(1, '#d1495b');
+    } else if (s.theme === 'snow') {
+      g.addColorStop(0, '#cfe6ff');
+      g.addColorStop(1, '#8ab4f8');
     } else {
       g.addColorStop(0, '#ffcf9a');
       g.addColorStop(1, '#ff8a7a');
@@ -420,6 +480,41 @@ export class Render2D {
           else x.moveTo(xx, yv);
         }
         x.stroke();
+      }
+    } else if (s.theme === 'junina') {
+      // bandeirinhas
+      const cols = ['#ff4f6a', '#ffd84a', '#3ee07a', '#5ab0ff', '#ff7ae0'];
+      for (let row = 0; row < 3; row++) {
+        const yy = 20 + row * (this.h / 3);
+        for (let i = 0; i < 24; i++) {
+          const xx = (i / 24) * this.w;
+          const sag = Math.sin((i / 24) * Math.PI) * 18 + Math.sin(time * 2 + i) * 2;
+          x.fillStyle = cols[(i + row) % cols.length];
+          x.beginPath();
+          x.moveTo(xx, yy + sag);
+          x.lineTo(xx + this.w / 24, yy + sag);
+          x.lineTo(xx + this.w / 48, yy + sag + 16);
+          x.fill();
+        }
+      }
+    } else if (s.theme === 'snow') {
+      x.fillStyle = '#ffffff';
+      for (let i = 0; i < 50; i++) {
+        const sx = (i * 97.3 + Math.sin(time + i) * 12) % this.w;
+        const sy = (i * 151.7 + time * 25 * ((i % 3) + 1)) % this.h;
+        x.globalAlpha = 0.5 + (i % 4) * 0.12;
+        x.beginPath();
+        x.arc(sx, sy, 2 + (i % 3), 0, TAU);
+        x.fill();
+      }
+      x.globalAlpha = 1;
+    } else if (s.theme === 'beach') {
+      x.fillStyle = 'rgba(255,255,255,.6)';
+      for (let i = 0; i < 6; i++) {
+        const xx = ((i * 173 + time * 18) % (this.w + 120)) - 60;
+        x.beginPath();
+        x.ellipse(xx, this.h * 0.55, 40, 4, 0, 0, TAU);
+        x.fill();
       }
     } else if (s.theme === 'truck') {
       x.fillStyle = '#5a5a6a';
@@ -662,7 +757,7 @@ export class Render2D {
     const hop = moving ? Math.abs(Math.sin(p.walk * 3)) * T * 0.1 : 0;
     const chop = p.acting > 0 ? Math.abs(Math.sin(time * 20)) * T * 0.04 : 0;
     const blink = ((time * 0.7 + p.id * 0.37) % 4) < 0.08;
-    const spr = charSprite(p.skin, p.role, sz, p.happy > 0, blink);
+    const spr = charSprite(p.skin, p.role, sz, p.happy > 0, blink, p.look);
     const sq = moving ? 1 + Math.sin(p.walk * 6) * 0.04 : 1;
     const flip = p.fx < -0.2 ? -1 : 1;
     x.save();
@@ -690,6 +785,11 @@ export class Render2D {
     x.fillStyle = p === this.me ? '#ffe14a' : '#ffffff';
     x.fillText(p.name, px, ny);
     if (p.emote) drawEmoteBubble(x, p.emote, px + T * 0.4, py - T * 1.3, T / 60, time);
+    if (p.bot && p.pet) {
+      const bob = Math.sin(time * 4 + p.id) * T * 0.04;
+      const pop = p.pet === '?' || p.pet === '!' ? 1 + Math.max(0, Math.sin(time * 14)) * 0.12 : 1;
+      drawPetIcon(x, p.pet, px, py - T * 1.55 + bob - hop, T * 0.24 * pop, time);
+    }
   }
 
   private drawParticles(x: CanvasRenderingContext2D, T: number): void {
@@ -742,7 +842,7 @@ export class Render2D {
     const s = this.sim;
     const { ticketsY, ticketsH } = this.v;
     const n = s.orders.length;
-    const maxW = 132;
+    const maxW = 160;
     const gap = 6;
     const tw = Math.min(maxW, (this.w - 12 - gap * Math.max(0, Math.max(4, n) - 1)) / Math.max(4, n));
     let tx = 8;
@@ -776,19 +876,47 @@ export class Render2D {
         name += '…';
       }
       x.fillText(name, tw / 2, 13);
-      // componentes
+      // receita como SEQUÊNCIA: [ingrediente] › [estação] › [estação] (✓ quando já está no seu prato)
       const np = r.parts.length;
-      const is = Math.min((tw - 8) / np, ticketsH * 0.42);
+      const cw = (tw - 8) / np;
+      const held = this.me?.hold && this.me.hold.k === IK.Plate ? this.me.hold.parts : null;
       for (let i = 0; i < np; i++) {
         const c = r.parts[i];
-        const ix = 4 + is * (i + 0.5) + ((tw - 8) - is * np) / 2;
-        const iy = ticketsH * 0.55;
-        blitIng(x, c, false, ix, iy, is * 0.95);
-        // símbolo do processo
         const st = compStage(c);
-        if (st) {
-          const proc = INGS[compIng(c)].routes[compRoute(c)][st - 1];
-          this.procGlyph(x, proc, ix, ticketsH * 0.85, is * 0.28);
+        const route = INGS[compIng(c)].routes[compRoute(c)];
+        const cells = 1 + st;
+        const unit = Math.min(cw / (cells + (cells - 1) * 0.35), ticketsH * 0.4);
+        const rowW = unit * cells + unit * 0.35 * (cells - 1);
+        let cx = 4 + cw * i + (cw - rowW) / 2 + unit / 2;
+        const cy = ticketsH * 0.62;
+        if (i > 0) {
+          x.fillStyle = 'rgba(42,11,92,.18)';
+          x.fillRect(4 + cw * i - 0.5, ticketsH * 0.42, 1, ticketsH * 0.42);
+        }
+        blitIng(x, c - st, false, cx, cy, unit * 1.05);
+        for (let k = 0; k < st; k++) {
+          x.fillStyle = INK;
+          x.beginPath();
+          const ax = cx + unit * 0.5 + unit * 0.06;
+          x.moveTo(ax, cy - unit * 0.14);
+          x.lineTo(ax + unit * 0.22, cy);
+          x.lineTo(ax, cy + unit * 0.14);
+          x.fill();
+          cx += unit * 1.35;
+          this.procGlyph(x, route[k], cx, cy, unit * 0.36);
+        }
+        if (held && held.includes(c)) {
+          x.fillStyle = '#3ee07a';
+          x.beginPath();
+          x.arc(4 + cw * (i + 0.5), ticketsH * 0.88, Math.min(6, cw * 0.15), 0, TAU);
+          x.fill();
+          x.strokeStyle = '#fff';
+          x.lineWidth = 2;
+          x.beginPath();
+          x.moveTo(4 + cw * (i + 0.5) - 3, ticketsH * 0.88);
+          x.lineTo(4 + cw * (i + 0.5) - 0.5, ticketsH * 0.88 + 2.5);
+          x.lineTo(4 + cw * (i + 0.5) + 3.5, ticketsH * 0.88 - 2.5);
+          x.stroke();
         }
       }
       x.restore();
@@ -798,6 +926,14 @@ export class Render2D {
   private procGlyph(x: CanvasRenderingContext2D, p: Proc, cx: number, cy: number, r: number): void {
     x.save();
     x.translate(cx, cy);
+    // fundo: selo da estação
+    x.beginPath();
+    x.arc(0, 0, r * 1.45, 0, TAU);
+    x.fillStyle = p === 'chop' ? '#ffe2b8' : p === 'blend' ? '#d8f6ff' : p === 'boil' ? '#dbe9ff' : '#ffe0d0';
+    x.fill();
+    x.lineWidth = 1;
+    x.strokeStyle = 'rgba(42,11,92,.35)';
+    x.stroke();
     x.lineWidth = 1.5;
     x.strokeStyle = INK;
     x.beginPath();

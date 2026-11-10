@@ -3,6 +3,7 @@
  *  Ingredientes: atlas preguiçoso (célula desenhada na 1ª vez).
  *  Personagens: drawPlayer → bitmap com chapéu de chef, por skin.
  * ============================================================ */
+import { APRONS, HATS } from './levels';
 import { drawPlayer, type PlayerPose } from '../../game/character';
 import { skinById } from '../../game/skins';
 import { INGS, compIng, compRoute, compStage, type Role } from './data';
@@ -599,8 +600,8 @@ const ROLE_COL: Record<Role, string> = { cook: '#ff5cc8', chopper: '#3ee07a', wa
 const charCache = new Map<string, HTMLCanvasElement>();
 const pose: PlayerPose = { t: 0, blink: 0, lookX: 0, lookY: 0.2, sx: 1, sy: 1, mood: 'idle', lx: -0.55, ly: -0.83, still: true };
 /** bitmap do personagem com chapéu de chef (tamanho px) */
-export function charSprite(skin: string, role: Role, px: number, happy = false, blink = false): HTMLCanvasElement {
-  const key = skin + '|' + role + '|' + px + '|' + (happy ? 1 : 0) + (blink ? 1 : 0);
+export function charSprite(skin: string, role: Role, px: number, happy = false, blink = false, look = 0): HTMLCanvasElement {
+  const key = skin + '|' + role + '|' + px + '|' + (happy ? 1 : 0) + (blink ? 1 : 0) + '|' + look;
   let c = charCache.get(key);
   if (c) return c;
   c = document.createElement('canvas');
@@ -619,11 +620,24 @@ export function charSprite(skin: string, role: Role, px: number, happy = false, 
     x.fillStyle = '#8a5cff';
     x.fill();
   }
+  // avental (cosmético)
+  const apron = APRONS[look & 15]?.col;
+  if (apron) {
+    x.lineWidth = Math.max(1.5, R * 0.08);
+    x.strokeStyle = INK;
+    x.fillStyle = apron;
+    rr(x, -R * 0.42, R * 0.22, R * 0.84, R * 0.62, R * 0.18);
+    x.fill();
+    x.stroke();
+    x.fillStyle = 'rgba(255,255,255,.55)';
+    rr(x, -R * 0.2, R * 0.42, R * 0.4, R * 0.18, R * 0.06);
+    x.fill();
+  }
   // chapéu de chef
   const hy = -R * 0.98;
   x.lineWidth = Math.max(1.5, R * 0.09);
   x.strokeStyle = INK;
-  x.fillStyle = '#ffffff';
+  x.fillStyle = HATS[look >> 4]?.col ?? '#ffffff';
   x.beginPath();
   x.arc(-R * 0.32, hy - R * 0.32, R * 0.3, 0, TAU);
   x.arc(R * 0.32, hy - R * 0.32, R * 0.3, 0, TAU);
@@ -642,6 +656,116 @@ export function charSprite(skin: string, role: Role, px: number, happy = false, 
   charCache.set(key, c);
   if (charCache.size > 80) charCache.delete(charCache.keys().next().value!);
   return c;
+}
+/** ícone de estado do ajudante (acima da cabeça): balão branco com um símbolo */
+export function drawPetIcon(x: CanvasRenderingContext2D, kind: string, cx: number, cy: number, r: number, time = 0): void {
+  if (!kind) return;
+  x.save();
+  x.translate(cx, cy);
+  x.lineWidth = Math.max(1.5, r * 0.14);
+  x.strokeStyle = INK;
+  x.fillStyle = kind === 'no' ? '#ffd0d6' : kind === '!' ? '#fff3a0' : '#ffffff';
+  x.beginPath();
+  x.arc(0, 0, r, 0, TAU);
+  x.moveTo(-r * 0.25, r * 0.92);
+  x.lineTo(0, r * 1.35);
+  x.lineTo(r * 0.25, r * 0.92);
+  x.fill();
+  x.stroke();
+  const txt = (s: string, col: string) => {
+    x.fillStyle = col;
+    x.font = '700 ' + Math.round(r * 1.3) + 'px Fredoka, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(s, 0, r * 0.06);
+  };
+  const k = r * 0.55;
+  x.lineCap = 'round';
+  switch (kind) {
+    case '?':
+      txt('?', '#7a4fd1');
+      break;
+    case '!':
+      txt('!', '#e0701f');
+      break;
+    case 'no':
+      x.strokeStyle = '#e0304c';
+      x.lineWidth = r * 0.22;
+      x.beginPath();
+      x.moveTo(-k, -k);
+      x.lineTo(k, k);
+      x.moveTo(k, -k);
+      x.lineTo(-k, k);
+      x.stroke();
+      break;
+    case 'sleep':
+      txt('z', '#5a6ad1');
+      x.globalAlpha = 0.5 + Math.sin(time * 3) * 0.3;
+      x.font = '700 ' + Math.round(r * 0.7) + 'px Fredoka, system-ui, sans-serif';
+      x.fillText('z', r * 0.55, -r * 0.5);
+      x.globalAlpha = 1;
+      break;
+    case 'sit':
+      txt('…', '#5a5370');
+      break;
+    case 'follow': {
+      // coração
+      x.fillStyle = '#ff5c8a';
+      x.beginPath();
+      x.moveTo(0, k * 0.9);
+      x.bezierCurveTo(-k * 1.6, -k * 0.2, -k * 0.6, -k * 1.3, 0, -k * 0.4);
+      x.bezierCurveTo(k * 0.6, -k * 1.3, k * 1.6, -k * 0.2, 0, k * 0.9);
+      x.fill();
+      break;
+    }
+    case 'stay':
+      // palma (pare)
+      x.fillStyle = '#ffb36b';
+      rr(x, -k * 0.7, -k * 0.5, k * 1.4, k * 1.3, k * 0.4);
+      x.fill();
+      x.fillRect(-k * 0.7, -k * 1.1, k * 0.3, k * 0.8);
+      x.fillRect(-k * 0.25, -k * 1.25, k * 0.3, k * 0.9);
+      x.fillRect(k * 0.2, -k * 1.1, k * 0.3, k * 0.8);
+      break;
+    case 'chop':
+      x.strokeStyle = '#7a7690';
+      x.lineWidth = r * 0.3;
+      x.beginPath();
+      x.moveTo(-k, k * 0.8);
+      x.lineTo(k * 0.6, -k * 0.6);
+      x.stroke();
+      x.strokeStyle = '#8a5a30';
+      x.beginPath();
+      x.moveTo(k * 0.6, -k * 0.6);
+      x.lineTo(k, -k);
+      x.stroke();
+      break;
+    case 'wash':
+      x.fillStyle = '#5ab0ff';
+      for (const [a, b] of [[-0.5, 0.2], [0.4, -0.3], [0.1, 0.6]]) {
+        x.beginPath();
+        x.arc(a * k, b * k, k * 0.38, 0, TAU);
+        x.fill();
+      }
+      break;
+    case 'serve':
+      x.fillStyle = '#ffcf2e';
+      x.beginPath();
+      x.arc(0, k * 0.3, k, Math.PI, 0);
+      x.fill();
+      x.fillRect(-k * 1.1, k * 0.3, k * 2.2, k * 0.25);
+      break;
+    case 'fire':
+      x.fillStyle = '#ff5a2e';
+      x.beginPath();
+      x.moveTo(0, -k * 1.1);
+      x.quadraticCurveTo(k, 0, k * 0.5, k * 0.8);
+      x.lineTo(-k * 0.5, k * 0.8);
+      x.quadraticCurveTo(-k, 0, 0, -k * 1.1);
+      x.fill();
+      break;
+  }
+  x.restore();
 }
 export function clearArtCache(): void {
   charCache.clear();

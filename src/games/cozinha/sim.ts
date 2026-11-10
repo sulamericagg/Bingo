@@ -7,6 +7,7 @@ import {
   BURN_AFTER, FIRE_AFTER, FIRE_SPREAD, INGS, PROC_TIME, RECIPES, compIng, compRoute, compStage, comp, dayParams, recipeProcs,
   type DayParams, type Proc, type Role, type Special, type Theme, type UpId,
 } from './data';
+import type { Level } from './levels';
 
 export type SK = 'counter' | 'crate' | 'board' | 'pot' | 'pan' | 'oven' | 'blender' | 'plates' | 'sink' | 'dirty' | 'trash' | 'window' | 'belt';
 export const COOKERS: Partial<Record<SK, Proc>> = { pot: 'boil', pan: 'fry', oven: 'bake', blender: 'blend' };
@@ -95,6 +96,12 @@ export interface Player {
   happy: number;
   speedMul: number;
   hid: number;
+  /** ações úteis feitas (medir a parte dos ajudantes) */
+  work: number;
+  /** ajudante: ícone de estado acima da cabeça ('' = nada) */
+  pet: string;
+  /** cosmético: chapéu*16 + avental (só visual) */
+  look: number;
 }
 export interface Order {
   id: number;
@@ -158,6 +165,8 @@ export interface SimOpts {
   portrait?: boolean;
   /** cliente online: só move o próprio boneco; o host manda o resto */
   client?: boolean;
+  /** fase da campanha (substitui a curva do modo sem fim) */
+  level?: Level;
 }
 
 const PR = 0.32; // raio do jogador
@@ -214,16 +223,26 @@ export class Sim {
     return this.special === 'outage' && this.specialLeft > 0;
   }
 
+  /** trabalho feito por humanos / ajudantes (ações úteis) */
+  workHuman = 0;
+  workBot = 0;
+  /** parte do trabalho feita por ajudantes 0..1 */
+  get botShare(): number {
+    const t = this.workHuman + this.workBot;
+    return t ? this.workBot / t : 0;
+  }
+  readonly lv: Level | null;
   constructor(readonly o: SimOpts) {
     this.day = o.day;
     this.ups = o.ups;
-    this.p = dayParams(o.day, o.ups);
+    this.lv = o.level ?? null;
+    this.p = this.lv ? { ...this.lv.p } : dayParams(o.day, o.ups);
     this.rnd = mulberry(o.seed ^ (o.day * 2654435761));
     for (let i = 0; i < 48; i++) this.fx.push({ t: 0 as FX, x: 0, y: 0, v: 0 });
     this.seats = Math.min(8, 3 + o.ups.dining + Math.floor(o.day / 4));
     this.pickTheme();
     this.buildMenuAndLayout();
-    this.totalPlates = 3 + Math.min(5, Math.ceil(this.p.maxOrders * 0.8)) + Math.floor(o.crew / 2);
+    this.totalPlates = this.lv?.plates || 3 + Math.min(5, Math.ceil(this.p.maxOrders * 0.8)) + Math.floor(o.crew / 2);
     const plates = this.st.find((s) => s.k === 'plates');
     if (plates) plates.n = this.totalPlates;
   }
@@ -231,6 +250,12 @@ export class Sim {
   /* ------------------------------ geração ------------------------------ */
   private pickTheme(): void {
     const d = this.day;
+    if (this.lv) {
+      this.theme = this.o.theme ?? this.lv.theme;
+      this.special = this.o.special ?? this.lv.special;
+      if (this.special !== 'none') this.specialAt = this.p.len * 0.4;
+      return;
+    }
     if (this.o.theme) this.theme = this.o.theme;
     else if (d >= 5 && d % 5 === 0) this.theme = (['boat', 'space', 'truck'] as Theme[])[Math.floor(d / 5) % 3];
     if (this.o.special) this.special = this.o.special;
@@ -239,6 +264,15 @@ export class Sim {
   }
 
   private buildMenuAndLayout(): void {
+    if (this.lv) {
+      let menu = this.lv.menu.slice();
+      for (let tries = 0; tries < 10; tries++) {
+        if (this.layout(menu)) break;
+        menu = menu.slice(0, Math.max(1, menu.length - 1));
+      }
+      this.menu = menu;
+      return;
+    }
     const unlocked: number[] = [];
     RECIPES.forEach((r, i) => {
       if (this.o.packs.includes(r.pack)) unlocked.push(i);
@@ -440,8 +474,11 @@ export class Sim {
       emote: '',
       emoteT: 0,
       happy: 0,
-      speedMul: bot ? 0.82 + this.rnd() * 0.1 : 1,
+      speedMul: bot ? 0.68 + this.rnd() * 0.06 : 1,
       hid: 0,
+      work: 0,
+      pet: '',
+      look: 0,
     };
     this.players.push(p);
     return p;
@@ -613,7 +650,7 @@ export class Sim {
     return it.parts.length !== np ? 2 : 0;
   }
   private addGhost(): Player {
-    return { id: 0, name: '', skin: '', bot: false, remote: true, role: 'cook', x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: 1, hold: null, target: -1, force: -1, in: { mx: 0, my: 0, pick: false, act: false }, pickPrev: false, walk: 0, acting: 0, emote: '', emoteT: 0, happy: 0, speedMul: 1, hid: 0 };
+    return { id: 0, name: '', skin: '', bot: false, remote: true, role: 'cook', x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: 1, hold: null, target: -1, force: -1, in: { mx: 0, my: 0, pick: false, act: false }, pickPrev: false, walk: 0, acting: 0, emote: '', emoteT: 0, happy: 0, speedMul: 1, hid: 0, work: 0, pet: '', look: 0 };
   }
   /** prato (ou pilha suja) quebrou no 3D: o conteúdo se perde e os pratos voltam sujos depois */
   breakPlate(it: Item): void {
@@ -632,8 +669,24 @@ export class Sim {
     }
   }
 
-  /** Pegar/Soltar */
+  /** quem fez uma ação útil (humano ou ajudante) */
+  credit(p: Player | null): void {
+    if (!p) return;
+    p.work++;
+    if (p.bot) this.workBot++;
+    else this.workHuman++;
+    const real = this.players.find((q) => q.id === p.id);
+    if (real && real !== p) real.work++;
+  }
+  /** Pegar/Soltar (conta como trabalho quando muda algo) */
   pick(p: Player): void {
+    const h = p.hold;
+    const n = h ? h.parts.length : 0;
+    const sv = this.served;
+    this.pickRaw(p);
+    if (p.hold !== h || (h && h.parts.length !== n) || this.served !== sv) this.credit(p);
+  }
+  private pickRaw(p: Player): void {
     const si = this.aim(p);
     const s = si >= 0 ? this.st[si] : null;
     const h = p.hold;
@@ -816,9 +869,10 @@ export class Sim {
         const d = Math.hypot(dx, dy);
         if (d > 2.6) continue;
         if ((dx * p.fx + dy * p.fy) / (d || 1) < 0.35 && d > 1.0) continue;
-        s.fire = Math.max(0, s.fire - dt * 0.9);
+        s.fire = Math.max(0, s.fire - dt * (p.bot ? 0.55 : 0.9));
         hit = true;
         if (s.fire === 0) {
+          this.credit(p);
           s.fireT = 0;
           if (s.item && s.item.k === IK.Ing) s.item.over = -1e6; // carvão: não reacende
           this.emit(FX.Ext, s.x + 0.5, s.y + 0.5, 1);
@@ -834,21 +888,25 @@ export class Sim {
     if (s.fire > 0) return false;
     if (s.k === 'board' && s.item && s.item.k === IK.Ing && this.nextProc(s.item) === 'chop') {
       const it = s.item;
-      it.prog += (dt * (1 + this.ups.knife * 0.22)) / PROC_TIME.chop;
+      it.prog += (dt * (1 + this.ups.knife * 0.22) * (p.bot ? 0.6 : 1)) / PROC_TIME.chop;
       s.busy = 0.15;
       if (Math.random() < dt * 7) this.emit(FX.Chop, s.x + 0.5, s.y + 0.5);
       if (it.prog >= 1) {
         it.prog = 0;
         it.c += 1; // estágio +1
+        this.credit(p);
         this.emit(FX.Done, s.x + 0.5, s.y + 0.5);
       }
       return true;
     }
     if (s.k === 'sink' && s.n > 0) {
-      s.prog += dt / 1.6;
+      s.prog += (dt * (p.bot ? 0.6 : 1)) / 1.6;
       s.busy = 0.15;
       if (Math.random() < dt * 3) this.emit(FX.Wash, s.x + 0.5, s.y + 0.5);
-      if (s.prog >= 1) this.washOne(s);
+      if (s.prog >= 1) {
+        this.washOne(s);
+        this.credit(p);
+      }
       return true;
     }
     return false;
@@ -1076,7 +1134,7 @@ export class Sim {
     }
     const speed = 3.7 * (1 + this.ups.shoes * 0.08) * p.speedMul * (p.hold && p.hold.k === IK.Ext ? 0.85 : 1);
     const space = this.theme === 'space';
-    const k = space ? 3 : 14;
+    const k = space ? 3 : this.theme === 'snow' ? 6 : 14;
     p.vx += (mx * speed - p.vx) * Math.min(1, k * dt);
     p.vy += (my * speed - p.vy) * Math.min(1, k * dt);
     if (ml > 0.2) {

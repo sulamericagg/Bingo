@@ -15,6 +15,12 @@ const enum A {
 
 const crews = new WeakMap<Sim, Brain[]>();
 
+/** comandos que o jogador dá aos ajudantes (como um bichinho fiel) */
+export type Cmd = 'follow' | 'stay' | 'wash' | 'chop' | 'serve' | 'fire';
+export const CMDS: Cmd[] = ['follow', 'stay', 'wash', 'chop', 'serve', 'fire'];
+/** teto: ajudantes fazem no máximo esta parte do trabalho */
+export const BOT_CAP = 0.3;
+
 export class Brain {
   private think = 0;
   private goal = -1; // estação alvo
@@ -31,6 +37,27 @@ export class Brain {
   private lastY = 0;
   private pressed = false;
   private actHold = 0;
+  /* ------------- modo bichinho (ajudante obediente) ------------- */
+  /** true = ajudante que só age por comando; false = piloto automático (teste/depuração) */
+  pet = false;
+  /** a quem obedece / segue */
+  owner: Player | null = null;
+  /** modo de espera: seguir ou ficar */
+  idleMode: 'follow' | 'stay' = 'follow';
+  /** tarefa em andamento (uma só, sem encadear) */
+  task: Cmd | '' = '';
+  private taskSt = -1;
+  private taskT = 0;
+  /** atraso de reação (s) antes de começar */
+  private react = 0;
+  private pending: { c: Cmd; st: number } | null = null;
+  private stayX = 0;
+  private stayY = 0;
+  private stillT = 0;
+  /** co-op: ainda mais devagar */
+  slow = 1;
+  /** avisos (latido/bip) para o jogo tocar som */
+  onBark: ((p: Player, kind: '?' | '!' | 'no' | 'ok') => void) | null = null;
 
   constructor(
     readonly sim: Sim,
@@ -65,7 +92,20 @@ export class Brain {
       p.in.act = false;
       return;
     }
-    if (this.think <= 0) {
+    if (this.pet) {
+      if (this.react > 0) {
+        this.react -= dt;
+        p.in.mx = p.in.my = 0;
+        p.in.act = false;
+        if (this.react <= 0 && this.pending) this.begin(this.pending.c, this.pending.st);
+        return;
+      }
+      if (this.think <= 0) {
+        this.think = (0.35 + this.rnd() * 0.3) * this.slow;
+        this.petDecide();
+      }
+      if (this.goal < 0) return this.petIdle(dt);
+    } else if (this.think <= 0) {
       this.think = 0.22 + this.rnd() * 0.3;
       this.decide();
       if (this.rnd() < 0.006) {
@@ -141,6 +181,190 @@ export class Brain {
       p.in.act = true;
       this.actHold += dt;
     }
+  }
+
+  /* =========================== bichinho =========================== */
+  /** o jogador deu um comando. st = estação apontada (-1 = a mais adequada). false = não dá. */
+  command(c: Cmd, st = -1): boolean {
+    const sim = this.sim;
+    if (c === 'follow' || c === 'stay') {
+      this.idleMode = c;
+      this.stayX = this.p.x;
+      this.stayY = this.p.y;
+      this.pending = { c, st: -1 };
+      this.react = 0.5 + this.rnd() * 0.4;
+      this.p.pet = '?';
+      this.onBark?.(this.p, '?');
+      return true;
+    }
+    // teto de trabalho: ajudantes não fazem mais que BOT_CAP do total
+    const tot = sim.workHuman + sim.workBot;
+    if ((sim.workBot + 1) / (tot + 1) > BOT_CAP + 0.05 && tot > 2) return this.refuse();
+    const target = this.findTarget(c, st);
+    if (target < 0 && !(c === 'wash' && this.hasDishes())) return this.refuse();
+    this.pending = { c, st: target };
+    this.react = (0.8 + this.rnd() * 0.7) * this.slow;
+    this.goal = -1;
+    this.p.pet = '?';
+    this.onBark?.(this.p, '?');
+    return true;
+  }
+  private refuse(): boolean {
+    this.p.pet = 'no';
+    this.p.emoteT = 0;
+    this.taskT = -1.2; // mostra "não dá" por um tempinho
+    this.onBark?.(this.p, 'no');
+    return false;
+  }
+  private hasDishes(): boolean {
+    const sim = this.sim;
+    return sim.st.some((s) => (s.k === 'sink' || s.k === 'dirty') && s.n > 0);
+  }
+  /** alvo válido para o comando (respeita as regras: só o que o JOGADOR fez) */
+  private findTarget(c: Cmd, st: number): number {
+    const sim = this.sim;
+    const ok = (s: Station): boolean => {
+      if (!s || s.fire > 0 && c !== 'fire') return false;
+      if (c === 'chop') return s.k === 'board' && !!s.item && s.item.k === IK.Ing && sim.nextProc(s.item) === 'chop' && s.claim === 0;
+      if (c === 'serve') return (s.k === 'counter' || s.k === 'board') && !!s.item && s.item.k === IK.Plate && s.item.parts.length > 0 && !!sim.matchOrder(s.item.parts) && s.claim === 0;
+      if (c === 'fire') return s.fire > 0;
+      if (c === 'wash') return (s.k === 'sink' || s.k === 'dirty') && s.n > 0;
+      return false;
+    };
+    if (st >= 0 && ok(sim.st[st])) return st;
+    const o = this.owner;
+    let best = -1;
+    let bd = 1e9;
+    for (const s of sim.st) {
+      if ((!s.fx && !s.fy) || !ok(s)) continue;
+      const d = o ? Math.hypot(s.x + 0.5 - o.x, s.y + 0.5 - o.y) : 0;
+      if (d < bd) {
+        bd = d;
+        best = s.i;
+      }
+    }
+    return best;
+  }
+  private begin(c: Cmd, st: number): void {
+    this.pending = null;
+    this.p.pet = '!';
+    this.onBark?.(this.p, '!');
+    this.taskT = -0.6; // mostra "!" um instante
+    if (c === 'follow' || c === 'stay') {
+      this.task = '';
+      return;
+    }
+    this.task = c;
+    this.taskSt = st;
+  }
+  private finish(): void {
+    this.task = '';
+    this.taskSt = -1;
+    this.goal = -1;
+    this.action = A.None;
+    this.p.force = -1;
+    this.p.in.act = false;
+    this.onBark?.(this.p, 'ok');
+  }
+  private petDecide(): void {
+    const sim = this.sim;
+    const p = this.p;
+    const h = p.hold;
+    if (!this.task) {
+      // sem tarefa: larga o que estiver segurando (não fica com nada) e espera
+      if (h) return void this.putDown();
+      this.goal = -1;
+      return;
+    }
+    this.taskT += 0.4;
+    if (this.taskT >= 0) p.pet = this.task;
+    if (this.taskT > 40) {
+      if (h) return void this.putDown();
+      return this.finish(); // desistiu (não achou jeito)
+    }
+    const st = this.taskSt >= 0 ? sim.st[this.taskSt] : null;
+    if (this.task === 'chop') {
+      if (!st || !st.item || st.item.k !== IK.Ing || sim.nextProc(st.item) !== 'chop') return this.finish();
+      this.setGoal(st.i, A.Act);
+      return;
+    }
+    if (this.task === 'serve') {
+      if (h && h.k === IK.Plate) {
+        if (!sim.matchOrder(h.parts)) return void this.putDown();
+        this.setGoal(this.near((s) => s.k === 'window' || s.k === 'belt'), A.Pick);
+        return;
+      }
+      if (h) return void this.putDown();
+      if (this.taskT > 1 && (!st || !st.item || st.item.k !== IK.Plate)) return this.finish(); // entregou (ou alguém pegou)
+      if (st) this.setGoal(st.i, A.Pick);
+      return;
+    }
+    if (this.task === 'wash') {
+      if (!this.washJob()) {
+        if (h) return void this.putDown();
+        return this.finish();
+      }
+      return;
+    }
+    if (this.task === 'fire') {
+      const fire = this.near((s) => s.fire > 0);
+      if (fire < 0) {
+        if (h && h.k === IK.Ext) return void this.putDown();
+        return this.finish();
+      }
+      if (h && h.k === IK.Ext) return this.setGoal(fire, A.Act);
+      if (h) return void this.putDown();
+      if (this.extHeldByOther()) return this.finish();
+      const ext = this.near((s) => !!s.item && s.item.k === IK.Ext);
+      if (ext >= 0) return this.setGoal(ext, A.Pick);
+      const fl = sim.floor.find((it) => it.k === IK.Ext);
+      if (fl) return this.goFloor(fl);
+      return this.finish();
+    }
+  }
+  /** esperando: segue o dono ou fica parado; parado muito tempo → senta/dorme (fofo) */
+  private petIdle(dt: number): void {
+    const p = this.p;
+    const o = this.owner;
+    if (this.task) return; // indo pegar algo no chão (goFloor) — mantém o rumo
+    p.in.act = false;
+    p.force = -1;
+    if (this.taskT < 0) {
+      this.taskT += dt;
+      if (this.taskT >= 0) p.pet = '';
+    }
+    let tx = this.stayX;
+    let ty = this.stayY;
+    let near = 0.25;
+    if (this.idleMode === 'follow' && o) {
+      tx = o.x - o.fx * 0.9;
+      ty = o.y - o.fy * 0.9;
+      near = 1.1;
+    }
+    const dx = tx - p.x;
+    const dy = ty - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > near && this.sim.isFloor(tx, ty)) {
+      p.in.mx = (dx / d) * Math.min(1, d);
+      p.in.my = (dy / d) * Math.min(1, d);
+      this.stillT = 0;
+      if (this.taskT >= 0) p.pet = this.idleMode === 'follow' ? 'follow' : 'stay';
+    } else {
+      p.in.mx = p.in.my = 0;
+      this.stillT += dt;
+      if (this.taskT >= 0) p.pet = this.stillT > 9 ? 'sleep' : this.stillT > 4 ? 'sit' : this.idleMode === 'follow' ? 'follow' : 'stay';
+      if (o && this.stillT > 0.3) {
+        const fx = o.x - p.x;
+        const fy = o.y - p.y;
+        const fl = Math.hypot(fx, fy) || 1;
+        p.fx = fx / fl;
+        p.fy = fy / fl;
+      }
+    }
+  }
+  /** ícone de estado: tarefa atual */
+  get state(): string {
+    return this.task || this.p.pet;
   }
 
   private setGoal(st: number, a: A): void {
