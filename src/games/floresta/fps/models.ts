@@ -4,6 +4,7 @@
  *  ferramentas em primeira pessoa, veículos e a mão 2D do Bloop.
  * ============================================================ */
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { save as globalSave } from '../../../core/storage';
 import { skinById } from '../../../game/skins';
 import { SPECIES, type Species } from '../data';
@@ -22,6 +23,8 @@ interface Part {
   ao?: number;
   /** escurece os sulcos (atributo 'groove' 0..1 da geometria) — casca */
   groove?: number;
+  /** variação de brilho por vértice (0..1), estável pela posição — folhagem/casca menos "chapada" */
+  jit?: number;
 }
 const Q = new THREE.Quaternion();
 const E = new THREE.Euler();
@@ -50,6 +53,7 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
       if (p.ao) k *= 1 - p.ao + p.ao * Math.min(1, Math.max(0, (pa.getY(i) + 1) / 2));
       if (ga) k *= 1 - (p.groove ?? 0) * ga.getX(i);
       v.fromBufferAttribute(pa, i).applyMatrix4(p.m);
+      if (p.jit) k *= 1 + (fract(Math.sin(v.x * 12.9898 + v.y * 78.233 + v.z * 37.719) * 43758.5453) - 0.5) * p.jit;
       pos.push(v.x, v.y, v.z);
       v.fromBufferAttribute(na, i).applyMatrix3(nm).normalize();
       nor.push(v.x, v.y, v.z);
@@ -64,6 +68,8 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
   out.computeBoundingSphere();
   return out;
 }
+
+const fract = (x: number): number => x - Math.floor(x);
 
 /** pseudo-ruído 3D suave e determinístico (sem tabela) */
 function n3(x: number, y: number, z: number): number {
@@ -165,6 +171,163 @@ const base = {
   })(),
 };
 
+
+/* ------------------------------ árvores: tronco curvo + copa em cachos ------------------------------ */
+
+/** gerador determinístico simples (por espécie) */
+function rng(seed: number): () => number {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const strSeed = (s: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h;
+};
+
+interface Trunk {
+  g: THREE.BufferGeometry;
+  /** ponto no eixo do tronco (t = 0..1 da altura) */
+  at(t: number, out?: THREE.Vector3): THREE.Vector3;
+}
+/**
+ * Tronco curvo e afinando: anéis ao longo de uma curva suave (reto perto do chão — o corte
+ * e o entalhe continuam na base), raízes alargadas, sulcos de casca (atributo 'groove').
+ */
+function curvedTrunk(H: number, r0: number, r1: number, bx: number, bz: number, rings: number, radial: number): Trunk {
+  const at = (t: number, out = new THREE.Vector3()) => out.set(bx * t * t, H * t, bz * t * t);
+  const pos: number[] = [];
+  const gr: number[] = [];
+  const idx: number[] = [];
+  const c = new THREE.Vector3();
+  for (let j = 0; j <= rings; j++) {
+    const t = j / rings;
+    at(t, c);
+    const r = r0 + (r1 - r0) * Math.pow(t, 0.8);
+    for (let i = 0; i <= radial; i++) {
+      const a = (i / radial) * TAU;
+      const ridge = Math.pow(Math.abs(Math.sin(a * 3.5 + t * 6)), 0.7);
+      const flare = 1 + Math.pow(Math.max(0, 0.14 - t) / 0.14, 2) * (0.5 + 0.3 * Math.max(0, Math.cos(a * 4 + 0.7)));
+      const k = r * (0.9 + ridge * 0.12) * flare;
+      pos.push(c.x + Math.cos(a) * k, c.y, c.z + Math.sin(a) * k);
+      gr.push(1 - ridge);
+    }
+  }
+  const n = radial + 1;
+  for (let j = 0; j < rings; j++)
+    for (let i = 0; i < radial; i++) {
+      const a = j * n + i;
+      idx.push(a, a + n, a + 1, a + 1, a + n, a + n + 1);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('groove', new THREE.Float32BufferAttribute(gr, 1));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return { g, at };
+}
+
+const _bq = new THREE.Quaternion();
+const _bd = new THREE.Vector3();
+/** galho do ponto a ao ponto b (raio r na base) */
+function branchTo(a: THREE.Vector3, b: THREE.Vector3, r: number): THREE.Matrix4 {
+  _bd.subVectors(b, a);
+  const len = _bd.length();
+  _bq.setFromUnitVectors(UPV, _bd.normalize());
+  return new THREE.Matrix4().compose(a, _bq, new THREE.Vector3(r, len, r));
+}
+const UPV = new THREE.Vector3(0, 1, 0);
+
+/** folhosa: tronco curvo, galhos até cachos de copa (3 tons), frutos/flores */
+function broadleaf(sp: Species, rare: number, lod: number, lite: boolean): THREE.BufferGeometry {
+  const h = sp.h;
+  const R = rng(strSeed(sp.leaf + sp.h) + rare * 7);
+  const L1 = crownColor(sp, rare);
+  const L2 = crownColor(sp, rare, true);
+  const T = rare === 1 ? '#d8a040' : sp.trunk;
+  const TD = shade(T, -0.22);
+  const tones = [L1, L2, shade(L1, 0.12), shade(L2, -0.06), shade(L1, -0.04)];
+  const parts: Part[] = [];
+  const lo = lod > 0 || lite;
+  const tr = curvedTrunk(h * 0.66, 0.36, 0.17, (R() - 0.5) * 0.9, (R() - 0.5) * 0.9, lo ? 3 : 7, lo ? 6 : 10);
+  parts.push({ g: tr.g, c: T, m: new THREE.Matrix4(), groove: 0.4, jit: 0.12 });
+  const top = tr.at(1);
+  const cloud = sp.shape === 'cloud';
+  // cacho do topo
+  const nC = lod ? 3 : lite ? 4 : 6;
+  const centers: [THREE.Vector3, number][] = [[new THREE.Vector3(top.x, h * 0.8, top.z), h * 0.22]];
+  for (let i = 0; i < nC; i++) {
+    const a = (i / nC) * TAU + R() * 0.8;
+    const rr = h * (0.17 + R() * 0.09);
+    const y = h * (0.6 + R() * 0.2 + (i % 2) * 0.06);
+    centers.push([new THREE.Vector3(top.x * 0.7 + Math.cos(a) * rr, y, top.z * 0.7 + Math.sin(a) * rr), h * (0.13 + R() * 0.05)]);
+  }
+  const clumpG = (i: number) => (lo ? base.clumpLo : base.clumps[i % 3]);
+  centers.forEach(([c, sz], ci) => {
+    if (ci > 0) {
+      // galho saindo do tronco até o cacho
+      const from = tr.at(0.55 + R() * 0.35);
+      parts.push({ g: base.branch, c: TD, m: branchTo(from, c.clone().lerp(from, 0.25), 0.07 + sz * 0.05), jit: 0.1 });
+    }
+    // miolo escuro + satélites claros (volume e recorte irregular)
+    parts.push({ g: clumpG(ci), c: ci === 0 ? L2 : tones[ci % tones.length], m: mat4(c.x, c.y, c.z, sz * 1.15, sz * (cloud ? 0.75 : 0.9), sz * 1.1, 0, R() * TAU, 0), ao: 0.55, jit: 0.14 });
+    const sat = lo ? 1 : 3;
+    for (let k = 0; k < sat; k++) {
+      const a = R() * TAU;
+      const o = sz * (0.6 + R() * 0.3);
+      const s2 = sz * (0.45 + R() * 0.25);
+      parts.push({ g: clumpG(ci + k + 1), c: tones[(ci + k + 2) % tones.length], m: mat4(c.x + Math.cos(a) * o, c.y + sz * (0.15 + R() * 0.35), c.z + Math.sin(a) * o, s2, s2 * 0.85, s2, 0, a, 0), ao: 0.45, jit: 0.14 });
+    }
+  });
+  if (!lod && sp.shape === 'blossom')
+    for (let i = 0; i < 14; i++) {
+      const [c, sz] = centers[i % centers.length];
+      const a = R() * TAU;
+      parts.push({ g: base.ico, c: i % 2 ? '#ffffff' : '#ffd0e6', m: mat4(c.x + Math.cos(a) * sz, c.y + (R() - 0.3) * sz, c.z + Math.sin(a) * sz, h * 0.035, h * 0.03, h * 0.035) });
+    }
+  if (!lod && sp.shape === 'round')
+    for (let i = 0; i < 7; i++) {
+      const [c, sz] = centers[1 + (i % (centers.length - 1))];
+      const a = R() * TAU;
+      const x = c.x + Math.cos(a) * sz * 0.95;
+      const z = c.z + Math.sin(a) * sz * 0.95;
+      const y = c.y - sz * 0.15;
+      parts.push({ g: base.clumpLo, c: '#ff4a5a', m: mat4(x, y, z, 0.15, 0.14, 0.15), ao: 0.35 });
+      parts.push({ g: base.cyl, c: '#5a3a1a', m: mat4(x, y + 0.15, z, 0.015, 0.08, 0.015) });
+    }
+  return mergeParts(parts);
+}
+
+/** conífera: tronco levemente curvo, camadas com caimento girando e variando de tom, ponta */
+function conifer(sp: Species, rare: number, lod: number, lite: boolean): THREE.BufferGeometry {
+  const h = sp.h;
+  const R = rng(strSeed(sp.leaf + 'pine') + rare * 3);
+  const L1 = crownColor(sp, rare);
+  const L2 = crownColor(sp, rare, true);
+  const T = rare === 1 ? '#d8a040' : sp.trunk;
+  const lo = lod > 0 || lite;
+  const parts: Part[] = [];
+  const tr = curvedTrunk(h * 0.85, 0.3, 0.08, (R() - 0.5) * 0.4, (R() - 0.5) * 0.4, lo ? 3 : 6, lo ? 6 : 9);
+  parts.push({ g: tr.g, c: T, m: new THREE.Matrix4(), groove: 0.35, jit: 0.1 });
+  const n = lod ? 3 : lite ? 4 : 6;
+  const tones = [L1, L2, shade(L1, 0.1), shade(L2, -0.06)];
+  for (let i = 0; i < n; i++) {
+    const f = i / n;
+    const w = h * (0.34 - f * 0.25) * (0.92 + R() * 0.16);
+    const c = tr.at(Math.min(1, 0.28 + f * 0.72));
+    const y = h * (0.24 + f * 0.62);
+    parts.push({ g: lo ? base.pineLo : base.pine, c: tones[i % tones.length], m: mat4(c.x + (R() - 0.5) * 0.15, y + h * 0.11, c.z + (R() - 0.5) * 0.15, w, h * (0.24 - f * 0.06), w, (R() - 0.5) * 0.08, R() * TAU, (R() - 0.5) * 0.08), ao: 0.5, jit: 0.12 });
+  }
+  const tp = tr.at(1);
+  parts.push({ g: base.cone, c: L1, m: mat4(tp.x, h * 1.02, tp.z, h * 0.05, h * 0.14, h * 0.05), ao: 0.3 });
+  return mergeParts(parts);
+}
+
 export function crownColor(sp: Species, rare: number, two = false): string {
   if (rare === 1) return two ? '#e9a400' : '#ffd34a';
   if (rare === 2) return two ? '#4ab8f0' : '#9ff6ff';
@@ -186,16 +349,9 @@ export function treeGeometry(sp: Species, rare: number, lod = 0, lite = false): 
   /** galho do tronco até a copa */
   const branch = (y: number, a: number, len: number, r: number, tilt = 0.9) =>
     add(base.branch, TD, new THREE.Matrix4().compose(P.set(0, y, 0), Q.setFromEuler(E.set(0, a, -tilt, 'YXZ')), S.set(r, len, r)));
+  if (sp.shape === 'pine') return conifer(sp, rare, lod, lite);
+  if (sp.shape === 'round' || sp.shape === 'blossom' || sp.shape === 'cloud') return broadleaf(sp, rare, lod, lite);
   switch (sp.shape) {
-    case 'pine':
-      add(bark, T, mat4(0, 0, 0, 0.8, h * 0.5, 0.8), 0, 0.35);
-      for (let i = 0; i < (lod ? 3 : 5); i++) {
-        const n = lod ? 3 : 5;
-        const f = i / n;
-        const w = h * (0.32 - f * 0.22);
-        add(lod ? base.pineLo : base.pine, i % 2 ? L2 : L1, mat4(0, h * (0.3 + f * 0.55) + h * 0.11, 0, w, h * (0.26 - f * 0.05), w, 0, i * 0.7, 0), 0.5);
-      }
-      break;
     case 'palm': {
       // tronco anelado e curvo
       const seg = lod ? 3 : 6;
@@ -385,85 +541,125 @@ export function lambert(color: string, emissive = 0): THREE.MeshLambertMaterial 
   return new THREE.MeshLambertMaterial({ color, flatShading: true, emissive: emissive ? new THREE.Color(color).multiplyScalar(emissive) : 0x000000 });
 }
 
+/** material liso (sem facetas) para peças arredondadas das ferramentas */
+function smooth(color: string, emissive = 0): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ color, emissive: emissive ? new THREE.Color(color).multiplyScalar(emissive) : 0x000000 });
+}
+const RBOX = new Map<string, THREE.BufferGeometry>();
+function rbox(w: number, h: number, d: number, r: number): THREE.BufferGeometry {
+  const k = [w, h, d, r].join(',');
+  let g = RBOX.get(k);
+  if (!g) RBOX.set(k, (g = new RoundedBoxGeometry(w, h, d, 3, r)));
+  return g;
+}
+/** cabo levemente curvo (S suave), mais grosso perto da cabeça */
+function handleGeo(len: number, r: number): THREE.BufferGeometry {
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    pts.push(new THREE.Vector3(Math.sin(t * Math.PI) * 0.018 - t * 0.01, -0.12 + t * len, 0));
+  }
+  const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, r, 8, false);
+  return g;
+}
+
 /** cabo ao longo de +Y a partir da mão (origem na empunhadura) */
 export function toolModel(kind: 'axe' | 'saw' | 'laser', level: number, color: string): { g: THREE.Group; tip: THREE.Object3D; spin: THREE.Object3D | null } {
   const g = new THREE.Group();
   const tip = new THREE.Object3D();
   let spin: THREE.Object3D | null = null;
-  const box = (w: number, h: number, d: number, c: string, x: number, y: number, z: number, e = 0) => {
-    const m = new THREE.Mesh(base.box, lambert(c, e));
-    m.scale.set(w, h, d);
+  const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => {
+    const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
-    g.add(m);
+    parent.add(m);
     return m;
   };
+  const ink = smooth(INK);
   if (kind === 'axe') {
-    const handle = new THREE.Mesh(base.cyl, lambert(level >= 2 ? '#6e4626' : '#a8743c'));
-    handle.scale.set(0.028, 0.62, 0.028);
-    handle.position.y = 0.2;
-    g.add(handle);
-    box(0.07, 0.07, 0.07, INK, 0, -0.1, 0);
-    // cabeça
-    box(0.07, 0.11, 0.09, '#8a8aa0', 0, 0.47, 0);
+    const wood = smooth(level >= 2 ? '#7a4e2c' : '#b0783e');
+    mesh(handleGeo(0.72, 0.024), wood, 0, 0, 0);
+    // pomo e empunhadura enrolada
+    const knob = mesh(new THREE.SphereGeometry(0.036, 10, 8), ink, 0, -0.12, 0);
+    knob.scale.set(1, 0.7, 1);
+    for (let i = 0; i < 4; i++) mesh(new THREE.TorusGeometry(0.026, 0.008, 5, 12), smooth(level >= 3 ? '#ff4f6a' : '#3a3050'), -0.002, -0.06 + i * 0.03, 0).rotation.x = Math.PI / 2;
+    // olho da cabeça (bloco arredondado) + cunha
+    const metal = smooth('#8a8aa0');
+    mesh(rbox(0.07, 0.12, 0.1, 0.02), metal, 0, 0.55, 0);
+    mesh(rbox(0.06, 0.05, 0.06, 0.015), smooth('#6a6a80'), 0, 0.62, 0.05);
     const shp = new THREE.Shape();
     shp.moveTo(0, -0.045);
     shp.lineTo(0, 0.045);
-    shp.quadraticCurveTo(0.09, 0.07, 0.15, 0.12);
-    shp.quadraticCurveTo(0.11, 0, 0.15, -0.12);
+    shp.quadraticCurveTo(0.09, 0.07, 0.16, 0.13);
+    shp.quadraticCurveTo(0.12, 0, 0.16, -0.13);
     shp.quadraticCurveTo(0.09, -0.07, 0, -0.045);
-    const bg = new THREE.ExtrudeGeometry(shp, { depth: 0.026, bevelEnabled: false, curveSegments: 5 });
-    bg.translate(0, 0, -0.013);
+    const bg = new THREE.ExtrudeGeometry(shp, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.006, bevelSegments: 2, curveSegments: 8 });
+    bg.translate(0, 0, -0.006);
     bg.rotateY(Math.PI / 2);
-    const blade = (s: number) => {
-      const b = new THREE.Mesh(bg, lambert(color, 0.08));
-      b.position.set(0, 0.47, -s * 0.04);
-      if (s < 0) b.rotation.y = Math.PI;
-      g.add(b);
-      // fio brilhante
-      const e = new THREE.Mesh(base.box, lambert('#ffffff', 0.5));
-      e.scale.set(0.03, 0.2, 0.012);
-      e.position.set(0, 0.47, -s * 0.185);
-      g.add(e);
+    const blade = (sd: number) => {
+      const b = mesh(bg, smooth(color, 0.08), 0, 0.55, -sd * 0.045);
+      if (sd < 0) b.rotation.y = Math.PI;
+      // fio brilhante (curvo)
+      const e = mesh(new THREE.TorusGeometry(0.15, 0.006, 4, 10, 1.6), smooth('#ffffff', 0.6), 0, 0.55, -sd * 0.045);
+      e.rotation.y = Math.PI / 2;
+      e.rotation.z = -0.8;
+      e.position.z = -sd * 0.04;
+      if (sd < 0) e.rotation.y = -Math.PI / 2;
     };
     blade(1);
     if (level >= 3) blade(-1);
-    if (level >= 3) box(0.05, 0.05, 0.05, '#ffd34a', 0, 0.56, 0, 0.4);
-    tip.position.set(0, 0.47, -0.24);
+    if (level >= 3) mesh(new THREE.SphereGeometry(0.025, 8, 6), smooth('#ffd34a', 0.4), 0, 0.64, 0);
+    tip.position.set(0, 0.55, -0.24);
   } else if (kind === 'saw') {
-    // motosserra de brinquedo: corpo, alça, barra e corrente
-    box(0.16, 0.16, 0.26, color, 0, 0.02, 0.02);
-    box(0.17, 0.05, 0.1, '#2a2238', 0, 0.12, 0.1);
-    box(0.03, 0.09, 0.03, '#2a2238', 0, 0.16, 0.04);
-    const bar = box(0.035, 0.07, 0.5, '#c9c9d6', 0, 0.0, -0.36);
-    void bar;
+    // motosserra: corpo arredondado, alça de cima, protetor de mão, sabre com bisel, corrente correndo
+    const body = smooth(color);
+    mesh(rbox(0.16, 0.17, 0.3, 0.045), body, 0, 0.03, 0.02);
+    mesh(rbox(0.165, 0.06, 0.12, 0.02), smooth('#2a2238'), 0, 0.12, 0.12);
+    // tanque e partida
+    mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12), smooth('#fff6d6'), 0.085, 0.04, 0.06).rotation.z = Math.PI / 2;
+    // alça de cima (arco)
+    const h1 = mesh(new THREE.TorusGeometry(0.09, 0.016, 6, 16, Math.PI), ink, 0, 0.13, 0.04);
+    h1.rotation.y = Math.PI / 2;
+    // protetor de mão
+    const gd = mesh(new THREE.TorusGeometry(0.08, 0.012, 5, 14, Math.PI), smooth('#2a2238'), 0, 0.08, -0.12);
+    gd.rotation.set(0, 0, 0);
+    // sabre (estádio extrudado com bisel)
+    const L = 0.5;
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.035, 0);
+    sh.lineTo(-0.035, L);
+    sh.absarc(0, L, 0.035, Math.PI, 0, true);
+    sh.lineTo(0.035, 0);
+    sh.lineTo(-0.035, 0);
+    const barG = new THREE.ExtrudeGeometry(sh, { depth: 0.01, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.005, bevelSegments: 1, curveSegments: 8 });
+    barG.translate(0, 0, -0.005);
+    barG.rotateX(-Math.PI / 2);
+    barG.rotateZ(Math.PI / 2);
+    mesh(barG, smooth('#c9c9d6', 0.05), 0, 0.0, -0.1);
+    // corrente: dentes em cima e embaixo (andam em z)
     const chain = new THREE.Group();
+    const tooth = new THREE.BoxGeometry(0.02, 0.016, 0.03);
+    const tm = smooth('#3a3a4a');
     for (let i = 0; i < 9; i++) {
-      const t = new THREE.Mesh(base.box, lambert('#3a3a4a'));
-      t.scale.set(0.045, 0.02, 0.03);
-      t.position.set(0, i % 2 ? 0.045 : -0.045, -0.13 - i * 0.055);
-      chain.add(t);
+      mesh(tooth, tm, 0, 0.042, -0.13 - i * 0.055, chain);
+      mesh(tooth, tm, 0, -0.042, -0.13 - i * 0.055, chain);
     }
     g.add(chain);
     spin = chain;
-    box(0.04, 0.07, 0.06, '#ffd34a', 0.085, 0.02, 0.05, 0.3);
-    if (level >= 5) box(0.17, 0.04, 0.2, '#ffffff', 0, 0.11, -0.02);
+    mesh(rbox(0.04, 0.07, 0.06, 0.012), smooth('#ffd34a', 0.3), 0.085, 0.02, 0.05);
+    if (level >= 5) mesh(rbox(0.17, 0.04, 0.2, 0.015), smooth('#ffffff'), 0, 0.11, -0.02);
     tip.position.set(0, 0, -0.62);
   } else {
-    // cortador a laser: corpo arredondado + cano + ponta brilhante
-    box(0.09, 0.1, 0.24, color, 0, 0.05, 0);
-    box(0.1, 0.03, 0.2, '#ffffff', 0, 0.115, -0.01);
-    box(0.06, 0.13, 0.06, '#2a2238', 0, -0.05, 0.07);
-    const barrel = new THREE.Mesh(base.cyl, lambert('#e8eaf8'));
-    barrel.scale.set(0.035, 0.24, 0.035);
+    // cortador a laser: corpo em cápsula, cano com anéis, ponta brilhante
+    const body = mesh(new THREE.CapsuleGeometry(0.055, 0.16, 4, 12), smooth(color), 0, 0.05, 0);
+    body.rotation.x = Math.PI / 2;
+    mesh(rbox(0.1, 0.03, 0.18, 0.012), smooth('#ffffff'), 0, 0.11, -0.01);
+    mesh(rbox(0.05, 0.13, 0.06, 0.018), ink, 0, -0.05, 0.07);
+    const barrel = mesh(new THREE.CylinderGeometry(0.03, 0.036, 0.24, 14), smooth('#e8eaf8'), 0, 0.07, -0.25);
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.07, -0.25);
-    g.add(barrel);
-    const glow = new THREE.Mesh(base.ico, new THREE.MeshBasicMaterial({ color: level >= 7 ? '#e0b0ff' : '#b0ffff' }));
+    for (let i = 0; i < 3; i++) mesh(new THREE.TorusGeometry(0.036, 0.008, 5, 14), smooth(color, 0.3), 0, 0.07, -0.18 - i * 0.06);
+    const glow = mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: level >= 7 ? '#e0b0ff' : '#b0ffff' }), 0, 0.07, -0.38);
     glow.scale.setScalar(0.04);
-    glow.position.set(0, 0.07, -0.38);
-    g.add(glow);
     spin = glow;
-    for (const s of [-1, 1]) box(0.015, 0.05, 0.1, '#ffffff', s * 0.05, 0.06, -0.02, 0.4);
     tip.position.set(0, 0.07, -0.4);
   }
   g.add(tip);
