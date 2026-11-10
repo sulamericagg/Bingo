@@ -20,10 +20,13 @@ export interface HudHost {
   onEmote(code: string): void;
   onToggleCam(): void;
   onSolo(on: boolean): void;
-  onAction(kind: 'sell' | 'build'): void;
+  onAction(kind: CtxKind): void;
+  /** toras carregadas agora (2D: costas; 3D: nas mãos) */
+  carried(): number;
   playersCount(): number;
 }
 
+export type CtxKind = 'sell' | 'build' | 'plant' | 'saw';
 type Tab = 'tools' | 'vehicles' | 'machines' | 'helpers' | 'renew';
 
 const EMOTES: [string, FlIcon][] = [
@@ -113,7 +116,7 @@ export class Hud {
         }
       }
       else if (a === 'cam') host.onToggleCam();
-      else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
+      else if (a === 'ctx') host.onAction(this.last.ctx as CtxKind);
       else if (a === 'ctl') openControls(this.el, (on) => host.onSolo(on));
       else if (a === 'pets') {
         const n = host.sim.commandHelpers();
@@ -171,7 +174,15 @@ export class Hud {
     this.host.joy.y = this.host.is3d ? js.y : 0;
     const v = s.vehicle;
     const L = this.last;
-    const b = Math.floor(s.s.bolotas);
+    let b = Math.floor(s.s.bolotas);
+    if (this.countFrom >= 0) {
+      // conta para cima depois de vender
+      this.countT += _dt;
+      const k = Math.min(1, Math.max(0, (this.countT - 0.45) / 0.7));
+      b = Math.floor(this.countFrom + (b - this.countFrom) * k * k * (3 - 2 * k));
+      if (k >= 1) this.countFrom = -1;
+    }
+    this.shownBol = b;
     if (b !== L.b) {
       L.b = b;
       this.bol.textContent = short(b);
@@ -200,9 +211,12 @@ export class Hud {
     }
     // botão de contexto
     let ctx = '';
+    const carried = this.host.carried();
     if (s.nearSell() && s.s.planks > 0) ctx = 'sell';
     else if (s.nearGate()) ctx = 'build';
-    const key = ctx + (ctx === 'sell' ? Math.floor(s.s.planks * s.s.plankVal * s.saleMult) : ctx === 'build' ? s.s.planks * 7 + s.s.bolotas : 0);
+    else if (s.nearSaw() && carried > 0 && !this.sawOpen) ctx = 'saw';
+    else if (s.nearStump() && s.s.tutorial >= 1) ctx = 'plant';
+    const key = ctx + (ctx === 'sell' ? Math.floor(s.s.planks * s.s.plankVal * s.saleMult) : ctx === 'build' ? s.s.planks * 7 + s.s.bolotas : ctx === 'saw' ? carried : 0);
     if (key !== (this as any)._ctxKey) {
       (this as any)._ctxKey = key;
       L.ctx = ctx;
@@ -215,6 +229,12 @@ export class Hud {
         const ok = s.s.planks >= B.planks && s.s.bolotas >= B.cost;
         this.ctx.innerHTML = flIcon('hammer', 28) + `<span>${t('floresta.build', 'Construir')}: ${B.name()}<br><small>${short(B.planks)} ${t('floresta.planks', 'tábuas')} + ${short(B.cost)}</small></span>`;
         this.ctx.disabled = !ok;
+      } else if (ctx === 'saw') {
+        this.ctx.innerHTML = flIcon('saw', 28) + `<span>${t('floresta.handSaw', 'Serrar na mão')} ×${carried}</span>`;
+        this.ctx.disabled = false;
+      } else if (ctx === 'plant') {
+        this.ctx.innerHTML = flIcon('seed', 28) + `<span>${t('floresta.plantHand', 'Plantar muda')}</span>`;
+        this.ctx.disabled = false;
       }
     }
     const pets = !s.solo && s.helperCount() > 0 && s.s.tutorial >= 4;
@@ -315,8 +335,138 @@ export class Hud {
     this.modal = null;
   }
   get modalOpen(): boolean {
-    return !!this.modal;
+    return !!this.modal || this.sawOpen;
   }
+
+  /* ------------------------------ minigame da serra ------------------------------ */
+
+  sawOpen = false;
+  /**
+   * Serrar na mão: o marcador corre pela tora; toque "Serrar!" quando ele estiver na faixa verde.
+   * 3 cortes; devolve a qualidade média 0..1 (perfeito = 1, bom = 0.5, errou = 0).
+   */
+  sawGame(onDone: (quality: number) => void): void {
+    if (this.sawOpen) return;
+    this.sawOpen = true;
+    const el = document.createElement('div');
+    el.className = 'fl-sawgame';
+    el.dataset.touchIgnore = '1';
+    el.innerHTML = `<div class="sg-t">${t('floresta.sawTitle', 'Corte na faixa verde!')}<b data-v="n">1/3</b></div>
+      <div class="sg-bar"><i class="z"></i><i class="p"></i><i class="m"></i></div>
+      <button class="fl-btn gold sg-go">${flIcon('saw', 26)}<span>${t('floresta.sawGo', 'Serrar!')}</span></button>`;
+    this.el.appendChild(el);
+    const z = el.querySelector('.z') as HTMLElement;
+    const pz = el.querySelector('.p') as HTMLElement;
+    const m = el.querySelector('.m') as HTMLElement;
+    const nEl = el.querySelector('[data-v="n"]') as HTMLElement;
+    let round = 0;
+    let total = 0;
+    let x = 0;
+    let dir = 1;
+    let zc = 0.5;
+    const zw = 0.22;
+    let speed = 0.9;
+    let raf = 0;
+    let last = performance.now();
+    let lock = 0;
+    const setZone = () => {
+      zc = 0.2 + Math.random() * 0.6;
+      z.style.left = (zc - zw / 2) * 100 + '%';
+      z.style.width = zw * 100 + '%';
+      pz.style.left = (zc - zw / 6) * 100 + '%';
+      pz.style.width = (zw / 3) * 100 + '%';
+    };
+    setZone();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (lock > 0) lock -= dt;
+      else {
+        x += dir * speed * dt;
+        if (x > 1) {
+          x = 1;
+          dir = -1;
+        } else if (x < 0) {
+          x = 0;
+          dir = 1;
+        }
+      }
+      m.style.left = x * 100 + '%';
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const go = el.querySelector('.sg-go') as HTMLElement;
+    go.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (lock > 0) return;
+      const d = Math.abs(x - zc);
+      const q = d < zw / 6 ? 1 : d < zw / 2 ? 0.5 : 0;
+      total += q;
+      round++;
+      lock = 0.35;
+      el.classList.remove('hit1', 'hit5', 'hit0');
+      void el.offsetWidth;
+      el.classList.add(q === 1 ? 'hit1' : q > 0 ? 'hit5' : 'hit0');
+      notify(q === 1 ? t('floresta.sawPerfect', 'Corte perfeito!') : q > 0 ? t('floresta.sawGood', 'Bom corte') : t('floresta.sawMiss', 'Torto…'), { kind: q === 1 ? 'good' : q > 0 ? 'info' : 'warn', key: 'saw' + round });
+      if (round >= 3) {
+        setTimeout(() => {
+          cancelAnimationFrame(raf);
+          el.remove();
+          this.sawOpen = false;
+          onDone(total / 3);
+        }, 380);
+        return;
+      }
+      nEl.textContent = `${round + 1}/3`;
+      speed *= 1.3;
+      setZone();
+    });
+    this.offs.push(() => cancelAnimationFrame(raf));
+  }
+
+  /* ------------------------------ venda: bolotas voando ------------------------------ */
+
+  /** moedinhas saem do botão de venda, voam até o contador e ele conta para cima */
+  cashFly(): void {
+    const from = this.ctx.getBoundingClientRect();
+    const pill = this.bol.parentElement as HTMLElement;
+    const to = pill.getBoundingClientRect();
+    const hr = this.el.getBoundingClientRect();
+    const sx = (from.width ? from.left + from.width / 2 : hr.width / 2) - hr.left;
+    const sy = (from.height ? from.top + from.height / 2 : hr.height * 0.7) - hr.top;
+    const tx = to.left + 16 - hr.left;
+    const ty = to.top + to.height / 2 - hr.top;
+    for (let i = 0; i < 10; i++) {
+      const c = document.createElement('div');
+      c.className = 'fl-coin';
+      c.innerHTML = flIcon('acorn', 26);
+      c.style.left = sx + 'px';
+      c.style.top = sy + 'px';
+      this.el.appendChild(c);
+      const mx = sx + (Math.random() - 0.5) * 160;
+      const my = sy - 40 - Math.random() * 90;
+      const an = c.animate(
+        [
+          { transform: 'translate(-50%,-50%) scale(.4)', opacity: 0 },
+          { transform: `translate(calc(-50% + ${mx - sx}px), calc(-50% + ${my - sy}px)) scale(1.1)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(calc(-50% + ${tx - sx}px), calc(-50% + ${ty - sy}px)) scale(.6)`, opacity: 1 },
+        ],
+        { duration: 650 + i * 45, easing: 'cubic-bezier(.3,.1,.3,1)', fill: 'forwards' },
+      );
+      an.onfinish = () => {
+        c.remove();
+        pill.classList.remove('fl-bump');
+        void pill.offsetWidth;
+        pill.classList.add('fl-bump');
+      };
+    }
+    this.countFrom = this.shownBol;
+    this.countT = 0;
+  }
+  private shownBol = 0;
+  private countFrom = -1;
+  private countT = 0;
 
   private buy(id: string): void {
     const s = this.host.sim;

@@ -231,3 +231,20 @@
 .fl-lefty .fl-pets{right:auto;left:calc(var(--edgeL) + 104px)}
 @media (orientation:portrait){.fl-pets{right:var(--edgeR);bottom:calc(var(--edgeB) + 250px)}}
 .fw-top .fl-pill:has(> span:empty){display:none}
+/* minigame da serra: painel baixo e compacto, sem cobrir o centro */
+.fl-sawgame{position:absolute;left:50%;bottom:calc(var(--edgeB) + 8px);transform:translateX(-50%);width:min(380px,56vw);pointer-events:auto;background:rgba(20,8,48,.78);border-radius:16px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:stretch;z-index:8}
+.fl-sawgame .sg-t{display:flex;justify-content:space-between;font-weight:800;font-size:13px}
+.fl-sawgame .sg-bar{position:relative;height:26px;border-radius:13px;background:linear-gradient(#c88a4a,#8a5228);overflow:hidden;box-shadow:inset 0 0 0 3px #5a3218}
+.fl-sawgame .sg-bar .z{position:absolute;top:0;bottom:0;background:rgba(122,255,138,.55)}
+.fl-sawgame .sg-bar .p{position:absolute;top:0;bottom:0;background:rgba(255,246,140,.9)}
+.fl-sawgame .sg-bar .m{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;background:#fff;border-radius:3px;box-shadow:0 0 0 2px #2a0b5c}
+.fl-sawgame .sg-go{min-height:44px;font-size:16px}
+.fl-sawgame.hit1{animation:sgHit .3s}
+.fl-sawgame.hit5{animation:sgHit .2s}
+.fl-sawgame.hit0{animation:sgMiss .3s}
+@keyframes sgHit{0%{box-shadow:0 0 0 0 #7aff8a}50%{box-shadow:0 0 0 8px rgba(122,255,138,.5)}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes sgMiss{0%,100%{transform:translateX(-50%)}25%{transform:translateX(calc(-50% - 6px))}75%{transform:translateX(calc(-50% + 6px))}}
+@media (orientation:portrait){.fl-sawgame{width:86vw;bottom:calc(var(--edgeB) + 130px)}}
+.fl-coin{position:absolute;pointer-events:none;z-index:9;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
+.fl-bump{animation:flBump .25s}
+@keyframes flBump{50%{transform:scale(1.18)}}

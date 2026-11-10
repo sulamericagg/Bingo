@@ -250,6 +250,8 @@ class View3D implements View {
   private armR!: Forearm;
   private armL!: Forearm;
   private heldGroup = new THREE.Group();
+  private shoulderK = 0;
+  private dtLast = 1 / 60;
   private heldLogs: THREE.Group[] = [];
   private wheel!: THREE.Group;
   private beam!: THREE.Mesh;
@@ -1281,8 +1283,13 @@ class View3D implements View {
       const nh = this.held.length;
       const wk = Math.min(1, nh / 3);
       ty -= 0.012 * wk + Math.abs(Math.sin(this.bob)) * 0.022 * walk * (0.5 + wk);
-      this.heldGroup.position.set(tx + lx * 0.6 + bx * 0.7, ty + ly * 0.6 + by, tz);
-      this.heldGroup.rotation.set(0.1 + Math.sin(this.time * 1.4) * 0.01, 0, Math.sin(this.time * 2) * 0.02 + Math.sin(this.bob) * 0.05 * walk);
+      // andando: as toras sobem para o ombro (passo pesado, balanço); parado/jogando: na frente
+      const toShoulder = walk > 0.25 && this.throwAnim <= 0 && this.grabAnim <= 0 ? 1 : 0;
+      this.shoulderK += (toShoulder - this.shoulderK) * Math.min(1, this.dtLast * 5);
+      const sk = this.shoulderK * this.shoulderK * (3 - 2 * this.shoulderK);
+      const sway = Math.sin(this.bob) * 0.06 * walk;
+      this.heldGroup.position.set(tx + lx * 0.6 + bx * 0.7 + sk * 0.3, ty + ly * 0.6 + by + sk * (0.2 - Math.abs(Math.sin(this.bob)) * 0.03), tz + sk * 0.3);
+      this.heldGroup.rotation.set(0.1 + Math.sin(this.time * 1.4) * 0.01 - sk * 0.25, -sk * 0.55, Math.sin(this.time * 2) * 0.02 + Math.sin(this.bob) * 0.05 * walk + sk * (0.75 + sway));
       for (let i = 0; i < HAND_CAP; i++) {
         const g = this.heldLogs[i];
         const h = this.held[i];
@@ -1305,6 +1312,12 @@ class View3D implements View {
       this.handR.rotation.set(0, 0, 0.45);
       this.handL.position.set(hp.x - 0.2, hp.y - 0.02, hp.z + 0.06);
       this.handL.rotation.set(0, 0, -0.45);
+      if (sk > 0.5) {
+        // no ombro: só a mão direita segurando por baixo
+        this.handL.visible = false;
+        this.handR.position.set(hp.x + 0.02, hp.y - 0.16, hp.z + 0.04);
+        this.handR.rotation.set(0, 0, 0.9);
+      }
     }
     // volante
     this.wheel.visible = this.driving && this.vehLvl >= 2;
@@ -2435,6 +2448,14 @@ class View3D implements View {
     if (m.z > WORLD_Z) m.z = WORLD_Z;
   }
 
+  takeHeld(): { n: number; val: number } {
+    let val = 0;
+    for (const h of this.held) val += h.val;
+    const n = this.held.length;
+    this.held.length = 0;
+    return { n, val };
+  }
+
   /* ------------------------------ guia ------------------------------ */
 
   private guideArrow: THREE.Group | null = null;
@@ -2492,6 +2513,7 @@ class View3D implements View {
 
   frame(dt: number): void {
     this.time += dt;
+    this.dtLast = dt;
     const sim = this.sim;
     sim.held3d = this.held.length;
     windTime.value = this.time;
