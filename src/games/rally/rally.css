@@ -525,3 +525,12 @@
     transform: translateY(8px) scale(0.92);
   }
 }
+
+/* "Jogar sozinho" na garagem */
+.rl-solo {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(104px + var(--rl-safe));
+  pointer-events: auto;
+}
