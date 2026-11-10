@@ -1,5 +1,6 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "intro3d.espelho.tag": "做鬼脸，Bloop 会模仿你！",
   "intro3d.casa.name": "我的家",
   "intro3d.casa.tag": "按你的风格装饰，招待朋友！",
   "intro3d.pet.name": "我的宠物",
