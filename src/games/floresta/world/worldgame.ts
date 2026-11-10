@@ -211,6 +211,7 @@ export class WorldGame {
   driving = -1;
   private camYawOff = 0;
   private camIdle = 0;
+  private camBlocked = 0;
 
   vehs: Veh[] = [];
   logs: Log[] = [];
@@ -1154,12 +1155,27 @@ export class WorldGame {
     const cy = v.yaw + this.camYawOff;
     const dist = d.camD * (v.k === VK.Heli ? 1 + Math.min(1, (v.y - this.world.heightAt(v.x, v.z)) / 30) * 0.4 : 1);
     const ph = this.pitch;
-    const bx = v.x - Math.cos(cy) * dist * Math.cos(ph * 0.6);
-    const bz = v.z + Math.sin(cy) * dist * Math.cos(ph * 0.6);
+    let bx = v.x - Math.cos(cy) * dist * Math.cos(ph * 0.6);
+    let bz = v.z + Math.sin(cy) * dist * Math.cos(ph * 0.6);
     let by = v.y + d.camH - ph * dist * 0.6;
+    // nunca atrás de um tronco: aproxima a câmera até antes do primeiro obstáculo
+    // (parte do lado de trás do veículo, para não "bater" nele mesmo)
+    const sx = v.x - Math.cos(cy) * v.m.len * 0.3;
+    const sz = v.z + Math.sin(cy) * v.m.len * 0.3;
+    const air = v.k === VK.Heli && by - this.world.heightAt(bx, bz) > 9;
+    const hit = air ? 1 : this.world.segmentHit(sx, sz, bx, bz, 0.5);
+    if (hit < 1) {
+      const k2 = Math.max(0.15, hit);
+      bx = sx + (bx - sx) * k2;
+      bz = sz + (bz - sz) * k2;
+      by = v.y + d.camH * (0.75 + 0.25 * k2) + (1 - k2) * 1.2;
+      this.camBlocked = 0.4;
+    }
     const gy = this.world.heightAt(bx, bz);
     if (by < gy + 1.2) by = gy + 1.2;
-    const k = damp(8, dt);
+    // ao entrar atrás de algo, a câmera corta rápido; ao sair, volta suave
+    this.camBlocked = Math.max(0, this.camBlocked - dt);
+    const k = damp(hit < 1 ? 25 : this.camBlocked > 0 ? 4 : 8, dt);
     this.camera.position.x += (bx - this.camera.position.x) * k;
     this.camera.position.y += (by - this.camera.position.y) * k;
     this.camera.position.z += (bz - this.camera.position.z) * k;
