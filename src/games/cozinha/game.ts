@@ -15,6 +15,8 @@ import { showRewarded, rewardedAvailable } from '../../services/ads';
 import type { PeerState } from '../../services/presence-api';
 import { openEmoteWheel, closeEmoteWheel } from '../../social/emotes';
 import { icon } from '../../ui/icons';
+import { clearNotify, notify, objective, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
+import { createJoystick, isSolo, setSolo } from '../../ui/touch';
 import { charSprite, drawPetIcon } from './art';
 import { Brain, CMDS, type Cmd } from './bots';
 import { HIRE_COST, MAX_CREW, PACKS, RECIPES, ROLES, UPGRADES, dayParams, roleDesc, roleName, specialName, themeName, type Role, type Special, type Theme } from './data';
@@ -64,6 +66,12 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   const sv = czSave();
   if (!sv.staff.length && !sv.days) {
     sv.staff = ['cook']; // primeiro ajudante é grátis
+    persistCz();
+  }
+  const SOLO = () => isSolo('cozinha');
+  if (sv.solo) {
+    setSolo('cozinha', true); // migra a opção antiga
+    sv.solo = false;
     persistCz();
   }
   const gov = new QualityGovernor({ emit: false, persist: false });
@@ -133,30 +141,16 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     setBack(() => quit());
   }
 
-  /** aviso pequeno no topo (não cobre a cozinha) */
+  /** aviso pequeno no topo (compartilhado: src/ui/notify) */
   function banner(txt: string, sub = '', ms = 1800): void {
-    let box = el.querySelector<HTMLElement>('.cz-toasts');
-    if (!box) {
-      box = document.createElement('div');
-      box.className = 'cz-toasts';
-      el.appendChild(box);
-    }
-    while (box.children.length >= 2) box.firstElementChild!.remove();
-    const b = document.createElement('div');
-    b.className = 'cz-toast';
-    b.innerHTML = esc(txt) + (sub ? ` <small>${esc(sub)}</small>` : '');
-    box.appendChild(b);
-    setTimeout(() => {
-      b.classList.add('cz-out');
-      setTimeout(() => b.remove(), 260);
-    }, ms);
+    notify(sub ? txt + ' · ' + sub : txt, { ms: Math.max(1400, ms) });
   }
 
   /* ======================= 1b) mapa de fases ======================= */
   const litStars = (n: number, size = 12) => `<span class="cz-ministars">${Array.from({ length: n }, () => `<i class="on">${icon('star', { size })}</i>`).join('')}</span>`;
   const starsRow = (n: number, size = 14) => [0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}">${icon('star', { size })}</i>`).join('');
   const helpersFor = (lv: Level | null): number => {
-    if (sv.solo) return 0;
+    if (SOLO()) return 0;
     if (!lv) return -1; // modo sem fim: equipe contratada
     if (lv.tutorial) return 0;
     if (lv.n === 0) return 1;
@@ -183,7 +177,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         const st = sv.lvStars[n] ?? 0;
         const open = levelOpen(n, sv.lvStars);
         const isNext = open && st === 0;
-        cells += `<button class="cz-lvb${open ? '' : ' cz-lock'}${isNext ? ' cz-next' : ''}${st ? ' cz-done' : ''}" data-lv="${n}" ${open ? '' : 'aria-disabled="true"'}><b>${open ? n : icon('lock', { size: 18 })}</b><span class="cz-ministars">${starsRow(st, 11)}</span>${HELPER_AT.includes(n) && !sv.solo ? `<em>${icon('pet', { size: 14 })}</em>` : ''}</button>`;
+        cells += `<button class="cz-lvb${open ? '' : ' cz-lock'}${isNext ? ' cz-next' : ''}${st ? ' cz-done' : ''}" data-lv="${n}" ${open ? '' : 'aria-disabled="true"'}><b>${open ? n : icon('lock', { size: 18 })}</b><span class="cz-ministars">${starsRow(st, 11)}</span>${HELPER_AT.includes(n) && !SOLO() ? `<em>${icon('pet', { size: 14 })}</em>` : ''}</button>`;
       }
       worlds += `<div class="cz-world" style="--w1:${W.col[0]};--w2:${W.col[1]}"><div class="cz-wh"><b>${esc(W.name())}</b>${lockedW ? `<span class="cz-pill">${icon('lock', { size: 14 })}${icon('star', { size: 14 })}${W.stars}</span>` : ''}</div><div class="cz-lvgrid">${cells}</div></div>`;
     });
@@ -201,7 +195,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       </div>
       <div class="cz-worlds">${worlds}</div>
       <div class="cz-modesrow cz-small">
-        <button class="cz-btn cz-toggle${sv.solo ? ' cz-on' : ''}" data-a="solo"><span class="cz-chk">${sv.solo ? icon('check', { size: 14 }) : ''}</span>${t('cozinha.solo', 'Jogar sozinho (sem ajudantes)')}</button>
+        <button class="cz-btn cz-toggle${SOLO() ? ' cz-on' : ''}" data-a="solo"><span class="cz-chk">${SOLO() ? icon('check', { size: 14 }) : ''}</span>${t('cozinha.solo', 'Jogar sozinho (sem ajudantes)')}</button>
         <button class="cz-btn" data-a="tut">${czIcon('hat', 18)}${t('cozinha.tutorial', 'Treino')}</button>
         <button class="cz-btn cz-gold" data-a="shop">${czIcon('cart', 18)}${t('cozinha.shop', 'Melhorias')}</button>
         <button class="cz-btn" data-a="friends">${czIcon('friends', 18)}${t('cozinha.friends', 'Com amigos')}</button>
@@ -223,8 +217,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       lobby();
     });
     bind(d, '[data-a=solo]', () => {
-      sv.solo = !sv.solo;
-      persistCz();
+      setSolo('cozinha', !SOLO());
       map();
     });
     bind(d, '[data-a=tut]', () => playLevel(level(1)));
@@ -264,7 +257,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <div class="cz-menu-list">${lv.menu.map((r) => `<span${news.recipes.includes(r) ? ' class="cz-new"' : ''}>${esc(RECIPES[r].name())}</span>`).join('')}</div>
       ${news.recipes.length || news.procs.length ? `<div class="cz-newrow">${t('cozinha.new', 'Novo!')} ${news.procs.map((p) => esc(procName(p))).join(', ')}</div>` : ''}
       ${lv.tutorial ? `<div class="cz-note">${t('cozinha.tutNote', 'Sem relógio: siga a seta verde e as dicas no topo.')}</div>` : `<div class="cz-goals"><span>${litStars(1)} ${fmt(g[0])}</span><span>${litStars(2)} ${fmt(g[1])}</span><span>${litStars(3)} ${fmt(g[2])}</span></div>`}
-      <div class="cz-note">${hp === 0 ? (sv.solo ? t('cozinha.soloOn', 'Sozinho: sem ajudantes') : t('cozinha.noHelpers', 'Sem ajudantes nesta fase')) : t('cozinha.helpersN', 'Ajudantes: {n} (toque neles e dê ordens)', { n: hp })}</div>
+      <div class="cz-note">${hp === 0 ? (SOLO() ? t('cozinha.soloOn', 'Sozinho: sem ajudantes') : t('cozinha.noHelpers', 'Sem ajudantes nesta fase')) : t('cozinha.helpersN', 'Ajudantes: {n} (toque neles e dê ordens)', { n: hp })}</div>
       <div class="cz-row"><button class="cz-btn cz-grow" data-a="close">${t('cozinha.back', 'Voltar')}</button><button class="cz-btn cz-green cz-big cz-grow" data-a="go">${icon('play', { size: 22 })}${t('cozinha.play', 'Jogar')}</button></div>
     </div>`;
     el.appendChild(sh);
@@ -288,7 +281,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 
   /* ======================= 2) restaurante (saguão) ======================= */
   function crewList(): Role[] {
-    if (sv.solo) return [];
+    if (SOLO()) return [];
     const humans = net.online ? net.humans.length : 0;
     const out: Role[] = [];
     sv.staff.forEach((r, i) => {
@@ -605,9 +598,8 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         <span class="cz-pill">${icon('coin', { size: 20 })}<span data-cash>0</span></span>
         <button class="cz-btn cz-ic" data-a="emote">${icon('smile', { size: 24 })}</button>
       </div>
-      <div class="cz-tip" style="display:none"><span data-tiptxt></span><button class="cz-skip" data-a="skip">${t('cozinha.skip', 'Pular')}</button></div>
+      <button class="cz-skip" data-a="skip" style="display:none">${t('cozinha.skip', 'Pular')}</button>
       <div class="cz-pets"></div>
-      <div class="cz-joy" style="display:none"><i></i></div>
       <div class="cz-acts">
         <button class="cz-act cz-pick" data-b="pick">${czIcon('hand', 34)}<small data-pl>${t('cozinha.pick', 'Pegar')}</small></button>
         <button class="cz-act cz-do" data-b="act">${czIcon('knife', 46)}<small data-al>${t('cozinha.act', 'Ação')}</small></button>
@@ -617,16 +609,13 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const clockPill = hud.querySelector<HTMLElement>('[data-clock]')!;
     const clockEl = clockPill.querySelector<HTMLElement>('span')!;
     const cashEl = hud.querySelector<HTMLElement>('[data-cash]')!;
-    const joy = hud.querySelector<HTMLElement>('.cz-joy')!;
-    const knob = joy.querySelector<HTMLElement>('i')!;
     const actBtn = hud.querySelector<HTMLElement>('[data-b=act]')!;
     const pickBtn = hud.querySelector<HTMLElement>('[data-b=pick]')!;
     const actLabel = hud.querySelector<HTMLElement>('[data-al]')!;
     const pickLabel = hud.querySelector<HTMLElement>('[data-pl]')!;
     dayEl.textContent = lv ? (lv.n === 0 ? t('cozinha.dailyShort', 'Desafio') : lv.tutorial ? t('cozinha.tutorialN', 'Treino {n}/3', { n: lv.tutorial }) : t('cozinha.levelN', 'Fase {n}', { n: lv.n })) : t('cozinha.day', 'Dia {n}', { n: cfg.day });
     const goalEl = hud.querySelector<HTMLElement>('[data-goal]');
-    const tipEl = hud.querySelector<HTMLElement>('.cz-tip')!;
-    const tipTxt = hud.querySelector<HTMLElement>('[data-tiptxt]')!;
+    const skipEl = hud.querySelector<HTMLElement>('.cz-skip')!;
     const petsEl = hud.querySelector<HTMLElement>('.cz-pets')!;
 
     /* ---------- ajudantes: fichas no canto + menu de ordens ---------- */
@@ -669,6 +658,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       if (rend instanceof Render2D) rend.selected = b.p;
       const m = document.createElement('div');
       m.className = 'cz-cmd';
+      m.dataset.touchIgnore = '';
       m.innerHTML = `<div class="cz-cmdh">${esc(b.p.name)}: ${t('cozinha.cmd.what', 'o que fazer?')}</div><div class="cz-cmdg">${CMDS.map((c) => `<button class="cz-cmdb${b.available(c) ? '' : ' cz-dim'}" data-c="${c}"><canvas></canvas><span>${esc(CMD_LABEL[c]())}</span></button>`).join('')}<button class="cz-cmdb cz-sm" data-c="${b.idleMode === 'follow' ? 'stay' : 'follow'}"><canvas></canvas><span>${esc(CMD_LABEL[b.idleMode === 'follow' ? 'stay' : 'follow']())}</span></button></div>`;
       m.querySelectorAll<HTMLElement>('[data-c]').forEach((btn) => {
         const c = btn.dataset.c as Cmd;
@@ -728,18 +718,12 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       }
     };
     let tipId = '';
+    /** objetivo atual: UM por vez, chip pequeno no canto (src/ui/notify) */
     const setTip = (id: string, txt: string) => {
       if (id === tipId) return;
       tipId = id;
-      if (!txt) {
-        tipEl.style.display = 'none';
-        return;
-      }
-      tipEl.style.display = '';
-      tipTxt.textContent = txt;
-      tipEl.classList.remove('cz-pop');
-      void tipEl.offsetWidth;
-      tipEl.classList.add('cz-pop');
+      objective(txt || null, { icon: 'target' });
+      skipEl.style.display = txt ? '' : 'none';
     };
     bind(hud, '[data-a=skip]', () => {
       if (tut) {
@@ -774,11 +758,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 
     // entrada: joystick (metade esquerda) + botões
     const keys = new Set<string>();
-    let joyId = -1;
-    let jx0 = 0;
-    let jy0 = 0;
-    let jmx = 0;
-    let jmy = 0;
+    // joystick flutuante compartilhado (src/ui/touch): mesma zona/curva/mola de todos os jogos
+    const joyCtl = createJoystick(el, { zoneTop: 0.22, zoneWidth: 0.45 });
+    let joyOn = true;
     let actTouch = false;
     let pickPress = false;
     // toque curto (sem arrastar) = tocar num ajudante (2D)
@@ -796,32 +778,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         ty0 = e.clientY;
         tT0 = performance.now();
       }
-      // joystick flutuante: mesma regra do 3D (lado esquerdo, abaixo do topo)
-      const r = el.getBoundingClientRect();
-      if (joyId >= 0 || e.clientX - r.left > r.width * 0.45 || e.clientY - r.top < r.height * 0.22) return;
-      joyId = e.pointerId;
-      jx0 = e.clientX;
-      jy0 = e.clientY;
-      jmx = jmy = 0;
-      joy.style.display = 'block';
-      joy.style.left = jx0 - r.left + 'px';
-      joy.style.top = jy0 - r.top + 'px';
-      knob.style.transform = '';
     };
     const onMove = (e: PointerEvent) => {
       if (e.pointerId === tapId && Math.hypot(e.clientX - tx0, e.clientY - ty0) > 14) tapId = -1;
-      if (e.pointerId !== joyId) return;
-      const dx = e.clientX - jx0;
-      const dy = e.clientY - jy0;
-      const d = Math.hypot(dx, dy);
-      const R = 50;
-      const k = d > R ? R / d : 1;
-      // zona morta pequena + curva suave (andar devagar é fácil)
-      const m = Math.max(0, (Math.min(d, R) - 6) / (R - 6));
-      const sc = d > 0 ? (m * m * (3 - 2 * m) * 0.35 + m * 0.65) / d : 0;
-      jmx = dx * sc;
-      jmy = dy * sc;
-      knob.style.transform = `translate(${dx * k}px,${dy * k}px)`;
     };
     const onUp = (e: PointerEvent) => {
       if (e.pointerId === tapId) {
@@ -836,10 +795,6 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           }
         }
       }
-      if (e.pointerId !== joyId) return;
-      joyId = -1;
-      jmx = jmy = 0;
-      joy.style.display = 'none';
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
@@ -878,9 +833,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const blur = () => {
       keys.clear();
       actTouch = false;
-      joyId = -1;
-      jmx = jmy = 0;
-      joy.style.display = 'none';
+      joyCtl.reset();
       if (document.visibilityState === 'hidden' || !document.hasFocus()) togglePause(true);
     };
     window.addEventListener('blur', blur);
@@ -921,7 +874,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     );
     setBack(() => togglePause(!pauseEl));
 
+    setNotifyTop(58);
+    setNotifyAlign('center');
     cleanup = () => {
+      objective(null);
+      clearNotify();
+      resetNotifyTop();
+      setNotifyAlign('left');
+      joyCtl.destroy();
       window.removeEventListener('resize', fit);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -958,8 +918,13 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       if (dt > 0.1) dt = 0.1;
       const w0 = performance.now();
       // entrada
-      let mx = jmx;
-      let my = jmy;
+      if (joyOn === !!rend.fps) {
+        joyOn = !rend.fps;
+        joyCtl.setEnabled(joyOn);
+      }
+      const js = joyOn ? joyCtl.read() : null;
+      let mx = js ? js.x : 0;
+      let my = js ? js.y : 0;
       if (keys.has('ArrowLeft') || keys.has('KeyA')) mx -= 1;
       if (keys.has('ArrowRight') || keys.has('KeyD')) mx += 1;
       if (keys.has('ArrowUp') || keys.has('KeyW')) my -= 1;
@@ -1067,7 +1032,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       const ctxAct = contextAct(sim, me);
       if (ctxAct !== actShown) {
         actShown = ctxAct;
-        actLabel.textContent = ctxAct === 'chop' ? t('cozinha.chop', 'Picar') : ctxAct === 'wash' ? t('cozinha.wash', 'Lavar') : ctxAct === 'spray' ? t('cozinha.spray', 'Apagar') : t('cozinha.act', 'Ação');
+        actLabel.textContent = ctxAct === 'chop' ? t('cozinha.fps.chopIt', 'Cortar') : ctxAct === 'wash' ? t('cozinha.wash', 'Lavar') : ctxAct === 'spray' ? t('cozinha.spray', 'Apagar') : t('cozinha.act', 'Ação');
         actBtn.classList.toggle('cz-off', !ctxAct);
         actBtn.innerHTML = czIcon(ctxAct === 'wash' ? 'plate' : ctxAct === 'spray' ? 'ext' : 'knife', 46) + actLabel.outerHTML;
         pickLabel.textContent = me.hold ? t('cozinha.drop', 'Soltar') : t('cozinha.pick', 'Pegar');

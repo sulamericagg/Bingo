@@ -170,7 +170,7 @@ export class Tutorial {
     if (burnt >= 0 && !h && sim.st[burnt].fire <= 0) return S('takeburnt', t('cozinha.tut.takeBurnt', 'Queimou! Pegue e jogue no lixo'), burnt);
     const onSt = nearest(sim, me, (s) => s.k === kind && isIt(s.item, 0));
     if (onSt >= 0) {
-      if (proc === 'chop') return S(pre + 'chop', t('cozinha.tut.chop', 'Segure PICAR até terminar'), onSt);
+      if (proc === 'chop') return S(pre + 'chop', t('cozinha.tut.chop2', 'Segure CORTAR até terminar'), onSt);
       return S(pre + 'wait', t('cozinha.tut.wait', 'Está cozinhando... Fique de olho!'), onSt);
     }
     if (isIt(h, 0)) {

@@ -19,7 +19,7 @@ const CSS = `
 .cz-sp{flex:1}
 .cz-joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;background:rgba(42,11,92,.25);border:3px solid rgba(255,255,255,.45);pointer-events:none}
 .cz-joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.85);border:3px solid #2a0b5c}
-.cz-acts{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;align-items:flex-end;gap:12px;pointer-events:none}
+.cz-acts{position:absolute;right:calc(var(--edge-r,12px) + 10px);bottom:calc(var(--edge-b,12px) + 10px);display:flex;align-items:flex-end;gap:12px;pointer-events:none}
 .cz-act{pointer-events:auto;border-radius:50%;border:4px solid #2a0b5c;display:flex;flex-direction:column;align-items:center;justify-content:center;font:inherit;font-weight:700;color:#2a0b5c;box-shadow:0 5px 0 #2a0b5c,inset 0 3px 0 rgba(255,255,255,.6);touch-action:none;gap:0;line-height:1}
 .cz-act small{font-size:12px;margin-top:2px}
 .cz-act.cz-down{transform:translateY(4px);box-shadow:0 1px 0 #2a0b5c}
@@ -79,9 +79,9 @@ const CSS = `
 .cz-tip span{flex:1;min-width:0}
 .cz-tip.cz-pop{animation:czTipPop .35s cubic-bezier(.3,1.6,.6,1)}
 @keyframes czTipPop{from{transform:translateX(-50%) scale(.85)}}
-.cz-skip{pointer-events:auto;border:0;border-radius:9px;background:#2a0b5c;color:#fff;font:inherit;font-size:11px;font-weight:700;padding:4px 8px;cursor:pointer;opacity:.75}
+.cz-skip{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 84px);pointer-events:auto;border:0;border-radius:9px;background:rgba(16,6,40,.55);color:#fff;font:inherit;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;z-index:9}
 @media (orientation:portrait){.cz-pets{top:calc(env(safe-area-inset-top,0px) + 176px)}.cz-cmd{top:calc(env(safe-area-inset-top,0px) + 160px)}.cz-tip{top:calc(env(safe-area-inset-top,0px) + 132px);max-width:92vw}.cz-toasts{top:calc(env(safe-area-inset-top,0px) + 168px)}}
-.cz-pets{position:absolute;left:calc(env(safe-area-inset-left,0px) + 6px);top:calc(env(safe-area-inset-top,0px) + 128px);display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:6}
+.cz-pets{position:absolute;left:var(--edge-l,8px);top:calc(env(safe-area-inset-top,0px) + 128px);display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:6}
 .cz-chip{pointer-events:auto;position:relative;width:46px;height:50px;border-radius:14px;border:3px solid #2a0b5c;background:linear-gradient(#fff6e0,#ffd9a0);box-shadow:0 3px 0 #2a0b5c;padding:0;cursor:pointer;touch-action:manipulation}
 .cz-chip .cz-chipface{width:36px;height:45px;position:absolute;left:2px;bottom:0}
 .cz-chip i{position:absolute;right:-10px;top:-8px;width:26px;height:26px}
@@ -91,7 +91,7 @@ const CSS = `
 .cz-pets.cz-teach .cz-chip:first-child{animation:czTeach .7s infinite alternate;outline:3px solid #3effa0;outline-offset:2px}
 .cz-pets.cz-teach .cz-chip:first-child::after{content:'';position:absolute;left:52px;top:14px;border:10px solid transparent;border-right:14px solid #3effa0;filter:drop-shadow(0 2px 0 #2a0b5c)}
 @keyframes czTeach{to{transform:translateX(4px) scale(1.06)}}
-.cz-cmd{position:absolute;left:calc(env(safe-area-inset-left,0px) + 62px);top:calc(env(safe-area-inset-top,0px) + 112px);background:#fffbe8;border:3px solid #2a0b5c;border-radius:16px;box-shadow:0 4px 0 #2a0b5c;padding:6px;pointer-events:auto;color:#2a0b5c;z-index:9;animation:czToastIn .2s}
+.cz-cmd{position:absolute;left:calc(var(--edge-l,8px) + 56px);top:calc(env(safe-area-inset-top,0px) + 112px);background:#fffbe8;border:3px solid #2a0b5c;border-radius:16px;box-shadow:0 4px 0 #2a0b5c;padding:6px;pointer-events:auto;color:#2a0b5c;z-index:9;animation:czToastIn .2s}
 .cz-cmdh{font-size:12px;font-weight:700;padding:0 4px 4px}
 .cz-cmdg{display:grid;grid-template-columns:repeat(3,64px);gap:5px}
 .cz-cmdb{font:inherit;border:2px solid #2a0b5c;border-radius:12px;background:#fff;color:#2a0b5c;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px 2px 3px;font-size:11px;font-weight:700;line-height:1.05;min-height:54px;cursor:pointer;touch-action:manipulation}
