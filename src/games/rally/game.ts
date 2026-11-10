@@ -277,7 +277,7 @@ class RallyGame {
       <button class="rl-ibtn rl-pause" aria-label="${t('rally.pause', 'Pausar')}">${icon('pause', { size: 26 })}</button>
       <button class="rl-ibtn rl-emote-btn" aria-label="${t('rally.emotes', 'Recadinhos')}"></button>
       <div class="rl-tray"></div>
-      <div class="rl-pedals">
+      <div class="rl-pedals${controls.lefty ? ' lefty' : ''}">
         <div class="rl-pd brake"><span>${t('rally.hint.brake', 'Segure: frear')}</span>${icon('hand-tap', { size: 40 })}</div>
         <div class="rl-pd gas"><span>${t('rally.hint.gas', 'Segure: acelerar')}</span>${icon('hand-tap', { size: 40 })}</div>
       </div>`;
@@ -1250,8 +1250,10 @@ class RallyGame {
     // pedais
     const pr = Math.min(56, w * 0.13);
     const by = h - pr - 28 - this.safeB;
-    this.drawPedal(x, 24 + pr, by, pr, false, this.inp.brake);
-    this.drawPedal(x, w - 24 - pr, by, pr, true, this.inp.gas);
+    const L = 24 + pr,
+      Rx = w - 24 - pr; // modo canhoto: acelerar à esquerda
+    this.drawPedal(x, controls.lefty ? Rx : L, by, pr, false, this.inp.brake);
+    this.drawPedal(x, controls.lefty ? L : Rx, by, pr, true, this.inp.gas);
   }
 
   private drawPedal(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, gas: boolean, on: boolean): void {

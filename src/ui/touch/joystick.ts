@@ -108,12 +108,21 @@ export class Joystick implements TouchClaimer {
     Object.assign(this.knob.style, { width: k * 2 + 'px', height: k * 2 + 'px', left: -k + 'px', top: -k + 'px' });
     if (this.pid < 0) this.placeHome();
   };
-  private placeHome(): void {
+  private homeX = 0;
+  private homeY = 0;
+  /** posição de descanso (Ajustes → Controles → Posição), sempre bem dentro da tela */
+  private calcHome(): void {
     const r = this.surface.getBoundingClientRect();
-    const m = this.R + 28;
-    const x = this.side === 'left' ? m : r.width - m;
-    this.el.style.transform = `translate(${x}px,${r.height - m - 12}px)`;
-    this.el.classList.toggle('idle', this.o.hint && this.enabled);
+    const R = this.R,
+      p = controls.joyPos;
+    const fx = Math.max(R + 18, Math.min(r.width / 2 - R * 0.5, p.x * r.width));
+    this.homeX = this.side === 'left' ? fx : r.width - fx;
+    this.homeY = Math.max(r.height * 0.3 + R, Math.min(r.height - R - 18, p.y * r.height));
+  }
+  private placeHome(): void {
+    this.calcHome();
+    this.el.style.transform = `translate(${this.homeX}px,${this.homeY}px)`;
+    this.el.classList.toggle('idle', (this.o.hint || controls.joyMode === 'fixed') && this.enabled);
   }
   wants(e: PointerEvent, x: number, y: number, rect: DOMRect): boolean {
     if (!this.enabled || this.pid >= 0) return false;
@@ -127,14 +136,26 @@ export class Joystick implements TouchClaimer {
     this.pid = e.pointerId;
     this.ox = x;
     this.oy = y;
+    // Fixo: usa a base parada se o polegar caiu nela; caiu longe → base vem até o dedo
+    // (nunca começa "puxando" para o lado errado).
+    let fixed = false;
+    if (controls.joyMode === 'fixed') {
+      this.calcHome();
+      if (Math.hypot(x - this.homeX, y - this.homeY) < this.R * 1.1) {
+        this.ox = this.homeX;
+        this.oy = this.homeY;
+        fixed = true;
+      }
+    }
     this.tx = this.ty = 0;
     this.vis.reset();
     this.kx = this.ky = 0;
-    this.el.style.transform = `translate(${x}px,${y}px)`;
+    this.el.style.transform = `translate(${this.ox}px,${this.oy}px)`;
     this.el.classList.add('on');
     this.el.classList.remove('idle');
     this.last = performance.now();
     if (this.o.haptic) tap('light');
+    if (fixed) this.move(e, x, y);
     this.loop();
   }
   move(e: PointerEvent, x: number, y: number): void {
@@ -182,8 +203,11 @@ export class Joystick implements TouchClaimer {
       else this.vis.step(0, 0, dt || 1 / 60);
       this.knob.style.transform = `translate(${this.vis.x.toFixed(1)}px,${this.vis.y.toFixed(1)}px)`;
       this.read();
-      const settled = this.pid < 0 && Math.abs(this.vis.x) + Math.abs(this.vis.y) < 0.3 && this.out.x === 0 && this.out.y === 0;
+      const settled = this.pid < 0 && Math.abs(this.vis.x) + Math.abs(this.vis.y) < 0.3 && Math.abs(this.out.x) + Math.abs(this.out.y) < 0.01;
       if (settled) {
+        this.out.reset();
+        this.vis.reset();
+        this.knob.style.transform = '';
         this.lastVis = 0;
         this.placeHome();
         return;

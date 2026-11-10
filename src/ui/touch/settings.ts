@@ -4,12 +4,19 @@
  */
 import { save, persist } from '../../core/storage';
 
-export type Sens = 'low' | 'mid' | 'high';
 export type JoySize = 'S' | 'M' | 'L';
+export type JoyMode = 'float' | 'fixed';
 
 export interface ControlPrefs {
-  /** sensibilidade do olhar (arrastar a câmera) */
-  sens: Sens;
+  /** sensibilidade do olhar (multiplicador; 1 = padrão, 0.4..2.5) */
+  lookSens: number;
+  /** 'float' (padrão): a base aparece onde o polegar toca; 'fixed': base parada em joyPos */
+  joyMode: JoyMode;
+  /**
+   * posição de descanso/fixa do joystick, em fração da tela (x medido a partir da borda do lado
+   * do joystick — espelha sozinho no modo canhoto). Padrão {x:.2, y:.78}: bem dentro da tela.
+   */
+  joyPos: { x: number; y: number };
   /** inverter eixo vertical do olhar */
   invertY: boolean;
   /** tamanho do joystick */
@@ -21,17 +28,27 @@ export interface ControlPrefs {
 }
 
 const KEY = 'bw-controls';
-const DEF: ControlPrefs = { sens: 'mid', invertY: false, joySize: 'M', lefty: false, gyro: false };
+const DEF: ControlPrefs = { lookSens: 1, joyMode: 'float', joyPos: { x: 0.2, y: 0.78 }, invertY: false, joySize: 'M', lefty: false, gyro: false };
 
 function load(): ControlPrefs {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEF, ...(JSON.parse(raw) as Partial<ControlPrefs>) };
+    if (raw) {
+      const o = JSON.parse(raw) as Partial<ControlPrefs> & { sens?: 'low' | 'mid' | 'high' };
+      // versão antiga: sensibilidade em 3 degraus
+      if (o.lookSens == null && o.sens) o.lookSens = { low: 0.6, mid: 1, high: 1.6 }[o.sens];
+      delete o.sens;
+      const p = { ...DEF, ...o };
+      p.lookSens = Math.max(0.4, Math.min(2.5, Number(p.lookSens) || 1));
+      if (!p.joyPos || !(p.joyPos.x >= 0 && p.joyPos.x <= 1 && p.joyPos.y >= 0 && p.joyPos.y <= 1)) p.joyPos = { ...DEF.joyPos };
+      return p;
+    }
   } catch {
     /* sem storage */
   }
-  return { ...DEF };
+  return { ...DEF, joyPos: { ...DEF.joyPos } };
 }
+export const CONTROL_DEFAULTS: Readonly<ControlPrefs> = DEF;
 
 export const controls: ControlPrefs = load();
 const subs = new Set<(p: ControlPrefs) => void>();
@@ -52,7 +69,12 @@ export function onControlsChange(f: (p: ControlPrefs) => void): () => void {
   return () => subs.delete(f);
 }
 
-export const SENS_MUL: Record<Sens, number> = { low: 0.6, mid: 1, high: 1.6 };
+/** API simples para os jogos: lê as preferências atuais (objeto vivo — não altere). */
+export function getControlPrefs(): Readonly<ControlPrefs> {
+  return controls;
+}
+/** Igual a onControlsChange (nome alternativo citado na documentação). */
+export const onControlPrefs = onControlsChange;
 export const JOY_MUL: Record<JoySize, number> = { S: 0.82, M: 1, L: 1.22 };
 
 export function hapticsOn(): boolean {

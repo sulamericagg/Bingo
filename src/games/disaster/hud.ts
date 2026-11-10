@@ -10,7 +10,7 @@ import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
 import { DISASTERS, type DisasterId } from './scenarios';
-import { bigMoment, clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
+import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
 const CSS = `
@@ -219,6 +219,9 @@ export class Hud {
     // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
     if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + DISASTERS[g.sc.disasters[0]].hint() : DISASTERS[g.sc.disasters[0]].hint());
     if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
+    // objetivo atual num chip minúsculo no canto (fica até a rodada acabar)
+    if (p === 'prepare') objective(g.finale ? t('dz.tip.bunker', 'Siga para a direita e entre no bunker!') : DISASTERS[g.sc.disasters[0]].hint(), { icon: 'warning' });
+    else if (p === 'end' || p === 'intro') objective(null);
   }
 
   tick(_dt = 1 / 60): void {

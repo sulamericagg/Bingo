@@ -534,3 +534,6 @@
   top: calc(104px + var(--rl-safe));
   pointer-events: auto;
 }
+.rl-pedals.lefty {
+  flex-direction: row-reverse;
+}

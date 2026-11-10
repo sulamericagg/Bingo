@@ -1,8 +1,11 @@
 /**
  * Avisos compactos e fora do caminho (feedback dos testadores: "as mensagens tapam a visão").
  *
- *  notify(texto, {icon})    → toast pequeno no TOPO (abaixo do HUD), máx. 2 visíveis, fila + sem duplicados,
- *                              ≤ 2 linhas (corta com …), some em ~2,2 s.
+ *  notify(texto, {icon})    → pílula pequena no CANTINHO superior esquerdo (abaixo do HUD), semitransparente,
+ *                              máx. 2 visíveis, fila + sem duplicados, ≤ 2 linhas (corta com …), some em ~3,2 s.
+ *                              setNotifyAlign('center') centraliza (para jogos com HUD no canto esquerdo).
+ *  objective(texto, {icon}) → chip minúsculo e persistente (canto superior direito) com o objetivo atual;
+ *                              objective(null) esconde.
  *  bigMoment(texto, {...})  → "momento grande" (subiu de nível, recorde): faixa curta no topo (≤ 1,2 s)
  *                              ou entrada pela lateral ({side:true}). Nunca no centro durante o jogo.
  *  tipChip(texto, {anchor}) → dica pequena dispensável, perto do controle (ou no topo).
@@ -15,18 +18,23 @@ export interface NotifyOptions {
   icon?: IconName;
   /** cor do realce */
   kind?: 'info' | 'good' | 'warn' | 'bad';
-  /** duração (ms). Padrão 2200, limitada a 1200..3500 */
+  /** duração (ms). Padrão 3200, limitada a 1500..4500 */
   ms?: number;
   /** chave de deduplicação (padrão: o próprio texto) */
   key?: string;
 }
 
 const CSS = `
-#nt-root{position:fixed;left:0;right:0;top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9500;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;padding:0 12px}
-.nt{display:flex;align-items:center;gap:7px;max-width:min(78vw,340px);padding:5px 12px 5px 8px;border-radius:14px;background:rgba(16,6,40,.82);color:#fff;font:600 13px/1.25 var(--font,'Fredoka',system-ui,sans-serif);box-shadow:0 3px 10px rgba(0,0,0,.3),inset 0 0 0 1.5px var(--nt-c,rgba(255,255,255,.22));transform:translateY(-8px);opacity:0;transition:transform .18s ease-out,opacity .18s;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+#nt-root{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9500;display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;max-width:min(62vw,300px)}
+#nt-root.center{left:0;right:0;max-width:none;align-items:center;padding:0 12px}
+.nt{display:flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px 4px 7px;border-radius:12px;background:rgba(16,6,40,.62);color:#fff;font:600 12.5px/1.25 var(--font,'Fredoka',system-ui,sans-serif);box-shadow:0 2px 6px rgba(0,0,0,.22),inset 0 0 0 1.5px var(--nt-c,rgba(255,255,255,.18));transform:translateX(-10px);opacity:0;transition:transform .18s ease-out,opacity .25s;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .nt.on{transform:none;opacity:1}
-.nt.out{opacity:0;transform:translateY(-6px)}
-.nt svg,.nt img{width:18px;height:18px;flex:none}
+.nt.out{opacity:0;transform:translateX(-8px)}
+.nt svg,.nt img{width:16px;height:16px;flex:none}
+.nt-obj{position:fixed;right:calc(10px + env(safe-area-inset-right,0px));top:calc(var(--nt-top,56px) + env(safe-area-inset-top,0px));z-index:9499;display:flex;align-items:center;gap:5px;max-width:min(46vw,220px);padding:3px 9px 3px 6px;border-radius:999px;background:rgba(16,6,40,.55);color:#fff;font:600 11.5px/1.2 var(--font,'Fredoka',system-ui,sans-serif);pointer-events:none;opacity:0;transition:opacity .2s}
+.nt-obj.on{opacity:1}
+.nt-obj span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nt-obj svg{width:14px;height:14px;flex:none}
 .nt span{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
 .nt b.n{font-size:11px;opacity:.75;margin-left:2px}
 .nt.good{--nt-c:#4fd67a}.nt.warn{--nt-c:#ffc94a}.nt.bad{--nt-c:#ff6b8a}
@@ -80,7 +88,7 @@ function clip(s: string): string {
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 function dur(o: NotifyOptions): number {
-  return Math.max(1200, Math.min(3500, o.ms ?? 2200));
+  return Math.max(1500, Math.min(4500, o.ms ?? 3200));
 }
 
 function render(it: Item): void {
@@ -243,4 +251,31 @@ export function clearNotify(): void {
   chips.forEach((c) => c.remove());
   chips.clear();
   bigEl?.remove();
+  objEl?.remove();
+  objEl = null;
+  root?.classList.remove('center');
+}
+
+/** Alinhamento dos avisos: 'left' (padrão, cantinho) ou 'center'. */
+export function setNotifyAlign(a: 'left' | 'center'): void {
+  ensure().classList.toggle('center', a === 'center');
+}
+
+let objEl: HTMLDivElement | null = null;
+/** Chip pequeno e persistente com o objetivo atual (canto superior direito). `null` esconde. */
+export function objective(text: string | null, o: { icon?: IconName } = {}): void {
+  if (typeof document === 'undefined') return;
+  if (!text) {
+    objEl?.classList.remove('on');
+    return;
+  }
+  ensure();
+  if (!objEl || !objEl.isConnected) {
+    objEl = document.createElement('div');
+    objEl.className = 'nt-obj';
+    document.body.appendChild(objEl);
+  }
+  objEl.innerHTML = (o.icon ? icon(o.icon, { size: 14 }) : '') + `<span>${esc(clip(text))}</span>`;
+  void objEl.offsetWidth;
+  objEl.classList.add('on');
 }

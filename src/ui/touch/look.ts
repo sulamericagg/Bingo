@@ -8,7 +8,7 @@
  */
 import { ensureTouchCss } from './css';
 import { Gyro } from './gyro';
-import { controls, onControlsChange, SENS_MUL } from './settings';
+import { controls, onControlsChange } from './settings';
 import { surfaceOf, type TouchClaimer } from './surface';
 
 export interface LookOptions {
@@ -148,7 +148,7 @@ export class LookDrag implements TouchClaimer {
     this.py -= oy;
     if (Math.abs(this.px) < 0.01) this.px = 0;
     if (Math.abs(this.py) < 0.01) this.py = 0;
-    const s = this.o.baseSens * SENS_MUL[controls.sens];
+    const s = this.o.baseSens * controls.lookSens;
     let yaw = ox * s,
       pitch = oy * s * (controls.invertY ? -1 : 1);
     if (this.gyro) {
