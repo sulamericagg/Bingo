@@ -66,6 +66,11 @@ class Sfx {
     this.ctx?.resume().catch(() => {});
   }
 
+  /** saída de efeitos (respeita "Som") para sons sintetizados fora daqui (intro 3D) */
+  fxOut(): { ctx: AudioContext; out: AudioNode; rev: AudioNode } | null {
+    return this.ctx && save.sound ? { ctx: this.ctx, out: this.sfxBus, rev: this.reverb } : null;
+  }
+
   setIntensity(v: number): void {
     this.intensity = v;
   }

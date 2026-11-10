@@ -23,6 +23,7 @@ import { renderSkinPreview } from '../game/preview';
 import { skinById } from '../game/skins';
 import { icon, iconDataUri, type IconName } from '../ui/icons';
 import { bestLabel } from './bests';
+import { introEnabled, setIntroEnabled, startIntro } from './intro-hook';
 import { listGames, listPanels, type HubTheme, type MiniGameDef, type MiniGameHandle } from './registry';
 
 /* ============================== tipos públicos ============================== */
@@ -179,6 +180,13 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
     }
   }, 4000);
   syncOrbit();
+  // intro 3D por cima enquanto o jogo carrega por baixo (o jogo fica pausado até ela acabar)
+  const intro = startIntro(hostRoot, def, opts.getTier());
+  let introOn = !!intro;
+  intro?.done.then(() => {
+    introOn = false;
+    if (hostActive && hostDef === def && !hostConfirm.classList.contains('on')) handle?.resume?.();
+  });
   try {
     const h = await def.launch(root, () => closeHost());
     if (!hostActive || hostDef !== def) {
@@ -186,6 +194,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
       return;
     }
     handle = h;
+    if (introOn) h.pause?.();
     hideLoader();
   } catch (e) {
     console.warn('[hub] falha ao abrir', def.id, e);
@@ -257,6 +266,11 @@ export function initHub(o: HubOptions): void {
   (stage.querySelector('.hub-arrow.next') as HTMLElement).onclick = () => go(idx + 1);
   (document.getElementById('hub-profile') as HTMLElement).onclick = () => profileClick();
   bindSwipe();
+  const intro = document.getElementById('set-intro') as HTMLInputElement | null;
+  if (intro) {
+    intro.checked = introEnabled();
+    intro.onchange = () => setIntroEnabled(intro.checked);
+  }
   window.addEventListener('keydown', (e) => {
     if (!hubVisible() || document.querySelector('.modal-screen.on')) return;
     const tag = (e.target as HTMLElement)?.tagName;
