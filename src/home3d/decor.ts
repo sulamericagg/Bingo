@@ -14,11 +14,11 @@ import { t } from '../i18n';
 import { drawFurn } from '../home/render-room';
 import { furnById } from '../home/catalog';
 import {
-  canUse, dimsOf, FLOOR_STYLES, itemColor, itemToPlace, KINDS, kindOf, PALETTE, placeItemXY, quarterOf, setQuarter, surface, WALL_STYLES, type Kind,
+  canUse, dimsOf, FLOOR_STYLES, ROOM_D, ROOM_W, itemColor, itemToPlace, KINDS, kindOf, PALETTE, placeItemXY, quarterOf, setQuarter, surface, WALL_STYLES, type Kind,
 } from './adapter';
 import type { Engine, ItemRec, RoomRec } from './engine';
 import { Ghost } from './ghost';
-import { solveFloor, solveWall } from './placer';
+import { GRID, solveFloor, solveWall } from './placer';
 import { sfx } from './sfx';
 import type { Cost3D, RoomItem3D, Shop3D } from './types';
 import { el, esc, ICON } from './ui';
@@ -74,6 +74,8 @@ export class Decor {
   mv: Moving | null = null;
   readonly ghost: Ghost;
   private selRing: THREE.Mesh;
+  /** grade de 25 cm no cômodo enquanto move (mostra o encaixe) */
+  private grid: THREE.LineSegments;
   private popup: HTMLDivElement;
   private bar: HTMLDivElement;
   readonly drawer: HTMLDivElement;
@@ -98,6 +100,15 @@ export class Decor {
     this.selRing.renderOrder = 5;
     this.selRing.visible = false;
     eng.scene.add(this.selRing);
+    // linhas nas coordenadas locais do cômodo (as mesmas da grade de encaixe)
+    const pts: number[] = [];
+    for (let x = GRID * 2; x < ROOM_W - 0.1; x += GRID) pts.push(x, 0, 0.12, x, 0, ROOM_D - 0.12);
+    for (let z = GRID * 2; z < ROOM_D - 0.1; z += GRID) pts.push(0.12, 0, z, ROOM_W - 0.12, 0, z);
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    this.grid = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.16, depthWrite: false }));
+    this.grid.visible = false;
+    eng.scene.add(this.grid);
     this.popup = el('div', 'h3-pop');
     this.bar = el('div', 'h3-mbar');
     this.drawer = el('div', 'h3-drawer');
@@ -325,14 +336,14 @@ export class Decor {
     return KINDS[kindOf(d.id).kind].wall || KINDS[kindOf(d.id).kind].ceil ? 0 : (quarterOf(d) * Math.PI) / 2;
   }
   /** mira com um raio (centro da tela no FPS, dedo na vista aérea) */
-  aimRay(ray: THREE.Ray, opts: { minD?: number; maxD?: number } = {}): void {
+  aimRay(ray: THREE.Ray, opts: { minD?: number; maxD?: number; room?: RoomRec | null } = {}): void {
     const m = this.mv;
     if (!m) return;
     const info = KINDS[kindOf(m.data.id).kind];
     if (info.wall) {
       // parede do fundo do cômodo onde está (ou o que está sob a mira)
       const fp = ray.intersectPlane(PLANE, V.clone());
-      const room = (fp && this.eng.roomAt(fp.x, fp.z)) || m.room;
+      const room = opts.room ?? ((fp && this.eng.roomAt(fp.x, fp.z)) || m.room);
       const n = room.walls[0].normal;
       const p0 = room.group.localToWorld(new THREE.Vector3(0, 0, 0.12));
       const hit = ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n, p0), new THREE.Vector3());
@@ -353,13 +364,16 @@ export class Decor {
     const d = Math.hypot(dx, dz);
     if (d < minD) p.set(ray.origin.x + flat.x * minD, 0, ray.origin.z + flat.z * minD);
     else if (d > maxD) p.set(ray.origin.x + (dx / d) * maxD, 0, ray.origin.z + (dz / d) * maxD);
-    const room = this.eng.roomAt(p.x, p.z) ?? m.room;
+    const room = opts.room ?? this.eng.roomAt(p.x, p.z) ?? m.room;
     const l = room.group.worldToLocal(p.clone());
     this.aimLocal(room, l.x, 0, l.z);
   }
+  private lastKey = '';
+  private lastMv: Moving | null = null;
   aimLocal(room: RoomRec, x: number, y: number, z: number): void {
     const m = this.mv;
     if (!m) return;
+    if (m !== this.lastMv) (this.lastMv = m), (this.lastKey = '');
     m.want = { room, x, y, z };
     const info = KINDS[kindOf(m.data.id).kind];
     const self = m.it;
@@ -379,6 +393,10 @@ export class Decor {
       m.z = pl.z;
       m.ok = true;
     } else {
+      // mesma casa da grade de antes: nada a recalcular (economiza no celular fraco)
+      const key = room.id + ':' + Math.round(x / GRID) + ':' + Math.round(z / GRID) + ':' + quarterOf(m.data);
+      if (key === this.lastKey) return;
+      this.lastKey = key;
       const s = solveFloor(room, this.eng.items, m.data, self, x, z);
       m.room = room;
       m.x = s.x;
@@ -672,6 +690,13 @@ export class Decor {
   /* ---------------- laço ---------------- */
   update(dt: number): void {
     this.ghost.update(dt);
+    const mv = this.mv;
+    const info = mv ? KINDS[kindOf(mv.data.id).kind] : null;
+    this.grid.visible = !!mv && !info!.wall && !info!.ceil;
+    if (mv) {
+      this.grid.position.copy(mv.room.group.position).setY(0.008);
+      this.grid.rotation.y = mv.room.rotY;
+    }
     if (this.sel) {
       if (!this.eng.items.includes(this.sel)) this.select(null);
       else {
@@ -690,7 +715,9 @@ export class Decor {
   dispose(): void {
     this.reset();
     this.ghost.dispose();
-    this.eng.scene.remove(this.selRing);
+    this.eng.scene.remove(this.selRing, this.grid);
+    this.grid.geometry.dispose();
+    (this.grid.material as THREE.Material).dispose();
     this.selRing.geometry.dispose();
     (this.selRing.material as THREE.Material).dispose();
     for (const e of [this.popup, this.bar, this.drawer]) e.remove();

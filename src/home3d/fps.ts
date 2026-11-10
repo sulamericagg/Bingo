@@ -652,7 +652,7 @@ export class Fps {
     // fantasma segue a mira (centro da tela) no chão
     if (this.decor?.mv) {
       this.ray.setFromCamera(new THREE.Vector2(0, 0), cam);
-      this.decor.aimRay(this.ray.ray, { minD: 1.1, maxD: 4.2 });
+      this.decor.aimRay(this.ray.ray, { minD: 1.1, maxD: 4.2, room: this.eng.roomAt(this.body.position.x, this.body.position.z) });
     }
     // limpar / pintar segurando
     const holdClean = this.acts.held.has('clean');

@@ -40,7 +40,6 @@ export class Aerial {
   private mid0 = { x: 0, y: 0 };
   private dragGhost: THREE.Vector3 | null = null;
   private ray = new THREE.Raycaster();
-  private grid: THREE.GridHelper;
   private tiles: { mesh: THREE.Mesh; row: number; col: number; id: string; price: number }[] = [];
   private tileMat = new Map<number, THREE.MeshBasicMaterial>();
   private tileGeo = new THREE.PlaneGeometry(ROOM_W - 0.4, ROOM_D - 0.4);
@@ -57,13 +56,6 @@ export class Aerial {
     readonly layer: HTMLElement,
     readonly decor: Decor,
   ) {
-    this.grid = new THREE.GridHelper(ROOM_W, 24, 0xffffff, 0xffffff);
-    const gm = this.grid.material as THREE.LineBasicMaterial;
-    gm.transparent = true;
-    gm.opacity = 0.14;
-    gm.depthWrite = false;
-    this.grid.visible = false;
-    eng.scene.add(this.grid);
     this.ui = el('div', 'h3-layer');
     this.ui.style.pointerEvents = 'none';
     this.left = el('div', 'h3-left');
@@ -127,7 +119,6 @@ export class Aerial {
       for (const w of r.walls) (w.cut = 1), (w.holder.scale.y = 1);
     }
     for (const it of this.eng.items) if (it.info.wall) it.obj.visible = it.state !== 'broken';
-    this.grid.visible = false;
     for (const tl of this.tiles) tl.mesh.visible = false;
     this.layer.removeEventListener('pointerdown', this.down);
     window.removeEventListener('pointermove', this.move);
@@ -404,15 +395,23 @@ export class Aerial {
     }
     cam.updateMatrixWorld();
     const leaving = !!this.flyTo;
-    // paredes: de longe, todas baixinhas (vê todos os cômodos); de perto, só as viradas para a câmera
+    // paredes: só ficam altas as do FUNDO (atrás do ponto que a câmera olha e viradas para ela);
+    // todas as outras baixam (casa de bonecas: dá para ver dentro de todos os cômodos)
     const far = this.dist > 11;
     const dx = this.target.x - cam.position.x,
       dz = this.target.z - cam.position.z;
     const dl = Math.hypot(dx, dz) || 1;
+    const vx = dx / dl,
+      vz = dz / dl;
     for (const r of this.eng.rooms)
       for (const w of r.walls) {
-        const facing = (w.normal.x * dx + w.normal.z * dz) / dl;
-        const goalCut = leaving ? 1 : far ? (facing < -0.3 ? 0.45 : 0.14) : facing > 0.3 ? 0.12 : 1;
+        const facing = w.normal.x * vx + w.normal.z * vz;
+        const half = w.side === 'n' || w.side === 's' ? ROOM_D / 2 : ROOM_W / 2;
+        const wx = r.center.x - w.normal.x * half,
+          wz = r.center.z - w.normal.z * half;
+        const beyond = (wx - this.target.x) * vx + (wz - this.target.z) * vz > (far ? 2 : 0.5);
+        const keep = beyond && facing < -0.3;
+        const goalCut = leaving ? 1 : keep ? (far ? 0.55 : 1) : 0.13;
         w.cut += (goalCut - w.cut) * Math.min(1, dt * 7);
         w.holder.scale.y = w.cut;
       }
@@ -420,13 +419,7 @@ export class Aerial {
       if (!it.info.wall) continue;
       it.obj.visible = it.state !== 'broken' && it.room.walls[0].cut > 0.6 && !(this.decor.mv?.it === it);
     }
-    // grade no cômodo do item que está sendo movido
     const mv = this.decor.mv;
-    this.grid.visible = !!mv && !leaving;
-    if (mv) {
-      this.grid.position.set(mv.room.center.x, 0.006, mv.room.center.z);
-      this.grid.rotation.y = mv.room.rotY;
-    }
     for (const tl of this.tiles) {
       tl.mesh.visible = !leaving && !mv;
       tl.mesh.position.y = 0.02 + Math.sin(this.eng.time * 2 + tl.col) * 0.01;
@@ -435,9 +428,6 @@ export class Aerial {
   }
   dispose(): void {
     this.exit();
-    this.eng.scene.remove(this.grid);
-    this.grid.geometry.dispose();
-    (this.grid.material as THREE.Material).dispose();
     for (const tl of this.tiles) this.eng.scene.remove(tl.mesh);
     this.tileGeo.dispose();
     for (const m of this.tileMat.values()) {

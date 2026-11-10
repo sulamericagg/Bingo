@@ -29,7 +29,7 @@ export class Ghost {
   private t = 0;
 
   constructor(readonly eng: Engine) {
-    this.matSolid = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.62, depthWrite: false, emissive: OK_COL.clone(), emissiveIntensity: 0.18 });
+    this.matSolid = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.74, depthWrite: false, emissive: OK_COL.clone(), emissiveIntensity: 0.2 });
     this.foot = new THREE.Mesh(eng.planeGeo, this.matFoot);
     this.foot.rotation.x = -Math.PI / 2;
     this.foot.renderOrder = 4;
@@ -51,7 +51,7 @@ export class Ghost {
       const old = m.material as THREE.Material & { map?: THREE.Texture | null; vertexColors?: boolean };
       if (old.map) {
         let fm = this.matFace.get(old.map);
-        if (!fm) this.matFace.set(old.map, (fm = new THREE.MeshBasicMaterial({ map: old.map, transparent: true, opacity: 0.62, depthWrite: false, toneMapped: false })));
+        if (!fm) this.matFace.set(old.map, (fm = new THREE.MeshBasicMaterial({ map: old.map, transparent: true, opacity: 0.74, depthWrite: false, toneMapped: false })));
         m.material = fm;
       } else m.material = this.matSolid;
       m.castShadow = m.receiveShadow = false;
@@ -101,7 +101,7 @@ export class Ghost {
     this.valid = v;
     const c = v ? OK_COL : BAD_COL;
     this.matSolid.emissive.copy(c);
-    this.matSolid.emissiveIntensity = v ? 0.16 : 0.55;
+    this.matSolid.emissiveIntensity = v ? 0.2 : 0.55;
     this.matFoot.color.copy(v ? OK_COL : BAD_COL);
     this.matRing.color.set(v ? '#ffffff' : '#ff5a6a');
   }
