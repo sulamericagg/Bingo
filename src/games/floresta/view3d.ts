@@ -231,6 +231,7 @@ class View3D implements View {
   private flies: Fly[] = [];
   // primeira pessoa
   private vmRoot = new THREE.Group();
+  private portrait = false;
   private vmTool = new THREE.Group();
   private vmToolMesh: THREE.Group | null = null;
   private vmTip: THREE.Object3D | null = null;
@@ -837,7 +838,15 @@ class View3D implements View {
         _q.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
         _m.compose(_v.set(b.position.x, b.position.y, b.position.z), _q, _s.set(1, 1, 1));
         if (b.sleepState === CANNON.Body.SLEEPING && d2 > 196) this.dropLogBody(i);
-        else this.logHits(i, b, dt);
+        else {
+          this.logHits(i, b, dt);
+          // rolando: poeirinha e folhas
+          const sp2 = b.velocity.x * b.velocity.x + b.velocity.z * b.velocity.z;
+          if (sp2 > 4 && b.position.y < gy + 0.5 && Math.random() < 0.35) {
+            _c.set(Math.random() < 0.5 ? '#e6d2aa' : '#9ad86a');
+            this.emitP(b.position.x, gy + 0.1, b.position.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.6, 0.6);
+          }
+        }
       } else {
         if (this.lqSet[i]) _q.set(this.lq[i * 4], this.lq[i * 4 + 1], this.lq[i * 4 + 2], this.lq[i * 4 + 3]);
         else _q.setFromEuler(_e.set(0, -l.yaw, 0));
@@ -846,7 +855,7 @@ class View3D implements View {
       if (Math.abs(dx) < VIEW_R && (!l.ghost || l.age < 4)) this.drawLog(_m, l.sp, l.rare);
       // funil: entrou → vira fila da serraria
       const fx = l.x - INTAKE_X;
-      if (fx * fx + l.z * l.z < 2.4 && l.y > 1.1 && l.y < 4.5 && !l.ghost) {
+      if (fx * fx + l.z * l.z < 2.9 && l.y > 1.1 && l.y < 5 && !l.ghost) {
         sim.feed(l.val, l.sp | (l.rare << 4));
         l.on = false;
         this.burst(14, INTAKE_X, 2.8, 0, 3, '#ffd34a', 0.8, 3, 1);
@@ -1157,12 +1166,12 @@ class View3D implements View {
     let ry = 0.1;
     let rz = 0.3;
     if (kind !== 'axe') {
-      px = 0.28;
-      rx = 0.05;
-      rz = 0.04;
-      ry = 0.1;
-      py = -0.24;
-      pz = -0.7;
+      px = 0.3;
+      rx = 0.14;
+      rz = -0.1;
+      ry = 0.42;
+      py = -0.27;
+      pz = -0.68;
     }
     if (chopping) {
       const ph = Math.max(0, Math.min(1, 1 - m.swingT * TOOLS[Math.min(TOOLS.length - 1, sim.s.tool)].rate));
@@ -1189,12 +1198,12 @@ class View3D implements View {
       } else {
         // serra/laser: empurra para a frente e treme
         const j = kind === 'saw' ? 0.012 : 0.004;
-        px = 0.2 + (Math.random() - 0.5) * j;
-        py = -0.24 + (Math.random() - 0.5) * j;
+        px = 0.24 + (Math.random() - 0.5) * j;
+        py = -0.25 + (Math.random() - 0.5) * j;
         pz = -0.72 - (this.aimTree >= 0 ? 0.08 : 0) - Math.sin(ph * Math.PI) * 0.02;
-        rx = 0.02;
-        rz = 0.0;
-        ry = 0.05;
+        rx = 0.1;
+        rz = -0.05;
+        ry = 0.3;
       }
     }
     // pegar/jogar/chutar
@@ -1282,7 +1291,7 @@ class View3D implements View {
     this.wheel.visible = this.driving && this.vehLvl >= 2;
     if (this.driving) {
       const w = this.wheel;
-      w.position.set(0, -0.44, -0.72);
+      w.position.set(this.portrait ? 0.19 : 0, this.portrait ? -0.5 : -0.44, -0.72);
       w.scale.setScalar(0.8);
       w.rotation.set(-0.9, 0, -this.vSteer * 1.6);
       this.handR.visible = this.handL.visible = true;
@@ -1498,7 +1507,34 @@ class View3D implements View {
       const x = sim.me.x + fx * 0.9;
       const z = sim.me.z + fz * 0.9;
       const p = 11;
-      this.spawnLog(h, x, this.camY - 0.25 + fy * 0.5, z, fx * p + sim.me.vx * 0.5, fy * p + 4.5, fz * p + sim.me.vz * 0.5, this.yaw + Math.PI / 2);
+      const y = this.camY - 0.25 + fy * 0.5;
+      // mira assistida: funil ou caçamba à frente recebem a tora num arco bonito
+      let tx = 0;
+      let ty = 0;
+      let tz = 0;
+      let assist = false;
+      const hx = Math.sin(this.yaw);
+      const hz = Math.cos(this.yaw);
+      const tryT = (ax: number, ay: number, az: number, maxD: number) => {
+        const dx = ax - x;
+        const dz = az - z;
+        const d = Math.hypot(dx, dz);
+        if (assist || d > maxD || d < 0.3 || (dx * hx + dz * hz) / d < 0.82) return;
+        assist = true;
+        tx = ax;
+        ty = ay;
+        tz = az;
+      };
+      tryT(INTAKE_X, 3.3, 0, 11);
+      if (this.veh && this.load.length < this.capVeh()) {
+        this.vehicleBedWorld(0, _v);
+        tryT(_v.x, _v.y + 0.3, _v.z, 9);
+      }
+      if (assist) {
+        const d = Math.hypot(tx - x, tz - z);
+        const tf = Math.max(0.45, Math.min(1, d / 8));
+        this.spawnLog(h, x, y, z, (tx - x) / tf, (ty - y) / tf + 10 * tf, (tz - z) / tf, this.yaw + Math.PI / 2);
+      } else this.spawnLog(h, x, y, z, fx * p + sim.me.vx * 0.5, fy * p + 4.5, fz * p + sim.me.vz * 0.5, this.yaw + Math.PI / 2);
       audio.jump();
       tap('light');
       return;
@@ -1601,6 +1637,14 @@ class View3D implements View {
       this.vehLvl = lvl;
       if (this.load.length > this.capVeh()) this.load.length = this.capVeh();
       if (lvl > 0) {
+        // comprou agora: o veículo aparece do seu lado
+        if (this.time > 0.5 && !this.driving) {
+          const m = this.sim.me;
+          this.vx = Math.min(this.sim.limitX - 3, m.x + Math.sin(this.yaw) * 4);
+          this.vz = Math.max(-WORLD_Z + 1, Math.min(WORLD_Z - 1, m.z + Math.cos(this.yaw) * 4));
+          this.vh = this.yaw + Math.PI / 2;
+          this.burst(30, this.vx, groundH(this.vx, this.vz) + 1, this.vz, 6, '#ffd34a', 1.2, 5);
+        }
         this.veh = vehicleModel(lvl);
         this.scene.add(this.veh.g);
         this.vBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, collisionFilterGroup: G_VEH, collisionFilterMask: G_LOG });
@@ -1898,7 +1942,8 @@ class View3D implements View {
     this.vmCam.fov = a < 1 ? 68 : 50;
     this.vmCam.updateProjectionMatrix();
     // retrato: a ferramenta vem para perto do centro
-    this.vmRoot.position.set(a < 1 ? -0.17 : 0, a < 1 ? -0.07 : 0.1, 0);
+    this.vmRoot.position.set(a < 1 ? -0.19 : 0, a < 1 ? -0.02 : 0.1, 0);
+    this.portrait = a < 1;
   }
 
   /* ------------------------------ partículas ------------------------------ */
@@ -2067,7 +2112,7 @@ class View3D implements View {
     v.fallT = 0;
     v.hitGround = false;
     const d = Math.hypot(tr.x - this.sim.me.x, tr.z - this.sim.me.z);
-    if (d < 30) {
+    if (d < 16 || (tr.by === 0 && d < 30)) {
       this.timber.textContent = t('floresta.timber', 'MADEIRAAA!');
       this.timber.classList.remove('on');
       void this.timber.offsetWidth;
@@ -2127,7 +2172,7 @@ class View3D implements View {
         v.hitGround = true;
         this.treeImpact(i, b.position.x + _v2.x * h * 0.3, b.position.z + _v2.z * h * 0.3, _v2.x, _v2.z);
       }
-      const done = (v.hitGround && b.angularVelocity.length() < 0.8 && v.fallT > 1.1) || v.fallT > 3.4;
+      const done = (v.hitGround && v.fallT > 1 && (b.angularVelocity.length() < 1.5 || v.fallT > 2.2)) || v.fallT > 3;
       if (done) {
         const L = Math.hypot(_v2.x, _v2.z) || 1;
         tr.fdx = _v2.x / L;
@@ -2502,6 +2547,12 @@ class View3D implements View {
       this.gateAt = sim.limitX;
       this.gateBody.position.set(sim.limitX + 1.2, 0, 0);
     }
+    // chegou no funil com toras nas mãos: entrega sozinho
+    if (!this.driving && this.held.length && this.nearFunnel(m.x, m.z, 2.3) && this.fliesTo(1) === 0) {
+      const h = this.held.pop()!;
+      this.addFly(h, m.x, this.camY - 0.3, m.z, INTAKE_X, 3.4, 0, 1, 0.4);
+      this.throwAnim = 1;
+    }
     // carga (para a barra de cima e o online)
     m.carry = this.held.length + this.load.length;
     // arbustos amassados voltam devagar
@@ -2579,7 +2630,7 @@ class View3D implements View {
         // entalhe no lado de quem corta
         if (tr.hp < tr.maxHp && nn < 24) {
           const dmg = 1 - tr.hp / tr.maxHp;
-          const r = trunkR(tr.sp) * (SPECIES[tr.sp].shape === 'mushroom' ? 1 : 0.92);
+          const r = trunkR(tr.sp) * (SPECIES[tr.sp].shape === 'mushroom' ? 0.95 : 0.84);
           const a = Math.atan2(v.nx, v.nz);
           _m.compose(
             _v.set(tr.x + v.nx * r * 0.97, v.gy + Math.min(1.1, 0.5 + SPECIES[tr.sp].h * 0.08), tr.z + v.nz * r * 0.97),

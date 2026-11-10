@@ -566,7 +566,6 @@ export function vehicleModel(v: number): VehModel {
     box(1.1, 0.8, 1.7, col, L * 0.5 - 0.6, 1.1, 0);
     box(0.5, 0.25, 1.5, shade(col, 0.2), L * 0.5 - 0.3, 1.6, 0);
     for (const s of [-1, 1]) box(0.04, 0.32, 0.04, INK, L * 0.5 - 0.1, 1.86, s * 0.74);
-    box(0.04, 0.04, 1.5, INK, L * 0.5 - 0.1, 2.02, 0);
     // cabine aberta: santantônio atrás do banco
     for (const s of [-1, 1]) box(0.1, 0.9, 0.1, '#ffffff', L * 0.5 - 1.1, 2.1, s * 0.8);
     box(0.1, 0.1, 1.7, '#ffffff', L * 0.5 - 1.1, 2.55, 0);
