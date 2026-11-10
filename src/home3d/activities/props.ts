@@ -333,6 +333,7 @@ export class Props {
   }
   release(p: Prop, vel: THREE.Vector3, spin = 0): void {
     p.held = false;
+    p.obj.scale.setScalar(1);
     p.racked = false;
     if (!p.body) return;
     p.body.type = CANNON.Body.DYNAMIC;

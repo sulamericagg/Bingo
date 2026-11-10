@@ -103,16 +103,26 @@ export class PartyPrep {
   }
   /** botões quando segura um enfeite */
   heldActs(h: Prop): ActDef[] {
-    const tg = this.ctx.fps.target;
-    if (h.kind === 'deco' && tg.type === 'wall' && tg.dist < 3.2) return [{ id: 'pp-hang', label: t('act.btn.hang', 'PENDURAR'), icon: 'check', size: 'big' }];
+    if (h.kind === 'deco' && this.wallAim()) return [{ id: 'pp-hang', label: t('act.btn.hang', 'PENDURAR'), icon: 'check', size: 'big' }];
     return [];
+  }
+  /** normal da parede mirada (parede ou quadro/pôster pendurado) */
+  private wallAim(): THREE.Vector3 | null {
+    const tg = this.ctx.fps.target;
+    if (tg.dist > 3.2) return null;
+    if (tg.type === 'wall' && tg.wall) return tg.wall.normal;
+    if (tg.type === 'item' && tg.item?.info.wall) {
+      const n = tg.normal.clone().setY(0);
+      return n.lengthSq() > 0.1 ? n.normalize() : null;
+    }
+    return null;
   }
   tap(id: string, h: Prop | null): boolean {
     if (id !== 'pp-hang' || !h || h.kind !== 'deco') return false;
     const ctx = this.ctx;
     const tg = ctx.fps.target;
-    if (tg.type !== 'wall' || !tg.wall) return false;
-    const n = tg.wall.normal;
+    const n = this.wallAim()?.clone();
+    if (!n) return false;
     ctx.unhand();
     // vira decoração fixa (sem corpo)
     const obj = h.obj;
@@ -123,6 +133,7 @@ export class PartyPrep {
     const y = Math.max(1.75, Math.min(2.45, tg.point.y));
     obj.position.copy(tg.point).setY(y).addScaledVector(n, 0.03);
     obj.lookAt(obj.position.clone().add(n));
+    obj.scale.setScalar(1);
     this.hung.push(obj);
     if (this.hung.length > 8) {
       const old = this.hung.shift()!;

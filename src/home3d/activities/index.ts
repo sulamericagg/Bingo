@@ -265,7 +265,7 @@ export class Activities {
         out.set(0.18, 0.02, -0.65);
         break;
       case 'deco':
-        out.set(0, -0.05, -0.75);
+        out.set(0.1, -0.12, -0.6);
         break;
       case 'cloth':
         out.set(0.12, -0.18, -0.45);
@@ -285,6 +285,8 @@ export class Activities {
     const cam = this.o.eng.camera;
     this.holdPos(p, V);
     p.obj.position.lerp(V, Math.min(1, dt * 22));
+    // enfeite grande fica pequenino na mão (não tampa a visão)
+    if (p.kind === 'deco') p.obj.scale.setScalar(0.35);
     if (p.kind === 'plate' || p.kind === 'bowl' || p.kind === 'cup' || p.kind === 'ext' || p.kind === 'bag' || p.kind === 'cloth') {
       Q.setFromAxisAngle(UP, this.o.fps.yaw);
       p.obj.quaternion.slerp(Q, Math.min(1, dt * 14));

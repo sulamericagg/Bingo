@@ -347,7 +347,7 @@ export function bannerGeo(): THREE.BufferGeometry {
       const x = -0.8 + (i / (n - 1)) * 1.6;
       const sag = -Math.sin((i / (n - 1)) * Math.PI) * 0.14;
       const tri = new THREE.BufferGeometry();
-      tri.setAttribute('position', new THREE.Float32BufferAttribute([-0.07, 0, 0, 0.07, 0, 0, 0, -0.17, 0, 0.07, 0, 0, -0.07, 0, 0, 0, -0.17, 0], 3));
+      tri.setAttribute('position', new THREE.Float32BufferAttribute([0.07, 0, 0, -0.07, 0, 0, 0, -0.17, 0, -0.07, 0, 0.004, 0.07, 0, 0.004, 0, -0.17, 0.004], 3));
       tri.computeVertexNormals();
       b.geo(tri, cols[i % cols.length], x, sag, 0);
     }
