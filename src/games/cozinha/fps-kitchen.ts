@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { GeoBuilder } from '../../3d/common/geo';
 import { canvas, shade } from '../../3d/common/tex';
+import { brushedTex, stoneTex, tileTex, woodTex } from '../../3d/common/pbr';
 import { DECOR, type Theme } from './data';
 import type { Sim, Station } from './sim';
 
@@ -144,29 +145,41 @@ function wallTexture(theme: Theme, wall: string): THREE.CanvasTexture {
 }
 
 function floorTex(theme: Theme, a: string, b: string, cols: number, rows: number): THREE.CanvasTexture {
-  const P = 32;
+  const P = 64;
   const [cv, c] = canvas(cols * P, rows * P);
   for (let y = 0; y < rows; y++)
     for (let x = 0; x < cols; x++) {
       if (theme === 'boat') {
-        c.fillStyle = (x + y * 3) % 4 ? '#c98a52' : '#b87a44';
-        c.fillRect(x * P, y * P, P, P);
-        c.fillStyle = '#8a5a30';
-        c.fillRect(x * P, y * P + P - 2, P, 2);
+        // tábuas de convés
+        for (let k = 0; k < 4; k++) {
+          c.fillStyle = shade((x * 3 + y * 7 + k) % 3 ? '#c98a52' : '#b87a44', (((x * 13 + y * 5 + k * 7) % 9) - 4) * 0.02);
+          c.fillRect(x * P, y * P + k * 16, P, 16);
+          c.fillStyle = '#6a4020';
+          c.fillRect(x * P, y * P + k * 16 + 15, P, 1);
+        }
+        c.fillStyle = '#5a3a1a';
+        c.fillRect(x * P + ((y * 23) % 40) + 10, y * P, 1, P);
       } else if (theme === 'space') {
         c.fillStyle = (x + y) & 1 ? '#3a3f6a' : '#444a78';
         c.fillRect(x * P, y * P, P, P);
-        c.fillStyle = '#6a70a8';
-        c.fillRect(x * P + 3, y * P + 3, 3, 3);
+        c.strokeStyle = '#2a2e50';
+        c.lineWidth = 2;
+        c.strokeRect(x * P + 1, y * P + 1, P - 2, P - 2);
+        c.fillStyle = '#7a80b8';
+        for (const [u, v] of [[6, 6], [P - 9, 6], [6, P - 9], [P - 9, P - 9]]) c.fillRect(x * P + u, y * P + v, 3, 3);
       } else {
-        c.fillStyle = (x + y) & 1 ? a : b;
-        c.fillRect(x * P, y * P, P, P);
+        // ladrilho cerâmico 2x2 por tile (casa com o mapa de normais)
+        for (let k = 0; k < 4; k++) {
+          const u = k & 1;
+          const v = k >> 1;
+          c.fillStyle = shade((x * 2 + u + y * 2 + v) & 1 ? a : b, (((x * 7 + y * 11 + k * 5) % 7) - 3) * 0.008);
+          c.fillRect(x * P + u * 32, y * P + v * 32, 32, 32);
+        }
       }
     }
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.magFilter = THREE.NearestFilter;
-  t.anisotropy = 2;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -180,24 +193,61 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
   const group = new THREE.Group();
   const owned: { dispose(): void }[] = [];
   const mk = <T2 extends { dispose(): void }>(o: T2): T2 => (owned.push(o), o);
-  const lam = (o: THREE.MeshLambertMaterialParameters & THREE.MeshStandardMaterialParameters) =>
-    mk(standard ? new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, ...o }) : new THREE.MeshLambertMaterial(o));
-  const solidMat = lam({ vertexColors: true });
-  const b = new GeoBuilder();
+  type MP = THREE.MeshLambertMaterialParameters & THREE.MeshStandardMaterialParameters;
+  const lam = (o: MP) => {
+    if (standard) return mk(new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, ...o }));
+    const { roughness: _r, metalness: _m, normalMap: _n, envMapIntensity: _e, ...rest } = o;
+    void _r, _m, _n, _e;
+    return mk(new THREE.MeshLambertMaterial(rest));
+  };
+  // texturas procedurais (compartilhadas em cache; não descartar aqui)
+  const wood = woodTex(256, 4);
+  const stone = stoneTex(256);
+  const brushed = brushedTex(128);
+  const tileN = tileTex(256, 8, 8, 0.03);
+  const floorN = tileTex(256, 2, 2, 0.025);
+  const rep = (t: THREE.Texture, x: number, y: number) => {
+    const c = t.clone();
+    c.repeat.set(x, y);
+    c.needsUpdate = true;
+    return mk(c);
+  };
+  const b = new GeoBuilder(); // pintado / plástico
+  b.jitter = 0.06;
+  const wd = new GeoBuilder(); // madeira
+  wd.uvScale = 1.6;
+  wd.jitter = 0.12;
+  const mt = new GeoBuilder(); // inox / metal
+  mt.uvScale = 2;
+  const dk = new GeoBuilder(); // ferro fundido / borracha / vidro escuro
+  const sn = new GeoBuilder(); // pedra das bancadas
+  sn.uvScale = 2.2;
+  const cer = new GeoBuilder(); // cerâmica / louça brilhante
   const glass = new GeoBuilder();
   glass.ao = false;
+  glass.bevel = 0;
   const glow = new GeoBuilder();
   glow.ao = false;
+  glow.bevel = 0;
+  const lowSeg = standard ? 1 : 0;
+  for (const g of [b, wd, mt, dk, sn, cer]) {
+    g.bevel = standard ? 2 : 1;
+    if (!standard) g.minBevel = 0.045;
+  }
+  void lowSeg;
+  const RS = standard ? 20 : 12; // segmentos radiais
 
   // ---------------- piso ----------------
-  const fl = new THREE.Mesh(mk(new THREE.PlaneGeometry(W, DZ)), lam({ map: mk(floorTex(th, D.floorA, D.floorB, C, R)) }));
+  const floorMat = lam({ map: mk(floorTex(th, D.floorA, D.floorB, C, R)), roughness: th === 'boat' ? 0.75 : 0.35, ...(standard && th !== 'boat' ? { normalMap: rep(floorN.normal, C, R), normalScale: new THREE.Vector2(0.6, 0.6) } : {}) });
+  const fl = new THREE.Mesh(mk(new THREE.PlaneGeometry(W, DZ)), floorMat);
   fl.rotation.x = -Math.PI / 2;
   fl.position.set(W / 2, 0, DZ / 2);
+  fl.receiveShadow = true;
   group.add(fl);
 
   // ---------------- paredes (faces internas com textura repetida) ----------------
   const wt = mk(wallTexture(th, D.wall));
-  const wallMat = lam({ map: wt });
+  const wallMat = lam({ map: wt, roughness: th !== 'boat' && th !== 'space' && th !== 'truck' ? 0.3 : 0.7, ...(standard && th !== 'boat' && th !== 'truck' && th !== 'space' ? { normalMap: tileN.normal, normalScale: new THREE.Vector2(0.5, 0.5) } : {}) });
   const wallSeg = (x0: number, x1: number, y0: number, y1: number, z: number, ry: number, axisX: boolean) => {
     const w = x1 - x0;
     const h = y1 - y0;
@@ -208,8 +258,10 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
     m.rotation.y = ry;
     if (axisX) m.position.set((x0 + x1) / 2, (y0 + y1) / 2, z);
     else m.position.set(z, (y0 + y1) / 2, (x0 + x1) / 2);
+    m.receiveShadow = true;
     group.add(m);
   };
+  const trim = th === 'space' ? '#9aa0d0' : th === 'boat' ? '#7a4a26' : shade(D.wall, -0.1);
   // norte (z=0): aberturas acima dos balcões de entrega
   let run = 0;
   for (let x = 0; x <= C; x++) {
@@ -220,12 +272,16 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
       if (hatch) {
         wallSeg(x * T, (x + 1) * T, 0, H, 0, 0, true);
         wallSeg(x * T, (x + 1) * T, HATCH_TOP, WALL_H, 0, 0, true);
-        // moldura do passa-pratos
-        b.box(0.08, HATCH_TOP - H, 0.2, x * T + 0.04, H, 0, '#e98f00');
-        b.box(0.08, HATCH_TOP - H, 0.2, (x + 1) * T - 0.04, H, 0, '#e98f00');
-        b.box(T, 0.1, 0.2, (x + 0.5) * T, HATCH_TOP - 0.05, 0, '#e98f00');
-        // toldo listrado
-        for (let i = 0; i < 5; i++) b.box(T / 5, 0.04, 0.42, x * T + (i + 0.5) * (T / 5), HATCH_TOP + 0.1 - 0.02, 0.18, i % 2 ? '#ffffff' : '#ff5c7a', 0, -0.35);
+        // moldura de madeira do passa-pratos
+        wd.box(0.1, HATCH_TOP - H, 0.22, x * T + 0.05, H, 0, '#c9843a');
+        wd.box(0.1, HATCH_TOP - H, 0.22, (x + 1) * T - 0.05, H, 0, '#c9843a');
+        wd.box(T, 0.12, 0.24, (x + 0.5) * T, HATCH_TOP - 0.06, 0, '#b8742e');
+        // toldo listrado com bordinha ondulada
+        for (let i = 0; i < 6; i++) b.box(T / 6 + 0.002, 0.025, 0.46, x * T + (i + 0.5) * (T / 6), HATCH_TOP + 0.12, 0.2, i % 2 ? '#fff8ee' : '#ff5c7a', 0, -0.38);
+        for (let i = 0; i < 6; i++) b.sph(T / 12, x * T + (i + 0.5) * (T / 6), HATCH_TOP - 0.05, 0.42, i % 2 ? '#fff8ee' : '#ff5c7a', 1, 0.55, 0.25, 10);
+        // trilho de comandas
+        mt.cyl(0.012, 0.012, T - 0.2, x * T + 0.1, HATCH_TOP - 0.2, 0.14, '#cfd5e0', 8, 0, -Math.PI / 2);
+        for (let i = 0; i < 3; i++) b.sharp(0.1, 0.13, 0.004, x * T + 0.28 + i * 0.27, HATCH_TOP - 0.34, 0.14, i === 1 ? '#fff6c4' : '#ffffff', (i - 1) * 0.08);
       }
       run = x + 1;
     }
@@ -233,170 +289,383 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
   wallSeg(0, W, 0, WALL_H, DZ, Math.PI, true);
   wallSeg(0, DZ, 0, WALL_H, 0, Math.PI / 2, false);
   wallSeg(0, DZ, 0, WALL_H, W, -Math.PI / 2, false);
-  // rodapé + teto
-  const ceil = new THREE.Mesh(mk(new THREE.PlaneGeometry(W, DZ)), lam({ color: th === 'space' ? '#3a3f6a' : th === 'boat' ? '#a8683a' : '#fff6ea' }));
+  // rodapé e sanca em todas as paredes
+  for (const [x, z, w, d] of [[W / 2, DZ - 0.015, W, 0.03], [0.015, DZ / 2, 0.03, DZ], [W - 0.015, DZ / 2, 0.03, DZ]] as const) {
+    b.sharp(w, 0.12, d, x, 0, z, shade(trim, -0.2));
+    b.sharp(w + 0.02, 0.08, d + 0.02, x, WALL_H - 0.08, z, shade(trim, 0.2));
+  }
+  // teto com placas
+  const ceil = new THREE.Mesh(mk(new THREE.PlaneGeometry(W, DZ)), lam({ color: th === 'space' ? '#3a3f6a' : th === 'boat' ? '#a8683a' : '#fff6ea', map: th === 'boat' ? rep(wood.map, W, DZ) : null }));
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(W / 2, WALL_H, DZ / 2);
   group.add(ceil);
-  // luminárias
+  if (th === 'boat') for (let x = 0.5; x < W; x += 1.1) wd.box(0.12, 0.14, DZ, x, WALL_H - 0.14, DZ / 2, '#7a4a26');
+  // luminárias pendentes (cúpula de metal + lâmpada que brilha)
+  const shadeCol = th === 'space' ? '#9aa0d0' : th === 'boat' ? '#2f6a4a' : '#2f3a4a';
   for (let x = 1; x < C; x += 3)
     for (let y = 1; y < R; y += 3) {
-      b.cyl(0.02, 0.02, 0.35, x * T + T / 2, WALL_H - 0.35, y * T + T / 2, '#5a5370', 6);
-      b.cyl(0.08, 0.32, 0.22, x * T + T / 2, WALL_H - 0.55, y * T + T / 2, th === 'space' ? '#9aa0d0' : '#ff5c7a', 10);
-      glow.sph(0.13, x * T + T / 2, WALL_H - 0.56, y * T + T / 2, '#fff3c4', 1, 0.5, 1, 8);
+      const lx = x * T + T / 2;
+      const lz = y * T + T / 2;
+      dk.cyl(0.006, 0.006, 0.5, lx, WALL_H - 0.5, lz, '#1a1a22', 6);
+      mt.rcyl(0.035, 0.06, lx, WALL_H - 0.55, lz, '#8a8f9a', 10);
+      mt.lathe([[0.03, 0.2], [0.06, 0.18], [0.16, 0.08], [0.22, 0.0], [0.215, -0.005], [0.155, 0.075], [0.055, 0.17], [0.025, 0.19]], lx, WALL_H - 0.75, lz, shadeCol, RS);
+      glow.sph(0.075, lx, WALL_H - 0.72, lz, '#fff3c4', 1, 1.1, 1, 12);
     }
-  // prateleiras com potes nas paredes laterais (acima das bancadas comuns)
-  const jarCols = ['#ff5c7a', '#ffd84a', '#4fd67a', '#7ad0ff', '#c98aff', '#ff9a6b'];
+  // prateleiras com potes de vidro nas paredes laterais (acima das bancadas comuns)
+  const jarCols = ['#ff5c7a', '#ffd84a', '#4fd67a', '#c98a4a', '#c98aff', '#ff9a6b'];
   for (let y = 1; y < R - 1; y++)
     for (const side of [0, 1]) {
       const x = side ? C - 1 : 0;
       const si = sim.stAt[y * C + x];
       const st = si >= 0 ? sim.st[si] : null;
       if (!st || st.k === 'pot' || st.k === 'pan' || st.k === 'oven') continue;
-      const wx = side ? W - 0.13 : 0.13;
-      b.box(0.26, 0.04, T * 0.9, wx, 1.75, (y + 0.5) * T, '#c89a6a');
+      const wx = side ? W - 0.14 : 0.14;
+      const zc = (y + 0.5) * T;
+      wd.box(0.26, 0.035, T * 0.92, wx, 1.72, zc, '#b98a5a');
+      // mãos-francesas
+      for (const o of [-0.36, 0.36]) mt.box(0.03, 0.14, 0.03, side ? W - 0.03 : 0.03, 1.58, zc + o, '#3a3a44');
       for (let j = 0; j < 3; j++) {
-        const jz = (y + 0.5) * T + (j - 1) * 0.3;
+        const jz = zc + (j - 1) * 0.29;
         const jc = jarCols[(y * 3 + j + side) % jarCols.length];
-        b.cyl(0.07, 0.07, 0.16, wx, 1.79, jz, '#e8f6ff', 8);
-        b.cyl(0.06, 0.06, 0.1, wx, 1.8, jz, jc, 8);
-        b.cyl(0.075, 0.075, 0.03, wx, 1.95, jz, shade(jc, -0.3), 8);
+        const hj = 0.15 + ((y + j) % 2) * 0.05;
+        glass.lathe([[0, 0], [0.06, 0], [0.068, 0.012], [0.07, hj - 0.03], [0.055, hj - 0.005], [0.05, hj]], wx, 1.755, jz, '#e8f6ff', 14);
+        b.lathe([[0, 0], [0.062, 0], [0.064, hj * 0.62], [0, hj * 0.66]], wx, 1.758, jz, jc, 12);
+        mt.rcyl(0.054, 0.03, wx, 1.755 + hj, jz, j % 2 ? '#d4a017' : '#c8ccd6', 14, 0.3);
       }
     }
-  // relógio e quadro do cardápio na parede do fundo (sul)
-  b.cyl(0.32, 0.32, 0.05, W / 2, 2.25, DZ - 0.02, '#ffffff', 20, Math.PI / 2);
-  b.torus(0.32, 0.04, W / 2, 2.25, DZ - 0.04, '#ff5c7a', 0);
-  b.box(0.03, 0.2, 0.02, W / 2, 2.25, DZ - 0.06, '#2a0b5c');
-  b.box(0.16, 0.03, 0.02, W / 2, 2.25, DZ - 0.06, '#2a0b5c');
-  // prateleira com panelas penduradas na parede sul (decoração)
+  // relógio de parede (aro de metal, mostrador, ponteiros) na parede do fundo (sul)
+  const ck = { x: W / 2, y: 2.25, z: DZ };
+  mt.rcyl(0.33, 0.06, ck.x, ck.y, ck.z - 0.06, '#c9ced8', 32, 0.4, Math.PI / 2);
+  cer.cyl(0.29, 0.29, 0.01, ck.x, ck.y, ck.z - 0.065, '#fffdf6', 32, Math.PI / 2);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    dk.sharp(0.012, i % 3 ? 0.03 : 0.05, 0.006, ck.x + Math.sin(a) * 0.24, ck.y - (i % 3 ? 0.015 : 0.025) + Math.cos(a) * 0.24, ck.z - 0.078, '#2a2238', 0, 0, -a);
+  }
+  dk.sharp(0.018, 0.16, 0.008, ck.x, ck.y, ck.z - 0.082, '#2a2238', 0, 0, 0.6);
+  dk.sharp(0.014, 0.22, 0.008, ck.x, ck.y, ck.z - 0.088, '#2a2238', 0, 0, -1.9);
+  b.sph(0.018, ck.x, ck.y, ck.z - 0.095, '#ff5c7a');
+  // trilho com panelas de cobre penduradas na parede sul
   for (let x = 1; x < C - 1; x += 2) {
-    b.box(0.5, 0.04, 0.22, x * T + T / 2, 1.85, DZ - 0.11, '#c89a6a');
-    b.cyl(0.09, 0.07, 0.12, x * T + T / 2 - 0.1, 1.89, DZ - 0.12, x % 4 === 1 ? '#ff9a6b' : '#7ad0ff', 10);
-    b.sph(0.06, x * T + T / 2 + 0.13, 1.95, DZ - 0.12, '#ffd84a');
+    const rx = x * T + T / 2;
+    mt.cyl(0.012, 0.012, 0.9, rx - 0.45, 1.95, DZ - 0.08, '#9aa0aa', 8, 0, -Math.PI / 2);
+    for (const [o, r, c] of [[-0.26, 0.11, '#c8743a'], [0.04, 0.085, '#d08a4a'], [0.28, 0.07, '#b8b8c4']] as const) {
+      const px = rx + o;
+      mt.torus(0.02, 0.004, px, 1.93, DZ - 0.08, '#9aa0aa', 0, 8);
+      mt.lathe([[0, 0], [r * 0.9, 0], [r, 0.02], [r, r * 0.9]], px, 1.9 - r - 0.24, DZ - 0.1 - r, c, 16, -Math.PI / 2 + 0.05);
+      mt.box(0.024, 0.2, 0.012, px, 1.9 - 0.25, DZ - 0.092, c);
+    }
   }
 
   // ---------------- bancadas e estações ----------------
   const bodyShape = new CANNON.Box(new CANNON.Vec3(T / 2, H / 2, T / 2));
+  const steel = th === 'space' ? '#d6dbf0' : '#d9dde6';
+  const cab = D.counterSide;
   for (const st of sim.st) {
     const cx = (st.x + 0.5) * T;
     const cz = (st.y + 0.5) * T;
     const usable = !!(st.fx || st.fy);
     const face = Math.atan2(st.fx, st.fy); // giro para a frente da estação
-    const fx = st.fx;
-    const fz = st.fy;
-    // corpo do armário
-    b.box(T - 0.02, H - 0.08, T - 0.02, cx, 0, cz, usable ? D.counterSide : shade(D.counterSide, -0.15));
+    const cs = Math.cos(face);
+    const sn_ = Math.sin(face);
+    /** local (lx lateral, lz para a frente) → mundo */
+    const P = (lx: number, lz: number): [number, number] => [cx + lx * cs + lz * sn_, cz - lx * sn_ + lz * cs];
+    const lb = (B: GeoBuilder, w: number, h: number, d: number, lx: number, y: number, lz: number, col: string, rx = 0, rz = 0, ry = 0) => {
+      const [x, z] = P(lx, lz);
+      B.box(w, h, d, x, y, z, col, face + ry, rx, rz);
+    };
+    const ls = (B: GeoBuilder, w: number, h: number, d: number, lx: number, y: number, lz: number, col: string, rx = 0) => {
+      const [x, z] = P(lx, lz);
+      B.sharp(w, h, d, x, y, z, col, face, rx);
+    };
+    const lc = (B: GeoBuilder, r: number, h: number, lx: number, y: number, lz: number, col: string, seg = 16, bev = 0.2) => {
+      const [x, z] = P(lx, lz);
+      B.rcyl(r, h, x, y, z, col, seg, bev);
+    };
+    const ll = (B: GeoBuilder, prof: [number, number][], lx: number, y: number, lz: number, col: string, seg = RS, grad = 0) => {
+      const [x, z] = P(lx, lz);
+      B.lathe(prof, x, y, z, col, seg, 0, 0, 0, grad);
+    };
+    /** tubo em coordenadas locais */
+    const lt = (B: GeoBuilder, pts: [number, number, number][], r: number, col: string, segs = 12) => {
+      B.tube(
+        pts.map(([a, y, c]) => {
+          const [x, z] = P(a, c);
+          return [x, y, z];
+        }),
+        r,
+        col,
+        segs,
+        6,
+      );
+    };
+    /** botão de fogão/forno na frente (eixo para fora) */
+    const knob = (lx: number, y: number, lz: number, col = '#2a2a33') => {
+      const [x, z] = P(lx, lz);
+      mt.rcyl(0.04, 0.012, x, y, z, '#cfd3dc', 14, 0.3, Math.PI / 2, 0, face);
+      dk.rcyl(0.03, 0.035, x + sn_ * 0.012, y, z + cs * 0.012, col, 14, 0.35, Math.PI / 2, 0, face);
+      const [x2, z2] = P(lx, lz + 0.05);
+      b.sharp(0.008, 0.026, 0.006, x2, y + 0.002, z2, '#ff5c7a', face);
+    };
+    const stove = st.k === 'pot' || st.k === 'pan' || st.k === 'oven';
+    const bodyCol = usable ? cab : shade(cab, -0.15);
+    // -------- móvel: rodapé recuado, caixa, portas almofadadas com puxadores de inox --------
+    ls(b, T - 0.04, 0.1, T - 0.14, 0, 0, -0.04, shade(cab, -0.45));
+    lb(b, T - 0.02, H - 0.15, T - 0.06, 0, 0.09, -0.02, bodyCol);
     if (usable) {
-      // portinhas + puxador na frente
-      b.box(T * 0.82, H * 0.62, 0.02, cx + fx * (T / 2), 0.14, cz + fz * (T / 2), shade(D.counterSide, 0.18), face);
-      b.box(0.18, 0.04, 0.04, cx + fx * (T / 2 + 0.02), H * 0.62, cz + fz * (T / 2 + 0.02), '#5a5370', face);
+      if (stove) {
+        // frente de fogão industrial: painel de inox + porta do forno com visor
+        lb(mt, T - 0.06, H - 0.24, 0.03, 0, 0.12, T / 2 - 0.05, steel);
+        lb(dk, T * 0.6, 0.26, 0.012, 0, 0.32, T / 2 - 0.03, '#1b1822');
+        lt(mt, [[-0.3, 0.72, T / 2 - 0.03], [-0.28, 0.74, T / 2 + 0.03], [0.28, 0.74, T / 2 + 0.03], [0.3, 0.72, T / 2 - 0.03]], 0.012, '#eef0f5', 16);
+        lb(mt, T - 0.04, 0.08, 0.05, 0, H - 0.17, T / 2 - 0.03, shade(steel, -0.08));
+      } else {
+        // gaveta em cima + 2 portas almofadadas
+        const dw = T - 0.08;
+        lb(b, dw, 0.15, 0.025, 0, H - 0.27, T / 2 - 0.03, shade(cab, 0.12));
+        lt(mt, [[-0.12, H - 0.19, T / 2 - 0.02], [-0.11, H - 0.19, T / 2 + 0.015], [0.11, H - 0.19, T / 2 + 0.015], [0.12, H - 0.19, T / 2 - 0.02]], 0.008, '#e6e9f0', 12);
+        for (const sd of [-1, 1]) {
+          const ox = sd * (dw / 4 + 0.006);
+          lb(b, dw / 2 - 0.012, H - 0.48, 0.025, ox, 0.14, T / 2 - 0.03, shade(cab, 0.1));
+          lb(b, dw / 2 - 0.1, H - 0.58, 0.012, ox, 0.19, T / 2 - 0.012, shade(cab, 0.2));
+          lt(mt, [[ox - sd * 0.17, 0.52, T / 2 - 0.02], [ox - sd * 0.17, 0.52, T / 2 + 0.012], [ox - sd * 0.17, 0.36, T / 2 + 0.012], [ox - sd * 0.17, 0.36, T / 2 - 0.02]], 0.008, '#e6e9f0', 10);
+        }
+      }
     }
-    b.box(T, 0.08, T, cx, H - 0.08, cz, st.k === 'crate' ? '#c98a4a' : D.counter);
+    // tampo: pedra com borda arredondada e leve beiral
+    const topCol = st.k === 'crate' ? '#c9a27a' : stove ? '#2a2733' : D.counter;
+    if (st.k === 'sink') {
+      // tampo vazado em volta da cuba
+      lb(mt, T, 0.045, 0.14, 0, H - 0.045, T / 2 - 0.05, steel);
+      lb(mt, T, 0.045, 0.14, 0, H - 0.045, -T / 2 + 0.07, steel);
+      lb(mt, 0.15, 0.045, T, -T / 2 + 0.075, H - 0.045, 0, steel);
+      lb(mt, 0.15, 0.045, T, T / 2 - 0.075, H - 0.045, 0, steel);
+    } else if (stove) lb(dk, T + 0.01, 0.05, T + 0.01, 0, H - 0.05, 0.005, topCol);
+    else lb(sn, T + 0.01, 0.05, T + 0.02, 0, H - 0.05, 0.01, topCol);
     const top = H;
-    const sideX = -fz; // eixo "lateral" da estação
-    const sideZ = fx;
     switch (st.k) {
-      case 'crate':
-        b.box(0.86, 0.26, 0.86, cx, top, cz, '#d99a5a');
-        for (const o of [-0.3, 0, 0.3]) b.box(0.88, 0.03, 0.04, cx, top + 0.06 + (o + 0.3) * 0.25, cz + fz * 0.44 + fx * 0, '#a86a32', face);
-        b.box(0.88, 0.04, 0.88, cx, top + 0.26, cz, '#b8783e');
+      case 'crate': {
+        // caixote de feira: ripas com frestas, cantoneiras, palha por dentro
+        const cw = 0.84;
+        const ch = 0.3;
+        for (const sd of [-1, 1])
+          for (let i = 0; i < 3; i++) {
+            lb(wd, cw, 0.075, 0.022, 0, top + 0.02 + i * 0.095, sd * (cw / 2 - 0.011), '#d9a868');
+            lb(wd, 0.022, 0.075, cw, sd * (cw / 2 - 0.011), top + 0.02 + i * 0.095, 0, '#cf9d5e');
+          }
+        for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) lb(wd, 0.05, ch, 0.05, a * (cw / 2 - 0.02), top, c * (cw / 2 - 0.02), '#a8743c');
+        lb(wd, cw - 0.04, 0.02, cw - 0.04, 0, top + 0.01, 0, '#b88a50');
+        // palha / papel de seda
+        b.sph(0.38, cx, top + 0.2, cz, '#e9d59a', 1, 0.18, 1, 14);
+        // etiqueta
+        lb(cer, 0.22, 0.06, 0.006, 0, top + 0.13, cw / 2 + 0.002, '#fff6e0');
         break;
-      case 'board':
-        b.box(0.72, 0.04, 0.5, cx, top, cz, '#e8b878', face);
-        b.box(0.24, 0.015, 0.05, cx + sideX * 0.42, top + 0.01, cz + sideZ * 0.42, '#dfe3f0', face + Math.PI / 2);
-        b.box(0.1, 0.03, 0.05, cx + sideX * 0.5 + fx * 0.0, top + 0.01, cz + sideZ * 0.5, '#ff5c7a', face + Math.PI / 2);
-        break;
-      case 'pot':
-      case 'pan':
-        b.box(T - 0.1, 0.05, T - 0.1, cx, top, cz, '#3b3550');
-        b.torus(0.2, 0.025, cx, top + 0.06, cz, '#1f1a2e');
-        // botões do fogão na frente
-        for (const o of [-0.2, 0.2]) b.cyl(0.05, 0.05, 0.04, cx + fx * (T / 2) + sideX * o, H * 0.8, cz + fz * (T / 2) + sideZ * o, '#ffd84a', 10, Math.PI / 2 * (fz ? 1 : 0), Math.PI / 2 * (fx ? 1 : 0));
-        if (st.k === 'pot') {
-          b.cyl(0.25, 0.22, 0.32, cx, top + 0.07, cz, '#c9c3e6', 16);
-          b.torus(0.25, 0.025, cx, top + 0.39, cz, '#a8a2c8');
-          b.box(0.1, 0.03, 0.05, cx + sideX * 0.3, top + 0.33, cz + sideZ * 0.3, '#2a2238', face + Math.PI / 2);
-          b.box(0.1, 0.03, 0.05, cx - sideX * 0.3, top + 0.33, cz - sideZ * 0.3, '#2a2238', face + Math.PI / 2);
-          glass.cyl(0.235, 0.235, 0.02, cx, top + 0.3, cz, '#7ad0ff', 16);
-        } else {
-          b.cyl(0.3, 0.26, 0.07, cx, top + 0.07, cz, '#2e2a40', 16);
-          b.box(0.42, 0.04, 0.07, cx + sideX * 0.48, top + 0.1, cz + sideZ * 0.48, '#7a4fd1', face + Math.PI / 2);
+      }
+      case 'board': {
+        // tábua de madeira grossa com canaleta + faca de chef
+        lb(wd, 0.7, 0.04, 0.46, 0, top, 0, '#d9a868');
+        lb(wd, 0.6, 0.004, 0.36, 0, top + 0.039, 0, '#c4925a');
+        lb(wd, 0.56, 0.0045, 0.32, 0, top + 0.04, 0, '#ddb070');
+        const [kx, kz] = P(0.42, 0.06);
+        mt.box(0.2, 0.004, 0.045, kx, top + 0.008, kz, '#eef1f7', face + Math.PI / 2 + 0.2);
+        const [hx, hz] = P(0.46, -0.1);
+        dk.box(0.11, 0.022, 0.032, hx, top + 0.003, hz, '#2a1a12', face + Math.PI / 2 + 0.2);
+        for (const o of [-0.02, 0.02]) {
+          const [rx2, rz2] = P(0.46 + o * 0.2, -0.1 + o);
+          mt.cyl(0.004, 0.004, 0.026, rx2, top + 0.0, rz2, '#cfd3dc', 6);
         }
         break;
-      case 'oven':
-        b.box(0.98, 0.62, 0.92, cx, top, cz, '#ff9a6b', face);
-        b.box(0.98, 0.06, 0.92, cx, top + 0.62, cz, '#e0704a', face);
-        b.box(0.12, 0.04, 0.06, cx + fx * 0.48 + sideX * 0.3, top + 0.52, cz + fz * 0.48 + sideZ * 0.3, '#2a2238', face);
-        glass.box(0.62, 0.36, 0.02, cx + fx * 0.47, top + 0.08, cz + fz * 0.47, '#3a2a50', face);
-        glow.box(0.5, 0.03, 0.5, cx, top + 0.06, cz, '#ff7a2e', face);
+      }
+      case 'pot':
+      case 'pan': {
+        // grelha de ferro fundido + queimador
+        lc(dk, 0.13, 0.025, 0, top, 0, '#1a1820', 16);
+        lc(mt, 0.07, 0.03, 0, top + 0.01, 0, '#3a3a44', 14);
+        dk.torus(0.22, 0.012, cx, top + 0.055, cz, '#24222c', Math.PI / 2, 24);
+        for (let i = 0; i < 4; i++) {
+          const a = face + i * (Math.PI / 2) + Math.PI / 4;
+          const [gx, gz] = [cx + Math.sin(a) * 0.15, cz + Math.cos(a) * 0.15];
+          dk.box(0.16, 0.022, 0.02, gx, top + 0.045, gz, '#24222c', a + Math.PI / 2);
+        }
+        for (const o of [-0.3, -0.1, 0.1, 0.3]) knob(o, H * 0.82, T / 2 + 0.005);
+        if (st.k === 'pot') {
+          // caldeirão de inox: parede dupla, borda virada, alças, tampa de vidro
+          ll(mt, [[0, 0.0], [0.21, 0.0], [0.235, 0.015], [0.245, 0.04], [0.245, 0.3], [0.258, 0.315], [0.25, 0.325], [0.232, 0.315], [0.228, 0.05], [0.0, 0.05]], 0, top + 0.065, 0, '#d4d8e2', RS + 4);
+          for (const sd of [-1, 1])
+            lt(mt, [[sd * 0.24, top + 0.32, -0.05], [sd * 0.31, top + 0.34, -0.03], [sd * 0.31, top + 0.34, 0.03], [sd * 0.24, top + 0.32, 0.05]], 0.012, '#c4c8d2', 10);
+          glass.lathe([[0.0, 0.07], [0.12, 0.06], [0.235, 0.0], [0.22, 0.0], [0.0, 0.055]], cx, top + 0.33, cz, '#bfe8ff', RS);
+          mt.rcyl(0.035, 0.03, cx, top + 0.395, cz, '#2a2733', 12, 0.4);
+        } else {
+          // frigideira antiaderente com cabo de baquelite
+          ll(dk, [[0, 0.0], [0.24, 0.0], [0.27, 0.02], [0.29, 0.075], [0.282, 0.078], [0.26, 0.026], [0.23, 0.012], [0, 0.012]], 0, top + 0.06, 0, '#2c2a36', RS + 4);
+          ll(mt, [[0.24, -0.002], [0.272, 0.02], [0.292, 0.074], [0.296, 0.074], [0.276, 0.016], [0.24, -0.006]], 0, top + 0.06, 0, '#b9bcc6', RS + 4);
+          lt(mt, [[0.28, top + 0.1, 0], [0.34, top + 0.115, 0]], 0.016, '#b9bcc6', 4);
+          lt(dk, [[0.34, top + 0.115, 0], [0.45, top + 0.13, 0], [0.56, top + 0.145, 0]], 0.022, '#1e1b26', 8);
+          const [hx, hz] = P(0.56, 0);
+          mt.torus(0.016, 0.005, hx, top + 0.145, hz, '#b9bcc6', 0, 10, face + Math.PI / 2);
+        }
         break;
-      case 'blender':
-        b.box(0.34, 0.12, 0.34, cx, top, cz, '#5a5370', face);
-        b.cyl(0.05, 0.05, 0.02, cx + fx * 0.17, top + 0.04, cz + fz * 0.17, '#ff5c7a', 8, Math.PI / 2);
-        glass.cyl(0.19, 0.14, 0.42, cx, top + 0.12, cz, '#e0feff', 14);
-        b.cyl(0.2, 0.2, 0.05, cx, top + 0.54, cz, '#2a2238', 14);
+      }
+      case 'oven': {
+        // forno de bancada de inox: porta com visor, puxador em barra, painel de controle, pés
+        for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) lc(dk, 0.025, 0.03, a * 0.42, top, c * 0.38, '#1a1820', 10);
+        lb(mt, 0.98, 0.6, 0.86, 0, top + 0.03, -0.03, steel);
+        lb(mt, 0.24, 0.5, 0.02, 0.36, top + 0.08, 0.4, shade(steel, -0.1));
+        for (const yy of [0.47, 0.34, 0.21]) knob(0.36, top + yy, 0.415);
+        lb(dk, 0.64, 0.46, 0.03, -0.12, top + 0.1, 0.4, '#2a2733');
+        {
+          const [gx, gz] = P(-0.12, 0.42);
+          glass.box(0.5, 0.3, 0.012, gx, top + 0.17, gz, '#ffb366', face);
+        }
+        lt(mt, [[-0.38, top + 0.5, 0.41], [-0.37, top + 0.52, 0.46], [0.13, top + 0.52, 0.46], [0.14, top + 0.5, 0.41]], 0.013, '#eef0f5', 14);
+        glow.box(0.5, 0.025, 0.5, cx, top + 0.1, cz, '#ff7a2e', face);
+        // chaminé
+        lc(mt, 0.05, 0.12, -0.3, top + 0.62, -0.25, '#b9bcc6', 12);
         break;
+      }
+      case 'blender': {
+        // base pesada, jarra de vidro facetada, tampa e botões
+        ll(b, [[0, 0], [0.16, 0], [0.17, 0.02], [0.15, 0.14], [0.12, 0.16], [0, 0.16]], 0, top, 0, '#3a3546', 12);
+        for (const o of [-0.05, 0, 0.05]) {
+          const [x, z] = P(o, 0.145);
+          b.rcyl(0.016, 0.012, x, top + 0.07, z, o ? '#dfe3ea' : '#ff5c7a', 10, 0.4, Math.PI / 2, 0, face);
+        }
+        glass.lathe([[0.0, 0.0], [0.1, 0.0], [0.17, 0.4], [0.165, 0.42], [0.0, 0.42]], cx, top + 0.16, cz, '#e0feff', 8);
+        lc(dk, 0.175, 0.04, 0, top + 0.575, 0, '#2a2238', 16, 0.3);
+        lc(dk, 0.05, 0.03, 0, top + 0.61, 0, '#2a2238', 12, 0.4);
+        lt(dk, [[0.13, top + 0.52, 0], [0.24, top + 0.48, 0], [0.24, top + 0.26, 0], [0.12, top + 0.22, 0]], 0.02, '#2a2238', 12);
+        break;
+      }
       case 'plates':
-        b.box(0.5, 0.03, 0.5, cx, top, cz, '#c8b8e8');
+        // tapete de borracha + suporte de pratos
+        lb(dk, 0.56, 0.012, 0.56, 0, top, 0, '#5a6070');
+        for (const sd of [-1, 1]) lb(mt, 0.012, 0.18, 0.5, sd * 0.24, top, 0, '#cfd3dc');
         break;
       case 'dirty':
-        b.box(0.74, 0.05, 0.6, cx, top, cz, '#8a7ab0', face);
-        b.box(0.74, 0.1, 0.03, cx + fx * 0.3, top, cz + fz * 0.3, '#8a7ab0', face);
+        // bacia plástica de louça suja
+        ll(b, [[0, 0], [0.3, 0], [0.33, 0.12], [0.34, 0.125], [0.33, 0.13], [0.31, 0.02], [0, 0.02]], 0, top, 0, '#8a9ab8', RS);
         break;
-      case 'sink':
-        b.box(0.92, 0.04, 0.92, cx, top - 0.02, cz, '#dfe5f0');
-        b.box(0.7, 0.03, 0.7, cx, top - 0.14, cz, '#9fb0d6');
-        glass.box(0.68, 0.02, 0.68, cx, top - 0.06, cz, '#7ad0ff');
-        b.cyl(0.03, 0.03, 0.4, cx - fx * 0.38, top, cz - fz * 0.38, '#c9c3e6', 8);
-        b.box(0.05, 0.04, 0.26, cx - fx * 0.27, top + 0.36, cz - fz * 0.27, '#c9c3e6', face);
-        b.sph(0.05, cx + sideX * 0.36 + fx * 0.36, top + 0.02, cz + sideZ * 0.36 + fz * 0.36, '#ffd84a', 1, 0.5, 1);
+      case 'sink': {
+        // cuba de inox funda, ralo, água, torneira gourmet (pescoço de ganso) e registros
+        const bw = 0.62;
+        const by = top - 0.2;
+        lb(mt, bw + 0.04, 0.02, bw + 0.04, 0, by, 0, shade(steel, -0.15));
+        for (const sd of [-1, 1]) {
+          lb(mt, bw + 0.04, 0.2, 0.02, 0, by, sd * (bw / 2 + 0.01), shade(steel, -0.08));
+          lb(mt, 0.02, 0.2, bw + 0.04, sd * (bw / 2 + 0.01), by, 0, shade(steel, -0.04));
+        }
+        lc(dk, 0.035, 0.01, 0, by + 0.02, 0, '#3a3a44', 12);
+        glass.box(bw, 0.01, bw, cx, top - 0.08, cz, '#7ad0ff');
+        const fz = -0.42;
+        lc(mt, 0.035, 0.05, 0, top, fz, '#e9ecf2', 14);
+        lt(mt, [[0, top + 0.04, fz], [0, top + 0.3, fz], [0, top + 0.4, fz + 0.06], [0, top + 0.36, fz + 0.2], [0, top + 0.26, fz + 0.24]], 0.016, '#e9ecf2', 20);
+        lc(mt, 0.02, 0.03, 0, top + 0.23, fz + 0.24, '#d4d8e2', 10);
+        for (const sd of [-1, 1]) {
+          lc(mt, 0.025, 0.05, sd * 0.16, top, fz, '#e9ecf2', 10);
+          lt(mt, [[sd * 0.16, top + 0.05, fz], [sd * 0.16, top + 0.065, fz + 0.03], [sd * 0.16, top + 0.07, fz + 0.08]], 0.008, '#e9ecf2', 6);
+          const [x, z] = P(sd * 0.16, fz);
+          b.sph(0.012, x, top + 0.052, z, sd < 0 ? '#ff5c7a' : '#5aaaff');
+        }
+        // esponja e detergente
+        lb(b, 0.09, 0.03, 0.06, 0.36, top, 0.36, '#ffd84a');
+        lb(b, 0.09, 0.012, 0.06, 0.36, top + 0.03, 0.36, '#4fd67a');
+        ll(b, [[0, 0], [0.032, 0], [0.034, 0.12], [0.015, 0.15], [0.008, 0.17], [0, 0.17]], 0.36, top, 0.22, '#4fd67a', 12);
         break;
-      case 'trash':
-        b.cyl(0.3, 0.26, 0.55, cx, top, cz, '#3ec96a', 14);
-        b.cyl(0.33, 0.33, 0.06, cx, top + 0.55, cz, '#2f9e54', 14);
-        b.box(0.12, 0.05, 0.12, cx, top + 0.6, cz, '#2f9e54');
+      }
+      case 'trash': {
+        // lixeira de pedal: corpo cilíndrico, tampa abaulada, pedal
+        ll(b, [[0, 0], [0.24, 0], [0.26, 0.02], [0.28, 0.5], [0.29, 0.52], [0, 0.52]], 0, top, 0, '#3ec96a', RS, 0.25);
+        ll(b, [[0.295, 0], [0.295, 0.03], [0.24, 0.07], [0.12, 0.09], [0, 0.095]], 0, top + 0.52, 0, '#2f9e54', RS);
+        lb(mt, 0.12, 0.02, 0.08, 0, top + 0.01, 0.27, '#cfd3dc');
+        lc(dk, 0.05, 0.03, 0, top + 0.6, 0, '#26803f', 12, 0.4);
         break;
-      case 'window':
-        b.box(T - 0.06, 0.05, T - 0.06, cx, top, cz, '#ffcf2e');
-        b.sph(0.1, cx + sideX * 0.4, top + 0.05, cz + sideZ * 0.4, '#fff6b0', 1, 0.7, 1);
-        b.cyl(0.02, 0.02, 0.05, cx + sideX * 0.4, top + 0.12, cz + sideZ * 0.4, '#e98f00', 6);
+      }
+      case 'window': {
+        // balcão de entrega de inox, lâmpada de aquecimento, sininho
+        lb(mt, T - 0.04, 0.035, T - 0.1, 0, top, 0, steel);
+        const [bx, bz] = P(0.36, 0.2);
+        mt.lathe([[0.06, 0], [0.065, 0.006], [0.06, 0.02], [0.045, 0.045], [0.02, 0.06], [0, 0.064]], bx, top + 0.04, bz, '#e8c24a', 16);
+        mt.rcyl(0.07, 0.008, bx, top + 0.035, bz, '#2a2238', 16, 0.3);
+        mt.rcyl(0.01, 0.025, bx, top + 0.1, bz, '#cfd3dc', 8);
+        // lâmpada de aquecimento
+        mt.box(T - 0.16, 0.06, 0.18, cx, HATCH_TOP - 0.42, cz + 0.05, '#b9bcc6');
+        glow.box(T - 0.24, 0.012, 0.12, cx, HATCH_TOP - 0.43, cz + 0.05, '#ff9a4a');
+        for (const sd of [-1, 1]) mt.cyl(0.008, 0.008, 0.36, cx + sd * 0.4, HATCH_TOP - 0.36, cz + 0.05, '#9aa0aa', 6);
         break;
-      case 'belt':
-        b.box(T, 0.06, 0.6, cx, top, cz, '#4a4560', face + Math.PI / 2);
-        for (let i = -2; i <= 2; i++) b.cyl(0.03, 0.03, 0.6, cx + sideX * i * 0.2, top + 0.07, cz + sideZ * i * 0.2, '#9aa0d0', 6, Math.PI / 2 * (fx ? 1 : 0), Math.PI / 2 * (fz ? 1 : 0));
+      }
+      case 'belt': {
+        // esteira: trilhos laterais de inox, roletes, lona de borracha
+        for (const sd of [-1, 1]) lb(mt, T, 0.12, 0.04, 0, top, sd * 0.32, steel);
+        for (let i = -2; i <= 2; i++) lt(mt, [[i * 0.22, top + 0.06, -0.3], [i * 0.22, top + 0.06, 0.3]], 0.03, '#9aa0aa', 2);
+        lb(dk, T, 0.012, 0.58, 0, top + 0.085, 0, '#2c2a34');
         break;
+      }
     }
     const body = new CANNON.Body({ mass: 0, shape: bodyShape, material: staticMat });
     body.position.set(cx, H / 2, cz);
     world.addBody(body);
   }
-  // fogões ganham um pouco de "parede" atrás (exaustor) — só nas laterais
+  // exaustores de inox (tronco de pirâmide + duto) sobre os fogões
   for (const st of sim.st)
     if (st.k === 'pot' || st.k === 'pan') {
-      const cx = (st.x + 0.5) * T - st.fx * (T / 2 - 0.06);
-      const cz = (st.y + 0.5) * T - st.fy * (T / 2 - 0.06);
-      b.box(st.fx ? 0.12 : T * 0.9, 0.4, st.fy ? 0.12 : T * 0.9, cx, 2.25, cz, '#c9c3e6');
+      const cx = (st.x + 0.5) * T - st.fx * 0.06;
+      const cz = (st.y + 0.5) * T - st.fy * 0.06;
+      const ry = Math.atan2(st.fx, st.fy);
+      mt.frustum(T * 0.98, T * 0.86, T * 0.4, T * 0.34, 0.32, cx, 1.95, cz, steel, ry);
+      mt.box(T * 0.98, 0.06, T * 0.86, cx, 1.9, cz, shade(steel, -0.06), ry);
+      mt.box(T * 0.34, WALL_H - 2.27, T * 0.3, cx - st.fx * 0.1, 2.27, cz - st.fy * 0.1, steel, ry);
+      glow.box(T * 0.7, 0.01, 0.06, cx, 1.895, cz, '#fff3c4', ry);
     }
 
   // ---------------- salão (do outro lado do passa-pratos) ----------------
-  const dfl = new THREE.Mesh(mk(new THREE.PlaneGeometry(W + 4, 5)), lam({ color: D.dining }));
+  const dfl = new THREE.Mesh(mk(new THREE.PlaneGeometry(W + 4, 5)), lam({ color: D.dining, map: rep(wood.map, (W + 4) / 1.2, 5 / 1.2), roughness: 0.6 }));
   dfl.rotation.x = -Math.PI / 2;
   dfl.position.set(W / 2, 0, -2.5);
   group.add(dfl);
   const back = new THREE.Mesh(mk(new THREE.PlaneGeometry(W + 4, 3.2)), lam({ color: shade(D.wall, 0.35) }));
   back.position.set(W / 2, 1.6, -5);
   group.add(back);
+  // lambri + quadros no salão
+  wd.sharp(W + 4, 0.9, 0.04, W / 2, 0, -4.98, shade(D.wall, -0.1));
+  for (let i = 0; i < 3; i++) {
+    const px = ((i + 0.5) / 3) * W;
+    wd.box(0.7, 0.5, 0.04, px, 1.6, -4.96, '#8a5a30');
+    b.sharp(0.6, 0.4, 0.01, px, 1.65, -4.93, ['#ffcf9a', '#9fe08a', '#7ad0ff'][i]);
+  }
   for (let i = 0; i < sim.seats; i++) {
     const sx = ((i + 0.5) / sim.seats) * W;
-    b.cyl(0.45, 0.45, 0.05, sx, 0.72, -2.4, '#ffffff', 16);
-    b.cyl(0.06, 0.1, 0.72, sx, 0, -2.4, '#7a4fd1', 8);
-    b.cyl(0.2, 0.2, 0.06, sx, 0.45, -3.1, '#ff5c7a', 12);
+    // mesa redonda com toalha xadrez (torno) + pé de ferro
+    dk.lathe([[0.22, 0], [0.2, 0.02], [0.05, 0.05], [0.04, 0.7], [0, 0.7]], sx, 0, -2.4, '#2a2733', 16);
+    cer.lathe([[0, 0.72], [0.47, 0.72], [0.5, 0.71], [0.52, 0.6], [0.53, 0.58], [0.5, 0.6], [0.48, 0.7], [0, 0.7]], sx, 0, -2.4, i % 2 ? '#ff7a8a' : '#fff6ea', 24);
+    // cadeira bistrô: assento, encosto curvo de madeira, pernas de metal
+    const cz2 = -3.05;
+    wd.rcyl(0.21, 0.05, sx, 0.45, cz2, '#b8783e', 18, 0.35);
+    for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) dk.cyl(0.014, 0.014, 0.45, sx + a * 0.14, 0, cz2 + c * 0.14, '#2a2733', 6);
+    for (const sd of [-1, 1]) dk.cyl(0.014, 0.014, 0.45, sx + sd * 0.16, 0.5, cz2 - 0.15, '#2a2733', 6);
+    wd.tube([[sx - 0.18, 0.92, cz2 - 0.12], [sx, 0.95, cz2 - 0.2], [sx + 0.18, 0.92, cz2 - 0.12]], 0.035, '#b8783e', 10, 6);
+    // jarrinho com flor
+    glass.lathe([[0, 0], [0.04, 0], [0.045, 0.06], [0.02, 0.12], [0.025, 0.14]], sx + 0.15, 0.72, -2.35, '#d8f6ff', 10);
+    b.sph(0.03, sx + 0.15, 0.88, -2.35, ['#ff5c7a', '#ffd84a', '#c98aff'][i % 3], 1, 1, 1, 8);
+    b.cyl(0.004, 0.004, 0.16, sx + 0.15, 0.72, -2.35, '#3e9e54', 4);
   }
 
-  const solid = new THREE.Mesh(mk(b.build()), solidMat);
-  group.add(solid);
+  const solidMat = lam({ vertexColors: true, roughness: 0.55 });
+  const woodMat = lam({ vertexColors: true, map: wood.map, roughness: 0.68, ...(standard ? { normalMap: wood.normal, normalScale: new THREE.Vector2(0.5, 0.5) } : {}) });
+  const metalMat = standard
+    ? mk(new THREE.MeshStandardMaterial({ vertexColors: true, map: brushed.map, metalness: 0.85, roughness: 0.32, roughnessMap: brushed.map }))
+    : lam({ vertexColors: true });
+  const darkMat = lam({ vertexColors: true, roughness: 0.42, metalness: standard ? 0.3 : 0 });
+  const stoneMat = lam({ vertexColors: true, map: stone.map, roughness: 0.22, ...(standard ? { normalMap: stone.normal, normalScale: new THREE.Vector2(0.25, 0.25) } : {}) });
+  const cerMat = lam({ vertexColors: true, roughness: 0.18 });
+  for (const [B, m] of [[b, solidMat], [wd, woodMat], [mt, metalMat], [dk, darkMat], [sn, stoneMat], [cer, cerMat]] as const) {
+    if (B.empty) continue;
+    const mesh = new THREE.Mesh(mk(B.build()), m);
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
   if (!glass.empty) {
-    const gm = mk(new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false }));
+    const gm = standard
+      ? mk(new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.1, depthWrite: false }))
+      : mk(new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false }));
     const gmesh = new THREE.Mesh(mk(glass.build()), gm);
     gmesh.renderOrder = 3;
     group.add(gmesh);

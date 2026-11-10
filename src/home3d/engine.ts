@@ -19,6 +19,7 @@ import type { MessItem3D, RoomItem3D } from './types';
 
 /* ---------------- qualidade (compartilhada: src/3d/common/quality.ts) ---------------- */
 import { q3For, type Q3 } from '../3d/common/quality';
+import { roomEnv } from '../3d/common/pbr';
 export { q3For, type Q3 };
 
 /* ---------------- grupos de colisão ---------------- */
@@ -186,8 +187,8 @@ export class Engine {
     this.renderer = new THREE.WebGLRenderer({ antialias: opts.antialias ?? this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.q.standard ? 0.98 : 1.15;
     this.renderer.shadowMap.enabled = this.q.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const cvs = this.renderer.domElement;
@@ -195,14 +196,19 @@ export class Engine {
     host.appendChild(cvs);
     cvs.addEventListener('webglcontextlost', this.ctxLost, false);
     this.matSolid = this.q.standard
-      ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0 })
+      ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0 })
       : new THREE.MeshLambertMaterial({ vertexColors: true });
+    if (this.q.standard) {
+      // reflexos suaves (ambiente procedural, sem download): verniz, louça, telas
+      this.scene.environment = roomEnv(this.renderer);
+      this.scene.environmentIntensity = 0.45;
+    }
     this.design = ensureRooms(design);
     this.mess = mess as MessItem3D[];
     this.scene.background = new THREE.Color('#2a1a63');
-    this.hemi = new THREE.HemisphereLight('#fff4e6', '#7a5ca8', this.q.standard ? 1.6 : 1.35);
+    this.hemi = new THREE.HemisphereLight('#fff4e6', '#7a5ca8', this.q.standard ? 1.15 : 1.5);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight('#fff1d6', this.q.standard ? 1.6 : 1.25);
+    this.sun = new THREE.DirectionalLight('#ffe8c8', this.q.standard ? 1.8 : 1.35);
     this.sun.position.set(HOUSE.maxX * 0.3 - 6, 14, -4);
     this.sun.target.position.set(HOUSE.maxX / 2, 0, HOUSE.maxZ / 2);
     this.scene.add(this.sun, this.sun.target);

@@ -19,6 +19,7 @@ import { Hand, handColors } from '../../3d/common/hand';
 import { Particles, PT } from '../../3d/common/particles';
 import { q3For, type Q3 } from '../../3d/common/quality';
 import { sfx } from '../../3d/common/sfx';
+import { roomEnv } from '../../3d/common/pbr';
 import { Actions, FpsInput, ICON, Toast, ensureCss, el, type ActDef } from '../../home3d/ui';
 import { ING_INDEX, INGS, PROC_TIME, RECIPES, compIng, ingName } from './data';
 import { blitIng, charSprite } from './art';
@@ -140,6 +141,8 @@ class KitchenFps implements Renderer {
   private lastLook: [number, number] = [0, 0];
   private slip = 0;
   private shake = 0;
+  /** tranco de câmera (picar) 0..1 */
+  private recoil = 0;
   /* mira */
   private tgSt = -1;
   private tgLoose: Loose | null = null;
@@ -192,8 +195,10 @@ class KitchenFps implements Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.q.standard ? 0.92 : 1.12;
+    this.renderer.shadowMap.enabled = this.q.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     cv.addEventListener('webglcontextlost', this.ctxLost, false);
     // tickets dos pedidos (mesmo desenho do 2D) por cima
     this.overlay = document.createElement('canvas');
@@ -216,8 +221,20 @@ class KitchenFps implements Renderer {
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
 
-    this.hemi = new THREE.HemisphereLight('#fff4e6', '#e6cfb4', this.q.standard ? 1.8 : 1.55);
-    this.sun = new THREE.DirectionalLight('#fff1d6', this.q.standard ? 1.6 : 1.3);
+    this.hemi = new THREE.HemisphereLight('#fff4e6', '#d9c2a8', this.q.standard ? 1.05 : 1.7);
+    this.sun = new THREE.DirectionalLight('#ffe8c8', this.q.standard ? 1.9 : 1.4);
+    if (this.q.standard) {
+      // reflexos: ambiente procedural (sem download) — inox e louça brilham de verdade
+      this.scene.environment = roomEnv(this.renderer);
+      this.scene.environmentIntensity = 0.55;
+    }
+    if (this.q.shadows) {
+      this.sun.castShadow = true;
+      this.sun.shadow.mapSize.set(1024, 1024);
+      this.sun.shadow.bias = -0.0006;
+      this.sun.shadow.normalBias = 0.02;
+      this.sun.shadow.radius = 3;
+    }
     this.scene.add(this.hemi, this.sun, this.sun.target, this.camera);
     this.parts = new Particles(Math.round(260 + 200 * this.q.particles));
     this.parts.budget = this.q.particles;
@@ -281,6 +298,19 @@ class KitchenFps implements Renderer {
     const DZ = sim.rows * T;
     this.sun.position.set(W * 0.3, 10, DZ + 4);
     this.sun.target.position.set(W / 2, 0, DZ / 2);
+    if (this.q.shadows) {
+      const sc = this.sun.shadow.camera;
+      const ext = Math.max(W, DZ) * 0.75 + 1;
+      sc.left = sc.bottom = -ext;
+      sc.right = sc.top = ext;
+      sc.near = 1;
+      sc.far = 30;
+      sc.updateProjectionMatrix();
+    }
+    // luz quente de preenchimento (lâmpadas pendentes)
+    const fill = new THREE.PointLight('#ffd9a0', this.q.standard ? 3 : 2, Math.max(W, DZ) * 1.2, 1.6);
+    fill.position.set(W / 2, WALL_H - 0.6, DZ / 2);
+    this.scene.add(fill);
     if (this.q.pointLight) {
       this.fireLight = new THREE.PointLight('#ff7a2e', 0, 6, 1.4);
       this.scene.add(this.fireLight);
@@ -573,6 +603,8 @@ class KitchenFps implements Renderer {
       sy = (Math.random() - 0.5) * this.shake * 0.12;
     }
     const space = th === 'space' ? Math.sin(this.time * 1.3) * 0.04 : 0;
+    this.recoil = Math.max(0, this.recoil - dt * 7);
+    sy -= Math.sin(this.recoil * Math.PI) * 0.012;
     cam.rotation.order = 'YXZ';
     cam.rotation.set(this.pitch + sy * 0.5 + (th === 'boat' ? Math.sin(this.time * 0.7) * 0.015 : 0), this.yaw + sx * 0.5, roll);
     cam.position.set(this.px + sx, EYE + bobY + sy + space, this.pz);
@@ -1368,26 +1400,7 @@ class KitchenFps implements Renderer {
       bub.position.set(sx + 0.4, 1.6 + Math.sin(time * 2 + o.id) * 0.05, -3.1);
       bub.scale.setScalar(0.5);
     }
-    // ---------------- item na mão + arco de mira ----------------
     const h = this.held();
-    if (h && this.fps) {
-      const cam = this.camera;
-      const plate = h.k === IK.Plate || h.k === IK.Dirty;
-      const ext = h.k === IK.Ext;
-      const ch = Math.max(0, this.charge);
-      V.set(ext ? 0.2 : plate ? 0.08 : 0.13, (ext ? -0.42 : plate ? -0.25 : -0.16) - ch * 0.04, (ext ? -0.55 : plate ? -0.55 : -0.5) + ch * 0.07);
-      if (this.hand) V.y += Math.sin(this.time * 9 * this.speedK + 1) * 0.008 * this.speedK;
-      QB.setFromAxisAngle(V2.set(0, 1, 0), ext ? Math.PI / 2 : 0.3);
-      MB.compose(V, QB, SB);
-      MB.premultiply(cam.matrixWorld);
-      I.item(MB, h, ext ? 0.62 : plate ? 0.62 : 0.55);
-      QB.identity();
-    }
-    if (this.charge >= 0 && h) this.arc(Math.max(0.05, this.charge));
-    else this.landRing.visible = false;
-    I.end();
-    // ---------------- mira / destaque ----------------
-    this.highlight(time);
     // ---------------- mão ----------------
     if (this.hand) {
       const hd = this.hand;
@@ -1403,8 +1416,10 @@ class KitchenFps implements Renderer {
       hd.scrub += ((this.actOn && (ctx === 'wash' || ctx === 'spray') ? (ctx === 'spray' ? 0.25 : 1) : 0) - hd.scrub) * k;
       hd.stir += ((this.actOn && ctx === 'stir' ? 1 : 0) - hd.stir) * k;
       hd.charge += (Math.max(0, this.charge) - hd.charge) * Math.min(1, dt * 20);
-      hd.mesh.visible = this.fps && !qs.has('czauto');
+      hd.visible = this.fps && !qs.has('czauto');
       hd.update(dt, this.speedK, this.lastLook[0], this.lastLook[1]);
+      // tranco sutil de câmera no impacto da faca
+      if (hd.impact > 0.95 && this.fps) this.recoil = 1;
       if (this.speedK > 0.3 && dt > 0) {
         this.stepT -= dt * this.speedK;
         if (this.stepT <= 0) {
@@ -1413,6 +1428,38 @@ class KitchenFps implements Renderer {
         }
       }
     }
+    // ---------------- item na mão + arco de mira ----------------
+    if (h && this.fps) {
+      const cam = this.camera;
+      const plate = h.k === IK.Plate || h.k === IK.Dirty;
+      const ext = h.k === IK.Ext;
+      const ch = Math.max(0, this.charge);
+      let sc = ext ? 0.62 : plate ? 0.62 : 0.55;
+      if (this.hand && this.hand.visible) {
+        // o item fica ENTRE OS DEDOS e acompanha a mão (antecipação, arremesso, squash & stretch)
+        const hd = this.hand;
+        hd.grip(V);
+        const k = hd.k;
+        if (ext) V.add(V2.set(-0.01, -0.2, -0.03).multiplyScalar(k));
+        else if (plate) V.add(V2.set(-0.03, -0.035, -0.06).multiplyScalar(k));
+        else V.add(V2.set(-0.004, -0.045, -0.035).multiplyScalar(k));
+        sc *= k;
+        SB.set(hd.squashX, hd.squashY, hd.squashX);
+      } else {
+        V.set(ext ? 0.2 : plate ? 0.08 : 0.13, (ext ? -0.42 : plate ? -0.25 : -0.16) - ch * 0.04, (ext ? -0.55 : plate ? -0.55 : -0.5) + ch * 0.07);
+      }
+      QB.setFromAxisAngle(V2.set(0, 1, 0), ext ? Math.PI / 2 : 0.3);
+      MB.compose(V, QB, SB);
+      MB.premultiply(cam.matrixWorld);
+      I.item(MB, h, sc);
+      QB.identity();
+      SB.set(1, 1, 1);
+    }
+    if (this.charge >= 0 && h) this.arc(Math.max(0.05, this.charge));
+    else this.landRing.visible = false;
+    I.end();
+    // ---------------- mira / destaque ----------------
+    this.highlight(time);
     this.uiFrame(dt);
     // esconde sprites que sobraram
     for (let i = this.sprUsed; i < this.spr.length; i++) this.spr[i].visible = false;

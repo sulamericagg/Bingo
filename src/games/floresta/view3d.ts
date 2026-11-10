@@ -7,6 +7,7 @@
  *  jogar e chutar toras, veículo dirigível com caçamba, funil, esteira.
  * ============================================================ */
 import * as THREE from 'three';
+import { Forearm } from '../../3d/common/hand';
 import * as CANNON from 'cannon-es';
 import { t } from '../../i18n';
 import { gameFont } from '../../i18n/font';
@@ -47,17 +48,21 @@ interface Q {
   particles: number;
   deco: number;
   aa: boolean;
+  /** modelos mais leves (copas com menos polígonos) */
+  lite: boolean;
 }
 function qFor(tier: Tier): Q {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   return [
-    { pr: Math.min(dpr, 0.6), shadows: false, bodies: 8, particles: 0.35, deco: 0.4, aa: false },
-    { pr: Math.min(dpr, 0.8), shadows: false, bodies: 14, particles: 0.6, deco: 0.65, aa: false },
-    { pr: Math.min(dpr, 1.0), shadows: false, bodies: 24, particles: 0.85, deco: 0.85, aa: true },
-    { pr: Math.min(dpr, 1.5), shadows: true, bodies: 40, particles: 1, deco: 1, aa: true },
+    { pr: Math.min(dpr, 0.6), shadows: false, bodies: 8, particles: 0.35, deco: 0.4, aa: false, lite: true },
+    { pr: Math.min(dpr, 0.8), shadows: false, bodies: 14, particles: 0.6, deco: 0.65, aa: false, lite: true },
+    { pr: Math.min(dpr, 1.0), shadows: false, bodies: 24, particles: 0.85, deco: 0.85, aa: true, lite: false },
+    { pr: Math.min(dpr, 1.5), shadows: true, bodies: 40, particles: 1, deco: 1, aa: true, lite: false },
   ][tier];
 }
 
+const _w = new THREE.Vector3();
+const _vInv = new THREE.Matrix4();
 export async function createView3D(root: HTMLElement, sim: Sim, tier: Tier): Promise<View> {
   return new View3D(root, sim, tier);
 }
@@ -239,6 +244,8 @@ class View3D implements View {
   private toolLvl = -1;
   private handR!: THREE.Mesh;
   private handL!: THREE.Mesh;
+  private armR!: Forearm;
+  private armL!: Forearm;
   private heldGroup = new THREE.Group();
   private heldLogs: THREE.Group[] = [];
   private wheel!: THREE.Group;
@@ -309,8 +316,8 @@ class View3D implements View {
     this.cam = new THREE.PerspectiveCamera(70, 1, 0.08, 100);
     this.vmCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
     this.scene.fog = new THREE.Fog(0xbfe8ff, 26, 78);
-    this.treeMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-    this.glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x3a3a70 }));
+    this.treeMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x3a3a70 }));
 
     // física
     this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -20, 0) });
@@ -521,7 +528,7 @@ class View3D implements View {
     const k = sp * 4 + rare;
     let g = this.treeGeo.get(k);
     if (!g) {
-      g = this.trackG(treeGeometry(SPECIES[sp], rare));
+      g = this.trackG(treeGeometry(SPECIES[sp], rare, 0, this.q.lite));
       this.treeGeo.set(k, g);
     }
     return g;
@@ -687,7 +694,7 @@ class View3D implements View {
   /* ------------------------------ toras ------------------------------ */
 
   private buildLogs(): void {
-    this.logSide = new THREE.InstancedMesh(this.trackG(logSideGeometry()), this.track(lambert('#ffffff')), MAX_LOG_INST);
+    this.logSide = new THREE.InstancedMesh(this.trackG(logSideGeometry()), this.track(new THREE.MeshLambertMaterial({ vertexColors: true })), MAX_LOG_INST);
     this.logCap = new THREE.InstancedMesh(this.trackG(logCapGeometry()), this.track(new THREE.MeshLambertMaterial({ vertexColors: true })), MAX_LOG_INST);
     for (const m of [this.logSide, this.logCap]) {
       m.frustumCulled = false;
@@ -1099,12 +1106,16 @@ class View3D implements View {
     this.handL.renderOrder = 10;
     this.vmCam.add(this.vmRoot);
     this.vmRoot.add(this.vmTool, this.handR, this.handL, this.heldGroup);
+    // antebraços completos saindo da borda da tela (nunca aparece o braço cortado)
+    this.armR = new Forearm(col, 1, 9, 0.05);
+    this.armL = new Forearm(col, -1, 9, 0.05);
+    this.vmCam.add(this.armR.mesh, this.armL.mesh);
     // toras nas mãos
     const side = this.trackG(logSideGeometry());
     const cap = this.trackG(logCapGeometry());
     for (let i = 0; i < HAND_CAP; i++) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(side, this.track(lambert('#9a6a3c'))));
+      g.add(new THREE.Mesh(side, this.track(new THREE.MeshLambertMaterial({ color: '#9a6a3c', vertexColors: true }))));
       g.add(new THREE.Mesh(cap, this.track(new THREE.MeshLambertMaterial({ vertexColors: true }))));
       g.scale.setScalar(0.3);
       this.heldGroup.add(g);
@@ -1262,8 +1273,12 @@ class View3D implements View {
         tz -= k * 0.4;
       }
       if (this.grabAnim > 0) ty -= Math.sin((1 - this.grabAnim) * Math.PI) * 0.15;
-      this.heldGroup.position.set(tx + lx + bx, ty + ly + by, tz);
-      this.heldGroup.rotation.set(0.1, 0, Math.sin(this.time * 2) * 0.02);
+      // peso: as toras afundam a cada passo e balançam devagar (inércia)
+      const nh = this.held.length;
+      const wk = Math.min(1, nh / 3);
+      ty -= 0.012 * wk + Math.abs(Math.sin(this.bob)) * 0.022 * walk * (0.5 + wk);
+      this.heldGroup.position.set(tx + lx * 0.6 + bx * 0.7, ty + ly * 0.6 + by, tz);
+      this.heldGroup.rotation.set(0.1 + Math.sin(this.time * 1.4) * 0.01, 0, Math.sin(this.time * 2) * 0.02 + Math.sin(this.bob) * 0.05 * walk);
       for (let i = 0; i < HAND_CAP; i++) {
         const g = this.heldLogs[i];
         const h = this.held[i];
@@ -1309,6 +1324,19 @@ class View3D implements View {
         this.handR.rotation.set(0, 0, 0.2);
         this.handL.rotation.set(0, 0, -0.2);
       }
+    }
+    this.updateArms();
+  }
+
+  /** antebraços: do pulso de cada mão até um cotovelo fora do quadro */
+  private updateArms(): void {
+    this.vmRoot.updateMatrixWorld(true);
+    _vInv.copy(this.vmCam.matrixWorld).invert();
+    for (const [h, a] of [[this.handR, this.armR], [this.handL, this.armL]] as const) {
+      a.mesh.visible = h.visible;
+      if (!h.visible) continue;
+      _w.set(0, -0.034, 0).applyMatrix4(h.matrixWorld).applyMatrix4(_vInv);
+      a.set(_w, this.vmCam, 0.72, 0);
     }
   }
 
@@ -2829,7 +2857,7 @@ class View3D implements View {
       }
     }
     const carry = new THREE.Group();
-    const lg = new THREE.Mesh(this.trackG(logSideGeometry()), this.track(lambert('#9a6a3c')));
+    const lg = new THREE.Mesh(this.trackG(logSideGeometry()), this.track(new THREE.MeshLambertMaterial({ color: '#9a6a3c', vertexColors: true })));
     lg.scale.setScalar(0.7);
     carry.add(lg);
     carry.position.y = kind === 'drone' ? -0.45 : 1.75;
@@ -2927,6 +2955,8 @@ class View3D implements View {
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();
     for (const tx of this.texs) tx.dispose();
+    this.armR?.dispose();
+    this.armL?.dispose();
     this.renderer.dispose();
   }
 }
