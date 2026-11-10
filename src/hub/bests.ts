@@ -43,6 +43,10 @@ export function bestLabel(id: string): string {
       const b = lsNum('bw-cor', 'bestAcc');
       return b ? t('best.cor', 'Melhor precisão: {n}%', { n: b.toFixed(1).replace('.', t('cor.decimal', ',')) }) : '';
     }
+    case 'voo': {
+      const b = lsNum('bw-voo', 'best');
+      return b ? t('best.voo', 'Recorde: {n} pts', { n: fmt(b) }) : '';
+    }
     default:
       return '';
   }
