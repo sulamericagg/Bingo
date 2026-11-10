@@ -145,6 +145,8 @@
 .hm-furn {
   flex: none; width: 74px; padding: 4px; border-radius: 12px; background: #fff; border: 2px solid var(--ink) !important;
   display: flex; flex-direction: column; align-items: center; font-size: 11px; font-weight: 600; position: relative;
+  /* cartões da mesma fileira com a mesma altura (nome em 2 linhas deixava a fileira "dentada") */
+  align-self: stretch; justify-content: space-between;
 }
 .hm-furn canvas { width: 60px; height: 52px; }
 .hm-furn .price { display: flex; align-items: center; gap: 2px; font-size: 11px; }
