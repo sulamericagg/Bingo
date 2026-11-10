@@ -194,7 +194,7 @@ export const ECONOMY = {
  */
 export const ONLINE = {
   apiBase: '',
-  nativeApiBase: 'https://bloop-orbit.sulamericaradioetv.workers.dev',
+  nativeApiBase: 'https://bloop-orbit.dkrossoficial.workers.dev',
   /** Tempo máximo de cada requisição (ms). */
   timeoutMs: 8000,
 };
