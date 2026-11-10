@@ -224,6 +224,11 @@ export class Brain {
     this.onBark?.(this.p, '?');
     return true;
   }
+  /** há algo para essa ordem agora? (só para o menu ficar claro) */
+  available(c: Cmd): boolean {
+    if (c === 'follow' || c === 'stay') return true;
+    return this.findTarget(c, -1) >= 0 || (c === 'wash' && this.hasDishes());
+  }
   private refuse(): boolean {
     this.p.pet = 'no';
     this.p.emoteT = 0;

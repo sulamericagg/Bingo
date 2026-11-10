@@ -15,9 +15,11 @@ import { showRewarded, rewardedAvailable } from '../../services/ads';
 import type { PeerState } from '../../services/presence-api';
 import { openEmoteWheel, closeEmoteWheel } from '../../social/emotes';
 import { icon } from '../../ui/icons';
-import { charSprite } from './art';
-import { Brain } from './bots';
+import { charSprite, drawPetIcon } from './art';
+import { Brain, CMDS, type Cmd } from './bots';
 import { HIRE_COST, MAX_CREW, PACKS, RECIPES, ROLES, UPGRADES, dayParams, roleDesc, roleName, specialName, themeName, type Role, type Special, type Theme } from './data';
+import { Tutorial, hintTarget } from './guide';
+import { ENDLESS_AT, HELPER_AT, LEVEL_COUNT, WORLDS, dailyLevel, dayKey, level, levelNews, levelOpen, totalStars, worldIndex, worldStart, type Level } from './levels';
 import { czIcon } from './icons';
 import { Net, type HostCfg } from './net';
 import { Render2D } from './render2d';
@@ -124,22 +126,168 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       } else mode = m;
       sv.mode = mode;
       persistCz();
-      lobby();
+      if (sv.tutDone) map();
+      else playLevel(level(1));
     });
     bind(d, '[data-a=exit]', () => quit());
     setBack(() => quit());
   }
 
+  /** aviso pequeno no topo (não cobre a cozinha) */
   function banner(txt: string, sub = '', ms = 1800): void {
+    let box = el.querySelector<HTMLElement>('.cz-toasts');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'cz-toasts';
+      el.appendChild(box);
+    }
+    while (box.children.length >= 2) box.firstElementChild!.remove();
     const b = document.createElement('div');
-    b.className = 'cz-banner';
-    b.innerHTML = esc(txt) + (sub ? `<small>${esc(sub)}</small>` : '');
-    el.appendChild(b);
-    setTimeout(() => b.remove(), ms);
+    b.className = 'cz-toast';
+    b.innerHTML = esc(txt) + (sub ? ` <small>${esc(sub)}</small>` : '');
+    box.appendChild(b);
+    setTimeout(() => {
+      b.classList.add('cz-out');
+      setTimeout(() => b.remove(), 260);
+    }, ms);
+  }
+
+  /* ======================= 1b) mapa de fases ======================= */
+  const starsRow = (n: number, size = 14) => [0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}">${icon('star', { size })}</i>`).join('');
+  const helpersFor = (lv: Level | null): number => {
+    if (sv.solo) return 0;
+    if (!lv) return -1; // modo sem fim: equipe contratada
+    if (lv.tutorial) return 0;
+    if (lv.n === 0) return 1;
+    return HELPER_AT.filter((a) => lv.n >= a).length;
+  };
+  const endlessOpen = () => (sv.lvStars[ENDLESS_AT] ?? 0) > 0 || sv.days > 2;
+  function map(): void {
+    clear();
+    curLvN = 0;
+    const d = ov();
+    d.classList.add('cz-mapov');
+    const ts = totalStars(sv.lvStars);
+    let next = 1;
+    while (next < LEVEL_COUNT && (sv.lvStars[next] ?? 0) > 0) next++;
+    const today = dayKey();
+    const dDone = sv.daily.key === today ? sv.daily.stars : 0;
+    let worlds = '';
+    WORLDS.forEach((W, w) => {
+      const a = worldStart(w);
+      const b = w + 1 < WORLDS.length ? worldStart(w + 1) - 1 : LEVEL_COUNT;
+      const lockedW = ts < W.stars;
+      let cells = '';
+      for (let n = a; n <= b; n++) {
+        const st = sv.lvStars[n] ?? 0;
+        const open = levelOpen(n, sv.lvStars);
+        const isNext = open && st === 0;
+        cells += `<button class="cz-lvb${open ? '' : ' cz-lock'}${isNext ? ' cz-next' : ''}${st ? ' cz-done' : ''}" data-lv="${n}" ${open ? '' : 'aria-disabled="true"'}><b>${open ? n : icon('lock', { size: 18 })}</b><span class="cz-ministars">${starsRow(st, 11)}</span>${HELPER_AT.includes(n) && !sv.solo ? `<em>${icon('pet', { size: 14 })}</em>` : ''}</button>`;
+      }
+      worlds += `<div class="cz-world" style="--w1:${W.col[0]};--w2:${W.col[1]}"><div class="cz-wh"><b>${esc(W.name())}</b>${lockedW ? `<span class="cz-pill">${icon('lock', { size: 14 })}${icon('star', { size: 14 })}${W.stars}</span>` : ''}</div><div class="cz-lvgrid">${cells}</div></div>`;
+    });
+    d.innerHTML = `
+      <div class="cz-maptop">
+        <button class="cz-btn cz-ic" data-a="exit">${icon('home', { size: 22 })}</button>
+        <div class="cz-title cz-grow">${t('cozinha.name', 'Cozinha Maluca')}</div>
+        <span class="cz-pill">${icon('star', { size: 18 })}${ts}/${LEVEL_COUNT * 3}</span>
+        <span class="cz-pill">${icon('coin', { size: 18 })}${fmt(sv.cash)}</span>
+      </div>
+      <div class="cz-modesrow">
+        <button class="cz-btn cz-green" data-a="play">${icon('play', { size: 20 })}${t('cozinha.playLv', 'Jogar fase {n}', { n: next })}</button>
+        <button class="cz-btn cz-orange" data-a="daily">${icon('calendar', { size: 20 })}${t('cozinha.daily', 'Desafio do dia')}${dDone ? `<span class="cz-ministars">${starsRow(dDone, 10)}</span>` : ''}</button>
+        <button class="cz-btn${endlessOpen() ? ' cz-pink' : ''}" data-a="endless">${endlessOpen() ? icon('refresh', { size: 20 }) : icon('lock', { size: 18 })}${t('cozinha.endless', 'Modo sem fim')}</button>
+      </div>
+      <div class="cz-worlds">${worlds}</div>
+      <div class="cz-modesrow cz-small">
+        <button class="cz-btn cz-toggle${sv.solo ? ' cz-on' : ''}" data-a="solo"><span class="cz-chk">${sv.solo ? icon('check', { size: 14 }) : ''}</span>${t('cozinha.solo', 'Jogar sozinho (sem ajudantes)')}</button>
+        <button class="cz-btn" data-a="tut">${czIcon('hat', 18)}${t('cozinha.tutorial', 'Treino')}</button>
+        <button class="cz-btn cz-gold" data-a="shop">${czIcon('cart', 18)}${t('cozinha.shop', 'Melhorias')}</button>
+        <button class="cz-btn" data-a="friends">${czIcon('friends', 18)}${t('cozinha.friends', 'Com amigos')}</button>
+        <button class="cz-btn" data-a="gfx">${mode === '3d' ? czIcon('cube', 18) : czIcon('flat', 18)}${mode.toUpperCase()}</button>
+      </div>`;
+    bind(d, '[data-lv]', (b) => {
+      const n = Number(b.dataset.lv);
+      if (!levelOpen(n, sv.lvStars)) {
+        const W = WORLDS[worldIndex(n)];
+        banner(totalStars(sv.lvStars) < W.stars ? t('cozinha.needStars', 'Junte {n} estrelas para abrir', { n: W.stars }) : t('cozinha.needPrev', 'Termine a fase anterior primeiro'));
+        return;
+      }
+      levelSheet(level(n));
+    });
+    bind(d, '[data-a=play]', () => levelSheet(level(next)));
+    bind(d, '[data-a=daily]', () => levelSheet(dailyLevel()));
+    bind(d, '[data-a=endless]', () => {
+      if (!endlessOpen()) return banner(t('cozinha.endlessLock', 'Termine a fase {n} para liberar', { n: ENDLESS_AT }));
+      lobby();
+    });
+    bind(d, '[data-a=solo]', () => {
+      sv.solo = !sv.solo;
+      persistCz();
+      map();
+    });
+    bind(d, '[data-a=tut]', () => playLevel(level(1)));
+    bind(d, '[data-a=shop]', () => shop('up'));
+    bind(d, '[data-a=friends]', () => friends());
+    bind(d, '[data-a=gfx]', () => chooser());
+    bind(d, '[data-a=exit]', () => quit());
+    setBack(() => quit());
+    if (net.ses) {
+      let last = performance.now();
+      const tick = (ms: number) => {
+        raf = requestAnimationFrame(tick);
+        followHost((ms - last) / 1000);
+        last = ms;
+      };
+      raf = requestAnimationFrame(tick);
+    }
+    // rola até a próxima fase
+    const nx = d.querySelector<HTMLElement>('.cz-next');
+    if (nx) requestAnimationFrame(() => nx.scrollIntoView({ block: 'center' }));
+  }
+
+  /** ficha da fase: cardápio, novidades, metas de estrelas */
+  function levelSheet(lv: Level): void {
+    const sh = document.createElement('div');
+    sh.className = 'cz-sheet';
+    const daily = lv.n === 0;
+    const news = daily || lv.tutorial ? { recipes: [], procs: [] } : levelNews(lv.n);
+    const procName = (p: string) =>
+      p === 'chop' ? t('cozinha.st.board', 'Tábua') : p === 'boil' ? t('cozinha.st.pot', 'Panela') : p === 'fry' ? t('cozinha.st.pan', 'Frigideira') : p === 'bake' ? t('cozinha.st.oven', 'Forno') : t('cozinha.st.blender', 'Liquidificador');
+    const best = daily ? (sv.daily.key === dayKey() ? sv.daily.stars : 0) : sv.lvStars[lv.n] ?? 0;
+    const hp = helpersFor(lv);
+    const g = lv.p.goal;
+    sh.innerHTML = `<div class="cz-card">
+      <div class="cz-row"><b class="cz-grow cz-sheett">${daily ? t('cozinha.daily', 'Desafio do dia') + (sv.daily.streak > 1 ? ' · ' + t('cozinha.streak', '{n} dias seguidos', { n: sv.daily.streak }) : '') : lv.tutorial ? t('cozinha.tutorialN', 'Treino {n}/3', { n: lv.tutorial }) : t('cozinha.levelN', 'Fase {n}', { n: lv.n })}</b><span class="cz-ministars">${starsRow(best, 16)}</span></div>
+      <div class="cz-note" style="text-align:left">${esc(WORLDS[lv.world].name())}${lv.special !== 'none' ? ' · ' + esc(specialName(lv.special)) : ''}</div>
+      <div class="cz-menu-list">${lv.menu.map((r) => `<span${news.recipes.includes(r) ? ' class="cz-new"' : ''}>${esc(RECIPES[r].name())}</span>`).join('')}</div>
+      ${news.recipes.length || news.procs.length ? `<div class="cz-newrow">${t('cozinha.new', 'Novo!')} ${news.procs.map((p) => esc(procName(p))).join(', ')}</div>` : ''}
+      ${lv.tutorial ? `<div class="cz-note">${t('cozinha.tutNote', 'Sem relógio: siga a seta verde e as dicas no topo.')}</div>` : `<div class="cz-goals"><span>${starsRow(1, 12)} ${fmt(g[0])}</span><span>${starsRow(2, 12)} ${fmt(g[1])}</span><span>${starsRow(3, 12)} ${fmt(g[2])}</span></div>`}
+      <div class="cz-note">${hp === 0 ? (sv.solo ? t('cozinha.soloOn', 'Sozinho: sem ajudantes') : t('cozinha.noHelpers', 'Sem ajudantes nesta fase')) : t('cozinha.helpersN', 'Ajudantes: {n} (toque neles e dê ordens)', { n: hp })}</div>
+      <div class="cz-row"><button class="cz-btn cz-grow" data-a="close">${t('cozinha.back', 'Voltar')}</button><button class="cz-btn cz-green cz-big cz-grow" data-a="go">${icon('play', { size: 22 })}${t('cozinha.play', 'Jogar')}</button></div>
+    </div>`;
+    el.appendChild(sh);
+    const close = () => {
+      sh.remove();
+      setBack(() => quit());
+    };
+    sh.addEventListener('click', (e) => {
+      if (e.target === sh) close();
+    });
+    bind(sh, '[data-a=close]', close);
+    bind(sh, '[data-a=go]', () => playLevel(lv));
+    setBack(close);
+  }
+
+  function playLevel(lv: Level): void {
+    curLvN = lv.n === 0 ? -1 : lv.n;
+    hostGo++;
+    void startDay(hostCfg(), false);
   }
 
   /* ======================= 2) restaurante (saguão) ======================= */
   function crewList(): Role[] {
+    if (sv.solo) return [];
     const humans = net.online ? net.humans.length : 0;
     const out: Role[] = [];
     sv.staff.forEach((r, i) => {
@@ -151,8 +299,10 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     return n * (6 + sv.day * 2);
   }
   function hostCfg(): HostCfg {
-    return { day: sv.day, seed: (sv.day * 7919 + sv.days * 31) >>> 0, crew: 1 + crewList().length + (net.online ? net.humans.length : 0), ups: sv.ups, packs: sv.packs, portrait: window.innerHeight > window.innerWidth, go: hostGo };
+    return { day: sv.day, seed: (sv.day * 7919 + sv.days * 31) >>> 0, crew: 1 + crewList().length + (net.online ? net.humans.length : 0), ups: sv.ups, packs: sv.packs, portrait: window.innerHeight > window.innerWidth, go: hostGo, lv: curLvN };
   }
+  /** fase em jogo: >0 campanha, -1 desafio do dia, 0 modo sem fim */
+  let curLvN = 0;
 
   function lobby(): void {
     clear();
@@ -162,7 +312,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const crew = crewList();
     const isClient = net.online && !net.isHost();
     d.innerHTML = `
-      <div class="cz-title">${t('cozinha.name', 'Cozinha Maluca')}</div>
+      <div class="cz-title">${t('cozinha.endless', 'Modo sem fim')}</div>
       <div class="cz-row"><span class="cz-pill">${czIcon('hat', 22)}${t('cozinha.day', 'Dia {n}', { n: sv.day })}</span><span class="cz-pill">${icon('coin', { size: 20 })}${fmt(sv.cash)}</span>${sv.bestDay ? `<span class="cz-pill">${icon('trophy', { size: 20 })}${sv.bestDay}</span>` : ''}</div>
       <div class="cz-card">
         <div class="cz-sub" style="margin:0 auto">${themeName(sim.theme)} · ${t('cozinha.goal', 'Meta: {a}', { a: fmt(p.goal[0]) })}</div>
@@ -178,7 +328,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         </div>
         <div class="cz-row">
           <button class="cz-btn cz-grow" data-a="gfx">${mode === '3d' ? czIcon('cube', 20) : czIcon('flat', 20)}${t('cozinha.graphics', 'Gráficos')}: ${mode.toUpperCase()}</button>
-          <button class="cz-btn cz-grow" data-a="exit">${icon('home', { size: 20 })}${t('cozinha.exit', 'Sair')}</button>
+          <button class="cz-btn cz-grow" data-a="map">${icon('star', { size: 20 })}${t('cozinha.map', 'Mapa')}</button>
         </div>
         ${net.online ? `<div class="cz-note">${t('cozinha.online', 'Online: {n} amigos', { n: net.humans.length })}${netCode ? ' · #' + esc(netCode) : ''}</div>` : ''}
       </div>`;
@@ -212,24 +362,15 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     bind(d, '[data-a=shop]', () => shop('up'));
     bind(d, '[data-a=friends]', () => friends());
     bind(d, '[data-a=gfx]', () => chooser());
-    bind(d, '[data-a=exit]', () => quit());
-    setBack(() => chooser());
+    bind(d, '[data-a=map]', () => map());
+    setBack(() => map());
     // online: mantém presença viva e segue o host
     let last = performance.now();
     const tick = (ms: number) => {
       raf = requestAnimationFrame(tick);
       const dt = (ms - last) / 1000;
       last = ms;
-      if (!net.ses) return;
-      net.sendLobby(net.isHost() ? hostCfg() : null, dt);
-      const hs = net.hostState;
-      if (hs && !net.isHost()) {
-        const cfg = Net.readCfg(hs);
-        if (cfg && cfg.go !== lastSeenGo && hs.T !== undefined) {
-          lastSeenGo = cfg.go;
-          startDay(cfg, true);
-        }
-      }
+      followHost(dt);
     };
     raf = requestAnimationFrame(tick);
     net.onChange = () => {
@@ -239,6 +380,20 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     };
   }
   let lastSeenGo = -1;
+  /** online: mantém presença viva e segue o anfitrião (do saguão ou do mapa) */
+  function followHost(dt: number): void {
+    if (!net.ses) return;
+    net.sendLobby(net.isHost() ? hostCfg() : null, dt);
+    const hs = net.hostState;
+    if (hs && !net.isHost()) {
+      const cfg = Net.readCfg(hs);
+      if (cfg && cfg.go !== lastSeenGo && hs.T !== undefined) {
+        lastSeenGo = cfg.go;
+        curLvN = cfg.lv ?? 0;
+        void startDay(cfg, true);
+      }
+    }
+  }
 
   function friends(): void {
     clear();
@@ -265,10 +420,10 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       const ok = await net.connect(netCode);
       if (dead) return;
       stEl.textContent = ok ? t('cozinha.online', 'Online: {n} amigos', { n: net.humans.length }) : t('cozinha.offline', 'Sem internet: só ajudantes robôs');
-      if (ok) setTimeout(() => !dead && lobby(), 600);
+      if (ok) setTimeout(() => !dead && map(), 600);
     });
-    bind(d, '[data-a=back]', () => lobby());
-    setBack(() => lobby());
+    bind(d, '[data-a=back]', () => map());
+    setBack(() => map());
   }
 
   /* ======================= 3) loja / melhorias ======================= */
@@ -344,21 +499,22 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       audio.cash();
       shop('staff');
     });
-    bind(d, '[data-a=back]', () => lobby());
-    setBack(() => lobby());
+    bind(d, '[data-a=back]', () => map());
+    setBack(() => map());
   }
 
   /* ======================= 4) o turno ======================= */
   async function startDay(cfg: HostCfg, client: boolean): Promise<void> {
     clear();
     net.onChange = null;
-    const opts = { day: cfg.day, seed: cfg.seed, ups: cfg.ups, packs: cfg.packs, crew: cfg.crew, portrait: cfg.portrait, client } as ConstructorParameters<typeof Sim>[0];
+    const lv: Level | null = (cfg.lv ?? 0) > 0 ? level(cfg.lv!) : cfg.lv === -1 ? dailyLevel() : null;
+    const opts = { day: lv ? Math.max(1, lv.n) : cfg.day, seed: lv ? lv.seed : cfg.seed, ups: cfg.ups, packs: cfg.packs, crew: cfg.crew, portrait: cfg.portrait, client, level: lv ?? undefined } as ConstructorParameters<typeof Sim>[0];
     const forceTheme = qs.get('cztheme') as Theme | null;
     const forceEv = qs.get('czev') as Special | null;
     if (forceTheme) opts.theme = forceTheme;
     if (forceEv) opts.special = forceEv;
     const sim = new Sim(opts);
-    const me = sim.addPlayer(1, save.skin === 'custom' ? t('cozinha.you', 'Você') : t('cozinha.you', 'Você'), save.skin, false, 'cook');
+    const me = sim.addPlayer(1, t('cozinha.you', 'Você'), save.skin, false, 'cook');
     me.hid = net.h;
     const brains: Brain[] = [];
     const remotes = new Map<number, Player>();
@@ -370,17 +526,29 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         p.hid = h.s.h ?? 0;
         remotes.set(p.hid, p);
       }
-      const crew = crewList();
       const nbots = Number(qs.get('czbots') ?? -1);
-      const roles: Role[] = nbots >= 0 ? (['cook', 'chopper', 'washer', 'server', 'cook'] as Role[]).slice(0, nbots) : crew;
+      const hp = helpersFor(lv);
+      const roles: Role[] =
+        nbots >= 0
+          ? (['chopper', 'washer', 'server', 'cook', 'chopper'] as Role[]).slice(0, nbots)
+          : hp >= 0
+            ? (['chopper', 'washer', 'server', 'cook'] as Role[]).slice(0, Math.max(0, Math.min(hp, MAX_CREW - 1 - (net.online ? net.humans.length : 0))))
+            : crewList();
       roles.forEach((r, i) => {
         const p = sim.addPlayer(10 + i, roleName(r), BOT_SKINS[i % BOT_SKINS.length], true, r);
-        brains.push(new Brain(sim, p, mulberry(cfg.seed + i * 977)));
+        const b = new Brain(sim, p, mulberry(cfg.seed + i * 977));
+        b.pet = true;
+        b.owner = me;
+        b.slow = net.online && net.humans.length ? 1.25 : 1;
+        b.onBark = (_p, k) => (k === 'no' ? audio.fail() : k === '!' ? audio.tick(2) : k === 'ok' ? audio.coin(1) : audio.click());
+        brains.push(b);
       });
       if (qs.has('czauto')) brains.push(new Brain(sim, me, mulberry(5)));
     } else {
       sim.clientPick = () => net.notePick();
     }
+    const pets = brains.filter((b) => b.pet);
+    const tut = lv && lv.tutorial ? new Tutorial(lv.tutorial, sim) : null;
     // depuração/screenshots: turno curto e incêndio forçado
     const dlen = Number(qs.get('czlen') ?? 0);
     if (dlen > 0) (sim.p as { len: number }).len = dlen;
@@ -422,11 +590,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <div class="cz-top">
         <button class="cz-btn cz-ic" data-a="pause">${icon('pause', { size: 24 })}</button>
         <span class="cz-pill">${czIcon('hat', 20)}<span data-day></span></span>
-        <span class="cz-pill" data-clock>${icon('clock', { size: 20 })}<span></span></span>
+        <span class="cz-pill" data-clock${tut ? ' style="display:none"' : ''}>${icon('clock', { size: 20 })}<span></span></span>
         <span class="cz-sp"></span>
+        ${lv && !tut ? `<span class="cz-pill cz-goal" data-goal><span class="cz-ministars"></span><span></span></span>` : ''}
         <span class="cz-pill">${icon('coin', { size: 20 })}<span data-cash>0</span></span>
         <button class="cz-btn cz-ic" data-a="emote">${icon('smile', { size: 24 })}</button>
       </div>
+      <div class="cz-tip" style="display:none"><span data-tiptxt></span><button class="cz-skip" data-a="skip">${t('cozinha.skip', 'Pular')}</button></div>
+      <div class="cz-pets"></div>
       <div class="cz-joy" style="display:none"><i></i></div>
       <div class="cz-acts">
         <button class="cz-act cz-pick" data-b="pick">${czIcon('hand', 34)}<small data-pl>${t('cozinha.pick', 'Pegar')}</small></button>
@@ -443,7 +614,141 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const pickBtn = hud.querySelector<HTMLElement>('[data-b=pick]')!;
     const actLabel = hud.querySelector<HTMLElement>('[data-al]')!;
     const pickLabel = hud.querySelector<HTMLElement>('[data-pl]')!;
-    dayEl.textContent = t('cozinha.day', 'Dia {n}', { n: cfg.day });
+    dayEl.textContent = lv ? (lv.n === 0 ? t('cozinha.dailyShort', 'Desafio') : lv.tutorial ? t('cozinha.tutorialN', 'Treino {n}/3', { n: lv.tutorial }) : t('cozinha.levelN', 'Fase {n}', { n: lv.n })) : t('cozinha.day', 'Dia {n}', { n: cfg.day });
+    const goalEl = hud.querySelector<HTMLElement>('[data-goal]');
+    const tipEl = hud.querySelector<HTMLElement>('.cz-tip')!;
+    const tipTxt = hud.querySelector<HTMLElement>('[data-tiptxt]')!;
+    const petsEl = hud.querySelector<HTMLElement>('.cz-pets')!;
+
+    /* ---------- ajudantes: fichas no canto + menu de ordens ---------- */
+    const CMD_LABEL: Record<Cmd, () => string> = {
+      chop: () => t('cozinha.cmd.chop', 'Cortar'),
+      cook: () => t('cozinha.cmd.cook', 'Cozinhar'),
+      wash: () => t('cozinha.cmd.wash', 'Lavar'),
+      serve: () => t('cozinha.cmd.serve', 'Entregar'),
+      fetch: () => t('cozinha.cmd.fetch', 'Buscar ingrediente'),
+      fire: () => t('cozinha.cmd.fire', 'Apagar fogo'),
+      follow: () => t('cozinha.cmd.follow', 'Seguir'),
+      stay: () => t('cozinha.cmd.stay', 'Ficar'),
+    };
+    const CMD_ICON: Record<Cmd, string> = { chop: 'chop', cook: 'fire', wash: 'wash', serve: 'serve', fetch: 'follow', fire: 'fire', follow: 'follow', stay: 'stay' };
+    const petIconCanvas = (kind: string, size: number): HTMLCanvasElement => {
+      const c = document.createElement('canvas');
+      c.width = c.height = size * 2;
+      const x = c.getContext('2d')!;
+      x.scale(2, 2);
+      drawPetIcon(x, kind, size / 2, size / 2 - size * 0.08, size * 0.36, 0);
+      return c;
+    };
+    const chipState: string[] = [];
+    let menuEl: HTMLElement | null = null;
+    let menuFor = -1;
+    let menuT = 0;
+    let petTutOn = false;
+    const closeMenu = () => {
+      menuEl?.remove();
+      menuEl = null;
+      menuFor = -1;
+      if (rend instanceof Render2D) rend.selected = null;
+    };
+    const openMenu = (i: number) => {
+      closeMenu();
+      const b = pets[i];
+      if (!b) return;
+      menuFor = i;
+      menuT = 0;
+      if (rend instanceof Render2D) rend.selected = b.p;
+      const m = document.createElement('div');
+      m.className = 'cz-cmd';
+      m.innerHTML = `<div class="cz-cmdh">${esc(b.p.name)}: ${t('cozinha.cmd.what', 'o que fazer?')}</div><div class="cz-cmdg">${CMDS.map((c) => `<button class="cz-cmdb${b.available(c) ? '' : ' cz-dim'}" data-c="${c}"><canvas></canvas><span>${esc(CMD_LABEL[c]())}</span></button>`).join('')}<button class="cz-cmdb cz-sm" data-c="${b.idleMode === 'follow' ? 'stay' : 'follow'}"><canvas></canvas><span>${esc(CMD_LABEL[b.idleMode === 'follow' ? 'stay' : 'follow']())}</span></button></div>`;
+      m.querySelectorAll<HTMLElement>('[data-c]').forEach((btn) => {
+        const c = btn.dataset.c as Cmd;
+        const cv2 = btn.querySelector('canvas')!;
+        cv2.replaceWith(petIconCanvas(CMD_ICON[c], 30));
+        btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          tap('light');
+          const ok = b.command(c);
+          if (!ok) {
+            banner(b.why === 'tired' ? t('cozinha.cmd.tired', '{n} está cansado: faça você um pouco!', { n: b.p.name }) : t('cozinha.cmd.nothing', 'Nada para {x} agora', { x: CMD_LABEL[c]().toLowerCase() }), '', 1500);
+          } else if (petTutOn) {
+            petTutOn = false;
+            sv.petTut = true;
+            persistCz();
+            banner(t('cozinha.cmd.good', 'Isso! Ele obedece com um pouquinho de atraso.'), '', 2200);
+          }
+          closeMenu();
+        });
+      });
+      hud.appendChild(m);
+      menuEl = m;
+    };
+    pets.forEach((b, i) => {
+      const c = document.createElement('button');
+      c.className = 'cz-chip';
+      const face = document.createElement('canvas');
+      face.width = 66;
+      face.height = 82;
+      face.getContext('2d')!.drawImage(charSprite(b.p.skin, b.p.role, 66), 0, 0);
+      face.className = 'cz-chipface';
+      c.appendChild(face);
+      const st = document.createElement('i');
+      c.appendChild(st);
+      c.addEventListener('pointerdown', (e) => e.stopPropagation());
+      c.addEventListener('click', () => {
+        audio.click();
+        if (menuFor === i) closeMenu();
+        else openMenu(i);
+      });
+      petsEl.appendChild(c);
+      chipState.push('');
+    });
+    const updateChips = () => {
+      for (let i = 0; i < pets.length; i++) {
+        const k = pets[i].p.pet || '';
+        if (k === chipState[i]) continue;
+        chipState[i] = k;
+        const slot = petsEl.children[i]?.querySelector('i');
+        if (slot) {
+          slot.innerHTML = '';
+          if (k) slot.appendChild(petIconCanvas(k, 26));
+        }
+        petsEl.children[i]?.classList.toggle('cz-busy', !!pets[i].task);
+      }
+    };
+    let tipId = '';
+    const setTip = (id: string, txt: string) => {
+      if (id === tipId) return;
+      tipId = id;
+      if (!txt) {
+        tipEl.style.display = 'none';
+        return;
+      }
+      tipEl.style.display = '';
+      tipTxt.textContent = txt;
+      tipEl.classList.remove('cz-pop');
+      void tipEl.offsetWidth;
+      tipEl.classList.add('cz-pop');
+    };
+    bind(hud, '[data-a=skip]', () => {
+      if (tut) {
+        sv.tutDone = true;
+        persistCz();
+        skipTut = true;
+        sim.ended = true;
+      } else if (petTutOn) {
+        petTutOn = false;
+        sv.petTut = true;
+        persistCz();
+        setTip('', '');
+      }
+    });
+    let skipTut = false;
+    if (!tut && pets.length && !sv.petTut) {
+      petTutOn = true;
+      petsEl.classList.add('cz-teach');
+    }
 
     // tamanho
     const portraitNow = () => window.innerHeight >= window.innerWidth;
@@ -465,30 +770,61 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     let jmy = 0;
     let actTouch = false;
     let pickPress = false;
+    // toque curto (sem arrastar) = tocar num ajudante (2D)
+    let tapId = -1;
+    let tx0 = 0;
+    let ty0 = 0;
+    let tT0 = 0;
     const onDown = (e: PointerEvent) => {
-      if (rend.fps || (e.target as HTMLElement).closest('button')) return;
-      if (joyId >= 0 || e.clientX > el.clientWidth * 0.6) return;
+      if ((e.target as HTMLElement).closest('button,.cz-cmd')) return;
+      if (menuEl) closeMenu();
+      if (rend.fps) return;
+      if (tapId < 0) {
+        tapId = e.pointerId;
+        tx0 = e.clientX;
+        ty0 = e.clientY;
+        tT0 = performance.now();
+      }
+      // joystick flutuante: mesma regra do 3D (lado esquerdo, abaixo do topo)
+      const r = el.getBoundingClientRect();
+      if (joyId >= 0 || e.clientX - r.left > r.width * 0.45 || e.clientY - r.top < r.height * 0.22) return;
       joyId = e.pointerId;
       jx0 = e.clientX;
       jy0 = e.clientY;
       jmx = jmy = 0;
       joy.style.display = 'block';
-      joy.style.left = jx0 + 'px';
-      joy.style.top = jy0 + 'px';
+      joy.style.left = jx0 - r.left + 'px';
+      joy.style.top = jy0 - r.top + 'px';
       knob.style.transform = '';
     };
     const onMove = (e: PointerEvent) => {
+      if (e.pointerId === tapId && Math.hypot(e.clientX - tx0, e.clientY - ty0) > 14) tapId = -1;
       if (e.pointerId !== joyId) return;
       const dx = e.clientX - jx0;
       const dy = e.clientY - jy0;
       const d = Math.hypot(dx, dy);
-      const R = 46;
+      const R = 50;
       const k = d > R ? R / d : 1;
-      jmx = (dx * k) / R;
-      jmy = (dy * k) / R;
+      // zona morta pequena + curva suave (andar devagar é fácil)
+      const m = Math.max(0, (Math.min(d, R) - 6) / (R - 6));
+      const sc = d > 0 ? (m * m * (3 - 2 * m) * 0.35 + m * 0.65) / d : 0;
+      jmx = dx * sc;
+      jmy = dy * sc;
       knob.style.transform = `translate(${dx * k}px,${dy * k}px)`;
     };
     const onUp = (e: PointerEvent) => {
+      if (e.pointerId === tapId) {
+        tapId = -1;
+        if (performance.now() - tT0 < 450 && rend instanceof Render2D) {
+          const r = el.getBoundingClientRect();
+          const p = rend.pickPlayer(e.clientX - r.left, e.clientY - r.top);
+          const i = p ? pets.findIndex((b) => b.p === p) : -1;
+          if (i >= 0) {
+            audio.click();
+            openMenu(i);
+          }
+        }
+      }
       if (e.pointerId !== joyId) return;
       joyId = -1;
       jmx = jmy = 0;
@@ -588,8 +924,11 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     };
 
     // contagem
-    banner(t('cozinha.day', 'Dia {n}', { n: cfg.day }), sim.theme !== 'classic' ? themeName(sim.theme) : t('cozinha.tip1', 'Pegue ingredientes, prepare e monte no prato!'), 2200);
-    let countdown = qs.has('czfast') ? 0 : 2.2;
+    if (!tut) banner(dayEl.textContent ?? '', lv ? (lv.special !== 'none' ? specialName(lv.special) : '') : sim.theme !== 'classic' ? themeName(sim.theme) : '', 2000);
+    let countdown = qs.has('czfast') || tut ? 0 : 1.6;
+    let guideT = 0;
+    let tutEndT = 0;
+    let goalShown = -1;
     let last = performance.now();
     let clockShown = -1;
     let cashShown = -1;
@@ -665,6 +1004,43 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
             break;
         }
       });
+      // guia: treino (seta + dica no topo) ou brilho de dica nas primeiras fases
+      guideT -= dt;
+      if (guideT <= 0 && !client) {
+        guideT = 0.15;
+        const g = rend as unknown as { guide?: { st: number; strong: boolean } | null };
+        if (tut) {
+          const stp = tut.step(me);
+          g.guide = stp.st >= 0 ? { st: stp.st, strong: stp.strong } : null;
+          setTip(stp.id, stp.txt);
+        } else if (lv && lv.n > 0 && lv.n <= 12) {
+          const hst = hintTarget(sim, me);
+          g.guide = hst >= 0 ? { st: hst, strong: false } : null;
+        }
+        if (petTutOn && !tut) setTip('pet', t('cozinha.petTip', 'Toque num ajudante (no canto) e dê uma ordem'));
+        else if (!tut && tipId === 'pet') setTip('', '');
+      }
+      if (tut && tut.finished && !sim.ended) {
+        tutEndT += dt;
+        if (tutEndT > 1.6) sim.ended = true;
+      }
+      if (pets.length) updateChips();
+      if (menuEl) {
+        menuT += dt;
+        if (menuT > 7) closeMenu();
+      }
+      if (goalEl) {
+        const g = sim.p.goal;
+        const st = sim.stars();
+        if (st !== goalShown) {
+          goalShown = st;
+          goalEl.firstElementChild!.innerHTML = starsRow(st, 13);
+        }
+        const nextG = st >= 3 ? g[2] : g[st];
+        const txt = st >= 3 ? '' : '/' + fmt(nextG);
+        const sp = goalEl.lastElementChild as HTMLElement;
+        if (sp.textContent !== txt) sp.textContent = txt;
+      }
       rend.draw(ms / 1000, paused ? 0 : dt, q);
       // HUD barato (só muda texto quando muda)
       const left = Math.max(0, Math.ceil(sim.p.len - sim.time));
@@ -690,15 +1066,22 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       gov.sample(frameMs, performance.now() - w0);
       if (sim.ended) {
         endT += dt;
-        if (endT === dt) banner(t('cozinha.timeUp', 'Fim do turno!'), '', 1600);
-        if (endT > 1.4 || qs.has('czfast')) {
+        if (endT === dt && !tut) banner(t('cozinha.timeUp', 'Fim do turno!'), '', 1600);
+        if (endT > 1.4 || qs.has('czfast') || skipTut) {
           cancelAnimationFrame(raf);
-          results(sim);
+          if (skipTut) {
+            live = null;
+            sv.lvStars[1] = Math.max(1, sv.lvStars[1] ?? 0);
+            sv.lvStars[2] = Math.max(1, sv.lvStars[2] ?? 0);
+            sv.lvStars[3] = Math.max(1, sv.lvStars[3] ?? 0);
+            persistCz();
+            map();
+          } else results(sim, lv, !!tut && tut.finished);
         }
       }
     };
     raf = requestAnimationFrame(loop);
-    (window as unknown as { __cz?: unknown }).__cz = { sim, me, brains };
+    (window as unknown as { __cz?: unknown }).__cz = { sim, me, brains, pets, tut, openMenu, rend };
   }
 
   function contextAct(sim: Sim, me: Player): '' | 'chop' | 'wash' | 'spray' {
@@ -726,37 +1109,76 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     if (!live || live.done) return null;
     live.done = true;
     const { sim, client } = live;
+    const lv = sim.lv;
     const dur = (performance.now() - live.startMs) / 1000;
     const stars = partial ? 0 : sim.stars();
-    const helpers = sim.players.filter((p) => p.bot && !p.remote).length;
+    const helpers = lv ? 0 : sim.players.filter((p) => p.bot && !p.remote).length; // na campanha os ajudantes são de graça
     const w = client ? 0 : Math.min(partial ? Math.round(wage(helpers) * Math.min(1, sim.time / sim.p.len)) : wage(helpers), Math.floor(sim.cash * 0.4));
     const net$ = Math.max(0, sim.cash - w);
-    const coins = partial ? Math.round(sim.cash / 8) : Math.max(3, Math.round(sim.cash / 8) + stars * 5);
-    const rec = !partial && (sim.day > sv.bestDay || net$ > sv.bestCash);
+    let coins = partial ? Math.round(sim.cash / 8) : Math.max(3, Math.round(sim.cash / 8) + stars * 5);
+    let rec = false;
+    if (lv && !partial) {
+      if (lv.n > 0) {
+        const prev = sv.lvStars[lv.n] ?? 0;
+        rec = stars > prev || sim.cash > (sv.lvBest[lv.n] ?? 0);
+        if (!client) {
+          sv.lvStars[lv.n] = Math.max(prev, stars);
+          sv.lvBest[lv.n] = Math.max(sv.lvBest[lv.n] ?? 0, sim.cash);
+          if (lv.n >= 3 && stars > 0) sv.tutDone = true;
+        }
+      } else {
+        // desafio do dia
+        const today = dayKey();
+        if (sv.daily.key !== today) sv.daily = { ...sv.daily, key: today, best: 0, stars: 0 };
+        rec = sim.cash > sv.daily.best;
+        const first = sv.daily.stars === 0 && stars > 0;
+        sv.daily.best = Math.max(sv.daily.best, sim.cash);
+        sv.daily.stars = Math.max(sv.daily.stars, stars);
+        if (first) {
+          const y = new Date();
+          y.setDate(y.getDate() - 1);
+          sv.daily.streak = sv.daily.last === dayKey(y) ? sv.daily.streak + 1 : 1;
+          sv.daily.last = today;
+          coins += 20 + Math.min(10, sv.daily.streak) * 5; // bônus do dia (1x)
+        }
+      }
+    } else rec = !partial && (sim.day > sv.bestDay || net$ > sv.bestCash);
     if (!client) {
       sv.cash += net$;
-      if (!partial) {
+      if (!partial && !lv) {
         sv.stars[sim.day] = Math.max(sv.stars[sim.day] ?? 0, stars);
         sv.day = sim.day + 1; // infinito: sempre avança
       }
     }
     if (!partial) {
       sv.days++;
-      sv.bestDay = Math.max(sv.bestDay, sim.day);
+      if (!lv) sv.bestDay = Math.max(sv.bestDay, sim.day);
     }
     sv.dishes += sim.served;
-    sv.bestCash = Math.max(sv.bestCash, net$);
+    if (!lv) sv.bestCash = Math.max(sv.bestCash, net$);
     persistCz();
     if (coins > 0) addCoins(coins);
-    reportRun({ game: 'cozinha', score: sim.cash, coins, durationSec: Math.round(dur), won: stars > 0, stats: { dishes: sim.served, days: partial ? 0 : 1, stars, fires: sim.fires } });
+    reportRun({ game: 'cozinha', score: sim.cash, coins, durationSec: Math.round(dur), won: stars > 0, stats: { dishes: sim.served, days: partial ? 0 : 1, stars, fires: sim.fires, level: lv ? lv.n : 0 } });
     return { stars, w, net$, coins, rec };
   }
 
-  function results(sim: Sim): void {
+  function results(sim: Sim, lv: Level | null = null, tutDone = false): void {
     const r = settle(false);
     clear();
-    if (!r) return lobby();
+    if (!r) return lv ? map() : lobby();
     const { stars, w, net$, coins, rec } = r;
+    if (lv && lv.tutorial) {
+      // treino: segue direto para o próximo passo (sem tela de números)
+      if (tutDone && lv.tutorial < 3) {
+        banner(t('cozinha.tutNext', 'Muito bem! Próximo treino...'), '', 1600);
+        return playLevel(level(lv.n + 1));
+      }
+      if (tutDone) {
+        sv.tutDone = true;
+        persistCz();
+      }
+    }
+    if (lv) return levelResults(sim, lv, r);
     const d = ov(true);
     const starHtml = [0, 1, 2].map((i) => `<span style="animation-delay:${0.2 + i * 0.25}s;${i < stars ? '' : 'filter:grayscale(1) brightness(.6)'}">${icon('star', { size: 54 })}</span>`).join('');
     d.innerHTML = `
@@ -787,6 +1209,52 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     bind(d, '[data-a=next]', () => lobby());
     bind(d, '[data-a=shop]', () => shop('up'));
     setBack(() => lobby());
+  }
+
+  function levelResults(sim: Sim, lv: Level, r: Settled): void {
+    const { stars, coins, rec } = r;
+    const d = ov(true);
+    const starHtml = [0, 1, 2].map((i) => `<span style="animation-delay:${0.2 + i * 0.25}s;${i < stars ? '' : 'filter:grayscale(1) brightness(.6)'}">${icon('star', { size: 50 })}</span>`).join('');
+    const g = sim.p.goal;
+    const daily = lv.n === 0;
+    const hasNext = !daily && lv.n < LEVEL_COUNT && levelOpen(lv.n + 1, sv.lvStars);
+    const share = Math.round(sim.botShare * 100);
+    const unlockedEndless = lv.n === ENDLESS_AT && stars > 0;
+    d.innerHTML = `
+      <div class="cz-title">${daily ? t('cozinha.daily', 'Desafio do dia') : stars ? t('cozinha.lvClear', 'Fase {n} completa!', { n: lv.n }) : t('cozinha.lvFail', 'Quase! Fase {n}', { n: lv.n })}</div>
+      <div class="cz-stars">${starHtml}</div>
+      ${rec ? `<div class="cz-sub" style="color:#ffe14a;font-weight:700">${t('cozinha.record', 'Novo recorde!')}</div>` : ''}
+      <div class="cz-card">
+        <div class="cz-stat"><span>${t('cozinha.score', 'Pontos (caixa)')}</span><b>${icon('coin', { size: 18 })}${fmt(sim.cash)}</b></div>
+        <div class="cz-goals">${[0, 1, 2].map((i) => `<span class="${sim.cash >= g[i] ? 'on' : ''}">${starsRow(i + 1, 11)} ${fmt(g[i])}</span>`).join('')}</div>
+        <div class="cz-stat"><span>${t('cozinha.served', 'Pratos servidos')}</span><b>${sim.served}</b></div>
+        <div class="cz-stat"><span>${t('cozinha.missed', 'Clientes que foram embora')}</span><b>${sim.missed}</b></div>
+        ${sim.workBot ? `<div class="cz-stat"><span>${t('cozinha.youDid', 'Feito por você')}</span><b>${100 - share}%</b></div>` : ''}
+        <div class="cz-stat"><span>${t('cozinha.coins', 'Moedas ganhas')}</span><b>${icon('coins', { size: 18 })}${fmt(coins)}</b></div>
+        ${unlockedEndless ? `<div class="cz-newrow">${t('cozinha.endlessUnlocked', 'Modo sem fim liberado!')}</div>` : ''}
+        ${daily ? `<div class="cz-note">${t('cozinha.dailyBest', 'Melhor de hoje: {n}', { n: fmt(sv.daily.best) })} · ${t('cozinha.dailyAgain', 'Um novo desafio amanhã!')}</div>` : ''}
+        ${!stars && !daily ? `<div class="cz-note">${t('cozinha.lvHint', 'Dica: segure o prato pronto e entregue rápido; peça ajuda aos ajudantes nas tarefas chatas.')}</div>` : ''}
+        ${rewardedAvailable() && coins > 0 ? `<button class="cz-btn cz-pink" data-a="ad">${icon('video', { size: 22 })}${t('cozinha.double', 'Dobrar moedas com vídeo')}</button>` : ''}
+        ${hasNext ? `<button class="cz-btn cz-green cz-big" data-a="next">${icon('play', { size: 24 })}${t('cozinha.nextLv', 'Próxima fase')}</button>` : ''}
+        <div class="cz-row">
+          <button class="cz-btn cz-grow${hasNext ? '' : ' cz-green'}" data-a="again">${icon('refresh', { size: 20 })}${t('cozinha.again', 'Jogar de novo')}</button>
+          <button class="cz-btn cz-grow" data-a="map">${icon('star', { size: 20 })}${t('cozinha.map', 'Mapa')}</button>
+        </div>
+      </div>`;
+    if (stars) audio.record();
+    else audio.fail();
+    bind(d, '[data-a=ad]', async (b) => {
+      b.setAttribute('disabled', '');
+      if (await showRewarded()) {
+        addCoins(coins);
+        audio.cash();
+        b.innerHTML = icon('check', { size: 22 }) + '+' + fmt(coins);
+      } else b.removeAttribute('disabled');
+    });
+    bind(d, '[data-a=next]', () => levelSheet(level(lv.n + 1)));
+    bind(d, '[data-a=again]', () => playLevel(daily ? dailyLevel() : level(lv.n)));
+    bind(d, '[data-a=map]', () => map());
+    setBack(() => map());
   }
 
   function quit(): void {
@@ -823,8 +1291,12 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   if (fm === '2d' || fm === '3d') {
     mode = fm;
     const scr = qs.get('czscreen');
+    const flv = Number(qs.get('czlv') ?? 0);
     if (scr === 'shop') shop((qs.get('cztab') as 'up' | 'rec' | 'staff') ?? 'up');
     else if (scr === 'lobby') lobby();
+    else if (scr === 'map') map();
+    else if (flv > 0) playLevel(level(flv));
+    else if (flv < 0) playLevel(dailyLevel());
     else {
       hostGo++;
       void startDay(hostCfg(), false);
