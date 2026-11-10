@@ -6,6 +6,10 @@ import { t, fmt } from '../../i18n';
 import { BIOMES, BUILDS, HELPERS, MACHINES, TOOLS, VEHICLES, helperCost, machineCost, prestigeMult, short } from './data';
 import { flIcon, type FlIcon } from './icons';
 import type { Sim } from './sim';
+import { GEAR_SVG, PAW_SVG, openControls } from './touchcfg';
+import { guideStep } from './guide';
+import { createJoystick, getControlPrefs, onControlPrefs, type Joystick } from '../../ui/touch';
+import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 
 export interface HudHost {
   sim: Sim;
@@ -15,6 +19,7 @@ export interface HudHost {
   onExit(): void;
   onEmote(code: string): void;
   onToggleCam(): void;
+  onSolo(on: boolean): void;
   onAction(kind: 'sell' | 'build'): void;
   playersCount(): number;
 }
@@ -40,14 +45,12 @@ export class Hud {
   private health!: HTMLElement;
   private ctx!: HTMLButtonElement;
   private chop!: HTMLButtonElement;
-  private banner!: HTMLElement;
-  private toastBox!: HTMLElement;
-  private hint!: HTMLElement;
+  private joyC: Joystick;
   private players!: HTMLElement;
   private modal: HTMLDivElement | null = null;
   private tab: Tab = 'tools';
   private last = { b: -1, p: -1, c: -1, h: -1, ctx: '', n: -1 };
-  private bannerT = 0;
+  private guideKey = '\u0000';
   private lastBiome = -1;
   private offs: (() => void)[] = [];
 
@@ -57,7 +60,6 @@ export class Hud {
   ) {
     this.el = document.createElement('div');
     this.el.className = 'fl-hud';
-    const h3 = host.is3d;
     this.el.innerHTML = `
       <div class="fl-top">
         <button class="fl-btn round red" data-a="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 26)}</button>
@@ -67,17 +69,15 @@ export class Hud {
         <div class="fl-health" title="${t('floresta.health', 'Floresta saudável')}">${flIcon('leaf', 26)}<div class="bar"><i></i></div><span data-v="hp">100%</span></div>
         <div class="fl-right">
           <div class="fl-pill fl-players" data-v="players"></div>
+          <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${GEAR_SVG(26)}</button>
           <button class="fl-btn round" data-a="emote" aria-label="${t('floresta.emote', 'Emotes')}">${flIcon('emote', 28)}</button>
           <button class="fl-btn round gold" data-a="shop" aria-label="${t('floresta.shop', 'Loja')}">${flIcon('shop', 28)}</button>
         </div>
       </div>
       <div class="fl-emotes">${EMOTES.map(([c, i]) => `<button class="fl-btn round" data-emote="${c}">${flIcon(i, 28)}</button>`).join('')}</div>
-      <div class="fl-banner"></div>
-      <div class="fl-hint"></div>
-      <div class="fl-toast"></div>
       <div class="fl-bottom">
-        <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
         <button class="fl-btn gold fl-ctx hide" data-a="ctx"></button>
+        <button class="fl-btn green fl-pets hide" data-a="pets">${PAW_SVG(26)}<span>${t('floresta.petsCmd', 'Ajudantes, cortem!')}</span></button>
         <button class="fl-chop" aria-label="${t('floresta.chop', 'Cortar')}">${flIcon(TOOLS[host.sim.s.tool].kind === 'axe' ? 'axe' : TOOLS[host.sim.s.tool].kind === 'saw' ? 'saw' : 'laser', 52)}<span>${t('floresta.chop', 'Cortar')}</span></button>
       </div>`;
     root.appendChild(this.el);
@@ -89,9 +89,6 @@ export class Hud {
     this.health = this.q('.fl-health');
     this.ctx = this.q('[data-a="ctx"]');
     this.chop = this.q('.fl-chop');
-    this.banner = this.q('.fl-banner');
-    this.toastBox = this.q('.fl-toast');
-    this.hint = this.q('.fl-hint');
     this.players = this.q('[data-v="players"]');
 
     this.el.addEventListener('click', (e) => {
@@ -100,15 +97,48 @@ export class Hud {
       const a = b.dataset.a;
       if (b.dataset.emote) {
         host.onEmote(b.dataset.emote);
-        this.q('.fl-emotes').classList.remove('show');
+        this.closeEmotes();
       } else if (a === 'exit') host.onExit();
       else if (a === 'shop') this.openShop();
-      else if (a === 'emote') this.q('.fl-emotes').classList.toggle('show');
+      else if (a === 'emote') {
+        const e = this.q('.fl-emotes');
+        if (e.classList.toggle('show')) {
+          // logo abaixo do botão, alinhado à direita dele (longe das bordas)
+          const r = b.getBoundingClientRect();
+          const hr = this.el.getBoundingClientRect();
+          e.style.top = r.bottom - hr.top + 6 + 'px';
+          e.style.right = Math.max(0, hr.right - r.right) + 'px';
+          clearTimeout(this.emoteTo);
+          this.emoteTo = window.setTimeout(() => this.closeEmotes(), 3000);
+        }
+      }
       else if (a === 'cam') host.onToggleCam();
       else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
+      else if (a === 'ctl') openControls(this.el, (on) => host.onSolo(on));
+      else if (a === 'pets') {
+        const n = host.sim.commandHelpers();
+        notify(n ? t('floresta.petsGo', 'Ajudantes: "Vamos lá!"') : t('floresta.petsNone', 'Você ainda não tem ajudantes'), { kind: n ? 'good' : 'info' });
+      }
     });
     this.bindChop();
-    this.bindJoy();
+    // analógico flutuante compartilhado (src/ui/touch): nasce sob o polegar, metade esquerda
+    this.joyC = createJoystick(root, { zoneTop: 0.2 });
+    this.offs.push(() => this.joyC.destroy());
+    const lefty = (p: { lefty: boolean }) => root.classList.toggle('fl-lefty', p.lefty);
+    lefty(getControlPrefs());
+    this.offs.push(onControlPrefs(lefty));
+    const top = this.q('.fl-top');
+    const setTop = () => {
+      const px = top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top;
+      this.el.style.setProperty('--toph', px + 'px');
+      setNotifyTop(px + 4);
+    };
+    setTop();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(setTop);
+      ro.observe(top);
+      this.offs.push(() => ro.disconnect());
+    }
   }
 
   private bindChop(): void {
@@ -129,48 +159,16 @@ export class Hud {
     c.addEventListener('lostpointercapture', up);
   }
 
-  private bindJoy(): void {
-    const j = this.q('.fl-joy');
-    const knob = j.firstElementChild as HTMLElement;
-    let id = -1;
-    const move = (e: PointerEvent) => {
-      if (e.pointerId !== id) return;
-      const r = j.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const R = r.width / 2 - 10;
-      let dx = (e.clientX - cx) / R;
-      let dy = this.host.is3d ? (e.clientY - cy) / R : 0;
-      const L = Math.hypot(dx, dy);
-      if (L > 1) {
-        dx /= L;
-        dy /= L;
-      }
-      this.host.joy.x = Math.abs(dx) < 0.12 ? 0 : dx;
-      this.host.joy.y = Math.abs(dy) < 0.12 ? 0 : dy;
-      knob.style.transform = `translate(${dx * R}px,${dy * (r.height / 2 - 10)}px)`;
-    };
-    const up = (e: PointerEvent) => {
-      if (e.pointerId !== id) return;
-      id = -1;
-      this.host.joy.x = this.host.joy.y = 0;
-      knob.style.transform = '';
-    };
-    j.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      id = e.pointerId;
-      j.setPointerCapture?.(id);
-      move(e);
-    });
-    j.addEventListener('pointermove', move);
-    j.addEventListener('pointerup', up);
-    j.addEventListener('pointercancel', up);
-  }
+
+
 
   /* ------------------------------ por quadro (barato) ------------------------------ */
 
-  update(dt: number): void {
+  update(_dt: number): void {
     const s = this.host.sim;
+    const js = this.joyC.read();
+    this.host.joy.x = js.x;
+    this.host.joy.y = this.host.is3d ? js.y : 0;
     const v = s.vehicle;
     const L = this.last;
     const b = Math.floor(s.s.bolotas);
@@ -219,48 +217,59 @@ export class Hud {
         this.ctx.disabled = !ok;
       }
     }
-    // faixa do bioma
+    const pets = !s.solo && s.helperCount() > 0 && s.s.tutorial >= 4;
+    if (pets !== (this as any)._pets) {
+      (this as any)._pets = pets;
+      this.q('.fl-pets').classList.toggle('hide', !pets);
+    }
+    // bioma novo: aviso pequeno no canto
     const bi = s.biome;
     if (bi !== this.lastBiome) {
       const first = this.lastBiome < 0;
       this.lastBiome = bi;
-      if (!first || bi > 0) this.showBanner(BIOMES[bi].name(), t('floresta.biomeSub', 'Bioma {n} de {m}', { n: bi + 1, m: BIOMES.length }));
+      if (!first || bi > 0) notify(`${BIOMES[bi].name()} · ${t('floresta.biomeSub', 'Bioma {n} de {m}', { n: bi + 1, m: BIOMES.length })}`, { kind: 'good' });
     }
-    if (this.bannerT > 0) {
-      this.bannerT -= dt;
-      if (this.bannerT <= 0) this.banner.classList.remove('show');
-    }
-    // dicas do começo
-    const tut = s.s.tutorial;
-    let hint = '';
-    if (tut === 0) hint = t('floresta.tut0', 'Vá até uma árvore e segure Cortar!');
-    else if (tut === 1) hint = this.host.is3d ? t('floresta.tut1fps', 'Pegue as toras e jogue no funil amarelo da serraria') : t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
-    else if (tut === 2) hint = t('floresta.tut2', 'Venda as tábuas na barraca e compre ferramentas na loja');
-    if (hint !== (this as any)._hint) {
-      (this as any)._hint = hint;
-      this.hint.textContent = hint;
-    }
+    this.guide();
     if (this.modal && this.tab && (this as any)._shopB !== b) {
       (this as any)._shopB = b;
       this.renderShop();
     }
   }
 
+  private emoteTo = 0;
+  private closeEmotes(): void {
+    clearTimeout(this.emoteTo);
+    this.q('.fl-emotes').classList.remove('show');
+  }
+
+  /** primeira sessão guiada: um objetivo por vez, um botão destacado, HUD progressivo */
+  private guide(): void {
+    const s = this.host.sim;
+    const g = guideStep(s, this.host.is3d);
+    const key = g.step + ':' + g.goal;
+    if (key === this.guideKey) return;
+    this.guideKey = key;
+    objective(g.goal ? t('floresta.goal', 'Objetivo: {g}', { g: g.goal }) : null);
+    if (g.tip) notify(g.tip, { key: 'guide' });
+    // destaque no único botão relevante
+    for (const el of Array.from(this.el.parentElement?.querySelectorAll('.fl-glow') ?? [])) el.classList.remove('fl-glow');
+    const sel = g.button === 'chop' ? '.fl-chop' : g.button === 'ctx' ? '.fl-ctx' : g.button === 'shop' ? '[data-a="shop"]' : g.button === 'grab' ? '[data-act="grab"]' : g.button === 'throw' ? '[data-act="throw"]' : '';
+    if (sel) this.el.parentElement?.querySelector(sel)?.classList.add('fl-glow');
+    // HUD progressivo: loja só depois da 1ª venda; emotes/controles extras no fim do guia
+    const lvl = s.s.tutorial;
+    this.el.classList.toggle('g-noshop', lvl < 3);
+    this.el.classList.toggle('g-basic', lvl < 4);
+    this.el.parentElement?.classList.toggle('fl-guided', lvl < 4);
+  }
+
   showBanner(title: string, sub = ''): void {
-    this.banner.innerHTML = `${title}${sub ? `<small>${sub}</small>` : ''}`;
-    this.banner.classList.add('show');
-    this.bannerT = 2.6;
+    bigMoment(title, { sub });
   }
 
   toast(msg: string, kind = ''): void {
-    const d = document.createElement('div');
-    if (kind) d.className = kind;
-    d.innerHTML = (kind === 'eco' ? flIcon('leaf', 20) : '') + `<span></span>`;
-    d.lastElementChild!.textContent = msg;
-    this.toastBox.appendChild(d);
-    while (this.toastBox.children.length > 3) this.toastBox.firstElementChild!.remove();
-    setTimeout(() => d.remove(), 3300);
+    notify(msg, { kind: kind === 'eco' ? 'good' : kind === 'warn' ? 'warn' : 'info', icon: kind === 'eco' ? undefined : undefined });
   }
+
 
   setChopIcon(): void {
     const k = TOOLS[this.host.sim.s.tool].kind;
@@ -328,6 +337,10 @@ export class Hud {
     if (ok) {
       this.setChopIcon();
       this.toast(t('floresta.bought', 'Comprado!'));
+      if (id === 'tool' && s.s.tutorial === 3) {
+        s.s.tutorial = 4;
+        bigMoment(t('floresta.guideDone', 'Você é um lenhador!'), { sub: t('floresta.guideDoneSub', 'Agora o bosque é todo seu') });
+      }
     }
     this.renderShop();
   }
@@ -421,7 +434,11 @@ export class Hud {
   }
 
   destroy(): void {
+    clearTimeout(this.emoteTo);
     for (const f of this.offs) f();
+    objective(null);
+    clearNotify();
+    resetNotifyTop();
     this.el.remove();
   }
 }

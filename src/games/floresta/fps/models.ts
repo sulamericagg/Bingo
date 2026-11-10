@@ -777,3 +777,35 @@ export function steeringWheel(): THREE.Group {
 }
 
 export const geoms = base;
+
+/* ------------------------------ vento ------------------------------ */
+
+/** relógio compartilhado do vento (atualize .value a cada quadro) */
+export const windTime = { value: 0 };
+/**
+ * Balanço suave das copas: desloca os vértices proporcional a altura² (o tronco quase não mexe),
+ * com fase pela posição da instância (cada árvore balança no seu ritmo). Barato: só vertex shader.
+ */
+export function addWind(mat: THREE.Material, amp = 0.0022): void {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uWindT = windTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uWindT;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+#ifdef USE_INSTANCING
+{
+  vec3 ip = instanceMatrix[3].xyz;
+  float ph = ip.x * 0.37 + ip.z * 0.29;
+  float h = max(0.0, transformed.y - 1.0);
+  float w = h * h * ${amp.toFixed(5)};
+  float g = sin(uWindT * 1.7 + ph) + 0.35 * sin(uWindT * 4.3 + ph * 2.1);
+  transformed.x += g * w;
+  transformed.z += cos(uWindT * 1.3 + ph) * w * 0.6;
+}
+#endif`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'wind' + amp;
+}

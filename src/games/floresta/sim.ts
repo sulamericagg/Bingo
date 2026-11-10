@@ -154,6 +154,8 @@ export class Sim {
   mode3d = false;
   trees: Tree[] = [];
   logs: Log[] = [];
+  /** 3D: toras na mão (o guia lê) */
+  held3d = 0;
   belt: BeltItem[] = [];
   agents: Agent[] = [];
   remotes: Remote[] = [];
@@ -280,7 +282,38 @@ export class Sim {
 
   /* ------------------------------ ajudantes ------------------------------ */
 
+  /** ajudantes só trabalham quando mandados: tarefas pendentes (1 árvore/canteiro cada) */
+  orders = 0;
+  /** jogar sozinho: sem ajudantes nem amigos-bot */
+  solo = false;
+  /** manda os ajudantes trabalharem (respondem com um pequeno atraso); devolve quantos */
+  commandHelpers(): number {
+    let n = 0;
+    for (const a of this.agents) {
+      if (a.kind === 'friend') continue;
+      n++;
+      if (a.state === 'idle') a.wait = 0.6 + a.idx * 0.35 + a.rng() * 0.3;
+    }
+    this.orders = n;
+    return n;
+  }
+  helperCount(): number {
+    let n = 0;
+    for (const a of this.agents) if (a.kind !== 'friend') n++;
+    return n;
+  }
+  setSolo(on: boolean): void {
+    this.solo = on;
+    if (on) {
+      this.removeFriends();
+      for (const a of this.agents) this.release(a);
+      this.agents = [];
+      this.orders = 0;
+    } else this.syncHelpers();
+  }
+
   syncHelpers(): void {
+    if (this.solo) return;
     const want: Record<HelperId, number> = this.s.help;
     for (const kind of ['bot', 'drone', 'planter'] as const) {
       const id: HelperId = kind === 'bot' ? 'bots' : kind === 'drone' ? 'drones' : 'planters';
@@ -724,6 +757,15 @@ export class Sim {
           if (a.carry > 0) {
             a.state = 'home';
             break;
+          }
+          if (a.kind !== 'friend') {
+            // bichinho de estimação: espera ordem, seguindo você de perto
+            if (this.orders <= 0) {
+              const fx = this.me.x - (2 + a.idx * 1.3) * (this.me.face || 1);
+              if (Math.abs(fx - a.x) > 2.5 || (this.mode3d && Math.abs(this.me.z - a.z) > 3)) this.moveTo(a, fx, this.me.z + ((a.idx % 3) - 1) * 1.2, dt);
+              break;
+            }
+            this.orders--;
           }
           const ti = this.pickTree(a);
           if (ti < 0) {
