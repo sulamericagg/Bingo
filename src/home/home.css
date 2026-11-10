@@ -44,6 +44,30 @@
 .hm-pink { background: linear-gradient(180deg, #ffd0ef, #ff7ad9); }
 .hm-blue { background: linear-gradient(180deg, #d0f8ff, #5ec8ff); }
 .hm-gold { background: linear-gradient(180deg, #fff3a0, #ffb300); }
+.hm-3d {
+  position: relative; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 18px; color: #fff !important;
+  background: linear-gradient(135deg, #8a5cff 0%, #ff5cc8 60%, #ffb03d 100%);
+  box-shadow: inset 0 -3px 0 rgba(42, 11, 92, 0.25), 0 3px 0 var(--ink), 0 0 0 0 rgba(255, 122, 217, 0.6);
+  animation: hm3dGlow 2.2s ease-in-out infinite; overflow: visible;
+}
+.hm-3d .tx { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; text-shadow: 0 2px 0 rgba(42, 11, 92, 0.45); }
+.hm-3d .tx b { font-size: 16px; }
+.hm-3d .tx small { font-size: 10.5px; font-weight: 600; opacity: 0.95; }
+.hm-3d::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.55) 45%, transparent 60%) -120% 0 / 250% 100% no-repeat; animation: hm3dShine 3.2s ease-in-out infinite; }
+.cube3d { width: 34px; height: 34px; perspective: 120px; flex: none; display: grid; place-items: center; }
+.cube3d .cb { position: relative; width: 20px; height: 20px; transform-style: preserve-3d; animation: hm3dSpin 4s linear infinite; }
+.cube3d i { position: absolute; inset: 0; border: 2px solid var(--ink); border-radius: 4px; background: #fff7c2; }
+.cube3d .f { transform: translateZ(10px); background: #ffe27a; }
+.cube3d .b { transform: rotateY(180deg) translateZ(10px); background: #ffd23d; }
+.cube3d .l { transform: rotateY(-90deg) translateZ(10px); background: #7dd8ff; }
+.cube3d .r { transform: rotateY(90deg) translateZ(10px); background: #ff9ad5; }
+.cube3d .t { transform: rotateX(90deg) translateZ(10px); background: #ffffff; }
+.cube3d .d { transform: rotateX(-90deg) translateZ(10px); background: #b6f25a; }
+@keyframes hm3dSpin { from { transform: rotateX(-24deg) rotateY(0); } to { transform: rotateX(-24deg) rotateY(360deg); } }
+@keyframes hm3dShine { 0%, 55% { background-position: -120% 0; } 100% { background-position: 220% 0; } }
+@keyframes hm3dGlow { 0%, 100% { box-shadow: inset 0 -3px 0 rgba(42, 11, 92, 0.25), 0 3px 0 var(--ink), 0 0 0 0 rgba(255, 122, 217, 0.55); } 50% { box-shadow: inset 0 -3px 0 rgba(42, 11, 92, 0.25), 0 3px 0 var(--ink), 0 0 0 7px rgba(255, 122, 217, 0); } }
+@media (prefers-reduced-motion: reduce) { .hm-3d, .hm-3d::before, .cube3d .cb { animation: none; } }
 .hm-ibtn { width: 44px; height: 44px; padding: 0; border-radius: 14px; }
 
 /* topo */

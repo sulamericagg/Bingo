@@ -25,15 +25,97 @@ export { q3For, type Q3 };
 /* ---------------- grupos de colisão ---------------- */
 export const G = { STATIC: 1, ITEM: 2, PLAYER: 4, FOOD: 8, DEBRIS: 16, BOT: 32 };
 
-/* ---------------- layout da casa ---------------- */
+/* ---------------- layout da casa ----------------
+ * Grade de cômodos 6 × 4,8 m: linha 0 (fundo virado para o norte) e linha 1 (girada 180°,
+ * fundo virado para o sul). Cômodos EXTRAS (Ampliar casa) usam o id "x<linha>_<coluna>"
+ * (ex.: "x1_2"), então designs antigos continuam iguais e o servidor/festa só veem mais um
+ * RoomDesign. Só se amplia nas linhas 0 e 1: as paredes do fundo (com quadros) nunca ganham porta.
+ */
 type Side = 'n' | 'e' | 's' | 'w';
-const LAYOUT: Record<string, { row: 0 | 1; col: number; doors: [Side, number][] }> = {
+const BASE_SLOTS: Record<string, { row: number; col: number; doors: [Side, number][] }> = {
   living: { row: 0, col: 0, doors: [['e', ROOM_D / 2], ['s', ROOM_W / 2]] },
   kitchen: { row: 0, col: 1, doors: [['w', ROOM_D / 2], ['e', ROOM_D / 2], ['s', ROOM_W / 2]] },
   bedroom: { row: 0, col: 2, doors: [['w', ROOM_D / 2]] },
   bath: { row: 1, col: 0, doors: [['s', ROOM_W / 2], ['w', ROOM_D / 2]] },
   party: { row: 1, col: 1, doors: [['e', ROOM_D / 2], ['s', ROOM_W / 2]] },
 };
+export const EXTRA_RE = /^x([01])_(-?\d{1,2})$/;
+export const MAX_ROOMS = 12;
+export function slotOf(id: string): { row: number; col: number } | null {
+  const b = BASE_SLOTS[id];
+  if (b) return { row: b.row, col: b.col };
+  const m = EXTRA_RE.exec(id);
+  return m ? { row: Number(m[1]), col: Number(m[2]) } : null;
+}
+export const extraId = (row: number, col: number) => `x${row}_${col}`;
+/** lado LOCAL do cômodo (row) que dá para o vizinho na direção (dr, dc) */
+function sideTo(row: number, dr: number, dc: number): Side | null {
+  if (dr !== 0) return dc === 0 ? 's' : null; // linha 0 ↔ linha 1: paredes da frente
+  if (dc === 1) return row === 0 ? 'e' : 'w';
+  if (dc === -1) return row === 0 ? 'w' : 'e';
+  return null;
+}
+/** portas de todos os cômodos (base + ligações dos extras) */
+export function computeDoors(ids: string[]): Map<string, [Side, number][]> {
+  const out = new Map<string, [Side, number][]>();
+  const at = new Map<string, string>();
+  for (const id of ids) {
+    const s = slotOf(id);
+    if (!s) continue;
+    at.set(s.row + ',' + s.col, id);
+    out.set(id, BASE_SLOTS[id] ? BASE_SLOTS[id].doors.map((d) => [d[0], d[1]] as [Side, number]) : []);
+  }
+  const add = (id: string, side: Side) => {
+    const l = out.get(id)!;
+    if (!l.some((d) => d[0] === side)) l.push([side, side === 'e' || side === 'w' ? ROOM_D / 2 : ROOM_W / 2]);
+  };
+  // cada extra liga a um vizinho: primeiro na mesma linha em direção ao centro, depois a outra linha
+  for (const id of ids) {
+    if (BASE_SLOTS[id]) continue;
+    const s = slotOf(id);
+    if (!s) continue;
+    const tries: [number, number][] = s.col > 1 ? [[0, -1], [0, 1]] : [[0, 1], [0, -1]];
+    tries.push([s.row === 0 ? 1 : -1, 0]);
+    for (const [dr, dc] of tries) {
+      const nb = at.get(s.row + dr + ',' + (s.col + dc));
+      if (!nb) continue;
+      const a = sideTo(s.row, dr, dc),
+        b = sideTo(s.row + dr, -dr, -dc);
+      if (!a || !b) continue;
+      add(id, a);
+      add(nb, b);
+      break;
+    }
+  }
+  return out;
+}
+/** vagas livres para ampliar (vizinhas de um cômodo, linhas 0/1) */
+export function freeSlots(ids: string[]): { row: number; col: number; id: string }[] {
+  const taken = new Set<string>();
+  for (const id of ids) {
+    const s = slotOf(id);
+    if (s) taken.add(s.row + ',' + s.col);
+  }
+  if (ids.length >= MAX_ROOMS) return [];
+  const out: { row: number; col: number; id: string }[] = [];
+  for (const k of taken) {
+    const [r, c] = k.split(',').map(Number);
+    for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+      const nr = r + dr,
+        nc = c + dc;
+      if (nr < 0 || nr > 1 || nc < -3 || nc > 6) continue;
+      const key = nr + ',' + nc;
+      if (taken.has(key) || out.some((o) => o.row === nr && o.col === nc)) continue;
+      // precisa de um vizinho que aceite porta (mesma linha ou a outra linha na mesma coluna)
+      out.push({ row: nr, col: nc, id: extraId(nr, nc) });
+    }
+  }
+  return out;
+}
+/** posição/giro do grupo do cômodo */
+export function roomFrame(row: number, col: number): { x: number; z: number; rotY: number } {
+  return row === 0 ? { x: col * ROOM_W, z: 0, rotY: 0 } : { x: (col + 1) * ROOM_W, z: ROOM_D * 2, rotY: Math.PI };
+}
 const DOOR_W = 1.15;
 const DOOR_H = 2.05;
 export const HOUSE = { minX: 0, maxX: ROOM_W * 3, minZ: 0, maxZ: ROOM_D * 2 };
@@ -54,6 +136,8 @@ export interface WallRec {
   /** normal interna em mundo */
   normal: THREE.Vector3;
   cut: number;
+  /** corpos estáticos (física) desta parede */
+  bodies: CANNON.Body[];
 }
 export interface RoomRec {
   id: string;
@@ -74,6 +158,10 @@ export interface RoomRec {
   center: THREE.Vector3;
   min: THREE.Vector2;
   max: THREE.Vector2;
+  row: number;
+  col: number;
+  /** animação de "obra" (0..1) ao ampliar a casa */
+  grow: number;
 }
 export type ItemState = 'home' | 'moved' | 'held' | 'broken';
 export interface ItemRec {
@@ -275,10 +363,11 @@ export class Engine {
 
   /* ======================= construção da casa ======================= */
   /** gera a casa em passos (para a tela de carregamento) */
+  private doorMap = new Map<string, [Side, number][]>();
   *buildSteps(): Generator<string> {
+    this.doorMap = computeDoors(this.design.rooms.map((r) => r.id));
     for (const rd of this.design.rooms) {
-      const L = LAYOUT[rd.id];
-      if (!L) continue;
+      if (!slotOf(rd.id)) continue;
       this.buildRoom(rd);
       yield 'room:' + rd.id;
     }
@@ -309,12 +398,12 @@ export class Engine {
     return null;
   }
 
-  private buildRoom(rd: HomeDesign['rooms'][number]): void {
-    const L = LAYOUT[rd.id];
+  private buildRoom(rd: HomeDesign['rooms'][number]): RoomRec {
+    const L = slotOf(rd.id)!;
     const g = new THREE.Group();
-    const rotY = L.row === 0 ? 0 : Math.PI;
-    if (L.row === 0) g.position.set(L.col * ROOM_W, 0, 0);
-    else g.position.set((L.col + 1) * ROOM_W, 0, ROOM_D * 2);
+    const fr = roomFrame(L.row, L.col);
+    const rotY = fr.rotY;
+    g.position.set(fr.x, 0, fr.z);
     g.rotation.y = rotY;
     this.scene.add(g);
     g.updateMatrixWorld(true);
@@ -335,7 +424,12 @@ export class Engine {
       center: g.localToWorld(new THREE.Vector3(ROOM_W / 2, 0, ROOM_D / 2)),
       min: new THREE.Vector2(Math.min(a.x, b.x), Math.min(a.z, b.z)),
       max: new THREE.Vector2(Math.max(a.x, b.x), Math.max(a.z, b.z)),
+      row: L.row,
+      col: L.col,
+      grow: 1,
     };
+    HOUSE.minX = Math.min(HOUSE.minX, room.min.x);
+    HOUSE.maxX = Math.max(HOUSE.maxX, room.max.x);
     // piso
     const fw = ROOM_W - WALL_T * 2,
       fd = ROOM_D - WALL_T * 2;
@@ -362,15 +456,8 @@ export class Engine {
     g.add(room.ceil);
     // paredes
     const sides: Side[] = ['n', 'e', 's', 'w'];
-    sides.forEach((side, wi) => room.walls.push(this.buildWall(room, side, wi, L.doors.filter((d) => d[0] === side).map((d) => [d[1] - DOOR_W / 2, d[1] + DOOR_W / 2] as [number, number]))));
-    for (const w of room.walls)
-      for (let gy = 0; gy < PAINT_GH; gy++)
-        for (let gx = 0; gx < PAINT_GW; gx++) {
-          const u = ((gx + 0.5) / PAINT_GW) * w.len,
-            y = ((gy + 0.5) / PAINT_GH) * WALL_H;
-          const inDoor = w.doors.some(([a, b]) => u > a && u < b && y < DOOR_H);
-          room.valid[w.wi * PAINT_GW * PAINT_GH + gy * PAINT_GW + gx] = inDoor ? 0 : 1;
-        }
+    sides.forEach((side, wi) => room.walls.push(this.buildWall(room, side, wi, this.doorsFor(rd.id, side))));
+    for (const w of room.walls) this.markValid(w);
     this.rooms.push(room);
     // pintura salva
     const p = this.design.paint?.[rd.id] as { wall: string; strokes?: string; w3?: string } | undefined;
@@ -379,6 +466,53 @@ export class Engine {
       room.paint = decodeStrokes(p.strokes, p.w3, room.cover);
     }
     this.refreshSurfaces(room);
+    return room;
+  }
+  private doorsFor(id: string, side: Side): [number, number][] {
+    return (this.doorMap.get(id) ?? []).filter((d) => d[0] === side).map((d) => [d[1] - DOOR_W / 2, d[1] + DOOR_W / 2] as [number, number]);
+  }
+  /** células pintáveis da parede (fora das portas) */
+  private markValid(w: WallRec): void {
+    const room = w.room;
+    for (let gy = 0; gy < PAINT_GH; gy++)
+      for (let gx = 0; gx < PAINT_GW; gx++) {
+        const u = ((gx + 0.5) / PAINT_GW) * w.len,
+          y = ((gy + 0.5) / PAINT_GH) * WALL_H;
+        const inDoor = w.doors.some(([a, b]) => u > a && u < b && y < DOOR_H);
+        room.valid[w.wi * PAINT_GW * PAINT_GH + gy * PAINT_GW + gx] = inDoor ? 0 : 1;
+      }
+  }
+
+  /**
+   * AMPLIAR CASA: cria um cômodo novo (o design já deve conter o RoomDesign) e abre a porta
+   * no vizinho. Paredes do vizinho que ganharam porta são refeitas (com física).
+   */
+  addRoom(rd: HomeDesign['rooms'][number]): RoomRec | null {
+    if (!slotOf(rd.id) || this.roomById(rd.id)) return null;
+    const before = this.doorMap;
+    this.doorMap = computeDoors(this.design.rooms.map((r) => r.id));
+    for (const r of this.rooms) {
+      const a = JSON.stringify(before.get(r.id) ?? []),
+        b = JSON.stringify(this.doorMap.get(r.id) ?? []);
+      if (a === b) continue;
+      r.walls.forEach((w, wi) => {
+        const doors = this.doorsFor(r.id, w.side);
+        if (JSON.stringify(doors) === JSON.stringify(w.doors)) return;
+        r.group.remove(w.holder);
+        this.pickables = this.pickables.filter((o) => o !== w.face);
+        for (const bd of w.bodies) this.world.removeBody(bd);
+        const nw = this.buildWall(r, w.side, wi, doors);
+        r.walls[wi] = nw;
+        this.markValid(nw);
+        this.addWallPhysics(nw);
+        this.redrawWall(nw);
+      });
+    }
+    const room = this.buildRoom(rd);
+    for (const w of room.walls) this.addWallPhysics(w);
+    room.grow = 0;
+    room.group.scale.set(1, 0.001, 1);
+    return room;
   }
 
   private wallFrame(side: Side): { p: (u: number, y: number, d: number) => THREE.Vector3; n: THREE.Vector3; len: number } {
@@ -472,7 +606,7 @@ export class Engine {
     holder.add(face, body);
     room.group.add(holder);
     const normal = fr.n.clone().applyAxisAngle(UP, room.rotY);
-    const w: WallRec = { room, side, len, holder, face, body, cv, cx, tex, wi, doors, normal, cut: 1 };
+    const w: WallRec = { room, side, len, holder, face, body, cv, cx, tex, wi, doors, normal, cut: 1, bodies: [] };
     face.userData = { type: 'wall', wall: w };
     this.pickables.push(face);
     return w;
@@ -531,26 +665,28 @@ export class Engine {
     ceil.quaternion.setFromEuler(Math.PI / 2, 0, 0);
     ceil.position.set(0, WALL_H, 0);
     this.world.addBody(ceil);
-    for (const r of this.rooms)
-      for (const w of r.walls) {
-        const fr = this.wallFrame(w.side);
-        let u = 0;
-        const seg = (u0: number, u1: number) => {
-          if (u1 - u0 < 0.01) return;
-          const c = r.group.localToWorld(fr.p((u0 + u1) / 2, WALL_H / 2, WALL_T / 2));
-          const along = new THREE.Vector3(1, 0, 0).applyAxisAngle(UP, (w.side === 'n' ? 0 : w.side === 's' ? Math.PI : w.side === 'e' ? -Math.PI / 2 : Math.PI / 2) + r.rotY);
-          const hx = Math.abs(along.x) > 0.5 ? (u1 - u0) / 2 : WALL_T / 2;
-          const hz = Math.abs(along.x) > 0.5 ? WALL_T / 2 : (u1 - u0) / 2;
-          const b = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(hx, WALL_H / 2, hz)), collisionFilterGroup: G.STATIC });
-          b.position.set(c.x, c.y, c.z);
-          this.world.addBody(b);
-        };
-        for (const [a, b] of w.doors) {
-          seg(u, a);
-          u = b;
-        }
-        seg(u, w.len);
-      }
+    for (const r of this.rooms) for (const w of r.walls) this.addWallPhysics(w);
+  }
+  private addWallPhysics(w: WallRec): void {
+    const r = w.room;
+    const fr = this.wallFrame(w.side);
+    let u = 0;
+    const seg = (u0: number, u1: number) => {
+      if (u1 - u0 < 0.01) return;
+      const c = r.group.localToWorld(fr.p((u0 + u1) / 2, WALL_H / 2, WALL_T / 2));
+      const along = new THREE.Vector3(1, 0, 0).applyAxisAngle(UP, (w.side === 'n' ? 0 : w.side === 's' ? Math.PI : w.side === 'e' ? -Math.PI / 2 : Math.PI / 2) + r.rotY);
+      const hx = Math.abs(along.x) > 0.5 ? (u1 - u0) / 2 : WALL_T / 2;
+      const hz = Math.abs(along.x) > 0.5 ? WALL_T / 2 : (u1 - u0) / 2;
+      const b = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(hx, WALL_H / 2, hz)), collisionFilterGroup: G.STATIC });
+      b.position.set(c.x, c.y, c.z);
+      this.world.addBody(b);
+      w.bodies.push(b);
+    };
+    for (const [a, b] of w.doors) {
+      seg(u, a);
+      u = b;
+    }
+    seg(u, w.len);
   }
 
   /* ======================= móveis ======================= */
@@ -1010,6 +1146,12 @@ export class Engine {
   /* ======================= laço ======================= */
   step(dt: number): void {
     this.elapsed += dt;
+    for (const r of this.rooms)
+      if (r.grow < 1) {
+        r.grow = Math.min(1, r.grow + dt * 0.9);
+        const e = 1 - Math.pow(1 - r.grow, 3);
+        r.group.scale.set(1, Math.max(0.001, e + Math.sin(r.grow * Math.PI) * 0.08), 1);
+      }
     this.world.step(1 / 60, dt, 3);
     let awake = 0;
     for (const it of this.items) {

@@ -16,7 +16,8 @@ import { openEmoteWheel, closeEmoteWheel } from '../social/emotes';
 import { canUse, cloneDesign, cloneMess, FINISHES, PALETTE, roleFor, type Tool, type MessKind, type Finish } from './adapter';
 import { Engine } from './engine';
 import { Fps, type FpsTool } from './fps';
-import { Build, roomName } from './build';
+import { Aerial, roomName, roomPrice } from './aerial';
+import { Decor } from './decor';
 import { Party } from './party';
 import { handColors } from './hand';
 import { disposeSfx, sfx } from './sfx';
@@ -133,7 +134,8 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   let toast!: Toast;
   let fps!: Fps;
   let startRoom!: ReturnType<Engine['roomById']> & object;
-  let build!: Build;
+  let build!: Aerial;
+  let decor!: Decor;
   try {
     loading.set(0.04, t('home3d.load.start', 'Preparando o pincel mágico...'));
     await tick();
@@ -170,7 +172,10 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     fps = new Fps(eng, input, acts, party, handColors(opts.skin));
     startRoom = (eng.roomById(opts.room ?? (party ? 'party' : 'living')) ?? eng.rooms[0])!;
     fps.spawn(startRoom);
-    build = new Build(eng, hud, startRoom);
+    decor = new Decor(eng, hud, (s) => toast.show(s), opts.shop);
+    fps.decor = decor;
+    input.onTap = (x, y) => (mode === 'fps' ? fps.screenTap(x, y) : undefined);
+    build = new Aerial(eng, hud, decor);
     loading.set(1, t('home3d.load.done', 'Pronto!'));
     await tick();
   } catch (err) {
@@ -204,12 +209,13 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   hud.prepend(shot);
   hud.append(ret, tgt, prog, top, palRow);
   let mode: 'fps' | 'build' = 'fps';
-  const toolDefs: { id: FpsTool | 'build' | 'emote' | 'cleanup'; label: string; icon: string; need?: Tool }[] = [
+  let flying = false;
+  const toolDefs: { id: FpsTool | 'build' | 'emote' | 'cleanup' | 'catalog'; label: string; icon: string; need?: Tool }[] = [
     { id: 'hand', label: t('home3d.tool.hand', 'Mão'), icon: 'hand' },
     { id: 'clean', label: t('home3d.tool.clean', 'Limpar'), icon: 'clean', need: 'clean' },
     { id: 'paint', label: t('home3d.tool.paint', 'Pintar'), icon: 'paint', need: 'paint' },
-    { id: 'decor', label: t('home3d.tool.decor', 'Mover'), icon: 'grab', need: 'decorate' },
-    { id: 'build', label: t('home3d.tool.build', 'De cima'), icon: 'build', need: 'decorate' },
+    { id: 'decor', label: t('home3d.tool.decorate', 'Decorar'), icon: 'sofa', need: 'decorate' },
+    { id: 'build', label: t('home3d.tool.aerial', 'Vista aérea'), icon: 'aerial', need: 'decorate' },
   ];
   if (party) {
     toolDefs.push({ id: 'cleanup', label: t('home3d.party.cleanup', 'Hora de limpar!'), icon: 'party' });
@@ -218,10 +224,12 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   const renderTools = () => {
     tools.innerHTML = '';
     for (const d of toolDefs) {
-      if (mode === 'build' && d.id !== 'build') continue;
+      if (mode === 'build' && d.id !== 'build' && d.id !== 'decor') continue;
       const allowed = !d.need || canUse(role, d.need);
-      const b = button(d.id === 'build' && mode === 'build' ? t('home3d.tool.walk', 'Andar') : d.id === 'cleanup' && party?.phase === 'clean' ? t('home3d.party.fight', 'Guerra de comida!') : d.label, d.id === 'build' && mode === 'build' ? 'eye' : d.icon);
-      if (fps.tool === d.id && mode === 'fps') b.classList.add('sel');
+      const label = mode === 'build' && d.id === 'build' ? t('home3d.tool.walk', 'Andar') : mode === 'build' && d.id === 'decor' ? t('home3d.tool.catalog', 'Catálogo') : d.id === 'cleanup' && party?.phase === 'clean' ? t('home3d.party.fight', 'Guerra de comida!') : d.label;
+      const b = button(label, d.id === 'build' && mode === 'build' ? 'eye' : d.icon);
+      b.dataset.tool = d.id;
+      if ((fps.tool === d.id && mode === 'fps') || (mode === 'build' && d.id === 'decor' && decor.drawerOpen)) b.classList.add('sel');
       if (!allowed) {
         b.classList.add('lock');
         b.insertAdjacentHTML('beforeend', `<span class="lk">${ICON.lock}</span>`);
@@ -230,7 +238,9 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
         b.onclick = () => {
           sfx.click();
           tap('light');
+          if (flying) return;
           if (d.id === 'build') setMode(mode === 'build' ? 'fps' : 'build');
+          else if (d.id === 'decor' && mode === 'build') decor.toggleCatalog();
           else if (d.id === 'emote')
             openEmoteWheel((code) => {
               myEmote = code;
@@ -244,6 +254,8 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
             party!.setPhase(party!.phase === 'clean' ? 'fight' : 'clean');
             toast.show(party!.phase === 'clean' ? t('home3d.party.cleanTime', 'Todo mundo limpando!') : t('home3d.party.fightTime', 'Guerra de comida!'));
           } else {
+            if (d.id === 'decor' && fps.tool === 'decor') decor.toggleCatalog();
+            else if (d.id === 'decor') decor.openCatalog();
             fps.setTool(d.id as FpsTool);
             palRow.style.display = d.id === 'paint' ? '' : 'none';
             prog.style.display = d.id === 'paint' ? 'block' : 'none';
@@ -303,7 +315,33 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
   };
   fps.onProgress = (r, p) => updateProg(r, p);
   fps.onToast = (s) => toast.show(s);
+  /** móvel novo do catálogo nasce ~2 m à frente, no cômodo onde o jogador está */
+  const fpsSpawn = () => {
+    const cam = eng.camera;
+    const room = eng.roomAt(cam.position.x, cam.position.z) ?? startRoom;
+    const f = new THREE.Vector3();
+    cam.getWorldDirection(f);
+    f.y = 0;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    const l = room.group.worldToLocal(cam.position.clone().addScaledVector(f, 2).setY(0));
+    return { room, x: Math.max(0.6, Math.min(5.4, l.x)), z: Math.max(0.6, Math.min(4.2, l.z)), y: 1.4 };
+  };
   build.onToast = (s) => toast.show(s);
+  decor.onState = () => renderTools();
+  decor.spawnAt = fpsSpawn;
+  // ampliar a casa: só o dono; cobra moedas pela loja do 2D (sem loja = teste, grátis)
+  if (editable)
+    build.buyRoom = async (id, price) => {
+      if (!opts.shop) return true;
+      if (opts.shop.coins() < price) return false;
+      return opts.shop.buy('room:' + id, { kind: 'coins', n: price });
+    };
+  build.onRoomAdded = () => {
+    eng.changed = true;
+    emit();
+  };
+  void roomPrice;
   if (party) {
     party.onToast = (s) => toast.show(s, 900);
     party.onHitMe = (k) => splatScreen(k);
@@ -336,18 +374,31 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     toast.show(t('home3d.party.gotHit', 'Splash! Te acertaram!'), 1000);
     tap('medium');
   };
-  const setMode = (m: 'fps' | 'build') => {
-    mode = m;
+  const setMode = (m: 'fps' | 'build', instant = false) => {
+    decor.reset();
     if (m === 'build') {
+      mode = m;
       const r = eng.roomAt(eng.camera.position.x, eng.camera.position.z) ?? startRoom;
       fps.setActive(false);
-      build.enter(r);
+      build.enter(instant ? r : null);
       ret.style.display = tgt.style.display = 'none';
       acts.set([]);
       palRow.style.display = prog.style.display = 'none';
       if (eng.point) eng.point.position.set(r.center.x, 3.2, r.center.z);
+    } else if (mode === 'build') {
+      // voa de volta para o olho e só então devolve o controle
+      flying = true;
+      build.leave(fps.eyePose(), () => {
+        flying = false;
+        mode = 'fps';
+        fps.setActive(true);
+        decor.spawnAt = fpsSpawn;
+        ret.style.display = tgt.style.display = '';
+        if (fps.tool === 'paint') palRow.style.display = '';
+        renderTools();
+      });
     } else {
-      build.exit();
+      mode = m;
       fps.setActive(true);
       ret.style.display = tgt.style.display = '';
       if (fps.tool === 'paint') palRow.style.display = '';
@@ -355,7 +406,8 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     title.textContent = m === 'build' ? t('home3d.title.build', 'Montando a casa') : party ? t('home3d.title.party', 'Festa!') : editable ? t('home3d.title.mine', 'Minha casa') : opts.handle ? t('home3d.title.of', 'Casa de @{h}', { h: opts.handle }) : t('home3d.title.visit', 'Visitando');
     renderTools();
   };
-  setMode(opts.mode === 'build' && canUse(role, 'decorate') ? 'build' : 'fps');
+  setMode(opts.mode === 'build' && canUse(role, 'decorate') ? 'build' : 'fps', true);
+  maybeCoach(hud, editable && canUse(role, 'decorate'));
 
   /* ---------------- laço ---------------- */
   let raf = 0;
@@ -390,7 +442,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     closed = true;
     cancelAnimationFrame(raf);
     fps.drop(false);
-    if (build.ghost) build.exit();
+    decor.reset();
     const s = eng.snapshot();
     try {
       writeBack(s);
@@ -402,6 +454,7 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     const res: Close3DResult = { design: s.design, mess: s.mess, cleaned: eng.cleaned, broken: eng.broken, reason };
     closeEmoteWheel();
     fps.dispose();
+    decor.dispose();
     build.dispose();
     party?.dispose();
     input.dispose();
@@ -429,8 +482,9 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     last = now;
     const dt = Math.min(1 / 20, ms / 1000);
     const w0 = performance.now();
-    if (mode === 'fps') fps.update(dt);
+    if (mode === 'fps' && !flying) fps.update(dt);
     else build.update(dt);
+    decor.update(dt);
     party?.update(dt, fps.pos, eng.camera.position, () => {
       party.sendState(fps.pos, fps.held?.food?.kind, myEmoteT > 0 ? myEmote : undefined);
     });
@@ -465,9 +519,59 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     }
   };
   raf = requestAnimationFrame(loop);
-  if (opts.debug) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, party, stats, setMode, close, THREE };
+  if (opts.debug || location.search.includes('debug')) (window as unknown as { __home3d: unknown }).__home3d = { eng, fps, build, decor, party, stats, setMode, close, THREE };
   void esc;
   const res = await done;
   window.removeEventListener('keydown', onKey);
   return res;
+}
+
+/* ---------------- primeira vez no 3D: 3 dicas rápidas (puláveis) ---------------- */
+const COACH_KEY = 'bw-h3-coach-v1';
+function maybeCoach(hud: HTMLElement, canDeco: boolean): void {
+  try {
+    if (localStorage.getItem(COACH_KEY) && !location.search.includes('coach')) return;
+  } catch {
+    return;
+  }
+  const tips: [string, string, string][] = [
+    ['hand', t('home3d.coach.t1', 'Andar e olhar'), t('home3d.coach.p1', 'Lado esquerdo da tela: andar. Arraste o resto da tela para olhar em volta.')],
+    ...(canDeco
+      ? ([
+          ['sofa', t('home3d.coach.t2', 'Toque num móvel'), t('home3d.coach.p2', 'Toque em qualquer móvel (até no tapete!) para mover, girar, trocar a cor ou guardar.')],
+          ['aerial', t('home3d.coach.t3', 'Catálogo e Vista aérea'), t('home3d.coach.p3', 'Em Decorar você pega móveis novos. Na Vista aérea dá para arrumar tudo de cima e ampliar a casa.')],
+        ] as [string, string, string][])
+      : []),
+  ];
+  let i = 0;
+  const box = el('div', 'h3-coach');
+  const card = el('div', 'cd');
+  box.appendChild(card);
+  hud.appendChild(box);
+  const end = () => {
+    box.remove();
+    try {
+      localStorage.setItem(COACH_KEY, '1');
+    } catch {
+      /* */
+    }
+  };
+  const draw = () => {
+    const [ic, h, p] = tips[i];
+    card.innerHTML = `<div class="ic">${ICON[ic] ?? ''}</div><h3>${esc(h)}</h3><p>${esc(p)}</p><div class="dots">${tips.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>`;
+    const row = el('div', 'rw');
+    const skip = button(t('home3d.coach.skip', 'Pular'), 'x');
+    skip.onclick = () => (sfx.click(), end());
+    const next = button(i < tips.length - 1 ? t('home3d.coach.next', 'Próximo') : t('home3d.coach.go', 'Bora!'), 'check');
+    next.classList.add('sel');
+    next.onclick = () => {
+      sfx.click();
+      if (++i >= tips.length) end();
+      else draw();
+    };
+    if (i < tips.length - 1) row.appendChild(skip);
+    row.appendChild(next);
+    card.appendChild(row);
+  };
+  draw();
 }

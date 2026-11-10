@@ -107,8 +107,13 @@ export const EXTERIOR_FIELDS: Field[] = [
 /* ---------------- cômodos ---------------- */
 export const ROOM_IDS = ['living', 'kitchen', 'bedroom', 'bath', 'party'] as const;
 export type RoomId = (typeof ROOM_IDS)[number];
+/** cômodos extras (Ampliar casa no 3D): id "x<linha>_<coluna>" — mesma regra de src/home3d/engine.ts */
+export const EXTRA_ROOM_RE = /^x([01])_(-?\d{1,2})$/;
+export const isExtraRoom = (r: string): boolean => EXTRA_ROOM_RE.test(r);
 export const roomName = (r: string): string =>
-  r === 'kitchen' ? t('home.room.kitchen', 'Cozinha') : r === 'bath' ? t('home.room.bath', 'Banheiro') : r === 'bedroom' ? t('home.room.bedroom', 'Quarto') : r === 'party' ? t('home.room.party', 'Salão de festa') : t('home.room.living', 'Sala');
+  isExtraRoom(r)
+    ? t('home3d.room.extra', 'Cômodo novo {n}', { n: (r[1] === '0' ? 'N' : 'S') + (Number(EXTRA_ROOM_RE.exec(r)![2]) + 1) })
+    : r === 'kitchen' ? t('home.room.kitchen', 'Cozinha') : r === 'bath' ? t('home.room.bath', 'Banheiro') : r === 'bedroom' ? t('home.room.bedroom', 'Quarto') : r === 'party' ? t('home.room.party', 'Salão de festa') : t('home.room.living', 'Sala');
 
 export const FLOORS = ['wood', 'tile', 'carpet', 'checker', 'stone', 'grass', 'stars', 'hex', 'stripes', 'dots', 'marble', 'candy'] as const;
 export const WALLS = ['paint', 'stripes', 'dots', 'brick', 'wood', 'stars', 'hearts', 'waves', 'tile', 'check', 'clouds', 'space'] as const;
@@ -260,12 +265,29 @@ export function starterDesign(): HomeDesign {
 }
 function starterRoom(id: RoomId): RoomDesign {
   const it = (fid: string, x: number, y: number) => ({ id: fid, x, y });
+  // Layout pensado para ficar bonito nos DOIS modos: (x, y) = centro e base (frente) do móvel no 2D.
+  // y ≈ 262–298 = encostado na parede do fundo no 3D (src/home3d/adapter.ts itemToPlace).
   const base: Record<RoomId, RoomDesign> = {
-    living: { id, floor: 'wood:15', wall: 'stripes:13', items: [it('rug0', 180, 360), it('sofa0', 110, 330), it('plant0', 320, 330), it('painting0', 120, 110), it('tv0', 260, 330), it('window0', 280, 100)] },
-    kitchen: { id, floor: 'checker:18', wall: 'tile:7', items: [it('fridge0', 50, 330), it('stove0', 130, 330), it('sink0', 210, 330), it('table0', 260, 390), it('clock0', 300, 80)] },
-    bedroom: { id, floor: 'carpet:11', wall: 'stars:9', items: [it('bed0', 110, 340), it('wardrobe0', 300, 330), it('poster0', 210, 100), it('teddy0', 200, 380), it('rug0', 160, 395)] },
-    bath: { id, floor: 'tile:7', wall: 'waves:7', items: [it('bathtub0', 110, 340), it('toilet0', 260, 335), it('mirror0', 260, 110), it('plant0', 330, 335)] },
-    party: { id, floor: 'checker:12', wall: 'dots:3', items: [it('partytable0', 180, 330), it('balloons0', 50, 330), it('speaker0', 320, 330), it('garland0', 180, 40), it('discoball0', 180, 110)] },
+    living: {
+      id, floor: 'wood:15', wall: 'stripes:13',
+      items: [it('rug1', 170, 360), it('painting0', 95, 105), it('window0', 200, 95), it('floorlamp0', 24, 262), it('sofa0', 105, 282), it('tv0', 278, 268), it('plant0', 338, 268), it('armchair1', 300, 378)],
+    },
+    kitchen: {
+      id, floor: 'checker:18', wall: 'tile:7',
+      items: [it('fridge0', 32, 276), it('stove0', 82, 274), it('sink0', 138, 272), it('counter0', 208, 274), it('clock0', 300, 80), it('plant1', 338, 268), it('table0', 258, 367), it('chair0', 201, 360), it('chair0', 315, 360)],
+    },
+    bedroom: {
+      id, floor: 'carpet:11', wall: 'stars:9',
+      items: [it('rug0', 150, 372), it('poster0', 70, 100), it('window0', 190, 90), it('bed0', 68, 298), it('desk0', 190, 274), it('wardrobe0', 316, 272), it('teddy0', 200, 362)],
+    },
+    bath: {
+      id, floor: 'tile:7', wall: 'waves:7',
+      items: [it('rug1', 60, 328), it('bathtub0', 59, 285), it('toilet0', 192, 274), it('sink1', 264, 271), it('mirror0', 264, 100), it('plant0', 338, 268)],
+    },
+    party: {
+      id, floor: 'checker:12', wall: 'dots:3',
+      items: [it('garland0', 180, 40), it('discoball0', 180, 330), it('balloons0', 29, 262), it('balloons1', 333, 262), it('speaker0', 290, 268), it('partytable0', 180, 336), it('chair2', 108, 330), it('chair2', 252, 330)],
+    },
   };
   return base[id];
 }
@@ -318,5 +340,10 @@ export function normalizeDesign(d: HomeDesign | null | undefined): HomeDesign {
     if (!rd) return base;
     return { id, floor: rd.floor || base.floor, wall: rd.wall || base.wall, items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) };
   });
+  // cômodos comprados no 3D (Ampliar casa) vêm depois dos 5 de sempre
+  for (const rd of d.rooms ?? []) {
+    if (!rd || !isExtraRoom(rd.id) || rooms.some((r) => r.id === rd.id) || rooms.length >= 12) continue;
+    rooms.push({ id: rd.id as RoomId, floor: rd.floor || 'wood:15', wall: rd.wall || 'paint:14', items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) });
+  }
   return { v: 1, planet: { ...s.planet, ...d.planet }, exterior: { ...s.exterior, ...d.exterior }, rooms };
 }
