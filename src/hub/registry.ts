@@ -21,6 +21,11 @@ export interface MiniGameHandle {
   destroy(): void;
   pause?(): void;
   resume?(): void;
+  /**
+   * Há uma partida em andamento agora? Com true, o "Sair do jogo?" avisa que o progresso pode ser
+   * perdido; sem o método (ou false: menu, garagem, resultado) o texto é neutro.
+   */
+  inMatch?(): boolean;
 }
 
 export interface MiniGameDef {

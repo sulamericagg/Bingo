@@ -2612,6 +2612,7 @@ export default {
   "hub.daily": "Harian",
   "hub.exitBtn": "Ke menu",
   "hub.exitMsg": "Progres permainan ini bisa hilang.",
+  "hub.exitMsgIdle": "Kamu kembali ke menu Bloop World.",
   "hub.exitTitle": "Keluar dari game?",
   "hub.flash": "Promo kilat",
   "hub.free": "Gratis",

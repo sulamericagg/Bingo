@@ -260,8 +260,21 @@ export function hubBack(): boolean {
     return true;
   }
   handle?.pause?.();
-  hostConfirm.classList.add('on');
+  showConfirm();
   return true;
+}
+
+/** "Sair do jogo?": só fala em perder progresso quando o jogo diz que há partida em andamento. */
+function showConfirm(): void {
+  let live = false;
+  try {
+    live = !!handle?.inMatch?.();
+  } catch {
+    /* jogo com erro: texto neutro */
+  }
+  const msg = hostConfirm.querySelector<HTMLElement>('.gh-msg');
+  if (msg) msg.textContent = live ? t('hub.exitMsg', 'O progresso desta partida pode ser perdido.') : t('hub.exitMsgIdle', 'Você volta para o menu do Bloop World.');
+  hostConfirm.classList.add('on');
 }
 
 /** App foi para segundo plano: pausa o minigame aberto. */
@@ -269,7 +282,7 @@ export function hubPause(): void {
   if (!hostActive) return;
   handle?.pause?.();
   // ao voltar o jogador vê "Pausado — Continuar / Sair" em vez de uma tela congelada
-  if (handle) hostConfirm.classList.add('on');
+  if (handle) showConfirm();
 }
 
 /* ============================== init ============================== */
@@ -467,12 +480,37 @@ function select(i: number, instant: boolean): void {
     k.el.classList.toggle('near', Math.abs(j - i) === 1);
     (dots.children[j] as HTMLElement)?.classList.toggle('on', j === i);
   });
+  if (!instant) fadeOldBg();
   applyTheme(menu, c.def.theme, '--hub-');
   if (!instant && c.def.id !== SOON_ID) remember(c.def.id);
   mountExtras();
   menu.dataset.game = c.def.id;
   bus.emit('hub-select', c.def.id);
   layout(!instant);
+}
+
+/**
+ * Fundo antigo sumindo por cima do novo (só opacidade, roda no compositor). Substitui a transição
+ * das variáveis de cor, que repintava a tela inteira a cada quadro.
+ */
+let fadeEl: HTMLElement | null = null;
+let fadeAnim: Animation | null = null;
+function fadeOldBg(): void {
+  const bg = menu.querySelector('.hub-bg');
+  if (!bg || document.body.classList.contains('hub-qmin')) return;
+  if (!fadeEl) {
+    fadeEl = document.createElement('i');
+    fadeEl.className = 'hub-bg-fade';
+    bg.prepend(fadeEl);
+  }
+  const ms = menu.style;
+  const b1 = ms.getPropertyValue('--hub-bg1');
+  const b2 = ms.getPropertyValue('--hub-bg2');
+  if (!b1 || !b2) return;
+  fadeEl.style.setProperty('--f-bg1', b1);
+  fadeEl.style.setProperty('--f-bg2', b2);
+  fadeAnim?.cancel();
+  fadeAnim = typeof fadeEl.animate === 'function' ? fadeEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, easing: 'ease-out' }) : null;
 }
 
 /** extras de cartas inativas ficam aqui (no DOM, escondidos) para os ids continuarem achaveis */
@@ -526,7 +564,7 @@ function setMoving(on: boolean): void {
   clearTimeout(moveT);
   if (on) {
     track.classList.add('moving');
-    moveT = window.setTimeout(() => track.classList.remove('moving'), 450);
+    moveT = window.setTimeout(() => track.classList.remove('moving'), 650); // cobre a transição das cartas (0,55 s)
   } else track.classList.remove('moving');
 }
 
@@ -845,7 +883,7 @@ function buildHost(): void {
       <div class="panel gh-panel">
         <div class="panel-art plate plate-violet round">${icon('pause')}</div>
         <h2 data-i18n="hub.exitTitle">Sair do jogo?</h2>
-        <p class="muted" data-i18n="hub.exitMsg">O progresso desta partida pode ser perdido.</p>
+        <p class="muted gh-msg"></p>
         <button class="btn btn-play small" data-gh="resume"><span data-i18n="hub.resume">CONTINUAR</span></button>
         <button class="btn btn-ghost" data-gh="exit"><span data-i18n="hub.exitBtn">Sair para o menu</span></button>
       </div>

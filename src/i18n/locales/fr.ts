@@ -2612,6 +2612,7 @@ export default {
   "hub.daily": "Quotidien",
   "hub.exitBtn": "Retour au menu",
   "hub.exitMsg": "La progression de cette partie peut être perdue.",
+  "hub.exitMsgIdle": "Tu reviens au menu de Bloop World.",
   "hub.exitTitle": "Quitter le jeu ?",
   "hub.flash": "Offre éclair",
   "hub.free": "Gratuit",

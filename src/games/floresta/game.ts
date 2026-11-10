@@ -13,7 +13,7 @@ import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import type { PeerState, PresenceSession } from '../../services/presence-api';
 import { SKINS } from '../../game/skins';
 import { BIOMES, BUILDS, SPECIES } from './data';
-import { flIcon } from './icons';
+import { flIcon, removeFlIconDefs } from './icons';
 import { loadSave, writeSave } from './save';
 import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
@@ -589,6 +589,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.view?.destroy();
     this.hud?.destroy();
     this.wrap.remove();
+    removeFlIconDefs();
   }
 }
 

@@ -2612,6 +2612,7 @@ export default {
   "hub.daily": "매일",
   "hub.exitBtn": "메뉴로",
   "hub.exitMsg": "이번 판의 진행 상황이 사라질 수 있어요.",
+  "hub.exitMsgIdle": "Bloop World 메뉴로 돌아갑니다.",
   "hub.exitTitle": "게임을 나갈까요?",
   "hub.flash": "번개 특가",
   "hub.free": "무료",

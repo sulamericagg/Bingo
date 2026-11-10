@@ -220,8 +220,7 @@ function build(): void {
         <button class="cr-buy"></button>
       </div>
       <button class="btn btn-green cr-save"><span data-icon="check"></span> ${t('creator.save', 'Salvar e usar')}</button>
-    </footer>
-    <div class="cr-toast"></div>`;
+    </footer>`;
   (document.getElementById('ui') ?? document.body).appendChild(root);
   hydrateIcons(root);
   stageCv = $('.cr-cv') as HTMLCanvasElement;

@@ -209,14 +209,6 @@
 .hm-seg button { padding: 5px 6px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #efe6ff; border: 2px solid var(--ink) !important; }
 .hm-seg button.on { background: #fff27a; }
 
-/* toast */
-.hm-toast {
-  position: absolute; left: 50%; top: calc(110px + var(--st)); transform: translate(-50%, -20px); z-index: 20;
-  background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 8px 14px; font-weight: 700; font-size: 15px;
-  display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.25s; max-width: 90%;
-  box-shadow: 0 4px 0 var(--ink);
-}
-.hm-toast.on { opacity: 1; transform: translate(-50%, 0); }
 .hm-banner {
   position: absolute; left: 10px; right: 10px; top: calc(104px + var(--st)); z-index: 2;
   background: #fff0c8; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 10px; font-weight: 700; font-size: 14px;

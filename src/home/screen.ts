@@ -205,8 +205,7 @@ function build(): void {
     <div class="hm-net" hidden></div>
     <div class="hm-banner" hidden></div>
     <div class="hm-bar"></div>
-    <div class="hm-sheet"></div>
-    <div class="hm-toast"></div>`;
+    <div class="hm-sheet"></div>`;
   document.body.appendChild(root);
   cv = $('.hm-cv') as HTMLCanvasElement;
   ctx = cv.getContext('2d', { alpha: false })!;

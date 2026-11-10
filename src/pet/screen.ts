@@ -252,8 +252,7 @@ function build(): void {
     <div class="pet-modal pet-decor"><div class="pet-card"></div></div>
     <div class="pet-modal pet-ask"><div class="pet-card"></div></div>
     <button class="pet-mic" aria-label="${esc(t('pet.voice.btn', 'Falar'))}">${micSvg()}<span>${esc(t('pet.voice.btn', 'Falar'))}</span></button>
-    <div class="pet-modal pet-vask"><div class="pet-card"></div></div>
-    <div class="pet-toast"></div>`;
+    <div class="pet-modal pet-vask"><div class="pet-card"></div></div>`;
   document.body.appendChild(root);
   cv = $('.pet-cv') as HTMLCanvasElement;
   ctx = cv.getContext('2d', { alpha: false })!;

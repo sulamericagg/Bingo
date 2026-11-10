@@ -1314,6 +1314,11 @@ class RallyGame {
     this.pauseEl.classList.remove('on');
   }
 
+  /** correndo agora (para o "Sair do jogo?" do hub) */
+  inMatch(): boolean {
+    return this.state === 'play';
+  }
+
   private exit(): void {
     this.destroy();
     this.exitFn();

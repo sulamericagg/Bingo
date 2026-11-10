@@ -645,45 +645,6 @@
   filter: grayscale(0.7) brightness(0.9);
 }
 
-/* ---------- toast ---------- */
-.pet-toast {
-  position: absolute;
-  left: 50%;
-  top: calc(120px + var(--st));
-  transform: translate(-50%, -20px);
-  opacity: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 88%;
-  background: var(--ink);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  border-radius: 16px;
-  padding: 8px 14px;
-  pointer-events: none;
-  z-index: 6;
-}
-.pet-toast.show {
-  animation: petToast 2.8s ease forwards;
-}
-@keyframes petToast {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -20px);
-  }
-  10%,
-  85% {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -10px);
-  }
-}
-
 @media (max-height: 680px) {
   .pet-stat small {
     display: none;

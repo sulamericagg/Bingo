@@ -428,6 +428,11 @@ export class BandGame implements MiniGameHandle {
     this.player = null;
   }
 
+  /** tocando uma música agora (para o "Sair do jogo?" do hub) */
+  inMatch(): boolean {
+    return this.mode === 'play' && !this.ended;
+  }
+
   quitSong(): void {
     this.stopPlayer();
     this.mode = 'menu';
