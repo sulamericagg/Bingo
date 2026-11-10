@@ -47,6 +47,7 @@ export class LookDrag implements TouchClaimer {
   private ix = 0;
   private iy = 0;
   private enabled = true;
+  private lastConsume = 0;
   private gyro: Gyro | null = null;
   private unsub: () => void;
   constructor(
@@ -122,10 +123,13 @@ export class LookDrag implements TouchClaimer {
     this.vx = this.vy = 0;
   }
   /**
-   * Chame uma vez por quadro: devolve [dYaw, dPitch] em radianos (dYaw + = girar para a direita,
+   * Chame uma vez por quadro (sem `dt`, mede sozinho): devolve [dYaw, dPitch] em radianos (dYaw + = girar para a direita,
    * dPitch + = olhar para BAIXO, já com inverter-Y aplicado).
    */
-  consume(dt: number): [number, number] {
+  consume(dt?: number): [number, number] {
+    const now = performance.now();
+    if (dt == null) dt = this.lastConsume ? (now - this.lastConsume) / 1000 : 1 / 60;
+    this.lastConsume = now;
     dt = Math.min(0.1, Math.max(0, dt || 0));
     // inércia decai exponencialmente
     if (this.ix || this.iy) {
