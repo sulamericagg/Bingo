@@ -24,7 +24,7 @@ const CSS = `
 .ty-row .ty-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ty-row .ty-bar{position:absolute;left:0;bottom:0;height:3px;background:#3ee07a}
 .ty-hint{position:absolute;left:10px;right:168px;top:calc(env(safe-area-inset-top,0px) + 60px);background:rgba(42,11,92,.88);padding:7px 10px;border-radius:14px;font-size:14px;font-weight:600;line-height:1.2;transition:opacity .4s;border:2px solid rgba(255,255,255,.18)}
-.ty-banner{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:44px;font-weight:700;color:#fff36b;-webkit-text-stroke:4px #2a0b5c;paint-order:stroke fill;text-shadow:0 4px 0 #2a0b5c;pointer-events:none;animation:tyPop .5s cubic-bezier(.3,1.6,.6,1)}
+.ty-banner{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 17%);text-align:center;font-size:30px;font-weight:700;color:#fff36b;-webkit-text-stroke:3px #2a0b5c;paint-order:stroke fill;text-shadow:0 4px 0 #2a0b5c;pointer-events:none;animation:tyPop .5s cubic-bezier(.3,1.6,.6,1)}
 @keyframes tyPop{from{transform:scale(.3);opacity:0}}
 .ty-joy{position:absolute;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;background:rgba(255,255,255,.14);border:3px solid rgba(255,255,255,.35);pointer-events:none;display:none}
 .ty-joy i{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(255,255,255,.7)}

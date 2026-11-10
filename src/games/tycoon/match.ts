@@ -14,6 +14,7 @@ import { fmt, t } from '../../i18n';
 import { showRewarded } from '../../services/ads';
 import type { JoinPresence, PeerState, PresenceSession } from '../../services/presence-api';
 import { icon } from '../../ui/icons';
+import { joyRadius, Spring2 } from '../../ui/touch';
 import { botSpeed, botStep, makeBrain, type Brain } from './bots';
 import { BOT_NAMES, COFRE, ITEMS, MATCH_SECONDS, PLACE_COINS, PLOT_COLORS, PLOT_H, PLOT_W, TURBO_BONUS, TURBO_INDEX } from './data';
 import { fmtShort, FactoryView } from './render';
@@ -157,10 +158,16 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
   };
 
   /* ------------------------------ entrada ------------------------------ */
+  // Arrastar = joystick (raio pelo tamanho físico + preferência, zona morta, anel acompanha o dedo,
+  // saída suavizada por mola); toque curto = andar até o ponto. Ver docs/CONTROLES.md.
   let pid = -1;
   let downX = 0,
     downY = 0,
-    joy = false;
+    joy = false,
+    joyR = 46,
+    tvx = 0,
+    tvy = 0;
+  const joySpring = new Spring2(30);
   const rect = () => cv.getBoundingClientRect();
   cv.addEventListener('pointerdown', (e) => {
     audio.unlock();
@@ -170,7 +177,11 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     downX = e.clientX - r.left;
     downY = e.clientY - r.top;
     joy = false;
-    cv.setPointerCapture?.(e.pointerId);
+    try {
+      cv.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ponteiro já saiu */
+    }
   });
   cv.addEventListener('pointermove', (e) => {
     if (e.pointerId !== pid) return;
@@ -178,18 +189,33 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     const dx = e.clientX - r.left - downX;
     const dy = e.clientY - r.top - downY;
     const d = Math.hypot(dx, dy);
-    if (!joy && d > 14) {
+    if (!joy && d > 12) {
       joy = true;
-      joyEl.style.display = 'block';
-      joyEl.style.left = downX + 'px';
-      joyEl.style.top = downY + 'px';
+      joySpring.reset();
+      joyR = Math.max(40, joyRadius() * 0.8);
+      Object.assign(joyEl.style, { display: 'block', left: downX + 'px', top: downY + 'px', width: joyR * 2 + 'px', height: joyR * 2 + 'px', margin: -joyR + 'px 0 0 ' + -joyR + 'px' });
     }
     if (joy) {
-      const m = Math.min(1, d / 40);
-      me.vx = (dx / (d || 1)) * m;
-      me.vy = (dy / (d || 1)) * m;
-      const k = Math.min(d, 34) / (d || 1);
-      joyKnob.style.transform = `translate(${dx * k}px,${dy * k}px)`;
+      let ex = dx,
+        ey = dy,
+        ed = d;
+      // passou muito do anel: o anel acompanha o dedo (não trava na borda)
+      if (d > joyR * 1.5) {
+        const f = (d - joyR * 1.5) / d;
+        downX += dx * f;
+        downY += dy * f;
+        ex = e.clientX - r.left - downX;
+        ey = e.clientY - r.top - downY;
+        ed = Math.hypot(ex, ey);
+        joyEl.style.left = downX + 'px';
+        joyEl.style.top = downY + 'px';
+      }
+      const n = Math.min(1, ed / joyR);
+      const m = n <= 0.12 ? 0 : (n - 0.12) / 0.88;
+      tvx = (ex / (ed || 1)) * m;
+      tvy = (ey / (ed || 1)) * m;
+      const k = Math.min(ed, joyR * 0.85) / (ed || 1);
+      joyKnob.style.transform = `translate(${ex * k}px,${ey * k}px)`;
     }
   });
   const up = (e: PointerEvent) => {
@@ -197,6 +223,8 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     pid = -1;
     if (joy) {
       joy = false;
+      tvx = tvy = 0;
+      joySpring.reset();
       me.vx = me.vy = 0;
       me.tx = me.cx;
       me.ty = me.cy;
@@ -214,7 +242,21 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     }
   };
   cv.addEventListener('pointerup', up);
-  cv.addEventListener('pointercancel', up);
+  // cancelado (sistema/gesto/app ao fundo): só para — nunca vira "toque para andar"
+  const cancelPtr = () => {
+    if (pid === -1) return;
+    pid = -1;
+    joy = false;
+    tvx = tvy = 0;
+    joySpring.reset();
+    me.vx = me.vy = 0;
+    me.tx = me.cx;
+    me.ty = me.cy;
+    joyEl.style.display = 'none';
+    joyKnob.style.transform = '';
+  };
+  cv.addEventListener('pointercancel', (e) => e.pointerId === pid && cancelPtr());
+  cv.addEventListener('lostpointercapture', (e) => e.pointerId === pid && cancelPtr());
 
   /* ------------------------------ presença (online opcional) ------------------------------ */
   let session: PresenceSession | null = null;
@@ -355,6 +397,11 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
     const dt = Math.max(0, Math.min(0.05, frameMs / 1000));
     last = nowMs;
     const t0 = performance.now();
+    if (joy) {
+      joySpring.step(tvx, tvy, dt);
+      me.vx = joySpring.x;
+      me.vy = joySpring.y;
+    }
     for (let k = 0; k < (phase === 'play' ? SPEED : 1); k++) step(dt);
     view.draw(plots, dt, elapsed);
     hudT -= dt;
@@ -567,6 +614,7 @@ export function startMatch(root: HTMLElement, opts: MatchOpts, quality: QualityG
   }
 
   const onVis = () => {
+    if (document.hidden) cancelPtr();
     if (document.hidden) paused = true;
     else paused = false;
   };
