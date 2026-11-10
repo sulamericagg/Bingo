@@ -33,17 +33,21 @@ export function floresta(k: Kit): Shot {
   const tr = new THREE.InstancedMesh(trunkG, k.solid('#8a5a32', { flat: true }), TN);
   const cr = new THREE.InstancedMesh(crownG, k.solid('#ffffff', { flat: true, rough: 0.9 }), TN);
   const C = new THREE.Color();
-  for (let i = 0; i < TN; i++) {
+  let ti = 0;
+  for (let n = 0; n < TN * 2 && ti < TN; n++) {
+    const i = n;
     const a = i * 2.399 + 0.3;
-    const r = 6 + (i % 7) * 2.2;
+    const r = 6 + (i % 7) * 2.6;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r - 4;
     if (z > 3 && Math.abs(x) < 6) continue;
     const s = 0.8 + ((i * 13) % 10) / 15;
-    setInst(tr, i, x, 0, z, 0, a, 0, s);
-    setInst(cr, i, x, 0, z, 0, a, 0, s);
-    cr.setColorAt(i, C.set(['#2f9a4a', '#3aae58', '#4fc06a', '#2a8a5a'][i % 4]));
+    setInst(tr, ti, x, 0, z, 0, a, 0, s);
+    setInst(cr, ti, x, 0, z, 0, a, 0, s);
+    cr.setColorAt(ti, C.set(['#2f9a4a', '#3aae58', '#4fc06a', '#2a8a5a'][i % 4]));
+    ti++;
   }
+  tr.count = cr.count = ti;
   k.scene.add(tr, cr);
   // a árvore principal (pivô na base)
   const tree = new THREE.Group();

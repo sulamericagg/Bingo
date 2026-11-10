@@ -55,7 +55,7 @@ export function casa(k: Kit): Shot {
   const CN = 8;
   const clouds = new THREE.InstancedMesh(k.ownGeo(new THREE.IcosahedronGeometry(1, 1)), k.solid('#ffffff', { flat: true, rough: 1, emissive: '#ffd8e8', ei: 0.25 }), CN * 3);
   k.scene.add(clouds);
-  const cd = Array.from({ length: CN }, (_, i) => ({ a: (i / CN) * Math.PI * 2, r: 13 + (i % 3) * 4, y: -3 + (i % 4) * 2.2, s: 1 + (i % 3) * 0.4 }));
+  const cd = Array.from({ length: CN }, (_, i) => ({ a: (i / CN) * Math.PI * 2, r: 21 + (i % 3) * 5, y: -5 + (i % 4) * 2.4, s: 1 + (i % 3) * 0.4 }));
   const b = new Actor(k, 1.5, 'happy');
   const P0: [number, number, number] = [0.3, 0, 4.0];
   const P1: [number, number, number] = [0, 0.15, 1.6];

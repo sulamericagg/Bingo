@@ -8,6 +8,10 @@ export function band(k: Kit): Shot {
   k.sky('#120a2e', '#3a1a7a', '#120a2e', 300, 1.2);
   k.fog('#1a0c40', 14, 50);
   k.lights('#8a6aff', '#1a0a3a', '#ffe0f0', [0, 10, 10], 0.7, 1.6);
+  const spot = new THREE.SpotLight('#ffe8f4', 60, 30, 0.45, 0.6, 1.2);
+  spot.position.set(0, 9, 9);
+  spot.target.position.set(0, 1.5, 0);
+  k.scene.add(spot, spot.target);
   const BPM = 2.2; // batidas/s
   const stage = k.build('band-stage', (b) => {
     b.box(14, 1.1, 6, 0, 0, -1, '#2a1a4a');
@@ -74,7 +78,7 @@ export function band(k: Kit): Shot {
   });
   k.scene.add(crowd);
   // Bloop + guitarra
-  const b = new Actor(k, 2.0, 'happy');
+  const b = new Actor(k, 2.4, 'happy');
   const gtr = k.build('band-gtr', (g) => {
     g.box(0.9, 0.7, 0.18, 0, -0.35, 0, '#ffd23f');
     g.box(0.75, 0.55, 0.2, 0.05, 0.25, 0, '#ffd23f');
@@ -86,10 +90,10 @@ export function band(k: Kit): Shot {
   k.scene.add(guitar);
   let hit = false;
   const path = k.path([
-    { t: 0, p: [0, 1.6, 12.5], l: [0, 3, 0], fov: 50 },
-    { t: 1.6, p: [-3.5, 2.8, 8.5], l: [0, 2.6, -1] },
-    { t: 3.0, p: [1.5, 2.6, 7.0], l: [0, 2.9, -1] },
-    { t: 5.0, p: [0.5, 2.9, 7.6], l: [0, 3.2, -1], fov: 48 },
+    { t: 0, p: [0, 1.6, 12.5], l: [0, 3.2, 0], fov: 50 },
+    { t: 1.6, p: [-2.8, 2.6, 7.0], l: [0, 2.3, -0.5] },
+    { t: 3.0, p: [1.2, 2.4, 6.0], l: [0, 2.5, -0.5] },
+    { t: 5.0, p: [0.4, 2.6, 6.6], l: [0, 2.7, -0.5], fov: 48 },
   ]);
   return {
     dur: 3.4,
@@ -101,8 +105,9 @@ export function band(k: Kit): Shot {
       const hgt = t > 2.6 ? 1.6 : 0.5;
       const y = 1.22 + 4 * bp * (1 - bp) * hgt;
       b.at(0, y, 0.4, bp < 0.1 ? -0.25 : 0.15 * Math.sin(bp * Math.PI), 1.22);
-      guitar.position.set(-0.15, y + 0.55, 0.9);
-      guitar.rotation.set(0, 0, 0.45 + Math.sin(beat * Math.PI) * 0.15);
+      guitar.position.set(0.05, y + 0.35, 1.0);
+      guitar.scale.setScalar(0.62);
+      guitar.rotation.set(0, 0, 0.5 + Math.sin(beat * Math.PI) * 0.12);
       // fachos varrendo
       beams.forEach((g, i) => {
         g.rotation.z = Math.sin(t * 1.4 + i * 1.3) * 0.55;

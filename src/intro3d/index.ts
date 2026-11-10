@@ -290,8 +290,7 @@ function make3d(cv: HTMLCanvasElement, o: IntroOpts, fn: SceneFn): { painter: Pa
       kit.fxAdd.update(dt, kit.cam.fov, r.domElement.height);
       flashA = kit.flashAmt;
       kit.flashAmt *= Math.pow(0.004, dt);
-      if (bloom) bloom.render(kit.scene, kit.cam);
-      else r.render(kit.scene, kit.cam);
+      // governador ANTES de desenhar (redimensionar limpa o canvas)
       if (drops < 2 && dt > 0) {
         acc += dt;
         nf++;
@@ -305,6 +304,8 @@ function make3d(cv: HTMLCanvasElement, o: IntroOpts, fn: SceneFn): { painter: Pa
           nf = 0;
         }
       }
+      if (bloom) bloom.render(kit.scene, kit.cam);
+      else r.render(kit.scene, kit.cam);
     },
     flash: () => [flashA, kit.flashCol],
     dispose() {

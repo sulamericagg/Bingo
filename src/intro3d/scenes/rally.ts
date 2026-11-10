@@ -22,7 +22,7 @@ export function rally(k: Kit): Shot {
   const road = (x: number) => Math.sin(x * 0.18) * 1.2 + Math.sin(x * 0.07 + 1) * 2 + Math.max(0, 1 - Math.abs(x - 3) / 3) * 1.6 - (x > 3 && x < 12 ? Math.sin(((x - 3) / 9) * Math.PI) * 1.8 : 0);
   const h = (x: number, z: number) => {
     const side = Math.max(0, Math.abs(z) - 2.2);
-    return road(x) + side * side * 0.04 + Math.sin(x * 0.5 + z * 0.7) * 0.25 * Math.min(1, side) + Math.sin(z * 0.3 + x * 0.11) * 1.4 * Math.min(1, side / 6);
+    return road(x) + side * side * 0.012 + Math.sin(x * 0.5 + z * 0.7) * 0.25 * Math.min(1, side) + Math.sin(z * 0.3 + x * 0.11) * 1.4 * Math.min(1, side / 6);
   };
   const crater = (x: number, z: number) => {
     const d = Math.hypot(x - 18, z + 9);
@@ -78,7 +78,14 @@ export function rally(k: Kit): Shot {
   const sh = k.blob(1.5, 0.45);
   sh.scale.set(1.4, 1, 1);
   // movimento: x(t), com voo entre T0 e T1
-  const X = (t: number) => -14 + t * 7 + t * t * 0.9;
+  const XR = (t: number) => -14 + t * 7 + t * t * 0.9;
+  // freia depois de 3.0 s (velocidade cai até 0 em 1.2 s)
+  const V3 = 12.4;
+  const X = (t: number) => {
+    if (t < 3) return XR(t);
+    const d = Math.min(1.2, t - 3);
+    return XR(3) + V3 * d - (V3 / 2.4) * d * d;
+  };
   const T0 = 1.55;
   const T1 = 2.35;
   const grd = (x: number) => h(x - 10, 0);
@@ -90,17 +97,20 @@ export function rally(k: Kit): Shot {
   const gg = (2 * (y0 + vy0 * (T1 - T0) - y1)) / ((T1 - T0) * (T1 - T0));
   let landed = false;
   let spin = 0;
+  // câmera relativa ao carro: lado → frente baixa (pulo por cima) → 3/4 traseira
   const path = k.path([
-    { t: 0, p: [-14, 2.2, 7.5], l: [-11, 1.6, 0], fov: 46 },
-    { t: 1.3, p: [-2, 2.8, 8.5], l: [0, 2.2, 0] },
-    { t: 2.0, p: [5, 1.2, 6.5], l: [4, 3.4, 0], fov: 52 },
-    { t: 3.0, p: [17, 2.8, 7.5], l: [14.5, 1.8, 0] },
-    { t: 5.0, p: [22, 3.5, 7.5], l: [19, 1.4, 0], fov: 46 },
+    { t: 0, p: [-2.5, 1.6, 7.5], l: [1.5, 0.8, 0], fov: 46 },
+    { t: 1.3, p: [1.5, 1.8, 7.0], l: [0.5, 0.9, 0] },
+    { t: 2.0, p: [5.5, 0.4, 4.5], l: [0, 1.6, 0], fov: 54 },
+    { t: 3.0, p: [4.5, 2.4, 6.5], l: [0, 1.0, 0] },
+    { t: 5.0, p: [3.2, 2.6, 7.4], l: [-0.2, 0.6, 0], fov: 46 },
   ]);
+  const cv: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+  let camY = 0;
   return {
     dur: 3.3,
     update(t, dt) {
-      const x = X(Math.min(t, 3.6));
+      const x = X(t);
       let y = grd(x);
       let pitch = Math.atan2(grd(x + 0.6) - grd(x - 0.6), 1.2);
       const air = t > T0 && t < T1;
@@ -128,7 +138,12 @@ export function rally(k: Kit): Shot {
         k.fxAdd.burst(x, grd(x) + 0.3, 0, 20, 'spark', '#ffe0b0', 3);
         k.shake(0.35);
       }
-      k.follow(path, t);
+      path.get(t, cv);
+      camY = t === 0 || dt === 0 ? car.position.y : camY + (car.position.y - camY) * Math.min(1, dt * 3);
+      const shk = k.shakeAmt;
+      k.cam.position.set(x + cv[0] + (Math.random() - 0.5) * shk, camY + cv[1] + (Math.random() - 0.5) * shk, cv[2]);
+      k.cam.lookAt(x + cv[3], camY + cv[4], cv[5]);
+      k.setFov(cv[6]);
     },
     sting(s) {
       for (let i = 0; i < 6; i++) s.tone(i * 0.25, 90 + i * 14, 0.3, 'sawtooth', 0.05, { slide: 1.25 });
