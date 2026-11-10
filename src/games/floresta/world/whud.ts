@@ -8,7 +8,9 @@
  * ============================================================ */
 import { t } from '../../../i18n';
 import { flIcon } from '../icons';
-import { GEAR_SVG, joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from '../touchcfg';
+import { GEAR_SVG, openControls } from '../touchcfg';
+import { createJoystick, createLook, type Joystick, type LookDrag } from '../../../ui/touch';
+import { clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../../ui/notify';
 
 const svg = (body: string, size = 30) => `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
 const INK = '#2a0b5c';
@@ -43,11 +45,6 @@ export class WorldHud {
   ctl: WControls = { mx: 0, my: 0, lookDX: 0, lookDY: 0, use: false, up: false, down: false };
   private q = <T extends HTMLElement>(s: string) => this.el.querySelector(s) as T;
   private offs: (() => void)[] = [];
-  private joy = { id: -1, x: 0, y: 0 };
-  private look = { id: -1, x: 0, y: 0 };
-  private joyEl: HTMLElement;
-  private knob: HTMLElement;
-  private toasts: HTMLElement;
   private last: Record<string, string> = {};
   private keys = new Set<string>();
 
@@ -58,8 +55,6 @@ export class WorldHud {
     const el = document.createElement('div');
     el.className = 'fw-hud';
     el.innerHTML = `
-      <div class="fw-touch"></div>
-      <div class="fw-joy"><i></i></div>
       <div class="fw-top">
         <button class="fl-btn round red" data-tap="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 22)}</button>
         <div class="fl-pill">${flIcon('acorn', 22)}<span data-v="coins">0</span></div>
@@ -71,7 +66,6 @@ export class WorldHud {
           <button class="fl-btn round" data-tap="pets" aria-label="${t('floresta.w.pets', 'Ajudantes')}">${WICONS.paw}</button>
         </div>
       </div>
-      <div class="fw-toasts"></div>
       <div class="fw-cmd">
         <button class="fl-btn green" data-tap="cmdChop">${flIcon('axe', 22)}<span>${t('floresta.w.cmdChop', 'Cortar ali')}</span></button>
         <button class="fl-btn green" data-tap="cmdFetch">${flIcon('log', 22)}<span>${t('floresta.w.cmdFetch', 'Buscar toras')}</span></button>
@@ -88,12 +82,17 @@ export class WorldHud {
       </div>`;
     root.appendChild(el);
     this.el = el;
-    this.joyEl = this.q('.fw-joy');
-    this.knob = this.joyEl.firstElementChild as HTMLElement;
-    this.toasts = this.q('.fw-toasts');
-    this.bindTouch();
+    this.bindTouch(root);
     this.bindButtons();
     this.bindKeys();
+    const top = this.q('.fw-top');
+    const setTop = () => setNotifyTop(top.getBoundingClientRect().bottom + 4);
+    setTop();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(setTop);
+      ro.observe(top);
+      this.offs.push(() => ro.disconnect());
+    }
   }
 
   private on<K extends keyof HTMLElementEventMap>(t: EventTarget, ev: K, f: (e: HTMLElementEventMap[K]) => void, opt?: AddEventListenerOptions): void {
@@ -101,96 +100,36 @@ export class WorldHud {
     this.offs.push(() => t.removeEventListener(ev, f as EventListener, opt));
   }
 
-  private bindTouch(): void {
-    const pad = this.q('.fw-touch');
-    const cfg = () => {
-      const c = touchCfg();
-      this.joyEl.style.setProperty('--jr', joyRadius(c) + 'px');
-      this.el.classList.toggle('lefty', c.lefty);
-    };
-    cfg();
-    this.offs.push(onTouchCfg(cfg));
-    let sx = 0;
-    let sy = 0;
-    this.on(pad, 'pointerdown', (e) => {
-      e.preventDefault();
-      const w = window.innerWidth;
-      const c = touchCfg();
-      const inJoy = c.lefty ? e.clientX > w * 0.55 : e.clientX < w * 0.45;
-      if (inJoy && this.joy.id < 0) {
-        this.joy.id = e.pointerId;
-        this.joyEl.classList.add('on');
-        if (c.floating) {
-          this.joy.x = e.clientX;
-          this.joy.y = e.clientY;
-          this.joyEl.style.left = e.clientX + 'px';
-          this.joyEl.style.top = e.clientY + 'px';
-        } else {
-          const r = this.joyEl.getBoundingClientRect();
-          this.joy.x = r.left + r.width / 2;
-          this.joy.y = r.top + r.height / 2;
-        }
-        this.knob.style.transform = 'translate(-50%,-50%)';
-        sx = sy = 0;
-      } else if (this.look.id < 0) {
-        this.look.id = e.pointerId;
-        this.look.x = e.clientX;
-        this.look.y = e.clientY;
-      }
-      pad.setPointerCapture?.(e.pointerId);
+  private bindTouch(root: HTMLElement): void {
+    // controles compartilhados (src/ui/touch): analógico flutuante + arrastar para olhar
+    this.joyC = createJoystick(root, { zoneTop: 0.18 });
+    this.lookC = createLook(root);
+    this.offs.push(() => {
+      this.joyC?.destroy();
+      this.lookC?.destroy();
     });
-    this.on(pad, 'pointermove', (e) => {
-      if (e.pointerId === this.joy.id) {
-        const R = joyRadius();
-        let dx = e.clientX - this.joy.x;
-        let dy = e.clientY - this.joy.y;
-        const d = Math.hypot(dx, dy);
-        // passou do raio: a base vem junto (a direção nunca inverte)
-        if (d > R && touchCfg().floating) {
-          const k = (d - R) / d;
-          this.joy.x += dx * k;
-          this.joy.y += dy * k;
-          this.joyEl.style.left = this.joy.x + 'px';
-          this.joyEl.style.top = this.joy.y + 'px';
-          dx = e.clientX - this.joy.x;
-          dy = e.clientY - this.joy.y;
-        }
-        const dd = Math.hypot(dx, dy);
-        const cl = Math.min(R, dd);
-        const nx = dd > 0 ? dx / dd : 0;
-        const ny = dd > 0 ? dy / dd : 0;
-        this.knob.style.transform = `translate(calc(-50% + ${nx * cl}px), calc(-50% + ${ny * cl}px))`;
-        const [ox, oy] = shapeStick(dx, dy, R);
-        sx += (ox - sx) * 0.65;
-        sy += (oy - sy) * 0.65;
-        if (!ox && !oy) sx = sy = 0;
-        this.ctl.mx = sx;
-        this.ctl.my = sy;
-      } else if (e.pointerId === this.look.id) {
-        this.ctl.lookDX += e.clientX - this.look.x;
-        this.ctl.lookDY += e.clientY - this.look.y;
-        this.look.x = e.clientX;
-        this.look.y = e.clientY;
-      }
-    });
-    const up = (e: PointerEvent) => {
-      if (e.pointerId === this.joy.id) {
-        this.joy.id = -1;
-        this.ctl.mx = this.ctl.my = 0;
-        this.joyEl.classList.remove('on');
-        this.joyEl.style.left = this.joyEl.style.top = '';
-      } else if (e.pointerId === this.look.id) this.look.id = -1;
-    };
-    this.on(pad, 'pointerup', up);
-    this.on(pad, 'pointercancel', up);
-    this.on(pad, 'lostpointercapture', up);
     this.on(window, 'blur', () => {
-      this.joy.id = this.look.id = -1;
-      this.ctl.mx = this.ctl.my = 0;
       this.ctl.use = this.ctl.up = this.ctl.down = false;
-      this.joyEl.classList.remove('on');
       this.keys.clear();
     });
+  }
+  private joyC: Joystick | null = null;
+  private lookC: LookDrag | null = null;
+  /** chame 1x por quadro: atualiza mx/my e devolve [dYaw, dPitch] (rad) */
+  poll(dt: number): [number, number] {
+    const j = this.joyC?.read();
+    if (j && (j.active || j.mag > 0.001)) {
+      this.ctl.mx = j.x;
+      this.ctl.my = j.y;
+    } else if (!this.keys.size) {
+      this.ctl.mx = this.ctl.my = 0;
+    }
+    const l = this.lookC ? this.lookC.consume(dt) : [0, 0];
+    // teclado (setas) somam ao olhar
+    const kx = this.ctl.lookDX * 0.0055;
+    const ky = this.ctl.lookDY * 0.0055;
+    this.ctl.lookDX = this.ctl.lookDY = 0;
+    return [l[0] + kx, l[1] + ky];
   }
 
   private bindButtons(): void {
@@ -257,10 +196,8 @@ export class WorldHud {
   private bindKeys(): void {
     const sync = () => {
       const k = this.keys;
-      if (this.joy.id < 0) {
-        this.ctl.mx = (k.has('d') ? 1 : 0) - (k.has('a') ? 1 : 0);
-        this.ctl.my = (k.has('s') ? 1 : 0) - (k.has('w') ? 1 : 0);
-      }
+      this.ctl.mx = (k.has('d') ? 1 : 0) - (k.has('a') ? 1 : 0);
+      this.ctl.my = (k.has('s') ? 1 : 0) - (k.has('w') ? 1 : 0);
       this.ctl.use = k.has(' ');
       this.ctl.up = k.has('r');
       this.ctl.down = k.has('f');
@@ -311,16 +248,18 @@ export class WorldHud {
   }
 
   toast(msg: string, kind = ''): void {
-    const d = document.createElement('div');
-    if (kind) d.className = kind;
-    d.textContent = msg;
-    this.toasts.appendChild(d);
-    while (this.toasts.children.length > 2) this.toasts.firstElementChild!.remove();
-    setTimeout(() => d.remove(), 2600);
+    notify(msg, { kind: kind === 'gold' || kind === 'biome' ? 'good' : kind === 'warn' ? 'warn' : 'info' });
   }
+  goal(text: string | null): void {
+    objective(text);
+  }
+
 
   destroy(): void {
     for (const f of this.offs) f();
+    objective(null);
+    clearNotify();
+    resetNotifyTop();
     this.el.remove();
   }
 }

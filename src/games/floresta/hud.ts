@@ -6,7 +6,10 @@ import { t, fmt } from '../../i18n';
 import { BIOMES, BUILDS, HELPERS, MACHINES, TOOLS, VEHICLES, helperCost, machineCost, prestigeMult, short } from './data';
 import { flIcon, type FlIcon } from './icons';
 import type { Sim } from './sim';
-import { GEAR_SVG, joyRadius, onTouchCfg, openControls, shapeStick, touchCfg } from './touchcfg';
+import { GEAR_SVG, PAW_SVG, openControls } from './touchcfg';
+import { guideStep } from './guide';
+import { createJoystick, getControlPrefs, onControlPrefs, type Joystick } from '../../ui/touch';
+import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 
 export interface HudHost {
   sim: Sim;
@@ -16,6 +19,7 @@ export interface HudHost {
   onExit(): void;
   onEmote(code: string): void;
   onToggleCam(): void;
+  onSolo(on: boolean): void;
   onAction(kind: 'sell' | 'build'): void;
   playersCount(): number;
 }
@@ -41,16 +45,12 @@ export class Hud {
   private health!: HTMLElement;
   private ctx!: HTMLButtonElement;
   private chop!: HTMLButtonElement;
-  private banner!: HTMLElement;
-  private toastBox!: HTMLElement;
-  private hint!: HTMLElement;
+  private joyC: Joystick;
   private players!: HTMLElement;
   private modal: HTMLDivElement | null = null;
   private tab: Tab = 'tools';
   private last = { b: -1, p: -1, c: -1, h: -1, ctx: '', n: -1 };
-  private bannerT = 0;
-  private hintT = 0;
-  private hintTxt = '\u0000';
+  private guideKey = '\u0000';
   private lastBiome = -1;
   private offs: (() => void)[] = [];
 
@@ -60,7 +60,6 @@ export class Hud {
   ) {
     this.el = document.createElement('div');
     this.el.className = 'fl-hud';
-    const h3 = host.is3d;
     this.el.innerHTML = `
       <div class="fl-top">
         <button class="fl-btn round red" data-a="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 26)}</button>
@@ -76,13 +75,9 @@ export class Hud {
         </div>
       </div>
       <div class="fl-emotes">${EMOTES.map(([c, i]) => `<button class="fl-btn round" data-emote="${c}">${flIcon(i, 28)}</button>`).join('')}</div>
-      <div class="fl-banner"></div>
-      <button class="fl-hint" data-a="hint"><b data-v="goal"></b><span data-v="tip"></span></button>
-      <div class="fl-toast"></div>
-      <div class="fl-joyzone"></div>
-      <div class="fl-joy${h3 ? '' : ' h'}"><i></i></div>
       <div class="fl-bottom">
         <button class="fl-btn gold fl-ctx hide" data-a="ctx"></button>
+        <button class="fl-btn green fl-pets hide" data-a="pets">${PAW_SVG(26)}<span>${t('floresta.petsCmd', 'Ajudantes, cortem!')}</span></button>
         <button class="fl-chop" aria-label="${t('floresta.chop', 'Cortar')}">${flIcon(TOOLS[host.sim.s.tool].kind === 'axe' ? 'axe' : TOOLS[host.sim.s.tool].kind === 'saw' ? 'saw' : 'laser', 52)}<span>${t('floresta.chop', 'Cortar')}</span></button>
       </div>`;
     root.appendChild(this.el);
@@ -94,9 +89,6 @@ export class Hud {
     this.health = this.q('.fl-health');
     this.ctx = this.q('[data-a="ctx"]');
     this.chop = this.q('.fl-chop');
-    this.banner = this.q('.fl-banner');
-    this.toastBox = this.q('.fl-toast');
-    this.hint = this.q('.fl-hint');
     this.players = this.q('[data-v="players"]');
 
     this.el.addEventListener('click', (e) => {
@@ -116,20 +108,31 @@ export class Hud {
           const hr = this.el.getBoundingClientRect();
           e.style.top = r.bottom - hr.top + 6 + 'px';
           e.style.right = Math.max(0, hr.right - r.right) + 'px';
-          this.hint.classList.add('hid');
           clearTimeout(this.emoteTo);
           this.emoteTo = window.setTimeout(() => this.closeEmotes(), 3000);
         }
       }
       else if (a === 'cam') host.onToggleCam();
       else if (a === 'ctx') host.onAction(this.last.ctx as 'sell' | 'build');
-      else if (a === 'hint') this.expandHint();
-      else if (a === 'ctl') openControls(this.el);
+      else if (a === 'ctl') openControls(this.el, (on) => host.onSolo(on));
+      else if (a === 'pets') {
+        const n = host.sim.commandHelpers();
+        notify(n ? t('floresta.petsGo', 'Ajudantes: "Vamos lá!"') : t('floresta.petsNone', 'Você ainda não tem ajudantes'), { kind: n ? 'good' : 'info' });
+      }
     });
     this.bindChop();
-    this.bindJoy();
+    // analógico flutuante compartilhado (src/ui/touch): nasce sob o polegar, metade esquerda
+    this.joyC = createJoystick(root, { zoneTop: 0.2 });
+    this.offs.push(() => this.joyC.destroy());
+    const lefty = (p: { lefty: boolean }) => root.classList.toggle('fl-lefty', p.lefty);
+    lefty(getControlPrefs());
+    this.offs.push(onControlPrefs(lefty));
     const top = this.q('.fl-top');
-    const setTop = () => this.el.style.setProperty('--toph', top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 'px');
+    const setTop = () => {
+      const px = top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top;
+      this.el.style.setProperty('--toph', px + 'px');
+      setNotifyTop(px + 4);
+    };
     setTop();
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(setTop);
@@ -156,98 +159,16 @@ export class Hud {
     c.addEventListener('lostpointercapture', up);
   }
 
-  private bindJoy(): void {
-    const zone = this.q('.fl-joyzone');
-    const j = this.q('.fl-joy');
-    const knob = j.firstElementChild as HTMLElement;
-    const h3 = this.host.is3d;
-    let id = -1;
-    let bx = 0;
-    let by = 0;
-    let sx = 0;
-    let sy = 0;
-    const applyCfg = () => {
-      const c = touchCfg();
-      const R = joyRadius(c);
-      j.style.setProperty('--jr', R + 'px');
-      this.el.classList.toggle('lefty', c.lefty);
-      this.el.parentElement?.classList.toggle('fl-lefty', c.lefty);
-    };
-    applyCfg();
-    this.offs.push(onTouchCfg(applyCfg));
-    const rest = () => {
-      j.classList.remove('live');
-      j.style.left = j.style.top = '';
-      knob.style.transform = '';
-    };
-    const place = (x: number, y: number) => {
-      const r = this.el.getBoundingClientRect();
-      j.style.left = x - r.left + 'px';
-      j.style.top = y - r.top + 'px';
-    };
-    const move = (e: PointerEvent) => {
-      if (e.pointerId !== id) return;
-      const R = joyRadius();
-      let dx = e.clientX - bx;
-      let dy = h3 ? e.clientY - by : 0;
-      const d = Math.hypot(dx, dy);
-      // passou do raio: a base vem junto (a direção nunca inverte)
-      if (d > R && touchCfg().floating) {
-        const k = (d - R) / d;
-        bx += dx * k;
-        by += dy * k;
-        place(bx, by);
-        dx = e.clientX - bx;
-        dy = h3 ? e.clientY - by : 0;
-      }
-      const [ox, oy] = shapeStick(dx, dy, R);
-      // suavização leve
-      sx += (ox - sx) * 0.65;
-      sy += (oy - sy) * 0.65;
-      if (Math.abs(ox) < 1e-3) sx = 0;
-      if (Math.abs(oy) < 1e-3) sy = 0;
-      this.host.joy.x = sx;
-      this.host.joy.y = sy;
-      const dd = Math.min(R, Math.hypot(dx, dy));
-      const n = Math.hypot(dx, dy) || 1;
-      knob.style.transform = `translate(${(dx / n) * dd}px,${(dy / n) * dd}px)`;
-    };
-    const up = (e: PointerEvent) => {
-      if (e.pointerId !== id) return;
-      id = -1;
-      sx = sy = 0;
-      this.host.joy.x = this.host.joy.y = 0;
-      rest();
-    };
-    zone.addEventListener('pointerdown', (e) => {
-      if (id >= 0) return;
-      e.preventDefault();
-      id = e.pointerId;
-      zone.setPointerCapture?.(id);
-      j.classList.add('live');
-      if (touchCfg().floating) {
-        // a base nasce exatamente sob o polegar: entrada inicial = zero
-        bx = e.clientX;
-        by = e.clientY;
-        place(bx, by);
-      } else {
-        const r = j.getBoundingClientRect();
-        bx = r.left + r.width / 2;
-        by = r.top + r.height / 2;
-      }
-      move(e);
-    });
-    zone.addEventListener('pointermove', move);
-    zone.addEventListener('pointerup', up);
-    zone.addEventListener('pointercancel', up);
-    zone.addEventListener('lostpointercapture', up);
-  }
+
 
 
   /* ------------------------------ por quadro (barato) ------------------------------ */
 
-  update(dt: number): void {
+  update(_dt: number): void {
     const s = this.host.sim;
+    const js = this.joyC.read();
+    this.host.joy.x = js.x;
+    this.host.joy.y = this.host.is3d ? js.y : 0;
     const v = s.vehicle;
     const L = this.last;
     const b = Math.floor(s.s.bolotas);
@@ -296,42 +217,19 @@ export class Hud {
         this.ctx.disabled = !ok;
       }
     }
-    // faixa do bioma
+    const pets = !s.solo && s.helperCount() > 0 && s.s.tutorial >= 4;
+    if (pets !== (this as any)._pets) {
+      (this as any)._pets = pets;
+      this.q('.fl-pets').classList.toggle('hide', !pets);
+    }
+    // bioma novo: aviso pequeno no canto
     const bi = s.biome;
     if (bi !== this.lastBiome) {
       const first = this.lastBiome < 0;
       this.lastBiome = bi;
-      if (!first || bi > 0) this.showBanner(BIOMES[bi].name(), t('floresta.biomeSub', 'Bioma {n} de {m}', { n: bi + 1, m: BIOMES.length }));
+      if (!first || bi > 0) notify(`${BIOMES[bi].name()} · ${t('floresta.biomeSub', 'Bioma {n} de {m}', { n: bi + 1, m: BIOMES.length })}`, { kind: 'good' });
     }
-    if (this.bannerT > 0) {
-      this.bannerT -= dt;
-      if (this.bannerT <= 0) this.banner.classList.remove('show');
-    }
-    // dicas do começo: pílula pequena no canto (abre por ~4 s, depois vira só o chip do objetivo)
-    const tut = s.s.tutorial;
-    let hint = '';
-    let goal = '';
-    if (tut === 0) {
-      hint = t('floresta.tut0', 'Vá até uma árvore e segure Cortar!');
-      goal = t('floresta.goal0', 'Cortar uma árvore');
-    } else if (tut === 1) {
-      hint = this.host.is3d ? t('floresta.tut1fps', 'Pegue as toras e jogue no funil amarelo da serraria') : t('floresta.tut1', 'Leve as toras até o funil amarelo da serraria');
-      goal = t('floresta.goal1', 'Levar toras à serraria');
-    } else if (tut === 2) {
-      hint = t('floresta.tut2', 'Venda as tábuas na barraca e compre ferramentas na loja');
-      goal = t('floresta.goal2', 'Vender tábuas');
-    }
-    if (hint !== this.hintTxt) {
-      this.hintTxt = hint;
-      this.hint.querySelector('[data-v="goal"]')!.textContent = goal ? t('floresta.goal', 'Objetivo: {g}', { g: goal }) : '';
-      this.hint.querySelector('[data-v="tip"]')!.textContent = hint;
-      this.hint.classList.toggle('none', !hint);
-      if (hint) this.expandHint();
-    }
-    if (this.hintT > 0) {
-      this.hintT -= dt;
-      if (this.hintT <= 0) this.hint.classList.remove('open');
-    }
+    this.guide();
     if (this.modal && this.tab && (this as any)._shopB !== b) {
       (this as any)._shopB = b;
       this.renderShop();
@@ -342,29 +240,36 @@ export class Hud {
   private closeEmotes(): void {
     clearTimeout(this.emoteTo);
     this.q('.fl-emotes').classList.remove('show');
-    this.hint.classList.remove('hid');
   }
 
-  private expandHint(): void {
-    this.hint.classList.add('open');
-    this.hintT = 3.6;
+  /** primeira sessão guiada: um objetivo por vez, um botão destacado, HUD progressivo */
+  private guide(): void {
+    const s = this.host.sim;
+    const g = guideStep(s, this.host.is3d);
+    const key = g.step + ':' + g.goal;
+    if (key === this.guideKey) return;
+    this.guideKey = key;
+    objective(g.goal ? t('floresta.goal', 'Objetivo: {g}', { g: g.goal }) : null);
+    if (g.tip) notify(g.tip, { key: 'guide' });
+    // destaque no único botão relevante
+    for (const el of Array.from(this.el.parentElement?.querySelectorAll('.fl-glow') ?? [])) el.classList.remove('fl-glow');
+    const sel = g.button === 'chop' ? '.fl-chop' : g.button === 'ctx' ? '.fl-ctx' : g.button === 'shop' ? '[data-a="shop"]' : g.button === 'grab' ? '[data-act="grab"]' : g.button === 'throw' ? '[data-act="throw"]' : '';
+    if (sel) this.el.parentElement?.querySelector(sel)?.classList.add('fl-glow');
+    // HUD progressivo: loja só depois da 1ª venda; emotes/controles extras no fim do guia
+    const lvl = s.s.tutorial;
+    this.el.classList.toggle('g-noshop', lvl < 3);
+    this.el.classList.toggle('g-basic', lvl < 4);
+    this.el.parentElement?.classList.toggle('fl-guided', lvl < 4);
   }
 
   showBanner(title: string, sub = ''): void {
-    this.banner.innerHTML = `${title}${sub ? `<small>${sub}</small>` : ''}`;
-    this.banner.classList.add('show');
-    this.bannerT = 2.6;
+    bigMoment(title, { sub });
   }
 
   toast(msg: string, kind = ''): void {
-    const d = document.createElement('div');
-    if (kind) d.className = kind;
-    d.innerHTML = (kind === 'eco' ? flIcon('leaf', 20) : '') + `<span></span>`;
-    d.lastElementChild!.textContent = msg;
-    this.toastBox.appendChild(d);
-    while (this.toastBox.children.length > 3) this.toastBox.firstElementChild!.remove();
-    setTimeout(() => d.remove(), 3300);
+    notify(msg, { kind: kind === 'eco' ? 'good' : kind === 'warn' ? 'warn' : 'info', icon: kind === 'eco' ? undefined : undefined });
   }
+
 
   setChopIcon(): void {
     const k = TOOLS[this.host.sim.s.tool].kind;
@@ -432,6 +337,10 @@ export class Hud {
     if (ok) {
       this.setChopIcon();
       this.toast(t('floresta.bought', 'Comprado!'));
+      if (id === 'tool' && s.s.tutorial === 3) {
+        s.s.tutorial = 4;
+        bigMoment(t('floresta.guideDone', 'Você é um lenhador!'), { sub: t('floresta.guideDoneSub', 'Agora o bosque é todo seu') });
+      }
     }
     this.renderShop();
   }
@@ -527,6 +436,9 @@ export class Hud {
   destroy(): void {
     clearTimeout(this.emoteTo);
     for (const f of this.offs) f();
+    objective(null);
+    clearNotify();
+    resetNotifyTop();
     this.el.remove();
   }
 }

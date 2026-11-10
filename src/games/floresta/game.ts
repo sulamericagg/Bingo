@@ -18,6 +18,7 @@ import { loadSave, writeSave } from './save';
 import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
 import { Hud, type HudHost } from './hud';
+import { forestSolo } from './touchcfg';
 
 /** visão (2D ou 3D) */
 export interface View {
@@ -100,6 +101,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
       } });
     this.autoMe = !!opts.auto;
     this.sim.onFell = (tr) => this.announceFell(tr);
+    this.sim.setSolo(forestSolo());
   }
 
   async start(): Promise<void> {
@@ -339,6 +341,21 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     audio.click();
   }
 
+  onSolo(on: boolean): void {
+    this.sim.setSolo(on);
+    if (on) {
+      try {
+        this.presence?.leave();
+      } catch {
+        /* */
+      }
+      this.presence = null;
+      this.humanCount = 0;
+      this.sim.remotes = [];
+    } else if (!this.presence) void this.joinOnline();
+    this.hud.toast(on ? t('floresta.soloOn', 'Jogando sozinho: sem ajudantes') : t('floresta.soloOff', 'Ajudantes de volta!'));
+  }
+
   onToggleCam(): void {
     this.view?.toggleCam?.();
   }
@@ -395,7 +412,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     try {
       const [pres, net] = await Promise.all([import('../../services/presence'), import('../../social/net').catch(() => null)]);
       if (this.destroyed) return;
-      const ses = await pres.joinPresence('floresta', { botsIfAlone: 3, seed: WORLD_SEED });
+      const ses = await pres.joinPresence('floresta', { botsIfAlone: this.sim.solo ? 0 : 3, seed: WORLD_SEED });
       if (this.destroyed) return ses.leave();
       this.presence = ses;
       try {
@@ -412,7 +429,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   private onPeers(peers: PeerState[]): void {
     const sim = this.sim;
     const humans = peers.filter((p) => !p.bot).slice(0, 4);
-    const bots = peers.filter((p) => p.bot).slice(0, 4 - humans.length);
+    const bots = sim.solo ? [] : peers.filter((p) => p.bot).slice(0, 4 - humans.length);
     this.humanCount = humans.length;
     // anfitrião: menor id entre os humanos
     let host = true;

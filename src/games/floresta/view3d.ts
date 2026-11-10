@@ -21,7 +21,8 @@ import { BIOMES, BUILDS, INTAKE_X, RARES, SPECIES, TOOLS, VEHICLES, WORLD_Z, gat
 import { PALLET_X, PLANER_X, SAW_X, SELL_X, TS, type Ev, type Sim, type Tree } from './sim';
 import { flIcon } from './icons';
 import type { View } from './game';
-import { touchCfg } from './touchcfg';
+import { createLook, type LookDrag } from '../../ui/touch';
+import { guideStep } from './guide';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundH } from './fps/terrain';
 import {
   INK, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
@@ -163,6 +164,7 @@ class View3D implements View {
   private rollV = 0;
   private time = 0;
   private bob = 0;
+  private look: LookDrag | null = null;
   private lookDX = 0;
   private lookDY = 0;
   private offs: (() => void)[] = [];
@@ -296,7 +298,6 @@ class View3D implements View {
   private timber!: HTMLDivElement;
   private timberT = 0;
   private uiSig = '';
-  private drag = { id: -1, x: 0, y: 0 };
 
   constructor(
     private root: HTMLElement,
@@ -1891,28 +1892,9 @@ class View3D implements View {
 
   private bindInput(): void {
     const el = this.renderer.domElement;
-    const down = (e: PointerEvent) => {
-      if (this.drag.id >= 0) return;
-      this.drag.id = e.pointerId;
-      this.drag.x = e.clientX;
-      this.drag.y = e.clientY;
-    };
-    const move = (e: PointerEvent) => {
-      if (e.pointerId !== this.drag.id) return;
-      const sens = touchCfg().sens;
-      const dx = (e.clientX - this.drag.x) * 0.0062 * sens;
-      const dy = (e.clientY - this.drag.y) * 0.0055 * sens;
-      this.lookDX += dx;
-      this.lookDY += dy;
-      if (this.driving) this.headYaw = Math.max(-2.2, Math.min(2.2, this.headYaw - dx));
-      else this.yaw -= dx;
-      this.pitch = Math.max(-1.25, Math.min(1.05, this.pitch - dy));
-      this.drag.x = e.clientX;
-      this.drag.y = e.clientY;
-    };
-    const up = (e: PointerEvent) => {
-      if (e.pointerId === this.drag.id) this.drag.id = -1;
-    };
+    // arrastar para olhar: módulo compartilhado (um dedo por controle, sem toques acidentais)
+    this.look = createLook(this.root);
+    this.offs.push(() => this.look?.destroy());
     const kd = (e: KeyboardEvent) => {
       if (e.repeat) return;
       const k = e.key.toLowerCase();
@@ -1926,18 +1908,10 @@ class View3D implements View {
       e.preventDefault();
       this.act('throw');
     };
-    el.addEventListener('pointerdown', down);
     el.addEventListener('contextmenu', ctx);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
     window.addEventListener('keydown', kd);
     this.offs.push(() => {
-      el.removeEventListener('pointerdown', down);
       el.removeEventListener('contextmenu', ctx);
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
       window.removeEventListener('keydown', kd);
     });
   }
@@ -2459,11 +2433,63 @@ class View3D implements View {
     if (m.z > WORLD_Z) m.z = WORLD_Z;
   }
 
+  /* ------------------------------ guia ------------------------------ */
+
+  private guideArrow: THREE.Group | null = null;
+  /** seta amarela pulando sobre o alvo do objetivo atual */
+  private stepGuide(dt: number): void {
+    const g = guideStep(this.sim, true);
+    if (g.tx === null) {
+      if (this.guideArrow) this.guideArrow.visible = false;
+      return;
+    }
+    if (!this.guideArrow) {
+      const a = new THREE.Group();
+      const m = new THREE.MeshBasicMaterial({ color: 0xffd34a, fog: false, depthTest: false, transparent: true });
+      const ink = new THREE.MeshBasicMaterial({ color: 0x2a0b5c, fog: false, depthTest: false, transparent: true });
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.8, 4), m);
+      cone.rotation.x = Math.PI;
+      const stem = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), m);
+      stem.position.y = 0.65;
+      const rim = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.95, 4), ink);
+      rim.rotation.x = Math.PI;
+      rim.position.y = 0.04;
+      for (const o of [rim, cone, stem]) {
+        o.renderOrder = 20;
+        a.add(o);
+      }
+      this.scene.add(a);
+      this.guideArrow = a;
+    }
+    const a = this.guideArrow;
+    a.visible = true;
+    let h = 2.6;
+    if (g.step === 'chop' || g.step === 'chop2') h = 9.5;
+    else if (g.step === 'pick') h = 1.6;
+    else if (g.step === 'funnel') h = 4.6;
+    else if (g.step === 'sell') h = 3.6;
+    const y = groundH(g.tx, g.tz) + h + Math.abs(Math.sin(this.time * 3.2)) * 0.5;
+    a.position.set(g.tx, y, g.tz);
+    a.rotation.y += dt * 2;
+    const d = Math.hypot(g.tx - this.sim.me.x, g.tz - this.sim.me.z);
+    a.scale.setScalar(Math.max(1, d / 14));
+  }
+
   /* ------------------------------ quadro ------------------------------ */
 
   frame(dt: number): void {
     this.time += dt;
     const sim = this.sim;
+    sim.held3d = this.held.length;
+    this.stepGuide(dt);
+    if (this.look) {
+      const [dx, dy] = this.look.consume(dt);
+      this.lookDX += dx;
+      this.lookDY += dy;
+      if (this.driving) this.headYaw = Math.max(-2.2, Math.min(2.2, this.headYaw - dx));
+      else this.yaw -= dx;
+      this.pitch = Math.max(-1.25, Math.min(1.05, this.pitch - dy));
+    }
     if (this.toolLvl !== sim.s.tool) this.rebuildTool();
     sim.drain((e) => this.onEvent(e));
     if (!this.driving) this.collidePlayer();

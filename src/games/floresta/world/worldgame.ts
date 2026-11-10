@@ -21,7 +21,7 @@ import { VK, looseLogGeometry, petModel, shovelModel, tntModel, wVehicleModel, t
 import { loadWorld, writeWorld, type WorldSave } from './wsave';
 import { WorldHud, WICONS, type WAct } from './whud';
 import { flIcon } from '../icons';
-import { touchCfg } from '../touchcfg';
+import { forestSolo, setForestSolo } from '../touchcfg';
 
 const TAU = Math.PI * 2;
 const EYE = 1.6;
@@ -243,6 +243,7 @@ export class WorldGame {
     private opts: WorldOpts,
   ) {
     this.save = loadWorld();
+    this.save.solo = forestSolo();
     this.q = wq(opts.tier);
     const r = new THREE.WebGLRenderer({ antialias: opts.tier >= 2, powerPreference: 'high-performance' });
     r.setPixelRatio(this.q.pr);
@@ -503,6 +504,7 @@ export class WorldGame {
     }
     if (a === 'solo') {
       this.save.solo = !this.save.solo;
+      setForestSolo(this.save.solo);
       this.applySolo();
       this.refreshPetsUi();
       this.hud.toast(this.save.solo ? t('floresta.w.soloOn', 'Jogando sozinho: ajudantes descansando') : t('floresta.w.soloOff', 'Ajudantes de volta!'));
@@ -720,23 +722,21 @@ export class WorldGame {
     this.time += dt;
     const c = this.hud.ctl;
     // olhar suavizado (alvo ← dedo; câmera persegue o alvo)
-    const ldx = c.lookDX;
-    const ldy = c.lookDY;
-    c.lookDX = c.lookDY = 0;
-    const sens = 0.0052 * touchCfg().sens * (1 + Math.min(1.2, Math.abs(ldx) / 40) * 0.4);
+    // o módulo compartilhado já suaviza (sub-quadro, sem atraso de lerp)
+    const [ldx, ldy] = this.hud.poll(dt);
+    void c;
     if (this.driving >= 0) {
-      this.camYawOff = clamp(this.camYawOff - ldx * sens, -2.6, 2.6);
-      this.tPitch = clamp(this.tPitch - ldy * 0.004, -0.9, 0.4);
+      this.camYawOff = clamp(this.camYawOff - ldx, -2.6, 2.6);
+      this.tPitch = clamp(this.tPitch - ldy * 0.8, -0.9, 0.4);
       if (ldx || ldy) this.camIdle = 0;
       else this.camIdle += dt;
       if (this.camIdle > 1.6) this.camYawOff *= 1 - damp(2, dt);
     } else {
-      this.tYaw -= ldx * sens;
-      this.tPitch = clamp(this.tPitch - ldy * 0.0045 * touchCfg().sens, -1.3, 1.2);
+      this.tYaw -= ldx;
+      this.tPitch = clamp(this.tPitch - ldy, -1.3, 1.2);
     }
-    const lk = damp(18, dt);
-    this.yaw += (this.tYaw - this.yaw) * lk;
-    this.pitch += (this.tPitch - this.pitch) * lk;
+    this.yaw = this.tYaw;
+    this.pitch = this.tPitch;
 
     if (this.driving >= 0) this.drive(dt);
     else this.walk(dt);

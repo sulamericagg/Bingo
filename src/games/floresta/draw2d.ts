@@ -3,6 +3,7 @@
  *  Sprites de árvore/camadas são pré-renderizados (cache por escala);
  *  partículas em pool fixo; nada de canvas/degradê novo por quadro.
  * ============================================================ */
+import { guideStep } from './guide';
 import { gameFont } from '../../i18n/font';
 import { t } from '../../i18n';
 import { drawPlayer, type PlayerPose } from '../../game/character';
@@ -476,6 +477,27 @@ export class Draw2D {
       x.fillStyle = tr.rare ? RARES[tr.rare].color : '#7aff8a';
       roundRect(x, px - hpw / 2, by, hpw * Math.max(0, tr.hp / tr.maxHp), S * 0.32, 4);
       x.fill();
+    }
+    // guia: seta amarela pulando sobre o alvo do objetivo
+    const gd = guideStep(sim, false);
+    if (gd.tx !== null) {
+      const gx = Math.max(S, Math.min(this.W - S, this.sx(gd.tx)));
+      const h = gd.step === 'chop' || gd.step === 'chop2' ? 8 : gd.step === 'sell' ? 3.6 : gd.step === 'funnel' ? 4.4 : 1.8;
+      const gyy = this.depthY(gd.tz) - S * h - Math.abs(Math.sin(this.time * 4)) * S * 0.4;
+      x.fillStyle = '#ffd34a';
+      x.strokeStyle = '#2a0b5c';
+      x.lineWidth = 3;
+      x.beginPath();
+      x.moveTo(gx, gyy + S * 0.6);
+      x.lineTo(gx - S * 0.45, gyy);
+      x.lineTo(gx - S * 0.16, gyy);
+      x.lineTo(gx - S * 0.16, gyy - S * 0.5);
+      x.lineTo(gx + S * 0.16, gyy - S * 0.5);
+      x.lineTo(gx + S * 0.16, gyy);
+      x.lineTo(gx + S * 0.45, gyy);
+      x.closePath();
+      x.fill();
+      x.stroke();
     }
     // pop-ups
     x.textAlign = 'center';
