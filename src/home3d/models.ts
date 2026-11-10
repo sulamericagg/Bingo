@@ -65,6 +65,36 @@ class PB {
     this.push(g, x, y, z, col, o);
     return this;
   }
+  /** sólido de revolução: perfil [raio, y][] */
+  lathe(prof: [number, number][], x: number, y: number, z: number, col: string, o: { seg?: number; glow?: boolean; sx?: number; sz?: number } = {}): this {
+    const g = new THREE.LatheGeometry(
+      prof.map(([r, yy]) => new THREE.Vector2(r, yy)),
+      o.seg ?? 16,
+    );
+    this.push(g, x, y, z, col, o);
+    return this;
+  }
+  /** tubo por pontos (pés curvos, alças, caules) */
+  tube(pts: [number, number, number][], r: number, col: string, seg = 10): this {
+    const c = new THREE.CatmullRomCurve3(pts.map(([a, b2, c2]) => new THREE.Vector3(a, b2, c2)));
+    this.push(new THREE.TubeGeometry(c, seg, r, 6, false), 0, 0, 0, col, {});
+    return this;
+  }
+  /** tufo de folhas: esfera deformada (normais suaves) */
+  leafy(r: number, x: number, y: number, z: number, col: string, seed: number, o: { sx?: number; sy?: number; sz?: number } = {}): this {
+    const g = new THREE.SphereGeometry(r, 9, 7);
+    const p = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const a = p.getX(i) / r;
+      const b2 = p.getY(i) / r;
+      const c2 = p.getZ(i) / r;
+      const k = 1 + 0.16 * Math.sin(a * 5 + seed) * Math.sin(b2 * 4 + seed * 2) * Math.sin(c2 * 5 - seed);
+      p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k);
+    }
+    g.computeVertexNormals();
+    this.push(g, x, y, z, col, o);
+    return this;
+  }
   face(w: number, h: number, x: number, y: number, z: number, tex: THREE.Texture, ry = 0): this {
     this.faces.push({ w, h, x, y, z, ry, tex });
     return this;
@@ -110,17 +140,37 @@ export function buildModel(kind: Kind, v: number, col: string, seg: number, seed
   const dk = shade(col, -0.22),
     lt = shade(col, 0.3);
   const R = v === 1 ? 0.09 : v === 2 ? 0.015 : 0.045; // fofo / normal / moderno
-  const leg = (lx: number, lz: number, lh: number, c = v === 2 ? DARK : WOOD_D) => (v === 1 ? b.sph(0.06, lx, 0.05, lz, c) : b.cyl(0.03, v === 2 ? 0.02 : 0.03, lh, lx, 0, lz, c, { seg: 8 }));
   switch (kind) {
     case 'sofa':
     case 'armchair': {
+      // estofado de verdade: base, almofadas de assento e encosto separadas (com vinco), braços roliços, pés torneados
       const lh = 0.12;
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) leg(sx * (w / 2 - 0.1), sz * (d / 2 - 0.1), lh);
-      b.box(w, 0.25, d, 0, lh, 0, dk, { r: R });
-      b.box(w - 0.3, 0.16, d - 0.25, 0, lh + 0.22, 0.08, lt, { r: R * 1.4 });
-      b.box(w, h - lh - 0.1, 0.22, 0, lh + 0.1, -d / 2 + 0.11, col, { r: R * 1.3 });
-      for (const sx of [-1, 1]) b.box(0.18, 0.42, d, sx * (w / 2 - 0.09), lh + 0.1, 0, col, { r: R * 1.3 });
-      if (kind === 'sofa') b.box(0.4, 0.3, 0.1, -w / 4, lh + 0.36, -d / 2 + 0.28, shade(col, 0.5), { r: 0.06, rx: -0.2 });
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        if (v === 1) b.sph(0.06, sx * (w / 2 - 0.12), 0.05, sz * (d / 2 - 0.12), WOOD_D);
+        else b.lathe([[0.035, 0], [0.025, 0.02], [0.03, lh * 0.7], [0.04, lh + 0.01], [0, lh + 0.01]], sx * (w / 2 - 0.12), 0, sz * (d / 2 - 0.12), v === 2 ? DARK : WOOD_D, { seg: 10 });
+      }
+      b.box(w - 0.04, 0.2, d - 0.04, 0, lh, 0, dk, { r: R });
+      const arm = 0.2;
+      const inner = w - arm * 2;
+      const nc = kind === 'sofa' ? Math.max(2, Math.round(inner / 0.6)) : 1;
+      const cw = inner / nc;
+      for (let i = 0; i < nc; i++) {
+        const cx = -inner / 2 + cw * (i + 0.5);
+        // assento (almofada fofa, levemente abaulada)
+        b.box(cw - 0.02, 0.15, d - 0.3, cx, lh + 0.18, 0.08, lt, { r: Math.max(R, 0.05) });
+        // encosto inclinado
+        b.box(cw - 0.03, h - lh - 0.42, 0.18, cx, lh + 0.32, -d / 2 + 0.24, shade(col, 0.12), { r: Math.max(R, 0.06), rx: -0.12 });
+      }
+      b.box(w, h - lh - 0.12, 0.2, 0, lh + 0.12, -d / 2 + 0.1, col, { r: R * 1.3 });
+      for (const sx of [-1, 1]) {
+        b.box(arm, 0.36, d - 0.02, sx * (w / 2 - arm / 2), lh + 0.12, 0, col, { r: Math.max(R * 1.3, 0.06) });
+        // braço roliço por cima
+        b.cyl(0.11, 0.11, d - 0.04, sx * (w / 2 - arm / 2), lh + 0.46, -d / 2 + 0.02, shade(col, 0.05), { rx: Math.PI / 2, seg: 14 });
+      }
+      if (kind === 'sofa') {
+        b.box(0.36, 0.32, 0.12, -w / 4, lh + 0.36, -d / 2 + 0.36, shade(col, 0.5), { r: 0.08, rx: -0.25, rz: 0.12 });
+        b.box(0.32, 0.3, 0.11, w / 4, lh + 0.36, -d / 2 + 0.36, '#ffd84a', { r: 0.08, rx: -0.25, rz: -0.1 });
+      }
       break;
     }
     case 'bed':
@@ -142,7 +192,12 @@ export function buildModel(kind: Kind, v: number, col: string, seg: number, seed
     case 'partytable': {
       b.box(w, 0.07, d, 0, h - 0.07, 0, kind === 'partytable' ? WHITE : col, { r: R * 0.6 });
       if (kind === 'partytable') b.box(w + 0.02, 0.18, d + 0.02, 0, h - 0.22, 0, col, { r: 0.02 });
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(0.07, h - 0.07, 0.07, sx * (w / 2 - 0.1), 0, sz * (d / 2 - 0.1), v === 2 ? DARK : WOOD_D, { r: 0.02 });
+      // pés torneados e cinta sob o tampo
+      for (const sx of [-1, 1])
+        for (const sz of [-1, 1])
+          b.lathe([[0.022, 0], [0.028, 0.02], [0.03, (h - 0.07) * 0.55], [0.04, (h - 0.07) * 0.85], [0.036, h - 0.07], [0, h - 0.07]], sx * (w / 2 - 0.1), 0, sz * (d / 2 - 0.1), v === 2 ? DARK : WOOD_D, { seg: 10 });
+      b.box(w - 0.16, 0.08, 0.025, 0, h - 0.15, d / 2 - 0.1, shade(col, -0.12), { r: 0.01 });
+      b.box(w - 0.16, 0.08, 0.025, 0, h - 0.15, -d / 2 + 0.1, shade(col, -0.12), { r: 0.01 });
       if (kind === 'desk') b.box(0.4, h - 0.12, d - 0.08, w / 2 - 0.24, 0.02, 0, dk, { r: 0.03 }), b.box(0.06, 0.06, 0.02, w / 2 - 0.24, h - 0.3, d / 2 - 0.02, METAL);
       break;
     }
@@ -153,7 +208,10 @@ export function buildModel(kind: Kind, v: number, col: string, seg: number, seed
       if (kind === 'stool') b.cyl(w / 2, w / 2, 0.07, 0, sh, 0, col, { seg: 16 });
       else {
         b.box(w, 0.06, d, 0, sh, 0, col, { r: 0.03 });
-        b.box(w, h - sh - 0.05, 0.06, 0, sh + 0.05, -d / 2 + 0.03, col, { r: R });
+        // encosto: travessa curva no topo + ripas
+        for (const sx of [-1, 1]) b.box(0.05, h - sh - 0.03, 0.05, sx * (w / 2 - 0.04), sh + 0.03, -d / 2 + 0.04, col, { r: 0.02 });
+        b.box(w, 0.14, 0.06, 0, h - 0.16, -d / 2 + 0.04, col, { r: R });
+        for (let i = -1; i <= 1; i++) b.box(0.035, h - sh - 0.2, 0.03, i * w * 0.2, sh + 0.05, -d / 2 + 0.04, shade(col, -0.08), { r: 0.012 });
         if (v === 1) b.sph(0.12, 0, h - 0.12, -d / 2 + 0.04, lt, { sz: 0.4 });
       }
       break;
@@ -161,27 +219,36 @@ export function buildModel(kind: Kind, v: number, col: string, seg: number, seed
     case 'floorlamp':
     case 'tablelamp': {
       const big = kind === 'floorlamp';
-      b.cyl(w * 0.42, w * 0.48, 0.05, 0, 0, 0, DARK, { seg: 14 });
-      b.cyl(0.02, 0.02, h * (big ? 0.78 : 0.45), 0, 0.05, 0, METAL, { seg: 6 });
-      b.sph(w * 0.16, 0, h * (big ? 0.78 : 0.5), 0, '#fff3b0', { glow: true });
-      b.cyl(w * 0.28, w * 0.5, h * 0.24, 0, h * 0.74, 0, col, { seg: 16 });
+      // base em torno, haste, cúpula de tecido com bainha
+      b.lathe([[0, 0], [w * 0.46, 0], [w * 0.48, 0.02], [w * 0.4, 0.05], [w * 0.12, 0.08], [0.03, 0.1], [0, 0.1]], 0, 0, 0, DARK, { seg: 18 });
+      b.cyl(0.018, 0.018, h * (big ? 0.78 : 0.45), 0, 0.08, 0, METAL, { seg: 8 });
+      b.sph(w * 0.15, 0, h * (big ? 0.78 : 0.5), 0, '#fff3b0', { glow: true });
+      b.lathe([[w * 0.5, 0], [w * 0.52, 0.015], [w * 0.29, h * 0.24], [w * 0.27, h * 0.235], [w * 0.48, 0.015]], 0, h * 0.72, 0, col, { seg: 20 });
       break;
     }
     case 'plant':
     case 'cactus': {
-      b.cyl(w * 0.34, w * 0.26, h * 0.32, 0, 0, 0, kind === 'cactus' ? '#ff8a3d' : col, { seg: 12 });
-      b.cyl(w * 0.35, w * 0.35, 0.03, 0, h * 0.32, 0, '#5b3a29', { seg: 12 });
+      // vaso de cerâmica com borda virada + terra
+      const pr = w * 0.34;
+      const ph = h * 0.32;
+      b.lathe([[0, 0], [pr * 0.72, 0], [pr * 0.78, 0.02], [pr * 0.96, ph * 0.85], [pr * 1.06, ph * 0.87], [pr * 1.08, ph], [pr * 0.96, ph], [pr * 0.92, ph * 0.9], [0, ph * 0.9]], 0, 0, 0, kind === 'cactus' ? '#ff8a3d' : col, { seg: 18 });
+      b.cyl(pr * 0.92, pr * 0.92, 0.02, 0, ph * 0.9, 0, '#5b3a29', { seg: 14 });
       if (kind === 'cactus') {
         b.sph(w * 0.24, 0, h * 0.6, 0, '#4fd67a', { sy: 1.8 });
         b.sph(w * 0.12, w * 0.24, h * 0.62, 0, '#4fd67a', { sy: 1.6 });
         b.sph(0.04, 0, h * 0.98, 0, '#ff7ad9');
       } else {
         const g = ['#4fd67a', '#2fb39a', '#b6f25a'];
+        // caules + tufos de folhas irregulares
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * 6.283 + seed;
+          b.tube([[0, h * 0.3, 0], [Math.cos(a) * w * 0.08, h * 0.45, Math.sin(a) * w * 0.08], [Math.cos(a) * w * 0.2, h * (0.55 + (i % 3) * 0.1), Math.sin(a) * w * 0.2]], 0.012, '#3e8a3a', 6);
+        }
         for (let i = 0; i < 7; i++) {
           const a = (i / 7) * 6.283 + seed;
-          b.sph(w * 0.24, Math.cos(a) * w * 0.22, h * (0.5 + (i % 3) * 0.13), Math.sin(a) * w * 0.22, g[i % 3], { sy: 1.25 });
+          b.leafy(w * 0.22, Math.cos(a) * w * 0.22, h * (0.5 + (i % 3) * 0.13), Math.sin(a) * w * 0.22, g[i % 3], i + seed, { sy: 1.15 });
         }
-        b.sph(w * 0.26, 0, h * 0.85, 0, '#4fd67a');
+        b.leafy(w * 0.25, 0, h * 0.84, 0, '#4fd67a', 9 + seed);
       }
       break;
     }
