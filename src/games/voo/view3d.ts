@@ -12,15 +12,22 @@ import { disposeEnv, roomEnv } from '../../3d/common/pbr';
 import { q3For, type Q3 } from '../../3d/common/quality';
 import { canvas, INK } from '../../3d/common/tex';
 import type { Tier } from '../../core/quality';
-import { SPOTS, type Cabin, type Livery } from './data';
+import { BOXES, SPOTS, type Cabin, type Livery } from './data';
 import {
-  CG_Z, WHEEL_Y, airportGeo, bloopGeo, buildCabin, buildExterior, cloudGeo, groundTexture, houseGeo, itemGeo, mat, mountainGeo,
+  CG_Z, FUSE_Y, WHEEL_Y, airportGeo, bloopGeo, buildCabin, buildExterior, cartGeo, groundTexture, trayGeo, houseGeo, itemGeo, mat, mountainGeo,
   runwayTexture, skyDome, tapeX, treeGeo, type CabinRefs, type ExtRefs,
 } from './models';
-import { GS, RWY_HALF, RWY_LEN, type Ev, type Sim } from './sim';
+import { DRINKS, GS, MAINS, RWY_HALF, RWY_LEN, seatLabel, type Ev, type Order, type Sim } from './sim';
+import { GeoBuilder } from '../../3d/common/geo';
+import { vIconImg } from './icons';
+import { FpCamera, fpTuning, type FpCollider } from '../../3d/fpkit';
+import { CloudField } from './clouds';
 
 const TAU = Math.PI * 2;
-const EYE = 1.12;
+/** altura dos olhos a pé (balcões da copa ~0,9 m ficam na cintura) */
+const EYE = 1.45;
+/** tripulação (outros jogadores/ajudantes) do tamanho de quem tem os olhos a 1,45 m */
+const CREW_S = 1.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const STREAKS = 44;
 const _v = new THREE.Vector3();
@@ -30,10 +37,36 @@ const _m = new THREE.Matrix4();
 const _e = new THREE.Euler();
 const _s = new THREE.Vector3(1, 1, 1);
 const _c = new THREE.Color();
+const _c2 = new THREE.Color();
+const _c3 = new THREE.Color();
 const PAX_SKINS = ['bloop', 'mint', 'sunny', 'ocean', 'kitty', 'bee', 'devil', 'astro'];
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+const wrapA = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const ease = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+
+/** a câmera nunca entra em móveis (folga maior que meio plano near com FOV largo) — como a Cozinha */
+function camClamp(x: number, z: number): [number, number] {
+  const M = 0.3;
+  for (const b of BOXES) {
+    const nx = clamp(x, b[0], b[1]);
+    const nz = clamp(z, b[2], b[3]);
+    const dx = x - nx;
+    const dz = z - nz;
+    const d = Math.hypot(dx, dz);
+    if (d >= M) continue;
+    if (d < 1e-4) continue;
+    x = nx + (dx / d) * M;
+    z = nz + (dz / d) * M;
+  }
+  return [x, z];
+}
+
+const CAM_CLAMP: FpCollider = {
+  clampPoint: (x, z, _m, _px, _pz, out) => {
+    [out[0], out[1]] = camClamp(x, z);
+  },
+};
 
 export interface ViewOpts {
   livery: Livery;
@@ -145,6 +178,80 @@ function starTexture(): THREE.CanvasTexture {
   return t;
 }
 
+
+/** rastro em fita sempre de frente para a câmera (vórtices/condensação): some com a idade */
+class Ribbon {
+  readonly mesh: THREE.Mesh;
+  private pts: THREE.Vector3[] = [];
+  private age: number[] = [];
+  private alpha: number[] = [];
+  private head = 0;
+  private n = 0;
+  private pos: Float32Array;
+  private al: Float32Array;
+  constructor(
+    private N: number,
+    private width: number,
+    private life: number,
+  ) {
+    for (let i = 0; i < N; i++) this.pts.push(new THREE.Vector3()), this.age.push(99), this.alpha.push(0);
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(N * 2 * 3);
+    this.al = new Float32Array(N * 2);
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('a', new THREE.BufferAttribute(this.al, 1));
+    const idx: number[] = [];
+    for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    g.setIndex(idx);
+    const m = new THREE.ShaderMaterial({
+      vertexShader: `attribute float a; varying float vA; void main(){ vA=a; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `varying float vA; void main(){ gl_FragColor=vec4(1.0,1.0,1.0,vA); }`,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.mesh = new THREE.Mesh(g, m);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 3;
+  }
+  update(p: THREE.Vector3, strength: number, cam: THREE.Vector3, dt: number): void {
+    for (let i = 0; i < this.N; i++) this.age[i] += dt;
+    if (strength > 0.01 || this.n > 0) {
+      this.head = (this.head + 1) % this.N;
+      this.pts[this.head].copy(p);
+      this.age[this.head] = 0;
+      this.alpha[this.head] = strength;
+      this.n = Math.min(this.N, this.n + 1);
+    }
+    let any = false;
+    for (let k = 0; k < this.N; k++) {
+      const i = (this.head - k + this.N) % this.N;
+      const j = (i - 1 + this.N) % this.N;
+      const P = this.pts[i];
+      const Q = k < this.n - 1 ? this.pts[j] : P;
+      const lifeK = Math.max(0, 1 - this.age[i] / this.life);
+      const a = k < this.n ? this.alpha[i] * lifeK * Math.min(1, k / 3) * 0.55 : 0;
+      if (a > 0.003) any = true;
+      // largura cresce com a idade (o vórtice se espalha); direção perpendicular à câmera
+      _v2.subVectors(P, Q);
+      if (_v2.lengthSq() < 1e-6) _v2.set(0, 0, 1);
+      _v.subVectors(cam, P).cross(_v2).normalize().multiplyScalar(this.width * (0.4 + (1 - lifeK) * 1.6));
+      const o = k * 6;
+      this.pos[o] = P.x + _v.x;
+      this.pos[o + 1] = P.y + _v.y;
+      this.pos[o + 2] = P.z + _v.z;
+      this.pos[o + 3] = P.x - _v.x;
+      this.pos[o + 4] = P.y - _v.y;
+      this.pos[o + 5] = P.z - _v.z;
+      this.al[k * 2] = this.al[k * 2 + 1] = a;
+    }
+    if (!any) this.n = 0;
+    this.mesh.visible = any;
+    this.mesh.geometry.getAttribute('position').needsUpdate = true;
+    this.mesh.geometry.getAttribute('a').needsUpdate = true;
+  }
+}
+
 interface CrewVis {
   mesh: THREE.Mesh;
   role: number;
@@ -181,12 +288,9 @@ export class View3D {
   private redLight: THREE.PointLight | null = null;
   private fireLight: THREE.PointLight | null = null;
   private fog: THREE.Fog;
-  private clouds: THREE.InstancedMesh;
-  private nearClouds: THREE.InstancedMesh;
-  private nearPos: THREE.Vector4[] = [];
+  private cloudF: CloudField;
   private streaks: THREE.LineSegments;
   private streakPos: THREE.Vector3[] = [];
-  private cloudPos: THREE.Vector4[] = [];
   private lights: THREE.Points;
   private papi: THREE.Points;
   private nApp = 0;
@@ -210,11 +314,46 @@ export class View3D {
   private pfdTex: THREE.CanvasTexture;
   private navTex: THREE.CanvasTexture;
   private puddle: THREE.Mesh;
+  private cartM: THREE.Mesh;
+  private trayMs: THREE.Mesh[] = [];
+  private trayGeos = new Map<number, THREE.BufferGeometry>();
+  private bubbles = new Map<number, { sp: THREE.Sprite; cv: HTMLCanvasElement; tex: THREE.CanvasTexture; sig: string }>();
   private patched = new Set<string>();
   private dispose: { dispose(): void }[] = [];
   yaw = Math.PI;
   pitch = -0.05;
-  extCam = false;
+  /** câmera: 0 = cabine (1ª pessoa), 1 = externa atrás (volta sozinha), 2 = órbita livre */
+  camMode: 0 | 1 | 2 = 0;
+  get extCam(): boolean {
+    return this.camMode !== 0;
+  }
+  set extCam(v: boolean) {
+    this.camMode = v ? 1 : 0;
+  }
+  /** botão de câmera: cabine → externa atrás → órbita livre → cabine */
+  cycleCam(): number {
+    this.camMode = ((this.camMode + 1) % 3) as 0 | 1 | 2;
+    if (this.camMode === 1) {
+      this.orb.az = 0;
+      this.orb.el = 0.16;
+      this.orb.dist = 48;
+    }
+    this.orb.t = this.t;
+    return this.camMode;
+  }
+  /** arrastar na câmera externa: gira em volta do avião */
+  orbit(dx: number, dy: number): void {
+    const o = this.orb;
+    o.az -= dx * 0.008;
+    o.el = clamp(o.el + dy * 0.006, -0.35, 1.25);
+    o.t = this.t;
+  }
+  /** pinça: aproxima/afasta (k > 1 afasta) */
+  zoom(k: number): void {
+    this.orb.dist = clamp(this.orb.dist * k, 20, 150);
+    this.orb.t = this.t;
+  }
+  private orb = { az: 0, el: 0.16, dist: 48, t: -99, hdg: 0, init: false };
   /** intro: tempo (s) ou -1 */
   cut = -1;
   private ending: { t: number; kind: string; base: THREE.Vector3; hdg: number; poppers: Popper[] } | null = null;
@@ -225,7 +364,6 @@ export class View3D {
   private lookD = { x: 0, y: 0 };
   private wasSeated = false;
   private wasPortrait = false;
-  private extOrbit = 0;
   private lastMaskDrop = 0;
   private binOpen = 0;
   private instT = 0;
@@ -308,7 +446,7 @@ export class View3D {
       houses.setMatrixAt(i, _m);
     }
     this.world.add(houses);
-    const mts = new THREE.InstancedMesh(mountainGeo(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 30);
+    const mts = new THREE.InstancedMesh(mountainGeo(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: '#3c4658' }), 30);
     for (let i = 0; i < 30; i++) {
       const a = (i / 30) * TAU + rnd() * 0.2;
       const d = 38000 + rnd() * 22000;
@@ -317,23 +455,9 @@ export class View3D {
       mts.setMatrixAt(i, _m);
     }
     this.world.add(mts);
-    // nuvens
-    const nC = [36, 60, 100, 140][q.tier];
-    this.clouds = new THREE.InstancedMesh(cloudGeo(q.tier < 2), new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#ffcfc0', emissiveIntensity: 0.28, flatShading: q.tier < 2 }), nC);
-    for (let i = 0; i < nC; i++) {
-      const hi = i % 7 === 0;
-      const p = new THREE.Vector4((rnd() * 2 - 1) * 26000, hi ? 3600 + rnd() * 600 : 1350 + rnd() * 650, -6000 + rnd() * 60000, hi ? 500 + rnd() * 500 : 160 + rnd() * 260);
-      this.cloudPos.push(p);
-      _m.compose(_v.set(p.x, p.y, p.z), _q.setFromAxisAngle(UP, rnd() * TAU), _v2.set(p.w * 1.6, p.w * (hi ? 0.25 : 0.7), p.w));
-      this.clouds.setMatrixAt(i, _m);
-    }
-    this.world.add(this.clouds);
-    // nuvens de passagem perto do avião (parallax forte: dá a sensação de velocidade)
-    const nN = q.tier < 2 ? 10 : 18;
-    this.nearClouds = new THREE.InstancedMesh(cloudGeo(q.tier < 2), this.clouds.material as THREE.Material, nN);
-    this.nearClouds.frustumCulled = false;
-    for (let i = 0; i < nN; i++) this.nearPos.push(new THREE.Vector4(0, -99999, 0, 0));
-    this.world.add(this.nearClouds);
+    // nuvens: cachos de bolotas macias (billboards ordenados), véu branco ao atravessar
+    this.cloudF = new CloudField(q.tier);
+    this.world.add(this.cloudF.mesh);
     // riscos de vento/velocidade
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STREAKS * 6), 3));
@@ -352,6 +476,11 @@ export class View3D {
     this.world.add(this.papi);
     this.world.add(this.planeObj);
     this.planeObj.add(this.planeOff);
+    for (let i = 0; i < 4; i++) {
+      const rb = i < 2 ? new Ribbon(44, 0.5, 0.75) : new Ribbon(40, 1.2, 1.4);
+      this.trails.push(rb);
+      this.world.add(rb.mesh);
+    }
     this.planeOff.position.set(0, 0, -CG_Z);
 
     // ---------- interior ----------
@@ -443,6 +572,16 @@ export class View3D {
       s.visible = false;
       this.fireGlows.push(s);
       this.cabin.add(s);
+    }
+    // carrinho do serviço de bordo + bandejas
+    this.cartM = cartGeo(q.standard);
+    this.cartM.castShadow = q.shadows;
+    this.cabin.add(this.cartM);
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(this.trayGeoFor(1, 2), this.itemMat);
+      m.visible = false;
+      this.cartM.add(m);
+      this.trayMs.push(m);
     }
     this.puddle = new THREE.Mesh(new THREE.CircleGeometry(0.5, 18), new THREE.MeshStandardMaterial({ color: '#b07aff', roughness: 0.1, transparent: true, opacity: 0.75 }));
     this.puddle.rotation.x = -Math.PI / 2;
@@ -574,15 +713,17 @@ export class View3D {
 
   frame(dt: number): void {
     this.t += dt;
+    this.shake = Math.max(0, this.shake - dt * 2.5);
     const s = this.sim;
     const f = s.f;
-    // ----- transformação do avião no mundo -----
-    let pitch = f.pitch;
-    let roll = f.roll;
-    let hdg = f.hdg;
-    let px = f.x;
-    let py = f.alt - WHEEL_Y;
-    let pz = f.z;
+    // ----- transformação do avião no mundo (interpolada entre passos fixos da física) -----
+    const ps = s.pose();
+    let pitch = ps.pitch;
+    let roll = ps.roll;
+    let hdg = ps.hdg;
+    let px = ps.x;
+    let py = ps.alt - WHEEL_Y;
+    let pz = ps.z;
     let gearPos = f.gearPos;
     let throttle = f.thr;
     const intro = this.cut >= 0;
@@ -631,15 +772,8 @@ export class View3D {
     this.setExtMode(ext);
     if (ext) this.extCamera(dt, intro, me);
     else this.fpCamera(dt, intro);
-    // anima o exterior (trem, ventoinhas, farol)
-    for (const g of this.ext.gear) g.rotation.x = (1 - gearPos) * 1.45;
-    for (const fn of this.ext.fans) fn.rotation.z += dt * (8 + throttle * 30);
-    this.ext.beacon.visible = Math.floor(this.t * 1.4) % 2 === 0;
-    for (let i = 0; i < 2; i++) {
-      const fe = this.ext.engFire[i];
-      fe.visible = !intro && !this.ending && f.eng[i] < 0.9 && s.flying;
-      if (fe.visible) fe.scale.set(1 + Math.sin(this.t * 23 + i) * 0.15, 1 + Math.sin(this.t * 17) * 0.25, 1 + Math.sin(this.t * 19 + i) * 0.15);
-    }
+    // anima o exterior (trem, superfícies de comando, ventoinhas, asas, farol, vórtices)
+    this.animExterior(dt, intro, gearPos, throttle);
     // PAPI e "coelho" das luzes de aproximação
     this.updateAirportLights();
     // instrumentos (texturas) ~12 Hz
@@ -654,10 +788,13 @@ export class View3D {
     this.fx.update(dt, this.cam.fov, h);
     this.flames.update(dt, this.cam.fov, h);
     this.wfx.update(dt, this.wcam.fov, h);
+    // ----- nuvens (precisam da câmera do mundo já posicionada) -----
+    this.wcam.updateMatrixWorld();
+    this.inCloud = this.cloudF.update(dt, this.wcam.position, this.planeObj.position, hdg, !(intro && this.cut < 6) && s.flying && f.alt > 150, this.t);
     // ----- render -----
     this.r.clear();
-    this.wcam.updateMatrixWorld();
     this.r.render(this.world, this.wcam);
+    if (this.cloudF.wash.visible) this.r.render(this.cloudF.washScene, this.cloudF.washCam);
     if (!ext) {
       this.r.clearDepth();
       this.r.render(this.cabin, this.cam);
@@ -677,6 +814,71 @@ export class View3D {
     }
   }
 
+  /** superfícies seguem as entradas (suavizadas como um atuador hidráulico), ventoinhas giram com a rotação */
+  private animExterior(dt: number, intro: boolean, gearPos: number, throttle: number): void {
+    const s = this.sim;
+    const f = s.f;
+    const e = this.ext;
+    const sm = this.ctlS;
+    const k = Math.min(1, dt * 9);
+    const live = !intro && !this.ending;
+    const ail = live ? f.ail : 0;
+    const elev = live ? f.elev : intro && this.cut > 2.4 && this.cut < 4.4 ? 0.6 : 0;
+    sm.ail += (ail - sm.ail) * k;
+    sm.elev += (elev - sm.elev) * k;
+    sm.rud += ((live ? f.rud : 0) - sm.rud) * k;
+    const fp = intro ? 1 : f.flapPos;
+    const spoil = this.ending ? Math.min(1, this.ending.t * 3) : live ? f.spoiler : 0;
+    // ailerons: um sobe, o outro desce
+    e.ailerons[0].rotation.x = sm.ail * 0.32;
+    e.ailerons[1].rotation.x = -sm.ail * 0.32;
+    for (const el of e.elevators) el.rotation.x = -sm.elev * 0.36;
+    e.rudder.rotation.x = sm.rud * 0.45;
+    for (const fl of e.flaps) {
+      fl.rotation.x = (fp / 2) * 0.62;
+      fl.children[0].position.z = (fp / 2) * 0.32; // Fowler: desliza para trás
+    }
+    for (const sp of e.spoilers) sp.rotation.x = -spoil * 0.95;
+    for (const g of e.gear) g.rotation.x = (1 - gearPos) * 1.45;
+    // flexão das asas com a carga g (no chão elas caem um pouquinho)
+    const gl = live && s.flying ? f.gload : intro && this.cut > 3 ? 1 : 0;
+    this.flex += (clamp(0.009 * gl - 0.004, -0.006, 0.03) - this.flex) * Math.min(1, dt * 4);
+    e.wings[0].rotation.z = -this.flex;
+    e.wings[1].rotation.z = this.flex;
+    // ventoinhas: rotação ∝ manete (N1), disco borrado quando rápido
+    for (let i = 0; i < 2; i++) {
+      const rpm = live || intro ? clamp(0.25 + throttle * 0.75, 0, 1) * (f.fuel > 0 || intro ? f.eng[i] : 0.1) : this.ending?.kind === 'crash' ? 0 : 0.2;
+      this.fanRpm[i] += (rpm - this.fanRpm[i]) * Math.min(1, dt * 1.5);
+      const r = this.fanRpm[i];
+      e.fans[i].rotation.z += dt * (r * 70);
+      const bl = e.fanBlur[i];
+      (bl.material as THREE.MeshBasicMaterial).opacity = clamp((r - 0.2) * 1.3, 0, 0.8);
+      bl.rotation.z -= dt * r * 9;
+      const fe = e.engFire[i];
+      fe.visible = live && f.eng[i] < 0.9 && s.flying;
+      if (fe.visible) fe.scale.set(1 + Math.sin(this.t * 23 + i) * 0.15, 1 + Math.sin(this.t * 17) * 0.25, 1 + Math.sin(this.t * 19 + i) * 0.15);
+    }
+    e.beacon.visible = Math.floor(this.t * 1.4) % 2 === 0;
+    // vórtices de ponta de asa (carga g / α alto / úmido) e rastros de condensação em altitude
+    const ext = this.extCam || !!this.ending || (intro && this.cut < 6);
+    const spdK = clamp((f.spd - 55) / 40, 0, 1);
+    const vort = live && s.flying ? clamp((f.gload - 1.08) * 2.2 + Math.max(0, f.alpha - 0.09) * 6 + this.inCloud * 0.6, 0, 1) * spdK : 0;
+    const con = live && s.flying && f.alt > 2000 ? clamp((f.alt - 2000) / 300, 0, 1) * clamp(throttle * 1.6, 0, 1) * 0.55 : 0;
+    for (let i = 0; i < this.trails.length; i++) {
+      const tr = this.trails[i];
+      const pt = i < 2 ? e.tips[i] : this.engTail[i - 2];
+      _v.copy(pt);
+      this.planeOff.localToWorld(_v);
+      tr.update(_v, ext ? (i < 2 ? vort : con) : 0, this.wcam.position, dt);
+    }
+  }
+  private ctlS = { ail: 0, elev: 0, rud: 0 };
+  private flex = 0;
+  private fanRpm = [0, 0];
+  private trails: Ribbon[] = [];
+  private engTail = [new THREE.Vector3(-6, FUSE_Y - 2.35, 11.2), new THREE.Vector3(6, FUSE_Y - 2.35, 11.2)];
+  private inCloud = 0;
+
   private updateSky(k: number): void {
     const u = this.skyU;
     (u.top.value as THREE.Color).set('#4f74d6').lerp(_c.set('#3b3f96'), k);
@@ -691,18 +893,13 @@ export class View3D {
     this.wSun.target.position.copy(this.wcam.position);
     this.wHemi.color.set('#e8f0ff').lerp(_c.set('#ffc8b0'), k);
     this.sky.position.copy(this.wcam.position);
-    // dentro da nuvem: neblina fechada
-    const f = this.sim.f;
-    let inCloud = 0;
-    if (f.alt > 1200 && f.alt < 2200) {
-      for (const p of this.cloudPos) {
-        const d = Math.hypot(p.x - this.planeObj.position.x, (p.y - this.planeObj.position.y) * 1.6, p.z - this.planeObj.position.z);
-        if (d < p.w * 1.3) inCloud = Math.max(inCloud, 1 - d / (p.w * 1.3));
-      }
-    }
-    this.fog.near = lerp(2500, 5, inCloud);
-    this.fog.far = lerp(70000, 260, inCloud);
+    // dentro da nuvem: neblina fechada (medido pelas nuvens no quadro anterior)
+    const inCloud = this.inCloud;
+    this.fog.near = lerp(2500, 20, inCloud);
+    this.fog.far = lerp(70000, 900, inCloud);
     if (inCloud > 0) this.fog.color.lerp(_c.set('#f4eef2'), inCloud);
+    // nuvens: topo claro (pôr do sol rosado no fim), base lilás
+    this.cloudF.setColors(_c.set('#ffffff').lerp(_c2.set('#ffe2d2'), k), _c3.set('#b9c3e2').lerp(_c2.set('#c79aae'), k), this.fog);
     // sol dentro da cabine (direção local)
     _q.copy(this.planeObj.quaternion).invert();
     _v.copy(sd).applyQuaternion(_q);
@@ -711,30 +908,11 @@ export class View3D {
     this.sun.intensity = (this.q.standard ? 1.7 : 1.0) * (1 - inCloud * 0.7);
   }
 
-  /** nuvens de passagem e riscos de vento em volta do avião (reciclados) */
+  /** riscos de vento em volta do avião (reciclados) */
   private updateMotion(hide: boolean): void {
     const f = this.sim.f;
-    const P = this.planeObj.position;
     const fx = Math.sin(f.hdg);
     const fz = -Math.cos(f.hdg);
-    const air = !hide && f.alt > 250 && this.sim.flying;
-    // nuvens
-    const nc = this.nearClouds;
-    for (let i = 0; i < this.nearPos.length; i++) {
-      const c = this.nearPos[i];
-      const dx = c.x - P.x;
-      const dz = c.z - P.z;
-      const ahead = dx * fx + dz * fz;
-      if (air && (c.y < -9000 || ahead < -900 || Math.hypot(dx, dz) > 4200)) {
-        const first = c.y < -9000;
-        const d = first ? 200 + Math.random() * 3000 : 2400 + Math.random() * 1400;
-        const side = (Math.random() * 2 - 1) * 1500;
-        c.set(P.x + fx * d - fz * side, Math.max(160, P.y + (Math.random() * 2 - 1) * 260 - 60), P.z + fz * d + fx * side, 70 + Math.random() * 170);
-      }
-      _m.compose(_v.set(c.x, air ? c.y : -99999, c.z), _q.setFromAxisAngle(UP, i * 1.7), _v2.set(c.w * 1.5, c.w * 0.55, c.w));
-      nc.setMatrixAt(i, _m);
-    }
-    nc.instanceMatrix.needsUpdate = true;
     // riscos: pontos fixos no ar que passam pela câmera
     const st = this.streaks;
     st.visible = !hide && f.spd > 45 && this.sim.flying;
@@ -833,31 +1011,39 @@ export class View3D {
       this.yaw = clamp(this.yaw, Math.PI - 1.4, Math.PI + 1.4);
       this.pitch = clamp(this.pitch, -0.7, 0.5);
     }
-    const walk = Math.hypot(me.vx, me.vz);
-    const bob = Math.sin(me.walk * 3.2) * 0.035 * Math.min(1, walk / 3);
+    // a pé: câmera do kit compartilhado (src/3d/fpkit — o andar da Cozinha): balanço, rolagem, camClamp
+    const speedK = seated ? 0 : s.walker.speedK;
     const stun = me.stun > 0 ? Math.sin(Math.min(1, me.stun) * Math.PI) : 0;
-    // tremor de estol (buffet) e balanço suave do ar
-    const f = s.f;
-    const vRef = 110 - f.flaps * 18;
-    if (s.flying && (f.stall || f.spd < vRef * 0.82)) this.shake = Math.max(this.shake, f.stall ? 0.9 : 0.35);
-    this.shake = Math.max(0, this.shake - dt * 3);
-    const shx = (Math.random() - 0.5) * this.shake * 0.06;
-    const air = s.flying ? 1 + s.turb * 5 : 0.2;
-    const shy = (Math.random() - 0.5) * this.shake * 0.06 + (Math.sin(this.t * 1.3) * 0.006 + Math.sin(this.t * 3.1) * 0.0025) * air;
-    if (seated) cam.position.set(SPOTS.pilot.x, 1.5, SPOTS.pilot.z - 0.02);
-    else cam.position.set(me.x, EYE + bob - stun * 0.55, me.z);
-    cam.position.x += shx;
-    cam.position.y += shy;
+    // tremor: só por estol (buffet) e rajadas/solavancos da turbulência — suave e proporcional (sem ruído)
+    const sh = this.shakeAmt();
+    const shx = Math.sin(this.t * 19.7) * sh * 0.02;
+    const shy = Math.sin(this.t * 15.3 + 0.7) * sh * 0.025 + Math.sin(this.t * 31.1) * sh * 0.008;
     const dz = s.dizzy;
     const wob = dz > 0 ? Math.sin(this.t * 1.3) * 0.06 * dz : 0;
-    cam.rotation.set(this.pitch + wob * 0.5 + shy, this.yaw + Math.PI, -s.acc.x * 0.012 + stun * 0.5 + wob, 'YXZ');
-    cam.updateMatrixWorld();
-    this.syncWorldCam(cam, clamp(s.f.alt * 0.08, 2, 120));
+    if (seated) {
+      cam.position.set(SPOTS.pilot.x + shx, 1.5 + shy, SPOTS.pilot.z - 0.02);
+      cam.rotation.set(this.pitch + wob * 0.5 + shy * 0.6, this.yaw + Math.PI, -s.acc.x * 0.012 + wob, 'YXZ');
+      cam.updateMatrixWorld();
+    } else {
+      // posição interpolada entre passos (andar liso em 60/90/120 Hz)
+      const k = s.lerpK;
+      const fc = this.fpc;
+      fc.yaw = this.yaw + Math.PI;
+      fc.pitch = this.pitch;
+      fc.extraPitch = wob * 0.5 + shy * 0.6;
+      fc.extraRoll = -s.acc.x * 0.012 + stun * 0.5 + wob;
+      fc.extraY = shy - stun * 0.55;
+      this.fpBody.x = (me.ox ?? me.x) + (me.x - (me.ox ?? me.x)) * k + shx;
+      this.fpBody.z = (me.oz ?? me.z) + (me.z - (me.oz ?? me.z)) * k;
+      this.fpBody.speedK = speedK;
+      fc.apply(cam, dt, this.fpBody, CAM_CLAMP);
+    }
+    this.syncWorldCam(cam, clamp(s.f.alt * 0.03, 2, 40));
     // mão
     const held = s.item(me.hold);
     this.hand.setPose(held || seated ? 'grab' : 'open');
     this.hand.scrub = me.actKind === 'hug' || me.actKind === 'door' || me.actKind === 'patch' ? 1 : 0;
-    this.hand.update(dt, Math.min(1, walk / 3.3), lx, ly);
+    this.hand.update(dt, speedK, lx, ly);
     this.hand.visible = true; // sentado: a mão fica na manete (canto de baixo), menor e mais para o canto
     this.hand.sizeMul = seated ? 0.68 : 1;
     this.hand.offX = seated ? 0.3 : 0;
@@ -865,6 +1051,17 @@ export class View3D {
     // retrato: o manche 3D ficaria no meio, embaixo da tela (o manche de toque já faz esse papel)
     this.cab.yokeL.visible = !(seated && portrait);
   }
+
+  /** intensidade do tremor da câmera: buffet de estol + carga vertical da turbulência + solavancos */
+  private shakeAmt(): number {
+    const s = this.sim;
+    if (!s.flying) return this.shake * 0.5;
+    const turbG = Math.abs(s.acc.y) / 9.8;
+    return clamp(s.f.buffet * 0.8 + (s.turb > 0 ? turbG * 1.4 + s.turb * 0.25 : 0) + this.shake * 0.6, 0, 1.6);
+  }
+  /** câmera a pé do kit compartilhado (preset 'indoor', olhos a 1,45 m) */
+  private fpc = new FpCamera(fpTuning('indoor', { eye: EYE }));
+  private fpBody = { x: 0, z: 0, y: 0, speedK: 0 };
 
   private syncWorldCam(cam: THREE.Camera, near: number): void {
     _m.multiplyMatrices(this.planeOff.matrixWorld, cam.matrixWorld);
@@ -900,15 +1097,34 @@ export class View3D {
       c.lookAt(P.x, 2, P.z);
       this.updatePoppers(dt);
     } else {
-      // câmera externa do piloto (atrás e acima)
-      this.extOrbit += this.lookD.x;
-      this.lookD.x = this.lookD.y = 0;
-      _v.set(Math.sin(this.extOrbit) * 46, 11, CG_Z + Math.cos(this.extOrbit) * 46);
-      this.planeOff.localToWorld(_v);
-      c.position.copy(_v);
-      _v2.set(0, 2, CG_Z - 6);
+      // câmera externa: atrás (volta sozinha depois de ~2,5 s parada) ou órbita livre; nunca entra no chão
+      const o = this.orb;
+      const ps = this.sim.pose();
+      if (!o.init) {
+        o.init = true;
+        o.hdg = ps.hdg;
+      }
+      o.hdg += wrapA(ps.hdg - o.hdg) * Math.min(1, dt * (this.camMode === 1 ? 2.2 : 4));
+      if (this.camMode === 1 && this.t - o.t > 2.5) {
+        const k = Math.min(1, dt * 1.4);
+        o.az += wrapA(0 - o.az) * k;
+        o.el += (0.16 - o.el) * k;
+        o.dist += (48 - o.dist) * k;
+      }
+      _v2.set(0, 1.2, CG_Z - 2);
       this.planeOff.localToWorld(_v2);
-      c.up.copy(UP).applyQuaternion(this.planeObj.quaternion).lerp(UP, 0.6).normalize();
+      const a = o.hdg + o.az;
+      const ce = Math.cos(o.el);
+      c.position.set(_v2.x - Math.sin(a) * ce * o.dist, _v2.y + Math.sin(o.el) * o.dist, _v2.z + Math.cos(a) * ce * o.dist);
+      // tremor proporcional à turbulência/estol (suave, sem ruído por quadro)
+      const sh = this.shakeAmt();
+      if (sh > 0.001) {
+        c.position.x += Math.sin(this.t * 17.3) * sh * 0.5;
+        c.position.y += Math.sin(this.t * 13.1 + 1) * sh * 0.6;
+      }
+      c.position.y = Math.max(c.position.y, 2.2);
+      c.up.copy(UP);
+      if (this.camMode === 1) c.up.applyQuaternion(this.planeObj.quaternion).lerp(UP, 0.75).normalize();
       c.lookAt(_v2);
       c.up.copy(UP);
     }
@@ -980,16 +1196,16 @@ export class View3D {
       if (p.seated) {
         m.position.set(SPOTS.pilot.x, 0.42, SPOTS.pilot.z + 0.02);
         m.rotation.set(0, 0, Math.sin(this.t * 0.8) * 0.03);
-        m.scale.setScalar(1);
+        m.scale.setScalar(CREW_S);
       } else {
         const sp = Math.hypot(p.vx, p.vz);
         const hop = Math.abs(Math.sin(p.walk * 3.2)) * 0.07 * Math.min(1, sp);
         m.position.set(p.x, hop, p.z);
         m.rotation.set(p.stun > 0 ? -1.2 : sp * 0.04, p.yaw + Math.PI, p.stun > 0 ? 0.4 : Math.sin(p.walk * 3.2) * 0.08 * Math.min(1, sp));
         const sq = p.actProg > 0 ? Math.sin(this.t * 14) * 0.04 : 0;
-        m.scale.set(1 + sq, 1 - sq, 1 + sq);
+        m.scale.set(CREW_S * (1 + sq), CREW_S * (1 - sq), CREW_S * (1 + sq));
       }
-      this.updateStars(v.stars, p.stun > 0, m.position.x, 1.25, m.position.z, 1);
+      this.updateStars(v.stars, p.stun > 0, m.position.x, 1.6, m.position.z, 1.2);
       if (p.spraying) this.spray(p.x + Math.sin(p.yaw) * 0.45, 0.85, p.z + Math.cos(p.yaw) * 0.45, Math.sin(p.yaw), Math.cos(p.yaw));
     }
     for (const [idx, v] of this.crew)
@@ -1016,15 +1232,23 @@ export class View3D {
       this.paxWorried[k] = w;
       const im = this.paxMeshes[p.skin * 2 + w];
       const i = cnt[p.skin * 2 + w]++;
-      if (!p.standing) {
-        // sentado: preso à poltrona (sem física). Pânico = balanço lento e legível; solavanco só na turbulência
+      const ph = k * 1.37;
+      if (p.mode === 0) {
+        // sentado: preso à poltrona, com vida: respira, olha em volta, balança aflito, pula de alegria
         const sway = w ? Math.sin(p.bob * 3.2) * 0.1 * p.panic : 0;
         const happy = p.happyT > 0 ? Math.abs(Math.sin(p.bob * 5)) * 0.05 : 0;
-        _m.compose(_v.set(p.sx, 0.36 + happy + bump * (0.6 + (k % 3) * 0.2), p.sz - 0.05), _q.setFromEuler(_e.set(0, 0, sway)), _v2.setScalar(1));
-      } else {
-        // de pé no corredor: pulinho lento de aflição
+        const breathe = 1 + Math.sin(p.bob * 1.9 + ph) * 0.018;
+        const look = Math.sin(p.bob * 0.37 + ph) * 0.28 * Math.max(0, Math.sin(p.bob * 0.11 + ph * 3));
+        _m.compose(_v.set(p.sx, 0.36 + happy + bump * (0.6 + (k % 3) * 0.2), p.sz - 0.05), _q.setFromEuler(_e.set(0, look, sway)), _v2.set(1, breathe, 1));
+      } else if (p.mode === 1) {
+        // em pé no espaço da própria fileira: pulinho de aflição, braços para cima (não bloqueia o corredor)
         const hop = Math.abs(Math.sin(p.bob * 3.4)) * 0.07;
-        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(0, Math.PI * 0.5 * Math.sign(p.sx) + Math.sin(p.bob * 1.6) * 0.25, 0)), _v2.setScalar(1));
+        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(0, p.yaw + Math.PI, Math.sin(p.bob * 5) * 0.08)), _v2.setScalar(1.05));
+      } else {
+        // andando no corredor (ou esperando no banheiro)
+        const walking = p.mode === 2;
+        const hop = walking ? Math.abs(Math.sin(p.bob * 6)) * 0.035 : 0;
+        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(walking ? 0.06 : 0, p.yaw + Math.PI, walking ? Math.sin(p.bob * 6) * 0.05 : 0)), _v2.setScalar(1.05));
       }
       im.setMatrixAt(i, _m);
       if (p.panic > 0.7) bangList.push({ x: p.x, z: p.z, p: p.panic });
@@ -1041,6 +1265,7 @@ export class View3D {
     });
     // objetos
     this.updateItems(dt);
+    this.updateService();
     // emergências
     this.updateEmers(dt, act, intro);
     // máscaras de oxigênio
@@ -1067,6 +1292,107 @@ export class View3D {
       const sd = d.userData.side as number;
       d.rotation.z = sd * (this.binOpen * (1.1 + Math.sin(this.t * 9 + i) * 0.15));
     });
+  }
+
+  private trayGeoFor(main: number, drink: number): THREE.BufferGeometry {
+    const key = main * 10 + drink;
+    let g = this.trayGeos.get(key);
+    if (!g) {
+      const gb = new GeoBuilder();
+      gb.bevel = 1;
+      gb.ao = false;
+      trayGeo(gb, 0, 0, 0, main, drink);
+      g = gb.build();
+      this.trayGeos.set(key, g);
+    }
+    return g;
+  }
+
+  /** carrinho (posição, bandejas) e balões de pedido em cima das poltronas */
+  private updateService(): void {
+    const s = this.sim;
+    const c = s.cart;
+    this.cartM.position.set(c.x, 0, c.z);
+    this.cartM.rotation.y = c.yaw;
+    this.trayMs.forEach((m, i) => {
+      const tr = c.trays[i];
+      m.visible = !!tr;
+      if (!tr) return;
+      m.geometry = this.trayGeoFor(tr.main, tr.drink);
+      m.position.set(0, 1.03 + (i >> 1) * 0.11, (i % 2 ? 0.17 : -0.17));
+    });
+    const seen = new Set<number>();
+    for (const o of s.orders) {
+      const q = s.pax[o.pax];
+      if (!q) continue;
+      seen.add(o.id);
+      let b = this.bubbles.get(o.id);
+      if (!b) {
+        const [cv] = canvas(192, 96);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+        sp.scale.set(0.5, 0.25, 1);
+        sp.renderOrder = 5;
+        this.cabin.add(sp);
+        b = { sp, cv, tex, sig: '' };
+        this.bubbles.set(o.id, b);
+      }
+      const sig = this.drawBubble(b.cv, o, seatLabel(q.seat), b.sig);
+      if (sig !== b.sig) {
+        b.sig = sig;
+        b.tex.needsUpdate = true;
+      }
+      b.sp.position.set(q.sx, 1.62 + Math.sin(this.t * 2 + o.id) * 0.03, q.sz);
+      // tamanho quase constante na tela (legível do fundo do corredor, sem tapar de perto)
+      const dd = b.sp.position.distanceTo(this.cam.position);
+      const sc = clamp(dd * 0.11, 0.42, 1.2);
+      b.sp.scale.set(sc, sc * 0.5, 1);
+      b.sp.visible = !s.players[s.me].seated || this.extCam;
+    }
+    for (const [id, b] of this.bubbles)
+      if (!seen.has(id)) {
+        b.sp.removeFromParent();
+        b.sp.material.dispose();
+        b.tex.dispose();
+        this.bubbles.delete(id);
+      }
+  }
+  /** balão: poltrona + ícones do pedido + tempo; devolve uma assinatura (só redesenha quando muda) */
+  private drawBubble(cv: HTMLCanvasElement, o: Order, label: string, prev: string): string {
+    const k = Math.max(0, Math.min(1, o.t / o.tmax));
+    const ims = [o.main ? vIconImg(MAINS[o.main]) : null, o.drink ? vIconImg(DRINKS[o.drink]) : null].filter((x): x is HTMLImageElement => !!x);
+    const ready = ims.every((im) => im.complete && im.naturalWidth > 0);
+    const sig = `${Math.ceil(k * 12)}|${ready}|${o.tray >= 0}`;
+    if (sig === prev) return sig;
+    const x = cv.getContext('2d')!;
+    x.clearRect(0, 0, 192, 96);
+    x.lineWidth = 6;
+    x.strokeStyle = INK;
+    x.fillStyle = o.tray >= 0 ? '#e8fff0' : '#ffffff';
+    x.beginPath();
+    x.roundRect(6, 6, 180, 66, 20);
+    x.moveTo(84, 72);
+    x.lineTo(96, 90);
+    x.lineTo(108, 72);
+    x.fill();
+    x.stroke();
+    x.fillStyle = '#ffffff';
+    x.fillRect(86, 66, 20, 8);
+    x.fillStyle = INK;
+    x.font = '900 28px Fredoka, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(label, 40, 37);
+    ims.forEach((im, i) => {
+      if (im.complete && im.naturalWidth) x.drawImage(im, 74 + i * 52, 13, 48, 48);
+    });
+    // tempo
+    x.fillStyle = 'rgba(42,11,92,.18)';
+    x.fillRect(22, 60, 148, 6);
+    x.fillStyle = k < 0.35 ? '#ff4d6a' : '#3fe06c';
+    x.fillRect(22, 60, 148 * k, 6);
+    return sig;
   }
 
   private spray(x: number, y: number, z: number, fx: number, fz: number): void {
@@ -1332,6 +1658,7 @@ export class View3D {
 
   destroy(): void {
     disposeEnv();
+    this.cloudF.dispose();
     this.r.dispose();
     this.fx.dispose();
     this.flames.dispose();

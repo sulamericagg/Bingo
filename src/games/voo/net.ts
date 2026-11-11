@@ -159,14 +159,14 @@ export class FlightNet implements VooNet {
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-const KINDS: ItemKind[] = ['ext', 'tape', 'water', 'snack', 'bag'];
+const KINDS: ItemKind[] = ['ext', 'tape', 'water', 'snack', 'bag', 'tray'];
 const EMERS: EmerKind[] = ['fire', 'leak', 'spark', 'pressure', 'door', 'turb', 'panic', 'bird', 'gear'];
 const SPOTS_L: SpotId[] = ['pilot', 'copilot', 'elec', 'doorF', 'doorR', 'oven', 'water', 'snack', 'engL', 'engR', 'cabinA', 'cabinB', 'valve', 'cargoFire', 'leak', 'pump', 'gear', 'win'];
 const PHASES: Phase[] = ['cruise', 'descent', 'final', 'rollout', 'crash', 'done'];
-const ACTS = ['', 'sit', 'spray', 'patch', 'rewire', 'pump', 'valve', 'crank', 'door', 'give', 'hug', 'take', 'pick', 'stow'];
-const F_KEYS = ['x', 'z', 'alt', 'hdg', 'spd', 'pitch', 'roll', 'gamma', 'vs', 'thr', 'flaps', 'gear', 'gearPos', 'fuel', 'brg', 'talt', 'dist', 'dev', 'wind'] as const;
+const ACTS = ['', 'sit', 'spray', 'patch', 'rewire', 'pump', 'valve', 'crank', 'door', 'give', 'hug', 'take', 'pick', 'stow', 'prep', 'cart', 'serve'];
+const F_KEYS = ['x', 'z', 'alt', 'hdg', 'spd', 'pitch', 'roll', 'gamma', 'vs', 'thr', 'flaps', 'gear', 'gearPos', 'fuel', 'brg', 'talt', 'dist', 'dev', 'wind', 'alpha', 'p', 'q', 'flapPos', 'spoiler', 'gload', 'buffet', 'ap', 'belt', 'ail', 'elev', 'rud'] as const;
 /** eventos que o convidado precisa ver/ouvir */
-const EV_SEND = new Set(['toast', 'sfx', 'fx', 'jolt', 'bags', 'touch', 'say', 'mini']);
+const EV_SEND = new Set(['toast', 'sfx', 'fx', 'jolt', 'bags', 'touch', 'say', 'mini', 'prep']);
 
 /** anfitrião: retrato do mundo */
 export function encodeSnap(s: Sim, seq: number, ev: Ev[]): NetMsg {
@@ -182,7 +182,11 @@ export function encodeSnap(s: Sim, seq: number, ev: Ev[]): NetMsg {
     it: s.items.filter((i) => i.alive).map((i) => [i.id, KINDS.indexOf(i.kind), r2(i.x), r2(i.y), r2(i.z), r2(i.rot), i.held, r2(i.charge)]),
     em: s.emers.filter((e) => !e.done).map((e) => [e.id, EMERS.indexOf(e.kind), SPOTS_L.indexOf(e.spot), r2(e.x), r2(e.y), r2(e.z), r3(e.sev), r3(e.prog), e.stage, e.win, r2(e.age), r2(e.dur)]),
   };
-  if (seq % 2 === 0) m.px = s.pax.map((q) => [Math.round(q.panic * 100), q.standing ? 1 : 0, r2(q.x), r2(q.z), q.happyT > 0 ? 1 : 0]);
+  if (seq % 2 === 0) m.px = s.pax.map((q) => [Math.round(q.panic * 100), q.standing ? 1 : 0, r2(q.x), r2(q.z), q.happyT > 0 ? 1 : 0, q.mode, r2(q.yaw), q.want]);
+  // serviço de bordo: pedidos e carrinho (bandejas)
+  m.fo = s.orders.map((o) => [o.id, o.pax, o.main, o.drink, Math.round(o.t), o.tray, o.bot, o.tmax]);
+  const c = s.cart;
+  m.ca = [r2(c.x), r2(c.z), r2(c.yaw), c.by, ...c.trays.flatMap((tr) => [tr.id, tr.order, tr.main, tr.drink, tr.hot, tr.full])];
   const evs = ev.filter((e) => EV_SEND.has(e.k));
   if (evs.length) m.ev = evs;
   if (s.outcome) m.out = s.outcome;
@@ -202,6 +206,7 @@ export class SnapSync {
   private tp: number[][] = [];
   private ti = new Map<number, number[]>();
   private lastN = -1;
+  private cartT: number[] | null = null;
   /** fechei o minijogo há pouco: ignora o "ocupado" velho do anfitrião */
   miniClosedAt = 0;
   gotFirst = false;
@@ -308,11 +313,35 @@ export class SnapSync {
         q.x = a[2];
         q.z = a[3];
         q.happyT = a[4] ? 1 : 0;
+        q.mode = a[5] ?? (q.standing ? 1 : 0);
+        q.yaw = a[6] ?? q.yaw;
+        q.want = a[7] ?? -1;
       });
+    if (Array.isArray(m.fo)) s.orders = (m.fo as number[][]).map((a) => ({ id: a[0], pax: a[1], main: a[2], drink: a[3], t: a[4], tray: a[5], bot: a[6], tmax: a[7] ?? 110 }));
+    if (Array.isArray(m.ca)) {
+      const a = m.ca as number[];
+      const c = s.cart;
+      const mineCart = a[3] === s.me;
+      // o carrinho que EU empurro anda junto comigo (previsão local); os outros vêm do anfitrião
+      if (!mineCart) {
+        this.cartT = [a[0], a[1], a[2]];
+        if (first) [c.x, c.z, c.yaw] = this.cartT;
+      }
+      c.by = a[3];
+      c.trays = [];
+      for (let i = 4; i + 5 < a.length + 0; i += 6) c.trays.push({ id: a[i], order: a[i + 1], main: a[i + 2], drink: a[i + 3], hot: a[i + 4], full: a[i + 5] });
+    }
     if (m.out) s.outcome = m.out as Outcome;
     if (m.st) (m.st as Stats[]).forEach((st, i) => s.players[i] && (s.players[i].stats = st));
     // eventos (toasts, sons, efeitos, minijogo aberto para mim)
     for (const e of (m.ev ?? []) as Ev[]) {
+      if (e.k === 'prep') {
+        if (e.who === s.me) {
+          s.prepOpen = true;
+          if (me) me.prep = true;
+        }
+        continue;
+      }
       if (e.k === 'mini') {
         if (e.who === s.me) {
           s.miniOpen = { kind: e.kind, emer: e.emer };
@@ -374,6 +403,16 @@ export class SnapSync {
       it.rot = a[5];
     }
     for (const q of s.pax) q.bob += dt;
+    // carrinho: o meu segue o meu boneco; o dos outros é suavizado
+    const c = s.cart;
+    const mp = s.players[s.me];
+    if (c.by === s.me && mp) s.cartFollow(mp);
+    else if (this.cartT) {
+      c.x += (this.cartT[0] - c.x) * k;
+      c.z += (this.cartT[1] - c.z) * k;
+      c.yaw += wrapA(this.cartT[2] - c.yaw) * k;
+    }
+    for (const o of s.orders) o.t -= dt;
     for (const e of s.emers) e.age += dt;
   }
 }
