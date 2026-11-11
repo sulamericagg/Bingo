@@ -225,7 +225,7 @@ export class Hud {
     this.fps = h.is3d ? new FpsControls(this.surface, { joystick: { zoneTop: 0.3 } }) : null;
     this.joy2d = h.is3d ? null : createJoystick(this.surface, { zoneTop: 0.3, zoneWidth: 0.5 });
     // manche: joystick flutuante que volta ao centro (só aparece sentado)
-    this.yoke = createJoystick(this.surface, { zoneTop: 0.25, zoneWidth: 0.42, expo: 0.55, smoothing: 22 });
+    this.yoke = createJoystick(this.surface, { zoneTop: 0.25, zoneWidth: 0.42, expo: 0.55, smoothing: 22, hint: false }); // sem anel parado: não cobre as telas do painel
     this.yoke.setEnabled(false);
     // manete (fica onde soltar)
     const te = this.thrEl;
@@ -670,12 +670,22 @@ export class Hud {
         (this.q('[data-c="brg"]') as HTMLElement).style.transform = `rotate(${f.brg}rad)`;
       }
       const fb = this.q('[data-flaps] span');
+      // compacto (ícone + número/seta): cabe acima da manete sem cobrir as telas do painel
       const ft = t('voo.f.flaps', 'Flape {n}', { n: f.flaps });
-      if (fb.textContent !== ft) fb.textContent = ft;
+      if (fb.textContent !== String(f.flaps)) {
+        fb.textContent = String(f.flaps);
+        (fb.parentElement as HTMLElement).title = ft;
+        (fb.parentElement as HTMLElement).setAttribute('aria-label', ft);
+      }
       const gb = this.q('[data-gear]');
       const gt = s.gearStuck ? t('voo.f.gearStuck', 'Trem travado') : f.gear ? t('voo.f.gearIsDown', 'Trem: baixado') : t('voo.f.gearIsUp', 'Trem: recolhido');
       const gs = gb.querySelector('span')!;
-      if (gs.textContent !== gt) gs.textContent = gt;
+      const gv = s.gearStuck ? '!' : f.gear ? '▼' : '▲';
+      if (gs.textContent !== gv) {
+        gs.textContent = gv;
+        gb.title = gt;
+        gb.setAttribute('aria-label', gt);
+      }
       gb.classList.toggle('warn', (s.phase === 'final' && !f.gear && f.alt < 600) || s.gearStuck);
       // flapes e trem só fazem sentido na descida/aproximação
       const late = s.phase !== 'cruise' || s.gearStuck;
