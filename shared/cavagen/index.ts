@@ -64,7 +64,9 @@ const MATS: Record<string, { mat: ObjMat; col?: ColorName }> = {
   borracha: { mat: 'rubber' }, rubber: { mat: 'rubber' }, plastico: { mat: 'plastic' }, plastic: { mat: 'plastic' }, pelucia: { mat: 'rubber' }, algodao: { mat: 'rubber', col: 'white' }, papel: { mat: 'plastic', col: 'white' }, paper: { mat: 'plastic', col: 'white' }, lego: { mat: 'plastic' },
   neon: { mat: 'glow' }, luminoso: { mat: 'glow' }, luminosa: { mat: 'glow' }, brilhante: { mat: 'glow' }, glowing: { mat: 'glow' }, fosforescente: { mat: 'glow' }, radiante: { mat: 'glow' }, magico: { mat: 'glow' }, magica: { mat: 'glow' }, magic: { mat: 'glow' }, luz: { mat: 'glow', col: 'yellow' }, fogo: { mat: 'glow', col: 'orange' }, lava: { mat: 'glow', col: 'orange' }, eletrico: { mat: 'glow', col: 'yellow' }, eletrica: { mat: 'glow', col: 'yellow' },
 };
-const RAINBOW = new Set(['colorido', 'colorida', 'coloridos', 'coloridas', 'multicolor', 'rainbow', 'arcoiris', 'arco iris', 'arco-iris', 'colorful', 'colores', 'listrado', 'listrada', 'striped']);
+const RAINBOW = new Set(['colorido', 'colorida', 'coloridos', 'coloridas', 'multicolor', 'rainbow', 'arcoiris', 'arco iris', 'arco-iris', 'colorful', 'colores']);
+/** padrões: "de bolinhas", "listrado" */
+const PATTERN: Record<string, 'spots' | 'stripes'> = { bolinhas: 'spots', pintado: 'spots', pintada: 'spots', pintadinho: 'spots', pintadinha: 'spots', manchado: 'spots', manchada: 'spots', spotted: 'spots', dots: 'spots', dotted: 'spots', poa: 'spots', listrado: 'stripes', listrada: 'stripes', listras: 'stripes', listradinho: 'stripes', striped: 'stripes', stripes: 'stripes', zebrado: 'stripes' };
 const RAINBOW_COLS: ColorName[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
 const SPEED: Record<string, number> = { rapido: 0.3, rapida: 0.3, veloz: 0.35, turbo: 0.4, fast: 0.3, speedy: 0.3, ligeiro: 0.3, ligeira: 0.3, superrapido: 0.45, lento: -0.3, lenta: -0.3, devagar: -0.3, slow: -0.3, preguicoso: -0.25 };
 const COUNT: Record<string, number> = { dois: 2, duas: 2, two: 2, '2': 2, dos: 2, par: 2, tres: 3, three: 3, '3': 3, quatro: 3, four: 3, '4': 3, muitos: 3, muitas: 3, varios: 3, varias: 3, many: 3, lots: 3, duplo: 2, dupla: 2, double: 2, triplo: 3, gemeos: 2, twins: 2 };
@@ -215,7 +217,7 @@ function adjKey(w: string): string {
 }
 function isVocab(w: string): boolean {
   w = adjKey(w);
-  return MOOD.has(w) || w in SIZE || w in SHAPE || w in MATS || w in SPEED || w in COUNT || w in COLOR_WORDS || w in VERBS || w in AMMO || w in CONN || w in ACC || RAINBOW.has(w) || FILLER.has(w);
+  return w in PATTERN || MOOD.has(w) || w in SIZE || w in SHAPE || w in MATS || w in SPEED || w in COUNT || w in COLOR_WORDS || w in VERBS || w in AMMO || w in CONN || w in ACC || RAINBOW.has(w) || FILLER.has(w);
 }
 
 /* ================================ acessórios ("com X") ================================ */
@@ -374,6 +376,8 @@ export interface NounPlan {
   colors?: [ColorName, ColorName, ColorName];
   mat?: ObjMat;
   rainbow?: boolean;
+  /** padrão pedido (bolinhas/listras) */
+  pattern?: 'spots' | 'stripes';
   theme?: string;
   /** acessórios: palavra de acessório (ACC) ou id de conceito */
   with: { id: string; scale: number; color?: ColorName }[];
@@ -491,6 +495,13 @@ export function parsePlan(text: string, opts: GenOpts = {}): { plan: Plan | null
     }
     if (!hit) {
       // adjetivos / verbos / acessórios
+      if (w0 in PATTERN) {
+        const t = mode === 'with' && main?.with.length ? null : cur ?? main;
+        if (t) t.pattern = PATTERN[w0];
+        if (mode === 'of') mode = 'main';
+        known++;
+        continue;
+      }
       if (w in COUNT && !lookupWord(w)) {
         pendCount = COUNT[w];
         known++;
@@ -676,7 +687,7 @@ function prune(parts: GPart[], max: number): GPart[] {
 /** um substantivo do plano → peças (com tema, casco, material, cor, acessórios) */
 function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBehavior[]): { parts: GPart[]; c: Concept; colors: [ColorName, ColorName, ColorName] } {
   const rainbowBridge = (n.rainbow || n.theme === 'arco_iris') && conceptById(n.id)?.build === 'bridge';
-  const { parts: p0, c } = buildConcept(n.id, r, variant, rainbowBridge ? { lanes: true } : undefined);
+  const { parts: p0, c } = buildConcept(n.id, r, variant, rainbowBridge ? { lanes: true } : n.pattern ? { [n.pattern]: true } : undefined);
   let parts = p0;
   // tema "de Y"
   const th = n.theme ? conceptById(n.theme) : undefined;
@@ -748,6 +759,21 @@ function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBeh
     if (!wc) continue;
     const { parts: ap } = buildConcept(wc.id, r, 0);
     for (const q of ap) if (q.col === 'a' || q.col === 'b' || q.col === 'c') q.col = w.color ?? wc.col[q.col === 'a' ? 0 : q.col === 'b' ? 1 : 2];
+    // chapéu/coroa/óculos: vão NA CABEÇA, do tamanho da cabeça
+    const heads = parts.filter((p) => p.tag === 'head');
+    if (['chapeu', 'coroa', 'oculos'].includes(wc.id) && heads.length) {
+      const hb = bboxOf(heads);
+      const ab = bboxOf(ap);
+      const hw = Math.max(hb.max[0] - hb.min[0], 0.3);
+      const k = ((wc.id === 'oculos' ? 1.15 : 0.95) * hw * Math.min(1.6, w.scale)) / Math.max(0.1, ab.max[0] - ab.min[0]);
+      const cx = (hb.min[0] + hb.max[0]) / 2;
+      const ty = wc.id === 'oculos' ? (hb.min[1] + hb.max[1]) / 2 + (hb.max[1] - hb.min[1]) * 0.1 - ((ab.min[1] + ab.max[1]) / 2) * k : hb.max[1] - (hb.max[1] - hb.min[1]) * 0.12 - ab.min[1] * k;
+      const tz = wc.id === 'oculos' ? hb.max[2] - ab.min[2] * k : (hb.min[2] + hb.max[2]) / 2 - ((ab.min[2] + ab.max[2]) / 2) * k;
+      const placed = xform(ap, [k, k, k], [cx - ((ab.min[0] + ab.max[0]) / 2) * k, ty, tz]);
+      for (const q of placed) (q.tag = 'deco'), (q.joint = undefined);
+      parts.push(...placed);
+      continue;
+    }
     const ab = bboxOf(ap);
     const ext = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]);
     const aext = Math.max(ab.max[0] - ab.min[0], ab.max[1] - ab.min[1], ab.max[2] - ab.min[2]);
