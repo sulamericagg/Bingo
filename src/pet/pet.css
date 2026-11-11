@@ -928,6 +928,30 @@
   color: var(--ink);
   border: 3px solid var(--ink) !important;
   box-shadow: 0 4px 0 var(--ink);
+/* ---------- travessuras (sala) ---------- */
+.pet-toys {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+.pet-toys::-webkit-scrollbar {
+  display: none;
+}
+.pet-toy {
+  flex: 0 0 auto;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 2px 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2.5px solid var(--ink) !important;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
   font-size: 10.5px;
   font-weight: 700;
   line-height: 1.05;
@@ -1079,5 +1103,85 @@
     right: 10px;
     width: min(46vw, 440px);
     bottom: calc(64px + var(--sb));
+  transition: transform 0.08s;
+}
+.pet-toy canvas {
+  width: 42px;
+  height: 42px;
+}
+.pet-toy span {
+  min-height: 2.1em;
+  display: flex;
+  align-items: center;
+}
+.pet-toy:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+/* ---------- comida favorita / odiada ---------- */
+.pet-food[data-taste='hate'] {
+  background: linear-gradient(180deg, #eaffd9, #ffffff);
+}
+
+/* ---------- espelho do quarto ---------- */
+.pet-mirror {
+  position: absolute;
+  display: none;
+  background: transparent;
+  border-radius: 50%;
+  z-index: 1;
+}
+.pet-scr[data-room='bed']:not(.night) .pet-mirror {
+  display: block;
+  animation: petMirrorPulse 2.4s ease-in-out infinite;
+}
+@keyframes petMirrorPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 230, 120, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(255, 230, 120, 0.55);
+  }
+}
+.pet-mtease {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, 0) scale(0);
+  transform-origin: 50% 0;
+  white-space: nowrap;
+  background: #ffe27a;
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+  pointer-events: none;
+  transition: transform 0.18s ease-in;
+}
+.pet-mtease::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 12px;
+  height: 12px;
+  background: #ffe27a;
+  border-left: 2.5px solid var(--ink);
+  border-top: 2.5px solid var(--ink);
+  transform: translateX(-50%) rotate(45deg);
+}
+.pet-mtease.show {
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+  transition: transform 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+  animation: petTease 0.9s ease-in-out 0.35s infinite;
+}
+@keyframes petTease {
+  50% {
+    transform: translate(-50%, -3px) scale(1.05) rotate(-2deg);
   }
 }

@@ -868,6 +868,14 @@ export function refreshNavBadges(): void {
     }
     em.classList.toggle('hidden', !v);
     em.textContent = v ? String(v) : '';
+    em.classList.toggle('txt', typeof v === 'string' && !/^\d+$/.test(v));
+    let hot = false;
+    try {
+      hot = !!p?.highlight?.();
+    } catch {
+      hot = false;
+    }
+    b.classList.toggle('hot', hot);
   });
 }
 

@@ -1103,3 +1103,37 @@ body.hub-lowfx .hub-card.active {
 .gh-rot{position:absolute;z-index:40;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:40px;height:40px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(20,8,48,.55);display:flex;align-items:center;justify-content:center;padding:0;opacity:.75}
 .gh-rot:active{transform:translateX(-50%) scale(.92)}
 .gh-rot[hidden]{display:none}
+
+/* novidade na barra inferior (ex.: Bloop Espelho): brilho pulsante + selo de texto */
+.hn-item.hot .hn-ico {
+  border-radius: 14px;
+  animation: hnHot 1.8s ease-in-out infinite;
+}
+@keyframes hnHot {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 226, 122, 0);
+    background: transparent;
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 4px rgba(255, 226, 122, 0.45);
+    background: rgba(255, 226, 122, 0.25);
+  }
+}
+.hn-item .badge.txt {
+  right: calc(50% - 34px);
+  background: #ffcf2e;
+  color: #2a0b5c;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hn-item.hot .hn-ico {
+    animation: none;
+    background: rgba(255, 226, 122, 0.25);
+  }
+}

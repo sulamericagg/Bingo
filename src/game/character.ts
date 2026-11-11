@@ -22,6 +22,8 @@ export interface PlayerPose {
   ly: number;
   /** desliga a "respiração" do idle (ícones estáticos) */
   still?: boolean;
+  /** não desenha olhos/boca (quem chama desenha uma careta própria por cima) */
+  noFace?: boolean;
 }
 
 const PI = Math.PI;
@@ -335,7 +337,7 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
     x.stroke();
   }
 
-  drawFace(x, skin, d, R, p);
+  if (!p.noFace) drawFace(x, skin, d, R, p);
   drawAccessory(x, skin, R, p, false);
   x.restore();
 }

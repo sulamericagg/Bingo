@@ -10,7 +10,7 @@
 import { bus } from '../core/events';
 import { addCoins, addGems } from '../core/economy';
 import { dayNumber, persist, save, type PetSave } from '../core/storage';
-import { foodById, type FoodDef } from './catalog';
+import { foodById, tasteFor, type FoodDef, type Taste } from './catalog';
 
 export type StatKey = 'food' | 'clean' | 'fun' | 'energy';
 export const STATS: StatKey[] = ['food', 'clean', 'fun', 'energy'];
@@ -245,6 +245,9 @@ export function buyFood(id: string): boolean {
 
 export const pantryCount = (id: string): number => save.pet.pantry[id] ?? 0;
 
+/** Gosto do bichinho atual (pela skin) por uma comida. */
+export const taste = (foodId: string): Taste => tasteFor(save.skin, foodId);
+
 /** Come 1 unidade da despensa. Retorna a comida ou null. */
 export function eat(id: string): FoodDef | null {
   const f = foodById(id);
@@ -253,12 +256,47 @@ export function eat(id: string): FoodDef | null {
   const p = save.pet;
   p.pantry[id] = pantryCount(id) - 1;
   const wasHungry = p.food < 60;
-  p.food = clamp(p.food + f.food);
-  p.fun = clamp(p.fun + f.fun);
+  const tt = taste(id);
+  // odiada: cospe metade e fica um pouquinho emburrado; favorita: alegria extra
+  p.food = clamp(p.food + (tt === 'hate' ? f.food * 0.5 : f.food));
+  p.fun = clamp(p.fun + (tt === 'hate' ? -4 : tt === 'fav' ? f.fun + 6 : f.fun));
   p.energy = clamp(p.energy + f.energy);
-  addXp(wasHungry ? 4 + Math.round(f.food / 8) : 1);
+  addXp(tt === 'hate' ? 1 : wasHungry ? 4 + Math.round(f.food / 8) : 1);
   changed(true);
   return f;
+}
+
+/* ---------------------------- travessuras ---------------------------- */
+
+/** "Birra" acumulada (só na memória): sobe com travessuras, desce sozinha. */
+let grump = 0;
+let grumpAt = 0;
+const GRUMP_DECAY = 0.12; // pontos por segundo
+
+/** Nível atual de birra (0..~12). */
+export function grumpiness(now = Date.now()): number {
+  if (grumpAt) grump = Math.max(0, grump - ((now - grumpAt) / 1000) * GRUMP_DECAY);
+  grumpAt = now;
+  return grump;
+}
+
+/**
+ * Uma travessura (cutucão, travesseirada, borrifo...). Pequena queda de
+ * alegria — só humor, nunca saúde/XP — e retorna a birra acumulada.
+ */
+export function mischief(n = 1): number {
+  const g = grumpiness() + n;
+  grump = g;
+  tick();
+  save.pet.fun = clamp(save.pet.fun - n * 0.8);
+  changed();
+  return g;
+}
+
+/** Fez as pazes (carinho depois da birra). */
+export function forgive(): void {
+  grump = 0;
+  grumpAt = Date.now();
 }
 
 /** Banho completo (espuma + enxágue + toalha). */

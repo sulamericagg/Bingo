@@ -26,8 +26,13 @@ import {
   ROOMS,
   SPOTS,
   WET_MAX,
+  drawBlanket,
   drawFood,
   drawLamp,
+  drawMirrorGlint,
+  drawToy,
+  heart,
+  mirrorRect,
   drawPet,
   drawTubFront,
   layoutFor,
@@ -36,8 +41,10 @@ import {
   roomBg,
   sparkle,
   spotAlphaFromClean,
+  type Expr,
   type Layout,
   type Room,
+  type Toy,
 } from './render';
 import { sfx } from './sfx';
 import { closeTalk, layoutTalk, mountTalk, talkActive } from './talk/ui';
@@ -63,8 +70,10 @@ import {
   buyFood,
   cheer,
   eat,
+  forgive,
   health,
   levelInfo,
+  mischief,
   mood,
   pantryCount,
   pet,
@@ -72,10 +81,12 @@ import {
   played,
   polished,
   sleepTick,
+  taste,
   tick,
   worstStat,
   type StatKey,
 } from './state';
+import type { Taste } from './catalog';
 
 /* ---------------------------- estado da tela ---------------------------- */
 
@@ -157,6 +168,38 @@ let zzzCd = 0;
 const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 20, rot: 0, held: false, rest: true };
 let tickleN = 0;
 let giggleCd = 0;
+
+/* caretas e travessuras */
+let exprT = 0;
+let chewTaste: Taste = 'ok';
+/** comida cuspida voando */
+const spit = { shape: '' as FoodDef['shape'] | '', x: 0, y: 0, vx: 0, vy: 0, rot: 0 };
+let yuckT = 0;
+let fireT = 0;
+let runT = 0;
+let runPh = 0;
+let danceT = 0;
+let shakeDryT = 0;
+/** travessura em andamento (brinquedo) */
+const pr = { toy: '' as Toy | '', t: 0, hit: 0, k: 0 };
+/** cutucões recentes (ms) */
+let pokes: number[] = [];
+let pokeSaid = false;
+let tickleBurst = 0;
+let laughCd = 0;
+let sulkT = 0;
+let hideT = 0;
+let blanketK = 0;
+let pending: '' | 'sulk' | 'hide' = '';
+let shakeCoinsAt = 0;
+/** arremesso na cama */
+const toss = { held: false, on: false, x: 0, y: 0, vx: 0, vy: 0 };
+/** dois dedos: esticar/espremer */
+const touches = new Map<number, { x: number; y: number }>();
+const pinch = { on: false, d0: 1, s: 1, horiz: true };
+/** dica do espelho no quarto */
+let teaseCd = 3;
+let teaseT = 0;
 
 /* ============================================================
  *  API
@@ -259,6 +302,8 @@ function build(): void {
       (k) => `<div class="pet-stat" data-k="${k}">${icon(STAT_ICON[k], { size: 22 })}<span class="pet-stat-bar"><i></i></span><small>${esc(statName(k))}</small></div>`,
     ).join('')}</div>
     <div class="pet-say"></div>
+    <button class="pet-mirror" aria-label="${esc(t('pet.mirror.open', 'Bloop Espelho'))}"></button>
+    <div class="pet-mtease">${esc(t('pet.mirror.tease', 'Faça caretas comigo!'))}</div>
     <div class="pet-tray"></div>
     <nav class="pet-tabs">${ROOMS.map(
       (r) => `<button class="pet-tab" data-room="${r}">${icon(ROOM_ICON[r], { size: 30 })}<span>${esc(roomName(r))}</span></button>`,
@@ -293,6 +338,8 @@ function build(): void {
     toast,
     stopRepeat: () => stopVoice(),
   });
+  $('.pet-mirror').addEventListener('click', openMirrorFromPet);
+  $('.pet-mtease').addEventListener('click', openMirrorFromPet);
   onVoiceState(onVoice);
   $('.pet-tab-decor').addEventListener('click', () => {
     sfx.click();
@@ -330,6 +377,15 @@ function resize(): void {
   say.style.top = `${Math.max(150, L.cy - L.R * 2.05)}px`;
   $('.pet-mic').style.top = `${Math.round(L.floorY - 64)}px`;
   layoutTalk(Math.round(L.floorY - 64));
+  const m = mirrorRect(L);
+  const mb = $('.pet-mirror');
+  mb.style.left = `${m.x - 6}px`;
+  mb.style.top = `${m.y - 14}px`;
+  mb.style.width = `${m.w + 12}px`;
+  mb.style.height = `${m.h + 20}px`;
+  const tz = $('.pet-mtease');
+  tz.style.top = `${m.y + m.h + 12}px`;
+  tz.style.left = `${m.x + m.w / 2}px`;
 }
 
 /* ---------------------------- HUD ---------------------------- */
@@ -370,6 +426,7 @@ function say(force = false, text?: string, secs = 3.6): void {
     else if (m.dirty) s = room === 'bath' ? t('pet.say.dirtyB', 'Esfrega a esponja em mim!') : t('pet.say.dirty', 'Tô sujinho, me dá um banho?');
     else if (m.tired) s = room === 'bed' ? t('pet.say.tiredB', 'Apaga a luz pra eu dormir?') : t('pet.say.tired', 'Tô com soninho...');
     else if (m.sad) s = room === 'play' ? t('pet.say.sadP', 'Joga a bola pra mim!') : t('pet.say.sad', 'Vem brincar comigo!');
+    else if (Math.random() < 0.3) s = room === 'bed' ? t('pet.say.mirrorB', 'Vamos fazer caretas no espelho?') : t('pet.say.mirror', 'Tem um espelho mágico no meu quarto!');
     else if (m.happy) s = Math.random() < 0.5 ? t('pet.say.happy1', 'Te adoro!') : t('pet.say.happy2', 'Que dia lindo!');
   }
   if (!s || (!force && s === lastSay)) return;
@@ -393,6 +450,10 @@ function setRoom(r: Room, animate: boolean): void {
   }
   if (room === 'bed' && r !== 'bed') lampOn = true;
   room = r;
+  pr.toy = '';
+  toss.held = toss.on = false;
+  runT = 0;
+  if (r === 'bed') teaseCd = 1.2;
   root!.querySelectorAll<HTMLElement>('.pet-tab[data-room]').forEach((b) => b.classList.toggle('on', b.dataset.room === r));
   root!.dataset.room = r;
   drag.on = false;
@@ -413,6 +474,8 @@ function buildTray(): void {
       const c = el.querySelector('canvas')!;
       const x = c.getContext('2d')!;
       drawFood(x, f.shape, 48, 50, 64);
+      drawTasteBadge(x, taste(f.id));
+      el.dataset.taste = taste(f.id);
       c.addEventListener('pointerdown', (e) => startFoodDrag(e, f));
       el.querySelector('.pet-buy')!.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -451,9 +514,18 @@ function buildTray(): void {
     tray.querySelector('.pet-lamp')!.addEventListener('click', toggleLamp);
     refreshBedTray();
   } else {
-    tray.innerHTML = `<p class="pet-hint">${esc(t('pet.play.hint', 'Faça cócegas esfregando o dedo nele, ou chute a bola!'))}</p>
+    tray.innerHTML = `<p class="pet-hint">${esc(t('pet.play.hint2', 'Cutuque, dê peteleco no nariz, estique com 2 dedos... ou apronte!'))}</p>
+      <div class="pet-toys">${TOYS.map(
+        ([k, label]) => `<button class="pet-toy" data-toy="${k}"><canvas width="88" height="88"></canvas><span>${esc(label())}</span></button>`,
+      ).join('')}</div>
       <div class="pet-row"><button class="pet-btn pet-kick">${icon('ball', { size: 26 })}${esc(t('pet.play.ball', 'Bola!'))}</button>
       <button class="pet-btn pet-big pet-games">${icon('play', { size: 26 })}${esc(t('pet.play.games', 'Jogar minigames'))}</button></div>`;
+    tray.querySelectorAll<HTMLElement>('.pet-toy').forEach((b) => {
+      const k = b.dataset.toy as Toy;
+      const cx2 = b.querySelector('canvas')!.getContext('2d')!;
+      drawToy(cx2, k, 44, k === 'box' ? 50 : 44, 66, 0, 0.4);
+      b.addEventListener('click', () => startPrank(k));
+    });
     tray.querySelector('.pet-kick')!.addEventListener('click', () => kickBall((Math.random() - 0.5) * 500, -1100));
     tray.querySelector('.pet-games')!.addEventListener('click', () => {
       sfx.click();
@@ -461,6 +533,50 @@ function buildTray(): void {
       bus.emit('pet-play-games');
     });
   }
+}
+
+const TOYS: [Toy, () => string][] = [
+  ['pillow', () => t('pet.toy.pillow', 'Travesseiro')],
+  ['spray', () => t('pet.toy.spray', 'Borrifador')],
+  ['cushion', () => t('pet.toy.cushion', 'Almofada de pum')],
+  ['box', () => t('pet.toy.box', 'Caixa-surpresa')],
+  ['spider', () => t('pet.toy.spider', 'Aranha de mentira')],
+  ['shake', () => t('pet.toy.shake', 'Ponta-cabeça')],
+  ['feather', () => t('pet.toy.feather', 'Cócegas!')],
+];
+
+/** Selozinho no canto da comida: coração (favorita) ou carinha verde (odeia). */
+function drawTasteBadge(c: CanvasRenderingContext2D, tt: Taste): void {
+  if (tt === 'ok') return;
+  c.save();
+  c.lineWidth = 2.5;
+  c.strokeStyle = '#2a0b5c';
+  if (tt === 'fav') {
+    c.fillStyle = '#ff3a7a';
+    heart(c, 16, 16, 11);
+    c.stroke();
+  } else {
+    c.fillStyle = '#9be27a';
+    c.beginPath();
+    c.arc(16, 16, 12, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(10, 11);
+    c.lineTo(14, 14);
+    c.lineTo(10, 17);
+    c.moveTo(22, 11);
+    c.lineTo(18, 14);
+    c.lineTo(22, 17);
+    c.stroke();
+    c.fillStyle = '#ff6b9a';
+    c.beginPath();
+    c.ellipse(16, 23, 3.5, 4, 0, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  }
+  c.restore();
 }
 
 function refreshShelf(): void {
@@ -524,9 +640,72 @@ function startChew(): void {
   drag.fly = 0;
   if (!f) return;
   chewFood = f;
+  chewTaste = taste(f.id);
   chewT = 1.35;
   chewBites = 0;
   refreshShelf();
+}
+
+/** Comidas favoritas do bichinho (o balão de fome pensa nelas). */
+function favShape(i: number): FoodDef['shape'] {
+  const favs = FOODS.filter((f) => taste(f.id) === 'fav');
+  return favs.length ? favs[i % favs.length].shape : i % 2 ? 'cake' : 'apple';
+}
+
+/** Expressão por alguns segundos. */
+function face(e: Expr, dur: number): void {
+  v.expr = e;
+  exprT = dur;
+}
+
+/** Comida odiada: cospe, faz careta e fica um pouco emburrado. */
+function reactHated(f: FoodDef): void {
+  const [mx, my] = mouthPos(L, v);
+  chewT = 0;
+  chewFood = null;
+  happyT = 0;
+  tap('medium');
+  if (f.flavor === 'spicy') {
+    face('spicy', 2.8);
+    v.red = 1;
+    fireT = 1.6;
+    runT = 2.6;
+    runPh = 0;
+    sfx.fire();
+    say(true, t('pet.say.spicy', 'Uaaaa! Que ardido!'));
+  } else if (f.flavor === 'sour') {
+    face('sour', 2.3);
+    v.green = 0.25;
+    squashV += 9;
+    sfx.sour();
+    say(true, t('pet.say.sour', 'Azeeeedo!'));
+  } else {
+    face('gross', 2.6);
+    v.green = 1;
+    shakeDryT = 0.7;
+    sfx.spit();
+    yuckT = 0.25;
+    spit.shape = f.shape;
+    spit.x = mx;
+    spit.y = my;
+    spit.vx = (Math.random() < 0.5 ? -1 : 1) * (380 + Math.random() * 140);
+    spit.vy = -620;
+    spit.rot = 0;
+    fx.burst(PK.Crumb, mx, my, 10, 300, 0.9, 5, 11, 160);
+    const lines = [t('pet.say.yuck1', 'Eca!'), t('pet.say.yuck2', 'Blergh! Que nojo!'), t('pet.say.yuck3', 'Isso não é comida!')];
+    say(true, lines[Math.floor(Math.random() * lines.length)]);
+  }
+  annoy(1);
+}
+
+/** Comida favorita: corações e dancinha. */
+function reactFav(): void {
+  face('love', 1.8);
+  danceT = 2.2;
+  happyT = 2.5;
+  sfx.giggle();
+  fx.burst(PK.Heart, L.cx, L.cy - L.R * 0.6, 12, 260, 1.5, 11, 4, 160);
+  say(true, t('pet.say.fav', 'Minha comida favorita!'));
 }
 
 function updateKitchen(dt: number): void {
@@ -543,6 +722,10 @@ function updateKitchen(dt: number): void {
     chewT -= dt;
     const biteEvery = 0.33;
     const b = Math.floor((1.35 - chewT) / biteEvery);
+    if (chewTaste === 'hate' && chewFood && chewT < 1.35 - 0.42) {
+      reactHated(chewFood);
+      return;
+    }
     if (b > chewBites && b <= 3) {
       chewBites = b;
       sfx.chomp();
@@ -551,7 +734,11 @@ function updateKitchen(dt: number): void {
       fx.burst(PK.Crumb, mx, my, 6, 220, 0.9, 4, 2, 140);
     }
     mouthOpenT = Math.sin((1.35 - chewT) * 19) > 0 ? 0.1 : 0;
-    if (chewT <= 0 && before > 0) {
+    if (chewT <= 0 && before > 0 && chewTaste === 'fav') {
+      sfx.yum();
+      chewFood = null;
+      reactFav();
+    } else if (chewT <= 0 && before > 0) {
       sfx.yum();
       happyT = 1.6;
       if (wasHungry) for (let i = 0; i < 6; i++) fx.emit(PK.Heart, L.cx + (Math.random() - 0.5) * L.R, L.cy - L.R * 0.6, (Math.random() - 0.5) * 60, -120 - Math.random() * 60, 1.4, 9, 4);
@@ -1007,6 +1194,497 @@ function drawBall(c: CanvasRenderingContext2D): void {
 }
 
 /* ============================================================
+ *  TRAVESSURAS (cartoon: caretas engraçadas, nunca machuca)
+ * ============================================================ */
+
+/** Conta a travessura; birra alta = emburra / se esconde debaixo do cobertor. */
+function annoy(n: number): void {
+  const g = mischief(n);
+  if (g >= 9) pending = 'hide';
+  else if (g >= 5 && pending !== 'hide' && sulkT <= 0) pending = 'sulk';
+}
+
+function busy(): boolean {
+  return pr.toy !== '' || hideT > 0 || toss.on || toss.held || runT > 0;
+}
+
+function startPrank(k: Toy): void {
+  audio.unlock();
+  tap('light');
+  if (hideT > 0) {
+    sfx.hmph();
+    say(true, t('pet.say.hidden', 'Não tô aqui!'));
+    return;
+  }
+  if (busy() || chewT > 0) return;
+  if (sulkT > 0 && k !== 'feather') {
+    sfx.hmph();
+    say(true, t('pet.say.sulkNo', 'Hmpf! Agora não!'));
+    return;
+  }
+  pr.toy = k;
+  pr.t = 0;
+  pr.hit = 0;
+  pr.k = 0;
+  if (k === 'spray') v.wetN = 0;
+}
+
+/** Posição do brinquedo na tela (px) para a travessura atual. */
+function toyPos(): [number, number, number, number] {
+  const R = L.R;
+  const px = L.cx + v.ox;
+  const py = L.cy - v.hop;
+  const tt = pr.t;
+  switch (pr.toy) {
+    case 'pillow': {
+      // entra pela direita, bate, volta
+      const a = tt < 0.35 ? tt / 0.35 : Math.max(0, 1 - (tt - 0.45) / 0.6);
+      const e = 1 - Math.pow(1 - a, 3);
+      return [L.W + R - e * (L.W - px), py - R * 0.55, R * 1.3, 1.1 - e * 1.6];
+    }
+    case 'spray': {
+      const a = Math.min(1, tt / 0.2) * Math.min(1, Math.max(0, (1.6 - tt) / 0.25));
+      return [L.W + R * 0.6 - a * (L.W - px - R * 1.6), py - R * 0.35, R * 1.05, 0];
+    }
+    case 'cushion': {
+      const a = Math.min(1, tt / 0.45);
+      return [-R + a * (px + R), L.floorY - R * 0.12, R * 1.3, 0];
+    }
+    case 'box': {
+      const a = Math.min(1, tt / 0.3) * Math.min(1, Math.max(0, (3.2 - tt) / 0.3));
+      return [px - R * 1.75, L.floorY - R * 0.32 + (1 - a) * R * 2, R * 0.95, 0];
+    }
+    case 'spider': {
+      const down = Math.min(1, tt / 1.0);
+      const up = tt > 2.4 ? Math.min(1, (tt - 2.4) / 0.8) : 0;
+      const y = -R + (py - R * 1.25 + R) * (1 - Math.pow(1 - down, 2)) * (1 - up) + Math.sin(tt * 4) * R * 0.06;
+      return [px + R * 0.55, y, R * 0.75, 0];
+    }
+    case 'feather': {
+      const a = tt * 7;
+      return [px + Math.cos(a) * R * 0.9, py + R * 0.25 + Math.sin(a * 1.6) * R * 0.45, R * 0.8, 0];
+    }
+    default:
+      return [px, py, R, 0];
+  }
+}
+
+function updatePrank(dt: number): void {
+  if (!pr.toy) return;
+  pr.t += dt;
+  const R = L.R;
+  const tt = pr.t;
+  const px = L.cx + v.ox;
+  const py = L.cy - v.hop;
+  const once = (n: number, at: number): boolean => {
+    if (pr.hit < n && tt >= at) {
+      pr.hit = n;
+      return true;
+    }
+    return false;
+  };
+  let end = 1;
+  switch (pr.toy) {
+    case 'pillow':
+      end = 1.3;
+      if (once(1, 0.35)) {
+        sfx.bonk();
+        tap('heavy');
+        squashV += 10;
+        tiltV -= 4;
+        fx.burst(PK.Star, px + R * 0.4, py - R * 0.7, 10, 320, 0.9, 10, 5, 80);
+        fx.burst(PK.Puff, px + R * 0.6, py - R * 0.5, 6, 160, 0.6, 12, 0);
+        face('dizzy', 1.9);
+        say(true, t('pet.say.bonk', 'Ei!'));
+        annoy(1.5);
+      }
+      break;
+    case 'spray':
+      end = 1.9;
+      for (let i = 0; i < 3; i++)
+        if (once(i + 1, 0.25 + i * 0.28)) {
+          sfx.spray();
+          tap('light');
+          const [tx, ty] = toyPos();
+          for (let k = 0; k < (hiFx ? 14 : 7); k++) fx.emit(PK.Water, tx - R * 0.45, ty - R * 0.18, -420 - Math.random() * 260, -80 + (Math.random() - 0.5) * 160, 0.6, 3 + Math.random() * 2, 3);
+          for (let k = 0; k < 4 && v.wetN < 12; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.sqrt(Math.random()) * 0.75;
+            v.wet[v.wetN * 2] = Math.cos(a) * r;
+            v.wet[v.wetN * 2 + 1] = Math.sin(a) * r;
+            v.wetN++;
+          }
+          face('blub', 1.2);
+          tiltV += 0.6;
+        }
+      if (once(4, 1.15)) {
+        // chacoalha pra secar (feito cachorrinho)
+        shakeDryT = 0.7;
+        v.wetN = 0;
+        fx.burst(PK.Water, px, py, hiFx ? 22 : 10, 520, 0.7, 4, 3, 120);
+        sfx.water();
+        face('annoyed', 1.4);
+        say(true, t('pet.say.wet', 'Brrr! Me molhou todinho!'));
+        annoy(1);
+      }
+      break;
+    case 'cushion':
+      end = 2.6;
+      if (tt > 0.5 && tt < 0.95) v.hop = Math.sin(((tt - 0.5) / 0.45) * Math.PI) * R * 0.35;
+      if (once(1, 0.95)) {
+        sfx.whoopee();
+        tap('medium');
+        squashV += 12;
+        pr.k = 1;
+        for (let k = 0; k < 8; k++) fx.emit(PK.Puff, px + (k % 2 ? 1 : -1) * R * 0.8, L.floorY - R * 0.1, (k % 2 ? 1 : -1) * (120 + Math.random() * 120), -30 - Math.random() * 60, 0.9, 12 + k, 9);
+        face('scared', 0.7);
+      }
+      if (once(2, 1.6)) {
+        face('laugh', 1.6);
+        sfx.laugh();
+        say(true, t('pet.say.whoopee', 'Não fui eu! Hahaha!'));
+        annoy(0.5);
+      }
+      break;
+    case 'box':
+      end = 3.4;
+      if (tt < 1.45) {
+        const n = Math.floor(tt / 0.2);
+        if (n > pr.hit && n < 8) {
+          pr.hit = n;
+          sfx.crank(n - 1);
+        }
+        v.pose.lookX = -1;
+      }
+      if (tt >= 1.5 && pr.k === 0) {
+        pr.k = 0.01;
+        pr.hit = 20;
+        sfx.boing();
+        sfx.eek();
+        tap('heavy');
+        v.fur = 1;
+        face('scared', 1.4);
+        toss.on = true;
+        toss.y = v.hop;
+        toss.x = v.ox;
+        toss.vx = 0;
+        toss.vy = -900;
+        say(true, t('pet.say.boo', 'AAAH!'));
+        annoy(1.5);
+      }
+      if (pr.k > 0) pr.k = Math.min(1, pr.k + dt * 7);
+      if (once(21, 2.7)) {
+        face('laugh', 1.2);
+        sfx.giggle();
+        say(true, t('pet.say.scare', 'Que susto! Hihi'));
+      }
+      break;
+    case 'spider':
+      end = 3.3;
+      if (once(1, 0.95)) {
+        sfx.eek();
+        tap('heavy');
+        v.fur = 1;
+        face('scared', 1.5);
+        toss.on = true;
+        toss.y = v.hop;
+        toss.x = v.ox;
+        toss.vx = (Math.random() < 0.5 ? -1 : 1) * 260;
+        toss.vy = -760;
+        say(true, t('pet.say.spider', 'Uma ARANHA!'));
+        annoy(1.5);
+      }
+      if (once(2, 2.3)) {
+        face('annoyed', 1.2);
+        say(true, t('pet.say.fake', 'Ah... é de brinquedo.'));
+      }
+      break;
+    case 'shake':
+      end = 2.5;
+      if (once(1, 0.05)) {
+        face('scared', 0.6);
+        sfx.boing();
+      }
+      if (tt > 0.4 && tt < 1.9) {
+        if (Math.floor(tt * 8) !== Math.floor((tt - dt) * 8)) {
+          sfx.jingle();
+          tap('light');
+        }
+        if (v.expr !== 'dizzy') face('dizzy', 2.2);
+      }
+      if (once(2, 1.0)) {
+        // às vezes caem moedinhas do bolso (máx. 1x/min)
+        const now = Date.now();
+        if (now - shakeCoinsAt > 60000 && Math.random() < 0.6) {
+          shakeCoinsAt = now;
+          const n = 1 + Math.floor(Math.random() * 3);
+          addCoins(n);
+          sfx.coin();
+          for (let k = 0; k < n * 2; k++) fx.emit(PK.Coin, px + (Math.random() - 0.5) * R, py + R * 0.6, (Math.random() - 0.5) * 300, -200 - Math.random() * 200, 2.2, 8, 0);
+          toast(t('pet.coinsFell', 'Caíram {n} moedinhas do bolso!', { n }), 'coin');
+        } else fx.burst(PK.Crumb, px, py + R * 0.6, 6, 220, 0.8, 4, 2, 100);
+      }
+      if (once(3, 2.0)) {
+        squashV += 8;
+        sfx.boing();
+        say(true, t('pet.say.dizzy', 'Tô vendo estrelas!'));
+        annoy(1.5);
+      }
+      break;
+    case 'feather':
+      end = 2.3;
+      if (Math.floor(tt * 3) !== Math.floor((tt - dt) * 3)) sfx.giggle();
+      face('laugh', 0.4);
+      tiltV += Math.sin(tt * 30) * 0.5;
+      if (Math.random() < 0.15) fx.emit(PK.Heart, px + (Math.random() - 0.5) * R * 1.5, py - R * 0.5, 0, -100, 1, 8, 4);
+      if (once(1, 1.9)) {
+        sfx.laugh();
+        played(4, 1);
+        say(true, t('pet.say.tickle', 'Para, para! Hahaha!'));
+        if (sulkT > 0) {
+          // cócegas desfazem a birra
+          sulkT = 0;
+          forgive();
+        }
+      }
+      break;
+  }
+  if (tt >= end) {
+    pr.toy = '';
+    pr.k = 0;
+  }
+}
+
+/** Pose sobreposta pelas travessuras (depois da mola). */
+function prankPose(dt: number): void {
+  const R = L.R;
+  if (pr.toy === 'shake') {
+    const tt = pr.t;
+    const flip = tt < 0.35 ? tt / 0.35 : tt < 1.9 ? 1 : Math.max(0, 1 - (tt - 1.9) / 0.3);
+    v.tilt = flip * Math.PI;
+    // gira em volta dos pés: compensa 2R para o corpo ficar no ar, de ponta-cabeça
+    v.hop = flip * R * 2.5;
+    v.ox = tt > 0.4 && tt < 1.9 ? Math.sin(tt * 34) * R * 0.18 : v.ox * 0.8;
+  }
+  if (runT > 0) {
+    runT -= dt;
+    runPh += dt * 4.2;
+    const tx = Math.sin(runPh) * L.W * 0.28;
+    v.ox = runT > 0.3 ? tx : v.ox * 0.85;
+    v.hop = Math.abs(Math.sin(runPh * 3)) * R * 0.14;
+    v.tilt = Math.cos(runPh) * 0.25;
+    v.pose.lookX = Math.cos(runPh) > 0 ? 1 : -1;
+  }
+  if (fireT > 0) {
+    fireT -= dt;
+    const [mx, my] = mouthPos(L, v);
+    const dir = Math.cos(runPh) >= 0 ? 1 : -1;
+    for (let k = 0; k < (hiFx ? 3 : 1); k++) fx.emit(PK.Fire, mx + v.ox + dir * R * 0.2, my, dir * (360 + Math.random() * 200), (Math.random() - 0.5) * 90, 0.55, R * 0.09 + Math.random() * R * 0.05, 0);
+    if (Math.random() < 0.2) fx.emit(PK.Puff, L.cx + v.ox, L.cy - v.hop - R, (Math.random() - 0.5) * 40, -120, 0.9, R * 0.12, 0);
+  }
+  if (danceT > 0) {
+    danceT -= dt;
+    v.tilt = Math.sin(danceT * 11) * 0.22;
+    v.hop = Math.abs(Math.sin(danceT * 11)) * R * 0.14;
+  }
+  if (shakeDryT > 0) {
+    shakeDryT -= dt;
+    v.tilt += Math.sin(shakeDryT * 55) * 0.16;
+  }
+  // arremesso / pulo de susto
+  if (toss.on) {
+    toss.vy += 2300 * dt;
+    toss.x += toss.vx * dt;
+    toss.y -= toss.vy * dt;
+    const lim = L.W / 2 - R * 1.05;
+    if (Math.abs(toss.x) > lim) {
+      toss.x = Math.sign(toss.x) * lim;
+      toss.vx *= -0.6;
+    }
+    if (toss.y <= 0 && toss.vy > 0) {
+      toss.y = 0;
+      if (toss.vy > 300) {
+        squashV += Math.min(14, toss.vy / 90);
+        toss.vy *= -0.5;
+        toss.vx *= 0.7;
+        sfx.boing();
+        tap('light');
+        if (room === 'bed') fx.burst(PK.Sparkle, L.cx + toss.x, L.cy + R * 0.9, 6, 200, 0.6, 8, 5, 60);
+      } else {
+        toss.on = false;
+        toss.vy = 0;
+        if (room === 'bed' && !pr.toy) {
+          face('laugh', 1.5);
+          sfx.laugh();
+          say(true, t('pet.say.again', 'De novo! De novo!'));
+          played(3, 1);
+        }
+      }
+    }
+    v.ox = toss.x;
+    v.hop = toss.y;
+  } else if (toss.held) {
+    v.ox = toss.x;
+    v.hop = toss.y;
+    v.tilt = Math.sin(v.t * 12) * 0.12;
+  } else if (pr.toy !== 'shake' && runT <= 0) v.ox *= Math.max(0, 1 - dt * 4);
+  // dois dedos: estica/espreme (gelatina)
+  if (pinch.on) {
+    const s2 = pinch.s;
+    const inv = 1 / Math.sqrt(s2);
+    v.sx = pinch.horiz ? s2 : inv;
+    v.sy = pinch.horiz ? inv : s2;
+    face(s2 < 0.9 ? 'squint' : s2 > 1.2 ? 'scared' : 'blub', 0.3);
+  }
+}
+
+/** Fim de travessura: emburra ou se esconde. */
+function updateGrump(dt: number): void {
+  if (pending && !busy() && chewT <= 0 && !pinch.on) {
+    if (pending === 'hide') {
+      hideT = 4.5;
+      sulkT = 0;
+      sfx.rustle();
+      say(true, t('pet.say.hide', 'Chega! Vou me esconder!'));
+    } else {
+      sulkT = 3.2;
+      face('grumpy', 3.2);
+      sfx.hmph();
+      say(true, t('pet.say.sulk', 'Hmpf! Tô de mal!'));
+    }
+    pending = '';
+  }
+  if (sulkT > 0) {
+    sulkT -= dt;
+    if (v.expr === '' || v.expr === 'grumpy') face('grumpy', Math.max(0.1, sulkT));
+    v.pose.lookX = -1;
+    if (sulkT <= 0) {
+      face('love', 1.2);
+      sfx.chirp();
+      say(true, t('pet.say.makeup', 'Tá bom... vamos brincar de novo?'));
+    }
+  }
+  if (hideT > 0) {
+    hideT -= dt;
+    blanketK = Math.min(1, blanketK + dt * 3);
+    if (hideT <= 0) {
+      forgive();
+      sfx.rustle();
+      face('love', 1.6);
+      happyT = 1.6;
+      fx.burst(PK.Heart, L.cx, L.cy - L.R, 8, 220, 1.3, 10, 4, 120);
+      say(true, t('pet.say.forgive', 'Tá bom, eu te perdoo! Vamos brincar?'));
+    }
+  } else blanketK = Math.max(0, blanketK - dt * 3);
+}
+
+/** Cutucão no corpo (vários rápidos = irritado, depois cai na risada). */
+function poke(): boolean {
+  const now = performance.now();
+  pokes = pokes.filter((x) => now - x < 1600);
+  pokes.push(now);
+  const n = pokes.length;
+  if (n < 3) {
+    pokeSaid = false;
+    return false;
+  }
+  squashV -= 4;
+  tiltV += (Math.random() - 0.5) * 1.2;
+  if (n >= 7) {
+    pokes = [];
+    face('laugh', 1.5);
+    sfx.laugh();
+    say(true, t('pet.say.pokeLaugh', 'Hahaha, tá bom, você venceu!'));
+    played(2);
+    return true;
+  }
+  sfx.poke();
+  tap('light');
+  face('annoyed', 1.1);
+  if (!pokeSaid) {
+    pokeSaid = true;
+    say(true, t('pet.say.poke', 'Ei! Para de cutucar!'));
+  }
+  annoy(0.4);
+  return true;
+}
+
+function onNose(x: number, y: number): boolean {
+  return Math.hypot(x - (L.cx + v.ox), y - (L.cy - v.hop + L.R * 0.12 * v.sy)) < L.R * 0.17;
+}
+
+/** Peteleco no nariz. */
+function flick(): void {
+  sfx.flick();
+  tap('medium');
+  v.nose = 1;
+  tiltV -= 2.2;
+  squashV += 5;
+  face('squint', 1.1);
+  fx.burst(PK.Star, L.cx + v.ox, L.cy - v.hop + L.R * 0.1, 5, 200, 0.5, 7, 5);
+  say(true, t('pet.say.nose', 'Ei, meu nariz!'));
+  annoy(1);
+}
+
+function pinchRelease(): void {
+  if (!pinch.on) return;
+  pinch.on = false;
+  // solta: balança feito gelatina
+  const d = pinch.s - 1;
+  squash = (pinch.horiz ? d : -d) * 9;
+  squashV = (pinch.horiz ? -d : d) * 60;
+  sfx.jelly();
+  tap('medium');
+  face('laugh', 1.1);
+  annoy(0.5);
+}
+
+/* ============================================================
+ *  ESPELHO (abre o Bloop Espelho a partir do quarto)
+ * ============================================================ */
+
+let mirrorWatch = 0;
+function openMirrorFromPet(): void {
+  sfx.click();
+  tap('light');
+  closePet();
+  void import('../mirror/register').then((m) => m.openMirror());
+  // quando o espelho fechar, volta para o quarto
+  clearInterval(mirrorWatch);
+  let seen = false;
+  let tries = 0;
+  mirrorWatch = window.setInterval(() => {
+    const on = !!document.querySelector('.mr-root');
+    if (on) seen = true;
+    if ((seen && !on) || (!seen && ++tries > 40)) {
+      clearInterval(mirrorWatch);
+      if (seen && !isOpen) openPet({ room: 'bed' });
+    }
+  }, 350);
+}
+
+function updateTease(dt: number): void {
+  if (!root) return;
+  const el = $('.pet-mtease');
+  const show = room === 'bed' && lampOn && slideT >= 1;
+  if (!show) {
+    el.classList.remove('show');
+    return;
+  }
+  if (teaseT > 0) {
+    teaseT -= dt;
+    if (teaseT <= 0) el.classList.remove('show');
+  } else {
+    teaseCd -= dt;
+    if (teaseCd <= 0) {
+      teaseT = 4.5;
+      teaseCd = 9 + Math.random() * 6;
+      el.classList.add('show');
+    }
+  }
+}
+
+/* ============================================================
  *  PONTEIRO
  * ============================================================ */
 
@@ -1016,16 +1694,31 @@ function local(e: PointerEvent): [number, number] {
 }
 
 function onPet(x: number, y: number, k = 1.1): boolean {
-  const dx = (x - L.cx) / L.R;
+  const dx = (x - (L.cx + v.ox)) / L.R;
   const dy = (y - (L.cy - v.hop)) / L.R;
   return dx * dx + dy * dy < k * k;
 }
 
 function onDown(e: PointerEvent): void {
   audio.unlock();
-  // segundo dedo não rouba o gesto do primeiro
-  if (ptr.down && e.pointerId !== ptr.id) return;
-  const [x, y] = local(e);
+  const [x0, y0] = local(e);
+  touches.set(e.pointerId, { x: x0, y: y0 });
+  // segundo dedo no bichinho: estica/espreme com dois dedos
+  if (ptr.down && e.pointerId !== ptr.id) {
+    if (touches.size === 2 && !pinch.on && !drag.on && !ball.held && !toss.held && hideT <= 0 && !(room === 'bath' && stage !== 'done') && !v.sleeping && (ptr.onPet || onPet(x0, y0, 1.4))) {
+      const a = touches.get(ptr.id) ?? { x: ptr.x, y: ptr.y };
+      const dx = x0 - a.x;
+      const dy = y0 - a.y;
+      pinch.on = true;
+      pinch.d0 = Math.max(30, Math.hypot(dx, dy));
+      pinch.s = 1;
+      pinch.horiz = Math.abs(dx) >= Math.abs(dy);
+      ptr.moved = 999; // não vira cutucão
+      sfx.squeak();
+    }
+    return;
+  }
+  const [x, y] = [x0, y0];
   ptr.down = true;
   ptr.id = e.pointerId;
   ptr.x = ptr.sx = ptr.lastX = x;
@@ -1045,6 +1738,15 @@ function onDown(e: PointerEvent): void {
 function onMove(e: PointerEvent): void {
   if (!isOpen) return;
   const [x, y] = local(e);
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x, y });
+  if (pinch.on) {
+    const pts = [...touches.values()];
+    if (pts.length >= 2) {
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinch.s = Math.max(0.55, Math.min(1.7, d / pinch.d0));
+    }
+    return;
+  }
   if (drag.on && drag.fly === 0 && e.pointerId === ptr.id) {
     drag.x = x;
     drag.y = y - 30;
@@ -1070,12 +1772,30 @@ function onMove(e: PointerEvent): void {
     ball.y = Math.min(y, L.floorY + 4 - ball.r);
     return;
   }
+  // quarto: pega o bichinho e joga na caminha
+  if (room === 'bed' && lampOn && ptr.onPet && !busy() && hideT <= 0 && !toss.held && ptr.moved > 14) {
+    toss.held = true;
+    face('scared', 0.5);
+    sfx.squeak();
+  }
+  if (toss.held) {
+    toss.x = Math.max(-L.W / 2 + L.R, Math.min(L.W / 2 - L.R, x - L.cx));
+    toss.y = Math.max(0, Math.min(L.cy - L.R * 0.6, L.cy - y));
+    face('scared', 0.4);
+    return;
+  }
   if (room === 'bath') bathRub(x, y, dist);
   else if (ptr.onPet && room === 'play' && dist > 2) tickle(dist);
   else if (ptr.onPet && room !== 'bed' && dist > 3 && ptr.moved > 30) tickle(dist * 0.5);
 }
 
 function onUp(e: PointerEvent): void {
+  touches.delete(e.pointerId);
+  if (pinch.on && touches.size < 2) {
+    pinchRelease();
+    if (e.pointerId === ptr.id) ptr.down = false;
+    return;
+  }
   if (!isOpen) return;
   if (e.type === 'pointercancel' && e.pointerId === ptr.id) {
     // o navegador assumiu o gesto (ex.: rolar a prateleira)
@@ -1093,6 +1813,14 @@ function onUp(e: PointerEvent): void {
   }
   if (!ptr.down || e.pointerId !== ptr.id) return;
   ptr.down = false;
+  if (toss.held) {
+    toss.held = false;
+    toss.on = true;
+    toss.vx = Math.max(-900, Math.min(900, ptr.vx * 0.6));
+    toss.vy = Math.max(-1400, Math.min(400, ptr.vy * 0.6));
+    sfx.boing();
+    return;
+  }
   if (ball.held) {
     ball.held = false;
     const quick = performance.now() - ptr.t0 < 220 && ptr.moved < 10;
@@ -1101,7 +1829,16 @@ function onUp(e: PointerEvent): void {
     return;
   }
   if (trySwipe(e)) return;
-  if (ptr.moved < 10 && ptr.onPet && !(room === 'bath' && stage !== 'done')) boop();
+  if (ptr.moved < 10 && hideT > 0 && onPet(ptr.x, ptr.y, 1.6)) {
+    sfx.hmph();
+    say(true, t('pet.say.hidden', 'Não tô aqui!'));
+    return;
+  }
+  if (ptr.moved < 10 && ptr.onPet && !(room === 'bath' && stage !== 'done')) {
+    if (busy()) return;
+    if (!(room === 'bed' && !lampOn) && onNose(ptr.x, ptr.y)) flick();
+    else boop();
+  }
 }
 
 /** Troca de cômodo só com um "peteleco" rápido e decidido, começando longe do
@@ -1206,6 +1943,7 @@ function boop(): void {
     fx.emit(PK.Zzz, L.cx + L.R * 0.6, L.cy - L.R * 0.8, 20, -50, 1.5, 22, 6);
     return;
   }
+  if (poke()) return;
   squashV -= 5;
   hopPhase = 0.001;
   if (voiceState() !== 'playing') Math.random() < 0.6 ? sfx.chirp() : sfx.giggle();
@@ -1216,7 +1954,19 @@ function boop(): void {
 }
 
 function tickle(dist: number): void {
+  if (hideT > 0 || busy()) return;
   tickleN += dist;
+  tickleBurst += dist;
+  if (tickleBurst > 700 && laughCd <= 0) {
+    // ataque de cócegas: gargalhada
+    laughCd = 2.2;
+    tickleBurst = 0;
+    face('laugh', 1.6);
+    sfx.laugh();
+    squashV += 4;
+    say(true, t('pet.say.tickle', 'Para, para! Hahaha!'));
+    played(2, 1);
+  }
   tiltV += (Math.random() - 0.5) * 0.6;
   happyT = Math.max(happyT, 0.6);
   if (giggleCd <= 0) {
@@ -1312,6 +2062,27 @@ function update(dt: number): void {
   updateTalkMood(dt);
   if (slideT < 1) slideT = Math.min(1, slideT + dt / 0.32);
   giggleCd -= dt;
+  laughCd -= dt;
+  tickleBurst *= Math.max(0, 1 - dt * 1.2);
+  if (exprT > 0) {
+    exprT -= dt;
+    if (exprT <= 0) v.expr = '';
+  }
+  v.green = Math.max(0, v.green - dt * 0.4);
+  v.red = Math.max(0, v.red - dt * 0.35);
+  v.fur = Math.max(0, v.fur - dt * 0.7);
+  v.nose = Math.max(0, v.nose - dt * 0.5);
+  if (yuckT > 0) {
+    yuckT -= dt;
+    if (yuckT <= 0) sfx.yuck();
+  }
+  if (spit.shape) {
+    spit.vy += 1800 * dt;
+    spit.x += spit.vx * dt;
+    spit.y += spit.vy * dt;
+    spit.rot += dt * 12 * Math.sign(spit.vx);
+    if (spit.y > L.H + 80 || spit.x < -80 || spit.x > L.W + 80) spit.shape = '';
+  }
   v.sleeping = room === 'bed' && !lampOn;
   if (v.sleeping) {
     sleepAcc += dt;
@@ -1434,7 +2205,7 @@ function update(dt: number): void {
   pose.mood = m;
   pose.blink = blink;
   v.drool = v.m.hungry || foodNear ? Math.min(1, v.drool + dt * 2) : Math.max(0, v.drool - dt * 3);
-  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping ? (Math.floor(v.t / 4) % 2 ? 'cake' : 'apple') : null;
+  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping && !v.expr && !pr.toy && hideT <= 0 ? favShape(Math.floor(v.t / 4)) : null;
 
   // pulinhos quando feliz
   if (v.m.happy && !v.sleeping) {
@@ -1458,9 +2229,10 @@ function update(dt: number): void {
   tiltV += (-v.tilt * 60 - tiltV * 6) * dt;
   v.tilt += tiltV * dt;
   if (v.m.sad && !v.sleeping) v.tilt += (Math.sin(v.t * 0.8) * 0.04 - v.tilt) * dt;
+  prankPose(dt);
 
   // ---------- partículas de estado ----------
-  if (v.m.sad && !v.sleeping && pose.mood !== 'happy') {
+  if (v.m.sad && !v.sleeping && pose.mood !== 'happy' && !v.expr) {
     tearCd -= dt;
     if (tearCd <= 0) {
       tearCd = 0.8 + Math.random() * 0.6;
@@ -1487,6 +2259,9 @@ function update(dt: number): void {
   if (room === 'kitchen') updateKitchen(dt);
   else if (room === 'bath') updateBath(dt);
   else if (room === 'play') updateBall(dt);
+  updatePrank(dt);
+  updateGrump(dt);
+  updateTease(dt);
   fx.update(dt);
   if (room === 'bath' && stage !== 'done' && root) {
     const bar = root.querySelector<HTMLElement>('.pet-prog i');
@@ -1521,9 +2296,44 @@ function render(): void {
   } else c.drawImage(roomBg(room, L, dec, dpr), 0, 0, L.W, L.H);
 
   if (room === 'bed') drawLamp(c, L, lampOn, hiFx);
+  if (room === 'bed' && lampOn && slideT >= 1) drawMirrorGlint(c, L, v.t);
   if (room === 'play') drawBall(c);
+  if (pr.toy === 'cushion' || pr.toy === 'box') {
+    const [tx, ty, ts] = toyPos();
+    if (pr.toy === 'cushion') {
+      c.save();
+      c.translate(tx, ty);
+      c.scale(1 + pr.k * 0.25, 1 - pr.k * 0.45);
+      drawToy(c, 'cushion', 0, 0, ts);
+      c.restore();
+    } else drawToy(c, 'box', tx, ty, ts, pr.k, v.t);
+  }
 
   drawPet(c, skinById(save.skin), L, v, hiFx);
+  if (blanketK > 0) drawBlanket(c, L, blanketK, v.t, Math.sin(v.t * 1.3) > -0.2);
+  if (pr.toy && pr.toy !== 'cushion' && pr.toy !== 'box' && pr.toy !== 'shake') {
+    const [tx, ty, ts, ang] = toyPos();
+    if (pr.toy === 'spider') {
+      c.strokeStyle = 'rgba(255,255,255,0.9)';
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(tx, 0);
+      c.lineTo(tx, ty);
+      c.stroke();
+    }
+    c.save();
+    c.translate(tx, ty);
+    c.rotate(ang);
+    drawToy(c, pr.toy, 0, 0, ts, 0, v.t);
+    c.restore();
+  }
+  if (spit.shape) {
+    c.save();
+    c.translate(spit.x, spit.y);
+    c.rotate(spit.rot);
+    drawFood(c, spit.shape, 0, 0, L.R * 0.45);
+    c.restore();
+  }
 
   if (room === 'bath') drawTubFront(c, L, v.t);
   if (room === 'kitchen') {
@@ -1740,4 +2550,29 @@ export const __petDebug = {
   layout: () => L,
   health,
   cheer,
+  prank: (k: Toy) => startPrank(k),
+  give(id: string, n = 1) {
+    pet().pantry[id] = (pet().pantry[id] ?? 0) + n;
+    refreshShelf();
+  },
+  poke: () => boop(),
+  flick,
+  annoy,
+  pinch(s2: number, horiz = true) {
+    pinch.on = true;
+    pinch.s = s2;
+    pinch.horiz = horiz;
+    pinch.d0 = 100;
+  },
+  unpinch: pinchRelease,
+  toss(vx: number, vy: number) {
+    toss.on = true;
+    toss.x = v.ox;
+    toss.y = L.R * 1.5;
+    toss.vx = vx;
+    toss.vy = vy;
+  },
+  tickleAttack: () => tickle(800),
+  openMirror: openMirrorFromPet,
+  state: () => ({ expr: v.expr, hideT, sulkT, prank: pr.toy }),
 };
