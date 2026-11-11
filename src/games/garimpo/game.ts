@@ -38,6 +38,7 @@ import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, myAvatar, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { takePendingGarimpo } from './pending';
+import { BAG, CAMP_MONEY, CampBuild, freshCamp } from './start/camp'; // CAMP: começo do zero + obras
 import { consumePartySeat, partySeat } from '../../party/contract';
 import { reportPlaying, stopPlaying } from '../../party/join';
 import { me as socialMe } from '../../social/net';
@@ -195,6 +196,17 @@ export class Garimpo implements MiniGameHandle, BotHost {
   rp: RpLayer | null = null;
   /** CONSERTOS: quebras, desgaste, peças e minijogos (repair/index.ts) */
   repairs: Repairs | null = null;
+  /** CAMP: começo do zero (save novo): objetivos, construções e obras (start/camp.ts) */
+  camp: CampBuild | null = null;
+  /** CAMP: construção pronta? (save antigo = tudo pronto; carrinho e calha contam) */
+  has(id: string): boolean {
+    return !this.camp || this.camp.has(id);
+  }
+  get renderer(): THREE.WebGLRenderer | null {
+    return this.r;
+  }
+  /** abertura tocando (o jogo espera) */
+  private introOn = false;
   private lobby: LobbyHandle | null = null;
   private netChip: HTMLDivElement | null = null;
   /** convidado: carrinhos/mineiros da mina do anfitrião (só para a loja) */
@@ -244,7 +256,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       .join('');
     d.innerHTML = online
       ? `<h1>${IC.friends}${esc(t('gb.mp.title', 'Garimpar com amigos'))}</h1><div class="gb-sub">${esc(t('gb.mp.pick', 'Escolha o garimpo: seus amigos jogam nele com você'))}</div><div class="gb-row">${cards}</div><button class="gb-btn ghost" data-solo>${esc(t('gb.back', 'Voltar'))}</button>`
-      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button></div><div class="gb-menuinv"></div><button class="gb-codelink" data-joinui>${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
+      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn ghost" data-intro>${IC.film}${esc(t('gb.c.intro', 'Abertura'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button></div><div class="gb-menuinv"></div><button class="gb-codelink" data-joinui>${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
     this.wrap.appendChild(d);
     // convites de amigos chegam aqui também
     if (!online) {
@@ -311,6 +323,13 @@ export class Garimpo implements MiniGameHandle, BotHost {
         this.menu();
         return;
       }
+      if (el.closest('[data-intro]')) {
+        // CAMP: rever a abertura (mundo de exemplo)
+        sfx.click();
+        d.remove();
+        void import('./start/cinematic').then((c) => c.playStandalone(this.wrap, this.gov.tier, () => this.menu()));
+        return;
+      }
       if (el.closest('[data-joinui]')) {
         sfx.click();
         d.remove();
@@ -357,6 +376,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
         this.popOv = null;
         d.remove();
         const s = freshSlot((Math.random() * 1e9) | 0, diff);
+        // CAMP: começo do zero — acampamento vazio, pouco dinheiro
+        s.camp = freshCamp();
+        s.money = CAMP_MONEY[diff];
         writeSlot(i, s);
         void this.start(i, s).then(() => {
           if (online) void this.goOnline();
@@ -572,6 +594,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.fireT = 1e9;
     s.exportT = 1e9;
     s.tips = ['gold1'];
+    // CAMP: o acampamento do anfitrião (começo do zero) — ausente = tudo pronto
+    if (init.cb) s.camp = { v: 1, built: init.cb, log: {}, intro: true };
     s.machines = init.ms.filter((a) => KINDS[a[0]]).map((a) => ({ kind: KINDS[a[0]], x: a[1], z: a[2], yaw: a[3], vol: a[4], gold: a[5] }));
     s.worker = { x: init.x, z: init.z, yaw: init.yaw, vol: 0, gold: 0 };
     const mp = new MpGuest(this, net);
@@ -610,6 +634,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.exit();
   }
   barrowCap(): number {
+    if (this.camp && !this.camp.has('barrow')) return BAG; // CAMP: baldinho
     return BARROW[this.sv?.upg.barrow ?? 0];
   }
   shovelPow(): number {
@@ -649,6 +674,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.slot = slot;
     this.sv = s;
     const tier = this.gov.tier;
+    const guest0 = this.guest;
     const cv = document.createElement('canvas');
     cv.className = 'gb-cv';
     this.wrap.appendChild(cv);
@@ -672,6 +698,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       sfx: (n) => this.sound(n),
       others: this.ms,
     };
+    // CAMP: começo do zero (save novo) — esconde o que ainda não foi construído
+    if (s.camp) this.camp = new CampBuild(this, s, s.camp, guest0);
     // máquinas do save
     const m = w.map;
     for (const ms of s.machines) {
@@ -684,9 +712,14 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const wk = new Worker(guest ? PCOL[color] : undefined, 'me'); // PAPER: 'me' = meu Bloop
     wk.ghost = guest;
     this.worker = wk;
-    wk.cargo.cap = BARROW[s.upg.barrow];
+    // CAMP: sem carrinho ainda (pá + baldinho)
+    if (this.camp && !this.camp.has('barrow')) wk.setNoBarrow(true);
+    wk.cargo.cap = this.barrowCap();
     wk.digPow = SHOVEL[s.upg.shovel];
-    if (s.worker.x < 0) {
+    if (s.worker.x < 0 && this.camp) {
+      const sp = this.camp.site.lay.spawn;
+      wk.place(sp.x, sp.z, sp.yaw, w);
+    } else if (s.worker.x < 0) {
       const d0 = m.deposits[0];
       const a = Math.atan2(d0.x - m.camp.x, d0.z - m.camp.z);
       wk.place(m.camp.x + Math.sin(a) * 8, m.camp.z + Math.cos(a) * 8, a, w);
@@ -695,7 +728,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     wk.cargo.vol = s.worker.vol;
     wk.cargo.gold = s.worker.gold;
     w.scene.add(wk.group);
-    if (s.barrow && s.barrow.length >= 3 && !guest) wk.dropAt(s.barrow[0], s.barrow[1], s.barrow[2]); // CARRINHO largado
+    if (s.barrow && s.barrow.length >= 3 && !guest && !wk.noBarrow) wk.dropAt(s.barrow[0], s.barrow[1], s.barrow[2]); // CARRINHO largado
     this.cur = wk;
     if (s.driving >= 0 && this.ms[s.driving] && !guest) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
@@ -738,6 +771,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       },
     });
     this.hud = hud;
+    this.camp?.attachUi(); // CAMP
     this.rp = new RpLayer(this); // RP
     hud.setRainIcon(this.rainOn);
     hud.setKind(this.cur.kind, s.expert);
@@ -757,10 +791,37 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.raf = requestAnimationFrame(this.loop);
     audio.engineStart();
     this.engineOn = true;
-    if (!s.tips.includes('start')) {
+    // CAMP: abertura (1ª vez) — depois os objetivos falam
+    if (this.camp && !this.camp.st.intro && !guest) {
+      this.camp.st.intro = true;
+      void this.playIntro();
+    } else if (!this.camp && !s.tips.includes('start')) {
       s.tips.push('start');
       window.setTimeout(() => this.say(t('gb.tip.start', 'Ache ouro com o detector, cave com a pá e leve até a lavadora!'), 'detector'), 1200);
     }
+  }
+
+  /** CAMP: abertura usando o próprio mundo do save (o jogo espera; HUD escondido) */
+  private async playIntro(): Promise<void> {
+    if (!this.w || !this.r || !this.camp) return;
+    this.introOn = true;
+    this.paused = true;
+    this.hud?.setVisible(false);
+    try {
+      const c = await import('./start/cinematic');
+      if (!this.w || !this.r || !this.camp) return;
+      await c.playInGame(this.wrap, this.r, this.w, this.camp.site, this.gov.tier, this.worker ? [this.worker.group] : []);
+    } catch (e) {
+      console.warn('[garimpo] abertura', e);
+    }
+    this.introOn = false;
+    if (!this.w || !this.sv) return;
+    this.paused = !!this.wrap.querySelector('[data-ov]');
+    this.last = performance.now();
+    this.hud?.setVisible(true);
+    this.resize();
+    this.snapCam();
+    this.persist();
   }
 
   addMachine(kind: Kind, x: number, z: number, yaw: number): Machine {
@@ -988,7 +1049,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       w.near(x, z, (c) => {
         if (Math.hypot(c.x - x, c.z - z) < c.r + 3.2) ok = false;
       });
-      for (const b of w.blockers) if (Math.hypot(b.x - x, b.z - z) < b.r + 2.5) ok = false;
+      for (const b of w.blockers) if (!b.off && Math.hypot(b.x - x, b.z - z) < b.r + 2.5) ok = false;
       return ok && w.waterY(x, z) < w.T.heightAt(x, z);
     };
     for (const oz of [13, 21, 29])
@@ -1012,7 +1073,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   };
   receiverAt(x: number, y: number, z: number, self: Machine | null, slack: number, drop = false): Receiver | null {
     const hp = this.hopperPos(_v2);
-    if (Math.hypot(x - hp.x, z - hp.z) < 2.4 + slack && y > hp.y - 2 && y < hp.y + 7) return this.hopper;
+    if (this.w!.built('plant') && Math.hypot(x - hp.x, z - hp.z) < 2.4 + slack && y > hp.y - 2 && y < hp.y + 7) return this.hopper;
     const pr = this.proc?.receiverAt(x, y, z, slack);
     if (pr) return pr;
     for (const m of this.ms) {
@@ -1164,7 +1225,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const hud = this.hud!;
     this.time += dt;
     s.played += dt;
-    const ctl = this.paused ? this.idleCtl : hud.read(dt);
+    const ctl = this.paused || this.camp?.busy ? this.idleCtl : hud.read(dt);
     this.rp?.pre(dt, ctl); // RP
     this.syncView();
     this.env.camYaw = this.camYaw;
@@ -1239,10 +1300,12 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (cur.veh) audio.engineSet(Math.max(cur.veh.input.gas, cur.veh.input.brake), Math.min(1, cur.veh.rpm));
     else if (cur instanceof Heli) audio.engineSet(0.6, 0.9);
     else audio.engineSet(0, 0);
-    if (this.inMine) this.mineCamera(dt);
+    this.camp?.step(dt); // CAMP: objetivos e obra
+    if (this.camp?.camera(dt, w.camera)) this.footFpOff();
+    else if (this.inMine) this.mineCamera(dt);
     else this.camera(dt);
     // pickup descarregando na moega
-    if (cur instanceof Pickup && ctl.act2 && cur.pos.distanceTo(this.hopperPos(_v)) < 9) cur.unload(dt, this.hopper);
+    if (cur instanceof Pickup && ctl.act2 && w.built('plant') && cur.pos.distanceTo(this.hopperPos(_v)) < 9) cur.unload(dt, this.hopper);
     this.present(dt);
     // autosave
     this.saveT += dt;
@@ -1283,7 +1346,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (cur.veh) audio.engineSet(Math.max(ctl.gas, ctl.brake), Math.min(1, 0.25 + Math.abs(cur.veh.speed) / 9));
     else if (cur instanceof Heli) audio.engineSet(0.6, 0.9);
     else audio.engineSet(0, 0);
-    this.camera(dt);
+    this.camp?.step(dt); // CAMP (convidado: só o visual das obras)
+    if (this.camp?.camera(dt, this.w!.camera)) this.footFpOff();
+    else this.camera(dt);
     this.plantSpin = mp.plantSpin;
     this.plantVisual(dt);
     this.proc?.step(dt);
@@ -1315,8 +1380,10 @@ export class Garimpo implements MiniGameHandle, BotHost {
     // seta para o objetivo
     let arrow: { a: number; icon: IconKey; dist: number } | null = null;
     const fp = this.mp instanceof MpGuest ? this.mp.fireTgt : this.fire!.target();
+    const ca = fp ? undefined : this.camp?.arrow(); // CAMP: objetivo do começo do zero
     if (fp) arrow = this.arrowTo(fp.x, fp.z, 'fire');
-    else if (cur.fill > 0.9) {
+    else if (ca !== undefined) arrow = ca ? this.arrowTo(ca.x, ca.z, ca.icon) : null;
+    else if (cur.fill > 0.9 && w.built('plant')) {
       this.hopperPos(_v);
       arrow = this.arrowTo(_v.x, _v.z, 'plant');
     } else if (!s.tips.includes('gold1') && cur === this.worker) {
@@ -1326,7 +1393,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     if (!s.tips.includes('gold1') && s.stock > 0) s.tips.push('gold1');
     const hp = this.hopperPos(_v);
-    const nearHopper = cur.pos.distanceTo(hp) < 9;
+    const nearHopper = w.built('plant') && cur.pos.distanceTo(hp) < 9;
     hud.update({
       money: s.money,
       stock: s.stock,
@@ -1340,7 +1407,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       canEnter: this.inMine ? Math.hypot(this.ug!.pos.x - this.ug!.cx(this.ug!.entrance), this.ug!.pos.z - this.ug!.cz(this.ug!.entrance)) < UGCS * 2.3 : cur === this.worker ? !!this.nearMachine() || this.nearPortal() : false,
       hot2: (nearHopper && cur.fill > 0.01 && (cur !== this.worker || this.worker.held)) || (cur === this.worker && this.worker.held && cur.fill > 0.01 && !!this.bedNear()),
       water: cur === this.worker && (this.worker!.water > 0 || this.atWater()),
-      barrow: cur === this.worker && !this.inMine ? (this.worker!.held ? 'drop' : this.worker!.canGrab() ? 'grab' : 'far') : null,
+      barrow: cur === this.worker && !this.inMine && !this.worker!.noBarrow ? (this.worker!.held ? 'drop' : this.worker!.canGrab() ? 'grab' : 'far') : null,
     });
     // partículas, terreno
     w.clods.update(dt, w.T, w.waterY);
@@ -1371,7 +1438,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   /* ---------------- CARRINHO: largar / pegar ---------------- */
   private toggleBarrow(): void {
     const wk = this.worker;
-    if (!wk || this.cur !== wk || this.inMine) return;
+    if (!wk || this.cur !== wk || this.inMine || wk.noBarrow) return;
     if (wk.held) {
       wk.dropBarrow();
       sfx.thunk();
@@ -1406,7 +1473,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const wk = this.worker;
     const foot = this.cur === wk;
     if (wk) {
-      wk.fp = foot && v === 'fp' && !this.inMine;
+      wk.fp = foot && v === 'fp' && !this.inMine && !this.camp?.busy;
       wk.tank = foot && v !== 'tp';
     }
     if (this.ug) {
@@ -1653,6 +1720,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const e = this.exp;
     const path = w.map.gateRoad;
     if (e.st === 0) {
+      // CAMP: sem galpão do ouro o caminhão não vem (vende-se no barco)
+      if (!w.built('stock')) return;
       s.exportT -= dt;
       if (s.exportT <= 0) {
         s.exportT = EXPORT_EVERY[s.diff];
@@ -1818,7 +1887,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       const dz = this.camPos.z - tz;
       const L2 = dx * dx + dz * dz || 1;
       for (const b of w.blockers) {
-        if (this.camPos.y > b.y + 0.5) continue;
+        if (b.off || this.camPos.y > b.y + 0.5) continue;
         // entrada do segmento alvo→câmera no círculo do prédio
         const fx = tx - b.x;
         const fz = tz - b.z;
@@ -1928,7 +1997,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
 
   /* ============================== telas por cima ============================== */
-  private overlay(html: string, cls = ''): HTMLDivElement {
+  overlay(html: string, cls = ''): HTMLDivElement {
     this.closeOverlays();
     this.paused = true;
     this.hud?.setVisible(false);
@@ -1939,6 +2008,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.wrap.appendChild(d);
     this.popOv = pushBack(() => this.closeOverlays());
     return d;
+  }
+  closeOv(): void {
+    this.closeOverlays();
   }
   private closeOverlays(): void {
     this.lobby?.dispose();
@@ -2000,7 +2072,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}${this.proc ? this.proc.shopHtml(s.money) : ''}${this.repairs ? this.repairs.shopHtml(s.money) : ''}</div>`,
+      <div class="gb-shopgrid">${this.shopHtml(item)}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -2019,6 +2091,24 @@ export class Garimpo implements MiniGameHandle, BotHost {
       }
       this.openShop();
     });
+  }
+  /** loja: CAMP — no começo do zero, cada coisa aparece quando o prédio dela existe */
+  private shopHtml(item: (it: ShopItem, isUp: boolean) => string): string {
+    const s = this.sv!;
+    const gar = this.has('garage');
+    const pl = this.has('plant');
+    const ups = UPGRADES.filter((u) => u.id === 'shovel' || (u.id === 'barrow' && this.has('barrow')) || (u.id === 'plant' && pl));
+    const helpers = HELPERS.filter((h) => (h.id === 'driver' ? gar : pl));
+    let h = '';
+    if (gar) h += MACHINES.map((m) => item(m, false)).join('');
+    h += helpers.map((u) => item(u, true)).join('');
+    h += ups.map((u) => item(u, true)).join('');
+    if (gar) h += MINE.map((u) => item(u, true)).join('');
+    if (this.water && !this.guest && pl) h += this.water.shopHtml(s.money);
+    if (this.proc) h += this.proc.shopHtml(s.money);
+    if (this.repairs && gar) h += this.repairs.shopHtml(s.money);
+    if (!gar && this.camp) h += `<div class="gb-item owned" style="opacity:.6"><div class="gb-ico">${IC.lock}</div><span>${esc(t('gb.c.needGarage', 'Máquinas: construa a garagem'))}</span></div>`;
+    return h;
   }
   buy(id: string): boolean {
     const s = this.sv!;
@@ -2054,6 +2144,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       if (id === 'mine') {
         s.mineOpen = true;
         this.openMine();
+        this.camp?.portalFx(); // CAMP: obra do portal da mina
         this.say(t('gb.mineOpen', 'A mina abriu! A entrada fica no pátio da mina, na montanha.'));
       } else if (id === 'cart') this.ug!.addCart();
       else this.ug!.addBot();
@@ -2086,7 +2177,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       if (lvl >= ui.price.length || s.money < ui.price[lvl]) return false;
       s.money -= ui.price[lvl];
       s.upg[k] = lvl + 1;
-      this.worker!.cargo.cap = BARROW[s.upg.barrow];
+      this.worker!.cargo.cap = this.barrowCap();
       this.worker!.digPow = SHOVEL[s.upg.shovel];
       this.host?.applyUpgrades();
       audio.cash();
@@ -2179,6 +2270,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.proc = null;
     this.repairs?.dispose(); // CONSERTOS
     this.repairs = null;
+    this.camp?.dispose(); // CAMP
+    this.camp = null;
     this.w?.dispose();
     this.w = null;
     this.r?.dispose();
@@ -2199,7 +2292,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (this.engineOn) audio.engineSet(0, 0);
   }
   resume(): void {
-    if (this.wrap.querySelector('[data-ov]')) return;
+    if (this.wrap.querySelector('[data-ov]') || this.introOn) return;
     this.paused = false;
     this.last = performance.now();
   }

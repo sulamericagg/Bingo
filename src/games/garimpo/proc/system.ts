@@ -193,7 +193,10 @@ export class ProcSystem {
     this.barrel.position.set(_v.x, w.T.heightAt(_v.x, _v.z), _v.z);
     this.barrel.rotation.y = w.plant.root.rotation.y;
     this.group.add(this.barrel);
-    w.addCircle({ x: _v.x, z: _v.z, r: 0.55 });
+    const bc = { x: _v.x, z: _v.z, r: 0.55 };
+    w.addCircle(bc);
+    // COMEÇO DO ZERO: tambor some junto com a lavadora (start/camp.ts)
+    w.attach('plant', { obj: this.barrel, circle: bc });
     // placa da recuperação em cima da lavadora
     _v.set(0, 6.6, 1.5);
     w.plant.root.localToWorld(_v);
@@ -299,7 +302,9 @@ export class ProcSystem {
     const wp = g.worker!.group.position;
     const st = w.stock.root.position;
     g.hopperPos(_v);
-    if (Math.hypot(wp.x - st.x, wp.z - st.z) > 8 && Math.hypot(wp.x - _v.x, wp.z - _v.z) > 7) return;
+    const nearSt = w.built('stock') && Math.hypot(wp.x - st.x, wp.z - st.z) <= 8;
+    const nearHp = w.built('plant') && Math.hypot(wp.x - _v.x, wp.z - _v.z) <= 7;
+    if (!nearSt && !nearHp) return;
     rp.addItem('pepita', -p);
     g.sv!.stock += p;
     g.toast('+' + fmtG(p) + ' g');
@@ -308,6 +313,13 @@ export class ProcSystem {
   }
 
   /* ---------------- calhas ---------------- */
+  /** COMEÇO DO ZERO: a calha velha consertada (start/camp.ts) */
+  hasSluiceNear(x: number, z: number, r: number): boolean {
+    return this.sl.some((q) => Math.hypot(q.x - x, q.z - z) < r);
+  }
+  placeSluice(x: number, z: number, yaw: number): void {
+    this.addSluice(x, z, yaw);
+  }
   private addSluice(x: number, z: number, yaw: number): Sluice {
     const m = buildSluice();
     const sl: Sluice = { x, z, yaw, slope: 2, load: 0, gold: 0, conc: 0, mat: 0, water: 0, flow: 0, speed: 0, rec: 0, run: 0, tailV: 0, tailG: 0, m };
@@ -495,7 +507,7 @@ export class ProcSystem {
     const spin = g.plantSpinK;
     this.badge.set(Math.round(this.totalRec() * 100) + '%');
     const cp = g.w!.camera.position;
-    this.badge.sprite.visible = !g.inMine;
+    this.badge.sprite.visible = !g.inMine && g.w!.built('plant');
     this.badge.near(cp, 90);
     for (const tl of this.tails) {
       tl.badge.sprite.visible = tl.g > 0.05;
@@ -540,7 +552,11 @@ export class ProcSystem {
       pl.root.localToWorld(_v);
       o.position.set(lx, T.heightAt(_v.x, _v.z) - pl.root.position.y, lz);
       pl.root.add(o);
-      if (solid > 0) w.addCircle({ x: _v.x, z: _v.z, r: solid });
+      if (solid > 0) {
+        const c = { x: _v.x, z: _v.z, r: solid };
+        w.addCircle(c);
+        w.attach('plant', { circle: c });
+      }
     };
     if (this.upg[0] && !P.grizzly) {
       P.grizzly = buildGrizzly();
@@ -557,7 +573,9 @@ export class ProcSystem {
     if (this.upg[4] && !P.room) {
       P.room = buildGoldRoom();
       sit(P.room, -7.4, -4.6, 1.9);
-      this.g.w!.blockers.push({ x: _v.x, z: _v.z, r: 2.2, y: P.room.position.y + pl.root.position.y + 2.8 });
+      const bk = { x: _v.x, z: _v.z, r: 2.2, y: P.room.position.y + pl.root.position.y + 2.8 };
+      this.g.w!.blockers.push(bk);
+      this.g.w!.attach('plant', { blocker: bk });
     }
     pl.root.updateMatrixWorld(true);
   }
@@ -568,7 +586,7 @@ export class ProcSystem {
     const wk = this.g.worker!;
     const w = this.g.w!;
     const p = wk.group.position;
-    if (Math.hypot(p.x - this.barrelPos.x, p.z - this.barrelPos.z) < 2.6) return true;
+    if (w.built('plant') && Math.hypot(p.x - this.barrelPos.x, p.z - this.barrelPos.z) < 2.6) return true;
     for (const d of [1.3, 2.2]) {
       const x = p.x + Math.sin(wk.group.rotation.y) * d;
       const z = p.z + Math.cos(wk.group.rotation.y) * d;
@@ -625,7 +643,7 @@ export class ProcSystem {
         this.request(c === 'plant' ? { op: 'toPlant' } : { op: 'pan', g: 0, cancel: 1 });
         if (c === 'plant') notify(t('gb.p.toPlant', 'Concentrado na lavadora: {n} g', { n: fmtG(grams) }), { icon: 'arrow-up', kind: 'good' });
       }
-    });
+    }, !this.g.w!.built('plant'));
   }
   /** limpa a caixa da lavadora na bateia (modo manual) */
   startBin(): void {
@@ -717,7 +735,11 @@ export class ProcSystem {
       // RP: o ouro do frasco vai na mochila (pepitas) até o estoque; sem RP vai direto
       if (who === 'me' && g.rp) {
         g.rp.addItem('pepita', Math.round(got * 100) / 100);
-        if (got > 0.01) this.say('bag', t('gb.p.toBag', 'O ouro foi para a mochila! Leve ao estoque para guardar.'));
+        if (got > 0.01) {
+          // COMEÇO DO ZERO: sem galpão ainda, o ouro vai para o barco do comprador
+          if (g.w!.built('stock')) this.say('bag', t('gb.p.toBag', 'O ouro foi para a mochila! Leve ao estoque para guardar.'));
+          g.camp?.onPan(got);
+        }
       } else s.stock += got;
       this.tailsAt(pd, pd.vol, pd.gold - got);
       const combo = clamp(Math.round(num(m.combo)), 0, 99);
@@ -857,7 +879,7 @@ export class ProcSystem {
       }
     }
     const pr = g.w!.map.plant;
-    this.nearPlant = hudOn && !g.inMine && Math.hypot(pr.x - p.x, pr.z - p.z) < 14;
+    this.nearPlant = hudOn && !g.inMine && g.w!.built('plant') && Math.hypot(pr.x - p.x, pr.z - p.z) < 14;
     // carrinho largado longe: a terra dele não chega na bateia
     this.canPan = foot && !!wk && ((wk.cargo.vol > 0.004 && wk.barrowDist() < 4) || (!g.guest && this.sacks() > 0)) && this.atWater();
     if (this.canPan && g.sv && !g.sv.tips.includes('pan1')) {
@@ -976,8 +998,10 @@ export class ProcSystem {
       const can = !done && money >= price;
       return `<div class="gb-item ${done ? 'owned' : ''}"><div class="gb-ico gbp-ico">${PIC[ic]}</div><span>${esc(name)}</span><small>${sub}</small><button class="gb-price" data-buy="${id}" ${can ? '' : 'disabled'}>${done ? PIC.star : coin}${done ? esc(t('gb.max', 'Máximo')) : price.toLocaleString('pt-BR')}</button></div>`;
     };
-    let h = item('p.sluice', 'sluice', t('gb.p.sluice', 'Calha (sluice)'), SLUICE_PRICE, have >= SLUICE_MAX, have ? '×' + have : '&nbsp;');
+    const cb = this.g.camp;
+    let h = !cb || cb.has('sluice') ? item('p.sluice', 'sluice', t('gb.p.sluice', 'Calha (sluice)'), SLUICE_PRICE, have >= SLUICE_MAX, have ? '×' + have : '&nbsp;') : '';
     const base = this.plantRec();
+    if (cb && !cb.has('plant')) return h;
     UPG.forEach((u, i) => {
       // mostra quanto sobe a recuperação (ou a limpeza automática)
       const gain = i === 4 ? Math.round((FIN[2] - this.finRec()) * base * 100) : i === 3 ? Math.round(u.rec * 100 + (FIN[1] - FIN[0]) * 100) : Math.round(u.rec * 100);

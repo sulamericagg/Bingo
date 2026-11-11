@@ -65,17 +65,19 @@ export class CleanGame {
     private grams: number,
     private tier: number,
     private done: (choice: 'pan' | 'plant' | 'cancel') => void,
+    /** COMEÇO DO ZERO: ainda sem lavadora — só a bateia */
+    noPlant = false,
   ) {
     const el = document.createElement('div');
     el.className = 'gbp-pan gbp-clean';
     el.setAttribute('data-touch-ignore', '');
     el.innerHTML = `<canvas></canvas><div class="gbp-ptop"><button class="gbp-b gbp-x">${PIC.close}</button></div>
-      <div class="gbp-choice" hidden><button class="gbp-b go" data-c="pan">${PIC.pan}</button><button class="gbp-b" data-c="plant">${PIC.toPlant}</button></div>`;
+      <div class="gbp-choice" hidden><button class="gbp-b go" data-c="pan">${PIC.pan}</button>${noPlant ? '' : `<button class="gbp-b" data-c="plant">${PIC.toPlant}</button>`}</div>`;
     root.appendChild(el);
     this.el = el;
     this.cv = el.querySelector('canvas')!;
     this.x = this.cv.getContext('2d', { alpha: false })!;
-    el.querySelector('.gbp-x')!.addEventListener('click', () => this.end(this.st >= 2 ? 'plant' : 'cancel'));
+    el.querySelector('.gbp-x')!.addEventListener('click', () => this.end(this.st >= 2 ? (noPlant ? 'pan' : 'plant') : 'cancel'));
     el.querySelector('.gbp-choice')!.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-c]');
       if (b) this.end(b.dataset.c as 'pan' | 'plant');

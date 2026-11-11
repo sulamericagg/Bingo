@@ -222,6 +222,7 @@ export class MpHost {
       upg: s.upg,
       rain: g.rainOn ? 1 : 0,
       ps: this.psList(),
+      cb: g.camp ? [...g.camp.st.built] : undefined,
     });
     for (let i = 0; i < parts; i++) this.net.send({ t: 'tp', to: r.id, i, d: ter.slice(i * CH, (i + 1) * CH) });
   }
@@ -473,6 +474,8 @@ export interface GuestInit {
   rain: number;
   terrain: string;
   peers: [string, string, number][];
+  /** CAMP: construções do anfitrião (começo do zero); ausente = tudo pronto */
+  cb?: string[];
 }
 
 /** convidado: espera o 'init' e as partes do terreno (com tempo-limite) */
@@ -501,6 +504,7 @@ export function awaitInit(net: GbNet, timeoutMs = 20000): Promise<GuestInit> {
         rain: num(m.rain),
         terrain: parts.join(''),
         peers: Array.isArray(m.ps) ? m.ps : [],
+        cb: Array.isArray(m.cb) ? (m.cb as unknown[]).map(String) : undefined,
       });
     };
     const check = () => {
@@ -687,6 +691,8 @@ export class MpGuest {
       const name = g.itemName(String(e[1]));
       if (name) bigMoment(t('gb.mp.bought', '{p} comprou: {n}', { p: String(e[2] ?? ''), n: name }), { icon: 'gift' });
       audio.cash();
+    } else if (k === 'cbuild') {
+      g.camp?.netBuilt([String(e[1])]); // CAMP: o anfitrião construiu
     } else if (k === 'hostBuy') {
       const name = g.itemName(String(e[1]));
       if (name) bigMoment(t('gb.bought', 'Comprou: {n}', { n: name }), { icon: 'gift' });

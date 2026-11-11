@@ -55,6 +55,8 @@ export interface SlotSave {
   proc?: import('./proc/system').ProcSave;
   /** CONSERTOS: desgaste/quebras por máquina, peças no estoque (repair/) */
   repair?: import('./repair/model').RepairSave;
+  /** COMEÇO DO ZERO (start/camp.ts): o que já foi construído. Ausente = save antigo = tudo pronto */
+  camp?: import('./start/camp').CampSave;
 }
 export interface SlotMeta {
   seed: number;

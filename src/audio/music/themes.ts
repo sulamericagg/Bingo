@@ -192,6 +192,28 @@ const T: Theme[] = [
     ],
   },
   {
+    // Garimpo — abertura: manhã no vale, saudade do vovô e sonho grande (viola, cordas, caixinha de música;
+    // no "sonho" entram coro, sinos, zabumba e triângulo)
+    id: 'garimpoIntro',
+    db: 2.6,
+    name: 'Garimpo — Abertura (o mapa do vovô)',
+    bpm: 74,
+    root: 57, // Lá maior
+    mode: MODES.major,
+    prog: [0, 4, 5, 3, 0, 4, 3, 4],
+    seed: 919,
+    parts: [
+      { role: 'pad', inst: 'strings', vol: 0.75, len: 16, st: { calm: 1, tension: 1, victory: 1 } },
+      { role: 'arp', inst: 'viola', vol: 0.8, oct: 0, pat: 'x..x..x.x..x..x.', order: [0, 1, 2, 1], st: { calm: 0.85, tension: 1, victory: 1 } },
+      { role: 'lead', inst: 'musicbox', vol: 0.75, oct: 1, dens: 0.32, st: { calm: 1, tension: 1, victory: 0.8 } },
+      { role: 'bass', inst: 'roundBass', vol: 0.7, pat: 'x.......x.......', st: { calm: 0.7, tension: 1, victory: 1 } },
+      { role: 'pad', inst: 'choir', vol: 0.55, len: 16, st: { victory: 1 } },
+      { role: 'bell', inst: 'bell', vol: 0.45, oct: 2, len: 4, st: { victory: 1 } },
+      { role: 'perc', inst: 'zabumba', vol: 0.6, pat: 'x.....x...x.....', st: { victory: 0.9 } },
+      { role: 'perc', inst: 'tri', vol: 0.45, pat: '....x.......x...', st: { victory: 0.8 } },
+    ],
+  },
+  {
     // Desastre: aventura de resgate heroica (sem medo) — cordas, metais, tambores
     id: 'disaster',
     db: -1.2,
