@@ -697,8 +697,8 @@ export class RoomScene {
     const dx = b.x - a.x,
       dy = (b.y - a.y) * 1.6;
     const d = Math.hypot(dx, dy);
-    if (d >= 24 || d < 0.01) return;
-    const push = (24 - d) * 0.25;
+    if (d >= 30 || d < 0.01) return;
+    const push = (30 - d) * 0.2;
     const ux = dx / d,
       uy = dy / d / 1.6;
     if (this.nav.free(b.x + ux * push, b.y + uy * push)) (b.x += ux * push), (b.y += uy * push);
@@ -709,6 +709,28 @@ export class RoomScene {
     let n = 0;
     for (const b of this.nav.base) if (b.kind === kind && Math.random() * ++n < 1) found = b;
     return found;
+  }
+
+  /** lugar livre E sem ninguém em cima (destino de outro convidado a < 30 u): tenta em volta */
+  private roomy(x: number, y: number, self: Walker): [number, number] {
+    let [px, py] = this.nav.nearestFree(x, y);
+    for (let k = 0; k < 10; k++) {
+      if (!this.crowded(px, py, self)) break;
+      [px, py] = this.nav.randomSpot(Math.random, x, y, 30 + k * 8);
+    }
+    return [px, py];
+  }
+  private bumped(self: Walker): boolean {
+    const near = (w: Walker) => w !== self && Math.hypot(w.x - self.x, (w.y - self.y) * 1.6) < 30;
+    if (near(this.me) || (this.petVisible() && near(this.pet))) return true;
+    for (const ch of this.chars) if (near(ch)) return true;
+    return false;
+  }
+  private crowded(x: number, y: number, self: Walker): boolean {
+    const near = (w: Walker) => w !== self && Math.hypot(w.tx - x, (w.ty - y) * 1.6) < 38;
+    if (near(this.me) || (this.petVisible() && near(this.pet))) return true;
+    for (const ch of this.chars) if (near(ch)) return true;
+    return false;
   }
 
   /* ---------- convidados robôs: dançar, comer na mesa, conversar em dupla ---------- */
@@ -725,6 +747,10 @@ export class RoomScene {
         ch.emoteT = 0;
       }
     }
+    if (arrived && ch.ai !== 'chat' && this.bumped(ch)) {
+      // chegou e tem alguém em cima: dá um passinho para o lado
+      this.goTo(ch, ...this.roomy(ch.x + (Math.random() - 0.5) * 60, ch.y + (Math.random() - 0.5) * 30, ch));
+    }
     if (ch.aiT > 0) return;
     // escolhe o próximo "programa"
     if (ch.ai === 'chat') {
@@ -739,32 +765,34 @@ export class RoomScene {
     if (r < 0.28 && speaker) {
       ch.ai = 'dance';
       const [x, y] = this.nav.randomSpot(Math.random, speaker.x, speaker.y + 34, 50);
-      this.goTo(ch, x, y);
+      this.goTo(ch, ...this.roomy(x, y, ch));
     } else if (r < 0.5 && table) {
       ch.ai = 'eat';
       // de frente para a mesa (logo abaixo da borda da frente)
-      this.goTo(ch, table.x + (Math.random() - 0.5) * table.w * 0.8, table.y + 16);
+      this.goTo(ch, ...this.roomy(table.x + (Math.random() - 0.5) * table.w * 0.8, table.y + 16, ch));
     } else if (r < 0.75) {
       const o = this.chars.find((q) => q !== ch && q.bot && !q.leaving && !q.partner && q.room === ch.room);
-      if (o) {
+      const [ax, ay] = o ? this.roomy(...this.nav.randomSpot(Math.random), ch) : [0, 0];
+      let side = ax > 180 ? -1 : 1;
+      let [bx, by] = this.nav.nearestFree(ax + side * 38, ay);
+      if (Math.abs(bx - ax) < 28) {
+        side = -side;
+        [bx, by] = this.nav.nearestFree(ax + side * 38, ay);
+      }
+      if (o && Math.abs(bx - ax) >= 28 && Math.abs(by - ay) < 14) {
         ch.ai = o.ai = 'chat';
         ch.partner = o.id;
         o.partner = ch.id;
         o.aiT = ch.aiT;
-        const [ax, ay] = this.nav.randomSpot(Math.random);
-        const side = ax > 180 ? -1 : 1;
-        const [bx, by] = this.nav.nearestFree(ax + side * 38, ay);
         this.goTo(ch, ax, ay);
         this.goTo(o, bx, by);
       } else {
         ch.ai = 'wander';
-        const [x, y] = this.nav.randomSpot(Math.random);
-        this.goTo(ch, x, y);
+        this.goTo(ch, ...this.roomy(...this.nav.randomSpot(Math.random), ch));
       }
     } else {
       ch.ai = 'wander';
-      const [x, y] = this.nav.randomSpot(Math.random);
-      this.goTo(ch, x, y);
+      this.goTo(ch, ...this.roomy(...this.nav.randomSpot(Math.random), ch));
     }
   }
 
@@ -1415,7 +1443,7 @@ export class RoomScene {
         }
         ch.ai = 'eat';
         ch.aiT = 4 + Math.random() * 3;
-        this.goTo(ch, tb.x + (Math.random() - 0.5) * 80, tb.y + 16);
+        this.goTo(ch, ...this.roomy(tb.x + (Math.random() - 0.5) * 80, tb.y + 16, ch));
       }
     }
     const cp = this.cakePos();

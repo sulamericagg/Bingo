@@ -149,6 +149,11 @@
   align-self: stretch; justify-content: space-between;
 }
 .hm-furn canvas { width: 60px; height: 52px; }
+/* festa: cartões de comida e dica compactos (em 360x740 o painel comia metade do cômodo) */
+.hm-hint { font-size: 13px; line-height: 1.2; }
+.hm-furn.hm-food { width: 64px; padding: 3px; font-size: 11px; }
+.hm-furn.hm-food canvas { width: 46px; height: 40px; }
+.hm-furn.hm-food.on { background: #fff27a; box-shadow: 0 0 0 3px #8a5cff; }
 .hm-furn .price { display: flex; align-items: center; gap: 2px; font-size: 11px; }
 
 /* barra de progresso */

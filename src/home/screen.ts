@@ -661,7 +661,7 @@ function action(a: string, b: HTMLElement): void {
       break;
     case 'food':
       scene.pickFood(b.dataset.f!);
-      root!.querySelectorAll('[data-a="food"]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.f === scene.holding));
+      syncFood();
       break;
     case 'ctool':
       scene.cleanTool = b.dataset.t as CleanTool;
@@ -906,8 +906,8 @@ function roomBar(bar: HTMLElement): void {
     </div>`;
   } else if (m === 'party') {
     bar.className = 'hm-bar panel';
-    bar.innerHTML = `<div class="hm-row"><b class="grow">${esc(t('home.party.hint', 'Toque no bolo para comer. Pegue comida e puxe para trás para jogar!'))}</b></div>
-      <div class="hm-row scroll">${FOODS.map((f) => `<button class="hm-btn hm-furn ${scene.holding === f ? 'on' : ''}" data-a="food" data-f="${f}"><canvas data-food="${f}" width="60" height="52"></canvas>${esc(foodName(f))}</button>`).join('')}</div>
+    bar.innerHTML = `<div class="hm-row"><b class="grow hm-hint">${esc(t('home.party.hint', 'Toque no bolo para comer. Pegue comida e puxe para trás para jogar!'))}</b></div>
+      <div class="hm-row scroll">${FOODS.map((f) => `<button class="hm-btn hm-furn hm-food ${scene.holding === f ? 'on' : ''}" data-a="food" data-f="${f}"><canvas data-food="${f}" width="60" height="52"></canvas>${esc(foodName(f))}</button>`).join('')}</div>
       <div class="hm-row">${btn('emote', t('home.emote', 'Emotes'), 'hm-gold', 'data-a="emote"')}${scene.canDo('clean') ? btn('sponge', t('home.clean', 'Limpar'), '', 'data-a="mode" data-m="clean"') : ''}${btn('cube', t('home.3d', 'Entrar em 3D'), '', 'data-a="3d"')}<span class="grow"></span>${btn('back', t('home.party.leave', 'Sair da festa'), '', 'data-a="leave"')}</div>`;
     bar.querySelectorAll('canvas[data-food]').forEach((c) => {
       const x = (c as HTMLCanvasElement).getContext('2d')!;
@@ -1339,7 +1339,10 @@ function toExtL(x: number, y: number): [number, number] {
   return scene.toL(x, y);
 }
 function pdown(x: number, y: number): void {
-  if (view === 'room') scene.down(x, y);
+  if (view === 'room') {
+    scene.down(x, y);
+    syncFood();
+  }
   else if (view === 'paintExt') {
     extDrag = true;
     const [lx, ly] = toExtL(x, y);
@@ -1360,8 +1363,15 @@ function pmove(x: number, y: number): void {
   }
 }
 function pup(): void {
-  if (view === 'room') scene.up();
+  if (view === 'room') {
+    scene.up();
+    syncFood();
+  }
   extDrag = false;
+}
+/** destaque da comida na mão (antes ficava aceso depois de jogar e não acendia ao pegar fatia do bolo) */
+function syncFood(): void {
+  root?.querySelectorAll('[data-a="food"]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.f === scene.holding));
 }
 
 /* ============================================================
