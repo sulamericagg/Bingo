@@ -92,6 +92,7 @@ const CSS = `
 .sv-search::placeholder{color:rgba(255,255,255,.55)}
 .sv-sp{flex:1}
 .sv-new{flex:none;height:40px;border:none;border-radius:14px;padding:0 14px;font:inherit;font-weight:900;font-size:14px;color:#3a1d00;background:linear-gradient(#ffe680,#ffb02e);box-shadow:0 4px 0 #a35a00;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+@media (max-width:520px){.sv-top{flex-wrap:wrap;row-gap:6px}.sv-search{order:3;flex-basis:100%;max-width:none}.sv-new{margin-left:auto}}
 .sv-tabs{display:flex;gap:6px;overflow-x:auto;padding:6px 0 4px;scrollbar-width:none;flex:none}
 .sv-tabs::-webkit-scrollbar{display:none}
 .sv-tab{flex:none;height:32px;border-radius:16px;border:2px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-weight:800;font-size:13px;padding:0 12px;display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}

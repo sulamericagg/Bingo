@@ -1,136 +1,151 @@
-# Relatório de QA — Bloop World (caça final de bugs antes do lançamento)
+# Relatório do Chefe de Qualidade — Bloop World
 
-Branch `wip/qa` · base `53a6e63` · 09/11/2026
+Branch `wip/qa2` · 11/11/2026 · base: `claude/viral-game-apk-web-echogw` já com Mundo, Garimpo, TV, Jangada e Desastre juntados.
 
-## 1. O que foi testado
+> **Em uma frase:** os 22 jogos abrem, jogam, pausam e fecham sem travar e sem erro; o online (grupo, convite,
+> todo mundo entrando junto e duelo com pódio) funciona de ponta a ponta; corrigi 13 problemas. O que falta está
+> na lista ❌ abaixo, com o nome de quem cuida. Algumas coisas só dá para confirmar no celular de verdade (📱).
 
-| Área | Como | Resultado |
+## 1. Como eu testei (sem precisar entender de programação)
+
+Fiz um **robô de teste** que usa o jogo como uma criança usaria: toca no JOGAR, mexe o analógico, arrasta para olhar,
+aperta o voltar do Android, sai e abre o próximo — e tira **foto da tela** em cada passo.
+
+| O quê | Onde | Resultado |
 |---|---|---|
-| Tipos | `npx tsc --noEmit`, `npm run typecheck` (cliente + Worker) | OK, 0 erros |
-| Build | `npx vite build` | OK. `index` 563 KB (189 KB gzip); three/cannon (`home3d`, 918 KB), músicas, casa, banda, desastre, coleção, campeonatos, chat e locales já carregam sob demanda |
-| Servidor | `npm run test:server` (wrangler dev local + Miniflare) | **263 ok, 0 falhas** |
-| Deploy | `npx wrangler deploy --dry-run` | OK (6 Durable Objects + KV + Assets) |
-| E2E (Playwright, `vite preview`) | 360x640, 412x915, 768x1024, 915x412 | ver abaixo |
-| Primeira abertura | localStorage vazio → intro → hub | sem pop-ups empilhados; nenhum erro de console além dos 404 esperados de `/api` (sem backend) |
-| 6 jogos do hub | abrir → tocar → pausar/retomar (`visibilitychange`) → voltar (Escape → `ui.back()`) → sair | todos abrem e fecham; sem `pageerror`; timers e rAF estáveis depois de fechar |
-| 10 painéis | Loja, Passe (3 abas), Bichinho, Criar, Casa, Amigos, Social, Campeonatos, Coleção, Ranking | abrem e fecham com o botão voltar (antes da correção, 5 deles não fechavam) |
-| Loja na web | tocar em todos os `data-buy` (18) | nenhuma moeda ou gema entregue; aparece o aviso "Compras só no app Android" |
-| Diário | 3 toques seguidos | entrega só 1 vez |
-| Anúncio premiado (modo teste) | moedas grátis, dobrar moedas | credita 1 vez |
-| Orbit | morrer → resultados → `run-end` | **1** `run-end` por partida (antes: nenhum) |
-| Casa 3D | abrir e fechar 3x em 915x412 com swiftshader | sem erros; nº de canvas e heap estáveis (11 MB → 11 MB) |
-| Pop-up da temporada | data forçada para 05/12 + jogo aberto | espera o jogador voltar ao hub; fecha no voltar |
-| Saves | v1 original (só campos da 1ª versão), campos corrompidos, JSON quebrado, `null`, array | app abre em todos os casos; v1 migra e mantém moedas/gemas/recorde |
-| Desempenho | 390x844, CPU 4x mais lenta, nível Mínimo | todos os jogos ≥ 49 fps (Orbit 59, Tubo 59, Rally 60, Fábrica 60, Desastre 60, Banda 49–60) |
-| Android | `npx cap sync android` + `./gradlew assembleDebug` (JDK 21) | OK — `app-debug.apk` (15 MB) |
+| Todos os 22 jogos: abrir pelo JOGAR → jogar → voltar (pausa) → continuar → sair → hub | celular Pixel 7 em pé e deitado (844×390 e 740×360) | **22 de 22 sem falha** (fotos `g-<jogo>-*.png`) |
+| Botões em cima de botões no HUD dos jogos 3D (pular, ação, mochila, barra de itens, analógico) | 740×360, 844×390, 915×412 | sem sobreposição depois das correções (fotos `hud-<jogo>-<tamanho>.png`) |
+| Hub: nome, Amigos, Ajustes, Loja, todos os botões de cima e de baixo abrem e fecham com o voltar | 412×915 e 360×740, português e inglês | ver §3 (fotos `hub-*.png`) |
+| Abrir e fechar jogos 15 vezes seguidas (memória) | — | memória, telas 3D e canvas **não crescem** |
+| Online com 2 jogadores e servidor local | 2 celulares virtuais | grupo, convite na hora, entrar junto em Queda Giratória, Noites, Cava & Fala, pódio do duelo ✅ |
+| Testes automáticos que já existiam | servidor, Cava & Fala, 200 fases do Monta & Leva, traduções, tipos e build | todos verdes |
 
-## 2. Bugs encontrados e corrigidos
+Como rodar de novo: `npm run qa` (tudo) ou `npm run qa -- games` / `hud` / `hub` / `online` / `perf` / `deep`.
+As fotos ficam na pasta `shots-qa/`.
 
-| # | Gravidade | Bug | Commit |
-|---|---|---|---|
-| 1 | **Alta** | O botão voltar do Android **fechava o app** quando Passe, Coleção (e o detalhe), Social, Campeonatos ou Ranking estavam abertos. Agora existe uma pilha `pushBack`/`popBack` (`src/core/back.ts`) que `ui.back()` consulta primeiro. | c72799c |
-| 2 | **Alta** | **Bloop Orbit nunca chamava `reportRun`**: partidas e corridas do jogo principal não davam XP do Passe, os desafios semanais do Orbit eram impossíveis, e bichinho, campeonatos e recordes do perfil ignoravam o Orbit. | e0a39ef |
-| 3 | **Alta** | O "Sair do jogo?" (voltar dentro de um jogo) ficava **invisível atrás** do Tubo, do Rally e da Fábrica (z-index). Parecia que o voltar travava o jogo. | 118ad42 |
-| 4 | **Alta** | O painel Ranking abria **atrás do hub** (só aparecia o "X") e não fechava no voltar. | a17225e |
-| 5 | **Alta** | Saves: um único campo corrompido (ex.: `ownedSkins` que não é lista) gerava exceção, e **o save inteiro voltava ao zero**, sendo gravado por cima no próximo `persist`. Agora cada campo é validado pelo tipo; JSON ilegível ganha uma cópia `-corrupt`; em `QuotaExceeded` o app apaga os caches recriáveis e tenta gravar de novo. | 274893b |
-| 6 | **Alta** | Casa 3D: as edições feitas no 3D não eram salvas nem redesenhadas no 2D. O voltar do Android fechava a casa 2D que estava por baixo do 3D. | e8356b2 |
-| 7 | **Alta** (APK) | `screenOrientation="portrait"` no manifest impedia o 3D de girar para paisagem. Agora o manifest usa `fullUser`, `@capacitor/screen-orientation` trava retrato na abertura e paisagem no 3D. Faltava `POST_NOTIFICATIONS`. Criado o ícone `ic_stat_bloop`, configurado em `LocalNotifications`. O `cap sync` mostrou que `local-notifications` **nem estava no Gradle**, então os lembretes do bichinho falhavam no APK. | f1e91ea |
-| 8 | Média (economia) | Fazenda de moedas na Casa: sujar a própria casa na guerra de comida, limpar e repetir; repintar; festas offline com robôs. Agora há um teto diário de 200 moedas para limpar, pintar e festa. | a3f566c |
-| 9 | Média | O pop-up da temporada (z-index 80) podia abrir **por cima de um jogo** ou de um painel. Agora espera `hubIdle()` e fecha no voltar. | 549de31 |
-| 10 | Média | Tubo: depois de "Dobrar moedas" uma vez, o botão sumia para sempre (as flags não zeravam ao jogar de novo). | 1860d2e |
-| 11 | Média (perf) | O loop da vitrine do hub rodava a 60 Hz **durante todos os jogos** (2 loops de rAF ao mesmo tempo). Agora ele dorme quando o hub está escondido. | 8ea3297 |
-| 12 | Baixa | `openSheet` com o mesmo id removia o painel sem rodar `onClose`, e os timers de 1 s e 15 s do Campeonato vazavam. | c72799c |
-| 13 | Baixa (perf) | No nível Mínimo, os blobs animados gigantes do fundo do hub e o pulso do JOGAR agora ficam parados. | a7307fd |
-| 14 | Baixa | Em paisagem baixa (web ou tablet deitado), o botão JOGAR ficava fora da carta. | 38d073d |
-| — | Ferramenta | `?debug` expõe `__bloop.{listGames, listPanels, launchGame, closeHost, save, bus}` para os testes E2E. | 704763c, ad978f8 |
+## 2. Pedidos do dono (docs/DONO-PEDIDOS.md) — item por item
 
-## 3. Problemas que continuam (por prioridade)
+Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô não consegue provar, precisa do celular de verdade.
 
-1. **Bloqueia o lançamento: `ADS_TEST_MODE = true`** e IDs de teste do AdMob em `src/config.ts` e no `AndroidManifest.xml` (`ca-app-pub-3940256099942544~…`). Trocar pelos IDs reais antes de publicar.
-2. **Bundle principal com 563 KB** (meta de cerca de 520 KB). Os maiores itens que dá para carregar sob demanda são `src/pass/music/*` (cerca de 43 KB de código: auras e danças) e `src/music/season-music-data.ts`. Hoje eles entram no bundle principal por import estático em `src/pass/mstate.ts`, e o Vite avisa que o `import()` dinâmico não separa esse código. Para mover, `mstate` precisa receber `grantMusicReward`/`musicItemName`/`musicPassSeason` por import dinâmico.
-3. **Textos sem tradução** (ex.: "Escolha seu @", "Anúncio de teste", "Ficar no 2D") — com o agente de localização.
-4. O "Sair do jogo?" e a pausa própria do Tubo e do Rally aparecem juntos quando se aperta **Escape no navegador**. No Android, o voltar só mostra o "Sair do jogo?".
-5. Com o anúncio de teste (fake-ad) aberto, o voltar fecha o painel que está por baixo, e não o anúncio. Só acontece no modo teste.
-6. O teto da Casa é contado no aparelho (localStorage): quem limpa os dados do app zera o contador. A Casa não tem moedas validadas pelo servidor.
-7. O hub ainda ocupa cerca de 40% da thread principal com CPU 4x mais lenta no swiftshader. O perfil mostra JS ocioso (90%) e o resto é composição e raster por software. Isso não representa um aparelho com GPU, mas vale medir num Android de entrada real.
-8. Ao usar `npm install` para adicionar o plugin de orientação, o `node_modules` desta worktree **virou uma pasta real** (antes era symlink para `/home/user/Bingo/node_modules`). Nada foi para o git. Nas outras worktrees é preciso rodar `npm install` depois do merge, por causa do `@capacitor/screen-orientation`.
+### Regras gerais
+| Pedido | | O que vi / foto |
+|---|---|---|
+| Narração desligada por padrão e dá para ligar | ✅ | começa desligada, liga/desliga e é lembrada (`hub-pixel-ajustes.png`) |
+| Ícone + mãozinha, nada de parede de texto | ❌ | quase tudo ok, mas a "pasta de missão" do Pouso Forçado e as regras da TV ainda são texto corrido (`deep-voo-brief.png`) |
+| HUD padrão Minecraft: barra no meio embaixo, analógico à esquerda, pular à direita, nada sobreposto em 740/844/915 | ✅ | Noites, Mundo, Garimpo, Jangada, Cava & Fala sem sobreposição (`hud-*.png`). Noites e Garimpo tinham sobreposição — **corrigido** |
+| Nada embaixo do banner de anúncio | ✅ | os jogos encolhem acima do banner (regra do hub); nenhum botão tapado no teste |
+| Objetivos aparecem e recolhem | ✅ | Noites/Mundo/Cozinha mostram e recolhem |
+| Sem botões de debug para o jogador | ✅ | a joaninha só aparece com o Beta ligado; nenhum botão de debug no hub nem nos jogos |
+| 3D em 1ª pessoa, botão de câmera no topo, retícula no centro | ❌ | Noites, Mundo, Cozinha, Garimpo, Jangada ✅; **Desastre 3D ainda começa em 3ª pessoa** (agente do Desastre) |
+| Personagem do jogador = o Bloop 2D dele | ✅ | Noites, Garimpo, Mundo (online agora usa a chave certa `mundo`) |
+| Nada flutuando/atravessando, texturas sem buraco | 📱 | não vi nada nas fotos; precisa olhar jogando de verdade |
+| Online: em grupo todo jogo entra junto, líder com coroa, convite na hora | ✅ | convite chegou em **0 s**, coroa ♛, B entrou sozinho em 3 de 4 jogos testados (Cozinha: ver ❌ abaixo) |
+| 60 FPS / tablets velhos | 📱 | no robô (CPU lenta, sem placa de vídeo) os jogos 2D ficam a ~60 e os 3D a 12–35; ver §5 |
+| Sons e música próprios, param ao sair | ✅ | ao sair de cada jogo volta a música do hub, nenhum som extra fica tocando |
 
-## 4. Recomendações de aparelho
+### Hub / geral
+| Pedido | | O que vi / foto |
+|---|---|---|
+| Nome do jogador visível no topo | ✅ | `hub-pixel-0.png` |
+| Botão "Amigos" claro | ✅ | amarelo, 68 px, abre o Grupo (`hub-pixel-amigos.png`) |
+| Presentes chegam sozinhos | ✅ | o hub resgata sozinho a cada 3 s quando está parado (código conferido; servidor testado no `test:server`) |
+| Voz desligável | ✅ | Ajustes → "Ler em voz alta" |
+| Tela não apaga | ✅ | Android: `FLAG_KEEP_SCREEN_ON`; web: Wake Lock |
+| Rotação automática nos jogos 3D | ✅ | todo jogo 3D deitou sozinho e o hub voltou em pé ao sair (22/22) |
+| Nenhum cadeado/botão de girar poluindo | ✅ | **corrigido**: o botão de girar ficava no topo de todo jogo 3D; agora só aparece se o celular não deitou |
 
-- **Mínimo:** Android 8+ (WebView 90+), 2 GB de RAM. Os jogos 2D rodam no nível Mínimo a 30+ fps. A Casa 3D mostra o aviso "O 3D pode ficar lento" em aparelhos de nível 0.
-- **Recomendado para a Casa 3D:** 4 GB de RAM e GPU da classe Adreno 610 / Mali-G52 ou melhor.
-- **Testar no aparelho real antes de publicar:** rotação para paisagem no 3D e volta ao retrato, permissão de notificação no Android 13+, microfone do bichinho, voltar em cada painel, compra real com conta de teste do Play.
+### Noites do Acampamento
+| Pedido | | |
+|---|---|---|
+| 1ª pessoa, HUD limpo, barra de itens | ✅ | `deep-noites-walk.png`, `hud-noites-740x360.png` (barra encostava no analógico — **corrigido**) |
+| "Mochila cheia, o resto foi para o acampamento" | ✅ | texto existe no jogo (`noites.say.bagFull`) |
+| Árvore com entalhe, toras, fogueira com níveis, construção em grade, ajudantes, noite 1 sem bichos | 📱 | o robô não joga uma noite inteira; precisa testar no celular |
 
-## 5. Casa offline e 3D (v1.1.1)
+### Mundo (blocos)
+| Pedido | | |
+|---|---|---|
+| Jogo separado no hub | ✅ | carta própria "Mundo" |
+| HUD padrão (barra, corações, comida, pular) | ✅ | `hud-mundo-844x390.png` |
+| Sem o mundo antigo com HUD velho | ✅ | **corrigido**: tirei "Mundo dos Lenhadores (clássico)" da lista do Mundo |
+| Servidores: lista, um toque entra | ❌ | sem internet aparece "Sem internet agora"; em pé o botão "Criar servidor" saía da tela — **corrigido**; entrar num servidor real 📱 |
+| Colocar/quebrar, picareta, caverna, estradas, nave caindo | 📱 | abertura com a nave aparece ("Sua naveta caiu!"); o resto precisa de jogo longo |
 
-Relato do dono no APK real (backend Cloudflare ainda não publicado, ou seja, app sem servidor):
-"O da casa, como não tem conexão, não funciona" e "cliquei num quadrado na casa e ficou a tela azul infinito".
+### Garimpo Bruto
+| Pedido | | |
+|---|---|---|
+| Personagem é o Bloop do jogador; 1ª pessoa a pé | ✅ | |
+| Carrinho de mão não tapa a visão | ✅ | **corrigido**: antes a caçamba enchia o meio da tela; agora fica embaixo (`deep-garimpo-fp.png`) |
+| 3ª pessoa / de frente mostram o Bloop | ❌ | no começo ele nasce **embaixo do telhado** do acampamento e a câmera fica dentro do telhado vermelho (`deep-garimpo-tp.png`) — agente da abertura do Garimpo |
+| Máquinas, água, bateia, consertos | 📱 | |
 
-**Causas encontradas**
+### Desastres (outro agente trabalhando agora)
+| Pedido | | |
+|---|---|---|
+| Fácil → difícil, personagem do jogador | 📱 | em obra |
+| 1ª pessoa com câmera | ❌ | começa em 3ª pessoa |
+| Avisos sem repetir | ❌ | dica repetida em 2 lugares e contador ×14 — passado para o agente do Desastre |
 
-1. **Tela azul infinita (3D).** Ao tocar em "Entrar em 3D", o 3D colocava o fundo azul-escuro na tela e
-   *esperava* `ScreenOrientation.lock('landscape')` antes de mostrar qualquer coisa. Se o plugin não respondesse
-   (ou a WebView travasse a promessa), não aparecia nem aviso nem botão: só o azul, para sempre. Reproduzido no
-   Playwright com `lock()` que nunca resolve: versão antiga = 20 s sem nenhum botão; versão nova = aviso com
-   "Voltar" em 0,8 s. Além disso, o carregamento não tinha botão de voltar nem prazo, e o aviso "Vire o telefone"
-   só saía girando o aparelho (com a rotação travada no celular, não saía nunca).
-2. **Casa "não funciona" sem conexão.** A entrada da Casa esperava a rede (`getHome` → até 8 s por chamada,
-   2 chamadas em série) e depois abria a tela obrigatória "Escolha seu @", que sem servidor não tem como ser
-   concluída. Com o backend não publicado, a resposta do servidor não era JSON e o @ aparecia como
-   "Esse formato não vale" (parecia erro do jogador). Amigos também forçava o @. Mudanças feitas antes do fim do
-   carregamento eram sobrescritas pela casa que chegava depois.
+### Pouso Forçado
+| Pedido | | |
+|---|---|---|
+| HUD sem marcadores em cima dos controles | ✅ | `deep-voo-fly.png`, `deep-voo-740.png` |
+| Voltar não perde o voo sem perguntar | ✅ | **corrigido** na pasta de missão |
+| Tremedeira, estol, câmera giratória, passageiros, comida | 📱 | |
 
-**Correções**
+### Cozinha
+| Pedido | | |
+|---|---|---|
+| 1ª pessoa, botão contextual "Pegar" separado, cliente na janela | ✅ | `g-cozinha-3-740x360.png` |
+| Sininho, fogão pegando fogo, geladeira, salão | 📱 | precisa jogar o dia inteiro |
 
-- Casa **offline-first**: abre na hora com o cache do aparelho (`bw-home-cache-v1` / `bloop-home-v1`); a versão do
-  servidor só entra em segundo plano, se for mais nova e a pessoa ainda não tiver mexido.
-- **@ opcional**: sem trava na entrada nem em Amigos; ele só é pedido para recursos online (botão "Escolher @").
-- Toda chamada da API tem prazo; depois de uma falha, 15 s sem novas esperas; resposta sem JSON = sem rede.
-- Salvar é otimista (aparelho primeiro) e fica numa **fila de sincronização** (evento `online` e a cada 30 s).
-- Chip **"Offline — suas mudanças ficam salvas no aparelho"** no topo.
-- **Festa com robôs** na hora quando offline (antes esperava o WebSocket); Amigos offline mostra estado vazio
-  amigável com "Festa com amigos-robô".
-- Todo painel da Casa tem um **X** de fechar.
-- 3D: aviso de girar aparece na hora com **Voltar** e, após 2 s, **"Continuar assim mesmo"** (3D jogável em
-  **retrato**, HUD adaptado); carregamento com **Voltar** sempre visível e **prazo de 12 s** ("O 3D está
-  demorando" + "Ficar no 2D"); falha de WebGL ao montar volta ao 2D com aviso; voltar do Android sempre sai do 3D.
+### Anomalias & Cia
+| Pedido | | |
+|---|---|---|
+| Modos Turno da noite, Recepção e Corredor | ✅ | `deep-anomalias-0.png` |
+| Música do app desligada lá dentro | ✅ | o pacote de som do jogo desliga a música do hub |
+| 5 lugares; mapas não escuros demais | 📱 | os lugares ficam dentro do "Turno da noite" |
+| Menu misturado com a abertura 3D | ✅ | **corrigido** |
 
-**Testes (build de produção, `vite preview`, 412×915 retrato, todas as `/api/**` bloqueadas)**
+### Cava & Fala
+| Pedido | | |
+|---|---|---|
+| Construir qualquer coisa falada | ✅ | `npm run test:cava` 22/22 |
+| Online | ✅ | grupo entrou junto (`online-cavafala-B.png`) |
+| Nascer em terra firme, microfone com legenda | 📱 | |
 
-| Cenário | Resultado |
-|---|---|
-| API abortada, WebGL ligado | PASSOU: Casa abre em ~0,16 s, construir/planeta/fachada/pintar/móveis/limpar/salvar local/festa com robôs (≤0,1 s)/amigos/permissões/@/3D em retrato/voltar |
-| API lenta (8 s e falha), WebGL ligado | PASSOU (mesmo roteiro) |
-| API abortada, WebGL desligado | PASSOU: 3D mostra "Sem 3D neste aparelho" + "Ficar no 2D" |
-| API lenta, WebGL desligado | PASSOU |
-| Lock de orientação que nunca responde | antes: preso; depois: aviso + Voltar em 0,8 s |
-| WebGL some ao criar o motor | volta ao 2D com "O 3D não funcionou neste aparelho" |
-| CPU 300× mais lenta no carregamento | aparece "O 3D está demorando" com "Ficar no 2D" |
+### Monta & Leva
+| 200 fases com solução | ✅ | `montaleva-verify`: as 200 fases têm solução |
+|---|---|---|
+| Caixa, motor, peças quebram, suspensão | 📱 | |
 
-O roteiro toca em todos os botões das barras do planeta e do cômodo e verifica que qualquer overlay em tela cheia
-fecha em até 15 s. Sem erros de página em nenhum cenário.
+### Caça Bloop · Espelho
+| Mapa real, GPS, modo controle; rosto acompanhando, microfone | 📱 | abrem sem erro; precisam de GPS/câmera de verdade |
+|---|---|---|
 
-**Ainda testar no aparelho real:** girar com a rotação travada (o app pede paisagem; se não girar, usar
-"Continuar assim mesmo") e liberar peça por vídeo sem internet (o anúncio é de outro módulo).
+### Cinema / TV
+| Pedido | | |
+|---|---|---|
+| TV cheia de filmes (~100) | ✅ | 100 filmes no catálogo (`deep-tv-catalogo.png`) |
+| Contador de tempo longe da marca "Feito no Bloop World" | ✅ | contador no canto de cima, marca embaixo (`deep-tv.png`) |
+| "Criar história" deitado sem botão por cima | ✅ | **corrigido** (`deep-cinema-beats-land.png`) |
+| Textos das expressões inteiros | ✅ | **corrigido** |
+| Dublagem, IA modera, criador de música, microfone | 📱 | |
 
-## Correções de física (v1.1.1)
+### Jangada Bloop
+| Pedido | | |
+|---|---|---|
+| HUD | ✅ | `hud-jangada-*.png` |
+| Tubarão aparece embaixo d'água | ✅ | **corrigido** (água funda não é mais 100 % opaca perto da jangada) — confirmar no celular 📱 |
+| Pesca e segundo andar | 📱 | |
 
-Relato do dono após jogar o APK: "física cagada" no **Desastre** e no jogo que **pula**. Tudo abaixo foi reproduzido e medido com `scripts/dev/physics-check.mjs` (Chromium headless com tempo virtual a 30/60/120 fps, engasgos de GC simulados e CPU 4x mais lenta via CDP). Uso: `NODE_PATH=$(npm root -g) node scripts/dev/physics-check.mjs [--quick]`.
+## 3. Hub
+(preenchido na rodada final — ver §6)
 
-**Sobreviva aos Desastres**
-- **Jogo congelava no nível Mínimo.** Com `fpsCap 30` numa tela de 60 Hz, o laço descartava *todos* os quadros (o tempo do quadro descartado era jogado fora). Agora o tempo é acumulado; a física roda em subpassos de no máx. 1/60 s e engasgos são cortados em 0,1 s. Relógio da rodada em 52 s de teste: antes 0,0 s, depois 52,4 s.
-- **Altura do pulo dependia do fps** (99 / 104 / 107 px a 30 / 60 / 120 Hz). Gravidade agora integrada de forma exata: 109,4 px em todas as taxas, inclusive com engasgo de 180 ms.
-- **Blocos enterrados no chão e pilhas tremendo sem dormir.** A colisão empurrava o bloco de BAIXO para dentro do chão e a média de velocidades "bombeava" a pilha. Agora quem está em cima sai da sobreposição e nenhuma velocidade é passada para baixo. Quadros com bloco dentro do chão (cenário 1, 60 fps): 1002 → 0. Blocos ainda acordados 6 s depois do fim: 13 → 0.
-- **Parede tombando** colidia como caixa reta em pé (empurrava vizinhos para dentro do chão); agora a animação de tombar não colide. **Escada** segurava o chapéu da torre no ar depois que a torre caía. **Casas/torres/caixas** podiam nascer sobrepostas e "explodir" ao acordar. Sobreposições profundas: ~4900 → <20 quadros.
-- Plataformas finas com colisão varrida e velocidade terminal de 720 px/s (nada atravessa laje de 12 px). Inclinação visual volta a zero quando o bloco apoia.
-- **Controles:** toque rápido de pulo (entre dois quadros) não se perde; deslizar o dedo de uma seta para a outra troca de direção; teclas/botões soltam ao perder o foco ou ir para o fundo; andar + pular ao mesmo tempo (multitoque por `pointerId`).
+## 4. O que eu consertei
+Ver a tabela "Corrigidos" em `docs/QA-BUGS.md` (13 itens).
 
-**Queda Giratória**
-- O quique de "tontura" (1,4× mais alto) perdia a altura extra **no meio do ar** quando a tontura acabava: o Bloop despencava ~0,6 raio num único quadro. A altura agora é fixada no começo de cada quique, numa parábola de verdade.
-- Toques durante a tontura (0,22 s após quicar) ou durante o mergulho eram ignorados (23 de 39 toques no teste). Agora ficam guardados e viram mergulho assim que possível: 0 toques perdidos.
-- Queda entre anéis com integração exata (233 ms em 30/60/120 Hz; pouso sempre exatamente na superfície).
+## 5. Desempenho
+(preenchido na rodada final)
 
-**Bloop Orbit**
-- Em velocidade alta e fps baixo (20 fps, engasgo), o Bloop **atravessava planetas pequenos** sem pousar (passo de 65 px). O voo agora roda em subpassos de 1/120 s: captura e trajetória iguais em 20/30/60/120 fps.
-
-Pendências conhecidas: as caixas continuam colidindo como retângulos retos (a inclinação é só visual e zera quando o bloco apoia); o jogador ainda atravessa paredes de casa pelo lado (de propósito, para poder entrar nas casas).
+## 6. Rodada final
+(preenchido na rodada final)

@@ -137,3 +137,10 @@
 .pf-playing .fp-play { width: auto; max-width: 100%; padding: 4px 4px 4px 6px; }
 .pf-playing .fp-ava { width: 36px; height: 36px; }
 .pf-playing .fp-go { padding: 8px 12px; font-size: 15px; }
+/* QA: a coluna (Votação / Pronto? / 0/2 / chat) tinha ~130 px num saguão de 78 px e subia por cima do JOGAR.
+   Agora é uma grade 2×2 que cabe na altura do saguão. */
+.pl-side { display: grid; grid-template-columns: auto auto; grid-template-areas: 'vote count' 'ready chat'; gap: 4px 5px; align-items: center; justify-items: center; margin-bottom: 6px; }
+.pl-side .pf-votebtn { grid-area: vote; min-height: 28px; font-size: 12px; padding: 0 9px; }
+.pl-side .pl-count { grid-area: count; }
+.pl-side .pl-readybtn { grid-area: ready; }
+.pl-side .pl-chatbtn { grid-area: chat; height: 28px; }

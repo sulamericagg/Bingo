@@ -63,14 +63,14 @@ async function exitGame(page) {
   ok('amizade A↔B', r.s === 200, JSON.stringify(r).slice(0, 120));
 
   // A: Amigos → Criar grupo → Convidar B
-  await q.tapSel(A.page, '#pl-lobby .pl-add'); await A.page.waitForTimeout(1500);
+  await q.tapSel(A.page, '#pl-lobby .pl-add'); await A.page.waitForTimeout(2500); // espera a folha terminar de subir
   const create = await A.page.evaluateHandle(() => [...document.querySelectorAll('button')].find((b) => /criar grupo/i.test(b.textContent) && b.getBoundingClientRect().width > 0) || null);
-  if (await create.evaluate((x) => !!x)) { await q.tapSel(A.page, create.asElement()); await A.page.waitForTimeout(2500); }
+  if (await create.evaluate((x) => !!x)) { await q.tapSel(A.page, create.asElement()); await A.page.waitForTimeout(3000); }
   await q.shot(A.page, 'online-A-grupo');
   ok('A criou o grupo e é líder', await A.page.evaluate(() => !!document.querySelector('.pl-crown, .sq-members')));
   let invited = false;
   for (let i = 0; i < 10 && !invited; i++) {
-    const inv = await A.page.evaluateHandle((h) => { const rows = [...document.querySelectorAll('button')].filter((b) => /convidar|chamar/i.test(b.textContent) && b.getBoundingClientRect().width > 0 && !/grupo/i.test(b.textContent)); return rows.find((b) => (b.closest('[class*=row], li, .sc-row, div')?.textContent || '').includes(h)) || rows[0] || null; }, B.handle);
+    const inv = await A.page.evaluateHandle((h) => { const rows = [...document.querySelectorAll('button')].filter((b) => /^(convidar|chamar)$/i.test(b.textContent.trim()) && b.getBoundingClientRect().width > 0); return rows.find((b) => (b.closest('[class*=row], li, .sc-row, div')?.textContent || '').includes(h)) || rows[0] || null; }, B.handle);
     if (await inv.evaluate((x) => !!x)) { await q.tapSel(A.page, inv.asElement()); invited = true; } else await A.page.waitForTimeout(1500);
   }
   if (!invited) { r = await api(A.page, '/squad/invite', { id: A.id, squad: await A.page.evaluate(() => null), to: B.id }); }
