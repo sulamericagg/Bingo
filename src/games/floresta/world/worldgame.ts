@@ -160,6 +160,7 @@ const _e = new THREE.Euler();
 const _c = new THREE.Color();
 const _fog = new THREE.Color();
 const _top = new THREE.Color();
+const _buoy = new CANNON.Vec3();
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt);
 const angDiff = (a: number, b: number) => {
@@ -1128,7 +1129,7 @@ export class WorldGame {
         const wl = this.world.waterLevel(b.position.x, b.position.z);
         if (b.position.y < wl + 0.05) {
           const sub = Math.min(1, (wl + 0.05 - b.position.y) / (LOG_R * 2));
-          b.applyForce(new CANNON.Vec3(0.15 * Math.sin(this.time * 0.3 + i), 3 * 20 * 1.6 * sub, 0), b.position);
+          b.applyForce(_buoy.set(0.15 * Math.sin(this.time * 0.3 + i), 3 * 20 * 1.6 * sub, 0));
           b.velocity.scale(1 - Math.min(1, dt * 1.6), b.velocity);
           b.wakeUp();
         }
