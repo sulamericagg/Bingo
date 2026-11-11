@@ -39,13 +39,34 @@ export function playIntro(g: WorldGame): void {
   const cx = g.px + fx * 14;
   const cz = g.pz + fz * 14;
   const gy = W.floorAt(cx, 200, cz);
-  const start = new THREE.Vector3(cx - fz * 38 - fx * 14, gy + 48, cz + fx * 38 - fz * 14);
+  const start = new THREE.Vector3(cx - fz * 26 - fx * 8, gy + 26, cz + fx * 26 - fz * 8);
   const end = new THREE.Vector3(cx, gy + 0.8, cz);
   const ship = shipModel();
   ship.scale.setScalar(2);
   g.scene.add(ship);
   const flame = ship.getObjectByName('flame') as THREE.Mesh;
-  const camPos = new THREE.Vector3(g.px - fx * 6 + fz * 8, W.floorAt(g.px, 200, g.pz) + 4.5, g.pz - fz * 6 - fx * 8);
+  const camPos = new THREE.Vector3(g.px - fx * 8 + fz * 6, W.floorAt(g.px, 200, g.pz) + 3, g.pz - fz * 8 - fx * 6);
+  // nuvenzinhas na trajetória (somem no fim)
+  const clouds = new THREE.Group();
+  const cm = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8090a0, transparent: true, opacity: 0.92 });
+  const cg = new THREE.SphereGeometry(1, 10, 8);
+  for (let i = 0; i < 7; i++) {
+    const k = i / 6;
+    const c = new THREE.Group();
+    for (let j = 0; j < 4; j++) {
+      const b = new THREE.Mesh(cg, cm);
+      b.position.set((j - 1.5) * 1.6, Math.sin(j * 2.1) * 0.4, Math.cos(j * 1.3) * 0.8);
+      b.scale.set(1.6 + (j % 2) * 0.6, 1, 1.2);
+      c.add(b);
+    }
+    c.position.set(start.x + (end.x - start.x) * k * 0.7 + Math.sin(i * 2.3) * 10, start.y - 2 - k * 10 + Math.cos(i) * 3, start.z + (end.z - start.z) * k * 0.7 + Math.cos(i * 1.7) * 10);
+    clouds.add(c);
+  }
+  g.scene.add(clouds);
+  // rastro de fumaça (bolinhas que crescem e somem)
+  const puffG = new THREE.SphereGeometry(1, 8, 6);
+  const puffs: { m: THREE.Mesh; t: number }[] = [];
+  const puffM = new THREE.MeshBasicMaterial({ color: 0xd8d0e8, transparent: true, opacity: 0.8, depthWrite: false });
   const hudEl = g.hud.el;
   hudEl.style.transition = 'opacity .4s';
   hudEl.style.opacity = '0';
@@ -62,16 +83,13 @@ export function playIntro(g: WorldGame): void {
     if (done) return;
     done = true;
     g.scene.remove(ship);
+    g.scene.remove(clouds);
+    for (const p of puffs) g.scene.remove(p.m);
     flash.remove();
     skip.remove();
     hudEl.style.opacity = '1';
     // carrinho inicial ao lado da cratera
-    const v = g.vehs[0];
-    v.x = cx + fz * 6;
-    v.z = cz - fx * 6;
-    v.y = W.floorAt(v.x, gy + 6, v.z);
-    v.yaw = g.yaw + Math.PI / 2;
-    if (!g.save.veh.owned.includes(0)) g.save.veh.owned.push(0);
+    g.sb?.starterVehicle(cx + fz * 6, cz - fx * 6, g.yaw);
     g.save.vehPlaced = true;
     g.applyOwned();
     g.py = W.floorAt(g.px, g.py + 3, g.pz);
@@ -102,14 +120,24 @@ export function playIntro(g: WorldGame): void {
     audio.crack();
     tap('heavy');
     // destroços que ficam (enfeite)
-    ship.position.set(cx + 1.2, gy - 0.6, cz);
+    ship.position.set(cx + 1.2, gy - 1.2, cz);
     ship.rotation.set(0.5, 1.2, 0.9);
     ship.scale.setScalar(0.9);
     flame.visible = false;
   };
   g.cine = (dt: number): boolean => {
     T += dt;
-    const fall = 4.2;
+    const fall = 2.8;
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const p = puffs[i];
+      p.t += dt;
+      p.m.scale.setScalar(0.6 + p.t * 1.6);
+      (p.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.8 - p.t * 0.45);
+      if (p.t > 1.8) {
+        g.scene.remove(p.m);
+        puffs.splice(i, 1);
+      }
+    }
     if (T < fall) {
       const k = T / fall;
       const e = k * k;
@@ -118,22 +146,29 @@ export function playIntro(g: WorldGame): void {
       ship.lookAt(end.x + (end.x - start.x), end.y + (end.y - start.y) * 0.6, end.z + (end.z - start.z));
       ship.rotateZ(T * 3);
       flame.scale.setScalar(0.8 + Math.random() * 0.6);
-      if (Math.random() < 0.9) g.burst(2, ship.position.x, ship.position.y, ship.position.z, Math.random() < 0.5 ? '#5a5668' : '#ff8a3a', 1.5);
+      if (Math.random() < 0.9) g.burst(2, ship.position.x, ship.position.y, ship.position.z, '#ff8a3a', 1.5);
+      if (puffs.length < 40) {
+        const m = new THREE.Mesh(puffG, puffM.clone());
+        m.position.copy(ship.position);
+        g.scene.add(m);
+        puffs.push({ m, t: 0 });
+      }
+      // enquadra a nave E o chão (olha entre os dois)
       g.camera.position.copy(camPos);
-      g.camera.lookAt(ship.position);
+      g.camera.lookAt(ship.position.x * 0.55 + end.x * 0.45, ship.position.y * 0.5 + end.y * 0.5, ship.position.z * 0.55 + end.z * 0.45);
       return true;
     }
     if (!boomed) boom();
-    if (T < fall + 1.6) {
+    if (T < fall + 1.2) {
       // fumaça subindo da cratera; câmera olha
       if (Math.random() < 0.6) g.burst(1, cx + (Math.random() - 0.5) * 2, gy + 0.5, cz + (Math.random() - 0.5) * 2, '#8a8696', 1);
       g.camera.position.copy(camPos);
       g.camera.lookAt(cx, gy + 1, cz);
       return true;
     }
-    if (T < fall + 2.6 && T < 50) {
+    if (T < fall + 2 && T < 50) {
       // volta para os olhos do jogador
-      const k = (T - fall - 1.6) / 1;
+      const k = (T - fall - 1.2) / 0.8;
       const eye = new THREE.Vector3(g.px, g.py + 1.6, g.pz);
       g.camera.position.lerpVectors(camPos, eye, k * k * (3 - 2 * k));
       g.camera.lookAt(cx, gy + 1, cz);

@@ -10,7 +10,7 @@
  *  Densidade > 0 = sólido.  Valores quantizados em int8 (×10).
  * ============================================================ */
 import * as THREE from 'three';
-import { CH, RES, VN, WATER_Y } from './gen';
+import { CH, RES, VN } from './gen';
 import type { Chunk } from './chunk';
 import { fbm } from './noise';
 
@@ -519,6 +519,7 @@ const COFF = CORN.map(([x, y, z]) => x + y * PX + z * PX * PY);
 let oP = new Float32Array(30000);
 let oN = new Float32Array(30000);
 let oC = new Float32Array(30000);
+let oM = new Uint8Array(10000);
 let oI = new Uint32Array(60000);
 let fP = new Float32Array(6000);
 
@@ -597,6 +598,9 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
           oP = g(oP);
           oN = g(oN);
           oC = g(oC);
+          const m2 = new Uint8Array(oM.length * 2);
+          m2.set(oM);
+          oM = m2;
         }
         const o = nv * 3;
         const vx = x + sx / n;
@@ -665,9 +669,16 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
           r = g = b = 0.5;
         }
         // cavernas mais escuras quanto mais fundo (sem luz real)
-        const wy = y0 + vy;
-        if (wy < WATER_Y - 6 && bm !== M.Cristal && bm !== M.Gema) {
-          const k = Math.max(0.55, 1 - (WATER_Y - 6 - wy) / 110);
+
+        if (bm >= M.Carvao && bm <= M.Gema && bm !== M.Carvao) {
+          // minério: pintinhas que brilham (alguns vértices bem claros)
+          const h = hash3(x0 + x, y0 + y, z0 + z, 77);
+          const k = h > 0.72 ? 1.9 : 1.15 + h * 0.3;
+          r = Math.min(1, r * k);
+          g = Math.min(1, g * k);
+          b = Math.min(1, b * k);
+        } else if (bm === M.Funda) {
+          const k = 0.92;
           r *= k;
           g *= k;
           b *= k;
@@ -675,6 +686,7 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
         oC[o] = r;
         oC[o + 1] = g;
         oC[o + 2] = b;
+        oM[nv] = bm;
         cellV[ci] = nv++;
       }
   // 3) quads nas arestas cruzadas (só as desta seção)
@@ -732,6 +744,66 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
 }
 
 /** copia a saída do mesher para geometrias novas */
+/**
+ * Versão "rocha lapidada" para o subsolo: triângulos soltos com cor por face
+ * (média dos cantos ± um tom por face) e normal da face. Sem degradê borrado:
+ * paredes, chão e veios de minério ficam nítidos (veio = face com canto de minério).
+ */
+export function takeFacetMesh(nv: number, ni: number): THREE.BufferGeometry {
+  const pos = new Float32Array(ni * 3);
+  const nor = new Float32Array(ni * 3);
+  const col = new Float32Array(ni * 3);
+  for (let t = 0; t < ni; t += 3) {
+    const a = oI[t];
+    const b = oI[t + 1];
+    const c = oI[t + 2];
+    const ax = oP[a * 3], ay = oP[a * 3 + 1], az = oP[a * 3 + 2];
+    const bx = oP[b * 3], by = oP[b * 3 + 1], bz = oP[b * 3 + 2];
+    const cx = oP[c * 3], cy = oP[c * 3 + 1], cz = oP[c * 3 + 2];
+    let nx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
+    let ny = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+    let nz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const nl = Math.hypot(nx, ny, nz) || 1;
+    nx /= nl;
+    ny /= nl;
+    nz /= nl;
+    // minério ganha a face inteira (veio nítido)
+    let ore = -1;
+    for (const v of [a, b, c]) if (oM[v] >= M.Cobre && oM[v] <= M.Gema) ore = v;
+    let r: number, g: number, bl: number;
+    const h = hash3(Math.floor(ax * 3), Math.floor(ay * 3), Math.floor(az * 3), 5);
+    if (ore >= 0) {
+      const mi = MATS[oM[ore]];
+      const k = h > 0.6 ? 1.35 : 1.1;
+      r = Math.min(1, mi.col[0] * k);
+      g = Math.min(1, mi.col[1] * k);
+      bl = Math.min(1, mi.col[2] * k);
+    } else {
+      const k = 0.86 + h * 0.22;
+      r = ((oC[a * 3] + oC[b * 3] + oC[c * 3]) / 3) * k;
+      g = ((oC[a * 3 + 1] + oC[b * 3 + 1] + oC[c * 3 + 1]) / 3) * k;
+      bl = ((oC[a * 3 + 2] + oC[b * 3 + 2] + oC[c * 3 + 2]) / 3) * k;
+    }
+    const o = t * 3;
+    pos.set([ax, ay, az, bx, by, bz, cx, cy, cz], o);
+    for (let k = 0; k < 3; k++) {
+      nor[o + k * 3] = nx;
+      nor[o + k * 3 + 1] = ny;
+      nor[o + k * 3 + 2] = nz;
+      col[o + k * 3] = r;
+      col[o + k * 3 + 1] = g;
+      col[o + k * 3 + 2] = bl;
+    }
+  }
+  void nv;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
 export function takeMesh(nv: number, ni: number): { g: THREE.BufferGeometry; pos: Float32Array; idx: Uint32Array } {
   const g = new THREE.BufferGeometry();
   const pos = oP.slice(0, nv * 3);

@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { CH, RES, VN } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
-import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFluid, takeMesh, type MeshCtx } from './vox';
+import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFacetMesh, takeFluid, takeMesh, type MeshCtx } from './vox';
 import type { Phys } from './phys';
 
 export interface VoxHost {
@@ -30,6 +30,8 @@ interface Job {
 export class VoxWorld {
   readonly vg: VolGen;
   readonly lavaMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
+  /** subsolo: facetado (rocha lapidada, nítida perto da lanterna) */
+  readonly caveMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   private jobs: Job[] = [];
   private wantT = 0;
   /** jogador (para prioridade e seções "perto") */
@@ -340,8 +342,14 @@ export class VoxWorld {
     S.pos = null;
     S.idx = null;
     if (ni > 0) {
+      // abaixo da faixa da superfície (só rocha): facetado nítido; na superfície: suave (grama)
+      let gmin = 1e9;
+      for (let k = 0; k < v.hGen.length; k++) if (v.hGen[k] < gmin) gmin = v.hGen[k];
+      const deep = BED_Y + (S.s + 1) * SEC < gmin - 3;
+      const facet = deep ? takeFacetMesh(nv, ni) : null;
       const { g, pos, idx } = takeMesh(nv, ni);
-      const m = new THREE.Mesh(g, this.h.groundMat);
+      if (facet) g.dispose();
+      const m = new THREE.Mesh(facet ?? g, deep ? this.caveMat : this.h.groundMat);
       m.matrixAutoUpdate = false;
       m.receiveShadow = true;
       this.h.scene.add(m);

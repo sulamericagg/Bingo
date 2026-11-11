@@ -241,6 +241,10 @@ export class Builds {
   private lights: THREE.PointLight[] = [];
   private lightT = 0;
   private uid = 1;
+  private glowPos = new Float32Array(256 * 3);
+  private glowCol = new Float32Array(256 * 3);
+  private glowGeo = new THREE.BufferGeometry();
+  private glow: THREE.Points;
   /** espaço para módulos de conteúdo */
   onChange: ((op: 'add' | 'del' | 'upd', p: Piece) => void) | null = null;
 
@@ -249,6 +253,24 @@ export class Builds {
     private solids: Solids,
     nLights: number,
   ) {
+    // brilho das chamas/lâmpadas (pontos aditivos, sempre acesos)
+    this.glowGeo.setAttribute('position', new THREE.BufferAttribute(this.glowPos, 3));
+    this.glowGeo.setAttribute('color', new THREE.BufferAttribute(this.glowCol, 3));
+    this.glowGeo.setDrawRange(0, 0);
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const x = cv.getContext('2d')!;
+    const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.3, 'rgba(255,255,255,.6)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 64, 64);
+    const glow = new THREE.Points(this.glowGeo, new THREE.PointsMaterial({ size: 0.9, map: new THREE.CanvasTexture(cv), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    glow.frustumCulled = false;
+    glow.renderOrder = 6;
+    scene.add(glow);
+    this.glow = glow;
     for (let i = 0; i < nLights; i++) {
       const l = new THREE.PointLight(0xffb060, 0, 9, 1.4);
       l.visible = false;
@@ -414,6 +436,25 @@ export class Builds {
       if (d2 < 40 * 40) cand.push([d2, p]);
     }
     cand.sort((a, b) => a[0] - b[0]);
+    // pontos de brilho em todas as fontes perto
+    let gn = 0;
+    const gc = new THREE.Color();
+    for (const [, p] of cand) {
+      if (gn >= 256) break;
+      const d = PDEFS.get(p.id)!;
+      const top = p.id === 'tocha' ? 1.0 : p.id === 'luminaria' ? 1.75 : p.id.startsWith('lanterna') ? 1.9 : p.id === 'abajur' ? 1.45 : 0.45;
+      this.glowPos[gn * 3] = p.x;
+      this.glowPos[gn * 3 + 1] = p.y + top;
+      this.glowPos[gn * 3 + 2] = p.z;
+      gc.setHex(d.light!);
+      this.glowCol[gn * 3] = gc.r;
+      this.glowCol[gn * 3 + 1] = gc.g;
+      this.glowCol[gn * 3 + 2] = gc.b;
+      gn++;
+    }
+    this.glowGeo.setDrawRange(0, gn);
+    (this.glowGeo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.glowGeo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     for (let i = 0; i < L.length; i++) {
       const c = cand[i];
       const l = L[i];
@@ -505,6 +546,7 @@ export class Builds {
     for (const b of this.batches.values()) b.dispose();
     for (const p of this.pieces) for (const b of p.boxes) this.solids.remove(b);
     for (const l of this.lights) this.scene.remove(l);
+    this.scene.remove(this.glow);
     this.pieces = [];
   }
 }
