@@ -19,7 +19,7 @@ const CSS = `
 .ix-tag.on{opacity:1}
 .ix-tag.hot{background:rgba(255,92,122,.85)}
 .ix-tag.tip{background:#fff3a0;color:#2a0b5c;font-size:13px;box-shadow:0 2px 0 #2a0b5c55;border:2px solid #2a0b5c;padding:3px 10px}
-.ix-arrow{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;pointer-events:none;display:none;filter:drop-shadow(0 2px 0 #2a0b5c);z-index:3}
+.ix-arrow{position:absolute;left:0;top:0;width:54px;height:54px;margin:-27px 0 0 -27px;pointer-events:none;display:none;filter:drop-shadow(0 2px 0 #2a0b5c);z-index:3}
 .ix-arrow svg{width:100%;height:100%}
 `;
 let cssDone = false;
@@ -75,6 +75,14 @@ export class WorldTag {
       const sy = Math.max(WorldTag.top, ((1 - V.y) / 2) * h);
       this.el.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%)`;
     }
+  }
+  /** posição direta em px de tela (ex.: perto de uma seta de borda) */
+  screen(x: number, y: number, w: number): void {
+    if (!this.txt) return;
+    this.el.style.visibility = '';
+    const half = this.el.offsetWidth / 2 + 8;
+    const sx = Math.max(half, Math.min(w - half, x));
+    this.el.style.transform = `translate(${sx.toFixed(1)}px,${Math.max(WorldTag.top, y).toFixed(1)}px) translate(-50%,-50%)`;
   }
   dispose(): void {
     this.el.remove();
@@ -296,14 +304,19 @@ export class Beacon {
     const mx = w / 2;
     const my = h / 2;
     let dx = sx - mx;
-    const dy = sy - my;
+    // atrás de você: seta no meio da lateral ("vire para lá"), longe dos botões de baixo
+    const dy = V2.z > 1 ? 0 : sy - my;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) dx = 1;
     const ang = Math.atan2(dy, dx);
     const kx = (w / 2 - 40) / Math.max(1e-3, Math.abs(Math.cos(ang)));
     const ky = (h / 2 - 90) / Math.max(1e-3, Math.abs(Math.sin(ang)));
     const r = Math.min(kx, ky);
+    const ax = mx + Math.cos(ang) * r;
+    const ay = my + Math.sin(ang) * r;
     this.arrow.style.display = 'block';
-    this.arrow.style.transform = `translate(${(mx + Math.cos(ang) * r).toFixed(1)}px,${(my + Math.sin(ang) * r).toFixed(1)}px) rotate(${((ang * 180) / Math.PI - 90).toFixed(1)}deg)`;
+    this.arrow.style.transform = `translate(${ax.toFixed(1)}px,${ay.toFixed(1)}px) rotate(${((ang * 180) / Math.PI - 90).toFixed(1)}deg)`;
+    // alvo fora da tela: o balão da dica acompanha a seta (para dentro)
+    this.tag.screen(ax - Math.cos(ang) * 75, ay - Math.sin(ang) * 45, w);
   }
   dispose(): void {
     this.line.geometry.dispose();
