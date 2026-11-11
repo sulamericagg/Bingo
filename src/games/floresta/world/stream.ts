@@ -215,7 +215,11 @@ export class World {
       if (k <= 0.02) return 0;
       const y = c.h[j * VN + i];
       // escavado (caverna, buraco, túnel) ou coberto
-      if (c.vol && (this.vox.dens(x, y + 0.35, z) > 0 || this.vox.dens(x, y - 0.45, z) <= 0)) return 0;
+      if (c.vol) {
+        // o volume é amostrado em 1 m: compara com o chão do volume (com folga), não com a densidade crua
+        const f = c.vol.floor(x, y + 1.2, z);
+        if (Math.abs(f - y) > 0.35 || this.vox.dens(x, y + 1.4, z) > 0) return 0;
+      }
       // construção, acampamento ou bloco em cima
       if (this.solids.groundAt(x, z, y + 3) > y + 0.08) return 0;
       if (this.extraFloor && this.extraFloor(x, y + 3, z) > y + 0.08) return 0;
