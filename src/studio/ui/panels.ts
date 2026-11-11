@@ -398,12 +398,16 @@ export class Panels {
     const s = ch.s ?? [1, 1, 1];
     const r = Math.max(0.25, Math.min(0.55, s[1] * 0.45));
     ed.change('kit', () => {
+      // chassi acima do chão: a base fica na altura do eixo das rodas (não arrasta)
+      const lift = Math.max(0, r + 0.05 - (ch.p[1] - s[1] / 2));
+      ch.p = [ch.p[0], Math.round((ch.p[1] + lift) * 1000) / 1000, ch.p[2]];
       let id = ed.doc.parts.reduce((m, p) => Math.max(m, p.id), 0) + 1;
       const tire = ed.materialIndex({ c: '#2e2440', k: 'rubber' });
       const yb = ch.p[1] - s[1] / 2;
+      void yb;
       for (const x of [-1, 1])
         for (const z of [-1, 1])
-          ed.doc.parts.push({ id: id++, t: 'cylinder', p: [ch.p[0] + x * (s[0] / 2 + 0.2), Math.max(r, yb + 0.05), ch.p[2] + z * (s[2] / 2 - r * 0.9)], s: [r * 2, 0.32, r * 2], r: [0, 0, 90], m: tire, role: 'wheel' });
+          ed.doc.parts.push({ id: id++, t: 'cylinder', p: [ch.p[0] + x * (s[0] / 2 + 0.2), r, ch.p[2] + z * (s[2] / 2 - r * 0.9)], s: [r * 2, 0.32, r * 2], r: [0, 0, 90], m: tire, role: 'wheel' });
       ed.doc.parts.push({ id: id++, t: 'box', p: [ch.p[0], ch.p[1] + s[1] / 2 + 0.12, ch.p[2] + s[2] * 0.15], s: [0.7, 0.2, 0.7], m: ed.materialIndex({ c: '#f4efff', k: 'plastic' }) || undefined, role: 'seat' });
       if (ed.doc.kind === 'object') ed.doc.kind = 'vehicle';
     });

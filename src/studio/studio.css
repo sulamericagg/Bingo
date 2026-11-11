@@ -244,3 +244,4 @@
 .bs-root.wide .bs-dock,.bs-root.wide .bs-selchip{display:none}
 .bs-root.wide .bs-panel{bottom:var(--edge-b,10px)}
 .bs-panel[data-p=store],.bs-panel[data-p=publish]{width:min(440px,56vw)}
+.bs-play{z-index:5}

@@ -27,6 +27,7 @@ import { filterMessage } from '../../../shared/moderation';
 type CannonNS = typeof CANNON;
 type BodyU = CANNON.Body & { userData?: { pid?: number; cluster?: string } };
 const D2R = Math.PI / 180;
+const STIFF = 55;
 const UP = new THREE.Vector3(0, 1, 0);
 
 export interface PlayHost {
@@ -673,8 +674,14 @@ export class PlaySession {
     ctr.multiplyScalar(1 / Math.max(1, chassis.length));
     if (wheels.length) {
       let wy = 0;
-      for (const w of wheels) wy += inst.pose.get(w.id)!.p.y;
-      ctr.y = Math.min(ctr.y, wy / wheels.length + 0.15);
+      let wr = 0;
+      for (const w of wheels) {
+        const wp = inst.pose.get(w.id)!;
+        wy += wp.p.y;
+        wr += Math.max(Math.abs(wp.s.x), Math.abs(wp.s.z)) / 2;
+      }
+      // centro de massa quase no chão (truque de jogo arcade): acelerar/frear não empina nem capota
+      ctr.y = Math.min(ctr.y, (wy - wr * 0.75) / wheels.length);
     }
     const cl = this.makeCluster(inst, 'veh', chassis, 'dynamic', q, ctr);
     for (const p of chassis) inst.clusterOf.set(p.id, cl);
@@ -685,7 +692,7 @@ export class PlaySession {
     const mass = Math.max(120, Math.min(900, chassis.length * 25 + size * 30));
     body.mass = mass;
     body.updateMassProperties();
-    body.angularDamping = 0.3;
+    body.angularDamping = 0.45;
     body.allowSleep = false;
     const iq = q.clone().invert();
     const v: Vehicle = { inst, cl, rv: null, wheels: [], seatLocal: sp.p.clone().sub(ctr).applyQuaternion(iq), thrusters: [], mass, size };
@@ -702,7 +709,7 @@ export class PlaySession {
         const idx = rv.addWheel({
           radius: r,
           directionLocal: new C.Vec3(0, -1, 0),
-          suspensionStiffness: 38,
+          suspensionStiffness: STIFF,
           suspensionRestLength: rest,
           frictionSlip: 2.6,
           dampingRelaxation: 2.6,
@@ -710,7 +717,8 @@ export class PlaySession {
           maxSuspensionForce: 1e6,
           rollInfluence: 0.02,
           axleLocal: new C.Vec3(-1, 0, 0),
-          chassisConnectionPointLocal: new C.Vec3(local.x, local.y + rest * 0.6, local.z),
+          // compensa o quanto a mola afunda com o peso (g/rigidez): parado, a roda fica onde foi desenhada
+          chassisConnectionPointLocal: new C.Vec3(local.x, local.y + rest - 9.82 / STIFF, local.z),
           maxSuspensionTravel: 0.35,
           customSlidingRotationalSpeed: -30,
           useCustomSlidingRotationalSpeed: true,
@@ -779,24 +787,25 @@ export class PlaySession {
     const vel = new THREE.Vector3(b.velocity.x, b.velocity.y, b.velocity.z);
     const speed = vel.dot(fwd);
     if (v.rv) {
-      const F = v.mass * 9;
+      const F = v.mass * 6;
       for (const w of v.wheels) {
         let force = 0;
         let brake = 0;
-        if (jy > 0.05) force = speed < -0.5 ? 0 : jy * F;
-        else if (jy < -0.05) force = speed > 0.8 ? 0 : jy * F * 0.6;
+        const vmax = 17; // ~60 km/h: divertido e controlável no celular
+        if (jy > 0.05) force = speed < -0.5 || speed > vmax ? 0 : jy * F;
+        else if (jy < -0.05) force = speed > 0.8 || speed < -7 ? 0 : jy * F * 0.6;
         if ((jy < -0.05 && speed > 0.8) || (jy > 0.05 && speed < -0.5)) brake = v.mass * 0.5;
         else if (Math.abs(jy) < 0.05) brake = v.mass * 0.03;
-        // frente do veículo = −Z local; o RaycastVehicle empurra +Z com força positiva
-        v.rv.applyEngineForce(-force, w.idx);
+        // frente do veículo = −Z local (com eixo das rodas −X, força positiva empurra para −Z)
+        v.rv.applyEngineForce(force, w.idx);
         v.rv.setBrake(brake, w.idx);
         const steerMax = 0.5 / (1 + Math.abs(speed) * 0.04);
         v.rv.setSteeringValue(w.front ? -jx * steerMax : 0, w.idx);
       }
       // ajuda a não capotar: torque de endireitar suave
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-      if (up.y < 0.4) {
-        const tq = up.clone().cross(UP).multiplyScalar(v.mass * 6);
+      if (up.y < 0.97) {
+        const tq = up.clone().cross(UP).multiplyScalar(v.mass * (up.y < 0.5 ? 14 : 5));
         b.applyTorque(new this.C.Vec3(tq.x, tq.y, tq.z));
       }
     }
