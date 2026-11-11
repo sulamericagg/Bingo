@@ -10,7 +10,12 @@ async function launch(page, id) {
   if (await page.$('#game-host.on')) await page.evaluate(() => window.__bloop.closeHost());
   await page.setViewportSize({ width: 412, height: 915 });
   await page.waitForTimeout(500);
-  await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id);
+  for (let k = 0; k < 4 && !(await page.$('#game-host.on')); k++) {
+    // depois de sair de um jogo pode aparecer o anúncio de teste: o voltar fecha e tenta de novo
+    if (k) { await q.back(page); await page.waitForTimeout(1200); }
+    await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id);
+    await page.waitForTimeout(1500);
+  }
   let w = 0;
   while (w < 40000 && (await page.$('#game-host .gh-loading'))) { await page.waitForTimeout(250); w += 250; }
   await page.waitForTimeout(1500);
@@ -52,6 +57,7 @@ const scenes = {
     note('cinema', 'abertura', null, await q.shot(page, 'deep-cinema-0'));
     await tapText(page, 'criar filme|criar história'); await page.waitForTimeout(2500);
     note('cinema', 'Criar história (em pé)', null, await q.shot(page, 'deep-cinema-story'));
+    await tapText(page, 'piquenique|em branco|do zero', 'body'); await page.waitForTimeout(2500);
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => { const c = [...document.querySelectorAll('.kid-card')]; c.slice(0, 2).forEach((x) => x.click()); });
       await page.waitForTimeout(600);
@@ -71,8 +77,8 @@ const scenes = {
     const ov = await page.evaluate(() => { const o = document.querySelector('.tv-over'); const st = document.querySelector('.tv-stage'); if (!o || o.hidden || !st) return null; const a = o.getBoundingClientRect(), s = st.getBoundingClientRect(); return { right: s.right - a.right, bottom: s.bottom - a.bottom, top: a.top - s.top }; });
     note('tv', 'contador de tempo longe da marca "Feito no Bloop World" (canto de baixo à direita)', ov ? ov.bottom > 40 : null, '', JSON.stringify(ov));
     const n = await page.evaluate(() => document.querySelectorAll('.tv-cat-it').length);
-    await tapText(page, 'catálogo|filmes|todos', '.tv-root'); await page.waitForTimeout(2500);
-    const n2 = await page.evaluate(() => document.querySelectorAll('.tv-cat-it').length);
+    let n2 = 0;
+    for (let k = 0; k < 4 && !n2; k++) { await tapText(page, 'catálogo|filmes|todos', 'body'); await page.waitForTimeout(2500); n2 = await page.evaluate(() => document.querySelectorAll('.tv-cat-it').length); }
     note('tv', 'TV cheia de filmes (~100)', Math.max(n, n2) >= 80, await q.shot(page, 'deep-tv-catalogo'), `filmes no catálogo=${Math.max(n, n2)}`);
     await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(1500);
     note('tv', 'TV deitada', null, await q.shot(page, 'deep-tv-land'));
@@ -125,15 +131,14 @@ const scenes = {
     await exit(page);
   },
   async mundo(page, cdp) {
-    await launch(page, 'floresta');
-    note('mundo', 'menu do Lenhadores/Mundo', null, await q.shot(page, 'deep-mundo-0'));
-    const has = await tapText(page, 'mundo');
-    await page.waitForTimeout(2500);
-    note('mundo', 'Meus Mundos', null, await q.shot(page, 'deep-mundo-lista'));
+    await launch(page, 'mundo');
+    const has = !!(await page.$('#game-host.on'));
+    await page.waitForTimeout(1500);
+    note('mundo', 'Meus Mundos sem o Lenhadores clássico', !(await page.evaluate(() => /clássico/i.test(document.querySelector('#game-host')?.innerText || ''))), await q.shot(page, 'deep-mundo-lista'));
     await tapText(page, 'novo mundo'); await page.waitForTimeout(2500);
     await q.shot(page, 'deep-mundo-novo');
     await tapText(page, '^(criar|começar|jogar|ok|entrar)'); await page.waitForTimeout(15000);
-    note('mundo', 'Mundo (blocos) abre', has, await q.shot(page, 'deep-mundo-1'));
+    note('mundo', 'Mundo (blocos) abre como jogo próprio', has, await q.shot(page, 'deep-mundo-1'));
     const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
     await q.hold(cdp, [W * 0.14, H * 0.76], [W * 0.14, H * 0.55], 2000);
     note('mundo', 'andando / HUD', null, await q.shot(page, 'deep-mundo-2'));

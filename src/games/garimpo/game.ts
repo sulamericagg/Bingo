@@ -207,6 +207,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   /** abertura tocando (o jogo espera) */
   private introOn = false;
+  /** módulo da abertura carregado (para encerrá-la se o jogador sair no meio) */
+  private cineMod: typeof import('./start/cinematic') | null = null;
   private lobby: LobbyHandle | null = null;
   private netChip: HTMLDivElement | null = null;
   /** convidado: carrinhos/mineiros da mina do anfitrião (só para a loja) */
@@ -809,6 +811,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.hud?.setVisible(false);
     try {
       const c = await import('./start/cinematic');
+      this.cineMod = c;
       if (!this.w || !this.r || !this.camp) return;
       await c.playInGame(this.wrap, this.r, this.w, this.camp.site, this.gov.tier, this.worker ? [this.worker.group] : []);
     } catch (e) {
@@ -2229,6 +2232,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
 
   /** sai da partida (volta ao menu de saves ou ao hub): salva, relata e libera tudo */
   private leave(): void {
+    // saiu no meio da abertura: para o laço dela ANTES de liberar o renderizador (senão ela seguia
+    // desenhando num contexto perdido: "Cannot read properties of null (reading 'trim')" a cada quadro)
+    if (this.introOn) this.cineMod?.skipIntro();
     if (!this.sv) return;
     this.persist();
     const secs = Math.round((performance.now() - this.startAt) / 1000);

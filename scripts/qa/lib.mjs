@@ -207,7 +207,7 @@ export async function audit(page, rootSel = 'body') {
     for (const el of btns) {
       const r = el.getBoundingClientRect();
       let scroll = false; let p = el.parentElement;
-      while (p) { const c = getComputedStyle(p); if (/(auto|scroll)/.test(c.overflowX + c.overflowY)) { scroll = true; break; } p = p.parentElement; }
+      while (p) { const c = getComputedStyle(p); if (/(auto|scroll)/.test(c.overflowX + c.overflowY)) { scroll = true; break; } if (/(hidden|clip)/.test(c.overflowX + c.overflowY)) { const pr = p.getBoundingClientRect(); if (r.left >= pr.right - 1 || r.right <= pr.left + 1 || r.top >= pr.bottom - 1 || r.bottom <= pr.top + 1) { scroll = true; break; } } p = p.parentElement; }
       if (!scroll && (r.right > W + 1 || r.bottom > H + 1 || r.left < -1 || r.top < -1)) out.push(`CUT ${name(el)} [${r.left | 0},${r.top | 0},${r.right | 0},${r.bottom | 0}]`);
       const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       if (cx < 0 || cy < 0 || cx > W || cy > H || scroll) continue;
