@@ -342,6 +342,26 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
     trees.push({ x, z, s: 0.8 + r() * 0.6, kind, rot: r() * 6.28 });
   }
 
+  // pedras (encosta da montanha, borda) e samambaias (mata, beira do lago)
+  for (let i = 0; i < 160; i++) {
+    const x = 6 + r() * (SIZE - 12);
+    const z = 6 + r() * (SIZE - 12);
+    if (Math.hypot(x - camp.x, z - camp.z) < 30 || Math.hypot(x - mine.x, z - mine.z) < 18) continue;
+    if (roadDist(road, x, z) < roadW + 2 || roadDist(gateRoad, x, z) < roadW + 2) continue;
+    if (Math.hypot(x - lake.x, z - lake.z) < lake.r + 1) continue;
+    const dm = Math.hypot(x - mountain.x, z - mountain.z) / mountain.r;
+    if (dm > 0.95 && r() < 0.6) continue;
+    trees.push({ x, z, s: 0.5 + r() * 1.1, kind: 4, rot: r() * 6.28 });
+  }
+  for (let i = 0; i < 260; i++) {
+    const x = 6 + r() * (SIZE - 12);
+    const z = 6 + r() * (SIZE - 12);
+    if (Math.hypot(x - camp.x, z - camp.z) < 30 || Math.hypot(x - mine.x, z - mine.z) < 16) continue;
+    if (roadDist(road, x, z) < roadW + 1.5 || roadDist(gateRoad, x, z) < roadW + 1.5) continue;
+    if (Math.hypot(x - lake.x, z - lake.z) < lake.r + 0.5) continue;
+    trees.push({ x, z, s: 0.7 + r() * 0.7, kind: 5, rot: r() * 6.28 });
+  }
+
   return { seed, camp, plant, stock, garage, houses, lake, mountain, mine, road: [...road], gateRoad: [gate, gateRoad[1], { x: stock.x, z: stock.z - 6 }], deposits, trees, gate };
 }
 

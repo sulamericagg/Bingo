@@ -5,6 +5,7 @@
  *  sobem para a GPU (addUpdateRange). O passo da malha (1 ou 2) segue a qualidade.
  * ============================================================ */
 import * as THREE from 'three';
+import { applyGroundLook } from './ground';
 
 export const N = 384;
 export const SIZE = 192;
@@ -21,7 +22,7 @@ export const MAT_SAND = 4;
 /** cores-base (terra vermelha amazônica, grama, estrada batida, lama, areia) */
 const BASE: [number, number, number][] = [
   [0.78, 0.36, 0.17],
-  [0.36, 0.56, 0.2],
+  [0.27, 0.45, 0.13],
   [0.84, 0.5, 0.28],
   [0.4, 0.23, 0.13],
   [0.86, 0.68, 0.44],
@@ -71,6 +72,8 @@ export class Terrain {
   goldOut = 0;
   /** chuva acumulada 0..1 (umidade extra, maior nas baixadas) */
   rain = 0;
+  /** avisado quando o chão muda (x0,z0,x1,z1 em metros) — a grama se refaz ali */
+  onEdit: ((x0: number, z0: number, x1: number, z1: number) => void) | null = null;
   /** sobreposição colorida (meta de altura): devolve h - alvo, ou NaN fora da área */
   overlay: ((k: number) => number) | null = null;
   overlayTol = 0.12;
@@ -86,7 +89,7 @@ export class Terrain {
   private stampId = 1;
 
   constructor() {
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, map: dirtTexture() });
+    this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uRain = this.uRain;
     this.material.onBeforeCompile = (sh) => {
       sh.uniforms.uRain = uRain;
@@ -103,6 +106,7 @@ export class Terrain {
         );
     };
     this.material.customProgramCacheKey = () => 'terra-ground';
+    applyGroundLook(this.material);
   }
 
   /* ------------------------- consulta ------------------------- */
@@ -238,6 +242,7 @@ export class Terrain {
 
   /** marca vértices [i0..i1]×[j0..j1] como alterados */
   markRect(i0: number, j0: number, i1: number, j1: number): void {
+    this.onEdit?.(i0 * CELL, j0 * CELL, i1 * CELL, j1 * CELL);
     i0 = clamp(i0 - 1, 0, N);
     j0 = clamp(j0 - 1, 0, N);
     i1 = clamp(i1 + 1, 0, N);
@@ -613,52 +618,9 @@ export class Terrain {
 
   dispose(): void {
     for (const c of this.chunks) c.geo.dispose();
-    this.material.map?.dispose();
     this.material.dispose();
   }
 }
 
 const TMP_KS = new Int32Array(64);
 
-/** textura de ruído cinza (grãos, pedrinhas) multiplicada pela cor do vértice */
-function dirtTexture(): THREE.Texture {
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const x = c.getContext('2d')!;
-  const img = x.createImageData(S, S);
-  let seed = 1234567;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < S * S; i++) {
-    const v = 222 + rnd() * 33;
-    img.data[i * 4] = v;
-    img.data[i * 4 + 1] = v;
-    img.data[i * 4 + 2] = v;
-    img.data[i * 4 + 3] = 255;
-  }
-  x.putImageData(img, 0, 0);
-  // manchas suaves e pedrinhas
-  for (let i = 0; i < 70; i++) {
-    const px = rnd() * S;
-    const py = rnd() * S;
-    const r = 3 + rnd() * 10;
-    x.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '90,70,60'},${0.06 + rnd() * 0.08})`;
-    for (const ox of [-S, 0, S])
-      for (const oy of [-S, 0, S]) {
-        x.beginPath();
-        x.arc(px + ox, py + oy, r, 0, Math.PI * 2);
-        x.fill();
-      }
-  }
-  for (let i = 0; i < 160; i++) {
-    const px = rnd() * S;
-    const py = rnd() * S;
-    x.fillStyle = `rgba(${rnd() < 0.6 ? '70,50,40' : '255,240,220'},${0.25 + rnd() * 0.3})`;
-    x.fillRect(px, py, 1 + rnd() * 2, 1 + rnd() * 1.5);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 2;
-  return t;
-}

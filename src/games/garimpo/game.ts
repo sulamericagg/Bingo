@@ -629,6 +629,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     w.clods.update(dt, w.T, w.waterY);
     w.drops.update(dt, w.T, w.waterY);
     w.rain.update(this.time, this.camPos, this.rainK);
+    w.veg?.update(this.time, this.camPos.x, this.camPos.y, this.camPos.z, cur.pos.x, cur.pos.z, cur === this.worker ? 0.6 : cur.veh ? cur.rad * 1.2 : 0);
     const f0 = performance.now();
     w.T.flush();
     this.prof.flush += (performance.now() - f0 - this.prof.flush) * 0.05;

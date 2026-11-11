@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import type { Tier } from '../../core/quality';
 import { Flames, makeClods, makeDrops, Particles, Rain } from './fx';
 import { generate, type MapInfo } from './gen';
-import { buildFlag, buildGarage, buildHouse, buildPlant, buildStock, C, treeGeometries } from './models';
+import { buildFlag, buildGarage, buildHouse, buildPlant, buildStock, C } from './models';
+import { Vegetation } from './veg';
 import { SIZE, Terrain } from './terrain';
 
 export interface Circle {
@@ -34,9 +35,7 @@ export class World {
   private skyU = { top: { value: new THREE.Color(0x4f9be0) }, bot: { value: new THREE.Color(0xf3d6a8) } };
   private water!: THREE.Mesh;
   private skirt: THREE.Mesh;
-  treeMeshes: THREE.InstancedMesh[] = [];
-  /** por árvore: tipo, índice na malha, viva (0..1), queimada */
-  treeRef: { kind: number; idx: number; burn: number }[] = [];
+  veg: Vegetation | null = null;
   private grid = new Map<number, Circle[]>();
   /** volumes de prédios (a câmera não entra): centro, raio, altura do topo */
   blockers: { x: number; z: number; r: number; y: number }[] = [];
@@ -50,7 +49,7 @@ export class World {
     this.camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.3, 260);
     this.scene.fog = new THREE.Fog(0xcfd9c8, 60, 200);
     this.scene.background = new THREE.Color(0xcfd9c8);
-    this.hemi = new THREE.HemisphereLight(0xdfefff, 0x8a6a4a, 2.7);
+    this.hemi = new THREE.HemisphereLight(0xdfefff, 0x8a6a4a, 2.0);
     this.sun = new THREE.DirectionalLight(0xfff0d0, 2.6);
     this.sun.position.set(60, 90, 30);
     this.sun.shadow.mapSize.set(1024, 1024);
@@ -184,50 +183,16 @@ export class World {
   }
 
   private buildTrees(): void {
-    for (const m of this.treeMeshes) {
-      this.scene.remove(m);
-      m.dispose();
-    }
-    const geos = treeGeometries();
-    const counts = [0, 0, 0, 0];
-    for (const t of this.map.trees) counts[t.kind]++;
-    this.treeMeshes = geos.map((g, i) => {
-      const im = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), Math.max(1, counts[i]));
-      im.castShadow = true;
-      im.count = 0;
-      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, counts[i]) * 3).fill(1), 3);
-      this.scene.add(im);
-      return im;
-    });
-    this.treeRef = [];
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    const p = new THREE.Vector3();
-    const s = new THREE.Vector3();
+    this.veg?.dispose();
+    this.veg = new Vegetation(this.scene, this.map, this.T, this.tier);
     this.map.trees.forEach((t, n) => {
-      const im = this.treeMeshes[t.kind];
-      const idx = im.count++;
-      q.setFromAxisAngle(up, t.rot);
-      m4.compose(p.set(t.x, this.T.heightAt(t.x, t.z) - 0.1, t.z), q, s.setScalar(t.s));
-      im.setMatrixAt(idx, m4);
-      this.treeRef.push({ kind: t.kind, idx, burn: 0 });
-      if (t.kind !== 3) this.addCircle({ x: t.x, z: t.z, r: 0.45 * t.s, tree: n });
+      if (t.kind <= 2) this.addCircle({ x: t.x, z: t.z, r: 0.45 * t.s, tree: n });
+      else if (t.kind === 4) this.addCircle({ x: t.x, z: t.z, r: 0.75 * t.s });
     });
-    for (const im of this.treeMeshes) {
-      im.instanceMatrix.needsUpdate = true;
-      im.computeBoundingSphere();
-    }
   }
-  /** pinta uma árvore conforme a queima (0 = verde, 1 = carvão) */
+  /** pinta uma planta conforme a queima (0 = verde, 1 = carvão) */
   burnTree(n: number, b: number): void {
-    const r = this.treeRef[n];
-    if (!r || Math.abs(r.burn - b) < 0.05) return;
-    r.burn = b;
-    const im = this.treeMeshes[r.kind];
-    const k = 1 - b * 0.8;
-    im.setColorAt(r.idx, _c.setRGB(k + b * 0.25, k, k * (1 - b * 0.3)));
-    im.instanceColor!.needsUpdate = true;
+    this.veg?.burn(n, b);
   }
 
   /** altura da água em (x,z) (ou -∞ fora do lago) */
@@ -251,12 +216,7 @@ export class World {
     this.clods.budget = [0.35, 0.6, 0.85, 1][t];
     this.drops.budget = [0.5, 0.7, 0.9, 1][t];
     (this.rain.mesh.geometry as THREE.BufferGeometry).setDrawRange(0, [400, 700, 1000, 1400][t] * 2);
-    const tf = [0.45, 0.7, 1, 1][t];
-    this.treeMeshes.forEach((im, i) => {
-      const total = this.map.trees.filter((x) => x.kind === i).length;
-      im.count = Math.max(0, Math.round(total * (i === 3 ? tf * tf : tf)));
-      im.castShadow = t >= 3;
-    });
+    this.veg?.setTier(t);
   }
 
   /** chuva 0..1: céu, luz e névoa */
@@ -267,7 +227,7 @@ export class World {
     const f = this.scene.fog as THREE.Fog;
     f.color.setRGB(0.74 - k * 0.22, 0.83 - k * 0.28, 0.9 - k * 0.3);
     this.sun.intensity = 2.6 - k * 1.5;
-    this.hemi.intensity = 2.7 - k * 0.6;
+    this.hemi.intensity = 2.0 - k * 0.5;
     this.skyU.bot.value.copy(f.color);
     (this.scene.background as THREE.Color).copy(f.color);
     const far = FAR[this.tier];
@@ -283,6 +243,7 @@ export class World {
   }
 
   dispose(): void {
+    this.veg?.dispose();
     this.T.dispose();
     this.rain.dispose();
     this.scene.traverse((o) => {
@@ -291,4 +252,3 @@ export class World {
     });
   }
 }
-const _c = new THREE.Color();

@@ -45,7 +45,7 @@ export class Fire {
     for (let i = 0; i < G * G; i++) this.trees.push([]);
     m.trees.forEach((tr, n) => {
       const k = this.cell(tr.x, tr.z);
-      this.fuel[k] += tr.kind === 3 ? 0.4 : 1;
+      this.fuel[k] += tr.kind === 3 ? 0.4 : tr.kind === 4 ? 0 : tr.kind === 5 ? 0.25 : 1;
       this.trees[k].push(n);
     });
     for (const h of m.houses) this.fuel[this.cell(h.x, h.z)] += 1.5;
