@@ -34,10 +34,16 @@ function freeze(o: THREE.Object3D): void {
  */
 function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): void {
   const off: THREE.Object3D[] = [];
+  const hid: THREE.Object3D[] = [];
   scene.traverse((o) => {
     if (o.frustumCulled) {
       o.frustumCulled = false;
       off.push(o);
+    }
+    // escondidos agora (anel de mira, fogo, efeitos) também: senão compilam no meio do jogo
+    if (!o.visible) {
+      o.visible = true;
+      hid.push(o);
     }
   });
   try {
@@ -45,6 +51,7 @@ function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): 
     r.render(scene, cam);
   } finally {
     for (const o of off) o.frustumCulled = true;
+    for (const o of hid) o.visible = false;
   }
 }
 export { q3For, type Q3 };
