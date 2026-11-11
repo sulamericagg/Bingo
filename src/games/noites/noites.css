@@ -1,0 +1,118 @@
+/* NOITES DO ACAMPAMENTO — HUD de ícones grandes (paisagem). */
+.nc-root{position:absolute;inset:0;overflow:hidden;background:#0a0e22;font-family:var(--font,Fredoka,sans-serif);color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
+.nc-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.nc-root [hidden]{display:none!important}
+.nc-hud{position:absolute;inset:0;pointer-events:none;z-index:5}
+.nc-hud button,.nc-hud .nc-pe{pointer-events:auto}
+.nc-btn{border:0;border-radius:18px;background:linear-gradient(#fff,#e9e0ff);box-shadow:0 4px 0 #2a0b5c,0 6px 14px rgba(0,0,0,.35);color:#2a0b5c;font:inherit;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;cursor:pointer}
+.nc-btn.round{border-radius:50%;padding:0;width:56px;height:56px}
+.nc-btn.dark{background:linear-gradient(#5a3fa0,#2a1a5a);color:#fff;box-shadow:0 4px 0 #120630,0 6px 14px rgba(0,0,0,.35)}
+.nc-btn.red{background:linear-gradient(#ff7a8a,#e0304a);color:#fff;box-shadow:0 4px 0 #7a1020}
+.nc-btn.green{background:linear-gradient(#7aff9a,#22b85a);color:#0a3a1a;box-shadow:0 4px 0 #0a5a2a}
+.nc-btn.gold{background:linear-gradient(#fff3a0,#ffc02e);box-shadow:0 4px 0 #9a5a00}
+.nc-btn.on{outline:4px solid #fff36b;outline-offset:2px}
+.nc-btn:disabled{filter:grayscale(.8) brightness(.8)}
+.nc-top{position:absolute;left:var(--edge-l,12px);right:var(--edge-r,12px);top:var(--edge-t,8px);display:flex;align-items:flex-start;gap:8px}
+.nc-stats{display:flex;flex-direction:column;gap:4px;background:rgba(20,10,50,.55);border-radius:16px;padding:5px 8px}
+.nc-hearts{display:flex;gap:1px}
+.nc-hearts svg{filter:drop-shadow(0 1px 0 #000)}
+.nc-hearts .off{opacity:.25;filter:grayscale(1)}
+.nc-meters{display:flex;gap:8px;align-items:center}
+.nc-meter{display:flex;align-items:center;gap:3px}
+.nc-bar{width:46px;height:10px;border-radius:6px;background:rgba(255,255,255,.2);overflow:hidden;border:2px solid #2a0b5c}
+.nc-bar i{display:block;height:100%;background:#ffd34a;transition:width .3s}
+.nc-meter.low{animation:ncBlink .6s infinite}
+.nc-bag{display:flex;align-items:center;gap:2px;font-weight:700;font-size:15px}
+.nc-mid{flex:1;transform:translateX(56px);display:flex;flex-direction:column;align-items:center;gap:4px}
+.nc-phase{display:flex;align-items:center;gap:6px;background:rgba(20,10,50,.6);border-radius:20px;padding:3px 12px 3px 6px;font-weight:700;font-size:22px}
+.nc-phase .pbar{width:70px;height:8px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden}
+.nc-phase .pbar i{display:block;height:100%;background:linear-gradient(90deg,#ffd34a,#ff8a3a)}
+.nc-phase.night .pbar i{background:linear-gradient(90deg,#8a7aff,#c8d8ff)}
+.nc-fire{display:flex;align-items:center;gap:4px;background:rgba(20,10,50,.6);border-radius:16px;padding:2px 8px}
+.nc-fire .nc-bar{width:70px}
+.nc-fire .nc-bar i{background:linear-gradient(90deg,#ff5a1a,#ffd34a)}
+.nc-fire.low{animation:ncBlink .5s infinite}
+.nc-obj{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);color:#2a0b5c;border-radius:18px;padding:3px 10px 3px 4px;font-weight:700;font-size:13px;max-width:44vw}
+.nc-obj span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nc-obj .arr{transition:transform .15s}
+.nc-right{display:flex;gap:6px}
+.nc-right .nc-btn.round{width:48px;height:48px}
+.nc-code{background:rgba(20,10,50,.7);border-radius:14px;padding:4px 8px;font-weight:700;font-size:16px;display:flex;align-items:center;gap:4px;letter-spacing:2px}
+.nc-act{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--edge-b,12px) + 6px);display:flex;align-items:flex-end;gap:10px}
+.nc-use{width:104px;height:104px;border-radius:50%;flex-direction:column;gap:0;font-size:12px;padding:4px}
+.nc-use.pulse{animation:ncPulse 1s infinite}
+.nc-use b{font-size:11px;line-height:1.05;max-width:96px;text-align:center}
+.nc-side{display:flex;flex-direction:column;gap:10px;align-items:center}
+.nc-side .nc-btn.round{width:64px;height:64px}
+.nc-hot{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--edge-b,12px) + 4px);display:flex;gap:6px}
+.nc-slot{width:58px;height:58px;border-radius:14px;position:relative;padding:0}
+.nc-slot em{position:absolute;right:2px;bottom:0;font-style:normal;font-weight:700;font-size:14px;color:#fff;text-shadow:0 0 3px #2a0b5c,0 0 3px #2a0b5c}
+.nc-place{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--edge-b,12px) + 8px);display:none;gap:14px}
+.nc-place.on{display:flex}
+.nc-place .nc-btn.round{width:70px;height:70px}
+.nc-bots{position:absolute;left:var(--edge-l,12px);top:110px;display:none;flex-direction:column;gap:6px}
+.nc-bots.on{display:flex}
+.nc-bots .nc-btn{width:58px;height:58px;padding:0;border-radius:16px}
+.nc-mark{position:absolute;left:0;top:0;pointer-events:none;transform:translate(-50%,-50%);filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));display:none}
+.nc-mark.on{display:block}
+.nc-dark{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(5,0,20,.55));opacity:0;transition:opacity 1s}
+.nc-hurt{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 80px 20px rgba(140,90,255,.0);transition:box-shadow .3s}
+.nc-hurt.on{box-shadow:inset 0 0 90px 30px rgba(140,90,255,.65)}
+.nc-panel{position:absolute;inset:0;background:rgba(10,4,30,.82);z-index:20;display:flex;flex-direction:column;padding:calc(var(--edge-t,8px) + 4px) calc(var(--edge-r,12px) + 6px) calc(var(--edge-b,12px) + 4px) calc(var(--edge-l,12px) + 6px);gap:6px;pointer-events:auto}
+.nc-panel .row{display:flex;align-items:center;gap:6px}
+.nc-stash{display:flex;flex-wrap:wrap;gap:4px;flex:1}
+.nc-chip{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.12);border-radius:10px;padding:1px 6px 1px 2px;font-weight:700;font-size:14px}
+.nc-chip.no{background:rgba(255,80,100,.35)}
+.nc-tabs{display:flex;gap:6px}
+.nc-tabs .nc-btn{width:54px;height:48px;padding:0}
+.nc-grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:4px;touch-action:pan-y}
+.nc-card{position:relative;background:linear-gradient(#fff,#efe6ff);color:#2a0b5c;border-radius:16px;padding:6px 4px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;border:3px solid transparent;cursor:pointer;min-height:124px}
+.nc-card.sel{border-color:#ffd34a;box-shadow:0 0 0 3px #2a0b5c}
+.nc-card.lock{filter:grayscale(.9) brightness(.7)}
+.nc-card.ok{background:linear-gradient(#eaffef,#bff5cf)}
+.nc-card .nm{font-size:11px;font-weight:700;text-align:center;line-height:1.05}
+.nc-card .cost{display:flex;flex-wrap:wrap;gap:2px;justify-content:center}
+.nc-card .cost .nc-chip{background:rgba(42,11,92,.1);font-size:12px;color:#2a0b5c}
+.nc-card .cost .nc-chip.no{background:rgba(255,80,100,.3)}
+.nc-card .lk{position:absolute;right:4px;top:4px;display:flex;align-items:center;font-weight:700;font-size:13px}
+.nc-card .have{position:absolute;left:4px;top:4px}
+.nc-make{width:96px;height:96px;border-radius:50%;flex-direction:column;font-size:13px}
+.nc-menu{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:radial-gradient(circle at 50% 30%,#3a2a7a,#0a0620 75%);padding:calc(var(--edge-t,8px) + 4px) var(--edge-r,12px) var(--edge-b,12px) var(--edge-l,12px);pointer-events:auto}
+.nc-menu h1{margin:0;font-size:30px;text-shadow:0 3px 0 #2a0b5c;display:flex;align-items:center;gap:8px}
+.nc-menu .big{display:flex;gap:14px}
+.nc-menu .big .nc-btn{flex-direction:column;width:132px;height:118px;font-size:15px;border-radius:24px}
+.nc-menu .hats{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.nc-menu .hats .nc-btn{width:52px;height:52px;padding:0;position:relative}
+.nc-menu .hats .nc-btn small{position:absolute;bottom:-2px;right:2px;font-size:12px;color:#fff;text-shadow:0 0 3px #000}
+.nc-menu .rec{display:flex;align-items:center;gap:6px;font-weight:700;font-size:18px}
+.nc-menu .tl{position:absolute;left:var(--edge-l,12px);top:var(--edge-t,8px)}
+.nc-keys{display:grid;grid-template-columns:repeat(3,64px);gap:8px}
+.nc-keys .nc-btn{height:54px;font-size:26px}
+.nc-codebox{font-size:36px;letter-spacing:8px;font-weight:700;background:#fff;color:#2a0b5c;border-radius:14px;padding:2px 14px;min-width:220px;text-align:center;min-height:50px}
+.nc-friends{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:90vw}
+.nc-result{position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(10,4,30,.86);pointer-events:auto}
+.nc-result .num{font-size:64px;font-weight:700;display:flex;align-items:center;gap:8px;text-shadow:0 4px 0 #2a0b5c}
+.nc-result .row{display:flex;gap:14px;font-size:22px;font-weight:700;align-items:center}
+@keyframes ncPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes ncBlink{50%{opacity:.4}}
+@media (max-height:380px){.nc-use{width:88px;height:88px}.nc-side .nc-btn.round{width:56px;height:56px}.nc-slot{width:50px;height:50px}.nc-menu .big .nc-btn{width:118px;height:100px}}
+
+.nc-garage .nc-vlist{display:flex;flex-direction:column;gap:6px;width:150px}
+.nc-vcards{display:flex;flex-direction:column;gap:6px;overflow-y:auto;touch-action:pan-y;flex:1}
+.nc-vcard{padding:2px;border-radius:12px}
+.nc-vcard canvas{width:120px;height:64px;display:block}
+.nc-vbuild{flex:1;display:flex;flex-direction:column;gap:4px;overflow-y:auto;touch-action:pan-y}
+.nc-vrow{display:flex;align-items:center;gap:5px}
+.nc-vlab{width:34px;display:flex;justify-content:center;cursor:pointer}
+.nc-vopt{width:50px;height:40px;padding:0;border-radius:12px;position:relative}
+.nc-vopt small{position:absolute;right:3px;bottom:0;font-size:12px}
+.nc-vcol{width:30px;height:30px;padding:0;border-radius:50%;min-width:30px;min-height:30px}
+.nc-vcol.on{outline:3px solid #fff;outline-offset:2px}
+.nc-vside{width:270px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.nc-vprev{width:260px;height:120px;background:rgba(255,255,255,.08);border-radius:14px}
+.nc-vstats{display:flex;gap:10px;font-weight:700;color:#ffd34a}
+.nc-vstats span{display:flex;align-items:center;gap:2px}
+.nc-vside .cost{display:flex;flex-wrap:wrap;gap:3px;justify-content:center}
+.nc-drive{display:flex;align-items:center;gap:6px;background:rgba(20,10,50,.6);border-radius:16px;padding:2px 8px;font-weight:700}
+.nc-drive .nc-bar i{background:linear-gradient(90deg,#3ec05a,#ffd34a)}
+@media (max-height:380px){.nc-vside{width:220px}.nc-vprev{width:210px;height:96px}.nc-vopt{width:44px;height:36px}}

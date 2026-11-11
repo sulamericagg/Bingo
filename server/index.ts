@@ -19,6 +19,7 @@ import { handleCheck, handleClaim, handleMine, handlesSearch, playerByHandle } f
 import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
+import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
@@ -198,6 +199,7 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
   if (path.startsWith('/api/admin/home/')) return handleHomeAdmin(req, env, url);
   return handleAdminApi(req, env, url);
 }
+export { NightsRoom } from './nights';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -249,6 +251,16 @@ export default {
     if (vm) {
       try {
         return await flightJoin(req, env, vm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Noites do Acampamento (WebSocket): /api/nights/<código de 6 dígitos>
+    const nm = /^\/api\/nights\/(\d{6})$/.exec(path);
+    if (nm) {
+      try {
+        return await nightsJoin(req, env, nm[1]);
       } catch (e) {
         return errorResponse(e);
       }
