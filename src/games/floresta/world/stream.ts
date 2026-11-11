@@ -178,7 +178,7 @@ export class World {
     for (let s = 0; s < WSPECIES.length; s++) {
       const tg = wTreeGeometry(s, 0, q.lite);
       this.nearT.push(new Inst(tg, this.treeMat, scene, cap, true));
-      const cg = natureLeafCards(tg, 14, s + 1);
+      const cg = natureLeafCards(tg, 10, s + 1);
       this.nearC.push(cg ? new Inst(cg, this.cardMat, scene, cap, false) : null);
       this.farT.push(new Inst(wTreeGeometry(s, 1, true), this.treeMat, scene, cap * 2, false));
     }
@@ -554,7 +554,7 @@ export class World {
         const br = rare ? 1 : 0.86 + hv * 0.26;
         const hu = rare ? 0 : (hash2(Math.round(x * 3), Math.round(z * 3), 12) - 0.5) * 0.12;
         (d2 < near2 ? this.nearT : this.farT)[sp].push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
-        if (cards && d2 < near2) this.nearC[sp]?.push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
+        if (cards && d2 < near2 * 0.5) this.nearC[sp]?.push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
         if (blobs && d2 < blob2) {
           const shp = WSPECIES[sp].shape;
           const rr = sc * WSPECIES[sp].h * (shp === 'acacia' ? 0.42 : shp === 'pine' || shp === 'snowpine' || shp === 'cactus' || shp === 'bamboo' ? 0.26 : 0.34);
