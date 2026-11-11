@@ -1659,16 +1659,17 @@ export class World {
           .filter(Boolean)
           .map((g) => `<button class="cf-sug" data-w="${g!.name()}">${g!.name()}</button>`)
           .join('')}</div>
-        <div class="cf-row"><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
+        <div class="cf-row"><button class="cf-btn o" data-a="gal">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
       </div>`,
     );
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const inp = d.querySelector('input')!;
     const prev = d.querySelector<HTMLDivElement>('.cf-preview')!;
     const upd = () => {
       const p = parseBest([inp.value]);
       if (!inp.value.trim()) prev.innerHTML = '';
-      else if (p.g) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
-      else prev.innerHTML = `<span style="opacity:.6">${p.suggest.length ? t('cavafala.type.maybe', 'Talvez:') + ' ' + p.suggest.map((g) => g.name()).join(', ') : '…'}</span>`;
+      else if (p.g && p.rest.length === 0 && isCommand(inp.value)) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
+      else prev.innerHTML = `<b>✨ ${esc(t('cavafala.obj.willMake', 'Vou criar:'))}</b> ${esc(inp.value.trim().slice(0, 40))}`;
     };
     inp.addEventListener('input', upd);
     const close = () => {
@@ -1720,7 +1721,8 @@ export class World {
         return `<button class="cf-ri${ok ? '' : ' no'}" data-id="${g.id}" style="left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%"><img src="${this.thumb(g, noMods())}" alt=""/><b>${g.name()}</b></button>`;
       })
       .join('');
-    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button>`);
+    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button><button class="cf-btn o" data-a="gal" style="position:absolute;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button>`);
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const center = d.querySelector<HTMLDivElement>('.cf-rc')!;
     let picked: GDef | null = null;
     const close = () => {

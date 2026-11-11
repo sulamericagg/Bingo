@@ -99,7 +99,9 @@ vb('mia miar miando miau meow meows', 'sound', 'meow');
 vb('muge mugir muu moo moos', 'sound', 'moo');
 vb('apita apitar bipa bipe beep beeps', 'sound', 'beep');
 vb('pia piar piu chirp chirps tweet', 'sound', 'chirp');
-vb('estoura estourar pop pops', 'sound', 'pop');
+vb('estoura estourar pop pops barulho barulhento barulhenta noise noisy', 'sound', 'pop');
+/** humor/jeito: entende (não vira palavra desconhecida); deixa as bochechas rosadas */
+const MOOD = new Set('feliz felizes malvado malvada mau ma bravo brava zangado zangada triste fofo fofa fofinho fofinha fofos lindo linda bonito bonita bonitinho bonitinha legal maluco maluca doido doida louco louca engracado engracada sorridente assustador assustadora bonzinho boazinha bebe gostoso gostosa delicioso deliciosa cheiroso cheirosa amigo amiga amigavel cute happy angry sad funny scary friendly silly crazy cool nice lovely sweet tierno feo bonita'.split(' '));
 /** munição de "joga/solta X" */
 const AMMO: Record<string, string> = {
   bolha: 'bubbles', bolhas: 'bubbles', bolinha: 'bubbles', bubble: 'bubbles', bubbles: 'bubbles', burbujas: 'bubbles', sabao: 'bubbles',
@@ -172,13 +174,21 @@ function lev(a: string, b: string): number {
   }
   return prev[b.length];
 }
+const NOT_DIM = new Set(['golfinho', 'golfinhos', 'espinho', 'caminho', 'ninho', 'moinho', 'pinho', 'vinho', 'linho', 'focinho', 'vizinho', 'passarinho', 'joaninha', 'cozinha', 'rainha', 'galinha', 'minhoca', 'sardinha', 'andorinha', 'campainha', 'bolinha', 'casinha']);
+/** "gatinho" = pequeno, "cachorrão" = grande (mesmo quando a palavra está no catálogo) */
+function sizeSuffix(w: string): number {
+  if (NOT_DIM.has(w)) return 1;
+  if (/(z?inh[oa]s?)$/.test(w)) return 0.75;
+  if (/(z?(ao|ona))$/.test(w) && w.length > 6 && !/(cao|sao|gao|mao|pao|lao|rao|tao|vao|hao|nao)$/.test(w)) return 1.4;
+  return 1;
+}
 const fuzzyCache = new Map<string, [Concept, number] | null>();
 /** palavra → conceito (exato, variante ou erro de 1–2 letras) */
 function lookupWord(w: string): [Concept, number] | null {
   const ix = index();
   for (const [v, k] of variants(w)) {
     const c = ix.one.get(v);
-    if (c) return [c, k];
+    if (c) return [c, k === 1 ? sizeSuffix(w) : k];
   }
   if (w.length < 5 || isVocab(w)) return null;
   const hit = fuzzyCache.get(w);
@@ -204,7 +214,7 @@ function adjKey(w: string): string {
 }
 function isVocab(w: string): boolean {
   w = adjKey(w);
-  return w in SIZE || w in SHAPE || w in MATS || w in SPEED || w in COUNT || w in COLOR_WORDS || w in VERBS || w in AMMO || w in CONN || w in ACC || RAINBOW.has(w) || FILLER.has(w);
+  return MOOD.has(w) || w in SIZE || w in SHAPE || w in MATS || w in SPEED || w in COUNT || w in COLOR_WORDS || w in VERBS || w in AMMO || w in CONN || w in ACC || RAINBOW.has(w) || FILLER.has(w);
 }
 
 /* ================================ acessórios ("com X") ================================ */
@@ -501,6 +511,10 @@ export function parsePlan(text: string, opts: GenOpts = {}): { plan: Plan | null
         known++;
         continue;
       }
+      if (MOOD.has(w)) {
+        known++;
+        continue;
+      }
       if (w in SPEED) {
         speed += SPEED[w];
         known++;
@@ -744,6 +758,17 @@ function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBeh
     for (const q of placed) if (q.tag === 'body' || q.tag === 'head') q.tag = 'deco';
     parts.push(...placed);
     for (const b of wc.beh) if (['shoots', 'glows', 'sound', 'flies', 'bounces'].includes(b.type)) behOut.push({ ...b });
+  }
+  // Refazer: proporções e cores mudam um pouco
+  if (variant > 0) {
+    xform(parts, [0.85 + r() * 0.35, 0.85 + r() * 0.35, 0.85 + r() * 0.35], [0, 0, 0]);
+    if (n.theme || n.colors) {
+      const k = variant % 3;
+      const rot = [colors[k % 3], colors[(k + 1) % 3], colors[(k + 2) % 3]] as [ColorName, ColorName, ColorName];
+      colors[0] = n.color ?? rot[0];
+      colors[1] = rot[1];
+      colors[2] = rot[2];
+    }
   }
   // escala do substantivo
   const sc = n.scale;

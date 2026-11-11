@@ -53,7 +53,7 @@ const LAND = 'rolls ride';
 /* ---------------------------- bichos de 4 patas ---------------------------- */
 c('cachorro', 'cao, cachorrinho, cachorrao, dog, puppy, doggy, perro, perrito, vira lata, cadela', 'animal', 'quad', { ears: 'floppy', tail: 'thin', L: 1.5 }, 'tan cream chocolate', A + ' sound:woof');
 c('gato', 'gatinho, gata, gatao, cat, kitty, kitten, gato preto, bichano, michi', 'animal', 'quad', { ears: 'pointy', tail: 'thin', L: 1.3, H: 0.75, snout: 0.15, tailL: 1.0 }, 'orange cream pink', A + ' sound:meow');
-c('cavalo', 'cavalinho, egua, potro, horse, pony, pônei, ponei, caballo', 'animal', 'quad', { L: 2.2, H: 1.0, W: 0.85, leg: 1.1, head: 0.7, neck: 0.8, snout: 0.5, ears: 'pointy', tail: 'fluffy', mane: true }, 'brown tan chocolate', A + ' ride');
+c('cavalo', 'cavalinho, egua, potro, horse, pony, ponei, caballo', 'animal', 'quad', { L: 2.2, H: 1.0, W: 0.85, leg: 1.1, head: 0.7, neck: 0.8, snout: 0.5, ears: 'pointy', tail: 'fluffy', mane: true }, 'brown tan chocolate', A + ' ride');
 c('unicornio', 'unicorn, unicornio magico, unicornia', 'fantasy', 'quad', { L: 2.0, H: 1.0, W: 0.85, leg: 1.0, head: 0.7, neck: 0.75, snout: 0.45, ears: 'pointy', tail: 'fluffy', mane: true, horn: 'uni' }, 'white pink lavender', A + ' ride glows');
 c('vaca', 'vaquinha, boi, touro, cow, bull, ox, vaca leiteira', 'animal', 'quad', { L: 2.2, H: 1.1, W: 1.1, leg: 0.8, head: 0.8, snout: 0.35, ears: 'round', tail: 'tuft', horn: 'two', spots: true }, 'white pink black', A + ' sound:moo');
 c('porco', 'porquinho, porca, leitao, pig, piggy, piglet, cerdo, chanchito', 'animal', 'quad', { L: 1.6, H: 1.0, W: 1.0, leg: 0.4, head: 0.8, snout: 0.15, ears: 'pointy', tail: 'stub' }, 'pink peach red', A);
@@ -156,12 +156,23 @@ c('zumbi', 'zombie, morto vivo, mumia, mummy', 'fantasy', 'biped', { H: 1.2, W: 
 c('vampiro', 'vampire, dracula', 'fantasy', 'biped', { H: 1.3, W: 0.9, leg: 0.5, head: 0.75, arm: 0.5, snout: 0, ears: 'pointy' }, 'white black red', 'follows');
 c('morcego', 'bat, murcielago, morceguinho', 'animal', 'bird', { span: 1.2, beak: 0.1, beakCol: 'pink', tail: 'none', ears: 'pointy' }, 'purple lavender black', 'flies:wings');
 c('esqueleto', 'skeleton, ossos', 'fantasy', 'biped', { H: 1.2, W: 0.7, leg: 0.6, head: 0.8, arm: 0.6, snout: 0, ears: 'none' }, 'white cream black', 'walks');
+c('tatu', 'tatu bola, armadillo, armadilo', 'animal', 'quad', { L: 1.4, H: 0.7, W: 0.9, leg: 0.2, head: 0.5, snout: 0.45, ears: 'pointy', tail: 'long', tailL: 0.8, shell: true }, 'tan gray brown', A + ' digs');
+c('mamute', 'mammoth, mamut', 'animal', 'quad', { L: 2.8, H: 2.0, W: 1.7, leg: 1.0, legW: 0.5, head: 1.3, snout: 0, ears: 'round', tail: 'tuft', trunk: true, tusks: true, noBelly: true, hump: true }, 'brown chocolate cream', A + ' ride');
+c('pegaso', 'pegasus, cavalo alado, cavalo voador, cavalo com asas', 'fantasy', 'dragon', { L: 2.0, H: 1.0, W: 0.85, leg: 1.0, head: 0.7, neck: 0.75, snout: 0.45, ears: 'pointy', tail: 'fluffy', mane: true, spikes: false, horn: '', span: 1.8 }, 'white sky lavender', 'flies:wings ride');
+c('ninja', 'ninjas, samurai', 'fantasy', 'biped', { H: 1.2, W: 0.85, leg: 0.55, head: 0.75, arm: 0.55, snout: 0, ears: 'none' }, 'black navy red', 'jumps follows');
+c('astronauta', 'astronaut, cosmonauta, astronauta espacial', 'fantasy', 'biped', { H: 1.3, W: 1.0, leg: 0.55, head: 0.95, arm: 0.6, snout: 0, ears: 'none', antenna: true }, 'white silver orange', 'follows flies:rocket@0.3');
+c('pastel', 'pastel de feira, empanada, calzone', 'food', 'sandwich', { pastel: true }, 'gold tan orange');
+c('centauro', 'centaur, minotauro', 'fantasy', 'quad', { L: 2.0, H: 1.0, W: 0.85, leg: 1.0, head: 0.65, neck: 1.0, snout: 0, ears: 'none', tail: 'fluffy' }, 'brown peach chocolate', A);
+c('bombeiro', 'bombeira, firefighter, fireman', 'fantasy', 'biped', { H: 1.2, W: 0.9, leg: 0.55, head: 0.75, arm: 0.55, snout: 0, ears: 'none' }, 'red yellow peach', 'follows shoots:water@0.4');
+c('policial', 'policia, police, cop, detetive', 'fantasy', 'biped', { H: 1.2, W: 0.9, leg: 0.55, head: 0.75, arm: 0.55, snout: 0, ears: 'none' }, 'navy peach gold', 'follows');
+c('papai_noel', 'papai noel, santa, santa claus, noel', 'fantasy', 'biped', { H: 1.4, W: 1.2, leg: 0.5, head: 0.8, arm: 0.6, snout: 0, ears: 'none' }, 'red white peach', 'follows sound:music');
+c('palhaco', 'palhaço, clown, payaso', 'fantasy', 'biped', { H: 1.2, W: 1.0, leg: 0.5, head: 0.8, arm: 0.6, snout: 0.1, ears: 'none' }, 'yellow red sky', 'jumps sound:honk');
 /* ---------------------------- veículos de terra ---------------------------- */
 c('carro', 'carrinho, carrao, automovel, car, auto, coche, carro de corrida, carro esportivo, sports car, race car, fusca, kombi, jipe, jeep, buggy, kart, calhambeque, limusine', 'vehicle', 'car', {}, 'red white yellow', LAND, { hull: false });
 c('caminhao', 'caminhaozinho, truck, camion, carreta, caminhonete, pickup, picape', 'vehicle', 'truck', { cargo: 'box' }, 'blue white yellow', LAND);
-c('caminhao_de_bombeiro', 'caminhao de bombeiro, carro de bombeiro, bombeiro, fire truck, firetruck, camion de bomberos', 'vehicle', 'truck', { cargo: 'ladder', siren: true }, 'red red white', LAND + ' shoots:water sound:honk');
+c('caminhao_de_bombeiro', 'caminhao de bombeiro, carro de bombeiro, fire truck, firetruck, camion de bomberos', 'vehicle', 'truck', { cargo: 'ladder', siren: true }, 'red red white', LAND + ' shoots:water sound:honk');
 c('ambulancia', 'ambulance, ambulancia do samu', 'vehicle', 'truck', { cargo: 'box', siren: true }, 'white red white', LAND + ' sound:beep');
-c('viatura', 'carro de policia, policia, police car, patrulha', 'vehicle', 'car', {}, 'navy white blue', LAND + ' sound:beep');
+c('viatura', 'carro de policia, police car, patrulha, viatura de policia', 'vehicle', 'car', {}, 'navy white blue', LAND + ' sound:beep');
 c('taxi', 'taxi amarelo, cab', 'vehicle', 'car', {}, 'yellow black white', LAND + ' sound:honk');
 c('betoneira', 'caminhao betoneira, cement mixer, mixer truck', 'vehicle', 'truck', { cargo: 'mixer' }, 'orange silver yellow', LAND);
 c('caminhao_tanque', 'caminhao tanque, caminhao pipa, tanker, caminhao de agua', 'vehicle', 'truck', { cargo: 'tank' }, 'silver blue white', LAND + ' shoots:water');

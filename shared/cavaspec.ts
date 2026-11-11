@@ -408,7 +408,7 @@ export function deriveRole(beh: ObjBehavior[]): Role {
  * Números em centímetros/décimos de grau inteiros. Quem recebe sempre roda validateSpec() de novo.
  */
 export type PackedSpec = unknown[];
-const q = (v: number) => Math.round(v * 100);
+const q = (v: number) => Math.round(v * 100) || 0;
 export function packSpec(s: ObjSpec): PackedSpec {
   const parts = s.parts.map((p) => {
     const a: number[] = [SHAPES.indexOf(p.shape), ...p.size.map(q), ...p.pos.map(q), ...p.rot.map((r) => Math.round(r)), COLOR_NAMES.indexOf(p.color), OBJ_MATS.indexOf(p.mat)];

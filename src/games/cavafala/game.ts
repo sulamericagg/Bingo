@@ -780,6 +780,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         menu();
       },
       say: (s: string) => world?.say(s),
+      /** objeto falado (criação livre) */
+      make: (s: string) => world?.objs.make(s, 'type'),
+      objs: () => world?.objs.state() ?? null,
+      gallery: () => world?.objs.openGallery(),
+      keep: () => world?.objs.keep(),
+      redo: () => world?.objs.redo(),
+      ride: () => world?.objs.mountNear(),
+      getOff: () => world?.objs.dismount(),
       mic: (on?: boolean) => {
         const w = world;
         if (!w) return null;

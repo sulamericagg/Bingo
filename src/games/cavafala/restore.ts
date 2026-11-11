@@ -389,13 +389,13 @@ export class RestoreMode implements ModeCtl {
           this.bell(b);
         }
     } else if (b.puzzle === 'drain' && b.uncovered > 0.3) {
-      if (this.w.structs.some((s) => s.g.beh === 'pump' && Math.hypot(s.pos.x - b.x, s.pos.z - b.z) < 11)) {
+      if (this.w.structs.some((s) => s.g.beh === 'pump' && Math.hypot(s.pos.x - b.x, s.pos.z - b.z) < 11) || this.w.objs.list.some((c) => c.fn === 'pump' && Math.hypot(c.pos.x - b.x, c.pos.z - b.z) < 11)) {
         b.puzzleDone = true;
         notify(t('cavafala.drained', 'Glub glub... a bomba está esvaziando a praça!'), { kind: 'good' });
         sfx.spray();
       }
     } else if (b.puzzle === 'bridge') {
-      if (this.w.structs.some((s) => s.g.beh === 'bridge' && Math.hypot(s.pos.x - b.x, s.pos.z - b.z) < 8 && Math.abs(s.pos.y - b.y) < 3)) {
+      if (this.w.structs.some((s) => s.g.beh === 'bridge' && Math.hypot(s.pos.x - b.x, s.pos.z - b.z) < 8 && Math.abs(s.pos.y - b.y) < 3) || this.w.objs.list.some((c) => (c.fn === 'bridge' || c.fn === 'boat' || c.fn === 'crane') && Math.hypot(c.pos.x - b.x, c.pos.z - b.z) < 8 && Math.abs(c.pos.y - b.y) < 3)) {
         b.puzzleDone = true;
         notify(t('cavafala.bridged', 'A ponte nova encaixou na velha!'), { kind: 'good' });
       }

@@ -785,6 +785,7 @@ export const longFruit: Builder = (o) => {
   return p;
 };
 export const sandwich: Builder = (o) => {
+  if (b(o, 'pastel')) return [wedge(2.6, 0.5, 0.8, 0, 0.25, 0.4, 'a', 'body', [0, 0, 0]), wedge(2.6, 0.5, 0.8, 0, 0.25, -0.4, 'a', 'body', [0, 180, 0]), box(2.6, 0.5, 0.4, 0, 0.25, 0, 'a', 'body'), ...[0, 1, 2, 3, 4].map((i) => box(0.1, 0.12, 0.2, -1.1 + i * 0.55, 0.06, 0.95, 'b', 'deco'))];
   if (b(o, 'taco')) return [ring(2.2, 0.25, 0, 1.0, 0, 'tan', 'base', [0, 0, 90]), ball(0.4, 1.2, 1.8, 0, 1.1, 0, 'lime', 'body'), ball(0.3, 1.0, 1.6, 0, 1.0, 0, 'chocolate', 'body'), ...[0, 1, 2].map((i) => ball(0.25, 0.25, 0.25, 0, 1.55, (i - 1) * 0.5, 'red', 'deco'))];
   if (b(o, 'pancakes')) return [cyl(2.2, 0.1, 0, 0.05, 0, 'white', 'base'), ...[0, 1, 2, 3].map((i) => cyl(1.9, 0.3, 0, 0.25 + i * 0.3, 0, 'tan', 'body')), cyl(1.6, 0.06, 0, 1.4, 0, 'orange', 'deco'), box(0.4, 0.2, 0.4, 0, 1.5, 0, 'yellow', 'deco')];
   return [box(2.2, 0.4, 2.2, 0, 0.2, 0, 'tan', 'base'), box(2.3, 0.08, 2.3, 0, 0.44, 0, 'lime', 'deco'), box(2.1, 0.25, 2.1, 0, 0.6, 0, 'pink', 'body'), box(2.2, 0.08, 2.2, 0, 0.76, 0, 'yellow', 'deco', [0, 20, 0]), box(2.2, 0.4, 2.2, 0, 1.0, 0, 'tan', 'body')];
