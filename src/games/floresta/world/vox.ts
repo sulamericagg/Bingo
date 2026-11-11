@@ -413,14 +413,17 @@ export class VolChunk {
       }
       return y;
     }
-    for (let k = 1; k <= 48; k++) {
-      const yy = y - k * 0.5;
+    // passos de 0,5 m perto, 1 m longe (cavernas fundas, ilhas no céu)
+    let yy = y;
+    for (let k = 0; k < 400; k++) {
+      const st = k < 16 ? 0.5 : 1;
+      yy -= st;
       if (yy < BED_Y) return BED_Y + 2;
       const d = this.dens(x, yy, z);
-      if (d > 0) return yy + (d / (d - prev)) * 0.5;
+      if (d > 0) return yy + (d / (d - prev)) * st;
       prev = d;
     }
-    return y - 24;
+    return BED_Y + 2;
   }
 
   /** topo sólido da coluna (para heightAt / árvores) */
@@ -489,12 +492,12 @@ export function decodeSec(S: Section, b64: string): void {
 
 /* ------------------------------ malha (surface nets) ------------------------------ */
 
-const PX = SX + 1; // amostras -1..32 → 34
+const PX = SX + 2; // amostras -1..33 → 35 (a borda +x/+z pode ser nossa)
 const PY = SY + 1; // -1..16 → 18
 const PN = PX * PY * PX;
 const pD = new Float32Array(PN);
 const pM = new Uint8Array(PN);
-const CX = SX; // células -1..31 → 33
+const CX = SX + 1; // células -1..32 → 34
 const CY = SY; // -1..15 → 17
 const cellV = new Int32Array(CX * CY * CX);
 const EDGES: [number, number][] = [];
@@ -524,6 +527,9 @@ export interface MeshCtx {
   sample: (wx: number, wy: number, wz: number, out: { d: number; m: number }) => void;
   /** cor de grama do pedaço (vértice local) */
   grass: (c: Chunk, lx: number, lz: number, out: [number, number, number]) => void;
+  /** o vizinho +x / +z não é volume: esta seção fecha a costura da borda */
+  ownX: boolean;
+  ownZ: boolean;
 }
 
 const _g: [number, number, number] = [0, 0, 0];
@@ -684,17 +690,19 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
     ni += 6;
   };
   const cv = (x: number, y: number, z: number) => cellV[x + 1 + (y + 1) * CX + (z + 1) * CX * CY];
-  for (let z = 0; z < SX - 1; z++)
+  const zM = ctx.ownZ ? SX : SX - 1;
+  const xM = ctx.ownX ? SX : SX - 1;
+  for (let z = 0; z < zM; z++)
     for (let y = 0; y < SY - 1; y++)
-      for (let x = 0; x < SX - 1; x++) {
+      for (let x = 0; x < xM; x++) {
         const p = pi(x, y, z);
         const s0 = pD[p] > 0;
         // aresta X
-        if (s0 !== pD[p + 1] > 0) quad(cv(x, y - 1, z - 1), cv(x, y, z - 1), cv(x, y, z), cv(x, y - 1, z), !s0);
+        if (x < SX - 1 && s0 !== pD[p + 1] > 0) quad(cv(x, y - 1, z - 1), cv(x, y, z - 1), cv(x, y, z), cv(x, y - 1, z), !s0);
         // aresta Y
         if (s0 !== pD[p + PX] > 0) quad(cv(x - 1, y, z - 1), cv(x - 1, y, z), cv(x, y, z), cv(x, y, z - 1), !s0);
         // aresta Z
-        if (s0 !== pD[p + PX * PY] > 0) quad(cv(x - 1, y - 1, z), cv(x, y - 1, z), cv(x, y, z), cv(x - 1, y, z), !s0);
+        if (z < SX - 1 && s0 !== pD[p + PX * PY] > 0) quad(cv(x - 1, y - 1, z), cv(x, y - 1, z), cv(x, y, z), cv(x - 1, y, z), !s0);
       }
   // 4) superfícies de líquido (água de aquífero / lava)
   let nf = 0;

@@ -59,6 +59,8 @@ export class VoxWorld {
         out[1] = (col[o + 1] + (col[o + 4] - col[o + 1]) * tn) * 0.97;
         out[2] = (col[o + 2] + (col[o + 5] - col[o + 2]) * tn) * 0.97;
       },
+      ownX: true,
+      ownZ: true,
     };
   }
 
@@ -323,6 +325,8 @@ export class VoxWorld {
 
   remesh(v: VolChunk, S: Section): void {
     const c = v.c;
+    this.ctx.ownX = !this.h.chunks.get(key(c.cx + 1, c.cz))?.vol;
+    this.ctx.ownZ = !this.h.chunks.get(key(c.cx, c.cz + 1))?.vol;
     const { nv, ni, nf } = meshSection(v, S, this.ctx);
     for (const k of ['mesh', 'fluid', 'lava'] as const) {
       const m = S[k];
