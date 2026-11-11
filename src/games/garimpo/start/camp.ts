@@ -43,7 +43,7 @@ export interface CampSave {
 /** dinheiro inicial do começo do zero (pouquinho) */
 export const CAMP_MONEY = [80, 40, 25, 10];
 /** "baldinho" de terra antes do carrinho (m³) */
-export const BAG = 0.04;
+export const BAG = 0.06;
 export function freshCamp(): CampSave {
   return { v: 1, built: [], log: {}, intro: false };
 }
@@ -70,14 +70,15 @@ interface Def {
 }
 /* ---------------- equilíbrio (normal: ouro a 10/g) ----------------
  *  1º ouro ~1 min · carrinho ~3 min · calha ~6 min · galpão ~9 min · lavadora ~15 min ·
- *  garagem ~18 min · picape (900, loja) ~20 min. Ver docs no relatório / shots-gintro. */
+ *  garagem ~17 min · picape (900, loja) ~20–22 min. Conta: bolsão ~80 g/m³ na superfície;
+ *  bateia ~85 % e ~35 s; calha ~68 % (com a limpeza); ouro a 10/g (normal). */
 export const DEFS: Def[] = [
   { id: 'barrow', icon: 'barrow', name: () => t('gb.c.b.barrow', 'Carrinho de mão'), price: 110, needs: null, chain: true, dur: 3.6, done: () => t('gb.c.d.barrow', 'Carrinho pronto! Pegue o carrinho: cabe muito mais terra.') },
-  { id: 'sluice', icon: 'sluice', name: () => t('gb.c.b.sluice', 'Consertar a calha'), price: 280, needs: 'barrow', chain: true, dur: 4.2, done: () => t('gb.c.d.sluice', 'Calha consertada! Despeje a terra na calha: a água separa o ouro.') },
-  { id: 'stock', icon: 'shed', name: () => t('gb.c.b.stock', 'Galpão do ouro'), price: 420, needs: 'sluice', chain: true, dur: 5.2, done: () => t('gb.c.d.stock', 'Galpão do ouro pronto! Guarde o ouro aqui: o caminhão vem buscar e paga.') },
-  { id: 'plant', icon: 'plant', name: () => t('gb.c.b.plant', 'Lavadora'), price: 1050, needs: 'stock', chain: true, dur: 6.8, done: () => t('gb.c.d.plant', 'A lavadora chegou! Despeje a terra na moega e ela lava sozinha.') },
-  { id: 'garage', icon: 'garage', name: () => t('gb.c.b.garage', 'Garagem'), price: 600, needs: 'plant', chain: true, dur: 6.0, done: () => t('gb.c.d.garage', 'Garagem pronta! Agora dá para comprar máquinas na loja.') },
-  { id: 'houses', icon: 'house', name: () => t('gb.c.b.houses', 'Casinhas'), price: 350, needs: 'stock', chain: false, dur: 5.0, done: () => t('gb.c.d.houses', 'Casinhas prontas! Dá para dormir nelas.') },
+  { id: 'sluice', icon: 'sluice', name: () => t('gb.c.b.sluice', 'Consertar a calha'), price: 200, needs: 'barrow', chain: true, dur: 4.2, done: () => t('gb.c.d.sluice', 'Calha consertada! Despeje a terra na calha: a água separa o ouro.') },
+  { id: 'stock', icon: 'shed', name: () => t('gb.c.b.stock', 'Galpão do ouro'), price: 450, needs: 'sluice', chain: true, dur: 5.2, done: () => t('gb.c.d.stock', 'Galpão do ouro pronto! Guarde o ouro aqui: o caminhão vem buscar e paga.') },
+  { id: 'plant', icon: 'plant', name: () => t('gb.c.b.plant', 'Lavadora'), price: 700, needs: 'stock', chain: true, dur: 6.8, done: () => t('gb.c.d.plant', 'A lavadora chegou! Despeje a terra na moega e ela lava sozinha.') },
+  { id: 'garage', icon: 'garage', name: () => t('gb.c.b.garage', 'Garagem'), price: 200, needs: 'plant', chain: true, dur: 6.0, done: () => t('gb.c.d.garage', 'Garagem pronta! Agora dá para comprar máquinas na loja.') },
+  { id: 'houses', icon: 'house', name: () => t('gb.c.b.houses', 'Casinhas'), price: 300, needs: 'stock', chain: false, dur: 5.0, done: () => t('gb.c.d.houses', 'Casinhas prontas! Dá para dormir nelas.') },
 ];
 const CHAIN = DEFS.filter((d) => d.chain).map((d) => d.id);
 type Goal = 'dig' | 'pan' | 'sell' | BId | 'pickup' | 'done';
@@ -104,6 +105,7 @@ interface Fx {
   ring: THREE.LineSegments;
   planks: { m: THREE.Mesh; t: number; a: THREE.Vector3; b: THREE.Vector3 }[];
   step: number;
+  sparkled?: boolean;
   camA: number;
   temp: THREE.Object3D | null;
   done: () => void;
@@ -181,6 +183,7 @@ export class CampBuild {
   }
   /** jogador terminou uma bateia com ouro */
   onPan(g: number): void {
+    this.logAt('dig');
     if (g > 0.005) this.logAt('pan');
   }
   get busy(): boolean {
@@ -331,7 +334,7 @@ export class CampBuild {
     if (this.chkT <= 0) {
       this.chkT = 0.25;
       const wk = g.worker!;
-      if (this.st.log.dig === undefined && wk.cargo.vol >= wk.cargo.cap * 0.8) this.logAt('dig');
+      if (this.st.log.dig === undefined && wk.cargo.vol >= wk.cargo.cap * 0.6) this.logAt('dig');
       if (this.st.log.pickup === undefined && g.ms.some((m) => m.kind === 'pickup')) this.logAt('pickup');
       this.goalUi();
       this.refreshGhost();
@@ -374,13 +377,14 @@ export class CampBuild {
     const m = g.w!.map;
     const dist = (q: { x: number; z: number }) => Math.hypot(q.x - p.x, q.z - p.z);
     const out = (q: { x: number; z: number }, icon: IconKey, r = 3) => (dist(q) < r ? null : { x: q.x, z: q.z, icon });
-    if (this.pepita() > 0.3) {
+    // vende de vez em quando (não a cada bateia): ~4 g de ouro na mochila
+    if (this.pepita() > 4) {
       if (this.has('stock') && dist(m.stock) < dist(lay.buyer)) return out(m.stock, 'bar', 7);
       return out(lay.buyer, 'coin', 3.5);
     }
     // calha com bastante concentrado: limpar
     const sls = (g.proc?.debug.sls() ?? []) as { x: number; z: number; conc: number; mat: number }[];
-    const dirty = sls.find((q) => q.conc > 1.5 && q.mat > 0.6);
+    const dirty = sls.find((q) => q.conc > 2 && q.mat > 0.9);
     if (dirty) return out(dirty, 'pan', 3);
     if (wk.fill > 0.85) {
       if (this.has('plant')) {
@@ -392,8 +396,8 @@ export class CampBuild {
       if (sls.length) return out(sls[0], 'dump', 2.5);
       return out(lay.pan, 'pan', 2.2);
     }
-    // cavar: perto da lavadora (jazida rasa do acampamento) ou no cascalho bom do rio
-    const dig = this.has('plant') ? m.deposits[0] : lay.placer;
+    // cavar: no cascalho bom do rio (a calha fica ao lado); sem calha e com lavadora, na jazida do acampamento
+    const dig = this.has('plant') && !sls.length ? m.deposits[0] : lay.placer;
     return out(dig, 'shovel', 5);
   }
 
@@ -438,7 +442,7 @@ export class CampBuild {
     g.persist();
   }
   private tryBuild(d: Def): void {
-    if (this.fx) return;
+    if (this.fx || !this.unlocked(d)) return;
     if (this.money < d.price) {
       if (this.time - this.saidNo > 3) {
         this.saidNo = this.time;
@@ -633,18 +637,27 @@ export class CampBuild {
       }
     }
     // martelo
-    if (g.cur === wk && f.id !== 'portal') {
+    if (f.t >= f.dur) wk.hammer = -1;
+    else if (g.cur === wk && f.id !== 'portal') {
       wk.hammer = (f.t * 2.4) % 1;
       if (Math.floor(f.t * 2.4) !== Math.floor((f.t - dt) * 2.4)) sfx.knob();
     }
-    if (f.t >= f.dur + 0.25) this.endFx();
+    // pronto: a obra fica girando mais um pouquinho para admirar (brilho)
+    if (f.t >= f.dur && !f.temp?.userData.shown) {
+      if (f.temp) f.temp.userData.shown = true;
+      if (!f.sparkled) {
+        f.sparkled = true;
+        this.sparkle(f);
+      }
+    }
+    if (f.t >= f.dur + 1.5) this.endFx();
   }
   /** câmera da obra: gira devagar em volta do prédio (true = a obra controla a câmera) */
   camera(dt: number, cam: THREE.PerspectiveCamera): boolean {
     const f = this.fx;
     if (!f) return false;
     void dt;
-    const k = f.t / (f.dur + 0.25);
+    const k = f.t / (f.dur + 1.5);
     const a = f.camA + 0.9 * ease(k) - 0.25;
     const R = Math.max(6, f.size * 2.3 + 4);
     const T = this.g.w!.T;
@@ -674,7 +687,13 @@ export class CampBuild {
     }
     const g = this.g;
     if (g.worker) g.worker.hammer = -1;
-    // brilho de festa
+    if (!f.sparkled) this.sparkle(f);
+    g.hud?.setVisible(true);
+    f.done();
+  }
+  /** brilho de festa quando a obra fica pronta */
+  private sparkle(f: Fx): void {
+    const g = this.g;
     const w = g.w!;
     for (let i = 0; i < 70; i++) {
       const ft = f.foots[i % f.foots.length];
@@ -683,12 +702,11 @@ export class CampBuild {
       const gold = i % 3 !== 0;
       w.drops.spawn(x, f.y1 - 0.5, z, (Math.random() - 0.5) * 3, 2 + Math.random() * 3, (Math.random() - 0.5) * 3, 0.12, gold ? 1 : 0.6, gold ? 0.82 : 0.9, gold ? 0.2 : 1);
     }
-    g.hud?.setVisible(true);
     sfx.sparkle();
     audio.cash();
     music.sting('levelup');
     tap('heavy');
-    f.done();
+    if (g.worker) g.worker.hammer = -1;
   }
   private finishBuild(id: BId, quiet = false): void {
     const g = this.g;
@@ -826,7 +844,7 @@ export class CampBuild {
       el.dataset.say = sayTx;
       el.classList.toggle('prog', prog >= 0);
       this.openGoal(false);
-      window.setTimeout(() => this.say(sayTx), first ? 1600 : 400);
+      window.setTimeout(() => speak(sayTx, { gap: 400 }), first ? 1600 : 400);
       sfx.ding();
     }
     const u = el.querySelector<HTMLElement>('.gbc-bar u');
@@ -875,6 +893,7 @@ export class CampBuild {
   /** testes / relatório */
   debug = {
     goal: () => this.goal(),
+    defs: () => DEFS.map((d) => ({ id: d.id, price: d.price, dur: d.dur })),
     log: () => ({ ...this.st.log }),
     build: (id: BId) => {
       const d = this.def(id);

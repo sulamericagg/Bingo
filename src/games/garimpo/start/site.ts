@@ -68,7 +68,7 @@ export function siteLayout(w: World): SiteLayout {
     const sh = { x: L.x + fx * rs, z: L.z + fz * rs };
     const at = (f: number, s: number) => ({ x: sh.x + fx * f + sx * s, z: sh.z + fz * f + sz * s });
     // pontos importantes livres de árvore e dentro do mapa; chão razoável
-    const pts = [at(7, 3.5), at(5, 0.5), at(1, -9), at(4, 9), at(8, -1.5), at(3, 4)];
+    const pts = [at(7, 3.5), at(5, 0.5), at(1, -9), at(5, -7.5), at(8, -1.5), at(3, -4)];
     let bad = 0;
     for (const p of pts) {
       if (p.x < 14 || p.z < 14 || p.x > 178 || p.z > 178) bad += 10;
@@ -77,7 +77,7 @@ export function siteLayout(w: World): SiteLayout {
       });
     }
     const t0 = at(7, 3.5);
-    const hs = [at(5, 0), at(7, 3.5), at(8, -1.5), at(4, 9)].map((p) => T.heightAt(p.x, p.z));
+    const hs = [at(5, 0), at(7, 3.5), at(8, -1.5), at(5, -7.5)].map((p) => T.heightAt(p.x, p.z));
     const slope = Math.max(...hs) - Math.min(...hs);
     const score = bad * 10 + slope * 3 + Math.abs(k) * 0.3 + Math.max(0, T.heightAt(t0.x, t0.z) - L.level - 3) * 2;
     if (score < bestScore) {
@@ -87,7 +87,7 @@ export function siteLayout(w: World): SiteLayout {
       const fire = at(4.6, 0.8);
       const sl = at(0.9, -4);
       const pier = at(1.4, -10);
-      const spawn = at(5.6, 3);
+      const spawn = at(6, -1.5);
       best = {
         shore: sh,
         f: [fx, fz],
@@ -98,9 +98,9 @@ export function siteLayout(w: World): SiteLayout {
         sluice: { ...sl, yaw: yawOf(-fx, -fz) },
         // píer entra na água (−z local = para a água)
         pier: { ...pier, yaw: yawOf(fx, fz) },
-        spawn: face(spawn, sh.x + sx * 6, sh.z + sz * 6),
-        pan: at(-0.4, 6.5),
-        placer: { ...at(3.6, 8.5), r: 5.5 },
+        spawn: face(spawn, sh.x + fx * 5 - sx * 7.5, sh.z + fz * 5 - sz * 7.5),
+        pan: at(-0.4, -1.2),
+        placer: { ...at(5, -7.5), r: 4.5 },
         bench: face(at(9.5, 0), sh.x, sh.z),
         buyer: at(2.2, -10),
       };
@@ -111,7 +111,7 @@ export function siteLayout(w: World): SiteLayout {
 }
 
 /** soma o "cascalho bom" (raso e rico) em volta do bolsão — chamado em toda carga do save */
-export function addPlacer(w: World, p: { x: number; z: number; r: number }, g = 62): void {
+export function addPlacer(w: World, p: { x: number; z: number; r: number }, g = 90): void {
   const T = w.T;
   const R = p.r * 2;
   const i0 = Math.max(0, Math.floor((p.x - R) / CELL));
