@@ -1437,7 +1437,7 @@ export function drawPet(c: CanvasRenderingContext2D, skin: Skin, L: Layout, v: P
     }
   }
   // babinha (fome): fiozinho no canto da boca + gota
-  if (v.drool > 0.01) {
+  if (v.drool > 0.01 && !v.expr) {
     const dl = v.drool * R * (0.1 + Math.sin(t * 2.4) * 0.03);
     const bx = R * 0.17;
     const by = R * 0.3;

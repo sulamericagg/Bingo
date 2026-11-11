@@ -2085,7 +2085,7 @@ function update(dt: number): void {
   pose.mood = m;
   pose.blink = blink;
   v.drool = v.m.hungry || foodNear ? Math.min(1, v.drool + dt * 2) : Math.max(0, v.drool - dt * 3);
-  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping ? (Math.floor(v.t / 4) % 2 ? 'cake' : 'apple') : null;
+  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping && !v.expr && !pr.toy && hideT <= 0 ? (Math.floor(v.t / 4) % 2 ? 'cake' : 'apple') : null;
 
   // pulinhos quando feliz
   if (v.m.happy && !v.sleeping) {
