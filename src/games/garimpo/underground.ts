@@ -13,10 +13,15 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { natureTexture } from '../../3d/nature';
-import { buildWorker, C, type WorkerParts } from './models';
+import { buildWorker, BW, C, type WorkerParts } from './models';
+// PAPER: o mineiro é o Bloop 2D do jogador (como na superfície)
+import { mySpec, npcSpec, PaperChar, paperOn, type PaperSpec } from '../../3d/paper';
+import { paperBodyColor } from '../../3d/paper/paperAvatar';
 import { Kit } from './kit';
 import type { Ctl } from './machines';
 import { rng } from './gen';
+// FPKIT: andar compartilhado (aceleração da Cozinha; colisão em grade com as células abertas)
+import { FpController, fpTuning, GridCollider } from '../../3d/fpkit';
 
 export const UG = 24;
 export const CS = 3;
@@ -53,6 +58,7 @@ interface Cart {
 }
 interface Bot {
   p: WorkerParts;
+  paper: PaperChar | null;
   cell: number;
   t: number;
   /** caminho (células abertas) até a vaga de trabalho */
@@ -163,8 +169,17 @@ export class Underground {
   private amb: THREE.HemisphereLight;
   private plight: THREE.PointLight;
   readonly worker: WorkerParts;
+  /** PAPER: Bloop 2D do jogador (null = boneco 3D) */
+  private paper: PaperChar | null = null;
+  /** câmera (vira os personagens de papel) */
+  cam: THREE.Camera | null = null;
+  /** 1ª pessoa (esconde o Bloop) e controle "tanque" (x gira, y anda) */
+  fp = false;
+  tank = false;
   readonly pos = new THREE.Vector3();
   yaw = 0;
+  /** FPKIT: corpo do mineiro (piso plano; rocha = células fechadas) */
+  readonly body = new FpController(fpTuning('survival', { speed: 3.2, jumpV: 0, gravity: 0, radius: 0.5 }), new GridCollider(1, (x, z) => this.open(this.cellAt(x, z))));
   private walk = 0;
   private swing = -1;
   cargo = { vol: 0, gold: 0, cap: 0.2 };
@@ -300,7 +315,18 @@ export class Underground {
     this.scene.background = new THREE.Color(0x0d0907);
     this.scene.fog = new THREE.Fog(0x0d0907, 18, 46);
     this.worker = buildWorker(0x6a6a6a);
-    this.worker.barrow.visible = true;
+    this.paper = paperize(this.worker, mySpec(), 128, true); // o jogador é SEMPRE o Bloop dele (o 3D clássico é um moço de bigode)
+    // carrinho na frente, pegadores nas mãos (chão da mina é plano)
+    const bw = this.worker.barrow;
+    bw.position.set(0, 0, 0.42 - BW.grip.z);
+    bw.rotation.x = Math.atan2(0.62 - BW.wheelR, -BW.grip.z) - Math.atan2(BW.grip.y - BW.wheelR, -BW.grip.z);
+    const hm = new THREE.MeshLambertMaterial({ color: this.paper ? paperBodyColor(mySpec()) : '#e0a77a' });
+    for (const sx of [1, -1]) {
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), hm);
+      h.position.set(sx * BW.gripX, BW.grip.y + 0.035, BW.grip.z + 0.03);
+      bw.add(h);
+    }
+    this.worker.root.add(bw);
     this.scene.add(this.worker.root);
     this.rebuild();
   }
@@ -596,11 +622,12 @@ export class Underground {
   }
   addBot(): void {
     const p = buildWorker(0x3f7a3f);
-    p.barrow.visible = false;
     p.shovel.visible = true;
+    const paper = paperize(p, npcSpec('#3f7a3f', '#ffd34a', { head: 'h_cap', eyes: 'e_big' }), 80);
+    paper?.setTool('pick', '#9aa4b4');
     p.root.position.set(this.cx(this.entrance) + 1, 0, this.cz(this.entrance) + 1.5);
     this.scene.add(p.root);
-    this.bots.push({ p, cell: -1, t: Math.random(), path: [], pi: 0 });
+    this.bots.push({ p, paper, cell: -1, t: Math.random(), path: [], pi: 0 });
   }
 
   /** golpe de picareta na célula k: depois de 3 golpes ela abre e dá minério */
@@ -619,6 +646,7 @@ export class Underground {
   enterAt(): void {
     // dois passos para dentro: a câmera (atrás) fica entre a moega e o mineiro
     this.pos.set(this.cx(this.entrance), 0, this.cz(this.entrance) + CS * 2);
+    this.body.place(this.pos.x, this.pos.z, 0);
     this.yaw = 0;
   }
 
@@ -626,24 +654,40 @@ export class Underground {
   step(dt: number, ctl: Ctl | null, camYaw: number, say: (s: string) => void): void {
     const w = this.worker;
     this.moving = false;
+    const b = this.body;
+    if (Math.abs(b.x - this.pos.x) + Math.abs(b.z - this.pos.z) > 0.5) b.place(this.pos.x, this.pos.z, 0);
+    let fwd = 0;
+    let side = 0;
     if (ctl && this.swing < 0) {
-      const mag = Math.min(1, Math.hypot(ctl.mx, ctl.my));
-      this.moving = mag > 0.08;
-      if (mag > 0.08) {
-        const a = camYaw + Math.atan2(-ctl.mx, -ctl.my);
-        let d = a - this.yaw;
-        d = Math.atan2(Math.sin(d), Math.cos(d));
-        this.yaw += d * Math.min(1, dt * 10);
-        const sp = mag * 3.2 * dt;
-        const nx = this.pos.x + Math.sin(this.yaw) * sp;
-        const nz = this.pos.z + Math.cos(this.yaw) * sp;
-        // colide com rocha (raio 0.6)
-        const ok = (x: number, z: number) => this.open(this.cellAt(x + 0.6, z)) && this.open(this.cellAt(x - 0.6, z)) && this.open(this.cellAt(x, z + 0.6)) && this.open(this.cellAt(x, z - 0.6));
-        if (ok(nx, this.pos.z)) this.pos.x = nx;
-        if (ok(this.pos.x, nz)) this.pos.z = nz;
-        this.walk += sp * 3;
+      const mx = Math.abs(ctl.mx) > 0.08 ? ctl.mx : 0;
+      const my = Math.abs(ctl.my) > 0.08 ? ctl.my : 0;
+      if (this.fp) {
+        // 1ª pessoa: o jogo gira o corpo com a câmera; direcional = frente/lado
+        fwd = -my;
+        side = mx;
+        if (fwd < 0) fwd *= 0.7;
+      } else if (this.tank) {
+        // de frente: x gira, y anda (para trás devagar)
+        if (mx) this.yaw -= mx * Math.abs(mx) * dt * 2.4;
+        fwd = -my;
+        if (fwd < 0) fwd *= 0.5;
+      } else {
+        const mag = Math.min(1, Math.hypot(mx, my));
+        if (mag > 0) {
+          const a = camYaw + Math.atan2(-mx, -my);
+          let d = a - this.yaw;
+          d = Math.atan2(Math.sin(d), Math.cos(d));
+          this.yaw += d * Math.min(1, dt * 10);
+          fwd = mag * Math.max(0.3, Math.cos(d));
+        }
       }
     }
+    b.steer(dt, side, fwd, this.yaw + Math.PI);
+    b.move(dt);
+    this.pos.set(b.x, 0, b.z);
+    const sp = Math.hypot(b.vx, b.vz);
+    this.moving = sp > 0.4;
+    this.walk += sp * dt * 3;
     w.root.position.copy(this.pos);
     w.root.rotation.y = this.yaw;
     const sw = Math.sin(this.walk) * 0.5;
@@ -676,6 +720,14 @@ export class Underground {
     }
     w.heap.visible = this.cargo.vol > 0.01;
     w.heap.scale.set(1, 0.4 + (this.cargo.vol / this.cargo.cap) * 0.8, 1);
+    // PAPER
+    const pc = this.paper;
+    if (pc && this.cam) {
+      pc.root.visible = !this.fp;
+      w.shovel.visible = this.fp && this.swing >= 0;
+      pc.setTool(this.swing >= 0 ? 'pick' : null, '#9aa4b4');
+      if (!this.fp) pc.update(dt, this.cam, { yaw: this.yaw, speed: this.moving ? 3 : 0, act: this.swing, lean: this.moving ? 0.1 : 0 });
+    }
     // despejar: moega da entrada ou vagoneta perto
     if (ctl && ctl.act2 && this.cargo.vol > 0) {
       const hx = this.cx(this.entrance);
@@ -780,6 +832,7 @@ export class Underground {
       const base = end >= 0 ? end : this.entrance;
       if (!this.powered) {
         p.root.position.set(this.cx(this.entrance) + 1.5 + i * 0.8, 0, this.cz(this.entrance) + 1.5);
+        if (b.paper && this.cam) b.paper.update(dt, this.cam, { yaw: p.root.rotation.y, speed: 0, act: -1 });
         return;
       }
       // escolhe uma rocha encostada no espaço aberto perto da ponta do trilho
@@ -829,6 +882,7 @@ export class Underground {
         const sw = Math.sin(b.t * 9) * 0.5;
         p.legL.rotation.x = sw;
         p.legR.rotation.x = -sw;
+        if (b.paper && this.cam) b.paper.update(dt, this.cam, { yaw: root.rotation.y, speed: 2.5, act: -1 });
         return;
       }
       if (!last) {
@@ -840,6 +894,7 @@ export class Underground {
       b.t += dt;
       p.shovel.rotation.x = -1.2 + Math.max(0, Math.sin(b.t * 5)) * 1.5;
       p.armR.rotation.x = -1.6 + Math.max(0, Math.sin(b.t * 5)) * 1.2;
+      if (b.paper && this.cam) b.paper.update(dt, this.cam, { yaw: root.rotation.y, speed: 0, act: (b.t * 0.8) % 1 });
       if (b.t > 4) {
         b.t = 0;
         const got = this.hit(b.cell);
@@ -907,8 +962,19 @@ export class Underground {
     this.rebuild();
   }
   dispose(): void {
+    this.paper?.dispose();
+    for (const b of this.bots) b.paper?.dispose();
     this.scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }
+}
+
+/** PAPER: troca o boneco 3D pelo Bloop 2D (o carrinho e a picareta 3D continuam) */
+function paperize(p: WorkerParts, spec: PaperSpec, cell: number, always = false): PaperChar | null {
+  if (!always && !paperOn('garimpo')) return null;
+  const pc = new PaperChar(spec, { radius: 0.52, cell, shadow: true });
+  for (const c of p.root.children) if (c !== p.barrow) c.visible = false;
+  p.root.add(pc.root);
+  return pc;
 }
 
 function b64(a: Uint8Array): string {

@@ -119,6 +119,8 @@ export interface PaperState {
   happy?: boolean;
   /** desmaiado/dormindo: achata e fecha os olhos */
   faint?: boolean;
+  /** inclinação para a frente (rad; empurrando carrinho, subindo morro). Opcional */
+  lean?: number;
 }
 
 const _cam = new THREE.Vector3();
@@ -261,9 +263,11 @@ export class PaperChar {
     const camA = Math.atan2(dx, dz);
     const hd = Math.hypot(dx, dz);
     const pitch = Math.atan2(_cam.y - _pos.y - this.r, Math.max(0.1, hd));
-    this.pivot.rotation.set(-Math.min(this.tilt, Math.max(0, pitch) * 0.75), camA - parentYaw, 0);
     // vista: ângulo da câmera medido a partir da frente do Bloop
     const rel = wrap(camA - st.yaw);
+    // inclinar para a frente: de frente/costas vira inclinação no eixo X; de lado, giro no plano
+    const ln = st.lean ?? 0;
+    this.pivot.rotation.set(-Math.min(this.tilt, Math.max(0, pitch) * 0.75) + ln * Math.cos(rel) * 0.6, camA - parentYaw, ln * Math.sin(rel));
     const ar = Math.abs(rel);
     let v = 0;
     let best = 9;

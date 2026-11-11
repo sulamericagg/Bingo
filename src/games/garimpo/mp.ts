@@ -19,6 +19,10 @@ import { Heli, newCtl, Pickup, Worker, type Ctl, type Kind, type Machine } from 
 import { encodeTerrain } from './save';
 import type { GbNet, NetMsg } from './net';
 import type { Garimpo } from './game';
+// PAPER: cada jogador aparece com o PRÓPRIO Bloop (skin do catálogo ou o avatar montado)
+import { specOf, type PaperSpec } from '../../3d/paper';
+import { save } from '../../core/storage';
+import { squad } from '../../party/squad';
 
 /** cores das camisas: anfitrião, convidados 1..3 */
 export const PCOL = [C.shirt as number, 0xd8462e, 0x3fae4a, 0x9a4ad0];
@@ -37,6 +41,30 @@ export interface Peer {
   id: string;
   name: string;
   slot: number;
+  /** skin equipada ('custom' = avatar montado) */
+  skin?: string;
+  avatar?: unknown;
+}
+/** avatar recebido de outro jogador: só aceita o formato {parts:{..strings}, colors:{primary,secondary}} */
+function cleanAvatar(a: unknown): unknown {
+  if (!a || typeof a !== 'object') return undefined;
+  const o = a as { parts?: Record<string, unknown>; colors?: Record<string, unknown> };
+  if (!o.parts || !o.colors || typeof o.parts !== 'object' || typeof o.colors !== 'object') return undefined;
+  const parts: Record<string, string> = {};
+  for (const k of ['body', 'material', 'pattern', 'eyes', 'mouth', 'head', 'face', 'back', 'aura']) {
+    const v = o.parts[k];
+    if (typeof v === 'string' && /^[a-z0-9_]{1,24}$/.test(v)) parts[k] = v;
+  }
+  const col = (v: unknown, d: string) => (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v) ? v : d);
+  return { parts, colors: { primary: col(o.colors.primary, '#8ad8ff'), secondary: col(o.colors.secondary, '#3a8aff') } };
+}
+/** Bloop de papel de um jogador da sala */
+export function peerSpec(id: string, skin?: string, avatar?: unknown): PaperSpec {
+  return specOf(skin || 'bloop', avatar ?? squad()?.members.find((m) => m.id === id)?.avatar);
+}
+/** o meu avatar para mandar à sala (só se for o montado) */
+export function myAvatar(): unknown {
+  return save.skin === 'custom' ? save.avatar : undefined;
 }
 
 /** plaquinha com o nome sobre a cabeça */
@@ -134,7 +162,7 @@ export class MpHost {
     return this.peers.size + 1;
   }
   list(): Peer[] {
-    return [{ id: this.net.me.id, name: this.net.me.name, slot: 0 }, ...[...this.peers.values()].map((p) => ({ id: p.id, name: p.name, slot: p.slot }))];
+    return [{ id: this.net.me.id, name: this.net.me.name, slot: 0, skin: save.skin, avatar: myAvatar() }, ...[...this.peers.values()].map((p) => ({ id: p.id, name: p.name, slot: p.slot, skin: p.skin, avatar: p.avatar }))];
   }
   event(e: unknown[]): void {
     if (this.peers.size) this.evs.push(e);
@@ -151,7 +179,8 @@ export class MpHost {
     let slot = 1;
     while (used.has(slot)) slot++;
     const name = String(m.name ?? 'Bloop').slice(0, 24);
-    const wk = new Worker(PCOL[slot]);
+    const skin = typeof m.skin === 'string' ? m.skin : 'bloop';
+    const wk = new Worker(PCOL[slot], peerSpec(id, skin));
     wk.cargo.cap = g.barrowCap();
     wk.digPow = g.shovelPow();
     const hp = g.cur!.pos;
@@ -161,7 +190,7 @@ export class MpHost {
     const tag = nameTag(name, PCOL[slot]);
     wk.group.add(tag);
     const p = wk.group.position;
-    const r: Remote = { id, name, slot, worker: wk, tag, ctl: newCtl(), foot: newCtl(), cy: 0, m: null, x: p.x, z: p.z, yaw: a, sp: 0 };
+    const r: Remote = { id, name, slot, skin, worker: wk, tag, ctl: newCtl(), foot: newCtl(), cy: 0, m: null, x: p.x, z: p.z, yaw: a, sp: 0 };
     this.peers.set(id, r);
     this.sendInit(r);
     g.water?.netReset();
@@ -192,12 +221,16 @@ export class MpHost {
       money: Math.floor(s.money),
       upg: s.upg,
       rain: g.rainOn ? 1 : 0,
-      ps: this.list().map((p) => [p.id, p.name, p.slot]),
+      ps: this.psList(),
     });
     for (let i = 0; i < parts; i++) this.net.send({ t: 'tp', to: r.id, i, d: ter.slice(i * CH, (i + 1) * CH) });
   }
   private sendPeers(): void {
-    this.net.send({ t: 'pe', ps: this.list().map((p) => [p.id, p.name, p.slot]) });
+    this.net.send({ t: 'pe', ps: this.psList() });
+  }
+  /** lista da sala: [id, nome, vaga, skin, avatar?] */
+  private psList(): unknown[][] {
+    return this.list().map((p) => (p.avatar ? [p.id, p.name, p.slot, p.skin ?? 'bloop', p.avatar] : [p.id, p.name, p.slot, p.skin ?? 'bloop']));
   }
   private leave(id: string, silent = false): void {
     const r = this.peers.get(id);
@@ -266,6 +299,16 @@ export class MpHost {
     } else if (m.k === 'water') g.water?.remoteAct(m);
     else if (m.k === 'proc') g.proc?.netAction(r.id, r.worker, m); // beneficiamento (proc/)
     else if (m.k === 'repair') g.repairs?.remoteAct(m); // CONSERTOS: convidado consertou/pediu
+    else if (m.k === 'barrow' && Array.isArray(m.b)) r.worker.netBarrowApply((m.b as unknown[]).slice(0, 4).map((v) => num(v))); // CARRINHO largado/pego
+    else if (m.k === 'av') {
+      // PAPER: avatar montado do convidado
+      const a = cleanAvatar(m.a);
+      if (a) {
+        r.avatar = a;
+        r.worker.setSpec(peerSpec(r.id, r.skin, a));
+        this.sendPeers();
+      }
+    }
   }
   private freeSeat(r: Remote): void {
     const mc = r.m!;
@@ -349,8 +392,9 @@ export class MpHost {
     if (this.net.buffered > 400_000) return; // rede engasgada: espera (o delta do terreno não se perde)
     const seatIdx = (mc: Machine | null) => (mc ? g.ms.indexOf(mc) : -1);
     const host = g.worker!;
-    const pl: unknown[] = [[this.net.me.id, ...host.netState(), r2(host.cargo.gold), g.inMine ? -2 : g.cur === host ? -1 : seatIdx(g.cur)]];
-    for (const r of this.peers.values()) pl.push([r.id, ...r.worker.netState(), r2(r.worker.cargo.gold), seatIdx(r.m)]);
+    // [id, ...pose(9), ouro, ...carrinho(4), lugar]
+    const pl: unknown[] = [[this.net.me.id, ...host.netState(), r2(host.cargo.gold), ...host.netBarrow(), g.inMine ? -2 : g.cur === host ? -1 : seatIdx(g.cur)]];
+    for (const r of this.peers.values()) pl.push([r.id, ...r.worker.netState(), r2(r.worker.cargo.gold), ...r.worker.netBarrow(), seatIdx(r.m)]);
     const ms = g.ms.map((m) => {
       const v = m.veh;
       const p = m.pos;
@@ -503,7 +547,7 @@ export class MpGuest {
   private firePts = new Float32Array(90 * 4);
   private fireN = 0;
   private lastN = -1;
-  readonly names = new Map<string, { name: string; slot: number }>();
+  readonly names = new Map<string, { name: string; slot: number; skin: string; avatar?: unknown }>();
   /** máquinas com alguém dentro (índices) */
   readonly taken = new Set<number>();
   fireTgt: { x: number; z: number } | null = null;
@@ -533,11 +577,16 @@ export class MpGuest {
   }
   setPeers(ps: unknown): void {
     this.names.clear();
-    for (const p of (ps as [string, string, number][]) ?? []) this.names.set(String(p[0]), { name: String(p[1]), slot: num(p[2]) | 0 });
+    for (const p of (ps as unknown[][]) ?? []) this.names.set(String(p[0]), { name: String(p[1]), slot: num(p[2]) | 0, skin: typeof p[3] === 'string' ? p[3] : 'bloop', avatar: cleanAvatar(p[4]) });
+    // PAPER: o Bloop de cada um (o avatar montado pode chegar depois)
+    for (const [id, av] of this.avatars) {
+      const n = this.names.get(id);
+      if (n) av.w.setSpec(peerSpec(id, n.skin, n.avatar));
+    }
     this.g.onPeersChanged();
   }
   list(): Peer[] {
-    return [...this.names].map(([id, p]) => ({ id, name: p.name, slot: p.slot })).sort((a, b) => a.slot - b.slot);
+    return [...this.names].map(([id, p]) => ({ id, name: p.name, slot: p.slot, skin: p.skin, avatar: p.avatar })).sort((a, b) => a.slot - b.slot);
   }
 
   private snap(m: NetMsg): void {
@@ -700,7 +749,7 @@ export class MpGuest {
       const slot = info?.slot ?? (id === this.net.hostId ? 0 : 1);
       if (!av || av.slot !== slot) {
         if (av) this.dropAvatar(av);
-        const wk = new Worker(PCOL[slot]);
+        const wk = new Worker(PCOL[slot], peerSpec(id, info?.skin, info?.avatar));
         wk.cargo.cap = g.barrowCap();
         w.scene.add(wk.group);
         const tag = nameTag(info?.name ?? 'Bloop', PCOL[slot]);
@@ -709,6 +758,7 @@ export class MpGuest {
         this.avatars.set(id, av);
       }
       av.w.group.visible = seat === -1;
+      av.w.netBarrowApply(b.slice(10, 14)); // CARRINHO: na mão ou largado no chão
       if (seat !== -1) continue;
       av.w.netPose([lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k), lerpA(a[3], b[3], k), b[4], b[5], b[6], b[7], b[8]], dt);
     }

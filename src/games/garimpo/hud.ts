@@ -18,6 +18,8 @@ export interface HudCb {
   cam(): void;
   mode(): void;
   detector(): void;
+  /** CARRINHO: largar / pegar */
+  barrow(): void;
 }
 export interface HudState {
   money: number;
@@ -36,6 +38,8 @@ export interface HudState {
   hot2: boolean;
   /** garimpeiro com balde / na beira d'água: botão 1 vira água */
   water: boolean;
+  /** CARRINHO: botão largar/pegar (null = escondido; far = largado longe) */
+  barrow: 'drop' | 'grab' | 'far' | null;
 }
 
 const LBL = {
@@ -51,6 +55,8 @@ const LBL = {
   hand: () => t('gb.handbrake', 'Freio'),
   tire: () => t('gb.tires', 'Pneus'),
   unload: () => t('gb.unload', 'Descarregar'),
+  barDrop: () => t('gb.bar.drop', 'Largar carrinho'),
+  barGrab: () => t('gb.bar.grab', 'Pegar carrinho'),
 };
 
 const fmtN = (n: number) => Math.floor(n).toLocaleString('pt-BR');
@@ -86,13 +92,14 @@ export class Hud {
         <div class="gb-chip gb-cargo">${IC.dirt}<i><u></u></i><b>0 g</b></div>
       </div>
       <div class="gb-tr">
-        ${b('gb-shop', 'shop')}${b('gb-det', 'detector')}${b('gb-mode', 'wheel')}${b('gb-rainb', 'rain')}${b('gb-cam', 'cam')}
+        ${b('gb-shop', 'shop')}${b('gb-det', 'detector')}${b('gb-mode', 'wheel')}${b('gb-rainb', 'rain')}<button class="gb-b gb-cam" data-touch-ignore>${IC.cam}<i class="gb-camb">1ª</i></button>
       </div>
       <div class="gb-arrow" hidden><div class="gb-arr">${IC.arrow}</div><span></span></div>
       <div class="gb-detring" hidden><div class="gb-dr"><i></i></div>${IC.detector}</div>
       <div class="gb-right">
         <div class="gb-acts">
           ${b('gb-a gb-ent', 'enter', LBL.enter())}
+          ${b('gb-a gb-bar', 'barrowDrop', LBL.barDrop())}
           ${b('gb-a gb-a2', 'dump', LBL.dump())}
           ${b('gb-a gb-up', 'up')}
           ${b('gb-a gb-dn', 'down')}
@@ -144,6 +151,7 @@ export class Hud {
     click('.gb-cam', () => cb.cam());
     click('.gb-mode', () => cb.mode());
     click('.gb-det', () => cb.detector());
+    click('.gb-bar', () => cb.barrow());
     hold('.gb-gas', 'gas');
     hold('.gb-brk', 'brake');
     hold('.gb-a1', 'act');
@@ -300,6 +308,7 @@ export class Hud {
     const a2 = this.q('.gb-a2');
     show('.gb-a1', k === 'worker' || exArm || k === 'heli');
     show('.gb-a2', k === 'worker' || exArm || k === 'truck' || k === 'pickup');
+    if (k !== 'worker') show('.gb-bar', false);
     const set = (b: HTMLElement, ic: IconKey, label: string) => (b.innerHTML = IC[ic] + `<span>${label}</span>`);
     if (k === 'worker') {
       set(a1, 'shovel', LBL.dig());
@@ -373,7 +382,7 @@ export class Hud {
   }
 
   update(s: HudState): void {
-    const txt = `${fmtN(s.money)}|${fmtN(s.stock)}|${Math.round(s.fill * 100)}|${s.cargoGold.toFixed(1)}|${s.canEnter}|${s.hot2}|${s.water}`;
+    const txt = `${fmtN(s.money)}|${fmtN(s.stock)}|${Math.round(s.fill * 100)}|${s.cargoGold.toFixed(1)}|${s.canEnter}|${s.hot2}|${s.water}|${s.barrow}|${this.kind}`;
     if (txt !== this.lastTxt) {
       this.lastTxt = txt;
       if (this.kind === 'worker') this.q('.gb-a1').innerHTML = s.water ? IC.water + `<span>${LBL.water()}</span>` : IC.shovel + `<span>${LBL.dig()}</span>`;
@@ -386,6 +395,16 @@ export class Hud {
       this.q('.gb-ent').classList.toggle('hot', s.canEnter);
       this.q('.gb-ent').hidden = this.kind === 'worker' ? !s.canEnter : false;
       this.q('.gb-a2').classList.toggle('hot', s.hot2);
+      // CARRINHO: largar (empurrando) / pegar (perto dele); longe = apagado
+      const bb = this.q('.gb-bar');
+      bb.hidden = this.kind !== 'worker' || !s.barrow;
+      if (s.barrow) {
+        bb.innerHTML = (s.barrow === 'drop' ? IC.barrowDrop : IC.barrowGrab) + `<span>${s.barrow === 'drop' ? LBL.barDrop() : LBL.barGrab()}</span>`;
+        bb.classList.toggle('dim', s.barrow === 'far');
+        bb.classList.toggle('hot', s.barrow === 'grab');
+      }
+      // despejar só com o carrinho na mão
+      if (this.kind === 'worker') this.q('.gb-a2').hidden = s.barrow === 'grab' || s.barrow === 'far' ? !s.hot2 : false;
     }
     // conta-giros
     const n = Math.round(Math.max(0, Math.min(1, s.rpm)) * 12);
@@ -416,6 +435,12 @@ export class Hud {
         sp.innerHTML = IC[s.arrow.icon] + tx;
       }
     }
+  }
+  /** selo da vista da câmera no botão do topo */
+  setCamBadge(txt: string, title: string): void {
+    const c = this.q('.gb-cam');
+    c.querySelector('i')!.textContent = txt;
+    c.setAttribute('aria-label', title);
   }
   setRainIcon(on: boolean): void {
     this.q('.gb-rainb').innerHTML = on ? IC.sun : IC.rain;

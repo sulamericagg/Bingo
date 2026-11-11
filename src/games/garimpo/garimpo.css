@@ -182,3 +182,8 @@
 
 /* amigos primeiro: código só como link pequeno (src/party/friends-play.ts) */
 .gb-codelink{border:0;background:none;color:#ffe2a8;font:inherit;font-size:14px;text-decoration:underline;padding:8px;cursor:pointer}
+
+/* CARRINHO: largar/pegar; selo da vista da câmera */
+.gb-bar.dim{opacity:.45}
+.gb-cam{position:relative}
+.gb-camb{position:absolute;right:-3px;bottom:-4px;font:800 calc(10px*var(--s,1))/1 Fredoka,system-ui,sans-serif;font-style:normal;background:#ffb02e;color:#3a1c00;border-radius:7px;padding:2px 4px;pointer-events:none}
