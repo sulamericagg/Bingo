@@ -78,8 +78,12 @@ function cardSub(c: Card): string {
   }
   return c.owner ? t('srv.by', 'de {n}', { n: c.owner }) : c.code ?? '';
 }
+/** foto do servidor (com a capa desenhada embaixo, se a foto não carregar) */
 function cover(c: Card): string {
-  if (c.th) return apiUrl(c.th);
+  const art = coverArt(c);
+  return c.th ? `${apiUrl(c.th)}'),url('${art}` : art;
+}
+function coverArt(c: Card): string {
   if (c.kind === 'official') return coverFor(c.slot ?? 'sobrev');
   if (c.kind === 'studio') return coverFor('studio', c.code?.charCodeAt(1) ?? 1);
   return coverFor(c.mini === 'pvp' || c.mini === 'spleef' || c.mini === 'obby' || c.mini === 'esconde' || c.mini === 'ceu' ? c.mini : 'sobrev', c.code?.charCodeAt(2) ?? 2);

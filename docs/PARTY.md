@@ -51,6 +51,11 @@ const seat = partySeat('meu-jogo');                         // ao abrir o jogo
 if (seat) { consumePartySeat('meu-jogo'); seat.host ? criarSala(seat.code()) : entrarComRetry(seat.code()); }
 ```
 
+### Mundo: servidores (docs/MUNDO-SERVIDORES.md)
+No Mundo o grupo cai no **navegador de servidores**: o líder escolhe um cartão e entra; a sessão manda
+`sendFocus(jogo, {srv: CÓDIGO})` e os outros (no navegador ou em outro servidor) entram sozinhos no mesmo
+servidor ("Seguindo o líder do grupo…"). Quem chega depois lê `cfg.srv` do estado do grupo.
+
 ### No hub, ao vivo (`src/party/follow.ts`, mensagens `focus` / `votemode` / `vote` do SquadRoom)
 - O líder tem coroa ♛ no saguão. Quando ele passa entre os jogos, o carrossel dos outros acompanha com o selo
   "♛ @líder escolhendo…" (e os ajustes enviados em `sendFocus(jogo, cfg)`).

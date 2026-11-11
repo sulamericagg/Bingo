@@ -250,7 +250,7 @@ export class ServerDir extends DurableObject<Env> {
   async needCheck(): Promise<{ code: string; ugc: string }[]> {
     await this.load();
     const now = Date.now();
-    return [...this.pubs!.values()].filter((p) => now - p.checked > (p.status === 'approved' ? 300_000 : 20_000)).map((p) => ({ code: p.code, ugc: p.ugc }));
+    return [...this.pubs!.values()].filter((p) => now - p.checked > (p.status === 'approved' ? 300_000 : 8_000)).map((p) => ({ code: p.code, ugc: p.ugc }));
   }
   async setStatus(st: Record<string, string>): Promise<void> {
     await this.load();

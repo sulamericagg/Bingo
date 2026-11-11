@@ -94,7 +94,7 @@ export function startMini(g: WorldGame, sess: NetSession): void {
   const scoreLine = (): string => {
     if (mini !== 'pvp') return '';
     const top = [...scores.entries()].filter(([id]) => id === sess.you || sess.peers.has(id)).sort((a, b) => b[1] - a[1])[0];
-    return `<span class="mg-sc">${t('mundo.mg.youPts', 'Você: {n}', { n: scores.get(sess.you) ?? 0 })}${top && top[1] > 0 ? ' · 🏆 ' + t('mundo.mg.topPts', '{n}: {p}', { n: nameOf(top[0]), p: top[1] }) : ''}</span>`;
+    return `<span class="mg-sc">${t('mundo.mg.youPts', 'Você: {n}', { n: scores.get(sess.you) ?? 0 })}${top && top[1] > 0 && top[0] !== sess.you ? ' · 🏆 ' + t('mundo.mg.topPts', '{n}: {p}', { n: nameOf(top[0]), p: top[1] }) : ''}</span>`;
   };
   const draw = () => {
     const title = MINI_NAMES[mini as Exclude<Mini, ''>]?.[0]() ?? '';
@@ -156,7 +156,7 @@ export function startMini(g: WorldGame, sess: NetSession): void {
   };
   if (mini === 'pvp') {
     arena = buildPvp(g);
-    sess.knockMul = 1.25;
+    sess.knockMul = 1.5;
     kit([['sword_madeira', 1]]);
     const s = spawnOf(sess.you);
     tp(s.x, s.y, s.z);

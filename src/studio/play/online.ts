@@ -31,7 +31,8 @@ interface Peer {
 }
 
 const CSS = `
-.so-chip{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);z-index:6;background:rgba(20,8,48,.72);color:#fff;border-radius:14px;padding:3px 12px;font-weight:900;font-size:13px;display:flex;gap:8px;align-items:center;pointer-events:none;font-family:var(--font,'Fredoka',system-ui,sans-serif)}
+.so-chip{position:absolute;left:calc(env(safe-area-inset-left,0px) + 150px);top:calc(env(safe-area-inset-top,0px) + 14px);max-width:calc(50% - 170px);z-index:6;background:rgba(20,8,48,.72);color:#fff;border-radius:14px;padding:3px 12px;font-weight:900;font-size:13px;display:flex;gap:8px;align-items:center;pointer-events:none;font-family:var(--font,'Fredoka',system-ui,sans-serif)}
+.so-chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .so-chip i{width:9px;height:9px;border-radius:50%;background:#3ee07a;box-shadow:0 0 6px #3ee07a}
 .so-chip i.off{background:#ff4f6a;box-shadow:none}
 .so-push{position:absolute;right:calc(env(safe-area-inset-right,0px) + 18px);top:42%;z-index:6;width:74px;height:74px;border-radius:50%;border:none;background:radial-gradient(circle at 40% 35%,#ffb48a,#ff4f6a 60%,#c21d3c);box-shadow:0 5px 0 #6a0a1a;color:#fff;font:inherit;font-weight:900;font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto;font-family:var(--font,'Fredoka',system-ui,sans-serif)}
