@@ -10,6 +10,7 @@ import { INK, TAU, alpha, circ, ell, fs, heartPath, makeCanvas, rr, star } from 
 import { Painter, specFill, type PaintTool } from './paint';
 import { RH, RW, WALL_Y, drawFurn, drawMess, drawRoomShell, itemBox } from './render-room';
 import { hsfx } from './sfx';
+import { NavGrid, type NavItem } from './nav';
 import { can, type DesignEvent } from './service';
 import { drawPlayer, type PlayerPose } from '../game/character';
 import { SKINS, type Skin } from '../game/skins';
@@ -140,15 +141,33 @@ export function drawFood(c: CanvasRenderingContext2D, food: string, x: number, y
 }
 
 /* ---------------- personagens ---------------- */
-interface Char {
+/** quem anda pelo chão (convidado, eu, bichinho): segue um caminho que desvia de móveis/paredes */
+interface Walker {
+  x: number;
+  y: number;
+  /** destino final (já dentro do chão livre) */
+  tx: number;
+  ty: number;
+  path: number[];
+  pi: number;
+  speed: number;
+  face: number;
+  /** precisa ser posto num lugar livre no próximo quadro */
+  place: boolean;
+}
+type BotState = 'wander' | 'dance' | 'eat' | 'chat';
+interface Char extends Walker {
   id: string;
   name: string;
   skin: Skin;
   avatar?: AvatarData;
-  x: number;
-  y: number;
-  tx: number;
-  ty: number;
+  room: string;
+  /** saindo pela porta (outro cômodo / saiu da festa) — some ao chegar */
+  leaving: boolean;
+  gone: boolean;
+  ai: BotState;
+  aiT: number;
+  partner: string;
   frost: number; // carinha de glacê (s)
   frostCol: number;
   chew: number;
@@ -206,8 +225,13 @@ export class RoomScene {
   me: Char;
   holding: string | null = null;
   cakeSlices = 8;
-  private petX = 260;
+  /** chão andável (paredes + pegada dos móveis), refeito quando os móveis mudam */
+  nav = new NavGrid();
+  private navItems: NavItem[] = [];
+  pet: Walker = { x: 300, y: 395, tx: 300, ty: 395, path: [], pi: 0, speed: 55, face: 0, place: true };
   private petT = 0;
+  private enterRoom = false;
+  private peersSeen = false;
   private time = 0;
   private sendT = 0;
   private aimX = 0;
@@ -218,9 +242,14 @@ export class RoomScene {
     this.me = this.mkChar(host.myId, save.skin === 'custom' ? 'bloop' : save.skin, t('home.you', 'Você'), false, save.skin === 'custom' ? (save.avatar as unknown as AvatarData) : undefined);
     this.me.x = 180;
     this.me.y = 380;
+    this.me.speed = 150;
   }
   private mkChar(id: string, skin: string, name: string, bot: boolean, avatar?: AvatarData): Char {
-    return { id, name, skin: skinOf(skin), avatar, x: 180, y: 360, tx: 180, ty: 360, frost: 0, frostCol: 0, chew: 0, emote: '', emoteT: 0, bot, seen: 0 };
+    return {
+      id, name, skin: skinOf(skin), avatar, x: 180, y: 360, tx: 180, ty: 360, path: [], pi: 0, speed: bot ? 70 : 170, face: 0, place: true,
+      room: '', leaving: false, gone: false, ai: 'wander', aiT: Math.random() * 1.5, partner: '',
+      frost: 0, frostCol: 0, chew: 0, emote: '', emoteT: 0, bot, seen: 0,
+    };
   }
 
   get rd(): RoomDesign {
@@ -230,6 +259,7 @@ export class RoomScene {
     return this.rd.items as Item[];
   }
   setRoom(r: RoomId): void {
+    if (r !== this.room) this.enterRoom = true;
     this.room = r;
     this.sel = [];
     this.loadPaint();
@@ -371,8 +401,8 @@ export class RoomScene {
     c.scale(k, k);
     if (this.mode === 'clean') this.drawCleanHints(c, t);
     this.drawCake(c);
-    this.drawPet(c, dt, t);
-    this.stepChars(c, dt, t);
+    this.stepChars(dt);
+    this.drawWalkers(c, t);
     this.stepProj(c, dt);
     this.stepParticles(c, dt);
     if (this.drag?.kind === 'fling' && this.holding) this.drawAim(c);
@@ -492,9 +522,21 @@ export class RoomScene {
   }
 
   /* ---------- bolo ---------- */
+  /** índice da mesa do bolo (-1 = sem mesa) */
+  private cakeTable(): number {
+    if (this.mode !== 'party') return -1;
+    const it = this.items;
+    let best = -1;
+    for (let i = 0; i < it.length; i++) {
+      const k = furnById(it[i].id)?.kind;
+      if (k === 'partytable') return i;
+      if (k === 'table' && best < 0) best = i;
+    }
+    return best;
+  }
   private cakePos(): [number, number] | null {
     if (this.mode !== 'party') return null;
-    const t = this.items.findIndex((i) => furnById(i.id)?.kind === 'partytable' || furnById(i.id)?.kind === 'table');
+    const t = this.cakeTable();
     if (t < 0) return [180, 300];
     const it = this.items[t];
     const d = furnById(it.id)!;
@@ -535,52 +577,251 @@ export class RoomScene {
   }
 
   /* ---------- bichinho mora aqui ---------- */
-  private drawPet(c: CanvasRenderingContext2D, dt: number, t: number): void {
-    if (this.room !== 'living' && this.room !== 'bedroom' && this.mode !== 'party') return;
-    if (!this.host.isOwner || this.mode === 'paint' || this.mode === 'edit') return;
-    this.petT += dt;
-    this.petX = 300 + Math.sin(this.petT * 0.4) * 30;
-    const y = 400 + Math.abs(Math.sin(t * (this.mode === 'party' ? 6 : 2))) * -6;
-    ell(c, this.petX, 402, 14, 4);
+  petVisible(): boolean {
+    if (this.room !== 'living' && this.room !== 'bedroom' && this.mode !== 'party') return false;
+    return this.host.isOwner && this.mode !== 'paint' && this.mode !== 'edit';
+  }
+  private thinkPet(dt: number): void {
+    const p = this.pet;
+    this.petT -= dt;
+    if (this.petT > 0 || p.pi < p.path.length) return;
+    this.petT = 2.5 + Math.random() * 3.5;
+    if (this.mode === 'party' && Math.random() < 0.6) {
+      // na festa: fica perto de você (ou dançando perto da caixa de som)
+      const sp = this.spotOf('speaker');
+      const [x, y] = sp && Math.random() < 0.4 ? this.nav.randomSpot(Math.random, sp.x, sp.y + 30, 45) : this.nav.randomSpot(Math.random, this.me.x + (Math.random() < 0.5 ? -34 : 34), this.me.y + 6, 24);
+      this.goTo(p, x, y);
+    } else {
+      const [x, y] = this.nav.randomSpot(Math.random, p.x, p.y, 80);
+      this.goTo(p, x, y);
+    }
+  }
+  private drawPetAt(c: CanvasRenderingContext2D, t: number): void {
+    const p = this.pet;
+    const moving = p.pi < p.path.length;
+    const y = p.y - (moving || this.mode === 'party' ? Math.abs(Math.sin(t * (this.mode === 'party' ? 6 : 8))) * 6 : 0);
+    ell(c, p.x, p.y + 2, 14, 4);
     c.fillStyle = alpha(INK, 0.2);
     c.fill();
     c.save();
-    c.translate(this.petX, y - 13);
+    c.translate(p.x, y - 13);
     pose.t = t;
     pose.mood = 'happy';
     pose.sx = pose.sy = 1;
-    pose.lookX = Math.sin(t * 0.7);
+    pose.lookX = moving ? p.face : Math.sin(t * 0.7);
     pose.lookY = 0;
     pose.blink = (t % 3.3) < 0.12 ? 1 : 0;
     drawPlayer(c, skinOf(save.skin === 'custom' ? 'bloop' : save.skin), 13, pose);
     c.restore();
     if ((t * 0.5) % 4 < 1.2) {
-      heartPath(c, this.petX + 12, y - 36 - ((t * 0.5) % 4) * 6, 5);
+      heartPath(c, p.x + 12, y - 36 - ((t * 0.5) % 4) * 6, 5);
       fs(c, '#ff5c7a', 1.5);
+    }
+  }
+
+  /* ---------- andar pelo chão (sem atravessar parede nem móvel) ---------- */
+  /** grade do chão a partir dos móveis ATUAIS (inclusive os derrubados na guerra de comida) */
+  private syncNav(): void {
+    const it = this.items;
+    const arr = this.navItems;
+    while (arr.length < it.length) arr.push({ id: '', x: 0, y: 0 });
+    arr.length = it.length;
+    for (let i = 0; i < it.length; i++) {
+      const mv = this.movedIdx(i);
+      arr[i].id = it[i].id;
+      arr[i].x = mv ? mv.x : it[i].x;
+      arr[i].y = mv ? mv.y : it[i].y;
+    }
+    if (!this.nav.update(arr)) return;
+    // móveis mudaram: quem ficou "dentro" de um móvel sai para o lugar livre mais perto; caminhos refeitos
+    const fix = (w: Walker) => {
+      if (!this.nav.free(w.x, w.y)) w.place = true;
+      else if (w.pi < w.path.length) this.goTo(w, w.tx, w.ty);
+    };
+    fix(this.me);
+    fix(this.pet);
+    for (const ch of this.chars) fix(ch);
+  }
+  /** caminha até (x,y) — o destino é ajustado para o chão livre mais perto */
+  goTo(w: Walker, x: number, y: number): void {
+    const [gx, gy] = this.nav.nearestFree(x, y);
+    w.tx = gx;
+    w.ty = gy;
+    w.pi = 0;
+    if (!this.nav.path(w.x, w.y, gx, gy, w.path)) {
+      w.path.length = 0;
+      w.tx = w.x;
+      w.ty = w.y;
+    }
+  }
+  private placeWalker(w: Walker, x = w.x, y = w.y): void {
+    const [fx, fy] = this.nav.nearestFree(x, y);
+    w.x = w.tx = fx;
+    w.y = w.ty = fy;
+    w.path.length = 0;
+    w.pi = 0;
+    w.place = false;
+  }
+  private stepWalker(w: Walker, dt: number): void {
+    if (w.place) this.placeWalker(w);
+    let step = w.speed * dt;
+    while (step > 0 && w.pi < w.path.length) {
+      const nx = w.path[w.pi],
+        ny = w.path[w.pi + 1];
+      const dx = nx - w.x,
+        dy = ny - w.y;
+      const d = Math.hypot(dx, dy);
+      if (Math.abs(dx) > 0.5) w.face = Math.sign(dx);
+      let px: number, py: number;
+      if (d <= step) {
+        px = nx;
+        py = ny;
+        step -= d;
+        w.pi += 2;
+      } else {
+        px = w.x + (dx / d) * step;
+        py = w.y + (dy / d) * step;
+        step = 0;
+      }
+      if (!this.nav.free(px, py)) {
+        // algo apareceu no caminho: recalcula na próxima
+        this.goTo(w, w.tx, w.ty);
+        return;
+      }
+      w.x = px;
+      w.y = py;
+    }
+  }
+  /** afasta dois convidados encostados (só se o novo lugar continuar livre) */
+  private separate(a: Walker, b: Walker): void {
+    const dx = b.x - a.x,
+      dy = (b.y - a.y) * 1.6;
+    const d = Math.hypot(dx, dy);
+    if (d >= 24 || d < 0.01) return;
+    const push = (24 - d) * 0.25;
+    const ux = dx / d,
+      uy = dy / d / 1.6;
+    if (this.nav.free(b.x + ux * push, b.y + uy * push)) (b.x += ux * push), (b.y += uy * push);
+    if (this.nav.free(a.x - ux * push, a.y - uy * push)) (a.x -= ux * push), (a.y -= uy * push);
+  }
+  private spotOf(kind: string): { x: number; y: number; w: number } | null {
+    let found: { x: number; y: number; w: number } | null = null;
+    let n = 0;
+    for (const b of this.nav.base) if (b.kind === kind && Math.random() * ++n < 1) found = b;
+    return found;
+  }
+
+  /* ---------- convidados robôs: dançar, comer na mesa, conversar em dupla ---------- */
+  private thinkBot(ch: Char, dt: number): void {
+    ch.aiT -= dt;
+    const arrived = ch.pi >= ch.path.length;
+    if (arrived && ch.ai === 'dance' && Math.random() < dt * 0.4) ch.emote ||= ((ch.emoteT = 0), 'uau');
+    if (arrived && ch.ai === 'eat' && ch.chew <= 0 && Math.random() < dt * 0.5) ch.chew = 1.2;
+    if (arrived && ch.ai === 'chat') {
+      const o = this.chars.find((q) => q.id === ch.partner);
+      if (o) ch.face = Math.sign(o.x - ch.x) || ch.face;
+      if (!ch.emote && Math.random() < dt * 0.35) {
+        ch.emote = ['oi', 'rindo', 'coracao', 'joinha'][(Math.random() * 4) | 0];
+        ch.emoteT = 0;
+      }
+    }
+    if (ch.aiT > 0) return;
+    // escolhe o próximo "programa"
+    if (ch.ai === 'chat') {
+      const o = this.chars.find((q) => q.id === ch.partner);
+      if (o && o.partner === ch.id) o.partner = '';
+    }
+    ch.partner = '';
+    ch.aiT = 4 + Math.random() * 4;
+    const r = Math.random();
+    const speaker = this.spotOf('speaker');
+    const table = this.spotOf('partytable') ?? this.spotOf('table') ?? this.spotOf('counter');
+    if (r < 0.28 && speaker) {
+      ch.ai = 'dance';
+      const [x, y] = this.nav.randomSpot(Math.random, speaker.x, speaker.y + 34, 50);
+      this.goTo(ch, x, y);
+    } else if (r < 0.5 && table) {
+      ch.ai = 'eat';
+      // de frente para a mesa (logo abaixo da borda da frente)
+      this.goTo(ch, table.x + (Math.random() - 0.5) * table.w * 0.8, table.y + 16);
+    } else if (r < 0.75) {
+      const o = this.chars.find((q) => q !== ch && q.bot && !q.leaving && !q.partner && q.room === ch.room);
+      if (o) {
+        ch.ai = o.ai = 'chat';
+        ch.partner = o.id;
+        o.partner = ch.id;
+        o.aiT = ch.aiT;
+        const [ax, ay] = this.nav.randomSpot(Math.random);
+        const side = ax > 180 ? -1 : 1;
+        const [bx, by] = this.nav.nearestFree(ax + side * 38, ay);
+        this.goTo(ch, ax, ay);
+        this.goTo(o, bx, by);
+      } else {
+        ch.ai = 'wander';
+        const [x, y] = this.nav.randomSpot(Math.random);
+        this.goTo(ch, x, y);
+      }
+    } else {
+      ch.ai = 'wander';
+      const [x, y] = this.nav.randomSpot(Math.random);
+      this.goTo(ch, x, y);
     }
   }
 
   /* ---------- personagens ---------- */
   setPeers(peers: PartyPeer[]): void {
     const now = this.time;
+    const first = !this.peersSeen;
+    this.peersSeen = true;
     for (const p of peers) {
       if (p.id === this.host.myId) continue;
+      // robôs acompanham você; gente de verdade só aparece no cômodo em que está
+      const here = !!p.bot || !p.room || p.room === this.room;
       let ch = this.chars.find((c) => c.id === p.id);
       if (!ch) {
+        if (!here) continue;
         ch = this.mkChar(p.id, p.skin, p.name, !!p.bot, p.skin === 'custom' ? (p.avatar as AvatarData) : undefined);
-        ch.x = p.x;
-        ch.y = p.y;
+        if (first || p.bot) {
+          ch.x = p.x;
+          ch.y = p.y;
+        } else {
+          // chegou depois: entra pela porta
+          const [dx, dy] = this.nav.door(p.x < 180 ? -1 : 1);
+          ch.x = dx;
+          ch.y = dy;
+        }
+        ch.place = true;
         this.chars.push(ch);
       }
-      ch.tx = p.x;
-      ch.ty = p.y;
+      ch.room = p.room ?? '';
       ch.seen = now;
+      if (!here) {
+        if (!ch.leaving) this.leave(ch, p.x);
+      } else if (!ch.bot) {
+        ch.leaving = false;
+        // humano: o (x,y) dele é o destino; aqui o caminho desvia dos móveis
+        if (Math.abs(p.x - ch.tx) + Math.abs(p.y - ch.ty) > 6) {
+          if (ch.place) this.placeWalker(ch);
+          this.goTo(ch, p.x, p.y);
+        }
+      }
       if (p.emote && p.emote !== ch.emote) {
         ch.emote = p.emote;
         ch.emoteT = 0;
       }
     }
-    for (let i = this.chars.length - 1; i >= 0; i--) if (!peers.find((p) => p.id === this.chars[i].id)) this.chars.splice(i, 1);
+    // saiu da festa: vai até a porta e some (robôs somem na hora)
+    for (let i = this.chars.length - 1; i >= 0; i--) {
+      const ch = this.chars[i];
+      if (peers.some((p) => p.id === ch.id)) continue;
+      if (ch.bot) this.chars.splice(i, 1);
+      else if (!ch.leaving) this.leave(ch, ch.x);
+    }
+  }
+  private leave(ch: Char, hintX: number): void {
+    ch.leaving = true;
+    const [dx, dy] = this.nav.door(hintX < 180 ? -1 : 1);
+    this.goTo(ch, dx, dy);
   }
   emoteOf(id: string, code: string): void {
     const ch = id === this.host.myId ? this.me : this.chars.find((c) => c.id === id);
@@ -589,22 +830,44 @@ export class RoomScene {
       ch.emoteT = 0;
     }
   }
-  private stepChars(c: CanvasRenderingContext2D, dt: number, t: number): void {
-    if (this.mode !== 'party' && !this.host.session) return;
+  private stepChars(dt: number): void {
+    const party = this.mode === 'party' || !!this.host.session;
+    const pet = this.petVisible();
+    if (!party && !pet) return;
+    this.syncNav();
+    if (this.enterRoom) {
+      // trocou de cômodo: você entra pela porta da esquerda e os robôs vêm atrás
+      this.enterRoom = false;
+      const [dx, dy] = this.nav.door(-1);
+      this.placeWalker(this.me, dx, dy);
+      this.goTo(this.me, dx + 50, dy);
+      this.chars.forEach((ch, i) => {
+        if (!ch.bot) return;
+        this.placeWalker(ch, dx, dy + ((i % 3) - 1) * 18);
+        ch.aiT = 0.3 + i * 0.4;
+      });
+      this.pet.place = true;
+    }
+    if (pet) {
+      this.thinkPet(dt);
+      this.stepWalker(this.pet, dt);
+    }
+    if (!party) return;
+    this.tickChar(this.me, dt);
+    for (let i = this.chars.length - 1; i >= 0; i--) {
+      const ch = this.chars[i];
+      if (ch.bot && !ch.leaving) this.thinkBot(ch, dt);
+      this.tickChar(ch, dt);
+      if (ch.leaving && ch.pi >= ch.path.length) this.chars.splice(i, 1);
+    }
     const all = this.chars;
-    // eu
-    this.moveChar(this.me, dt);
-    for (const ch of all) this.moveChar(ch, dt);
-    // ordem por y (sem alocar: desenha em duas passadas simples)
-    this.drawChar(c, this.me, t, true);
-    for (const ch of all) this.drawChar(c, ch, t, false);
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) if (all[i].partner !== all[j].id) this.separate(all[i], all[j]);
+      this.separate(this.me, all[i]);
+    }
   }
-  private moveChar(ch: Char, dt: number): void {
-    const dx = ch.tx - ch.x,
-      dy = ch.ty - ch.y;
-    const k = Math.min(1, dt * 4);
-    ch.x += dx * k;
-    ch.y += dy * k;
+  private tickChar(ch: Char, dt: number): void {
+    this.stepWalker(ch, dt);
     if (ch.frost > 0) ch.frost -= dt;
     if (ch.chew > 0) ch.chew -= dt;
     if (ch.emote) {
@@ -612,18 +875,95 @@ export class RoomScene {
       if (ch.emoteT > 3) ch.emote = '';
     }
   }
+  /* ---------- desenho em ordem de profundidade (y): convidados, bichinho e os móveis que ficam NA FRENTE deles ---------- */
+  private dq: { y: number; k: 0 | 1 | 2; i: number; ch: Char | null }[] = Array.from({ length: 48 }, () => ({ y: 0, k: 0 as 0 | 1 | 2, i: 0, ch: null }));
+  private dqn = 0;
+  private dqSort = (a: { y: number }, b: { y: number }): number => a.y - b.y;
+  private pushDq(y: number, k: 0 | 1 | 2, i: number, ch: Char | null): void {
+    if (this.dqn >= this.dq.length) return;
+    const e = this.dq[this.dqn++];
+    e.y = y;
+    e.k = k;
+    e.i = i;
+    e.ch = ch;
+  }
+  private overlapsWalker(x0: number, y0: number, x1: number, y1: number, baseY: number, w: Walker, r: number): boolean {
+    return w.y < baseY && w.x + r > x0 && w.x - r < x1 && w.y + 4 > y0 && w.y - r * 2.6 < y1;
+  }
+  private drawWalkers(c: CanvasRenderingContext2D, t: number): void {
+    const party = this.mode === 'party' || !!this.host.session;
+    const pet = this.petVisible();
+    if (!party && !pet) return;
+    this.dqn = 0;
+    if (party) {
+      this.pushDq(this.me.y, 0, 0, this.me);
+      for (const ch of this.chars) this.pushDq(ch.y, 0, 0, ch);
+    }
+    if (pet) this.pushDq(this.pet.y, 1, 0, null);
+    // móveis de chão que tampam alguém (quem está atrás deles): redesenha por cima, na ordem certa
+    const it = this.items;
+    const nw = this.dqn;
+    for (let i = 0; i < it.length; i++) {
+      const d = furnById(it[i].id);
+      if (!d || d.wall || d.flat || this.bounce.has(i)) continue;
+      const mv = this.movedIdx(i);
+      const ix = mv ? mv.x : it[i].x,
+        iy = mv ? mv.y : it[i].y;
+      const x0 = ix - d.w / 2,
+        x1 = ix + d.w / 2,
+        y0 = iy - d.h - 70; // cake/balões em cima
+      let hit = false;
+      for (let k = 0; k < nw && !hit; k++) {
+        const e = this.dq[k];
+        hit = e.k === 1 ? this.overlapsWalker(x0, y0, x1, iy, iy, this.pet, 14) : this.overlapsWalker(x0, y0, x1, iy, iy, e.ch!, 24);
+      }
+      if (hit) this.pushDq(iy + 0.01, 2, i, null);
+    }
+    const q = this.dq;
+    // ordena só a parte usada (insertion sort: poucos itens, sem alocar)
+    for (let a = 1; a < this.dqn; a++) {
+      const e = q[a];
+      let b = a - 1;
+      while (b >= 0 && this.dqSort(q[b], e) > 0) {
+        q[b + 1] = q[b];
+        b--;
+      }
+      q[b + 1] = e;
+    }
+    const cakeIdx = this.cakeTable();
+    for (let n = 0; n < this.dqn; n++) {
+      const e = q[n];
+      if (e.k === 0) this.drawChar(c, e.ch!, t, e.ch === this.me);
+      else if (e.k === 1) this.drawPetAt(c, t);
+      else {
+        const i = e.i;
+        const d = furnById(it[i].id)!;
+        const mv = this.movedIdx(i);
+        c.save();
+        c.translate(mv ? mv.x : it[i].x, mv ? mv.y : it[i].y);
+        const rot = (it[i].rot ?? 0) + (mv ? (mv.rot ?? 0) : 0);
+        if (rot) c.rotate(rot);
+        drawFurn(c, d, it[i].color, it[i].flip);
+        c.restore();
+        if (i === cakeIdx) this.drawCake(c);
+      }
+    }
+    for (let n = 0; n < this.dqn; n++) if (q[n].k === 0) this.drawCharTags(c, q[n].ch!, q[n].ch === this.me);
+  }
   private drawChar(c: CanvasRenderingContext2D, ch: Char, t: number, mine: boolean): void {
     const R = 20;
     ell(c, ch.x, ch.y, R * 0.9, R * 0.3);
     c.fillStyle = alpha(INK, 0.22);
     c.fill();
-    const walking = Math.abs(ch.tx - ch.x) + Math.abs(ch.ty - ch.y) > 3;
+    const walking = ch.pi < ch.path.length;
+    const dancing = !walking && ch.bot && ch.ai === 'dance';
     c.save();
-    c.translate(ch.x, ch.y - R * 1.05 - (walking ? Math.abs(Math.sin(t * 12)) * 4 : 0));
+    c.translate(ch.x, ch.y - R * 1.05 - (walking ? Math.abs(Math.sin(t * 12)) * 4 : dancing ? Math.abs(Math.sin(t * 8 + ch.x)) * 7 : 0));
+    if (dancing) c.rotate(Math.sin(t * 8 + ch.x) * 0.12);
     pose.t = t + ch.x * 0.01;
     pose.mood = ch.frost > 0 ? 'idle' : 'happy';
     pose.blink = ch.frost > 0 ? 1 : (t + ch.y) % 3.1 < 0.12 ? 1 : 0;
-    pose.lookX = Math.max(-1, Math.min(1, (ch.tx - ch.x) * 0.1));
+    pose.lookX = ch.face * 0.8;
     pose.lookY = 0;
     const chew = ch.chew > 0 ? Math.sin(t * 30) * 0.08 : 0;
     pose.sx = 1 + chew;
@@ -644,6 +984,10 @@ export class RoomScene {
     c.restore();
     // mão segurando comida
     if (mine && this.holding) drawFood(c, this.holding, ch.x + R, ch.y - R * 1.2, 9, Math.sin(t * 3) * 0.2);
+  }
+  /** nome e balão por último (móvel na frente não corta o nome) */
+  private drawCharTags(c: CanvasRenderingContext2D, ch: Char, mine: boolean): void {
+    const R = 20;
     c.font = '700 11px Fredoka, system-ui, sans-serif';
     c.textAlign = 'center';
     c.lineWidth = 3;
@@ -872,7 +1216,7 @@ export class RoomScene {
         }
       }
     } else if (this.mode === 'look') {
-      if (this.host.isOwner && Math.hypot(lx - this.petX, ly - 390) < 30 && (this.room === 'living' || this.room === 'bedroom')) {
+      if (this.petVisible() && Math.hypot(lx - this.pet.x, ly - (this.pet.y - 12)) < 30) {
         this.host.onPetTap();
         this.drag = null;
       }
@@ -956,8 +1300,8 @@ export class RoomScene {
     } else if (d.kind === 'walk' && (this.mode === 'party' || this.host.session)) this.walkTo(d.lx, d.ly);
   }
   private walkTo(lx: number, ly: number): void {
-    this.me.tx = Math.max(20, Math.min(RW - 20, lx));
-    this.me.ty = Math.max(WALL_Y + 30, Math.min(RH - 6, ly));
+    // toque em cima de um móvel/na parede: vai até o ponto livre mais perto, dando a volta
+    this.goTo(this.me, lx, ly);
   }
   private pick(lx: number, ly: number): number {
     let best = -1;
@@ -1059,6 +1403,21 @@ export class RoomScene {
     this.cakeSlices--;
     const ch = by === this.host.myId ? this.me : this.chars.find((c) => c.id === by);
     if (ch) ch.chew = 1.6;
+    if (ch && ch !== this.me && ch.bot && ch.ai !== 'eat') {
+      // robô comeu: vai até a mesa do bolo (de frente para ela)
+      const ti = this.cakeTable();
+      const tb = ti >= 0 ? this.items[ti] : null;
+      if (tb) {
+        if (ch.partner) {
+          const o = this.chars.find((q) => q.id === ch.partner);
+          if (o) o.partner = '';
+          ch.partner = '';
+        }
+        ch.ai = 'eat';
+        ch.aiT = 4 + Math.random() * 3;
+        this.goTo(ch, tb.x + (Math.random() - 0.5) * 80, tb.y + 16);
+      }
+    }
     const cp = this.cakePos();
     if (cp) emit(3, cp[0], cp[1] - 30, 10, 80, 0.7, 3, 7);
     hsfx.chomp();
@@ -1072,8 +1431,17 @@ export class RoomScene {
   /** evento vindo da sessão */
   onEvent(e: PartyEvent, botsLocal: boolean): void {
     if (e.t === 'throw' && e.from !== this.host.myId) {
-      const isBot = this.chars.find((c) => c.id === e.from)?.bot;
-      this.throwFood(e.from, e.food, e.x, e.y, e.vx, e.vy, !!isBot && botsLocal);
+      const ch = this.chars.find((c) => c.id === e.from);
+      if (ch?.bot) {
+        // robô: a sessão não sabe onde ele está de verdade — sai da mão dele, mirando no mesmo alvo
+        const T = 0.9;
+        const tx = e.x + e.vx * T,
+          ty = e.y + e.vy * T;
+        const x = ch.x,
+          y = ch.y - 30;
+        ch.face = Math.sign(tx - x) || ch.face;
+        this.throwFood(e.from, e.food, x, y, (tx - x) / T, (ty - y) / T, botsLocal);
+      } else if (!ch || !ch.leaving) this.throwFood(e.from, e.food, e.x, e.y, e.vx, e.vy, false);
     } else if (e.t === 'splat') {
       if (!this.host.mess.find((m) => m.id === e.mess.id)) {
         this.host.mess.push(e.mess);

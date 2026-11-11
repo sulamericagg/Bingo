@@ -485,15 +485,16 @@ class PartyImpl implements PartySession {
         name: BOT_NAMES[i % BOT_NAMES.length],
         handle: '',
         skin: BOT_SKINS[(i * 7) % BOT_SKINS.length] ?? 'bloop',
-        x: 100 + Math.random() * 200,
-        y: 100 + Math.random() * 200,
+        // chão do cômodo 2D (parede até y=230): antes nasciam/andavam em y 0..300, dentro da parede
+        x: 100 + Math.random() * 160,
+        y: 280 + Math.random() * 110,
         room: '',
         bot: true,
       }));
       this.botTimer = setInterval(() => {
         for (const b of this.bots) {
-          b.x = Math.max(0, b.x + (Math.random() - 0.5) * 30);
-          b.y = Math.max(0, b.y + (Math.random() - 0.5) * 30);
+          b.x = Math.max(30, Math.min(330, b.x + (Math.random() - 0.5) * 30));
+          b.y = Math.max(262, Math.min(410, b.y + (Math.random() - 0.5) * 30));
           b.emote = Math.random() < 0.03 ? ['oi', 'festa', 'yum', 'rindo'][Math.floor(Math.random() * 4)] : undefined;
         }
         const list = [...this.peers.values(), ...this.bots];
