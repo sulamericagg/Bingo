@@ -278,7 +278,7 @@ class FaceCap {
         const vh = this.video.videoHeight || 480;
         const sw = this.tier <= 0 ? 224 : 288;
         const sh = Math.round((sw * vh) / vw);
-        if (!this.tracker.busy) this.tracker.submit(this.video, sw, sh, now);
+        this.tracker.submit(this.video, sw, sh, now); // ocupado: o rastreador só confere se a resposta sumiu
       }
       if (!DEBUG_FAKE && this.fresh) {
         this.fresh = false;
