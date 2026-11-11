@@ -1436,7 +1436,8 @@ function prankPose(dt: number): void {
     const tt = pr.t;
     const flip = tt < 0.35 ? tt / 0.35 : tt < 1.9 ? 1 : Math.max(0, 1 - (tt - 1.9) / 0.3);
     v.tilt = flip * Math.PI;
-    v.hop = flip * R * 0.75;
+    // gira em volta dos pés: compensa 2R para o corpo ficar no ar, de ponta-cabeça
+    v.hop = flip * R * 2.5;
     v.ox = tt > 0.4 && tt < 1.9 ? Math.sin(tt * 34) * R * 0.18 : v.ox * 0.8;
   }
   if (runT > 0) {
