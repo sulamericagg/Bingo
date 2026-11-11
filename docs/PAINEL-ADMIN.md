@@ -1,7 +1,10 @@
 # 🪐 Painel Admin do Bloop Orbit (Cloudflare)
 
-Com o painel você pode:
+Com o painel você pode (tudo em português e feito para usar no **celular**):
 
+- 👥 **Jogadores**: buscar por `@nome`, apelido ou começo do ID; ver criado em, último acesso, plataforma, moedas/gemas, Clube, compras, selos e banidos. Abrir o **perfil** (compras, presentes, códigos usados) e: dar moedas/gemas/itens/skins/**Passe premium**/**dias de Clube**, dar **selos** (Beta tester, Moderador, VIP, Tester interno, Criador), **banir/desbanir**, **resetar o @nome**, anotar.
+- 💳 **Pagamentos**: quem está pagando — compras e assinaturas avisadas pelo app, totais por dia e por produto, CSV. ⚠️ *reportado pelo app (não verificado)* — ver §8.
+- 📜 **Registro**: tudo o que foi feito no painel (quem, quando, o quê, IP).
 - 🎁 **Dar presentes** (moedas, gemas, skins, rastros, power-ups, "sem anúncios") para jogadores escolhidos, para todos ou só para quem jogou nos últimos dias.
 - 🔑 **Criar códigos**: personalizados (`BLOOP2026`), aleatórios ou **em lote** (ex.: 100 códigos `BLP-7KQ2-M9XA` de uso único, para baixar em CSV).
 - 🎬 **Criar desafios**: "quem assistir o vídeo ganha o código". O código é criado sozinho e o painel já te dá o texto pronto para postar.
@@ -46,18 +49,27 @@ Depois de 8 senhas erradas seguidas, o login fica bloqueado por 15 minutos.
 
 ## 4. Usar
 
-### 🎁 Presentes
-- **Jogadores** → marque quem quiser → **Enviar presente**. Ou em **Presentes → Novo presente** escolha *Todos os jogadores* ou *Ativos nos últimos N dias*.
+### 🎁 Presentes (em vez de código)
+- **Jogadores** → marque quem quiser (ou **Marcar todos do filtro**) → **Enviar presente**. Ou em **Presentes → Novo presente** → *Escolher jogadores da lista* (busca + filtros + caixinhas), *Todos os jogadores* ou *Todos do filtro* (ativos 24 h / 7 / 30 dias, assinantes, quem já comprou, beta testers, VIP…).
+- Chega no **Correio** do jogo (abre ao iniciar o app, ao voltar para ele e ao abrir o Correio). Banidos não recebem.
+- Cada presente mostra **📬 entregue** (apareceu no Correio) e **✅ pego**; **Destinatários** lista o status de cada um.
 - Monte o pacote (moedas, gemas, skins, rastros, power-ups, sem anúncios), dê um título e uma mensagem.
 - O jogador recebe na próxima vez que abrir o jogo com internet. Presentes têm validade (padrão 30 dias). "Todos os jogadores" vale para quem já estava cadastrado na hora do envio.
 - Dá para **cancelar** um presente: quem ainda não pegou não recebe mais.
 
-### 🔑 Códigos
-- **Personalizado:** você escolhe o texto (ex.: `BLOOP2026`). Maiúsculas, espaços e hífens não importam para o jogador.
-- **Aleatório:** o painel inventa um código (ex.: `BLP-7KQ2-M9XA`).
-- **Lote:** gera de 2 a 1.000 códigos de uma vez (padrão: 1 uso cada) → copie ou baixe em CSV (abre no Excel/Planilhas).
-- **Usos no total** = quantos jogadores diferentes podem usar (0 = sem limite). Cada jogador só usa o mesmo código **uma vez**.
-- Datas de início/fim opcionais. Pode **pausar**, **editar** o prêmio ou **excluir** a qualquer momento. Lotes podem ser pausados/excluídos inteiros (filtro "Lote").
+### 🔑 Códigos (gerador)
+- **Personalizado** (`BLOOP2026`), **Aleatório** (`BLP-7KQ2-M9XA`) ou **Lote** (2 a 1.000 códigos únicos de uma vez → copiar/CSV).
+- **Prêmio**: moedas, gemas, skins, rastros, power-ups, sem anúncios, **Passe Estelar premium** (de uma temporada) e **dias de Clube Bloop**.
+- **Limites** (todos conferidos no servidor, um resgate por vez — não estoura nem com muita gente ao mesmo tempo):
+  - **Usos no total**: um número ou **∞**.
+  - **Usos por jogador**: 1, 2, 3, 5, 10 ou ilimitado.
+  - **Só para estes jogadores**: lista de `@nomes` (ex.: `@ana @beto`). Vazio = todos.
+  - **Começa em / Expira em** (data e hora).
+  - **Só esta temporada** (ou só a próxima) do Passe: vale só entre o 1º e o último dia daquela temporada.
+  - **⚡ Uso único**: só 1 pessoa no total, 1 vez.
+- A lista mostra usos, jogadores distintos, regras e status (Ativo, Agendado, Esgotado, Expirado…); **Exportar CSV** inclui tudo.
+- Pode **pausar**, **editar** ou **excluir** a qualquer momento (vale na hora). Lotes inteiros pelo filtro "Lote".
+- Quem chutar muitos códigos errados (10 em 10 min por jogador, 60 por IP) recebe "Muitas tentativas".
 
 ### 🎬 Desafios
 1. **Desafios → Novo desafio**: título, link do vídeo/post, descrição, prêmio e data de fim.
@@ -104,12 +116,19 @@ scripts/test-server.mjs  ← teste ponta a ponta (npm run test:server)
 Comandos: `npm run worker:dev` (local, KV simulado; crie `.dev.vars` com `ADMIN_PASSWORD=...`),
 `npm run test:server`, `npm run typecheck`, `npx wrangler deploy --dry-run`.
 
+### Durable Object `AdminHub` (novo — migração `v5-admin`, SQLite, plano grátis)
+Instância única `hub` (server/admin-hub.ts). Guarda o que precisa de contagem atômica ou consulta, sem gastar escritas do KV:
+`codes` (definição + usos), `code_uses` (usos por jogador), `gift_claims` / `gift_seen` (pego / entregue),
+`purchases` (compras reportadas, deduplicadas pelo hash do token), `audit` (registro, ~1 ano / 20 mil linhas).
+Limites de taxa ficam em memória do DO (painel: 300 req/min por IP; compras: 20/h por jogador e 60/h por IP; chutes de código).
+Códigos antigos (`code:` no KV) são **importados sozinhos** para o AdminHub na primeira consulta/resgate e apagados do KV.
+
 ### Chaves do KV
 
 | Chave | Valor | Metadata (para listar sem ler) |
 |---|---|---|
-| `player:<id>` | jogador (stats, `claimed` = presentes resgatados, `redeemed` = códigos usados) | nome, recorde, partidas, visto, plataforma, criado |
-| `code:<CODIGO_NORMALIZADO>` | código (prêmio, usos, limite, datas, últimos resgates) | exibição, usos, limite, ativo, datas, lote, resumo |
+| `player:<id>` | jogador (stats, `claimed`, `redeemed`, `handle`, `flags`, `banned`, `clubUntil`, `passSeason`, `purchases`, `notes`) | nome, recorde, partidas, visto, plataforma, criado, @, selos, banido, Clube até, nº compras, moedas, gemas |
+| `code:<CODIGO_NORMALIZADO>` | **legado** — migrado para o AdminHub | — |
 | `challenge:<id>` | desafio | ativo, fim |
 | `gifts` | lista de presentes ativos (`to: 'all'` ou lista de ids) | — |
 | `presets` | pacotes salvos | — |
@@ -126,9 +145,10 @@ type Gift = { id; title; message; reward: RewardPack; sentAt: number; expiresAt:
 | Rota | Corpo | Resposta |
 |---|---|---|
 | `POST /api/player/register` | `{ id?, name?, platform, version }` | `{ id, name }` |
-| `POST /api/player/sync` | `{ id, best, runs, coins, gems, name?, platform?, version? }` | `{ name, inbox: Gift[] }` |
+| `POST /api/player/sync` | `{ id, best, runs, coins, gems, name?, platform?, version? }` | `{ name, inbox: Gift[], flags: string[] }` |
 | `POST /api/inbox/claim` | `{ id, giftIds: string[] }` | `{ rewards: RewardPack[], claimed: string[] }` |
-| `POST /api/redeem` | `{ id, code }` | `{ ok: true, reward }` ou `{ ok: false, error: 'invalid'\|'expired'\|'used'\|'limit' }` |
+| `POST /api/redeem` | `{ id, code }` | `{ ok: true, reward }` ou `{ ok: false, error: 'invalid'\|'expired'\|'used'\|'limit'\|'rate' }` |
+| `POST /api/player/purchase` | `{ id, productId, purchaseToken, orderId?, type: 'inapp'\|'subs', source: 'buy'\|'restore', price?, expires? }` | `{ ok, status: 'new'\|'dup', verified: false }` (429 se abusar) |
 | `GET /api/challenges` | — | `{ challenges: [{ id, title, description, link, startsAt, endsAt, reward }] }` |
 
 ### API admin (`Authorization: Bearer <token>`)
@@ -138,6 +158,16 @@ type Gift = { id; title; message; reward: RewardPack; sentAt: number; expiresAt:
 `GET|POST /gifts` (`{target:{type:'all'}|{type:'active',days}|{type:'players',ids}, title, message, reward, expiresDays}`) · `DELETE /gifts/:id` ·
 `GET|POST /codes` (`{code? | prefix?, count?, reward, maxUses, startsAt?, expiresAt?, active, notes}`) · `GET|PATCH|DELETE /codes/:code` · `POST /codes/bulk {action, keys? | batch?}` ·
 `GET|POST /challenges` · `PATCH|DELETE /challenges/:id` · `GET|POST /presets` · `DELETE /presets/:id`.
+
+Novas (painel 2):
+`GET /players?q=&filter=all|active1|active7|active30|subs|payers|beta|mod|vip|tester|creator|banned&sort=&page=&size=&ids=1` ·
+`GET /players/:id` (perfil + compras + presentes + códigos) · `POST /players/:id/flags {flags}` · `POST /players/:id/notes {notes}` ·
+`POST /players/:id/ban {reason}` · `POST /players/:id/unban` · `POST /players/:id/reset-handle` ·
+`POST /gifts` aceita também `target: {type:'filter', filter, q?}` · `GET /gifts/:id` (destinatários: entregue/pego) ·
+`POST /codes` aceita `maxUses (0=∞), perPlayer (0=∞, padrão 1), oneShot, allowHandles ("@a @b"), season ('current'|'next'|índice), startsAt, expiresAt` ·
+`GET /purchases?from=&to=&q=&product=&page=&size=` (lista + por dia + por produto + estimativa) · `GET /audit?before=&q=` · `GET /seasons`.
+Pacotes (`RewardPack`) ganharam `passSeason` (Passe premium daquela temporada, índice 0 = s00) e `clubDays`.
+Login: `POST /api/admin/login { password, who? }` — `who` (seu nome) aparece no Registro.
 
 ---
 
@@ -191,3 +221,30 @@ src/ui/race.ts + race.css                     ← telas (sala, HUD, resultado, r
 - servidor → `{type:'welcome', you, room}` · `{type:'lobby', players:[{slot,name,skin,bot?}], startsInMs}` · `{type:'start', seed, countdownMs, durationSec, players, you}` · `{type:'tick', t, s:[[slot, score, p, vivo 0/1, tempoVivo×10]]}` (5×/s) · `{type:'end', results:[{slot,name,skin,score,tAlive,place,coins,gems}]}` · `{type:'error', code:'full'|'started'|'no_hello'}`
 - `bot: true` só é enviado para clientes com `debug` (abra o jogo com `?debug`).
 - Sem mensagens por 6 s = desconectado (conta como queda). Se todos os humanos caírem, os bots são "adiantados" até os 60 s e o resultado sai na hora.
+
+---
+
+## 8. Pagamentos: verificação real no Google Play (próximo passo)
+
+Hoje o app avisa o servidor depois de cada compra/restauração (`POST /api/player/purchase`, em `src/services/billing.ts`).
+Isso mostra **quem está pagando**, mas é **"reportado pelo app (não verificado)"**: alguém poderia mandar uma compra falsa.
+Os prêmios continuam sendo entregues pelo app (como antes); o servidor só registra. Para valores oficiais, use o **Play Console**.
+
+Para o servidor **conferir cada compra direto com a Google** (Google Play Developer API), o dono precisa criar uma conta de serviço:
+
+1. **Google Cloud Console** (console.cloud.google.com) → crie (ou escolha) um projeto → **APIs e serviços → Biblioteca** → ative **Google Play Android Developer API**.
+2. **IAM e administrador → Contas de serviço → Criar conta de serviço** (ex.: `bloop-verificador`). Sem papéis no Cloud.
+3. Na conta criada → **Chaves → Adicionar chave → JSON**. Guarde o arquivo (é secreto!).
+4. **Play Console** → **Usuários e permissões → Convidar novos usuários** → e-mail da conta de serviço
+   (`bloop-verificador@SEU-PROJETO.iam.gserviceaccount.com`) → permissões do app: **Ver informações financeiras** e **Gerenciar pedidos e assinaturas**.
+   (Pode levar até 24 h para valer.)
+5. Cloudflare → Workers & Pages → **bloop-orbit → Settings → Variables and Secrets → Add → Secret**:
+   `GOOGLE_PLAY_SA_JSON` = conteúdo inteiro do JSON. (Não coloque no repositório.)
+6. Avise o Claude: falta implementar no servidor a chamada `purchases.products.get` / `purchases.subscriptionsv2.get`
+   (token OAuth assinado com a chave da conta de serviço) e marcar a coluna `verified` da tabela `purchases` — o painel já tem o campo.
+
+## 9. Segurança do painel
+
+- Todas as rotas `/api/admin/*` exigem o token do login (`requireAdmin`); o token expira em 72 h e trocar a senha derruba todas as sessões.
+- Login: 8 senhas erradas → bloqueio de 15 min por IP. Painel: no máx. 300 requisições/min por IP.
+- **Registro** (aba 📜): toda ação que muda algo (e todo login, certo ou errado) fica gravada com nome digitado no login, sessão, IP e um resumo (senhas nunca são gravadas).
