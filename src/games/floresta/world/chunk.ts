@@ -6,7 +6,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CH, RES, VN, WATER_Y, RAIL_Z, type Camp, type WorldGen } from './gen';
+import { CH, RES, VN, WATER_Y, RAIL_Z, ROAD_HALF, type Camp, type WorldGen } from './gen';
 import { hash2, vnoise } from './noise';
 import { NL, TL, copySplat, lerpSplat, markSplat, setSplat, splatAttributes } from '../../../3d/nature/textures';
 import { NB, WBIOMES, WSPECIES } from './biomes';
@@ -342,6 +342,13 @@ export class Chunk {
       const z = this.z0 + hash2(this.cx, this.cz * 41 + i, s + 71) * CH;
       const y = this.hAt(x - this.x0, z - this.z0);
       if (y < WATER_Y + 0.2) continue;
+      // nada de moita/flor no leito da estrada nem no meio das trilhas de terra
+      if (Math.abs(z - Math.round(z / RAIL_Z) * RAIL_Z) < ROAD_HALF + 1) continue;
+      {
+        const li = Math.round(x - this.x0);
+        const lj = Math.round(z - this.z0);
+        if (li >= 0 && lj >= 0 && li <= RES && lj <= RES && this.nat[(lj * VN + li) * 4 + 3] > 0.35) continue;
+      }
       const b = gen.weights(x, z, W);
       if (hash2(i, this.cx - this.cz, s + 72) > WBIOMES[b].dens * 1.6 + 0.12) continue;
       const o = this.nd * 6;
@@ -459,7 +466,7 @@ export class Chunk {
       r += (col[o + 6] * 1.05 - r) * s;
       gg += (col[o + 7] * 1.05 - gg) * s;
       b += (col[o + 8] * 1.05 - b) * s;
-      grass *= 1 - dt * 0.85;
+      grass *= Math.max(0, 1 - dt * 1.6); // trilha de terra: miolo sem lâminas
       if (w) lerpSplat(w, dl, s);
     }
     const sl = Math.sqrt(dx * dx + dz * dz);
@@ -504,12 +511,13 @@ export class Chunk {
     }
     if (this.railK !== null) {
       const d = Math.abs(this.z0 + j - this.railK * RAIL_Z);
-      if (d < 3.2) {
-        const s = d < 2.4 ? 0.85 : ((3.2 - d) / 0.8) * 0.85;
+      // a borda nítida é pintada por pixel no shader (strips); aqui só o miolo + nenhuma grama na faixa toda
+      if (d < ROAD_HALF + 0.9) grass = 0;
+      if (d < ROAD_HALF - 0.6) {
+        const s = 0.85;
         r += (RAIL_GRAVEL[0] - r) * s;
         gg += (RAIL_GRAVEL[1] - gg) * s;
         b += (RAIL_GRAVEL[2] - b) * s;
-        grass *= 1 - s;
         if (w) lerpSplat(w, TL.gravel, s);
       }
     }

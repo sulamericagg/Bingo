@@ -13,6 +13,8 @@ export const VN = RES + 1; // vértices por lado
 export const WATER_Y = 0;
 /** trilhos: linhas z = k·RAIL_Z (correm ao longo de X) */
 export const RAIL_Z = 384;
+/** meia-largura do leito de cascalho do trilho (estrada) */
+export const ROAD_HALF = 2.7;
 /** acampamentos: x = j·CAMP_X sobre cada trilho, deslocados para o lado */
 export const CAMP_X = 224;
 export const CAMP_OFF = 14;
@@ -205,6 +207,8 @@ export class WorldGen {
     if (dz < 40) {
       const rh = this.railH(x, k);
       h = h + (rh - h) * smoothstep(30, 5, dz);
+      // leito um pouco afundado (pintura da estrada não fica "por cima" do chão)
+      h -= 0.1 * smoothstep(ROAD_HALF + 0.6, ROAD_HALF - 0.4, dz);
       const j = Math.round(x / CAMP_X);
       for (let jj = j - 1; jj <= j + 1; jj++) {
         const cp = this.camp(jj, k);

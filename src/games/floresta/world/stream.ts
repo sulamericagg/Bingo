@@ -6,7 +6,7 @@
  *  (perto: modelo completo; longe: modelo leve) com cota por qualidade.
  * ============================================================ */
 import * as THREE from 'three';
-import { CH, RES, VN, WATER_Y, WorldGen, type Camp } from './gen';
+import { CH, RAIL_Z, RES, ROAD_HALF, VN, WATER_Y, WorldGen, type Camp } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { WBIOMES, WSPECIES, NB } from './biomes';
 import type { WorldSave } from './wsave';
@@ -173,7 +173,8 @@ export class World {
     this.gen = new WorldGen(save.seed, save.gen);
     this.nq = natureQ(tier);
     // chão com texturas misturadas por vértice (grama, terra, pedra, areia...), também nas malhas de volume (cavernas abertas)
-    this.terrainMat = terrainMaterial({ tier });
+    // leito do trilho/estrada: faixa de cascalho com borda nítida (por pixel), sem grama nem enfeite em cima
+    this.terrainMat = terrainMaterial({ tier, strips: { period: RAIL_Z, half: ROAD_HALF, layer: 'gravel', color: [0.62, 0.58, 0.54] } });
     this.groundMat = this.terrainMat;
     this.vox = new VoxWorld(this);
     const cap = 64;
