@@ -1,7 +1,7 @@
 name: Publicar servidor (Cloudflare)
 
 # Publica o Worker "bloop-orbit" sempre que a branch do jogo recebe código novo.
-# Usa os segredos do repositório: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID e ADMIN_PASSWORD
+# Usa os segredos do repositório: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, ADMIN_PASSWORD e ANTHROPIC_API_KEY
 # (criados pelo dono; ninguém vê os valores).
 on:
   push:
@@ -23,6 +23,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
+      - run: npm run test:ai
       - name: Arquivos só do site (APK de teste, fora do app)
         run: if [ -d site ]; then cp -r site/. dist/; fi
       - name: Deploy
@@ -32,6 +33,11 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           if [ -n "$ADMIN_PASSWORD" ]; then printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; else echo "ADMIN_PASSWORD não definido (pule)"; fi
+      - name: Chave da IA do bichinho (docs/IA.md)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY; else echo "ANTHROPIC_API_KEY não definido (o app usa o bot local)"; fi
       - name: Teste rápido
         run: |
           URL=$(npx wrangler deployments list --json 2>/dev/null | head -c 0; echo "")
