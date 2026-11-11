@@ -139,8 +139,8 @@ void main(){
   vec3 H = normalize(uSun + V);
   float spec = pow(max(dot(N, H), 0.0), 160.0) * 0.5 * uLight;
   float fw = clamp(vW.w, 0.0, 1.0);
-  float foam = smoothstep(0.5, 0.85, tA.z * 0.9 + fw * 0.45) * fw;
-  col = mix(col, vec3(0.78, 0.76, 0.7) * uLight, foam * 0.85);
+  float foam = smoothstep(0.42, 0.78, tA.z * 0.85 + fw * 0.6) * min(1.0, fw * 1.5);
+  col = mix(col, vec3(0.72, 0.64, 0.52) * uLight, foam * 0.8);
   col += spec * (1.0 - foam);
   float a = mix(0.6, 0.93, smoothstep(0.0, 1.8, depth));
   a = max(a, foam * 0.95);
@@ -281,13 +281,24 @@ export class WaterRender {
           const vx = s.ux[k];
           const vz = s.uz[k];
           const sp = Math.sqrt(vx * vx + vz * vz);
-          let f = Math.max(0, (sp - 1.6) * 0.2);
-          // frente da onda: lâmina rasa andando
-          if (d < 0.1 && sp > 0.35) f = Math.max(f, 0.3);
-          // queda: vizinho bem mais baixo
-          this.foam[k] = Math.min(0.75, f);
+          let f = Math.min(0.55, Math.max(0, (sp - 2.2) * 0.16));
+          // frente da onda (molhada ao lado de seca, andando) e queda (vizinho bem mais baixo = cachoeira)
+          const e = B[k] + d;
+          let mn = e;
+          let dry = false;
+          if (i > 0) { const n = k - 1; if (D[n] < 0.003) dry = true; mn = Math.min(mn, B[n] + D[n]); }
+          if (i < WN - 1) { const n = k + 1; if (D[n] < 0.003) dry = true; mn = Math.min(mn, B[n] + D[n]); }
+          if (j > 0) { const n = k - WN; if (D[n] < 0.003) dry = true; mn = Math.min(mn, B[n] + D[n]); }
+          if (j < WN - 1) { const n = k + WN; if (D[n] < 0.003) dry = true; mn = Math.min(mn, B[n] + D[n]); }
+          // frente: o vizinho rio abaixo (na direção da corrente) está seco
+          if (dry && sp > 0.45) {
+            const n = Math.abs(vx) > Math.abs(vz) ? (vx > 0 ? (i < WN - 1 ? k + 1 : k) : i > 0 ? k - 1 : k) : vz > 0 ? (j < WN - 1 ? k + WN : k) : j > 0 ? k - WN : k;
+            if (D[n] < 0.003) f = Math.max(f, 0.8);
+          }
+          if (e - mn > 0.6 && sp > 0.8) f = Math.max(f, Math.min(0.9, (e - mn - 0.4) * 0.6));
+          this.foam[k] = Math.min(1, f);
           const c = s.sed[k] / (d * WA);
-          this.mud[k] = Math.min(1, c * 10 + Math.max(0, sp - 0.4) * 0.22);
+          this.mud[k] = Math.min(1, c * 10 + Math.max(0, sp - 0.3) * 0.45);
         } else {
           let se = 0;
           let n = 0;

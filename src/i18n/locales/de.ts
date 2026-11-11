@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pumpe fertig! Sie holt Wasser aus dem Brunnen oder aus dem Wasser, in dem sie steht. Jetzt ein Rohr anschließen.",
   "gb.w.rainComing": "Es gibt Regen! Der Stausee wird voll.",
   "gb.w.rescue": "Der Abschleppwagen hat die Maschine aus dem Wasser gezogen!",
+  "gb.w.skip": "Tippen zum Überspringen",
   "gb.w.stockWet": "Wasser im Lager! Die Strömung hat {n} g mitgerissen",
   "gb.w.tipDyn": "Dynamit: Zu Fuß den Knopf tippen, um es anzuzünden. Sprengt Löcher (und Dämme!).",
   "gb.w.tipPipe": "Rohr: Bei der Pumpe den Knopf tippen, zum Stausee oder zur Waschanlage gehen und ✓ tippen.",

@@ -262,7 +262,7 @@ export class MpHost {
       if (r.m) this.freeSeat(r);
     } else if (m.k === 'buy' && typeof m.id === 'string' && m.id.length < 16) {
       if (g.buy(m.id)) this.event(['buy', m.id, r.name]);
-    }
+    } else if (m.k === 'water') g.water?.remoteAct(m);
   }
   private freeSeat(r: Remote): void {
     const mc = r.m!;

@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pompe prête ! Elle prend l'eau du puits ou de l'eau où elle se trouve. Branche maintenant un tuyau.",
   "gb.w.rainComing": "Il va pleuvoir ! Le réservoir va se remplir.",
   "gb.w.rescue": "La dépanneuse a sorti la machine de l'eau !",
+  "gb.w.skip": "Touche pour passer",
   "gb.w.stockWet": "L'eau est entrée dans l'entrepôt ! Le courant a emporté {n} g",
   "gb.w.tipDyn": "Dynamite : à pied, touche le bouton pour l'allumer. Elle creuse des trous (et des barrages !).",
   "gb.w.tipPipe": "Tuyau : près de la pompe touche le bouton, marche jusqu'au réservoir ou au laveur et touche ✓.",

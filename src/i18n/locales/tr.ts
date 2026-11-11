@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pompa hazır! Kuyudan ya da durduğu yerdeki sudan su çeker. Şimdi bir boru bağla.",
   "gb.w.rainComing": "Yağmur geliyor! Baraj gölü dolacak.",
   "gb.w.rescue": "Çekici makineyi sudan çıkardı!",
+  "gb.w.skip": "Geçmek için dokun",
   "gb.w.stockWet": "Depoya su girdi! Akıntı {n} g götürdü",
   "gb.w.tipDyn": "Dinamit: yürürken düğmeye dokunup ateşle. Delik açar (barajları da!).",
   "gb.w.tipPipe": "Boru: pompanın yanında düğmeye dokun, baraj gölüne ya da yıkama makinesine yürü ve ✓ simgesine dokun.",

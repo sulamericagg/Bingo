@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pump ready! It pulls water from a well or from the water it stands in. Now connect a pipe.",
   "gb.w.rainComing": "Rain is coming! The reservoir will fill up.",
   "gb.w.rescue": "The tow truck pulled the machine out of the water!",
+  "gb.w.skip": "Tap to skip",
   "gb.w.stockWet": "Water got into the storehouse! The current carried away {n} g",
   "gb.w.tipDyn": "Dynamite: tap the button on foot to light it. It blasts holes (and dams!).",
   "gb.w.tipPipe": "Pipe: near the pump tap the button, walk to the reservoir or the washer and tap ✓.",

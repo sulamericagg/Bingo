@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pompa siap! Pompa menyedot air dari sumur atau dari air tempatnya berada. Sekarang sambungkan pipa.",
   "gb.w.rainComing": "Akan hujan! Waduk akan terisi.",
   "gb.w.rescue": "Mobil derek menarik mesin keluar dari air!",
+  "gb.w.skip": "Ketuk untuk lewati",
   "gb.w.stockWet": "Air masuk ke gudang! Arus membawa pergi {n} g",
   "gb.w.tipDyn": "Dinamit: saat berjalan, ketuk tombol untuk menyalakannya. Membuat lubang (dan menjebol bendungan!).",
   "gb.w.tipPipe": "Pipa: di dekat pompa ketuk tombol, jalan ke waduk atau mesin cuci lalu ketuk ✓.",

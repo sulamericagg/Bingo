@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "¡Bomba lista! Saca agua del pozo o del agua donde esté. Ahora conecta un tubo.",
   "gb.w.rainComing": "¡Va a llover! La represa se va a llenar.",
   "gb.w.rescue": "¡La grúa sacó la máquina del agua!",
+  "gb.w.skip": "Toca para saltar",
   "gb.w.stockWet": "¡Entró agua en el almacén! La corriente se llevó {n} g",
   "gb.w.tipDyn": "Dinamita: a pie, toca el botón para encenderla. Abre agujeros (¡y presas!).",
   "gb.w.tipPipe": "Tubo: cerca de la bomba toca el botón, camina hasta la represa o la lavadora y toca ✓.",

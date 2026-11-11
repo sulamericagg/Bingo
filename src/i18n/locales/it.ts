@@ -3103,6 +3103,7 @@ export default {
   "gb.w.pumpTip": "Pompa pronta! Prende acqua dal pozzo o dall'acqua in cui si trova. Ora collega un tubo.",
   "gb.w.rainComing": "Sta per piovere! Il bacino si riempirà.",
   "gb.w.rescue": "Il carro attrezzi ha tirato fuori la macchina dall'acqua!",
+  "gb.w.skip": "Tocca per saltare",
   "gb.w.stockWet": "L'acqua è entrata nel magazzino! La corrente ha portato via {n} g",
   "gb.w.tipDyn": "Dinamite: a piedi tocca il pulsante per accenderla. Apre buche (e dighe!).",
   "gb.w.tipPipe": "Tubo: vicino alla pompa tocca il pulsante, cammina fino al bacino o al lavaggio e tocca ✓.",

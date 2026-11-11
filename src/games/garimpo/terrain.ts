@@ -491,7 +491,9 @@ export class Terrain {
             bl += (BASE[0][2] - bl) * f;
             lerpSplat(W, TL.redDirt, f);
           }
-          lerpSplat(W, TL.stone, Math.min(1, (0.62 - inv) * 4));
+          // lama/erosão da água: barranco de terra vermelha e cascalho, não rocha
+          if (m === MAT_MUD) lerpSplat(W, TL.gravel, Math.min(0.45, (0.62 - inv) * 3));
+          else lerpSplat(W, TL.stone, Math.min(1, (0.62 - inv) * 4));
         }
         const w = this.wet[k];
         const ru = this.rut[k];
@@ -505,7 +507,7 @@ export class Terrain {
           g += (0.25 - g) * f;
           bl += (0.12 - bl) * f;
           lerpSplat(W, TL.redDirt, Math.min(1, dug * 3));
-          if (dug > 1.2) lerpSplat(W, TL.stone, Math.min(0.6, (dug - 1.2) * 0.4));
+          if (dug > 1.2 && m !== MAT_MUD) lerpSplat(W, TL.stone, Math.min(0.6, (dug - 1.2) * 0.4));
         } else if (loose > 0.05) {
           // terra solta (monte da lâmina, pilhas): mais clara e granulada
           const f = Math.min(1, loose * 1.5);

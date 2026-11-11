@@ -1525,6 +1525,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     w.follow(tx, tz);
     // árvores entre a câmera e o jogador somem (nunca tapam a vista)
     w.veg?.occlude(cam.position.x, cam.position.z, tx, tz);
+    this.water?.camFx(cam, dt);
   }
   camOverride: number[] | null = null;
   /** testes: passos de simulação por quadro */

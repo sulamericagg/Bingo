@@ -24,6 +24,7 @@ import type { Garimpo } from '../game';
 import { TN, TS, WA, WCS, WN, WaterSim } from './sim';
 import { WaterRender } from './render';
 import { buildDynamite, buildPipe, buildPump, buildWell, WIC } from './props';
+import { FloodFx } from './fx';
 
 type Diff = 0 | 1 | 2 | 3;
 export interface WaterSave {
@@ -36,6 +37,8 @@ export interface WaterSave {
   pumps: { x: number; z: number; fuel: number; to: [number, number] | null }[];
   wx: { auto: number; t: number; dry: number };
   lake0: number;
+  /** plantas derrubadas pela enchente / canos (índices em map.trees) */
+  fel?: number[];
 }
 
 /** captação da chuva na represa e no lago (m³/s com chuva cheia) */
@@ -94,6 +97,7 @@ const _v = new THREE.Vector3();
 export class WaterSystem {
   readonly sim: WaterSim;
   readonly render: WaterRender;
+  readonly fx: FloodFx;
   private T: Terrain;
   private dam: DamInfo;
   private diff: Diff;
@@ -169,6 +173,7 @@ export class WaterSystem {
     this.render = new WaterRender(sim, T);
     this.render.setTier(w.tier);
     w.scene.add(this.render.group, this.group);
+    this.fx = new FloodFx(w, sim, this.dam, (document.querySelector('.gb-root') as HTMLElement | null) ?? document.body);
     // o disco estático do lago sai: a água simulada assume
     const lakeMesh = (w as unknown as { water?: THREE.Mesh }).water;
     if (lakeMesh) lakeMesh.visible = false;
@@ -179,6 +184,7 @@ export class WaterSystem {
     let loaded = false;
     if (ws && ws.v === 1) {
       loaded = sim.decode(ws.d);
+      for (const n of ws.fel || []) this.fx.fell(n, false);
       this.tank = ws.tank ?? TANK;
       Object.assign(this.inv, ws.inv || {});
       this.wx = Object.assign({ auto: 0, t: 0, dry: 0 }, ws.wx || {});
@@ -341,6 +347,7 @@ export class WaterSystem {
     this.render.setLight(_v.copy(w.sun.position).sub(w.sun.target.position), (w.scene.fog as THREE.Fog).color, 1 - w.rainK * 0.35);
     this.render.update(this.time, w.camera.position);
     this.splashes(dt);
+    this.fx.update(dt, this.time, w.camera.position);
     this.prof.render += (performance.now() - t0 - this.prof.render) * 0.05;
     if (this.pipeFrom >= 0) this.ghostPipe();
     this.uiUpdate();
@@ -400,6 +407,41 @@ export class WaterSystem {
     }
   }
 
+  /** gancho da câmera (game.camera): cinema da brecha e tremor */
+  camFx(cam: THREE.PerspectiveCamera, dt: number): void {
+    if (this.g.inMine) return this.fx.endCine();
+    this.fx.camFx(cam, dt);
+  }
+  /** pedras e torrões saindo da brecha (onde a água corre muito) */
+  private breachDebris(): void {
+    const sim = this.sim;
+    const w = this.g.w!;
+    for (let t = 0; t < TN * TN; t++) {
+      if (!sim.awake[t] || sim.hotV[t] < 3) continue;
+      const k = sim.hot[t];
+      if (k < 0) continue;
+      const x = ((k % WN) + 0.5) * WCS;
+      const z = (((k / WN) | 0) + 0.5) * WCS;
+      if (Math.random() < 0.12) this.fx.spawn(x, z, 1);
+      const y = sim.b[k] + sim.d[k];
+      for (let q = 0; q < 3; q++) w.clods.spawn(x + (Math.random() - 0.5) * 1.5, y, z + (Math.random() - 0.5) * 1.5, sim.ux[k] * 0.5 + (Math.random() - 0.5), 1 + Math.random() * 2, sim.uz[k] * 0.5 + (Math.random() - 0.5), 0.08 + Math.random() * 0.1, 0.45, 0.26, 0.13);
+    }
+  }
+  /** plantas embaixo de um cano saem (o cano deita no chão) */
+  private clearTrees(ax: number, az: number, bx: number, bz: number): void {
+    const trees = this.g.w!.map.trees;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const L2 = dx * dx + dz * dz || 1;
+    trees.forEach((tr, n) => {
+      if (tr.kind === 4) return;
+      let u = ((tr.x - ax) * dx + (tr.z - az) * dz) / L2;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const r = tr.kind <= 2 ? 1.3 * tr.s : 0.9;
+      if (Math.hypot(ax + dx * u - tr.x, az + dz * u - tr.z) < r) this.fx.fell(n, false);
+    });
+  }
+
   private stuck = new Map<object, number>();
   /** chão seco mais perto (anel por anel, até 40 m) */
   private dryNear(x: number, z: number): { x: number; z: number } | null {
@@ -418,6 +460,8 @@ export class WaterSystem {
 
   /* ---------------- 4 Hz: bombas, poços, tanque, fogo, estoque ---------------- */
   private quarter(dt: number): void {
+    this.fx.knock();
+    this.breachDebris();
     const g = this.g;
     const s = g.sv!;
     const sim = this.sim;
@@ -634,6 +678,7 @@ export class WaterSystem {
     else if (lvl > this.spill0 - 0.15 || (this.state === 1 && lvl > this.spill0 - 0.3)) st = 1;
     if (st === 3 && this.state !== 3) {
       audio.siren(3.2);
+      if (!g.inMine) this.fx.startCine();
       g.say(t('gb.w.breach', 'A barragem rompeu! Fique longe do riacho e das baixadas!'));
     } else if (st === 2 && this.state < 2) {
       audio.siren(1.6);
@@ -655,7 +700,7 @@ export class WaterSystem {
     if (this.splT < 0.06) return;
     this.splT = 0;
     const cam = w.camera.position;
-    let n = [1, 2, 4, 6][w.tier] ?? 3;
+    let n = [2, 3, 6, 9][w.tier] ?? 4;
     for (let t = 0; t < TN * TN && n > 0; t++) {
       if (sim.hotV[t] < 2.2) continue;
       const k = sim.hot[t];
@@ -667,7 +712,8 @@ export class WaterSystem {
       const ux = sim.ux[k];
       const uz = sim.uz[k];
       const sp = sim.hotV[t];
-      for (let q = 0; q < 2; q++) w.drops.spawn(x, y + 0.05, z, ux * 0.6 + (Math.random() - 0.5) * 1.5, 1 + Math.random() * sp * 0.5, uz * 0.6 + (Math.random() - 0.5) * 1.5, 0.07 + Math.random() * 0.07, 0.85, 0.9, 0.92);
+      const nq = sp > 3.5 ? 4 : 2;
+      for (let q = 0; q < nq; q++) w.drops.spawn(x, y + 0.05, z, ux * 0.6 + (Math.random() - 0.5) * 2, 1.5 + Math.random() * sp * 0.7, uz * 0.6 + (Math.random() - 0.5) * 2, 0.08 + Math.random() * 0.1, 0.88, 0.9, 0.9);
       n--;
     }
   }
@@ -770,6 +816,7 @@ export class WaterSystem {
   private connect(p: Pump, x: number, z: number): void {
     if (p.pipe) this.group.remove(p.pipe);
     p.to = [x, z];
+    this.clearTrees(p.x, p.z, x, z);
     p.pipe = buildPipe(this.T, p.x, p.z, x, z);
     this.group.add(p.pipe);
     this.propsVer++;
@@ -779,61 +826,99 @@ export class WaterSystem {
     const D = this.dam;
     const ax = D.x + D.ux * (D.A + 2);
     const az = D.z + D.uz * (D.A + 2);
+    this.clearTrees(ax, az, pl.x, pl.z);
     this.outletMesh = buildPipe(this.T, ax, az, pl.x, pl.z, true);
     this.group.add(this.outletMesh);
   }
-  /** um toque na barra de água */
+  /** um toque na barra de água (convidado: vira pedido ao anfitrião, como cavar/despejar) */
   private act(k: string): void {
     const g = this.g;
     if (g.cur !== g.worker || g.inMine) return;
     sfx.click();
-    if (k === 'dyn' && this.inv.dyn > 0) {
-      const f = this.front(1.6)!;
-      const mesh = buildDynamite();
-      mesh.position.set(f.x, this.T.heightAt(f.x, f.z), f.z);
-      this.group.add(mesh);
-      this.charges.push({ x: f.x, z: f.z, t: 4, mesh });
-      this.inv.dyn--;
-      g.say(t('gb.w.dynGo', 'Dinamite acesa! Corra para longe!'));
-    } else if (k === 'well' && this.inv.well > 0) {
-      const f = this.front(2.2)!;
-      if (this.sim.depthAt(f.x, f.z) > 0.05) return void notify(t('gb.w.notInWater', 'Não dá para pôr dentro da água'), { icon: 'warning', kind: 'warn' });
-      this.addWell(f.x, f.z);
-      this.inv.well--;
-      g.say(t('gb.w.wellTip', 'Poço pronto! Ponha uma bomba do lado e ligue um cano.'));
-    } else if (k === 'pump' && this.inv.pump > 0) {
-      const f = this.front(2.0)!;
-      this.addPump(f.x, f.z);
-      this.inv.pump--;
-      g.say(t('gb.w.pumpTip', 'Bomba pronta! Ela puxa água do poço ou da água onde estiver. Agora ligue um cano.'));
-    } else if (k === 'pipe' && this.inv.pipe > 0) {
+    const dist = k === 'dyn' ? 1.6 : k === 'well' ? 2.2 : k === 'pump' ? 2.0 : 0.8;
+    const f = this.front(dist)!;
+    if (k === 'pipe') {
+      if (this.inv.pipe <= 0) return;
       const p = this.nearPump(8, true);
       if (p < 0) return void notify(t('gb.w.needPump', 'Chegue perto de uma bomba sem cano'), { icon: 'warning', kind: 'warn' });
       this.pipeFrom = p;
       notify(t('gb.w.pipeWalk', 'Ande até onde a água deve chegar (represa ou lavadora) e toque no ✓'), { icon: 'drop', ms: 4500 });
-    } else if (k === 'end' && this.pipeFrom >= 0) {
-      const p = this.pumps[this.pipeFrom];
-      const f = this.front(0.8)!;
-      if (Math.hypot(f.x - p.x, f.z - p.z) < 3) return;
-      if (Math.hypot(f.x - p.x, f.z - p.z) > 120) return void notify(t('gb.w.pipeLong', 'Cano comprido demais (máx. 120 m)'), { icon: 'warning', kind: 'warn' });
-      this.connect(p, f.x, f.z);
+      return;
+    }
+    if (k === 'cancel') {
+      this.pipeFrom = -1;
+      this.clearGhost();
+      return;
+    }
+    let p = -1;
+    if (k === 'end') {
+      p = this.pipeFrom;
+      const pu = this.pumps[p];
+      if (!pu) return;
+      const d = Math.hypot(f.x - pu.x, f.z - pu.z);
+      if (d < 3) return;
+      if (d > 120) return void notify(t('gb.w.pipeLong', 'Cano comprido demais (máx. 120 m)'), { icon: 'warning', kind: 'warn' });
+      this.pipeFrom = -1;
+      this.clearGhost();
+    } else if (k === 'fuel') p = this.nearPump(5, false);
+    if (k === 'well' && this.sim.depthAt(f.x, f.z) > 0.05) return void notify(t('gb.w.notInWater', 'Não dá para pôr dentro da água'), { icon: 'warning', kind: 'warn' });
+    const mp = g.mp as { action?: (k: string, e: Record<string, unknown>) => void } | null;
+    if (g.guest && mp?.action) {
+      mp.action('water', { w: k, x: Math.round(f.x * 100) / 100, z: Math.round(f.z * 100) / 100, p });
+      return;
+    }
+    if (this.doAct(k, f.x, f.z, p)) {
+      if (k === 'dyn') g.say(t('gb.w.dynGo', 'Dinamite acesa! Corra para longe!'));
+      else if (k === 'well') g.say(t('gb.w.wellTip', 'Poço pronto! Ponha uma bomba do lado e ligue um cano.'));
+      else if (k === 'pump') g.say(t('gb.w.pumpTip', 'Bomba pronta! Ela puxa água do poço ou da água onde estiver. Agora ligue um cano.'));
+      else if (k === 'end') sfx.thunk();
+    }
+  }
+  /** anfitrião: pedido de um convidado (posição dele) */
+  remoteAct(m: Record<string, unknown>): void {
+    const k = String(m.w ?? '');
+    const x = Number(m.x);
+    const z = Number(m.z);
+    const p = Number(m.p ?? -1);
+    if (!Number.isFinite(x) || !Number.isFinite(z) || x < 4 || z < 4 || x > 188 || z > 188) return;
+    if (k === 'end' || k === 'fuel') {
+      const pu = this.pumps[p];
+      if (!pu || Math.hypot(pu.x - x, pu.z - z) > (k === 'end' ? 125 : 8)) return;
+    }
+    this.doAct(k, x, z, p);
+  }
+  /** faz de fato (só no anfitrião / sozinho): gasta o estoque do time */
+  private doAct(k: string, x: number, z: number, p: number): boolean {
+    const s = this.g.sv!;
+    if (k === 'dyn' && this.inv.dyn > 0) {
+      const mesh = buildDynamite();
+      mesh.position.set(x, this.T.heightAt(x, z), z);
+      this.group.add(mesh);
+      this.charges.push({ x, z, t: 4, mesh });
+      this.inv.dyn--;
+    } else if (k === 'well' && this.inv.well > 0 && this.sim.depthAt(x, z) <= 0.05) {
+      this.addWell(x, z);
+      this.inv.well--;
+    } else if (k === 'pump' && this.inv.pump > 0) {
+      this.addPump(x, z);
+      this.inv.pump--;
+    } else if (k === 'end' && this.inv.pipe > 0 && this.pumps[p] && !this.pumps[p].to) {
+      this.connect(this.pumps[p], x, z);
       this.inv.pipe--;
-      this.pipeFrom = -1;
-      this.clearGhost();
-      sfx.thunk();
-    } else if (k === 'cancel') {
-      this.pipeFrom = -1;
-      this.clearGhost();
-    } else if (k === 'fuel') {
-      const p = this.nearPump(5, false);
-      const s = g.sv!;
-      if (p < 0) return;
-      if (s.money < W_PRICE.fuel) return void notify(t('gb.noMoney', 'Sem dinheiro'), { icon: 'coin', kind: 'warn' });
+    } else if (k === 'fuel' && this.pumps[p]) {
+      if (s.money < W_PRICE.fuel) {
+        notify(t('gb.noMoney', 'Sem dinheiro'), { icon: 'coin', kind: 'warn' });
+        return false;
+      }
       s.money -= W_PRICE.fuel;
       this.pumps[p].fuel = 1;
       audio.cash();
-    }
+    } else return false;
+    this.invVer++;
+    return true;
   }
+  private invVer = 1;
+  private netInv = -1;
   private nearPump(r: number, free: boolean): number {
     const wk = this.g.worker;
     if (!wk) return -1;
@@ -910,7 +995,7 @@ export class WaterSystem {
     ui.chip.classList.toggle('low', this.tank < TANK * 0.2 && this.diff >= 1);
     ui.chip.classList.toggle('hi', this.state >= 1);
     // barra de ferramentas (só a pé, fora da mina, anfitrião/sozinho)
-    const foot = hudOn && g.cur === g.worker && !g.inMine && !g.guest;
+    const foot = hudOn && g.cur === g.worker && !g.inMine;
     const btns: string[] = [];
     const b = (k: string, ic: string, n: number | null) => btns.push(`<button class="gb-b" data-w="${k}">${ic}${n !== null ? `<span>${n}</span>` : ''}</button>`);
     if (foot) {
@@ -977,6 +1062,7 @@ export class WaterSystem {
     if (this.inv[k] + placed >= W_MAX[k] || s.money < W_PRICE[k]) return false;
     s.money -= W_PRICE[k];
     this.inv[k]++;
+    this.invVer++;
     audio.cash();
     const tips: Record<string, string> = {
       dyn: t('gb.w.tipDyn', 'Dinamite: toque no botão a pé para acender. Abre buracos (e barragens!).'),
@@ -1000,6 +1086,7 @@ export class WaterSystem {
       pumps: this.pumps.map((p) => ({ x: r(p.x), z: r(p.z), fuel: r(p.fuel), to: p.to ? [r(p.to[0]), r(p.to[1])] : null })),
       wx: { auto: this.wx.auto, t: Math.round(this.wx.t), dry: Math.round(this.wx.dry) },
       lake0: Math.round(this.lake0),
+      fel: [...this.fx.felled],
     };
   }
   /** anfitrião: alguém entrou → o próximo retrato manda a água toda e as peças */
@@ -1007,7 +1094,10 @@ export class WaterSystem {
     this.sim.netStart();
     this.netProps = -1;
     this.netBan = -1;
+    this.netInv = -1;
+    this.netFel = true;
   }
+  private netFel = false;
   /** anfitrião: parte do retrato (~10/s): ladrilhos mudados (a 5 Hz), peças quando mudam, aviso */
   private netT = 0;
   netTake(): Record<string, unknown> | null {
@@ -1021,6 +1111,15 @@ export class WaterSystem {
       this.netProps = this.propsVer;
       o.p = [this.wells.map((w) => [Math.round(w.x * 10), Math.round(w.z * 10)]), this.pumps.map((p) => [Math.round(p.x * 10), Math.round(p.z * 10), p.to ? Math.round(p.to[0] * 10) : -1, p.to ? Math.round(p.to[1] * 10) : -1])];
     }
+    if (this.netInv !== this.invVer) {
+      this.netInv = this.invVer;
+      o.i = [this.inv.dyn, this.inv.well, this.inv.pump, this.inv.pipe];
+    }
+    if (this.netFel) {
+      this.netFel = false;
+      o.f = [...this.fx.felled];
+      this.fx.fellNew.length = 0;
+    } else if (this.fx.fellNew.length) o.f = this.fx.fellNew.splice(0);
     if (this.netBan !== this.state) {
       this.netBan = this.state;
       o.s = this.state;
@@ -1029,10 +1128,15 @@ export class WaterSystem {
   }
   netApply(o: unknown): void {
     if (!o || typeof o !== 'object') return;
-    const m = o as { d?: unknown; p?: unknown; s?: unknown };
+    const m = o as { d?: unknown; p?: unknown; s?: unknown; i?: unknown; f?: unknown };
     if (typeof m.d === 'string') this.sim.netApply(m.d);
+    if (Array.isArray(m.i)) [this.inv.dyn, this.inv.well, this.inv.pump, this.inv.pipe] = (m.i as number[]).map((v) => Math.max(0, Number(v) | 0));
+    if (Array.isArray(m.f)) for (const n of m.f as number[]) if (Number.isInteger(n) && !this.fx.felled.has(n)) this.fx.fell(n, true);
     if (typeof m.s === 'number') {
-      if (m.s === 3 && this.state !== 3) audio.siren(3);
+      if (m.s === 3 && this.state !== 3) {
+        audio.siren(3);
+        if (!this.g.inMine) this.fx.startCine();
+      }
       this.state = m.s;
     }
     if (Array.isArray(m.p)) {
@@ -1092,6 +1196,7 @@ export class WaterSystem {
       this.markPatched = null;
     }
     this.clearGhost();
+    this.fx.dispose();
     this.render.dispose();
     this.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.group.removeFromParent();
