@@ -36,6 +36,8 @@ import { deserialize } from './format';
 export interface StudioOptions {
   /** link de compartilhar recebido (#/studio/p/<id> ou #/studio/c/<código>) */
   link?: ShareLink;
+  /** servidor do Bloop Studio escolhido no navegador de servidores do Mundo */
+  server?: import('./register').StudioServer;
 }
 
 const LAST = 'bs-last';
@@ -58,6 +60,8 @@ export class Studio {
   sculptor: Sculptor;
   mode: 'edit' | 'play' = 'edit';
   play: PlaySession | null = null;
+  /** jogando um servidor online (src/studio/play/online.ts) */
+  private online: import('./play/online').StudioNet | null = null;
   dirty = false;
   private raf = 0;
   private last = 0;
@@ -175,7 +179,8 @@ export class Studio {
     }
     await this.openDoc(doc);
     this.loop();
-    if (o.link) await this.openLink(o.link);
+    if (o.server) await this.openServer(o.server);
+    else if (o.link) await this.openLink(o.link);
     else if (first && !guideDone()) this.guide.start();
     else if (first) this.panels.open('library');
   }
@@ -192,6 +197,23 @@ export class Studio {
     remember(c);
     notify(t('studio.linkOpen', '“{n}” de {a}', { n: c.game?.title ?? c.name, a: c.author || '?' }), { icon: 'link' });
     await this.playStoreMap(c.kind === 'map' ? c : { ...c, worldKind: c.kind === 'vehicle' ? 'infinite' : c.worldKind ?? 'flat' }, !!l.id);
+  }
+
+  /** servidor publicado (Mundo → Servidores): joga o mapa com outras pessoas; sair volta ao hub */
+  async openServer(srv: import('./register').StudioServer): Promise<void> {
+    const c = (await store().get(srv.ugc))?.creation ?? null;
+    if (!c) {
+      notify(t('srv.studioGone', 'Esse servidor não está disponível agora'), { icon: 'warning', kind: 'warn' });
+      return;
+    }
+    remember(c);
+    await this.playStoreMap(c.kind === 'map' ? c : { ...c, worldKind: c.worldKind ?? 'flat' }, true);
+    if (!this.play) return;
+    const { StudioNet } = await import('./play/online');
+    this.online = new StudioNet(srv, this.play, this.scene, this.hudLayer, this.standard);
+    void this.online.connect().then((err) => {
+      if (err) notify(err === 'full' ? t('srv.full', 'Servidor cheio') : t('mundo.net.fail', 'Não deu para conectar agora'), { icon: 'warning', kind: 'warn' });
+    });
   }
 
   /** 3 fotos do mapa (ângulos diferentes) para o Jogo da Comunidade */
@@ -373,6 +395,16 @@ export class Studio {
 
   stopPlay(): void {
     if (this.mode !== 'play') return;
+    if (this.online) {
+      // saiu do servidor online: volta para o hub (a lista de servidores fica no Mundo)
+      this.online.close();
+      this.online = null;
+      this.play?.dispose();
+      this.play = null;
+      this.mode = 'edit';
+      this.exit();
+      return;
+    }
     this.play?.dispose();
     this.play = null;
     this.mode = 'edit';
@@ -661,6 +693,7 @@ export class Studio {
     let focus: THREE.Vector3;
     if (this.mode === 'play' && this.play) {
       this.play.update(dt);
+      this.online?.update(dt);
       focus = this.camera.position;
     } else {
       if (ed.cam.mode === 'fly' && this.flyJoy) {
@@ -682,6 +715,7 @@ export class Studio {
     this.sun.position.set(focus.x + 8, focus.y + 16, focus.z + 6);
     this.sun.target.position.set(focus.x, focus.y, focus.z);
     this.renderer.render(this.scene, this.camera);
+    this.online?.afterRender(this.canvas);
   };
 
   private updateMeasure(): void {
@@ -730,6 +764,8 @@ export class Studio {
     if (this.dirty) void this.save(true);
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.online?.close();
+    this.online = null;
     this.play?.dispose();
     this.stopFly();
     this.guide.dispose();

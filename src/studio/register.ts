@@ -6,6 +6,17 @@ import { parseShareHash, type ShareLink } from './share';
 
 /** link recebido (#/studio/p/<id> ou #/studio/c/<código>) esperando o hub ficar pronto */
 let pending: ShareLink | null = null;
+/** servidor do Bloop Studio escolhido no navegador de servidores do Mundo (joga online com outros) */
+export interface StudioServer {
+  code: string;
+  ugc: string;
+  name: string;
+  pvp?: boolean;
+}
+let pendingServer: StudioServer | null = null;
+export function setPendingServer(s: StudioServer): void {
+  pendingServer = s;
+}
 
 export function registerStudio(): void {
   pending = typeof location !== 'undefined' ? parseShareHash(location.hash) : null;
@@ -24,8 +35,10 @@ export function registerStudio(): void {
     async launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
       const m = await import('./studio');
       const link = pending;
+      const server = pendingServer;
       pending = null;
-      return m.launch(root, exit, { link: link ?? undefined });
+      pendingServer = null;
+      return m.launch(root, exit, { link: link ?? undefined, server: server ?? undefined });
     },
   });
 }

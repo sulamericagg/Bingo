@@ -12,7 +12,7 @@ import { ONLINE } from '../config';
 import { isNative } from '../core/platform';
 import { icon } from './icons';
 
-export type BloopLinkType = 'voo' | 'grupo' | 'amigo' | 'garimpo' | 'cava' | 'duelo';
+export type BloopLinkType = 'voo' | 'grupo' | 'amigo' | 'garimpo' | 'cava' | 'duelo' | 'mundo';
 export interface BloopLink {
   type: BloopLinkType;
   /** voo/garimpo/cava: código de 5 letras · grupo: "<id>.<código>" · amigo: @ sem o @ · duelo: "<jogo>/<CÓDIGO>" */
@@ -22,6 +22,7 @@ export interface BloopLink {
 const VOO_RE = /^[A-HJ-NP-Z2-9]{5}$/;
 const GRUPO_RE = /^[a-z0-9]{8,16}\.[a-z0-9]{4,12}$/;
 const AMIGO_RE = /^[a-z0-9_.]{3,16}$/;
+const MUNDO_RE = /^[A-HJ-NP-Z2-9]{6}$/;
 const DUELO_RE = /^([a-z]{2,12})[/.]([A-HJ-NP-Z2-9]{5})$/;
 
 function valid(type: BloopLinkType, raw: string): BloopLink | null {
@@ -30,6 +31,7 @@ function valid(type: BloopLinkType, raw: string): BloopLink | null {
     const c = v.toUpperCase();
     return VOO_RE.test(c) ? { type, code: c } : null;
   }
+  if (type === 'mundo') return MUNDO_RE.test(v.toUpperCase()) ? { type, code: v.toUpperCase() } : null;
   if (type === 'grupo') return GRUPO_RE.test(v) ? { type, code: v } : null;
   if (type === 'duelo') {
     const m = DUELO_RE.exec(v.replace(/[^/.]+$/, (c) => c.toUpperCase()));
@@ -55,12 +57,12 @@ export function parseBloopLink(text: string): BloopLink | null {
     // bloopworld://voo/K7Q2M · bloopworld://grupo/<id>.<cod> · bloopworld://amigo/<@> · bloopworld://duelo/<jogo>/<CÓDIGO>
     const type = (u.host || u.pathname.replace(/^\/+/, '').split('/')[0]) as BloopLinkType;
     const rest = u.host ? u.pathname.replace(/^\/+/, '') : u.pathname.replace(/^\/+/, '').split('/').slice(1).join('/');
-    if (type === 'voo' || type === 'grupo' || type === 'amigo' || type === 'garimpo' || type === 'cava' || type === 'duelo') return valid(type, decodeURIComponent(rest));
+    if (type === 'voo' || type === 'grupo' || type === 'amigo' || type === 'garimpo' || type === 'cava' || type === 'duelo' || type === 'mundo') return valid(type, decodeURIComponent(rest));
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
-  for (const type of ['voo', 'grupo', 'amigo', 'garimpo', 'cava', 'duelo'] as const) {
+  for (const type of ['voo', 'grupo', 'amigo', 'garimpo', 'cava', 'duelo', 'mundo'] as const) {
     const v = u.searchParams.get(type) ?? hash.get(type);
     if (v) return valid(type, v);
   }

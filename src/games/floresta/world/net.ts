@@ -1177,11 +1177,20 @@ export async function inviteFriends(sess: NetSession, host: HTMLElement): Promis
   m.className = 'fl-modal';
   m.style.zIndex = '45';
   host.appendChild(m);
-  m.innerHTML = `<div class="fl-card"><h2><span>${t('mundo.net.invite', 'Chamar amigos')}</span><button class="fl-btn round red" data-x="1">✕</button></h2><div class="mw-form"><div style="font-size:22px;font-weight:900;letter-spacing:.1em;text-align:center">${sess.code}</div><div id="mn-fr">…</div>${sess.isHost ? `<button class="fl-btn ${sess.pvp ? 'red' : ''}" data-pvp="1">⚔ PvP: ${sess.pvp ? t('mundo.on', 'ligado') : t('mundo.off', 'desligado')}</button>` : ''}</div></div>`;
+  m.innerHTML = `<div class="fl-card"><h2><span>${t('mundo.net.invite', 'Chamar amigos')}</span><button class="fl-btn round red" data-x="1">✕</button></h2><div class="mw-form"><div id="mn-fr">…</div><div style="display:flex;align-items:center;justify-content:center;gap:10px;opacity:.85"><small style="font-weight:800">${t('mundo.net.code', 'Código do mundo')}: <b style="letter-spacing:.12em">${sess.code}</b></small><button class="fl-btn" data-qr="1" style="min-height:30px;font-size:12px">QR</button></div>${sess.isHost && !sess.meta?.slot ? `<button class="fl-btn ${sess.pvp ? 'red' : ''}" data-pvp="1">⚔ PvP: ${sess.pvp ? t('mundo.on', 'ligado') : t('mundo.off', 'desligado')}</button>` : ''}</div></div>`;
   m.addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
     if (!b) return;
     if (b.dataset.x) return m.remove();
+    if (b.dataset.qr) {
+      const s = await import('../../../ui/scan');
+      const box = document.createElement('div');
+      box.style.cssText = 'display:flex;justify-content:center';
+      box.innerHTML = '<canvas></canvas>';
+      b.parentElement!.replaceWith(box);
+      void s.drawBloopQr(box.querySelector('canvas')!, s.bloopLink('mundo', sess.code), 180).catch(() => {});
+      return;
+    }
     if (b.dataset.pvp) {
       sess.send({ t: 'pvp', on: !sess.pvp });
       return m.remove();
@@ -1192,7 +1201,7 @@ export async function inviteFriends(sess: NetSession, host: HTMLElement): Promis
         const who = await me();
         await api('/mundo/invite', { id: who.id, to: b.dataset.call, code: sess.code, name: who.name, world: sess.meta?.name ?? '' });
         // e pelo sistema de amigos: aparece NA HORA em qualquer tela (src/party/invite-pop.ts)
-        void api('/friends/invite', { id: who.id, to: b.dataset.call, kind: 'game', game: joinInvite(joinStr('floresta', sess.code)) }).catch(() => {});
+        void api('/friends/invite', { id: who.id, to: b.dataset.call, kind: 'game', game: joinInvite(joinStr(sess.gameId, sess.code)) }).catch(() => {});
         b.textContent = '✓';
       } catch {
         b.textContent = '✕';

@@ -40,6 +40,7 @@ import { hub } from './friends';
 import { safeName } from './moderation';
 import { cleanName, HttpError, json, PLAYER_ID_RE, readJson } from './util';
 import { officialSlot, serverDir, SLOTS, THUMB_MAX, type Beat } from './servers';
+import { ugcHub } from './ugc-hub';
 
 export const MUNDO_MAX = 8;
 export const MCODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -187,6 +188,14 @@ export class WorldRoom extends DurableObject<Env> {
         this.meta = meta;
       }
     } else if (!meta) return fail('no_world');
+    // servidor do Bloop Studio: só o dono entra antes da moderação aprovar; "só amigos" = amigos do dono
+    if (meta.ugc && id !== meta.owner) {
+      const acc = await ugcHub(this.env).access(meta.ugc);
+      if (!acc || acc.status !== 'approved') return fail('no_world');
+      const pub = await serverDir(this.env).pub(code);
+      if (!pub) return fail('no_world');
+      if (pub.friendsOnly && !(await hub(this.env).areFriends(meta.owner, id))) return fail('friends_only');
+    }
     const others = this.members().filter((m) => m.ws !== ws);
     for (const m of others) if (m.a.id === id) this.close(m.ws, 'replaced');
     if (this.members().filter((m) => m.ws !== ws && m.a.id !== id).length >= (meta.max ?? MUNDO_MAX)) return fail('full');
