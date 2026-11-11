@@ -20,6 +20,8 @@ import { iconURL } from './itemicons';
 import { MATS } from './vox';
 import { Carts } from './rails';
 import { tntModel } from './wmodels';
+import { MobManager, MOB_ITEMS, type MobHost, type Mob as BigMob, type BiomeId } from './content/mobs';
+import { WBIOMES } from './biomes';
 import { BLOCKS, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
 
@@ -85,6 +87,14 @@ export class Sandbox implements MundoAPI {
   blocks: BlockWorld;
   private grav = 0;
   private dig: { x: number; y: number; z: number; t: number } | null = null;
+  /** bichos completos (animais, monstros, chefes) — no jogo solo */
+  mm: MobManager | null = null;
+  private aimMob: BigMob | null = null;
+  nights = 0;
+  private slowT = 0;
+  get slowed(): boolean {
+    return this.slowT > 0;
+  }
   /** sessão online (servidores) */
   net: import('./net').NetSession | null = null;
 
@@ -106,6 +116,11 @@ export class Sandbox implements MundoAPI {
       if (!b.num || ITEM.has(b.item)) continue;
       const id = b.item;
       this.registerItem({ id, name: b.name, cat: 'const', stack: b.stack || 64, ic: { s: 'rock', c: '#a8a4b0' }, iconUrl: () => blockIconURL(blockForItem(id)?.id ?? id, 64) });
+    }
+    // itens dos bichos (couro, carne, leite…) + receitas de cozinhar
+    for (const mi of MOB_ITEMS) {
+      if (!ITEM.has(mi.id)) this.registerItem({ id: mi.id, name: mi.name, cat: mi.cat, stack: mi.stack ?? (mi.cat === 'comida' ? 32 : 99), ic: mi.ic as ItemDef['ic'], food: mi.food });
+      if (mi.cook && !RECIPES.some((r) => r.st === 'fornalha' && r.ing?.[0][0] === mi.id)) RECIPES.push({ out: mi.cook, n: 1, st: 'fornalha', ing: [[mi.id, 1]], time: 5 });
     }
     const solidAt = (x: number, y: number, z: number) => {
       const n = this.blocks.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
@@ -174,6 +189,7 @@ export class Sandbox implements MundoAPI {
     g.onMined = (counts, x, y, z) => this.mined(counts, x, y, z);
     g.onBoom = (x, y, z, r) => {
       for (const e of this.near(x, z, r * 1.6)) e.hit?.(8, 'boom', this);
+      this.mm?.hitSphere(x, y, z, r * 1.6, 10, 'blast');
       this.bus.emit('boom', x, y, z, r);
     };
     g.world.onLoad = (c) => this.bus.emit('chunkLoad', c);
@@ -182,6 +198,11 @@ export class Sandbox implements MundoAPI {
       ou?.(c);
       this.bus.emit('chunkUnload', c);
     };
+    if (!g.opts.net) {
+      this.mm = new MobManager(this.mobHost(), g.scene, g.renderer, g.opts.tier as 0 | 1 | 2 | 3, g.hud.el);
+      this.mm.on('toast', (msg) => this.toast(msg, 'good'));
+      this.mm.on('bossStart', () => this.toast(t('mundo.boss', 'Um chefão acordou!'), 'warn'));
+    }
     for (const m of MODULES) {
       try {
         m.install(this);
@@ -249,10 +270,10 @@ export class Sandbox implements MundoAPI {
     maxHp: 20,
     driving: false,
   };
-  hurtPlayer(n: number, why: string): void {
+  hurtPlayer(n: number, why: string, reduced = false): void {
     if (this.mode === 'criativo' || this.koT > 0 || n <= 0) return;
     const def = this.inv.defense();
-    const k = n * (1 - Math.min(0.75, def / 28));
+    const k = reduced ? n : n * (1 - Math.min(0.75, def / 28));
     this.hp = Math.max(0, this.hp - k);
     this.hurtFlash = 0.5;
     this.g.shake = Math.max(this.g.shake, 0.25);
@@ -338,6 +359,68 @@ export class Sandbox implements MundoAPI {
     else (audio as any)[name]?.();
   }
 
+  /** adaptador do motor para o gerente de bichos */
+  private mobHost(): MobHost {
+    const g = this.g;
+    const W = g.world;
+    const view = { x: 0, y: 0, z: 0, yaw: 0, grounded: true, alive: true, held: null as string | null };
+    const mods = { armor: 0, fireRes: 0, coldRes: 0, poisonRes: 0, light: false, stealth: 0 };
+    return {
+      heightAt: (x, z) => W.heightAt(x, z),
+      floorAt: (x, y, z) => W.floorAt(x, y, z),
+      waterLevel: (x, z) => W.waterLevel(x, z),
+      biomeAt: (x, z) => WBIOMES[W.biomeAt(x, z)].id as BiomeId,
+      dayTime: () => this.dayT,
+      nightCount: () => this.nights,
+      player: () => {
+        view.x = g.px;
+        view.y = g.py;
+        view.z = g.pz;
+        // motor: frente = (-sin yaw, -cos yaw); bichos: yaw no sentido de atan2(x, z)
+        view.yaw = g.yaw + Math.PI;
+        view.grounded = g.onGround;
+        view.alive = this.hp > 0 && this.koT <= 0 && g.driving < 0;
+        view.held = this.held() || null;
+        return view;
+      },
+      hurtPlayer: (dmg, _kind, fx, fz) => {
+        this.hurtPlayer(dmg, 'mob', true);
+        const d = Math.hypot(g.px - fx, g.pz - fz) || 1;
+        g.vy = Math.max(g.vy, 3);
+        g.px += ((g.px - fx) / d) * 0.6;
+        g.pz += ((g.pz - fz) / d) * 0.6;
+      },
+      effect: (e, sec) => {
+        this.slowT = Math.max(this.slowT, sec);
+        void e;
+      },
+      playerMods: () => {
+        mods.armor = Math.min(0.85, this.inv.defense() / 28);
+        mods.light = this.held() === 'tocha' || this.held() === 'lampiao';
+        return mods;
+      },
+      drop: (id, n) => {
+        if (ITEM.has(id)) this.give(id, n);
+      },
+      coins: (n) => {
+        g.save.coins += n;
+      },
+      sound: (s) => {
+        if (s === 'poof' || s === 'pop') audio.coin(2);
+        else if (s === 'hit' || s === 'slam') audio.tick(1);
+        else if (s === 'roar') audio.crack();
+      },
+      shake: (a) => {
+        g.shake = Math.max(g.shake, a);
+      },
+      prepareArena: (lair) => {
+        // câmara do covil: esferas encadeadas
+        for (let k = -1; k <= 1; k++) W.vox.edit(lair.x + k * lair.r * 0.5, lair.y + lair.r * 0.35, lair.z, lair.r * 0.7, -1, 99, new Map());
+      },
+      blocked: (x, z, y) => !!W.extraSolid?.(x, y + 0.8, z) || W.solids.groundAt(x, z, y + 1.5) > y + 0.6,
+    };
+  }
+
   /* ============================ início ============================ */
 
   /** kit inicial (depois da queda da nave) */
@@ -419,7 +502,22 @@ export class Sandbox implements MundoAPI {
         e.dispose(this);
       }
     }
-    if (!this.net || this.net.isHost) this.spawner.update(dt, this);
+    if (this.mm) {
+      if (this.mm.riding) {
+        const c = g.hud.ctl;
+        this.mm.rideInput(-c.my, -c.mx, c.jump);
+        const seat = this.mm.seat(_v);
+        if (seat) {
+          g.px = seat.x;
+          g.py = seat.y - 0.6;
+          g.pz = seat.z;
+          g.camera.position.set(seat.x, seat.y + 1.1, seat.z);
+          g.camera.rotation.set(g.pitch, g.yaw, 0, 'YXZ');
+        }
+      }
+      this.mm.update(dt, g.camera);
+    } else if (!this.net || this.net.isHost) this.spawner.update(dt, this);
+    this.slowT = Math.max(0, this.slowT - dt);
     this.net?.tick(dt);
     this.carts.update(dt);
     this.blocks.focus.set(g.px, g.py, g.pz);
@@ -466,6 +564,7 @@ export class Sandbox implements MundoAPI {
     const night = this.isNight();
     if (night !== this.nightWas) {
       this.nightWas = night;
+      if (!night) this.nights++;
       this.toast(night ? t('mundo.night', 'Anoiteceu… cuidado com os bichos bravos!') : t('mundo.morning', 'Bom dia!'), night ? 'warn' : 'good');
       this.bus.emit('dayChange', night);
     }
@@ -567,6 +666,7 @@ export class Sandbox implements MundoAPI {
     const pk = this.builds.pick(cp.x, cp.y, cp.z, _v.x, _v.y, _v.z, 4);
     this.aimPiece = pk ? pk.p : null;
     this.aimEnt = this.pickEnt(cp, _v, it?.tool === 'sword' ? 3.6 : 3);
+    this.aimMob = this.mm ? this.mm.pick(cp.x, cp.y, cp.z, _v.x, _v.y, _v.z, it?.tool === 'sword' ? 3.8 : 3.2) : null;
     // botão de ação (abrir, deitar, colher, montar…)
     const lbl = this.actLabel();
     this.actBtn.classList.toggle('hide', !lbl);
@@ -625,6 +725,13 @@ export class Sandbox implements MundoAPI {
   private actLabel(): string {
     const p = this.aimPiece;
     const e = this.aimEnt;
+    if (this.mm?.riding) return t('mundo.leaveCart', 'Descer');
+    const am = this.aimMob;
+    if (am && am.def.kind === 'animal') {
+      const h = this.held();
+      if (am.tamed && am.def.ride && !h) return t('mundo.mount', 'Montar');
+      if (h && (am.def.tame?.food?.includes(h) || am.def.breed?.includes(h) || h === 'balde' || h === 'tesoura')) return t('mundo.feed', 'Dar');
+    }
     if (e?.interact) return this.carts.label(e) ?? t('mundo.useIt', 'Usar');
     if (!p) return '';
     const d = PDEFS.get(p.id)!;
@@ -647,6 +754,25 @@ export class Sandbox implements MundoAPI {
   interact(): void {
     const p = this.aimPiece;
     const e = this.aimEnt;
+    if (this.mm?.riding) {
+      const m = this.mm.dismount();
+      if (m) {
+        this.g.px = m.x + 1.5;
+        this.g.py = this.g.world.floorAt(this.g.px, m.y + 2, this.g.pz);
+      }
+      return;
+    }
+    if (this.aimMob && this.mm) {
+      const m = this.aimMob;
+      const h = this.held();
+      if (m.tamed && m.def.ride && !h) {
+        this.mm.mount(m);
+        return;
+      }
+      const r = this.mm.interact(m, h || null);
+      for (let i = 0; i < r.consumed; i++) this.inv.useHeld();
+      if (r.action !== 'none') return;
+    }
     if (e?.interact) return e.interact(this);
     if (!p) return;
     const d = PDEFS.get(p.id)!;
@@ -709,6 +835,31 @@ export class Sandbox implements MundoAPI {
     const tier = it?.tier ?? 0;
     const creative = this.mode === 'criativo';
     const tired = this.stam < 1 ? 1.6 : 1;
+    // 0) bichos grandes (gerente): golpe em arco / tiro
+    if (this.mm && this.aimMob && !it?.place && kind !== 'sling' && kind !== 'boomerang') {
+      const dmg = it?.dmg ?? 1;
+      this.useCd = (kind === 'sword' ? 0.45 : 0.55) * tired;
+      g.swing = 1;
+      this.mm.damage(this.aimMob, dmg, { kind: 'melee', fromX: g.px, fromZ: g.pz, knock: kind === 'sword' ? 5 : 3 });
+      this.stam = Math.max(0, this.stam - 0.6);
+      if (kind) this.wear();
+      return;
+    }
+    if (this.mm && (kind === 'sling' || kind === 'boomerang')) {
+      if (kind === 'sling' && !creative && !this.inv.remove('pedrinha', 1)) {
+        this.toast(t('mundo.needPebble', 'Precisa de pedrinhas'), 'warn');
+        this.useCd = 0.5;
+        return;
+      }
+      const cp = g.camera.position;
+      g.camera.getWorldDirection(_v);
+      this.mm.shoot(cp.x + _v.x * 0.6, cp.y - 0.2, cp.z + _v.z * 0.6, _v.x * 26, _v.y * 26 + 2, _v.z * 26, it!.dmg ?? 4, kind === 'sling' ? '#d8d4e0' : '#ffb02e');
+      this.useCd = kind === 'sling' ? 0.6 : 0.9;
+      g.swing = 1;
+      this.wear();
+      audio.click();
+      return;
+    }
     // 1) bater em bicho na mira
     if (this.aimEnt && this.aimEnt.hit && !it?.place) {
       const dmg = it?.dmg ?? 1;
@@ -1099,6 +1250,8 @@ export class Sandbox implements MundoAPI {
       b: this.builds.toJSON(),
       carts: this.carts.toJSON(),
       blk: this.encodeBlocks(),
+      mobs: this.mm?.save(),
+      nights: this.nights,
       ext,
     };
   }
@@ -1114,6 +1267,8 @@ export class Sandbox implements MundoAPI {
     this.builds.load(o.b);
     this.carts.load(o.carts);
     if (o.blk) this.decodeBlocks(o.blk);
+    if (o.mobs) this.mm?.load(o.mobs);
+    this.nights = +o.nights || 0;
     if (o.ext) this.bus.emit('load', o.ext);
     this.hot.refresh();
     return true;
@@ -1147,6 +1302,7 @@ export class Sandbox implements MundoAPI {
 
   dispose(): void {
     this.blocks.dispose();
+    this.mm?.dispose();
     for (const e of this.ents) e.dispose(this);
     this.ents = [];
     this.builds.dispose();

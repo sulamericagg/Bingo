@@ -849,6 +849,7 @@ export class WorldGame {
     if (this.cine) {
       if (!this.cine(dt)) this.cine = null;
     } else if (this.driving >= 0) this.drive(dt);
+    else if (this.sb?.mm?.riding) this.poseHand(dt, 0);
     else if (this.sb?.carts.riding) {
       this.sb.carts.ride(this);
       this.poseHand(dt, 0);
@@ -892,7 +893,7 @@ export class WorldGame {
     const fl = W.vox.matAt(this.px, this.py + 0.7, this.pz);
     const inAq = fl === VM.Agua;
     const inLava = fl === VM.Lava;
-    const sp = (swim || inAq ? 3 : 6.2) * (this.held ? 0.85 : 1);
+    const sp = (swim || inAq ? 3 : 6.2) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
     let mx = rx * c.mx + fx * -c.my;
     let mz = rz * c.mx + fz * -c.my;
     const len = Math.hypot(mx, mz);
