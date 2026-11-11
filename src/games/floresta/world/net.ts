@@ -20,6 +20,11 @@ import { Mob, MOB } from './mobs';
 import { modeName } from './worlds';
 import { CH } from './gen';
 import { ALL_MOBS, MOB_INDEX, type Mob as BigMob } from './content/mobs';
+import { VehNet, type VRec } from './vnet';
+import type { BossView } from './content/mobs';
+import { ITEM } from './items';
+import { CROPS, PDEFS, type Piece } from './build';
+const ITEM_OK = (id: string) => ITEM.has(id);
 
 export const MCODE_OK = /^[A-HJ-NP-Z2-9]{6}$/;
 const ALPH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -102,6 +107,12 @@ export class Avatar implements Entity {
   private bob = 0;
   held = '';
   veh = -1;
+  private tag: THREE.Sprite;
+  get face(): number {
+    return this.yaw;
+  }
+  /** dirigindo o veículo de rede `vn` (senta no banco do espelho) */
+  vn = '';
   constructor(
     readonly pid: string,
     readonly name: string,
@@ -111,7 +122,8 @@ export class Avatar implements Entity {
     AV_MAT ??= new THREE.MeshLambertMaterial({ vertexColors: true });
     const body = new THREE.Mesh(avatarGeo(skin), AV_MAT);
     body.castShadow = true;
-    this.g.add(body, nameSprite(name));
+    this.tag = nameSprite(name);
+    this.g.add(body, this.tag);
   }
   set(p: number[]): void {
     this.tx = p[0];
@@ -125,6 +137,19 @@ export class Avatar implements Entity {
     }
   }
   update(dt: number): boolean {
+    const v = this.vn ? this.sess.veh?.byNid.get(this.vn) : undefined;
+    if (v) {
+      const s = v.seatWorld();
+      this.x = this.tx = s.x;
+      this.y = this.ty = s.y - 0.55;
+      this.z = this.tz = s.z;
+      this.yaw = this.tyaw = v.yaw;
+      this.g.position.set(this.x, this.y, this.z);
+      this.g.rotation.y = this.yaw;
+      this.g.visible = this.sess.visible(this);
+      this.tag.visible = this.sess.tagVisible(this);
+      return true;
+    }
     const k = Math.min(1, dt * 10);
     const mv = Math.hypot(this.tx - this.x, this.tz - this.z);
     if (mv > 30) {
@@ -142,6 +167,7 @@ export class Avatar implements Entity {
     this.g.position.set(this.x, this.y + Math.abs(Math.sin(this.bob)) * 0.08, this.z);
     this.g.rotation.y = this.yaw + Math.PI;
     this.g.visible = this.sess.visible(this);
+    this.tag.visible = this.sess.tagVisible(this);
     return true;
   }
   hit(dmg: number, from: string): void {
@@ -230,6 +256,9 @@ export class NetSession {
   ops: Op[] = [];
   g: WorldGame | null = null;
   peers = new Map<string, Avatar>();
+  /** veículos fabricáveis (dono simula) */
+  veh: VehNet | null = null;
+  private pendingVehs: VRec[] = [];
   private ghosts = new Map<number, GhostMob>();
   private sendT = 0;
   private entT = 0;
@@ -242,6 +271,8 @@ export class NetSession {
   closed = false;
   /** esconder alguém (esconde-esconde: o pegador não vê… nada) */
   visible: (a: Avatar) => boolean = () => true;
+  /** nome em cima da cabeça (aparece através das paredes; o esconde-esconde desliga) */
+  tagVisible: (a: Avatar) => boolean = () => true;
 
   constructor(
     readonly code: string,
@@ -284,6 +315,7 @@ export class NetSession {
           this.meta = m.meta;
           this.ops = Array.isArray(m.ops) ? m.ops : [];
           this.pendingPeers = m.peers ?? [];
+          this.pendingVehs = Array.isArray(m.vehs) ? m.vehs : [];
           resolve();
           return;
         }
@@ -324,12 +356,17 @@ export class NetSession {
       if (this.applying) return;
       if (op === 'add') this.send({ t: 'op', op: { k: 'pa', u: p.uid, i: p.id, p: [r2(p.x), r2(p.y), r2(p.z), p.r] } });
       else if (op === 'del') this.send({ t: 'op', op: { k: 'pd', u: p.uid } });
-      else this.send({ t: 'op', op: { k: 'pu', u: p.uid, o: p.open ? 1 : 0, c: p.chest?.toJSON() } });
+      else this.send({ t: 'op', op: { k: 'pu', u: p.uid, o: p.open ? 1 : 0, c: p.chest?.toJSON(), f: p.furnace?.toJSON() } });
     };
     sb.on('chunkLoad', (c) => this.flushChunk(c.key()));
+    // peças: cada aparelho numera numa faixa própria (dois jogadores não geram o mesmo uid)
+    sb.builds.uidFrom((1 + Math.floor(Math.random() * 90000)) * 10000);
     for (const op of this.ops) this.apply(op);
     for (const p of this.pendingPeers) this.addPeer(p.id, p.name, p.skin, p.p);
     this.pendingPeers = [];
+    this.veh = new VehNet(this, g);
+    this.veh.attach(this.pendingVehs);
+    this.pendingVehs = [];
   }
 
   private chunkKeys(x: number, z: number, r: number): string[] {
@@ -365,6 +402,14 @@ export class NetSession {
         if (p) {
           if (!!p.open !== !!op.o) sb.builds.toggleDoor(p);
           if (op.c && p.chest) p.chest.load(op.c);
+          if (op.f && p.furnace) p.furnace.load(op.f);
+        }
+      } else if (op.k === 'pc') {
+        const p = sb.builds.byUid(+op.u!);
+        if (p && PDEFS.get(p.id)?.plot) {
+          const c = typeof op.c === 'string' && CROPS[op.c] ? op.c : '';
+          if ((p.crop ?? '') !== c) sb.builds.setCrop(p, c, Math.max(0, Math.min(1, +op.g! || 0)));
+          else if (c) sb.builds.setGrow(p, Math.max(0, Math.min(1, +op.g! || 0)));
         }
       }
     } finally {
@@ -394,6 +439,7 @@ export class NetSession {
   private onMsg(m: Record<string, any>): void {
     const g = this.g;
     if (!g) return;
+    if (this.veh?.onMsg(m)) return;
     switch (m.t) {
       case 'join':
         this.addPeer(m.p.id, m.p.name, m.p.skin, null);
@@ -419,6 +465,7 @@ export class NetSession {
         if (a) {
           a.set(m.p);
           a.held = m.h ?? '';
+          a.vn = typeof m.v?.n === 'string' ? m.v.n : '';
         }
         break;
       }
@@ -426,7 +473,7 @@ export class NetSession {
         this.apply(m.op);
         break;
       case 'ent':
-        if (!this.isHost) this.ents(m.l);
+        if (!this.isHost) this.ents(m.l, m.b);
         break;
       case 'hit':
         if (this.pvp) g.sb!.hurtPlayer(+m.d || 1, 'pvp');
@@ -436,14 +483,7 @@ export class NetSession {
         g.hud.toast(this.pvp ? t('mundo.net.pvpOn', 'PvP ligado') : t('mundo.net.pvpOff', 'PvP desligado'), 'warn');
         break;
       case 'mg':
-        if (m.k === 'hitb' && this.isHost && g.sb!.mm) {
-          for (const mob of g.sb!.mm.mobs)
-            if (this.bigId.get(mob) === m.id) {
-              g.sb!.mm.damage(mob, Math.min(20, +m.d || 1), { kind: 'melee', fromX: +m.fx, fromZ: +m.fz, knock: 3 });
-              break;
-            }
-          break;
-        }
+        if (this.mobMsg(m)) break;
         if (m.k === 'hitm' && this.isHost) {
           const e = g.sb!.entities().find((x) => x.id === m.id);
           e?.hit?.(Math.min(20, +m.d || 1), 'net', g.sb!);
@@ -465,6 +505,7 @@ export class NetSession {
   private bigN = 1;
   private mirror = new Map<number, BigMob>();
   private mirrorAtk = 0;
+  private rideT = 0;
   private bigMobsOut(): number[][] {
     const g = this.g!;
     const mm = g.sb!.mm!;
@@ -476,7 +517,7 @@ export class NetSession {
       if (!near) continue;
       let id = this.bigId.get(m);
       if (!id) this.bigId.set(m, (id = this.bigN++));
-      l.push([id, MOB_INDEX.get(m.def.id) ?? 0, r2(m.x), r2(m.y), r2(m.z), r2(m.yaw), m.st === 'dying' ? 1 : 0]);
+      l.push([id, MOB_INDEX.get(m.def.id) ?? 0, r2(m.x), r2(m.y), r2(m.z), r2(m.yaw), (m.st === 'dying' ? 1 : 0) | (m.tamed ? 2 : 0) | (m.pinned || mm.riding === m ? 4 : 0)]);
       if (l.length >= 60) break;
     }
     return l;
@@ -485,7 +526,8 @@ export class NetSession {
     const mm = this.g!.sb!.mm!;
     const seen = new Set<number>();
     for (const e of l) {
-      const [rid, di, x, y, z, yaw, dying] = e;
+      const [rid, di, x, y, z, yaw, fl] = e;
+      const dying = fl & 1;
       const def = ALL_MOBS[di];
       if (!def) continue;
       seen.add(rid);
@@ -495,6 +537,10 @@ export class NetSession {
         this.mirror.set(rid, m);
         this.bigId.set(m, rid);
       }
+      m.tamed = (fl & 2) !== 0;
+      // o que eu estou montando anda aqui (mando a posição ao anfitrião)
+      if (mm.riding === m) continue;
+      m.pinned = (fl & 4) !== 0;
       const dx = x - m.x;
       const dz = z - m.z;
       m.spd = Math.min(8, Math.hypot(dx, dz) * 5);
@@ -506,25 +552,200 @@ export class NetSession {
       if (dying && m.st !== 'dying') mm.kill(m, false);
     }
     for (const [rid, m] of this.mirror)
-      if (!seen.has(rid)) {
+      if (!seen.has(rid) && mm.riding !== m) {
         m.dead = true;
         this.mirror.delete(rid);
       }
   }
-  /** golpe num bicho espelhado: o anfitrião aplica */
-  hitMirror(m: BigMob, d: number): void {
+  /** golpe num bicho espelhado: o anfitrião aplica (e dá os drops para quem bateu) */
+  hitMirror(m: BigMob, d: number, kind = 'melee', fx?: number, fz?: number): void {
     const id = this.bigId.get(m);
     if (!id) return;
     const g = this.g!;
-    this.send({ t: 'mg', k: 'hitb', id, d, fx: r2(g.px), fz: r2(g.pz) });
+    this.send({ t: 'mg', k: 'hitb', id, d: r2(d), kind, fx: r2(fx ?? g.px), fz: r2(fz ?? g.pz) });
     g.burst(5, m.x, m.y + 1, m.z, '#ffffff', 3);
   }
+  /** convidado: usar item / montar num bicho espelhado (o anfitrião decide) */
+  interactMirror(m: BigMob, held: string): void {
+    const id = this.bigId.get(m);
+    if (!id) return;
+    this.send({ t: 'mg', k: 'int', id, h: held || '' });
+  }
+  dismountMirror(m: BigMob): void {
+    const id = this.bigId.get(m);
+    if (id && !this.isHost) this.send({ t: 'mg', k: 'dis', id, x: r2(m.x), y: r2(m.y), z: r2(m.z) });
+  }
+  private findBig(id: number): BigMob | null {
+    const mm = this.g?.sb?.mm;
+    if (!mm) return null;
+    for (const mob of mm.mobs) if (this.bigId.get(mob) === id && !mob.dead) return mob;
+    return null;
+  }
+  /** montarias de convidados (anfitrião): bicho → quem monta, último retrato */
+  private rideBy = new Map<BigMob, { by: string; t: number }>();
+  private pvCache: import('./content/mobs').PeerView[] = [];
+  private pvT = -1;
+  /** outros jogadores para o MobManager do anfitrião (alvos de chefes, donos de bichos) */
+  peerViews(): import('./content/mobs').PeerView[] {
+    const g = this.g;
+    if (!g) return [];
+    if (this.pvT === g.time) return this.pvCache;
+    this.pvT = g.time;
+    const a = this.pvCache;
+    a.length = 0;
+    for (const [id, p] of this.peers) a.push({ id, x: p.x, y: p.y, z: p.z, yaw: p.face + Math.PI, grounded: true, alive: !p.vn, held: p.held || null });
+    return a;
+  }
+  /** mensagens de bichos (mg). true = tratada */
+  private mobMsg(m: Record<string, any>): boolean {
+    const g = this.g!;
+    const sb = g.sb!;
+    const mm = sb.mm;
+    const from = typeof m.from === 'string' ? m.from : '';
+    switch (m.k) {
+      case 'hitb': {
+        if (!this.isHost || !mm) return true;
+        const mob = this.findBig(+m.id);
+        if (!mob) return true;
+        const kind = ['melee', 'ranged', 'fire', 'blast', 'cold', 'poison'].includes(m.kind) ? m.kind : 'melee';
+        sb.dropTo = from;
+        try {
+          mm.damage(mob, Math.max(0, Math.min(40, +m.d || 1)), { kind, fromX: +m.fx || mob.x, fromZ: +m.fz || mob.z, knock: 3 });
+        } finally {
+          sb.dropTo = '';
+        }
+        return true;
+      }
+      case 'int': {
+        if (!this.isHost || !mm) return true;
+        const mob = this.findBig(+m.id);
+        const h = typeof m.h === 'string' ? m.h.slice(0, 32) : '';
+        let a = 'none';
+        let c = 0;
+        if (mob && mob.alive) {
+          if (!h && mob.tamed && mob.def.ride) {
+            if ((!mob.owner || mob.owner === from) && !mob.pinned && mm.riding !== mob && mob.age >= 1) {
+              mob.pinned = true;
+              mob.st = 'ridden';
+              mob.path = null;
+              this.rideBy.set(mob, { by: from, t: performance.now() });
+              a = 'mount';
+            }
+          } else if (h) {
+            sb.dropTo = from;
+            try {
+              const r = mm.interact(mob, h);
+              a = r.action;
+              c = r.consumed;
+            } finally {
+              sb.dropTo = '';
+            }
+            if (a === 'tamed') mob.owner = from;
+          }
+        }
+        this.send({ t: 'mg', k: 'intr', to: from, id: +m.id, a, c, n: mob?.def.id ?? '' });
+        return true;
+      }
+      case 'rp': {
+        if (!this.isHost) return true;
+        const mob = this.findBig(+m.id);
+        const r = mob && this.rideBy.get(mob);
+        if (!mob || !r || r.by !== from) return true;
+        r.t = performance.now();
+        const dx = +m.x - mob.x;
+        const dz = +m.z - mob.z;
+        mob.spd = Math.min(12, Math.hypot(dx, dz) * 10);
+        mob.x = +m.x;
+        mob.y = +m.y;
+        mob.z = +m.z;
+        mob.yaw = +m.yaw;
+        mob.vx = mob.vz = 0;
+        return true;
+      }
+      case 'dis': {
+        if (!this.isHost) return true;
+        const mob = this.findBig(+m.id);
+        const r = mob && this.rideBy.get(mob);
+        if (mob && r && r.by === from) this.unride(mob);
+        return true;
+      }
+      case 'hitm':
+        if (this.isHost) {
+          const e = sb.entities().find((x) => x.id === m.id);
+          e?.hit?.(Math.min(20, +m.d || 1), 'net', sb);
+        }
+        return true;
+      case 'tm':
+        if (!this.isHost) this.timersIn(m);
+        return true;
+      /* ---- convidado: respostas do anfitrião ---- */
+      case 'drop':
+        if (typeof m.id === 'string' && ITEM_OK(m.id)) sb.give(m.id, Math.max(1, Math.min(64, +m.n || 1)));
+        return true;
+      case 'coins':
+        g.save.coins += Math.max(0, Math.min(500, +m.n || 0));
+        return true;
+      case 'hurt': {
+        if (sb.mode === 'pacifico' && !m.boss) return true;
+        const def = sb.inv.defense();
+        const d = Math.max(0, Math.min(40, +m.d || 0)) * (1 - Math.min(0.85, def / 28));
+        sb.hurtPlayer(Math.round(d * 10) / 10, 'mob', true);
+        const fx = +m.fx;
+        const fz = +m.fz;
+        const dl = Math.hypot(g.px - fx, g.pz - fz) || 1;
+        const kb = Math.min(14, +m.kb || 3) * 0.15;
+        g.px += ((g.px - fx) / dl) * kb;
+        g.pz += ((g.pz - fz) / dl) * kb;
+        g.vy = Math.max(g.vy, 3);
+        if (m.e) sb.slowFor(+m.es || 2);
+        return true;
+      }
+      case 'intr': {
+        const mob = this.mirror.get(+m.id);
+        for (let i = 0; i < (+m.c | 0) && i < 4; i++) sb.inv.useHeld();
+        sb.hot.refresh();
+        const def = ALL_MOBS[MOB_INDEX.get(m.n) ?? -1];
+        const nm = def ? def.name() : '';
+        if (m.a === 'mount' && mob && mm) {
+          mob.tamed = true;
+          mob.pinned = false;
+          if (!mm.mount(mob)) this.send({ t: 'mg', k: 'dis', id: +m.id });
+        } else if (m.a === 'tamed') {
+          g.hud.toast(t('mob.ui.tamed', '{n} agora é seu amigo!', { n: nm }), 'gold');
+          if (mob) mm?.emitFx('heart', mob.x, mob.y + 1.2, mob.z, 10, 0.5, 2);
+        } else if (m.a === 'taming') {
+          if (mob) mm?.emitFx('smoke', mob.x, mob.y + 1, mob.z, 4, 0.3, 1);
+        } else if (m.a === 'love') {
+          if (mob) mm?.emitFx('heart', mob.x, mob.y + 1, mob.z, 6, 0.4, 1.5);
+        } else if (m.a === 'none' && !m.c) g.hud.toast(t('mundo.net.mobNo', 'Não deu agora'));
+        return true;
+      }
+    }
+    return false;
+  }
+  private unride(mob: BigMob): void {
+    this.rideBy.delete(mob);
+    mob.pinned = false;
+    mob.st = 'idle';
+    mob.want = 0;
+    mob.homeX = mob.x;
+    mob.homeZ = mob.z;
+  }
 
-  private ents(l: number[][]): void {
+  private ents(l: number[][], b?: unknown[][]): void {
     const g = this.g!;
     const sb = g.sb!;
     if (sb.mm) {
       this.bigMobsIn(l);
+      // chefe do anfitrião: barra de vida aqui também (se estou perto)
+      let nb: BossView | null = null;
+      for (const e of Array.isArray(b) ? b : []) {
+        const [di, x, z, hp, ph, hint] = e as [number, number, number, number, number, string];
+        const def = ALL_MOBS[di];
+        if (!def || Math.hypot(x - g.px, z - g.pz) > 110) continue;
+        nb = { name: def.name(), hpFrac: Math.max(0, Math.min(1, +hp)), phase: +ph || 1, phases: 3, hint: typeof hint === 'string' ? hint.slice(0, 60) : '' };
+      }
+      sb.mm.netBoss = nb;
       return;
     }
     const seen = new Set<number>();
@@ -552,6 +773,64 @@ export class NetSession {
       }
   }
 
+  /* ---- fornalhas e cultivos (o anfitrião anda os relógios) ---- */
+  private furnTouch = new Map<number, number>();
+  private timersT = 0;
+  private wasActive = new Set<number>();
+  private ripe = new Set<number>();
+  cropOp(p: Piece): void {
+    if (this.applying) return;
+    this.send({ t: 'op', op: { k: 'pc', u: p.uid, c: p.crop ?? '', g: Math.round((p.grow ?? 0) * 100) / 100 } });
+  }
+  furnaceTouched(p: Piece): void {
+    this.furnTouch.set(p.uid, performance.now());
+  }
+  private timersOut(): void {
+    const sb = this.g!.sb!;
+    const f: unknown[] = [];
+    const c: unknown[] = [];
+    for (const p of sb.builds.pieces) {
+      if (p.furnace) {
+        const on = !!(p.furnace.inp || p.furnace.burn > 0);
+        if (on) f.push([p.uid, p.furnace.toJSON()]);
+        // terminou: guarda o resultado (quem entrar depois vê)
+        if (!on && this.wasActive.has(p.uid)) this.send({ t: 'op', op: { k: 'pu', u: p.uid, o: p.open ? 1 : 0, f: p.furnace.toJSON() } });
+        if (on) this.wasActive.add(p.uid);
+        else this.wasActive.delete(p.uid);
+      }
+      if (p.crop) {
+        if (p.grow! < 1) c.push([p.uid, Math.round(p.grow! * 1000) / 1000]);
+        else if (!this.ripe.has(p.uid)) {
+          this.ripe.add(p.uid);
+          this.cropOp(p);
+        }
+      } else this.ripe.delete(p.uid);
+    }
+    // a hora do dia também é do anfitrião
+    this.send({ t: 'mg', k: 'tm', f: f.slice(0, 60), c: c.slice(0, 200), d: Math.round(sb.dayT * 10000) / 10000, nn: sb.nights });
+  }
+  private timersIn(m: Record<string, any>): void {
+    const sb = this.g!.sb!;
+    const now = performance.now();
+    if (typeof m.d === 'number' && m.d >= 0 && m.d < 1) {
+      let dd = m.d - sb.dayT;
+      if (dd > 0.5) dd -= 1;
+      if (dd < -0.5) dd += 1;
+      if (Math.abs(dd) > 0.004) sb.dayT = m.d;
+      if (typeof m.nn === 'number') sb.nights = m.nn;
+    }
+    for (const [u, j] of Array.isArray(m.f) ? m.f : []) {
+      const p = sb.builds.byUid(+u);
+      // acabei de mexer nela: espera o anfitrião receber
+      if (!p?.furnace || now - (this.furnTouch.get(p.uid) ?? -1e9) < 1500) continue;
+      p.furnace.load(j);
+    }
+    for (const [u, gr] of Array.isArray(m.c) ? m.c : []) {
+      const p = sb.builds.byUid(+u);
+      if (p?.crop) sb.builds.setGrow(p, Math.max(0, Math.min(1, +gr || 0)));
+    }
+  }
+
   /** por quadro */
   tick(dt: number): void {
     const g = this.g;
@@ -561,13 +840,37 @@ export class NetSession {
       this.sendT = 0.1;
       const v = g.driving >= 0 ? g.vehs[g.driving] : null;
       const p = v ? [r2(v.x), r2(v.y + 0.8), r2(v.z), r2(v.yaw - Math.PI / 2)] : [r2(g.px), r2(g.py), r2(g.pz), r2(g.yaw)];
-      this.send({ t: 's', p, h: g.sb!.held() });
+      const nv = g.sb!.vm.driving;
+      this.send({ t: 's', p, h: g.sb!.held(), v: nv?.nid ? { n: nv.nid } : undefined });
+    }
+    this.veh?.tick(dt);
+    if (this.isHost) {
+      this.timersT -= dt;
+      if (this.timersT <= 0) {
+        this.timersT = 1;
+        this.timersOut();
+      }
     }
     if (!this.isHost && g.sb!.mm) {
+      const mm = g.sb!.mm;
+      // golpes/tiros/explosões nos espelhos vão para o anfitrião
+      mm.damageHook ??= (mob, amt, o) => {
+        if (!this.isHost && this.bigId.has(mob)) this.hitMirror(mob, amt, o.kind ?? 'melee', o.fromX, o.fromZ);
+        return !this.isHost;
+      };
+      if (mm.riding) {
+        this.rideT -= dt;
+        if (this.rideT <= 0) {
+          this.rideT = 0.1;
+          const r = mm.riding;
+          const id = this.bigId.get(r);
+          if (id) this.send({ t: 'mg', k: 'rp', id, x: r2(r.x), y: r2(r.y), z: r2(r.z), yaw: r2(r.yaw) });
+        }
+      }
       this.mirrorAtk -= dt;
       if (this.mirrorAtk <= 0 && g.sb!.mode !== 'pacifico')
         for (const m of this.mirror.values()) {
-          if (m.dead || m.def.kind === 'animal' || m.tamed) continue;
+          if (m.dead || m.def.kind === 'animal' || m.def.kind === 'boss' || m.tamed) continue;
           if (Math.hypot(m.x - g.px, m.z - g.pz) < 1.7 && Math.abs(m.y - g.py) < 2) {
             this.mirrorAtk = 1.2;
             g.sb!.hurtPlayer(Math.max(1, (m.def as unknown as { dmg?: number }).dmg ?? 2), 'mob');
@@ -579,7 +882,14 @@ export class NetSession {
       this.entT -= dt;
       if (this.entT <= 0) {
         this.entT = 0.2;
-        if (g.sb!.mm) this.send({ t: 'ent', l: this.bigMobsOut() });
+        if (g.sb!.mm) {
+          const mm = g.sb!.mm;
+          const b = mm.bosses.filter((x) => x.active).map((x) => [MOB_INDEX.get(x.main.def.id) ?? 0, r2(x.main.x), r2(x.main.z), Math.round(x.hpFrac * 1000) / 1000, x.phase, x.hint]);
+          this.send({ t: 'ent', l: this.bigMobsOut(), b });
+          // montarias de convidados sem notícia: soltam
+          const now = performance.now();
+          for (const [mob, r] of this.rideBy) if (now - r.t > 2500 || mob.dead || !this.peers.has(r.by)) this.unride(mob);
+        }
         else {
           const l: number[][] = [];
           for (const e of g.sb!.entities()) {

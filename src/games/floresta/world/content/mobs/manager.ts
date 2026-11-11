@@ -14,7 +14,7 @@ import { MobFx, type FxKind, type Projectile } from './fx';
 import { findPath, type PathQuery } from './path';
 import { thinkAnimal, thinkMonster, onLand } from './ai';
 import { BossCtl, lairAt, LAIR_CELL } from './boss';
-import { BossBar } from './bossbar';
+import { BossBar, type BossView } from './bossbar';
 import {
   BUDGETS, type BiomeId, type DamageKind, type Effect, type Lair, type MobBudget, type MobDef, type MobHost, type MobSound, type PlayerMods, type PlayerView, type SpawnRule,
 } from './types';
@@ -75,6 +75,12 @@ export class MobManager {
   /** liga/desliga a IA (zoológico: poses fixas) */
   aiOn = true;
   riding: Mob | null = null;
+  /** online (convidado): golpes nos espelhos vão para o anfitrião; true = não aplica aqui */
+  damageHook: ((m: Mob, amount: number, o: DamageOpts) => boolean) | null = null;
+  /** online (convidado): chefe do anfitrião para a barra de vida */
+  netBoss: BossView | null = null;
+  /** jogador-alvo atual quando não é o local (online, anfitrião) */
+  private targetId = '';
   private ride = { fwd: 0, turn: 0, jump: false };
   private grid = new Map<number, Mob[]>();
   private spawnT = 0;
@@ -365,16 +371,25 @@ export class MobManager {
       // tique da IA mais lento longe
       const every = m.dist < 24 ? 0 : m.dist < 60 ? 0.15 : 0.4;
       m.aiAcc += dt;
-      if (this.aiOn && m.aiAcc >= every && m !== this.riding && !m.boss) {
+      if (this.aiOn && m.aiAcc >= every && m !== this.riding && !m.boss && !m.pinned) {
         const adt = m.aiAcc;
         m.aiAcc = 0;
         thinks++;
+        // bicho domado por outro jogador segue o dono dele
+        const ov = m.owner ? this.host.others?.().find((o) => o.id === m.owner) : undefined;
+        const save = this.pl;
+        if (ov) this.pl = ov;
         if (m.def.kind === 'animal') thinkAnimal(this, m, adt);
         else thinkMonster(this, m, adt);
+        this.pl = save;
       }
     }
     const t1 = performance.now();
-    for (const b of this.bosses) b.update(dt);
+    for (const b of this.bosses)
+      this.withTarget(b.main.x, b.main.z, () => {
+        if (this.targetId) for (const m of [b.main, ...b.heads]) m.dist = Math.hypot(m.x - this.pl.x, m.z - this.pl.z, (m.y - this.pl.y) * 0.5);
+        b.update(dt);
+      });
     for (let i = this.bosses.length - 1; i >= 0; i--) if (this.bosses[i].done) this.bosses.splice(i, 1);
     if (this.riding) this.stepRide(this.riding, dt);
     for (const m of this.mobs) {
@@ -394,7 +409,33 @@ export class MobManager {
     this.stats.render += (t3 - t2 - this.stats.render) * k;
     this.stats.thinks = thinks;
     this.stats.alive = this.mobs.length;
-    this.bar?.update(this.bosses.find((b) => b.active) ?? null);
+    this.bar?.update(this.netBoss ?? this.bosses.find((b) => b.active) ?? null);
+  }
+
+  /** roda f com `pl` = jogador vivo mais perto de (x,z) (online: pode ser um convidado) */
+  private withTarget(x: number, z: number, f: () => void): void {
+    const others = this.host.others?.();
+    if (!others || !others.length) return f();
+    const save = this.pl;
+    let best: PlayerView = save;
+    let bd = save.alive ? Math.hypot(save.x - x, save.z - z) : 1e9;
+    let id = '';
+    for (const o of others) {
+      const d = Math.hypot(o.x - x, o.z - z);
+      if (o.alive && d < bd) {
+        bd = d;
+        best = o;
+        id = o.id;
+      }
+    }
+    this.pl = best;
+    this.targetId = id;
+    try {
+      f();
+    } finally {
+      this.pl = save;
+      this.targetId = '';
+    }
   }
 
   /* ------------------------------ movimento ------------------------------ */
@@ -594,7 +635,7 @@ export class MobManager {
 
   /* ------------------------------ montaria ------------------------------ */
   mount(m: Mob): boolean {
-    if (!m.tamed || !m.def.ride || m.age < 1 || this.riding || !m.alive) return false;
+    if (!m.tamed || !m.def.ride || m.age < 1 || this.riding || !m.alive || m.pinned) return false;
     this.riding = m;
     m.st = 'ridden';
     m.path = null;
@@ -652,6 +693,13 @@ export class MobManager {
   /* ------------------------------ combate ------------------------------ */
   /** dano no jogador já com armadura/resistências */
   hurtPlayer(m: Mob | null, dmg: number, kind: DamageKind, knock = 4, effect?: Effect, effSec = 3): number {
+    if (this.targetId) {
+      // outro jogador (online): o aparelho dele aplica a armadura
+      const raw = Math.round(dmg * (m ? Math.sqrt(m.lvl) : 1) * 10) / 10;
+      this.host.hurtPeer?.(this.targetId, raw, kind, m ? m.x : this.pl.x, m ? m.z : this.pl.z, knock, effect, effSec);
+      this.emit('hurtPlayer', raw, kind, m);
+      return raw;
+    }
     const mo = this.mods;
     let f = dmg * (m ? Math.sqrt(m.lvl) : 1) * (1 - Math.min(0.85, mo.armor));
     if (kind === 'fire') f *= 1 - mo.fireRes;
@@ -673,6 +721,7 @@ export class MobManager {
   damage(m: Mob, amount: number, o: DamageOpts = {}): DamageResult {
     const res: DamageResult = { dealt: 0, blocked: false, killed: false };
     if (!m.alive) return res;
+    if (this.damageHook?.(m, amount, o)) return res;
     const kind = o.kind ?? 'melee';
     const fx = o.fromX ?? this.pl.x;
     const fz = o.fromZ ?? this.pl.z;
@@ -861,7 +910,19 @@ export class MobManager {
           const tag = q.tag as { m: Mob | null; kind: DamageKind; effect?: Effect; eff?: number } | null;
           this.hurtPlayer(tag?.m ?? null, q.dmg, tag?.kind ?? 'ranged', 3, tag?.effect, tag?.eff ?? 3);
           hit = true;
-        }
+        } else if (this.host.others && this.host.hurtPeer)
+          for (const o of this.host.others()) {
+            const ex = q.x - o.x;
+            const ey = q.y - (o.y + 0.9);
+            const ez = q.z - o.z;
+            if (ex * ex + ey * ey * 0.5 + ez * ez < (0.55 + q.r) ** 2 && o.alive) {
+              const tag = q.tag as { m: Mob | null; kind: DamageKind; effect?: Effect; eff?: number } | null;
+              const mm = tag?.m ?? null;
+              this.host.hurtPeer(o.id, Math.round(q.dmg * (mm ? Math.sqrt(mm.lvl) : 1) * 10) / 10, tag?.kind ?? 'ranged', q.x - q.vx, q.z - q.vz, 3, tag?.effect, tag?.eff ?? 3);
+              hit = true;
+              break;
+            }
+          }
       } else {
         const sp = Math.hypot(q.vx, q.vy, q.vz) || 1;
         const m = this.pick(q.x - q.vx * dt, q.y - q.vy * dt, q.z - q.vz * dt, q.vx / sp, q.vy / sp, q.vz / sp, sp * dt + q.r);
@@ -953,7 +1014,10 @@ export class MobManager {
 
   /* ------------------------------ chefes e covis ------------------------------ */
   private checkLairs(): void {
-    const p = this.pl;
+    this.checkLairsAt(this.pl);
+    for (const o of this.host.others?.() ?? []) this.checkLairsAt(o);
+  }
+  private checkLairsAt(p: PlayerView): void {
     const ci = Math.round(p.x / LAIR_CELL);
     const cj = Math.round(p.z / LAIR_CELL);
     for (let i = ci - 1; i <= ci + 1; i++)

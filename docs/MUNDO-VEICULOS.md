@@ -168,3 +168,10 @@ Resultado medido (picape montada peça a peça, alvo 6 m/s, rampa 14°, 53 m, +1
 | 6 toras | 48,5 (2425 kg) | 11,2 s | 4,7 m/s | 4,40 (+70%) |
 
 Freio de 8 m/s: 2,5 m vazia × 3,4 m carregada. 0→8 m/s: 0,8 s × 1,8 s.
+
+## 8. Online (mundo multijogador)
+
+`Vehicle.setRemote(true)` vira espelho: corpo **cinemático**, sem forças/combustível/dano, `netSteer`/`netEngine`
+vindos do dono; o `RaycastVehicle` continua girando as rodas pela velocidade. `VehicleManager.onSpawn/onRemove`
+avisam a rede; `nearest()` ignora veículos com `netBusy` (outra pessoa dirigindo). Detalhes em `world/vnet.ts`
+e na tabela "Online" de `MUNDO-MOTOR.md`.

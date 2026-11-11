@@ -20,6 +20,8 @@ export type VSound = 'start' | 'stop' | 'horn' | 'crash' | 'refuel' | 'grab' | '
 /** o que o mundo oferece aos veículos (tudo opcional, menos `world`) */
 export interface VehicleHost {
   world: CANNON.World;
+  /** veículo novo no mundo (o motor garante o chão físico debaixo dele) */
+  spawned?: (v: Vehicle) => void;
   /** material do chassi (atrito com o chão) */
   material?: CANNON.Material;
   /** filtro de colisão do chassi (padrão VEH_GROUP / −1) */
@@ -141,6 +143,16 @@ export class Vehicle {
   private hitT = 0;
   private host: VehicleHost;
   private onWake = () => this.unpark();
+  /* ---- rede (mundo online) ---- */
+  /** id na sala (vazio = só local) */
+  nid = '';
+  /** espelho de um veículo simulado em outro aparelho: corpo cinemático, sem forças */
+  remote = false;
+  /** esterço/motor vindos do dono (para as rodas/giratórios do espelho) */
+  netSteer = 0;
+  netEngine = false;
+  /** alguém (outro jogador) está dirigindo este espelho */
+  netBusy = false;
 
   constructor(host: VehicleHost, design: VehicleDesign, pos: { x: number; y: number; z: number }, yaw = 0, state?: Partial<Pick<VehicleState, 'fuel' | 'hp' | 'items' | 'q'>>) {
     this.host = host;
@@ -384,7 +396,7 @@ export class Vehicle {
     }
   }
   private onCollide(e: { body: CANNON.Body; contact: CANNON.ContactEquation }): void {
-    if (this.hitT > 0) return;
+    if (this.hitT > 0 || this.remote) return;
     const o = e.body;
     if (o === this.grabbed || this.cargo.has(o) || (o.type === CANNON.Body.DYNAMIC && o.mass < 6 && !(o as unknown as { vehicle?: Vehicle }).vehicle)) return;
     const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
@@ -533,7 +545,54 @@ export class Vehicle {
 
   /* ------------------------------ passo de simulação ------------------------------ */
   /** chame ANTES de world.step */
+  /** liga/desliga o modo espelho (outro aparelho simula; aqui o corpo é cinemático) */
+  setRemote(on: boolean): void {
+    if (on === this.remote) return;
+    this.remote = on;
+    const b = this.body;
+    if (on) {
+      this.release();
+      if (this.hitch) this.unhitch();
+      this.driver = false;
+      this.toolOn = false;
+      this.craneMode = false;
+      this.input.steer = this.input.throttle = this.input.up = 0;
+      b.type = CANNON.Body.KINEMATIC;
+      b.velocity.setZero();
+      b.angularVelocity.setZero();
+      for (const w of this.cargoWalls) w.collisionResponse = true;
+      this.dumpT = 0;
+    } else {
+      b.type = CANNON.Body.DYNAMIC;
+      b.updateMassProperties();
+      b.inertia.scale(1.4, b.inertia);
+      b.invInertia.set(1 / b.inertia.x, 1 / b.inertia.y, 1 / b.inertia.z);
+      b.updateInertiaWorld(true);
+      b.wakeUp();
+    }
+    b.aabbNeedsUpdate = true;
+  }
+
+  /** esterço aplicado agora (rad, para a rede) */
+  get steerAngle(): number {
+    return this.steerNow;
+  }
+  /** passo do espelho: só direção das rodas e telemetria (sem forças) */
+  private remoteStep(): void {
+    const rv = this.rv;
+    this.engineOn = this.netEngine;
+    this.load = this.netEngine ? Math.min(1, Math.abs(this.speed) / 8) : 0;
+    if (rv) {
+      for (let i = 0; i < rv.wheelInfos.length; i++) {
+        rv.applyEngineForce(0, i);
+        rv.setBrake(0, i);
+        if (this.lay.wheels[i].steer && this.stats.kind !== 'tracked') rv.setSteeringValue(-this.netSteer, i);
+      }
+    }
+  }
+
   preStep(dt: number): void {
+    if (this.remote) return this.remoteStep();
     const b = this.body;
     const g = Math.abs(this.host.world.gravity.y) || 20;
     const s = this.stats;

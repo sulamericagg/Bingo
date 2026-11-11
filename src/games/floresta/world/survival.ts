@@ -17,7 +17,7 @@ import type { SBox } from './collide';
 import { Builds, CROPS, PDEFS, ghostMesh, type Piece } from './build';
 import { Spawner } from './mobs';
 import { iconURL } from './itemicons';
-import { MATS } from './vox';
+import { BED_Y, MATS } from './vox';
 import { Carts } from './rails';
 import { tntModel } from './wmodels';
 import { BLUEPRINT, BLUEPRINTS, ChaseCam, DriveHud, EXTRA_ITEMS, PARTS, VEH_GROUP, VEH_RECIPES, VehicleManager, openGarage, type PartCat } from './content/vehicles';
@@ -62,7 +62,7 @@ export class Sandbox implements MundoAPI {
   private ents: Entity[] = [];
   private eid = 1;
   private bus = new Bus();
-  private hot: Hotbar;
+  hot: Hotbar;
   private scr: InvScreen | null = null;
   private spawner: Spawner;
   private bars: HTMLDivElement;
@@ -105,8 +105,13 @@ export class Sandbox implements MundoAPI {
   get slowed(): boolean {
     return this.slowT > 0;
   }
+  slowFor(sec: number): void {
+    this.slowT = Math.max(this.slowT, Math.min(8, sec));
+  }
   /** sessão online (servidores) */
   net: import('./net').NetSession | null = null;
+  /** online (anfitrião): drops/moedas do golpe em curso vão para este jogador (convidado) */
+  dropTo = '';
 
   constructor(
     private g: WorldGame,
@@ -217,6 +222,7 @@ export class Sandbox implements MundoAPI {
     this.vm = new VehicleManager(
       {
         world: g.phys.w,
+        spawned: () => g.phys.forceSync(),
         material: g.phys.groundMat,
         group: VEH_GROUP,
         waterLevel: (x, z) => g.world.waterLevel(x, z),
@@ -238,7 +244,10 @@ export class Sandbox implements MundoAPI {
           const cx = Math.floor(x / 2) * 2 + 1;
           const cz = Math.floor(z / 2) * 2 + 1;
           const y = g.world.floorAt(cx, g.py + 3, cz);
-          if (!this.builds.occupied('canteiro', cx, y, cz, 0)) this.builds.add('canteiro', cx, y, cz, 0);
+          if (!this.builds.occupied('canteiro', cx, y, cz, 0)) {
+            const p = this.builds.add('canteiro', cx, y, cz, 0);
+            if (p) this.builds.onChange?.('add', p);
+          }
         },
         onItems: (_v, items) => {
           for (const [id, n] of items) if (ITEM.has(id)) this.give(id, n);
@@ -254,7 +263,11 @@ export class Sandbox implements MundoAPI {
     );
     this.chase = new ChaseCam((this.vm as unknown as { host: ConstructorParameters<typeof ChaseCam>[0] }).host);
     g.physPts = (pts) => {
-      for (const v of this.vm.list) if (!v.parked) pts.push(v.body.position.x, v.body.position.z);
+      // parados perto também: se algo os acordar, o chão físico já está lá (senão caem através do terreno)
+      for (const v of this.vm.list) {
+        const p = v.body.position;
+        if (!v.parked || (!v.remote && (p.x - g.px) ** 2 + (p.z - g.pz) ** 2 < 50 * 50)) pts.push(p.x, p.z);
+      }
       this.syncSolidBodies();
     };
     g.prePhys = (dt) => {
@@ -265,9 +278,29 @@ export class Sandbox implements MundoAPI {
         for (const k of g.hud.keys) kc.add(KEYMAP[k] ?? k);
         this.dhud.apply(dt, kc);
       }
+      this.net?.veh?.pre(dt);
+      // caiu pelo chão (chão físico ainda não existia): volta para a superfície
+      for (const v of this.vm.list) {
+        const b = v.body;
+        if (v.remote) continue;
+        const ck = g.world.chunks.get(Math.floor(b.position.x / 32) + ',' + Math.floor(b.position.z / 32));
+        // abaixo da superfície sem caverna, ou com o centro enterrado na rocha = atravessou o chão
+        const under =
+          (ck && !ck.vol ? b.position.y < g.world.heightAt(b.position.x, b.position.z) - 4 : b.position.y < BED_Y - 6) ||
+          (b.position.y < g.world.heightAt(b.position.x, b.position.z) - 3 && g.world.vox.dens(b.position.x, b.position.y + 0.6, b.position.z) > 0.5);
+        if (!under) continue;
+        b.position.set(b.position.x, g.world.heightAt(b.position.x, b.position.z) + 1.5, b.position.z);
+        b.velocity.setZero();
+        b.angularVelocity.setZero();
+        b.quaternion.setFromEuler(0, v.yaw, 0);
+        g.phys.forceSync();
+      }
       this.vm.preStep(dt);
     };
-    g.postPhys = (dt) => this.vm.postStep(dt);
+    g.postPhys = (dt) => {
+      this.net?.veh?.post();
+      this.vm.postStep(dt);
+    };
     g.inCargo = (b) => this.vm.list.some((v) => v.cargo.has(b));
     g.altNear = () => (this.vm.nearest(g.px, g.py, g.pz) ? t('mundo.drive', 'Dirigir') : null);
     g.altVehicle = () => {
@@ -278,7 +311,9 @@ export class Sandbox implements MundoAPI {
     };
     {
       this.mm = new MobManager(this.mobHost(), g.scene, g.renderer, g.opts.tier as 0 | 1 | 2 | 3, g.hud.el);
-      this.mm.on('toast', (msg) => this.toast(msg, 'good'));
+      this.mm.on('toast', (msg) => {
+        if (!this.dropTo) this.toast(msg, 'good');
+      });
       this.mm.on('bossStart', () => this.toast(t('mundo.boss', 'Um chefão acordou!'), 'warn'));
     }
     for (const m of MODULES) {
@@ -478,11 +513,15 @@ export class Sandbox implements MundoAPI {
         return mods;
       },
       drop: (id, n) => {
+        if (this.dropTo && this.net) return this.net.send({ t: 'mg', k: 'drop', to: this.dropTo, id, n });
         if (ITEM.has(id)) this.give(id, n);
       },
       coins: (n) => {
+        if (this.dropTo && this.net) return this.net.send({ t: 'mg', k: 'coins', to: this.dropTo, n });
         g.save.coins += n;
       },
+      others: () => this.net?.peerViews() ?? [],
+      hurtPeer: (id, d, kind, fx, fz, kb, e, es) => this.net?.send({ t: 'mg', k: 'hurt', to: id, d, kind, fx: Math.round(fx * 10) / 10, fz: Math.round(fz * 10) / 10, kb, e, es }),
       sound: (s) => {
         if (s === 'poof' || s === 'pop') audio.coin(2);
         else if (s === 'hit' || s === 'slam') audio.tick(1);
@@ -558,25 +597,16 @@ export class Sandbox implements MundoAPI {
   /** entra num veículo fabricável */
   drive(v: import('./content/vehicles').Vehicle): void {
     const g = this.g;
+    // online: veículo de outro → pede o volante (entra quando o servidor der)
+    if (this.net?.veh && !this.net.veh.canDrive(v)) return;
     this.vm.enter(v);
+    g.stowBody();
     g.hud.el.style.display = 'none';
     g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = false;
     this.handMesh.visible = false;
     this.chase.reset();
     this.dhud = new DriveHud(g.root, v, {
-      exit: () => {
-        const p = this.vm.exit();
-        this.dhud?.destroy();
-        this.dhud = null;
-        g.hud.el.style.display = '';
-        g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = true;
-        if (p) {
-          g.px = p.x;
-          g.py = p.y;
-          g.pz = p.z;
-          g.vy = 0;
-        }
-      },
+      exit: () => this.forceExitVehicle(),
       refuel: () => {
         let used = 0;
         for (const id of ['combustivel', 'bateria', 'carvao', 'tora', 'tabua', 'graveto']) {
@@ -601,6 +631,24 @@ export class Sandbox implements MundoAPI {
       camDrag: (dy, dp) => this.chase.drag(dy, dp),
       horn: () => audio.click(),
     });
+  }
+  /** desce do veículo fabricável (botão ou a rede tirou o volante) */
+  forceExitVehicle(): void {
+    const g = this.g;
+    const v = this.vm.driving;
+    if (!v) return;
+    const p = this.vm.exit();
+    this.dhud?.destroy();
+    this.dhud = null;
+    g.hud.el.style.display = '';
+    g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = true;
+    if (p) {
+      g.px = p.x;
+      g.py = p.y;
+      g.pz = p.z;
+      g.vy = 0;
+    }
+    this.net?.veh?.exited(v);
   }
   /** chamado no lugar de andar enquanto dirige um veículo fabricável */
   driveTick(dt: number): boolean {
@@ -655,14 +703,21 @@ export class Sandbox implements MundoAPI {
       onClose: () => {
         this.scr = null;
         this.hot.refresh();
-        if (p?.chest) this.builds.onChange?.('upd', p);
+        if (p?.chest || p?.furnace) this.builds.onChange?.('upd', p);
       },
       onCraft: (r) => {
         audio.coin(3);
         tap('light');
         if (r.out.startsWith('kit_')) this.toast(t('mundo.kitHint', 'Segure o kit e toque em Usar para montar o veículo'), 'good');
       },
-      onChange: () => this.hot.refresh(),
+      onChange: () => {
+        this.hot.refresh();
+        // fornalha online: cada mexida vai já (o anfitrião é quem cozinha)
+        if (p?.furnace && this.net) {
+          this.net.furnaceTouched(p);
+          this.builds.onChange?.('upd', p);
+        }
+      },
     });
   }
 
@@ -696,6 +751,7 @@ export class Sandbox implements MundoAPI {
         e.dispose(this);
       }
     }
+    this.builds.simTimers = !this.net || this.net.isHost;
     if (this.mm && this.net) {
       // online: o anfitrião simula; os outros só espelham os retratos
       const host = this.net.isHost;
@@ -960,19 +1016,28 @@ export class Sandbox implements MundoAPI {
       if (m) {
         this.g.px = m.x + 1.5;
         this.g.py = this.g.world.floorAt(this.g.px, m.y + 2, this.g.pz);
+        this.net?.dismountMirror(m);
       }
       return;
     }
     if (this.aimMob && this.mm) {
       const m = this.aimMob;
       const h = this.held();
-      if (m.tamed && m.def.ride && !h) {
-        this.mm.mount(m);
-        return;
+      // convidado: domar/dar comida/montar acontece no anfitrião
+      if (this.net && !this.net.isHost) {
+        if (m.def.kind === 'animal' && ((!h && m.tamed && m.def.ride) || (h && (m.def.tame?.food?.includes(h) || m.def.breed?.includes(h) || h === 'balde' || h === 'tesoura')))) {
+          this.net.interactMirror(m, h);
+          return;
+        }
+      } else {
+        if (m.tamed && m.def.ride && !h) {
+          if (!m.owner && this.mm.mount(m)) return;
+        } else {
+          const r = this.mm.interact(m, h || null);
+          for (let i = 0; i < r.consumed; i++) this.inv.useHeld();
+          if (r.action !== 'none') return;
+        }
       }
-      const r = this.mm.interact(m, h || null);
-      for (let i = 0; i < r.consumed; i++) this.inv.useHeld();
-      if (r.action !== 'none') return;
     }
     if (e?.interact) return e.interact(this);
     if (!p) return;
@@ -990,11 +1055,13 @@ export class Sandbox implements MundoAPI {
       if (p.crop && p.grow! >= 1) {
         for (const [id, n] of CROPS[p.crop].drop) this.give(id, n);
         this.builds.setCrop(p, '', 0);
+        this.net?.cropOp(p);
         tap('light');
       } else if (!p.crop) {
         const h = ITEM.get(this.held());
         if (h?.crop && CROPS[h.crop]) {
           this.builds.setCrop(p, h.crop, 0);
+          this.net?.cropOp(p);
           if (this.mode !== 'criativo') this.inv.useHeld();
           audio.click();
         }
@@ -1399,6 +1466,8 @@ export class Sandbox implements MundoAPI {
         if (b.off || (b.tag >= 100 && b.tag < 200)) return;
         if (Math.abs(b.x - x) < b.hx + 2.5 && Math.abs(b.z - z) < b.hz + 2.5) hit = true;
       });
+      // online: outro jogador já tem o carrinho dele aqui
+      for (const o of this.vm.list) if (Math.hypot(o.body.position.x - x, o.body.position.z - z) < 4.5) hit = true;
       if (!hit && !this.g.world.isWater(x, z)) break;
       x += Math.cos(k * 1.3) * 4;
       z += Math.sin(k * 1.3) * 4;

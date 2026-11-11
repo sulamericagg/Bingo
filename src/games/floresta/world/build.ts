@@ -348,6 +348,26 @@ export class Builds {
   }
 
   /** cultivo no canteiro: desenha a planta como outra "peça" */
+  /** relógios de fornalha/cultivo rodam aqui (false = convidado online) */
+  simTimers = true;
+  /** online: cada aparelho numera as peças numa faixa própria (sem colisão de uid) */
+  uidFrom(n: number): void {
+    this.uid = Math.max(this.uid, n);
+  }
+  /** crescimento do cultivo (desenho muda a cada 1/4) */
+  setGrow(p: Piece, grow: number): void {
+    if (!p.crop) return;
+    const g0 = p.grow ?? 0;
+    p.grow = grow;
+    if (Math.floor(g0 * 4) !== Math.floor(grow * 4)) {
+      const b = this.batches.get(CROPS[p.crop].piece);
+      const q = b?.list.find((x) => x.uid === -p.uid);
+      if (q && b) {
+        q.grow = grow;
+        b.dirty = true;
+      }
+    }
+  }
   setCrop(p: Piece, crop: string, grow: number): void {
     const old = p.crop ? CROPS[p.crop]?.piece : '';
     if (old) {
@@ -407,21 +427,12 @@ export class Builds {
 
   /** passo: fornalhas queimam, cultivos crescem, luzes nas fontes mais perto */
   update(dt: number, px: number, py: number, pz: number, dark: number): void {
-    for (const p of this.pieces) {
-      if (p.furnace && (p.furnace.inp || p.furnace.burn > 0)) p.furnace.step(dt);
-      if (p.crop && p.grow! < 1) {
-        const g0 = p.grow!;
-        p.grow = Math.min(1, g0 + dt / CROPS[p.crop].grow);
-        if (Math.floor(g0 * 4) !== Math.floor(p.grow * 4)) {
-          const b = this.batches.get(CROPS[p.crop].piece);
-          const q = b?.list.find((x) => x.uid === -p.uid);
-          if (q && b) {
-            q.grow = p.grow;
-            b.dirty = true;
-          }
-        }
+    // online: só o anfitrião anda os relógios (fornalhas/cultivos); os outros recebem o estado
+    if (this.simTimers)
+      for (const p of this.pieces) {
+        if (p.furnace && (p.furnace.inp || p.furnace.burn > 0)) p.furnace.step(dt);
+        if (p.crop && p.grow! < 1) this.setGrow(p, Math.min(1, p.grow! + dt / CROPS[p.crop].grow));
       }
-    }
     for (const b of this.batches.values()) b.flush((p) => (p.grow !== undefined && p.uid < 0 ? 0.25 + Math.floor(p.grow * 4) / 4 * 0.75 : 1));
     this.lightT -= dt;
     if (this.lightT > 0) return;

@@ -242,6 +242,13 @@ export interface MobHost {
   prepareArena?(lair: Lair): void;
   /** obstáculos sólidos (construções) — opcional */
   blocked?(x: number, z: number, y: number): boolean;
+  /** online: os outros jogadores (o anfitrião deixa chefes, projéteis e bichos domados mirarem neles) */
+  others?(): PeerView[];
+  /** online: dano (ainda SEM armadura — o aparelho dele reduz) num outro jogador */
+  hurtPeer?(id: string, dmg: number, kind: DamageKind, fromX: number, fromZ: number, knock: number, effect?: Effect, seconds?: number): void;
+}
+export interface PeerView extends PlayerView {
+  id: string;
 }
 
 export type MobSound = 'poof' | 'hit' | 'block' | 'roar' | 'flap' | 'splash' | 'spit' | 'tame' | 'love' | 'slam' | 'fire' | 'pop' | 'chirp' | 'burrow';

@@ -125,6 +125,10 @@ export class Phys {
    * Mantém o chão físico só nos pedaços em volta dos pontos ativos (jogador + toras acordadas).
    * Pedaços "volumétricos" (cavados) usam trimesh por seção, não heightfield.
    */
+  /** o próximo syncGround roda já (algo novo apareceu longe do chão físico) */
+  forceSync(): void {
+    this.lastSync = -1e9;
+  }
   syncGround(chunks: Map<string, Chunk>, pts: number[], now: number): void {
     if (now - this.lastSync < 0.25) return;
     this.lastSync = now;
