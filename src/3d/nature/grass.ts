@@ -79,6 +79,8 @@ export class GrassField {
     parent: THREE.Object3D,
     private src: GrassSource,
     q: GrassQ | null,
+    /** ajuste do jogo: câmera alta pede lâminas mais largas */
+    private look: { width?: number; height?: number } = {},
   ) {
     this.group.name = 'grass';
     parent.add(this.group);
@@ -149,7 +151,7 @@ vec3 transformed = root + vec3(perp.x * side * w + bend.x * tb * hh, hh * t * (1
     this.q = q;
     if (q) {
       const u = this.uniforms.uGrass.value;
-      u.set(q.dist, q.dist * 0.45, q.width, q.height);
+      u.set(q.dist, q.dist * 0.45, q.width * (this.look.width ?? 1), q.height * (this.look.height ?? 1));
     }
     if (same) return;
     for (const p of this.active) this.freePatch(p, true);

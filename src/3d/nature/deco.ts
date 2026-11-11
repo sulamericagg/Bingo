@@ -206,3 +206,57 @@ export function natureRock(seed = 2, moss = '#6a9a3a', mossK = 0.55): THREE.Buff
   for (let k = 0; k < u.i.length; k += 3) m.tri(u.i[k], u.i[k + 1], u.i[k + 2]);
   return m.build();
 }
+
+/**
+ * Touceira de capim alto (lâminas curvas, frente e verso), cores próprias.
+ * ~100 tri. `tip` = cor das pontas; `head` = pompom no topo (opcional).
+ */
+export function natureTuft(base = '#3f8a2e', tip = '#a8d85a', blades = 9, height = 0.85, head?: string, seed = 4): THREE.BufferGeometry {
+  const m = new Mesher();
+  const R = rng(seed);
+  const cb = new THREE.Color(base);
+  const ct = new THREE.Color(tip);
+  for (let b = 0; b < blades; b++) {
+    const a = (b / blades) * TAU + R() * 0.5;
+    const lean = 0.25 + R() * 0.35;
+    const hh = height * (0.6 + R() * 0.45);
+    const w = 0.045 + R() * 0.02;
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const px = -dz;
+    const pz = dx;
+    const ox = dx * 0.06;
+    const oz = dz * 0.06;
+    for (const back of [0, 1]) {
+      const v0 = m.nv;
+      for (let k = 0; k <= 2; k++) {
+        const t = k / 2;
+        const bend = lean * t * t * hh;
+        const cx = ox + dx * bend;
+        const cz = oz + dz * bend;
+        const cy = hh * t * (1 - 0.25 * lean * t);
+        _c.copy(cb).lerp(ct, t);
+        if (k < 2) {
+          const ww = w * (1 - t * 0.6);
+          m.vert(cx + px * ww, cy, cz + pz * ww, dx * 0.3, 1, dz * 0.3, _c.r, _c.g, _c.b);
+          m.vert(cx - px * ww, cy, cz - pz * ww, dx * 0.3, 1, dz * 0.3, _c.r, _c.g, _c.b);
+        } else m.vert(cx, cy, cz, dx * 0.3, 1, dz * 0.3, _c.r, _c.g, _c.b);
+      }
+      if (!back) {
+        m.tri(v0, v0 + 1, v0 + 3);
+        m.tri(v0, v0 + 3, v0 + 2);
+        m.tri(v0 + 2, v0 + 3, v0 + 4);
+      } else {
+        m.tri(v0, v0 + 3, v0 + 1);
+        m.tri(v0, v0 + 2, v0 + 3);
+        m.tri(v0 + 2, v0 + 4, v0 + 3);
+      }
+    }
+  }
+  if (head) {
+    const cp = canopy(0, height, 0, 0.2, 0.2, 0.2, head, new THREE.Color(head).multiplyScalar(0.7), 0.3);
+    cp.jit = 0.03;
+    blob(m, cp, 0, height * 0.95, 0, 0.13, 0.17, 0.13, 0, seed, 0.08);
+  }
+  return m.build();
+}

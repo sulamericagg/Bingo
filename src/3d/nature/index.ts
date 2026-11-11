@@ -4,7 +4,7 @@
  *  vento no shader, chão com detalhe, céu em degradê, sombras de contato.
  * ============================================================ */
 export { natureTree, type TreeKind, type TreeSpec } from './trees';
-export { natureBush, natureBerryBush, natureFern, natureFlowers, natureRock } from './deco';
+export { natureBush, natureBerryBush, natureFern, natureFlowers, natureRock, natureTuft } from './deco';
 export { GrassField, type GrassQ, type GrassSource } from './grass';
 export { groundDetail, groundDetailTexture, SkyDome, BlobShadows } from './ground';
 export { natureWind, natureMat, windTime, type WindOpts } from './wind';

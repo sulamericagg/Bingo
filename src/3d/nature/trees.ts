@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { Mesher, blob, branch, canopy, leafColor, trunk, type Canopy } from './mesher';
 import { rng } from './noise';
 
-export type TreeKind = 'oak' | 'broad' | 'blossom' | 'cloud' | 'pine' | 'snowpine' | 'birch' | 'acacia' | 'palm' | 'willow' | 'twisty';
+export type TreeKind = 'oak' | 'broad' | 'blossom' | 'cloud' | 'pine' | 'snowpine' | 'birch' | 'acacia' | 'palm' | 'willow' | 'twisty' | 'bamboo';
 
 export interface TreeSpec {
   kind: TreeKind;
@@ -54,6 +54,9 @@ export function natureTree(s: TreeSpec): THREE.BufferGeometry {
       break;
     case 'willow':
       willow(m, s, R, lod);
+      break;
+    case 'bamboo':
+      bamboo(m, s, R, lod);
       break;
     default:
       broadleaf(m, s, R, lod);
@@ -177,13 +180,43 @@ function willow(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
   const cy = h * 0.74;
   const cp = leafCp(s, top.x, h * 0.55, top.z, cw * 1.25, h * 0.38, cw * 1.25, 0.7);
   blob(m, cp, top.x, cy, top.z, cw, h * 0.18, cw, lod ? 0 : 1, R() * 10, 0.15, 0.15);
-  // cortinas pendentes ao redor
-  const n = lod ? 4 : 7;
+  // cortinas pendentes: fitas estreitas caindo em volta da copa (com frestas), frente e verso
+  const n = lod ? 7 : 12;
+  const r0 = cw * 0.9;
+  const yTop = cy - h * 0.02;
+  const tipC = new THREE.Color(s.leaf).lerp(_c.set('#fff2b0'), 0.15);
+  const half = ((Math.PI * r0) / n) * 0.62;
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + R() * 0.4;
-    const rr = cw * 0.88;
-    const len = h * (0.24 + R() * 0.08);
-    blob(m, cp, top.x + Math.cos(a) * rr, cy - len * 0.75, top.z + Math.sin(a) * rr, cw * 0.32, len, cw * 0.32, 0, R() * 10, 0.22, -0.1, a);
+    const a = (i / n) * TAU + R() * 0.25;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const tx = -sa;
+    const tz = ca;
+    const len = h * (0.34 + R() * 0.16);
+    const rm = r0 + h * 0.04;
+    const rb = r0 + h * 0.07;
+    const pts: number[][] = [
+      [ca * r0 - tx * half, yTop, sa * r0 - tz * half, 0],
+      [ca * r0 + tx * half, yTop, sa * r0 + tz * half, 0],
+      [ca * rm - tx * half * 0.8, yTop - len * 0.55, sa * rm - tz * half * 0.8, 0.5],
+      [ca * rm + tx * half * 0.8, yTop - len * 0.55, sa * rm + tz * half * 0.8, 0.5],
+      [ca * rb, yTop - len, sa * rb, 1],
+    ];
+    for (const back of [0, 1]) {
+      const base = m.nv;
+      for (const [px, py, pz, t] of pts) {
+        leafColor(cp, top.x + px, py, top.z + pz, 0.1, _c);
+        _c.lerp(tipC, t * 0.6);
+        m.vert(top.x + px, py, top.z + pz, back ? -ca : ca, 0.35, back ? -sa : sa, _c.r, _c.g, _c.b);
+      }
+      if (!back) {
+        m.quad(base + 2, base, base + 1, base + 3);
+        m.tri(base + 2, base + 3, base + 4);
+      } else {
+        m.quad(base + 2, base + 3, base + 1, base);
+        m.tri(base + 2, base + 4, base + 3);
+      }
+    }
   }
 }
 
@@ -321,6 +354,38 @@ function palm(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
     for (let i = 0; i < 2; i++) {
       const a = i * 3.1 + 0.3;
       blob(m, cp, top.x + Math.cos(a) * h * 0.025, top.y - h * 0.03, top.z + Math.sin(a) * h * 0.025, h * 0.022, h * 0.025, h * 0.022, 0, i, 0.05);
+    }
+  }
+}
+
+/* ------------------------------ bambu ------------------------------ */
+
+function bamboo(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
+  const h = s.h;
+  const n = lod ? 3 : 4;
+  const light = new THREE.Color(s.leaf);
+  const dark = new THREE.Color(s.leaf2).multiplyScalar(0.75);
+  const top = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.4;
+    const r = i === 0 ? 0 : 0.35 + (i % 2) * 0.25;
+    const hh = h * (0.72 + ((i * 37) % 10) / 36);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const at = trunk(m, { h: hh, r0: 0.12, r1: 0.09, radial: lod ? 4 : 5, rings: lod ? 2 : 3, bx: x * 0.6 + (R() - 0.5) * 0.4, bz: z * 0.6 + (R() - 0.5) * 0.4, col: s.trunk, dark: s.trunkDark, flare: 0.1, bands: !lod, y0: -0.2 });
+    // a função do tronco começa na origem: desloca os vértices recém-criados para (x,z)
+    const v1 = m.nv;
+    const v0 = v1 - ((lod ? 4 : 5) + 1) * ((lod ? 2 : 3) + 1);
+    for (let v = v0; v < v1; v++) {
+      m.pos[v * 3] += x;
+      m.pos[v * 3 + 2] += z;
+    }
+    at(1, top);
+    const nl = lod ? 2 : 3;
+    for (let k = 0; k < nl; k++) {
+      const la = a + (k / nl) * TAU + R() * 0.6;
+      const ty = top.y - (k % 2) * hh * 0.12;
+      frond(m, top.x + x, ty, top.z + z, la, 0.9 + R() * 0.5, 0.16, 1.3, light, dark, 2);
     }
   }
 }

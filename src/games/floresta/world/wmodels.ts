@@ -43,23 +43,8 @@ export function wTreeGeometry(sp: number, lod: number, lite: boolean): THREE.Buf
       }
       break;
     }
-    case 'bamboo': {
-      const n = lod ? 3 : 6;
-      for (let i = 0; i < n; i++) {
-        const a = i * 2.4;
-        const r = i === 0 ? 0 : 0.45 + (i % 2) * 0.25;
-        const hh = h * (0.75 + ((i * 37) % 10) / 40);
-        const x = Math.cos(a) * r;
-        const z = Math.sin(a) * r;
-        const seg = lod ? 2 : 4;
-        for (let k = 0; k < seg; k++) {
-          add(base.cyl, k % 2 ? s.trunk : shade(s.trunk, -0.1), mat4(x, (hh / seg) * (k + 0.5), z, 0.11, hh / seg - 0.05, 0.11));
-          if (!lod) add(base.cyl, s.trunkDark, mat4(x, (hh / seg) * (k + 1), z, 0.13, 0.05, 0.13));
-        }
-        add(base.clumpLo, i % 2 ? s.leaf : s.leaf2, mat4(x, hh, z, 0.9, 0.5, 0.9), 0.4);
-      }
-      break;
-    }
+    case 'bamboo':
+      return nt('bamboo');
     default:
       return treeGeometry(s as unknown as Species, 0, lod, lite);
   }

@@ -84,5 +84,12 @@ if (g === 'world') {
   const h = (await launch(app, () => {})) as any;
   W.game = h;
   h.startSolo();
+  if (qs.has('nx')) {
+    const p = h.sim.player(h.myId);
+    p.x = num('nx', 0);
+    p.z = num('nz', 0);
+    if (qs.has('cyaw')) h.view.camYaw = num('cyaw', 0);
+    if (qs.has('cpitch')) h.view.camPitch = num('cpitch', 0.46);
+  }
 }
 setTimeout(() => (document.title = 'ready'), 300);

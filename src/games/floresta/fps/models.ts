@@ -148,7 +148,7 @@ const base = {
   ico: new THREE.IcosahedronGeometry(1, 0),
   ico1: new THREE.IcosahedronGeometry(1, 1),
   cone: new THREE.ConeGeometry(1, 1, 7),
-  cap: new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI / 2),
+  cap: new THREE.SphereGeometry(1, 16, 6, 0, TAU, 0, Math.PI / 2),
   oct: new THREE.OctahedronGeometry(1, 0),
   box: new THREE.BoxGeometry(1, 1, 1),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 8),

@@ -12,6 +12,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
+import { BlobShadows, GrassField, groundDetail, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
   PB,
@@ -108,6 +109,31 @@ const _c2 = new THREE.Color();
 const UP = new THREE.Vector3(0, 1, 0);
 const lerpC = (a: string, b: string, k: number) => _c.set(a).lerp(_c2.set(b), k);
 const smooth = (x: number) => x * x * (3 - 2 * x);
+const _gc = new THREE.Color();
+const _gc2 = new THREE.Color();
+const TRAILS = [0.4, 2.5, 4.6];
+/** cor do chão em (x,z) e quanto cabe de grama (0 nas trilhas e no acampamento) */
+function groundColor(x: number, z: number, c: THREE.Color): number {
+  const d = Math.hypot(x, z);
+  const n = Math.sin(x * 0.13) * Math.sin(z * 0.11) * 0.5 + Math.sin(x * 0.37 + z * 0.29) * 0.25;
+  c.set('#5aa64a').lerp(_gc2.set('#3f8a40'), 0.5 + n * 0.5);
+  // manchas de capim mais claro/seco
+  const dry = Math.sin(x * 0.071 + 1.3) * Math.sin(z * 0.063 - 0.4);
+  if (dry > 0.45) c.lerp(_gc2.set('#9ab44a'), (dry - 0.45) * 0.9);
+  let k = 1;
+  const ang = Math.atan2(z, x);
+  let trail = 1e9;
+  for (const a of TRAILS) trail = Math.min(trail, Math.abs(Math.sin((ang - a) / 2)) * d);
+  if (trail < 2.2 && d > CAMP_R - 2) {
+    c.lerp(_gc2.set('#a88a5a'), 0.55 * (1 - trail / 2.2));
+    k = Math.min(k, Math.max(0, (trail - 1.1) / 1.1));
+  }
+  if (d < CAMP_R - 1) c.lerp(_gc2.set('#b8946a'), smooth(Math.min(1, (CAMP_R - 1 - d) / 4)) * 0.75);
+  if (d < CAMP_R + 1.5) k = Math.min(k, Math.max(0, (d - CAMP_R + 1) / 2.5) * 0.7);
+  if (d > 60) c.lerp(_gc2.set('#2f5a48'), Math.min(1, (d - 60) / 50) * 0.6);
+  if (d > WORLD_R) c.lerp(_gc2.set('#14222a'), 0.8);
+  return k;
+}
 
 export class View {
   renderer: THREE.WebGLRenderer;
@@ -166,6 +192,10 @@ export class View {
   private beamGeo: THREE.BufferGeometry;
   private beamMat = new THREE.MeshBasicMaterial({ color: '#fff6c0', transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   private tierNow: Tier;
+  /** grama de lâminas (canteiros em volta da câmera) */
+  private grass: GrassField;
+  private blobs: BlobShadows;
+  private treeMat = natureMat({ amp: 0.004, y0: 1, rustle: 0.03 });
 
   constructor(
     private wrap: HTMLElement,
@@ -236,7 +266,7 @@ export class View {
     this.ground = this.buildGround();
     sc.add(this.ground);
     // muralha de árvores escuras
-    const wall = new THREE.InstancedMesh(wallTreeGeo(), vcMat(), 220);
+    const wall = new THREE.InstancedMesh(wallTreeGeo(), this.treeMat, 220);
     for (let i = 0; i < 220; i++) {
       const a = (i / 220) * TAU + Math.sin(i * 7.1) * 0.01;
       const d = WORLD_R + 3 + (i % 3) * 3.5;
@@ -249,7 +279,7 @@ export class View {
     const W = sim.w;
     for (let k = 0; k < 4; k++) {
       const n = W.trees.filter((t) => t.k === k).length;
-      const im = new THREE.InstancedMesh(treeGeo(k as TK, tier <= 1 ? 1 : 0), vcMat(), Math.max(1, n));
+      const im = new THREE.InstancedMesh(treeGeo(k as TK, tier === 0 ? 1 : 0), this.treeMat, Math.max(1, n));
       im.count = 0;
       im.frustumCulled = false;
       sc.add(im);
@@ -274,7 +304,10 @@ export class View {
       sc.add(im);
       this.chests.push(im);
     }
-    if (this.q.deco) sc.add(this.buildDeco(this.q.deco));
+    // grama de lâminas na GPU (nível Mínimo: só o chão texturizado) + sombras de contato
+    const nq = natureQ(tier);
+    this.grass = new GrassField(sc, this.grassSrc, nq.grass, { width: 1.7, height: 1.1 });
+    this.blobs = new BlobShadows(sc, 256, nq.blobAlpha);
 
     // fogueira
     this.fireBase = new THREE.Mesh(fireBaseGeo(false, false), vcMat());
@@ -377,39 +410,33 @@ export class View {
       const x = pa.getX(i);
       const z = pa.getZ(i);
       const d = Math.hypot(x, z);
-      const n = Math.sin(x * 0.13) * Math.sin(z * 0.11) * 0.5 + Math.sin(x * 0.37 + z * 0.29) * 0.25;
-      c.set('#5aa64a').lerp(_c2.set('#3f8a40'), 0.5 + n * 0.5);
-      const ang = Math.atan2(z, x);
-      const trail = Math.min(...[0.4, 2.5, 4.6].map((a) => Math.abs(Math.sin((ang - a) / 2)))) * d;
-      if (trail < 2.2 && d > CAMP_R - 2) c.lerp(_c2.set('#a88a5a'), 0.55 * (1 - trail / 2.2));
-      if (d < CAMP_R - 1) c.lerp(_c2.set('#b8946a'), smooth(Math.min(1, (CAMP_R - 1 - d) / 4)) * 0.75);
-      if (d > 60) c.lerp(_c2.set('#2f5a48'), Math.min(1, (d - 60) / 50) * 0.6);
-      if (d > WORLD_R) c.lerp(_c2.set('#14222a'), 0.8);
+      groundColor(x, z, c);
       col.push(c.r, c.g, c.b);
       pa.setY(i, d > WORLD_R + 2 ? (d - WORLD_R - 2) * 0.25 : this.sim.w.height(x, z));
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
-    return new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const gm = new THREE.MeshLambertMaterial({ vertexColors: true });
+    groundDetail(gm, { amount: 0.42, scale: 0.55, macro: this.tierNow >= 1 });
+    return new THREE.Mesh(g, gm);
   }
 
-  private buildDeco(n: number): THREE.InstancedMesh {
-    const b = new PB();
-    for (let i = 0; i < 4; i++) b.add(G.cone5, i % 2 ? '#6ab84a' : '#4e9a3c', Math.cos(i * 1.7) * 0.12, 0.18, Math.sin(i * 1.7) * 0.12, 0.08, 0.36, 0.08, Math.cos(i) * 0.3, 0, Math.sin(i) * 0.3);
-    const im = new THREE.InstancedMesh(b.geo(), vcMat(), n);
-    let k = 0;
-    for (let i = 0; i < n * 3 && k < n; i++) {
-      const a = Math.random() * TAU;
-      const d = 3 + Math.sqrt(Math.random()) * 95;
-      const x = Math.cos(a) * d;
-      const z = Math.sin(a) * d;
-      if (d < CAMP_R - 2 && Math.random() < 0.7) continue;
-      const s = 0.7 + Math.random() * 0.9;
-      im.setMatrixAt(k++, _m.compose(_v.set(x, this.sim.w.height(x, z), z), _q.setFromAxisAngle(UP, Math.random() * TAU), _s.set(s, s, s)));
-    }
-    im.count = k;
-    return im;
-  }
+  /** fonte da grama: cor do chão; nada no acampamento, nas trilhas, fora do mapa nem sob construções */
+  private grassSrc: GrassSource = {
+    height: (x, z) => this.sim.w.height(x, z),
+    cell: (x, z, out) => {
+      const d = Math.hypot(x, z);
+      if (d > WORLD_R - 1) return 0;
+      const k = groundColor(x, z, _gc);
+      if (k <= 0.02) return 0;
+      for (const st of this.sim.structs) if (Math.abs(st.x - x) < 1.6 && Math.abs(st.z - z) < 1.6) return 0;
+      out[0] = _gc.r;
+      out[1] = _gc.g;
+      out[2] = _gc.b;
+      out[3] = 0.85 + Math.sin(x * 0.21 + z * 0.17) * 0.15;
+      return k;
+    },
+  };
 
   setTier(tier: Tier): void {
     if (tier === this.tierNow) return;
@@ -418,6 +445,9 @@ export class View {
     this.q = { ...vq(tier), lights: old.lights, spot: old.spot, deco: old.deco };
     this.renderer.setPixelRatio(this.q.pr);
     this.parts.budget = this.embers.budget = this.q.particles;
+    const nq = natureQ(tier);
+    this.grass.setQuality(nq.grass);
+    this.blobs.opacity = nq.blobAlpha;
     this.lastBuild.x = 1e9;
   }
 
@@ -438,11 +468,13 @@ export class View {
     const cnt = [0, 0, 0, 0];
     this.treeIdx.forEach((a) => (a.length = 0));
     let st = 0;
+    this.blobs.begin();
     W.trees.forEach((t, i) => {
       const dx = t.x - cx;
       const dz = t.z - cz;
       if (dx * dx + dz * dz > D2) return;
       const ty = W.height(t.x, t.z) - 0.15;
+      if (!s.treeT[i] && dx * dx + dz * dz < 45 * 45) this.blobs.push(t.x, ty + 0.15, t.z, t.s * (t.k === TK.Pine ? 1.25 : 1.55));
       _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.set(t.s, t.s, t.s));
       if (s.treeT[i]) {
         this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.setScalar(t.s * 0.9)));
@@ -457,6 +489,7 @@ export class View {
     });
     this.stumps.count = st;
     this.stumps.instanceMatrix.needsUpdate = true;
+    this.blobs.end();
     const nc = new Array(this.nodes.length).fill(0);
     W.nodes.forEach((n, i) => {
       if (s.nodeT[i]) return;
@@ -785,7 +818,9 @@ export class View {
     if (lb.verS !== s.verStruct) {
       lb.verS = s.verStruct;
       this.syncStructs();
+      this.grass.invalidateAll();
     }
+    this.grass.update(camX, 0, camZ, me ? me.x : 0, me ? me.z : 0, me ? 0.7 : 0);
     // árvores tremendo
     for (const [i, t] of this.shake) {
       const tr = s.w.trees[i];
@@ -1051,6 +1086,8 @@ export class View {
   }
 
   destroy(): void {
+    this.grass.dispose();
+    this.blobs.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose?.();

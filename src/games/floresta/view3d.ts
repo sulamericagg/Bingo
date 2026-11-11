@@ -23,7 +23,10 @@ import { flIcon } from './icons';
 import type { View } from './game';
 import { createLook, type LookDrag } from '../../ui/touch';
 import { guideStep } from './guide';
-import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundH } from './fps/terrain';
+import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundColorAt, groundH } from './fps/terrain';
+import { BlobShadows, GrassField, groundDetail, natureQ } from '../../3d/nature';
+
+const _gc = new THREE.Color();
 import {
   INK, addWind, windTime, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
   myHandColors, steeringWheel, stumpGeometry, toolModel, treeGeometry, vehicleModel, type VehModel,
@@ -378,7 +381,20 @@ class View3D implements View {
 
     this.buildSky();
     this.buildLights();
-    buildGroundMeshes(this.scene, this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+    const gm = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    groundDetail(gm, { amount: 0.4, scale: 0.6, macro: tier >= 1 });
+    buildGroundMeshes(this.scene, gm);
+    // grama de lâminas na GPU (Mínimo: só o chão texturizado) + sombras de contato sob as árvores
+    const nq = natureQ(tier);
+    this.grass = new GrassField(this.scene, { height: groundH, cell: (x, z, out) => {
+      const k = groundColorAt(x, z, _gc);
+      out[0] = _gc.r;
+      out[1] = _gc.g;
+      out[2] = _gc.b;
+      out[3] = 1;
+      return k;
+    } }, nq.grass);
+    this.blobs = new BlobShadows(this.scene, 128, nq.blobAlpha);
     this.buildTrees();
     this.buildDeco();
     this.buildLogs();
@@ -2003,6 +2019,13 @@ class View3D implements View {
 
   private dprCap = 2;
   private resK = 1;
+  private grass!: GrassField;
+  private blobs!: BlobShadows;
+  setTier(tier: Tier): void {
+    const nq = natureQ(tier);
+    this.grass.setQuality(nq.grass);
+    this.blobs.opacity = nq.blobAlpha;
+  }
   setQuality(q: QualitySettings): void {
     this.dprCap = q.dprCap;
     this.renderer.setPixelRatio(Math.min(this.q.pr, q.dprCap) * this.resK);
@@ -2691,6 +2714,8 @@ class View3D implements View {
     if (m.swing > this.prevSwing + 0.5 && m.target < 0 && sim.input.chop) this.shake = Math.max(this.shake, 0.02);
     this.prevSwing = m.swing;
 
+    // grama (canteiros em volta da câmera; o jogador amassa)
+    this.grass.update(this.cam.position.x, this.cam.position.y, this.cam.position.z, m.x, m.z, this.driving ? 2.2 : 0.7);
     // árvores (instâncias)
     this.syncTrees(dt);
     this.syncLogs(dt);
@@ -2748,6 +2773,7 @@ class View3D implements View {
     for (const im of this.treeInst.values()) im.count = 0;
     let ns = 0;
     let nn = 0;
+    this.blobs.begin();
     for (let i = 0; i < sim.trees.length; i++) {
       const tr = sim.trees[i];
       const v = this.tv[i];
@@ -2803,7 +2829,9 @@ class View3D implements View {
       _m.compose(_v.set(tr.x, v.gy - 0.05, tr.z), _q, _s.set(s, s, s));
       const im = this.instFor(tr.sp, tr.rare);
       if (im.count < im.instanceMatrix.count) im.setMatrixAt(im.count++, _m);
+      if (st !== TS.Falling && Math.abs(tr.x - cx) < 45) this.blobs.push(tr.x, v.gy, tr.z, SPECIES[tr.sp].h * s * (SPECIES[tr.sp].shape === 'pine' ? 0.27 : 0.34));
     }
+    this.blobs.end();
     // só a parte usada vai para a GPU (o buffer tem lugar para todas as árvores da espécie)
     for (const im of this.treeInst.values()) dirtyRange(im.instanceMatrix, im.count * 16);
     this.stumps.count = ns;
@@ -3074,6 +3102,8 @@ class View3D implements View {
 
   destroy(): void {
     if (this.warm) clearTimeout(this.warm);
+    this.grass.dispose();
+    this.blobs.dispose();
     for (const f of this.offs) f();
     this.sim.groundY = null;
     this.ui.remove();
