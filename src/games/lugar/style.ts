@@ -18,7 +18,7 @@ const CSS = `
 .lg-row{display:flex;gap:8px;align-items:center;justify-content:center;width:100%}
 .lg-ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px calc(env(safe-area-inset-bottom,0px) + 18px);overflow-y:auto;touch-action:pan-y;animation:lgFade .22s;z-index:5}
 .lg-ov>*{flex-shrink:0;max-width:440px}
-.lg-ov.lg-center{justify-content:center}
+.lg-ov.lg-center>:first-child,.lg-mapov>:first-child{margin-top:auto}.lg-ov.lg-center>:last-child,.lg-mapov>:last-child{margin-bottom:auto}
 .lg-ov.lg-dim{background:rgba(20,6,52,.8);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);z-index:30}
 @keyframes lgFade{from{opacity:0}}
 .lg-logo{font-size:44px;font-weight:700;line-height:1;text-align:center;letter-spacing:.5px}
@@ -92,8 +92,8 @@ const CSS = `
 .lg-nstars i{width:13px;height:13px;background:#5a4a80;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);}
 .lg-nstars i.on{background:#ffcf2e}
 .lg-chnav{width:min(440px,100%)}
-.lg-mapov{justify-content:center}
-.lg-node .lg-me{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);pointer-events:none;animation:lgHop 1.6s cubic-bezier(.3,0,.3,1) infinite}
+.lg-node .lg-me{position:absolute;left:50%;top:50%;margin:-16px 0 0 -28px;pointer-events:none;animation:lgHop 1.6s cubic-bezier(.3,0,.3,1) infinite}
+.lg-root .lg-node.cur b{position:absolute;bottom:-12px;font-size:14px;min-width:28px;height:22px;border-radius:11px;background:#fff;color:#2a0b5c;-webkit-text-stroke:0;border:2.5px solid #1d0b48;display:flex;align-items:center;justify-content:center;padding:0 5px;z-index:2}
 .lg-map::before{content:'';position:absolute;inset:31px 12%;border:5px dashed rgba(255,255,255,.55);border-radius:40px;pointer-events:none}
 .lg-regs{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;max-width:100%}
 .lg-regs i{width:16px;height:16px;border-radius:6px;border:2.5px solid #1d0b48;opacity:.45;transform:scale(.85);transition:transform .25s cubic-bezier(.2,1.6,.4,1),opacity .2s}
@@ -186,7 +186,6 @@ const CSS = `
   .lg-card,.lg-modes,.lg-play-btn,.lg-home .lg-row,.lg-home .lg-ghost,.lg-maphead,.lg-mapwrap,.lg-chnav{width:min(560px,100%)}
   .lg-root .lg-node{width:78px;height:78px;font-size:25px}
   .lg-map::before{inset:39px 12%}
-  .lg-node .lg-me{bottom:68px}
   .lg-regs i{width:20px;height:20px}
   .lg-ttl b{font-size:28px}
   .lg-tool span{width:72px;height:64px}

@@ -289,7 +289,7 @@ class LugarGame implements MiniGameHandle {
     this.popBack = pushBack(() => this.home());
     const cur = d.querySelector('.lg-node.cur');
     if (cur) {
-      const me = this.bloopImg(15, 'happy');
+      const me = this.bloopImg(17, 'happy');
       me.classList.add('lg-me');
       cur.appendChild(me);
       cur.scrollIntoView({ block: 'center' });
