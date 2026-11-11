@@ -20,6 +20,7 @@ import { drawBloopHat } from './hangar';
 import { vIcon } from './icons';
 import { CODE_OK, type FlightNet, type Me, type NetMsg } from './net';
 import { speak } from './voice';
+import { bloopLink, drawBloopQr, scanBloopLink } from '../../ui/scan';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -120,9 +121,10 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
   el.innerHTML = `<div class="vr-in">
     <header class="vh-top"><button class="vh-icb" data-x aria-label="${esc(t('voo.hg.exit', 'Sair'))}">${vIcon('close', 30)}</button>
       <div class="vh-ttl"><b>${esc(t('voo.hg.friends', 'Voar com amigos'))}</b><small>${esc(t('voo.r.sub', 'Até 4 no mesmo avião. Lugar vazio vira ajudante.'))}</small></div></header>
-    <div class="vr-code"><small>${esc(t('voo.r.code', 'CÓDIGO'))}</small><b>${net.code.split('').map((c) => `<i>${c}</i>`).join('')}</b><button class="vr-share" data-share aria-label="${esc(t('voo.r.share', 'Mandar código'))}">${icon('link', { size: 26 })}<span>${esc(t('voo.r.share', 'Mandar código'))}</span></button></div>
+    <div class="vr-code"><small>${esc(t('voo.r.code', 'CÓDIGO'))}</small><b>${net.code.split('').map((c) => `<i>${c}</i>`).join('')}</b><button class="vr-qr" data-qr aria-label="${esc(t('voo.r.qr', 'QR para escanear'))}"><canvas></canvas></button></div>
     <div class="vr-seats"></div>
     <div class="vr-friends"><div class="vh-lbl">${esc(t('voo.r.call', 'Chamar amigos'))}</div><div class="vr-flist"><div class="vr-note">${esc(t('voo.r.loading', 'Procurando amigos online…'))}</div></div></div>
+    <button class="vr-scan" data-scan>${icon('camera', { size: 30 })}<span><b>${esc(t('voo.r.scan', 'Escanear'))}</b><small>${esc(t('voo.r.scanSub', 'Aponte para o QR do amigo e entre na sala dele'))}</small></span></button>
     <form class="vr-join" data-joinf><span>${vIcon('plane', 22)}${esc(t('voo.r.haveCode', 'Tem um código?'))}</span><input maxlength="5" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC23" aria-label="${esc(t('voo.r.code', 'CÓDIGO'))}"><button class="vr-jbtn" type="submit">${esc(t('voo.r.join', 'Entrar'))}</button></form>
     <div class="vr-foot"><div class="vr-status"></div><button class="vh-fly vr-main" data-main><span class="vh-flyi">${vIcon(host ? 'plane' : 'check', 36)}</span><span class="vh-flyt"><b></b><small></small></span></button></div>
   </div>`;
@@ -132,7 +134,25 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
   const statusEl = el.querySelector('.vr-status') as HTMLElement;
   const mainB = el.querySelector('[data-main] b') as HTMLElement;
   const mainS = el.querySelector('[data-main] small') as HTMLElement;
-  if (!host) (el.querySelector('.vr-join') as HTMLElement).style.display = 'none';
+  if (!host) {
+    (el.querySelector('.vr-join') as HTMLElement).style.display = 'none';
+    (el.querySelector('.vr-scan') as HTMLElement).style.display = 'none';
+  }
+  // QR da sala (estilo Bloop): quem escaneia entra direto
+  const link = bloopLink('voo', net.code);
+  void drawBloopQr(el.querySelector('.vr-qr canvas') as HTMLCanvasElement, link, 76).catch(() => {});
+  const bigQr = () => {
+    const d = document.createElement('div');
+    d.className = 'vr-qrbig';
+    d.innerHTML = `<div class="card"><canvas></canvas><b>${net.code.split('').map((c) => `<i>${c}</i>`).join('')}</b><p>${esc(t('voo.r.qrHint', 'Seu amigo toca em Escanear e aponta a câmera aqui.'))}</p><div class="acts"><button class="vr-share" data-share>${icon('link', { size: 22 })}<span>${esc(t('voo.r.share', 'Mandar código'))}</span></button><button class="vr-jbtn" data-close>${esc(t('voo.r.ok', 'OK'))}</button></div></div>`;
+    el.appendChild(d);
+    void drawBloopQr(d.querySelector('canvas')!, link, Math.min(280, Math.round(Math.min(innerWidth, innerHeight) * 0.62))).catch(() => {});
+    d.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (b?.dataset.share !== undefined) return void share();
+      if (e.target === d || b?.dataset.close !== undefined) d.remove();
+    });
+  };
 
   const mySeat = () => seats.findIndex((s) => s.id === me.id);
   const humans = () => seats.filter((s) => s.id).length;
@@ -326,14 +346,14 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
     const txt = t('voo.r.shareTxt', 'Vem voar comigo no Pouso Forçado (Bloop World)! Código: {c}', { c: net.code });
     try {
       if (navigator.share) {
-        await navigator.share({ text: txt });
+        await navigator.share({ text: txt, url: link });
         return;
       }
     } catch {
       /* cancelou */
     }
     try {
-      await navigator.clipboard.writeText(txt);
+      await navigator.clipboard.writeText(txt + " " + link);
       notify(t('voo.r.copied', 'Código copiado!'), { icon: 'check', kind: 'good' });
     } catch {
       notify(net.code, { icon: 'link' });
@@ -346,6 +366,12 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
     audio.click();
     if (b.dataset.x !== undefined) return finish({ kind: 'exit' });
     if (b.dataset.share !== undefined) return void share();
+    if (b.dataset.qr !== undefined) return bigQr();
+    if (b.dataset.scan !== undefined) {
+      const l = await scanBloopLink({ types: ['voo'], title: t('voo.r.scan', 'Escanear'), hint: t('voo.r.scanHint', 'Aponte para o QR da sala do amigo') });
+      if (l && !closed && l.code !== net.code) finish({ kind: 'join', code: l.code });
+      return;
+    }
     if (b.dataset.r !== undefined) {
       const r = +b.dataset.r;
       if (seats[r].id) return;

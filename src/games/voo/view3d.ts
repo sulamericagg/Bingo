@@ -517,7 +517,7 @@ export class View3D {
     this.ch = h;
     for (const c of [this.cam, this.wcam]) {
       c.aspect = w / h;
-      c.fov = w < h ? 82 : 70;
+      c.fov = w < h ? 84 : 76;
       c.updateProjectionMatrix();
     }
     for (const p of [this.lights, this.papi]) ((p.material as THREE.ShaderMaterial).uniforms.pr.value = this.q.pr * (h / 400));
@@ -811,7 +811,8 @@ export class View3D {
     if (seated !== this.wasSeated) {
       this.wasSeated = seated;
       this.yaw = Math.PI;
-      this.pitch = seated ? -0.36 : -0.05;
+      // sentado: horizonte a ~40% do topo, pista visível na final e o painel embaixo
+      this.pitch = seated ? -0.15 : -0.05;
     }
     this.yaw -= look.x;
     this.pitch = clamp(this.pitch - look.y, -1.2, 1.1);
@@ -833,7 +834,7 @@ export class View3D {
     const shx = (Math.random() - 0.5) * this.shake * 0.06;
     const air = s.flying ? 1 + s.turb * 5 : 0.2;
     const shy = (Math.random() - 0.5) * this.shake * 0.06 + (Math.sin(this.t * 1.3) * 0.006 + Math.sin(this.t * 3.1) * 0.0025) * air;
-    if (seated) cam.position.set(SPOTS.pilot.x, 1.34, SPOTS.pilot.z + 0.05);
+    if (seated) cam.position.set(SPOTS.pilot.x, 1.5, SPOTS.pilot.z - 0.02);
     else cam.position.set(me.x, EYE + bob - stun * 0.55, me.z);
     cam.position.x += shx;
     cam.position.y += shy;

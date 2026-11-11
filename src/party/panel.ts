@@ -71,7 +71,10 @@ export function openSquadPanel(focus: 'invite' | 'chat' = 'invite'): void {
           toast(t('friends.offline', 'Sem conexão. Tente de novo.'), 'refresh');
         }
       };
-      s.body.append(p, c);
+      // entrar num grupo pelo QR do amigo
+      const sc = btn(t('scan.title', 'Escanear'), 'camera', 'ghost wide');
+      sc.onclick = () => void scanGroup();
+      s.body.append(p, c, sc);
       inviteList(s.body, null);
       return;
     }
@@ -253,6 +256,15 @@ function inviteList(body: HTMLElement, members: string[] | null): void {
   void refreshFriendsNow().then(() => box.isConnected && fill());
 }
 
+/** lê o QR do grupo de um amigo e entra (aceita também QR de sala/amigo e leva para o lugar certo) */
+async function scanGroup(): Promise<void> {
+  const { scanBloopLink } = await import('../ui/scan');
+  const l = await scanBloopLink({ title: t('scan.title', 'Escanear'), hint: t('sq.scan.hint', 'Aponte para o QR do grupo do seu amigo') });
+  if (!l) return;
+  const { openBloopLink } = await import('../ui/links');
+  await openBloopLink(l);
+}
+
 async function openGroupQr(): Promise<void> {
   const link = squadLink();
   if (!link) return;
@@ -260,8 +272,8 @@ async function openGroupQr(): Promise<void> {
   s.body.innerHTML = `<div class="fr-qr"><canvas></canvas><p class="sc-note"></p><div class="fr-qr-acts"></div></div>`;
   (s.body.querySelector('.sc-note') as HTMLElement).textContent = t('sq.qr.hint', 'Quem escanear entra direto no seu grupo. Mande só para amigos!');
   try {
-    const QR = await import('qrcode');
-    await QR.toCanvas(s.body.querySelector('canvas')!, link, { width: 220, margin: 2, color: { dark: '#1a0b3d', light: '#ffffff' } });
+    const { drawBloopQr } = await import('../ui/scan');
+    await drawBloopQr(s.body.querySelector('canvas')!, link, 230);
   } catch {
     /* sem QR: fica o link */
   }

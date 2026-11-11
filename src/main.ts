@@ -48,6 +48,7 @@ import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { openFriendLink, registerSocial } from './social/register';
 import { openSquadLink, registerParty } from './party/register';
+import { openVooLink } from './ui/links';
 import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
 import { registerMirror } from './mirror/register';
@@ -181,8 +182,9 @@ async function boot(): Promise<void> {
     document.querySelector('.ob-root')?.remove();
   }
   // link/QR de amigo (?amigo=<@>) — abre Amigos com o @ preenchido
-  openFriendLink(location.href) || openSquadLink(location.href);
-  if (isNative) App.addListener('appUrlOpen', (e) => void (openFriendLink(e.url) || openSquadLink(e.url)));
+  // ?voo=<código> (QR da sala do Pouso Forçado) abre o jogo já entrando na sala
+  openFriendLink(location.href) || openSquadLink(location.href) || openVooLink(location.href);
+  if (isNative) App.addListener('appUrlOpen', (e) => void (openFriendLink(e.url) || openSquadLink(e.url) || openVooLink(e.url)));
   initAds();
   initBilling();
   registerPass();
