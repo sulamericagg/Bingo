@@ -106,6 +106,11 @@ const CREATURES: Record<string, { id: string; name: string }> = {
   peixe: { id: 's02-epic', name: 'Lantejoula' },
 };
 
+/** nome de um personagem do elenco (para os roteiros parametrizados) */
+export function castName(id: string): string {
+  return CREATURES[id]?.name ?? FILM_CAST[id]?.name ?? PRESETS.find((x) => x.id === id)?.name ?? id;
+}
+
 const clone = <T>(o: T): T => JSON.parse(JSON.stringify(o)) as T;
 
 function castMember(ref: CastRef, id: string): CastMember {

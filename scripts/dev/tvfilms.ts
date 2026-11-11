@@ -57,10 +57,10 @@ if (qs.get('f')) {
 } else if (qs.get('thumb')) {
   const id = qs.get('thumb')!;
   const r = await renderer(id);
-  const { d, c, x } = canvas(320, 180);
+  const { d, c, x } = canvas(256, 144);
   app.appendChild(d);
   r.draw(x, c.width, c.height, thumbTime(r.p), { ...opts, watermark: false });
-  (window as unknown as { __thumb: string }).__thumb = c.toDataURL('image/webp', 0.8);
+  (window as unknown as { __thumb: string }).__thumb = c.toDataURL('image/webp', 0.78);
 } else {
   const k = +(qs.get('k') || 0.5);
   const from = +(qs.get('from') || 0);

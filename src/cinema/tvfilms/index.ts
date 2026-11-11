@@ -16,8 +16,9 @@ import { FAZENDA } from './films-fazenda';
 import { FESTA } from './films-festa';
 import { AMIZADE } from './films-amizade';
 import { TUTORIAL } from './films-tutorial';
+import { VARIATIONS } from './variations';
 
-export const SPECS: FilmSpec[] = [...TUTORIAL, ...COMEDIA, ...AVENTURA, ...MISTERIO, ...ESCOLA, ...ESPORTE, ...ESPACO, ...FAZENDA, ...FESTA, ...AMIZADE];
+export const SPECS: FilmSpec[] = [...TUTORIAL, ...COMEDIA, ...AVENTURA, ...MISTERIO, ...ESCOLA, ...ESPORTE, ...ESPACO, ...FAZENDA, ...FESTA, ...AMIZADE, ...VARIATIONS];
 
 const BGS = new Set(['bedroom', 'classroom', 'park', 'beach', 'kitchen', 'space', 'castle', 'street', 'stage', 'forest', 'underwater', 'snow', 'desert', 'candy', 'haunted', 'rooftop']);
 const words = (s: string) => new Set(s.toLowerCase().normalize('NFD').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w.length > 3));

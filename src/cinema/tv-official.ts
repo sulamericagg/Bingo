@@ -53,7 +53,9 @@ export function thumbTime(p: Project): number {
     const c = r.shot.cam[0];
     const n = r.shot.actors.length;
     const wide = !c?.focus || c.p3 === 'ots';
-    const mid = r.start + r.shot.dur * 0.6;
+    const ln = r.shot.lines[0];
+    // balão já escrito por inteiro (o texto aparece aos poucos)
+    const mid = r.start + (ln ? Math.min(r.shot.dur - 0.1, ln.t + ln.dur * 0.92) : r.shot.dur * 0.6);
     const s = (wide ? 3 : 0) + Math.min(3, n) * 2 - Math.abs(mid / total - 0.4) * 6 + (r.shot.transition.kind === 'cut' ? 0.5 : 0);
     if (s > score) {
       score = s;
