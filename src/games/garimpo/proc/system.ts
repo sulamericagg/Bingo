@@ -486,7 +486,6 @@ export class ProcSystem {
         }
       if (!this.g.guest) tl.g = gsum;
       tl.badge.set('≈ ' + fmtG(tl.g) + ' g');
-      tl.badge.sprite.visible = tl.g > 0.05;
     }
   }
 
@@ -495,6 +494,13 @@ export class ProcSystem {
     const g = this.g;
     const spin = g.plantSpinK;
     this.badge.set(Math.round(this.totalRec() * 100) + '%');
+    const cp = g.w!.camera.position;
+    this.badge.sprite.visible = !g.inMine;
+    this.badge.near(cp, 90);
+    for (const tl of this.tails) {
+      tl.badge.sprite.visible = tl.g > 0.05;
+      tl.badge.near(cp, 45);
+    }
     const P = this.parts;
     if (P.runs) for (const wm of P.runs.waters) (wm.material as THREE.MeshPhongMaterial).map!.offset.y -= dt * (0.4 + spin * 1.6);
     if (P.shaker) {

@@ -97,6 +97,8 @@ const GOLD_RES = [0.45, 0.22, 0.1, 0.04];
 const STRAT_K = [1.9, 1.35, 1.1, 1.0];
 const RED = [1.12, 0.98, 0.92, 0.88];
 const LIGHT_DONE = [0.14, 0.08, 0.06, 0.05];
+/** quanto o vermelho derruba tudo */
+const OVER_K = [1.5, 4, 6, 7];
 
 const STAGES: (keyof typeof PIC)[] = ['sieve', 'pan', 'tilt', 'vial'];
 
@@ -547,11 +549,11 @@ export class PanGame {
       // estratificação: girando, cada um vai para sua camada (o pesado afunda)
       let st = this.pst[i];
       if (black && t === BS) st = 0.5;
-      this.ps[i] = s + (st - s) * Math.min(1, dt * sk * (swirlE * 1.4 + (sub > 0.5 ? 0.05 : 0)));
+      this.ps[i] = s + (st - s) * Math.min(1, dt * sk * (swirlE * 0.6 + (sub > 0.5 ? 0.03 : 0)));
       // lavar fluidiza: o leve que ficou embaixo mistura um pouco
       if (washing && t <= SD) this.ps[i] += (0.55 - this.ps[i]) * dt * 0.12 * tl;
       // cone: o pesado escorrega para o centro; o leve flutua
-      const kb = (0.25 + hv * 1.6) * sub;
+      const kb = (0.25 + hv * 1.6) * sub * (1 - Math.min(0.7, tl * 0.45));
       let ax = -x * kb;
       let ay = -y * kb;
       // água girando arrasta (mais o leve, mais quem está em cima)
@@ -592,6 +594,9 @@ export class PanGame {
       if (tl > 0.02) {
         let m = MOB[t] * (0.15 + 0.85 * this.ps[i]);
         if (t >= AU) m *= 1 - GOLD_RES[diff];
+        // passou do vermelho: tudo escorrega (o ouro também)
+        const over = tl - RED[diff];
+        if (over > 0) m += over * OVER_K[diff];
         ax += tl * 3.2 * m;
         ay -= y * tl * 0.6 * m;
       }
@@ -1010,13 +1015,6 @@ export class PanGame {
       this.pour();
     } else if (ph === P_DIP && this.sub === 0) {
       // toque também afunda (criança pequena)
-    } else if (ph >= P_SWIRL && ph <= P_WASH) {
-      const i = this.hit(p[0], p[1], false);
-      if (i >= 0 && this.pt[i] === RK) {
-        this.flick(i, 4, -2);
-        this.pid = -1;
-        this.down = false;
-      }
     } else if (ph === P_PICK) {
       this.pickArm = true;
       this.suck(p[0], p[1]);
@@ -1100,6 +1098,11 @@ export class PanGame {
     }
     if (ph === P_DIP && this.sub === 0 && quick) this.dip();
     if (ph === P_WASH) this.tiltIn = 0;
+    if ((ph === P_SWIRL || ph === P_WASH) && quick) {
+      // toque numa pedra: tira com a mão
+      const i = this.hit(p[0], p[1], false);
+      if (i >= 0 && this.pt[i] === RK) this.flick(i, 4, -2);
+    }
     if (ph === P_PICK && quick) {
       const i = this.hit(p[0], p[1], false);
       if (i >= 0 && this.pt[i] >= AU) this.toVial(i);
@@ -1408,6 +1411,8 @@ export class PanGame {
       const sp = this.spr[t][this.pv[i]];
       // mais fundo = um pouco mais escuro (água por cima)
       x.globalAlpha = sub > 0 ? 0.72 + this.ps[i] * 0.28 : 1;
+      // ouro ainda sujo de barro no começo: aparece de verdade só no fim (a revelação)
+      if (t >= AU && ph < P_PICK) x.globalAlpha *= t === NG ? 0.8 : ph === P_BLACK ? 0.35 + this.prog * 0.65 : 0.3;
       x.drawImage(sp, sx - (sp.width * sc) / 2, sy - (sp.height * sc) / 2, sp.width * sc, sp.height * sc);
     }
     x.globalAlpha = 1;
@@ -1592,7 +1597,7 @@ export class PanGame {
           // ainda no balde: monte de terra/concentrado dentro
           const an = i * 2.399;
           const d = Math.sqrt((i % 23) / 23) * this.bkR * 0.62;
-          x.globalAlpha = 1;
+          x.globalAlpha = t >= AU ? 0.3 : 1;
           x.drawImage(sp, this.bkx + Math.cos(an) * d - sp.width / 2, this.bky + Math.sin(an) * d - sp.height / 2);
           continue;
         }

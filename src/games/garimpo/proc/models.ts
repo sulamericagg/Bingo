@@ -263,9 +263,15 @@ export class Badge {
     this.cv.height = 96;
     this.tex = new THREE.CanvasTexture(this.cv);
     this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, transparent: true, depthWrite: false, fog: false }));
-    this.sprite.scale.set(w, w * 0.375, 1);
+    // tamanho fixo na tela (legível de longe, não cobre a tela de perto)
+    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, transparent: true, depthWrite: false, fog: false, sizeAttenuation: false }));
+    this.sprite.scale.set(w * 0.06, w * 0.06 * 0.375, 1);
     this.sprite.renderOrder = 15;
+  }
+  /** some colada na câmera e longe demais */
+  near(cam: THREE.Vector3, max: number): void {
+    const d = cam.distanceTo(this.sprite.position);
+    this.sprite.visible = this.sprite.visible && d > 4 && d < max;
   }
   set(text: string): void {
     if (text === this.key) return;
