@@ -58,11 +58,13 @@ export class WorldHud {
     el.className = 'fw-hud';
     el.innerHTML = `
       <div class="fw-top">
+        <div class="fw-left">
         <button class="fl-btn round red" data-tap="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 22)}</button>
         <div class="fl-pill">${flIcon('acorn', 22)}<span data-v="coins">0</span></div>
         <div class="fl-pill">${flIcon('log', 22)}<span data-v="carry">0</span></div>
         <div class="fl-pill fw-biome"><span data-v="biome"></span></div>
         <div class="fl-pill fw-nav"><i data-v="arrow">${WICONS.arrow}</i><span data-v="camp"></span></div>
+        </div>
         <div class="fw-right">
           <button class="fl-btn round" data-tap="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${GEAR_SVG(22)}</button>
           <button class="fl-btn round" data-tap="pets" aria-label="${t('floresta.w.pets', 'Ajudantes')}">${WICONS.paw}</button>

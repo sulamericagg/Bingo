@@ -139,6 +139,8 @@
 .fw-biome{padding-left:9px!important;font-size:12px!important;opacity:.9}
 .fw-nav i{display:flex;transition:transform .2s}
 .fw-right{margin-left:auto;display:flex;gap:5px}
+/* o meio do topo fica livre para o botão de girar do hub (.gh-rot, 40 px no centro) */
+.fw-left{display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:calc(50% - 30px);pointer-events:none}
 .fw-toasts{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 48px);transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:center;max-width:64%}
 .fw-toasts div{background:rgba(20,8,48,.7);border-radius:10px;padding:3px 10px;font-weight:700;font-size:12.5px;text-align:center;animation:flToast 2.6s forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .fw-toasts div.gold{color:#ffd34a}
