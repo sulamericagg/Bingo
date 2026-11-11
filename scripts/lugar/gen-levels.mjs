@@ -48,7 +48,7 @@ if (isMainThread) {
     const n = L.levelSize(i);
     const target = L.targetTier(i);
     let best = null;
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < 30; k++) {
       const seed = (hash32(i, k, 0x1e7e1) % 900000) + 1;
       const p = generate(n, seed);
       const d = Math.abs(p.rating.tier - target);
