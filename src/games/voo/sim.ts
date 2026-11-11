@@ -19,6 +19,7 @@ export function mulberry(seed: number): () => number {
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
 }
+const TAU_S = Math.PI * 2;
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const wrapA = (a: number) => {
@@ -85,6 +86,9 @@ export interface Player {
   /** pulverizando agora (efeito visual) */
   spraying: boolean;
   walk: number;
+  /** posição no passo anterior (interpolação da vista) */
+  ox?: number;
+  oz?: number;
   cmd: Cmd | null;
   react: number;
   sayT: number;
@@ -149,6 +153,28 @@ export interface Flight {
   loc: boolean;
   /** desvio lateral do eixo (m, só no modo LOC) */
   dev: number;
+  /* ---- modelo de voo (FM) ---- */
+  /** ângulo de ataque (rad) */
+  alpha: number;
+  /** velocidade de rolagem / arfagem (rad/s) */
+  p: number;
+  q: number;
+  /** flapes de verdade (0..2, andam devagar até o estágio da alavanca) */
+  flapPos: number;
+  /** spoilers (0..1): abrem no toque */
+  spoiler: number;
+  /** fator de carga sentido (g) */
+  gload: number;
+  /** vibração de pré-estol (0..1) */
+  buffet: number;
+  /** piloto automático ligado (0/1) */
+  ap: number;
+  /** aviso de cintos (turbulência chegando) */
+  belt: number;
+  /** comandos efetivos nas superfícies (-1..1): aileron, profundor, leme */
+  ail: number;
+  elev: number;
+  rud: number;
 }
 export type Phase = 'cruise' | 'descent' | 'final' | 'rollout' | 'crash' | 'done';
 export type OutKind = 'perfect' | 'good' | 'rough' | 'crash';
@@ -203,7 +229,8 @@ export type NetAct =
   | ['mini', number, number]
   | ['miniClose']
   | ['throw', number]
-  | ['stand'];
+  | ['stand']
+  | ['ap', number];
 
 export interface SimOpts {
   seed: number;
@@ -218,6 +245,130 @@ export const RWY_HALF = 23;
 export const GS = 0.0524; // 3°
 const FIX_Z = 17000;
 const START_D = 42000;
+
+/* ============================== modelo de voo ==============================
+ * Passo fixo (1/60 s, ver game.ts) e determinístico — nada de ruído por quadro.
+ *  - sustentação L = KL·v²·CL(α, flapes): cai com v², estola acima de α_estol
+ *  - arrasto D = KL·v²·(CD0 + flapes + trem + spoilers + K·CL²) (induzido, menor no efeito solo)
+ *  - tração T = TMAX·manete·motores; gravidade; amortecimento de arfagem/rolagem
+ *  - estabilidade estática de arfagem: sem mão no manche o nariz volta ao α de compensação
+ *    (velocidade de compensação depende dos flapes); a rolagem é neutra (não se nivela sozinho)
+ *  - a vista desenha interpolado entre dois passos (Sim.pose)
+ */
+export const FM = {
+  G: 9.8,
+  /** estol limpo a 1 g (m/s) */
+  VS0: 62,
+  CLMAX: [1.4, 1.75, 2.1],
+  CL0: [0.25, 0.45, 0.6],
+  CLA: 5.0,
+  CD0: 0.035,
+  CDF: 0.018,
+  CDG: 0.02,
+  CDSP: 0.09,
+  K: 0.045,
+  TMAX: 1.8,
+  VREF: 110,
+  /** velocidade de compensação por estágio de flape */
+  VTRIM: [125, 95, 78],
+  SPAN: 33,
+};
+const KL = FM.G / (FM.VS0 * FM.VS0 * FM.CLMAX[0]);
+const lerp3 = (a: number[], k: number) => (k <= 1 ? a[0] + (a[1] - a[0]) * k : a[1] + (a[2] - a[1]) * Math.min(1, k - 1));
+/** α de estol para a posição de flape */
+export function alphaStall(flapPos: number): number {
+  return (lerp3(FM.CLMAX, flapPos) - lerp3(FM.CL0, flapPos)) / FM.CLA;
+}
+/** α de compensação (1 g na velocidade de compensação dos flapes) */
+export function alphaTrim(flapPos: number): number {
+  const vt = lerp3(FM.VTRIM, flapPos);
+  return (FM.CLMAX[0] * (FM.VS0 / vt) ** 2 - lerp3(FM.CL0, flapPos)) / FM.CLA;
+}
+/** velocidade de estol (1 g) para a posição de flape */
+export function stallSpeed(flapPos: number): number {
+  return FM.VS0 * Math.sqrt(FM.CLMAX[0] / lerp3(FM.CLMAX, flapPos));
+}
+/** coeficiente de sustentação (com a queda depois do estol) */
+export function liftCoef(alpha: number, flapPos: number): number {
+  const cl0 = lerp3(FM.CL0, flapPos);
+  const clmax = lerp3(FM.CLMAX, flapPos);
+  const aS = (clmax - cl0) / FM.CLA;
+  if (alpha <= aS) return Math.max(-0.9, cl0 + FM.CLA * alpha);
+  return Math.max(clmax * 0.45, clmax - 2.6 * (alpha - aS));
+}
+
+/** manete que mantém o voo nivelado na velocidade atual (para começar compensado) */
+export function trimThrottle(f: Flight): number {
+  const v = f.spd;
+  const cl = FM.CLMAX[0] * (FM.VS0 / Math.max(30, v)) ** 2;
+  const cd = FM.CD0 + FM.CDF * f.flapPos + FM.CDG * f.gearPos + FM.K * cl * cl;
+  return clamp((KL * v * v * cd) / FM.TMAX, 0, 1);
+}
+
+/**
+ * Um passo do modelo de voo (no ar). sx: manche lateral (-1..1, + = direita), sy: manche
+ * longitudinal (+ = empurrar = nariz para baixo), gw: rajada vertical (m/s), gr: rajada de
+ * rolagem (rad/s²), power: 0..1 (motores × combustível).
+ */
+export function flightStep(f: Flight, dt: number, sx: number, sy: number, gw: number, gr: number, power: number): void {
+  const G = FM.G;
+  // flapes andam devagar até o estágio pedido (~4 s por estágio)
+  f.flapPos += clamp(f.flaps - f.flapPos, -dt * 0.25, dt * 0.25);
+  f.spoiler = Math.max(0, f.spoiler - dt * 2);
+  const v = Math.max(0, f.spd);
+  const vv = Math.max(6, v);
+  const qn = (v / FM.VREF) ** 2;
+  const fp = f.flapPos;
+  const aS = alphaStall(fp);
+  const aT = alphaTrim(fp);
+  // α efetivo com a rajada vertical
+  const alpha = f.pitch - f.gamma + gw / vv;
+  f.alpha = alpha;
+  // efeito solo (abaixo de uma envergadura): menos arrasto induzido, um pouco mais de sustentação
+  const h = Math.max(0, f.alt);
+  let ge = 1;
+  let gl = 1;
+  if (h < FM.SPAN) {
+    const r = (16 * h) / FM.SPAN;
+    ge = 0.45 + 0.55 * ((r * r) / (1 + r * r));
+    gl = 1 + 0.12 * (1 - h / FM.SPAN);
+  }
+  const cl = liftCoef(alpha, fp) * gl;
+  const aL = KL * v * v * cl;
+  const cd = FM.CD0 + FM.CDF * fp + FM.CDG * f.gearPos + FM.CDSP * f.spoiler + FM.K * ge * cl * cl;
+  let aD = KL * v * v * cd;
+  if (v > 175) aD += 0.02 * (v - 175) ** 2;
+  const thrust = FM.TMAX * f.thr * power;
+  // ---- arfagem: profundor (autoridade ∝ v²) + estabilidade (volta ao α de compensação) + amortecimento ----
+  const elev = clamp(-sy, -1, 1);
+  const qs = Math.max(qn, 0.12); // cata-vento: mesmo devagar o nariz acompanha a trajetória
+  const stalled = alpha > aS;
+  let qd = qn * 0.75 * elev - qs * 4.2 * (alpha - aT) - 3.4 * f.q;
+  if (stalled) qd -= Math.max(qn, 0.35) * 3.0 * (alpha - aS + 0.03); // estol: o nariz cai
+  f.q += qd * dt;
+  f.pitch = clamp(f.pitch + f.q * dt, -1.25, 1.2);
+  // ---- rolagem: aileron (autoridade ∝ v), neutra (sem autonivelamento), amortecida ----
+  const auth = clamp(v / FM.VREF, 0.1, 1.15);
+  let pd = 4 * (clamp(sx, -1, 1) * 0.85 * auth - f.p) + gr;
+  if (Math.abs(f.roll) > 1.0) pd -= 7 * (Math.abs(f.roll) - 1.0) * Math.sign(f.roll); // limite de inclinação
+  if (stalled) pd += (f.roll >= 0 ? 1 : -1) * Math.min(1.2, (alpha - aS) * 8); // asa cai no estol
+  f.p += pd * dt;
+  f.roll = clamp(f.roll + f.p * dt, -1.25, 1.25);
+  // ---- trajetória ----
+  const gd = (aL * Math.cos(f.roll) + thrust * Math.sin(alpha) - G * Math.cos(f.gamma)) / vv;
+  f.gamma = clamp(f.gamma + gd * dt, -1.45, 1.2);
+  f.spd = clamp(v + (thrust * Math.cos(alpha) - aD - G * Math.sin(f.gamma)) * dt, 0, 210);
+  f.hdg = wrapA(f.hdg + ((aL * Math.sin(f.roll)) / (vv * Math.max(0.2, Math.cos(f.gamma)))) * dt);
+  f.vs = f.spd * Math.sin(f.gamma);
+  f.alt += f.vs * dt;
+  f.gload = aL / G;
+  f.stall = stalled;
+  f.buffet = clamp((alpha - (aS - 0.035)) / 0.06, 0, 1) * clamp(v / 30, 0, 1);
+  // superfícies (para a animação): o que o piloto pede + o que a física pede
+  f.ail = clamp(sx, -1, 1);
+  f.elev = elev;
+  f.rud = clamp(f.p * 0.25 - f.roll * 0.15, -0.5, 0.5); // coordenação de curva
+}
 
 const FIRE_SPOTS: SpotId[] = ['oven', 'engL', 'engR', 'cabinA', 'cabinB', 'cargoFire'];
 const HOLD_DUR: Record<string, number> = { patch: 2.2, door: 2.6, hug: 1.2 };
@@ -255,6 +406,16 @@ export class Sim {
   panicSamples = 0;
   endT = 0;
   me = 0;
+  /** rajada vertical atual (m/s) — para a câmera e o HUD */
+  gust = 0;
+  private gustPh = [0, 0, 0, 0, 0];
+  /** aviso de turbulência: contagem até ela começar (s) */
+  turbWarn = 0;
+  /** pose do avião no passo anterior (a vista interpola entre os dois) */
+  pf = { x: 0, z: 0, alt: 0, hdg: 0, pitch: 0, roll: 0 };
+  /** 0..1 entre o passo anterior e o atual (game.ts) */
+  lerpK = 1;
+  private poseOut = { x: 0, z: 0, alt: 0, hdg: 0, pitch: 0, roll: 0 };
   private nextEmerT = 14;
   private eid = 1;
   private iid = 1;
@@ -283,8 +444,16 @@ export class Sim {
       x: sx, z: sz, alt, hdg: toFix + (r() * 2 - 1) * (train ? 0.08 : 0.35), spd: train ? 80 : 125, pitch: 0.035, roll: 0, gamma: 0,
       vs: 0, thr: train ? 0.45 : 0.65, flaps: train ? 1 : 0, gear: 0, gearPos: 0, fuel: train ? 40 : 62, eng: [1, 1], stall: false, wind: this.wind,
       brg: 0, talt: alt, dist: Math.hypot(sx, sz), loc: false, dev: 0,
+      alpha: 0, p: 0, q: 0, flapPos: train ? 1 : 0, spoiler: 0, gload: 1, buffet: 0, ap: 0, belt: 0, ail: 0, elev: 0, rud: 0,
     };
-    this.ctrl.thr = this.f.thr;
+    // começa compensado: α de compensação e voo nivelado
+    this.f.alpha = alphaTrim(this.f.flapPos);
+    this.f.pitch = this.f.alpha;
+    this.f.spd = train ? 82 : FM.VTRIM[0];
+    this.savePose();
+    const gr = mulberry(opts.seed ^ 0x5eed);
+    for (let i = 0; i < 5; i++) this.gustPh[i] = gr() * TAU_S;
+    this.f.thr = this.ctrl.thr = trimThrottle(this.f);
     if (train) this.phase = 'final';
     opts.crew.slice(0, 4).forEach((c, i) => this.addPlayer(c.name, c.skin, i as Role, c.bot, !c.local && !c.bot));
     this.me = Math.max(0, opts.crew.findIndex((c) => c.local));
@@ -355,6 +524,7 @@ export class Sim {
 
   step(dt: number): void {
     if (dt <= 0) return;
+    this.savePose();
     this.time += dt;
     // convidado no manche: o manche dele comanda o avião
     const pl = this.pilot;
@@ -396,31 +566,47 @@ export class Sim {
 
   private stepFlight(dt: number): void {
     const f = this.f;
-    const r = this.rnd;
     const pilot = this.pilot;
     let sx = 0;
     let sy = 0;
     if (this.phase === 'rollout') {
+      f.spoiler = Math.min(1, f.spoiler + dt * 3);
       f.roll *= Math.exp(-3 * dt);
+      f.p = 0;
+      f.q = 0;
       f.pitch += (0 - f.pitch) * Math.min(1, dt * 2);
       f.spd = Math.max(0, f.spd - 4.2 * dt);
       f.alt = 0;
       f.vs = 0;
       f.gamma = 0;
+      f.thr += (0 - f.thr) * Math.min(1, dt * 2);
       f.x += Math.sin(f.hdg) * f.spd * dt;
       f.z -= Math.cos(f.hdg) * f.spd * dt;
       f.hdg += (0 - f.hdg) * Math.min(1, dt * 0.8);
+      f.rud = clamp(-f.hdg * 4, -1, 1);
+      f.ail = f.elev = 0;
       return;
     }
-    if (pilot && !pilot.bot) {
+    const human = !!pilot && !pilot.bot;
+    if (human) {
       sx = this.ctrl.sx;
       sy = this.ctrl.sy;
-      f.thr += (this.ctrl.thr - f.thr) * Math.min(1, dt * 2.5);
-    } else if (pilot && pilot.bot) {
-      const c = this.botFly(dt);
+      // piloto automático: só quando ligado (botão AP); mexer no manche desliga
+      if (f.ap) {
+        if (Math.abs(sx) > 0.3 || Math.abs(sy) > 0.3) this.setAP(false, 'stick');
+        else if (this.phase === 'final' && f.alt < 300) this.setAP(false, 'low');
+        else {
+          const c = this.autoFly(dt, false);
+          sx = c.sx;
+          sy = c.sy;
+        }
+      }
+      if (!f.ap) f.thr += (this.ctrl.thr - f.thr) * Math.min(1, dt * 1.2); // motor demora ~1 s para responder
+    } else if (pilot) {
+      const c = this.autoFly(dt, true);
       sx = c.sx;
       sy = c.sy;
-    }
+    } else if (f.ap) this.setAP(false, '');
     if (pilot) {
       pilot.stats.pilotSec += dt;
       this.noPilotT = 0;
@@ -428,45 +614,17 @@ export class Sim {
       this.noPilotT += dt;
       if (this.noPilotT > 7) this.warn('nopilot', 14, () => this.toast(t('voo.t.nopilot', 'Ninguém no manche! O avião está à deriva'), 'yoke', 'bad'));
     }
-    // ---- rolagem / arfagem ----
-    const turb = this.turb;
-    const noise = (k: number) => (r() * 2 - 1) * k;
-    if (Math.abs(sx) > 0.04) f.roll += sx * 0.85 * dt;
-    else if (pilot) f.roll *= Math.exp(-0.35 * dt); // autonivelamento suave (justo no celular)
-    if (!pilot && this.noPilotT > 5) {
-      // sem ninguém no manche: deriva lenta (dá para sair um pouco, mas não para sempre)
-      f.roll += Math.sin(this.time * 0.13 + this.opts.seed) * 0.01 * dt;
-      f.pitch -= 0.0016 * dt;
-    }
-    f.roll += noise(turb * 1.6) * dt;
-    f.pitch += noise(turb * 0.5) * dt - sy * 0.32 * dt;
-    if (this.dizzy > 0.5 && pilot && !pilot.bot) f.roll += Math.sin(this.time * 1.7) * 0.06 * dt;
-    f.roll = clamp(f.roll, -1.05, 1.05);
-    f.pitch = clamp(f.pitch, -0.42, 0.38);
-    // ---- sustentação / estol ----
-    const vRef = 110 - f.flaps * 18;
-    let alpha = (0.05 * (vRef / Math.max(20, f.spd)) ** 2) / Math.max(0.35, Math.cos(f.roll));
-    f.stall = alpha > 0.16;
-    if (f.stall) {
-      f.pitch -= 0.25 * dt;
-      alpha = 0.16 + (alpha - 0.16) * 2.5;
-    }
-    let gT = f.pitch - alpha;
-    // efeito solo: colchão de ar perto do chão
-    if (f.alt < 14 && gT < 0) gT *= 0.55 + 0.45 * (f.alt / 14);
-    f.gamma += (gT - f.gamma) * Math.min(1, dt * 1.6);
-    // ---- velocidade ----
-    const power = (f.eng[0] + f.eng[1]) / 2;
-    const thrust = f.fuel > 0 ? 6 * f.thr * power : 0;
-    const cd = 0.00025 * (1 + f.flaps * 0.45 + f.gearPos * 0.35);
-    f.spd += (thrust - cd * f.spd * f.spd - 9.8 * Math.sin(f.gamma)) * dt;
-    f.spd = clamp(f.spd, 25, 190);
-    f.vs = f.spd * Math.sin(f.gamma);
-    f.alt += f.vs * dt + noise(turb * 3) * dt;
-    f.hdg = wrapA(f.hdg + ((9.8 * Math.tan(f.roll)) / Math.max(30, f.spd)) * dt);
-    const gs = f.spd * Math.cos(f.gamma);
-    f.x += Math.sin(f.hdg) * gs * dt + this.wind * dt;
-    f.z -= Math.cos(f.hdg) * gs * dt;
+    let gustRoll = 0;
+    if (!pilot && this.noPilotT > 5) gustRoll += Math.sin(this.time * 0.13 + this.opts.seed) * 0.012; // deriva lenta sem ninguém
+    if (this.dizzy > 0.5 && human) gustRoll += Math.sin(this.time * 1.7) * 0.05;
+    // ---- turbulência (só durante o evento): rajadas suaves e determinísticas, nada de ruído por quadro ----
+    const tb = this.turb;
+    const T = this.time;
+    const ph = this.gustPh;
+    const gw = tb * 7 * (0.55 * Math.sin(1.31 * T + ph[0]) + 0.3 * Math.sin(2.87 * T + ph[1]) + 0.35 * Math.sin(0.61 * T + ph[2]));
+    gustRoll += tb * 0.35 * (Math.sin(1.07 * T + ph[3]) + 0.6 * Math.sin(2.33 * T + ph[4]));
+    this.gust = gw;
+    flightStep(f, dt, sx, sy, gw, gustRoll, f.fuel > 0 ? (f.eng[0] + f.eng[1]) / 2 : 0);
     // ---- trem / combustível ----
     const gearTarget = this.gearStuck ? 0 : f.gear;
     f.gearPos += clamp(gearTarget - f.gearPos, -dt * 0.4, dt * 0.4);
@@ -504,6 +662,78 @@ export class Sim {
     if (f.alt <= 0) this.touchdown();
   }
   private nextGear = 0;
+
+  /** guarda a pose atual (início do passo) para a interpolação da vista */
+  savePose(): void {
+    const f = this.f;
+    const o = this.pf;
+    o.x = f.x;
+    o.z = f.z;
+    o.alt = f.alt;
+    o.hdg = f.hdg;
+    o.pitch = f.pitch;
+    o.roll = f.roll;
+    for (const p of this.players) (p.ox = p.x), (p.oz = p.z);
+  }
+  /** pose interpolada entre o passo anterior e o atual (para desenhar sem tremer) */
+  pose(): { x: number; z: number; alt: number; hdg: number; pitch: number; roll: number } {
+    const f = this.f;
+    const a = this.pf;
+    const k = this.lerpK;
+    const o = this.poseOut;
+    o.x = a.x + (f.x - a.x) * k;
+    o.z = a.z + (f.z - a.z) * k;
+    o.alt = a.alt + (f.alt - a.alt) * k;
+    o.hdg = a.hdg + wrapA(f.hdg - a.hdg) * k;
+    o.pitch = a.pitch + (f.pitch - a.pitch) * k;
+    o.roll = a.roll + (f.roll - a.roll) * k;
+    return o;
+  }
+
+  /** liga/desliga o piloto automático (só com alguém sentado no manche) */
+  setAP(on: boolean, why: '' | 'stick' | 'low' | 'user' = 'user'): void {
+    if (this.proxy && why === 'user') this.proxy(['ap', on ? 1 : 0]);
+    const f = this.f;
+    if (on && (!this.pilot || !this.flying)) return;
+    if (!!f.ap === on) return;
+    f.ap = on ? 1 : 0;
+    if (on) this.toast(t('voo.t.apOn', 'Piloto automático LIGADO: asas niveladas e altitude-alvo'), 'yoke', 'info');
+    else if (why === 'stick') this.toast(t('voo.t.apStick', 'Piloto automático desligado (você mexeu no manche)'), 'yoke', 'info');
+    else if (why === 'low') this.toast(t('voo.t.apLow', 'Piloto automático desligado: o pouso é com você!'), 'yoke', 'info');
+    else if (why === 'user') this.toast(t('voo.t.apOff', 'Piloto automático desligado'), 'yoke', 'info');
+    this.sfx(on ? 'seat' : 'alarm');
+  }
+
+  /**
+   * Voo automático (AP ou ajudante no manche): asas niveladas rumo à seta-guia, segue a
+   * altitude-alvo com subida/descida suave e ajusta a manete. Sem oscilação forçada.
+   */
+  private autoFly(dt: number, bot: boolean): { sx: number; sy: number } {
+    const f = this.f;
+    const tgtAlt = Math.max(f.talt, f.loc ? 380 : 0);
+    if (bot && f.loc && f.alt < 520) {
+      const p = this.pilot;
+      this.warn('botland', 12, () => p && this.ev.push({ k: 'say', who: p.idx, msg: t('voo.s.cantland', 'Eu não sei pousar! Alguém assume o manche?') }));
+    }
+    const wantRoll = clamp(f.brg * 0.9, -0.35, 0.35);
+    const sx = clamp((wantRoll - f.roll) * 1.6 - f.p * 0.9, -1, 1);
+    const wantG = clamp((tgtAlt - f.alt) * 0.0011, -0.06, 0.05);
+    // profundor: segue a trajetória pedida (com amortecimento pela arfagem)
+    const e = clamp((wantG - f.gamma) * 9 - f.q * 1.2 + (alphaTrim(f.flapPos) - f.alpha) * 0.0, -0.6, 0.6);
+    const wantSpd = f.loc ? lerp3(FM.VTRIM, f.flapPos) + 4 : this.phase === 'descent' ? 115 : 125;
+    f.thr += (clamp(trimThrottle(f) + (wantSpd - f.spd) * 0.04 + Math.max(0, wantG) * 3, 0.05, 1) - f.thr) * Math.min(1, dt * 0.5);
+    if (!bot) this.ctrl.thr = f.thr;
+    return { sx, sy: -e };
+  }
+
+  /** turbulência anunciada: aviso de cintos e, alguns segundos depois, o evento */
+  warnTurb(sec = 6): void {
+    if (this.turbWarn > 0 || this.active().some((e) => e.kind === 'turb')) return;
+    this.turbWarn = sec;
+    this.f.belt = 1;
+    this.toast(t('voo.t.turbWarn', 'Turbulência à frente! Todos sentados e de cinto'), 'turb', 'bad');
+    this.sfx('alarm');
+  }
 
   private guide(): void {
     const f = this.f;
@@ -603,28 +833,18 @@ export class Sim {
     return this.outcome;
   }
 
-  /** bot no manche: mantém asas niveladas, segue o guia (sem pousar) */
-  private botFly(dt: number): { sx: number; sy: number } {
-    const f = this.f;
-    const tgtAlt = Math.max(f.talt, f.loc ? 380 : 0);
-    if (f.loc && f.alt < 520) {
-      const p = this.pilot;
-      this.warn('botland', 12, () => p && this.ev.push({ k: 'say', who: p.idx, msg: t('voo.s.cantland', 'Eu não sei pousar! Alguém assume o manche?') }));
-    }
-    const wantRoll = clamp(f.brg * 0.9, -0.35, 0.35);
-    const sx = clamp((wantRoll - f.roll) * 2.2 + Math.sin(this.time * 0.7) * 0.08, -1, 1);
-    const wantG = clamp((tgtAlt - f.alt) * 0.0012, -0.08, 0.06);
-    const sy = clamp(-(wantG - f.gamma) * 6 + Math.sin(this.time * 0.37) * 0.05, -1, 1);
-    const wantSpd = f.loc ? 82 : 125;
-    f.thr += (clamp(0.6 + (wantSpd - f.spd) * 0.03, 0.15, 1) - f.thr) * Math.min(1, dt * 0.6);
-    return { sx, sy };
-  }
-
   /* ------------------------------ emergências ------------------------------ */
 
   /** tutorial: sem emergências aleatórias enquanto ensina */
   paused = false;
   private schedule(dt: number): void {
+    if (this.turbWarn > 0) {
+      this.turbWarn -= dt;
+      if (this.turbWarn <= 0) {
+        this.turbWarn = 0;
+        this.startEmer('turb', 'pilot');
+      }
+    }
     if (this.opts.mode === 'training' || this.paused) return;
     this.nextEmerT -= dt;
     if (this.nextEmerT > 0) return;
@@ -678,7 +898,7 @@ export class Sim {
     } else if (k === 'spark') this.startEmer('spark', 'elec');
     else if (k === 'pressure') this.startEmer('pressure', 'valve');
     else if (k === 'door') this.startEmer('door', r() < 0.5 ? 'doorF' : 'doorR');
-    else if (k === 'turb') this.startEmer('turb', 'pilot');
+    else if (k === 'turb') this.warnTurb(6);
     else if (k === 'bird') this.startEmer('bird', 'win');
   }
 
@@ -830,8 +1050,8 @@ export class Sim {
     }
     this.turb = 0;
     for (const e of this.emers) if (!e.done && e.kind === 'turb') this.turb = Math.max(this.turb, e.sev);
-    // vento cruzado nas nuvens: turbulência leve de fundo
-    this.turb = Math.max(this.turb, 0.06 + (this.f.alt > 1200 && this.f.alt < 1900 ? 0.12 : 0));
+    // sem turbulência de fundo: ela só existe como evento anunciado (aviso de cintos antes)
+    if (this.f.belt && this.turbWarn <= 0 && !this.emers.some((e) => !e.done && e.kind === 'turb')) this.f.belt = 0;
     if (this.hull <= 0) {
       this.hull = 0;
       this.breakApart();
@@ -934,9 +1154,14 @@ export class Sim {
       }
     }
     this.acc.x += (ax - this.acc.x) * Math.min(1, dt * 4);
-    this.acc.y = ay || this.acc.y * Math.exp(-dt * 8);
+    // vertical sentido: carga g da física (suave) + solavancos dos eventos
+    this.jy = ay || this.jy * Math.exp(-dt * 8);
+    const gl = this.flying ? clamp((f.gload - 1) * 9.8, -9, 9) : 0;
+    this.acc.y = this.jy + gl;
     this.acc.z += (az - this.acc.z) * Math.min(1, dt * 4);
   }
+
+  private jy = 0;
 
   stumble(p: Player): void {
     p.stun = 1.1;
@@ -1135,6 +1360,9 @@ export class Sim {
         break;
       case 'stand':
         this.standUp(p);
+        break;
+      case 'ap':
+        if (p.seated) this.setAP(!!a[1], '');
         break;
     }
   }

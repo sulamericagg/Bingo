@@ -33,6 +33,11 @@ export interface HudHost {
   onStand(): void;
   onCam(): void;
   extCam(): boolean;
+  /** 0 cabine, 1 externa atrás, 2 órbita livre */
+  camMode(): number;
+  orbit(dx: number, dy: number): void;
+  zoom(k: number): void;
+  onAP(): void;
   /** pausa a simulação (só sozinho; online não pausa) */
   holdSim?(on: boolean): void;
 }
