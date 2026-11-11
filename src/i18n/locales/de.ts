@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Hack den Fels mit der Spitzhacke. Bau Schienen, Loren, Generator und Lampen!",
+  "gb.noMoney": "Nicht genug Geld",
+  "gb.needMine": "Öffne zuerst die Mine",
+  "gb.mineOpen": "Die Mine ist offen! Der Eingang ist am Minenplatz im Berg.",
+  "gb.mine.open": "Untertage-Mine öffnen",
+  "gb.mine.cart": "Lore",
+  "gb.mine.bot": "Bergmann (Mine)",
   "best.garimpo": "Gold verkauft: {n} g",
   "gb.back": "Zurück",
   "gb.bed": "Mulde",

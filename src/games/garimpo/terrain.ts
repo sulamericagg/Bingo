@@ -5,7 +5,8 @@
  *  sobem para a GPU (addUpdateRange). O passo da malha (1 ou 2) segue a qualidade.
  * ============================================================ */
 import * as THREE from 'three';
-import { applyGroundLook } from './ground';
+import { groundMaterial, NL, TL, lerpSplat } from './ground';
+import { setSplat, splatAttributes } from '../../3d/nature';
 
 export const N = 384;
 export const SIZE = 192;
@@ -39,6 +40,7 @@ interface Chunk {
   pos: THREE.BufferAttribute;
   nrm: THREE.BufferAttribute;
   col: THREE.BufferAttribute;
+  sp: Uint8Array[];
   dirty: boolean;
   i0: number;
   j0: number;
@@ -78,7 +80,7 @@ export class Terrain {
   overlay: ((k: number) => number) | null = null;
   overlayTol = 0.12;
   readonly group = new THREE.Group();
-  readonly material: THREE.MeshLambertMaterial;
+  material: THREE.MeshLambertMaterial;
   readonly uRain = { value: 0 };
   private chunks: Chunk[] = [];
   private stride = 1;
@@ -89,24 +91,37 @@ export class Terrain {
   private stampId = 1;
 
   constructor() {
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.material = this.makeMat(2);
+  }
+
+  /** material do chão (biblioteca compartilhada) + chuva/poças por cima */
+  private makeMat(tier: number): THREE.MeshLambertMaterial {
+    const m = groundMaterial(tier);
     const uRain = this.uRain;
-    this.material.onBeforeCompile = (sh) => {
+    const prev = m.onBeforeCompile;
+    m.onBeforeCompile = (sh, r) => {
+      prev.call(m, sh, r);
       sh.uniforms.uRain = uRain;
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float basin;\nvarying float vBasin;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvBasin = basin;');
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uRain;\nvarying float vBasin;')
-        .replace(
-          '#include <color_fragment>',
-          `#include <color_fragment>
-          float wr = uRain * (0.35 + 0.65 * vBasin);
-          diffuseColor.rgb *= 1.0 - 0.33 * wr;
-          float pud = smoothstep(0.5, 0.85, uRain * vBasin);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.17, 0.16), pud * 0.75);`,
-        );
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uRain;\nvarying float vBasin;').replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        float wr = uRain * (0.35 + 0.65 * vBasin);
+        gl_FragColor.rgb *= 1.0 - 0.3 * wr;
+        float pud = smoothstep(0.5, 0.85, uRain * vBasin);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.16, 0.15, 0.15), pud * 0.7);`,
+      );
     };
-    this.material.customProgramCacheKey = () => 'terra-ground';
-    applyGroundLook(this.material);
+    const key = m.customProgramCacheKey.bind(m);
+    m.customProgramCacheKey = () => key() + '|garimpo-rain';
+    return m;
+  }
+  /** troca o material conforme a qualidade (0 = uma camada só) */
+  setTier(tier: number): void {
+    const old = this.material;
+    this.material = this.makeMat(tier);
+    for (const c of this.chunks) c.mesh.material = this.material;
+    old.dispose();
   }
 
   /* ------------------------- consulta ------------------------- */
@@ -218,6 +233,8 @@ export class Terrain {
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         geo.setAttribute('basin', new THREE.BufferAttribute(bas, 1));
         geo.setIndex(index);
+        const sp = splatAttributes(geo, cnt);
+        for (let q = 0; q < 3; q++) (geo.getAttribute('aSplat' + q) as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
         const cx = (ci + 0.5) * this.CHUNK * CELL;
         const cz = (cj + 0.5) * this.CHUNK * CELL;
         let lo = 1e9;
@@ -234,7 +251,7 @@ export class Terrain {
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         this.group.add(mesh);
-        const c: Chunk = { ci, cj, nv, geo, mesh, pos, nrm, col, dirty: true, i0: ci * this.CHUNK, j0: cj * this.CHUNK, i1: (ci + 1) * this.CHUNK, j1: (cj + 1) * this.CHUNK };
+        const c: Chunk = { ci, cj, nv, geo, mesh, pos, nrm, col, sp, dirty: true, i0: ci * this.CHUNK, j0: cj * this.CHUNK, i1: (ci + 1) * this.CHUNK, j1: (cj + 1) * this.CHUNK };
         this.chunks.push(c);
         this.writeChunk(c, true);
       }
@@ -334,16 +351,65 @@ export class Terrain {
         let r = base[0];
         let g = base[1];
         let bl = base[2];
-        if (m === MAT_GRASS && inv < 0.82) {
-          // barranco: a grama dá lugar à terra
-          const f = Math.min(1, (0.82 - inv) * 5);
-          r += (BASE[0][0] - r) * f;
-          g += (BASE[0][1] - g) * f;
-          bl += (BASE[0][2] - bl) * f;
+        // pesos das camadas de textura
+        const W = SPW;
+        W.fill(0);
+        const tn = this.tint[k];
+        if (m === MAT_GRASS) {
+          W[TL.grass] = 1;
+          lerpSplat(W, TL.forestFloor, Math.max(0, -tn * 6));
+        } else if (m === MAT_DIRT) W[TL.redDirt] = 1;
+        else if (m === MAT_ROAD) {
+          W[TL.redDirt] = 1;
+          lerpSplat(W, TL.gravel, 0.45 + tn * 2);
+        } else if (m === MAT_MUD) W[TL.mud] = 1;
+        else W[TL.sand] = 1;
+        if (inv < 0.8) {
+          // barranco: grama dá lugar à terra, muito íngreme vira pedra
+          const f = Math.min(1, (0.8 - inv) * 4);
+          if (m === MAT_GRASS) {
+            r += (BASE[0][0] - r) * f;
+            g += (BASE[0][1] - g) * f;
+            bl += (BASE[0][2] - bl) * f;
+            lerpSplat(W, TL.redDirt, f);
+          }
+          lerpSplat(W, TL.stone, Math.min(1, (0.62 - inv) * 4));
         }
         const w = this.wet[k];
         const ru = this.rut[k];
-        const dk = (1 - 0.4 * w) * (1 - Math.min(0.32, ru * 1.6)) * (1 + this.tint[k]);
+        // escavação: terra recém-cortada mais escura/avermelhada; buracos com sombra (AO)
+        const dug = this.h0[k] - h[k];
+        const loose = -dug;
+        let ao = 1;
+        if (dug > 0.03) {
+          const f = Math.min(1, dug * 1.4);
+          r += (0.62 - r) * f;
+          g += (0.25 - g) * f;
+          bl += (0.12 - bl) * f;
+          lerpSplat(W, TL.redDirt, Math.min(1, dug * 3));
+          if (dug > 1.2) lerpSplat(W, TL.stone, Math.min(0.6, (dug - 1.2) * 0.4));
+        } else if (loose > 0.05) {
+          // terra solta (monte da lâmina, pilhas): mais clara e granulada
+          const f = Math.min(1, loose * 1.5);
+          r += (0.86 - r) * f * 0.6;
+          g += (0.45 - g) * f * 0.6;
+          bl += (0.24 - bl) * f * 0.6;
+          lerpSplat(W, TL.dirt, f * 0.5);
+        }
+        {
+          // oclusão: quanto o vértice está abaixo da média dos vizinhos (3 células)
+          const q = 3 * s;
+          const i0 = gi - q < 0 ? 0 : gi - q;
+          const i1 = gi + q > N ? N : gi + q;
+          const j0 = gj - q < 0 ? 0 : gj - q;
+          const j1 = gj + q > N ? N : gj + q;
+          const avg = (h[gj * V + i0] + h[gj * V + i1] + h[j0 * V + gi] + h[j1 * V + gi]) * 0.25;
+          const cav = avg - h[k];
+          if (cav > 0.02) ao = 1 - Math.min(0.42, cav * 0.55);
+        }
+        if (ru > 0.01) lerpSplat(W, w > 0.4 ? TL.mud : TL.dirt, Math.min(0.8, ru * 4));
+        setSplat(c.sp, b * nv + a, W);
+        const dk = (1 - 0.4 * w) * (1 - Math.min(0.32, ru * 1.6)) * (1 + tn) * ao;
         r *= dk;
         g *= dk;
         bl *= dk;
@@ -387,6 +453,14 @@ export class Terrain {
       if (!all) {
         at.clearUpdateRanges();
         at.addUpdateRange(start, count);
+      }
+      at.needsUpdate = true;
+    }
+    for (let q = 0; q < 3; q++) {
+      const at = c.geo.getAttribute('aSplat' + q) as THREE.BufferAttribute;
+      if (!all) {
+        at.clearUpdateRanges();
+        at.addUpdateRange((start / 3) * 4, (count / 3) * 4);
       }
       at.needsUpdate = true;
     }
@@ -623,4 +697,5 @@ export class Terrain {
 }
 
 const TMP_KS = new Int32Array(64);
+const SPW = new Float32Array(NL);
 

@@ -46,6 +46,11 @@ export class Vegetation {
   private grass: GrassField;
   private blobs: BlobShadows;
   private counts: number[] = [];
+  /** matriz original de cada item (para esconder/mostrar árvores entre a câmera e o jogador) */
+  private mats: Float32Array;
+  private hidden = new Set<number>();
+  private hideNow = new Set<number>();
+  private trees: MapInfo['trees'];
   private gc = new Float32Array(4);
 
   constructor(
@@ -55,6 +60,8 @@ export class Vegetation {
     tier: Tier,
   ) {
     const lod: 0 | 1 = tier <= 1 ? 1 : 0;
+    this.trees = map.trees;
+    this.mats = new Float32Array(map.trees.length * 16);
     const n = [0, 0, 0, 0, 0, 0];
     for (const t of map.trees) n[t.kind]++;
     for (let k = 0; k < 6; k++) {
@@ -93,6 +100,7 @@ export class Vegetation {
         _m.compose(_p.set(t.x, y - 0.05, t.z), _q, _s.setScalar(t.s));
       }
       im.setMatrixAt(idx, _m);
+      _m.toArray(this.mats, this.ref.length * 16);
       const cm = this.cards[t.kind];
       if (cm) {
         cm.setMatrixAt(cm.count++, _m);
@@ -160,6 +168,58 @@ export class Vegetation {
     if (cm) {
       cm.setColorAt(r.idx, _c);
       cm.instanceColor!.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Esconde as árvores que tapam a vista: perto do segmento câmera→alvo (a,b).
+   * Chamar por quadro; só reescreve as instâncias que mudaram.
+   */
+  occlude(ax: number, az: number, bx: number, bz: number): void {
+    const dx = bx - ax;
+    const dz = bz - az;
+    const L2 = dx * dx + dz * dz || 1;
+    const now = this.hideNow;
+    now.clear();
+    const T = this.trees;
+    for (let n = 0; n < T.length; n++) {
+      const t = T[n];
+      if (t.kind > 3) continue;
+      let u = ((t.x - ax) * dx + (t.z - az) * dz) / L2;
+      if (u < -0.1 || u > 0.92) continue;
+      u = u < 0 ? 0 : u;
+      const px = ax + dx * u - t.x;
+      const pz = az + dz * u - t.z;
+      const rr = t.kind === 3 ? 1.2 : 2.6 * t.s;
+      if (px * px + pz * pz < rr * rr) now.add(n);
+    }
+    let dirty = false;
+    for (const n of this.hidden)
+      if (!now.has(n)) {
+        this.setVis(n, true);
+        dirty = true;
+      }
+    for (const n of now)
+      if (!this.hidden.has(n)) {
+        this.setVis(n, false);
+        dirty = true;
+      }
+    if (dirty) {
+      this.hidden.clear();
+      for (const n of now) this.hidden.add(n);
+    }
+  }
+  private setVis(n: number, on: boolean): void {
+    const r = this.ref[n];
+    const im = this.meshes[r.kind];
+    if (on) _m.fromArray(this.mats, n * 16);
+    else _m.makeScale(0, 0, 0);
+    im.setMatrixAt(r.idx, _m);
+    im.instanceMatrix.needsUpdate = true;
+    const cm = this.cards[r.kind];
+    if (cm) {
+      cm.setMatrixAt(r.idx, _m);
+      cm.instanceMatrix.needsUpdate = true;
     }
   }
 

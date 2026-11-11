@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Dig the rock with the pickaxe. Add rails, carts, a generator and lamps!",
+  "gb.noMoney": "Not enough money",
+  "gb.needMine": "Open the mine first",
+  "gb.mineOpen": "The mine is open! The entrance is at the mine yard, in the mountain.",
+  "gb.mine.open": "Open the underground mine",
+  "gb.mine.cart": "Mine cart",
+  "gb.mine.bot": "Miner (underground)",
   "best.garimpo": "Gold sold: {n} g",
   "gb.back": "Back",
   "gb.bed": "Dump bed",

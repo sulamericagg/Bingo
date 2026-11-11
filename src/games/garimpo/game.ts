@@ -18,10 +18,13 @@ import { bigMoment, notify, setNotifyAlign, setNotifyTop, resetNotifyTop } from 
 import { hush, speak } from '../voo/voice';
 import { Driver, MinerBot, type BotHost } from './bots';
 import { Fire } from './fire';
+import { Underground, UG_PRICE, CS as UGCS, type Tool } from './underground';
 import { Hud } from './hud';
 import { IC, type IconKey } from './icons';
 import { collide, Excavator, Heli, makeMachine, Pickup, Truck, Worker, type Ctl, type Env, type Kind, type Machine, type Receiver } from './machines';
 import { buildExportTruck } from './models';
+import { setLod } from './kit';
+import { natureAnisotropy } from '../../3d/nature';
 import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, freshSlot, GOLD_PRICE, loadMeta, loadSlot, writeSlot, type Diff, type SlotSave } from './save';
 import { World } from './world';
 
@@ -46,6 +49,11 @@ export const MACHINES: ShopItem[] = [
 export const HELPERS: ShopItem[] = [
   { id: 'driver', icon: 'tip', name: () => t('gb.h.driver', 'Motorista (caminhão)'), price: [2500, 3500, 5000] },
   { id: 'miner', icon: 'shovel', name: () => t('gb.h.miner', 'Garimpeiro ajudante'), price: [800, 1400, 2200, 3200] },
+];
+export const MINE: ShopItem[] = [
+  { id: 'mine', icon: 'tracks', name: () => t('gb.mine.open', 'Abrir a mina subterrânea'), price: [UG_PRICE.mine] },
+  { id: 'cart', icon: 'tracks', name: () => t('gb.mine.cart', 'Vagoneta'), price: [UG_PRICE.cart, UG_PRICE.cart, UG_PRICE.cart, UG_PRICE.cart] },
+  { id: 'ugbot', icon: 'user', name: () => t('gb.mine.bot', 'Mineiro (mina)'), price: [UG_PRICE.bot, UG_PRICE.bot, UG_PRICE.bot, UG_PRICE.bot, UG_PRICE.bot, UG_PRICE.bot] },
 ];
 export const UPGRADES: ShopItem[] = [
   { id: 'shovel', icon: 'shovel', name: () => t('gb.u.shovel', 'Pá melhor'), price: [180, 700, 2200] },
@@ -73,6 +81,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _ndc = new THREE.Vector2();
+const _ray = new THREE.Raycaster();
+const _floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 export class Garimpo implements MiniGameHandle, BotHost {
   private wrap: HTMLDivElement;
@@ -87,6 +98,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
   cur: Machine | null = null;
   fire: Fire | null = null;
   drivers: Driver[] = [];
+  ug: Underground | null = null;
+  inMine = false;
+  private ugBar: HTMLDivElement | null = null;
   miners: MinerBot[] = [];
   private raf = 0;
   private last = 0;
@@ -260,6 +274,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const r = new THREE.WebGLRenderer({ canvas: cv, antialias: tier >= 2, powerPreference: 'high-performance', stencil: false });
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
+    natureAnisotropy(r);
     this.r = r;
     const w = new World();
     this.w = w;
@@ -282,6 +297,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       mc.cargo.vol = ms.vol;
       mc.cargo.gold = ms.gold;
     }
+    setLod(tier <= 1 ? 1 : 0);
     const wk = new Worker();
     this.worker = wk;
     wk.cargo.cap = BARROW[s.upg.barrow];
@@ -298,6 +314,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.cur = wk;
     if (s.driving >= 0 && this.ms[s.driving]) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
+    if (s.mineOpen) this.openMine();
     for (let i = 0; i < s.bots.drivers; i++) this.drivers.push(new Driver(this));
     for (let i = 0; i < s.bots.miners; i++) this.addMiner();
     this.rainOn = s.rain;
@@ -330,6 +347,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.toastEl = document.createElement('div');
     this.toastEl.className = 'gb-toast';
     this.wrap.appendChild(this.toastEl);
+    this.wrap.addEventListener('pointerdown', this.mineTap);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(this.wrap);
     this.resize();
@@ -348,6 +366,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
 
   private addMachine(kind: Kind, x: number, z: number, yaw: number): Machine {
     const w = this.w!;
+    setLod(this.gov.tier <= 1 ? 1 : 0);
     const mc = makeMachine(kind);
     if (mc instanceof Heli) {
       mc.place(x, z, yaw, w);
@@ -376,6 +395,125 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const yaw = Math.atan2(r1.x - m.mine.x, r1.z - m.mine.z);
     return { x: m.mine.x, z: m.mine.z, yaw };
   }
+  /* ---------------- mina subterrânea ---------------- */
+  private openMine(): void {
+    const s = this.sv!;
+    setLod(this.gov.tier <= 1 ? 1 : 0);
+    const ug = new Underground(s.seed);
+    if (s.ug) ug.load(s.ug);
+    ug.cargo.cap = BARROW[s.upg.barrow] * 1.6;
+    // o que sobe pela esteira cai na baia: caminhão parado embaixo, ou um monte rico no chão
+    ug.onHopper = (vol, gold) => {
+      const b = this.w!.bay;
+      const y = this.w!.T.heightAt(b.x, b.z) + 1.5;
+      const rc = this.receiverAt(b.x, y, b.z, null, 1.0);
+      let took = 0;
+      if (rc && rc !== this.hopper) took = rc.take(vol, gold);
+      if (took < vol) {
+        this.w!.T.deposit(b.x, b.z, vol - took, 1.8, gold / vol);
+        this.w!.T.relax(b.x, b.z, 3);
+      }
+      this.toast('+' + gold.toFixed(1) + ' g');
+    };
+    this.ug = ug;
+  }
+  private nearPortal(): boolean {
+    const p = this.w!.portal;
+    const g = this.worker!.group.position;
+    return !!this.ug && Math.hypot(g.x - p.x, g.z - p.z) < 4;
+  }
+  private enterMine(): void {
+    const ug = this.ug!;
+    ug.enterAt();
+    ug.cargo.vol = this.worker!.cargo.vol;
+    ug.cargo.gold = this.worker!.cargo.gold;
+    this.worker!.cargo.vol = this.worker!.cargo.gold = 0;
+    this.inMine = true;
+    this.camYaw = 0;
+    sfx.door();
+    this.mineBar(true);
+    if (!this.sv!.tips.includes('mine')) {
+      this.sv!.tips.push('mine');
+      this.say(t('gb.tip.mine', 'Cave a rocha com a picareta. Ponha trilhos, vagonetas, gerador e lâmpadas!'));
+    }
+  }
+  private leaveMine(): void {
+    const ug = this.ug!;
+    this.worker!.cargo.vol = Math.min(this.worker!.cargo.cap, ug.cargo.vol);
+    this.worker!.cargo.gold = ug.cargo.vol > 0 ? (ug.cargo.gold * this.worker!.cargo.vol) / ug.cargo.vol : 0;
+    ug.cargo.vol = ug.cargo.gold = 0;
+    this.inMine = false;
+    const p = this.w!.portal;
+    this.worker!.place(p.x + Math.sin(p.yaw) * 3, p.z + Math.cos(p.yaw) * 3, p.yaw, this.w!);
+    ug.tool = 'none';
+    ug.showGhost(-1);
+    this.mineBar(false);
+    this.snapCam();
+  }
+  /** barra de ferramentas da mina: trilho, lâmpada, gerador (toque na célula = fantasma; toque de novo = coloca) */
+  private mineBar(on: boolean): void {
+    this.ugBar?.remove();
+    this.ugBar = null;
+    if (!on) return;
+    const d = document.createElement('div');
+    d.className = 'gb-ugbar';
+    d.setAttribute('data-touch-ignore', '');
+    const tools: [Tool, IconKey, number][] = [
+      ['rail', 'tracks', UG_PRICE.rail],
+      ['lamp', 'sun', UG_PRICE.lamp],
+      ['gen', 'bolt', UG_PRICE.gen],
+    ];
+    d.innerHTML = tools.map(([k, ic, pr]) => `<button class="gb-b" data-tool="${k}">${IC[ic]}<span>${pr}</span></button>`).join('');
+    d.addEventListener('pointerdown', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tool]');
+      if (!b) return;
+      e.stopPropagation();
+      const ug = this.ug!;
+      ug.tool = ug.tool === b.dataset.tool ? 'none' : (b.dataset.tool as Tool);
+      d.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.tool === ug.tool));
+      ug.showGhost(-1);
+      sfx.click();
+    });
+    this.wrap.appendChild(d);
+    this.ugBar = d;
+  }
+  /** toque na mina com ferramenta: 1º toque mostra o fantasma, 2º na mesma célula coloca */
+  private mineTap = (e: PointerEvent): void => {
+    const ug = this.ug;
+    if (!this.inMine || !ug || ug.tool === 'none' || e.target !== this.cv) return;
+    const r = this.cv!.getBoundingClientRect();
+    _ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    _ray.setFromCamera(_ndc, this.w!.camera);
+    const hit = _ray.ray.intersectPlane(_floor, _v);
+    if (!hit) return;
+    const k = ug.cellAt(hit.x, hit.z);
+    if (k < 0) return;
+    if (ug.ghostCell === k) {
+      const price = UG_PRICE[ug.tool as 'rail' | 'lamp' | 'gen'];
+      if (this.sv!.money < price) {
+        notify(t('gb.noMoney', 'Sem dinheiro'), { icon: 'coin', kind: 'warn' });
+        return;
+      }
+      if (ug.place(k)) {
+        this.sv!.money -= price;
+        sfx.thunk();
+        ug.showGhost(-1);
+      } else sfx.knob();
+    } else ug.showGhost(k);
+  };
+  private mineCamera(dt: number): void {
+    const ug = this.ug!;
+    const cam = this.w!.camera;
+    const [dYaw] = this.hud!.look.consume(dt);
+    this.camYaw -= dYaw;
+    const p = ug.pos;
+    const k = [1, 1.5, 0.7][this.camMode];
+    const d = 4.5 * k;
+    cam.position.set(p.x - Math.sin(this.camYaw) * d, 15 * k, p.z - Math.cos(this.camYaw) * d);
+    cam.lookAt(p.x, 0.8, p.z);
+    this.camPos.copy(cam.position);
+  }
+
   /** onde uma máquina nova aparece (na frente da garagem, sem bater em ninguém) */
   private spawnSpot(kind: Kind): [number, number, number] {
     const m = this.w!.map;
@@ -436,7 +574,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     return best;
   }
-  private enterExit(): void {
+  enterExit(): void {
+    if (this.inMine) {
+      const ug = this.ug!;
+      if (Math.hypot(ug.pos.x - ug.cx(ug.entrance), ug.pos.z - ug.cz(ug.entrance)) < UGCS * 1.6) this.leaveMine();
+      return;
+    }
+    if (this.cur === this.worker && this.nearPortal()) {
+      this.enterMine();
+      return;
+    }
     if (this.cur === this.worker) {
       const m = this.nearMachine();
       if (m) this.enter(m);
@@ -523,7 +670,14 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     // ferramentas e entradas (por quadro)
-    this.worker!.update(dt, cur === this.worker ? ctl : null, this.env);
+    if (this.inMine)
+      this.ug!.step(dt, ctl, this.camYaw, (k) => {
+        if (k === 'full') this.sound('full');
+        else if (k === 'hit') sfx.knob();
+        else if (k === 'ore') sfx.thud();
+        else sfx.splat();
+      });
+    else this.worker!.update(dt, cur === this.worker ? ctl : null, this.env);
     for (const d of this.drivers) {
       d.claim(this.drivers);
       d.update(dt);
@@ -583,9 +737,10 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (cur.veh) audio.engineSet(Math.max(cur.veh.input.gas, cur.veh.input.brake), Math.min(1, cur.veh.rpm));
     else if (cur instanceof Heli) audio.engineSet(0.6, 0.9);
     else audio.engineSet(0, 0);
-    this.camera(dt);
+    if (this.inMine) this.mineCamera(dt);
+    else this.camera(dt);
     // detector
-    const det = this.detOn && (cur === this.worker || cur.kind === 'excavator' || cur.kind === 'pickup') ? this.detect(cur.pos.x, cur.pos.z) : null;
+    const det = !this.inMine && this.detOn && (cur === this.worker || cur.kind === 'excavator' || cur.kind === 'pickup') ? this.detect(cur.pos.x, cur.pos.z) : null;
     if (det !== null) {
       this.detV += (det - this.detV) * Math.min(1, dt * 4);
       this.detBeep -= dt;
@@ -612,14 +767,14 @@ export class Garimpo implements MiniGameHandle, BotHost {
     hud.update({
       money: s.money,
       stock: s.stock,
-      fill: cur.fill,
-      cargoGold: cur.cargo.gold,
+      fill: this.inMine ? this.ug!.cargo.vol / this.ug!.cargo.cap : cur.fill,
+      cargoGold: this.inMine ? this.ug!.cargo.gold : cur.cargo.gold,
       rpm: cur.veh ? cur.veh.rpm : 0,
       gear: cur.veh ? cur.veh.gear : 1,
       auto: cur.veh ? cur.veh.input.auto : true,
       det: det === null ? null : this.detV,
       arrow,
-      canEnter: cur === this.worker ? !!this.nearMachine() : false,
+      canEnter: this.inMine ? Math.hypot(this.ug!.pos.x - this.ug!.cx(this.ug!.entrance), this.ug!.pos.z - this.ug!.cz(this.ug!.entrance)) < UGCS * 1.6 : cur === this.worker ? !!this.nearMachine() || this.nearPortal() : false,
       hot2: (nearHopper && cur.fill > 0.01) || (cur === this.worker && cur.fill > 0.01 && !!this.bedNear()),
       water: cur === this.worker && (this.worker!.water > 0 || this.atWater()),
     });
@@ -702,6 +857,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       }
     } else this.plantSpin = Math.max(0, this.plantSpin - dt);
     pl.trommel.rotation.x += dt * 2.2 * this.plantSpin;
+    const wm = pl.water.material as THREE.MeshPhongMaterial;
+    if (wm.map) wm.map.offset.y -= dt * (0.4 + this.plantSpin * 1.6);
     // rejeito sai pela esteira e forma um monte atrás
     if (this.tail > 0.15) {
       _v.set(0, 0, -10.2);
@@ -788,7 +945,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     } else if (e.st === 2) {
       e.t -= dt;
       if (e.t <= 0) {
-        const take = s.stock <= 30 ? s.stock : Math.max(30, s.stock * 0.35);
+        const take = s.stock <= 60 ? s.stock : Math.max(60, s.stock * 0.35);
         const pay = Math.round(take * GOLD_PRICE[s.diff]);
         s.stock -= take;
         s.sold += take;
@@ -834,6 +991,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     // o garimpeiro e o helicóptero: câmera só segue devagar (andam relativos à tela)
     const free = c instanceof Worker || c instanceof Heli;
     let want = c.yaw() + c.cam.yawOff;
+    // dando ré até a moega: câmera de lado mostra caminhão e moega juntos
+    if (c instanceof Truck && c.veh && (c.veh.gear < 0 || c.tilt > 0.1) && c.pos.distanceTo(this.hopperPos(_v2)) < 22) want += 1.15;
     if (free) {
       if (!moving) want = this.camYaw - this.lookYaw;
       else want = this.camYaw - this.lookYaw + Math.atan2(Math.sin(want - this.camYaw), Math.cos(want - this.camYaw)) * 0.5;
@@ -851,9 +1010,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const dist = c.cam.dist * mul;
     const hgt = c.cam.height * mul * (1 + this.lookPitch * 1.4);
     const p = c.pos;
-    const tx = p.x;
+    // a pé: mira um pouco à frente (o carrinho de mão aparece na tela)
+    const fwd = c instanceof Worker ? 1.3 : 0;
+    const tx = p.x + Math.sin(c.yaw()) * fwd;
     const ty = p.y + c.cam.look;
-    const tz = p.z;
+    const tz = p.z + Math.cos(c.yaw()) * fwd;
     let cx = tx - Math.sin(yaw) * dist;
     let cz = tz - Math.cos(yaw) * dist;
     let cy = ty + hgt;
@@ -912,6 +1073,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       cam.lookAt(o[3], o[4], o[5]);
     }
     w.follow(tx, tz);
+    // árvores entre a câmera e o jogador somem (nunca tapam a vista)
+    w.veg?.occlude(cam.position.x, cam.position.z, tx, tz);
   }
   camOverride: number[] | null = null;
   /** testes: passos de simulação por quadro */
@@ -920,7 +1083,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   prof = { step: 0, render: 0, phys: 0, flush: 0 };
 
   private render(): void {
-    this.r!.render(this.w!.scene, this.w!.camera);
+    this.r!.render(this.inMine && this.ug ? this.ug.scene : this.w!.scene, this.w!.camera);
   }
 
   /* ---------------- qualidade ---------------- */
@@ -1038,7 +1201,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (!s) return;
     const owned = (k: Kind) => this.ms.filter((m) => m.kind === k).length;
     const item = (it: ShopItem, isUp: boolean) => {
-      const lvl = isUp ? (it.id === 'driver' ? s.bots.drivers : it.id === 'miner' ? s.bots.miners : s.upg[it.id as 'shovel']) : owned(it.kind!);
+      const lvl = isUp ? (it.id === 'driver' ? s.bots.drivers : it.id === 'miner' ? s.bots.miners : it.id === 'mine' ? (s.mineOpen ? 1 : 0) : it.id === 'cart' ? (this.ug?.carts.length ?? 0) : it.id === 'ugbot' ? (this.ug?.bots.length ?? 0) : s.upg[it.id as 'shovel']) : owned(it.kind!);
       const max = isUp ? it.price.length : it.max ?? 1;
       const price = isUp ? it.price[lvl] : it.price[0];
       const done = lvl >= max;
@@ -1048,7 +1211,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}</div>`,
+      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -1070,6 +1233,25 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.addMachine(mi.kind!, x, z, yaw);
       audio.cash();
       bigMoment(t('gb.bought', 'Comprou: {n}', { n: mi.name() }), { icon: 'gift' });
+      this.persist();
+      return true;
+    }
+    const mi2 = MINE.find((u) => u.id === id);
+    if (mi2) {
+      const lvl = id === 'mine' ? (s.mineOpen ? 1 : 0) : id === 'cart' ? (this.ug?.carts.length ?? 0) : (this.ug?.bots.length ?? 0);
+      if (lvl >= mi2.price.length || s.money < mi2.price[lvl]) return false;
+      if (id !== 'mine' && !this.ug) {
+        notify(t('gb.needMine', 'Abra a mina primeiro'), { icon: 'warning', kind: 'warn' });
+        return false;
+      }
+      s.money -= mi2.price[lvl];
+      if (id === 'mine') {
+        s.mineOpen = true;
+        this.openMine();
+        this.say(t('gb.mineOpen', 'A mina abriu! A entrada fica no pátio da mina, na montanha.'));
+      } else if (id === 'cart') this.ug!.addCart();
+      else this.ug!.addBot();
+      audio.cash();
       this.persist();
       return true;
     }
@@ -1116,8 +1298,13 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const wk = this.worker!;
     s.worker = { x: wk.group.position.x, z: wk.group.position.z, yaw: wk.group.rotation.y, vol: wk.cargo.vol, gold: wk.cargo.gold };
     s.driving = this.cur && this.cur !== wk ? this.ms.indexOf(this.cur) : -1;
+    if (this.inMine) {
+      const p = this.w!.portal;
+      s.worker = { x: p.x + Math.sin(p.yaw) * 3, z: p.z + Math.cos(p.yaw) * 3, yaw: p.yaw, vol: 0, gold: 0 };
+    }
     s.terrain = encodeTerrain(w.T);
     this.fire?.save(s);
+    if (this.ug) s.ug = this.ug.save();
     if (!writeSlot(this.slot, s)) notify(t('gb.saveFail', 'Sem espaço para salvar'), { kind: 'bad' });
   }
 
@@ -1145,6 +1332,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
     resetNotifyTop();
     setNotifyAlign('left');
     this.ro?.disconnect();
+    this.wrap.removeEventListener('pointerdown', this.mineTap);
+    this.mineBar(false);
+    this.ug?.dispose();
+    this.ug = null;
+    this.inMine = false;
     this.hud?.destroy();
     this.hud = null;
     for (const m of this.ms) {

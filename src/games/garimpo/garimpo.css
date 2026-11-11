@@ -127,3 +127,6 @@
 .gb-hud.expert .gb-right{flex-direction:column;align-items:flex-end;gap:6px}
 .gb-hud.expert .gb-acts{grid-auto-flow:column;grid-template-columns:none}
 .gb-hud.expert .gb-a{width:calc(52px*var(--s));height:calc(52px*var(--s))}
+.gb-ugbar{position:absolute;left:50%;top:calc(var(--edge-t,8px) + 50px);transform:translateX(-50%);z-index:21;display:flex;gap:6px}
+.gb-ugbar .gb-b{width:52px;height:52px}
+.gb-ugbar .gb-b span{font-size:10px}

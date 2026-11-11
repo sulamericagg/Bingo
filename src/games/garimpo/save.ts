@@ -44,6 +44,9 @@ export interface SlotSave {
   terrain: string;
   /** dicas já vistas */
   tips: string[];
+  /** mina subterrânea aberta e seu estado */
+  mineOpen?: boolean;
+  ug?: import('./underground').UgSave;
 }
 export interface SlotMeta {
   seed: number;
@@ -115,7 +118,7 @@ export const START_MONEY = [600, 250, 100, 0];
 /** preço do grama por dificuldade */
 export const GOLD_PRICE = [14, 10, 8, 6];
 /** intervalo do caminhão de exportação (s) */
-export const EXPORT_EVERY = [80, 110, 140, 170];
+export const EXPORT_EVERY = [60, 75, 95, 120];
 /** intervalo de incêndios (s): raro; frequente só no "muito difícil" */
 export const FIRE_EVERY: [number, number][] = [
   [1e9, 1e9],

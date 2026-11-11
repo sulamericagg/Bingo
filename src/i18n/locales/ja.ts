@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "つるはしで岩をほろう。線路、トロッコ、発電機、ランプを置こう！",
+  "gb.noMoney": "お金が足りない",
+  "gb.needMine": "先に鉱山を開けよう",
+  "gb.mineOpen": "鉱山が開いた！入口は山の採掘場にあるよ。",
+  "gb.mine.open": "地下鉱山を開く",
+  "gb.mine.cart": "トロッコ",
+  "gb.mine.bot": "鉱夫（鉱山）",
   "best.garimpo": "売った金: {n} g",
   "gb.back": "もどる",
   "gb.bed": "荷台",

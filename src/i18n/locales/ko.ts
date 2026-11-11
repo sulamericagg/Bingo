@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "곡괭이로 바위를 파요. 선로, 광차, 발전기, 전등을 놓아요!",
+  "gb.noMoney": "돈이 부족해요",
+  "gb.needMine": "먼저 광산을 열어요",
+  "gb.mineOpen": "광산이 열렸어요! 입구는 산의 채굴장에 있어요.",
+  "gb.mine.open": "지하 광산 열기",
+  "gb.mine.cart": "광차",
+  "gb.mine.bot": "광부(광산)",
   "best.garimpo": "판 금: {n} g",
   "gb.back": "뒤로",
   "gb.bed": "적재함",

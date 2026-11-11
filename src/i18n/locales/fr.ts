@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Creuse la roche à la pioche. Pose des rails, des wagonnets, un générateur et des lampes !",
+  "gb.noMoney": "Pas assez d'argent",
+  "gb.needMine": "Ouvre d'abord la mine",
+  "gb.mineOpen": "La mine est ouverte ! L'entrée est dans la cour de la mine, dans la montagne.",
+  "gb.mine.open": "Ouvrir la mine souterraine",
+  "gb.mine.cart": "Wagonnet",
+  "gb.mine.bot": "Mineur (mine)",
   "best.garimpo": "Or vendu : {n} g",
   "gb.back": "Retour",
   "gb.bed": "Benne",

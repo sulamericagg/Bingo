@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Gali batu dengan beliung. Pasang rel, lori, generator dan lampu!",
+  "gb.noMoney": "Uang tidak cukup",
+  "gb.needMine": "Buka tambang dulu",
+  "gb.mineOpen": "Tambang dibuka! Pintunya di halaman tambang, di gunung.",
+  "gb.mine.open": "Buka tambang bawah tanah",
+  "gb.mine.cart": "Lori tambang",
+  "gb.mine.bot": "Penambang (tambang)",
   "best.garimpo": "Emas terjual: {n} g",
   "gb.back": "Kembali",
   "gb.bed": "Bak",
