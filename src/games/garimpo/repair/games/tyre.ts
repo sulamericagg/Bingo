@@ -43,6 +43,12 @@ export class TyreGame extends MiniGame {
   private jackG!: CanvasGradient;
   private ramG!: CanvasGradient;
   private trayG!: CanvasGradient;
+  private under!: CanvasGradient;
+  private chromeG!: CanvasGradient;
+  private lampG!: CanvasGradient;
+  private bumpG!: CanvasGradient;
+  private well!: CanvasGradient;
+  private trayIn!: CanvasGradient;
   private cx = 420;
   /** cubo em repouso (pneu murcho no chão) */
   private hy0 = 260;
@@ -155,6 +161,31 @@ export class TyreGame extends MiniGame {
     this.trayG = lin(c, 0, -20, 0, 20, [
       [0, '#6f8fb0'],
       [1, '#2f4a66'],
+    ]);
+    this.chromeG = lin(c, 0, 0, 0, R * 0.11, [
+      [0, '#f2f4f6'],
+      [1, '#7d858d'],
+    ]);
+    this.lampG = lin(c, 0, 0, 0, 22, [
+      [0, '#fffbe8'],
+      [1, '#d8c88a'],
+    ]);
+    this.bumpG = lin(c, 0, 0, 0, 28, [
+      [0, '#5b6168'],
+      [1, '#1d2024'],
+    ]);
+    this.under = lin(c, 0, this.hy0 - LIFT_PX, 0, this.floorY, [
+      [0, 'rgba(14,10,8,.96)'],
+      [0.55, 'rgba(22,14,10,.85)'],
+      [1, 'rgba(40,22,12,.6)'],
+    ]);
+    this.well = rad(c, 0, -R * 0.3, R * 0.2, 0, 0, R * 1.2, [
+      [0, '#3a3430'],
+      [1, '#0b0a09'],
+    ]);
+    this.trayIn = rad(c, -10, -6, 4, 0, 0, 60, [
+      [0, '#3c556e'],
+      [1, '#121c27'],
     ]);
     if (!this.spX) {
       this.spX = this.W - R * 0.95;
@@ -650,22 +681,18 @@ export class TyreGame extends MiniGame {
     const W = this.W;
     const sill = this.sill;
     const archR = R * (this.truck ? 1.12 : 1.16);
-    // caixa de roda (escura)
-    c.fillStyle = rad(c, cx, hy - R * 0.2, R * 0.3, cx, hy, archR, [
-      [0, '#3a3430'],
-      [1, '#0e0c0b'],
-    ]);
+    // embaixo do carro (sombra) e caixa de roda (escura)
+    c.fillStyle = this.under;
+    c.fillRect(-20, sill - 2, W + 40, this.floorY - sill + 4);
+    c.fillStyle = this.well;
+    c.save();
+    c.translate(cx, hy);
     c.beginPath();
-    c.arc(cx, hy + 4, archR, Math.PI, 0);
-    c.lineTo(cx + archR, sill);
-    c.lineTo(cx - archR, sill);
+    c.arc(0, 4, archR, Math.PI, 0);
+    c.lineTo(archR, sill - hy);
+    c.lineTo(-archR, sill - hy);
     c.fill();
-    // suspensão (mola) dentro da caixa
-    c.strokeStyle = '#5b636b';
-    c.lineWidth = 6;
-    c.beginPath();
-    for (let k = 0; k <= 8; k++) c.lineTo(cx - 14 + (k % 2) * 28, hy - archR + 14 + k * ((archR - R * 0.5) / 8));
-    c.stroke();
+    c.restore();
     // lataria com recorte do para-lama
     const dy = sill - (hy + 4);
     const ix = Math.sqrt(Math.max(0, archR * archR - dy * dy));
@@ -718,84 +745,126 @@ export class TyreGame extends MiniGame {
       c.fillStyle = '#e8b41c';
       c.fillRect(cx + archR + 29, hy - R * 0.3, 16, 6);
     } else {
+      // pickup de lado: capô, nariz arredondado, para-brisa e cabine (céu aparece em cima)
+      const hT = hy - R * 1.48;
+      const x0 = cx - R * 2.2;
+      const xw = cx + R * 1.2;
+      c.beginPath();
+      c.moveTo(W + 20, sill);
+      c.lineTo(cx + ix, sill);
+      c.arc(cx, hy + 4, archR, Math.atan2(dy, ix), Math.atan2(dy, -ix), true);
+      c.lineTo(x0 + 6, sill);
+      c.quadraticCurveTo(x0 - 16, sill, x0 - 16, sill - 30);
+      c.lineTo(x0 - 14, hT + 26);
+      c.quadraticCurveTo(x0 - 10, hT, x0 + 30, hT - 2);
+      c.lineTo(xw, hT - 8);
+      c.lineTo(xw + R * 0.85, hT - R * 1.3);
+      c.lineTo(W + 20, hT - R * 1.3);
+      c.closePath();
       c.fillStyle = this.body;
       c.fill();
-      c.strokeStyle = 'rgba(0,0,0,.35)';
-      c.lineWidth = 2;
+      c.strokeStyle = 'rgba(0,0,0,.45)';
+      c.lineWidth = 2.5;
       c.stroke();
-      // vidro (para-brisa/janela) em cima, porta, vinco, maçaneta
-      const hood = hy - R * 1.28;
+      // reflexo do céu na faixa de cima da lataria
+      c.save();
+      c.clip();
+      c.fillStyle = 'rgba(255,255,255,.22)';
+      c.fillRect(-20, hT - 4, W + 40, 10);
+      c.fillStyle = 'rgba(255,255,255,.1)';
+      c.fillRect(-20, hT + 8, W + 40, 18);
+      c.fillStyle = 'rgba(0,0,0,.14)';
+      c.fillRect(-20, hy - R * 0.2, W + 40, R);
+      // vinco lateral (luz em cima, sombra embaixo)
+      c.fillStyle = 'rgba(255,255,255,.35)';
+      c.fillRect(-20, hy - R * 0.66, W + 40, 2.5);
+      c.fillStyle = 'rgba(0,0,0,.25)';
+      c.fillRect(-20, hy - R * 0.66 + 2.5, W + 40, 3);
+      c.restore();
+      // janela da porta e para-brisa
       c.fillStyle = this.glass;
       c.beginPath();
-      c.moveTo(cx + R * 1.05, hood);
-      c.lineTo(cx + R * 1.85, -20);
-      c.lineTo(W + 20, -20);
-      c.lineTo(W + 20, hood);
+      c.moveTo(xw + R * 0.32, hT - 10);
+      c.lineTo(xw + R * 0.95, hT - R * 1.1);
+      c.lineTo(W + 20, hT - R * 1.1);
+      c.lineTo(W + 20, hT - 10);
       c.closePath();
       c.fill();
-      c.fillStyle = 'rgba(255,255,255,.22)';
+      c.fillStyle = 'rgba(255,255,255,.25)';
       c.beginPath();
-      c.moveTo(cx + R * 1.6, hood);
-      c.lineTo(cx + R * 2.15, -20);
-      c.lineTo(cx + R * 2.45, -20);
-      c.lineTo(cx + R * 1.9, hood);
+      c.moveTo(xw + R * 0.75, hT - 10);
+      c.lineTo(xw + R * 1.2, hT - R * 1.1);
+      c.lineTo(xw + R * 1.45, hT - R * 1.1);
+      c.lineTo(xw + R * 1.0, hT - 10);
       c.fill();
-      c.fillStyle = this.ctx.veh.bodyD;
-      c.fillRect(cx + R * 1.05, hood - 3, W, 6);
-      c.strokeStyle = 'rgba(0,0,0,.4)';
+      c.strokeStyle = '#1b1d21';
+      c.lineWidth = 7;
+      c.beginPath();
+      c.moveTo(xw + 4, hT - 8);
+      c.lineTo(xw + R * 0.85 + 4, hT - R * 1.3);
+      c.stroke();
+      // porta, maçaneta, retrovisor
+      c.strokeStyle = 'rgba(0,0,0,.45)';
       c.lineWidth = 2.5;
       c.beginPath();
-      c.moveTo(cx + R * 1.5, hood);
+      c.moveTo(cx + R * 1.5, hT - 8);
       c.lineTo(cx + R * 1.5, sill - 2);
       c.stroke();
-      c.fillStyle = '#c9cfd5';
+      c.save();
+      c.translate(cx + R * 1.75, hy - R * 0.95);
+      c.fillStyle = this.chromeG;
       c.beginPath();
-      rrect(c, cx + R * 1.7, hy - R * 0.92, R * 0.36, 9, 4);
+      rrect(c, 0, 0, R * 0.38, R * 0.11, 5);
       c.fill();
-      c.strokeStyle = 'rgba(255,255,255,.4)';
-      c.lineWidth = 3;
+      c.restore();
+      c.fillStyle = '#1b1d21';
       c.beginPath();
-      c.moveTo(-20, hy - R * 0.62);
-      c.lineTo(cx - archR - 6, hy - R * 0.62);
-      c.moveTo(cx + archR + 6, hy - R * 0.62);
-      c.lineTo(W + 20, hy - R * 0.62);
+      rrect(c, xw + R * 0.1, hT - 34, 30, 22, 6);
+      c.fill();
+      // farol e pisca no nariz
+      c.save();
+      c.translate(x0 - 12, hT + 10);
+      c.fillStyle = this.lampG;
+      c.beginPath();
+      rrect(c, 0, 0, 30, 22, 8);
+      c.fill();
+      c.strokeStyle = '#3a3f45';
+      c.lineWidth = 2;
       c.stroke();
-      // para-choque e farol à esquerda
-      const fx = cx - R * 2.15;
-      c.fillStyle = lin(c, 0, hy - R * 0.5, 0, sill, [
-        [0, '#e9edf1'],
-        [0.5, '#9aa2aa'],
-        [1, '#4f565d'],
-      ]);
+      c.restore();
+      glow(c, x0, hT + 21, 34, 0.4);
+      c.fillStyle = '#ff9a1a';
       c.beginPath();
-      rrect(c, fx - 60, hy - R * 0.5, 60, sill - (hy - R * 0.5) + 6, 10);
+      rrect(c, cx - archR - 26, hy - R * 0.5, 16, 9, 3);
       c.fill();
-      c.fillStyle = '#ffe9a8';
+      // para-choque
+      c.save();
+      c.translate(x0 - 24, sill - 26);
+      c.fillStyle = this.bumpG;
       c.beginPath();
-      rrect(c, fx - 30, hood + 10, 30, R * 0.32, 6);
+      rrect(c, 0, 0, R * 0.75, 28, 8);
       c.fill();
-      glow(c, fx - 15, hood + 10 + R * 0.16, 30, 0.35);
-      // lama do garimpo na lataria
-      c.fillStyle = 'rgba(122,62,28,.55)';
-      for (let i = 0; i < 14; i++) {
-        const mx = cx - archR - 40 + ((i * 53) % (archR * 2 + 80));
-        if (Math.abs(mx - cx) < archR + 4) continue;
+      c.restore();
+      // alargador do para-lama (plástico)
+      c.strokeStyle = '#1c1d21';
+      c.lineWidth = 11;
+      c.beginPath();
+      c.arc(cx, hy + 4, archR + 4, Math.PI + Math.asin(Math.min(1, dy / (archR + 4))) * -1 + 0.02, -Math.asin(Math.min(1, dy / (archR + 4))) * -1 - 0.02);
+      c.stroke();
+      // lama do garimpo
+      c.fillStyle = 'rgba(122,62,28,.6)';
+      for (let i = 0; i < 18; i++) {
+        const mx = x0 + ((i * 61) % (W - x0));
+        if (Math.abs(mx - cx) < archR + 10) continue;
         c.beginPath();
-        c.arc(mx, sill - 6 - ((i * 7) % 22), 3 + (i % 4) * 2, 0, TAU);
+        c.arc(mx, sill - 5 - ((i * 7) % 24), 2.5 + (i % 4) * 2, 0, TAU);
         c.fill();
       }
-      // soleira de plástico
+      // soleira
       c.fillStyle = '#23252a';
-      c.fillRect(-20, sill - 9, cx - ix + 20, 9);
+      c.fillRect(x0 + 20, sill - 9, cx - ix - x0 - 20, 9);
       c.fillRect(cx + ix, sill - 9, W, 9);
     }
-    // embaixo do carro: sombra
-    c.fillStyle = lin(c, 0, sill, 0, this.floorY, [
-      [0, 'rgba(0,0,0,.55)'],
-      [1, 'rgba(0,0,0,.1)'],
-    ]);
-    c.fillRect(-20, sill, cx - archR + 20, this.floorY - sill);
-    c.fillRect(cx + archR, sill, W, this.floorY - sill);
   }
 
   private drawJack(c: C2): void {
@@ -880,9 +949,21 @@ export class TyreGame extends MiniGame {
     // medidor de altura (setinhas subindo)
     if (this.step === 0) {
       const k = this.liftT;
-      for (let i = 0; i < 5; i++) {
-        const on = i < Math.round(k * 5);
-        drawIcon(c, 'down', jx - 54, fy - 30 - i * 16, 14, on ? '#5fe07a' : 'rgba(255,255,255,.35)', 3);
+      const n = this.truck ? 6 : 5;
+      for (let i = 0; i < n; i++) {
+        const on = i < Math.round(k * n);
+        const y = fy - 26 - i * 15;
+        const x = jx + 128;
+        c.strokeStyle = 'rgba(0,0,0,.5)';
+        c.lineWidth = 7;
+        c.beginPath();
+        c.moveTo(x - 10, y + 5);
+        c.lineTo(x, y - 4);
+        c.lineTo(x + 10, y + 5);
+        c.stroke();
+        c.strokeStyle = on ? '#5fe07a' : 'rgba(255,255,255,.4)';
+        c.lineWidth = 4;
+        c.stroke();
       }
     }
   }
@@ -894,22 +975,26 @@ export class TyreGame extends MiniGame {
     softShadow(c, x, y + 10, w * 0.6, 8, 0.5);
     c.save();
     c.translate(x, y);
-    c.fillStyle = '#22364c';
+    c.fillStyle = '#1a2a3a';
     c.beginPath();
-    c.ellipse(0, 6, w / 2, 16, 0, 0, TAU);
+    c.ellipse(0, 7, w / 2, 17, 0, 0, TAU);
     c.fill();
     c.fillStyle = this.trayG;
     c.beginPath();
-    c.ellipse(0, 0, w / 2, 16, 0, 0, TAU);
+    c.ellipse(0, 0, w / 2, 17, 0, 0, TAU);
     c.fill();
-    c.fillStyle = 'rgba(10,20,30,.55)';
+    c.fillStyle = this.trayIn;
     c.beginPath();
-    c.ellipse(0, 1, w / 2 - 7, 11, 0, 0, TAU);
+    c.ellipse(0, 1.5, w / 2 - 8, 11.5, 0, 0, TAU);
     c.fill();
-    c.strokeStyle = 'rgba(255,255,255,.45)';
+    c.strokeStyle = 'rgba(255,255,255,.55)';
     c.lineWidth = 2;
     c.beginPath();
-    c.ellipse(0, 0, w / 2, 16, 0, Math.PI * 1.1, Math.PI * 1.9);
+    c.ellipse(0, 0, w / 2 - 1, 16, 0, Math.PI * 1.08, Math.PI * 1.92);
+    c.stroke();
+    c.strokeStyle = 'rgba(0,0,0,.45)';
+    c.beginPath();
+    c.ellipse(0, 1.5, w / 2 - 8, 11.5, 0, Math.PI * 1.1, Math.PI * 1.9);
     c.stroke();
     c.restore();
     // porcas dentro

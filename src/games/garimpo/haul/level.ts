@@ -27,6 +27,7 @@ import { COMBOS, DESTS, RIG_TANK, type Trip } from './freight';
 import { buildCar, buildPump, buildShop, buildSign, buildTractor, buildTrailer, type TrailerParts } from './models';
 import { DS, HALF, Road, SHOULDER, YARD, type Stop } from './road';
 import { LANE, Rig } from './rig';
+import { hwRepair } from '../repair/highway'; // CONSERTOS: rampas de escape e freio que falha
 
 const CH = 160;
 const NAMES = ['Boa Vista', 'Água Clara', 'São Jorge', 'Pedra Lisa', 'Lagoa Seca', 'Serra Verde', 'Vale do Sol', 'Rio Fundo', 'Morro Alto', 'Bom Jardim', 'Ouro Fino', 'Campo Belo', 'Santa Rita', 'Três Pontes', 'Canaã', 'Buriti', 'Ipê Roxo', 'Jatobá', 'Taquara', 'Aroeira'];
@@ -468,6 +469,7 @@ export class Highway {
             else c.setRGB(0.62 + nz * 0.12, 1.05 + nz * 0.15 - k * 0.02, 0.42 + nz * 0.06);
             // barranco perto do rio: terra
             if (y < o[1] - 3) c.setRGB(1.1, 0.75, 0.5);
+            if (k >= 1 && road.rampAt(s, lat) >= 0) c.setRGB(1.45, 1.3, 1.02); // CONSERTOS: cascalho da rampa
             col.set([c.r, c.g, c.b], vi * 3);
             if (r < rows - 1 && k < OFF.length - 1) {
               const a = vi;
@@ -570,6 +572,7 @@ export class Highway {
       const lat = (R() < 0.5 ? 1 : -1) * (14 + R() * 70);
       if (road.stopAt(s, 70) && Math.abs(lat) < 40) continue;
       if (road.bridgeAt(s) || road.bridges.some((b) => s > b.s0 - 30 && s < b.s1 + 30)) continue;
+      if (road.rampAt(s, lat) >= 0 || road.rampAt(s, lat * 0.6) >= 0) continue; // CONSERTOS
       road.sample(s, o);
       const x = o[0] + Math.cos(o[3]) * lat;
       const z = o[2] - Math.sin(o[3]) * lat;
@@ -601,6 +604,7 @@ export class Highway {
       grp.add(new THREE.Mesh(g, this.miscMat));
     }
     post.dispose();
+    hwRepair.chunk(road, sA, sA + CH, grp); // CONSERTOS: placa, balizas e pneus da rampa de escape
     this.scene.add(grp);
     return { i: ci, grp, trees };
   }
@@ -683,6 +687,7 @@ export class Highway {
     if (this.host.fuelOn && this.trip.fuel <= 0) this.ctl.gas = 0;
     // danificado: anda devagar
     if (this.rig.dmg > 70 && this.rig.v > 14) this.ctl.gas = Math.min(this.ctl.gas, 0.2);
+    hwRepair.input(this, this.ctl); // CONSERTOS: freio que falhou não segura
   }
 
   /** um quadro: true = continua; a pausa/cartões param a simulação */
@@ -695,6 +700,7 @@ export class Highway {
       while (left > 1e-4) {
         const d = Math.min(h, left);
         this.rig.step(d, this.ctl);
+        hwRepair.post(this, d); // CONSERTOS: freio-motor, cascalho da rampa, sorteio da falha
         left -= d;
       }
       this.trip.s = this.rig.s;

@@ -415,7 +415,7 @@ export function lugPos(P: WheelPaint, x: number, y: number, a: number, nLug: num
 }
 
 /** cubo exposto (sem roda): disco de freio, pinça, prisioneiros */
-export function drawHub(c: C2, P: WheelPaint, x: number, y: number, nLug: number, caliper: string): void {
+export function drawHub(c: C2, P: WheelPaint, x: number, y: number, _nLug: number, caliper: string): void {
   const R = P.R;
   const Rd = R * 0.56;
   c.save();

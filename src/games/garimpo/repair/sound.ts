@@ -133,6 +133,11 @@ export const rs = {
     tone(320, 0.18, 'sine', 0.12, 0.55);
     noise(0.14, 0.1, 900, 2, 0.02);
   },
+  /** mola balançando (teste da suspensão) */
+  boing(): void {
+    tone(180, 0.5, 'sine', 0.18, 1.5);
+    tone(140, 0.4, 'triangle', 0.08, 1.3, 0.1);
+  },
   /** bolha de ar saindo na sangria */
   bubble(): void {
     tone(500 + Math.random() * 400, 0.06, 'sine', 0.08, 2.2);

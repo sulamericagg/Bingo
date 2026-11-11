@@ -165,6 +165,7 @@ export class MpHost {
     this.peers.set(id, r);
     this.sendInit(r);
     g.water?.netReset();
+    g.repairs?.netReset(); // CONSERTOS
     this.sendPeers();
     notify(t('gb.mp.joined', '{n} entrou no garimpo!', { n: name }), { icon: 'user', kind: 'good' });
     audio.coin(1);
@@ -263,6 +264,7 @@ export class MpHost {
     } else if (m.k === 'buy' && typeof m.id === 'string' && m.id.length < 16) {
       if (g.buy(m.id)) this.event(['buy', m.id, r.name]);
     } else if (m.k === 'water') g.water?.remoteAct(m);
+    else if (m.k === 'repair') g.repairs?.remoteAct(m); // CONSERTOS: convidado consertou/pediu
   }
   private freeSeat(r: Remote): void {
     const mc = r.m!;
@@ -372,6 +374,8 @@ export class MpHost {
     if (tr) msg.tr = tr;
     const wa = g.water?.netTake();
     if (wa) msg.wa = wa;
+    const rr = g.repairs?.netTake(); // CONSERTOS: quebras e peças
+    if (rr) msg.rr = rr;
     const fire = g.fire;
     if (fire?.active) {
       msg.fi = fire.netPts();
@@ -548,6 +552,7 @@ export class MpGuest {
     this.plantSpin = num(m.ps);
     if (typeof m.tr === 'string' && m.tr) w.T.applyNetDelta(m.tr);
     if (m.wa) g.water?.netApply(m.wa);
+    if (m.rr) g.repairs?.netApply(m.rr); // CONSERTOS
     const fi = m.fi as number[] | undefined;
     this.fireOn = !!fi;
     this.fireN = 0;
