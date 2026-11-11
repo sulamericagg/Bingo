@@ -640,13 +640,13 @@ export class MontaLeva implements MiniGameHandle {
     const top = document.createElement('div');
     top.className = 'ml-top ml-fade';
     top.innerHTML = `
-      <button class="ml-btn ic" data-a="back" aria-label="${t('ml.back', 'Voltar')}">${IC.back}</button>
+      <button class="ml-btn ic round" data-a="back" aria-label="${t('ml.back', 'Voltar')}">${IC.back}</button>
       <div class="ml-title"><b>${t('ml.levelN', 'Fase {n}', { n: L.n })}</b><small>${esc(chapterName(chapterOf(L.n)))}</small></div>
       <div class="ml-goals" data-r="goals"></div>
       <div class="ml-sp"></div>
       <span class="ml-chip" data-r="budget" style="display:${L.budget ? '' : 'none'}"></span>
-      <button class="ml-btn ic sm" data-a="view" aria-label="${t('ml.view', 'Ver pista')}" title="${t('ml.view', 'Ver pista')}">${IC.eye}</button>
-      <button class="ml-btn ic sm" data-a="clear" aria-label="${t('ml.clear', 'Limpar tudo')}" title="${t('ml.clear', 'Limpar tudo')}">${IC.trash}</button>`;
+      <button class="ml-btn ic sm round" data-a="view" aria-label="${t('ml.view', 'Ver pista')}" title="${t('ml.view', 'Ver pista')}">${IC.eye}</button>
+      <button class="ml-btn ic sm round" data-a="clear" aria-label="${t('ml.clear', 'Limpar tudo')}" title="${t('ml.clear', 'Limpar tudo')}">${IC.trash}</button>`;
     ui.appendChild(top);
     const tray = document.createElement('div');
     tray.className = 'ml-tray ml-fade';
@@ -1579,7 +1579,7 @@ export class MontaLeva implements MiniGameHandle {
     this.botVis = sim.cargo.map(() => ({ lean: 0, vl: 0, sq: 0, mood: 0, moodT: 0, vx: 0, face: sim.track.dir }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=edit]')!, { onPress: () => this.toBuild() }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=restart]')!, { onPress: () => this.startTest() }));
-    const zoneTxt = L.cargo.some((c) => c.t === 'bot') ? t('ml.objBot', 'Leve o passageiro até a SAÍDA') : t('ml.objExit', 'Leve a carga até a placa verde de saída');
+    const zoneTxt = L.cargo.some((c) => c.t === 'bot') ? t('ml.objBot', 'Leve o passageiro até a SAÍDA') : t('ml.objExit', 'Leve a carga até a SAÍDA');
     objective(zoneTxt, { icon: 'target' });
     setNotifyTop(top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 8);
     if (this.tut) {
@@ -2475,6 +2475,9 @@ export class MontaLeva implements MiniGameHandle {
         sel: this.sel,
         armed: this.armed,
         simTime: this.sim?.time ?? 0,
+        pads: this.padEls.length,
+        btnMask: this.sim?.input.btn ?? 0,
+        wires: this.hist.parts.reduce((s, p) => s + (p.w?.length ?? 0), 0),
         result: this.sim?.result ?? null,
         flipped: this.sim?.flipped ?? false,
         focus: this.sim ? this.sim.focus() : null,

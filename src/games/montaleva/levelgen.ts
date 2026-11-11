@@ -614,7 +614,7 @@ export interface GenOut {
 }
 
 /** a solução tem que passar no cenário nominal e com perturbações mínimas (outros motores JS arredondam diferente) */
-const JITS = [0, 2e-6, -3e-6, 7e-6, -1.3e-5, 3e-5, -4.5e-5, 8e-5, 3e-6, -4e-6, 1e-5, -2e-5, 5e-5];
+const JITS = [0, 2e-6, -3e-6, 7e-6, -1.3e-5, 3e-5, -4.5e-5, 8e-5, 3e-6, -4e-6, 1e-5, -2e-5, 5e-5, 1.1e-6, -6e-6, 1.7e-5, -3.3e-5, 6e-5, -9e-5, 1.2e-4];
 function robustRun(L: LevelDef, sol: Solution): { ok: boolean; time: number; flipped: boolean } {
   let first: { ok: boolean; time: number; flipped: boolean } | null = null;
   for (const j of JITS) {
@@ -626,6 +626,10 @@ function robustRun(L: LevelDef, sol: Solution): { ok: boolean; time: number; fli
 }
 
 function quickRun(L: LevelDef, sol: Solution, maxT = 45, jit = 0): { ok: boolean; time: number; flipped: boolean } {
+  const r = quickRun0(L, sol, maxT, jit);
+  return r;
+}
+function quickRun0(L: LevelDef, sol: Solution, maxT: number, jit: number): { ok: boolean; time: number; flipped: boolean } {
   const sim = new Sim(L, sol.parts, undefined, jit);
   let best = -1e9;
   let bestT = 0;
@@ -639,7 +643,8 @@ function quickRun(L: LevelDef, sol: Solution, maxT = 45, jit = 0): { ok: boolean
     }
     if (sim.time - bestT > 7) break; // parado: desiste
   }
-  return { ok: !!sim.result && sim.result.win, time: sim.time, flipped: sim.flipped };
+  // vidro: exige folga de 25% no limite de quebra (senão a solução fica na corda bamba)
+  return { ok: !!sim.result && sim.result.win && sim.glassPeak < 0.75, time: sim.time, flipped: sim.flipped };
 }
 
 function genOne(slot: Exclude<Slot, number>): GenOut | null {

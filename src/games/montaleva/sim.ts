@@ -129,6 +129,8 @@ export class Sim {
   /** quanto o veículo subiu para não nascer dentro do chão */
   lift = 0;
   maxX = 0;
+  /** maior pancada no vidro (fração do limite de quebra) — o gerador exige folga */
+  glassPeak = 0;
   private needCount: number;
   private totalPieces: number;
   private groundBody: Body;
@@ -452,6 +454,7 @@ export class Sim {
         const cg = this.cargo[ud.ci];
         if (cg.def.t === 'glass') {
           const lim = GLASS_BREAK * (1 + 0.2 * this.up.pad);
+          if (this.time > 0.35 && dv / lim > this.glassPeak) this.glassPeak = dv / lim;
           if (dv > lim && cg.st[0] === 'ok' && this.time > 0.35) {
             cg.st[0] = 'broken';
             const p = b.getPosition();
