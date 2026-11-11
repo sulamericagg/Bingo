@@ -68,9 +68,15 @@ async function setBadge(n: number): Promise<void> {
 }
 
 /** Uma checagem agora (também chamada ao voltar para o app). */
+let again = false;
 export async function checkFriends(force = false): Promise<void> {
-  if (busy || (document.hidden && !force)) return;
+  if (document.hidden && !force) return;
+  if (busy) {
+    again = true; // chegou um "toque" no meio da leitura: lê de novo logo depois
+    return;
+  }
   busy = true;
+  again = false;
   try {
     const m = await homeMod();
     if (!(await m.refreshFriendsNow())) return;
@@ -80,6 +86,7 @@ export async function checkFriends(force = false): Promise<void> {
     /* offline */
   } finally {
     busy = false;
+    if (again) setTimeout(() => void checkFriends(true), 300);
   }
 }
 

@@ -257,11 +257,25 @@ function onLeaderLaunch(gameId: string): void {
   send({ t: 'launch', game: gameId, room });
 }
 /** Leva o grupo para a festa na casa do líder. */
-export function launchHouseParty(): void {
+export async function launchHouseParty(): Promise<void> {
   if (!view) return;
-  const room = `${view.id}-casa`;
-  if (isLeader()) send({ t: 'launch', game: 'casa', room });
-  void import('../home/register').then((m) => m.openHome({ party: view!.leader }));
+  const host = view.leader;
+  if (isLeader()) {
+    // a casa precisa existir no servidor para os amigos entrarem (casa nova só fica no aparelho até salvar)
+    try {
+      const p = await me();
+      const r = await fetch(`${apiBase()}/api/home/${p.id}?id=${p.id}`);
+      if (r.status === 404) {
+        const [{ homeApi }, { starterDesign }] = await Promise.all([import('../services/home'), import('../home/catalog')]);
+        const mine = await homeApi.getHome();
+        await homeApi.saveDesign(mine?.design ?? starterDesign());
+      }
+    } catch {
+      /* offline: a festa abre só com robôs */
+    }
+    send({ t: 'launch', game: 'casa', room: `${view.id}-casa` });
+  }
+  void import('../home/register').then((m) => m.openHome({ party: host }));
 }
 
 async function onLaunch(game: string, room: string, by: string): Promise<void> {

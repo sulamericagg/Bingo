@@ -110,7 +110,7 @@ export function openSquadPanel(focus: 'invite' | 'chat' = 'invite'): void {
       const hp = btn(t('sq.houseparty', 'Festa na minha casa'), 'party', 'violet');
       hp.onclick = () => {
         s.close();
-        launchHouseParty();
+        void launchHouseParty();
       };
       acts.appendChild(hp);
     }
