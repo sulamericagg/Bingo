@@ -428,6 +428,36 @@ export class View3D {
     // mão
     this.hand = new Hand(this.cam, handColors(o.mySkin));
     this.resize();
+    this.warmUp();
+  }
+
+  /**
+   * Um quadro com culling desligado e tudo visível (cabine e mundo): sobe geometrias/texturas e
+   * compila shaders no carregamento, em vez de engasgar na primeira vez que cada coisa aparece.
+   */
+  private warmUp(): void {
+    const off: THREE.Object3D[] = [];
+    const hid: THREE.Object3D[] = [];
+    for (const sc of [this.world, this.cabin])
+      sc.traverse((o) => {
+        if (o.frustumCulled) {
+          o.frustumCulled = false;
+          off.push(o);
+        }
+        if (!o.visible) {
+          o.visible = true;
+          hid.push(o);
+        }
+      });
+    try {
+      this.planeObj.updateMatrixWorld(true);
+      this.r.render(this.world, this.wcam);
+      this.r.render(this.cabin, this.cam);
+      this.r.clear();
+    } finally {
+      for (const o of off) o.frustumCulled = true;
+      for (const o of hid) o.visible = false;
+    }
   }
 
   private buildLights(): THREE.Points {
@@ -460,6 +490,8 @@ export class View3D {
     this.r.setSize(w, h, false);
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
+    this.cw = w;
+    this.ch = h;
     for (const c of [this.cam, this.wcam]) {
       c.aspect = w / h;
       c.fov = w < h ? 82 : 70;
@@ -467,9 +499,17 @@ export class View3D {
     }
     for (const p of [this.lights, this.papi]) ((p.material as THREE.ShaderMaterial).uniforms.pr.value = this.q.pr * (h / 400));
   }
+  private resK = 1;
+  private cw = 1;
+  private ch = 1;
+  /** resolução dinâmica (QualityGovernor.onResScale) */
+  setResScale(k: number): void {
+    this.resK = k;
+    this.r.setPixelRatio(this.q.pr * k);
+  }
   setTier(tier: Tier): void {
     this.q = q3For(tier);
-    this.r.setPixelRatio(this.q.pr);
+    this.r.setPixelRatio(this.q.pr * this.resK);
     this.fx.budget = this.flames.budget = this.q.particles;
     this.resize();
   }
@@ -484,8 +524,10 @@ export class View3D {
 
   /** ponto no espaço do avião → pixels da tela (null se atrás) */
   project(x: number, y: number, z: number, out: { x: number; y: number; behind: boolean }): void {
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
+    // tamanho guardado no resize(): ler clientWidth aqui (chamado pelo HUD a cada marcador,
+    // entre escritas de estilo) forçava layout síncrono várias vezes por quadro
+    const w = this.cw;
+    const h = this.ch;
     if (this.extCam || this.ending || (this.cut >= 0 && this.cut < 6)) {
       _v.set(x, y, z);
       this.planeOff.localToWorld(_v);
@@ -577,7 +619,7 @@ export class View3D {
       this.navTex.needsUpdate = true;
     }
     // partículas
-    const h = this.canvas.clientHeight || 400;
+    const h = this.ch || 400;
     this.fx.update(dt, this.cam.fov, h);
     this.flames.update(dt, this.cam.fov, h);
     this.wfx.update(dt, this.wcam.fov, h);

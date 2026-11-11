@@ -281,6 +281,15 @@ export interface GovernorOptions {
   emit?: boolean;
   /** persiste o modo e o nível aprendido no localStorage (padrão true) */
   persist?: boolean;
+  /**
+   * Resolução dinâmica (modos 3D): fator 0..1 a multiplicar no pixel ratio do nível.
+   * Com este callback o governor reage RÁPIDO (~0,5 s) a quadros lentos baixando a
+   * resolução em passos de 10% até minResScale, e só depois desce de nível (exceto picos
+   * fortes). Sobe 5% por vez com folga sustentada. Só no modo automático.
+   */
+  onResScale?: (scale: number) => void;
+  /** piso da resolução dinâmica (padrão 0.6) */
+  minResScale?: number;
 }
 
 const BUCKET_MS = 250;
@@ -320,6 +329,11 @@ export class QualityGovernor {
   private lastUp = -1e9;
   private upCooldown = 20000;
   private lastUpFrom: Tier | null = null;
+  // resolução dinâmica
+  private _res = 1;
+  private resAt = -1e9;
+  private resUpWait = 3000;
+  private resLastUp = -1e9;
 
   constructor(opts: GovernorOptions = {}) {
     this.opts = opts;
@@ -339,6 +353,10 @@ export class QualityGovernor {
   get settings(): QualitySettings {
     return this._settings;
   }
+  /** fator da resolução dinâmica (1 = pixel ratio cheio do nível) */
+  get resScale(): number {
+    return this._res;
+  }
 
   /** Troca o modo (menu de Ajustes). 'auto' retoma do último nível automático. */
   setMode(m: QualityMode): void {
@@ -346,6 +364,7 @@ export class QualityGovernor {
     if (this.opts.persist !== false) saveMode(m);
     this.resetWindow();
     this.upCooldown = 20000;
+    this.setRes(1);
     this.apply(m === 'auto' ? this.autoTier : m, 'manual');
   }
 
@@ -384,7 +403,41 @@ export class QualityGovernor {
     this.filled = Math.min(N_BUCKETS, this.filled + 1);
     this.curSum = this.curWork = this.curT = 0;
     this.curN = this.curWorkN = 0;
-    if (this._mode === 'auto') this.evaluate();
+    if (this._mode === 'auto') {
+      if (this.opts.onResScale) this.evaluateRes();
+      this.evaluate();
+    }
+  }
+
+  private setRes(r: number): void {
+    r = Math.round(r * 100) / 100;
+    if (r === this._res) return;
+    this._res = r;
+    this.resAt = this.clock;
+    this.opts.onResScale?.(r);
+  }
+
+  /** resolução dinâmica: decide a cada balde de 250 ms */
+  private evaluateRes(): void {
+    const k = this._settings.fpsCap === 30 ? 2 : 1;
+    const min = this.opts.minResScale ?? 0.6;
+    const a05 = this.avg(2);
+    if (a05 < 0) return;
+    // descer: quadro médio > 19 ms em 0,5 s (um passo por 0,5 s)
+    if (a05 > 19 * k && this._res > min + 1e-3 && this.clock - this.resAt >= 500) {
+      // subida recente que não colou: espera mais para tentar de novo
+      if (this.clock - this.resLastUp < 2000) this.resUpWait = Math.min(this.resUpWait * 2, 60000);
+      this.setRes(Math.max(min, this._res - 0.1));
+      return;
+    }
+    // subir: 3 s seguidos em dia (≈ 60 fps) desde a última mudança
+    if (this._res < 1 && this.clock - this.resAt >= this.resUpWait) {
+      const a3 = this.avg(12);
+      if (a3 > 0 && a3 < 17.8 * k) {
+        this.resLastUp = this.clock;
+        this.setRes(Math.min(1, this._res + 0.05));
+      }
+    }
   }
 
   /** média do frame nos últimos k baldes (ou -1 se não houver histórico suficiente) */
@@ -420,8 +473,10 @@ export class QualityGovernor {
       const a2 = this.avg(8);
       const a05 = this.avg(2);
       let why = '';
+      // com resolução dinâmica, lentidão moderada primeiro reduz a resolução até o piso
+      const resLeft = !!this.opts.onResScale && this._res > (this.opts.minResScale ?? 0.6) + 1e-3;
       if (a05 > 40 * k) why = `pico ${a05.toFixed(1)}ms/0.5s`;
-      else if (a2 > 20 * k) why = `lento ${a2.toFixed(1)}ms/2s`;
+      else if (a2 > 20 * k && !resLeft) why = `lento ${a2.toFixed(1)}ms/2s`;
       if (why) {
         // a subida recente não se sustentou: espera o dobro antes de tentar de novo
         if (this.lastUpFrom === t - 1 && this.clock - this.lastUp < 15000) this.upCooldown = Math.min(this.upCooldown * 2, 160000);
@@ -445,6 +500,8 @@ export class QualityGovernor {
   }
 
   private step(t: Tier, reason: string): void {
+    // subindo de nível a resolução dinâmica recomeça cheia; descendo, mantém o fator atual
+    if (t > this.autoTier) this.setRes(1);
     this.autoTier = t;
     if (this.opts.persist !== false) rememberLearned(t);
     this.resetWindow();

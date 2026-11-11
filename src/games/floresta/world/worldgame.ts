@@ -1268,6 +1268,9 @@ export class WorldGame {
 
   /** veículos sem motorista: assentam no chão (o terreno pode ter mudado) */
   private idleVeh(v: Veh, dt: number): void {
+    // parado longe (pedaço do chão não carregado): nada muda, e a altura viria do gerador de
+    // ruído (caro, 6 consultas por veículo por quadro)
+    if (v.vy === 0 && Math.abs(v.speed) < 1e-3 && !this.world.chunkAt(v.x, v.z)) return;
     v.speed *= 1 - damp(3, dt);
     const g = this.world.heightAt(v.x, v.z);
     const floor = v.k === VK.Boat ? Math.max(g, WATER_Y - 0.15) : g;
@@ -1438,7 +1441,7 @@ export class WorldGame {
         _m.compose(_v.set(((lay % 2) - 0.5) * 0.3, 0.28 + lay * 0.45, (row - 1) * 0.5), _q.identity(), _s.set(1, 1, 1));
         _m.premultiply(v.m.bed.matrixWorld);
         this.cargoMesh.setMatrixAt(n, _m);
-        this.cargoMesh.setColorAt(n, _c.set('#9a6a3c'));
+        this.cargoMesh.setColorAt(n, _c.setHex(0x9a6a3c));
         n++;
       }
     }
@@ -1692,24 +1695,37 @@ export class WorldGame {
     }
   }
 
-  private updateHud(_dt: number): void {
+  private hudT = 0;
+  private arrowA = 1e9;
+  private hudCamp: Camp | null = null;
+  private updateHud(dt: number): void {
+    this.drawCargo();
+    // textos/botões do HUD a ~10 Hz (buscas de acampamento/veículo e DOM fora do quadro a quadro);
+    // a seta segue a câmera todo quadro, mas só escreve no DOM quando gira de verdade
+    this.hudT -= dt;
+    const full = this.hudT <= 0;
+    if (full) this.hudT = 0.1;
     const h = this.hud;
     const v = this.driving >= 0 ? this.vehs[this.driving] : null;
+    if (full) this.hudCamp = this.world.gen.nearestCamp(this.cx(), this.cz());
+    const camp = this.hudCamp;
+    if (camp) {
+      const camYaw = v ? v.yaw + this.camYawOff - Math.PI / 2 : this.yaw;
+      const a = Math.atan2(camp.x - this.cx(), -(camp.z - this.cz())) + camYaw;
+      if (Math.abs(a - this.arrowA) > 0.01) {
+        this.arrowA = a;
+        h.arrow(a);
+      }
+    }
+    if (!full) return;
     h.set('coins', short(this.save.coins));
     if (v) {
       const cap = VDEFS[v.k].cap;
       h.set('carry', cap ? `${v.cargo}/${cap}` : '—');
     } else h.set('carry', `${this.carry}/${ON_FOOT_CAP}${this.ore ? ' +' + short(this.ore) : ''}`);
-    const camp = this.world.gen.nearestCamp(this.cx(), this.cz());
     if (camp) {
-      const dx = camp.x - this.cx();
-      const dz = camp.z - this.cz();
-      const d = Math.hypot(dx, dz);
+      const d = Math.hypot(camp.x - this.cx(), camp.z - this.cz());
       h.set('camp', d < 14 ? t('floresta.w.atMill', 'Serraria') : `${Math.round(d)} m`);
-      // seta relativa à direção da câmera
-      const camYaw = v ? v.yaw + this.camYawOff - Math.PI / 2 : this.yaw;
-      const a = Math.atan2(dx, -dz) + camYaw;
-      h.arrow(a);
     }
     const near = !v ? this.nearVeh() : null;
     h.show('.fw-veh', !!v || !!near);
@@ -1723,7 +1739,6 @@ export class WorldGame {
     const useLbl = v ? VDEFS[v.k].use() : [t('floresta.chop', 'Cortar'), t('floresta.w.dig', 'Cavar'), t('floresta.w.place', 'Acender')][this.tool];
     h.set('use', useLbl);
     h.set('useI', v ? flIcon('wheel', 34) : this.toolIcon(), true);
-    this.drawCargo();
   }
 
   /* ------------------------------ ciclo de vida ------------------------------ */
@@ -1742,8 +1757,15 @@ export class WorldGame {
   setTier(tier: Tier, _s?: QualitySettings): void {
     const nq = wq(tier);
     Object.assign(this.q, nq);
-    this.renderer.setPixelRatio(nq.pr);
+    this.renderer.setPixelRatio(nq.pr * this.resK);
     this.resize();
+  }
+
+  private resK = 1;
+  /** resolução dinâmica (QualityGovernor.onResScale) */
+  setResScale(k: number): void {
+    this.resK = k;
+    this.renderer.setPixelRatio(this.q.pr * k);
   }
 
   resize(): void {

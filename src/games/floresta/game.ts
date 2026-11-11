@@ -26,6 +26,8 @@ export interface View {
   resize(): void;
   destroy(): void;
   setQuality?(q: QualitySettings): void;
+  /** resolução dinâmica (fator no pixel ratio) */
+  setResScale?(k: number): void;
   /** joystick (tela) → direção no mundo */
   toWorld?(jx: number, jy: number, out: { mx: number; mz: number }): void;
   toggleCam?(): void;
@@ -100,6 +102,9 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier, s) => {
         this.view?.setQuality?.(s);
         this.world?.setTier(tier, s);
+      }, onResScale: (k) => {
+        this.view?.setResScale?.(k);
+        this.world?.setResScale(k);
       } });
     this.autoMe = !!opts.auto;
     this.sim.onFell = (tr) => this.announceFell(tr);

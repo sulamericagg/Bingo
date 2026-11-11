@@ -129,12 +129,34 @@ export class Chunk {
     return this.cx + ',' + this.cz;
   }
 
+  private genRow = 0;
+  private gMn = 1e9;
+  private gMx = -1e9;
+
   generate(gen: WorldGen): void {
+    while (!this.generateStep(gen, Infinity));
+  }
+
+  /**
+   * Gera o pedaço aos poucos (linhas do relevo) até gastar budgetMs; devolve true quando
+   * terminou. O streaming divide a geração entre quadros em vez de travar um quadro inteiro.
+   */
+  generateStep(gen: WorldGen, budgetMs: number): boolean {
+    const t0 = performance.now();
+    while (this.genRow < VN) {
+      this.genRowAt(gen, this.genRow++);
+      if (performance.now() - t0 > budgetMs) break;
+    }
+    if (this.genRow < VN) return false;
+    this.finishGen(gen);
+    return true;
+  }
+
+  private genRowAt(gen: WorldGen, j: number): void {
     const c = this.col;
-    let mn = 1e9;
-    let mx = -1e9;
-    for (let j = 0; j < VN; j++)
-      for (let i = 0; i < VN; i++) {
+    let mn = this.gMn;
+    let mx = this.gMx;
+    for (let i = 0; i < VN; i++) {
         const x = this.x0 + i;
         const z = this.z0 + j;
         const k = j * VN + i;
@@ -160,6 +182,13 @@ export class Chunk {
         c[o + 9] = rr; c[o + 10] = rg; c[o + 11] = rb;
         c[o + 12] = gen.tint(x, z);
       }
+    this.gMn = mn;
+    this.gMx = mx;
+  }
+
+  private finishGen(gen: WorldGen): void {
+    const mn = this.gMn;
+    const mx = this.gMx;
     this.minY = mn;
     this.maxY = mx;
     this.biome = gen.weights(this.x0 + CH / 2, this.z0 + CH / 2, W);

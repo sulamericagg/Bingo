@@ -32,6 +32,36 @@ import { COOKERS, FX, IK, type FxEv, type Item, type Player, type Sim, type Stat
 import type { Renderer } from './game';
 
 /** ponte online (só existe com amigos conectados) */
+
+/**
+ * Aquecimento: um quadro com o culling desligado sobe TODAS as geometrias e texturas para a
+ * GPU e compila os shaders durante o carregamento — senão isso acontece aos poucos, na
+ * primeira vez que cada coisa entra na tela (engasgos ao andar/olhar em volta).
+ */
+function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): void {
+  const off: THREE.Object3D[] = [];
+  const hid: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.frustumCulled) {
+      o.frustumCulled = false;
+      off.push(o);
+    }
+    // escondidos agora (anel de mira, fogo, efeitos) também: senão compilam no meio do jogo
+    if (!o.visible) {
+      o.visible = true;
+      hid.push(o);
+    }
+  });
+  try {
+    r.compile(scene, cam);
+    r.render(scene, cam);
+  } finally {
+    for (const o of off) o.frustumCulled = true;
+    for (const o of hid) o.visible = false;
+  }
+}
+const COL_FIRE = new THREE.Color('#ff5c7a');
+const COL_HOT = new THREE.Color('#ffe14a');
 export interface FpsNet {
   notePick(target: number): void;
   noteThrow(st: number, x: number, y: number): void;
@@ -211,7 +241,7 @@ class KitchenFps implements Renderer {
       cssEl.textContent = CSS;
       document.head.appendChild(cssEl);
     }
-    this.gov = new QualityGovernor({ initial: detectInitialTier(), mode: loadMode(), emit: false, persist: false, onChange: (tr) => this.applyTier(tr) });
+    this.gov = new QualityGovernor({ initial: detectInitialTier(), mode: loadMode(), emit: false, persist: false, onChange: (tr) => this.applyTier(tr), onResScale: () => this.renderer.setPixelRatio(this.q.pr * this.gov.resScale) });
     this.q = q3For(this.gov.tier);
     this.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: this.q.tier >= 2, powerPreference: 'high-performance', stencil: false });
     this.renderer.setPixelRatio(this.q.pr);
@@ -309,7 +339,7 @@ class KitchenFps implements Renderer {
 
   private applyTier(tr: Tier): void {
     this.q = q3For(tr);
-    this.renderer.setPixelRatio(this.q.pr);
+    this.renderer.setPixelRatio(this.q.pr * this.gov.resScale);
     this.parts.budget = this.flames.budget = this.q.particles;
     this.resizeGL();
   }
@@ -349,7 +379,11 @@ class KitchenFps implements Renderer {
     }
     if (sim.theme === 'space') this.world.gravity.set(0, -2.6, 0);
     this.lastTips = sim.tips;
-    this.renderer.compile(this.scene, this.camera);
+    // sprites (colegas, clientes, barras) nascem durante o jogo: um temporário compila o shader agora
+    const tmpSpr = new THREE.Sprite(this.smat(this.barKeys[0], () => drawBar(0)));
+    this.scene.add(tmpSpr);
+    warmUp(this.renderer, this.scene, this.camera);
+    this.scene.remove(tmpSpr);
     if (qs.has('czdebug') || import.meta.env.DEV) this.debugApi();
   }
   /** depuração / screenshots (window.__czfps) */
@@ -1543,10 +1577,17 @@ class KitchenFps implements Renderer {
     this.parts.update(dt, this.camera.fov, this.renderer.domElement.height);
     this.flames.update(dt, this.camera.fov, this.renderer.domElement.height);
     this.renderer.render(this.scene, this.camera);
-    this.o2d.drawOverlay(time);
+    // comandas (Canvas 2D por cima): 30 Hz (15 Hz nos níveis baixos) bastam para os relógios
+    this.ovT -= dt;
+    if (this.ovT <= 0 || dt === 0) {
+      this.ovT = this.q.tier >= 2 ? 1 / 30 : 1 / 15;
+      this.o2d.drawOverlay(time);
+    }
     this.gov.sample(dt * 1000, performance.now() - t0);
   }
 
+  private ovT = 0;
+  private ringStep = -1;
   private barKeys: string[] = Array.from({ length: 11 }, (_, i) => 'bar' + i);
   private bar(x: number, y: number, z: number, k: number, warn = false): void {
     const b = this.sprite();
@@ -1602,7 +1643,7 @@ class KitchenFps implements Renderer {
       o.position.set((st.x + 0.5) * T, H + top / 2 - 0.05, (st.y + 0.5) * T);
       o.scale.set(T * 0.96, top + 0.1, T * 0.96);
       (o.material as THREE.LineBasicMaterial).opacity = 0.55 + Math.sin(time * 8) * 0.35;
-      (o.material as THREE.LineBasicMaterial).color.set(st.fire > 0 ? '#ff5c7a' : '#ffe14a');
+      (o.material as THREE.LineBasicMaterial).color.copy(st.fire > 0 ? COL_FIRE : COL_HOT);
     } else o.visible = false;
     if (this.tgLoose && this.fps) {
       const p = this.tgLoose.body.position;
@@ -1735,11 +1776,14 @@ class KitchenFps implements Renderer {
       this.acts.box.classList.toggle('czf-idle', idle);
       const tb = this.acts.box.querySelector<HTMLElement>('[data-id=throw]');
       if (tb) tb.style.setProperty('--pw1', 'transparent');
+      this.ringStep = -1;
     }
     // anel de força do JOGAR
     if (h && this.charge >= 0) {
       const tb = this.acts.box.querySelector<HTMLElement>('[data-id=throw]');
-      if (tb) {
+      const step = this.charge > 0.75 ? 3 : this.charge > 0.5 ? 2 : this.charge > 0.25 ? 1 : 0;
+      if (tb && step !== this.ringStep) {
+        this.ringStep = step;
         const c = this.charge;
         tb.style.setProperty('--pw1', c > 0.25 ? '#ff5c7a' : 'transparent');
         tb.style.setProperty('--pw2', c > 0.5 ? '#ff5c7a' : 'transparent');

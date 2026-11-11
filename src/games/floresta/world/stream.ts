@@ -13,6 +13,14 @@ import type { WorldSave } from './wsave';
 import { rockGeometry, wTreeGeometry } from './wmodels';
 import { addWind, bushGeometry, lambert, stumpGeometry } from '../fps/models';
 
+/** cores dos dados (strings) convertidas uma vez só: Color.set(string) por instância custa */
+const COLS = new Map<string, THREE.Color>();
+function colOf(hex: string, out: THREE.Color): THREE.Color {
+  let c = COLS.get(hex);
+  if (!c) COLS.set(hex, (c = new THREE.Color(hex)));
+  return out.copy(c);
+}
+
 export interface StreamQ {
   /** raio em pedaços */
   radius: number;
@@ -180,27 +188,47 @@ export class World {
     this.pcx = pcx;
     this.pcz = pcz;
     this.loadedNow = 0;
-    // carrega os que faltam (mais perto primeiro)
+    // carrega os que faltam (mais perto primeiro). Gerar um pedaço inteiro custa vários ms no
+    // celular: a geração é dividida entre quadros (~3 ms por quadro), exceto o pedaço onde você
+    // está (ou vizinho), que precisa existir já.
     let budget = this.q.perFrame;
+    if (this.pending) {
+      const p = this.pending;
+      const d = Math.max(Math.abs(p.cx - pcx), Math.abs(p.cz - pcz));
+      if (p.generateStep(this.gen, d <= 1 ? Infinity : 3)) {
+        this.pending = null;
+        this.finishLoad(p);
+      }
+      budget--;
+    }
     for (let r = 0; r <= R && budget > 0; r++)
       for (let dz = -r; dz <= r && budget > 0; dz++)
         for (let dx = -r; dx <= r && budget > 0; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
           const k = World.key(pcx + dx, pcz + dz);
-          if (this.chunks.has(k)) continue;
-          this.load(pcx + dx, pcz + dz);
+          if (this.chunks.has(k) || (this.pending && this.pending.key() === k)) continue;
+          this.load(pcx + dx, pcz + dz, r <= 1);
           budget--;
         }
     // descarrega os distantes
     for (const [k, c] of this.chunks) {
       if (Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz)) > R + 1) this.unload(k, c);
     }
-    // nível de detalhe do chão
+    // nível de detalhe do chão: no máximo UM pedaço refeito por quadro (o mais perto primeiro);
+    // ao cruzar a borda de um pedaço vários mudam de LOD juntos e refazer todos travava o quadro
+    let lodC: Chunk | null = null;
+    let lodD = 1e9;
+    let lodStep = 0;
     for (const c of this.chunks.values()) {
       const d = Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz));
       const step = d <= 1 ? 1 : d <= 2 ? 2 : 4;
-      if (c.lod !== step) c.buildMesh(step, this.groundMat);
+      if (c.lod !== step && d < lodD) {
+        lodD = d;
+        lodC = c;
+        lodStep = step;
+      }
     }
+    if (lodC && (this.loadedNow === 0 || lodD <= 1)) lodC.buildMesh(lodStep, this.groundMat);
     // crescimento das mudas
     for (const c of this.chunks.values()) {
       for (let i = 0; i < c.nt; i++) {
@@ -242,9 +270,23 @@ export class World {
     this.rebuildT = 0;
   }
 
-  private load(cx: number, cz: number): void {
+  /** pedaço sendo gerado aos poucos */
+  private pending: Chunk | null = null;
+
+  private load(cx: number, cz: number, now = true): void {
     const c = new Chunk(cx, cz);
-    c.generate(this.gen);
+    if (!now && !this.pending) {
+      if (!c.generateStep(this.gen, 3)) {
+        this.pending = c;
+        return;
+      }
+    } else c.generate(this.gen);
+    this.finishLoad(c);
+  }
+
+  private finishLoad(c: Chunk): void {
+    const cx = c.cx;
+    const cz = c.cz;
     const rec = this.save.chunks[c.key()];
     if (rec) {
       if (rec.e) c.decodeEdit(rec.e);
@@ -311,15 +353,17 @@ export class World {
     this.flowers.begin();
     const near2 = this.q.near * this.q.near;
     const deco2 = (this.q.near * 1.2) ** 2;
+    const anyHidden = this.hidden.size > 0;
     for (const c of this.chunks.values()) {
       const T = c.trees;
+      const kp = anyHidden ? c.key() + ':' : '';
       for (let i = 0; i < c.nt; i++) {
         const st = c.tstate[i];
         if (st === TState.Gone) continue;
         const o = i * TREE_STRIDE;
         const x = T[o];
         const z = T[o + 2];
-        if (st === TState.Grown && this.hidden.has(c.key() + ':' + i)) continue;
+        if (anyHidden && st === TState.Grown && this.hidden.has(kp + i)) continue;
         const y = c.hAt(x - c.x0, z - c.z0);
         const d2 = (x - px) ** 2 + (z - pz) ** 2;
         const sp = T[o + 5];
@@ -328,7 +372,7 @@ export class World {
           if (d2 > near2 * 1.5) continue;
           const r = WSPECIES[sp].shape === 'cactus' ? 0.6 : 0.85;
           _m.compose(_p.set(x, y - 0.05, z), _q.setFromAxisAngle(UP, T[o + 3]), _s.set(r, 0.9, r));
-          _c.set(WSPECIES[sp].trunk);
+          colOf(WSPECIES[sp].trunk, _c);
           this.stumps.push(_m, _c.r, _c.g, _c.b);
           continue;
         }
@@ -344,7 +388,7 @@ export class World {
         const s = c.rocks[o + 3];
         const y = c.hAt(x - c.x0, z - c.z0);
         _m.compose(_p.set(x, y, z), _q.setFromAxisAngle(UP, x * 1.7 + z), _s.set(s, s, s));
-        _c.set(WBIOMES[c.rocks[o + 4]].rock);
+        colOf(WBIOMES[c.rocks[o + 4]].rock, _c);
         this.rocks.push(_m, _c.r * 1.2, _c.g * 1.2, _c.b * 1.2);
       }
       if (this.q.deco > 0)
@@ -359,10 +403,10 @@ export class World {
           const b = WBIOMES[c.deco[o + 5]];
           _m.compose(_p.set(x, y - 0.05, z), _q.setFromAxisAngle(UP, x + z), _s.set(s, s, s));
           if (c.deco[o + 4]) {
-            _c.set(b.flower);
+            colOf(b.flower, _c);
             this.flowers.push(_m, _c.r, _c.g, _c.b);
           } else {
-            _c.set(b.bush);
+            colOf(b.bush, _c);
             this.bushes.push(_m, _c.r * 1.3, _c.g * 1.3, _c.b * 1.3);
           }
         }
