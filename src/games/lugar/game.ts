@@ -929,7 +929,8 @@ class LugarGame implements MiniGameHandle {
   }
 
   /* ------------------------------ folhas (pop-ups sobre a partida) ------------------------------ */
-  private sheet(html: string, wire: (s: HTMLElement, close: () => void) => void): void {
+  /** `onBack`: o que o voltar do Android faz com a folha aberta (padrão: fecha) */
+  private sheet(html: string, wire: (s: HTMLElement, close: () => void) => void, onBack?: (close: () => void) => void): void {
     this.el.querySelectorAll('.lg-sheet').forEach((x) => x.remove());
     const wasRunning = this.running;
     this.running = false;
@@ -944,7 +945,7 @@ class LugarGame implements MiniGameHandle {
       s.remove();
       if (wasRunning && !this.won) this.running = true;
     };
-    pop = pushBack(close);
+    pop = pushBack(onBack ? () => onBack(close) : close);
     s.addEventListener('click', (e) => e.target === s && close());
     wire(s, close);
   }
@@ -969,6 +970,13 @@ class LugarGame implements MiniGameHandle {
           this.saveProgress();
           this.leave();
         });
+      },
+      // voltar com a pausa aberta = sair para o mapa/menu (antes: fechava a pausa e o próximo voltar abria
+      // de novo — o jogador nunca saía). Mapa → voltar → início → voltar → "Sair do jogo?" do hub.
+      (close) => {
+        close();
+        this.saveProgress();
+        this.leave();
       },
     );
   }

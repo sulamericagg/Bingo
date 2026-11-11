@@ -15,6 +15,13 @@ import { PRESETS } from './data';
 import { actorThumb } from './rig2d';
 import { MicRecorder, MAX_REC_SEC, type MicError } from './audio';
 
+/** folhas abertas (ficam no body): o Cinema fecha todas ao sair — antes uma folha aberta sobrava por cima do hub */
+const openSheets = new Set<() => void>();
+export function closeAllSheets(): void {
+  for (const c of [...openSheets]) c();
+  document.querySelectorAll('.cin-sheet-bg').forEach((e) => e.remove());
+}
+
 export function sheet(html: string, onClick: (a: string, el: HTMLElement, close: () => void) => void, onClose?: () => void): { el: HTMLElement; close: () => void } {
   const bg = document.createElement('div');
   bg.className = 'cin-sheet-bg';
@@ -23,11 +30,13 @@ export function sheet(html: string, onClick: (a: string, el: HTMLElement, close:
   const close = () => {
     if (closed) return;
     closed = true;
+    openSheets.delete(close);
     pop();
     bg.remove();
     onClose?.();
   };
   const pop = pushBack(close);
+  openSheets.add(close);
   const born = performance.now();
   bg.addEventListener('click', (e) => {
     // ignora o "clique fantasma" do toque que abriu a folha

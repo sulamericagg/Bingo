@@ -30,12 +30,39 @@ async function tapText(page, re, root = '#game-host') {
 const exit = (page) => page.evaluate(() => window.__bloop.closeHost());
 
 const scenes = {
+  async lugar(page) {
+    await launch(page, 'lugar');
+    for (let i = 0; i < 3 && !(await page.$('.lg-board, canvas.lg-cv, .lg-tools')); i++) { await tapText(page, '^(bora|jogar|continuar|fase)'); await page.waitForTimeout(2500); }
+    await q.shot(page, 'deep-lugar-play');
+    const steps = [];
+    for (let i = 0; i < 6; i++) {
+      await q.back(page); await page.waitForTimeout(1000);
+      const st = await page.evaluate(() => (document.querySelector('.gh-confirm.on') ? 'sair-do-jogo' : document.querySelector('.lg-sheet') ? 'pausa' : document.querySelector('.lg-mapov') ? 'mapa' : document.querySelector('.lg-home') ? 'inicio' : document.querySelector('#game-host.on') ? 'jogo' : 'hub'));
+      steps.push(st);
+      if (st === 'sair-do-jogo') break;
+    }
+    note('lugar', 'voltar: partida → pausa → mapa → início → "Sair do jogo?"', steps.includes('sair-do-jogo') && steps.indexOf('mapa') > steps.indexOf('pausa'), await q.shot(page, 'deep-lugar-back'), steps.join(' → '));
+    await exit(page);
+  },
+  async voohangar(page) {
+    await launch(page, 'voo');
+    await q.back(page); await page.waitForTimeout(900);
+    const c = await page.evaluate(() => !!document.querySelector('.gh-confirm.on') && !!document.querySelector('#game-host.on'));
+    note('voo', 'voltar no hangar pergunta "Sair do jogo?"', c, await q.shot(page, 'deep-voo-hangar-back'));
+    await q.back(page); await page.waitForTimeout(600);
+    await tapText(page, '^voar'); await page.waitForTimeout(4500);
+    note('voo', 'pasta de missão com ícones', null, await q.shot(page, 'deep-voo-dossie'));
+    for (let i = 1; i <= 3; i++) { await tapText(page, 'próxima folha'); await page.waitForTimeout(1600); note('voo', `pasta de missão, folha ${i}`, null, await q.shot(page, `deep-voo-dossie-${i}`)); }
+    await exit(page);
+  },
   async garimpo(page, cdp) {
     await launch(page, 'garimpo');
     for (let i = 0; i < 4; i++) { if (!(await tapText(page, '^(jogar|novo|começar|continuar|sozinho|garimpar|bora|ok|entrar)'))) break; await page.waitForTimeout(3000); }
     for (let i = 0; i < 6; i++) { if (await tapText(page, '^pular')) { await page.waitForTimeout(2500); break; } await page.waitForTimeout(1500); } // abertura do vovô
     await page.waitForTimeout(4000);
     const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
+    // logo no começo (onde nasce): as 3 câmeras
+    for (const v of ['spawn-fp', 'spawn-tp', 'spawn-front']) { await q.shot(page, `deep-garimpo-${v}`); await q.tapSel(page, '.gb-cam'); await page.waitForTimeout(1800); }
     const st = await page.evaluate(() => { const g = window.__garimpo; const c = g?.cur; return { view: g?.curView?.(), held: c?.held, worker: c?.constructor?.name }; });
     note('garimpo', 'estado a pé', null, '', JSON.stringify(st));
     await q.drag(cdp, [W * 0.6, H * 0.5], [W * 0.95, H * 0.5], 12, 25, 3); // vira para o campo aberto
@@ -66,7 +93,7 @@ const scenes = {
     note('cinema', 'Criar história: falas', null, await q.shot(page, 'deep-cinema-beats'));
     await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(1200);
     const cover = await page.evaluate(() => { const f = document.querySelector('.kid-foot .kid-big'); const c = document.querySelector('.kid-beat'); if (!f || !c) return null; const a = f.getBoundingClientRect(), b = c.getBoundingClientRect(); const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); return ix > 2 && iy > 2; });
-    note('cinema', '"Fazer o filme!" não cobre o 1º cartão (deitado 844×390)', cover === false, await q.shot(page, 'deep-cinema-beats-land'), `cobre=${cover}`);
+    note('cinema', '"Fazer o filme!" não cobre o 1º cartão (deitado 844×390)', cover === null ? null : cover === false, await q.shot(page, 'deep-cinema-beats-land'), `cobre=${cover}`);
     await exit(page);
   },
   async tv(page) {
@@ -111,7 +138,8 @@ const scenes = {
     const txt = await page.evaluate(() => document.querySelector('#game-host')?.innerText || '');
     const places = ['Hospital', 'Creche', 'Cabana', 'Lanchonete', 'Posto'].filter((p) => new RegExp(p, 'i').test(txt));
     const modes = ['Recepção', 'Corredor'].filter((p) => new RegExp(p, 'i').test(txt));
-    note('anomalias', '5 lugares e modos Recepção/Corredor no menu', places.length === 5 && modes.length === 2, '', `lugares=${places.join(',')} modos=${modes.join(',')}`);
+    // os 5 lugares ficam dentro do "Turno da noite"
+    note('anomalias', 'modos Turno da noite, Recepção e Corredor no menu', /turno/i.test(txt) && modes.length === 2, '', `modos=${modes.join(',')} lugares no menu=${places.join(',') || '(dentro do Turno)'}`);
     const music = await page.evaluate(() => window.__qaAudio?.());
     note('anomalias', 'áudio', null, '', JSON.stringify(music));
     await exit(page);

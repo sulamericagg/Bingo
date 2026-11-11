@@ -512,3 +512,6 @@ body.voo-hud-on .beta-bug:not([style*="left"]){bottom:auto;right:auto;left:calc(
 }
 /* janela modal aberta (copa/minijogo): avisos somem por baixo (a voz continua falando) */
 body.voo-modal #nt-root{opacity:0;transition:opacity .2s}
+.voo-sheet .ln.ic{gap:10px;font-size:17px;margin:7px 0}.voo-sheet .ln.ic svg{flex:none}
+.voo-sheet .voo-stamp.big{top:auto;bottom:22px;transform:translate(-50%,0) rotate(-12deg)}
+.voo-sheet .voo-stamp.big{animation-name:vooStampB2}@keyframes vooStampB2{from{transform:translate(-50%,0) rotate(-12deg) scale(3);opacity:0}}

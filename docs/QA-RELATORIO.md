@@ -3,11 +3,11 @@
 Branch `wip/qa2` · 11/11/2026 · base: `claude/viral-game-apk-web-echogw` já com Mundo, Garimpo, TV, Jangada e Desastre juntados.
 
 > **Em uma frase:** os 22 jogos abrem, jogam, pausam e fecham sem travar e sem erro; o online (grupo, convite,
-> todo mundo entrando junto e duelo com pódio) funciona de ponta a ponta; corrigi 18 problemas. O que falta está
+> todo mundo entrando junto e duelo com pódio) funciona de ponta a ponta; corrigi 24 problemas. O que falta está
 > na lista ❌ abaixo, com o nome de quem cuida. Algumas coisas só dá para confirmar no celular de verdade (📱).
 >
-> **Placar dos pedidos:** ✅ 38 · ❌ 5 · 📱 15 (precisa do celular). Os 5 ❌: Desastre em 3ª pessoa e avisos repetidos
-> (agente do Desastre trabalhando), Garimpo nascendo embaixo do telhado, texto corrido na pasta do Pouso Forçado.
+> **Placar dos pedidos:** ✅ 40 · ❌ 3 · 📱 15 (precisa do celular). Os 3 ❌ são todos do Desastre (3ª pessoa e avisos
+> repetidos), que outro agente está refazendo agora.
 
 ## 1. Como eu testei (sem precisar entender de programação)
 
@@ -34,7 +34,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | Pedido | | O que vi / foto |
 |---|---|---|
 | Narração desligada por padrão e dá para ligar | ✅ | começa desligada, liga/desliga e é lembrada (`hub-pixel-ajustes.png`) |
-| Ícone + mãozinha, nada de parede de texto | ❌ | quase tudo ok, mas a "pasta de missão" do Pouso Forçado e as regras da TV ainda são texto corrido (`deep-voo-brief.png`) |
+| Ícone + mãozinha, nada de parede de texto | ✅ | a pasta de missão do Pouso Forçado agora é ícone + frase curta — **corrigido** (`deep-voo-dossie-1.png`, `-3.png`); as regras de envio da TV continuam em texto (são para o adulto) |
 | HUD padrão Minecraft: barra no meio embaixo, analógico à esquerda, pular à direita, nada sobreposto em 740/844/915 | ✅ | Noites, Mundo, Garimpo, Jangada, Cava & Fala sem sobreposição (`hud-*.png`). Noites e Garimpo tinham sobreposição — **corrigido** |
 | Nada embaixo do banner de anúncio | ✅ | os jogos encolhem acima do banner (regra do hub); nenhum botão tapado no teste |
 | Objetivos aparecem e recolhem | ✅ | Noites/Mundo/Cozinha mostram e recolhem |
@@ -79,7 +79,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | Personagem é o Bloop do jogador; 1ª pessoa a pé | ✅ | |
 | Abertura do vovô sem deixar erro ao sair no meio | ✅ | **corrigido** (erro repetia em todos os jogos depois) |
 | Carrinho de mão não tapa a visão | ✅ | **corrigido**: antes a caçamba enchia o meio da tela; agora fica embaixo (`deep-garimpo-fp.png`) |
-| 3ª pessoa / de frente mostram o Bloop | ❌ | no começo ele nasce **embaixo do telhado** do acampamento e a câmera fica dentro do telhado vermelho (`deep-garimpo-tp.png`) — agente da abertura do Garimpo |
+| 3ª pessoa / de frente mostram o Bloop | ✅ | com a abertura nova ele nasce fora; e dentro de qualquer galpão a câmera agora fica embaixo do telhado — **corrigido** (`deep-garimpo-spawn-tp.png`, `-front.png`) |
 | Máquinas, água, bateia, consertos | 📱 | |
 
 ### Desastres (outro agente trabalhando agora)
@@ -93,7 +93,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | Pedido | | |
 |---|---|---|
 | HUD sem marcadores em cima dos controles | ✅ | `deep-voo-fly.png`, `deep-voo-740.png` |
-| Voltar não perde o voo sem perguntar | ✅ | **corrigido** na pasta de missão |
+| Voltar não perde o voo sem perguntar | ✅ | **corrigido** na pasta de missão e no hangar (`deep-voo-hangar-back.png`) |
 | Tremedeira, estol, câmera giratória, passageiros, comida | 📱 | |
 
 ### Cozinha
@@ -150,7 +150,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 - 360×740 e inglês: o único "erro" era do próprio robô (cartas vizinhas do carrossel fora da tela); corrigi o robô.
 - Com grupo, os botões Votação/Pronto/Chat subiam por cima do JOGAR — **corrigido** (`online-B-grupo.png`).
 
-## 4. O que eu consertei (18 itens — detalhes em `docs/QA-BUGS.md`)
+## 4. O que eu consertei (24 itens — detalhes em `docs/QA-BUGS.md`)
 1. Botão de girar parado no topo de todo jogo 3D → só aparece se o celular não deitou.
 2. Menu da Anomalias misturado com a abertura 3D.
 3. Pouso Forçado: voltar na pasta de missão saía do jogo sem perguntar.
@@ -165,6 +165,10 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 12. Grupo: Votação/Pronto/Chat por cima do JOGAR.
 13. Pouso Forçado: 23 erros seguidos no hangar quando o celular está sem memória.
 14. Teste do servidor desatualizado (2 falhas falsas) — agora 278/278.
+15. Bloop no Lugar: o voltar ficava abrindo e fechando a pausa para sempre; agora pausa → mapa → início → "Sair do jogo?".
+16. Pouso Forçado: voltar no hangar pergunta antes de sair; a pasta de missão virou ícones com frases curtas.
+17. Botões e folhas que deixavam "ouvintes" para trás a cada jogo aberto (pequeno vazamento) — zerado.
+18. Desempenho: Desenha e Vira 13 → 56 quadros/s, hangar do voo 9 → 18, Studio parado gasta bem menos.
 
 ## 5. Desempenho (CPU 4× mais lenta, gráficos no Mínimo, sem placa de vídeo)
 A máquina de teste estava muito ocupada (outros 5 agentes compilando e testando), então os números são o **pior caso**

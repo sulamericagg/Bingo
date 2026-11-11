@@ -19,7 +19,7 @@ import { clone, newProject, parseProject, uid, type Project } from './format';
 import { cleanText, isPro, maxProjects, maxSeconds, paywall } from './gates';
 import { renderPanel, stopPanelAudio, TABS, type PanelCtx } from './panels';
 import { actorThumb } from './rig2d';
-import { confirm, menu, sheet, youCast } from './sheets';
+import { closeAllSheets, confirm, menu, sheet, youCast } from './sheets';
 import { addShotAfter, editActorKey, canRedo, canUndo, castById, cur, flushSave, gotoShot, mutate, onChange, openState, redo, S, setTime, trackOf, undo } from './state';
 import { copyClips, deleteProject, listProjects, loadProject, saveProject, type ProjectMeta } from './store';
 import { TEMPLATES } from './templates';
@@ -1100,6 +1100,7 @@ class CinemaApp {
 
   destroy(): void {
     this.alive = false;
+    closeAllSheets();
     onRemix(null);
     void cleanupShared();
     if (this.cv) void flushSave();

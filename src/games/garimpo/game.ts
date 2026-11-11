@@ -1896,17 +1896,23 @@ export class Garimpo implements MiniGameHandle, BotHost {
     {
       let tMin = 1;
       let roof = 0;
+      let under = Infinity;
       const dx = this.camPos.x - tx;
       const dz = this.camPos.z - tz;
       const L2 = dx * dx + dz * dz || 1;
       for (const b of w.blockers) {
-        if (b.off || this.camPos.y > b.y + 0.5) continue;
+        if (b.off) continue;
         // entrada do segmento alvo→câmera no círculo do prédio
         const fx = tx - b.x;
         const fz = tz - b.z;
         const bb = fx * dx + fz * dz;
         const cc = fx * fx + fz * fz - b.r * b.r;
-        if (cc < 0) continue; // alvo já está dentro (ex.: garagem): deixa
+        if (cc >= 0 && this.camPos.y > b.y + 0.5) continue;
+        if (cc < 0) {
+          // alvo embaixo do telhado (galpão/garagem): a câmera fica embaixo dele, não em cima vendo só o telhado
+          if (b.y >= 2.2) under = Math.min(under, b.y);
+          continue;
+        }
         const disc = bb * bb - L2 * cc;
         if (disc < 0) continue;
         const t0 = (-bb - Math.sqrt(disc)) / L2;
@@ -1920,6 +1926,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
         this.camPos.x = tx + dx * k;
         this.camPos.z = tz + dz * k;
         if (tMin < 0.5) this.camPos.y = Math.max(this.camPos.y, roof + 1);
+      }
+      if (under < Infinity && this.camPos.y > under - 0.35) {
+        this.camPos.x = tx + (this.camPos.x - tx) * 0.6;
+        this.camPos.z = tz + (this.camPos.z - tz) * 0.6;
+        this.camPos.y = Math.max(T.heightAt(this.camPos.x, this.camPos.z) + 0.6, under - 0.35);
       }
     }
     cam.position.copy(this.camPos);
