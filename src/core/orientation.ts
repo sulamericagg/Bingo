@@ -230,11 +230,14 @@ function ensureCss(): void {
   if (css) return;
   css = true;
   const s = document.createElement('style');
-  s.textContent = `.or-prompt{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);z-index:9000;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(20,10,40,.88);color:#fff;font:600 14px/1.2 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35);max-width:calc(100vw - 32px);flex-wrap:wrap;justify-content:center}
-.or-prompt button{border:0;border-radius:999px;padding:7px 12px;font:700 13px system-ui,sans-serif;cursor:pointer}
-.or-go{background:#ffd23f;color:#2a1450}.or-stay{background:rgba(255,255,255,.16);color:#fff}
-.or-ph{width:14px;height:22px;border:2px solid #fff;border-radius:4px;animation:orph 1.6s ease-in-out infinite}
-@keyframes orph{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}`;
+  s.textContent = `.or-prompt{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);z-index:9000;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:999px;background:rgba(20,10,40,.92);color:#fff;font:600 14px/1.2 var(--font,system-ui),sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35);max-width:calc(100vw - 32px);white-space:nowrap}
+.or-prompt b{font-weight:700}
+.or-prompt button{all:unset;box-sizing:border-box;border-radius:999px;padding:7px 12px;font:700 13px/1 var(--font,system-ui),sans-serif;cursor:pointer;text-align:center}
+.or-prompt .or-go{background:#ffd23f;color:#2a1450}.or-prompt .or-stay{background:rgba(255,255,255,.16);color:#fff}
+.or-prompt button:disabled{opacity:.6}
+.or-ph{flex:none;width:12px;height:19px;border:2px solid #fff;border-radius:4px;animation:orph 1.6s ease-in-out infinite}
+@keyframes orph{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+@media (max-width:380px){.or-prompt{white-space:normal;flex-wrap:wrap;justify-content:center;border-radius:18px}}`;
   document.head.appendChild(s);
 }
 
