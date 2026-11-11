@@ -171,7 +171,8 @@ const CSS = `
 .d3-hud{position:absolute;inset:0;pointer-events:none}
 .d3-top{position:absolute;left:0;right:0;top:0;padding:max(8px,env(safe-area-inset-top)) var(--edge-r,10px) 0 var(--edge-l,10px);display:flex;align-items:flex-start;gap:8px}
 .d3-btn{pointer-events:auto;border:0;cursor:pointer;font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.25);border-radius:14px;display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;touch-action:none}
-.d3-mid{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.d3-mid{flex:0 1 auto;display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:calc(50% - 82px)}
+.d3-sp{flex:1}
 .d3-scn{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .d3-phase{display:flex;align-items:center;gap:6px;background:linear-gradient(180deg,#ffb03a,#ff6a2e);border:2px solid #2a0b5c;border-radius:14px;padding:2px 12px;font-weight:700;font-size:15px;box-shadow:0 3px 0 #2a0b5c}
 .d3-phase.calm{background:linear-gradient(180deg,#5ac8ff,#3f7cff)}
@@ -183,22 +184,22 @@ const CSS = `
 .d3-jump.tc-pressed{background:rgba(255,176,58,.6);transform:scale(.94)}
 .d3-jump .ico{width:40px;height:40px}
 .d3-root.lefty .d3-jump{right:auto;left:calc(var(--edge-l,14px) + 6px)}
-.d3-warn{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 96px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:5px 16px 5px 10px;border-radius:22px;background:rgba(160,20,40,.8);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;opacity:0;transition:opacity .15s,transform .15s}
+.d3-warn{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 64px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:5px 16px 5px 10px;border-radius:22px;background:rgba(160,20,40,.8);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;opacity:0;transition:opacity .15s,transform .15s}
 .d3-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
 .d3-warn .di .ico{width:50px;height:50px}
 .d3-warn b{font-size:42px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
 .d3-warn .safe .ico{width:32px;height:32px}
-.d3-dir{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0;transition:opacity .15s}
-.d3-dir.on{opacity:1}
-.d3-dir .ar{position:absolute;left:-26px;top:-26px;filter:drop-shadow(0 3px 0 #2a0b5c) hue-rotate(-125deg) saturate(1.6)}
-.d3-dir .ar .ico{width:52px;height:52px}
+.d3-dir{display:none;width:40px;height:40px;align-items:center;justify-content:center;border-radius:50%;background:rgba(255,255,255,.18)}
+.d3-dir.on{display:flex}
+.d3-dir .ar{display:flex;filter:hue-rotate(-125deg) saturate(1.6)}
+.d3-dir .ar .ico{width:32px;height:32px}
 .d3-out{position:absolute;left:50%;bottom:calc(max(var(--edge-b,14px),var(--safe-bot,0px)) + 120px);transform:translateX(-50%);opacity:0;transition:opacity .2s}
 .d3-out.on{opacity:.9}.d3-out .ico{width:54px;height:54px}
 .d3-modal{position:absolute;inset:0;background:rgba(10,8,30,.6);display:flex;align-items:center;justify-content:center;pointer-events:auto}
 .d3-panel{background:linear-gradient(180deg,#2c3f7a,#1a2350);border:3px solid #2a0b5c;border-radius:22px;box-shadow:0 6px 0 #2a0b5c;padding:16px;width:min(88vw,340px);text-align:center;display:flex;flex-direction:column;gap:8px}
 .d3-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .d3-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
-@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 82px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
+@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 64px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
 `;
 let cssDone = false;
 
@@ -248,6 +249,21 @@ export class Disaster3D implements MiniGameHandle {
   private windDir = 1;
   private tornado = { on: false, x: 0, z: 0, vx: 0, vz: 0, r: 2.6, side: 0 };
   private tornadoMesh: THREE.Group;
+  /** funil de partículas do tornado */
+  private tnPts!: THREE.Points;
+  private tnH!: Float32Array;
+  private tnA!: Float32Array;
+  private tnDebris: THREE.Mesh[] = [];
+  /** superfície do fluido: malha com ondas e espuma (cores por vértice) */
+  private fluidTop!: THREE.Mesh;
+  private fluidSeg = 32;
+  private fluidCol = new THREE.Color();
+  private sea2!: THREE.Mesh;
+  private hemi!: THREE.HemisphereLight;
+  private sky!: THREE.Mesh;
+  private storm = 0;
+  private fogCalm = new THREE.Color();
+  private fogStorm = new THREE.Color(0x4a5068);
   private strikes: Strike[] = [];
   private strikeTimer = 0;
   private craters: THREE.Mesh[] = [];
@@ -323,7 +339,14 @@ export class Disaster3D implements MiniGameHandle {
     this.renderer.domElement.addEventListener('webglcontextlost', lost);
 
     // luz e céu
-    this.scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a5a40, 1.1));
+    this.hemi = new THREE.HemisphereLight(0xdff0ff, 0x6a5a40, 1.15);
+    this.scene.add(this.hemi);
+    // céu em degradê (cúpula com cor por vértice, fora da neblina)
+    const skyG = new THREE.SphereGeometry(320, 16, 10);
+    skyG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(skyG.getAttribute('position').count * 3), 3));
+    this.sky = new THREE.Mesh(skyG, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+    this.sky.renderOrder = -1;
+    this.scene.add(this.sky);
     this.sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
     this.sun.position.set(20, 40, 14);
     this.sun.castShadow = this.tier >= 2;
@@ -340,21 +363,69 @@ export class Disaster3D implements MiniGameHandle {
     this.fluidMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fluidMat);
     this.fluidMesh.visible = false;
     this.scene.add(this.fluidMesh);
-    this.sea = new THREE.Mesh(new THREE.CircleGeometry(220, 40), new THREE.MeshStandardMaterial({ color: 0x2a86d6, roughness: 0.4 }));
+    this.fluidSeg = [20, 28, 36, 44][this.tier];
+    const ftG = new THREE.PlaneGeometry(1, 1, this.fluidSeg, this.fluidSeg);
+    ftG.rotateX(-Math.PI / 2);
+    ftG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ftG.getAttribute('position').count * 3), 3));
+    this.fluidTop = new THREE.Mesh(ftG, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.25, metalness: 0.05, transparent: true, opacity: 0.9 }));
+    this.fluidTop.visible = false;
+    this.scene.add(this.fluidTop);
+    this.sea = new THREE.Mesh(new THREE.CircleGeometry(320, 40), new THREE.MeshStandardMaterial({ color: 0x1f6fb8, roughness: 0.5 }));
     this.sea.rotation.x = -Math.PI / 2;
-    this.sea.position.y = -0.6;
+    this.sea.position.y = -0.9;
     this.scene.add(this.sea);
+    // faixa de mar perto da ilha com ondas (malha baixa, facetada)
+    const sg = new THREE.PlaneGeometry(130, 130, 26, 26);
+    sg.rotateX(-Math.PI / 2);
+    this.sea2 = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x2a8ad8, flatShading: true, roughness: 0.3, transparent: true, opacity: 0.92 }));
+    this.sea2.position.y = -0.55;
+    this.scene.add(this.sea2);
     // vulcão (visual)
     this.volcano = new THREE.Mesh(new THREE.ConeGeometry(9, 14, 9, 1, true), new THREE.MeshStandardMaterial({ color: 0x6b5a5a, flatShading: true, side: THREE.DoubleSide }));
     this.volcano.position.set(ISLAND_R + 10, 6.5, 0);
     this.scene.add(this.volcano);
     // tornado
     this.tornadoMesh = new THREE.Group();
-    const tm = new THREE.MeshStandardMaterial({ color: 0x9aa3b8, transparent: true, opacity: 0.55, flatShading: true, side: THREE.DoubleSide, depthWrite: false });
-    for (let i = 0; i < 5; i++) {
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(1.2 + i * 0.9, 0.6 + i * 0.9, 3.4, 9, 1, true), tm);
-      c.position.y = 1.7 + i * 3.2;
-      this.tornadoMesh.add(c);
+    const shell = new THREE.Mesh(new THREE.CylinderGeometry(6, 0.7, 17, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x8a90a8, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    shell.position.y = 8.5;
+    this.tornadoMesh.add(shell);
+    const nP = [180, 300, 480, 700][this.tier];
+    this.tnH = new Float32Array(nP);
+    this.tnA = new Float32Array(nP);
+    const tpos = new Float32Array(nP * 3);
+    const tcol = new Float32Array(nP * 3);
+    for (let i = 0; i < nP; i++) {
+      this.tnH[i] = Math.random();
+      this.tnA[i] = Math.random() * Math.PI * 2;
+      const c = 0.45 + Math.random() * 0.35;
+      tcol[i * 3] = c;
+      tcol[i * 3 + 1] = c * 0.95;
+      tcol[i * 3 + 2] = c * (Math.random() < 0.3 ? 0.7 : 1.05);
+    }
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.BufferAttribute(tpos, 3));
+    tg.setAttribute('color', new THREE.BufferAttribute(tcol, 3));
+    // partícula redonda e macia (textura gerada: nada de quadrados)
+    const dot = document.createElement('canvas');
+    dot.width = dot.height = 32;
+    const dx = dot.getContext('2d')!;
+    const grd = dx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.5, 'rgba(255,255,255,.6)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    dx.fillStyle = grd;
+    dx.fillRect(0, 0, 32, 32);
+    const dotTex = new THREE.CanvasTexture(dot);
+    this.tnPts = new THREE.Points(tg, new THREE.PointsMaterial({ size: 0.9, map: dotTex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false }));
+    this.tnPts.frustumCulled = false;
+    this.tornadoMesh.add(this.tnPts);
+    const dm = new THREE.MeshStandardMaterial({ color: 0x8a5a33, flatShading: true });
+    for (let i = 0; i < 10; i++) {
+      const d = new THREE.Mesh(this.sharedGeo.box, dm);
+      d.scale.set(0.2 + Math.random() * 0.4, 0.1 + Math.random() * 0.2, 0.2 + Math.random() * 0.5);
+      d.userData = { h: Math.random(), a: Math.random() * Math.PI * 2, s: 1.5 + Math.random() * 2 };
+      this.tornadoMesh.add(d);
+      this.tnDebris.push(d);
     }
     this.tornadoMesh.visible = false;
     this.scene.add(this.tornadoMesh);
@@ -402,11 +473,10 @@ export class Disaster3D implements MiniGameHandle {
     this.hud.innerHTML = `
       <div class="d3-top">
         <button class="d3-btn home" aria-label="${t('dz.exit', 'Sair')}">${icon('home', { size: 26 })}</button>
-        <div class="d3-mid"><div class="d3-scn"></div><div class="d3-phase"><span class="pi"></span><b></b></div></div>
+        <div class="d3-mid"><div class="d3-scn"></div><div class="d3-phase"><span class="pi"></span><b></b></div></div><div class="d3-sp"></div>
         <div class="d3-right"><div class="d3-chip">${icon('user', { size: 18 })}<span class="al"></span></div><button class="d3-btn cam" aria-label="${t('dz3.view', 'Trocar câmera')}">${icon('camera', { size: 24 })}</button></div>
       </div>
-      <div class="d3-warn" aria-hidden="true"><span class="di"></span><b></b><span class="safe"></span></div>
-      <div class="d3-dir" aria-hidden="true"><div class="ar">${icon('arrow-up')}</div></div>
+      <div class="d3-warn" aria-hidden="true"><span class="di"></span><b></b><span class="d3-dir"><span class="ar">${icon('arrow-up')}</span></span><span class="safe"></span></div>
       <div class="d3-out" aria-hidden="true">${dzIcon('ghost', 54)}</div>
       <div class="d3-jump" data-touch-ignore>${icon('arrow-up')}</div>`;
     root.appendChild(this.hud);
@@ -538,6 +608,28 @@ export class Disaster3D implements MiniGameHandle {
     }
     g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
     g.deleteAttribute('uv');
+    g.deleteAttribute('normal');
+    g.computeVertexNormals();
+    this.batch.push(g);
+  }
+  /** qualquer geometria (cone, pedra...) no lote, com cor */
+  private batchGeo(src: THREE.BufferGeometry, x: number, y: number, z: number, sx: number, sy: number, sz: number, rotY: number, color: string | number | THREE.Color): void {
+    const g = (src.index ? src.toNonIndexed() : src.clone()) as THREE.BufferGeometry;
+    g.scale(sx, sy, sz);
+    if (rotY) g.rotateY(rotY);
+    g.translate(x, y, z);
+    const col = new THREE.Color(color);
+    const n = g.getAttribute('position').count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      arr[i * 3] = col.r;
+      arr[i * 3 + 1] = col.g;
+      arr[i * 3 + 2] = col.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    if (g.getAttribute('uv')) g.deleteAttribute('uv');
+    if (g.getAttribute('normal')) g.deleteAttribute('normal');
+    g.computeVertexNormals();
     this.batch.push(g);
   }
   private flushBatch(): void {
@@ -593,9 +685,30 @@ export class Disaster3D implements MiniGameHandle {
     const m = sc.map;
     const r = mulberry(sc.seed * 7 + 3);
     this.scene.background = new THREE.Color(m.sky[1]);
-    this.scene.fog = new THREE.Fog(new THREE.Color(m.sky[2]).getHex(), 50, 170);
-    // chão da ilha (colisão: caixa grande; visual: cilindro)
-    const ground = new THREE.Mesh(new THREE.CylinderGeometry(ISLAND_R, ISLAND_R + 3, 3, 40), this.mat(m.groundTop));
+    this.fogCalm.set(m.sky[2]);
+    this.scene.fog = new THREE.Fog(this.fogCalm.getHex(), 45, 170);
+    {
+      const top = new THREE.Color(m.sky[0]);
+      const mid = new THREE.Color(m.sky[1]);
+      const hor = new THREE.Color(m.sky[2]);
+      const pos = this.sky.geometry.getAttribute('position');
+      const col = this.sky.geometry.getAttribute('color') as THREE.BufferAttribute;
+      const c = new THREE.Color();
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i) / 320;
+        if (y > 0.35) c.copy(mid).lerp(top, Math.min(1, (y - 0.35) / 0.65));
+        else c.copy(hor).lerp(mid, Math.max(0, y / 0.35));
+        col.setXYZ(i, c.r, c.g, c.b);
+      }
+      col.needsUpdate = true;
+    }
+    // chão da ilha (colisão: caixa grande; visual: cilindro de areia + disco de grama)
+    const sandCol = m.id === 'polo' ? '#e8f1ff' : m.id === 'estacao' ? '#7b86b0' : '#e9d29a';
+    const ground = new THREE.Mesh(new THREE.CylinderGeometry(ISLAND_R + 1.5, ISLAND_R + 4, 3, 40), this.mat(sandCol));
+    const grass = new THREE.Mesh(new THREE.CylinderGeometry(ISLAND_R - 1.5, ISLAND_R - 0.5, 0.2, 40), this.mat(m.groundTop));
+    grass.position.y = -0.08;
+    grass.receiveShadow = true;
+    this.level.add(grass);
     ground.position.y = -1.5;
     ground.receiveShadow = true;
     this.level.add(ground);
@@ -632,6 +745,36 @@ export class Disaster3D implements MiniGameHandle {
       this.solid(x0 - 0.2, h, z0 - 0.2, x1 + 0.2, h + 0.35, z1 + 0.2, roof);
       // escada do lado
       const side = r() < 0.5 ? -1 : 1;
+      // acabamento (só visual): base, janelas com moldura, batente da porta, mureta e chaminé
+      const glass = '#5aa7e0';
+      const frame = '#fff7ea';
+      const trim = new THREE.Color(roof).offsetHSL(0, 0, -0.12).getStyle();
+      this.batchBox(x, 0.09, z, w + 0.3, 0.18, d + 0.3, '#8d8a93');
+      const win = (cx: number, cy: number, cz: number, alongX: boolean) => {
+        this.batchBox(cx, cy, cz, alongX ? 1.0 : 0.07, 0.9, alongX ? 0.07 : 1.0, frame);
+        this.batchBox(cx, cy, cz, alongX ? 0.78 : 0.09, 0.68, alongX ? 0.09 : 0.78, glass);
+        this.batchBox(cx, cy, cz, alongX ? 0.08 : 0.1, 0.68, alongX ? 0.1 : 0.08, frame);
+      };
+      const wy = Math.min(1.7, h - 1.1);
+      win(x - w / 4, wy, z1 + 0.02, true);
+      win(x + w / 4, wy, z1 + 0.02, true);
+      if (w >= 5) {
+        win(x0 + 0.85, wy, z0 - 0.02, true);
+        win(x1 - 0.85, wy, z0 - 0.02, true);
+      }
+      win(x0 - 0.02, wy, z + d * 0.28, false);
+      win(x1 + 0.02, wy, z + d * 0.28, false);
+      this.batchBox(x - door / 2 - 0.07, 1.15, z0 - 0.03, 0.14, 2.3, 0.1, trim);
+      this.batchBox(x + door / 2 + 0.07, 1.15, z0 - 0.03, 0.14, 2.3, 0.1, trim);
+      this.batchBox(x, 2.27, z0 - 0.03, door + 0.28, 0.14, 0.1, trim);
+      this.batchBox(x, 0.02, z0 - 0.6, door + 0.4, 0.04, 1.0, '#b9a58a');
+      const rt = h + 0.35;
+      this.batchBox(x, rt + 0.12, z0 - 0.15, w + 0.4, 0.24, 0.12, trim);
+      this.batchBox(x, rt + 0.12, z1 + 0.15, w + 0.4, 0.24, 0.12, trim);
+      if (side > 0) this.batchBox(x0 - 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
+      else this.batchBox(x1 + 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
+      const chx = side < 0 ? x1 - 0.8 : x0 + 0.8;
+      this.solid(chx - 0.3, rt, z1 - 1.1, chx + 0.3, rt + 1.0, z1 - 0.5, '#a0523d');
       const lx = side < 0 ? x0 - 0.15 : x1 + 0.15;
       this.batchBox(lx, (h + 0.4) / 2, z - 0.5, 0.2, h + 0.4, 0.1, '#c98a4a');
       this.batchBox(lx, (h + 0.4) / 2, z + 0.5, 0.2, h + 0.4, 0.1, '#c98a4a');
@@ -694,6 +837,28 @@ export class Disaster3D implements MiniGameHandle {
       this.openSpots.push({ x, z });
     }
     if (!this.openSpots.length) this.openSpots.push({ x: 0, z: -12 });
+    // detalhes do chão: tufos de grama, flores e pedrinhas (tudo no mesmo lote: 1 desenho)
+    const tuft = new THREE.ConeGeometry(0.13, 0.4, 3);
+    const rock = new THREE.IcosahedronGeometry(0.3, 0);
+    const leaf = new THREE.Color(m.leaf);
+    const nd = [40, 70, 110, 150][this.tier];
+    for (let i = 0; i < nd; i++) {
+      const a = r() * Math.PI * 2;
+      const rad = Math.sqrt(r()) * (ISLAND_R - 2.5);
+      const x = Math.cos(a) * rad;
+      const z = Math.sin(a) * rad;
+      if (this.statics.some((b) => b.y1 > 0.01 && x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3)) continue;
+      const k = r();
+      if (k < 0.62) {
+        const c = leaf.clone().offsetHSL(0, 0, (r() - 0.5) * 0.15);
+        for (let j = 0; j < 3; j++) this.batchGeo(tuft, x + (r() - 0.5) * 0.3, 0.18, z + (r() - 0.5) * 0.3, 1, 0.7 + r() * 0.6, 1, r() * 3, c);
+      } else if (k < 0.85) {
+        this.batchBox(x, 0.18, z, 0.04, 0.36, 0.04, '#3f8f3a');
+        this.batchBox(x, 0.4, z, 0.2, 0.12, 0.2, m.roof[Math.floor(r() * m.roof.length)]);
+      } else this.batchGeo(rock, x, 0.1, z, 1 + r(), 0.6 + r() * 0.5, 1 + r(), r() * 3, '#9a9aa5');
+    }
+    tuft.dispose();
+    rock.dispose();
     this.flushBatch();
     this.volcano.visible = m.id === 'ilha' || sc.disasters.includes('vulcao');
   }
@@ -729,12 +894,28 @@ export class Disaster3D implements MiniGameHandle {
     this.players = [];
     const n = isSolo('disaster') ? 1 : 6;
     const meSkin = SKINS.find((s) => s.id === save.skin) ?? SKINS[0];
+    // largada: o lugar aberto mais longe de paredes (antes nascia colado no morro e a câmera via só parede)
+    let sp = this.openSpots[0];
+    let bestD = -1;
+    for (const o of this.openSpots) {
+      let d = 99;
+      for (const b of this.statics) {
+        if (b.y1 <= 0.01) continue;
+        const dx = Math.max(b.x0 - o.x, 0, o.x - b.x1);
+        const dz = Math.max(b.z0 - o.z, 0, o.z - b.z1);
+        d = Math.min(d, Math.hypot(dx, dz));
+      }
+      if (d > bestD && Math.hypot(o.x, o.z) < ISLAND_R - 6) {
+        bestD = d;
+        sp = o;
+      }
+    }
     for (let i = 0; i < n; i++) {
       const self = i === 0;
       const skin = self ? meSkin : SKINS[(i * 5 + this.sessionRounds) % SKINS.length];
       const { g, body } = this.makeBloop(skin.light, self);
       const a = (i / n) * Math.PI * 2;
-      const pos = new THREE.Vector3(Math.cos(a) * 3, 0, -10 + Math.sin(a) * 3);
+      const pos = new THREE.Vector3(sp.x + Math.cos(a) * 2.2, 0, sp.z + Math.sin(a) * 2.2);
       const p: P3 = {
         name: self ? t('dz.you', 'Você') : BOT_NAMES[(i + this.sessionRounds) % BOT_NAMES.length],
         self,
@@ -760,7 +941,9 @@ export class Disaster3D implements MiniGameHandle {
       this.players.push(p);
     }
     this.me = this.players[0];
-    this.yaw = 0;
+    // de costas para a borda, olhando para o centro da ilha; câmera já no lugar (sem "voar" até lá)
+    this.yaw = Math.atan2(-this.me.pos.x, -this.me.pos.z);
+    this.camPos.set(this.me.pos.x - Math.sin(this.yaw) * 7, this.me.pos.y + 3.5, this.me.pos.z - Math.cos(this.yaw) * 7);
   }
 
   /* ------------------------------ rodada ------------------------------ */
@@ -835,8 +1018,7 @@ export class Disaster3D implements MiniGameHandle {
   }
 
   private warnStart(): void {
-    const d = this.sc.disasters[this.dIndex];
-    bigMoment(DISASTERS[d].name() + '!', { icon: 'warning', color: 'linear-gradient(90deg,#ff5a3c,#c8193c)', ms: 1200 });
+    // o aviso visual é o cartão único (hudTick): ícone + contagem + seta
     audio.siren(2.5);
     tap('heavy');
   }
@@ -1097,8 +1279,10 @@ export class Disaster3D implements MiniGameHandle {
       if (f.dir) {
         const x0 = -ISLAND_R - 40;
         const w = Math.max(0.1, f.front - x0);
-        this.fluidMesh.scale.set(w, lv + 0.6, ISLAND_R * 2 + 30);
-        this.fluidMesh.position.set(x0 + w / 2, (lv - 0.6) / 2, 0);
+        this.fluidMesh.scale.set(w, lv + 0.45, ISLAND_R * 2 + 30);
+        this.fluidMesh.position.set(x0 + w / 2, (lv - 0.15 - 0.6) / 2, 0);
+        this.fluidTop.scale.set(w, 1, ISLAND_R * 2 + 30);
+        this.fluidTop.position.set(x0 + w / 2, lv, 0);
         // empurra corpos atrás da frente
         for (const d of this.dyn) {
           const b = d.body;
@@ -1108,8 +1292,10 @@ export class Disaster3D implements MiniGameHandle {
           }
         }
       } else {
-        this.fluidMesh.scale.set(ISLAND_R * 2 + 6, lv + 0.6, ISLAND_R * 2 + 6);
-        this.fluidMesh.position.set(0, (lv - 0.6) / 2, 0);
+        this.fluidMesh.scale.set(ISLAND_R * 2 + 6, lv + 0.45, ISLAND_R * 2 + 6);
+        this.fluidMesh.position.set(0, (lv - 0.15 - 0.6) / 2, 0);
+        this.fluidTop.scale.set(ISLAND_R * 2 + 6, 1, ISLAND_R * 2 + 6);
+        this.fluidTop.position.set(0, lv, 0);
       }
       if (f.level <= 0.01 && f.target <= 0) {
         this.fluid = null;
@@ -1162,7 +1348,6 @@ export class Disaster3D implements MiniGameHandle {
         tn.z = Math.sign(tn.z) * (ISLAND_R + 12);
       }
       this.tornadoMesh.position.set(tn.x, 0, tn.z);
-      this.tornadoMesh.rotation.y += dt * 6;
       for (const d of this.dyn) {
         const b = d.body;
         const dx = tn.x - b.position.x;
@@ -1223,8 +1408,8 @@ export class Disaster3D implements MiniGameHandle {
       let t1 = best;
       const o = [ox, oy, oz];
       const d = [dx, dy, dz];
-      const lo = [b.x0 - 0.15, b.y0, b.z0 - 0.15];
-      const hi = [b.x1 + 0.15, b.y1 + 0.15, b.z1 + 0.15];
+      const lo = [b.x0 - 0.35, b.y0, b.z0 - 0.35];
+      const hi = [b.x1 + 0.35, b.y1 + 0.3, b.z1 + 0.35];
       let ok = true;
       for (let a = 0; a < 3 && ok; a++) {
         if (Math.abs(d[a]) < 1e-6) {
@@ -1810,7 +1995,11 @@ export class Disaster3D implements MiniGameHandle {
       const hx = m.pos.x;
       const hy = m.pos.y + 1;
       const hz = m.pos.z;
-      const hit = this.rayBoxes(hx, hy, hz, tx - hx, Math.max(0.6, ty) - hy, tz - hz);
+      // três raios (centro e ±0,7 m de lado): a câmera não para encostada numa parede tampando meia tela
+      const rx = -fz * 0.7;
+      const rz = fx * 0.7;
+      const ey = Math.max(0.6, ty) - hy;
+      const hit = Math.min(this.rayBoxes(hx, hy, hz, tx - hx, ey, tz - hz), this.rayBoxes(hx, hy, hz, tx + rx - hx, ey, tz + rz - hz), this.rayBoxes(hx, hy, hz, tx - rx - hx, ey, tz - rz - hz));
       const f = hit < 1 ? Math.max(0.15, hit - 0.08) : 1;
       const cx = hx + (tx - hx) * f;
       const cy = hy + (Math.max(0.6, ty) - hy) * f;
@@ -1842,7 +2031,117 @@ export class Disaster3D implements MiniGameHandle {
       }
       a.needsUpdate = true;
     }
+    this.fx(dt);
+    this.sky.position.copy(cam.position);
     this.renderer.render(this.scene, cam);
+  }
+
+  /** água com ondas e espuma, mar, funil do tornado e luz de tempestade (só visual) */
+  private fx(dt: number): void {
+    const t = this.time;
+    const f = this.fluid;
+    this.fluidTop.visible = !!f && this.fluidMesh.visible;
+    if (f && this.fluidTop.visible) {
+      const g = this.fluidTop.geometry;
+      const pos = g.getAttribute('position') as THREE.BufferAttribute;
+      const col = g.getAttribute('color') as THREE.BufferAttribute;
+      const pa = pos.array as Float32Array;
+      const ca = col.array as Float32Array;
+      const sx = this.fluidTop.scale.x;
+      const sz = this.fluidTop.scale.z;
+      const cx = this.fluidTop.position.x;
+      const cz = this.fluidTop.position.z;
+      const kind = f.kind;
+      const amp = kind === 'water' ? 0.14 : kind === 'goo' ? 0.09 : kind === 'lava' ? 0.07 : 0.03;
+      const sp = kind === 'lava' || kind === 'goo' ? 0.45 : 1;
+      const base = this.fluidCol.set(kind === 'water' ? 0x2f8fe8 : kind === 'goo' ? 0x74d64a : kind === 'lava' ? 0xff5a10 : 0xf2f6ff);
+      const lvl = Math.max(0.05, f.level);
+      for (let i = 0, n = pos.count; i < n; i++) {
+        const wx = cx + pa[i * 3] * sx;
+        const wz = cz + pa[i * 3 + 2] * sz;
+        let y = amp * (Math.sin(0.55 * wx + 1.6 * t * sp) + 0.6 * Math.sin(0.8 * wz - 1.2 * t * sp + wx * 0.2) + 0.3 * Math.sin(1.7 * (wx + wz) + 2.3 * t * sp));
+        let foam = kind === 'water' ? Math.max(0, (y / amp - 1.0) * 0.8) : 0;
+        if (f.dir) {
+          const df = f.front - wx;
+          if (df >= 0 && df < 8) {
+            const k = Math.exp(-df / 1.8);
+            y += Math.min(1.2, lvl * 0.5 + 0.3) * k;
+            foam += k * 1.2;
+          }
+        }
+        pa[i * 3 + 1] = y;
+        const r = base.r;
+        let gg = base.g;
+        let b = base.b;
+        if (kind === 'lava') {
+          const hot = 0.5 + 0.5 * Math.sin(wx * 0.7 + t * 1.3) * Math.sin(wz * 0.6 - t);
+          gg += hot * 0.35;
+          b += hot * 0.05;
+        }
+        foam = Math.min(1, foam);
+        ca[i * 3] = r + (1 - r) * foam;
+        ca[i * 3 + 1] = gg + (1 - gg) * foam;
+        ca[i * 3 + 2] = b + (1 - b) * foam;
+      }
+      pos.needsUpdate = true;
+      col.needsUpdate = true;
+      const fm = this.fluidTop.material as THREE.MeshStandardMaterial;
+      fm.emissive.setHex(kind === 'lava' ? 0xff3a00 : 0x000000);
+      fm.emissiveIntensity = kind === 'lava' ? 0.7 : 0;
+      fm.opacity = kind === 'water' ? 0.88 : 1;
+    }
+    // mar perto da ilha
+    {
+      const pos = this.sea2.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const pa = pos.array as Float32Array;
+      for (let i = 0, n = pos.count; i < n; i++) {
+        const x = pa[i * 3];
+        const z = pa[i * 3 + 2];
+        pa[i * 3 + 1] = 0.2 * Math.sin(0.25 * x + t * 0.9) + 0.14 * Math.sin(0.33 * z - t * 0.7 + x * 0.05);
+      }
+      pos.needsUpdate = true;
+    }
+    // tornado: partículas sobem girando num funil + escombros orbitando
+    if (this.tornadoMesh.visible) {
+      const pos = this.tnPts.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const pa = pos.array as Float32Array;
+      for (let i = 0; i < this.tnH.length; i++) {
+        let h = this.tnH[i] + dt * (0.16 + (i % 3) * 0.07);
+        if (h > 1) h -= 1;
+        this.tnH[i] = h;
+        const a = (this.tnA[i] += dt * (7.5 - h * 4));
+        const dust = i % 6 === 0;
+        const rad = dust ? 1.8 + h * 3 : 0.45 + h * h * 5.6 + Math.sin(i * 1.7 + t * 3) * 0.25;
+        pa[i * 3] = Math.cos(a) * rad;
+        pa[i * 3 + 1] = dust ? h * 1.6 : h * 17;
+        pa[i * 3 + 2] = Math.sin(a) * rad;
+      }
+      pos.needsUpdate = true;
+      for (const d of this.tnDebris) {
+        const u = d.userData as { h: number; a: number; s: number };
+        u.a += dt * u.s * 2;
+        u.h += dt * 0.06;
+        if (u.h > 1) u.h -= 1;
+        const rr = 1 + u.h * 4.5;
+        d.position.set(Math.cos(u.a) * rr, 0.8 + u.h * 13, Math.sin(u.a) * rr);
+        d.rotation.x += dt * 4;
+        d.rotation.y += dt * 3;
+      }
+    }
+    // luz de tempestade: escurece no alerta/desastre; nevasca fecha a neblina; raio clareia
+    const target = this.phase === 'warn' || this.phase === 'disaster' ? 1 : 0;
+    this.storm += (target - this.storm) * Math.min(1, dt * 0.8);
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (fog) {
+      fog.color.copy(this.fogCalm).lerp(this.fogStorm, this.storm * (this.active.has('avalanche') ? 0.25 : 0.55));
+      const bl = this.active.has('avalanche') ? 1 : 0;
+      fog.near = 45 - bl * 33;
+      fog.far = 170 - bl * 105;
+    }
+    const flash = this.boltT > 0 ? 1.2 : 0;
+    this.hemi.intensity = 1.15 - this.storm * 0.35 + flash;
+    this.sun.intensity = 1.6 - this.storm * 0.75;
+    (this.sky.material as THREE.MeshBasicMaterial).color.setScalar(1 - this.storm * 0.45 + flash * 0.3);
   }
 
   /* ------------------------------ HUD ------------------------------ */
@@ -1870,6 +2169,10 @@ export class Disaster3D implements MiniGameHandle {
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
+      this.phaseEl.style.visibility = show ? 'hidden' : '';
+      // o chip de objetivo (canto direito) cruzaria o cartão em retrato: sai durante o alerta
+      if (show) objective(null);
+      else if (this.phase === 'disaster') objective(DISASTERS[d].hint(), { icon: 'warning' });
       if (show) {
         (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(d, 50);
         const water = d === 'enchente' || d === 'acido' || d === 'tsunami' || d === 'vulcao' || d === 'avalanche';
@@ -1880,7 +2183,7 @@ export class Disaster3D implements MiniGameHandle {
     const from = show ? this.hazardFrom(d) : NaN;
     this.dirEl.classList.toggle('on', Number.isFinite(from));
     if (Number.isFinite(from)) {
-      // ângulo da origem no mundo → na tela (para cima = frente da câmera); a seta aponta para dentro
+      // ângulo da origem no mundo → relativo à câmera
       const wx = Math.cos(from);
       const wz = Math.sin(from);
       const fx = Math.sin(this.yaw);
@@ -1888,9 +2191,9 @@ export class Disaster3D implements MiniGameHandle {
       const fwd = wx * fx + wz * fz;
       const right = wx * -fz + wz * fx;
       const ang = Math.atan2(right, fwd);
-      const R = Math.min(this.root.clientWidth, this.root.clientHeight) * 0.36;
+      // dentro do cartão: a seta aponta para o lado de onde o desastre vem (para cima = em frente)
       const ar = this.dirEl.firstElementChild as HTMLElement;
-      ar.style.transform = `translate(${Math.sin(ang) * R}px,${-Math.cos(ang) * R}px) rotate(${ang + Math.PI}rad)`;
+      ar.style.transform = `rotate(${ang}rad)`;
     }
   }
 
