@@ -37,7 +37,9 @@ for (const [W, H, tag] of [[844, 390, 'land'], [390, 844, 'port']]) {
   await p.evaluate(() => document.querySelectorAll('.ob-root, .beta-sheet-bg').forEach((e) => e.remove()));
   await p.evaluate(() => __bloop.launchGame(__bloop.listGames().find((x) => x.id === 'montaleva')));
   await p.waitForFunction(() => window.__montaleva && document.querySelector('.ml-menu [data-a=play]'), null, { timeout: 30000 });
-  await sleep(800);
+  // espera a transição de abertura do hub terminar
+  await p.waitForFunction(() => !document.querySelector('.celebrate, .launch-fx, .hub-launch'), null, { timeout: 15000 }).catch(() => {});
+  await sleep(3000);
   await p.screenshot({ path: `${OUT}${tag}-0-menu.png` });
   await tapSel('.ml-menu [data-a=play]');
   for (let n = 1; n <= 5; n++) {
