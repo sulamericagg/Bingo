@@ -335,6 +335,14 @@ class CacaGame implements MiniGameHandle {
         ? t('caca.gps.denied', 'Sem permissão de localização. Você pode jogar no modo casa (Ajustes).')
         : t('caca.gps.off', 'Não deu para achar o GPS agora. Tente ao ar livre ou use o modo casa.'),
       true,
+      {
+        label: t('caca.mode.home', 'Modo casa'),
+        fn: () => {
+          this.sv.locMode = 'casa';
+          persistCaca();
+          this.startMap();
+        },
+      },
     );
   }
   private walked(km: number): void {
@@ -344,8 +352,15 @@ class CacaGame implements MiniGameHandle {
       audio.record();
     }
   }
-  private setBanner(text: string, info = false): void {
+  private setBanner(text: string, info = false, action?: { label: string; fn: () => void }): void {
+    if (this.banner.dataset.t === text + (action ? '+' : '')) return;
+    this.banner.dataset.t = text + (action ? '+' : '');
     this.banner.textContent = text;
+    if (action) {
+      const b = h('button', 'cc-btn small', esc(action.label));
+      this.btn(b, action.fn);
+      this.banner.appendChild(b);
+    }
     this.banner.classList.toggle('on', !!text);
     this.banner.classList.toggle('info', info);
   }
@@ -1016,6 +1031,7 @@ class Encounter {
   private c: CanvasRenderingContext2D;
   private panel: HTMLDivElement;
   private hud: HTMLDivElement | null = null;
+  private tip: HTMLDivElement | null = null;
   private w = 0;
   private h = 0;
   private dpr = 1;
@@ -1200,6 +1216,11 @@ class Encounter {
 
   private beginMinigame(k: GameKind): void {
     this.phase = 'round';
+    // lembrete curto do que fazer (some sozinho) — criança não precisa decorar a tela de intro
+    this.tip?.remove();
+    this.tip = h('div', 'cc-tip');
+    this.tip.textContent = gameHelp(k);
+    this.el.appendChild(this.tip);
     for (const [u, v] of this.cds) this.cds.set(u, Math.max(0, v - 1));
     const top = this.h * 0.3;
     this.mgRect = { x: 0, y: top, w: this.w, h: this.h - top - Math.max(12, edges().b) };
@@ -1221,6 +1242,8 @@ class Encounter {
   }
 
   private endRound(score: number): void {
+    this.tip?.remove();
+    this.tip = null;
     const mg = this.mg!;
     this.mg = null;
     this.scores.push(score);

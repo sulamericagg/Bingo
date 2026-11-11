@@ -101,4 +101,7 @@
 .cc-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;font:600 15px var(--font);padding:6px 0}
 .cc-toggle button{min-width:74px;min-height:40px;border-radius:999px;border:0;font:700 14px var(--font);cursor:pointer;background:rgba(255,255,255,.15);color:#fff}
 .cc-toggle button.on{background:#7dff9a;color:#1a3a10}
-.cc-hint{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + 96px);transform:translateX(-50%);z-index:5;padding:6px 12px;border-radius:999px;background:rgba(26,11,61,.8);font:600 13px var(--font);white-space:nowrap;pointer-events:none}
+.cc-hint{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + 96px);transform:translateX(-50%);z-index:5;padding:6px 12px;border-radius:999px;background:rgba(26,11,61,.8);font:600 13px var(--font);text-align:center;width:max-content;max-width:calc(100vw - 32px);pointer-events:none}
+.cc-tip{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + 8px);transform:translateX(-50%);z-index:3;max-width:88%;padding:6px 14px;border-radius:999px;background:rgba(20,8,56,.78);font:600 13px var(--font);text-align:center;pointer-events:none;animation:ccTip 5s forwards}
+@keyframes ccTip{0%,80%{opacity:1}100%{opacity:0}}
+.cc-banner .cc-btn{display:block;margin:8px auto 0;pointer-events:auto}
