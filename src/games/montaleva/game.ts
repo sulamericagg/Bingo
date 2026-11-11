@@ -11,7 +11,7 @@ import { lockOrientation } from '../../core/orientation';
 import { QualityGovernor } from '../../core/quality';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { fmt, t } from '../../i18n';
-import { bindButton, type BoundButton } from '../../ui/touch';
+import { bindButton, edges, type BoundButton } from '../../ui/touch';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { MLAudio } from './audio';
 import { History, analyze, canPlace, countOf, normRot, partAt, partCost, removeAt, snapCells, type PlaceError } from './design';
@@ -901,6 +901,9 @@ export class MontaLeva implements MiniGameHandle {
 
   private onDown(e: PointerEvent): void {
     if (this.screen !== 'build' || e.button > 0 || this.drag) return;
+    // faixa colada à borda (barra de gestos/navegação do Android): ignora toque acidental
+    const E = edges();
+    if (e.pointerType === 'touch' && (e.clientX < E.l * 0.5 || e.clientX > innerWidth - E.r * 0.5)) return;
     e.preventDefault();
     const w = this.toWorld(e.clientX, e.clientY);
     if (this.overview) {
