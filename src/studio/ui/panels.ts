@@ -933,7 +933,7 @@ export class Panels {
     const th = this.s.thumb();
     const f = this.h(`<div class="bs-pubf">
       <div class="bs-thumb big" style="background-image:url(${th})"></div>
-      <label>${t('studio.name', 'Nome')}<input maxlength="32" value="${esc(doc.name)}"></label>
+      <label>${t('studio.fieldName', 'Nome')}<input maxlength="32" value="${esc(doc.name)}"></label>
       <div class="bs-chips">${STORE_CATEGORIES.map((c) => `<button class="bs-chip${c === cat ? ' on' : ''}" data-cat="${c}">${catName(c)}</button>`).join('')}</div>
       ${doc.kind === 'map' ? `<label class="bs-toggle"><input type="checkbox" data-game ${doc.game || doc.scripts?.length ? 'checked' : ''}> ${t('studio.asGame', 'Publicar como Jogo da Comunidade')}</label>
       <div class="bs-gform" ${doc.game || doc.scripts?.length ? '' : 'hidden'}>
@@ -1009,7 +1009,7 @@ export class Panels {
     const ed = this.s.editor;
     const d = ed.doc;
     const f = this.h(`<div class="bs-pubf">
-      <label>${t('studio.name', 'Nome')}<input maxlength="32" value="${esc(d.name)}"></label>
+      <label>${t('studio.fieldName', 'Nome')}<input maxlength="32" value="${esc(d.name)}"></label>
       <p class="bs-stats">${kindName(d.kind)} · ${d.parts.length} ${t('studio.partsWord', 'peças')} · ${d.joints.length} ${t('studio.jointsWord', 'juntas')} · ${d.logic.length} ${t('studio.rulesWord', 'fichas')}<br>${Math.round(jsonBytes(d) / 1024)} KB · hash ${hashCreation(d)}</p>
       <div class="bs-row2"><button class="bs-btn" data-a="copy">${sicon('copy', 18)}${t('studio.copyCode', 'Copiar código')}</button><button class="bs-btn" data-a="paste">${sicon('paste', 18)}${t('studio.pasteCode', 'Colar código')}</button></div>
       <div class="bs-row2"><button class="bs-btn" data-a="share">${sicon('link', 18)}${t('studio.share', 'Compartilhar')}</button><button class="bs-btn bs-accent" data-a="pub">${sicon('upload', 18)}${t('studio.publish', 'Publicar')}</button></div></div>`);
