@@ -284,7 +284,10 @@ export class Sandbox implements MundoAPI {
         const b = v.body;
         if (v.remote) continue;
         const ck = g.world.chunks.get(Math.floor(b.position.x / 32) + ',' + Math.floor(b.position.z / 32));
-        const under = ck && !ck.vol ? b.position.y < g.world.heightAt(b.position.x, b.position.z) - 4 : b.position.y < BED_Y - 6;
+        // abaixo da superfície sem caverna, ou com o centro enterrado na rocha = atravessou o chão
+        const under =
+          (ck && !ck.vol ? b.position.y < g.world.heightAt(b.position.x, b.position.z) - 4 : b.position.y < BED_Y - 6) ||
+          (b.position.y < g.world.heightAt(b.position.x, b.position.z) - 3 && g.world.vox.dens(b.position.x, b.position.y + 0.6, b.position.z) > 0.5);
         if (!under) continue;
         b.position.set(b.position.x, g.world.heightAt(b.position.x, b.position.z) + 1.5, b.position.z);
         b.velocity.setZero();
