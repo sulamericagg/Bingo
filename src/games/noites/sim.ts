@@ -1083,7 +1083,7 @@ export class Sim {
         continue;
       }
       const sled = ITEM[s.k]?.place?.kind === 'sled';
-      const d = sled ? -1.7 : 1.35;
+      const d = sled ? -1.9 : 1.75;
       const tx = p.x + Math.sin(p.yaw) * d;
       const tz = p.z + Math.cos(p.yaw) * d;
       const k = sled ? Math.min(1, dt * 5) : 1;

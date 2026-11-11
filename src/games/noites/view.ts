@@ -11,7 +11,7 @@ import { BENCH_POS, CDEFS, CHEST_POS, CK, DAY_LEN, DUSK, FIRE_LV, FIRE_MAX_LV, I
 import { heldKind } from './items';
 import { LootView } from './lootview';
 import { FpView } from './fpview';
-import { t as tr } from '../../i18n';
+import { fireLvLabel } from './hud';
 import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
@@ -463,8 +463,9 @@ export class View {
     this.fireSignCtx = fc.getContext('2d')!;
     this.fireSignTex = new THREE.CanvasTexture(fc);
     this.fireSignTex.colorSpace = THREE.SRGBColorSpace;
-    this.fireSign = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fireSignTex, fog: false, depthTest: false, transparent: true }));
-    this.fireSign.scale.set(1.5, 0.66, 1);
+    this.fireSign = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fireSignTex, fog: false, depthTest: false, transparent: true, sizeAttenuation: false }));
+    // tamanho fixo na tela (legível de longe)
+    this.fireSign.scale.set(0.34, 0.149, 1);
     this.fireSign.renderOrder = 30;
     sc.add(this.fireSign);
 
@@ -1180,11 +1181,11 @@ export class View {
     }
     // chamas: maiores por nível, encolhem quando o tempo acaba, e "acendem" quando algo cai no fogo
     const lowK = Math.min(1, left / 60);
-    const fs = fr > 0 ? (0.35 + 0.75 * Math.sqrt(lowK)) * (0.8 + s.fire.lv * 0.22) * (s.fire.big ? 1.25 : 1) * (1 + s.fire.flare * 0.45) : 0.0001;
+    const fs = fr > 0 ? (0.35 + 0.75 * Math.sqrt(lowK)) * (0.7 + s.fire.lv * 0.3) * (s.fire.big ? 1.2 : 1) * (1 + Math.min(1, s.fire.flare) * 0.3) : 0.0001;
     this.updFireSign();
     this.flames.forEach((f, i) => {
       const w = [1, 0.7, 0.4][i];
-      const h = [1.8, 1.4, 0.9][i] * fs * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.12);
+      const h = [1.8, 1.4, 0.9][i] * Math.pow(fs, 0.65) * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.12);
       f.scale.set(w * fs, h, w * fs);
       f.position.set(Math.sin(this.time * 3 + i) * 0.05, h / 2 + 0.15, Math.cos(this.time * 2.6 + i) * 0.05);
       f.rotation.y = this.time * (0.6 + i * 0.4);
@@ -1514,7 +1515,7 @@ export class View {
     const ss = String(left % 60).padStart(2, '0');
     const lvP = f.lv >= FIRE_MAX_LV ? 1 : (f.xp - FIRE_LV[f.lv]) / (FIRE_LV[f.lv + 1] - FIRE_LV[f.lv]);
     const key = left + ':' + f.lv + ':' + Math.round(lvP * 40) + ':' + Math.round((f.fuel / f.max) * 40);
-    const fh = 2.0 + f.lv * 0.28 + Math.min(0.6, s.fire.flare * 0.3);
+    const fh = 2.2 + f.lv * 0.35;
     this.fireSign.position.set(0, fh, 0);
     if (key === this.fireSignKey) return;
     this.fireSignKey = key;
@@ -1545,7 +1546,7 @@ export class View {
     // nível
     x.font = '700 18px Fredoka, sans-serif';
     x.fillStyle = '#ffe45c';
-    x.fillText(tr('noites.fire.lv', 'Nv {n}', { n: f.lv }), 20, 96);
+    x.fillText(fireLvLabel(f.lv), 20, 96);
     x.fillStyle = 'rgba(255,255,255,0.18)';
     x.fillRect(80, 90, 156, 8);
     x.fillStyle = '#9ffcff';

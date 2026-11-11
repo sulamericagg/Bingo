@@ -51,6 +51,8 @@ export function itemStats(id: string): string {
   if (d.wear?.slots) return `${ic('bag', 14)}+${d.wear.slots}`;
   return '';
 }
+/** "Nv 2" (placa da fogueira) */
+export const fireLvLabel = (n: number): string => t('noites.fire.lv', 'Nv {n}', { n });
 const fmtT = (s: number) => {
   const v = Math.max(0, Math.ceil(s));
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
