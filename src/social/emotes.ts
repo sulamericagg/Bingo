@@ -9,6 +9,7 @@
  */
 import { t as tr } from '../i18n';
 import { tap } from '../core/haptics';
+import { pushBack } from '../core/back';
 import socialCss from './social.css?inline';
 import { gameFont } from '../i18n/font';
 
@@ -327,6 +328,7 @@ export function drawEmoteBubble(ctx: CanvasRenderingContext2D, code: string, x: 
 /* ---------------- roda de emotes ---------------- */
 
 let wheel: HTMLDivElement | null = null;
+let wheelPop: (() => void) | null = null;
 
 /** Abre a roda (overlay). Tocar fora fecha sem escolher. */
 export function openEmoteWheel(onPick: (code: EmoteCode) => void): void {
@@ -367,10 +369,14 @@ export function openEmoteWheel(onPick: (code: EmoteCode) => void): void {
   ensureSocialCss();
   document.body.appendChild(el);
   wheel = el;
+  // voltar do Android fecha a roda (antes abria o "Sair do jogo?" por baixo dela, sem como tocar nos botões)
+  wheelPop = pushBack(() => closeEmoteWheel());
   requestAnimationFrame(() => el.classList.add('on'));
 }
 
 export function closeEmoteWheel(): void {
+  wheelPop?.();
+  wheelPop = null;
   wheel?.remove();
   wheel = null;
 }

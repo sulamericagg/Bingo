@@ -157,7 +157,21 @@ export function captureThumb(r: THREE.WebGLRenderer, obj: THREE.Object3D, w = 19
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(3, 5, 4);
   scene.add(sun);
-  const clone = obj.clone(true);
+  // clone() copia o userData com JSON.stringify; userData.owner (peça dona, um Object3D) é circular
+  // em peças com referência (ex.: criações prontas da Loja). Tira antes de clonar e devolve depois.
+  const owners: [THREE.Object3D, unknown][] = [];
+  obj.traverse((o) => {
+    if (o.userData.owner !== undefined) {
+      owners.push([o, o.userData.owner]);
+      delete o.userData.owner;
+    }
+  });
+  let clone: THREE.Object3D;
+  try {
+    clone = obj.clone(true);
+  } finally {
+    for (const [o, v] of owners) o.userData.owner = v;
+  }
   scene.add(clone);
   const box = new THREE.Box3().setFromObject(clone);
   if (box.isEmpty()) box.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));

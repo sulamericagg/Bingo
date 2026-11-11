@@ -74,6 +74,7 @@ export function openSquadPanel(focus: 'invite' | 'chat' = 'invite'): void {
       // entrar num grupo pelo QR do amigo
       const sc = btn(t('scan.title', 'Escanear'), 'camera', 'ghost wide');
       sc.onclick = () => void scanGroup();
+      sc.style.marginTop = '10px'; // sem isso encostava na sombra do "Criar grupo"
       s.body.append(p, c, sc);
       inviteList(s.body, null);
       return;

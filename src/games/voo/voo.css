@@ -323,7 +323,7 @@
 .voo-menu.big .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .voo-menu.big .grid button{position:relative;flex-direction:column;justify-content:center;gap:0;padding:6px 2px 4px;border-width:3px;border-radius:16px;min-height:78px;text-align:center}
 .voo-menu.big .grid button.em{background:#fff1f3;border-color:#c21d3c}
-.voo-menu.big .grid button small{font-size:9.5px;line-height:1.1;opacity:.75;padding:0;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.voo-menu.big .grid button small{font-size:9.5px;line-height:1.1;opacity:.75;padding:0;max-width:100%;overflow:hidden;white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .voo-menu.big .grid button .bd{position:absolute;right:2px;top:2px}
 
 /* ======================= SALA (voar com amigos) ======================= */

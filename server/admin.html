@@ -680,11 +680,19 @@ async function loadUgc() {
   $('#ugList').innerHTML = d.items.length ? d.items.map(ugcCard).join('') : '<div class="empty">Nada para revisar agora. 🎉</div>';
   ugcBind($('#ugList'));
 }
+/** miniatura que não abre (arquivo corrompido/enviado antes da validação): caixinha em vez do ícone quebrado */
+function ugcBadThumb(img) {
+  const d = document.createElement('div');
+  d.className = 'ugc-nothumb';
+  d.textContent = 'foto inválida';
+  d.style.cssText = 'grid-column:auto;padding:0;aspect-ratio:3/2;display:grid;place-items:center';
+  img.replaceWith(d);
+}
 function ugcCard(it) {
   const m = it.meta || {};
   const info = it.type === 'filme' ? `${m.mode === '3d' ? '3D' : '2D'} · ${fmtN(Math.round(m.dur || 0))} s · ${fmtN(m.clips || 0)} voz(es)` : `${esc(it.kind)} · ${fmtN(m.parts || 0)} peças · ${esc(it.category)}${m.game ? ' · 🎮 Jogo' : ''}`;
   return `<div class="ugc-card" data-id="${esc(it.id)}">
-    <div class="ugc-thumbs">${(it.thumbs || []).map((t) => `<img src="${esc(t)}" alt="miniatura" loading="lazy">`).join('') || '<div class="ugc-nothumb">sem foto</div>'}</div>
+    <div class="ugc-thumbs">${(it.thumbs || []).map((t) => `<img src="${esc(t)}" alt="miniatura" loading="lazy" onerror="ugcBadThumb(this)">`).join('') || '<div class="ugc-nothumb">sem foto</div>'}</div>
     <div class="ugc-body">
       <div><span class="pill">${UGC_TYPE[it.type] || it.type}</span> <span class="pill">${UGC_STATUS[it.status] || it.status}</span> ${it.reports ? `<span class="pill bad">🚩 ${it.reports} denúncia(s)</span>` : ''} ${it.authorBanned ? '<span class="pill bad">autor banido</span>' : ''}</div>
       <h4>${esc(it.title)}</h4>
@@ -744,7 +752,7 @@ async function openUgc(id) {
   }
   const reps = (it.reportList || []).map((r) => `<li class="small">${esc(r.reason)}${r.note ? ' — ' + esc(r.note) : ''} <span class="muted">${ago(r.t)}</span></li>`).join('');
   const m = modal(`<div class="modal-head"><h3>${esc(it.title)}</h3><button class="btn ghost sm" data-close>✕</button></div>
-    <div class="ugc-thumbs big">${(it.thumbs || []).map((t) => `<img src="${esc(t)}" alt="miniatura">`).join('')}</div>
+    <div class="ugc-thumbs big">${(it.thumbs || []).map((t) => `<img src="${esc(t)}" alt="miniatura" onerror="ugcBadThumb(this)">`).join('')}</div>
     <p class="muted small">${UGC_TYPE[it.type]} · ${UGC_STATUS[it.status]} · por <b>${esc(it.aname)}</b> (${esc(it.aid)}) · id do jogador <span class="mono">${esc(it.author)}</span></p>
     ${(it.flags || []).length ? `<ul class="ugc-flags">${it.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
     ${body}

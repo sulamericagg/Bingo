@@ -18,6 +18,9 @@
 .fl-health .bar i{display:block;height:100%;background:linear-gradient(90deg,#ffcf2e,#3ee07a);border-radius:6px;transition:width .4s}
 .fl-health.happy{box-shadow:0 0 0 2px #7aff8a,0 0 14px rgba(122,255,138,.6)}
 .fl-right{margin-left:auto;display:flex;gap:6px}
+.fl-left{display:flex;gap:inherit;align-items:flex-start;flex-wrap:wrap;min-width:0}
+/* 3D: o meio do topo fica livre para o botão de girar do hub (.gh-rot) */
+#game-host:has(.gh-rot:not([hidden])) .fl-left{max-width:calc(50% - 30px)}
 .fl-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 54px);transform:translateX(-50%);background:rgba(42,11,92,.72);border:2px solid rgba(255,246,214,.6);border-radius:12px;padding:3px 12px;font-weight:800;font-size:14px;text-align:center;opacity:0;transition:opacity .4s;white-space:nowrap;pointer-events:none}
 .fl-banner small{display:block;font-size:11px;opacity:.85}
 .fl-banner.show{opacity:1}
@@ -35,7 +38,7 @@
 .fl-joy.h{height:96px;border-radius:48px}
 .fl-hud.lefty .fl-chop{right:auto;left:18px}
 .fl-hud.lefty .fl-ctx{right:auto;left:18px}
-.fl-ctlpanel{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:20;pointer-events:auto;background:rgba(20,8,48,.92);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:calc(100% - 64px);overflow:auto;min-width:220px}
+.fl-ctlpanel{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:20;pointer-events:auto;background:#160a34;border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:calc(100% - 64px);overflow:auto;min-width:220px}
 .fl-ctlpanel .hd{display:flex;justify-content:space-between;align-items:center;font-size:14px}
 .fl-ctlpanel .x{background:none;border:none;color:#fff;font-size:18px;cursor:pointer}
 .fl-ctlpanel label{opacity:.85;font-weight:700;margin-top:2px}
@@ -68,7 +71,7 @@
 .fl-item span{font-size:12px;opacity:.8}
 .fl-item .fl-btn{min-width:96px;font-size:14px}
 .fl-item.owned{opacity:.6}
-.fl-modes{display:flex;gap:12px;padding:8px 16px 18px;flex-wrap:wrap;justify-content:center}
+.fl-modes{display:flex;gap:12px;padding:8px 16px 18px;flex-wrap:wrap;justify-content:center;overflow-y:auto;min-height:0}
 .fl-mode{flex:1 1 200px;border:4px solid #2a0b5c;border-radius:20px;background:#fff;padding:0 0 10px;font:inherit;color:#2a0b5c;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;overflow:hidden;box-shadow:0 6px 0 #2a0b5c}
 .fl-mode:active{transform:translateY(4px);box-shadow:0 2px 0 #2a0b5c}
 .fl-mode canvas{width:100%;height:120px;display:block;background:#bfe8ff}
@@ -91,6 +94,10 @@
   .fl-emotes{top:56px}
   .fl-card{max-height:96vh}
   .fl-mode canvas{height:90px}
+  /* deitado: os 3 modos lado a lado (o 3º ficava abaixo da tela, sem como rolar) */
+  .fl-card:has(.fl-modes){width:min(860px,100%)}
+  .fl-modes{flex-wrap:nowrap}
+  .fl-mode{flex:1 1 0;min-width:0}
 }
 /* ---------- 3D primeira pessoa ---------- */
 .fl-fps{position:absolute;inset:0;pointer-events:none;z-index:6}
@@ -139,6 +146,8 @@
 .fw-biome{padding-left:9px!important;font-size:12px!important;opacity:.9}
 .fw-nav i{display:flex;transition:transform .2s}
 .fw-right{margin-left:auto;display:flex;gap:5px}
+/* o meio do topo fica livre para o botão de girar do hub (.gh-rot, 40 px no centro) */
+.fw-left{display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:calc(50% - 30px);pointer-events:none}
 .fw-toasts{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 48px);transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:center;max-width:64%}
 .fw-toasts div{background:rgba(20,8,48,.7);border-radius:10px;padding:3px 10px;font-weight:700;font-size:12.5px;text-align:center;animation:flToast 2.6s forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .fw-toasts div.gold{color:#ffd34a}

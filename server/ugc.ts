@@ -142,10 +142,25 @@ function autoFlags(texts: string[], ex: Extra): string[] {
   return flags;
 }
 
+/** A imagem começa com a assinatura do formato declarado? (base64 válido mas lixo virava imagem quebrada na Moderação) */
+function realImage(t: string): boolean {
+  const m = THUMB_RE.exec(t);
+  if (!m) return false;
+  let head: string;
+  try {
+    head = atob(t.slice(t.indexOf(',') + 1, t.indexOf(',') + 1 + 24));
+  } catch {
+    return false;
+  }
+  if (m[1] === 'jpeg') return head.charCodeAt(0) === 0xff && head.charCodeAt(1) === 0xd8;
+  if (m[1] === 'png') return head.startsWith('\x89PNG');
+  return head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP';
+}
+
 function cleanThumbs(v: unknown): string[] {
   return (Array.isArray(v) ? v : [])
     .map(String)
-    .filter((t) => THUMB_RE.test(t) && t.length <= UGC.maxThumbBytes * 1.37)
+    .filter((t) => t.length > 64 && t.length <= UGC.maxThumbBytes * 1.37 && realImage(t))
     .slice(0, UGC.maxThumbs);
 }
 
@@ -175,7 +190,7 @@ export async function ugcPublish(req: Request, env: Env): Promise<Response> {
   collectTexts({ ...pc, name: undefined, author: undefined }, texts);
   const flags = autoFlags(texts, ex);
   let thumbs = cleanThumbs(body.thumbs);
-  if (!thumbs.length && pc.thumbnail) thumbs = [pc.thumbnail];
+  if (!thumbs.length && pc.thumbnail) thumbs = cleanThumbs([pc.thumbnail]);
   const dailyLimit = Math.max(1, Math.min(UGC.maxPublishPerDay, Math.floor(Number(body.dailyLimit) || 3)));
   const r = await ugcHub(env).publish({
     id: pc.id,

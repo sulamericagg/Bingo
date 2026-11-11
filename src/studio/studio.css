@@ -23,6 +23,8 @@
 .bs-name small{font-size:11px;opacity:.72}
 .bs-test{height:44px;padding:0 16px 0 12px;border-radius:15px;display:flex;align-items:center;gap:6px;font-weight:800;font-size:16px;letter-spacing:.3px;background:linear-gradient(180deg,#ff7ad6,#ff3fa3);box-shadow:0 3px 0 #b8237a,0 6px 14px rgba(255,63,163,.4);text-shadow:0 1px 0 rgba(0,0,0,.2)}
 .bs-test:active{transform:translateY(2px);box-shadow:0 1px 0 #b8237a}
+/* em pé (jogador escolheu "Jogar em pé"): a barra não cabe em ~400 px — "Loja"/"Testar" só com ícone e a barra rola na horizontal em vez de jogar os botões para fora da tela */
+@media (max-aspect-ratio:1/1){.bs-top{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain}.bs-top::-webkit-scrollbar{display:none}.bs-top>*{flex:none}.bs-name{max-width:24vw}.bs-store span,.bs-test span{display:none}.bs-ib.bs-store{width:42px;padding:0}.bs-test{padding:0 12px}}
 
 /* ---------------------------------- doca ---------------------------------- */
 .bs-dock{position:absolute;bottom:var(--edge-b,10px);left:50%;transform:translateX(-50%);display:flex;gap:3px;padding:4px;border-radius:20px;background:rgba(20,8,48,.76);box-shadow:0 4px 16px rgba(0,0,0,.35),inset 0 0 0 1.5px rgba(255,255,255,.1);max-width:calc(100% - var(--edge-l,10px) - var(--edge-r,10px));overflow-x:auto;scrollbar-width:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
