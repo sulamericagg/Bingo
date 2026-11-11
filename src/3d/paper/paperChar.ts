@@ -156,7 +156,7 @@ export class PaperChar {
 
   constructor(spec: PaperSpec, o: PaperOpts = {}) {
     this.r = o.radius ?? 0.5;
-    this.tilt = o.tilt ?? 0.45;
+    this.tilt = o.tilt ?? 0.8;
     const C = o.cell ?? 96;
     this.atlas = atlasFor(spec, C);
     this.atlas.refs++;
@@ -261,7 +261,7 @@ export class PaperChar {
     const camA = Math.atan2(dx, dz);
     const hd = Math.hypot(dx, dz);
     const pitch = Math.atan2(_cam.y - _pos.y - this.r, Math.max(0.1, hd));
-    this.pivot.rotation.set(-Math.min(this.tilt, Math.max(0, pitch) * 0.6), camA - parentYaw, 0);
+    this.pivot.rotation.set(-Math.min(this.tilt, Math.max(0, pitch) * 0.75), camA - parentYaw, 0);
     // vista: ângulo da câmera medido a partir da frente do Bloop
     const rel = wrap(camA - st.yaw);
     const ar = Math.abs(rel);
