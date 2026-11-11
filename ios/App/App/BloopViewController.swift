@@ -16,6 +16,4 @@ class BloopViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(BloopSpeechRecognitionPlugin())
     }
 
-    // Jogo: a barrinha do "home" some sozinha depois de alguns segundos sem toque.
-    override var prefersHomeIndicatorAutoHidden: Bool { true }
 }
