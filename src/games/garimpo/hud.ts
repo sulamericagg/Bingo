@@ -34,6 +34,8 @@ export interface HudState {
   canEnter: boolean;
   /** dica do botão de ação 2 (ex.: perto da moega) */
   hot2: boolean;
+  /** garimpeiro com balde / na beira d'água: botão 1 vira água */
+  water: boolean;
 }
 
 const LBL = {
@@ -288,6 +290,7 @@ export class Hud {
     show('.gb-pedals', veh && !exArm);
     const wheeled = k === 'pickup' || k === 'truck';
     show('.gb-panel', wheeled && this.ctl.expert);
+    el.classList.toggle('expert', wheeled && this.ctl.expert);
     this.q('.gb-panel').classList.toggle('closed', !this.panelOpen);
     show('.gb-drv', k === 'excavator');
     this.q('.gb-drv').innerHTML = (this.ctl.drive ? IC.arm : IC.tracks) + '';
@@ -310,11 +313,18 @@ export class Hud {
     this.q('.gb-up').innerHTML = k === 'dozer' ? IC.bladeUp : IC.up;
     this.q('.gb-dn').innerHTML = k === 'dozer' ? IC.bladeDown : IC.down;
     const ent = this.q('.gb-ent');
+    this.lastTxt = '';
+    if (k !== 'worker') ent.hidden = false;
     ent.innerHTML = (k === 'worker' ? IC.enter : IC.exit) + `<span>${k === 'worker' ? LBL.enter() : LBL.exit()}</span>`;
     this.q('.gb-mode').hidden = !wheeled;
     this.q('.gb-mode').classList.toggle('on', this.ctl.expert);
     this.joyR.setEnabled(exArm);
     el.classList.toggle('arm', exArm);
+    // painel fica à esquerda do bloco da direita (ações + pedais), nunca por cima
+    requestAnimationFrame(() => {
+      const rr = this.q('.gb-right').getBoundingClientRect();
+      if (rr.width) el.style.setProperty('--rw', Math.round(rr.width + 10) + 'px');
+    });
     el.classList.toggle('veh', veh);
     void edges;
   }
@@ -363,9 +373,10 @@ export class Hud {
   }
 
   update(s: HudState): void {
-    const txt = `${fmtN(s.money)}|${fmtN(s.stock)}|${Math.round(s.fill * 100)}|${s.cargoGold.toFixed(1)}|${s.canEnter}|${s.hot2}`;
+    const txt = `${fmtN(s.money)}|${fmtN(s.stock)}|${Math.round(s.fill * 100)}|${s.cargoGold.toFixed(1)}|${s.canEnter}|${s.hot2}|${s.water}`;
     if (txt !== this.lastTxt) {
       this.lastTxt = txt;
+      if (this.kind === 'worker') this.q('.gb-a1').innerHTML = s.water ? IC.water + `<span>${LBL.water()}</span>` : IC.shovel + `<span>${LBL.dig()}</span>`;
       this.q('.gb-money b').textContent = fmtN(s.money);
       this.q('.gb-stock b').textContent = fmtN(s.stock) + ' g';
       this.q('.gb-cargo b').textContent = (s.cargoGold < 10 ? s.cargoGold.toFixed(1) : fmtN(s.cargoGold)) + ' g';

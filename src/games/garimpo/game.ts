@@ -482,7 +482,11 @@ export class Garimpo implements MiniGameHandle {
     const w0 = performance.now();
     const dt = Math.min(0.066, Math.max(0, el / 1000));
     this.step(dt);
+    const w1 = performance.now();
     this.render();
+    const w2 = performance.now();
+    this.prof.step += (w1 - w0 - this.prof.step) * 0.05;
+    this.prof.render += (w2 - w1 - this.prof.render) * 0.05;
     this.gov.sample(el, performance.now() - w0);
   };
 
@@ -502,12 +506,14 @@ export class Garimpo implements MiniGameHandle {
     this.acc += dt;
     const h = 1 / 120;
     let n = 0;
+    const p0 = performance.now();
     while (this.acc >= h && n < 8) {
       for (const m of this.ms) m.physics(h, this.env, m === cur);
       this.acc -= h;
       n++;
     }
     if (n >= 8) this.acc = 0;
+    this.prof.phys += (performance.now() - p0 - this.prof.phys) * 0.05;
     collide(this.ms, w);
     for (const m of this.ms) m.sync(dt);
     // fuga: virou? desvira sozinho depois de 2 s
@@ -572,6 +578,7 @@ export class Garimpo implements MiniGameHandle {
       arrow,
       canEnter: cur === this.worker ? !!this.nearMachine() : false,
       hot2: (nearHopper && cur.fill > 0.01) || (cur === this.worker && cur.fill > 0.01 && !!this.bedNear()),
+      water: cur === this.worker && (this.worker!.water > 0 || this.atWater()),
     });
     // pickup descarregando na moega
     if (cur instanceof Pickup && ctl.act2 && nearHopper) cur.unload(dt, this.hopper);
@@ -579,7 +586,9 @@ export class Garimpo implements MiniGameHandle {
     w.clods.update(dt, w.T, w.waterY);
     w.drops.update(dt, w.T, w.waterY);
     w.rain.update(this.time, this.camPos, this.rainK);
+    const f0 = performance.now();
     w.T.flush();
+    this.prof.flush += (performance.now() - f0 - this.prof.flush) * 0.05;
     // autosave
     this.saveT += dt;
     if (this.saveT > 45) {
@@ -588,6 +597,12 @@ export class Garimpo implements MiniGameHandle {
     }
   }
 
+  private atWater(): boolean {
+    const g = this.worker!.group;
+    const x = g.position.x + Math.sin(g.rotation.y) * 1.3;
+    const z = g.position.z + Math.cos(g.rotation.y) * 1.3;
+    return this.w!.waterY(x, z) > this.w!.T.heightAt(x, z) + 0.15;
+  }
   private bedNear(): Machine | null {
     const wk = this.worker!;
     const fx = wk.group.position.x + Math.sin(wk.group.rotation.y) * 1.6;
@@ -793,7 +808,7 @@ export class Garimpo implements MiniGameHandle {
     const hgt = c.cam.height * mul * (1 + this.lookPitch * 1.4);
     const p = c.pos;
     const tx = p.x;
-    const ty = p.y + c.cam.look + (c instanceof Heli ? -2 : 0);
+    const ty = p.y + c.cam.look;
     const tz = p.z;
     let cx = tx - Math.sin(yaw) * dist;
     let cz = tz - Math.cos(yaw) * dist;
@@ -855,6 +870,7 @@ export class Garimpo implements MiniGameHandle {
     w.follow(tx, tz);
   }
   camOverride: number[] | null = null;
+  prof = { step: 0, render: 0, phys: 0, flush: 0 };
 
   private render(): void {
     this.r!.render(this.w!.scene, this.w!.camera);

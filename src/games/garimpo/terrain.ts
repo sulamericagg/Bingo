@@ -11,8 +11,6 @@ export const SIZE = 192;
 export const CELL = SIZE / N;
 export const V = N + 1;
 export const CA = CELL * CELL; // área de uma célula (m²)
-const CHUNK = 32;
-const NC = N / CHUNK;
 
 export const MAT_DIRT = 0;
 export const MAT_GRASS = 1;
@@ -81,6 +79,9 @@ export class Terrain {
   readonly uRain = { value: 0 };
   private chunks: Chunk[] = [];
   private stride = 1;
+  /** células por bloco da malha (32 cheio, 64 no passo 2 → 4× menos draw calls) */
+  private CHUNK = 32;
+  private NC = N / 32;
   private stamp = new Uint32Array(V * V);
   private stampId = 1;
 
@@ -171,7 +172,9 @@ export class Terrain {
     }
     this.chunks = [];
     this.stride = stride;
-    const nq = CHUNK / stride;
+    this.CHUNK = stride === 2 ? 64 : 32;
+    this.NC = N / this.CHUNK;
+    const nq = this.CHUNK / stride;
     const nv = nq + 1;
     // índice compartilhado entre os blocos (mesma topologia)
     const idx: number[] = [];
@@ -182,8 +185,8 @@ export class Terrain {
         else idx.push(p, p + nv, p + nv + 1, p, p + nv + 1, p + 1);
       }
     const index = new THREE.Uint16BufferAttribute(idx, 1);
-    for (let cj = 0; cj < NC; cj++)
-      for (let ci = 0; ci < NC; ci++) {
+    for (let cj = 0; cj < this.NC; cj++)
+      for (let ci = 0; ci < this.NC; ci++) {
         const geo = new THREE.BufferGeometry();
         const cnt = nv * nv;
         const pos = new THREE.BufferAttribute(new Float32Array(cnt * 3), 3);
@@ -196,8 +199,8 @@ export class Terrain {
         col.setUsage(THREE.DynamicDrawUsage);
         for (let b = 0; b < nv; b++)
           for (let a = 0; a < nv; a++) {
-            const gi = ci * CHUNK + a * stride;
-            const gj = cj * CHUNK + b * stride;
+            const gi = ci * this.CHUNK + a * stride;
+            const gj = cj * this.CHUNK + b * stride;
             const p = b * nv + a;
             pos.array[p * 3] = gi * CELL;
             pos.array[p * 3 + 2] = gj * CELL;
@@ -211,14 +214,23 @@ export class Terrain {
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         geo.setAttribute('basin', new THREE.BufferAttribute(bas, 1));
         geo.setIndex(index);
-        const cx = (ci + 0.5) * CHUNK * CELL;
-        const cz = (cj + 0.5) * CHUNK * CELL;
-        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, 2, cz), CHUNK * CELL * 0.75 + 12);
+        const cx = (ci + 0.5) * this.CHUNK * CELL;
+        const cz = (cj + 0.5) * this.CHUNK * CELL;
+        let lo = 1e9;
+        let hi = -1e9;
+        for (let j = cj * this.CHUNK; j <= (cj + 1) * this.CHUNK; j += 4)
+          for (let i = ci * this.CHUNK; i <= (ci + 1) * this.CHUNK; i += 4) {
+            const y = this.h[j * V + i];
+            if (y < lo) lo = y;
+            if (y > hi) hi = y;
+          }
+        const half = this.CHUNK * CELL * 0.5;
+        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, (lo + hi) / 2, cz), Math.hypot(half * 1.42, (hi - lo) / 2 + 8));
         const mesh = new THREE.Mesh(geo, this.material);
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         this.group.add(mesh);
-        const c: Chunk = { ci, cj, nv, geo, mesh, pos, nrm, col, dirty: true, i0: ci * CHUNK, j0: cj * CHUNK, i1: (ci + 1) * CHUNK, j1: (cj + 1) * CHUNK };
+        const c: Chunk = { ci, cj, nv, geo, mesh, pos, nrm, col, dirty: true, i0: ci * this.CHUNK, j0: cj * this.CHUNK, i1: (ci + 1) * this.CHUNK, j1: (cj + 1) * this.CHUNK };
         this.chunks.push(c);
         this.writeChunk(c, true);
       }
@@ -230,18 +242,18 @@ export class Terrain {
     j0 = clamp(j0 - 1, 0, N);
     i1 = clamp(i1 + 1, 0, N);
     j1 = clamp(j1 + 1, 0, N);
-    const c0 = Math.max(0, Math.floor((i0 - 1) / CHUNK));
-    const c1 = Math.min(NC - 1, Math.floor(i1 / CHUNK));
-    const r0 = Math.max(0, Math.floor((j0 - 1) / CHUNK));
-    const r1 = Math.min(NC - 1, Math.floor(j1 / CHUNK));
+    const c0 = Math.max(0, Math.floor((i0 - 1) / this.CHUNK));
+    const c1 = Math.min(this.NC - 1, Math.floor(i1 / this.CHUNK));
+    const r0 = Math.max(0, Math.floor((j0 - 1) / this.CHUNK));
+    const r1 = Math.min(this.NC - 1, Math.floor(j1 / this.CHUNK));
     for (let cj = r0; cj <= r1; cj++)
       for (let ci = c0; ci <= c1; ci++) {
-        const c = this.chunks[cj * NC + ci];
+        const c = this.chunks[cj * this.NC + ci];
         if (!c) continue;
-        const a0 = Math.max(i0, ci * CHUNK);
-        const a1 = Math.min(i1, (ci + 1) * CHUNK);
-        const b0 = Math.max(j0, cj * CHUNK);
-        const b1 = Math.min(j1, (cj + 1) * CHUNK);
+        const a0 = Math.max(i0, ci * this.CHUNK);
+        const a1 = Math.min(i1, (ci + 1) * this.CHUNK);
+        const b0 = Math.max(j0, cj * this.CHUNK);
+        const b1 = Math.min(j1, (cj + 1) * this.CHUNK);
         if (a0 > a1 || b0 > b1) continue;
         if (!c.dirty) {
           c.dirty = true;
@@ -275,8 +287,8 @@ export class Terrain {
   private writeChunk(c: Chunk, all: boolean): void {
     const s = this.stride;
     const nv = c.nv;
-    const bi0 = c.ci * CHUNK;
-    const bj0 = c.cj * CHUNK;
+    const bi0 = c.ci * this.CHUNK;
+    const bj0 = c.cj * this.CHUNK;
     let a0 = 0;
     let a1 = nv - 1;
     let b0 = 0;

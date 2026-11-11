@@ -72,7 +72,8 @@ export class Fire {
       if (this.trees[k].length >= 2) best = k;
     }
     if (best < 0) return;
-    this.heat[best] = 0.6;
+    this.heat[best] = 0.7;
+    for (const o of [1, -1, G]) if (this.fuel[best + o] > 0.3) this.heat[best + o] = 0.4;
     this.active = true;
     audio.siren(2.4);
     this.host?.say(t('gb.fireStart', 'FOGO na mata! Pegue água no lago e apague!'), 'fire');

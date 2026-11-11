@@ -344,7 +344,7 @@ function trackWheels(gauge: number, y: number, len: number, r: number): WheelDef
 export class Dozer extends Wheeled {
   readonly kind = 'dozer';
   private blade: THREE.Group;
-  lift = 0.25;
+  lift = 0.2;
   private bst: BladeState = { carry: 0, gold: 0 };
   constructor() {
     super();
@@ -382,12 +382,12 @@ export class Dozer extends Wheeled {
       i.gas = ctl.gas;
       i.brake = ctl.brake;
       if (ctl.up) this.lift = Math.min(0.95, this.lift + dt * 0.6);
-      if (ctl.down) this.lift = Math.max(-0.35, this.lift - dt * 0.6);
+      if (ctl.down) this.lift = Math.max(-0.3, this.lift - dt * 0.6);
       v.wake();
     } else {
       i.steer = i.gas = i.brake = 0;
     }
-    this.blade.position.y = this.lift;
+    this.blade.position.y = this.lift - 0.42;
     this.blade.rotation.x = -this.lift * 0.12;
     // fio da lâmina no mundo
     this.group.updateMatrixWorld();
@@ -660,8 +660,21 @@ export class Worker extends Machine {
     const sw = Math.sin(this.walk) * Math.min(1, mv) * 0.6;
     this.p.legL.rotation.x = sw;
     this.p.legR.rotation.x = -sw;
-    // pá
-    if (ctl && ctl.act && this.dig < 0) {
+    // balde d'água (incêndio): na beira do lago enche; cheio, joga para a frente
+    const fx0 = pos.x + Math.sin(g.rotation.y) * 1.3;
+    const fz0 = pos.z + Math.cos(g.rotation.y) * 1.3;
+    const atWater = env.world.waterY(fx0, fz0) > T.heightAt(fx0, fz0) + 0.15;
+    if (ctl && ctl.act && this.dig < 0 && this.water > 0) {
+      const amt = Math.min(this.water, dt * 1.2);
+      this.water -= amt;
+      for (let i = 0; i < 3; i++)
+        env.world.drops.spawn(pos.x + Math.sin(g.rotation.y) * 0.6, pos.y + 1.3, pos.z + Math.cos(g.rotation.y) * 0.6, Math.sin(g.rotation.y) * (5 + Math.random() * 2) + (Math.random() - 0.5), 3 + Math.random(), Math.cos(g.rotation.y) * (5 + Math.random() * 2) + (Math.random() - 0.5), 0.1, 0.55, 0.75, 1);
+      this.p.armR.rotation.x = -1.4;
+      this.p.armL.rotation.x = -1.4;
+    } else if (ctl && ctl.act && this.dig < 0 && atWater) {
+      if (this.water <= 0) env.sfx('splash');
+      this.water = 1;
+    } else if (ctl && ctl.act && this.dig < 0) {
       if (this.cargo.vol >= this.cargo.cap - 1e-3) env.sfx('full');
       else this.dig = 0;
     }
@@ -690,7 +703,7 @@ export class Worker extends Machine {
         this.dig = -1;
         sh.visible = false;
       }
-    } else {
+    } else if (!(ctl && ctl.act && this.water > 0)) {
       this.p.armR.rotation.x = -0.5;
       this.p.armL.rotation.x = -0.5;
     }
@@ -738,7 +751,7 @@ export class Heli extends Machine {
     g.setAttribute('position', this.ropeAttr);
     this.rope = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x222222 }));
     this.rope.frustumCulled = false;
-    this.cam = { dist: 16, height: 7, look: -1, yawOff: 0 };
+    this.cam = { dist: 17, height: 3.5, look: -2.5, yawOff: 0 };
     this.rad = 3;
     this.circles = [0];
     this.door.set(1.6, 0, 0.6);

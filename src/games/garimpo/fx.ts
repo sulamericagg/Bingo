@@ -256,7 +256,7 @@ export class Flames {
       const k = pts[i * 4 + 3];
       for (let j = 0; j < 2; j++) {
         const fl = 0.7 + 0.3 * Math.sin(t * (9 + j * 4) + i * 1.7 + j);
-        const sc = k * (j ? 0.6 : 1) * fl * 1.3;
+        const sc = k * (j ? 0.65 : 1) * fl * 2.4;
         this.q.setFromAxisAngle(this.v.set(0, 1, 0), t * 2 + i);
         this.m4.compose(this.v.set(x + (j ? 0.4 : -0.2), y, z + (j ? -0.3 : 0.2)), this.q, this.s.set(sc, sc * (1.2 + 0.3 * fl), sc));
         this.fl.setMatrixAt(f, this.m4);
@@ -264,8 +264,8 @@ export class Flames {
         f++;
       }
       const ph = (t * 0.35 + i * 0.37) % 1;
-      const ss = (0.8 + ph * 2.4) * k;
-      this.m4.compose(this.v.set(x + ph * 1.5, y + 2.5 + ph * 7, z + ph), this.q.identity(), this.s.set(ss, ss, ss));
+      const ss = (1.2 + ph * 3.5) * k;
+      this.m4.compose(this.v.set(x + ph * 2, y + 4 + ph * 12, z + ph), this.q.identity(), this.s.set(ss, ss, ss));
       this.sm.setMatrixAt(i, this.m4);
     }
     this.fl.count = f;
