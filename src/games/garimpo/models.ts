@@ -646,12 +646,7 @@ export function buildWorker(shirt = C.shirt): WorkerParts {
   // carrinho de mão: objeto à parte (o garimpeiro empurra ou larga no chão)
   const { root: barrow, heap } = buildBarrow();
   barrow.visible = true;
-  const shovel = new THREE.Group();
-  const sk = new Kit();
-  sk.cyl(0.025, 0.025, 1.2, C.woodL, 0, 0, 0.4, 6, Math.PI / 2);
-  sk.use('shiny').rbox(0.26, 0.03, 0.32, 0.01, C.steel, 0, -0.02, 1.08, 0.2).use('paint');
-  sk.box(0.16, 0.04, 0.04, C.dark, 0, 0, -0.2);
-  shovel.add(sk.build());
+  const shovel = buildShovel();
   shovel.position.set(-0.3, 1.0, 0.25);
   shovel.visible = false;
   root.add(shovel);
@@ -662,6 +657,18 @@ export function buildWorker(shirt = C.shirt): WorkerParts {
   bucket.visible = false;
   root.add(bucket);
   return { root, legL, legR, armL, armR, barrow, heap, shovel, bucket };
+}
+
+const BARROW_LIT = new Map<THREE.Material, THREE.MeshPhongMaterial>();
+/** pá (cabo ao longo de +Z, lâmina na ponta +Z; empunhadura em z ≈ −0.2) */
+export function buildShovel(grip = true): THREE.Group {
+  const shovel = new THREE.Group();
+  const sk = new Kit();
+  sk.cyl(0.025, 0.025, 1.2, C.woodL, 0, 0, 0.4, 6, Math.PI / 2);
+  sk.use('shiny').rbox(0.26, 0.03, 0.32, 0.01, C.steel, 0, -0.02, 1.08, 0.2).use('paint');
+  if (grip) sk.box(0.16, 0.04, 0.04, C.dark, 0, 0, -0.2);
+  shovel.add(sk.build());
+  return shovel;
 }
 
 /* --------------------------- carrinho de mão --------------------------- */
@@ -721,9 +728,9 @@ export function buildBarrow(): { root: THREE.Group; heap: THREE.Mesh } {
   bk.add(shell, C.red, 0, ty, tz);
   const inner = new THREE.CylinderGeometry(0.585, 0.35, 0.39, seg, 1, true);
   inner.scale(1, 1, 1.3);
-  bk.add(inside(inner), 0x8f3a2c, 0, ty + 0.005, tz);
+  bk.add(inside(inner), 0xd8735a, 0, ty + 0.005, tz);
   // fundo: por dentro (para cima) e por baixo (para baixo)
-  bk.add(new THREE.CircleGeometry(0.35, seg).rotateX(-Math.PI / 2), 0x7d3326, 0, ty - 0.19, tz, 0, 0, 0, 1, 1, 1.3);
+  bk.add(new THREE.CircleGeometry(0.35, seg).rotateX(-Math.PI / 2), 0xc4664e, 0, ty - 0.19, tz, 0, 0, 0, 1, 1, 1.3);
   bk.add(new THREE.CircleGeometry(0.36, seg).rotateX(Math.PI / 2), C.red, 0, ty - 0.2, tz, 0, 0, 0, 1, 1, 1.3);
   // borda enrolada (aro)
   bk.use('shiny');
@@ -741,9 +748,23 @@ export function buildBarrow(): { root: THREE.Group; heap: THREE.Mesh } {
   // roda
   bk.add(new THREE.TorusGeometry(0.2, 0.06, 6, lod() ? 10 : 16), C.rubber, 0, B.wheelR, 0, 0, Math.PI / 2, 0);
   bk.cylX(0.1, 0.09, C.yellowD, 0, B.wheelR, 0, 10);
-  root.add(bk.build());
+  const bm = bk.build();
+  // luz própria fraca: a caçamba vista por baixo/à sombra (1ª pessoa, morro, sol baixo) não fica preta
+  bm.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !(m.material instanceof THREE.MeshPhongMaterial)) return;
+    const src = m.material;
+    let lit = BARROW_LIT.get(src);
+    if (!lit) {
+      lit = src.clone();
+      lit.emissive.setHex(0x2a1612);
+      BARROW_LIT.set(src, lit);
+    }
+    m.material = lit;
+  });
+  root.add(bm);
   const hk = new Kit();
-  hk.ball(0.34, C.dirt, 0, 0, 0, 1.3, 0.42, 1.6, 1);
+  hk.ball(0.34, 0xa8673c, 0, 0, 0, 1.3, 0.42, 1.6, 1);
   const heap = new THREE.Mesh(hk.geometry(), MAT.paint);
   heap.position.set(0, ty - 0.02, tz);
   heap.visible = false;

@@ -20,6 +20,8 @@ import { paperBodyColor } from '../../3d/paper/paperAvatar';
 import { Kit } from './kit';
 import type { Ctl } from './machines';
 import { rng } from './gen';
+// FPKIT: andar compartilhado (aceleração da Cozinha; colisão em grade com as células abertas)
+import { FpController, fpTuning, GridCollider } from '../../3d/fpkit';
 
 export const UG = 24;
 export const CS = 3;
@@ -176,6 +178,8 @@ export class Underground {
   tank = false;
   readonly pos = new THREE.Vector3();
   yaw = 0;
+  /** FPKIT: corpo do mineiro (piso plano; rocha = células fechadas) */
+  readonly body = new FpController(fpTuning('survival', { speed: 3.2, jumpV: 0, gravity: 0, radius: 0.5 }), new GridCollider(1, (x, z) => this.open(this.cellAt(x, z))));
   private walk = 0;
   private swing = -1;
   cargo = { vol: 0, gold: 0, cap: 0.2 };
@@ -642,6 +646,7 @@ export class Underground {
   enterAt(): void {
     // dois passos para dentro: a câmera (atrás) fica entre a moega e o mineiro
     this.pos.set(this.cx(this.entrance), 0, this.cz(this.entrance) + CS * 2);
+    this.body.place(this.pos.x, this.pos.z, 0);
     this.yaw = 0;
   }
 
@@ -649,38 +654,40 @@ export class Underground {
   step(dt: number, ctl: Ctl | null, camYaw: number, say: (s: string) => void): void {
     const w = this.worker;
     this.moving = false;
+    const b = this.body;
+    if (Math.abs(b.x - this.pos.x) + Math.abs(b.z - this.pos.z) > 0.5) b.place(this.pos.x, this.pos.z, 0);
+    let fwd = 0;
+    let side = 0;
     if (ctl && this.swing < 0) {
-      let mag = Math.min(1, Math.hypot(ctl.mx, ctl.my));
-      let dir = this.yaw;
-      if (this.tank) {
-        // 1ª pessoa / de frente: x gira, y anda (para trás devagar)
-        if (Math.abs(ctl.mx) > 0.08) this.yaw -= ctl.mx * Math.abs(ctl.mx) * dt * 2.4;
-        dir = this.yaw;
-        mag = Math.abs(ctl.my) > 0.08 ? Math.min(1, Math.abs(ctl.my)) : 0;
-        if (ctl.my > 0) {
-          mag *= 0.5;
-          dir += Math.PI;
-        }
-      }
-      this.moving = mag > 0.08;
-      if (mag > 0.08) {
-        if (!this.tank) {
-          const a = camYaw + Math.atan2(-ctl.mx, -ctl.my);
+      const mx = Math.abs(ctl.mx) > 0.08 ? ctl.mx : 0;
+      const my = Math.abs(ctl.my) > 0.08 ? ctl.my : 0;
+      if (this.fp) {
+        // 1ª pessoa: o jogo gira o corpo com a câmera; direcional = frente/lado
+        fwd = -my;
+        side = mx;
+        if (fwd < 0) fwd *= 0.7;
+      } else if (this.tank) {
+        // de frente: x gira, y anda (para trás devagar)
+        if (mx) this.yaw -= mx * Math.abs(mx) * dt * 2.4;
+        fwd = -my;
+        if (fwd < 0) fwd *= 0.5;
+      } else {
+        const mag = Math.min(1, Math.hypot(mx, my));
+        if (mag > 0) {
+          const a = camYaw + Math.atan2(-mx, -my);
           let d = a - this.yaw;
           d = Math.atan2(Math.sin(d), Math.cos(d));
           this.yaw += d * Math.min(1, dt * 10);
-          dir = this.yaw;
+          fwd = mag * Math.max(0.3, Math.cos(d));
         }
-        const sp = mag * 3.2 * dt;
-        const nx = this.pos.x + Math.sin(dir) * sp;
-        const nz = this.pos.z + Math.cos(dir) * sp;
-        // colide com rocha (raio 0.6)
-        const ok = (x: number, z: number) => this.open(this.cellAt(x + 0.6, z)) && this.open(this.cellAt(x - 0.6, z)) && this.open(this.cellAt(x, z + 0.6)) && this.open(this.cellAt(x, z - 0.6));
-        if (ok(nx, this.pos.z)) this.pos.x = nx;
-        if (ok(this.pos.x, nz)) this.pos.z = nz;
-        this.walk += sp * 3;
       }
     }
+    b.steer(dt, side, fwd, this.yaw + Math.PI);
+    b.move(dt);
+    this.pos.set(b.x, 0, b.z);
+    const sp = Math.hypot(b.vx, b.vz);
+    this.moving = sp > 0.4;
+    this.walk += sp * dt * 3;
     w.root.position.copy(this.pos);
     w.root.rotation.y = this.yaw;
     const sw = Math.sin(this.walk) * 0.5;

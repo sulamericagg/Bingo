@@ -11,6 +11,8 @@ import type { World } from './world';
 // PAPER: garimpeiro = Bloop 2D de papel (src/3d/paper; chave PAPER_GAMES.garimpo)
 import { mySpec, npcSpec, PaperChar, paperOn, type PaperSpec } from '../../3d/paper';
 import { paperBodyColor } from '../../3d/paper/paperAvatar';
+// FPKIT: andar compartilhado (aceleração da Cozinha + chão por altura sem tremor)
+import { FpController, fpTuning, HeightGround, type SweepResult } from '../../3d/fpkit';
 
 export type Kind = 'worker' | 'pickup' | 'truck' | 'excavator' | 'dozer' | 'heli';
 
@@ -723,6 +725,9 @@ export class Worker extends Machine {
   private wheelZ = 0;
   private snapB = true;
   private hands: THREE.Mesh[] = [];
+  /** FPKIT: corpo (aceleração/frenagem, chão por altura sem tremor); colisão = empurra para fora */
+  readonly body = new FpController(fpTuning('survival', { sprintMul: 1.3, jumpV: 0, radius: 0.35 }), null, null);
+  private env: Env | null = null;
   /** terreno (para quem só recebe pose da rede) */
   static terrain: Terrain | null = null;
   /** PAPER: personagem 2D (null = boneco 3D clássico) */
@@ -737,7 +742,7 @@ export class Worker extends Machine {
     let hand = '#' + C.skin.toString(16).padStart(6, '0');
     if (paperOn('garimpo')) {
       const sp = spec === 'me' ? mySpec() : (spec ?? (shirt !== undefined ? npcSpec('#' + shirt.toString(16).padStart(6, '0'), '#ffd34a', { head: 'h_cap' }) : npcSpec('#ffd34a', '#c87a2a', { head: 'h_cap', eyes: 'e_big' })));
-      this.paper = new PaperChar(sp, { radius: 0.6, cell: spec === 'me' ? 128 : 96, shadow: true });
+      this.paper = new PaperChar(sp, { radius: 0.52, cell: spec === 'me' ? 128 : 96, shadow: true });
       hand = paperBodyColor(sp);
       // esconde o corpo 3D (o carrinho, o balde e o monte de terra continuam 3D)
       const keep = new Set<THREE.Object3D>([this.p.bucket, this.p.shovel]);
@@ -756,9 +761,83 @@ export class Worker extends Machine {
     this.group.add(this.p.barrow);
     this.p.barrow.traverse((o) => (o.castShadow = true));
     this.cargo.cap = 0.12;
-    this.cam = { dist: 5.8, height: 3.6, look: 0.9, yawOff: 0 };
+    this.cam = { dist: 5.2, height: 6.4, look: 0.6, yawOff: 0 };
     this.rad = 0.5;
     this.circles = [0.4];
+    this.body.collider = { sweep: (fx, fz, tx, tz, r, o) => this.sweep(fx, fz, tx, tz, r, o) };
+  }
+  /** colisão do passo: prédios/árvores/máquinas/carrinho largado empurram para fora (desliza em volta);
+   *  lago fundo e borda do mapa bloqueiam (por eixo) */
+  private sweep(fx: number, fz: number, tx: number, tz: number, r: number, o: SweepResult): void {
+    const env = this.env;
+    let x = tx;
+    let z = tz;
+    if (env) {
+      const rr = r;
+      env.world.near(x, z, (c) => {
+        const dx = x - c.x;
+        const dz = z - c.z;
+        const d = Math.hypot(dx, dz);
+        const R = c.r + rr;
+        if (d < R && d > 1e-4) {
+          x = c.x + (dx / d) * R;
+          z = c.z + (dz / d) * R;
+        }
+      });
+      for (const m of env.others) {
+        if (m === this || !m.veh) continue;
+        const yaw = m.yaw();
+        for (const cz of m.circles) {
+          const cx = m.pos.x + Math.sin(yaw) * cz;
+          const czz = m.pos.z + Math.cos(yaw) * cz;
+          const dx = x - cx;
+          const dz = z - czz;
+          const d = Math.hypot(dx, dz);
+          const R = m.rad + rr;
+          if (d < R && d > 1e-4) {
+            x = cx + (dx / d) * R;
+            z = czz + (dz / d) * R;
+          }
+        }
+      }
+      // o próprio carrinho largado é um obstáculo
+      if (!this.held) {
+        const bx = this.bx + Math.sin(this.by) * (BW.tray.z + 0.1);
+        const bz = this.bz + Math.cos(this.by) * (BW.tray.z + 0.1);
+        const dx = x - bx;
+        const dz = z - bz;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.95 && d > 1e-4) {
+          x = bx + (dx / d) * 0.95;
+          z = bz + (dz / d) * 0.95;
+        }
+      }
+      // lago fundo: não entra (desliza pela margem)
+      const deep = (a: number, b: number) => env.world.waterY(a, b) - env.world.T.heightAt(a, b) > 0.9;
+      if (deep(x, z)) {
+        if (!deep(x, fz)) z = fz;
+        else if (!deep(fx, z)) x = fx;
+        else {
+          x = fx;
+          z = fz;
+        }
+      }
+    }
+    const cx = Math.max(8, Math.min(184, x));
+    const cz = Math.max(8, Math.min(184, z));
+    o.x = cx;
+    o.z = cz;
+    // só borda/lago param a velocidade; o empurrão das árvores deixa deslizar
+    o.hitX = Math.abs(cx - x) > 1e-4 || (x === fx && tx !== fx);
+    o.hitZ = Math.abs(cz - z) > 1e-4 || (z === fz && tz !== fz);
+  }
+  /** fase da pá (−1 = parado; 0..1 cavando) — viewmodel de 1ª pessoa */
+  get digK(): number {
+    return this.dig;
+  }
+  /** cor das mãos (Bloop do jogador) */
+  get handColor(): THREE.Color {
+    return (this.hands[0].material as THREE.MeshLambertMaterial).color;
   }
   /** spec do Bloop de papel (online: o avatar do amigo chega depois) */
   setSpec(sp: PaperSpec): void {
@@ -948,100 +1027,69 @@ export class Worker extends Machine {
     const T = env.world.T;
     Worker.terrain = T;
     const g = this.group;
-    let mv = 0;
+    const pos = g.position;
+    this.env = env;
+    // FPKIT: o corpo anda com o FpController (aceleração/frenagem da Cozinha) + chão por altura
+    // (gruda no terreno sem tremer em rampa); posição de fora (rede, teleporte) vale sempre
+    const fp = this.body;
+    if (!fp.ground) fp.ground = new HeightGround((x, z) => T.heightAt(x, z), { stepUp: 0.3, stepDown: 0.5, maxSlope: 1.0, probe: 0.35 });
+    if (Math.abs(fp.x - pos.x) + Math.abs(fp.z - pos.z) > 0.6) fp.place(pos.x, pos.z, pos.y);
+    fp.x = pos.x;
+    fp.z = pos.z;
+    if (Math.abs(fp.y - pos.y) > 0.6) fp.y = pos.y;
+    let fwd = 0;
+    let side = 0;
     if (ctl && this.dig < 0) {
-      const mx = ctl.mx;
-      const my = ctl.my;
-      let dir = g.rotation.y;
-      let mag = 0;
-      if (this.tank) {
-        // 1ª pessoa / de frente: x gira o corpo, y anda (para trás devagar)
-        if (Math.abs(mx) > 0.08) g.rotation.y -= mx * Math.abs(mx) * dt * 2.4;
-        dir = g.rotation.y;
-        mag = Math.abs(my) > 0.08 ? Math.min(1, Math.abs(my)) : 0;
-        if (my > 0) {
-          mag *= 0.5;
-          dir += Math.PI;
-        }
+      const mx = Math.abs(ctl.mx) > 0.08 ? ctl.mx : 0;
+      const my = Math.abs(ctl.my) > 0.08 ? ctl.my : 0;
+      if (this.fp) {
+        // 1ª pessoa: o corpo olha para onde a câmera olha (o jogo gira); direcional = frente/lado
+        fwd = -my;
+        side = mx * (this.held ? 0.55 : 1);
+        if (fwd < 0) fwd *= this.held ? 0.5 : 0.75;
+      } else if (this.tank) {
+        // de frente: x gira o corpo, y anda (para trás devagar)
+        if (mx) g.rotation.y -= mx * Math.abs(mx) * dt * 2.4;
+        fwd = -my;
+        if (fwd < 0) fwd *= 0.5;
       } else {
-        mag = Math.min(1, Math.hypot(mx, my));
-        if (mag > 0.08) {
-          // relativo à câmera: para cima = para onde a câmera olha
+        const mag = Math.min(1, Math.hypot(mx, my));
+        if (mag > 0) {
+          // relativo à câmera: para cima = para onde a câmera olha; o corpo vira e anda para a frente
           const a = env.camYaw + Math.atan2(-mx, -my);
           let d = a - g.rotation.y;
           d = Math.atan2(Math.sin(d), Math.cos(d));
-          g.rotation.y += d * Math.min(1, dt * 10);
-          dir = g.rotation.y;
-        } else mag = 0;
-      }
-      if (mag > 0.08) {
-        const wet = T.wetAt(g.position.x, g.position.z);
-        // rampa na direção do passo: subir cansa (mais com o carrinho cheio), descer solta um pouco
-        const sx = Math.sin(dir);
-        const sz = Math.cos(dir);
-        const gr = (T.heightAt(g.position.x + sx * 0.7, g.position.z + sz * 0.7) - T.heightAt(g.position.x - sx * 0.7, g.position.z - sz * 0.7)) / 1.4;
-        this.grade = gr;
-        const load = this.held ? 0.55 + this.fill * 0.4 : 0.45;
-        const slope = gr > 0 ? Math.max(0.22, 1 - gr * load * 1.25) : 1 + Math.min(0.5, -gr) * (this.held ? 0.12 : 0.3);
-        const base = this.held ? 3.4 - this.fill * 1.0 : 4.1;
-        const sp = mag * base * (1 - wet * 0.45) * slope;
-        mv = sp;
-        g.position.x += sx * sp * dt;
-        g.position.z += sz * sp * dt;
-      } else this.grade = 0;
-    }
-    // colisão com prédios/árvores/máquinas e o lago fundo
-    const pos = g.position;
-    env.world.near(pos.x, pos.z, (c) => {
-      const dx = pos.x - c.x;
-      const dz = pos.z - c.z;
-      const d = Math.hypot(dx, dz);
-      const r = c.r + 0.35;
-      if (d < r && d > 1e-4) {
-        pos.x = c.x + (dx / d) * r;
-        pos.z = c.z + (dz / d) * r;
-      }
-    });
-    for (const o of env.others) {
-      if (o === this || !o.veh) continue;
-      const yaw = o.yaw();
-      for (const cz of o.circles) {
-        const cx = o.pos.x + Math.sin(yaw) * cz;
-        const czz = o.pos.z + Math.cos(yaw) * cz;
-        const dx = pos.x - cx;
-        const dz = pos.z - czz;
-        const d = Math.hypot(dx, dz);
-        const r = o.rad + 0.35;
-        if (d < r && d > 1e-4) {
-          pos.x = cx + (dx / d) * r;
-          pos.z = czz + (dz / d) * r;
+          g.rotation.y += d * Math.min(1, dt * (this.held ? 7 : 10));
+          // virando muito (carrinho na mão): anda menos até alinhar
+          fwd = mag * Math.max(0.25, Math.cos(d));
         }
       }
     }
-    // o próprio carrinho largado é um obstáculo
-    if (!this.held) {
-      const tx = this.bx + Math.sin(this.by) * (BW.tray.z + 0.1);
-      const tz = this.bz + Math.cos(this.by) * (BW.tray.z + 0.1);
-      const dx = pos.x - tx;
-      const dz = pos.z - tz;
-      const d = Math.hypot(dx, dz);
-      if (d < 0.95 && d > 1e-4) {
-        pos.x = tx + (dx / d) * 0.95;
-        pos.z = tz + (dz / d) * 0.95;
-      }
-    }
-    const wl = env.world.waterY(pos.x, pos.z);
-    const gy = T.heightAt(pos.x, pos.z);
-    if (wl - gy > 0.9) {
-      // fundo demais: volta
-      pos.x -= Math.sin(g.rotation.y) * mv * dt * 1.5;
-      pos.z -= Math.cos(g.rotation.y) * mv * dt * 1.5;
-    }
-    pos.x = Math.max(8, Math.min(184, pos.x));
-    pos.z = Math.max(8, Math.min(184, pos.z));
-    // pés no chão: segue o terreno firme (sem escorregar), mais rápido descendo
-    const ty = T.heightAt(pos.x, pos.z);
-    pos.y += (ty - pos.y) * Math.min(1, dt * (ty < pos.y ? 30 : 20));
+    // rampa na direção do passo: subir cansa (mais com o carrinho cheio), descer solta um pouco
+    const yaw = g.rotation.y;
+    const vm = Math.hypot(fp.vx, fp.vz);
+    const dir = vm > 0.3 ? Math.atan2(fp.vx, fp.vz) : fwd < 0 ? yaw + Math.PI : yaw;
+    const sx = Math.sin(dir);
+    const sz = Math.cos(dir);
+    const gr = (T.heightAt(pos.x + sx * 0.7, pos.z + sz * 0.7) - T.heightAt(pos.x - sx * 0.7, pos.z - sz * 0.7)) / 1.4;
+    // suavizado (sem tremer na passada)
+    this.grade += (gr - this.grade) * Math.min(1, dt * 8);
+    const wet = T.wetAt(pos.x, pos.z);
+    const load = this.held ? 0.55 + this.fill * 0.4 : 0.45;
+    const gG = this.grade;
+    const slope = gG > 0 ? Math.max(0.3, 1 - gG * load * 1.25) : 1 + Math.min(0.5, -gG) * (this.held ? 0.1 : 0.25);
+    // a pé sem o carrinho anda livre e mais rápido
+    const base = this.held ? 3.3 - this.fill * 0.9 : 4.4;
+    fp.tune.speed = base * (1 - wet * 0.45) * slope;
+    // empurrando o carrinho: mais massa (acelera e freia mais devagar)
+    fp.tune.accel = this.held ? 5 : 7;
+    fp.tune.decel = this.held ? 7 : 9;
+    // FpController: frente = (−sin, −cos) da guinada → guinada da câmera = guinada do corpo + π
+    fp.steer(dt, side, fwd, yaw + Math.PI);
+    fp.move(dt);
+    pos.set(fp.x, fp.y, fp.z);
+    let mv = Math.hypot(fp.vx, fp.vz);
+    if (mv < 0.05) mv = 0;
     if (this.extMove >= 0) mv = this.extMove;
     this.speedNow = mv;
     // andar
@@ -1135,15 +1183,18 @@ export class Worker extends Machine {
   }
   private heapVis(f: number): void {
     this.p.heap.visible = f > 0.025;
-    this.p.heap.scale.set(0.75 + Math.min(1, f) * 0.25, 0.35 + f * 0.75, 0.75 + Math.min(1, f) * 0.25);
+    // o monte sobe dentro da caçamba (cheio: aparece acima da borda; nunca sai pelos lados)
+    const k = Math.min(1, f);
+    this.p.heap.scale.set(0.72 + k * 0.26, 0.4 + k * 0.75, 0.72 + k * 0.26);
+    this.p.heap.position.y = 0.5 + k * 0.28;
   }
   /** PAPER: anima o Bloop de papel (pá aparece só cavando; balde com água) */
   private paperTick(dt: number, mv: number): void {
+    // 1ª pessoa: o corpo some (a câmera está nos olhos; a pá vira item na mão da câmera)
+    this.p.root.visible = !this.fp;
     const pc = this.paper;
     if (!pc || !Worker.paperCam) return;
-    pc.root.visible = !this.fp;
-    // 1ª pessoa: a pá 3D aparece na frente da câmera; 3ª: a pá de papel na mão
-    this.p.shovel.visible = this.fp && this.dig >= 0;
+    this.p.shovel.visible = false;
     if (this.fp) return;
     pc.setTool(this.dig >= 0 ? 'shovel' : this.water > 0 ? 'bucket' : null, this.dig >= 0 ? '#b8c4d8' : '#c8d0e0');
     // empurrando: inclina para a frente (mais subindo, para trás descendo)

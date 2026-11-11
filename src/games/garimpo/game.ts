@@ -20,10 +20,12 @@ import { Driver, MinerBot, type BotHost } from './bots';
 import { Fire } from './fire';
 import { Underground, UG_PRICE, CS as UGCS, WALL_H, type Tool } from './underground';
 import { Hud } from './hud';
-import { camBadge, camLabel, CamViews, type CamCtx, type CamView } from './camview';
+import { camBadge, camLabel, CamViews, type CamCtx, type CamMode as CamView } from './camview';
+// FPKIT: 1ª pessoa a pé (câmera da Cozinha: balanço, olho suave em rampa) + pá na mão
+import { FpCamera, fpTuning, HeldItem } from '../../3d/fpkit';
 import { IC, type IconKey } from './icons';
 import { collide, Excavator, Heli, makeMachine, newCtl, Pickup, Truck, Worker, type Ctl, type Env, type Kind, type Machine, type Receiver } from './machines';
-import { buildExportTruck } from './models';
+import { buildExportTruck, buildShovel } from './models';
 import { setLod } from './kit';
 import { natureAnisotropy } from '../../3d/nature';
 import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, freshSlot, GOLD_PRICE, loadMeta, loadSlot, writeSlot, type Diff, type SlotSave } from './save';
@@ -102,6 +104,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 }
 
 const _v = new THREE.Vector3();
+const _fpv = { x: 0, y: 0, z: 0, speedK: 0, grounded: true };
 const _v2 = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
 const _ray = new THREE.Raycaster();
@@ -150,7 +153,15 @@ export class Garimpo implements MiniGameHandle, BotHost {
   private lookIdle = 0;
   private camMode = 0;
   /** vista da câmera (1ª pessoa / 3ª atrás / de frente), salva por jogo */
-  private views = new CamViews('bw-camview-garimpo');
+  private views = new CamViews('garimpo');
+  /** FPKIT: câmera de 1ª pessoa a pé + pá na mão (viewmodel) */
+  private fpc = new FpCamera(fpTuning('survival', { eye: 1.3, pitchMin: -1.25, pitchMax: 0.95 }));
+  private fpOn = false;
+  private held: HeldItem | null = null;
+  private heldRoot: THREE.Group | null = null;
+  private heldDig = -1;
+  private fpGrade = 0;
+  private fpDump = 0;
   private viewKey = '';
   /** cache: caixa local das máquinas (vista do capô) */
   private hood = new WeakMap<Machine, THREE.Box3>();
@@ -903,19 +914,27 @@ export class Garimpo implements MiniGameHandle, BotHost {
     ug.cam = cam;
     const view = this.curView();
     if (view === 'fp') {
-      // 1ª pessoa: arrastar gira o mineiro; olhos na altura do Bloop
-      ug.yaw -= dYaw;
+      // FPKIT — 1ª pessoa na mina: arrastar gira o mineiro; FpCamera põe os olhos (balanço de passo)
+      const fpc = this.fpc;
+      this.fpEnter(snap);
+      fpc.yaw = ug.yaw + Math.PI;
+      fpc.look(dYaw, dPitch);
+      ug.yaw = fpc.yaw - Math.PI;
       this.camYaw = ug.yaw;
+      fpc.extraPitch = 0;
       const p = ug.pos;
-      const ex = p.x - Math.sin(ug.yaw) * 0.1;
-      const ez = p.z - Math.cos(ug.yaw) * 0.1;
-      this.camPos.set(ex, 1.2, ez);
-      cam.position.copy(this.camPos);
-      const pd = 0.28 + this.lookPitch * 0.9;
-      cam.lookAt(ex + Math.sin(ug.yaw) * Math.cos(pd), 1.2 - Math.sin(pd), ez + Math.cos(ug.yaw) * Math.cos(pd));
+      _fpv.x = p.x - Math.sin(ug.yaw) * 0.1;
+      _fpv.z = p.z - Math.cos(ug.yaw) * 0.1;
+      _fpv.y = 0;
+      _fpv.speedK = ug.body.speedK;
+      _fpv.grounded = true;
+      fpc.apply(cam, dt, _fpv, null);
+      if (cam.position.y > WALL_H - 0.3) cam.position.y = WALL_H - 0.3;
+      this.camPos.copy(cam.position);
       ug.setView(cam.position, _v.set(p.x + Math.sin(ug.yaw) * 2, 1.1, p.z + Math.cos(ug.yaw) * 2));
       return;
     }
+    this.footFpOff();
     if (view === 'front') {
       // de frente: a câmera fica na frente do mineiro, olhando para ele
       const want = ug.yaw + Math.PI;
@@ -1359,7 +1378,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       tap('light');
       if (!this.sv!.tips.includes('bar-drop')) {
         this.sv!.tips.push('bar-drop');
-        this.say(t('gb.bar.tipDrop', 'Carrinho no chão! Ande livre e cave perto dele para encher. Perto dele, toque de novo para pegar.'));
+        this.say(t('gb.bar.tipDrop', 'Carrinho no chão! Ande livre. Perto dele, toque de novo para pegar.'));
       }
     } else if (wk.canGrab()) {
       wk.grabBarrow(this.w);
@@ -1388,11 +1407,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const foot = this.cur === wk;
     if (wk) {
       wk.fp = foot && v === 'fp' && !this.inMine;
-      wk.tank = foot && v !== 'back';
+      wk.tank = foot && v !== 'tp';
     }
     if (this.ug) {
       this.ug.fp = this.inMine && v === 'fp';
-      this.ug.tank = this.inMine && v !== 'back';
+      this.ug.tank = this.inMine && v !== 'tp';
     }
     const k = v + this.camCtx();
     if (k !== this.viewKey) {
@@ -1400,30 +1419,112 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.hud?.setCamBadge(camBadge(v), camLabel(v));
     }
   }
-  /** 1ª pessoa: olhos do Bloop (a pé) ou capô/cabine (máquinas) */
-  private fpCamera(dt: number, c: Machine): void {
+  /** FPKIT — 1ª pessoa a pé: arrastar gira o corpo (o carrinho vai junto) e olha para cima/baixo;
+   *  FpCamera põe os olhos (balanço de passo, olho suave na rampa); a pá é um HeldItem */
+  private footFp(dt: number, wk: Worker, dYaw: number, dPitch: number, snap: boolean): void {
+    const w = this.w!;
+    const cam = w.camera;
+    const fpc = this.fpc;
+    const g = wk.group;
+    this.fpEnter(snap);
+    fpc.yaw = g.rotation.y + Math.PI;
+    fpc.look(dYaw, dPitch);
+    g.rotation.y = fpc.yaw - Math.PI;
+    this.camYaw = g.rotation.y;
+    // rampa: o olhar acompanha o morro (subindo olha para cima, descendo para baixo), suave
+    const gp = g.position;
+    const sy = Math.sin(g.rotation.y);
+    const cy = Math.cos(g.rotation.y);
+    const T = w.T;
+    const gr = Math.max(-0.8, Math.min(0.8, (T.heightAt(gp.x + sy * 1.2, gp.z + cy * 1.2) - T.heightAt(gp.x - sy * 0.4, gp.z - cy * 0.4)) / 1.6));
+    this.fpGrade += (gr - this.fpGrade) * Math.min(1, snap ? 1 : dt * 3);
+    // despejando: ergue os pegadores — o olhar sobe junto para ver a terra cair na moega/caçamba
+    this.fpDump += ((wk.dumping ? 0.32 : 0) - this.fpDump) * Math.min(1, dt * 4);
+    fpc.extraPitch = Math.atan(this.fpGrade) * 0.55 + this.fpDump;
+    const b = wk.body;
+    // olhos um pouco atrás do centro do corpo: pegadores e mãos embaixo, a caçamba na frente
+    const fx = Math.sin(g.rotation.y);
+    const fz = Math.cos(g.rotation.y);
+    _fpv.x = g.position.x - fx * 0.12;
+    _fpv.z = g.position.z - fz * 0.12;
+    _fpv.y = g.position.y;
+    _fpv.speedK = b.speedK;
+    _fpv.grounded = b.grounded;
+    fpc.apply(cam, dt, _fpv, null);
+    // nunca dentro do morro (descendo de costas, borda de buraco)
+    const floor = w.T.heightAt(cam.position.x, cam.position.z) + 0.35;
+    if (cam.position.y < floor) cam.position.y = floor;
+    this.camPos.copy(cam.position);
+    this.heldTick(dt, wk, true);
+    w.follow(g.position.x, g.position.z);
+    w.veg?.occlude(cam.position.x, cam.position.z, g.position.x + fx * 3, g.position.z + fz * 3);
+    this.water?.camFx(cam, dt);
+  }
+  /** entrando na 1ª pessoa: olhando um pouco para baixo (a caçamba e os pegadores aparecem) */
+  private fpEnter(snap: boolean): void {
+    if (this.fpOn && !snap) return;
+    this.fpOn = true;
+    // plano near curto: mãos/pá perto do olho não cortam
     const cam = this.w!.camera;
-    const T = this.w!.T;
-    if (c instanceof Worker) {
-      // arrastar gira o corpo (o carrinho vai junto); para cima/baixo olha
-      c.group.rotation.y += this.lookYaw;
-      this.lookYaw = 0;
-      const yaw = c.group.rotation.y;
-      this.camYaw = yaw;
-      const p = c.group.position;
-      // olhos um pouco atrás do centro: pegadores e mãos aparecem embaixo, a caçamba na frente
-      const ex = p.x - Math.sin(yaw) * 0.12;
-      const ez = p.z - Math.cos(yaw) * 0.12;
-      const ey = Math.max(p.y + 1.18, T.heightAt(ex, ez) + 0.9);
-      this.camPos.set(ex, ey, ez);
-      const pd = 0.32 + this.lookPitch * 0.9 - (c.grade || 0) * 0.35;
-      cam.position.copy(this.camPos);
-      cam.lookAt(ex + Math.sin(yaw) * Math.cos(pd), ey - Math.sin(pd), ez + Math.cos(yaw) * Math.cos(pd));
-      this.w!.follow(p.x, p.z);
-      this.w!.veg?.occlude(ex, ez, ex + Math.sin(yaw) * 3, ez + Math.cos(yaw) * 3);
-      this.water?.camFx(cam, dt);
+    cam.near = 0.12;
+    cam.updateProjectionMatrix();
+    this.fpc.reset();
+    this.fpc.pitch = this.inMine ? -0.2 : -0.42;
+    this.lookYaw = this.lookPitch = 0;
+  }
+  private footFpOff(): void {
+    if (!this.fpOn) return;
+    this.fpOn = false;
+    this.lookYaw = this.lookPitch = 0;
+    const cam = this.w!.camera;
+    cam.near = 0.3;
+    cam.updateProjectionMatrix();
+    if (this.heldRoot) this.heldRoot.visible = false;
+  }
+  /** pá na mão em 1ª pessoa (segue a câmera; balança no passo; golpe ao cavar). Sem o carrinho
+   *  ela fica sempre na mão; empurrando o carrinho só aparece cavando */
+  private heldTick(dt: number, wk: Worker, on: boolean): void {
+    const w = this.w!;
+    if (!this.heldRoot) {
+      const root = new THREE.Group();
+      const item = new THREE.Group();
+      const sh = buildShovel(false);
+      // empunhadura (z = −0.2 da pá) na mão, embaixo à direita; a lâmina vai para a frente e
+      // para baixo, perto do centro (aparece na tela e "entra" no chão no golpe)
+      const d = new THREE.Vector3(0.05, -0.22, -0.97).normalize();
+      sh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d);
+      sh.position.copy(d).multiplyScalar(0.2);
+      item.add(sh);
+      const mitt = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), new THREE.MeshLambertMaterial({ color: wk.handColor }));
+      mitt.position.copy(d).multiplyScalar(0.05);
+      item.add(mitt);
+      item.traverse((o) => {
+        o.frustumCulled = false;
+        o.renderOrder = 5;
+      });
+      root.add(item);
+      w.scene.add(root);
+      this.heldRoot = root;
+      this.held = new HeldItem(item, { base: [0.25, -0.22, -0.56], rot: [0, 0, 0] });
+    }
+    const root = this.heldRoot;
+    const dk = wk.digK;
+    const show = on && wk.water <= 0 && (!wk.held || dk >= 0);
+    root.visible = show;
+    if (!show) {
+      this.heldDig = dk;
       return;
     }
+    if (dk >= 0 && this.heldDig < 0) this.held!.swing('swing', 0.6);
+    this.heldDig = dk;
+    const cam = w.camera;
+    root.position.copy(cam.position);
+    root.quaternion.copy(cam.quaternion);
+    this.held!.update(dt, wk.body.speedK, this.fpc.lookDX, this.fpc.lookDY);
+  }
+  /** 1ª pessoa nas máquinas: capô/cabine */
+  private fpCamera(dt: number, c: Machine): void {
+    const cam = this.w!.camera;
     // máquina: em cima do capô/cabine, olhando para a frente da máquina (+ o arrasto)
     let box = this.hood.get(c);
     if (!box) {
@@ -1634,12 +1735,17 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const c = this.cur!;
     const cam = w.camera;
     const [dYaw, dPitch] = this.hud!.look.consume(dt);
+    const view = this.curView();
+    if (view === 'fp' && c instanceof Worker) {
+      this.footFp(dt, c, dYaw, dPitch, snap);
+      return;
+    }
+    this.footFpOff();
     if (dYaw || dPitch) {
       this.lookYaw -= dYaw;
       this.lookPitch = Math.max(-0.35, Math.min(0.6, this.lookPitch + dPitch));
       this.lookIdle = 0;
     } else this.lookIdle += dt;
-    const view = this.curView();
     if (view === 'fp' && !(c instanceof Heli)) {
       this.fpCamera(dt, c);
       return;
@@ -1652,7 +1758,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     // o garimpeiro e o helicóptero: câmera só segue devagar (andam relativos à tela)
     const free = (c instanceof Worker || c instanceof Heli) && !front;
-    let want = c.yaw() + c.cam.yawOff + (front ? Math.PI : 0);
+    // de frente a pé: na diagonal (o carrinho na frente do Bloop não tapa o rosto)
+    let want = c.yaw() + c.cam.yawOff + (front ? Math.PI - (c instanceof Worker ? 0.42 : 0) : 0);
     // dando ré até a moega: câmera de lado mostra caminhão e moega juntos
     if (c instanceof Truck && c.veh && (c.veh.gear < 0 || c.tilt > 0.1) && c.pos.distanceTo(this.hopperPos(_v2)) < 22) want += 1.15;
     if (free) {
@@ -1668,17 +1775,23 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.camYaw += this.lookYaw;
       this.lookYaw = 0;
     }
-    const mul = [1, 1.6, 0.72][this.camMode] * (front && c instanceof Worker ? 0.8 : 1);
-    const dist = c.cam.dist * mul;
-    const hgt = c.cam.height * mul * (front ? 0.55 : 1) * (1 + this.lookPitch * 1.4);
+    const mul = [1, 1.6, 0.72][this.camMode];
+    const dist = c.cam.dist * mul * (front && c instanceof Worker ? 0.8 : 1);
+    // de frente a pé: um pouco mais alto (olha por cima do carrinho e vê o Bloop)
+    const hgt = c.cam.height * mul * (front ? (c instanceof Worker ? 0.42 : 0.55) : 1) * (1 + this.lookPitch * 1.4);
     const p = c.pos;
     // a pé: mira um pouco à frente (o carrinho de mão aparece na tela)
-    const fwd = c instanceof Worker ? (front ? 0.3 : 1.3) : 0;
+    const fwd = c instanceof Worker ? (front ? 0.3 : 1.6) : 0;
     const tx = p.x + Math.sin(c.yaw()) * fwd;
     const ty = p.y + c.cam.look;
     const tz = p.z + Math.cos(c.yaw()) * fwd;
     let cx = tx - Math.sin(yaw) * dist;
     let cz = tz - Math.cos(yaw) * dist;
+    // a pé atrás: câmera "por cima do ombro" (o carrinho aparece ao lado do Bloop, não atrás dele)
+    if (c instanceof Worker && !front) {
+      cx += Math.cos(yaw) * 2.2;
+      cz -= Math.sin(yaw) * 2.2;
+    }
     let cy = ty + hgt;
     // nunca dentro do terreno: sobe acima do chão na câmera e no meio do caminho
     const T = w.T;
