@@ -19,12 +19,12 @@ const mats = new Map<string, THREE.MeshLambertMaterial>();
 function mat(c: string): THREE.MeshLambertMaterial {
   let m = mats.get(c);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color: c, fog: false });
+    m = new THREE.MeshLambertMaterial({ color: c, fog: false, transparent: true });
     mats.set(c, m);
   }
   return m;
 }
-const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide, fog: false });
+const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide, fog: false, transparent: true });
 
 const geos = new Map<string, THREE.BufferGeometry>();
 function rb(w: number, h: number, d: number, r = Math.min(w, h, d) * 0.3): THREE.BufferGeometry {
@@ -160,9 +160,9 @@ function tileTexture(idx: number): THREE.Texture {
 }
 export function blockViewModel(d: BlockDef): THREE.Group {
   const g = new THREE.Group();
-  const side = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.side), fog: false });
-  const top = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.top), fog: false });
-  const bot = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.bottom), fog: false });
+  const side = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.side), fog: false, transparent: true });
+  const top = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.top), fog: false, transparent: true });
+  const bot = new THREE.MeshLambertMaterial({ map: tileTexture(d.tiles.bottom), fog: false, transparent: true });
   const s = 0.2;
   const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), [side, side, top, bot, side, side]);
   m.renderOrder = 21;
@@ -177,11 +177,12 @@ export function blockViewModel(d: BlockDef): THREE.Group {
 }
 
 /** triângulo invisível desenhado logo antes do viewmodel: limpa o depth (a ferramenta nunca entra na parede,
- *  mas as peças dela se cobrem direito entre si) */
+ *  mas as peças dela se cobrem direito entre si). TUDO do viewmodel é "transparente" (opacidade 1): assim entra
+ *  na última passada, depois da água/partículas do mundo — limpar o depth antes delas furava o chão. */
 export function depthClearer(): THREE.Mesh {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.2, 0.001, 0, -0.2, 0, 0.001, -0.2]), 3));
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false }));
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true }));
   m.renderOrder = 19;
   m.frustumCulled = false;
   m.onBeforeRender = (r) => r.clearDepth();

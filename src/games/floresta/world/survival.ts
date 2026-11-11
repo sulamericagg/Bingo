@@ -26,6 +26,7 @@ import { WBIOMES } from './biomes';
 import { BLOCKS, BLOCK_CHUNK, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
 import { AimFx } from './aimfx';
+import { TREE_STRIDE } from './chunk';
 import { blockViewModel, depthClearer, disposeViewModel, iconViewModel, toolViewModel } from './heldtools';
 import { HeldItem } from '../../../3d/fpkit';
 import { M as VM } from './vox';
@@ -194,6 +195,12 @@ export class Sandbox implements MundoAPI {
     this.builds.ground = (x, y, z) => g.world.floorAt(x, y, z);
     this.fx = new AimFx(g.scene);
     this.fx.ground = (x, y, z) => g.world.floorAt(x, y, z);
+    // flor/moita/pedrinha cujo chão foi cavado (ou coberto por bloco) some e solta um item ali
+    g.world.onDecoGone = (x, y, z, kind, col) => {
+      if (this.mode === 'criativo' || (x - g.px) ** 2 + (z - g.pz) ** 2 > 400) return;
+      const id = kind === 'rock' ? 'pedrinha' : kind === 'bush' ? 'graveto' : col && /^#(5|6|7|8|9)[0-9a-f]{2}ff/i.test(col) ? 'flor_azul' : col && /^#ff[0-9a-c]/i.test(col) && !/^#ffd/i.test(col) ? 'flor_rosa' : 'flor_amarela';
+      this.flyGive(id, 1, x, g.world.floorAt(x, y + 0.5, z) + 0.3, z);
+    };
     g.hud.sandbox = true;
     this.blocks = new BlockWorld({ parent: g.scene, tier: g.opts.tier as 0 | 1 | 2 | 3, terrain: { density: (x: number, y: number, z: number) => g.world.vox.dens(x, y, z) } });
     // itens dos blocos (os que o catálogo ainda não tem)
@@ -1080,6 +1087,23 @@ export class Sandbox implements MundoAPI {
     this.holdCd -= dt;
     const c = g.hud.ctl;
     this.tgt = g.held ? null : this.findTarget(cp, _v);
+    // árvore só conta se o tronco estiver MESMO na mira (antes: qualquer árvore no cone à frente roubava o golpe
+    // de quem mirava o chão ou um bloco ao lado dela)
+    if (g.aimTree) {
+      const T = g.aimTree.c.trees;
+      const o = g.aimTree.i * TREE_STRIDE;
+      const tx = T[o];
+      const ty = T[o + 1];
+      const tz = T[o + 2];
+      const hh = _v.x * _v.x + _v.z * _v.z;
+      const tt = hh > 1e-6 ? ((tx - cp.x) * _v.x + (tz - cp.z) * _v.z) / hh : 0;
+      const hx = cp.x + _v.x * tt - tx;
+      const hz = cp.z + _v.z * tt - tz;
+      const hy = cp.y + _v.y * tt;
+      const trunkR = 0.42 * T[o + 4] + 0.3;
+      const onTrunk = tt > 0 && hx * hx + hz * hz < trunkR * trunkR && hy > ty - 0.3 && hy < ty + 5;
+      if (!onTrunk || (this.tgt && this.tgt.dist + 0.25 < tt)) g.aimTree = null;
+    }
     const bplace = it && !it.place ? blockForItem(it.id) : null;
     const tg = this.tgt;
     const hasLabel = !!lbl;

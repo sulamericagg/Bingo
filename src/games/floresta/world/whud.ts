@@ -279,7 +279,7 @@ export class WorldHud {
     const el = document.createElement('div');
     el.className = 'fw-hud';
     el.innerHTML = `
-      <div class="fw-xh"><i class="h"></i><i class="v"></i><i class="d"></i><b></b><svg width="34" height="34" viewBox="0 0 34 34"><circle class="bg" cx="17" cy="17" r="14" style="display:none"/><circle class="fg" cx="17" cy="17" r="14" stroke-dasharray="0 88"/></svg></div>
+      <div class="fw-xh"><i class="h"></i><i class="v"></i><i class="d"></i><b></b><svg width="34" height="34" viewBox="0 0 34 34"><circle class="bg" cx="17" cy="17" r="14" style="display:none"/><circle class="fg" cx="17" cy="17" r="14" stroke-dasharray="0 88" style="display:none"/></svg></div>
       <div class="fw-top">
         <div class="fw-left">
         <button class="fl-btn round red" data-tap="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 20)}</button>
@@ -598,6 +598,8 @@ export class WorldHud {
     const c = 2 * Math.PI * 14;
     const bg = this.ring.previousElementSibling as SVGCircleElement;
     bg.style.display = prog > 0 ? '' : 'none';
+    // traço de comprimento 0 com ponta redonda desenha um pontinho: some de vez quando não quebra
+    this.ring.style.display = prog > 0 ? '' : 'none';
     this.ring.setAttribute('stroke-dasharray', `${(prog * c).toFixed(1)} ${c.toFixed(1)}`);
   }
   crosshairVisible(on: boolean): void {

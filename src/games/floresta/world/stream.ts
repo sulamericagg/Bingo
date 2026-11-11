@@ -205,9 +205,34 @@ export class World {
   /** refaz a grama de um pedaço (escavação, blocos, construções) */
   grassDirty(c: Chunk): void {
     this.grass.invalidate(c.x0, c.z0, c.x0 + CH, c.z0 + CH);
+    this.dirty = true; // enfeites (flor, moita, pedra) conferem o chão de novo
   }
   grassDirtyAt(x: number, z: number, r = 1.5): void {
     this.grass.invalidate(x - r, z - r, x + r, z + r);
+    this.dirty = true;
+  }
+  private seenD = new WeakMap<Chunk, Uint8Array>();
+  private seen(c: Chunk, i: number): boolean {
+    return !!this.seenD.get(c)?.[i];
+  }
+  private mark(c: Chunk, i: number): void {
+    let a = this.seenD.get(c);
+    if (!a) this.seenD.set(c, (a = new Uint8Array(256)));
+    a[i] = 1;
+  }
+  /** enfeite sumiu porque o chão mudou (o jogo solta um item ali) */
+  onDecoGone: ((x: number, y: number, z: number, kind: 'flower' | 'bush' | 'rock', col?: string) => void) | null = null;
+  /**
+   * Enfeite em (x,y,z) ainda tem chão de verdade embaixo e nada em cima? (cavou embaixo → some; bloco
+   * posto em cima → some). Some de vez (não volta se o buraco for tapado) — nada flutuando nem dentro de bloco.
+   */
+  private decoOk(c: Chunk, x: number, y: number, z: number): boolean {
+    if (this.extraSolid && this.extraSolid(x, y + 0.3, z)) return false;
+    // o chão daqui mudou (cavaram/encheram): a planta não "desce junto" para o fundo do buraco
+    if (Math.abs(y - c.bAt(x - c.x0, z - c.z0)) > 0.3) return false;
+    if (!c.vol) return true;
+    const f = c.vol.floor(x, y + 1.2, z);
+    return Math.abs(f - y) < 0.35 && this.vox.dens(x, y + 0.5, z) <= 0;
   }
 
   /** fonte da grama: cor/densidade do chão do pedaço + nada sob construções/blocos/cavernas */
@@ -569,7 +594,14 @@ export class World {
         const x = c.rocks[o];
         const z = c.rocks[o + 2];
         const s = c.rocks[o + 3];
+        if (s <= 0) continue;
         const y = c.hAt(x - c.x0, z - c.z0);
+        if (!this.decoOk(c, x, y, z)) {
+          c.rocks[o + 3] = 0;
+          if (this.seen(c, 64 + i)) this.onDecoGone?.(x, y, z, 'rock');
+          continue;
+        }
+        this.mark(c, 64 + i);
         _m.compose(_p.set(x, y, z), _q.setFromAxisAngle(UP, x * 1.7 + z), _s.set(s, s, s));
         const rb = WBIOMES[c.rocks[o + 4]];
         colOf(rb.rock, _c);
@@ -584,7 +616,15 @@ export class World {
           const z = c.deco[o + 2];
           if ((x - px) ** 2 + (z - pz) ** 2 > deco2) continue;
           const s = c.deco[o + 3];
+          if (s <= 0) continue;
           const y = c.hAt(x - c.x0, z - c.z0);
+          if (!this.decoOk(c, x, y, z)) {
+            c.deco[o + 3] = 0;
+            // só solta item do que o jogador VIU no lugar (save carregado com buraco não "dá" flor de novo)
+            if (this.seen(c, i)) this.onDecoGone?.(x, y, z, c.deco[o + 4] ? 'flower' : 'bush', WBIOMES[c.deco[o + 5]].flower);
+            continue;
+          }
+          this.mark(c, i);
           const b = WBIOMES[c.deco[o + 5]];
           _m.compose(_p.set(x, y - 0.05, z), _q.setFromAxisAngle(UP, x + z), _s.set(s, s, s));
           if (c.deco[o + 4]) {
@@ -708,6 +748,7 @@ export class World {
         }
         for (let i = 0; i < c.nr; i++) {
           const o = i * 5;
+          if (c.rocks[o + 3] <= 0) continue; // pedra que sumiu (cavaram embaixo)
           // em cima da pedra: não empurra
           if (y > c.hAt(c.rocks[o] - c.x0, c.rocks[o + 2] - c.z0) + c.rocks[o + 3] * 0.55) continue;
           const dx = p.x - c.rocks[o];
