@@ -1,11 +1,8 @@
-Chaves: 3877 (1692 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 5295 (3113 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
-== Conflitos (mesma chave, textos diferentes): 1
-  creator.eventOnly
-     src/ui/creator.ts:471  "Só em evento"
-     src/ui/creator.ts:496  "Exclusivo de evento — vença os desafios para ganhar!"
+== Conflitos (mesma chave, textos diferentes): 0
 
-== Chamadas dinâmicas (chave ou texto não-literal): 37
+== Chamadas dinâmicas (chave ou texto não-literal): 41
   src/creatures/collection.ts:36  t("creature.${c.id}", c.name)
   src/creatures/collection.ts:37  t("creature.${c.id}.desc", c.desc)
   src/creatures/collection.ts:38  t("season.${SEASONS[s].id}.theme", SEASONS[s].theme)
@@ -20,16 +17,20 @@ Chaves: 3877 (1692 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastr
   src/games/band/model.ts:75  t("band.style.${…}", + s, s.charAt(0).toUpperCase() + s.slice(1)));)
   src/games/band/model.ts:170  t("song.${…}", + s.id, s.title);)
   src/home/catalog.ts:57  t("home.opt.${…}", + k, pt);)
-  src/home/catalog.ts:115  t("home.floor.${…}", + id, ({ wood: 'Taco', tile: 'Piso', carpet: 'Carpete', che)
-  src/home/catalog.ts:116  t("home.wall.${…}", + id, ({ paint: 'Pintura', stripes: 'Listras', dots: 'Bolin)
-  src/home/catalog.ts:168  t("home.furn.${…}", + kind, pt) + (v ? t('home.furn.v' + v, VNAME[v]) : ''),)
-  src/home/catalog.ts:168  t("home.furn.v${…}", + v, VNAME[v]) : ''),)
+  src/home/catalog.ts:120  t("home.floor.${…}", + id, ({ wood: 'Taco', tile: 'Piso', carpet: 'Carpete', che)
+  src/home/catalog.ts:121  t("home.wall.${…}", + id, ({ paint: 'Pintura', stripes: 'Listras', dots: 'Bolin)
+  src/home/catalog.ts:173  t("home.furn.${…}", + kind, pt) + (v ? t('home.furn.v' + v, VNAME[v]) : ''),)
+  src/home/catalog.ts:173  t("home.furn.v${…}", + v, VNAME[v]) : ''),)
   src/home/paint.ts:14  t("home.paint.fin.${…}", + f, ({ solid: 'Lisa', gradient: 'Degradê', stripes: 'Listr)
-  src/home/screen.ts:962  t("home.tpl.${…}", + tp.id, tp.name))}</button>`).join('')}${passData())
-  src/home3d/build.ts:223  t("home3d.furn.${…}", + k, KINDS[k].name))}`);)
-  src/home3d/fps.ts:711  t("home3d.furn.${…}", + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state)
-  src/home3d/fps.ts:712  t("home3d.mess.${…}", + tg.decal.m.kind, messName(tg.decal.m.kind as MessKind));)
-  src/home3d/fps.ts:713  t("home3d.food.${…}", + tg.food.kind, foodName(tg.food.kind));)
+  src/home/screen.ts:977  t("home.tpl.${…}", + tp.id, tp.name))}</button>`).join('')}${passData())
+  src/home3d/activities/chores.ts:293  t("home3d.furn.${…}", + item.kind, item.info.name),)
+  src/home3d/activities/chores.ts:310  t("home3d.furn.${…}", + item.kind, item.info.name),)
+  src/home3d/activities/extras.ts:113  t("home3d.furn.${…}", + item.kind, item.info.name) + (this.on ? ' · ' + this.chNa)
+  src/home3d/activities/extras.ts:393  t("home3d.furn.${…}", + k, item.info.name) + ((k === 'speaker' || k === 'piano' |)
+  src/home3d/decor.ts:215  t("home3d.furn.${…}", + it.kind, KINDS[it.kind].name);)
+  src/home3d/fps.ts:752  t("home3d.furn.${…}", + tg.item.kind, KINDS[tg.item.kind].name) + (tg.item.state)
+  src/home3d/fps.ts:753  t("home3d.mess.${…}", + tg.decal.m.kind, messName(tg.decal.m.kind as MessKind));)
+  src/home3d/fps.ts:754  t("home3d.food.${…}", + tg.food.kind, foodName(tg.food.kind));)
   src/music/season-music-data.ts:163  t("mtheme.s${String(season).padStart(2, '0')}", SEASON_MUSIC[season]?.split('|')
   src/music/songs/index.ts:88  t("song.${s.id}", s.title)
   src/music/songs/index.ts:89  t("song.${s.id}.band", s.band)
@@ -45,25 +46,25 @@ Chaves: 3877 (1692 de t()/HTML + 2185 de dados: bichinhos/temporadas/skins/rastr
   src/pass/music/index.ts:346  t("mpass.${r.id}", r.name)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  es: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  de: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  fr: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  it: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  ja: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  ko: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  ru: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  tr: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  id: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
-  zh: 0 / 1120 / 3 / 0
-      órfãs: home.3d.soon, home.handle.net, home3d.rotate.text
+  en: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  es: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  de: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  fr: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  it: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  ja: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  ko: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  ru: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  tr: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  id: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text
+  zh: 173 / 1120 / 19 / 0
+      órfãs: cozinha.chop, cozinha.fps.drop, cozinha.fps.hint, cozinha.fps.put, cozinha.fps.serve, cozinha.fps.throw, cozinha.mode3d, cozinha.mode3dD, cozinha.petTip2, cozinha.role.chopperD, cozinha.role.cookD, cozinha.role.serverD, cozinha.role.washerD, cozinha.staffNote, cozinha.tip1, cozinha.tut.chop, home.3d.soon, home.handle.net, home3d.rotate.text

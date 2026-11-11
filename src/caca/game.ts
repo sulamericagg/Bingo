@@ -530,7 +530,7 @@ class CacaGame implements MiniGameHandle {
         c.stroke();
       }
       c.translate(0, -16);
-      const sz = 58 * (0.92 + R * 0.04) * Math.min(1, fitScale(s.g, 40) * 1.1);
+      const sz = 66 * (0.92 + R * 0.04) * Math.min(1, fitScale(s.g, 40) * 1.1);
       drawGenome(c, s.g, sz, this.time);
       c.restore();
     }
@@ -1371,8 +1371,8 @@ class Encounter {
     // posição do bichinho
     const battle = this.phase !== 'meet';
     let x = W / 2;
-    let y = battle ? H * 0.17 : H * 0.42;
-    let size = battle ? Math.min(W, H) * 0.3 : Math.min(W * 0.75, H * 0.45);
+    let y = battle ? H * 0.19 : H * 0.42;
+    let size = battle ? Math.min(W * 0.3, H * 0.17) : Math.min(W * 0.75, H * 0.45);
     const pose = this.ar?.pose();
     if (this.video && pose) {
       x += -pose.yaw * (W / 1.05);

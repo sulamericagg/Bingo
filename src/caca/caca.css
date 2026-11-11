@@ -61,7 +61,7 @@
 .cc-enc .cc-panel{position:absolute;left:0;right:0;bottom:0;padding:14px var(--edge-r,14px) calc(var(--edge-b,12px) + 12px) var(--edge-l,14px);background:linear-gradient(rgba(20,8,56,0),rgba(20,8,56,.92) 26%);z-index:3}
 .cc-enc .cc-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:700 24px var(--font);text-shadow:0 2px 0 rgba(26,11,61,.7)}
 .cc-enc .cc-sub{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px;align-items:center;font:600 13px var(--font)}
-.cc-hud{position:absolute;left:0;right:0;top:0;z-index:3;padding:calc(var(--edge-t,8px) + 6px) var(--edge-r,12px) 0 var(--edge-l,12px);display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.cc-hud{position:absolute;left:0;right:0;top:0;z-index:3;padding:calc(var(--edge-t,8px) + 6px) var(--edge-r,12px) 14px var(--edge-l,12px);background:linear-gradient(rgba(20,8,56,.75),rgba(20,8,56,0));display:flex;flex-direction:column;gap:6px;pointer-events:none}
 .cc-hud .hp{display:flex;align-items:center;gap:8px;font:700 14px var(--font);text-shadow:0 2px 0 rgba(26,11,61,.7)}
 .cc-hud .hp .cc-bar{flex:1;height:14px;box-shadow:inset 0 0 0 2px rgba(26,11,61,.6)}
 .cc-hud .hp.me .cc-bar i{background:linear-gradient(90deg,#7fd1ff,#4f8cff)}
