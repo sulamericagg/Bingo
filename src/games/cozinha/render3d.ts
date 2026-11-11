@@ -1945,7 +1945,9 @@ class KitchenFps implements Renderer {
     const gb = gst && level ? this.guideBox(gst) : null;
     this.beacon.set(gb, gb ? level : 0, this.tipTxt);
     this.beacon.frame(this.camera, this.w, this.h, time, !!gst && gst.i === this.tgSt);
-    this.hb.glow(level >= 1 && !!gst && (this.tgSt === gst.i || (!!this.tgCtl && gb === this.tgCtl.box)));
+    const sb = gst ? this.stBox(gst.i) : null;
+    // o botão só brilha se apertar AGORA resolve o passo (mirando o alvo certo — botão do fogo, torneira ou a estação)
+    this.hb.glow(level >= 1 && !!gb && (gb === sb ? this.tgSt === gst!.i && !this.tgCtl : !!this.tgCtl && gb === this.tgCtl.box));
   }
 
   /** tela de pedidos: redesenha só quando muda (e 4×/s para a barra de paciência) */

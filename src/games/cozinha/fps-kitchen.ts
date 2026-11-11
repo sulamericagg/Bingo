@@ -472,7 +472,7 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
           const [gx, gz] = [cx + Math.sin(a) * 0.15, cz + Math.cos(a) * 0.15];
           dk.box(0.16, 0.022, 0.02, gx, top + 0.045, gz, '#24222c', a + Math.PI / 2);
         }
-        for (const o of [-0.36, 0.36]) knob(o, H * 0.82, T / 2 + 0.005); // o do meio é o botão de verdade (fps-props)
+        for (const o of [-0.3, -0.1, 0.1, 0.3]) knob(o, H * 0.82, T / 2 + 0.005); // enfeite: o botão de verdade fica no tampo (fps-props)
         if (st.k === 'pot') {
           // caldeirão de inox: parede dupla, borda virada, alças, tampa de vidro
           ll(mt, [[0, 0.0], [0.21, 0.0], [0.235, 0.015], [0.245, 0.04], [0.245, 0.3], [0.258, 0.315], [0.25, 0.325], [0.232, 0.315], [0.228, 0.05], [0.0, 0.05]], 0, top + 0.065, 0, '#d4d8e2', RS + 4);

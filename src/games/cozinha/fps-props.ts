@@ -63,7 +63,8 @@ export class KitchenProps {
       switch (st.k) {
         case 'pot':
         case 'pan':
-          p.heat = kit.add(new Knob(kit, { ...at(0, 0.72, T / 2 + 0.005), scale: 1.35, label: () => t('cozinha.fps.knob', 'Botão do fogo'), verb: (on) => (on ? t('cozinha.fps.heatOff', 'Desligar o fogo') : t('cozinha.fps.heatOn', 'Ligar o fogo')) }));
+          // no TAMPO, na quina da frente: aparece quando você olha a panela
+          p.heat = kit.add(new Knob(kit, { ...at(0.38, H, 0.4), scale: 1.25, label: () => t('cozinha.fps.knob', 'Botão do fogo'), verb: (on) => (on ? t('cozinha.fps.heatOff', 'Desligar o fogo') : t('cozinha.fps.heatOn', 'Ligar o fogo')) }));
           break;
         case 'oven':
           p.heat = kit.add(new Knob(kit, { ...at(0.36, H + 0.34, 0.415), scale: 1.2, color: '#ff5c7a', label: () => t('cozinha.fps.ovenKnob', 'Botão do forno'), verb: (on) => (on ? t('cozinha.fps.ovenOff', 'Desligar o forno') : t('cozinha.fps.ovenOn', 'Ligar o forno')) }));
@@ -91,6 +92,11 @@ export class KitchenProps {
         case 'crate':
           this.fridge(st, p, at, P, yaw, world, staticMat);
           break;
+      }
+      if (p.heat && (st.k === 'pot' || st.k === 'pan')) {
+        p.heat.group.rotation.order = 'YXZ';
+        p.heat.group.rotation.x = -Math.PI / 2;
+        p.heat.refreshBox();
       }
       for (const c of [p.heat, p.door, p.faucet, p.lid, p.bell]) if (c) this.group.add(c.group);
       this.by.push(p);
