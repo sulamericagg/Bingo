@@ -24,7 +24,7 @@ import type { View } from './game';
 import { createLook, type LookDrag } from '../../ui/touch';
 import { guideStep } from './guide';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundColorAt, groundH } from './fps/terrain';
-import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureQ } from '../../3d/nature';
+import { BlobShadows, GrassField, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureQ } from '../../3d/nature';
 
 const _gc = new THREE.Color();
 import {
@@ -387,8 +387,8 @@ class View3D implements View {
 
     this.buildSky();
     this.buildLights();
-    const gm = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    groundDetail(gm, { amount: 0.4, scale: 0.6, macro: tier >= 1 });
+    // chão com texturas misturadas por vértice (grama, folhas, terra do caminho, pedra nos barrancos)
+    const gm = this.track(terrainMaterial({ tier }));
     buildGroundMeshes(this.scene, gm);
     // grama de lâminas na GPU (Mínimo: só o chão texturizado) + sombras de contato sob as árvores
     const nq = natureQ(tier);

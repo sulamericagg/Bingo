@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BIOMES, BASE_END, WORLD_Z, gateX } from '../data';
+import { NL, TL, lerpSplat } from '../../../3d/nature/textures';
 
 export const WORLD_X1 = gateX(BIOMES.length) + 30;
 const smooth = (a: number, b: number, x: number): number => {
@@ -69,6 +70,25 @@ export function groundColorAt(x: number, z: number, c: THREE.Color, k = segOf(x)
 }
 
 /** malha do chão: um pedaço por bioma (frustum culling por pedaço), normais suaves */
+/** camadas de textura por bioma do Lenhadores 3D: cobertura e caminho */
+const COVER: Record<string, number> = { bosque: TL.grass, pinheiral: TL.forestFloor, tropical: TL.grass, cerejeiras: TL.grass, cogumelos: TL.forestFloor, cristal: TL.snow, nuvens: TL.snow };
+const PATH: Record<string, number> = { bosque: TL.dirt, pinheiral: TL.dirt, tropical: TL.redDirt, cerejeiras: TL.dirt, cogumelos: TL.mud, cristal: TL.gravel, nuvens: TL.sand };
+const _w = new Float32Array(NL);
+/** pesos das texturas do chão em (x,z) (pedaço k) */
+export function groundSplatAt(x: number, z: number, w: Float32Array, k = segOf(x)): void {
+  const B = BIOMES[Math.max(0, k - 1)];
+  w.fill(0);
+  const az = Math.abs(z);
+  w[COVER[B.id] ?? TL.grass] = 1;
+  // pinheiral: chão de folhas com manchas de grama
+  if (B.id === 'pinheiral') lerpSplat(w, TL.grass, 0.5 + 0.5 * Math.sin(x * 0.21 + z * 0.33));
+  if (az > 14) lerpSplat(w, TL.stone, Math.min(0.55, (az - 14) / 22) * (0.5 + 0.5 * Math.sin(x * 0.11 + z * 0.07)));
+  const pathW = k === 0 ? 2.8 : 1.5;
+  const edge = pathW + Math.sin(x * 0.3) * 0.3;
+  const p = az < edge ? 1 : Math.max(0, 1 - (az - edge) / 0.7);
+  lerpSplat(w, k === 0 ? TL.sand : PATH[B.id] ?? TL.dirt, p * 0.95);
+}
+
 export function buildGroundMeshes(scene: THREE.Scene, mat: THREE.Material): THREE.Mesh[] {
   const zs = [-80, -58, -42, -30, -22, -16, -12, -9.5, -8, -6.8, -5.4, -4, -2.7, -1.4, -0.5, 0.5, 1.4, 2.7, 4, 5.4, 6.8, 8, 9.5, 12, 16, 22, 30, 42, 58, 80];
   const out: THREE.Mesh[] = [];
@@ -80,11 +100,16 @@ export function buildGroundMeshes(scene: THREE.Scene, mat: THREE.Material): THRE
     const nx = Math.max(2, Math.round((x1 - x0) / 2.2));
     const pos: number[] = [];
     const col: number[] = [];
+    const spl: number[] = [];
     const vert = (x: number, z: number) => {
       const y = groundH(x, z);
       pos.push(x, y, z);
       groundColorAt(x, z, c, k);
       col.push(c.r, c.g, c.b);
+      groundSplatAt(x, z, _w, k);
+      let sum = 0;
+      for (let i = 0; i < NL; i++) sum += _w[i];
+      for (let i = 0; i < 12; i++) spl.push(i < NL ? Math.round((_w[i] / (sum || 1)) * 255) : 0);
     };
     const tri = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => {
       vert(ax, az);
@@ -104,6 +129,13 @@ export function buildGroundMeshes(scene: THREE.Scene, mat: THREE.Material): THRE
     const g0 = new THREE.BufferGeometry();
     g0.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g0.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    // pesos das texturas (3 × vec4 Uint8)
+    const n = pos.length / 3;
+    for (let a = 0; a < 3; a++) {
+      const arr = new Uint8Array(n * 4);
+      for (let v = 0; v < n; v++) for (let i = 0; i < 4; i++) arr[v * 4 + i] = spl[v * 12 + a * 4 + i];
+      g0.setAttribute('aSplat' + a, new THREE.BufferAttribute(arr, 4, true));
+    }
     // vértices iguais viram um só: normais suaves (morros sem facetas)
     const g = mergeVertices(g0, 1e-3);
     g0.dispose();

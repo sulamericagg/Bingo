@@ -12,7 +12,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
-import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
+import { BlobShadows, GrassField, NL, TL, lerpSplat, setSplat, splatAttributes, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
   PB,
@@ -111,16 +111,27 @@ const UP = new THREE.Vector3(0, 1, 0);
 const lerpC = (a: string, b: string, k: number) => _c.set(a).lerp(_c2.set(b), k);
 const smooth = (x: number) => x * x * (3 - 2 * x);
 const _gc = new THREE.Color();
+const _gw = new Float32Array(NL);
 const _gc2 = new THREE.Color();
 const TRAILS = [0.4, 2.5, 4.6];
 /** cor do chão em (x,z) e quanto cabe de grama (0 nas trilhas e no acampamento) */
-function groundColor(x: number, z: number, c: THREE.Color): number {
+function groundColor(x: number, z: number, c: THREE.Color, w: Float32Array | null = null): number {
   const d = Math.hypot(x, z);
+  if (w) {
+    w.fill(0);
+    w[TL.grass] = 1;
+    // chão de folhas em manchas e na mata funda
+    const ff = Math.sin(x * 0.09 + 0.7) * Math.sin(z * 0.08 - 1.1);
+    lerpSplat(w, TL.forestFloor, Math.max(0, ff - 0.2) * 1.2 + (d > 55 ? Math.min(0.8, (d - 55) / 40) : 0));
+  }
   const n = Math.sin(x * 0.13) * Math.sin(z * 0.11) * 0.5 + Math.sin(x * 0.37 + z * 0.29) * 0.25;
   c.set('#5aa64a').lerp(_gc2.set('#3f8a40'), 0.5 + n * 0.5);
   // manchas de capim mais claro/seco
   const dry = Math.sin(x * 0.071 + 1.3) * Math.sin(z * 0.063 - 0.4);
-  if (dry > 0.45) c.lerp(_gc2.set('#9ab44a'), (dry - 0.45) * 0.9);
+  if (dry > 0.45) {
+    c.lerp(_gc2.set('#9ab44a'), (dry - 0.45) * 0.9);
+    if (w) lerpSplat(w, TL.dryGrass, (dry - 0.45) * 1.2);
+  }
   let k = 1;
   const ang = Math.atan2(z, x);
   let trail = 1e9;
@@ -128,8 +139,16 @@ function groundColor(x: number, z: number, c: THREE.Color): number {
   if (trail < 2.2 && d > CAMP_R - 2) {
     c.lerp(_gc2.set('#a88a5a'), 0.55 * (1 - trail / 2.2));
     k = Math.min(k, Math.max(0, (trail - 1.1) / 1.1));
+    if (w) lerpSplat(w, TL.dirt, 0.9 * (1 - trail / 2.2));
   }
-  if (d < CAMP_R - 1) c.lerp(_gc2.set('#b8946a'), smooth(Math.min(1, (CAMP_R - 1 - d) / 4)) * 0.75);
+  if (d < CAMP_R - 1) {
+    const s = smooth(Math.min(1, (CAMP_R - 1 - d) / 4));
+    c.lerp(_gc2.set('#b8946a'), s * 0.75);
+    if (w) {
+      lerpSplat(w, TL.dirt, s);
+      if (d < 3.2) lerpSplat(w, TL.gravel, Math.min(1, (3.2 - d) / 1.2) * 0.8);
+    }
+  }
   if (d < CAMP_R + 1.5) k = Math.min(k, Math.max(0, (d - CAMP_R + 1) / 2.5) * 0.7);
   if (d > 60) c.lerp(_gc2.set('#2f5a48'), Math.min(1, (d - 60) / 50) * 0.6);
   if (d > WORLD_R) c.lerp(_gc2.set('#14222a'), 0.8);
@@ -424,19 +443,20 @@ export class View {
     const g = new THREE.PlaneGeometry(S, S, N, N).rotateX(-Math.PI / 2);
     const pa = g.getAttribute('position');
     const col: number[] = [];
+    const SP = splatAttributes(g, pa.count);
     const c = new THREE.Color();
     for (let i = 0; i < pa.count; i++) {
       const x = pa.getX(i);
       const z = pa.getZ(i);
       const d = Math.hypot(x, z);
-      groundColor(x, z, c);
+      groundColor(x, z, c, _gw);
       col.push(c.r, c.g, c.b);
+      setSplat(SP, i, _gw);
       pa.setY(i, d > WORLD_R + 2 ? (d - WORLD_R - 2) * 0.25 : this.sim.w.height(x, z));
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
-    const gm = new THREE.MeshLambertMaterial({ vertexColors: true });
-    groundDetail(gm, { amount: 0.42, scale: 0.55, macro: this.tierNow >= 1 });
+    const gm = terrainMaterial({ tier: this.tierNow });
     return new THREE.Mesh(g, gm);
   }
 
