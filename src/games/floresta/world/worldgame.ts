@@ -32,7 +32,7 @@ import { Sandbox } from './survival';
 import type { GameMode } from './engine';
 import { iconURL } from './itemicons';
 import { ITEM } from './items';
-import { playIntro } from './intro';
+import { Wreck, playIntro } from './intro';
 import { forestSolo, setForestSolo } from '../touchcfg';
 import { FpCamera, FpController, HeightGround, fpTuning, type FpCollider } from '../../../3d/fpkit';
 
@@ -304,6 +304,16 @@ export class WorldGame {
   phys: Phys;
   sb: Sandbox | null = null;
   introPending = false;
+  /** destroços da nave (marco do início) */
+  wreck: Wreck | null = null;
+  /** efeitos que continuam depois da cena (fumaça se dissolvendo); true = continua */
+  afterCine: ((dt: number) => boolean)[] = [];
+  /** (re)coloca os destroços salvos em save.wreck */
+  placeWreck(): void {
+    this.wreck?.dispose();
+    const w = this.save.wreck;
+    this.wreck = w ? new Wreck(this, w[0], w[1], w[2], w[3]) : null;
+  }
   /** cena de abertura rodando (trava controles) */
   cine: ((dt: number) => boolean) | null = null;
   held: Log | null = null;
@@ -487,6 +497,7 @@ export class WorldGame {
     window.addEventListener('resize', ro);
     this.offs.push(() => window.removeEventListener('resize', ro));
     if (location.search.includes('debug')) (window as any).__forest = this;
+    if (this.save.wreck) this.placeWreck();
     if (this.introPending) {
       this.introPending = false;
       playIntro(this);
@@ -953,6 +964,8 @@ export class WorldGame {
     this.stepTnt(dt);
     this.stepPets(dt);
     this.stepParticles(dt);
+    this.wreck?.update(dt, this.px, this.pz);
+    if (this.afterCine.length) this.afterCine = this.afterCine.filter((f) => f(dt));
     this.camera.updateMatrixWorld();
     this.updateSky(dt);
     this.sb?.update(dt);
@@ -2371,6 +2384,7 @@ export class WorldGame {
     for (const f of this.offs) f();
     this.hud.destroy();
     this.sb?.dispose();
+    this.wreck?.dispose();
     this.world.dispose();
     this.sky.dispose();
     this.leaves.dispose();
