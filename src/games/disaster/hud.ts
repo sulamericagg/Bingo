@@ -10,7 +10,7 @@ import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
 import { DISASTERS, type DisasterId } from './scenarios';
-import { dzIcon } from './icons';
+import { dzIcon, type DzIcon } from './icons';
 import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
@@ -48,6 +48,9 @@ const CSS = `
 .dz-big:disabled{opacity:.5}
 .dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + env(safe-area-inset-top,0px) + 40px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
 .dz-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
+.dz-warn.combo{background:linear-gradient(90deg,rgba(255,90,60,.9),rgba(160,20,140,.9))}
+.dz-warn .cb{font-weight:800;font-size:18px;color:#fff;-webkit-text-stroke:1px #2a0b5c;white-space:nowrap}
+.dz-chip.c{background:rgba(120,80,0,.72)}
 .dz-warn .ico{width:54px;height:54px;animation:dzwob .5s ease-in-out infinite alternate}
 .dz-warn b{font-size:46px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
 .dz-warn .safe{display:flex;align-items:center;opacity:.95}.dz-warn .safe .ico{width:34px;height:34px;animation:none}
@@ -74,6 +77,8 @@ export class Hud {
   private phaseNum: HTMLElement;
   private alive: HTMLElement;
   private streak: HTMLElement;
+  private held: HTMLElement;
+  private lastHeld = -1;
   /** joystick flutuante (andar/subir escada) — src/ui/touch */
   joy: Joystick;
   private offCtl: () => void;
@@ -104,7 +109,7 @@ export class Hud {
       <div class="dz-top">
         <button class="dz-btn dz-home" aria-label="${t('dz.exit', 'Sair')}">${icon('home', { size: 26 })}</button>
         <div class="dz-mid"><div class="dz-scn"></div><div class="dz-phase"><span class="lbl"></span><b></b></div></div>
-        <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div></div>
+        <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div><div class="dz-chip c" hidden>${icon('coin', { size: 18 })}<span></span></div></div>
       </div>
       <div class="dz-warn" aria-hidden="true"><span class="di"></span><b></b><span class="safe"></span></div>
       <div class="dz-edge" aria-hidden="true">${icon('arrow-up')}${icon('arrow-up')}${icon('arrow-up')}</div>
@@ -119,6 +124,7 @@ export class Hud {
     this.phaseNum = el.querySelector('.dz-phase b')!;
     this.alive = el.querySelector('.dz-chip.a span')!;
     this.streak = el.querySelector('.dz-chip.s span')!;
+    this.held = el.querySelector('.dz-chip.c')!;
     this.warnEl = el.querySelector('.dz-warn')!;
     this.warnNum = el.querySelector('.dz-warn b')!;
     this.edgeEl = el.querySelector('.dz-edge')!;
@@ -248,11 +254,14 @@ export class Hud {
   /** alerta antes de cada desastre: ícone grande, contagem até começar e seta do lado de onde vem */
   private warnTick(): void {
     const g = this.g;
-    const left = g.phase === 'warn' ? g.phaseDur - g.phaseT : g.phase === 'prepare' && !g.finale ? g.phaseDur - g.phaseT + 2.6 : 99;
+    // aviso no meio do desastre (onda, tremor, rajada, desastre duplo): o mesmo cartão
+    const mid = g.phase === 'disaster' && g.alertT > 0;
+    const left = mid ? g.alertT : g.phase === 'warn' ? g.phaseDur - g.phaseT : g.phase === 'prepare' && !g.finale ? g.phaseDur - g.phaseT + 2.6 : 99;
     const show = left <= 5.6 && left > 0;
     const d = g.sc.disasters[Math.min(g.dIndex, g.sc.disasters.length - 1)];
-    const from = show ? g.hazardFrom(d) : 0;
-    const key = show ? d + from : '';
+    const ic: DzIcon = mid ? g.alertIcon : d;
+    const from = show ? (mid ? g.alertFrom : g.hazardFrom(d)) : 0;
+    const key = show ? ic + from : '';
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
@@ -260,9 +269,10 @@ export class Hud {
       this.phase.style.visibility = show ? 'hidden' : '';
       this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');
       if (show) {
-        (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(d, 54);
+        (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(ic, 54);
+        this.warnEl.classList.toggle('combo', ic === 'combo');
         // dica sem texto: casa (tornado), seta para cima (água/lava/neve), céu aberto = nada
-        const safe = d === 'tornado' ? dzIcon('house', 34) : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
+        const safe = ic === 'combo' ? `<span class="cb">${t('dz.combo', 'Desastre duplo!')}</span>` : ic === 'tornado' || ic === 'areia' ? dzIcon('house', 34) : ic === 'terremoto' || ic === 'sumidouro' ? '' : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
         (this.warnEl.querySelector('.safe') as HTMLElement).innerHTML = safe;
       }
     }
@@ -281,6 +291,11 @@ export class Hud {
       this.lastNum = n;
       this.phaseNum.textContent = String(n);
       if (n <= 3 && n > 0 && (g.phase === 'prepare' || g.phase === 'disaster')) audio.click();
+    }
+    if (g.held !== this.lastHeld) {
+      this.lastHeld = g.held;
+      this.held.hidden = g.held <= 0;
+      (this.held.lastElementChild as HTMLElement).textContent = String(g.held);
     }
     let n2 = 0;
     for (const p of g.players) if (p.alive) n2++;

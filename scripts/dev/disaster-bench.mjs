@@ -74,7 +74,7 @@ const res = await p.evaluate(
     for (const d of ds) {
       // mesmos 4 mapas para todos (antes/depois comparáveis): vila, praia, cidade, montanha
       const maps = [0, 1, 2, 5].map((i) => S.MAPS[i]);
-      const st = { rounds: 0, still: 0, stillN: 0, safe: 0, safeN: 0, spot: 0, spotN: 0, top: 0, topN: 0, avg: 0, avgN: 0, outT: [] };
+      const st = { why: {}, rounds: 0, still: 0, stillN: 0, safe: 0, safeN: 0, spot: 0, spotN: 0, top: 0, topN: 0, avg: 0, avgN: 0, outT: [] };
       for (const map of maps) {
         for (let k = 0; k < ROUNDS; k++) {
           list[0] = { n: 1, seed: 1000 + map.id.length * 131 + k * 977 + d.length * 17, map, disasters: [d], mod: 'none', difficulty: DF };
@@ -82,61 +82,68 @@ const res = await p.evaluate(
           g.progress.played = 99;
           g.streak = STREAK;
           if ('benchRounds' in g) g.benchRounds = STREAK;
-          g.startRound();
-          // estratégias
-          for (let i = 0; i < g.players.length; i++) {
-            const pl = g.players[i];
-            if (i === 0) {
-              pl.bot = null;
-              continue;
-            }
-            if (!pl.bot) continue;
-            if (i <= 3) {
-              pl.bot.skill = 1;
-              pl.bot.lazy = 0;
-              pl.tag = 'safe';
-            } else {
-              pl.bot.skill = 0.6;
-              pl.bot.lazy = 0.4;
-              pl.tag = 'avg';
-            }
-          }
-          // estátuas nos lugares altos "óbvios" (plataformas, copas, telhados, torres): ficam paradas lá
-          const w = g.world;
-          const spots = [];
-          for (const so of w.solids) if (so.oneWay) spots.push({ x: so.x + so.w / 2, y: so.y, k: so.kind });
-          for (const bd of w.bodies) if (bd.kind === 'cap' || bd.kind === 'roof') spots.push({ x: bd.x + bd.w / 2, y: bd.y, k: bd.kind });
-          if (!g.finale)
-            for (const sp of spots) {
-              const me = g.players[0];
-              g.players.push({ ...me, id: 'spot', self: false, bot: null, x: sp.x, y: sp.y, vx: 0, vy: 0, tag: 'spot', alive: true, ghost: false, input: { l: false, r: false, j: false, u: false }, sprite: null });
-            }
-          let top = null;
-          for (const pl of g.players) if (pl.tag === 'spot' && (!top || pl.y < top.y)) top = pl;
-          if (top) top.top = true;
-          let guard = 0;
-          while (g.phase !== 'end' && guard++ < 60 * 200) g.update(1 / 60);
-          st.rounds++;
-          for (const pl of g.players) {
-            if (pl.self) {
-              st.stillN++;
-              st.still += pl.alive ? 1 : 0;
-            } else if (pl.tag === 'safe') {
-              st.safeN++;
-              st.safe += pl.alive ? 1 : 0;
-            } else if (pl.tag === 'spot') {
-              st.spotN++;
-              st.spot += pl.alive ? 1 : 0;
-              if (pl.top) {
-                st.topN++;
-                st.top += pl.alive ? 1 : 0;
+          // (a) rodada com os bots (você parado + 3 espertos + 4 médios); (b) mesma rodada só com estátuas
+          //     nos lugares altos (separado: estátuas paradas fazem plataformas cederem e atraem golpes)
+          for (const pass of ['bots', 'spots']) {
+            g.startRound();
+            for (let i = 0; i < g.players.length; i++) {
+              const pl = g.players[i];
+              if (i === 0) {
+                pl.bot = null;
+                continue;
               }
-              continue;
-            } else if (pl.tag === 'avg') {
-              st.avgN++;
-              st.avg += pl.alive ? 1 : 0;
+              if (!pl.bot) continue;
+              if (i <= 3) {
+                pl.bot.skill = 1;
+                pl.bot.lazy = 0;
+                pl.tag = 'safe';
+              } else {
+                pl.bot.skill = 0.6;
+                pl.bot.lazy = 0.4;
+                pl.tag = 'avg';
+              }
             }
-            if (!pl.alive) st.outT.push(Math.round(pl.outT || 0));
+            if (pass === 'spots') {
+              if (g.finale) continue;
+              g.players.length = 1;
+              const w = g.world;
+              const spots = [];
+              for (const so of w.solids) if (so.oneWay) spots.push({ x: so.x + so.w / 2, y: so.y, k: so.kind });
+              for (const bd of w.bodies) if (bd.kind === 'cap' || bd.kind === 'roof') spots.push({ x: bd.x + bd.w / 2, y: bd.y, k: bd.kind });
+              for (const sp of spots) {
+                const me = g.players[0];
+                g.players.push({ ...me, id: 'spot', self: false, bot: null, x: sp.x, y: sp.y, vx: 0, vy: 0, tag: 'spot', alive: true, ghost: false, input: { l: false, r: false, j: false, u: false }, sprite: null });
+              }
+              let top = null;
+              for (const pl of g.players) if (pl.tag === 'spot' && (!top || pl.y < top.y)) top = pl;
+              if (top) top.top = true;
+            }
+            let guard = 0;
+            while (g.phase !== 'end' && guard++ < 60 * 200) g.update(1 / 60);
+            if (pass === 'bots') st.rounds++;
+            for (const pl of g.players) {
+              if (pl.self) {
+                if (pass !== 'bots') continue;
+                st.stillN++;
+                st.still += pl.alive ? 1 : 0;
+              } else if (pl.tag === 'safe') {
+                st.safeN++;
+                st.safe += pl.alive ? 1 : 0;
+              } else if (pl.tag === 'spot') {
+                st.spotN++;
+                st.spot += pl.alive ? 1 : 0;
+                if (pl.top) {
+                  st.topN++;
+                  st.top += pl.alive ? 1 : 0;
+                }
+                continue;
+              } else if (pl.tag === 'avg') {
+                st.avgN++;
+                st.avg += pl.alive ? 1 : 0;
+                if (!pl.alive) st.why[pl.why || '?'] = (st.why[pl.why || '?'] || 0) + 1;
+              }
+              if (!pl.alive) st.outT.push(Math.round(pl.outT || 0));
+            }
           }
         }
       }
@@ -148,6 +155,7 @@ const res = await p.evaluate(
         spot: Math.round((100 * st.spot) / Math.max(1, st.spotN)),
         avg: Math.round((100 * st.avg) / Math.max(1, st.avgN)),
         medOut: st.outT.sort((a, b) => a - b)[st.outT.length >> 1] ?? null,
+        why: st.why,
       };
     }
     return out;
@@ -157,5 +165,6 @@ const res = await p.evaluate(
 console.log(`df=${DF} mode=${MODE} streak=${STREAK} rounds/map=${ROUNDS}`);
 console.log('desastre      rodadas  parado  mais-alto  lugar-alto  bot-esperto  bot-médio  (s até cair, mediana)');
 for (const [d, r] of Object.entries(res)) console.log(`${d.padEnd(13)} ${String(r.rounds).padStart(6)} ${String(r.still).padStart(6)}% ${String(r.top).padStart(8)}% ${String(r.spot).padStart(9)}% ${String(r.safe).padStart(10)}% ${String(r.avg).padStart(9)}%   ${r.medOut ?? '-'}`);
-console.log(JSON.stringify(res));
+if (process.argv.includes('--why')) for (const [d, r] of Object.entries(res)) console.log(d.padEnd(12), JSON.stringify(r.why));
+else console.log(JSON.stringify(res));
 await browser.close();

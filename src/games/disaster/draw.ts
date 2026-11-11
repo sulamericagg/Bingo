@@ -324,6 +324,15 @@ export class Drawer {
         x.fillStyle = 'rgba(0,0,0,.08)';
         x.fillRect(s.x, s.y + 10, s.w, 5);
       } else if (s.kind === 'plat') {
+        if (s.gone && (s.fallY ?? 0) > 360) continue;
+        const shk = (s.crumble ?? 0) > 0 ? Math.sin(g.time * 60) * 2 : 0;
+        x.save();
+        if (s.gone) {
+          x.globalAlpha = Math.max(0, 1 - (s.fallY ?? 0) / 360);
+          x.translate(s.x + s.w / 2, s.y + (s.fallY ?? 0));
+          x.rotate((s.fallY ?? 0) * 0.004);
+          x.translate(-s.x - s.w / 2, -s.y);
+        } else x.translate(shk, 0);
         x.fillStyle = '#6a4a2a';
         roundRect(x, s.x, s.y, s.w, s.h + 2, 4);
         x.fill();
@@ -339,6 +348,39 @@ export class Drawer {
         x.moveTo(s.x + s.w - 8, s.y + s.h);
         x.lineTo(s.x + s.w - 14, s.y + s.h + 14);
         x.stroke();
+        if ((s.crumble ?? 0) > 0) this.cracks(x, s.x, s.y, s.w, s.h, g.time);
+        x.restore();
+      }
+    }
+    // buracos no chão (rachadura piscando → buraco escuro)
+    for (const h of w.holes) {
+      if (!h.on || h.x + h.w < x0 || h.x > x1) continue;
+      if (h.warn > 0) {
+        const blink = Math.sin(g.time * 22) > 0;
+        x.strokeStyle = blink ? '#ff3355' : '#2a1a3a';
+        x.lineWidth = 3;
+        x.beginPath();
+        const n = Math.max(3, Math.round(h.w / 14));
+        for (let i = 0; i <= n; i++) {
+          const px = h.x + (h.w * i) / n;
+          const py = GROUND_Y + 2 + (i % 2 ? 5 : 0);
+          if (i === 0) x.moveTo(px, py);
+          else x.lineTo(px, py);
+        }
+        x.stroke();
+        x.fillStyle = `rgba(255,51,85,${0.15 + 0.15 * (blink ? 1 : 0)})`;
+        x.fillRect(h.x, GROUND_Y - 3, h.w, 6);
+      } else {
+        x.fillStyle = '#140c1c';
+        x.beginPath();
+        x.moveTo(h.x - 3, GROUND_Y);
+        x.lineTo(h.x + h.w + 3, GROUND_Y);
+        x.lineTo(h.x + h.w - 8, GROUND_Y + 300);
+        x.lineTo(h.x + 8, GROUND_Y + 300);
+        x.fill();
+        x.fillStyle = 'rgba(90,60,40,.9)';
+        x.fillRect(h.x - 4, GROUND_Y, 6, 26);
+        x.fillRect(h.x + h.w - 2, GROUND_Y, 6, 26);
       }
     }
     // escadas fixas
@@ -348,6 +390,13 @@ export class Drawer {
       if (t.x + t.r < x0 || t.x - t.r > x1) continue;
       x.fillStyle = m.trunk;
       x.fillRect(t.x - 7, -t.h, 14, t.h);
+      const ls = w.solids[t.solid];
+      const fy = ls?.gone ? (ls.fallY ?? 0) : 0;
+      if (fy > 380) continue;
+      const lk = ls && (ls.crumble ?? 0) > 0 ? Math.sin(g.time * 50) * 2.5 : 0;
+      x.save();
+      if (fy) x.globalAlpha = Math.max(0, 1 - fy / 380);
+      x.translate(lk, fy);
       x.fillStyle = shade(m.leaf, -0.2);
       x.beginPath();
       x.arc(t.x, -t.h + 6, t.r, 0, TAU);
@@ -357,6 +406,8 @@ export class Drawer {
       x.arc(t.x - t.r * 0.35, -t.h - t.r * 0.25, t.r * 0.7, 0, TAU);
       x.arc(t.x + t.r * 0.4, -t.h - t.r * 0.15, t.r * 0.65, 0, TAU);
       x.fill();
+      if (lk) this.cracks(x, t.x - t.r * 0.6, -t.h - 6, t.r * 1.2, 10, g.time);
+      x.restore();
     }
     // interior das casas
     for (const h of w.houses) {
@@ -406,6 +457,44 @@ export class Drawer {
       x.lineTo(k.x + 5, by + 6);
       x.stroke();
     }
+    // fogo no chão
+    for (const fi of g.fires) {
+      if (!fi.on || fi.x + fi.r < x0 || fi.x - fi.r > x1) continue;
+      const fade = Math.min(1, fi.t);
+      x.fillStyle = `rgba(255,120,30,${0.35 * fade})`;
+      x.beginPath();
+      x.ellipse(fi.x, fi.y, fi.r * 1.15, 7, 0, 0, TAU);
+      x.fill();
+      x.fillStyle = `rgba(255,190,60,${0.9 * fade})`;
+      const n = Math.max(3, Math.round(fi.r / 7));
+      x.beginPath();
+      for (let i = 0; i < n; i++) {
+        const fx = fi.x - fi.r + ((i + 0.5) * fi.r * 2) / n;
+        const fh = 12 + 8 * Math.sin(g.time * 14 + i * 2.1);
+        x.moveTo(fx - 5, fi.y);
+        x.quadraticCurveTo(fx - 2, fi.y - fh * 0.6, fx, fi.y - fh);
+        x.quadraticCurveTo(fx + 2, fi.y - fh * 0.6, fx + 5, fi.y);
+      }
+      x.fill();
+    }
+    // moedas do desastre
+    for (const c of g.coins) {
+      if (!c.on || c.x < x0 || c.x > x1) continue;
+      const cy = c.y + Math.sin(g.time * 4 + c.x) * 3;
+      const sw = Math.abs(Math.cos(g.time * 4 + c.x * 0.1));
+      x.globalAlpha = c.t < 1.5 ? 0.5 + 0.5 * Math.sin(g.time * 20) : 1;
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.ellipse(c.x, cy, 10 * sw + 2, 12, 0, 0, TAU);
+      x.fill();
+      x.fillStyle = '#ffd34a';
+      x.beginPath();
+      x.ellipse(c.x, cy, 8 * sw + 1, 10, 0, 0, TAU);
+      x.fill();
+      x.fillStyle = '#fff3b0';
+      x.fillRect(c.x - 1.5 * sw, cy - 6, 3 * sw, 12);
+      x.globalAlpha = 1;
+    }
     // sombras de alerta (corpos caindo)
     for (const b of w.bodies) {
       if (!b.alive || !b.awake || b.vy < 60 || b.x + b.w < x0 || b.x > x1) continue;
@@ -420,7 +509,19 @@ export class Drawer {
     }
     // marcadores dos golpes
     for (const s of g.strikes) {
-      if (!s.on || s.flash > 0 || s.x < x0 - 40 || s.x > x1 + 40) continue;
+      if (!s.on || s.flash > 0) continue;
+      if (s.kind === 'ball' || s.kind === 'gust') {
+        // aviso: faixa na altura por onde vai passar (pisca), com seta na borda da tela
+        if (!s.live) {
+          const a = 0.25 + 0.25 * Math.sin(g.time * 16);
+          x.fillStyle = s.kind === 'ball' ? `rgba(160,210,255,${a})` : `rgba(255,170,60,${a})`;
+          x.fillRect(x0, s.ty - s.r, x1 - x0, s.r * 2);
+          const ex = s.vx < 0 ? x1 - 80 : x0 + 80;
+          this.edgeArrow(x, ex, s.ty, s.vx < 0 ? -1 : 1, s.kind === 'ball' ? '#e6f2ff' : '#ffb03a');
+        }
+        continue;
+      }
+      if (s.x < x0 - 40 || s.x > x1 + 40) continue;
       const p = 1 - s.t / s.T;
       const pulse = 0.6 + 0.4 * Math.sin(g.time * 18);
       if (s.kind === 'bolt') {
@@ -442,7 +543,7 @@ export class Drawer {
 
     // jogadores (etiquetas de nome não se sobrepõem: a primeira que ocupa o lugar fica)
     this.tagBoxes.length = 0;
-    for (const p of g.players) if (p.alive) this.player(x, p, 1);
+    for (const p of g.players) if (p.alive) this.player(x, p, p.shield > 0 && Math.sin(g.time * 30) > 0 ? 0.45 : 1);
     // visitantes online
     for (const pr of g.peers) {
       const px = pr.s.x ?? 0;
@@ -451,21 +552,30 @@ export class Drawer {
       x.globalAlpha = 0.55;
       if (pr.s.g) this.ghost(x, px, py, '#cfe0ff', pr.s.f || 1, g.time);
       else {
-        x.fillStyle = '#9fd8ff';
-        x.beginPath();
-        x.arc(px, py - R, R, 0, TAU);
-        x.fill();
+        // amigo online com o Bloop DELE (skin ou "Meu Bloop")
+        x.globalAlpha = 1;
+        const img = g.peerSprite(pr);
+        const size = img.width / g.cam.ps;
+        x.save();
+        x.translate(px, py);
+        x.scale(pr.s.f || 1, 1);
+        x.drawImage(img, -size / 2, -R * 1.04 - size / 2, size, size);
+        x.restore();
       }
       x.globalAlpha = 1;
       this.tag(x, px, py - (pr.s.g ? 40 : 34), pr.name, '#5ac8ff');
     }
 
     if (g.tornado.on) this.tornado(x, g.tornado.x, g.tornado.r, g.time, top);
+    if (g.tornado2.on) this.tornado(x, g.tornado2.x, g.tornado2.r, g.time * 1.1 + 2, top);
     if (g.fluid) this.fluid(x, x0, x1, top + c.vh + 20);
     // treino: seta verde pulando sobre o lugar seguro (presa na borda se estiver fora da tela)
     if (g.safe) this.safeArrow(x, g.safe.x, g.safe.y, x0, x1, g.time);
     // fantasminhas por cima de tudo
     for (const p of g.players) if (p.ghost) this.ghost(x, p.gx, p.gy, p.color, p.face, g.time + p.outOrder, p.self ? p.name : '');
+    // bolhas de resgate (encoste para salvar) — a sua aparece para os amigos online
+    for (const p of g.players) if (!p.alive && p.bubble > 0 && !p.rescued && p.bx > x0 && p.bx < x1) this.bubble(x, p, g.time);
+    for (const pr of g.peers) if (pr.s.bb && (pr.s.bx ?? -999) > x0 && (pr.s.bx ?? 0) < x1) this.peerBubble(x, pr.s.bx ?? 0, pr.s.by ?? 0, g.time);
 
     // projéteis
     for (const s of g.strikes) {
@@ -483,8 +593,27 @@ export class Drawer {
         }
         continue;
       }
+      if (s.kind === 'ball' || s.kind === 'gust') {
+        if (!s.live) continue;
+        if (s.kind === 'ball') this.snowball(x, s.x, s.ty, s.r, s.x * 0.05);
+        else this.plank(x, s.x, s.ty, g.time * 9 * Math.sign(s.vx));
+        continue;
+      }
       const vis = s.kind === 'bolt' ? 0 : Math.min(1, (s.T - s.t) / s.T);
       if (s.kind === 'bolt' || s.t > s.T * 0.75) continue;
+      if (s.kind === 'drop') {
+        const k2 = 1 - s.t / (s.T * 0.75);
+        const dy = s.sy + (s.ty - s.sy) * k2 * k2;
+        x.fillStyle = '#2a0b5c';
+        x.beginPath();
+        x.ellipse(s.x, dy, 9, 13, 0, 0, TAU);
+        x.fill();
+        x.fillStyle = '#8af04a';
+        x.beginPath();
+        x.ellipse(s.x, dy, 7, 11, 0, 0, TAU);
+        x.fill();
+        continue;
+      }
       const k = 1 - s.t / (s.T * 0.75);
       const px = s.sx + (s.x - s.sx) * k;
       const py = s.sy + (s.ty - s.sy) * k - (s.kind === 'bomb' ? Math.sin(k * Math.PI) * 240 : 0);
@@ -513,12 +642,34 @@ export class Drawer {
     }
 
     this.particles.draw(x, x0, x1);
+    // fôlego de quem está nadando (barrinha sobre a cabeça)
+    for (const p of g.players) {
+      if (!p.alive || !p.swim || p.x < x0 || p.x > x1) continue;
+      const bw = p.self ? 34 : 22;
+      const by = p.y - R * 2 - (p.self ? 30 : 22);
+      x.fillStyle = 'rgba(30,15,60,.75)';
+      roundRect(x, p.x - bw / 2 - 2, by - 2, bw + 4, 8, 4);
+      x.fill();
+      x.fillStyle = p.air > 0.35 ? '#5ac8ff' : Math.sin(g.time * 18) > 0 ? '#ff3355' : '#ffb03a';
+      roundRect(x, p.x - bw / 2, by, bw * Math.max(0, p.air), 4, 2);
+      x.fill();
+    }
 
     // tela
     x.setTransform(1, 0, 0, 1, 0, 0);
     if (g.night) {
       x.fillStyle = 'rgba(12,14,48,0.42)';
       x.fillRect(0, 0, cw, ch);
+    }
+    // cinzas do vulcão / areia: tela escurece aos poucos (o seu Bloop continua visível: brilho em volta)
+    if (g.haze > 0.02 || g.gust.vis > 0.02) {
+      x.fillStyle = g.gust.vis > g.haze ? `rgba(196,140,80,${g.gust.vis})` : `rgba(58,46,48,${g.haze})`;
+      x.fillRect(0, 0, cw, ch);
+      if (g.me.alive) {
+        const mx = (g.me.x - left) * ps;
+        const my = (g.me.y - 14 - top) * ps;
+        drawLight(x, '255,240,210', mx, my, 90 * ps, 0.35);
+      }
     }
     const raining = g.night || g.active.has('enchente') || g.active.has('tornado') || g.sc.mod === 'vento';
     if (raining && storm) this.rainFx(x, cw, ch);
@@ -575,6 +726,8 @@ export class Drawer {
 
   private body(x: CanvasRenderingContext2D, b: Body): void {
     x.save();
+    const sk = this.g.soakOf(b.id);
+    if (sk > 0.55 && !b.awake && !b.tip) x.translate(Math.sin(this.g.time * 40 + b.id) * (sk - 0.5) * 4, 0);
     if (b.tip) {
       const px = b.tip > 0 ? b.x + b.w : b.x;
       const py = b.y + b.h;
@@ -643,6 +796,7 @@ export class Drawer {
         x.fillStyle = 'rgba(40,90,180,.18)';
         x.fillRect(b.x, b.y + b.h * 0.5, b.w, b.h * 0.5);
       }
+      if (sk > 0.55 && !b.awake) this.cracks(x, b.x, b.y, b.w, b.h, this.g.time);
     }
     x.restore();
   }
@@ -837,6 +991,117 @@ export class Drawer {
       x.quadraticCurveTo(xx, bottom - 5 + Math.sin(t * 6 + i) * 2, xx - r / n, bottom);
     }
     x.closePath();
+  }
+
+  /** rachaduras vermelhas piscando (algo vai ceder) */
+  private cracks(x: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, t: number): void {
+    x.strokeStyle = Math.sin(t * 20) > 0 ? '#ff3355' : '#2a1a3a';
+    x.lineWidth = 2;
+    x.beginPath();
+    x.moveTo(cx + w * 0.2, cy);
+    x.lineTo(cx + w * 0.3, cy + h);
+    x.moveTo(cx + w * 0.55, cy);
+    x.lineTo(cx + w * 0.48, cy + h * 0.6);
+    x.lineTo(cx + w * 0.62, cy + h);
+    x.moveTo(cx + w * 0.8, cy);
+    x.lineTo(cx + w * 0.74, cy + h);
+    x.stroke();
+  }
+
+  /** seta grande na borda da tela: algo vem daquele lado nessa altura */
+  private edgeArrow(x: CanvasRenderingContext2D, ex: number, ey: number, dir: number, col: string): void {
+    const s = 1 + 0.12 * Math.sin(this.g.time * 14);
+    x.save();
+    x.translate(ex, ey);
+    x.scale(dir * s, s);
+    x.fillStyle = col;
+    x.strokeStyle = '#2a0b5c';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.moveTo(-26, -9);
+    x.lineTo(4, -9);
+    x.lineTo(4, -20);
+    x.lineTo(26, 0);
+    x.lineTo(4, 20);
+    x.lineTo(4, 9);
+    x.lineTo(-26, 9);
+    x.closePath();
+    x.stroke();
+    x.fill();
+    x.fillStyle = '#ff3355';
+    x.font = '900 18px Fredoka, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.scale(dir, 1);
+    x.fillText('!', -dir * 40, 1);
+    x.restore();
+  }
+
+  private snowball(x: CanvasRenderingContext2D, px: number, py: number, r: number, a: number): void {
+    x.fillStyle = '#2a0b5c';
+    x.beginPath();
+    x.arc(px, py, r + 2, 0, TAU);
+    x.fill();
+    x.fillStyle = '#f4f8ff';
+    x.beginPath();
+    x.arc(px, py, r, 0, TAU);
+    x.fill();
+    x.fillStyle = '#c8d6f0';
+    x.beginPath();
+    x.arc(px + Math.cos(a) * r * 0.45, py + Math.sin(a) * r * 0.45, r * 0.28, 0, TAU);
+    x.arc(px + Math.cos(a + 2.4) * r * 0.5, py + Math.sin(a + 2.4) * r * 0.5, r * 0.2, 0, TAU);
+    x.fill();
+  }
+
+  /** destroço voando (tábua girando) */
+  private plank(x: CanvasRenderingContext2D, px: number, py: number, a: number): void {
+    x.save();
+    x.translate(px, py);
+    x.rotate(a);
+    x.fillStyle = '#2a0b5c';
+    x.fillRect(-16, -6, 32, 12);
+    x.fillStyle = '#b8864f';
+    x.fillRect(-14, -4, 28, 8);
+    x.fillStyle = '#8a5a2a';
+    x.fillRect(-6, -4, 3, 8);
+    x.restore();
+  }
+
+  /** bolha de resgate de um bot: o Bloop dentro, anel de tempo, "toque para salvar" */
+  private bubble(x: CanvasRenderingContext2D, p: Player, t: number): void {
+    const g = this.g;
+    const by = p.by + Math.sin(t * 3 + p.outOrder) * 3;
+    const img = g.spriteFor(p);
+    const size = img.width / g.cam.ps;
+    x.globalAlpha = 0.85;
+    x.drawImage(img, p.bx - size * 0.35, by - size * 0.35, size * 0.7, size * 0.7);
+    x.globalAlpha = 1;
+    x.strokeStyle = 'rgba(200,240,255,.9)';
+    x.lineWidth = 2.5;
+    x.beginPath();
+    x.arc(p.bx, by, 19, 0, TAU);
+    x.stroke();
+    x.fillStyle = 'rgba(160,220,255,.18)';
+    x.fill();
+    x.strokeStyle = '#3ee07a';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.arc(p.bx, by, 23, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, p.bubble / 10));
+    x.stroke();
+    x.fillStyle = '#fff';
+    x.beginPath();
+    x.arc(p.bx - 7, by - 8, 3, 0, TAU);
+    x.fill();
+  }
+
+  private peerBubble(x: CanvasRenderingContext2D, bx: number, by: number, t: number): void {
+    x.strokeStyle = 'rgba(200,240,255,.9)';
+    x.lineWidth = 2.5;
+    x.beginPath();
+    x.arc(bx, by + Math.sin(t * 3) * 3, 19, 0, TAU);
+    x.stroke();
+    x.fillStyle = 'rgba(62,224,122,.25)';
+    x.fill();
   }
 
   private rock(x: CanvasRenderingContext2D, px: number, py: number, r: number, fire: boolean, a: number): void {

@@ -106,6 +106,8 @@ export interface House {
   wallL: number;
   wallR: number;
   ceil: number;
+  /** o tornado arrancou o telhado nesta rodada (não é mais abrigo) */
+  ripped?: boolean;
 }
 
 export interface Tree {
@@ -343,6 +345,7 @@ export class World {
   /** dentro da área de uma casa (térreo), mesmo que ela tenha levado uns trancos */
   insideHouse(px: number, py: number): boolean {
     for (const h of this.houses) {
+      if (h.ripped) continue;
       if (px < h.x + 6 || px > h.x + h.w - 6 || py < h.top - 4 || py > GROUND_Y + 2) continue;
       const c = this.bodies[h.ceil];
       if (c.alive && c.y + c.h < h.top + 30) return true;
@@ -352,6 +355,7 @@ export class World {
 
   isSheltered(px: number, py: number): boolean {
     for (const h of this.houses) {
+      if (h.ripped) continue;
       if (px < h.x + 8 || px > h.x + h.w - 8 || py < h.top || py > GROUND_Y + 2) continue;
       const a = this.bodies[h.wallL];
       const b = this.bodies[h.wallR];
