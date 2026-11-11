@@ -378,7 +378,8 @@ class CacaGame implements MiniGameHandle {
     const part = dayPart();
     const pn = part === 'noite' ? t('caca.part.noite', 'Noite') : part === 'manha' ? t('caca.part.manha', 'Manhã') : t('caca.part.tarde', 'Tarde');
     const mode = this.sv.locMode === 'casa' ? t('caca.mode.homeShort', 'Modo casa') : 'GPS';
-    this.subtitle.textContent = `${mode} · ${pn} · ${weatherName(w)}`;
+    const wn = part === 'noite' && w === 'sol' ? t('caca.wx.clear', 'Céu limpo') : weatherName(w);
+    this.subtitle.textContent = `${mode} · ${pn} · ${wn}`;
   }
 
   private reach(): number {
