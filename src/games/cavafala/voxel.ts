@@ -100,7 +100,7 @@ const MAX_CELLS = 9000;
 
 /** escolhe o tamanho do bloco pelo tamanho do objeto */
 export function voxelSize(ext: number): number {
-  return Math.max(0.1, Math.min(0.42, ext / 18));
+  return Math.max(0.09, Math.min(0.4, ext / 24));
 }
 
 export function voxelize(spec: ObjSpec, vForce?: number): Voxels {

@@ -139,7 +139,7 @@ export function conceptById(id: string): Concept | undefined {
 }
 
 /** variantes faladas de uma palavra: plural, diminutivo, aumentativo, gênero. [palavra, fator de tamanho] */
-function variants(w: string): [string, number][] {
+function variants(w: string, gender = true): [string, number][] {
   const out: [string, number][] = [[w, 1]];
   const add = (x: string, k = 1) => x.length >= 2 && !out.some((o) => o[0] === x) && out.push([x, k]);
   if (w.endsWith('oes') || w.endsWith('aes')) add(w.slice(0, -3) + 'ao');
@@ -157,10 +157,11 @@ function variants(w: string): [string, number][] {
     m = /^(.+?)(ao|ona)$/.exec(x);
     if (m && m[1].length >= 3) add(m[1] + 'o', 1.4), add(m[1] + 'a', 1.4);
   }
-  for (const [x, k] of [...out]) {
-    if (x.endsWith('a')) add(x.slice(0, -1) + 'o', k);
-    else if (x.endsWith('o')) add(x.slice(0, -1) + 'a', k);
-  }
+  if (gender)
+    for (const [x, k] of [...out]) {
+      if (x.endsWith('a')) add(x.slice(0, -1) + 'o', k);
+      else if (x.endsWith('o')) add(x.slice(0, -1) + 'a', k);
+    }
   return out;
 }
 function lev(a: string, b: string): number {
@@ -468,7 +469,7 @@ export function parsePlan(text: string, opts: GenOpts = {}): { plan: Plan | null
       let k = 1;
       for (let j = 0; j < L && ok; j++) {
         if (toks[i + j] === e.toks[j]) continue;
-        const v = j === L - 1 || j === 0 ? variants(toks[i + j]).find((x) => x[0] === e.toks[j]) : undefined;
+        const v = j === L - 1 || j === 0 ? variants(toks[i + j], false).find((x) => x[0] === e.toks[j]) : undefined;
         if (v) k *= v[1];
         else ok = false;
       }
@@ -627,9 +628,9 @@ export function parsePlan(text: string, opts: GenOpts = {}): { plan: Plan | null
 }
 
 /* ================================ montagem ================================ */
-function buildConcept(id: string, r: () => number, variant: number): { parts: GPart[]; c: Concept } {
+function buildConcept(id: string, r: () => number, variant: number, extra?: Record<string, boolean | number | string>): { parts: GPart[]; c: Concept } {
   const c = conceptById(id) ?? conceptById('bola')!;
-  const o = { ...c.o };
+  const o: typeof c.o = { ...c.o, ...(extra ?? {}) };
   // variações (Refazer): proporções e opções mudam um pouco
   if (variant > 0) for (const k of Object.keys(o)) if (typeof o[k] === 'number' && !['seg', 'legs', 'scoops', 'tiers'].includes(k)) o[k] = (o[k] as number) * (0.85 + r() * 0.3);
   const f = BUILDERS[c.build] ?? BUILDERS.blob;
@@ -674,14 +675,17 @@ function prune(parts: GPart[], max: number): GPart[] {
 
 /** um substantivo do plano → peças (com tema, casco, material, cor, acessórios) */
 function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBehavior[]): { parts: GPart[]; c: Concept; colors: [ColorName, ColorName, ColorName] } {
-  const { parts: p0, c } = buildConcept(n.id, r, variant);
+  const rainbowBridge = (n.rainbow || n.theme === 'arco_iris') && conceptById(n.id)?.build === 'bridge';
+  const { parts: p0, c } = buildConcept(n.id, r, variant, rainbowBridge ? { lanes: true } : undefined);
   let parts = p0;
-  const colors = paletteFor(n, c, r, variant);
   // tema "de Y"
   const th = n.theme ? conceptById(n.theme) : undefined;
+  const isHull = !!th && !!th.hull && ['vehicle', 'water', 'air'].includes(c.cat) && parts.some((p) => p.tag === 'body');
+  // casco: o X mantém as próprias cores (o casco traz as do Y)
+  const colors = paletteFor(isHull ? { ...n, theme: undefined } : n, c, r, variant);
   if (th) {
     const bodyParts = parts.filter((p) => p.tag === 'body');
-    const hullable = (th.hull || th.cat === 'food') && ['vehicle', 'water', 'air'].includes(c.cat) && bodyParts.length > 0 && th.cat !== 'building';
+    const hullable = isHull;
     const yParts = buildConcept(th.id, r, 0).parts;
     const yCols: [ColorName, ColorName, ColorName] = [...th.col];
     // as cores do Y viram literais (não seguem o tema do X)
@@ -689,17 +693,18 @@ function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBeh
     if (hullable && th.hull) {
       // casco: troca o corpo do X pelo formato do Y ("barco de banana")
       const bb = bboxOf(bodyParts);
-      parts = parts.filter((p) => p.tag !== 'body' && !(p.tag === 'deco' && p.pos[1] < bb.max[1] && p.pos[1] > bb.min[1] && p.shape !== 'cylinder'));
+      parts = parts.filter((p) => p.tag !== 'body' && p.tag !== 'deck' && !(p.tag === 'deco' && p.pos[1] < bb.max[1] && p.pos[1] > bb.min[1] && p.shape !== 'cylinder'));
       const hull = fitInto(
         yParts.filter((q) => q.tag !== 'leaf' || q.size[1] < 1),
         bb,
       );
       for (const q of hull) if (q.tag === 'body') q.tag = 'body';
       parts = [...hull, ...parts];
-    } else if (th.id === 'arco_iris') n.rainbow = true;
+    } else if (th.id === 'arco_iris') n.rainbow = !rainbowBridge;
     else {
-      // emblema: um mini Y em cima do X
-      const bb = bboxOf(parts);
+      // emblema: um mini Y em cima do corpo do X
+      const core = parts.filter((p) => p.tag === 'body' || p.tag === 'wall' || p.tag === 'deck' || p.tag === 'roof');
+      const bb = bboxOf(core.length ? core : parts);
       const ext = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]);
       const keep = yParts
         .map((q, i) => ({ q, i }))
@@ -709,7 +714,7 @@ function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBeh
         .map((x) => x.q);
       const yb = bboxOf(keep);
       const yext = Math.max(yb.max[0] - yb.min[0], yb.max[1] - yb.min[1], yb.max[2] - yb.min[2]);
-      const k = Math.max(0.5, ext * 0.36) / Math.max(0.1, yext);
+      const k = Math.max(0.6, ext * 0.45) / Math.max(0.1, yext);
       const cx = (bb.min[0] + bb.max[0]) / 2,
         cz = (bb.min[2] + bb.max[2]) / 2;
       const em = xform(keep, [k, k, k], [cx - ((yb.min[0] + yb.max[0]) / 2) * k, bb.max[1] - 0.05 - yb.min[1] * k, cz - ((yb.min[2] + yb.max[2]) / 2) * k - (bb.max[2] - bb.min[2]) * 0.12]);
@@ -720,7 +725,7 @@ function buildNoun(n: NounPlan, r: () => number, variant: number, behOut: ObjBeh
   // material
   if (n.mat) for (const p of parts) if (BODYISH.has(p.tag) && p.mat !== 'glow') p.mat = n.mat;
   // arco-íris: listras de cor nas peças grandes
-  if (n.rainbow) {
+  if (n.rainbow && !rainbowBridge) {
     let i = 0;
     for (const p of parts) if (BODYISH.has(p.tag) && p.tag !== 'leg') p.col = RAINBOW_COLS[i++ % RAINBOW_COLS.length];
   }
@@ -801,6 +806,14 @@ export function describe(beh: ObjBehavior[], lang: string): string {
   const s = bits.length ? bits.join(', ') : d.still!;
   return s.charAt(0).toUpperCase() + s.slice(1) + '!';
 }
+const FN_DESC: Record<string, Record<string, string>> = {
+  pt: { bridge: 'Dá pra atravessar!', stairs: 'Dá pra subir!', ramp: 'Dá pra subir e pular!', slide: 'Sobe e escorrega!', trampoline: 'Pula muuuito alto!', pump: 'Tem água fresquinha!', shelter: 'Dá pra entrar e explorar!', tower: 'Dá pra ver tudo lá de cima!', wall: 'Protege e segura!', lamp: 'Ilumina tudo!', boat: 'Flutua na água!', crane: 'Levanta coisas pesadas!', food: 'Parece uma delícia!', play: 'Bora brincar!', nature: 'Que lindo!', other: 'Feito de blocos, do seu jeito!' },
+  en: { bridge: 'You can cross it!', stairs: 'You can climb it!', ramp: 'Climb and jump!', slide: 'Climb up and slide!', trampoline: 'Jump sooo high!', pump: 'Fresh water!', shelter: 'Go inside and explore!', tower: 'See everything from up there!', wall: 'Keeps things safe!', lamp: 'Lights everything up!', boat: 'Floats on water!', crane: 'Lifts heavy stuff!', food: 'Looks yummy!', play: "Let's play!", nature: 'So pretty!', other: 'Made of blocks, your way!' },
+};
+function fnDesc(fn: string | undefined, cat: string, lang: string): string {
+  const d = FN_DESC[lang] ?? FN_DESC[lang === 'pt' ? 'pt' : 'en'];
+  return d[fn ?? ''] ?? d[cat] ?? d.other;
+}
 /** nome a partir da própria frase (sem "eu quero um...") */
 export function nameFrom(text: string): string {
   const words = text
@@ -873,6 +886,8 @@ export function fromPlan(plan: Plan, seed: number, variant = 0, lang = 'pt'): { 
   if (fl && !fl.kind) fl.kind = parts.some((p) => p.tag === 'wing') ? 'wings' : m.c.cat === 'nature' || m.c.cat === 'toy' ? 'balloon' : 'propeller';
   if (fl && !parts.some((p) => p.tag === 'wing' || p.tag === 'prop') && !m.c.beh.some((b) => b.type === 'flies')) {
     const bb = bboxOf(parts);
+    const critter = ['animal', 'fantasy', 'bird', 'sea', 'bug'].includes(m.c.cat);
+    if (critter) fl.kind = 'wings';
     const a = (fl.kind === 'balloon' ? ACC.balao : fl.kind === 'wings' ? ACC.asas : ACC.helice)(bb, Math.max(0.8, Math.min(2, (bb.max[0] - bb.min[0]) / 2)));
     parts.push(...resolveCols(a.parts, m.colors));
   }
@@ -896,7 +911,7 @@ export function fromPlan(plan: Plan, seed: number, variant = 0, lang = 'pt'): { 
   const spec = validateSpec(
     {
       name: plan.name || m.c.id,
-      desc: plan.desc || describe(behFinal, lang),
+      desc: plan.desc || (behFinal.length ? describe(behFinal, lang) : fnDesc(m.c.fn, m.c.cat, lang)),
       body: fixed ? 'static' : 'dynamic',
       parts: objParts,
       behaviors: behFinal,

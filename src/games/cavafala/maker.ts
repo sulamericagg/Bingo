@@ -259,13 +259,17 @@ export class Maker {
   place(a: Actor | null, spec: ObjSpec, fn: Fn | undefined, uid: string, text: string, variant: number, at: THREE.Vector3 | null, yawIn: number | null, animate: boolean): Creation {
     const w = this.w;
     const vx = voxelize(spec);
-    const yaw = yawIn ?? (a ? a.yaw + Math.PI : 0);
-    const fwd = V1.set(Math.sin(yaw), 0, Math.cos(yaw));
+    // bichos e coisas olham para quem criou; veículo de montar fica de costas (pronto para sair)
+    const ride = spec.behaviors.some((b) => b.type === 'ride');
+    const yaw = yawIn ?? (a ? a.yaw + (ride ? Math.PI : 0) : 0);
     let pos: THREE.Vector3;
     if (at) pos = at.clone();
     else {
       const o = a ? a.body.p : w.me.body.p;
-      const dist = 1.3 - vx.min[2] + (spec.body === 'static' ? 0 : 0.4);
+      const ay = a ? a.yaw : w.me.yaw;
+      const fwd = V1.set(-Math.sin(ay), 0, -Math.cos(ay));
+      const near = ride ? -vx.min[2] : vx.max[2];
+      const dist = 1.3 + near + (spec.body === 'static' ? 0 : 0.4);
       pos = o.clone().addScaledVector(fwd, dist);
       const gy = w.T.groundY(pos.x, pos.z, o.y + 3, o.y - 8);
       pos.y = gy > -Infinity ? gy + (spec.body === 'static' ? -0.05 : 0.15) : o.y;
@@ -294,7 +298,7 @@ export class Maker {
     a.body.p.set(x, y, z);
     a.yaw = yaw;
     if (!a.voiceAt || performance.now() - a.voiceAt > 2500) a.model?.say(spec.name + '!', 1800);
-    this.place(a, spec, undefined, uid, text, 0, null, yaw + Math.PI, true);
+    this.place(a, spec, undefined, uid, text, 0, null, yaw + (spec.behaviors.some((b) => b.type === 'ride') ? Math.PI : 0), true);
   }
 
   /* ------------------------------ Refazer / Guardar / Galeria ------------------------------ */
@@ -506,8 +510,17 @@ export class Maker {
   }
 
   /** estado para os testes (?debug) */
-  state(): { n: number; names: string[]; riding: boolean; last: ObjSpec | null; source: string; blocks: number[] } {
-    return { n: this.list.length, names: this.list.map((c) => c.spec.name), riding: !!this.riding, last: this.lastSpec, source: this.lastSource, blocks: this.list.map((c) => c.vx.count) };
+  state(): { n: number; names: string[]; riding: boolean; last: ObjSpec | null; source: string; blocks: number[]; focus: { at: number[]; size: number[]; yaw: number; assembling: boolean } | null } {
+    const f = this.focus?.c;
+    return {
+      n: this.list.length,
+      names: this.list.map((c) => c.spec.name),
+      riding: !!this.riding,
+      last: this.lastSpec,
+      source: this.lastSource,
+      blocks: this.list.map((c) => c.vx.count),
+      focus: f ? { at: [f.pos.x, f.pos.y, f.pos.z], size: [f.vx.max[0] - f.vx.min[0], f.vx.max[1] - f.vx.min[1], f.vx.max[2] - f.vx.min[2]], yaw: f.body ? f.body.yaw : f.root.rotation.y, assembling: f.assembling > 0 } : null,
+    };
   }
   focusCreation(): Creation | null {
     return this.focus?.c ?? null;

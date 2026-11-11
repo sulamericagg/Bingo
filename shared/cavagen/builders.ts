@@ -360,7 +360,7 @@ export const boat: Builder = (o) => {
   p.push(box(W * 1.02, 0.12, L * 0.9, 0, 0.12, 0, 'b', 'deco'));
   if (!b(o, 'noSail')) {
     p.push(cyl(0.12, 2.6, 0, 2.0, 0, 'brown', 'deco', undefined, 'wood'));
-    p.push(wedge(0.08, 2.0, 1.5, 0, 2.0, -0.8, 'c', 'sail', [0, 180, 0]));
+    p.push(wedge(0.25, 2.3, 1.9, 0, 2.15, -0.95, 'c', 'sail', [0, 180, 0]));
     p.push(box(0.4, 0.25, 0.04, 0, 3.35, 0, 'red', 'deco'));
   } else p.push(box(W * 0.6, 0.8, L * 0.3, 0, 1.15, -L * 0.15, 'c', 'body'));
   return p;
@@ -539,6 +539,24 @@ export const bridge: Builder = (o) => {
     h = n(o, 'arch', 1.6),
     k = 7;
   const p: GPart[] = [];
+  if (b(o, 'lanes')) {
+    // arco-íris: 6 faixas coloridas lado a lado, cada uma em 3 pedaços de arco
+    const cols: Slot[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
+    const lw = (W * 1.3) / 6;
+    for (let l = 0; l < 6; l++)
+      for (let i = 0; i < 3; i++) {
+        const u0 = i / 3,
+          u1 = (i + 1) / 3;
+        const y0 = Math.sin(u0 * Math.PI) * h * 1.3,
+          y1 = Math.sin(u1 * Math.PI) * h * 1.3;
+        const z0 = (u0 - 0.5) * L,
+          z1 = (u1 - 0.5) * L;
+        const ang = (-Math.atan2(y1 - y0, z1 - z0) * 180) / Math.PI;
+        p.push(box(lw * 1.02, 0.5, Math.hypot(z1 - z0, y1 - y0) + 0.25, -W * 0.65 + lw * (l + 0.5), (y0 + y1) / 2 + 0.25, (z0 + z1) / 2, cols[l], 'deck', [ang, 0, 0]));
+      }
+    for (const sd of [-1, 1]) p.push(ball(1.4, 0.9, 1.4, sd * 0, 0.3, sd * L * 0.52, 'white', 'base'));
+    return p;
+  }
   for (let i = 0; i < k; i++) {
     const u0 = i / k,
       u1 = (i + 1) / k;
@@ -997,7 +1015,16 @@ export const blob: Builder = (o) => {
   if (b(o, 'horns')) for (const sd of [-1, 1]) p.push(cone(0.3, 0.5, sd * W * 0.3, H * 0.95, 0, 'b', 'deco', [0, 0, -sd * 20]));
   if (b(o, 'arms')) for (const sd of [-1, 1]) p.push(joint(cap(0.3, 0.9, sd * W * 0.55, H * 0.45, 0, 'a', 'arm', [0, 0, sd * 40]), 'hinge', 'z', 2 * sd, 25, [sd * W * 0.4, H * 0.55, 0]));
   if (b(o, 'feet')) for (const sd of [-1, 1]) p.push(ball(0.5, 0.3, 0.6, sd * W * 0.25, 0.1, 0.1, 'b', 'leg'));
-  if (b(o, 'tentacles')) for (let i = 0; i < 6; i++) p.push(joint(cap(0.3, 1.2, Math.cos(i) * W * 0.4, 0.3, Math.sin(i) * W * 0.4, 'a', 'leg', [Math.sin(i) * 40, 0, -Math.cos(i) * 40]), 'hinge', 'x', 1.5, 15, [Math.cos(i) * W * 0.3, 0.6, Math.sin(i) * W * 0.3]));
+  if (b(o, 'tentacles')) {
+    // corpo sobe; tentáculos saem para os lados, encostando no chão
+    for (const q of p) q.pos[1] += H * 0.35;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      const cx = Math.cos(a),
+        sz = Math.sin(a);
+      p.push(joint(cap(W * 0.24, W * 1.0, cx * W * 0.62, H * 0.22, sz * W * 0.62, i % 2 ? 'a' : 'b', 'leg', [sz * 65, 0, -cx * 65]), 'hinge', 'x', 1.5, 12, [cx * W * 0.35, H * 0.4, sz * W * 0.35]));
+    }
+  }
   if (b(o, 'face')) p.push(ball(W * 0.2, W * 0.2, 0.1, -W * 0.3, H * 0.48, W * 0.42, 'pink', 'deco'), ball(W * 0.2, W * 0.2, 0.1, W * 0.3, H * 0.48, W * 0.42, 'pink', 'deco'));
   return p;
 };

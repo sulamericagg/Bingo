@@ -188,6 +188,8 @@ export class Creation {
   private tTurn = 2;
   private rnd: () => number;
   private wanderYaw = 0;
+  /** onde nasceu (passeia por perto) */
+  private home = new THREE.Vector3();
   private distWheel = 0;
   readonly beh: Map<string, ObjBehavior>;
   /** controle quando alguém monta (vem do jogador) */
@@ -220,6 +222,7 @@ export class Creation {
     this.root.position.copy(o.pos);
     this.root.rotation.y = o.yaw;
     this.wanderYaw = o.yaw;
+    this.home.copy(o.pos);
     h.scene.add(this.root);
     this.mount(o.animate, o.from ?? null);
     if (!this.fixed) {
@@ -453,7 +456,10 @@ export class Creation {
       if (target) {
         want.copy(target).sub(b.p).setY(0);
         if (want.lengthSq() > 0.01) want.normalize().multiplyScalar(speed);
-      } else if (walk && !follows) {
+      } else if (walk && !follows && !this.beh.has('ride')) {
+        // passeia perto de onde nasceu (veículo de montar fica estacionado esperando você)
+        const away = Math.hypot(b.p.x - this.home.x, b.p.z - this.home.z);
+        if (away > 7) this.wanderYaw = Math.atan2(this.home.x - b.p.x, this.home.z - b.p.z);
         this.tTurn -= dt;
         if (this.tTurn <= 0 || b.hitV > 3) {
           this.tTurn = 2.5 + this.rnd() * 3.5;
