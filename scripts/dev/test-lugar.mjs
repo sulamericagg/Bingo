@@ -90,6 +90,7 @@ async function placeBloop(p, c) {
 console.log('celular (Pixel 7)');
 {
   const { p, ctx } = await open({ ...pw.devices['Pixel 7'] });
+  await p.waitForTimeout(3500);
   await shot(p, '01-inicio');
   await p.click('[data-a=play]');
   ok(await waitFor(p, () => !!document.querySelector('.lg-how')), 'tutorial aparece na 1ª fase');
@@ -188,7 +189,7 @@ console.log('tablet 800×1280');
   ok(await waitFor(p, () => !!document.querySelector('.lg-map')), 'mapa de fases');
   await p.waitForTimeout(400);
   await shot(p, '11-tablet-mapa');
-  await p.click('.lg-node.cur');
+  await p.click('.lg-node.cur', { force: true });
   ok(await waitFor(p, () => window.__lugar?.pz && window.__lugar.idx === 26), 'abre a fase atual pelo mapa');
   await p.waitForTimeout(300);
   // põe 3 Bloops certos (auto-X) e mostra os padrões

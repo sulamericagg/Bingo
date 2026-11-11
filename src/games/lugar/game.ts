@@ -15,7 +15,7 @@ import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { fmt, t } from '../../i18n';
 import { clubActive, maybeInterstitial, rewardedAvailable, showRewarded } from '../../services/ads';
 import { icon } from '../../ui/icons';
-import { notify } from '../../ui/notify';
+import { notify, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
 import { AUTO, BLOOP, Board, EMPTY, MARK } from './board';
 import { Logic, QQ, XX, nextStep, generate, hash32, type Puzzle, type Step } from './engine';
 import { hintReveal, hintText, hintTitle, hintWrongBloop, hintWrongX, type HintKind } from './hints';
@@ -136,6 +136,8 @@ class LugarGame implements MiniGameHandle {
     window.addEventListener('resize', onResize);
     this.offs.push(() => window.removeEventListener('resize', onResize));
     if (DEBUG) (window as unknown as { __lugar: unknown }).__lugar = this;
+    setNotifyAlign('center');
+    setNotifyTop(64);
     this.home();
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
@@ -275,7 +277,13 @@ class LugarGame implements MiniGameHandle {
       this.startLevel(i);
     });
     this.popBack = pushBack(() => this.home());
-    d.querySelector('.lg-node.cur')?.scrollIntoView({ block: 'center' });
+    const cur = d.querySelector('.lg-node.cur');
+    if (cur) {
+      const me = this.bloopImg(15, 'happy');
+      me.classList.add('lg-me');
+      cur.appendChild(me);
+      cur.scrollIntoView({ block: 'center' });
+    }
   }
 
   /* ============================== modos ============================== */
@@ -388,7 +396,7 @@ class LugarGame implements MiniGameHandle {
         <div class="lg-ttl"><b>${title}</b><small><i class="lg-dot" style="background:${TIER_COL[p.rating.tier]}"></i>${tierName(p.rating.tier)} · ${p.n}×${p.n}</small></div>
         <div class="lg-timer">${icon('clock', { size: 18 })}<span>0:00</span></div>
       </div>
-      <div class="lg-hearts"></div>
+      <div class="lg-meta"><div class="lg-hearts"></div><div class="lg-regs">${Array.from({ length: p.n }, (_, g) => `<i data-g="${g}" style="background:${REGION_COLORS[g % 12].fill}"></i>`).join('')}</div></div>
       <div class="lg-stage"></div>
       <div class="lg-hintcard" hidden></div>
       <div class="lg-tools">
@@ -623,7 +631,7 @@ class LugarGame implements MiniGameHandle {
   private removeBloop(c: number): void {
     this.snap();
     this.cells[c] = EMPTY;
-    this.regionsDone.delete(this.pz!.reg[c]);
+    this.syncRegions();
     sfx.remove();
     tap('light');
     this.applyAutoX();
@@ -668,6 +676,7 @@ class LugarGame implements MiniGameHandle {
         }
       if (!ok) dead.push(u);
     }
+    this.el.querySelectorAll<HTMLElement>('.lg-regs i').forEach((e) => e.classList.toggle('on', this.regionsDone.has(+e.dataset.g!)));
     b.conflictCells = conf;
     b.deadUnits = dead;
     b.dirty = true;
@@ -794,6 +803,7 @@ class LugarGame implements MiniGameHandle {
       <p>${text}</p>
       <div class="lg-row"><button class="lg-btn lg-gold lg-grow" data-a="apply">${icon('check', { size: 20 })}${h.kind === 'wrongX' ? t('lugar.hApplyX', 'Tirar o X') : h.kind === 'wrongBloop' ? t('lugar.hApplyB', 'Tirar o Bloop') : t('lugar.hApply', 'Faz pra mim')}</button><button class="lg-btn lg-ghost" data-a="ok">${t('lugar.hOk', 'Entendi')}</button></div>`;
     card.hidden = false;
+    this.layout();
     card.classList.remove('in');
     void card.offsetWidth;
     card.classList.add('in');
@@ -808,7 +818,10 @@ class LugarGame implements MiniGameHandle {
       this.board.hint = null;
       this.board.dirty = true;
     }
-    if (this.ui.hintCard) this.ui.hintCard.hidden = true;
+    if (this.ui.hintCard && !this.ui.hintCard.hidden) {
+      this.ui.hintCard.hidden = true;
+      this.layout();
+    }
   }
   private applyHint(): void {
     const h = this.hint;
@@ -1237,6 +1250,8 @@ class LugarGame implements MiniGameHandle {
     persistLugar();
     this.el.remove();
     if (DEBUG) delete (window as unknown as { __lugar?: unknown }).__lugar;
+    setNotifyAlign('left');
+    resetNotifyTop();
   }
 }
 

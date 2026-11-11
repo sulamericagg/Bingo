@@ -78,16 +78,22 @@ const CSS = `
 .lg-chtitle small{font-size:14px;opacity:.88;display:inline-flex;gap:4px;align-items:center;justify-content:center}
 .lg-mapwrap{width:min(440px,100%);border-radius:26px;border:3px solid #1d0b48;box-shadow:0 7px 0 #12053a;padding:18px 12px;background:radial-gradient(circle at 30% 20%,rgba(255,255,255,.35),transparent 50%),linear-gradient(160deg,var(--chc),var(--chd))}
 .lg-map{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px;position:relative}
-.lg-node{justify-self:center;width:62px;height:62px;border-radius:50%;border:3px solid #1d0b48;background:#fff;color:#2a0b5c;font-weight:700;font-size:21px;box-shadow:0 4px 0 #1d0b48;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;cursor:pointer;padding:0}
-.lg-node:active{transform:translateY(3px);box-shadow:0 1px 0 #1d0b48}
-.lg-node.done{background:linear-gradient(#fff6c0,#ffd84a)}
-.lg-node.cur{background:linear-gradient(#ffc7ee,#ff5cc8);color:#fff;-webkit-text-stroke:3px #1d0b48;paint-order:stroke fill;animation:lgPulse 1.3s ease-in-out infinite}
-.lg-node.locked{background:rgba(255,255,255,.45);color:#5a4a80}
+.lg-root .lg-node{justify-self:center;width:62px;height:62px;border-radius:50%;border:3px solid #1d0b48;background:#fff;color:#2a0b5c;font-weight:700;font-size:21px;box-shadow:0 4px 0 #1d0b48;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;cursor:pointer;padding:0}
+.lg-root .lg-node:active{transform:translateY(3px);box-shadow:0 1px 0 #1d0b48}
+.lg-root .lg-node.done{background:linear-gradient(#fff6c0,#ffd84a)}
+.lg-root .lg-node.cur{background:linear-gradient(#ffc7ee,#ff5cc8);color:#fff;-webkit-text-stroke:3px #1d0b48;paint-order:stroke fill;animation:lgPulse 1.3s ease-in-out infinite}
+.lg-root .lg-node.locked{background:rgba(255,255,255,.45);color:#5a4a80}
 @keyframes lgPulse{50%{transform:scale(1.1)}}
 .lg-nstars{position:absolute;bottom:-9px;display:flex;gap:1px}
 .lg-nstars i{width:13px;height:13px;background:#5a4a80;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);}
 .lg-nstars i.on{background:#ffcf2e}
 .lg-chnav{width:min(440px,100%)}
+.lg-mapov{justify-content:center}
+.lg-node .lg-me{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);pointer-events:none;animation:lgHop 1.6s cubic-bezier(.3,0,.3,1) infinite}
+.lg-map::before{content:'';position:absolute;inset:31px 12%;border:5px dashed rgba(255,255,255,.55);border-radius:40px;pointer-events:none}
+.lg-regs{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;max-width:100%}
+.lg-regs i{width:16px;height:16px;border-radius:6px;border:2.5px solid #1d0b48;opacity:.45;transform:scale(.85);transition:transform .25s cubic-bezier(.2,1.6,.4,1),opacity .2s}
+.lg-regs i.on{opacity:1;transform:scale(1.1);box-shadow:0 0 0 2px rgba(255,255,255,.7)}
 /* ---------- partida ---------- */
 .lg-play{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 10px) calc(env(safe-area-inset-bottom,0px) + 10px) calc(env(safe-area-inset-left,0px) + 10px);gap:6px}
 .lg-top{display:flex;align-items:center;gap:10px;width:100%;max-width:760px}
@@ -97,6 +103,7 @@ const CSS = `
 .lg-dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:2px solid #1d0b48}
 .lg-timer{min-width:76px;height:40px;border-radius:13px;background:rgba(16,5,44,.55);border:2px solid rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;gap:5px;font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
 .lg-hearts{display:flex;gap:6px;align-items:center;justify-content:center;min-height:38px}
+.lg-meta{display:flex;flex-direction:column;align-items:center;gap:5px}
 .lg-heart{display:inline-flex;filter:drop-shadow(0 2px 0 #1d0b48);transition:transform .2s}
 .lg-heart.off{filter:grayscale(1) brightness(.55) drop-shadow(0 2px 0 #1d0b48);transform:scale(.85)}
 .lg-heart.lost{animation:lgHeartLost .7s ease}
@@ -115,10 +122,10 @@ const CSS = `
 .lg-hinttool span{background:linear-gradient(#fff3a0,#ffcf2e 50%,#f09a00)}
 .lg-badge{position:absolute;top:-9px;right:-9px;min-width:24px;height:24px;border-radius:12px;background:#ff4f8b;border:2.5px solid #1d0b48;font-style:normal;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;color:#fff}
 .lg-badge.ad{background:#3ee07a;color:#0b3a1e}
-.lg-hintcard{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);width:min(520px,calc(100% - 20px));transform:translateX(-50%);background:linear-gradient(#fffaf0,#ffeec4);color:#2a0b5c;border:3px solid #1d0b48;border-radius:22px;box-shadow:0 6px 0 #1d0b48,0 12px 26px rgba(0,0,0,.35);padding:12px 14px;display:flex;flex-direction:column;gap:8px;z-index:12}
+.lg-hintcard{flex:none;width:min(560px,100%);background:linear-gradient(#fffaf0,#ffeec4);color:#2a0b5c;border:3px solid #1d0b48;border-radius:22px;box-shadow:0 6px 0 #1d0b48,0 12px 26px rgba(0,0,0,.35);padding:12px 14px;display:flex;flex-direction:column;gap:8px;z-index:12}
 .lg-hintcard[hidden]{display:none}
 .lg-hintcard.in{animation:lgCardIn .3s cubic-bezier(.2,1.4,.4,1)}
-@keyframes lgCardIn{from{transform:translate(-50%,30px) scale(.92);opacity:0}}
+@keyframes lgCardIn{from{transform:translateY(30px) scale(.92);opacity:0}}
 .lg-hintcard p{margin:0;font-size:15.5px;line-height:1.35;font-weight:500}
 .lg-hhead{display:flex;align-items:center;gap:8px}
 .lg-hhead b{flex:1;font-size:18px}
@@ -145,10 +152,10 @@ const CSS = `
 /* ---------- sem corações ---------- */
 .lg-sadcard{align-items:stretch;text-align:center}
 .lg-sadcard .lg-ctitle{justify-content:center}
-.lg-sadart{position:relative;height:150px;display:flex;align-items:flex-end;justify-content:center}
+.lg-sadart{position:relative;height:178px;margin-bottom:-18px;display:flex;align-items:flex-end;justify-content:center}
 .lg-sadbloop canvas{animation:lgSad 2.4s ease-in-out infinite;transform-origin:50% 90%}
 @keyframes lgSad{50%{transform:scale(1.04,.95) translateY(2px)}}
-.lg-cloud{position:absolute;top:0;left:50%;width:96px;height:34px;margin-left:-48px;background:#b4c0dc;border:3px solid #1d0b48;border-radius:20px;animation:lgCloud 3s ease-in-out infinite}
+.lg-cloud{position:absolute;top:14px;z-index:2;left:50%;width:96px;height:34px;margin-left:-48px;background:#b4c0dc;border:3px solid #1d0b48;border-radius:20px;animation:lgCloud 3s ease-in-out infinite}
 .lg-cloud::before,.lg-cloud::after{content:'';position:absolute;background:#b4c0dc;border:3px solid #1d0b48;border-bottom:0;border-radius:50% 50% 0 0}
 .lg-cloud::before{width:40px;height:26px;left:12px;top:-18px}
 .lg-cloud::after{width:30px;height:20px;left:46px;top:-12px}
@@ -173,11 +180,13 @@ const CSS = `
   .lg-logo{font-size:60px}
   .lg-ov>*{max-width:560px}
   .lg-card,.lg-modes,.lg-play-btn,.lg-home .lg-row,.lg-home .lg-ghost,.lg-maphead,.lg-mapwrap,.lg-chnav{width:min(560px,100%)}
-  .lg-node{width:78px;height:78px;font-size:25px}
+  .lg-root .lg-node{width:78px;height:78px;font-size:25px}
+  .lg-map::before{inset:39px 12%}
+  .lg-node .lg-me{bottom:68px}
+  .lg-regs i{width:20px;height:20px}
   .lg-ttl b{font-size:28px}
   .lg-tool span{width:72px;height:64px}
   .lg-tool small{font-size:14px}
-  .lg-hintcard{bottom:calc(env(safe-area-inset-bottom,0px) + 104px)}
   .lg-hintcard p{font-size:18px}
 }
 @media (max-height:640px){
