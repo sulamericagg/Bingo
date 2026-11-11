@@ -197,8 +197,8 @@ export class Creation {
     const av = this.body.angularVelocity;
     const up = this.body.quaternion.vmult(new CANNON.Vec3(0, 1, 0));
     if (up.y < -0.3) return; // de ponta-cabeça: deixa o jogador desvirar
-    av.x += (up.z * k - av.x * 7) * h;
-    av.z += (-up.x * k - av.z * 7) * h;
+    av.x += (-up.z * k - av.x * 7) * h;
+    av.z += (up.x * k - av.z * 7) * h;
   }
 
   setScale(s: number): void {

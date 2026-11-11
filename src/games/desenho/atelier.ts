@@ -645,8 +645,8 @@ export class Atelier implements Stage {
         // fica de pé e encara a direção do voo
         const q = b.quaternion;
         const up = q.vmult(new CANNON.Vec3(0, 1, 0));
-        b.angularVelocity.x += up.z * 6 * dt - b.angularVelocity.x * 2.5 * dt;
-        b.angularVelocity.z += -up.x * 6 * dt - b.angularVelocity.z * 2.5 * dt;
+        b.angularVelocity.x += -up.z * 6 * dt - b.angularVelocity.x * 2.5 * dt;
+        b.angularVelocity.z += up.x * 6 * dt - b.angularVelocity.z * 2.5 * dt;
         b.angularVelocity.y *= 1 - 1.5 * dt;
         b.wakeUp();
       }
