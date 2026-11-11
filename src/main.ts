@@ -37,6 +37,7 @@ import { registerFloresta } from './games/floresta/register';
 import { registerVoo } from './games/voo/register';
 import { registerCozinha } from './games/cozinha/register';
 import { registerCor } from './games/cor/register';
+import { registerLugar } from './games/lugar/register';
 import { registerCinema } from './cinema/register';
 import { registerCaca } from './caca/register';
 import { registerMontaLeva } from './games/montaleva/register';
@@ -109,6 +110,7 @@ async function boot(): Promise<void> {
   registerCor();
   registerCaca();
   registerMontaLeva();
+  registerLugar();
   registerPet();
   registerMirror({ getTier: () => game.quality.tier });
   registerCreatures();
