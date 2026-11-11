@@ -3,8 +3,11 @@
 Branch `wip/qa2` · 11/11/2026 · base: `claude/viral-game-apk-web-echogw` já com Mundo, Garimpo, TV, Jangada e Desastre juntados.
 
 > **Em uma frase:** os 22 jogos abrem, jogam, pausam e fecham sem travar e sem erro; o online (grupo, convite,
-> todo mundo entrando junto e duelo com pódio) funciona de ponta a ponta; corrigi 13 problemas. O que falta está
+> todo mundo entrando junto e duelo com pódio) funciona de ponta a ponta; corrigi 18 problemas. O que falta está
 > na lista ❌ abaixo, com o nome de quem cuida. Algumas coisas só dá para confirmar no celular de verdade (📱).
+>
+> **Placar dos pedidos:** ✅ 38 · ❌ 5 · 📱 15 (precisa do celular). Os 5 ❌: Desastre em 3ª pessoa e avisos repetidos
+> (agente do Desastre trabalhando), Garimpo nascendo embaixo do telhado, texto corrido na pasta do Pouso Forçado.
 
 ## 1. Como eu testei (sem precisar entender de programação)
 
@@ -39,7 +42,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | 3D em 1ª pessoa, botão de câmera no topo, retícula no centro | ❌ | Noites, Mundo, Cozinha, Garimpo, Jangada ✅; **Desastre 3D ainda começa em 3ª pessoa** (agente do Desastre) |
 | Personagem do jogador = o Bloop 2D dele | ✅ | Noites, Garimpo, Mundo (online agora usa a chave certa `mundo`) |
 | Nada flutuando/atravessando, texturas sem buraco | 📱 | não vi nada nas fotos; precisa olhar jogando de verdade |
-| Online: em grupo todo jogo entra junto, líder com coroa, convite na hora | ✅ | convite chegou em **0 s**, coroa ♛, B entrou sozinho em 3 de 4 jogos testados (Cozinha: ver ❌ abaixo) |
+| Online: em grupo todo jogo entra junto, líder com coroa, convite na hora | ✅ | convite chegou em **0 s**, coroa ♛, o amigo entrou sozinho nos 5 jogos testados (`online-*.png`) |
 | 60 FPS / tablets velhos | 📱 | no robô (CPU lenta, sem placa de vídeo) os jogos 2D ficam a ~60 e os 3D a 12–35; ver §5 |
 | Sons e música próprios, param ao sair | ✅ | ao sair de cada jogo volta a música do hub, nenhum som extra fica tocando |
 
@@ -67,13 +70,14 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | Jogo separado no hub | ✅ | carta própria "Mundo" |
 | HUD padrão (barra, corações, comida, pular) | ✅ | `hud-mundo-844x390.png` |
 | Sem o mundo antigo com HUD velho | ✅ | **corrigido**: tirei "Mundo dos Lenhadores (clássico)" da lista do Mundo |
-| Servidores: lista, um toque entra | ❌ | sem internet aparece "Sem internet agora"; em pé o botão "Criar servidor" saía da tela — **corrigido**; entrar num servidor real 📱 |
+| Servidores: lista, um toque entra | 📱 | sem internet aparece "Sem internet agora"; em pé o botão "Criar servidor" saía da tela — **corrigido**; entrar num servidor de verdade precisa de internet |
 | Colocar/quebrar, picareta, caverna, estradas, nave caindo | 📱 | abertura com a nave aparece ("Sua naveta caiu!"); o resto precisa de jogo longo |
 
 ### Garimpo Bruto
 | Pedido | | |
 |---|---|---|
 | Personagem é o Bloop do jogador; 1ª pessoa a pé | ✅ | |
+| Abertura do vovô sem deixar erro ao sair no meio | ✅ | **corrigido** (erro repetia em todos os jogos depois) |
 | Carrinho de mão não tapa a visão | ✅ | **corrigido**: antes a caçamba enchia o meio da tela; agora fica embaixo (`deep-garimpo-fp.png`) |
 | 3ª pessoa / de frente mostram o Bloop | ❌ | no começo ele nasce **embaixo do telhado** do acampamento e a câmera fica dentro do telhado vermelho (`deep-garimpo-tp.png`) — agente da abertura do Garimpo |
 | Máquinas, água, bateia, consertos | 📱 | |
@@ -127,7 +131,7 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 |---|---|---|
 | TV cheia de filmes (~100) | ✅ | 100 filmes no catálogo (`deep-tv-catalogo.png`) |
 | Contador de tempo longe da marca "Feito no Bloop World" | ✅ | contador no canto de cima, marca embaixo (`deep-tv.png`) |
-| "Criar história" deitado sem botão por cima | ✅ | **corrigido** (`deep-cinema-beats-land.png`) |
+| "Criar história" deitado sem botão por cima | ✅ | **corrigido** (`deep-cinema-beats-land.png`) e a barra da "Minha história" ficou mais baixa |
 | Textos das expressões inteiros | ✅ | **corrigido** |
 | Dublagem, IA modera, criador de música, microfone | 📱 | |
 
@@ -138,14 +142,58 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 | Tubarão aparece embaixo d'água | ✅ | **corrigido** (água funda não é mais 100 % opaca perto da jangada) — confirmar no celular 📱 |
 | Pesca e segundo andar | 📱 | |
 
-## 3. Hub
-(preenchido na rodada final — ver §6)
+## 3. Hub (412×915, 360×740 e em inglês)
+- **56 de 56** verificações certas em pé (Pixel 7): nome no topo, botão Amigos, Ajustes (narração, 4 controles de volume,
+  gráficos), Diário, Missões, Correio, Grátis (anúncio de teste fecha com o voltar), Código, Oferta, Gemas, Perfil e os
+  11 painéis da barra de baixo (Loja, Passe, Bichinho, Espelho, Casa, Criar, Social, Campeonatos, TV, Coleção, Ranking)
+  — todos abrem e fecham com o voltar do Android, sem erro.
+- 360×740 e inglês: o único "erro" era do próprio robô (cartas vizinhas do carrossel fora da tela); corrigi o robô.
+- Com grupo, os botões Votação/Pronto/Chat subiam por cima do JOGAR — **corrigido** (`online-B-grupo.png`).
 
-## 4. O que eu consertei
-Ver a tabela "Corrigidos" em `docs/QA-BUGS.md` (13 itens).
+## 4. O que eu consertei (18 itens — detalhes em `docs/QA-BUGS.md`)
+1. Botão de girar parado no topo de todo jogo 3D → só aparece se o celular não deitou.
+2. Menu da Anomalias misturado com a abertura 3D.
+3. Pouso Forçado: voltar na pasta de missão saía do jogo sem perguntar.
+4. Noites: barra de itens embaixo do analógico em 740×360.
+5. Garimpo: carrinho de mão tapando o meio da tela na 1ª pessoa; câmera "de frente" mostrando mais o Bloop.
+6. Garimpo: relógio em cima da carga ao girar; mochila encostando no pausa; avisos em cima do objetivo; 1ª picape mais barata (750).
+7. **Garimpo: sair durante a abertura do vovô deixava um erro repetindo em todos os jogos depois** (o mais grave que achei).
+8. Cava & Fala: título embaixo do X.
+9. Cinema: nomes das expressões cortados; "Fazer o filme!" e a barra da "Minha história" tapando o cartão quando deitado.
+10. Mundo: tirada a opção do mundo antigo dos Lenhadores; topo dos Servidores em pé; Bloop 2D dos amigos online com a chave certa.
+11. Jangada: dá para ver o tubarão embaixo d'água perto da jangada.
+12. Grupo: Votação/Pronto/Chat por cima do JOGAR.
+13. Pouso Forçado: 23 erros seguidos no hangar quando o celular está sem memória.
+14. Teste do servidor desatualizado (2 falhas falsas) — agora 278/278.
 
-## 5. Desempenho
-(preenchido na rodada final)
+## 5. Desempenho (CPU 4× mais lenta, gráficos no Mínimo, sem placa de vídeo)
+A máquina de teste estava muito ocupada (outros 5 agentes compilando e testando), então os números são o **pior caso**
+e servem para comparar os jogos entre si. Medido na tela de entrada de cada jogo:
 
-## 6. Rodada final
-(preenchido na rodada final)
+| Jogo | FPS | |
+|---|---|---|
+| Desastre (escolha 2D/3D) | 1 (um quadro de 4,9 s) | ❌ em obra pelo agente do Desastre |
+| Bloop Studio | 7 | ❌ |
+| Pouso Forçado (hangar) | 9 | ❌ |
+| Desenha e Vira | 13 | ❌ |
+| Cozinha | 25 | 🔶 |
+| Jangada | 28 | 🔶 |
+| Todos os outros 15 + hub | 57–60 | ✅ |
+
+Dentro da partida, sem CPU lenta: jogos 2D a ~60; 3D (Noites, Mundo, Garimpo, Cozinha) entre 12 e 35 aqui — no celular
+com placa de vídeo de verdade deve ser bem mais. **Precisa medir num tablet velho de verdade** 📱.
+
+## 6. Rodada final (o que o robô mostrou por último)
+| Teste | Resultado |
+|---|---|
+| 22 jogos abrem → jogam → pausam → saem | 21/22 na rodada cheia; o que falhou (Pouso Forçado, erro no hangar) foi corrigido e passou (4/4 na repetição) |
+| HUD sem sobreposição em 740/844/915 | ✅ em todos os jogos medidos (Pouso Forçado, Anomalias e Desenha: conferidos só por foto) |
+| Hub | 56/56 |
+| Online (2 jogadores + servidor local) | **28/28**: cadastro, amizade, grupo, convite na hora, líder com coroa, entrar junto em Queda Giratória, Cozinha, Noites, Garimpo e Cava & Fala, pódio do duelo para os dois |
+| Memória (15 aberturas) | sem vazamento de memória, canvas ou 3D; ouvintes crescem um pouco (anotado) |
+| `tsc` app e servidor, `vite build`, `i18n:check`, `test:server` (278), `test:cava` (22), Monta & Leva (200 fases) | todos verdes |
+
+## 7. Precisa testar no celular de verdade (📱)
+Rotação de verdade (o robô simula), vibração, microfone, câmera do Espelho, GPS da Caça, anúncios reais, notificações,
+desempenho em tablet velho, Noites jogando uma noite inteira, Cozinha um dia inteiro, servidores do Mundo na internet,
+dublagem e IA do Cinema.
