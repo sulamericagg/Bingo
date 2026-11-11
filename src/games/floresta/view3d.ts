@@ -31,6 +31,18 @@ import {
 
 const TAU = Math.PI * 2;
 const VIEW_R = 62;
+const COL_PLANED = new THREE.Color('#ffe2b0');
+const COL_MOON = new THREE.Color('#c8d0ff');
+const COL_WHITE = new THREE.Color('#ffffff');
+/** cores das espécies já convertidas (Color.set(string) a cada quadro custa) */
+const SP_COL = SPECIES.map((s) => ({ trunk: new THREE.Color(s.trunk), trunkDark: new THREE.Color(s.trunkDark) }));
+/** marca para envio só os primeiros n valores do atributo (instâncias usadas) */
+function dirtyRange(a: THREE.BufferAttribute, n: number): void {
+  if (n <= 0) return; // nada desenhado: nada a enviar (lista vazia = buffer inteiro)
+  a.clearUpdateRanges();
+  a.addUpdateRange(0, Math.min(n, a.array.length));
+  a.needsUpdate = true;
+}
 const MAXP = 900;
 const MAX_LOG_INST = 170;
 const HAND_CAP = 2;
@@ -381,6 +393,51 @@ class View3D implements View {
     sim.me.z = -2.5;
     this.camY = groundH(sim.me.x, sim.me.z) + EYE;
     this.resize();
+    this.warmUp();
+  }
+
+  private warm: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Carregamento sem engasgos depois: um quadro sem culling sobe geometrias/texturas e compila
+   * os shaders; as variantes raras das árvores (que só apareceriam ao rebrotar) são montadas
+   * aos poucos em segundo plano, em vez de no meio de um quadro quando entram na tela.
+   */
+  private warmUp(): void {
+    const off: THREE.Object3D[] = [];
+    const hid: THREE.Object3D[] = [];
+    for (const sc of [this.scene, this.vmScene])
+      sc.traverse((o) => {
+        if (o.frustumCulled) {
+          o.frustumCulled = false;
+          off.push(o);
+        }
+        if (!o.visible) {
+          o.visible = true;
+          hid.push(o);
+        }
+      });
+    try {
+      this.renderer.render(this.scene, this.cam);
+      this.renderer.render(this.vmScene, this.vmCam);
+    } finally {
+      for (const o of off) o.frustumCulled = true;
+      for (const o of hid) o.visible = false;
+    }
+    const todo: [number, number][] = [];
+    const seen = new Set<number>();
+    for (const tr of this.sim.trees) if (!seen.has(tr.sp)) seen.add(tr.sp);
+    for (const sp of seen) for (let r = 1; r <= 3; r++) todo.push([sp, r]);
+    const step = () => {
+      this.warm = null;
+      const t0 = performance.now();
+      while (todo.length && performance.now() - t0 < 6) {
+        const [sp, r] = todo.pop()!;
+        this.instFor(sp, r);
+      }
+      if (todo.length) this.warm = setTimeout(step, 60);
+      else void this.renderer.compileAsync?.(this.scene, this.cam).catch(() => {});
+    };
+    this.warm = setTimeout(step, 400);
   }
 
   /* ------------------------------ recursos ------------------------------ */
@@ -2617,7 +2674,7 @@ class View3D implements View {
     this.sky.position.copy(this.cam.position);
     this.stars.position.copy(this.cam.position);
     this.sunSpr.position.set(this.cam.position.x - 50, this.cam.position.y + 55, this.cam.position.z + 40);
-    (this.sunSpr.material as THREE.SpriteMaterial).color.set(BIOMES[this.biome].night ? '#c8d0ff' : '#ffffff');
+    (this.sunSpr.material as THREE.SpriteMaterial).color.copy(BIOMES[this.biome].night ? COL_MOON : COL_WHITE);
     this.sunSpr.scale.setScalar(BIOMES[this.biome].night ? 12 : 22);
     for (const c of this.clouds) {
       const ox = c.userData.ox as number;
@@ -2699,8 +2756,7 @@ class View3D implements View {
       if (st === TS.Stump || st === TS.Sapling || (st === TS.Falling && v.creak <= 0)) {
         _m.compose(_v.set(tr.x, v.gy - 0.02, tr.z), _q.setFromAxisAngle(UP, v.rotY), _s.set(1, 1, 1));
         this.stumps.setMatrixAt(ns, _m);
-        _c.set(SPECIES[tr.sp].trunkDark);
-        this.stumps.setColorAt(ns, _c);
+        this.stumps.setColorAt(ns, SP_COL[tr.sp].trunkDark);
         ns++;
       }
       if (st === TS.Falling && v.creak <= 0) continue;
@@ -2748,12 +2804,13 @@ class View3D implements View {
       const im = this.instFor(tr.sp, tr.rare);
       if (im.count < im.instanceMatrix.count) im.setMatrixAt(im.count++, _m);
     }
-    for (const im of this.treeInst.values()) im.instanceMatrix.needsUpdate = true;
+    // só a parte usada vai para a GPU (o buffer tem lugar para todas as árvores da espécie)
+    for (const im of this.treeInst.values()) dirtyRange(im.instanceMatrix, im.count * 16);
     this.stumps.count = ns;
-    this.stumps.instanceMatrix.needsUpdate = true;
-    if (this.stumps.instanceColor) this.stumps.instanceColor.needsUpdate = true;
+    dirtyRange(this.stumps.instanceMatrix, ns * 16);
+    if (this.stumps.instanceColor) dirtyRange(this.stumps.instanceColor, ns * 3);
     this.notches.count = nn;
-    this.notches.instanceMatrix.needsUpdate = true;
+    dirtyRange(this.notches.instanceMatrix, nn * 16);
   }
 
   private syncMill(dt: number): void {
@@ -2775,7 +2832,7 @@ class View3D implements View {
       for (let j = 0; j < c && n < 200; j++) {
         _m.compose(_v.set(it.x, 1.02 + j * 0.095, 0), _q.setFromAxisAngle(UP, (j % 2) * 0.08 - 0.04), _s.set(1, 1, 1));
         this.planks.setMatrixAt(n, _m);
-        this.planks.setColorAt(n, _c.set(it.planed ? '#ffe2b0' : SPECIES[it.sp].trunk));
+        this.planks.setColorAt(n, it.planed ? COL_PLANED : SP_COL[it.sp].trunk);
         n++;
       }
     }
@@ -3016,6 +3073,7 @@ class View3D implements View {
   }
 
   destroy(): void {
+    if (this.warm) clearTimeout(this.warm);
     for (const f of this.offs) f();
     this.sim.groundY = null;
     this.ui.remove();
