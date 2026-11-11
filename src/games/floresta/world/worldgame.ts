@@ -924,14 +924,14 @@ export class WorldGame {
       this.pz = p.z;
     }
     // vertical
-    const tf = W.terrainFloor(this.px, this.py + 0.6, this.pz);
+    const tf = Math.max(W.terrainFloor(this.px, this.py + 0.6, this.pz), W.extraFloor ? W.extraFloor(this.px, this.py + 0.6, this.pz) : -Infinity);
     const bf = this.mv.ground;
     let floor = tf > bf ? tf : bf;
     if (swim) floor = Math.max(floor, wl - 1.25);
     if (inAq || inLava) {
       this.vy += (c.up || c.jump ? 4 : -1.2 - this.vy) * dt * 3;
     } else this.vy -= 22 * dt;
-    if (this.vy > 0 && W.vox.dens(this.px, this.py + 1.85 + this.vy * dt, this.pz) > 0) this.vy = 0;
+    if (this.vy > 0 && (W.vox.dens(this.px, this.py + 1.85 + this.vy * dt, this.pz) > 0 || W.extraSolid?.(this.px, this.py + 1.85 + this.vy * dt, this.pz))) this.vy = 0;
     if (this.vy > 0 && W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < this.py + 1.85) this.vy = 0;
     this.py += this.vy * dt;
     this.onGround = false;
@@ -972,7 +972,7 @@ export class WorldGame {
     const ox = d > 0 ? (dx / d) * 0.32 : 0;
     const oz = d > 0 ? (dz / d) * 0.32 : 0;
     const y = this.py;
-    for (const h of [0.62, 1.15, 1.7]) if (W.vox.dens(x + ox, y + h, z + oz) > 0) return true;
+    for (const h of [0.62, 1.15, 1.7]) if (W.vox.dens(x + ox, y + h, z + oz) > 0 || W.extraSolid?.(x + ox, y + h, z + oz)) return true;
     // rampa íngreme demais (≈ 55°) num passo
     if (d > 0) {
       const f = W.terrainFloor(x + ox, y + 0.6, z + oz);

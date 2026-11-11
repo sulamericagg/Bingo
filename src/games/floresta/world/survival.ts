@@ -20,6 +20,7 @@ import { iconURL } from './itemicons';
 import { MATS } from './vox';
 import { Carts } from './rails';
 import { tntModel } from './wmodels';
+import { BLOCKS, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
 
 const DAY = 720; // s por dia inteiro
@@ -80,6 +81,10 @@ export class Sandbox implements MundoAPI {
   private placeables = new Map<string, Placeable>();
   private uiT = 0;
   private lastHeld = '';
+  /** blocos de construção (macios se fundem no chão; duros chanfrados) */
+  blocks: BlockWorld;
+  private grav = 0;
+  private dig: { x: number; y: number; z: number; t: number } | null = null;
   /** sessão online (servidores) */
   net: import('./net').NetSession | null = null;
 
@@ -95,6 +100,27 @@ export class Sandbox implements MundoAPI {
       document.head.appendChild(s);
     }
     this.builds = new Builds(g.scene, g.world.solids, g.opts.tier >= 2 ? 4 : 2);
+    this.blocks = new BlockWorld({ parent: g.scene, tier: g.opts.tier as 0 | 1 | 2 | 3, terrain: { density: (x: number, y: number, z: number) => g.world.vox.dens(x, y, z) } });
+    // itens dos blocos (os que o catálogo ainda não tem)
+    for (const b of BLOCKS) {
+      if (!b.num || ITEM.has(b.item)) continue;
+      const id = b.item;
+      this.registerItem({ id, name: b.name, cat: 'const', stack: b.stack || 64, ic: { s: 'rock', c: '#a8a4b0' }, iconUrl: () => blockIconURL(blockForItem(id)?.id ?? id, 64) });
+    }
+    const solidAt = (x: number, y: number, z: number) => {
+      const n = this.blocks.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+      return n > 0 && blockDef(n).solid;
+    };
+    g.world.extraSolid = solidAt;
+    g.world.extraFloor = (x, y, z) => {
+      const ix = Math.floor(x);
+      const iz = Math.floor(z);
+      for (let iy = Math.floor(y); iy > y - 4; iy--) {
+        const n = this.blocks.getBlock(ix, iy, iz);
+        if (n > 0 && blockDef(n).solid && iy + 1 <= y + 0.01) return iy + 1;
+      }
+      return -Infinity;
+    };
     this.carts = new Carts(this);
     this.spawner = new Spawner(g.opts.tier <= 1 ? 6 : 10);
     const hudEl = g.hud.el;
@@ -192,7 +218,8 @@ export class Sandbox implements MundoAPI {
     return this.g.world.floorAt(x, y, z);
   }
   dens(x: number, y: number, z: number): number {
-    return this.g.world.vox.dens(x, y, z);
+    const d = this.g.world.vox.dens(x, y, z);
+    return d <= 0 && this.g.world.extraSolid?.(x, y, z) ? 0.5 : d;
   }
   matAt(x: number, y: number, z: number): number {
     return this.g.world.vox.matAt(x, y, z);
@@ -395,6 +422,13 @@ export class Sandbox implements MundoAPI {
     if (!this.net || this.net.isHost) this.spawner.update(dt, this);
     this.net?.tick(dt);
     this.carts.update(dt);
+    this.blocks.focus.set(g.px, g.py, g.pz);
+    this.blocks.remesh();
+    this.grav -= dt;
+    if (this.grav <= 0) {
+      this.grav = 0.15;
+      this.blocks.tickGravity();
+    }
     const dark = Math.max(1 - g.dayLight, g.under);
     this.builds.update(dt, g.px, g.py, g.pz, Math.min(1, dark * 1.3));
     if (g.driving < 0 && !this.carts.riding) this.aim(dt);
@@ -685,6 +719,61 @@ export class Sandbox implements MundoAPI {
       if (kind) this.wear();
       return;
     }
+    // 1b) bloco na mira: quebrar com o tempo certo da ferramenta
+    const cpos = g.camera.position;
+    g.camera.getWorldDirection(_v);
+    const bh = this.blocks.pick(cpos.x, cpos.y, cpos.z, _v.x, _v.y, _v.z, 5);
+    const td = g.world.vox.ray(cpos.x, cpos.y, cpos.z, _v.x, _v.y, _v.z, 5);
+    const blockFirst = bh && (td < 0 || bh.dist <= td + 0.05);
+    const bplace = it && !it.place ? blockForItem(it.id) : null;
+    if (bplace && (blockFirst || td >= 0)) {
+      // colocar bloco: célula + normal (ou em cima do chão mirado)
+      let bx: number, by: number, bz: number;
+      if (blockFirst) {
+        bx = bh!.x + bh!.nx;
+        by = bh!.y + bh!.ny;
+        bz = bh!.z + bh!.nz;
+      } else {
+        bx = Math.floor(cpos.x + _v.x * (td - 0.3));
+        by = Math.floor(cpos.y + _v.y * (td - 0.3));
+        bz = Math.floor(cpos.z + _v.z * (td - 0.3));
+      }
+      if (Math.abs(bx + 0.5 - g.px) < 0.9 && Math.abs(bz + 0.5 - g.pz) < 0.9 && by >= Math.floor(g.py) - 0 && by <= Math.floor(g.py + 1.8)) return;
+      if (this.blocks.getBlock(bx, by, bz) || by > 126) return;
+      this.useCd = 0.22;
+      const rot = (Math.round(-g.yaw / (Math.PI / 2)) + 8) & 3;
+      this.setBlock(bx, by, bz, bplace.num, rot);
+      if (this.mode !== 'criativo') this.inv.useHeld();
+      g.swing = 1;
+      tap('light');
+      audio.tick(2);
+      return;
+    }
+    if (blockFirst && !it?.place) {
+      const tool = kind === 'pick' || kind === 'axe' || kind === 'shovel' ? kind : 'mao';
+      const bi = breakInfo(bh!.num, tool, creative ? 99 : tier);
+      g.swing = 1;
+      this.useCd = 0.25;
+      if (!bi.can) {
+        this.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
+        this.useCd = 0.6;
+        return;
+      }
+      const d = this.dig && this.dig.x === bh!.x && this.dig.y === bh!.y && this.dig.z === bh!.z ? this.dig : (this.dig = { x: bh!.x, y: bh!.y, z: bh!.z, t: 0 });
+      d.t += creative ? 99 : 0.25;
+      const def = blockDef(bh!.num);
+      this.burst(3, bh!.x + 0.5, bh!.y + 0.5, bh!.z + 0.5, '#d8c8b0', 2);
+      audio.tick(0);
+      if (d.t >= bi.seconds) {
+        this.dig = null;
+        this.setBlock(bh!.x, bh!.y, bh!.z, 0, 0);
+        if (!creative && bi.drops) for (const dr of rollDrops(bh!.num)) this.give(dr.id, dr.n);
+        this.burst(10, bh!.x + 0.5, bh!.y + 0.5, bh!.z + 0.5, '#c8b8a0', 3.5);
+        if (kind) this.wear();
+        void def;
+      }
+      return;
+    }
     // 2) colocar peça / objeto
     if (it?.place && PDEFS.has(it.place)) {
       this.useCd = 0.25;
@@ -790,6 +879,14 @@ export class Sandbox implements MundoAPI {
       if (kind) this.wear();
     }
   }
+
+  /** muda um bloco (e avisa a rede) */
+  setBlock(x: number, y: number, z: number, num: number, rot: number): void {
+    this.blocks.setBlock(x, y, z, num, rot);
+    this.blocksDirty = true;
+    if (this.net && !this.net.applying) this.net.send({ t: 'op', op: { k: 'b', x, y, z, n: num, r: rot } });
+  }
+  blocksDirty = false;
 
   private wear(): void {
     const st = this.inv.held();
@@ -1001,6 +1098,7 @@ export class Sandbox implements MundoAPI {
       spawn: this.spawn,
       b: this.builds.toJSON(),
       carts: this.carts.toJSON(),
+      blk: this.encodeBlocks(),
       ext,
     };
   }
@@ -1015,12 +1113,40 @@ export class Sandbox implements MundoAPI {
     this.spawn = Array.isArray(o.spawn) ? (o.spawn as [number, number, number]) : null;
     this.builds.load(o.b);
     this.carts.load(o.carts);
+    if (o.blk) this.decodeBlocks(o.blk);
     if (o.ext) this.bus.emit('load', o.ext);
     this.hot.refresh();
     return true;
   }
 
+  private encodeBlocks(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [k, c] of this.blocks.store.chunks) {
+      const b = BlockStore.encode(c);
+      if (!b) continue;
+      let s = '';
+      for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      out[k] = btoa(s);
+    }
+    return out;
+  }
+  private decodeBlocks(o: Record<string, string>): void {
+    for (const k of Object.keys(o)) {
+      const p = k.split(',').map(Number);
+      if (p.length !== 3 || p.some((v) => !Number.isFinite(v))) continue;
+      try {
+        const s = atob(o[k]);
+        const b = new Uint8Array(s.length);
+        for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+        this.blocks.loadChunk(p[0], p[1], p[2], b);
+      } catch {
+        /* */
+      }
+    }
+  }
+
   dispose(): void {
+    this.blocks.dispose();
     for (const e of this.ents) e.dispose(this);
     this.ents = [];
     this.builds.dispose();

@@ -45,6 +45,8 @@ export interface ItemDef {
   crop?: string;
   /** veículo (índice VDEFS) que o kit monta */
   veh?: number;
+  /** ícone pronto (módulos de conteúdo, ex.: blocos) */
+  iconUrl?: () => string;
 }
 
 export const ITEMS: ItemDef[] = [];

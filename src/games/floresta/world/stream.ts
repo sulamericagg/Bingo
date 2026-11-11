@@ -201,8 +201,12 @@ export class World {
   floorAt(x: number, y: number, z: number): number {
     const t = this.terrainFloor(x, y, z);
     const b = this.solids.groundAt(x, z, y);
-    return b > t ? b : t;
+    const e = this.extraFloor ? this.extraFloor(x, y, z) : -Infinity;
+    return Math.max(t, b, e);
   }
+  /** blocos de construção (módulo de blocos): topo sólido sob y e teste de célula sólida */
+  extraFloor: ((x: number, y: number, z: number) => number) | null = null;
+  extraSolid: ((x: number, y: number, z: number) => boolean) | null = null;
   /** só o terreno (com volume escavado, se houver) */
   terrainFloor(x: number, y: number, z: number): number {
     const c = this.chunkAt(x, z);

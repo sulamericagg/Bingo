@@ -14,6 +14,11 @@ export function iconURL(id: string): string {
   if (u) return u;
   const d = ITEM.get(id);
   if (!d) return '';
+  if (d.iconUrl) {
+    u = d.iconUrl();
+    if (u) cache.set(id, u);
+    return u;
+  }
   if (!cv) {
     cv = document.createElement('canvas');
     cv.width = cv.height = 64;

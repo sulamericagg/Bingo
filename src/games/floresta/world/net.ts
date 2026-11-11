@@ -351,6 +351,8 @@ export class NetSession {
           if (!a) this.pend.set(k, (a = []));
           a.push(op);
         }
+      } else if (op.k === 'b') {
+        sb.blocks.setBlock(+op.x! | 0, +op.y! | 0, +op.z! | 0, +op.n! | 0, +op.r! | 0);
       } else if (op.k === 'pa') {
         const p = op.p as number[];
         if (!sb.builds.byUid(+op.u!)) sb.builds.add(String(op.i), p[0], p[1], p[2], p[3], +op.u!);
