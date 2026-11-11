@@ -269,8 +269,8 @@ export function playIntro(g: WorldGame): void {
   skip.style.cssText = 'position:absolute;right:calc(max(env(safe-area-inset-right,0px),16px) + 4px);top:calc(9vh + 8px);z-index:21;min-height:34px;font-size:13px;padding:4px 12px;pointer-events:auto';
   g.root.append(bars, flash, skip);
   // posição final do jogador: saindo da escotilha, ao lado dos destroços
-  const outX = cx - dx * 4.2 + rx * 1.5;
-  const outZ = cz - dz * 4.2 + rz * 1.5;
+  const outX = cx - dx * 6.5 + rx * 1.5;
+  const outZ = cz - dz * 6.5 + rz * 1.5;
   const camPos = new THREE.Vector3(g.px - fx * 2 + rx * 2.5, W.floorAt(g.px, 200, g.pz) + 2.2, g.pz - fz * 2 + rz * 2.5);
   const T_FALL = 4.2;
   let T = 0;

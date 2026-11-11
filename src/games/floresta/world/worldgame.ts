@@ -388,7 +388,7 @@ export class WorldGame {
       const c = this.world.gen.nearestCamp(x, z, 24);
       if (c && Math.abs(x - (c.x + 1)) < 10 + r && Math.abs(z - c.z) < 5 + r && y > this.world.baseAt(c.x, c.z) - 6) return true;
       const w = this.save.wreck;
-      return !!w && (x - w[0]) ** 2 + (z - w[2]) ** 2 < (5.5 + r) ** 2 && y > w[1] - 5;
+      return !!w && (x - w[0]) ** 2 + (z - w[2]) ** 2 < (3.8 + r) ** 2 && y > w[1] - 5;
     };
     this.world.vox.onEditChunk = (c) => {
       this.phys.touchChunk(c);
@@ -486,7 +486,12 @@ export class WorldGame {
         // sem carrinho surgindo ao lado de quem entra (o kit inicial fica na mochila)
         this.save.vehPlaced = true;
         this.hud.addNet(() => void import('./net').then((n) => n.inviteFriends(opts.net!, root)));
-        void import('./mini').then((mm) => mm.startMini(this, opts.net!));
+        void import('./mini').then((mm) => {
+          mm.startMini(this, opts.net!);
+          // banner do minijogo: abre 3–4 s quando muda e recolhe para um ícone (mesmo padrão do objetivo)
+          const ban = this.hud.el.querySelector<HTMLElement>('.mg-ban');
+          if (ban) this.hud.collapsible(ban);
+        });
       }
       this.hud.el.classList.add('fw-sandbox');
       this.hud.onHotkey = (i) => this.sb?.select(i);
