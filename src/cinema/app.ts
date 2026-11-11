@@ -27,6 +27,7 @@ import { startTutorial, stopTutorial, tutEvent } from './tutorial';
 import { presetById } from './data';
 import { boardDetached } from './board';
 import type { EasyBoard } from './easy';
+import { onRemix, remixProject, takeRemix } from './tv-official';
 
 const FIRST_KEY = 'bw-cin-easy-first';
 
@@ -59,6 +60,8 @@ class CinemaApp {
   private thumb3d = new Map<string, HTMLCanvasElement>();
   lastExport: ExportResult | null = null;
   private easy: EasyBoard | null = null;
+  /** abriu para um remix da TV: não abre o 1º uso automático */
+  noAuto = false;
 
   constructor(
     root: HTMLElement,
@@ -70,6 +73,7 @@ class CinemaApp {
     this.el.className = 'cin-root';
     root.appendChild(this.el);
     void cleanupShared();
+    onRemix((id) => void this.openRemix(id));
     if (location.search.includes('debug')) (window as unknown as { __cinema: unknown }).__cinema = { app: this, S, TEMPLATES, probeDuration, mutate, setTime, gotoShot };
   }
 
@@ -176,7 +180,7 @@ class CinemaApp {
       else if (a === 'import') this.importProject(list.length);
     };
     // 1º uso: já abre a escolha do começo (história de 2 cenas em 2 toques)
-    if (first && !list.length) void this.createEasy(0, true);
+    if (first && !list.length && !this.noAuto) void this.createEasy(0, true);
   }
 
   /* ---------------------------- modo fácil (quadro de cenas) ---------------------------- */
@@ -288,6 +292,17 @@ class CinemaApp {
       this.renderPanel();
     }
     this.resize();
+  }
+
+  /** "Remixar" (TV Bloop): cópia do filme do Estúdio Bloop, salva como filme seu e aberta no editor. */
+  async openRemix(id: string): Promise<void> {
+    const list = await listProjects();
+    if (!(await this.roomForProject(list.length))) return;
+    const p = parseProject(await remixProject(id, uid('pj')));
+    if (!p || !this.alive) return;
+    await saveProject(p);
+    notify(t('tv.remixed', 'Cópia criada! Mude o que quiser: falas, personagens, música...'), { kind: 'good', icon: 'check' });
+    this.openAny(p);
   }
 
   private async roomForProject(n: number): Promise<boolean> {
@@ -1085,6 +1100,7 @@ class CinemaApp {
 
   destroy(): void {
     this.alive = false;
+    onRemix(null);
     void cleanupShared();
     if (this.cv) void flushSave();
     void this.easy?.flush();
@@ -1103,7 +1119,10 @@ function projCard(m: ProjectMeta): string {
 
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const app = new CinemaApp(root, exit);
+  const remix = takeRemix();
+  app.noAuto = !!remix;
   await app.home();
+  if (remix) void app.openRemix(remix);
   return {
     destroy: () => app.destroy(),
     pause: () => app.pause(),

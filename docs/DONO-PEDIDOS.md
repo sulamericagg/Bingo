@@ -71,6 +71,9 @@ no jogo real e marca ✅ / ❌ com print. Regras gerais valem para TODOS os jogo
 ## Cinema / TV
 - Modo fácil, dublagem, IA modera; TV cheia de filmes (~100) com música; criador de música; microfone no
   "escreva sua historinha".
+  - Feito (wip/tvfill): 100 filmes do Estúdio Bloop (2D/3D, trilha criada, miniaturas, Remixar, catálogo, grade offline);
+    "Criar música" (Música no modo fácil / aba Música); 🎤 Abc (ditado) em cada fala do "Criar história", na História
+    Mágica e na fala do modo fácil; música do hub pausa na TV. Ver docs/LOJA-TV.md → Estúdio Bloop.
 
 ## Jangada Bloop
 - Novo; testar pesca e segundo andar (não testados).

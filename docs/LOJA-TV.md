@@ -79,11 +79,37 @@ Entrega: o acumulado vira um **presente pessoal no Correio** (`AdminHub.pgifts`)
 recompensa). Enquanto não for pego, novas moedas da mesma origem somam no mesmo presente. O `sync` do jogo devolve esses
 presentes junto com os do painel; o `claim` pega de forma atômica (dois aparelhos não recebem em dobro).
 
+## Estúdio Bloop (filmes oficiais da TV)
+
+100 filmes curtos (30–90 s, 2D e 3D, 10 gêneros incluindo "Como fazer" — tutoriais do Cinema), com título, gênero,
+etiquetas, miniatura e **trilha criada** (padrão do "Criar música", sintetizado na hora). São **dados de projeto**, não vídeo.
+
+- **Roteiros**: `src/cinema/tvfilms/` — 27 escritos à mão (`films-*.ts`) + 73 variações de 8 moldes (`variations.ts`,
+  cada uma com elenco, lugar, objeto, piadas e final próprios). Mini-linguagem de batidas em `tvfilms/dsl.ts`; o gerador
+  recusa id/título repetido, cenário desconhecido, personagens sobrepostos, fala > 120 letras, duração fora de 30–90 s e
+  textos parecidos demais (Jaccard > 40%).
+- **Gerar** (depois de mudar roteiros): `node scripts/tv/gen-films.mjs` → `shared/tv-films.json` (catálogo completo,
+  ~1 MB, ~95 KB gzip, chunk carregado sob demanda pelo app) + `shared/tv-official.ts` (índice id/título/duração que o
+  Worker usa). `--check` falha se estiver desatualizado. Miniaturas: `npx vite --port 4477 &` e
+  `node scripts/tv/thumbs.mjs http://localhost:4477 [--all]` → `public/tv/thumbs/<id>.webp` (256×144, ~5 KB cada).
+  Revisão visual: `scripts/dev/tvfilms.html?all=1&k=0.4` (um quadro por filme) ou `?sheet=<id>` (folha de contato).
+- **Na grade**: o `TvChannel` intercala oficiais e aprovados das crianças — depois de um oficial, a chance de um filme de
+  criança é `aprovados/12` (12 ou mais = alterna um a um); nunca dois de criança seguidos. Oficiais em rodízio (os que
+  passaram há mais tempo, tabela `opl`). Votos nos oficiais contam (sem moedas); não há denúncia neles.
+- **Nada para rodar depois do deploy**: os oficiais vêm no código do Worker e no app (sem seed, sem KV). Mudou a lista
+  numa versão nova? Os que saíram somem da grade sozinhos.
+- **App**: o filme oficial é desenhado do catálogo embutido (não baixa nada). Sem internet a TV continua com uma grade
+  local só dos oficiais (mesma sequência em todos os aparelhos). **🎞️ Todos** abre o catálogo (gêneros + miniaturas).
+  **🎨 Remixar** fecha a TV e abre uma cópia (id novo, "(remix)") no Cinema — abre o Cinema se precisar.
+- Textos dos filmes oficiais: só pt-BR por enquanto (a interface em volta está nos 12 idiomas).
+
 ## TV Bloop: sincronização
 
 `TvChannel` (instância `main`) guarda a grade: sempre 4 filmes à frente, com `start` em ms do **relógio do servidor** e 4 s de
 vinheta entre eles. Sorteio do próximo: peso `(1 + votos)^0.8`, ×2 se aprovado há menos de 3 dias, o último nunca repete
 (se houver outro) e os 5 últimos valem 15%. Canal parado (ninguém pediu a grade por um tempo) recomeça 2 s depois do pedido.
+
+Enquanto a TV está aberta a música do hub fica pausada (`music.pause()`/`resume()`).
 
 O app (`src/cinema/tv.ts`) pede `GET /api/tv/now`, calcula a diferença de relógio (`now − meio da ida e volta`), baixa o filme
 (`GET /api/tv/film`), decodifica as vozes e desenha com o `Renderer` do Cinema no instante `agora − start`. O áudio
@@ -124,7 +150,7 @@ Rotas de moderação (`/api/admin/ugc/*`) e de moderadores: `docs/PAINEL-ADMIN.m
 | KV `ugc:f:<id>` | filme `{ project, clips }` (≤ 3 MB; ids `tv_<id do projeto>`) |
 | KV `ugc:fm:<id>` | relatório da IA (transcrições, trechos achados, veredito) — só o painel lê |
 | DO `UgcHub` (`hub`) | `items` (metadados, estado, contadores, miniaturas), `likes`, `favs`, `uses`, `reports`, `pubs`, `earn`, `earn_day`, `scores`, `ubans` |
-| DO `TvChannel` (`main`) | `films`, `votes`, `vday`, `sched` |
+| DO `TvChannel` (`main`) | `films`, `votes`, `vday`, `sched`, `opl` (rodízio dos oficiais) |
 | DO `AdminHub` (`hub`) | `pgifts` (Correio pessoal), `mods` (moderadores) |
 
 Migração: `v7-loja-tv` (`new_sqlite_classes: ["UgcHub", "TvChannel"]`). R2 não é usado (ainda): se os filmes crescerem,

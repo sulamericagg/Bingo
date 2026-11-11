@@ -22,7 +22,7 @@ import { apiBase } from '../services/leaderboard';
 import { getPlayer } from '../services/online';
 import { isPro } from './gates';
 import { menu } from './sheets';
-import { listenOnce, speechAvailable, stopListening } from './speech';
+import { dictate, dictating, dictationAvailable, stopDictation } from './dictate';
 import { offlineStory } from './storygen';
 
 export const PRO_DAILY = 10;
@@ -105,7 +105,7 @@ export function magicFlow(host: HTMLElement): Promise<StorySpec | null> {
     const finish = (r: StorySpec | null) => {
       if (finished) return;
       finished = true;
-      stopListening();
+      stopDictation();
       pop();
       el.remove();
       resolve(r);
@@ -128,14 +128,14 @@ export function magicFlow(host: HTMLElement): Promise<StorySpec | null> {
     host.appendChild(el);
     const ta = el.querySelector<HTMLTextAreaElement>('textarea')!;
     const talk = el.querySelector<HTMLButtonElement>('[data-k="talk"]')!;
-    void speechAvailable().then((ok) => (talk.hidden = !ok));
+    void dictationAvailable().then((ok) => (talk.hidden = !ok));
     const setBusy = (on: boolean) => {
       busy = on;
       el.querySelector<HTMLElement>('.magic-busy')!.hidden = !on;
     };
     el.addEventListener('click', async (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-k]');
-      if (!b || busy) return;
+      if (!b || (busy && b.dataset.k !== 'talk')) return;
       const k = b.dataset.k;
       if (k === 'back') return finish(null);
       if (k === 'ex') {
@@ -143,14 +143,16 @@ export function magicFlow(host: HTMLElement): Promise<StorySpec | null> {
         return;
       }
       if (k === 'talk') {
+        if (dictating()) return stopDictation();
         talk.classList.add('rec');
         talk.querySelector('span')!.textContent = t('cin.magic.listening', 'Estou ouvindo...');
-        const r = await listenOnce((s) => (ta.value = s), t('cin.magic.talk', 'Toque e conte sua ideia'));
+        const r = await dictate({ onText: (s) => (ta.value = s.slice(0, 200)), onLevel: (v) => talk.style.setProperty('--l', v.toFixed(2)) });
         talk.classList.remove('rec');
         talk.querySelector('span')!.textContent = t('cin.magic.talk', 'Toque e conte sua ideia');
         if ('text' in r) ta.value = r.text.slice(0, 200);
         else if (r.error === 'denied') notify(t('cin.rec.denied', 'Sem permissão do microfone. Libere nas configurações do aparelho.'), { kind: 'warn', icon: 'warning' });
-        else notify(t('cin.magic.noHear', 'Não ouvi direito. Tente de novo ou escreva!'), { icon: 'sound' });
+        else if (r.error === 'unsupported') notify(t('cin.easy.noStt', 'Este aparelho não transforma voz em texto. Escreva com o teclado!'), { kind: 'warn' });
+        else if (r.error !== 'busy') notify(t('cin.magic.noHear', 'Não ouvi direito. Tente de novo ou escreva!'), { icon: 'sound' });
         return;
       }
       if (k !== 'go') return;
