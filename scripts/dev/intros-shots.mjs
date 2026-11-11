@@ -84,7 +84,7 @@ const FLOW = {
   jangada: { sel: '[data-m=new]', ok: () => !!document.querySelector('.jg-gl') },
   noites: { sel: '[data-m=solo]', ok: () => !!document.querySelector('canvas') },
   cavafala: { sel: '[data-m=restore]', ok: () => !!document.querySelector('.cf-root canvas, canvas') },
-  anomalias: { sel: '[data-intro-start]', ok: () => !!document.querySelector('canvas') },
+  anomalias: { pre: '[data-mode=turno]', sel: '[data-play]', ok: () => !!document.querySelector('canvas') },
   montaleva: { sel: '[data-a=play]', ok: () => !!document.querySelector('.ml-root') },
 };
 if (process.argv.includes('--flow'))
@@ -97,8 +97,11 @@ if (process.argv.includes('--flow'))
     await p.goto(`http://127.0.0.1:${PORT}/scripts/dev/intros.html?game=${g}&intro=1&debug`);
     await p.waitForFunction(() => document.title === 'ready', null, { timeout: 90000 });
     await p.waitForTimeout(1500);
-    const sel = (await p.evaluate(() => window.__introSel)) || f.sel;
-    await p.click(sel, { timeout: 20000 });
+    if (f.pre) {
+      await p.click(f.pre, { timeout: 20000 });
+      await p.waitForTimeout(800);
+    }
+    await p.click(f.sel, { timeout: 20000 });
     await p.waitForFunction(() => window.__cine && window.__cine.playing, null, { timeout: 60000 });
     await p.waitForTimeout(2500);
     await p.screenshot({ path: `${OUT}/${g}-flow-1-intro.png` });

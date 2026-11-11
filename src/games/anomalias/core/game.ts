@@ -27,6 +27,7 @@ import type { RResult } from '../modes/recepcao/data';
 import { Shift } from './shift';
 import { esc, hashStr } from './util';
 import { setVoiceOn, stopVoice } from './voice';
+import { introGate } from '../../../3d/cine/gate';
 
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new AnomaliasGame(root, exit);
@@ -367,6 +368,9 @@ ${this.subTop(t('ano.mode.turno', 'Turno da noite'), t('ano.mode.turnoSub', 'Ach
 
   /* ------------------------------ turno ------------------------------ */
   async play(mapId: string, night: number, seedOverride?: number): Promise<void> {
+    // abertura (docs/INTROS.md): só no primeiro turno
+    await introGate('anomalias', () => import('../intro/cinematic').then((m) => m.playIntro(this.wrap)));
+    if (this.destroyed) return;
     this.menu?.remove();
     this.menu = null;
     this.endShift();
