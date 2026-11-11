@@ -12,6 +12,7 @@ import { dzIcon } from './icons';
 import { partyRoomFor } from '../../party/contract';
 import { loadMode, MODE_KEY as DIFF_KEY, type DzMode } from './tuning';
 import { openPedia, pediaCount } from './roulette';
+import { disasterIntro } from './intro';
 
 const MODE_KEY = 'bo-disaster-mode';
 
@@ -81,6 +82,11 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
     }
     pick?.remove();
     pick = null;
+    // abertura (1ª partida, fora do grupo): src/games/disaster/intro
+    if (disasterIntro.due() && !partyRoomFor('disaster')) {
+      await disasterIntro.once(root);
+      if (dead) return;
+    }
     try {
       if (mode === '3d') {
         const m = await import('./d3/game3d');

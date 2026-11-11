@@ -2,6 +2,7 @@
  *  FÁBRICA ESTELAR — entrada do jogo (carregada sob demanda).
  *  Saguão: Partida versus | Minha Fábrica.
  * ============================================================ */
+import { tycoonIntro } from './intro';
 import { audio } from '../../core/audio';
 import { QualityGovernor } from '../../core/quality';
 import type { MiniGameHandle } from '../../hub/registry';
@@ -100,7 +101,9 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
       audio.unlock();
       audio.click();
       close();
-      child = startIdle(root, showLobby, quality);
+      void tycoonIntro.once(root).then(() => {
+        if (!dead) child = startIdle(root, showLobby, quality);
+      });
     });
     ov.querySelector('[data-a=exit]')!.addEventListener('click', () => {
       audio.click();
@@ -110,6 +113,13 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
   }
 
   function playMatch(): void {
+    // abertura (1ª partida): src/games/tycoon/intro
+    if (tycoonIntro.due()) {
+      void tycoonIntro.once(root).then(() => {
+        if (!dead) playMatch();
+      });
+      return;
+    }
     inMatch = true;
     child = startMatch(root, { diff: tycoonSave().diff, onExit: showLobby, onAgain: playMatch }, quality);
   }

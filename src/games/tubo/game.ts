@@ -6,6 +6,7 @@
  * Carregado sob demanda pelo hub (register.ts → launch()).
  * Performance: sprites dos anéis em pool, partículas em arrays tipados, nada alocado por frame.
  */
+import { tuboIntro } from './intro';
 import { celebrateRecord } from '../../ui/record';
 import './tubo.css';
 import { t, fmt } from '../../i18n';
@@ -518,6 +519,11 @@ class TuboGame implements MiniGameHandle {
 
   private onTap(): void {
     audio.unlock();
+    // abertura (1º toque para cair, fora do duelo): src/games/tubo/intro — o próximo toque começa
+    if (this.mode === 'ready' && !this.duel && tuboIntro.due()) {
+      void tuboIntro.once(this.root);
+      return;
+    }
     if (this.mode === 'ready') {
       this.mode = 'hop';
       this.startedAt = performance.now();

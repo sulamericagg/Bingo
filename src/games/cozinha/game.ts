@@ -3,6 +3,7 @@
  *  Fluxo: escolher gráficos (2D/3D) → restaurante (saguão) →
  *  turno (dia) → resultado → melhorias → próximo dia … (infinito).
  * ============================================================ */
+import { cozinhaIntro } from './intro';
 import { audio } from '../../core/audio';
 import { pushBack } from '../../core/back';
 import { addCoins } from '../../core/economy';
@@ -503,6 +504,11 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   async function startDay(cfg: HostCfg, client: boolean): Promise<void> {
     clear();
     net.onChange = null;
+    // abertura (1º turno, só jogando sozinho): src/games/cozinha/intro
+    if (!client && !net.online && cozinhaIntro.due()) {
+      await cozinhaIntro.once(root);
+      if (dead) return;
+    }
     const lv: Level | null = (cfg.lv ?? 0) > 0 ? level(cfg.lv!) : cfg.lv === -1 ? dailyLevel() : null;
     const opts = { day: lv ? Math.max(1, lv.n) : cfg.day, seed: lv ? lv.seed : cfg.seed, ups: cfg.ups, packs: cfg.packs, crew: cfg.crew, portrait: cfg.portrait, client, level: lv ?? undefined } as ConstructorParameters<typeof Sim>[0];
     const forceTheme = qs.get('cztheme') as Theme | null;
