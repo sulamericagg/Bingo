@@ -27,6 +27,10 @@ export interface Input {
   r: boolean;
   j: boolean;
   u: boolean;
+  /** apertou pular desde o último passo (borda; consumida pela física) */
+  tap?: boolean;
+  /** joystick para cima: subir escada */
+  climb?: boolean;
 }
 
 export interface Bot {
@@ -57,6 +61,8 @@ export interface Player {
   coyote: number;
   /** buffer de pulo (s) */
   jbuf: number;
+  /** pulo recém-iniciado conta como segurado (s) */
+  jhold: number;
   /** recarga do "tum" de objeto leve caindo (s) */
   bonk: number;
   /** quanto tempo aguentou no desastre antes de cair (s) */
@@ -107,12 +113,20 @@ export const R = 13; // raio do Bloop em unidades do mundo
 const GRAV = 1700;
 const JUMP = 610;
 const RUN = 205;
+/** coyote time: ainda pula até 100 ms depois de sair da beirada */
+const COYOTE = 0.1;
+/** buffer: apertou até 120 ms antes de encostar no chão → pula ao encostar */
+const JUMP_BUFFER = 0.12;
+/** toque rápido conta como segurado por este tempo (altura mínima do pulo) */
+const MIN_HOLD = 0.09;
 const BOT_NAMES = ['Pipoca', 'Jujuba', 'Tico', 'Nina', 'Biscoito', 'Lulu', 'Zeca', 'Mimi', 'Tuca', 'Fofura', 'Dudu', 'Bolacha', 'Pingo', 'Teca'];
 const MAX_STRIKES = 24;
 /** maior subpasso de física (s) */
 const STEP = 1 / 60;
 /** maior intervalo simulado por quadro (s) — engasgos maiores viram câmera lenta */
 const MAX_FRAME = 0.1;
+/** máximo de subpassos por quadro */
+const MAX_SUBSTEPS = 6;
 const LS_KEY = 'bo-disaster';
 
 interface Progress {
@@ -248,6 +262,10 @@ export class DisasterGame implements MiniGameHandle {
     this.joinOnline();
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
+    this.beat = performance.now();
+    const wd = window.setInterval(this.watchdog, 1000);
+    this.offs.push(() => clearInterval(wd));
+    if (/[?&]debug/.test(location.search)) (window as unknown as { __dz?: DisasterGame }).__dz = this;
   }
 
   /* ------------------------- qualidade/tamanho ------------------------- */
@@ -323,6 +341,12 @@ export class DisasterGame implements MiniGameHandle {
     this.keys.l = this.keys.r = this.keys.j = this.keys.u = false;
     this.touch.l = this.touch.r = this.touch.j = false;
     this.jumpTap = false;
+    for (const p of this.players) {
+      p.jumpHeld = false;
+      p.input.tap = false;
+      p.input.climb = false;
+    }
+    this.hud?.releaseJump();
     this.hud?.joy.reset();
   }
 
@@ -371,6 +395,7 @@ export class DisasterGame implements MiniGameHandle {
     this.meteor.ring = -1;
     this.meteor.flash = 0;
     this.outCount = 0;
+    this.tornadoSide = 0;
     this.roundCoins = 0;
     this.roundT = 0;
     this.timeScale = 1;
@@ -418,6 +443,7 @@ export class DisasterGame implements MiniGameHandle {
         jumpHeld: false,
         coyote: 0,
         jbuf: 0,
+        jhold: 0,
         bonk: 0,
         sq: 0,
         runT: 0,
@@ -445,6 +471,32 @@ export class DisasterGame implements MiniGameHandle {
     this.phaseT = 0;
     this.phaseDur = dur;
     this.hud.onPhase();
+  }
+
+  /** lado de onde o tornado vem (sorteado uma vez por rodada, antes do alerta, para o aviso mostrar) */
+  private tornadoSide = 0;
+  nextSide(): number {
+    if (!this.tornadoSide) this.tornadoSide = this.rng() < 0.5 ? -1 : 1;
+    return this.tornadoSide;
+  }
+
+  /** de onde vem o desastre d: -1 esquerda, 1 direita, 2 de cima, 3 de baixo (para o aviso) */
+  hazardFrom(d: DisasterId): number {
+    switch (d) {
+      case 'tsunami':
+        return -1;
+      case 'avalanche':
+        return 1;
+      case 'tornado':
+        return this.nextSide();
+      case 'vulcao':
+        return 1;
+      case 'enchente':
+      case 'acido':
+        return 3;
+      default:
+        return 2;
+    }
   }
 
   get finale(): boolean {
@@ -561,7 +613,7 @@ export class DisasterGame implements MiniGameHandle {
         break;
       case 'tornado':
         this.tornado.on = true;
-        this.tornado.x = this.rng() < 0.5 ? -120 : this.world.W + 120;
+        this.tornado.x = this.nextSide() < 0 ? -120 : this.world.W + 120;
         this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12) * (this.training ? 0.75 : 1);
         this.tornado.r = 58 + df * 3;
         break;
@@ -665,16 +717,18 @@ export class DisasterGame implements MiniGameHandle {
   private loop = (now: number): void => {
     if (this.destroyed) return;
     this.raf = requestAnimationFrame(this.loop);
+    this.beat = performance.now();
     if (this.paused) {
       this.last = now;
+      this.acc = 0;
       return;
     }
     // Tempo de jogo robusto a qualquer taxa de quadros (30–120 Hz) e a engasgos de GC:
     // - o tempo real é acumulado (antes, no nível "Mínimo" com tela de 60 Hz, TODO quadro era
     //   descartado e o jogo congelava/andava em câmera lenta);
     // - engasgo longo é cortado em 0,1 s (o jogo desacelera em vez de teletransportar);
-    // - a física roda em subpassos de no máximo 1/60 s, então 30 fps simula igual a 60/120.
-    let frame = (now - this.last) / 1000;
+    // - a física roda em subpassos fixos de no máximo 1/60 s (máx. 6), então 30 fps simula igual a 60/120.
+    const frame = (now - this.last) / 1000;
     this.last = now;
     if (!(frame > 0)) return;
     this.acc += Math.min(frame, MAX_FRAME);
@@ -683,10 +737,97 @@ export class DisasterGame implements MiniGameHandle {
     const dt = Math.min(this.acc, MAX_FRAME);
     this.acc = 0;
     const t0 = performance.now();
-    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
-    for (let i = 0; i < n; i++) this.update(dt / n);
-    this.draw.frame();
+    const n = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(dt / STEP - 1e-6)));
+    // Uma exceção num quadro NÃO pode parar o jogo: registra, saneia o estado e segue.
+    // Se o mesmo erro se repete sem parar, recomeça a rodada (melhor do que uma tela congelada).
+    try {
+      for (let i = 0; i < n; i++) this.update(dt / n);
+      this.sanitize();
+    } catch (e) {
+      this.onLoopError('update', e);
+    }
+    try {
+      this.draw.frame();
+    } catch (e) {
+      this.onLoopError('draw', e);
+      try {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.globalAlpha = 1;
+        this.ctx.globalCompositeOperation = 'source-over';
+      } catch {
+        /* */
+      }
+    }
     this.gov.sample(dt * 1000, performance.now() - t0);
+  };
+  /** erros capturados no laço (debug/soak) */
+  loopErrors = 0;
+  private errBurst = 0;
+  private errBurstT = 0;
+  private lastErrMsg = '';
+  /** último quadro do laço (vigia) */
+  private beat = 0;
+
+  private onLoopError(where: string, e: unknown): void {
+    this.loopErrors++;
+    const msg = where + ': ' + String((e as Error)?.message ?? e);
+    if (msg !== this.lastErrMsg) {
+      this.lastErrMsg = msg;
+      console.warn('[disaster] erro no laço (recuperado)', where, e);
+    }
+    const now = performance.now();
+    if (now - this.errBurstT > 3000) {
+      this.errBurstT = now;
+      this.errBurst = 0;
+    }
+    if (++this.errBurst >= 20) {
+      this.errBurst = 0;
+      this.errBurstT = now;
+      try {
+        this.releaseInput();
+        this.startRound();
+      } catch (e2) {
+        console.warn('[disaster] não deu para recomeçar a rodada', e2);
+      }
+    }
+  }
+
+  /** NaN/Infinity em jogadores ou corpos: volta para um estado válido em vez de contaminar tudo */
+  private sanitize(): void {
+    const w = this.world;
+    for (const p of this.players) {
+      if (Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.vx) && Number.isFinite(p.vy) && Number.isFinite(p.gx) && Number.isFinite(p.gy)) continue;
+      p.x = Number.isFinite(p.x) ? Math.max(20, Math.min(w.W - 20, p.x)) : w.spawnX;
+      p.y = w.topAt(p.x);
+      p.vx = p.vy = 0;
+      p.gx = p.x;
+      p.gy = p.y - 14;
+      p.climbing = false;
+    }
+    for (const b of w.bodies) {
+      if (!b.alive) continue;
+      if (Number.isFinite(b.x) && Number.isFinite(b.y) && Number.isFinite(b.vx) && Number.isFinite(b.vy) && Number.isFinite(b.ang)) continue;
+      b.alive = false;
+    }
+    if (!Number.isFinite(this.cam.x) || !Number.isFinite(this.cam.y)) {
+      this.cam.x = this.me.x || 0;
+      this.cam.y = -200;
+    }
+    if (!Number.isFinite(this.timeScale) || this.timeScale <= 0) this.timeScale = 1;
+    if (!Number.isFinite(this.shake)) this.shake = 0;
+  }
+
+  /** vigia: se o requestAnimationFrame parar (WebView que "esquece" o rAF ao voltar do fundo), religa */
+  private watchdog = (): void => {
+    if (this.destroyed || document.hidden) return;
+    const now = performance.now();
+    if (now - this.beat > 1500) {
+      cancelAnimationFrame(this.raf);
+      this.last = now;
+      this.acc = 0;
+      this.beat = now;
+      this.raf = requestAnimationFrame(this.loop);
+    }
   };
   private acc = 0;
 
@@ -711,9 +852,11 @@ export class DisasterGame implements MiniGameHandle {
     mi.l = this.keys.l || this.touch.l || js.x < -0.3;
     mi.r = this.keys.r || this.touch.r || js.x > 0.3;
     // toque rápido (apertou e soltou entre dois quadros) ainda conta como pulo
-    mi.j = this.keys.j || this.touch.j || this.jumpTap;
-    mi.u = this.keys.u || this.touch.j || this.jumpTap || (js.active && js.y < -0.6);
+    if (this.jumpTap) mi.tap = true;
     this.jumpTap = false;
+    mi.j = this.keys.j || this.touch.j;
+    mi.u = this.keys.u || this.touch.j;
+    mi.climb = js.active && js.y < -0.55;
 
     for (const p of this.players) {
       if (p.self && this.autoMe && !p.bot) p.bot = { gx: p.x, gy: 0, think: 0, skill: 0.95, hop: 0, lazy: 0.2 };
@@ -970,44 +1113,59 @@ export class DisasterGame implements MiniGameHandle {
         break;
       }
     }
-    if (onLadder && inp.u && !frozen) {
+    // pulo: borda de toque (inp.tap) OU borda do nível (teclado/bots). Antes só a borda do nível
+    // contava: se o "soltar" do dedo se perdia (multitoque/pausa), jumpHeld ficava preso em true e
+    // o Bloop nunca mais pulava.
+    const pressed = !frozen && (inp.tap || (inp.j && !p.jumpHeld));
+    p.jumpHeld = inp.j;
+    inp.tap = false;
+    // escada: no chão, PULAR pula (antes virava "subir escada" a 170/s — parecia que o pulo falhava);
+    // sobe com o joystick para cima, ou segurando pular quando já está no ar encostado na escada
+    const wantClimb = onLadder && !frozen && (inp.climb || (inp.u && !p.onGround && !pressed) || (p.climbing && inp.u));
+    if (wantClimb) {
       p.climbing = true;
       p.vy = -170;
     } else if (p.climbing && !onLadder) {
       p.climbing = false;
-      if (inp.u) p.vy = -360; // pulinho no topo
-    } else if (p.climbing && !inp.u) p.climbing = false;
+      if (inp.u || inp.climb) p.vy = -360; // pulinho no topo
+    } else if (p.climbing) p.climbing = false;
 
-    // pulo (com buffer de coyote)
+    // coyote time (100 ms) e buffer de pulo (120 ms)
     if (p.onGround) {
-      p.coyote = 0.09;
+      p.coyote = COYOTE;
       p.jumps = 0;
     } else p.coyote -= dt;
-    // buffer de pulo: apertou um pouquinho antes de encostar no chão? pula assim que encostar
-    if (inp.j && !p.jumpHeld) p.jbuf = 0.13;
+    if (pressed) p.jbuf = JUMP_BUFFER;
     else if (p.jbuf > 0) p.jbuf -= dt;
-    const pressed = inp.j && !p.jumpHeld;
-    p.jumpHeld = inp.j;
-    if ((pressed || (p.jbuf > 0 && p.coyote > 0 && p.coyote >= 0.09)) && !p.climbing && !frozen) {
-      if (p.coyote > 0) {
+    if (p.jhold > 0) p.jhold -= dt;
+    if ((pressed || (p.jbuf > 0 && p.coyote > 0)) && !frozen) {
+      if (p.coyote > 0 || p.climbing) {
         p.vy = -JUMP;
         p.coyote = 0;
         p.jbuf = 0;
         p.jumps = 1;
+        p.jhold = MIN_HOLD;
+        p.climbing = false;
+        p.onGround = false;
         p.sq = -0.35;
+        if (this.draw.particles && p.self) this.draw.particles.burst(p.x, p.y, 3, 'puff', 50);
         if (p.self) audio.jump();
-      } else if (p.jumps < p.maxJumps + 0 && p.maxJumps > 1) {
+      } else if (pressed && p.jumps < p.maxJumps && p.maxJumps > 1) {
         p.vy = -JUMP * 0.9;
         p.jumps++;
+        p.jbuf = 0;
+        p.jhold = MIN_HOLD;
         p.sq = -0.3;
         this.draw.particles.burst(p.x, p.y, 6, 'puff', 80);
         if (p.self) audio.jump(2);
       }
     }
     // integração exata para aceleração constante (posição pela média da velocidade):
-    // a altura do pulo não depende do tamanho do passo (30, 60 ou 120 Hz pulam igual)
+    // a altura do pulo não depende do tamanho do passo (30, 60 ou 120 Hz pulam igual).
+    // Altura variável: soltar cedo corta o pulo, mas um toque rápido ainda dá um pulo útil (MIN_HOLD).
     const vy0 = p.vy;
-    if (!p.climbing) p.vy += GRAV * dt * (p.vy < 0 && !inp.j ? 1.7 : 1);
+    const held = inp.j || p.jhold > 0;
+    if (!p.climbing) p.vy += GRAV * dt * (p.vy < 0 && !held ? 1.55 : p.vy > 0 ? 1.12 : 1);
     if (p.vy > 900) p.vy = 900;
 
     // carregado pelo corpo onde está em pé
@@ -1061,6 +1219,19 @@ export class DisasterGame implements MiniGameHandle {
         p.stand = i;
         if (b.vy > 0) p.vy = b.vy;
         this.landP(p, wasGround);
+      }
+    }
+    // chão com tolerância: andando sobre degraus/caixas que tremem (terremoto, corpos assentando),
+    // o pé não "descola" por 1–2 px — senão o pulo falhava por estar tecnicamente no ar
+    if (!p.onGround && !p.climbing && wasGround && p.vy >= 0) {
+      let best = 9999;
+      for (const ox of [-7, 0, 7]) {
+        const sy = w.surfaceBelow(p.x + ox, p.y - 3);
+        if (sy < best) best = sy;
+      }
+      if (best - p.y <= 7) {
+        p.y = best;
+        this.landP(p, true);
       }
     }
     if (p.climbing) {
@@ -1209,7 +1380,7 @@ export class DisasterGame implements MiniGameHandle {
     const inp = p.input;
     b.think -= dt;
     if (this.phase === 'intro') {
-      inp.l = inp.r = inp.j = inp.u = false;
+      inp.l = inp.r = inp.j = inp.u = inp.climb = false;
       return;
     }
     // o desastre aparece no título do cenário: quem presta atenção já se prepara certo
@@ -1235,6 +1406,7 @@ export class DisasterGame implements MiniGameHandle {
     // subir
     const wantUp = b.gy < p.y - 14;
     inp.u = wantUp && p.climbing;
+    inp.climb = inp.u;
     let jump = false;
     if (wantUp) {
       // escada próxima?
@@ -1243,7 +1415,7 @@ export class DisasterGame implements MiniGameHandle {
         const lx = lb ? lb.x : l.x;
         if (lb && (lb.awake || lb.tip || !lb.alive)) continue;
         if (Math.abs(p.x - (lx + 8)) < 14 && p.y > (lb ? lb.y : l.top)) {
-          inp.u = true;
+          inp.u = inp.climb = true;
           inp.l = inp.r = false;
         }
       }
@@ -1268,7 +1440,7 @@ export class DisasterGame implements MiniGameHandle {
       inp.j = true;
       b.hop = 0.25 + (1 - b.skill) * 0.3;
     } else if (b.hop < 0.12) inp.j = false;
-    if (this.finale && p.climbing) inp.u = true;
+    if (this.finale && p.climbing) inp.u = inp.climb = true;
   }
 
   /** lugar seguro para o desastre deste cenário (usa o mesmo planejador dos bots, com habilidade máxima) */
@@ -1460,8 +1632,12 @@ export class DisasterGame implements MiniGameHandle {
     this.releaseInput();
   }
   resume(): void {
+    // o hub pode chamar resume com o resumo da sessão aberto: o jogo continua pausado embaixo dele
+    if (this.hud.modalOpen()) return;
     this.paused = false;
     this.last = performance.now();
+    this.acc = 0;
+    this.releaseInput();
   }
 
   /** botão "sair" → resumo da sessão */

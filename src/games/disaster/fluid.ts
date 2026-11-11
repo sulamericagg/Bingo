@@ -202,6 +202,7 @@ export class FluidSim {
 
   /** passo fixo (dt ≤ 1/60) */
   step(dt: number, f: FluidDrive): void {
+    if (!(dt > 0) || dt > 0.25) return;
     this.time += dt;
     this.level = f.level;
     this.front = f.front;
@@ -312,6 +313,11 @@ export class FluidSim {
       for (let i = 0; i < n; i++) {
         if (!wet[i] || wall[i]) continue;
         let di = d[i] + v[i] * h;
+        // NaN/Infinity (respingo com velocidade inválida) não pode contaminar a malha inteira
+        if (!(di === di) || !(v[i] === v[i]) || v[i] === Infinity || v[i] === -Infinity) {
+          di = 0;
+          v[i] = 0;
+        }
         if (di > MAX_D) {
           di = MAX_D;
           if (v[i] > 0) v[i] = 0;
@@ -366,6 +372,10 @@ export class FluidSim {
 
   /** empurra a superfície (dv < 0 = para baixo) numa faixa; as bordas sobem (coroa do respingo) */
   disturb(x: number, w: number, dv: number): void {
+    // valores inválidos aqui viravam laço sem fim (e = Infinity) ou NaN na malha toda
+    if (!Number.isFinite(x) || !Number.isFinite(w) || !Number.isFinite(dv)) return;
+    w = Math.min(Math.abs(w), 600);
+    dv = Math.max(-900, Math.min(900, dv));
     const n = this.n;
     const a = Math.max(0, Math.floor((x - w * 0.5 - this.x0) / this.dx));
     const b = Math.min(n - 1, Math.ceil((x + w * 0.5 - this.x0) / this.dx));

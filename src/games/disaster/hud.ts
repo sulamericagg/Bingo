@@ -10,6 +10,7 @@ import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
 import { DISASTERS, type DisasterId } from './scenarios';
+import { dzIcon } from './icons';
 import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
@@ -28,7 +29,7 @@ const CSS = `
 .dz-phase b{font-size:18px;min-width:2.2em;text-align:right}
 .dz-alive{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .dz-chip{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 8px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:4px}
-.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) var(--edge-b,14px) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
+.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) max(var(--edge-b,14px),calc(var(--safe-bot,0px) + 10px)) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
 .dz-ctrl.lefty{justify-content:flex-start}
 .dz-solo{display:flex;justify-content:center;margin:4px 0 2px}
 .dz-pad{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(30,15,70,.5);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;touch-action:none}
@@ -45,7 +46,21 @@ const CSS = `
 .dz-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
 .dz-big:disabled{opacity:.5}
-@media (orientation:landscape) and (max-height:500px){.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
+.dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + max(40px,env(safe-area-inset-top)));transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
+.dz-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
+.dz-warn .ico{width:54px;height:54px;animation:dzwob .5s ease-in-out infinite alternate}
+.dz-warn b{font-size:46px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
+.dz-warn .safe{display:flex;align-items:center;opacity:.95}.dz-warn .safe .ico{width:34px;height:34px;animation:none}
+@keyframes dzwob{from{transform:rotate(-8deg) scale(.95)}to{transform:rotate(8deg) scale(1.08)}}
+.dz-edge{position:absolute;pointer-events:none;opacity:0;transition:opacity .15s;display:flex;gap:2px;filter:drop-shadow(0 3px 0 #2a0b5c)}
+.dz-edge.on{opacity:1;animation:dzpulse .45s ease-in-out infinite alternate}
+.dz-edge .ico{width:44px;height:44px;filter:hue-rotate(-125deg) saturate(1.6)}
+.dz-edge.l{left:calc(var(--edge-l,6px) + 2px);top:42%}.dz-edge.l .ico{transform:rotate(90deg)}
+.dz-edge.r{right:calc(var(--edge-r,6px) + 2px);top:42%}.dz-edge.r .ico{transform:rotate(-90deg)}
+.dz-edge.t{left:50%;top:28%;margin-left:-66px}.dz-edge.t .ico{transform:rotate(180deg)}
+.dz-edge.b{left:50%;bottom:calc(var(--edge-b,14px) + 110px);margin-left:-66px}
+@keyframes dzpulse{from{transform:scale(.92)}to{transform:scale(1.1)}}
+@media (orientation:landscape) and (max-height:500px){.dz-warn{top:calc(var(--nt-top,56px) + 58px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -63,6 +78,16 @@ export class Hud {
   joy: Joystick;
   private offCtl: () => void;
   private lastNum = -1;
+  /** aviso visual (ícone + contagem + seta de onde vem) — sem depender de leitura */
+  private warnEl!: HTMLElement;
+  private warnNum!: HTMLElement;
+  private edgeEl!: HTMLElement;
+  private warnKey = '';
+  private warnN = -1;
+  /** dedos no botão pular */
+  private jumpIds = new Set<number>();
+  private syncJump: () => void = () => {};
+  private offWin: () => void = () => {};
   private lastAlive = '';
 
   constructor(g: DisasterGame) {
@@ -81,6 +106,8 @@ export class Hud {
         <div class="dz-mid"><div class="dz-scn"></div><div class="dz-phase"><span class="lbl"></span><b></b></div></div>
         <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div></div>
       </div>
+      <div class="dz-warn" aria-hidden="true"><span class="di"></span><b></b><span class="safe"></span></div>
+      <div class="dz-edge" aria-hidden="true">${icon('arrow-up')}${icon('arrow-up')}${icon('arrow-up')}</div>
       <div class="dz-ctrl">
         <div class="dz-pad jump" data-touch-ignore>${icon('arrow-up')}</div>
       </div>`;
@@ -92,6 +119,9 @@ export class Hud {
     this.phaseNum = el.querySelector('.dz-phase b')!;
     this.alive = el.querySelector('.dz-chip.a span')!;
     this.streak = el.querySelector('.dz-chip.s span')!;
+    this.warnEl = el.querySelector('.dz-warn')!;
+    this.warnNum = el.querySelector('.dz-warn b')!;
+    this.edgeEl = el.querySelector('.dz-edge')!;
     // joystick flutuante na metade esquerda (direita no modo canhoto); pular fica do outro lado
     this.joy = createJoystick(g.root, { zoneTop: 0.18, deadZone: 0.18, mouse: false });
     const ctl = el.querySelector('.dz-ctrl') as HTMLElement;
@@ -109,56 +139,45 @@ export class Hud {
       audio.click();
       g.requestExit();
     });
-    // Botões de toque com multitoque: cada botão guarda os dedos (pointerId) que o seguram.
-    // Andar + pular ao mesmo tempo funciona; arrastar o dedo da seta esquerda para a direita
-    // troca de direção; dedo que sai para longe do botão, é cancelado ou perde a captura solta.
-    const pads: { el: HTMLElement; k: 'l' | 'r' | 'j'; ids: Set<number> }[] = [];
-    const set = (pd: (typeof pads)[number]) => {
-      g.touch[pd.k] = pd.ids.size > 0;
-      pd.el.classList.toggle('on', pd.ids.size > 0);
+    // Botão PULAR (multitoque com o joystick). Cada dedo que encosta é um pulo novo (borda), mesmo
+    // que o "soltar" de um dedo anterior tenha se perdido; o estado "segurando" (pulo mais alto,
+    // subir escada) vem do conjunto de dedos e é limpo por qualquer pointerup/cancel na janela,
+    // por pausa, perda de foco e app em segundo plano — nada de pulo preso.
+    const jp = el.querySelector('.dz-pad.jump') as HTMLElement;
+    jp.dataset.dzJump = '';
+    const ids = this.jumpIds;
+    const sync = () => {
+      g.touch.j = ids.size > 0;
+      jp.classList.toggle('on', ids.size > 0);
     };
-    const near = (el: HTMLElement, x: number, y: number, m: number) => {
-      const r = el.getBoundingClientRect();
-      return x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m;
+    this.syncJump = sync;
+    const down = (e: PointerEvent) => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      audio.unlock();
+      ids.add(e.pointerId);
+      g.jumpTap = true;
+      try {
+        jp.setPointerCapture(e.pointerId);
+      } catch {
+        /* dedo já saiu */
+      }
+      sync();
     };
-    const pad = (sel: string, k: 'l' | 'r' | 'j') => {
-      const p = el.querySelector(sel) as HTMLElement;
-      const pd = { el: p, k, ids: new Set<number>() };
-      pads.push(pd);
-      p.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        audio.unlock();
-        pd.ids.add(e.pointerId);
-        if (k === 'j') g.jumpTap = true;
-        try {
-          p.setPointerCapture(e.pointerId);
-        } catch {
-          /* */
-        }
-        set(pd);
-      });
-      p.addEventListener('pointermove', (e) => {
-        if (!pd.ids.has(e.pointerId) || k === 'j') return;
-        if (near(p, e.clientX, e.clientY, 28)) return;
-        // deslizou para a outra seta?
-        pd.ids.delete(e.pointerId);
-        set(pd);
-        for (const o of pads) {
-          if (o === pd || o.k === 'j' || !near(o.el, e.clientX, e.clientY, 10)) continue;
-          o.ids.add(e.pointerId);
-          set(o);
-        }
-      });
-      const up = (e: PointerEvent) => {
-        for (const o of pads) {
-          if (o.ids.delete(e.pointerId)) set(o);
-        }
-      };
-      p.addEventListener('pointerup', up);
-      p.addEventListener('pointercancel', up);
-      p.addEventListener('lostpointercapture', up);
+    const up = (e: PointerEvent) => {
+      if (ids.delete(e.pointerId)) sync();
     };
-    pad('.dz-pad.jump', 'j');
+    jp.addEventListener('pointerdown', down);
+    jp.addEventListener('contextmenu', (e) => e.preventDefault());
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) jp.addEventListener(ev, up);
+    // o soltar pode chegar em outro elemento (captura perdida): ouve na janela também
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    this.offWin = () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+    };
   }
 
   roundCard(): void {
@@ -224,8 +243,35 @@ export class Hud {
     else if (p === 'end' || p === 'intro') objective(null);
   }
 
+  /** alerta antes de cada desastre: ícone grande, contagem até começar e seta do lado de onde vem */
+  private warnTick(): void {
+    const g = this.g;
+    const left = g.phase === 'warn' ? g.phaseDur - g.phaseT : g.phase === 'prepare' && !g.finale ? g.phaseDur - g.phaseT + 2.6 : 99;
+    const show = left <= 5.6 && left > 0;
+    const d = g.sc.disasters[Math.min(g.dIndex, g.sc.disasters.length - 1)];
+    const from = show ? g.hazardFrom(d) : 0;
+    const key = show ? d + from : '';
+    if (key !== this.warnKey) {
+      this.warnKey = key;
+      this.warnEl.classList.toggle('on', show);
+      this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');
+      if (show) {
+        (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(d, 54);
+        // dica sem texto: casa (tornado), seta para cima (água/lava/neve), céu aberto = nada
+        const safe = d === 'tornado' ? dzIcon('house', 34) : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
+        (this.warnEl.querySelector('.safe') as HTMLElement).innerHTML = safe;
+      }
+    }
+    const n = show ? Math.ceil(left) : -1;
+    if (n !== this.warnN) {
+      this.warnN = n;
+      this.warnNum.textContent = n > 0 ? String(n) : '';
+    }
+  }
+
   tick(_dt = 1 / 60): void {
     const g = this.g;
+    this.warnTick();
     const n = Math.max(0, Math.ceil(g.phaseDur - g.phaseT));
     if (n !== this.lastNum) {
       this.lastNum = n;
@@ -244,6 +290,7 @@ export class Hud {
 
   summary(): void {
     const g = this.g;
+    if (this.modalOpen()) return;
     const m = document.createElement('div');
     m.className = 'dz-modal';
     const canDouble = g.sessionCoins > 0 && rewardedAvailable();
@@ -288,7 +335,19 @@ export class Hud {
     });
   }
 
+  /** resumo da sessão aberto (o jogo fica pausado embaixo) */
+  modalOpen(): boolean {
+    return !!this.el.querySelector('.dz-modal');
+  }
+
+  /** solta o botão pular (pausa, foco perdido, toque cancelado) */
+  releaseJump(): void {
+    this.jumpIds.clear();
+    this.syncJump();
+  }
+
   destroy(): void {
+    this.offWin();
     this.joy.destroy();
     this.offCtl();
     clearNotify();

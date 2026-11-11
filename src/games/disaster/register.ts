@@ -16,8 +16,8 @@ export function registerDisaster(): void {
     drawShowcase,
     online: true,
     async launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
-      const { DisasterGame } = await import('./game');
-      return new DisasterGame(root, exit);
+      const { launchDisaster } = await import('./launch');
+      return launchDisaster(root, exit);
     },
   });
 }
