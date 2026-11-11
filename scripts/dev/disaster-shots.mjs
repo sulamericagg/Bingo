@@ -112,7 +112,26 @@ if (!process.argv.includes('--no2d')) {
       g.autoMe = true;
       g.startRound();
       let guard = 0;
-      const near = () => !g.fluid || !g.fluid.dir || it.key.startsWith('vulcao') || Math.abs(g.fluid.front - g.me.x) < 260 || g.phaseT > it.t + 14;
+      // momento tenso: a ameaça perto de você (frente da onda, pé descendo, disco com raio, laser, fantasma...)
+      const ex = g.ex;
+      const mx = () => g.me.x;
+      const tense = () => {
+        if (g.fluid && g.fluid.dir && !it.key.startsWith('vulcao')) return Math.abs(g.fluid.front - mx()) < 260;
+        if (ex.stomps.some((s) => s.on && s.t > 0 && s.t < s.T * 0.25 && Math.abs(s.x - mx()) < 260)) return true;
+        if (ex.ufos.some((u) => u.on && u.st === 2 && Math.abs(u.bx - mx()) < 300)) return true;
+        if (ex.lasers.some((l) => l.on && l.warn <= 0 && Math.abs(l.front - mx()) < 260)) return true;
+        if (ex.ghosts.some((o) => o.on && o.fade <= 0 && Math.abs(o.x - mx()) < 200)) return true;
+        if (ex.swarms.some((o) => o.on && Math.abs(o.x - mx()) < 220)) return true;
+        if (ex.vents.some((v) => v.erupt > 0 && Math.abs(v.x - mx()) < 260)) return true;
+        if (ex.hole.on) return ex.hole.st === 2;
+        if (g.active.has('incendio')) return (ex.fire.a > -1e8 && Math.abs(ex.fire.a - mx()) < 300) || (ex.fire.b < 1e8 && Math.abs(ex.fire.b - mx()) < 300);
+        if (g.active.has('calor')) return ex.sun.st === 2;
+        if (g.active.has('gravidade')) return ex.grav.st === 2 && ex.grav.t > 0.6;
+        if (g.active.has('tornado')) return Math.abs(g.tornado.x - mx()) < 300;
+        if (g.active.has('bolas')) return g.strikes.some((s2) => s2.on && s2.kind === 'ball' && s2.live && Math.abs(s2.x - mx()) < 300);
+        return true;
+      };
+      const near = () => tense() || g.phaseT > it.t + 16;
       const done = () => (it.t === 0 ? g.phase === 'warn' && g.phaseT > 1 : it.t < 0 ? g.phase === 'prepare' && g.phaseT > -it.t : g.phase === 'disaster' && g.phaseT >= it.t && near());
       while (!done() && guard++ < 60 * 140) {
         g.me.shield = 9;
@@ -170,12 +189,31 @@ if (!process.argv.includes('--no3d')) {
             if (me.meter !== undefined) me.meter = 0;
             g.update(1 / 60);
           }
+          // espera o momento tenso dos motores novos (até +12 s)
+          const ex = g.ex;
+          const d2 = (x, z) => Math.hypot(x - me.pos.x, z - me.pos.z);
+          const tense3 = () =>
+            !ex ||
+            (ex.ufos.some((u) => u.on) ? ex.ufos.some((u) => u.on && u.st === 2 && d2(u.bx, u.bz) < 14) : true) &&
+              (ex.stomps.some((o) => o.on) || g.active.has('pisao') ? ex.stomps.some((o) => o.on && o.t > 0 && o.t < o.T * 0.4 && d2(o.x, o.z) < 14) : true) &&
+              (g.active.has('laser') ? ex.lasers.some((l) => l.on && l.warn <= 0 && Math.abs((l.ax === 0 ? me.pos.x : me.pos.z) - l.pos) < 12) : true) &&
+              (g.active.has('geiser') ? ex.vents.some((v) => v.erupt > 0 && d2(v.x, v.z) < 14) : true) &&
+              (g.active.has('fantasma') ? ex.ghosts.some((o) => o.on && o.fade <= 0 && d2(o.x, o.z) < 9) : true) &&
+              (g.active.has('abelhas') ? ex.swarms.some((o) => o.on && d2(o.x, o.z) < 9) : true) &&
+              (g.active.has('bolas') ? ex.balls.some((b) => b.on && b.warn <= 0 && d2(b.x, b.z) < 14) : true);
+          for (let k = 0; k < 60 * 12 && !tense3(); k++) {
+            me.alive = true;
+            me.air = 1;
+            if (me.meter !== undefined) me.meter = 0;
+            g.update(1 / 60);
+          }
           const tgt = g.threatPos ? g.threatPos() : null;
           const tx = tgt ? tgt.x : me.pos.x + 5;
           const tz = tgt ? tgt.z : me.pos.z;
           const a = Math.atan2(tx - me.pos.x, tz - me.pos.z);
-          g.yaw = view === 'fp' ? a + 1.9 : a;
-          g.pitch = view === 'fp' ? 0.25 : 0.32;
+          g.yaw = a;
+          const tyH = tgt && tgt.y !== undefined ? tgt.y : 0;
+          g.pitch = view === 'fp' ? 0.32 - Math.min(0.5, tyH * 0.04) : 0.36 - Math.min(0.45, tyH * 0.035);
           g.knockOut = ko;
           g.storm = 1;
           for (let i = 0; i < 4; i++) {

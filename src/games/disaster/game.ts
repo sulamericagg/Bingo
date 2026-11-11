@@ -1963,7 +1963,7 @@ export class DisasterGame implements MiniGameHandle {
     if (Math.abs(h.x - this.me.x) < 600) {
       audio.crack();
       tap('medium');
-      if (this.me.alive && this.world.insideHouse(this.me.x, this.me.y) === false && Math.abs(this.me.x - h.x - h.w / 2) < h.w) this.hud.toast(t('dz.al.roof', 'O tornado arrancou o telhado! Corra!'));
+      if (this.me.alive && this.world.insideHouse(this.me.x, this.me.y) === false && Math.abs(this.me.x - h.x - h.w / 2) < h.w) this.hud.toast(this.active.has('tornado') ? t('dz.al.roof', 'O tornado arrancou o telhado! Corra!') : t('dz.al.roofGone', 'O telhado voou! Procure outro abrigo!'));
     }
   }
 
@@ -2868,7 +2868,8 @@ export class DisasterGame implements MiniGameHandle {
       }
     } else this.ghostIdle = 0;
     let tx = fx + m.vx * 0.25;
-    let ty = fy - c.vh * 0.08;
+    // no alto, a câmera desce um pouco para o chão (onde o perigo está) continuar na tela
+    let ty = fy - c.vh * 0.08 + Math.max(0, Math.min(c.vh * 0.34, -fy * 0.42));
     const mt = this.meteor;
     if (mt.t >= 0) {
       // câmera de cinema: queda do meteoro, depois acompanha a onda de choque até você

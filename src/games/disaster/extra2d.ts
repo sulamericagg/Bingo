@@ -91,7 +91,7 @@ export class Extra2D {
   g: DisasterGame;
   /* gravidade: 0 calma, 1 aviso, 2 flutuando */
   grav = { st: 0, t: 0, next: 0 };
-  hole = { on: false, x: 0, y: -520, st: 0, t: 0, next: 0, pull: 0 };
+  hole = { on: false, x: 0, y: -370, st: 0, t: 0, next: 0, pull: 0 };
   ufos: Ufo[] = [];
   lasers: Laser[] = [];
   stomps: Stomp[] = [];
@@ -177,7 +177,7 @@ export class Extra2D {
       case 'buraco':
         this.hole.on = true;
         this.hole.x = w.W * (0.35 + g.rng() * 0.3);
-        this.hole.y = -540;
+        this.hole.y = -370;
         this.hole.st = 0;
         this.hole.t = 0;
         this.hole.next = 3;

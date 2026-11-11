@@ -2905,6 +2905,7 @@ export default {
   "dz.al.quake": "Sarsıntı!",
   "dz.al.rise": "Daha da yükselecek!",
   "dz.al.roof": "Hortum çatıyı uçurdu! Koş!",
+  "dz.al.roofGone": "Çatı uçtu gitti! Başka bir sığınak bul!",
   "dz.al.stuffy": "Ev çok havasız oldu! Başka bir gölge bul.",
   "dz.al.sun": "Kavurucu güneş! Gölgeye koş!",
   "dz.al.tornado2": "Bir hortum daha!",

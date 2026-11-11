@@ -288,7 +288,7 @@ export class Extra3D {
       prof.push(new THREE.Vector2(Math.sin(a) * 2.6 + 0.01, Math.cos(a) * 0.45));
     }
     const saucerG = new THREE.LatheGeometry(prof, 28);
-    const saucerM = new THREE.MeshStandardMaterial({ color: 0xc8d2e8, metalness: 0.7, roughness: 0.25 });
+    const saucerM = new THREE.MeshStandardMaterial({ color: 0xdfe6f4, metalness: 0.25, roughness: 0.3, emissive: 0x3a4a6a, emissiveIntensity: 0.35 });
     const domeM = new THREE.MeshStandardMaterial({ color: 0x8af0ff, transparent: true, opacity: 0.6, roughness: 0.05, metalness: 0.1, emissive: 0x2a8aa0, emissiveIntensity: 0.4 });
     const lightG = new THREE.SphereGeometry(0.16, 8, 6);
     for (let i = 0; i < 3; i++) {
@@ -1749,10 +1749,10 @@ export class Extra3D {
   }
 
   /** onde a câmera das screenshots deve olhar */
-  threatPos(): { x: number; z: number } | null {
-    for (const s of this.stomps) if (s.on) return { x: s.x, z: s.z };
-    for (const u of this.ufos) if (u.on) return { x: u.x, z: u.z };
-    if (this.hole.on) return { x: this.hole.x, z: this.hole.z };
+  threatPos(): { x: number; z: number; y?: number } | null {
+    for (const s of this.stomps) if (s.on) return { x: s.x, z: s.z, y: 6 };
+    for (const u of this.ufos) if (u.on) return { x: u.x, z: u.z, y: 7 };
+    if (this.hole.on) return { x: this.hole.x, z: this.hole.z, y: 10 };
     for (const o of this.ghosts) if (o.on && o.fade <= 0) return { x: o.x, z: o.z };
     for (const o of this.swarms) if (o.on) return { x: o.x, z: o.z };
     for (const b of this.balls) if (b.on) return { x: b.x, z: b.z };

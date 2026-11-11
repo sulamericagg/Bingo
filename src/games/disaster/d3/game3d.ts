@@ -1571,10 +1571,10 @@ export class Disaster3D implements MiniGameHandle {
     return this.sc.tune!;
   }
   /** para onde olhar (screenshots): a ameaça principal agora */
-  threatPos(): { x: number; z: number } | null {
+  threatPos(): { x: number; z: number; y?: number } | null {
     const e = this.ex.threatPos();
     if (e) return e;
-    if (this.tornado.on) return { x: this.tornado.x, z: this.tornado.z };
+    if (this.tornado.on) return { x: this.tornado.x, z: this.tornado.z, y: 5 };
     if (this.fluid && this.fluid.dir) return { x: this.fluid.front, z: this.me.pos.z };
     const s = this.strikes.find((o) => o.on);
     if (s) return { x: s.x, z: s.z };
@@ -1655,7 +1655,7 @@ export class Disaster3D implements MiniGameHandle {
     audio.crack();
     this.ripGrace = 1.6;
     this.ripHouse = i;
-    if (this.insideHouseIdx(this.me) === i) this.hint(t('dz.al.roof', 'O tornado arrancou o telhado! Corra!'), 'alert');
+    if (this.insideHouseIdx(this.me) === i) this.hint(this.active.has('tornado') ? t('dz.al.roof', 'O tornado arrancou o telhado! Corra!') : t('dz.al.roofGone', 'O telhado voou! Procure outro abrigo!'), 'alert');
   }
   ripGrace = 0;
   ripHouse = -1;

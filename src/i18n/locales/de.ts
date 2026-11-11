@@ -2905,6 +2905,7 @@ export default {
   "dz.al.quake": "Beben!",
   "dz.al.rise": "Es steigt noch mehr!",
   "dz.al.roof": "Der Tornado hat das Dach abgerissen! Lauf!",
+  "dz.al.roofGone": "Das Dach ist weggeflogen! Such dir einen anderen Unterschlupf!",
   "dz.al.stuffy": "Im Haus ist es zu stickig! Such dir anderen Schatten.",
   "dz.al.sun": "Brennende Sonne! Lauf in den Schatten!",
   "dz.al.tornado2": "Noch ein Tornado!",

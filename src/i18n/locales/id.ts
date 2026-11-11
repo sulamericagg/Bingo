@@ -2905,6 +2905,7 @@ export default {
   "dz.al.quake": "Gempa!",
   "dz.al.rise": "Akan naik lagi!",
   "dz.al.roof": "Tornado menerbangkan atap! Lari!",
+  "dz.al.roofGone": "Atapnya terbang! Cari tempat berlindung lain!",
   "dz.al.stuffy": "Rumahnya jadi pengap! Cari tempat teduh lain.",
   "dz.al.sun": "Matahari terik! Lari ke tempat teduh!",
   "dz.al.tornado2": "Tornado lagi!",
