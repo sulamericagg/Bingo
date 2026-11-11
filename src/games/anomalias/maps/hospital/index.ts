@@ -515,16 +515,19 @@ function build({ tier }: { tier: 0 | 1 | 2 | 3 }): MapBuild {
     const mk = (p: THREE.Object3D, x: number, z: number, ry: number) => {
       const g = k.group(p, x, 0, z, ry);
       for (const s of [-1, 1]) {
-        const b = k.box(g, M.yellow, 0.34, 0.62, 0.02, 0, 0, s * 0.11);
+        const b = k.box(g, M.yellow, 0.42, 0.64, 0.03, 0, 0, s * 0.11);
         b.rotation.x = s * 0.33;
-        b.position.y = 0.29;
+        b.position.y = 0.3;
         b.userData.paint = true;
       }
-      k.plane(g, k.lam('#ffffff', k.keep(signTex('💧', '#ffcf2e')), 'wet'), 0.26, 0.13, 0, 0.38, -0.215, Math.PI).rotation.x = 0.33;
+      for (const s2 of [-1, 1]) {
+        const pl = k.plane(g, k.lam('#ffffff', k.keep(signTex('💧', '#ffcf2e')), 'wet' + s2), 0.3, 0.15, 0, 0.4, s2 * 0.145, s2 > 0 ? 0 : Math.PI);
+        pl.rotation.x = s2 * -0.33;
+      }
       return g;
     };
-    const g = mk(root, 9.6, 0.35, 0.4);
-    const e = mk(root, 4.6, -0.6, -0.6);
+    const g = mk(root, 9.6, 0.35, 1.25);
+    const e = mk(root, 4.6, -0.6, 1.9);
     k.slot('wetsign', 'corr', g, { kinds: ['move', 'extra', 'rotate', 'missing', 'color'], move: [[-3.6, -0.6, 1], [2.4, -0.4, 0]], extra: [e], h: 0.66 });
   }
   {
