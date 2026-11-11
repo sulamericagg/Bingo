@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Watch {n} videos for {m} min without ads (up to {x}h)",
   "adfree.title": "Ad-free time",
   "adfree.watch": "Watch video ({a}/{b})",
+  "ads.capReached": "Today's video limit reached",
+  "ads.dbl.done": "+{n} coins! Reward doubled",
+  "ads.dbl.no": "Not now",
+  "ads.dbl.sub": "+{n} coins for a short video",
+  "ads.dbl.title": "Double reward",
+  "ads.dbl.watch": "Watch",
   "ads.videoUnavailable": "No video available right now",
   "age.teen": "I'm 13 or older",
   "age.text": "How old are you? Players under 13 use Safe Mode, with quick phrases only.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "Exit",
   "studio.play.jump": "Jump",
   "studio.play.lose": "Game over!",
+  "studio.play.ore": "Ore! +5 ({n})",
   "studio.play.ouch": "Oops! Back to the checkpoint",
   "studio.play.press": "Press",
   "studio.play.win": "Made it!",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Economy class",
   "voo.z.first": "First class",
-  "voo.z.galley": "Galley",
-  "ads.capReached": "Today's video limit reached",
-  "ads.dbl.title": "Double reward",
-  "ads.dbl.sub": "+{n} coins for a short video",
-  "ads.dbl.watch": "Watch",
-  "ads.dbl.no": "Not now",
-  "ads.dbl.done": "+{n} coins! Reward doubled"
+  "voo.z.galley": "Galley"
 } as Record<string, string>;

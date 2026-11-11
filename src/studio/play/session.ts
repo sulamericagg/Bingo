@@ -13,7 +13,7 @@ import type * as CANNON from 'cannon-es';
 import { t } from '../../i18n';
 import { tap } from '../../core/haptics';
 import { sfx } from '../../3d/common/sfx';
-import { bigMoment, notify } from '../../ui/notify';
+import { bigMoment, notify, setNotifyTop } from '../../ui/notify';
 import { bindButton, createJoystick, createLook, type Joystick, type LookDrag, type BoundButton } from '../../ui/touch';
 import { LIMITS, isVehicle, type Objective, type Action, type Creation, type Joint, type LogicRule, type Part, type SoundId, type Vec3 } from '../format';
 import { Batcher, buildPart, disposeTree, partMatrix, resolveRef, type Resolver } from '../render/build';
@@ -204,6 +204,8 @@ export class PlaySession {
   private camPos = new THREE.Vector3();
   private disposed = false;
   private enemies: Enemy[] = [];
+  private ores = 0;
+  private oreT = 0;
   private defeated = 0;
   private collected = 0;
   private hurtCd = 0;
@@ -302,7 +304,6 @@ export class PlaySession {
     this.hud.appendChild(this.missionEl);
     this.hasGoal = true;
     this.renderMission();
-    notify(this.objText(this.objs[0].o, 0), { icon: 'target', key: 'mission' });
   }
 
   /** quanto falta: total de coletáveis / inimigos se o objetivo não disse N */
@@ -342,7 +343,12 @@ export class PlaySession {
       .join('');
     const tl = m.time ? `<div class="tl"><i>⏱</i>${Math.max(0, Math.ceil(m.time - this.time))} s</div>` : '';
     const html = rows + tl;
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+      // avisos aparecem logo abaixo do cartão da missão (nunca por cima dele)
+      const r = el.getBoundingClientRect();
+      if (r.height) setNotifyTop(r.bottom + 6);
+    }
   }
   /** confere objetivos; vence quando todos estão feitos */
   private checkMission(pos: THREE.Vector3): void {
@@ -1682,6 +1688,21 @@ export class PlaySession {
     this.h.world.update(focus);
     this.triggers(dt, focus);
     if (this.enemies.length) this.stepEnemies(dt, focus);
+    this.oreT -= dt;
+    if (this.oreT <= 0 && this.h.world.oresNear) {
+      this.oreT = 0.2;
+      // minérios do mundo Infinito: encostou, coletou (+5 pontos)
+      for (const o of this.h.world.oresNear(focus.x, focus.z, 3)) {
+        if (Math.hypot(o.x - focus.x, o.z - focus.z) > (this.driving ? 2.6 : 1.6) || Math.abs(o.y - focus.y) > 2.5) continue;
+        this.h.world.takeOre!(o.key);
+        this.ores++;
+        this.score += 5;
+        sfx.sparkle();
+        tap('light');
+        notify(t('studio.play.ore', 'Minério! +5 ({n})', { n: this.ores }), { icon: 'gem', kind: 'good', key: 'ore' });
+        this.updateChip();
+      }
+    }
     if (this.objs.length && !this.won && !this.lost) {
       this.checkMission(focus);
       this.renderMission();
@@ -1873,6 +1894,7 @@ export class PlaySession {
   }
 
   dispose(): void {
+    if (this.missionEl) setNotifyTop(54);
     this.disposed = true;
     this.h.layer.removeEventListener('pointerup', this.onTapCanvas);
     window.removeEventListener('keydown', this.onKey);
@@ -1890,6 +1912,7 @@ export class PlaySession {
     this.h.scene.remove(this.root);
     for (const v of this.vehicles) v.rv?.removeFromWorld(this.world);
     while (this.world.bodies.length) this.world.removeBody(this.world.bodies[0]);
+    this.h.world.resetOres?.();
   }
 
   /** dirigindo? e onde está (usado pelo passo a passo) */

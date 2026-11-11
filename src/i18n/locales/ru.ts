@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Посмотри {n} видео — и {m} мин без рекламы (до {x} ч)",
   "adfree.title": "Время без рекламы",
   "adfree.watch": "Смотреть видео ({a}/{b})",
+  "ads.capReached": "Лимит видео на сегодня исчерпан",
+  "ads.dbl.done": "+{n} монет! Награда удвоена",
+  "ads.dbl.no": "Не сейчас",
+  "ads.dbl.sub": "+{n} монет за короткое видео",
+  "ads.dbl.title": "Удвоить награду",
+  "ads.dbl.watch": "Смотреть",
   "ads.videoUnavailable": "Видео сейчас недоступно",
   "age.teen": "Мне 13 или больше",
   "age.text": "Сколько тебе лет? Младше 13 — Безопасный режим, только быстрые фразы.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "Выйти",
   "studio.play.jump": "Прыжок",
   "studio.play.lose": "Игра окончена!",
+  "studio.play.ore": "Руда! +5 ({n})",
   "studio.play.ouch": "Ой! Назад к чекпоинту",
   "studio.play.press": "Нажать",
   "studio.play.win": "Финиш!",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "Кабина пилотов",
   "voo.z.eco": "Эконом-класс",
   "voo.z.first": "Первый класс",
-  "voo.z.galley": "Кухня",
-  "ads.capReached": "Лимит видео на сегодня исчерпан",
-  "ads.dbl.title": "Удвоить награду",
-  "ads.dbl.sub": "+{n} монет за короткое видео",
-  "ads.dbl.watch": "Смотреть",
-  "ads.dbl.no": "Не сейчас",
-  "ads.dbl.done": "+{n} монет! Награда удвоена"
+  "voo.z.galley": "Кухня"
 } as Record<string, string>;

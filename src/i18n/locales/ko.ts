@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "영상 {n}개를 보면 {m}분 동안 광고 없음 (최대 {x}시간)",
   "adfree.title": "광고 없는 시간",
   "adfree.watch": "영상 보기 ({a}/{b})",
+  "ads.capReached": "오늘 영상 한도에 도달했어요",
+  "ads.dbl.done": "+{n} 코인! 보상 2배",
+  "ads.dbl.no": "나중에",
+  "ads.dbl.sub": "짧은 영상 보고 +{n} 코인",
+  "ads.dbl.title": "보상 2배",
+  "ads.dbl.watch": "보기",
   "ads.videoUnavailable": "지금은 영상을 볼 수 없어요",
   "age.teen": "13세 이상이에요",
   "age.text": "몇 살인가요? 13세 미만은 빠른 문구만 쓰는 안전 모드를 사용해요.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "내리기",
   "studio.play.jump": "점프",
   "studio.play.lose": "게임 끝!",
+  "studio.play.ore": "광석! +5 ({n})",
   "studio.play.ouch": "앗! 체크포인트로 돌아가요",
   "studio.play.press": "누르기",
   "studio.play.win": "도착!",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "조종실",
   "voo.z.eco": "일반석",
   "voo.z.first": "일등석",
-  "voo.z.galley": "갤리",
-  "ads.capReached": "오늘 영상 한도에 도달했어요",
-  "ads.dbl.title": "보상 2배",
-  "ads.dbl.sub": "짧은 영상 보고 +{n} 코인",
-  "ads.dbl.watch": "보기",
-  "ads.dbl.no": "나중에",
-  "ads.dbl.done": "+{n} 코인! 보상 2배"
+  "voo.z.galley": "갤리"
 } as Record<string, string>;

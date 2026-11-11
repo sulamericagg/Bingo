@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Regarde {n} vidéos et joue {m} min sans pub (jusqu'à {x} h)",
   "adfree.title": "Temps sans pub",
   "adfree.watch": "Voir une vidéo ({a}/{b})",
+  "ads.capReached": "Limite de vidéos atteinte aujourd'hui",
+  "ads.dbl.done": "+{n} pièces ! Récompense doublée",
+  "ads.dbl.no": "Pas maintenant",
+  "ads.dbl.sub": "+{n} pièces avec une courte vidéo",
+  "ads.dbl.title": "Doubler la récompense",
+  "ads.dbl.watch": "Regarder",
   "ads.videoUnavailable": "Pas de vidéo disponible pour l'instant",
   "age.teen": "J'ai 13 ans ou plus",
   "age.text": "Quel âge as-tu ? Les moins de 13 ans utilisent le Mode sûr, avec des messages rapides seulement.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "Sortir",
   "studio.play.jump": "Sauter",
   "studio.play.lose": "Partie terminée !",
+  "studio.play.ore": "Minerai ! +5 ({n})",
   "studio.play.ouch": "Oups ! Retour au checkpoint",
   "studio.play.press": "Appuyer",
   "studio.play.win": "Arrivé !",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Classe éco",
   "voo.z.first": "Première classe",
-  "voo.z.galley": "Office",
-  "ads.capReached": "Limite de vidéos atteinte aujourd'hui",
-  "ads.dbl.title": "Doubler la récompense",
-  "ads.dbl.sub": "+{n} pièces avec une courte vidéo",
-  "ads.dbl.watch": "Regarder",
-  "ads.dbl.no": "Pas maintenant",
-  "ads.dbl.done": "+{n} pièces ! Récompense doublée"
+  "voo.z.galley": "Office"
 } as Record<string, string>;

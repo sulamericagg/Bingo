@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Mira {n} videos y juega {m} min sin anuncios (hasta {x}h)",
   "adfree.title": "Tiempo sin anuncios",
   "adfree.watch": "Ver video ({a}/{b})",
+  "ads.capReached": "Límite de videos de hoy alcanzado",
+  "ads.dbl.done": "¡+{n} monedas! Recompensa duplicada",
+  "ads.dbl.no": "Ahora no",
+  "ads.dbl.sub": "+{n} monedas con un video cortito",
+  "ads.dbl.title": "Duplicar recompensa",
+  "ads.dbl.watch": "Ver",
   "ads.videoUnavailable": "Video no disponible ahora",
   "age.teen": "Tengo 13 años o más",
   "age.text": "¿Cuántos años tienes? Los menores de 13 usan el Modo seguro, solo con frases rápidas.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "Salir",
   "studio.play.jump": "Saltar",
   "studio.play.lose": "¡Fin del juego!",
+  "studio.play.ore": "¡Mineral! +5 ({n})",
   "studio.play.ouch": "¡Uy! De vuelta al checkpoint",
   "studio.play.press": "Pulsar",
   "studio.play.win": "¡Llegaste!",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "Cabina de mando",
   "voo.z.eco": "Clase turista",
   "voo.z.first": "Primera clase",
-  "voo.z.galley": "Cocina",
-  "ads.capReached": "Límite de videos de hoy alcanzado",
-  "ads.dbl.title": "Duplicar recompensa",
-  "ads.dbl.sub": "+{n} monedas con un video cortito",
-  "ads.dbl.watch": "Ver",
-  "ads.dbl.no": "Ahora no",
-  "ads.dbl.done": "¡+{n} monedas! Recompensa duplicada"
+  "voo.z.galley": "Cocina"
 } as Record<string, string>;

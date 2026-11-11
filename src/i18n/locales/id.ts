@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Tonton {n} video dan main {m} mnt tanpa iklan (maks. {x} jam)",
   "adfree.title": "Waktu bebas iklan",
   "adfree.watch": "Tonton video ({a}/{b})",
+  "ads.capReached": "Batas video hari ini tercapai",
+  "ads.dbl.done": "+{n} koin! Hadiah digandakan",
+  "ads.dbl.no": "Nanti saja",
+  "ads.dbl.sub": "+{n} koin dengan video singkat",
+  "ads.dbl.title": "Gandakan hadiah",
+  "ads.dbl.watch": "Tonton",
   "ads.videoUnavailable": "Video belum tersedia sekarang",
   "age.teen": "Umurku 13 tahun atau lebih",
   "age.text": "Berapa umurmu? Pemain di bawah 13 tahun memakai Mode Aman, hanya dengan frasa cepat.",
@@ -5530,6 +5536,7 @@ export default {
   "studio.play.exitCar": "Keluar",
   "studio.play.jump": "Lompat",
   "studio.play.lose": "Permainan selesai!",
+  "studio.play.ore": "Bijih! +5 ({n})",
   "studio.play.ouch": "Ups! Kembali ke checkpoint",
   "studio.play.press": "Tekan",
   "studio.play.win": "Sampai!",
@@ -6240,11 +6247,5 @@ export default {
   "voo.z.cockpit": "Kokpit",
   "voo.z.eco": "Kelas ekonomi",
   "voo.z.first": "Kelas satu",
-  "voo.z.galley": "Dapur",
-  "ads.capReached": "Batas video hari ini tercapai",
-  "ads.dbl.title": "Gandakan hadiah",
-  "ads.dbl.sub": "+{n} koin dengan video singkat",
-  "ads.dbl.watch": "Tonton",
-  "ads.dbl.no": "Nanti saja",
-  "ads.dbl.done": "+{n} koin! Hadiah digandakan"
+  "voo.z.galley": "Dapur"
 } as Record<string, string>;
