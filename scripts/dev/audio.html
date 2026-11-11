@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Dev: Audição de áudio</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #140b30; color: #f4ecff; font: 15px/1.4 system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: #1d1145ee; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-bottom: 1px solid #ffffff22; }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  main { padding: 12px 16px 80px; display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  section { background: #24175a; border-radius: 14px; padding: 12px; box-shadow: 0 2px 0 #0006; }
+  section h2 { font-size: 16px; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+  section h2 small { opacity: .6; font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; align-items: center; }
+  .lbl { font-size: 12px; opacity: .65; width: 100%; margin-top: 4px; }
+  button { background: #3b2a86; color: #fff; border: 0; border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover { background: #5640b8; }
+  button.mus { background: #6b2a7a; }
+  button.amb { background: #1f5d6b; }
+  button.on { outline: 2px solid #ffd34d; }
+  input[type=range] { width: 120px; }
+  #log { font: 12px monospace; opacity: .7; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bloop · audição de áudio</h1>
+  <button id="go">▶ Ligar áudio</button>
+  <button id="stop">■ Parar música/ambiente</button>
+  <label>Volume <input type="range" min="0" max="100" data-mix="vol" /></label>
+  <label>Música <input type="range" min="0" max="100" data-mix="music" /></label>
+  <label>Efeitos <input type="range" min="0" max="100" data-mix="sfx" /></label>
+  <span id="log"></span>
+</header>
+<main id="packs"></main>
+<script type="module" src="./audio.ts"></script>
+</body>
+</html>
