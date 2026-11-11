@@ -8,9 +8,10 @@ import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { ownsPart, partName, partsOf, type Slot } from '../game/avatar';
 import type { SongDef } from '../music/api';
+import { MOOD_DEF, type BeatPat } from './beatpat';
 import { BACKGROUNDS, BUBBLES, CAM3D, EXPRESSIONS, FX, FX_ON_ACTOR, POSES, SFX, SWATCHES, TRANSITIONS, VOICES, type Item } from './data';
 import { evalActors, VOICE_RATE } from './engine';
-import { clone, MAX_CAST, uid, type BubbleStyle, type Ease, type FxKind, type Line, type Project } from './format';
+import { clone, MAX_CAST, uid, type BubbleStyle, type Ease, type FxKind, type Line, type MusicTrack, type Project } from './format';
 import { cleanText, isPro, paywall } from './gates';
 import { actorThumb, clearThumbs } from './rig2d';
 import { bgBitmap, BG_X0, BG_Y0 } from './bg2d';
@@ -738,10 +739,12 @@ async function soundPanel(c: PanelCtx): Promise<void> {
     if (S.tab !== 'sound') return;
   }
   const mus = S.p.music;
-  let html = `<h5>${t('cin.music.title', 'Música de fundo')}</h5><p class="cin-hint">${t('cin.music.tip', 'Músicas originais do Bloop World.')}</p><div class="cin-list">`;
+  let html = `<button class="cin-btn pri mm-open" data-a="maker" style="width:100%;margin-bottom:8px">🎹 ${mus?.beat ? t('cin.mm.edit', 'Editar minha música') : t('cin.mm.title', 'Criar música')}</button>`;
+  html += `<h5>${t('cin.music.title', 'Música de fundo')}</h5><p class="cin-hint">${t('cin.music.tip', 'Músicas originais do Bloop World.')}</p><div class="cin-list">`;
+  if (mus?.beat) html += `<div class="cin-castrow on"><span class="nm">🎹 ${t('cin.mm.mine', 'Minha música')}</span><button class="cin-btn sm ok" data-a="maker">✓</button></div>`;
   html += `<div class="cin-castrow ${!mus ? 'on' : ''}"><span class="nm">🔇 ${t('cin.music.none', 'Sem música')}</span><button class="cin-btn sm ${!mus ? 'ok' : ''}" data-a="pick" data-v="">${!mus ? '✓' : t('cin.music.use', 'Usar')}</button></div>`;
   for (const s of songs) {
-    const on = mus?.song === s.id;
+    const on = mus?.song === s.id && !mus.beat;
     html += `<div class="cin-castrow"><span class="nm">🎵 ${esc(s.title)} <small class="cin-hint">· ${esc(s.band)}</small></span><button class="cin-btn sm" data-a="hear" data-v="${s.id}">▶</button><button class="cin-btn sm ${on ? 'ok' : ''}" data-a="pick" data-v="${s.id}">${on ? '✓' : t('cin.music.use', 'Usar')}</button></div>`;
   }
   html += '</div>';
@@ -755,6 +758,13 @@ async function soundPanel(c: PanelCtx): Promise<void> {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-a]');
     if (!b) return;
     const v = b.dataset.v!;
+    if (b.dataset.a === 'maker') {
+      stopPrev?.();
+      const pat = await openMusicMakerFor(S.p.music?.beat);
+      if (pat) mutate((p) => (p.music = beatTrack(pat, p.music?.vol)));
+      if (S.tab === 'sound') void soundPanel(c);
+      return;
+    }
     if (b.dataset.a === 'pick') {
       stopPrev?.();
       mutate((p) => (p.music = v ? { song: v, offset: p.music?.offset ?? 8, vol: p.music?.vol ?? 0.6 } : null));
@@ -779,6 +789,14 @@ async function soundPanel(c: PanelCtx): Promise<void> {
   h.oninput = (e) => apply(e.target as HTMLInputElement, false);
   h.onchange = (e) => apply(e.target as HTMLInputElement, true);
 }
+
+/** Abre o "Criar música" (carregado sob demanda). */
+export async function openMusicMakerFor(cur?: BeatPat | null): Promise<BeatPat | null> {
+  const { openMusicMaker } = await import('./musicmaker');
+  return openMusicMaker(document.body, cur);
+}
+/** Trilha do filme a partir de um padrão (com uma música parecida para versões antigas do app). */
+export const beatTrack = (pat: BeatPat, vol = 0.6): MusicTrack => ({ song: MOOD_DEF[pat.mood].fallback, offset: 0, vol, beat: pat });
 
 export function stopPanelAudio(): void {
   stopPrev?.();

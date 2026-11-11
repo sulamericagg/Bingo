@@ -17,7 +17,8 @@ import { BACKGROUNDS, EXPRESSIONS, POSES } from './data';
 import { Renderer } from './engine';
 import { BOARD_MAX_CHARS, BOARD_MAX_LINES, BOARD_MAX_SCENES, clone, newShot, uid, type BoardChar, type BoardScene, type ExprId, type PoseId, type Project } from './format';
 import { cleanText, isPro, maxSeconds, paywall } from './gates';
-import { bgThumb } from './panels';
+import { beatTrack, bgThumb, openMusicMakerFor } from './panels';
+import { songList } from './audio';
 import { actorThumbCopy as actorThumb } from './rig2d';
 import { confirm, menu, pickCast, sheet } from './sheets';
 import { saveProject } from './store';
@@ -144,6 +145,7 @@ export class EasyBoard {
         <button class="easy-big add" data-e="addscene"><b>＋</b>${t('cin.easy.addScene', 'Cena')}</button>
         <button class="easy-big watch" data-e="watch"><b>▶</b>${t('cin.kid.watch', 'Assistir')}</button>
         <button class="easy-big dub" data-e="dub"><b>🎙️</b>${t('cin.easy.dub', 'Dublar')}</button>
+        <button class="easy-big music" data-e="music"><b>🎵</b>${t('cin.easy.music', 'Música')}</button>
         <button class="easy-big send" data-e="send"><b>📺</b>${t('cin.easy.send', 'Enviar')}</button>
       </div>`;
     this.el.querySelectorAll<HTMLElement>('.easy-card').forEach((c) => this.fillCard(c));
@@ -300,6 +302,34 @@ export class EasyBoard {
     this.fillCard(neu);
   }
 
+  /* ---------- música do filme ---------- */
+  private async musicMenu(): Promise<void> {
+    const cur = this.p.music;
+    const a = await menu(t('cin.easy.musicQ', 'Música do filme'), [
+      ['make', '🎹 ' + (cur?.beat ? t('cin.mm.edit', 'Editar minha música') : t('cin.mm.title', 'Criar música')), 'pri'],
+      ['song', '🎵 ' + t('cin.easy.musicPick', 'Escolher uma pronta')],
+      ['none', '🔇 ' + t('cin.music.none', 'Sem música')],
+    ]);
+    if (a === 'make') {
+      const pat = await openMusicMakerFor(cur?.beat);
+      if (pat && !this.dead) {
+        this.p.music = beatTrack(pat, cur?.vol ?? 0.6);
+        this.changed(false);
+        notify(t('cin.mm.saved', 'Música salva no filme! Aperte Assistir para ouvir.'), { kind: 'good', icon: 'check' });
+      }
+    } else if (a === 'song') {
+      const list = await songList();
+      const id = await menu(t('cin.easy.musicPick', 'Escolher uma pronta'), list.map((s) => [s.id, `${cur?.song === s.id && !cur.beat ? '✓ ' : ''}🎵 ${esc(s.title)}`] as [string, string]));
+      if (id) {
+        this.p.music = { song: id, offset: 8, vol: cur?.vol ?? 0.5 };
+        this.changed(false);
+      }
+    } else if (a === 'none') {
+      this.p.music = null;
+      this.changed(false);
+    }
+  }
+
   /* ---------- ações ---------- */
   private async act(a: string, el: HTMLElement): Promise<void> {
     const sc = this.sceneById(el.dataset.sc);
@@ -318,6 +348,7 @@ export class EasyBoard {
       return watchFilm(this.el, this.p);
     }
     if (a === 'dub') return this.dub();
+    if (a === 'music') return this.musicMenu();
     if (a === 'send') return this.send();
     if (!sc) return;
     if (a === 'bg') return this.bgSheet(sc);

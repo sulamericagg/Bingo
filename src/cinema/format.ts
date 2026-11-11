@@ -12,6 +12,7 @@
 import type { AvatarData } from '../game/avatar';
 import { parseLook, type MakeupLook } from '../makeup/format';
 import { validateStory, type StorySpec } from '../../shared/story';
+import { parseBeat, type BeatPat } from './beatpat';
 
 export const FORMAT_ID = 'bloop-cinema';
 export const FORMAT_VERSION = 1;
@@ -178,6 +179,9 @@ export interface MusicTrack {
   /** começa a música neste segundo dela */
   offset: number;
   vol: number;
+  /** "Criar música": padrão do sequenciador (beatpat.ts). Se existir, toca ELE (sintetizado);
+   *  `song` fica como música parecida para versões antigas do app. */
+  beat?: BeatPat;
 }
 
 export interface Project {
@@ -351,6 +355,7 @@ export function parseProject(raw: unknown): Project | null {
   p.mix = { music: num(mix.music, 0.7, 0, 1), voice: num(mix.voice, 1, 0, 1), sfx: num(mix.sfx, 0.8, 0, 1) };
   const m = o.music as Record<string, unknown> | null;
   p.music = m && typeof m.song === 'string' ? { song: m.song, offset: num(m.offset, 0, 0, 600), vol: num(m.vol, 0.7, 0, 1) } : null;
+  if (p.music && m?.beat) p.music.beat = parseBeat(m.beat) ?? undefined;
   p.cast = arr<Record<string, unknown>>(o.cast)
     .slice(0, MAX_CAST)
     .map((c) => ({
