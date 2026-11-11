@@ -572,7 +572,9 @@ export class WaterSystem {
     // tempo automático (chuva vem e vai)
     const ev = RAIN_EV[this.diff];
     this.wx.t -= dtS;
-    if (this.wx.t <= 0) {
+    // com a camada RP (clima por hora/estação), quem decide a chuva é o weather.ts — aqui só reagimos a g.rainOn
+    const rpWeather = !!(g as unknown as { rp?: unknown }).rp;
+    if (!rpWeather && this.wx.t <= 0) {
       if (this.wx.auto) {
         this.wx.auto = 0;
         this.wx.t = this.rnd(ev[0], ev[1]);
