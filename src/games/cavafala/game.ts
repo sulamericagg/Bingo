@@ -167,6 +167,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       return;
     }
     last = { kind: 'restore', theme: themeId };
+    endWorld();
     menuEl?.remove();
     menuEl = null;
     const ld = loading();
@@ -196,6 +197,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       return;
     }
     last = { kind: 'arena' };
+    endWorld();
     menuEl?.remove();
     menuEl = null;
     const ld = loading();

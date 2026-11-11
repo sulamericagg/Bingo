@@ -119,8 +119,9 @@ export class RestoreMode implements ModeCtl {
       }
     }
     this.sky();
-    w.me.yaw = 0;
-    w.me.pitch = -0.25;
+    // olha para o centro da vila (o jogador nasce no morro, de costas para o mar)
+    w.me.yaw = Math.atan2(-(L.cx - L.spawn.x), -(L.cz - L.spawn.z));
+    w.me.pitch = -0.12;
     if (this.tut === 0) setTimeout(() => this.tutStep(), 600);
     else objective(t('cavafala.obj.restore', 'Restaure a vila: {n}/{m}', { n: 0, m: town.list.length }));
   }
@@ -389,6 +390,7 @@ export class RestoreMode implements ModeCtl {
     a.body.p.copy(this.L.spawn);
     a.body.p.y = this.w.T.groundY(a.body.p.x, a.body.p.z, this.topY) + 0.2;
     a.body.v.set(0, 0, 0);
+    a.yaw = Math.atan2(-(this.L.cx - this.L.spawn.x), -(this.L.cz - this.L.spawn.z));
   }
 
   aimInfo(hit: THREE.Vector3 | null): { name: string; v: number } | null {

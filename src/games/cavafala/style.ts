@@ -5,16 +5,16 @@ const CSS = `
 .cf-hud{position:absolute;inset:0;pointer-events:none;z-index:10;color:#fff}
 .cf-hud.hidden>*:not(.cf-panel){display:none}
 .cf-hud button{pointer-events:auto;font-family:inherit}
-.cf-top{position:absolute;left:var(--edge-l,10px);top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;align-items:center;gap:6px}
+.cf-top{position:absolute;left:var(--edge-l,10px);top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;align-items:flex-start;gap:6px;max-width:calc(50% - 30px - var(--edge-l,10px))}
 .cf-ib{width:40px;height:40px;min-width:40px!important;min-height:40px!important;border-radius:12px;border:0;background:rgba(20,8,48,.55);display:grid;place-items:center;padding:0}
 .cf-ib svg{width:24px;height:24px}
-.cf-mats{display:flex;gap:4px;flex-wrap:nowrap}
+.cf-mats{display:flex;gap:3px 4px;flex-wrap:wrap}
 .cf-mat{display:flex;align-items:center;gap:3px;padding:3px 7px 3px 4px;border-radius:999px;background:rgba(20,8,48,.55);font:700 12.5px/1 inherit;min-width:34px;transition:opacity .2s}
 .cf-mat i{width:13px;height:13px;border-radius:4px;background:var(--c);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25),0 0 0 1.5px rgba(255,255,255,.5);transform:rotate(45deg) scale(.85)}
 .cf-mat.z{opacity:.45}
 .cf-mat.pop{animation:cfpop .35s ease-out}
 @keyframes cfpop{40%{transform:scale(1.28);background:rgba(255,211,74,.55)}}
-.cf-status{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;gap:4px;align-items:center;font:700 12px/1 inherit;max-width:54vw;justify-content:flex-end;flex-wrap:wrap}
+.cf-status{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;gap:4px;align-items:center;font:700 12px/1 inherit;max-width:calc(50% - 30px - var(--edge-r,10px));justify-content:flex-end;flex-wrap:wrap}
 .cf-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;background:rgba(20,8,48,.6);white-space:nowrap}
 .cf-chip.warn{background:rgba(200,60,40,.75)}
 .cf-chip i{width:12px;height:12px;border-radius:50%;background:var(--c);display:inline-block;box-shadow:0 0 0 1.5px #fff}
