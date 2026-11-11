@@ -24,6 +24,7 @@ import { flightInvite, flightInvites, flightJoin } from './flight';
 import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
 import { garimpoInvite, garimpoInvites, garimpoJoin } from './garimpo';
 import { duelJoin } from './duel';
+import { serversList, serversMatch, serversPublish, serversThumb, serversUnpublish } from './servers';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
@@ -107,6 +108,12 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Mundo Aberto online (servidores): convites entre amigos
   'POST /api/mundo/invite': mundoInvite,
   'GET /api/mundo/invites': mundoInvites,
+  // Navegador de servidores do Mundo (oficiais, de amigos e publicados pelo Bloop Studio)
+  'GET /api/servers/list': serversList,
+  'POST /api/servers/match': serversMatch,
+  'GET /api/servers/thumb': serversThumb,
+  'POST /api/servers/publish': serversPublish,
+  'POST /api/servers/unpublish': serversUnpublish,
   // Garimpo Bruto online: convites entre amigos
   'POST /api/garimpo/invite': garimpoInvite,
   'GET /api/garimpo/invites': garimpoInvites,
@@ -235,6 +242,7 @@ export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
 export { GarimpoRoom } from './garimpo';
 export { DuelRoom } from './duel';
+export { ServerDir } from './servers';
 export { UgcHub } from './ugc-hub';
 export { TvChannel } from './tv';
 

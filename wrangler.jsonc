@@ -50,7 +50,9 @@
       // Garimpo Bruto online: sala por código (relé; o anfitrião simula com o save dele) + convites.
       { "name": "GARIMPO", "class_name": "GarimpoRoom" },
       // Duelo (src/party/duel.ts): mesmo desafio para todos, placar ao vivo e pódio — jogos solo no grupo.
-      { "name": "DUEL", "class_name": "DuelRoom" }
+      { "name": "DUEL", "class_name": "DuelRoom" },
+      // Navegador de servidores do Mundo (server/servers.ts): oficiais sempre no ar, de amigos e do Bloop Studio.
+      { "name": "SERVERS", "class_name": "ServerDir" }
     ]
   },
   "migrations": [
@@ -64,7 +66,8 @@
     { "tag": "v6-mundo", "new_sqlite_classes": ["WorldRoom"] },
     { "tag": "v7-loja-tv", "new_sqlite_classes": ["UgcHub", "TvChannel"] },
     { "tag": "v8-garimpo", "new_sqlite_classes": ["GarimpoRoom"] },
-    { "tag": "v9-duel", "new_sqlite_classes": ["DuelRoom"] }
+    { "tag": "v9-duel", "new_sqlite_classes": ["DuelRoom"] },
+    { "tag": "v11-servers", "new_sqlite_classes": ["ServerDir"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em

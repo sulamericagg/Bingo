@@ -1,7 +1,7 @@
 /* ============================================================
  *  MUNDO — "Servidores": mundos online de até 8 (WorldRoom).
- *  - Saguão: criar mundo online (modo/tipo/PvP), minijogos, entrar
- *    por código, convites de amigos.
+ *  - Navegador de servidores (browser.ts): cartões com foto, oficiais,
+ *    de amigos, do Bloop Studio; um toque = entra (joinWorld aqui).
  *  - Sessão: avatares dos outros (interpolados), edições do mundo
  *    (terreno/peças/portas/baús) mandadas como operações; o servidor
  *    guarda e quem entra remonta tudo. O anfitrião é dono dos bichos.
@@ -20,7 +20,6 @@ import { freshWorld } from './wsave';
 import type { GenOpts } from './gen';
 import type { Entity, GameMode, MundoAPI } from './engine';
 import { Mob, MOB } from './mobs';
-import { modeName } from './worlds';
 import { CH } from './gen';
 import { ALL_MOBS, MOB_INDEX, type Mob as BigMob } from './content/mobs';
 import { VehNet, type VRec } from './vnet';
@@ -28,13 +27,15 @@ import type { BossView } from './content/mobs';
 import { ITEM } from './items';
 import { joinInvite, joinStr, reportPlaying, stopPlaying } from '../../../party/join';
 import { CROPS, PDEFS, type Piece } from './build';
+import { bus } from '../../../core/events';
+import { tap } from '../../../core/haptics';
 const ITEM_OK = (id: string) => ITEM.has(id);
 
 export const MCODE_OK = /^[A-HJ-NP-Z2-9]{6}$/;
 const ALPH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-export type Mini = '' | 'ceu' | 'corrida' | 'esconde';
+export type Mini = '' | 'ceu' | 'corrida' | 'esconde' | 'pvp' | 'spleef' | 'obby';
 export interface RoomMeta {
   name: string;
   seed: number;
@@ -42,6 +43,12 @@ export interface RoomMeta {
   mode: GameMode;
   mini: Mini;
   owner: string;
+  /** servidor oficial (vaga em server/servers.ts) */
+  slot?: string;
+  /** servidor do Bloop Studio: item da Loja */
+  ugc?: string;
+  max?: number;
+  goal?: string;
 }
 export interface Op {
   k: string;
@@ -298,6 +305,15 @@ export class NetSession {
   visible: (a: Avatar) => boolean = () => true;
   /** nome em cima da cabeça (aparece através das paredes; o esconde-esconde desliga) */
   tagVisible: (a: Avatar) => boolean = () => true;
+  /** golpe PvP recebido (minijogos anotam quem empurrou) */
+  onHit: ((from: string) => void) | null = null;
+  /** força do empurrão (PvP Arena aumenta) */
+  knockMul = 1;
+  private kb = { x: 0, z: 0 };
+  private thumbT = 12;
+  /** id do jogo no hub (grupo: o líder leva todos ao servidor) */
+  gameId = 'floresta';
+  private offFocus: (() => void) | null = null;
 
   constructor(
     readonly code: string,
@@ -392,6 +408,16 @@ export class NetSession {
     this.veh = new VehNet(this, g);
     this.veh.attach(this.pendingVehs);
     this.pendingVehs = [];
+    // grupo: o líder foi para outro servidor → vou junto (src/party; focus com cfg.srv)
+    this.offFocus = bus.on('squad-focus', (f: { cfg?: Record<string, string | number> }) => {
+      const code = String(f.cfg?.srv ?? '');
+      if (this.closed || !MCODE_OK.test(code) || code === this.code) return;
+      void import('../../../party/squad').then((sq) => {
+        if (!sq.inSquad() || sq.isLeader()) return;
+        g.hud.toast(t('mundo.net.followLeader', 'Seguindo o líder do grupo…'), 'gold');
+        void import('../../../party/join').then((j) => j.openJoin({ game: this.gameId, code }));
+      });
+    });
   }
 
   private chunkKeys(x: number, z: number, r: number): string[] {
@@ -500,9 +526,19 @@ export class NetSession {
       case 'ent':
         if (!this.isHost) this.ents(m.l, m.b);
         break;
-      case 'hit':
-        if (this.pvp) g.sb!.hurtPlayer(+m.d || 1, 'pvp');
+      case 'hit': {
+        if (!this.pvp) break;
+        // empurrão (knockback) a partir da posição do atacante que o servidor conhece
+        if (typeof m.x === 'number' && typeof m.z === 'number') this.knock(m.x, m.z, (4.5 + Math.min(6, +m.d || 1) * 0.45) * this.knockMul);
+        this.onHit?.(String(m.from ?? ''));
+        // PvP Arena é só empurra-empurra (sem dano); nos outros, golpe tira vida
+        if (this.meta?.mini !== 'pvp') g.sb!.hurtPlayer(+m.d || 1, 'pvp');
+        else {
+          tap('medium');
+          g.shake = Math.max(g.shake, 0.18);
+        }
         break;
+      }
       case 'pvp':
         this.pvp = !!m.on;
         g.hud.toast(this.pvp ? t('mundo.net.pvpOn', 'PvP ligado') : t('mundo.net.pvpOff', 'PvP desligado'), 'warn');
@@ -520,7 +556,8 @@ export class NetSession {
         if (m.k === 'boom') g.burst(30, m.x, m.y, m.z, '#ffb02e', 8);
         break;
       case 'reset':
-        g.hud.toast(t('mundo.net.reset', 'O anfitrião recomeçou a partida'), 'warn');
+        this.ops = this.ops.filter((o) => o.k !== 'b' && o.k !== 'e');
+        if (!this.meta?.slot) g.hud.toast(t('mundo.net.reset', 'O anfitrião recomeçou a partida'), 'warn');
         break;
     }
   }
@@ -869,6 +906,11 @@ export class NetSession {
       this.send({ t: 's', p, h: g.sb!.held(), v: nv?.nid ? { n: nv.nid } : undefined });
     }
     this.veh?.tick(dt);
+    this.stepKnock(dt);
+    if (this.isHost) {
+      this.thumbT -= dt;
+      if (this.thumbT <= 0) this.thumbT = this.sendThumb() ? 90 : 20;
+    }
     if (this.isHost) {
       this.timersT -= dt;
       if (this.timersT <= 0) {
@@ -928,6 +970,76 @@ export class NetSession {
     }
   }
 
+  /** empurrão vindo de (fx,fz) */
+  knock(fx: number, fz: number, power: number): void {
+    const g = this.g;
+    if (!g) return;
+    let dx = g.px - fx;
+    let dz = g.pz - fz;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.05) {
+      dx = Math.sin(g.yaw);
+      dz = Math.cos(g.yaw);
+    } else {
+      dx /= d;
+      dz /= d;
+    }
+    this.kb.x = dx * power;
+    this.kb.z = dz * power;
+    g.vy = Math.max(g.vy, 4.2);
+  }
+  stopKnock(): void {
+    this.kb.x = this.kb.z = 0;
+  }
+  private stepKnock(dt: number): void {
+    const g = this.g!;
+    if (!this.kb.x && !this.kb.z) return;
+    // anda em passos curtos e respeita paredes (WorldGame.blocked é privado; o motor é o mesmo)
+    const gg = g as unknown as { blocked(x: number, z: number, dx: number, dz: number): boolean };
+    const n = 3;
+    for (let i = 0; i < n; i++) {
+      const dx = (this.kb.x * dt) / n;
+      const dz = (this.kb.z * dt) / n;
+      if (!gg.blocked(g.px + dx, g.pz + dz, dx, dz)) {
+        g.px += dx;
+        g.pz += dz;
+      } else {
+        this.kb.x = this.kb.z = 0;
+        break;
+      }
+    }
+    const k = Math.exp(-dt * 3);
+    this.kb.x *= k;
+    this.kb.z *= k;
+    if (Math.hypot(this.kb.x, this.kb.z) < 0.4) this.kb.x = this.kb.z = 0;
+  }
+  /** foto do mundo para o cartão do navegador de servidores (JPEG 320×180 ≤ 30 KB) */
+  sendThumb(): boolean {
+    const g = this.g;
+    if (!g || document.hidden) return false;
+    try {
+      g.renderer.render(g.scene, g.camera);
+      const src = g.renderer.domElement;
+      const W = 320;
+      const H = 180;
+      const cv = document.createElement('canvas');
+      cv.width = W;
+      cv.height = H;
+      const x = cv.getContext('2d')!;
+      const sw = src.width;
+      const sh = src.height;
+      const k = Math.min(sw / W, sh / H);
+      x.drawImage(src, (sw - W * k) / 2, (sh - H * k) / 2, W * k, H * k, 0, 0, W, H);
+      let d = cv.toDataURL('image/jpeg', 0.62);
+      if (d.length > 40_000) d = cv.toDataURL('image/jpeg', 0.42);
+      if (d.length > 40_960) return false;
+      this.send({ t: 'thumb', d });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   hitPlayer(pid: string, d: number): void {
     if (!this.pvp) {
       this.g?.hud.toast(t('mundo.net.noPvp', 'PvP desligado neste mundo'));
@@ -940,6 +1052,8 @@ export class NetSession {
 
   close(): void {
     this.closed = true;
+    this.offFocus?.();
+    this.offFocus = null;
     try {
       this.ws?.close();
     } catch {
@@ -954,7 +1068,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 /* ------------------------------ saguão ------------------------------ */
 
 const LAST = 'bw-mundo-net-last';
-function lastWorlds(): { code: string; name: string; mini: Mini }[] {
+export function lastWorlds(): { code: string; name: string; mini: Mini }[] {
   try {
     const a = JSON.parse(localStorage.getItem(LAST) || '[]');
     return Array.isArray(a) ? a.filter((x) => x && MCODE_OK.test(x.code)).slice(0, 6) : [];
@@ -970,178 +1084,91 @@ function rememberWorld(code: string, name: string, mini: Mini): void {
     /* */
   }
 }
-const newCode = () => Array.from({ length: 6 }, () => ALPH[Math.floor(Math.random() * ALPH.length)]).join('');
+export const newCode = () => Array.from({ length: 6 }, () => ALPH[Math.floor(Math.random() * ALPH.length)]).join('');
 
 export const MINI_NAMES: Record<Exclude<Mini, ''>, [() => string, () => string]> = {
   ceu: [() => t('mundo.mini.ceu', 'Ilhas no Céu'), () => t('mundo.mini.ceuD', 'Cada um numa ilha flutuante com um baú. O último de pé vence!')],
-  corrida: [() => t('mundo.mini.corrida', 'Corrida de Construção'), () => t('mundo.mini.corridaD', 'Um tema, pouco tempo, todo mundo constrói. Depois, votação!')],
+  corrida: [() => t('mundo.mini.build', 'Construção'), () => t('mundo.mini.corridaD', 'Um tema, pouco tempo, todo mundo constrói. Depois, votação!')],
   esconde: [() => t('mundo.mini.esconde', 'Esconde-Esconde'), () => t('mundo.mini.escondeD', 'Um procura, o resto se esconde. Quem for achado vira pegador!')],
+  pvp: [() => t('mundo.mini.pvp', 'PvP Arena'), () => t('mundo.mini.pvpD', 'Empurra-empurra no céu: derrube os outros do disco. Sem dano, volta na hora!')],
+  spleef: [() => t('mundo.mini.spleef', 'Spleef de Blocos'), () => t('mundo.mini.spleefD', 'Quebre a neve embaixo dos outros. Quem cair do último andar sai!')],
+  obby: [() => t('mundo.mini.obby', 'Corrida de Obstáculos'), () => t('mundo.mini.obbyD', 'Pule de plataforma em plataforma até o bloco de ouro. Primeiro a chegar vence!')],
 };
 
-/** saguão dos servidores; resolve com o jogo montado (ou null) */
-export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
-  const m = document.createElement('div');
-  m.className = 'fl-modal';
-  root.appendChild(m);
-  let who: { id: string; name: string; skin: string } | null = null;
+/** quem sou eu online */
+export type Who = { id: string; name: string; skin: string };
+export type JoinResult = WorldGame | { studio: { code: string; ugc: string; name: string } } | string;
+
+/**
+ * Entra (ou cria, com `create`) no mundo `code` e monta o jogo. Retorna o jogo, um pedido para abrir o
+ * servidor do Bloop Studio (outro motor), ou o motivo do erro (no_world | full | kicked | …).
+ */
+export async function joinWorld(root: HTMLElement, opts: WorldOpts, who: Who, code: string, create: Record<string, unknown> | null, gameId = 'floresta'): Promise<JoinResult> {
+  const sess = new NetSession(code, who.name);
+  sess.gameId = gameId;
   try {
-    who = await me();
-  } catch {
-    who = null;
+    await sess.connect(who.id, who.skin === 'custom' ? 'bloop' : who.skin, create);
+  } catch (e) {
+    return (e as Error).message || 'fail';
   }
-  const invites: { from: string; name: string; code: string; world: string }[] = [];
-  return new Promise((resolve) => {
-    let busy = false;
-    let mode: GameMode = 'sobrevivencia';
-    let type: GenOpts['type'] = 'normal';
-    let pvp = false;
-    const render = (msg = '') => {
-      const last = lastWorlds();
-      m.innerHTML = `<div class="fl-card"><h2><span>🌐 ${t('mundo.servers', 'Servidores')}</span><button class="fl-btn round red" data-x="1">✕</button></h2>
-      <div class="mw-form">
-        ${!who ? `<div style="font-weight:800;color:#c21d3c">${t('mundo.net.offline', 'Sem internet agora — os servidores precisam de conexão.')}</div>` : ''}
-        ${msg ? `<div style="font-weight:800;color:#c21d3c">${esc(msg)}</div>` : ''}
-        <div class="mw-playing"></div>
-        ${invites.map((i) => `<div class="mw-row"><div class="sp"><b>${esc(i.name)}</b><small>${t('mundo.net.invitedYou', 'chamou você para')} ${esc(i.world)}</small></div><button class="fl-btn green" data-join="${i.code}">${t('mundo.net.join', 'Entrar')}</button></div>`).join('')}
-        <div class="mw-row2"><label style="flex:1">${t('mundo.net.code', 'Código do mundo')}<input type="text" id="mn-code" maxlength="6" placeholder="ABC234" style="text-transform:uppercase"></label><button class="fl-btn green" data-enter="1" style="align-self:flex-end">${t('mundo.net.join', 'Entrar')}</button></div>
-        ${last.map((w) => `<div class="mw-row"><div class="sp"><b>${esc(w.name)}</b><small>${w.code}${w.mini ? ' · ' + MINI_NAMES[w.mini][0]() : ''}</small></div><button class="fl-btn" data-join="${w.code}">${t('mundo.net.reopen', 'Abrir')}</button></div>`).join('')}
-        <div class="mw-lbl" style="font-weight:900">${t('mundo.net.newOnline', 'Criar mundo online (até 8 jogadores)')}</div>
-        <div class="mw-modes">${(['sobrevivencia', 'criativo', 'pacifico'] as GameMode[]).map((k) => `<button class="mw-mode ${mode === k ? 'on' : ''}" data-mode="${k}"><b>${modeName(k)}</b></button>`).join('')}</div>
-        <div class="mw-chips">${(['normal', 'plano', 'ilhas', 'flutuantes'] as GenOpts['type'][]).map((k) => `<button class="mw-chip ${type === k ? 'on' : ''}" data-type="${k}">${{ normal: t('mundo.type.normal', 'Normal'), plano: t('mundo.type.plano', 'Plano'), ilhas: t('mundo.type.ilhas', 'Ilhas'), flutuantes: t('mundo.type.flutuantes', 'Ilhas Flutuantes') }[k]}</button>`).join('')}
-          <button class="mw-chip ${pvp ? 'on' : ''}" data-pvp="1">⚔ PvP ${pvp ? t('mundo.on', 'ligado') : t('mundo.off', 'desligado')}</button></div>
-        <button class="fl-btn gold" data-create="1">${t('mundo.net.create', 'Criar e chamar amigos')}</button>
-        <div class="mw-lbl" style="font-weight:900">${t('mundo.minis', 'Minijogos')}</div>
-        ${(Object.keys(MINI_NAMES) as Exclude<Mini, ''>[]).map((k) => `<div class="mw-row"><div class="sp"><b>${MINI_NAMES[k][0]()}</b><small>${MINI_NAMES[k][1]()}</small></div><button class="fl-btn green" data-mini="${k}">${t('mundo.play', 'Jogar')}</button></div>`).join('')}
-      </div></div>`;
-    };
-    const start = async (code: string, create: Record<string, unknown> | null): Promise<string> => {
-      if (busy || !who) return 'busy';
-      busy = true;
-      render(t('mundo.net.connecting', 'Conectando…'));
-      const sess = new NetSession(code, who.name);
-      try {
-        await sess.connect(who.id, who.skin === 'custom' ? 'bloop' : who.skin, create);
-      } catch (e) {
-        busy = false;
-        const r = (e as Error).message;
-        render(r === 'no_world' ? t('mundo.net.noWorld', 'Esse mundo não existe (confira o código)') : r === 'full' ? t('mundo.net.full', 'Mundo cheio (8 jogadores)') : r === 'kicked' ? t('mundo.net.kicked', 'O anfitrião tirou você do mundo') : t('mundo.net.fail', 'Não deu para conectar agora'));
-        return r;
-      }
-      const meta = sess.meta!;
-      rememberWorld(code, meta.name, meta.mini);
-      if (create) reportPlaying('floresta', code); // amigos veem "Fulano está jogando — Entrar"
-      m.remove();
-      clearInterval(invT);
-      const save = freshWorld(meta.seed);
-      save.gen = meta.gen ?? undefined;
-      save.solo = true;
-      save.pets = 0;
-      save.veh.owned = [];
-      // inventário pessoal deste mundo online fica no aparelho
-      const key = 'bw-mundo-net:' + code;
-      try {
-        const local = JSON.parse(localStorage.getItem(key) || 'null');
-        if (local) {
-          save.sb = local.sb;
-          save.veh.owned = local.owned ?? [];
-          save.vehPlaced = true;
-          if (typeof local.px === 'number') {
-            save.px = local.px;
-            save.pz = local.pz;
-          }
+  const meta = sess.meta!;
+  if (meta.ugc) {
+    sess.close();
+    return { studio: { code, ugc: meta.ugc, name: meta.name } };
+  }
+  rememberWorld(code, meta.name, meta.mini);
+  // amigos veem "Fulano está jogando — Entrar" (oficiais também: o amigo cai na mesma instância)
+  reportPlaying(gameId, code);
+  const save = freshWorld(meta.seed);
+  save.gen = meta.gen ?? undefined;
+  save.solo = true;
+  save.pets = 0;
+  save.veh.owned = [];
+  // inventário pessoal deste mundo online fica no aparelho (minijogos começam do zero)
+  const key = 'bw-mundo-net:' + code;
+  if (!meta.mini)
+    try {
+      const local = JSON.parse(localStorage.getItem(key) || 'null');
+      if (local) {
+        save.sb = local.sb;
+        save.veh.owned = local.owned ?? [];
+        save.vehPlaced = true;
+        if (typeof local.px === 'number') {
+          save.px = local.px;
+          save.pz = local.pz;
         }
+      }
+    } catch {
+      /* */
+    }
+  const { WorldGame } = await import('./worldgame');
+  return new WorldGame(root, {
+    ...opts,
+    mode: meta.mode,
+    save,
+    net: sess,
+    onSave: (s) => {
+      if (meta.mini) return;
+      try {
+        const sbj = s.sb as Record<string, unknown> | undefined;
+        if (sbj) delete sbj.b;
+        localStorage.setItem(key, JSON.stringify({ sb: sbj, owned: s.veh.owned, px: s.px, pz: s.pz }));
       } catch {
         /* */
       }
-      const { WorldGame } = await import('./worldgame');
-      const g = new WorldGame(root, {
-        ...opts,
-        mode: meta.mode,
-        save,
-        net: sess,
-        onSave: (s) => {
-          try {
-            const sbj = s.sb as Record<string, unknown> | undefined;
-            if (sbj) delete sbj.b;
-            localStorage.setItem(key, JSON.stringify({ sb: sbj, owned: s.veh.owned, px: s.px, pz: s.pz }));
-          } catch {
-            /* */
-          }
-        },
-        exit: () => {
-          sess.close();
-          stopPlaying();
-          opts.exit();
-        },
-      });
-      resolve(g);
-      return 'ok';
-    };
-    m.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (!b) return;
-      const d = b.dataset;
-      if (d.x) {
-        m.remove();
-        clearInterval(invT);
-        resolve(null);
-        return;
-      }
-      if (d.mode) mode = d.mode as GameMode;
-      if (d.type) type = d.type as GenOpts['type'];
-      if (d.pvp) pvp = !pvp;
-      if (d.mode || d.type || d.pvp) return render();
-      if (d.join) return void start(d.join, null);
-      if (d.enter) {
-        const c = ((m.querySelector('#mn-code') as HTMLInputElement).value || '').toUpperCase().trim();
-        if (!MCODE_OK.test(c)) return render(t('mundo.net.badCode', 'O código tem 6 letras/números'));
-        return void start(c, null);
-      }
-      if (d.create) return void start(newCode(), { name: t('mundo.net.worldOf', 'Mundo de {n}', { n: who?.name ?? 'Bloop' }), seed: Math.floor(Math.random() * 1e9), gen: { type, h: 1, off: [] }, mode, pvp });
-      if (d.mini) {
-        const k = d.mini as Mini;
-        const gen: GenOpts = { type: k === 'ceu' ? 'flutuantes' : k === 'corrida' ? 'plano' : 'normal', h: 1, off: [] };
-        return void start(newCode(), { name: MINI_NAMES[k as Exclude<Mini, ''>][0](), seed: Math.floor(Math.random() * 1e9), gen, mode: k === 'corrida' ? 'criativo' : k === 'esconde' ? 'pacifico' : 'sobrevivencia', pvp: k === 'ceu', mini: k });
-      }
-    });
-    render();
-    // amigos no Mundo Aberto agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
-    const strip = document.createElement('div');
-    void import('../../../party/friends-play').then((f) => f.playingStrip(strip, 'floresta'));
-    const putStrip = () => m.querySelector('.mw-playing')?.replaceWith(strip);
-    putStrip();
-    new MutationObserver(putStrip).observe(m, { childList: true });
-    // convites de amigos (a cada 6 s)
-    const poll = async () => {
-      if (!who) return;
-      try {
-        const r = await api<{ invites: { from: string; name: string; code: string; world: string }[] }>(`/mundo/invites?id=${encodeURIComponent(who.id)}`);
-        const fresh = (r.invites ?? []).filter((i) => MCODE_OK.test(i.code) && !invites.some((x) => x.code === i.code));
-        if (fresh.length && !busy) {
-          invites.push(...fresh);
-          render();
-        }
-      } catch {
-        /* */
-      }
-    };
-    void poll();
-    const invT = window.setInterval(() => void poll(), 6000);
-    // grupo (docs/PARTY.md): o líder cria o mundo com o código do grupo e os outros entram sozinhos
-    if (party && who)
-      void (async () => {
-        if (party.host) {
-          await start(party.code, { name: t('mundo.net.worldOf', 'Mundo de {n}', { n: who?.name ?? 'Bloop' }), seed: Math.floor(Math.random() * 1e9), gen: { type: 'normal', h: 1, off: [] }, mode: 'sobrevivencia', pvp: false });
-          return;
-        }
-        for (let i = 0; i < 25 && m.isConnected; i++) {
-          const r = await start(party.code, null);
-          if (r !== 'no_world') return;
-          render(t('mundo.net.waitLeader', 'Esperando o líder abrir o mundo…'));
-          await new Promise((res) => setTimeout(res, 1200));
-        }
-      })();
+    },
+    exit: () => {
+      sess.close();
+      stopPlaying();
+      opts.exit();
+    },
   });
+}
+
+/** navegador de servidores (browser.ts); resolve com o jogo montado (ou null = voltar) */
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean; direct?: boolean }, o: { gameId?: string } = {}): Promise<WorldGame | null> {
+  const B = await import('./browser');
+  return B.serverBrowser(root, opts, party, o.gameId ?? 'floresta');
 }
 
 /** painel de convite (dentro do jogo): amigos online + código */
