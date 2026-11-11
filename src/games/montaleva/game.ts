@@ -1716,12 +1716,13 @@ export class MontaLeva implements MiniGameHandle {
     // câmera
     const f = sim.focus();
     const vx = sim.speed();
-    const sT = this.portrait ? Math.min(this.W / 7.5, this.H / 12) : Math.min(this.H / 8.2, this.W / 15);
+    const sT = this.portrait ? Math.min(this.W / 6.4, this.H / 11) : Math.min(this.H / 8.2, this.W / 15);
     this.camT.s = sT;
     const dir = sim.track.dir;
-    const look = clamp(vx * 0.45, -3.5, 3.5) + (this.portrait ? 0.6 : 2) * dir;
+    // retrato: pouca antecipação (a tela é estreita, o carrinho não pode sair pela borda)
+    const look = this.portrait ? clamp(vx * 0.16, -1.1, 1.1) + 0.3 * dir : clamp(vx * 0.45, -3.5, 3.5) + 2 * dir;
     this.camT.x = f.x + look;
-    this.camT.y = f.y + (this.portrait ? 1.8 : 0.9);
+    this.camT.y = f.y + (this.portrait ? 1.3 : 0.9);
     // HUD
     const tt = Math.floor(sim.time * 10);
     if (tt !== this.lastHudT) {
