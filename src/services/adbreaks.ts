@@ -80,6 +80,8 @@ export async function offerRewarded(kind: RewardKind, onReward: () => void, opts
 
 let runEndAt = 0;
 let lastRewardStart = 0;
+/** último toque do jogador dentro do minigame */
+let lastInputAt = 0;
 let offerEl: HTMLElement | null = null;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -105,12 +107,14 @@ async function onRunEnd(r: RunReport): Promise<void> {
   scheduleBanner();
   await sleep(breaks.runEndDelayMs);
   if (runEndAt !== at || !safeBreak(game)) return adLog(`run-end ${game}: não é pausa segura`, 'skip');
+  // o jogador já voltou a tocar no jogo (jogo emendou a próxima rodada): não interrompe
+  if (lastInputAt > at + 250) return adLog(`run-end ${game}: jogador já está jogando de novo`, 'skip');
   if (lastRewardStart >= at) return adLog(`run-end ${game}: o jogo já ofereceu vídeo`, 'skip');
   if (breaks.exitOnlyGames.includes(game)) {
     adLog(`run-end ${game}: só na saída (rodadas emendadas)`, 'skip');
   } else if (await maybeInterstitial({ game, reason: 'run-end' })) return;
   // sem intersticial nesta pausa → oferta opcional de dobrar (nunca os dois juntos)
-  if (runEndAt !== at || !safeBreak(game)) return;
+  if (runEndAt !== at || !safeBreak(game) || lastInputAt > at + 250) return;
   offerDouble(game, r);
 }
 
@@ -252,6 +256,7 @@ export function initAdBreaks(): void {
   });
   // primeiro toque depois do resultado = o jogador seguiu (de novo/menu): banner reavalia já
   bus.on('host-input', () => {
+    lastInputAt = Date.now();
     if (resultWindowOpen() && resultWindowAge() > 800) {
       closeResultWindow();
       scheduleBanner();

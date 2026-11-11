@@ -76,6 +76,7 @@ export async function launchRally(root: HTMLElement, exit: () => void): Promise<
     destroy: () => g.destroy(),
     pause: () => g.pause(),
     resume: () => g.resume(),
+    inMatch: () => g.inMatch(),
   };
 }
 

@@ -308,7 +308,7 @@ export function adLog(msg: string, kind: 'fire' | 'skip' | 'info' | 'reward' = '
     logEl = document.createElement('div');
     logEl.className = 'ads-dbg';
     logEl.style.cssText =
-      'position:fixed;left:6px;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:2147483600;max-width:min(86vw,360px);pointer-events:none;font:600 11px/1.35 ui-monospace,monospace;color:#fff;display:flex;flex-direction:column;gap:2px';
+      'position:fixed;left:6px;top:42%;opacity:.92;z-index:2147483600;max-width:min(86vw,360px);pointer-events:none;font:600 11px/1.35 ui-monospace,monospace;color:#fff;display:flex;flex-direction:column;gap:2px';
     document.body.appendChild(logEl);
   }
   const col: Record<string, string> = { fire: '#e0398a', skip: '#3a3f5c', info: '#1f6f8b', reward: '#2e8b3a' };
@@ -324,3 +324,4 @@ export function adLog(msg: string, kind: 'fire' | 'skip' | 'info' | 'reward' = '
 if (ADS_DEBUG && /[?&]adsfast\b/.test(location.search)) {
   Object.assign(breaks, { minGapSec: 25, sessionWarmupSec: 10, newPlayerGraceMin: 0, afterRewardedSec: 15, freeRunsTotal: 0, freeRunsPerGame: 1, runsBetween: 1, exitMinPlaySec: 10 });
 }
+if (ADS_DEBUG && typeof window !== 'undefined') (window as unknown as { __ads: unknown }).__ads = { probe: hostProbe, stats: adStats, breaks, state: st };
