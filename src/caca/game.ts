@@ -3,6 +3,7 @@
  * Telas: segurança (1ª vez) → escolha GPS / modo casa → inicial → mapa → encontro → batalha → captura;
  * Bloopdex (famílias, meus bichinhos, equipe, ovos) e ajustes/privacidade.
  */
+import { cacaIntro } from './intro';
 import './caca.css';
 import type { MiniGameHandle } from '../hub/registry';
 import { reportRun } from '../hub/registry';
@@ -223,6 +224,13 @@ class CacaGame implements MiniGameHandle {
 
   /* ============================== fluxo inicial ============================== */
   private flow(): void {
+    // abertura (1ª vez): src/caca/intro
+    if (cacaIntro.due()) {
+      void cacaIntro.once(this.el).then(() => {
+        if (!this.dead) this.flow();
+      });
+      return;
+    }
     if (!this.sv.safetyOk) return this.showSafety(() => this.flow());
     if (!this.sv.locMode) return this.showModeChoice(() => this.flow());
     if (!this.sv.starter) return this.showStarter(() => this.flow());
