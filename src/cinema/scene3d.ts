@@ -471,11 +471,14 @@ export class Scene3D implements Renderer3D {
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private rig: Rig = restRig();
+  private seen = new Set<string>();
   readonly canvas: HTMLCanvasElement;
 
   constructor(tier: number) {
     this.canvas = document.createElement('canvas');
-    this.gl = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: tier >= 2, preserveDrawingBuffer: true, alpha: false, powerPreference: 'default' });
+    this.gl = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: tier >= 2, alpha: false, powerPreference: 'default' });
+    // sem preserveDrawingBuffer: o quadro é copiado para o canvas 2D (drawImage) logo depois do
+    // render, na mesma tarefa — preservar o buffer obrigava uma cópia extra do quadro inteiro na GPU
     this.gl.setPixelRatio(1);
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x8a6ab0, 1.6);
@@ -644,7 +647,8 @@ export class Scene3D implements Renderer3D {
     this.buildSet(ref);
     if (this.canvas.width !== W || this.canvas.height !== H) this.gl.setSize(W, H, false);
     // atores
-    const seen = new Set<string>();
+    const seen = this.seen;
+    seen.clear();
     for (const a of list) {
       const ac = this.actorFor(a.cast);
       seen.add(a.cast.id);
