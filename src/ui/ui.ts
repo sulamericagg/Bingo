@@ -186,8 +186,8 @@ export class UI {
   /** Botão voltar do Android. Retorna false se deve sair do app. */
   back(): boolean {
     if (celebrating()) return true;
-    // folha "Reportar bug" aberta por cima de um jogo: o voltar fecha a folha (antes abria o "Sair do jogo?" por trás dela)
-    if (document.querySelector('.beta-sheet-bg, .fake-ad') && popBack()) return true;
+    // folha "Reportar bug" ou roda de emotes por cima de um jogo: o voltar fecha a folha/roda (antes abria o "Sair do jogo?" por trás dela)
+    if (document.querySelector('.beta-sheet-bg, .fake-ad, .sc-wheel') && popBack()) return true;
     if (hubBack()) return true;
     if (popBack()) return true;
     if (closeCreator(false)) return true;
