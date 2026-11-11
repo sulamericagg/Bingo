@@ -204,6 +204,8 @@ export class PlaySession {
   private camPos = new THREE.Vector3();
   private disposed = false;
   private enemies: Enemy[] = [];
+  private ores = 0;
+  private oreT = 0;
   private defeated = 0;
   private collected = 0;
   private hurtCd = 0;
@@ -1686,6 +1688,21 @@ export class PlaySession {
     this.h.world.update(focus);
     this.triggers(dt, focus);
     if (this.enemies.length) this.stepEnemies(dt, focus);
+    this.oreT -= dt;
+    if (this.oreT <= 0 && this.h.world.oresNear) {
+      this.oreT = 0.2;
+      // minérios do mundo Infinito: encostou, coletou (+5 pontos)
+      for (const o of this.h.world.oresNear(focus.x, focus.z, 3)) {
+        if (Math.hypot(o.x - focus.x, o.z - focus.z) > (this.driving ? 2.6 : 1.6) || Math.abs(o.y - focus.y) > 2.5) continue;
+        this.h.world.takeOre!(o.key);
+        this.ores++;
+        this.score += 5;
+        sfx.sparkle();
+        tap('light');
+        notify(t('studio.play.ore', 'Minério! +5 ({n})', { n: this.ores }), { icon: 'gem', kind: 'good', key: 'ore' });
+        this.updateChip();
+      }
+    }
     if (this.objs.length && !this.won && !this.lost) {
       this.checkMission(focus);
       this.renderMission();
@@ -1895,6 +1912,7 @@ export class PlaySession {
     this.h.scene.remove(this.root);
     for (const v of this.vehicles) v.rv?.removeFromWorld(this.world);
     while (this.world.bodies.length) this.world.removeBody(this.world.bodies[0]);
+    this.h.world.resetOres?.();
   }
 
   /** dirigindo? e onde está (usado pelo passo a passo) */

@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "動画を{n}本見ると{m}分間 広告なし(最大{x}時間)",
   "adfree.title": "広告なしタイム",
   "adfree.watch": "動画を見る({a}/{b})",
+  "ads.capReached": "今日の動画の上限に達しました",
+  "ads.dbl.done": "+{n} コイン！報酬が2倍に",
+  "ads.dbl.no": "今はしない",
+  "ads.dbl.sub": "短い動画で +{n} コイン",
+  "ads.dbl.title": "報酬を2倍に",
+  "ads.dbl.watch": "見る",
   "ads.videoUnavailable": "いまは動画がありません",
   "age.teen": "13さい以上",
   "age.text": "なんさい? 13さい未満の人は、クイックフレーズだけの「あんしんモード」になるよ。",
@@ -6230,11 +6236,5 @@ export default {
   "voo.z.cockpit": "操縦室",
   "voo.z.eco": "エコノミー",
   "voo.z.first": "ファーストクラス",
-  "voo.z.galley": "ギャレー",
-  "ads.capReached": "今日の動画の上限に達しました",
-  "ads.dbl.title": "報酬を2倍に",
-  "ads.dbl.sub": "短い動画で +{n} コイン",
-  "ads.dbl.watch": "見る",
-  "ads.dbl.no": "今はしない",
-  "ads.dbl.done": "+{n} コイン！報酬が2倍に"
+  "voo.z.galley": "ギャレー"
 } as Record<string, string>;

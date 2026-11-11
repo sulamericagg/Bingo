@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "{n} video izle, {m} dk reklamsız oyna (en fazla {x} sa)",
   "adfree.title": "Reklamsız süre",
   "adfree.watch": "Video izle ({a}/{b})",
+  "ads.capReached": "Bugünkü video sınırına ulaşıldı",
+  "ads.dbl.done": "+{n} jeton! Ödül ikiye katlandı",
+  "ads.dbl.no": "Şimdi değil",
+  "ads.dbl.sub": "Kısa bir videoyla +{n} jeton",
+  "ads.dbl.title": "Ödülü ikiye katla",
+  "ads.dbl.watch": "İzle",
   "ads.videoUnavailable": "Şu an video yok",
   "age.teen": "13 yaşında ya da büyüğüm",
   "age.text": "Kaç yaşındasın? 13 yaş altı oyuncular sadece hızlı mesajlı Güvenli Mod'u kullanır.",
@@ -6230,11 +6236,5 @@ export default {
   "voo.z.cockpit": "Kokpit",
   "voo.z.eco": "Ekonomi sınıfı",
   "voo.z.first": "Birinci sınıf",
-  "voo.z.galley": "Mutfak",
-  "ads.capReached": "Bugünkü video sınırına ulaşıldı",
-  "ads.dbl.title": "Ödülü ikiye katla",
-  "ads.dbl.sub": "Kısa bir videoyla +{n} jeton",
-  "ads.dbl.watch": "İzle",
-  "ads.dbl.no": "Şimdi değil",
-  "ads.dbl.done": "+{n} jeton! Ödül ikiye katlandı"
+  "voo.z.galley": "Mutfak"
 } as Record<string, string>;

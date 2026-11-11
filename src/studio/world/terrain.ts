@@ -92,6 +92,15 @@ export const RES = 16; // células por lado (3 m)
 const VN = RES + 1;
 const FLAT_R = 34; // área de construção plana
 
+export interface OreSpot {
+  key: string;
+  x: number;
+  y: number;
+  z: number;
+  i0: number;
+  n: number;
+}
+
 export interface Island {
   x: number;
   y: number;
@@ -318,6 +327,10 @@ export interface WorldView {
   pickables(): THREE.Object3D[];
   /** superfície da água em (x,z) ou -Infinity (boia/afunda) */
   waterAt(x: number, z: number): number;
+  /** minérios coletáveis perto de (x,z) (só Infinito) */
+  oresNear?(x: number, z: number, r: number): OreSpot[];
+  takeOre?(key: string): void;
+  resetOres?(): void;
   /** ilhas flutuantes perto de (x,z) (física) */
   islandsNear?(x: number, z: number, r: number): Island[];
   /** relevo esculpido (só no Plano) */
@@ -484,6 +497,8 @@ interface Chunk {
   inst: THREE.InstancedMesh[];
   islands: Island[];
   extra: THREE.Object3D[];
+  ores: OreSpot[];
+  oreMesh: THREE.InstancedMesh | null;
 }
 
 class Infinite implements WorldView {
@@ -539,6 +554,30 @@ class Infinite implements WorldView {
   }
   waterAt(): number {
     return this.gen.sea > -50 ? this.gen.sea : -Infinity;
+  }
+  /** minérios já coletados nesta partida (somem também quando o pedaço é recriado) */
+  private taken = new Set<string>();
+  oresNear(x: number, z: number, r: number): OreSpot[] {
+    const out: OreSpot[] = [];
+    for (const c of this.chunks.values()) for (const o of c.ores) if (!this.taken.has(o.key) && Math.abs(o.x - x) < r && Math.abs(o.z - z) < r) out.push(o);
+    return out;
+  }
+  takeOre(key: string): void {
+    this.taken.add(key);
+    for (const c of this.chunks.values()) {
+      const o = c.ores.find((q) => q.key === key);
+      if (!o || !c.oreMesh) continue;
+      const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+      for (let i = 0; i < o.n; i++) c.oreMesh.setMatrixAt(o.i0 + i, zero);
+      c.oreMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+  resetOres(): void {
+    if (!this.taken.size) return;
+    this.taken.clear();
+    // recria os pedaços para os cristais voltarem
+    for (const c of this.chunks.values()) this.drop(c);
+    this.chunks.clear();
   }
   islandsNear(x: number, z: number, r: number): Island[] {
     const out: Island[] = [];
@@ -700,14 +739,15 @@ class Infinite implements WorldView {
       inst.push(im);
     }
     const extra: THREE.Object3D[] = [];
-    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], cols?: THREE.Color[]) => {
-      if (!list.length) return;
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], cols?: THREE.Color[]): THREE.InstancedMesh | null => {
+      if (!list.length) return null;
       const im = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((m, i) => {
         im.setMatrixAt(i, m);
         if (cols) im.setColorAt(i, cols[i]);
       });
       inst.push(im);
+      return im;
     };
     add(this.geo.stem, this.stemMat, stems);
     // cavernas (entradas de pedra) e minérios (cristais) — enfeites, frequência do "Personalizar mundo"
@@ -715,6 +755,7 @@ class Infinite implements WorldView {
     const mouths: THREE.Matrix4[] = [];
     const ores: THREE.Matrix4[] = [];
     const oreCols: THREE.Color[] = [];
+    const oreSpots: OreSpot[] = [];
     const ORE = ['#7ad8ff', '#ff6ad0', '#ffd34a', '#7aff9a', '#b07aff'];
     const gn = this.gen;
     for (let k = 0; k < 6; k++) {
@@ -733,6 +774,15 @@ class Infinite implements WorldView {
         mouths.push(new THREE.Matrix4().compose(new THREE.Vector3(x + fw.x * s * 1.25, y + s * 0.3, z + fw.z * s * 1.25), q, new THREE.Vector3(s * 0.55, s * 0.6, 1)));
       } else if (roll < 0.35 * gn.ores) {
         const col = new THREE.Color(ORE[Math.floor(hash2(cx, cz, gn.seed + 65 + k) * ORE.length)]);
+        const key = cx + ',' + cz + ',' + k;
+        oreSpots.push({ key, x, y, z, i0: ores.length, n: 3 });
+        if (this.taken.has(key)) {
+          for (let q = 0; q < 3; q++) {
+            ores.push(new THREE.Matrix4().makeScale(0, 0, 0));
+            oreCols.push(col);
+          }
+          continue;
+        }
         for (let q = 0; q < 3; q++) {
           const s = 0.5 + hash2(k, q, gn.seed + 66) * 0.7;
           const e = new THREE.Euler(hash2(q, k, 67) * 0.6 - 0.3, hash2(k, q, 68) * 3, hash2(q, k, 69) * 0.6 - 0.3);
@@ -743,7 +793,7 @@ class Infinite implements WorldView {
     }
     add(this.geo.cave, this.rockMat, caves);
     add(this.geo.mouth, this.darkMat, mouths);
-    add(this.geo.ore, this.oreMat, ores, oreCols);
+    const oreMesh = add(this.geo.ore, this.oreMat, ores, oreCols);
     // ilhas flutuantes
     const islands = gn.islands(cx, cz);
     for (const s of islands) {
@@ -761,7 +811,7 @@ class Infinite implements WorldView {
       im.computeBoundingSphere();
       this.group.add(im);
     }
-    this.chunks.set(cx + ',' + cz, { cx, cz, mesh, trees, inst, islands, extra });
+    this.chunks.set(cx + ',' + cz, { cx, cz, mesh, trees, inst, islands, extra, ores: oreSpots, oreMesh });
   }
   private drop(c: Chunk): void {
     for (const o of c.extra) this.group.remove(o);

@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "看{n}个视频,畅玩{m}分钟无广告(最多{x}小时)",
   "adfree.title": "无广告时间",
   "adfree.watch": "看视频({a}/{b})",
+  "ads.capReached": "今天的视频次数已用完",
+  "ads.dbl.done": "+{n} 金币！奖励已翻倍",
+  "ads.dbl.no": "以后再说",
+  "ads.dbl.sub": "看个短视频 +{n} 金币",
+  "ads.dbl.title": "奖励翻倍",
+  "ads.dbl.watch": "观看",
   "ads.videoUnavailable": "现在没有可用的视频",
   "age.teen": "我13岁或以上",
   "age.text": "你几岁啦?13岁以下的玩家使用安全模式,只能发快捷短语。",
@@ -6230,11 +6236,5 @@ export default {
   "voo.z.cockpit": "驾驶舱",
   "voo.z.eco": "经济舱",
   "voo.z.first": "头等舱",
-  "voo.z.galley": "厨房",
-  "ads.capReached": "今天的视频次数已用完",
-  "ads.dbl.title": "奖励翻倍",
-  "ads.dbl.sub": "看个短视频 +{n} 金币",
-  "ads.dbl.watch": "观看",
-  "ads.dbl.no": "以后再说",
-  "ads.dbl.done": "+{n} 金币！奖励已翻倍"
+  "voo.z.galley": "厨房"
 } as Record<string, string>;

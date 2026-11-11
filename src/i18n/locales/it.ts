@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Guarda {n} video e gioca {m} min senza pubblicità (fino a {x} h)",
   "adfree.title": "Tempo senza pubblicità",
   "adfree.watch": "Guarda video ({a}/{b})",
+  "ads.capReached": "Limite di video di oggi raggiunto",
+  "ads.dbl.done": "+{n} monete! Ricompensa raddoppiata",
+  "ads.dbl.no": "Non ora",
+  "ads.dbl.sub": "+{n} monete con un video breve",
+  "ads.dbl.title": "Raddoppia la ricompensa",
+  "ads.dbl.watch": "Guarda",
   "ads.videoUnavailable": "Video non disponibile ora",
   "age.teen": "Ho 13 anni o più",
   "age.text": "Quanti anni hai? Sotto i 13 anni si usa la Modalità sicura, solo con frasi rapide.",
@@ -6230,11 +6236,5 @@ export default {
   "voo.z.cockpit": "Cabina di pilotaggio",
   "voo.z.eco": "Classe economica",
   "voo.z.first": "Prima classe",
-  "voo.z.galley": "Cambusa",
-  "ads.capReached": "Limite di video di oggi raggiunto",
-  "ads.dbl.title": "Raddoppia la ricompensa",
-  "ads.dbl.sub": "+{n} monete con un video breve",
-  "ads.dbl.watch": "Guarda",
-  "ads.dbl.no": "Non ora",
-  "ads.dbl.done": "+{n} monete! Ricompensa raddoppiata"
+  "voo.z.galley": "Cambusa"
 } as Record<string, string>;

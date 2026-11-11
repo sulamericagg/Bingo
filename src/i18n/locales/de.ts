@@ -315,6 +315,12 @@ export default {
   "adfree.sub": "Schau {n} Videos und spiel {m} Min. ohne Werbung (bis {x} Std.)",
   "adfree.title": "Werbefreie Zeit",
   "adfree.watch": "Video ansehen ({a}/{b})",
+  "ads.capReached": "Video-Limit für heute erreicht",
+  "ads.dbl.done": "+{n} Münzen! Belohnung verdoppelt",
+  "ads.dbl.no": "Jetzt nicht",
+  "ads.dbl.sub": "+{n} Münzen für ein kurzes Video",
+  "ads.dbl.title": "Belohnung verdoppeln",
+  "ads.dbl.watch": "Ansehen",
   "ads.videoUnavailable": "Gerade kein Video verfügbar",
   "age.teen": "Ich bin 13 oder älter",
   "age.text": "Wie alt bist du? Unter 13 nutzt du den Sicheren Modus mit Schnellnachrichten.",
@@ -6230,11 +6236,5 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Economy",
   "voo.z.first": "First Class",
-  "voo.z.galley": "Bordküche",
-  "ads.capReached": "Video-Limit für heute erreicht",
-  "ads.dbl.title": "Belohnung verdoppeln",
-  "ads.dbl.sub": "+{n} Münzen für ein kurzes Video",
-  "ads.dbl.watch": "Ansehen",
-  "ads.dbl.no": "Jetzt nicht",
-  "ads.dbl.done": "+{n} Münzen! Belohnung verdoppelt"
+  "voo.z.galley": "Bordküche"
 } as Record<string, string>;
