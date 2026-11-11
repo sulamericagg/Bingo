@@ -41,6 +41,7 @@ import { registerCinema } from './cinema/register';
 import { registerCaca } from './caca/register';
 import { registerMontaLeva } from './games/montaleva/register';
 import { registerCavaFala } from './games/cavafala/register';
+import { registerStudio } from './studio/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { openFriendLink, registerSocial } from './social/register';
@@ -112,6 +113,7 @@ async function boot(): Promise<void> {
   registerCaca();
   registerMontaLeva();
   registerCavaFala();
+  registerStudio();
   registerPet();
   registerMirror({ getTier: () => game.quality.tier });
   registerCreatures();
