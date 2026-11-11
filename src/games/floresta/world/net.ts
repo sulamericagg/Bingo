@@ -23,6 +23,7 @@ import { ALL_MOBS, MOB_INDEX, type Mob as BigMob } from './content/mobs';
 import { VehNet, type VRec } from './vnet';
 import type { BossView } from './content/mobs';
 import { ITEM } from './items';
+import { joinInvite, joinStr, reportPlaying, stopPlaying } from '../../../party/join';
 import { CROPS, PDEFS, type Piece } from './build';
 const ITEM_OK = (id: string) => ITEM.has(id);
 
@@ -976,6 +977,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { 
       <div class="mw-form">
         ${!who ? `<div style="font-weight:800;color:#c21d3c">${t('mundo.net.offline', 'Sem internet agora — os servidores precisam de conexão.')}</div>` : ''}
         ${msg ? `<div style="font-weight:800;color:#c21d3c">${esc(msg)}</div>` : ''}
+        <div class="mw-playing"></div>
         ${invites.map((i) => `<div class="mw-row"><div class="sp"><b>${esc(i.name)}</b><small>${t('mundo.net.invitedYou', 'chamou você para')} ${esc(i.world)}</small></div><button class="fl-btn green" data-join="${i.code}">${t('mundo.net.join', 'Entrar')}</button></div>`).join('')}
         <div class="mw-row2"><label style="flex:1">${t('mundo.net.code', 'Código do mundo')}<input type="text" id="mn-code" maxlength="6" placeholder="ABC234" style="text-transform:uppercase"></label><button class="fl-btn green" data-enter="1" style="align-self:flex-end">${t('mundo.net.join', 'Entrar')}</button></div>
         ${last.map((w) => `<div class="mw-row"><div class="sp"><b>${esc(w.name)}</b><small>${w.code}${w.mini ? ' · ' + MINI_NAMES[w.mini][0]() : ''}</small></div><button class="fl-btn" data-join="${w.code}">${t('mundo.net.reopen', 'Abrir')}</button></div>`).join('')}
@@ -1003,6 +1005,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { 
       }
       const meta = sess.meta!;
       rememberWorld(code, meta.name, meta.mini);
+      if (create) reportPlaying('floresta', code); // amigos veem "Fulano está jogando — Entrar"
       m.remove();
       clearInterval(invT);
       const save = freshWorld(meta.seed);
@@ -1043,6 +1046,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { 
         },
         exit: () => {
           sess.close();
+          stopPlaying();
           opts.exit();
         },
       });
@@ -1077,6 +1081,12 @@ export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { 
       }
     });
     render();
+    // amigos no Mundo Aberto agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+    const strip = document.createElement('div');
+    void import('../../../party/friends-play').then((f) => f.playingStrip(strip, 'floresta'));
+    const putStrip = () => m.querySelector('.mw-playing')?.replaceWith(strip);
+    putStrip();
+    new MutationObserver(putStrip).observe(m, { childList: true });
     // convites de amigos (a cada 6 s)
     const poll = async () => {
       if (!who) return;
@@ -1130,6 +1140,8 @@ export async function inviteFriends(sess: NetSession, host: HTMLElement): Promis
       try {
         const who = await me();
         await api('/mundo/invite', { id: who.id, to: b.dataset.call, code: sess.code, name: who.name, world: sess.meta?.name ?? '' });
+        // e pelo sistema de amigos: aparece NA HORA em qualquer tela (src/party/invite-pop.ts)
+        void api('/friends/invite', { id: who.id, to: b.dataset.call, kind: 'game', game: joinInvite(joinStr('floresta', sess.code)) }).catch(() => {});
         b.textContent = '✓';
       } catch {
         b.textContent = '✕';

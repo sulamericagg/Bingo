@@ -37,7 +37,7 @@ async function launchById(gameId: string): Promise<boolean> {
 
 export function gameLabel(id?: string): string {
   // convite de duelo: "duel-<jogo>-<código>" (src/party/duel-link.ts)
-  const d = /^duel-([a-z]{2,12})-/.exec(id ?? '');
+  const d = /^duel-([a-z]{2,12})-/.exec(id ?? '') ?? /^j-(?:duel-)?([a-z]{2,12})-/.exec(id ?? '');
   if (d) id = d[1];
   return listGames().find((g) => g.id === id)?.name ?? id ?? '';
 }
@@ -59,7 +59,12 @@ export async function acceptInvite(inv: FriendInvite, close?: () => void): Promi
     if (!inv.room || !(await sq.joinSquad(inv.room))) toast(t('sq.gone', 'Esse grupo não existe mais.'), 'warning');
   } else if (inv.kind === 'party') await openHomeAt({ visit: inv.from.id, party: inv.from.id });
   else if (inv.kind === 'house') await openHomeAt({ visit: inv.from.id });
-  else if (inv.game?.startsWith('duel-')) {
+  else if (inv.game?.startsWith('j-')) {
+    // sala de um amigo (voo, noites, garimpo, mundo, duelo): entra direto, sem código
+    const j = await import('../party/join');
+    const r = j.parseJoinInvite(inv.game);
+    if (!r || !(await j.openJoin(r))) toast(t('fr.inv.nogame', 'Esse jogo não está neste aparelho.'), 'warning');
+  } else if (inv.game?.startsWith('duel-')) {
     const d = await import('../party/duel-link');
     const p = d.parseDuelInvite(inv.game);
     if (!p || !(await d.openDuel(p.game, p.code))) toast(t('fr.inv.nogame', 'Esse jogo não está neste aparelho.'), 'warning');

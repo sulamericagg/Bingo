@@ -32,6 +32,7 @@ import { Sim, mulberry } from './sim';
 import { View2D } from './view2d';
 import type { View3D } from './view3d';
 import { consumePartySeat, partySeat } from '../../party/contract';
+import { reportPlaying, stopPlaying } from '../../party/join';
 
 export interface LaunchOpts {
   mode?: '2d' | '3d';
@@ -231,6 +232,8 @@ export class VooGame implements MiniGameHandle, HudHost {
   private inRoom(net: FlightNet, me: Me, mode: '2d' | '3d'): void {
     const r = openRoom(this.wrap, { net, me, role: this.sv.role, mode });
     this.room = r;
+    if (net.isHost) reportPlaying('voo', net.code); // amigos veem "Fulano está jogando — Entrar"
+    void r.done.then(() => stopPlaying());
     this.setBack(() => r.back());
     void r.done.then((res) => {
       this.room = null;

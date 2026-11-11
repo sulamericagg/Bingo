@@ -22,15 +22,15 @@ import { notify } from '../ui/notify';
 import { audio } from '../core/audio';
 import { tap } from '../core/haptics';
 import { pushBack } from '../core/back';
-import { api, me, wsUrl } from '../social/net';
-import { duelInviteGame, type DuelEntry, newDuelCode, DUEL_CODE_RE } from './duel-link';
+import { me, wsUrl } from '../social/net';
+import { type DuelEntry, newDuelCode, DUEL_CODE_RE, FRIENDS_SVG } from './duel-link';
+import { joinStr, reportPlaying, stopPlaying } from './join';
 import './duel.css';
 
 export { freshDuel, takeDuel, registerDuelGame } from './duel-link';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 export const DUEL_COLORS = ['#ffd34a', '#5ef0ff', '#ff5cae', '#7dff9a'];
-const FRIENDS_SVG = `<svg viewBox="0 0 32 24" width="1.4em" height="1.05em" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg>`;
 export const friendsIcon = (): string => FRIENDS_SVG;
 
 export interface DuelPlayer {
@@ -412,6 +412,8 @@ export function startDuel(o: DuelOpts): DuelCtl {
   const showLobby = (s: RoomState) => {
     if (!net) return;
     lastRanks = null;
+    // amigos veem "Fulano está jogando — Entrar" enquanto a sala está aberta
+    if (!o.entry.party) reportPlaying(o.game, net.code, true);
     const host = isHost();
     if (!lobbyEl || screen !== lobbyEl) {
       lobbyEl = card('');
@@ -457,7 +459,8 @@ export function startDuel(o: DuelOpts): DuelCtl {
       b.disabled = true;
       net.send({ t: 'start' });
     } else if (b.dataset.qr !== undefined) void showQr();
-    else if (b.dataset.call !== undefined) void callFriends();
+    else if (b.dataset.call !== undefined)
+      void import('./friends-play').then((f) => f.openCallFriends({ game: o.game, j: joinStr(o.game, net!.code, true), onCode: () => void showQr(), root: layer }));
   };
 
   const showQr = async () => {
@@ -490,54 +493,9 @@ export function startDuel(o: DuelOpts): DuelCtl {
     });
   };
 
-  const callFriends = async () => {
-    if (!net || !who) return;
-    const { cachedSocial, refreshFriendsNow } = await import('../services/home');
-    const d = document.createElement('div');
-    d.className = 'dl-pop';
-    d.innerHTML = `<div class="dl-card sm"><b class="dl-h2">${FRIENDS_SVG}${esc(t('duel.call', 'Chamar amigo'))}</b><div class="dl-frs"><i class="dl-spin"></i></div><div class="dl-acts"><button class="dl-btn" data-qr>${icon('link', { size: 22 })}<span>QR</span></button><button class="dl-btn go" data-ok>${icon('check', { size: 22 })}</button></div></div>`;
-    layer.appendChild(d);
-    const pop = pushBack(() => d.remove());
-    const box = d.querySelector('.dl-frs') as HTMLElement;
-    const fill = () => {
-      const fr = cachedSocial()
-        .friends.slice()
-        .sort((a, b) => Number(b.online) - Number(a.online))
-        .slice(0, 12);
-      box.innerHTML = fr.length
-        ? fr.map((f) => `<button class="dl-fr ${f.online ? 'on' : ''}" data-id="${esc(f.id)}">${avatar(f.skin, 34)}<span>${esc(f.handle ? '@' + f.handle : f.name)}</span><i class="dl-fdot"></i></button>`).join('')
-        : `<p>${esc(t('duel.noFriends', 'Sem amigos ainda — mostre o QR para alguém do seu lado!'))}</p>`;
-    };
-    fill();
-    void refreshFriendsNow().then(() => d.isConnected && fill());
-    d.addEventListener('click', async (e) => {
-      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (e.target === d || b?.dataset.ok !== undefined) {
-        pop();
-        d.remove();
-        return;
-      }
-      if (b?.dataset.qr !== undefined) {
-        pop();
-        d.remove();
-        return void showQr();
-      }
-      if (b?.dataset.id && net && who) {
-        b.disabled = true;
-        try {
-          const r = await api<{ result: string }>('/friends/invite', { id: who.id, to: b.dataset.id, kind: 'game', game: duelInviteGame(o.game, net.code) });
-          notify(r.result === 'sent' ? t('duel.invSent', 'Convite enviado!') : r.result === 'wait' ? t('fr.inv.wait', 'Você acabou de convidar. Espere um pouquinho.') : t('fr.inv.nf', 'Vocês precisam ser amigos.'), { icon: r.result === 'sent' ? 'party' : 'warning' });
-          b.classList.add('sent');
-        } catch {
-          b.disabled = false;
-          notify(t('friends.offline', 'Sem conexão. Tente de novo.'), { icon: 'cloud-off' });
-        }
-      }
-    });
-  };
-
   /* ---------------- rodada ---------------- */
   const beginRound = (s: RoomState) => {
+    stopPlaying();
     round = s.round;
     finished = false;
     playing = false;
@@ -688,6 +646,7 @@ export function startDuel(o: DuelOpts): DuelCtl {
   const leave = (toMenu: boolean) => {
     if (dead) return;
     dead = true;
+    stopPlaying();
     clearTimeout(autoStartT);
     clearInterval(clock);
     clearTimeout(sendTimer);

@@ -31,6 +31,12 @@ export interface SquadView {
   leader: string;
   members: SquadMember[];
   you: string;
+  /** jogo que o líder está olhando no hub (ao vivo) e os ajustes dele */
+  focus?: string;
+  cfg?: Record<string, string | number>;
+  /** votação ligada: cada um escolhe; JOGAR leva o mais votado (empate: o do líder) */
+  vote?: boolean;
+  votes?: Record<string, string>;
 }
 export interface SquadMsg {
   id: string;
@@ -154,6 +160,10 @@ function connect(sid: string, code: string): Promise<boolean> {
           bus.emit('squad-chat', msg);
         } else if (m.t === 'emote') bus.emit('squad-emote', { from: m.from, code: m.code });
         else if (m.t === 'launch') void onLaunch(m.game, m.room, m.by);
+        else if (m.t === 'focus') {
+          if (view) (view.focus = String(m.game)), (view.cfg = m.cfg ?? {});
+          bus.emit('squad-focus', { game: String(m.game), cfg: m.cfg ?? {}, by: m.by });
+        }
         else if (m.t === 'reject') notify(rejectText(m.reason), { icon: 'warning', kind: 'warn' });
         else if (m.t === 'kicked') {
           notify(t('sq.kicked', 'Você saiu do grupo.'), { icon: 'user' });
@@ -213,6 +223,21 @@ export const sayQuick = (code: string): void => send({ t: 'quick', code });
 export const sendEmote = (code: string): void => send({ t: 'emote', code });
 export const kick = (id: string): void => send({ t: 'kick', id });
 export const promote = (id: string): void => send({ t: 'promote', id });
+/** líder: o jogo que estou olhando no hub (os outros acompanham ao vivo) */
+export const sendFocus = (game: string, cfg?: Record<string, string | number>): void => send({ t: 'focus', game, ...(cfg ? { cfg } : {}) });
+/** líder: liga/desliga a votação */
+export const setVoteMode = (on: boolean): void => send({ t: 'votemode', on });
+export const voteFor = (game: string): void => send({ t: 'vote', game });
+/** jogo mais votado (empate → o do líder; sem votos → null) */
+export function voteWinner(leaderPick: string): string | null {
+  const v = view?.votes ?? {};
+  const n = new Map<string, number>();
+  for (const g of Object.values(v)) n.set(g, (n.get(g) ?? 0) + 1);
+  if (!n.size) return null;
+  const best = Math.max(...n.values());
+  const top = [...n.entries()].filter(([, c]) => c === best).map(([g]) => g);
+  return top.includes(leaderPick) ? leaderPick : (v[view?.leader ?? ''] && top.includes(v[view!.leader]) ? v[view!.leader] : top[0]);
+}
 
 function rejectText(r: string): string {
   if (r === 'rate') return t('chat.r.rate', 'Calma! Espere um pouquinho antes de mandar outra mensagem.');
@@ -296,7 +321,8 @@ async function onLaunch(game: string, room: string, by: string): Promise<void> {
     notify(t('sq.solo', 'Esse jogo ainda é solo — {w} está jogando {g}.', { w: who, g: def?.name ?? game }), { icon: 'user', ms: 4500 });
     return;
   }
-  notify(t('sq.go', '{w} chamou o grupo para jogar!', { w: who }), { icon: 'rocket', kind: 'good' });
+  // 3‑2‑1 "Entrando no jogo do líder" (dá para ficar de fora)
+  if (!(await launchCountdown(who, def?.name ?? game))) return;
   const n = view?.members.filter((m) => m.on).length ?? 2;
   partyLaunch(game === 'orbit' ? 'race' : game, room, { host: false, leader: by, n });
   pulling = true;
@@ -314,6 +340,34 @@ async function onLaunch(game: string, room: string, by: string): Promise<void> {
   } finally {
     pulling = false;
   }
+}
+
+/** Tela cheia 3‑2‑1 antes de entrar no jogo do líder; false = a pessoa escolheu ficar. */
+function launchCountdown(who: string, game: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    document.querySelector('.pf-go')?.remove();
+    const el = document.createElement('div');
+    el.className = 'pf-go';
+    el.innerHTML = `<div class="pf-n">3</div><b></b><small></small><button>✕ ${t('sq.stay', 'Ficar aqui')}</button>`;
+    (el.querySelector('b') as HTMLElement).textContent = t('sq.entering', 'Entrando no jogo do líder…');
+    (el.querySelector('small') as HTMLElement).textContent = `♛ ${who} · ${game}`;
+    document.body.appendChild(el);
+    let n = 3;
+    const timer = window.setInterval(() => {
+      n--;
+      if (n > 0) (el.querySelector('.pf-n') as HTMLElement).textContent = String(n);
+      else {
+        clearInterval(timer);
+        el.remove();
+        resolve(true);
+      }
+    }, 800);
+    el.querySelector('button')!.addEventListener('click', () => {
+      clearInterval(timer);
+      el.remove();
+      resolve(false);
+    });
+  });
 }
 
 let started = false;

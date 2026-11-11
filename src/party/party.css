@@ -11,9 +11,10 @@
 .pl-slot.off .pl-fig { animation: none; }
 .pl-crown { position: absolute; top: 4px; left: 8px; color: #ffd24a; font-style: normal; font-size: 16px; text-shadow: 0 1px 0 #8a5a00; }
 .pl-ok { position: absolute; top: 6px; right: 8px; width: 18px; height: 18px; border-radius: 50%; background: #3ee07a; color: #063; font: 900 12px/18px sans-serif; font-style: normal; text-align: center; box-shadow: 0 0 0 2px #fff; }
-.pl-add .pl-plus { width: 46px; height: 46px; margin-bottom: 4px; border-radius: 50%; border: 2.5px dashed rgba(255, 255, 255, 0.55); display: grid; place-items: center; font-size: 30px; font-weight: 700; color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.08); }
+.pl-add .pl-plus { position: relative; width: 50px; height: 50px; margin-bottom: 4px; border-radius: 50%; border: 0; display: grid; place-items: center; font-size: 28px; color: #2a0b5c; background: linear-gradient(180deg, #fff3a0, #ffc21a); box-shadow: 0 3px 0 rgba(20, 5, 60, 0.6); }
+.pl-add .pl-plus i { position: absolute; right: -4px; top: -4px; width: 20px; height: 20px; border-radius: 50%; background: #3ee07a; color: #fff; font: 900 16px/20px var(--font, 'Fredoka', system-ui, sans-serif); text-align: center; font-style: normal; box-shadow: 0 0 0 2px #2a0b5c; }
 .pl-add:active .pl-plus { transform: scale(0.92); }
-.pl-add .pl-tag { background: rgba(255, 255, 255, 0.14); max-width: 86px; }
+.pl-add .pl-tag { background: #ffc21a; color: #2a0b5c; max-width: 96px; }
 .pl-bub { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%) scale(0.6); opacity: 0; transition: opacity 0.18s, transform 0.18s; max-width: 130px; width: max-content; padding: 4px 8px; border-radius: 12px; background: #fff; color: #1a0b3d; font-size: 12px; font-weight: 700; line-height: 1.2; pointer-events: none; z-index: 2; word-break: break-word; }
 .pl-bub::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: #fff; }
 .pl-bub.on { opacity: 1; transform: translateX(-50%) scale(1); }
@@ -63,3 +64,76 @@
 .sq-say { display: flex; gap: 6px; margin-top: 4px; }
 .sq-say input { flex: 1; min-width: 0; height: 40px; border-radius: 12px; border: 0; padding: 0 10px; font: 600 15px var(--font, 'Fredoka', system-ui, sans-serif); }
 .sq-hint { font-size: 13px; color: #d8ccff; margin: 6px 0; }
+
+/* ===== convite na hora (invite-pop.ts): cartão grande no hub, faixa compacta dentro do jogo ===== */
+.ip-pop { position: fixed; inset: 0; z-index: 9800; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 3, 24, 0.6); animation: ipIn 0.22s ease-out; font-family: var(--font, 'Fredoka', system-ui, sans-serif); color: #fff; }
+.ip-pop.out { opacity: 0; transition: opacity 0.2s; }
+.ip-card { width: min(360px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 16px 16px; border-radius: 26px; background: linear-gradient(180deg, #6a3ad0, #2a1060); border: 3px solid #ffd34a; box-shadow: 0 8px 0 rgba(10, 2, 30, 0.6), 0 0 40px rgba(255, 211, 74, 0.45); text-align: center; }
+.ip-ava { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, #fff8, transparent 60%), linear-gradient(160deg, #5ef0ff, #8a5cff); box-shadow: 0 0 0 4px #fff; animation: ipBounce 0.9s ease-in-out infinite alternate; }
+.ip-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.ip-txt b { font-size: 22px; font-weight: 900; color: #ffd34a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-txt span { font-size: 17px; font-weight: 700; }
+.ip-acts { display: flex; gap: 10px; width: 100%; }
+.ip-acts button { min-height: 56px; border: 0; border-radius: 999px; font: inherit; font-weight: 900; font-size: 18px; box-shadow: 0 4px 0 rgba(10, 2, 30, 0.6); }
+.ip-no { flex: 0 0 auto; padding: 0 16px; background: rgba(255, 255, 255, 0.16); color: #fff; }
+.ip-yes { flex: 1; font-size: 22px !important; color: #0a3a1a; background: linear-gradient(180deg, #8dff9e, #2fd06a); animation: ipPulse 1s ease-in-out infinite; }
+/* dentro de um jogo: só uma faixa no topo, sem cobrir a partida */
+.ip-pop.ip-mini { inset: auto 8px auto 8px; top: calc(8px + env(safe-area-inset-top, 0px)); padding: 0; background: none; justify-content: center; }
+.ip-mini .ip-card { flex-direction: row; width: min(460px, 100%); padding: 6px 8px; gap: 8px; border-width: 2px; border-radius: 999px; text-align: left; }
+.ip-mini .ip-ava { width: 44px; height: 44px; flex: none; box-shadow: 0 0 0 2px #fff; animation: none; }
+.ip-mini .ip-txt { flex: 1; }
+.ip-mini .ip-txt b { font-size: 15px; }
+.ip-mini .ip-txt span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ip-mini .ip-acts { width: auto; gap: 6px; }
+.ip-mini .ip-acts button { min-height: 44px; font-size: 16px !important; padding: 0 14px; }
+.ip-mini .ip-no { width: 44px; padding: 0; }
+@keyframes ipIn { from { opacity: 0; transform: scale(0.9); } }
+@keyframes ipBounce { to { transform: translateY(-5px) rotate(-3deg); } }
+@keyframes ipPulse { 50% { transform: scale(1.04); } }
+
+/* ===== grupo no hub: líder escolhendo / votação / entrando no jogo do líder ===== */
+.pf-banner { position: absolute; left: 50%; transform: translateX(-50%); top: 6px; z-index: 6; display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 999px; background: rgba(16, 6, 40, 0.82); border: 2px solid #ffd34a; color: #fff; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); white-space: nowrap; pointer-events: none; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.pf-banner img { width: 26px; height: 26px; border-radius: 50%; background: #8a5cff; }
+.pf-banner .pf-crown { color: #ffd34a; font-size: 16px; }
+.pf-votes { position: absolute; left: 50%; transform: translateX(-50%); bottom: 6px; z-index: 6; display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: rgba(16, 6, 40, 0.8); color: #fff; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); pointer-events: none; }
+.pf-votes img { width: 26px; height: 26px; border-radius: 50%; background: #5ef0ff; margin-left: -6px; box-shadow: 0 0 0 2px #2a0b5c; }
+.pf-votes img:first-of-type { margin-left: 0; }
+.pf-votebtn { min-height: 34px; padding: 0 10px; border: 0; border-radius: 999px; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); color: #2a0b5c; background: rgba(255, 255, 255, 0.85); }
+.pf-votebtn.on { background: #ffd34a; }
+.pf-go { position: fixed; inset: 0; z-index: 9700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: radial-gradient(circle at 50% 40%, rgba(138, 92, 255, 0.7), rgba(8, 3, 24, 0.94) 70%); color: #fff; font-family: var(--font, 'Fredoka', system-ui, sans-serif); text-align: center; padding: 16px; }
+.pf-go .pf-n { font-size: 120px; font-weight: 900; line-height: 1; color: #ffd34a; text-shadow: 0 6px 0 #2a0b5c; }
+.pf-go b { font-size: 22px; }
+.pf-go small { font-size: 17px; font-weight: 700; opacity: 0.9; }
+.pf-go button { margin-top: 10px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px; font: 800 16px var(--font, 'Fredoka', system-ui, sans-serif); background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+/* ===== "Jogar com amigos" compartilhado (friends-play.ts) ===== */
+.fp-strip { display: flex; flex-direction: column; gap: 6px; width: min(420px, 100%); }
+.fp-strip[hidden] { display: none; }
+.fp-play { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 6px 6px 8px; border: 2px solid #ffd34a; border-radius: 999px; background: linear-gradient(90deg, rgba(62, 224, 122, 0.35), rgba(138, 92, 255, 0.35)); color: #fff; font: inherit; text-align: left; animation: ipPulse 1.4s ease-in-out infinite; }
+.fp-ava { position: relative; width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, #fff8, transparent 60%), linear-gradient(160deg, #5ef0ff, #8a5cff); }
+.fp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fp-txt b { font-weight: 900; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-txt small { font-size: 13px; opacity: 0.9; }
+.fp-go { flex: none; padding: 10px 16px; border-radius: 999px; background: linear-gradient(180deg, #8dff9e, #2fd06a); color: #0a3a1a; font-weight: 900; font-size: 17px; }
+.fp-pop { position: fixed; inset: 0; z-index: 9600; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(8, 3, 24, 0.65); font-family: var(--font, 'Fredoka', system-ui, sans-serif); color: #fff; }
+.fp-card { width: min(420px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 24px; background: linear-gradient(180deg, #4a24a0, #22104f); border: 3px solid rgba(255, 255, 255, 0.2); }
+.fp-card header { display: flex; align-items: center; justify-content: space-between; }
+.fp-card header b { display: flex; align-items: center; gap: 8px; font-size: 22px; color: #ffd34a; }
+.fp-x { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 20px; }
+.fp-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 60px; }
+.fp-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); }
+.fp-row:not(.on) { opacity: 0.6; }
+.fp-dot { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; border-radius: 50%; background: #777; box-shadow: 0 0 0 2px #22104f; }
+.fp-row.on .fp-dot { background: #3ee07a; }
+.fp-btn { flex: none; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; font: inherit; font-weight: 900; font-size: 16px; color: #2a0b5c; background: linear-gradient(180deg, #fff3a0, #ffc21a); }
+.fp-btn.go { background: linear-gradient(180deg, #8dff9e, #2fd06a); color: #0a3a1a; }
+.fp-btn.ghost { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.fp-code { align-self: center; border: 0; background: none; color: #cbb8ff; font: inherit; font-size: 14px; text-decoration: underline; padding: 8px; }
+.fp-empty { margin: 8px 4px; font-size: 15px; opacity: 0.9; }
+.fp-spin { width: 28px; height: 28px; margin: 12px auto; border-radius: 50%; border: 4px solid rgba(255, 255, 255, 0.25); border-top-color: #ffd34a; animation: dl-spin 0.9s linear infinite; display: block; }
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+
+.pf-playing { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 6; display: flex; justify-content: center; }
+.pf-playing .fp-play { width: auto; max-width: 100%; padding: 4px 4px 4px 6px; }
+.pf-playing .fp-ava { width: 36px; height: 36px; }
+.pf-playing .fp-go { padding: 8px 12px; font-size: 15px; }

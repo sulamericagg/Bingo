@@ -39,6 +39,8 @@ interface Cur {
   leader: string;
   /** quantos do grupo estavam online quando o líder apertou JOGAR */
   n: number;
+  /** código exato da sala (entrar pela sala de um amigo: "Fulano está jogando — Entrar") */
+  code?: string;
 }
 let cur: Cur | null = null;
 const ROOM_TTL = 30 * 60_000;
@@ -53,8 +55,8 @@ export function partyGame(gameId: string): PartyGame | null {
 export const partyGameSupported = (gameId: string): boolean => !!partyGame(gameId);
 
 /** Entra na sala `roomId` do grupo para o jogo `gameId` (chamado pelo grupo; jogos podem chamar também). */
-export function partyLaunch(gameId: string, roomId: string, o: { host?: boolean; leader?: string; n?: number } = {}): void {
-  cur = { game: gameId, room: roomId, at: Date.now(), host: !!o.host, leader: o.leader ?? '', n: Math.max(1, o.n ?? 2) };
+export function partyLaunch(gameId: string, roomId: string, o: { host?: boolean; leader?: string; n?: number; code?: string } = {}): void {
+  cur = { game: gameId, room: roomId, at: Date.now(), host: !!o.host, leader: o.leader ?? '', n: Math.max(1, o.n ?? 2), ...(o.code ? { code: o.code } : {}) };
   bus.emit('party-launch', { game: gameId, room: roomId });
 }
 
@@ -92,15 +94,17 @@ export interface PartySeat {
   n: number;
   /** o líder apertou JOGAR há pouco (≤ 20 s) */
   fresh: boolean;
-  /** código curto derivado da sala (tamanho/alfabeto do jogo) */
+  /** código curto derivado da sala (tamanho/alfabeto do jogo) — ou o código exato da sala do amigo */
   code(len?: number, alpha?: string): string;
+  /** veio de "Entrar" na sala de um amigo (código exato, não é o grupo) */
+  direct: boolean;
 }
 /** Lugar no jogo que o grupo abriu: quem é o anfitrião, qual o código. null = não veio do grupo. */
 export function partySeat(gameId: string): PartySeat | null {
   const room = partyRoomFor(gameId);
   if (!room || !cur) return null;
   const c = cur;
-  return { room, host: c.host, leader: c.leader, n: c.n, fresh: Date.now() - c.at < 20_000, code: (len, alpha) => partyCode(room, len, alpha) };
+  return { room, host: c.host, leader: c.leader, n: c.n, fresh: Date.now() - c.at < 20_000, direct: !!c.code, code: (len, alpha) => c.code ?? partyCode(room, len, alpha) };
 }
 /** O jogo já usou a sala do grupo (sair e abrir de novo sozinho não deve voltar para ela). */
 export function consumePartySeat(gameId: string): void {

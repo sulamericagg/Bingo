@@ -92,6 +92,7 @@ export async function checkFriends(force = false): Promise<void> {
 
 function apply(requests: FriendRequest[], invites: FriendInvite[], friends: FriendInfo[]): void {
   void setBadge(requests.length + invites.length);
+  bus.emit('friend-invites', invites); // Correio mostra os convites com "Aceitar" (ui/online-ui.ts)
   for (const r of requests) {
     const k = reqKey(r);
     if (seen.req.includes(k)) continue;
@@ -107,7 +108,9 @@ function apply(requests: FriendRequest[], invites: FriendInvite[], friends: Frie
     seen.inv.push(k);
     void import('./friends-ui').then((u) => {
       const text = u.inviteText(i);
-      notify(text, { icon: 'party', kind: 'good', ms: 4500, key: 'fr-inv-' + k });
+      // convite na hora: cartão grande com ACEITAR (faixa compacta dentro de jogo) — src/party/invite-pop.ts
+      if (Date.now() - i.at < 10 * 60_000) void import('../party/invite-pop').then((m) => m.showInvitePop(i));
+      else notify(text, { icon: 'party', kind: 'good', ms: 4500, key: 'fr-inv-' + k });
       pushNotif({ id: 'inv-' + k, kind: i.kind === 'squad' ? 'squad' : 'invite', text, invite: i });
       // app em 2º plano mas a conexão ainda viva: notificação do sistema (sem servidor de push)
       if (document.hidden) void localNotif(text);

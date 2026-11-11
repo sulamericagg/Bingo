@@ -44,7 +44,11 @@ export function registerParty(): void {
       });
   });
   bus.on('host-close', () => together?.unmountTogether());
-  void import('./lobby').then((m) => m.mountLobby());
+  void import('./lobby').then((m) => {
+    m.mountLobby();
+    // carrossel acompanha o líder ao vivo + votação (follow.ts)
+    void import('./follow').then((f) => f.startFollow());
+  });
   bus.on('notif-open', (n: Notif) => {
     if (n.invite) void import('../social/friends-ui').then((u) => u.acceptInvite(n.invite as Parameters<typeof u.acceptInvite>[0]));
     else void import('../social/register').then((r) => r.openSocial('friends'));

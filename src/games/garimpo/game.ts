@@ -35,6 +35,7 @@ import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { takePendingGarimpo } from './pending';
 import { consumePartySeat, partySeat } from '../../party/contract';
+import { reportPlaying, stopPlaying } from '../../party/join';
 import { me as socialMe } from '../../social/net';
 import { displayName } from '../../services/leaderboard';
 
@@ -223,11 +224,15 @@ export class Garimpo implements MiniGameHandle, BotHost {
       .join('');
     d.innerHTML = online
       ? `<h1>${IC.friends}${esc(t('gb.mp.title', 'Garimpar com amigos'))}</h1><div class="gb-sub">${esc(t('gb.mp.pick', 'Escolha o garimpo: seus amigos jogam nele com você'))}</div><div class="gb-row">${cards}</div><button class="gb-btn ghost" data-solo>${esc(t('gb.back', 'Voltar'))}</button>`
-      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button><button class="gb-btn blue" data-joinui>${IC.qr}${esc(t('gb.mp.enterCode', 'Entrar com código'))}</button></div><div class="gb-menuinv"></div>`;
+      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button></div><div class="gb-menuinv"></div><button class="gb-codelink" data-joinui>${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
     this.wrap.appendChild(d);
     // convites de amigos chegam aqui também
     if (!online) {
       const box = d.querySelector('.gb-menuinv') as HTMLElement;
+      // amigos garimpando agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+      const pl = document.createElement('div');
+      box.before(pl);
+      void import('../../party/friends-play').then((f) => f.playingStrip(pl, 'garimpo'));
       pollInvites(
         () => this.myself().catch(() => null),
         (inv) =>
@@ -383,6 +388,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     const mp = new MpHost(this, net);
     this.mp = mp;
+    reportPlaying('garimpo', net.code); // amigos veem "Fulano está jogando — Entrar"
     mp.onPeers = () => this.onPeersChanged();
     this.fire!.onEvent = (k, n) => mp.event(n === undefined ? [k] : [k, Math.round(n)]);
     net.onClose(() => {
@@ -395,6 +401,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   /** desliga a rede (o anfitrião continua jogando sozinho) */
   private dropNet(): void {
+    stopPlaying();
     this.lobby?.dispose();
     this.lobby = null;
     if (this.fire) this.fire.onEvent = null;

@@ -5,6 +5,9 @@
  */
 import { consumePartySeat, partySeat, registerPartyGame } from './contract';
 
+/** ícone "amigos" (dois Bloops) — usado no hub, no grupo e nos menus de duelo */
+export const FRIENDS_SVG = `<svg viewBox="0 0 32 24" width="1.4em" height="1.05em" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg>`;
+
 export const DUEL_ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const DUEL_CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
 export const DUEL_GAME_RE = /^[a-z]{2,12}$/;

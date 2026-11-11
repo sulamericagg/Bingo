@@ -179,3 +179,6 @@
 .gb-spin{width:46px;height:46px;border-radius:50%;border:6px solid #ffcf2e44;border-top-color:#ffcf2e;animation:gbSpin .9s linear infinite}
 @keyframes gbSpin{to{transform:rotate(360deg)}}
 @media (max-height:420px){.gb-lcode canvas{width:104px!important;height:104px!important}.gb-lcode b i{width:30px;height:38px;font-size:26px}.gb-lobbyscr{gap:6px}.gb-lobbyscr .gb-btn{height:46px}}
+
+/* amigos primeiro: código só como link pequeno (src/party/friends-play.ts) */
+.gb-codelink{border:0;background:none;color:#ffe2a8;font:inherit;font-size:14px;text-decoration:underline;padding:8px;cursor:pointer}

@@ -13,7 +13,7 @@ import { champClaim, champGet, champList, champScore, champSignup } from './cham
 import { chatJoin } from './chat';
 import { presenceJoin } from './presence';
 import { chatReport, handleSocialAdmin, profileGet, profilePut } from './social';
-import { friendsBlock, friendsGet, friendsInvite, friendsInviteClear, friendsRemove, friendsRequest, friendsRespond, friendsVisibility, friendsLive } from './friends';
+import { friendsBlock, friendsGet, friendsInvite, friendsInviteClear, friendsPlaying, friendsRemove, friendsRequest, friendsRespond, friendsVisibility, friendsLive } from './friends';
 import { squadCreate, squadInvite, squadJoin } from './squad';
 import { handleCheck, handleClaim, handleMine, handlesSearch, playerByHandle } from './handles';
 import { homeGet, homePutDesign, homePutMess } from './home';
@@ -89,6 +89,7 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/friends/remove': friendsRemove,
   'POST /api/friends/block': friendsBlock,
   'POST /api/friends/invite': friendsInvite,
+  'POST /api/friends/playing': friendsPlaying,
   'POST /api/friends/invite/clear': friendsInviteClear,
   'POST /api/friends/visibility': friendsVisibility,
   'POST /api/friends/prefs': friendsVisibility,
