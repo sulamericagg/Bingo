@@ -253,6 +253,17 @@ export class MLAudio {
     this.tone(90 + Math.random() * 30, 0.12, 'sine', 0.05 + p * 0.18, 0.6);
     this.noise(0.09, 0.04 + p * 0.12, 500 + Math.random() * 400, 0.8, 'lowpass');
   }
+  /** junta quebrando: estalo seco + rangido metálico curto */
+  crack(): void {
+    const now = performance.now();
+    if (now - this.lastCrack < 60) return;
+    this.lastCrack = now;
+    this.noise(0.05, 0.3, 1800, 0.7);
+    this.tone(260 + Math.random() * 60, 0.09, 'square', 0.07, 0.45);
+    this.tone(1900 + Math.random() * 500, 0.16, 'triangle', 0.05, 0.6, 0.03);
+    this.noise(0.18, 0.08, 4200, 4, 'bandpass', 0.05);
+  }
+  private lastCrack = 0;
   glass(): void {
     this.noise(0.25, 0.25, 5200, 1.5, 'highpass');
     for (let i = 0; i < 5; i++) this.tone(2400 + Math.random() * 2200, 0.18, 'sine', 0.05, 1, i * 0.03);

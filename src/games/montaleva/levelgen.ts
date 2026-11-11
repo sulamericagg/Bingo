@@ -758,3 +758,119 @@ export function assemble(entries: BakeEntry[]): { data: (number | Omit<LevelDef,
 }
 
 export { canPlace };
+
+/** Nova solução para uma fase que JÁ existe (mesma pista, mesmas peças disponíveis, mesmo save): tenta o carro da
+ *  solução com outros roteiros e, se não der, pequenas variações dele dentro do inventário da fase (bloco/peso a mais,
+ *  roda trocada, motor mudado de lugar). Usado quando a física muda (scripts/dev/montaleva-resolve.mjs). */
+export function resolveLevel(L: LevelDef, sol: Solution, maxCands = 400): Solution | null {
+  const tr = resolveTrack(L.track, L.grid[0] * U + 1.5, !!L.mirror, !!L.wet);
+  const ds: (DriveStep[] | undefined)[] = [];
+  const seen = new Set<string>();
+  // além dos roteiros do gerador: parar bem antes da balsa e deixar o carro chegar devagar (suspensão macia + carga solta)
+  const extra: DriveStep[][] = [];
+  const ferries = tr.objs.filter((o) => o.k === 'ferry') as { x0: number; x1: number }[];
+  if (ferries.length) {
+    const F = tr.dir > 0 ? 'F' : 'R';
+    const stop = 'B';
+    for (const pre of [-0.8, -1.2, -1.6, -2, -2.4, -2.8])
+      for (const post of [-0.2, 0.4, 1.0]) {
+        const d: DriveStep[] = [[0, F]];
+        for (const f of ferries) {
+          const a = f.x0 * tr.dir;
+          const b = f.x1 * tr.dir;
+          d.push([Math.min(a, b) + pre, stop, 'x'], [Math.max(a, b) + post, F, 'x']);
+        }
+        extra.push(d);
+      }
+  }
+  for (const d of [sol.drive, ...drives(tr, !!L.wired, { jump: true, wait: true }), ...extra]) {
+    const k = JSON.stringify(d ?? null);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    ds.push(d && d.length === 1 && d[0][1] === 'F' && !d[0][2] ? undefined : d);
+  }
+  const tryParts = (ps: Placed[]): Solution | null => {
+    if (validate(L, ps)) return null;
+    let best = null as { s: Solution; t: number } | null;
+    for (const drive of ds) {
+      const s: Solution = { parts: ps, drive };
+      if (!quickRun(L, s, 45, 0).ok) continue;
+      const r = robustRun(L, s);
+      if (r.ok && (!best || r.time < best.t)) best = { s, t: r.time };
+    }
+    return best ? best.s : null;
+  };
+  let n = 0;
+  for (const ps of variants(L, sol.parts)) {
+    if (++n > maxCands) break;
+    const s = tryParts(ps);
+    if (s) return s;
+  }
+  return null;
+}
+
+/** variações pequenas de um carro que cabem no inventário da fase (em ordem de "menos mudança") */
+function* variants(L: LevelDef, parts: Placed[]): Generator<Placed[]> {
+  yield parts;
+  const [W, H] = L.grid;
+  const left = (t: PartId) => (L.parts[t] ?? 0) - parts.filter((p) => p.t === t).length;
+  const add = (ps: Placed[], p: Placed): Placed[] | null => {
+    if (canPlace(L, ps, p)) return null;
+    return [...ps, p];
+  };
+  // troca de roda
+  const wheels: PartId[] = ['wheelS', 'wheelL', 'wheelG'];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (!PARTS[p.t].radius) continue;
+    for (const t of wheels) {
+      if (t === p.t || left(t) <= 0) continue;
+      const rest = parts.filter((_, j) => j !== i);
+      const r = add(rest, { ...p, t });
+      if (r) yield r;
+    }
+  }
+  // trocar TODAS as rodas de um tipo por outro
+  for (const a of wheels)
+    for (const b of wheels) {
+      if (a === b) continue;
+      const na = parts.filter((p) => p.t === a).length;
+      if (!na || left(b) < na) continue;
+      yield parts.map((p) => (p.t === a ? { ...p, t: b } : p));
+    }
+  // um bloco ou peso a mais, de baixo para cima
+  for (const t of ['weight', 'block'] as PartId[]) {
+    if (left(t) <= 0) continue;
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const r = add(parts, { t, x, y, r: 0 });
+        if (r && touches(r, r.length - 1)) yield r;
+      }
+  }
+  // motor em outro lugar
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].t !== 'motor' || parts.some((q) => q.w?.length)) continue;
+    const rest = parts.filter((_, j) => j !== i);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const r = add(rest, { t: 'motor', x, y, r: 0 });
+        if (r && touches(r, r.length - 1)) yield r;
+      }
+  }
+  // dois blocos a mais
+  if (left('block') >= 2)
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const a = add(parts, { t: 'block', x, y, r: 0 });
+        if (!a || !touches(a, a.length - 1)) continue;
+        for (let x2 = x + 1; x2 < W; x2++) {
+          const b = add(a, { t: 'block', x: x2, y, r: 0 });
+          if (b && touches(b, b.length - 1)) yield b;
+        }
+      }
+}
+
+function touches(ps: Placed[], i: number): boolean {
+  const p = ps[i];
+  return ps.some((q, j) => j !== i && PARTS[q.t].layer === 'struct' && Math.abs(q.x - p.x) + Math.abs(q.y - p.y) === 1);
+}

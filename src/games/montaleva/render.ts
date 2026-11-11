@@ -582,7 +582,8 @@ export function drawCargo(x: CanvasRenderingContext2D, v: View, t: CargoDef['t']
   switch (t) {
     case 'crate':
     case 'big': {
-      const S = (t === 'big' ? 0.94 : 0.46) * s;
+      // meia-largura em METROS igual ao fixture (sim.ts: Box(U*0.46) / Box(U*0.94)) — antes saía com o dobro do tamanho
+      const S = (t === 'big' ? 0.94 : 0.46) * U * s;
       x.fillStyle = '#c98b52';
       x.strokeStyle = '#7d5129';
       x.beginPath();
@@ -604,7 +605,7 @@ export function drawCargo(x: CanvasRenderingContext2D, v: View, t: CargoDef['t']
       break;
     }
     case 'glass': {
-      const S = 0.44 * s;
+      const S = 0.44 * U * s;
       x.fillStyle = broken ? 'rgba(170,215,240,0.35)' : 'rgba(150,215,250,0.55)';
       x.beginPath();
       x.roundRect(-S, -S, S * 2, S * 2, S * 0.12);
@@ -689,8 +690,8 @@ export function drawBot(x: CanvasRenderingContext2D, v: View, px: number, py: nu
   // pés
   x.fillStyle = '#3b2a6b';
   x.beginPath();
-  x.ellipse(-0.1 * s, 0.44 * s, 0.075 * s, 0.035 * s, 0, 0, Math.PI * 2);
-  x.ellipse(0.1 * s, 0.44 * s, 0.075 * s, 0.035 * s, 0, 0, Math.PI * 2);
+  x.ellipse(-0.1 * s, 0.43 * s, 0.075 * s, 0.03 * s, 0, 0, Math.PI * 2);
+  x.ellipse(0.1 * s, 0.43 * s, 0.075 * s, 0.03 * s, 0, 0, Math.PI * 2);
   x.fill();
   x.translate(0, -jump);
   // braços
@@ -708,13 +709,15 @@ export function drawBot(x: CanvasRenderingContext2D, v: View, px: number, py: nu
   // corpo
   x.fillStyle = '#8b5cf6';
   x.beginPath();
-  x.roundRect(-0.19 * s, 0.1 * s, 0.38 * s, 0.32 * s, 0.09 * s);
+  x.roundRect(-0.19 * s, 0.12 * s, 0.38 * s, 0.3 * s, 0.09 * s);
   x.fill();
   x.stroke();
   x.fillStyle = 'rgba(255,255,255,0.85)';
   x.beginPath();
   x.arc(0, 0.27 * s, 0.045 * s, 0, Math.PI * 2);
   x.fill();
+  // cabeça e rosto: o círculo bate com o fixture da cabeça (centro 0,04 m acima do corpo, raio 0,19 m)
+  x.translate(0, 0.04 * s);
   // antena
   x.beginPath();
   x.moveTo(0, -0.3 * s);
@@ -725,10 +728,9 @@ export function drawBot(x: CanvasRenderingContext2D, v: View, px: number, py: nu
   x.arc(0.03 * s, -0.42 * s, 0.04 * s, 0, Math.PI * 2);
   x.fill();
   x.stroke();
-  // cabeça
   x.fillStyle = '#a78bfa';
   x.beginPath();
-  x.arc(0, -0.08 * s, 0.2 * s, 0, Math.PI * 2);
+  x.arc(0, -0.08 * s, 0.19 * s, 0, Math.PI * 2);
   x.fill();
   x.stroke();
   // olho
