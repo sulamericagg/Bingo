@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "Keluar",
   "studio.play.jump": "Lompat",
   "studio.play.lose": "Permainan selesai!",
+  "studio.play.ore": "Bijih! +5 ({n})",
   "studio.play.ouch": "Ups! Kembali ke checkpoint",
   "studio.play.press": "Tekan",
   "studio.play.win": "Sampai!",

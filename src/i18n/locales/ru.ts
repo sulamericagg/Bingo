@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "Выйти",
   "studio.play.jump": "Прыжок",
   "studio.play.lose": "Игра окончена!",
+  "studio.play.ore": "Руда! +5 ({n})",
   "studio.play.ouch": "Ой! Назад к чекпоинту",
   "studio.play.press": "Нажать",
   "studio.play.win": "Финиш!",

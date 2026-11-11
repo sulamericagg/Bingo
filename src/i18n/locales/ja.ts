@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "降りる",
   "studio.play.jump": "ジャンプ",
   "studio.play.lose": "ゲームオーバー!",
+  "studio.play.ore": "鉱石!+5({n})",
   "studio.play.ouch": "おっと!チェックポイントにもどるよ",
   "studio.play.press": "押す",
   "studio.play.win": "ゴール!",

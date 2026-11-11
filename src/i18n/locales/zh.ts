@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "下车",
   "studio.play.jump": "跳",
   "studio.play.lose": "游戏结束！",
+  "studio.play.ore": "矿石！+5（{n}）",
   "studio.play.ouch": "哎呀！回到检查点",
   "studio.play.press": "按下",
   "studio.play.win": "到达！",

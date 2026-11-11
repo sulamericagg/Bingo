@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "내리기",
   "studio.play.jump": "점프",
   "studio.play.lose": "게임 끝!",
+  "studio.play.ore": "광석! +5 ({n})",
   "studio.play.ouch": "앗! 체크포인트로 돌아가요",
   "studio.play.press": "누르기",
   "studio.play.win": "도착!",

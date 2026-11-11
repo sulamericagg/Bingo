@@ -5526,6 +5526,7 @@ export default {
   "studio.play.exitCar": "İn",
   "studio.play.jump": "Zıpla",
   "studio.play.lose": "Oyun bitti!",
+  "studio.play.ore": "Maden! +5 ({n})",
   "studio.play.ouch": "Hop! Kontrol noktasına dönüş",
   "studio.play.press": "Bas",
   "studio.play.win": "Vardın!",
