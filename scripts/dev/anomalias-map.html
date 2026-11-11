@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Dev: mapas das Anomalias</title>
+<style>
+html,body{margin:0;height:100%;background:#0b0a14;color:#eee;font:12px/1.3 system-ui,sans-serif;overflow:hidden}
+#app{position:fixed;inset:0}
+#ui{position:fixed;top:0;right:0;bottom:0;width:300px;overflow:auto;background:rgba(10,8,20,.86);padding:8px;box-sizing:border-box}
+#ui.hide{display:none}
+#ui h3{margin:10px 0 4px;font-size:13px;color:#ffd27a}
+#ui button{background:#2a2440;color:#eee;border:1px solid #4a4070;border-radius:4px;padding:2px 6px;margin:1px;cursor:pointer;font-size:11px}
+#ui button.on{background:#b0306a;border-color:#ff7ab0}
+#ui .row{margin:2px 0;border-bottom:1px solid #2a2440;padding-bottom:2px}
+#hud{position:fixed;left:6px;top:6px;background:rgba(0,0,0,.5);padding:3px 6px;border-radius:4px;font:11px monospace;pointer-events:none}
+#tog{position:fixed;right:304px;top:4px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud"></div>
+<button id="tog">☰</button>
+<div id="ui"></div>
+<script type="module" src="./anomalias-map.ts"></script>
+</body>
+</html>
