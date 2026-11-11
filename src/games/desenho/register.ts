@@ -4,6 +4,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { registerGame } from '../../hub/registry';
+import { registerDuelGame } from '../../party/duel-link';
 
 const INK = '#2a1e3a';
 const TAU = Math.PI * 2;
@@ -184,6 +185,7 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
 }
 
 export function registerDesenho(): void {
+  registerDuelGame('desenho'); // grupo/links: duelo online (src/party/duel.ts)
   registerGame({
     id: 'desenho',
     get name() {

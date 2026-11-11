@@ -30,6 +30,8 @@ import { Garage } from './garage';
 import { stats, vName, type VDesign } from './vehicles';
 import { NightsNet, apply, encode, guestLoot, newSnapState, roomCode, type GuestMsg, type Peer, type SnapState } from './net';
 import { bestAxe, countOf, heldKind, isRes } from './items';
+import { consumePartySeat, partyRoomFor, partySeat } from '../../party/contract';
+import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
 
 /* ------------------------------ save ------------------------------ */
 interface NSave {
@@ -110,6 +112,12 @@ const _h = new THREE.Vector3();
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new NoitesGame(root, exit);
   g.showMenu();
+  // grupo (docs/PARTY.md): o líder cria a sala (código = o dele) e os outros entram sozinhos
+  const seat = partySeat('noites');
+  if (seat) {
+    consumePartySeat('noites');
+    void g.partyStart(seat.host, seat.leader, seat.direct ? seat.code() : '');
+  }
   return g;
 }
 
@@ -215,9 +223,9 @@ export class NoitesGame implements MiniGameHandle {
       <div class="big">
         ${run ? `<button class="nc-btn green" data-m="cont" data-say="${esc(t('noites.menu.cont', 'Continuar a partida'))}">${ic('play', 46, '#0a3a1a')}<span>${esc(t('noites.menu.contS', 'Continuar'))} ${ic('moon', 18)}${run.night}</span></button>` : ''}
         <button class="nc-btn gold" data-m="solo" data-say="${esc(t('noites.menu.solo', 'Jogar sozinho'))}">${ic(run ? 'plus' : 'play', 52)}<span>${esc(run ? t('noites.menu.newS', 'Nova partida') : t('noites.menu.soloS', 'Sozinho'))}</span></button>
-        <button class="nc-btn" data-m="host" data-say="${esc(t('noites.menu.host', 'Criar sala para amigos'))}">${ic('people', 52)}<span>${esc(t('noites.menu.hostS', 'Criar sala'))}</span></button>
-        <button class="nc-btn" data-m="join" data-say="${esc(t('noites.menu.join', 'Entrar na sala de um amigo'))}">${ic('key', 52)}<span>${esc(t('noites.menu.joinS', 'Entrar'))}</span></button>
+        <button class="nc-btn" data-m="host" data-say="${esc(t('noites.menu.friends', 'Jogar com amigos'))}">${ic('people', 52)}<span>${esc(t('noites.menu.friendsS', 'Com amigos'))}</span></button>
       </div>
+      <div class="nc-playing"></div>
       <div class="opts">
         <div class="helpers">
           <button class="nc-btn ${H === 0 ? 'gold on' : ''}" data-h="0" data-say="${esc(t('noites.menu.alone', 'Sozinho, sem ajudantes'))}">${ic('person', 26)}<span>${esc(t('noites.menu.aloneS', 'Sozinho'))}</span></button>
@@ -227,8 +235,14 @@ export class NoitesGame implements MiniGameHandle {
         <div class="helpers">
           ${diffs.map(([i, n], k) => `<button class="nc-btn ${this.save.diff === k ? 'gold on' : ''}" data-d="${k}" data-say="${esc(n)}">${ic(i, 22, k === 2 ? '#5a3a9a' : '')}<span>${esc(n)}</span></button>`).join('')}
         </div>
-      </div>`;
+      </div>
+      <button class="nc-codelink" data-m="join">${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
     this.wrap.appendChild(m);
+    // amigos com sala aberta: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+    void import('../../party/friends-play').then((f) => {
+      const el = m.querySelector<HTMLElement>('.nc-playing');
+      if (el) f.playingStrip(el, 'noites');
+    });
     speak(t('noites.say.welcome', 'Noites do Acampamento! Toque no botão amarelo para jogar.'), { cool: 60000 });
     m.querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {
@@ -317,6 +331,20 @@ export class NoitesGame implements MiniGameHandle {
       return null;
     }
   }
+  /** grupo: anfitrião = líder; convidados tentam por ~30 s até o líder abrir a sala */
+  async partyStart(host: boolean, leader: string, direct = ''): Promise<void> {
+    if (host || (!leader && !direct)) return this.startHost();
+    const code = direct || roomCode(leader);
+    for (let i = 0; i < 25 && !this.destroyed && !this.net; i++) {
+      const p = await this.me4net();
+      const net = new NightsNet();
+      const r = p ? await net.connect(code, p, false) : 'offline';
+      if (r === 'ok' && p) return this.startJoin(code, { net, p });
+      net.close();
+      if (r !== 'no_host') return this.netFail(r);
+      await new Promise((res) => setTimeout(res, 1200));
+    }
+  }
   private async startHost(): Promise<void> {
     const p = await this.me4net();
     const net = new NightsNet();
@@ -335,12 +363,18 @@ export class NoitesGame implements MiniGameHandle {
     this.bindNet();
     this.runSave = null;
     this.newSim(Math.floor(Math.random() * 1e9));
-    speak(t('noites.say.hosted', 'Sala criada! Seus amigos entram com o código {c}.', { c: this.code.split('').join(' ') }), { cool: 1000, urgent: true });
+    speak(t('noites.say.hostedF', 'Sala criada! Chame seus amigos.'), { cool: 1000, urgent: true });
+    reportPlaying('noites', this.code);
+    // grupo: ninguém precisa chamar (já vem todo mundo); sozinho: abre a lista de amigos com "Chamar"
+    if (!partyRoomFor('noites'))
+      void import('../../party/friends-play').then((f) => {
+        if (!this.destroyed) void f.openCallFriends({ game: 'noites', j: joinStr('noites', this.code), root: this.wrap });
+      });
   }
-  private async startJoin(code: string): Promise<void> {
-    const p = await this.me4net();
-    const net = new NightsNet();
-    const r = p ? await net.connect(code, p, false) : 'offline';
+  private async startJoin(code: string, ready?: { net: NightsNet; p: Peer }): Promise<void> {
+    const p = ready ? ready.p : await this.me4net();
+    const net = ready ? ready.net : new NightsNet();
+    const r = ready ? 'ok' : p ? await net.connect(code, p, false) : 'offline';
     if (this.destroyed) return net.close();
     if (r !== 'ok' || !p) {
       net.close();
@@ -1698,6 +1732,7 @@ export class NoitesGame implements MiniGameHandle {
     this.autosave();
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    if (this.net?.isHost) stopPlaying();
     this.net?.close();
     this.teardownRun();
     for (const f of this.offs) f();

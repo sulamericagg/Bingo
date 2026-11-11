@@ -3,10 +3,12 @@
  * Só a vitrine (leve) entra no pacote principal; o jogo é carregado sob demanda.
  */
 import { registerGame } from '../../hub/registry';
+import { registerDuelGame } from '../../party/duel-link';
 import { t } from '../../i18n';
 import { drawTuboShowcase } from './showcase';
 
 export function registerTubo(): void {
+  registerDuelGame('tubo'); // grupo/links: duelo online (src/party/duel.ts)
   registerGame({
     id: 'tubo',
     get name() {

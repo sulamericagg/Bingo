@@ -80,6 +80,8 @@ export interface SearchHit {
   _prof: boolean;
 }
 const INVITE_TTL = 20 * 60_000;
+const PLAY_TTL = 100_000;
+export const PLAY_RE = /^[a-z]{2,12}\.(?:[a-z]{2,12}\.)?[A-Z0-9]{5,6}$/;
 const INVITE_GAP = 20_000;
 const SEARCH_WINDOW = 60_000;
 const SEARCH_PER_PLAYER = 45;
@@ -92,6 +94,7 @@ const day = () => Math.floor(Date.now() / 86400_000);
 
 export class FriendsHub extends DurableObject<Env> {
   private seenMem = new Map<string, number>();
+  private playMem = new Map<string, { j: string; at: number }>();
   private rl = new Map<string, { n: number; t: number }>();
   private idxDone = false;
 
@@ -211,9 +214,27 @@ export class FriendsHub extends DurableObject<Env> {
     return out;
   }
   /** Cartões + perfis em cache (o Worker completa pelo KV só quem faltar). */
-  async infos(ids: string[]): Promise<{ cards: Record<string, Card>; profs: Record<string, string> }> {
+  async infos(ids: string[]): Promise<{ cards: Record<string, Card>; profs: Record<string, string>; play?: Record<string, string> }> {
     const list = ids.slice(0, 128);
-    return { cards: await this.cards(list), profs: Object.fromEntries([...this.profs(list)].map(([k, v]) => [k, JSON.stringify(v)])) };
+    const now = Date.now();
+    const play: Record<string, string> = {};
+    for (const id of list) {
+      const p = this.playMem.get(id);
+      if (p && now - p.at < PLAY_TTL) play[id] = p.j;
+    }
+    return { cards: await this.cards(list), profs: Object.fromEntries([...this.profs(list)].map(([k, v]) => [k, JSON.stringify(v)])), play };
+  }
+
+  /**
+   * "Estou jogando X numa sala aberta" (memória; o app repete a cada ~45 s). Os amigos veem
+   * "Fulano está jogando — Entrar". `j` = "<jogo>.<código>" (src/party/join.ts); vazio = parou.
+   */
+  async setPlaying(id: string, j: string): Promise<void> {
+    if (!j) this.playMem.delete(id);
+    else {
+      if (this.playMem.size > 50_000) this.playMem.clear();
+      this.playMem.set(id, { j, at: Date.now() });
+    }
   }
 
   /** Limite de buscas: por jogador e por IP (janela de 1 min, memória do DO — instância única). */
@@ -539,6 +560,7 @@ export async function friendInfos(env: Env, ids: string[], showOnline = true): P
   const missing = ids.filter((id) => !profs[id]);
   if (missing.length) Object.assign(profs, await kvProfs(env, missing));
   const now = Date.now();
+  const play = got.play ?? {};
   return ids.map((id) => {
     const p = profs[id] ?? { name: 'Bloop', skin: 'bloop' };
     const c = cards[id] ?? { seen: 0, h: '', mess: 0 };
@@ -552,8 +574,19 @@ export async function friendInfos(env: Env, ids: string[], showOnline = true): P
       online: showOnline && now - c.seen < ONLINE_MS,
       lastSeen: showOnline ? c.seen : 0,
       houseMess: showOnline ? c.mess : 0,
+      ...(showOnline && play[id] ? { playing: play[id] } : {}),
     };
   });
+}
+
+/** POST /api/friends/playing { id, j } — sala aberta em que os amigos podem entrar ("" = saiu). */
+export async function friendsPlaying(req: Request, env: Env): Promise<Response> {
+  const b = await readJson(req);
+  const id = requireId(b.id);
+  const j = String(b.j ?? '');
+  if (j && !PLAY_RE.test(j)) throw new HttpError(400, 'bad_join', 'Sala inválida.');
+  await hub(env).setPlaying(id, j);
+  return json({ ok: true });
 }
 
 /**

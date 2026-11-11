@@ -78,7 +78,9 @@ export type IconName =
   | 'drop'
   | 'lamp'
   | 'car'
-  | 'camera';
+  | 'camera'
+  | 'mic'
+  | 'photo';
 
 export interface IconOpts {
   /** Lado em px. Sem valor, usa 1.25em (acompanha o texto). */
@@ -638,6 +640,18 @@ const ICONS: Record<IconName, string> = {
     `<path d="M14 27Q24 38 34 27Z" fill="${INK}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>` +
     '<path d="M18.5 31.5Q24 35 29.5 31.5Q24 30 18.5 31.5Z" fill="#ff6f92"/>' +
     hl('<ellipse cx="15" cy="12" rx="4.5" ry="2.4" transform="rotate(-35 15 12)"/>', 0.75),
+
+  photo:
+    sil('<rect x="5" y="9" width="38" height="31" rx="6"/>', 'white') +
+    sil('<path d="M9 36L18 24L25 31L30 26L39 36Z"/>', 'green', 2) +
+    sil('<circle cx="33" cy="17" r="4"/>', 'gold', 2) +
+    hl('<rect x="9" y="12" width="12" height="3" rx="1.5"/>', 0.8),
+
+  mic:
+    line('M13 22Q13 34 24 34Q35 34 35 22M24 34V41M16 42H32', '#ffffff', 3.5) +
+    sil('<rect x="17" y="5" width="14" height="24" rx="7"/>', 'pink') +
+    shade('<path d="M17 18H31V22Q31 29 24 29Q17 29 17 22Z"/>', 0.14) +
+    hl('<rect x="20" y="8" width="3.5" height="11" rx="1.75"/>', 0.8),
 
   camera:
     sil('<path d="M6 16Q6 12 10 12H15L18 7H30L33 12H38Q42 12 42 16V36Q42 40 38 40H10Q6 40 6 36Z"/>', 'cyan') +

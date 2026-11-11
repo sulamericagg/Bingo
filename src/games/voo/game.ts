@@ -31,6 +31,8 @@ import { cabinOf, dayIndex, liveryOf, loadSave, writeSave, type VooSave } from '
 import { Sim, mulberry } from './sim';
 import { View2D } from './view2d';
 import type { View3D } from './view3d';
+import { consumePartySeat, partySeat } from '../../party/contract';
+import { reportPlaying, stopPlaying } from '../../party/join';
 
 export interface LaunchOpts {
   mode?: '2d' | '3d';
@@ -113,6 +115,14 @@ export class VooGame implements MiniGameHandle, HudHost {
     // aberto por link/QR de sala (?voo=K7Q2M): entra direto
     const code = takePendingVoo();
     if (code) return void this.joinRoom(code, this.sv.mode === '2d' ? '2d' : '3d');
+    // grupo (docs/PARTY.md): o líder abre a sala com o código do grupo e os outros entram nela
+    const seat = partySeat('voo');
+    if (seat) {
+      consumePartySeat('voo');
+      const mode = this.sv.mode === '2d' ? '2d' : '3d';
+      const pc = seat.code(5, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789');
+      return void (seat.host ? this.friends(mode, pc) : this.joinRoom(pc, mode, 25));
+    }
     this.lobby();
   }
 
@@ -169,14 +179,14 @@ export class VooGame implements MiniGameHandle, HudHost {
   }
 
   /** "Voar com amigos": cria a sala na hora (um toque) */
-  private async friends(mode: '2d' | '3d'): Promise<void> {
+  private async friends(mode: '2d' | '3d', partyCode = ''): Promise<void> {
     const wait = this.waiting(t('voo.r.creating', 'Abrindo a sala…'));
     try {
       const me = await this.myself();
       let net: FlightNet | null = null;
       for (let k = 0; k < 3 && !net; k++) {
         try {
-          net = await FlightNet.open(newCode(), true, me);
+          net = await FlightNet.open(partyCode && k === 0 ? partyCode : newCode(), true, me);
         } catch (e) {
           if ((e as Error).message !== 'taken') throw e;
         }
@@ -191,11 +201,20 @@ export class VooGame implements MiniGameHandle, HudHost {
       this.lobby();
     }
   }
-  private async joinRoom(code: string, mode: '2d' | '3d'): Promise<void> {
+  private async joinRoom(code: string, mode: '2d' | '3d', tries = 1): Promise<void> {
     const wait = this.waiting(t('voo.r.joining', 'Entrando na sala {c}…', { c: code }));
     try {
       const me = await this.myself();
-      const net = await FlightNet.open(code, false, me);
+      let net: FlightNet | null = null;
+      // grupo: o líder pode demorar um pouco para abrir a sala — tenta de novo
+      for (let i = 0; !net; i++) {
+        try {
+          net = await FlightNet.open(code, false, me);
+        } catch (e) {
+          if ((e as Error).message !== 'no_room' || i >= tries - 1 || this.destroyed) throw e;
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
       wait();
       if (this.destroyed) return net.leave();
       this.inRoom(net, me, mode);
@@ -213,6 +232,8 @@ export class VooGame implements MiniGameHandle, HudHost {
   private inRoom(net: FlightNet, me: Me, mode: '2d' | '3d'): void {
     const r = openRoom(this.wrap, { net, me, role: this.sv.role, mode });
     this.room = r;
+    if (net.isHost) reportPlaying('voo', net.code); // amigos veem "Fulano está jogando — Entrar"
+    void r.done.then(() => stopPlaying());
     this.setBack(() => r.back());
     void r.done.then((res) => {
       this.room = null;

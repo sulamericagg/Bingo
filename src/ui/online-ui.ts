@@ -10,6 +10,14 @@ import { celebrate, mergePacks, packChips } from './celebrate';
 import { $, esc } from './dom';
 import { icon, type IconName } from './icons';
 import { t } from '../i18n';
+import type { FriendInvite } from '../home/api';
+
+/** convites de amigos pendentes (grupo/jogo/duelo/festa): aparecem no topo do Correio com "Aceitar" */
+let friendInvites: FriendInvite[] = [];
+bus.on('friend-invites', (l: FriendInvite[]) => {
+  friendInvites = l.slice(0, 8);
+  bus.emit('inbox-invites', friendInvites.length);
+});
 
 const ERR: Record<NonNullable<RedeemResult['error']>, string> = {
   get invalid() { return t('redeem.err.invalid', 'Código inválido. Confira as letras e tente de novo.'); },
@@ -59,7 +67,26 @@ export class OnlineUI {
     box.innerHTML = '';
     btn.classList.toggle('hidden', !list.length);
     btn.disabled = this.busy;
-    if (!list.length) {
+    // convites de amigos primeiro, em destaque
+    if (friendInvites.length)
+      void Promise.all([import('../social/friends-ui'), import('../social/sheet')]).then(([u, sh]) => {
+        if (!box.isConnected) return;
+        for (const inv of friendInvites.slice().reverse()) {
+          const row = document.createElement('div');
+          row.className = 'gift gift-invite';
+          row.innerHTML = `<div class="plate plate-pink gift-ico"></div><div class="g-info"><div class="g-title"></div></div><button class="btn btn-green g-accept">✓ ${esc(t('ip.yes', 'ACEITAR'))}</button>`;
+          $('.gift-ico', row).appendChild(sh.skinThumb(inv.from.skin, 40, inv.from.avatar));
+          $('.g-title', row).textContent = u.inviteText(inv);
+          $('.g-accept', row).addEventListener('click', () => {
+            friendInvites = friendInvites.filter((x) => x !== inv);
+            bus.emit('inbox-invites', friendInvites.length);
+            document.querySelector<HTMLElement>('#inbox .close, #inbox [data-close]')?.click();
+            void u.acceptInvite(inv);
+          });
+          box.prepend(row);
+        }
+      });
+    if (!list.length && !friendInvites.length) {
       if (loading) box.innerHTML = `<div class="loading"><i></i><i></i><i></i></div>`;
       else if (onlineReachable() === false) box.innerHTML = emptyState('cloud-off', t('net.offline', 'Sem conexão'), t('inbox.offlineSub', 'Conecte-se à internet para receber presentes.'), 'violet');
       else box.innerHTML = emptyState('mail', t('inbox.empty', 'Nenhum presente por enquanto'), t('inbox.emptySub', 'Fique de olho: mandamos presentes em eventos e datas especiais!'), 'pink');
@@ -211,7 +238,10 @@ export class OnlineUI {
 
 /** Liga ouvintes globais (badge do correio etc.). */
 export function bindOnlineBadges(update: (n: number) => void): void {
-  bus.on('inbox', (list: Gift[]) => update(list.length));
+  let gifts = 0;
+  let invs = 0;
+  bus.on('inbox', (list: Gift[]) => update((gifts = list.length) + invs));
+  bus.on('inbox-invites', (n: number) => update(gifts + (invs = n)));
   bindAutoGifts();
 }
 

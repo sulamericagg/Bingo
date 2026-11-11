@@ -4,6 +4,7 @@
  *   ?grupo=<id>.<cod> → entra no grupo
  *   ?amigo=<@>        → Amigos com o @ preenchido
  *   ?garimpo=<CÓDIGO> → abre o Garimpo Bruto já entrando na sala do amigo
+ *   ?duelo=<jogo>/<CÓDIGO> → abre o jogo já entrando no duelo (src/party/duel.ts)
  *  (web: ?param na URL · app: bloopworld://tipo/código ou https://…/?param=)
  * ============================================================ */
 import { bloopLink, parseBloopLink, type BloopLink } from './scan';
@@ -16,6 +17,10 @@ export async function openBloopLink(l: BloopLink): Promise<void> {
   } else if (l.type === 'grupo') {
     const p = await import('../party/register');
     p.openSquadLink(bloopLink('grupo', l.code));
+  } else if (l.type === 'duelo') {
+    const [game, code] = l.code.split('/');
+    const d = await import('../party/duel-link');
+    await d.openDuel(game, code);
   } else if (l.type === 'garimpo') {
     const [{ setPendingGarimpo }, reg, hub] = await Promise.all([import('../games/garimpo/pending'), import('../hub/registry'), import('../hub/hub')]);
     setPendingGarimpo(l.code);
@@ -33,12 +38,13 @@ export async function openBloopLink(l: BloopLink): Promise<void> {
 export function openVooLink(url: string): boolean {
   const l = parseBloopLink(url);
   // ?voo= (web/https) e bloopworld://voo|grupo/… (app; ?grupo= e amigo já têm tratamento próprio)
-  if (!l || !(l.type === 'voo' || l.type === 'garimpo' || (l.type === 'grupo' && url.startsWith('bloopworld:')))) return false;
+  if (!l || !(l.type === 'voo' || l.type === 'garimpo' || l.type === 'duelo' || (l.type === 'grupo' && url.startsWith('bloopworld:')))) return false;
   void openBloopLink(l);
   if (url === location.href) {
     const u = new URL(location.href);
     u.searchParams.delete('voo');
     u.searchParams.delete('garimpo');
+    u.searchParams.delete('duelo');
     history.replaceState(null, '', u.pathname + u.search + u.hash);
   }
   return true;

@@ -25,6 +25,8 @@ export interface FriendInfo {
   online: boolean;
   lastSeen: number;
   houseMess: number; // 0..1 (quão bagunçada está a casa dele) — para "ajude a limpar!"
+  /** sala aberta em que dá para entrar agora: "<jogo>.<CÓDIGO>" ou "duel.<jogo>.<CÓDIGO>" (src/party/join.ts) */
+  playing?: string;
 }
 export interface FriendRequest {
   from: FriendInfo;

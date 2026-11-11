@@ -225,3 +225,6 @@
 @media (max-height:440px){.nc-menu h1{font-size:24px}.nc-menu .big .nc-btn{height:88px;font-size:14px}.nc-menu .big .nc-btn svg{width:40px;height:40px}.nc-menu .hats .nc-btn{width:42px;height:42px}.nc-menu .hats svg{width:24px;height:24px}.nc-menu .helpers .nc-btn{height:40px;min-width:40px}.nc-menu{gap:5px}.nc-menu .rec{font-size:15px}}
 .nc-menu .toprow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
 @media (max-height:440px){.nc-menu .hats .nc-btn{width:36px;height:36px;border-radius:12px}.nc-menu .hats svg{width:20px;height:20px}.nc-menu .hats .nc-btn small{font-size:10px}}
+/* amigos primeiro (src/party/friends-play.ts): código só como link pequeno */
+.nc-codelink{border:0;background:none;color:#cbb8ff;font:inherit;font-size:14px;text-decoration:underline;padding:6px;cursor:pointer}
+.nc-playing:empty{display:none}

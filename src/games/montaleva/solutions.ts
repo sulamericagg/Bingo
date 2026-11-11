@@ -70,9 +70,12 @@ export const CLASSIC_SOLUTIONS: Record<number, Solution> = {
   28: { parts: [P('spring', 1, 1), P('block', 2, 1), P('motor', 3, 1), P('block', 4, 1), P('spring', 5, 1), P('wheelL', 1, 1), P('wheelL', 5, 1)], drive: [[0, 'F'], [0, 'B', 'z']] },
   29: {
     parts: [P('spring', 1, 1), P('block', 2, 1), P('motor', 3, 1), ...row('block', 4, 7, 1), P('motor', 8, 1), P('block', 9, 1), P('spring', 10, 1), P('basket', 3, 2), P('wheelL', 1, 1), P('wheelL', 10, 1)],
+    // suspensão de verdade (2,3 Hz): espera a bola assentar na caçamba antes de sair
+    drive: [[0, 'B'], [3.2, 'F'], [-0.6, 'B', 'z']],
   },
   30: {
-    parts: [P('spring', 1, 1), P('block', 2, 1), P('motor', 3, 1), ...row('block', 4, 7, 1), P('motor', 8, 1), P('block', 9, 1), P('spring', 10, 1), P('block', 2, 2), P('block', 4, 2), P('basket', 6, 2), P('wheelL', 1, 1), P('wheelL', 10, 1), P('thruster', 4, 1, 1), P('thruster', 7, 1, 1)],
+    parts: [P('spring', 1, 1), P('block', 2, 1), P('motor', 3, 1), ...row('block', 4, 7, 1), P('motor', 8, 1), P('block', 9, 1), P('spring', 10, 1), P('basket', 6, 2), P('wheelL', 1, 1), P('wheelL', 10, 1), P('thruster', 4, 1, 1), P('thruster', 7, 1, 1)],
+    // sem as paredinhas do vidro: com a suspensão de verdade o carro fica mais alto e o pêndulo parado prendia nelas
     drive: [[0, 'F'], [26.6, 'FJ', 'x'], [29, 'F', 'x'], [0, 'B', 'z']],
   },
 };
@@ -84,7 +87,7 @@ for (const L of LEVELS) {
   if (s) SOLUTIONS[L.n] = s;
 }
 
-export const SOLUTION_UPGRADES: Upgrades = { motor: 0, grip: 0, spring: 0, pad: 0 };
+export const SOLUTION_UPGRADES: Upgrades = { motor: 0, grip: 0, spring: 0, pad: 0, frame: 0 };
 
 export interface VerifyResult {
   n: number;

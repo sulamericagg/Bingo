@@ -2366,7 +2366,7 @@ export function createWorld(root: HTMLElement, opts: WorldOpts): WorldGame {
 export function serversAvailable(): boolean {
   return true;
 }
-export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<WorldGame | null> {
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
   const net = await import('./net');
-  return net.openServers(root, opts);
+  return net.openServers(root, opts, party);
 }

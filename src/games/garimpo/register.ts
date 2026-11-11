@@ -4,6 +4,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { registerGame } from '../../hub/registry';
+import { registerPartyGame } from '../../party/contract';
 
 const TAU = Math.PI * 2;
 
@@ -85,6 +86,7 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
 }
 
 export function registerGarimpo(): void {
+  registerPartyGame('garimpo', { mode: 'room' }); // grupo: todos na sala do líder (gancho em game.ts → launch)
   registerGame({
     id: 'garimpo',
     get name() {

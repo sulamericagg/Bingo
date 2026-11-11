@@ -405,6 +405,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
           .join('')}</div>
         <button class="vh-fly" data-fly><span class="vh-flyi">${vIcon('plane', 40)}</span><span class="vh-flyt"><b>${esc(t('voo.hg.fly', 'VOAR'))}</b><small class="vh-sum"></small></span></button>
         <button class="vh-friends" data-friends>${vIcon('crew', 28)}<span>${esc(t('voo.hg.friends', 'Voar com amigos'))}</span></button>
+        <div class="vh-playing"></div>
         <div class="vh-row">
           <button class="vh-card daily ${dailyDone ? 'done' : ''}" data-daily>${vIcon('calendar', 30)}<span><b>${esc(t('voo.mode.daily', 'Voo do dia'))}</b><small>${
             dailyDone
@@ -417,6 +418,11 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
       </div>
     </div>`;
   root.appendChild(el);
+  // amigos voando agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+  void import('../../party/friends-play').then((f) => {
+    const pe = el.querySelector<HTMLElement>('.vh-playing');
+    if (pe) f.playingStrip(pe, 'voo');
+  });
   requestAnimationFrame(() => el.classList.add('in'));
 
   const cv = el.querySelector('.vh-cv') as HTMLCanvasElement;

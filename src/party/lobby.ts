@@ -18,6 +18,7 @@ import { displayName } from '../services/leaderboard';
 import { profile } from '../services/profile';
 import { social } from '../social/store';
 import { chatLog, isLeader, kick, promote, sendEmote, setReady, squad, type SquadMember, type SquadMsg } from './squad';
+import { FRIENDS_SVG } from './duel-link';
 import './party.css';
 
 const pose: PlayerPose = { t: 0, blink: 0, lookX: 0.15, lookY: 0.1, sx: 1, sy: 1, mood: 'happy', lx: -0.5, ly: -0.7, still: true };
@@ -135,8 +136,10 @@ function render(): void {
   for (let i = 0; i < free; i++) {
     const add = document.createElement('button');
     add.className = 'pl-slot pl-add';
-    add.innerHTML = `<span class="pl-plus">+</span><b class="pl-tag"></b>`;
-    (add.querySelector('.pl-tag') as HTMLElement).textContent = v ? t('sq.invite', 'Convidar') : t('sq.playwith', 'Jogar com amigos');
+    add.innerHTML = `<span class="pl-plus">${FRIENDS_SVG}<i>+</i></span><b class="pl-tag"></b>`;
+    const lbl = v ? t('sq.invite', 'Convidar') : t('sq.friends', 'Amigos');
+    (add.querySelector('.pl-tag') as HTMLElement).textContent = lbl;
+    add.setAttribute('aria-label', v ? lbl : t('sq.playwith', 'Jogar com amigos'));
     add.onclick = openPanel;
     slots.appendChild(add);
     if (!v) break;

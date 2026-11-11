@@ -11,6 +11,9 @@ import { t } from '../../../i18n';
 import { notify } from '../../../ui/notify';
 import { api, me, wsUrl } from '../../../social/net';
 import { skinById } from '../../../game/skins';
+// PAPER: outros jogadores como Bloop 2D de papel (chave PAPER_GAMES.floresta)
+import { PaperChar, paperOn, specOf, type PaperTool } from '../../../3d/paper';
+import { squad } from '../../../party/squad';
 import { mergeParts, mat4 } from '../fps/models';
 import type { WorldGame, WorldOpts } from './worldgame';
 import { freshWorld } from './wsave';
@@ -23,6 +26,7 @@ import { ALL_MOBS, MOB_INDEX, type Mob as BigMob } from './content/mobs';
 import { VehNet, type VRec } from './vnet';
 import type { BossView } from './content/mobs';
 import { ITEM } from './items';
+import { joinInvite, joinStr, reportPlaying, stopPlaying } from '../../../party/join';
 import { CROPS, PDEFS, type Piece } from './build';
 const ITEM_OK = (id: string) => ITEM.has(id);
 
@@ -108,6 +112,9 @@ export class Avatar implements Entity {
   held = '';
   veh = -1;
   private tag: THREE.Sprite;
+  /** PAPER */
+  private paper: PaperChar | null = null;
+  private mv = 0;
   get face(): number {
     return this.yaw;
   }
@@ -119,11 +126,26 @@ export class Avatar implements Entity {
     skin: string,
     private sess: NetSession,
   ) {
+    this.tag = nameSprite(name);
+    if (paperOn('floresta')) {
+      // PAPER: o avatar do grupo (se o amigo está no grupo), senão a skin
+      this.paper = new PaperChar(specOf(skin, squad()?.members.find((m) => m.id === pid)?.avatar), { radius: 0.55, cell: 96 });
+      this.g.add(this.paper.root, this.tag);
+      return;
+    }
     AV_MAT ??= new THREE.MeshLambertMaterial({ vertexColors: true });
     const body = new THREE.Mesh(avatarGeo(skin), AV_MAT);
     body.castShadow = true;
-    this.tag = nameSprite(name);
     this.g.add(body, this.tag);
+  }
+  /** PAPER: vira o billboard para a câmera e anima (andar, ferramenta) */
+  private paperTick(dt: number, api: MundoAPI | undefined, mv: number): void {
+    if (!this.paper || !api) return;
+    this.mv += (mv / Math.max(dt, 1e-3) - this.mv) * Math.min(1, dt * 8);
+    const h = this.held;
+    const tool: PaperTool | null = /axe|machado/.test(h) ? 'axe' : /pick|picareta/.test(h) ? 'pick' : /shovel|pa_|spade/.test(h) ? 'shovel' : /torch|tocha/.test(h) ? 'torch' : null;
+    this.paper.setTool(tool, '#c8d0e0');
+    this.paper.update(dt, api.camera, { yaw: this.g.rotation.y + Math.PI, speed: this.vn ? 0 : this.mv, act: -1 });
   }
   set(p: number[]): void {
     this.tx = p[0];
@@ -136,7 +158,7 @@ export class Avatar implements Entity {
       this.z = this.tz;
     }
   }
-  update(dt: number): boolean {
+  update(dt: number, api?: MundoAPI): boolean {
     const v = this.vn ? this.sess.veh?.byNid.get(this.vn) : undefined;
     if (v) {
       const s = v.seatWorld();
@@ -148,6 +170,7 @@ export class Avatar implements Entity {
       this.g.rotation.y = this.yaw;
       this.g.visible = this.sess.visible(this);
       this.tag.visible = this.sess.tagVisible(this);
+      this.paperTick(dt, api, 0); // PAPER
       return true;
     }
     const k = Math.min(1, dt * 10);
@@ -164,10 +187,11 @@ export class Avatar implements Entity {
     while (d < -Math.PI) d += Math.PI * 2;
     this.yaw += d * k;
     this.bob += Math.min(mv * 8, 12) * dt;
-    this.g.position.set(this.x, this.y + Math.abs(Math.sin(this.bob)) * 0.08, this.z);
+    this.g.position.set(this.x, this.y + (this.paper ? 0 : Math.abs(Math.sin(this.bob)) * 0.08), this.z);
     this.g.rotation.y = this.yaw + Math.PI;
     this.g.visible = this.sess.visible(this);
     this.tag.visible = this.sess.tagVisible(this);
+    this.paperTick(dt, api, mv * k); // PAPER
     return true;
   }
   hit(dmg: number, from: string): void {
@@ -175,6 +199,7 @@ export class Avatar implements Entity {
   }
   dispose(api: MundoAPI): void {
     api.scene.remove(this.g);
+    this.paper?.dispose(); // PAPER
   }
 }
 
@@ -954,7 +979,7 @@ export const MINI_NAMES: Record<Exclude<Mini, ''>, [() => string, () => string]>
 };
 
 /** saguão dos servidores; resolve com o jogo montado (ou null) */
-export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<WorldGame | null> {
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
   const m = document.createElement('div');
   m.className = 'fl-modal';
   root.appendChild(m);
@@ -976,6 +1001,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
       <div class="mw-form">
         ${!who ? `<div style="font-weight:800;color:#c21d3c">${t('mundo.net.offline', 'Sem internet agora — os servidores precisam de conexão.')}</div>` : ''}
         ${msg ? `<div style="font-weight:800;color:#c21d3c">${esc(msg)}</div>` : ''}
+        <div class="mw-playing"></div>
         ${invites.map((i) => `<div class="mw-row"><div class="sp"><b>${esc(i.name)}</b><small>${t('mundo.net.invitedYou', 'chamou você para')} ${esc(i.world)}</small></div><button class="fl-btn green" data-join="${i.code}">${t('mundo.net.join', 'Entrar')}</button></div>`).join('')}
         <div class="mw-row2"><label style="flex:1">${t('mundo.net.code', 'Código do mundo')}<input type="text" id="mn-code" maxlength="6" placeholder="ABC234" style="text-transform:uppercase"></label><button class="fl-btn green" data-enter="1" style="align-self:flex-end">${t('mundo.net.join', 'Entrar')}</button></div>
         ${last.map((w) => `<div class="mw-row"><div class="sp"><b>${esc(w.name)}</b><small>${w.code}${w.mini ? ' · ' + MINI_NAMES[w.mini][0]() : ''}</small></div><button class="fl-btn" data-join="${w.code}">${t('mundo.net.reopen', 'Abrir')}</button></div>`).join('')}
@@ -988,8 +1014,8 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         ${(Object.keys(MINI_NAMES) as Exclude<Mini, ''>[]).map((k) => `<div class="mw-row"><div class="sp"><b>${MINI_NAMES[k][0]()}</b><small>${MINI_NAMES[k][1]()}</small></div><button class="fl-btn green" data-mini="${k}">${t('mundo.play', 'Jogar')}</button></div>`).join('')}
       </div></div>`;
     };
-    const start = async (code: string, create: Record<string, unknown> | null) => {
-      if (busy || !who) return;
+    const start = async (code: string, create: Record<string, unknown> | null): Promise<string> => {
+      if (busy || !who) return 'busy';
       busy = true;
       render(t('mundo.net.connecting', 'Conectando…'));
       const sess = new NetSession(code, who.name);
@@ -999,10 +1025,11 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         busy = false;
         const r = (e as Error).message;
         render(r === 'no_world' ? t('mundo.net.noWorld', 'Esse mundo não existe (confira o código)') : r === 'full' ? t('mundo.net.full', 'Mundo cheio (8 jogadores)') : r === 'kicked' ? t('mundo.net.kicked', 'O anfitrião tirou você do mundo') : t('mundo.net.fail', 'Não deu para conectar agora'));
-        return;
+        return r;
       }
       const meta = sess.meta!;
       rememberWorld(code, meta.name, meta.mini);
+      if (create) reportPlaying('floresta', code); // amigos veem "Fulano está jogando — Entrar"
       m.remove();
       clearInterval(invT);
       const save = freshWorld(meta.seed);
@@ -1043,10 +1070,12 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         },
         exit: () => {
           sess.close();
+          stopPlaying();
           opts.exit();
         },
       });
       resolve(g);
+      return 'ok';
     };
     m.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
@@ -1076,6 +1105,12 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
       }
     });
     render();
+    // amigos no Mundo Aberto agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+    const strip = document.createElement('div');
+    void import('../../../party/friends-play').then((f) => f.playingStrip(strip, 'floresta'));
+    const putStrip = () => m.querySelector('.mw-playing')?.replaceWith(strip);
+    putStrip();
+    new MutationObserver(putStrip).observe(m, { childList: true });
     // convites de amigos (a cada 6 s)
     const poll = async () => {
       if (!who) return;
@@ -1092,6 +1127,20 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
     };
     void poll();
     const invT = window.setInterval(() => void poll(), 6000);
+    // grupo (docs/PARTY.md): o líder cria o mundo com o código do grupo e os outros entram sozinhos
+    if (party && who)
+      void (async () => {
+        if (party.host) {
+          await start(party.code, { name: t('mundo.net.worldOf', 'Mundo de {n}', { n: who?.name ?? 'Bloop' }), seed: Math.floor(Math.random() * 1e9), gen: { type: 'normal', h: 1, off: [] }, mode: 'sobrevivencia', pvp: false });
+          return;
+        }
+        for (let i = 0; i < 25 && m.isConnected; i++) {
+          const r = await start(party.code, null);
+          if (r !== 'no_world') return;
+          render(t('mundo.net.waitLeader', 'Esperando o líder abrir o mundo…'));
+          await new Promise((res) => setTimeout(res, 1200));
+        }
+      })();
   });
 }
 
@@ -1115,6 +1164,8 @@ export async function inviteFriends(sess: NetSession, host: HTMLElement): Promis
       try {
         const who = await me();
         await api('/mundo/invite', { id: who.id, to: b.dataset.call, code: sess.code, name: who.name, world: sess.meta?.name ?? '' });
+        // e pelo sistema de amigos: aparece NA HORA em qualquer tela (src/party/invite-pop.ts)
+        void api('/friends/invite', { id: who.id, to: b.dataset.call, kind: 'game', game: joinInvite(joinStr('floresta', sess.code)) }).catch(() => {});
         b.textContent = '✓';
       } catch {
         b.textContent = '✕';
