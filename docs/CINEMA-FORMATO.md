@@ -32,6 +32,8 @@ O mesmo projeto toca em 2D **ou** 3D (`mode`): as chaves dos atores servem para 
   "created": 1762700000000, "updated": 1762700000000,   // ms
   "mode": "2d",                    // "2d" | "3d" (3D = Cinema Pro)
   "template": "bolo",              // opcional: história de origem (remix)
+  "story": StorySpec,              // opcional: roteiro do "Criar história"/História Mágica (shared/story.ts);
+                                   // permite "Editar história" no modo simples (refaz os planos a partir dele)
   "watermark": true,               // marca "Feito no Bloop World" (só Pro pode desligar)
   "mix": { "music": 0.7, "voice": 1, "sfx": 0.8 },      // 0..1
   "music": { "song": "free-02", "offset": 8, "vol": 0.6 } | null,
@@ -49,9 +51,26 @@ O mesmo projeto toca em 2D **ou** 3D (`mode`): as chaves dos atores servem para 
                                          // mesmo AvatarData do "Crie seu Bloop" (src/game/avatar.ts)
   "creature": "s03-rare",                // id da coleção de bichinhos (kind = creature)
   "voice": "normal" | "chipmunk" | "deep" | "robot" | "echo" | "giant",
-  "size": 1                              // 0.6..1.4
+  "size": 1,                             // 0.6..1.4
+  "makeup": MakeupLook                   // opcional: Estúdio de Maquiagem (ver abaixo)
 }
 ```
+
+### MakeupLook (maquiagem / pintura facial — `src/makeup/format.ts`)
+Lista de **traços** (não é imagem): redesenhada em qualquer resolução (2D, textura do rosto 3D de
+256/384/512 px conforme a qualidade, miniaturas, foto).
+```jsonc
+{ "v": 1, "layers": [ { "id": "l…", "name": "Camada 1", "o": 100, "h": 1,   // o = opacidade 0..100, h = escondida
+    "st": [ { "b": "blush",          // base|blush|shadow|lips|contour|highlight|glitter|stars|hearts|stripes|erase
+              "c": "#ff7a9a", "s": 40, "a": 55,     // cor, tamanho (R/100), força 1..100
+              "z": "cheeks",          // zona inteligente (máscara): lips|eyes|cheeks|forehead
+              "m": 1,                 // simetria (espelha em x)
+              "p": [-50,17, -44,20, …] } ] } ] }   // pontos inteiros, R/100, origem no CENTRO DO ROSTO
+```
+Espaço: unidades de R/100 do corpo, origem em `(0, fy·R)` (altura do rosto da forma), y para baixo,
+área ±130. Limites: 8 camadas, 400 traços, 600 pontos/traço. Grátis: 2 camadas e pincéis básicos;
+glitter, estrelas, corações, listras e camadas extras = Pro. O look do **jogador** fica em
+`localStorage['bw-makeup-player']` (não vai para `save.avatar`/rede); looks salvos em `bw-makeup-looks`.
 
 ### Scene
 ```jsonc
@@ -115,6 +134,22 @@ congelado no fim). Duração total do filme = soma de `dur` de todos os planos.
   "style": "speech|shout|think|whisper|subtitle|narration",
   "audio": "clip…" }                // opcional: voz gravada (store `clips`)
 ```
+Campos opcionais da captura de rosto ("Gravar com o rosto"):
+```jsonc
+  "face": { "hz": 30, "n": 72, "q": "base64…", "only": "mouth" },   // FaceTake
+  "cut": [0.3, 2.4]          // corte [início, fim] em segundos DA GRAVAÇÃO (voz e rosto juntos)
+```
+`FaceTake`: `n` quadros a `hz` (15/20/30 conforme a qualidade), cada quadro = 16 bytes na ordem
+`FACE_CH` = `bl br bwl bwr bwi op A O E sm pk yaw pit rol lx ly` (piscar esq./dir., sobrancelha esq./dir.,
+meio da sobrancelha, boca aberta, vogais A/O/E, sorriso, bico, cabeça virar/inclinar/deitar, olhar).
+Byte 0..255 ↦ 0..1 (piscar, boca, vogais, sorriso, bico, `bwi`), −1..1 (`bwl bwr lx ly`) ou
+−0,6..0,6 rad (cabeça). Tempo da gravação `s = (t − line.t) × velocidade da voz + cut[0]`; a leitura
+interpola entre quadros. A captura sobrepõe **só o rosto** (olhos, sobrancelhas, boca, cabeça) durante
+a fala; pose e posição seguem as chaves, e detalhes da expressão da chave (blush, lágrimas) continuam por
+cima. `only: "mouth"` = usa só boca + cabeça e mantém os olhos da expressão manual. Nenhuma imagem da
+câmera é guardada. Limite grátis: o mesmo tempo diário do Bloop Espelho (`src/mirror/quota.ts`, conta só
+o tempo gravando); Pro sem limite.
+
 Com `audio`, a boca segue o envelope de volume da gravação (50 Hz); sem, mexe "silabando" o texto.
 
 ### FxEvent / SfxEvent

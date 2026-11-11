@@ -40,3 +40,8 @@ export function t(key: string, fallback: string, vars?: Record<string, string | 
 export function fmt(n: number): string {
   return n.toLocaleString(current === 'pt' ? 'pt-BR' : current);
 }
+
+/** Número com casas decimais fixas no formato do idioma (2,5 / 2.5). */
+export function fmtDec(n: number, digits = 1): string {
+  return n.toLocaleString(current === 'pt' ? 'pt-BR' : current, { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
+}

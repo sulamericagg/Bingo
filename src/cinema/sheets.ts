@@ -3,7 +3,7 @@
  *  escolher elenco, gravar voz.
  * ============================================================ */
 import { pushBack } from '../core/back';
-import { t } from '../i18n';
+import { fmtDec, t } from '../i18n';
 import { save } from '../core/storage';
 import { profile } from '../services/profile';
 import { ownedCreatures } from '../creatures/state';
@@ -154,7 +154,7 @@ export function recordSheet(): Promise<Awaited<ReturnType<MicRecorder['stop']>> 
         hist.push(rec.level());
         hist.shift();
         bi.forEach((b, i) => (b.style.height = `${8 + hist[i] * 56}px`));
-        tm.textContent = `${rec.elapsed().toFixed(1).replace('.', ',')} s / ${MAX_REC_SEC} s`;
+        tm.textContent = `${fmtDec(rec.elapsed())} s / ${MAX_REC_SEC} s`;
         raf = requestAnimationFrame(loop);
       };
       loop();

@@ -266,8 +266,15 @@ const D: DC = {
   my: 0,
 };
 
+/**
+ * Camada pintada sobre a pele (ex.: maquiagem — src/makeup): chamada dentro do contorno do
+ * corpo (já recortado), depois do material/padrão/sombreado e antes de olhos e boca.
+ * Origem no centro do corpo; `fy` = altura do rosto em unidades de R (forma do corpo).
+ */
+export type SkinOverlay = (x: CanvasRenderingContext2D, R: number, fy: number, t: number) => void;
+
 /** Desenha o avatar centrado em (0,0) — mesmas convenções de drawPlayer. */
-export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: number, p: PlayerPose): void {
+export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: number, p: PlayerPose, overlay?: SkinOverlay | null): void {
   const parts = av.parts;
   const sh = SHAPES[parts.body] ?? SHAPES.b_blob;
   const mat = MATERIALS[parts.material] ?? MATERIALS.m_crayon;
@@ -335,6 +342,7 @@ export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: numbe
   pat.draw(d);
   shadeBody(d, mat.shade, mat.spec ?? 1);
   if (mat.over) mat.over(d);
+  if (overlay) overlay(x, R, sh.fy, p.t);
   if (sh.sharp && parts.body === 'b_gem') gemFacets(d);
   x.restore();
   drawOutline(d, mat);

@@ -17,6 +17,7 @@ import type { ActorScreen } from './fx2d';
 import { blendRig, drawBackTex, drawFaceTex, drawHeadTex, radiusFor, restRig, type Rig } from './rig2d';
 import { SHAPES } from '../game/avatar-gfx';
 import { drawCreature } from '../creatures/render';
+import { lookSig } from '../makeup/format';
 
 const U = 0.6; // metros por unidade do palco
 const INK = 0x2a0b5c;
@@ -216,7 +217,8 @@ export function loadStudioSet(json: unknown): THREE.Group | null {
 }
 
 /* ---------------------------- ator 3D ---------------------------- */
-const FACE_PX = 256;
+/** textura do rosto: 256 px; com maquiagem, maior conforme a qualidade (até 512) */
+let facePxMax = 256;
 
 class Actor3D {
   root = new THREE.Group();
@@ -225,6 +227,7 @@ class Actor3D {
   private faceTex: THREE.CanvasTexture;
   private faceCv: HTMLCanvasElement;
   private faceKey = '';
+  private facePx = 256;
   private arms: { up: THREE.Mesh; hand: THREE.Mesh }[] = [];
   private feet: THREE.Mesh[] = [];
   head: THREE.Sprite | null = null;
@@ -254,7 +257,8 @@ class Actor3D {
     this.shadow.position.y = 0.01;
     this.root.add(this.shadow, this.body);
     this.faceCv = document.createElement('canvas');
-    this.faceCv.width = this.faceCv.height = FACE_PX;
+    this.facePx = cast.makeup ? facePxMax : 256;
+    this.faceCv.width = this.faceCv.height = this.facePx;
     this.faceTex = new THREE.CanvasTexture(this.faceCv);
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
 
@@ -347,7 +351,7 @@ class Actor3D {
   }
 
   static sigOf(c: CastMember): string {
-    return JSON.stringify([c.kind, c.avatar, c.creature, c.size]);
+    return JSON.stringify([c.kind, c.avatar, c.creature, c.size, lookSig(c.makeup)]);
   }
   matches(c: CastMember): boolean {
     return Actor3D.sigOf(c) === this.sig;
@@ -371,6 +375,12 @@ class Actor3D {
       b.position.z = -R * 0.6 * rig.lie;
     }
     b.scale.set(rig.sx, rig.sy, rig.sx);
+    if (a.cap) {
+      // cabeça capturada (o Bloop é cabeça e corpo): vira, inclina e deita
+      b.rotation.y += a.cap.yaw * 0.9 * flip;
+      b.rotation.x += a.cap.pit * 0.6;
+      b.rotation.z += -a.cap.rol * 0.8 * flip;
+    }
     if (this.cre) {
       const t = a.at;
       if (t - this.cre.last > 1 / 15 || this.cre.last < 0) {
@@ -415,15 +425,17 @@ class Actor3D {
     const talkQ = Math.round(a.talk * 8);
     const blinkQ = Math.round(a.blink * 4);
     const animated = a.expr === 'crying' || a.expr === 'laughing' || a.expr === 'sleepy' || a.expr === 'love' || a.expr === 'dizzy' || a.expr === 'scared' || a.expr === 'sad' || a.expr === 'confused' || a.expr === 'wink';
-    const key = `${a.expr}|${talkQ}|${blinkQ}|${animated ? Math.floor(a.at * 15) : 0}|${Math.round(rig.lookX * 4)}|${Math.round(rig.lookY * 4)}`;
+    const cq = a.cap ? Object.values(a.cap).map((v) => Math.round(v * 12)).join(',') + (a.capMouth ? 'm' : '') : '';
+    const key = `${a.expr}|${talkQ}|${blinkQ}|${animated || a.cap ? Math.floor(a.at * 15) : 0}|${Math.round(rig.lookX * 4)}|${Math.round(rig.lookY * 4)}|${cq}`;
     if (key !== this.faceKey) {
       this.faceKey = key;
       const x = this.faceCv.getContext('2d')!;
       x.setTransform(1, 0, 0, 1, 0, 0);
-      x.clearRect(0, 0, FACE_PX, FACE_PX);
-      const Rpx = FACE_PX / 2.6;
-      x.translate(FACE_PX / 2, FACE_PX / 2);
-      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY);
+      const FP = this.facePx;
+      x.clearRect(0, 0, FP, FP);
+      const Rpx = FP / 2.6;
+      x.translate(FP / 2, FP / 2);
+      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY, this.cast.makeup, a.cap, !!a.capMouth);
       this.faceTex.needsUpdate = true;
     }
   }
@@ -475,6 +487,7 @@ export class Scene3D implements Renderer3D {
   readonly canvas: HTMLCanvasElement;
 
   constructor(tier: number) {
+    facePxMax = tier >= 2 ? 512 : tier === 1 ? 384 : 256;
     this.canvas = document.createElement('canvas');
     this.gl = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: tier >= 2, alpha: false, powerPreference: 'default' });
     // sem preserveDrawingBuffer: o quadro é copiado para o canvas 2D (drawImage) logo depois do

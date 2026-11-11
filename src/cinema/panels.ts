@@ -3,7 +3,7 @@
  *  Falas, Câmera, Efeitos, Som, Plano. Cada render() refaz o HTML
  *  do painel; eventos por delegação (data-a / data-k).
  * ============================================================ */
-import { t } from '../i18n';
+import { fmtDec, t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { ownsPart, partName, partsOf, type Slot } from '../game/avatar';
@@ -56,7 +56,7 @@ export const TABS: { id: Tab; label: () => string }[] = [
 ];
 
 const proTag = (it: Item) => (it.pro && !isPro() ? '<b class="cin-pro">PRO</b>' : '');
-const fmt1 = (n: number) => n.toFixed(1).replace('.', ',');
+const fmt1 = (n: number) => fmtDec(n);
 const EASES: [Ease, () => string][] = [
   ['inout', () => t('cin.ease.inout', 'Suave')],
   ['linear', () => t('cin.ease.linear', 'Constante')],
@@ -245,8 +245,10 @@ function linesPanel(c: PanelCtx): void {
       ${range('dur:' + l.id, t('cin.lines.dur', 'Duração'), 0.5, 12, 0.1, l.dur)}
       <div class="cin-row">
         <button class="cin-btn sm" data-a="rec" data-id="${l.id}">🎙 ${l.audio ? t('cin.lines.rerec', 'Regravar') : t('cin.lines.rec', 'Gravar voz')}</button>
+        ${castById(l.cast)?.kind === 'avatar' ? `<button class="cin-btn sm ${l.face ? 'ok' : ''}" data-a="facerec" data-id="${l.id}">🎭 ${l.face ? t('cin.lines.refacerec', 'Regravar com o rosto') : t('cin.lines.facerec', 'Gravar com o rosto')}</button>` : ''}
         ${l.audio ? `<button class="cin-btn sm" data-a="hear" data-id="${l.id}">▶ ${t('cin.lines.hear', 'Ouvir')}</button><button class="cin-btn sm ghost" data-a="unrec" data-id="${l.id}">✕ ${t('cin.lines.unrec', 'Tirar voz')}</button>` : ''}
       </div>
+      ${l.face ? faceRow(l) : ''}
     </div>`;
   }
   html += '</div>';
@@ -273,11 +275,45 @@ function linesPanel(c: PanelCtx): void {
     } else if (!l) return;
     else if (a === 'del') mutate(() => (shot.lines = shot.lines.filter((x) => x !== l)));
     else if (a === 'style') mutate(() => (l.style = b.dataset.v as BubbleStyle));
-    else if (a === 'unrec') mutate(() => delete l.audio);
+    else if (a === 'unrec')
+      mutate(() => {
+        delete l.audio;
+        delete l.face;
+        delete l.cut;
+      });
+    else if (a === 'unface') mutate(() => delete l.face);
+    else if (a === 'faceonly' && l.face) mutate(() => (l.face = { ...l.face!, only: l.face!.only ? undefined : 'mouth' }));
+    else if (a === 'facerec') {
+      const who = castById(l.cast);
+      if (!who || who.kind !== 'avatar') return;
+      const m = c.mixer();
+      m?.setMuted(true);
+      const { faceCapture } = await import('./facecap');
+      const r = await faceCapture(who);
+      m?.setMuted(false);
+      if (r === 'denied') notify(t('cin.fc.denied', 'Sem permissão da câmera. Libere nas configurações do aparelho.'), { kind: 'warn', icon: 'warning' });
+      else if (r === 'mic') notify(t('cin.rec.denied', 'Sem permissão do microfone. Libere nas configurações do aparelho.'), { kind: 'warn', icon: 'warning' });
+      else if (r === 'nocam') notify(t('cin.fc.nocam', 'Não deu para usar a câmera neste aparelho. Você ainda pode gravar só a voz.'), { kind: 'warn', icon: 'warning' });
+      else if (r && typeof r === 'object') {
+        const id = uid('clip');
+        await putClip({ id, pid: S.p.id, blob: r.blob, dur: r.buf.duration, env: r.env });
+        rememberClip(id, r.buf, r.env);
+        const rate = VOICE_RATE[who.voice] ?? 1;
+        const need = (r.cut[1] - r.cut[0]) / rate + 0.15;
+        mutate(() => {
+          l.audio = id;
+          l.face = r.take;
+          l.cut = r.cut[0] > 0.01 || r.cut[1] < r.buf.duration - 0.01 ? r.cut : undefined;
+          l.dur = Math.max(0.5, Math.round(need * 10) / 10);
+          if (l.t + l.dur > shot.dur) shot.dur = Math.min(60, Math.ceil((l.t + l.dur + 0.3) * 10) / 10);
+        });
+        notify(t('cin.fc.ok', 'Rosto e voz gravados! O personagem atua igual a você.'), { kind: 'good', icon: 'check' });
+      }
+    }
     else if (a === 'hear' && l.audio) {
       const m = c.mixer();
       await loadClip(l.audio);
-      if (m) previewClip(m, l.audio, castById(l.cast)?.voice ?? 'normal');
+      if (m) previewClip(m, l.audio, castById(l.cast)?.voice ?? 'normal', l.cut);
     } else if (a === 'rec') {
       const m = c.mixer();
       m?.setMuted(true);
@@ -293,6 +329,8 @@ function linesPanel(c: PanelCtx): void {
         const need = r.buf.duration / rate + 0.15;
         mutate(() => {
           l.audio = id;
+          delete l.face;
+          delete l.cut;
           l.dur = Math.max(0.5, Math.round(need * 10) / 10);
           if (l.t + l.dur > shot.dur) shot.dur = Math.min(60, Math.ceil((l.t + l.dur + 0.3) * 10) / 10);
         });
@@ -526,7 +564,7 @@ function shotPanel(c: PanelCtx): void {
 
 /* ---------------------------- CENÁRIO ---------------------------- */
 const bgThumbs = new Map<string, HTMLCanvasElement>();
-function bgThumb(id: string, light: string): HTMLCanvasElement {
+export function bgThumb(id: string, light: string): HTMLCanvasElement {
   const k = id + light;
   let cv = bgThumbs.get(k);
   if (cv) return cv;
@@ -568,6 +606,14 @@ function scenePanel(c: PanelCtx): void {
     else if (a === 'studio') c.importStudio();
     else if (a === 'nostudio') mutate(() => delete sc.studio);
   };
+}
+
+/** Linha de opções da captura de rosto de uma fala. */
+function faceRow(l: Line): string {
+  const sec = l.face ? fmt1(l.face.n / l.face.hz) : '';
+  return `<div class="cin-row"><span class="cin-hint cin-grow">🎭 ${t('cin.lines.faceInfo', 'Rosto gravado ({s} s)', { s: sec })}</span>
+    <button class="cin-btn sm ${l.face?.only ? 'ok' : ''}" data-a="faceonly" data-id="${l.id}">👄 ${t('cin.fc.only', 'Só boca e cabeça')}</button>
+    <button class="cin-btn sm ghost" data-a="unface" data-id="${l.id}">✕ ${t('cin.lines.unface', 'Tirar rosto')}</button></div>`;
 }
 
 /* ---------------------------- ELENCO ---------------------------- */
@@ -616,6 +662,16 @@ function castPanel(c: PanelCtx): void {
       clearThumbs();
     } else if (a === 'voice') {
       mutate(() => (m.voice = b.dataset.v as never));
+    } else if (a === 'makeup' && m.avatar) {
+      const { openMakeupStudio } = await import('../makeup/studio');
+      const look = await openMakeupStudio({ avatar: m.avatar, look: m.makeup, name: m.name });
+      if (look !== undefined) {
+        mutate(() => (look ? (m.makeup = look) : delete m.makeup));
+        clearThumbs();
+      }
+    } else if (a === 'unmakeup') {
+      mutate(() => delete m.makeup);
+      clearThumbs();
     } else if (a === 'remove' && (await confirm(t('cin.cast.removeQ', 'Tirar {n} do filme inteiro?', { n: m.name }), t('cin.del', 'Apagar')))) {
       mutate((p: Project) => {
         p.cast = p.cast.filter((x) => x.id !== m.id);
@@ -656,6 +712,7 @@ function castEditor(id: string): string {
   if (m.avatar) {
     for (const w of ['primary', 'secondary'] as const)
       html += `<h5>${w === 'primary' ? t('cin.cast.color1', 'Cor') : t('cin.cast.color2', 'Cor 2')}</h5><div class="cin-swatches">${SWATCHES.map((s) => `<button class="cin-sw ${m.avatar!.colors[w] === s ? 'on' : ''}" style="background:${s}" data-a="col" data-w="${w}" data-v="${s}" data-id="${id}" aria-label="${s}"></button>`).join('')}</div>`;
+    html += `<div class="cin-row" style="margin-top:8px"><button class="cin-btn pri sm" data-a="makeup" data-id="${id}">💄 ${m.makeup ? t('cin.cast.makeupEdit', 'Editar maquiagem') : t('cin.cast.makeup', 'Maquiagem')}</button>${m.makeup ? `<button class="cin-btn sm ghost" data-a="unmakeup" data-id="${id}">🧽 ${t('cin.cast.makeupOff', 'Tirar maquiagem')}</button>` : ''}</div>`;
     html += `<h5>${t('cin.cast.outfit', 'Roupa e acessórios')}</h5><p class="cin-hint">${t('cin.cast.outfitTip', 'Peças que você já tem no Crie seu Bloop.')}</p>`;
     for (const slot of OUTFIT) {
       const curP = m.avatar.parts[slot];

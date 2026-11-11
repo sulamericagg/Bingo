@@ -13,7 +13,9 @@ import { BACKS, EYES, HEADS, MOUTHS } from '../game/avatar-parts';
 import type { PlayerPose } from '../game/character';
 import { drawCreature } from '../creatures/render';
 import { gameFont } from '../i18n/font';
-import type { CastMember, ExprId, PoseId } from './format';
+import type { CastMember, ExprId, FaceFrame, PoseId } from './format';
+import { lookSig, type MakeupLook } from '../makeup/format';
+import { drawLook, makeupOverlay } from '../makeup/render';
 
 const PI = Math.PI;
 
@@ -290,8 +292,12 @@ interface FaceState {
   /** boca aberta 0..1 (falando) */
   open: number;
   blink: number;
+  /** captura de rosto (Gravar com o rosto): sobrepõe olhos/sobrancelhas/boca */
+  cap: FaceFrame | null;
+  /** captura só da boca */
+  capMouth: boolean;
 }
-const FS: FaceState & { flip: number } = { expr: 'neutral', open: 0, blink: 0, flip: 1 };
+const FS: FaceState & { flip: number } = { expr: 'neutral', open: 0, blink: 0, flip: 1, cap: null, capMouth: false };
 
 function eyeOpen(d: DC, sd: number, sc: number, lid: number, slant: number, lookX: number, lookY: number, pupil = 1): void {
   const { x, R, c } = d;
@@ -406,7 +412,89 @@ function tear(d: DC, sd: number, k: number): void {
   x.fill();
 }
 
+/* ---------------------------- rosto capturado ---------------------------- */
+/** Detalhes da expressão das chaves que continuam por cima da captura (mistura). */
+function capAccents(d: DC): void {
+  const e = FS.expr;
+  if (e === 'happy' || e === 'love' || e === 'shy' || e === 'laughing') blush(d, e === 'shy' ? 0.8 : 0.45);
+  if (e === 'sad' || e === 'crying') tear(d, -1, (d.t * 0.6) % 1);
+  if (e === 'crying') tear(d, 1, (d.t * 0.6 + 0.5) % 1);
+}
+
+function capEyes(d: DC): void {
+  const c = FS.cap!;
+  const blink0 = FS.blink;
+  // lado da tela: com o ator virado (flip -1) o canvas está espelhado
+  const L = FS.flip < 0 ? 1 : -1;
+  for (const sd of [-1, 1]) {
+    FS.blink = Math.min(1, sd === L ? c.bl : c.br);
+    const wide = 1 + Math.max(0, c.bwi) * 0.12;
+    eyeOpen(d, sd, wide, 0, 0, c.lx, c.ly, 1 - c.sm * 0.1);
+  }
+  FS.blink = blink0;
+  for (const sd of [-1, 1]) {
+    const bw = sd === L ? c.bwl : c.bwr;
+    const lift = bw * 0.1 + c.bwi * 0.05;
+    const inner = -c.bwi * 0.05 + Math.max(0, -bw) * 0.06;
+    brows(d, inner, Math.max(0, -bw) * -0.03, lift, sd);
+  }
+  capAccents(d);
+}
+
+function capMouth(d: DC): void {
+  const c = FS.cap!;
+  const { x, R } = d;
+  const my = d.my;
+  const o = Math.min(1, c.op);
+  const W = R * 0.24 * (1 + c.E * 0.3 + c.sm * 0.15 - c.pk * 0.45 - c.O * 0.2);
+  const up = c.sm * R * 0.1; // cantos sobem com o sorriso
+  x.lineCap = 'round';
+  x.lineJoin = 'round';
+  x.strokeStyle = d.c.ink;
+  x.lineWidth = R * 0.065;
+  if (o < 0.1) {
+    if (c.pk > 0.45) {
+      // biquinho
+      x.beginPath();
+      ell(x, 0, my + R * 0.04, R * 0.06, R * 0.07);
+      x.stroke();
+      return;
+    }
+    x.beginPath();
+    x.moveTo(-W, my + R * 0.03 - up);
+    x.quadraticCurveTo(0, my + R * 0.03 + up * 1.3, W, my + R * 0.03 - up);
+    x.stroke();
+    return;
+  }
+  const h = R * (0.05 + o * 0.2 + c.A * 0.05 + c.O * 0.06);
+  const path = () => {
+    x.beginPath();
+    x.moveTo(-W, my - up * 0.6);
+    x.quadraticCurveTo(0, my - R * 0.04 - h * 0.25 + up * 0.3, W, my - up * 0.6);
+    x.quadraticCurveTo(W * 0.9, my + h, 0, my + h + R * 0.02);
+    x.quadraticCurveTo(-W * 0.9, my + h, -W, my - up * 0.6);
+    x.closePath();
+  };
+  path();
+  x.fillStyle = '#3a0f24';
+  x.fill();
+  x.save();
+  path();
+  x.clip();
+  x.fillStyle = '#ff6b8a';
+  ell(x, 0, my + h * 0.9, W * 0.6, R * 0.1);
+  x.fill();
+  if (c.E > 0.4 || c.sm > 0.5) {
+    x.fillStyle = '#ffffff';
+    x.fillRect(-W, my - h, W * 2, h * 0.45 + R * 0.02);
+  }
+  x.restore();
+  path();
+  x.stroke();
+}
+
 function cinEyes(d: DC): void {
+  if (FS.cap && !FS.capMouth) return capEyes(d);
   const { x, R, t } = d;
   const e = FS.expr;
   switch (e) {
@@ -707,6 +795,7 @@ function mouthShape(d: DC, kind: 'smile' | 'frown' | 'line' | 'O' | 'D' | 'teeth
 }
 
 function cinMouth(d: DC): void {
+  if (FS.cap) return capMouth(d);
   const o = FS.open;
   switch (FS.expr) {
     case 'happy':
@@ -758,6 +847,9 @@ export interface ActorDraw {
   t: number;
   face: -1 | 0 | 1;
   blink: number;
+  /** captura de rosto (opcional) */
+  cap?: FaceFrame | null;
+  capMouth?: boolean;
 }
 
 interface AvCache {
@@ -894,9 +986,12 @@ export function drawActor2D(x: CanvasRenderingContext2D, cast: CastMember, h: nu
   if (r.hrf < 0.5) drawArm(x, R, 1, r.hrx, r.hry, c.Pd, c.Pdd, hand);
   if (shp.feet && r.dy < 0.3) drawFeet(x, R, bottom, r, c.Pd, c.Ph, c.Pdd);
   // corpo (mood 'fly' = sem pés do drawAvatar; os pés animados são nossos)
-  const own = a.expr === 'neutral' && a.talk < 0.04;
+  const cap = a.cap ?? null;
+  const own = !cap && a.expr === 'neutral' && a.talk < 0.04;
   const v = variants(avd);
-  const avUse = own ? v.own : a.expr === 'neutral' ? v.talk : v.expr;
+  const avUse = own ? v.own : cap && !a.capMouth ? v.expr : a.expr === 'neutral' ? v.talk : v.expr;
+  FS.cap = cap;
+  FS.capMouth = !!a.capMouth;
   FS.expr = a.expr;
   FS.open = a.talk;
   FS.blink = a.blink;
@@ -910,8 +1005,17 @@ export function drawActor2D(x: CanvasRenderingContext2D, cast: CastMember, h: nu
   PP.mood = 'fly';
   x.save();
   x.translate(0, bottom * R * (1 - r.sy));
-  drawAvatar(x, avUse, R, PP);
+  if (cap) {
+    // cabeça capturada: deitar (roll), virar (yaw = achata e desloca o olhar) e inclinar (pitch)
+    x.rotate(cap.rol * 0.8 * FS.flip);
+    x.scale(1 - Math.abs(cap.yaw) * 0.18, 1 - Math.abs(cap.pit) * 0.1);
+    x.translate(cap.yaw * R * 0.12 * FS.flip, cap.pit * R * 0.12);
+    PP.lookX = Math.max(-1, Math.min(1, cap.lx + cap.yaw * 1.2));
+    PP.lookY = Math.max(-1, Math.min(1, cap.ly + cap.pit * 1.2));
+  }
+  drawAvatar(x, avUse, R, PP, makeupOverlay(cast.makeup));
   x.restore();
+  FS.cap = null;
   if (shp.feet && r.dy >= 0.3) drawFeet(x, R, bottom, r, c.Pd, c.Ph, c.Pdd);
   if (r.hlf >= 0.5) drawArm(x, R, -1, r.hlx, r.hly, c.Pd, c.Pdd, hand);
   if (r.hrf >= 0.5) drawArm(x, R, 1, r.hrx, r.hry, c.Pd, c.Pdd, hand);
@@ -939,7 +1043,7 @@ const thumbCache = new Map<string, HTMLCanvasElement>();
 
 /** Miniatura do ator numa pose/expressão (cache por chave). */
 export function actorThumb(cast: CastMember, px: number, pose: PoseId, expr: ExprId, t = 0.35, key = ''): HTMLCanvasElement {
-  const k = `${cast.id}|${JSON.stringify(cast.avatar?.colors ?? cast.creature)}|${cast.avatar ? Object.values(cast.avatar.parts).join(',') : ''}|${px}|${pose}|${expr}|${key}`;
+  const k = `${cast.id}|${lookSig(cast.makeup)}|${JSON.stringify(cast.avatar?.colors ?? cast.creature)}|${cast.avatar ? Object.values(cast.avatar.parts).join(',') : ''}|${px}|${pose}|${expr}|${key}`;
   let cv = thumbCache.get(k);
   if (cv) return cv;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -987,9 +1091,10 @@ function makeDC(x: CanvasRenderingContext2D, avd: AvatarData, R: number, t: numb
  * Rosto (olhos + boca + bochechas) centrado no meio do canvas (corpo de raio R),
  * para a textura projetada na frente do Bloop 3D. Fundo transparente.
  */
-export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: number, expr: ExprId, open: number, blink: number, t: number, lookX = 0, lookY = 0): void {
+export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: number, expr: ExprId, open: number, blink: number, t: number, lookX = 0, lookY = 0, makeup?: MakeupLook, cap?: FaceFrame | null, capMouth = false): void {
   install();
   const d = makeDC(x, avd, R, t);
+  if (makeup) drawLook(x, makeup, R, d.sh.fy);
   PP.blink = blink;
   PP.lookX = lookX;
   PP.lookY = lookY;
@@ -997,11 +1102,18 @@ export function drawFaceTex(x: CanvasRenderingContext2D, avd: AvatarData, R: num
   FS.open = open;
   FS.blink = blink;
   FS.flip = 1;
+  FS.cap = cap ?? null;
+  FS.capMouth = capMouth;
+  if (cap) {
+    PP.lookX = cap.lx;
+    PP.lookY = cap.ly;
+  }
   x.lineCap = 'round';
   x.lineJoin = 'round';
-  const own = expr === 'neutral';
+  const own = expr === 'neutral' && !(cap && !capMouth);
   (own ? EYES[avd.parts.eyes] ?? cinEyes : cinEyes)(d);
-  (own && open < 0.04 ? MOUTHS[avd.parts.mouth] ?? cinMouth : cinMouth)(d);
+  (own && open < 0.04 && !cap ? MOUTHS[avd.parts.mouth] ?? cinMouth : cinMouth)(d);
+  FS.cap = null;
 }
 
 /** Acessório de cabeça (chapéu, orelhas...) num canvas — vira um sprite em cima do Bloop 3D. */

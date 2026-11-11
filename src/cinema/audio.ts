@@ -202,7 +202,7 @@ function voiceChain(c: AudioContext, fx: VoiceFxId, out: AudioNode, nodes: Audio
 }
 
 /** Toca um clipe isolado (pré-escuta no editor). */
-export function previewClip(m: Mixer, id: string, fx: VoiceFxId): () => void {
+export function previewClip(m: Mixer, id: string, fx: VoiceFxId, cut?: [number, number]): () => void {
   const buf = buffers.get(id);
   if (!buf) return () => {};
   const nodes: AudioNode[] = [];
@@ -210,7 +210,8 @@ export function previewClip(m: Mixer, id: string, fx: VoiceFxId): () => void {
   src.buffer = buf;
   src.playbackRate.value = VOICE_RATE[fx] ?? 1;
   src.connect(voiceChain(m.c, fx, m.voice, nodes));
-  src.start();
+  if (cut) src.start(0, Math.min(buf.duration, cut[0]), Math.max(0.05, Math.min(buf.duration, cut[1]) - cut[0]));
+  else src.start();
   return () => {
     try {
       src.stop();
@@ -401,6 +402,8 @@ export class Playback {
    */
   async start(p: Project, T: number, totalDur: number): Promise<number> {
     this.stop();
+    // até o relógio ser armado (músicas/vozes carregando), time() é NaN: o laço não avança
+    this.base = NaN;
     const c = this.m.c;
     this.m.setMix(p);
     let song: SongDef | undefined;
@@ -439,15 +442,18 @@ export class Playback {
         const fx = cast?.voice ?? 'normal';
         const rate = VOICE_RATE[fx] ?? 1;
         const g0 = r.start + l.t;
-        const len = buf.duration / rate;
+        // corte [início, fim] da gravação (Gravar com o rosto: vale para voz e rosto)
+        const c0 = Math.min(buf.duration, l.cut?.[0] ?? 0);
+        const c1 = Math.min(buf.duration, Math.max(c0 + 0.05, l.cut?.[1] ?? buf.duration));
+        const len = (c1 - c0) / rate;
         if (g0 + len < T) continue;
         const when = base + g0;
         const s = c.createBufferSource();
         s.buffer = buf;
         s.playbackRate.value = rate;
         s.connect(voiceChain(c, fx, this.m.voice, this.nodes));
-        if (when < now) s.start(now, (now - when) * rate);
-        else s.start(when);
+        if (when < now) s.start(now, c0 + (now - when) * rate, Math.max(0.01, c1 - c0 - (now - when) * rate));
+        else s.start(when, c0, c1 - c0);
         this.srcs.push(s);
         this.nodes.push(s);
         // abaixa a música enquanto alguém fala

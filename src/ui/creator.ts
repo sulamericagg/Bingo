@@ -41,6 +41,8 @@ import { buy } from '../services/billing';
 import { ensureIconDefs, hydrateIcons, icon, type IconName } from './icons';
 import { notify } from './notify';
 import { t } from '../i18n';
+import { playerLook, setPlayerLook } from '../makeup/format';
+import { playerMakeupOverlay } from '../makeup/render';
 
 /* ---------------------------- ícones das abas (mesmo estilo de icons.ts) ---------------------------- */
 
@@ -209,6 +211,7 @@ function build(): void {
         <button class="cr-chip cr-pose"></button>
         <button class="cr-chip cr-dream"><span data-icon="sparkle" data-size="18"></span>${t('creator.tryLook', 'Provar look')}</button>
         <button class="cr-chip cr-rand"><span data-icon="refresh" data-size="18"></span>${t('creator.random', 'Aleatório')}</button>
+        <button class="cr-chip cr-makeup">💄 ${t('creator.makeup', 'Maquiagem')}</button>
       </div>
       <div class="cr-tip">${t('creator.tap', 'Toque no seu Bloop!')}</div>
     </div>
@@ -247,6 +250,14 @@ function build(): void {
   $('.cr-save').onclick = () => saveAndUse();
   $('.cr-rand').onclick = () => randomize();
   $('.cr-dream').onclick = () => tryDream();
+  $('.cr-makeup').onclick = async () => {
+    const { openMakeupStudio } = await import('../makeup/studio');
+    const look = await openMakeupStudio({ avatar: clone(draft), look: playerLook(), name: t('creator.you', 'Você') });
+    if (look !== undefined) {
+      setPlayerLook(look);
+      notify(look ? t('creator.makeupOk', 'Maquiagem aplicada no seu Bloop!') : t('creator.makeupOff', 'Maquiagem removida.'), { kind: 'good', icon: 'check' });
+    }
+  };
   $('.cr-pose').onclick = () => {
     flyPose = !flyPose;
     audio.click();
@@ -786,6 +797,6 @@ function drawStage(): void {
   x.save();
   x.translate(cx, baseY);
   if (fly) x.rotate(Math.sin(clock * 1.3) * 0.08);
-  drawAvatar(x, draft, R, pose);
+  drawAvatar(x, draft, R, pose, playerMakeupOverlay());
   x.restore();
 }

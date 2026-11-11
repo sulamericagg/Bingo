@@ -6,12 +6,12 @@ import './cinema.css';
 import type { MiniGameHandle } from '../hub/registry';
 import { pushBack } from '../core/back';
 import { detectInitialTier, settingsFor, type QualitySettings, type Tier } from '../core/quality';
-import { t } from '../i18n';
+import { fmtDec, t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { bindButton, edges } from '../ui/touch';
 import { actx, Mixer, Playback, preloadProjectClips } from './audio';
-import { BACKGROUNDS } from './data';
+import { BACKGROUNDS, FX } from './data';
 import { Renderer } from './engine';
 import { canExportVideo, exportGif, exportVideo, probeDuration, safeFileName, shareFile, saveFile, type ExportResult } from './export';
 import { cleanupShared } from '../mirror/media';
@@ -29,7 +29,7 @@ import { presetById } from './data';
 const fmtT = (s: number) => {
   const m = Math.floor(s / 60);
   const r = s - m * 60;
-  return `${m}:${r < 10 ? '0' : ''}${r.toFixed(1).replace('.', ',')}`;
+  return `${m}:${r < 10 ? '0' : ''}${fmtDec(r)}`;
 };
 
 class CinemaApp {
@@ -80,6 +80,7 @@ class CinemaApp {
   /* ============================== INÍCIO ============================== */
   async home(): Promise<void> {
     this.closeEditor();
+    this.el.classList.remove('cin-simple');
     const list = await listProjects();
     if (!this.alive) return;
     const pro = isPro();
@@ -91,9 +92,9 @@ class CinemaApp {
         ${pro ? '<span class="cin-chip on" style="display:inline-flex;align-items:center">★ PRO</span>' : `<button class="cin-btn sm" data-a="pro">★ Pro</button>`}
       </div>
       <div class="cin-home">
-        <div class="cin-new">
-          <button class="cin-newbtn d2" data-a="new2d"><b>✏️</b>${t('cin.home.new2d', 'Novo filme 2D')}</button>
-          <button class="cin-newbtn d3" data-a="new3d"><b>🧊</b>${t('cin.home.new3d', 'Novo filme 3D')}${free ? ' <span class="cin-pro">PRO</span>' : ''}</button>
+        <div class="cin-hero">
+          <button class="cin-herobtn story" data-a="story"><b>✨</b><span>${t('cin.home.story', 'Criar história')}<small>${t('cin.home.storySub', 'Escolha, fale e pronto: vira filme!')}</small></span></button>
+          <button class="cin-herobtn magic" data-a="magic"><b>🪄</b><span>${t('cin.home.magic', 'História Mágica')}<small>${t('cin.home.magicSub', 'Conte uma ideia e a mágica faz o filme')}</small></span></button>
         </div>
         <h4>📚 ${t('cin.home.tpls', 'Histórias prontas para remixar')}</h4>
         <div class="cin-tpls">${TEMPLATES.map((tp) => `<button class="cin-tpl" data-a="tpl" data-v="${tp.id}"><canvas width="344" height="194" data-tpl="${tp.id}"></canvas><div><b>${esc(tp.name)}${tp.pro && free ? ' <span class="cin-pro">PRO</span>' : ''}</b><small>${esc(tp.desc)}</small></div></button>`).join('')}</div>
@@ -103,7 +104,13 @@ class CinemaApp {
             ? `<div class="cin-projs">${list.map((m) => projCard(m)).join('')}</div>`
             : `<div class="cin-empty">${t('cin.home.empty', 'Nenhum filme ainda. Comece com uma história pronta ou crie do zero!')}</div>`
         }
-        <div class="cin-row c" style="margin-top:12px"><button class="cin-btn sm ghost" data-a="import">📂 ${t('cin.home.import', 'Importar projeto (.json)')}</button></div>
+        <details class="cin-adv"><summary>🛠️ ${t('cin.home.adv', 'Modo avançado')}</summary>
+          <div class="cin-new">
+            <button class="cin-newbtn d2" data-a="new2d"><b>✏️</b>${t('cin.home.new2d', 'Novo filme 2D')}</button>
+            <button class="cin-newbtn d3" data-a="new3d"><b>🧊</b>${t('cin.home.new3d', 'Novo filme 3D')}${free ? ' <span class="cin-pro">PRO</span>' : ''}</button>
+          </div>
+          <div class="cin-row c" style="margin-top:12px"><button class="cin-btn sm ghost" data-a="import">📂 ${t('cin.home.import', 'Importar projeto (.json)')}</button></div>
+        </details>
         <p class="cin-foot">🔒 ${t('cin.home.local', 'Seus filmes ficam salvos só neste aparelho.')}</p>
       </div>`;
     // miniaturas das histórias
@@ -126,6 +133,8 @@ class CinemaApp {
       const a = b.dataset.a;
       const v = b.dataset.v!;
       if (a === 'pro') paywall('item');
+      else if (a === 'story') void this.createStory(list.length);
+      else if (a === 'magic') void this.magicStory(list.length);
       else if (a === 'new2d' || a === 'new3d') {
         if (a === 'new3d' && !isPro()) return paywall('3d');
         if (!(await this.roomForProject(list.length))) return;
@@ -148,10 +157,70 @@ class CinemaApp {
         this.openEditor(p);
       } else if (a === 'open') {
         const p = await loadProject(v);
-        if (p) this.openEditor(p);
+        if (p) this.openEditor(p, !!p.story);
       } else if (a === 'more') await this.projectMenu(v, list.length);
       else if (a === 'import') this.importProject(list.length);
     };
+  }
+
+  /* ---------------------------- Criar história (modo simples) ---------------------------- */
+  private async createStory(n: number): Promise<void> {
+    if (!(await this.roomForProject(n))) return;
+    const p = newProject(t('cin.home.untitled', 'Meu filme {n}', { n: n + 1 }), '2d');
+    this.ensureAudio();
+    const { storyWizard } = await import('./kids');
+    const r = await storyWizard({ pid: p.id, host: this.el });
+    if (!r || !this.alive) return;
+    const { buildFromSpec } = await import('./storybuild');
+    buildFromSpec(r.spec, { into: p, cast: r.cast });
+    p.title = r.spec.title;
+    await saveProject(p);
+    await this.openEditor(p, true);
+    void this.autoPlay();
+  }
+
+  /** História Mágica: ideia (voz ou texto) → roteiro (IA ou offline) → filme. */
+  private async magicStory(n: number): Promise<void> {
+    if (!(await this.roomForProject(n))) return;
+    this.ensureAudio();
+    const { magicFlow } = await import('./magic');
+    const spec = await magicFlow(this.el);
+    if (!spec || !this.alive) return;
+    const { buildFromSpec } = await import('./storybuild');
+    const p = buildFromSpec(spec);
+    await saveProject(p);
+    await this.openEditor(p, true);
+    void this.autoPlay();
+  }
+
+  private async autoPlay(): Promise<void> {
+    await preloadProjectClips(S.p).catch(() => {});
+    if (!this.cv || S.playing) return;
+    setTime(0);
+    await this.togglePlay();
+  }
+
+  private async editStory(): Promise<void> {
+    if (!S.p.story) return;
+    this.stopPlay();
+    const { storyWizard } = await import('./kids');
+    const r = await storyWizard({ pid: S.p.id, host: this.el, spec: S.p.story, cast: S.p.cast });
+    if (!r) return;
+    const { buildFromSpec } = await import('./storybuild');
+    mutate((pp) => void buildFromSpec(r.spec, { into: pp, cast: r.cast }));
+    gotoShot(0);
+    S.uiDirty = true;
+    void this.autoPlay();
+  }
+
+  private setSimple(on: boolean): void {
+    this.el.classList.toggle('cin-simple', on);
+    if (!on) {
+      S.uiDirty = true;
+      this.renderTabs();
+      this.renderPanel();
+    }
+    this.resize();
   }
 
   private async roomForProject(n: number): Promise<boolean> {
@@ -219,7 +288,7 @@ class CinemaApp {
   }
 
   /* ============================== EDITOR ============================== */
-  async openEditor(p: Project): Promise<void> {
+  async openEditor(p: Project, simple = false): Promise<void> {
     this.closeEditor();
     const r = new Renderer(p);
     openState(p, r);
@@ -241,6 +310,10 @@ class CinemaApp {
             <button class="cin-btn cin-ico" data-b="play" aria-label="${t('cin.ed.play', 'Assistir')}">▶</button>
             <input class="cin-scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="${t('cin.ed.time', 'Tempo')}">
             <span class="cin-time">0:00,0</span>
+          </div>
+          <div class="cin-kidbar">
+            <button class="cin-btn pri" data-k="watch">▶ ${t('cin.kid.watch', 'Assistir')}</button>
+            <div class="row">${p.story ? `<button class="cin-btn" data-k="edit">✏️ ${t('cin.kid.edit', 'Editar história')}</button>` : ''}<button class="cin-btn" data-k="adv">🛠️ ${t('cin.home.adv', 'Modo avançado')}</button></div>
           </div>
           <div class="cin-strip"></div>
           <div class="cin-tl"></div>
@@ -265,6 +338,15 @@ class CinemaApp {
     B('redo', () => redo());
     B('export', () => void this.exportSheet());
     B('play', () => void this.togglePlay());
+    this.el.classList.toggle('cin-simple', simple);
+    this.el.querySelector<HTMLElement>('.cin-kidbar')!.onclick = (ev) => {
+      const k = (ev.target as HTMLElement).closest<HTMLElement>('[data-k]')?.dataset.k;
+      if (k === 'watch') {
+        if (!S.playing) setTime(0);
+        void this.togglePlay();
+      } else if (k === 'edit') void this.editStory();
+      else if (k === 'adv') this.setSimple(false);
+    };
     const title = this.el.querySelector<HTMLInputElement>('.cin-title')!;
     title.onchange = () => {
       const v = cleanText(title.value, 60).trim() || p.title;
@@ -300,7 +382,7 @@ class CinemaApp {
     S.uiDirty = true;
     S.dirty = true;
     this.loop();
-    startTutorial();
+    if (!simple) startTutorial();
   }
 
   private async load3D(): Promise<void> {
@@ -455,7 +537,7 @@ class CinemaApp {
         const bg = BACKGROUNDS.find((b) => b.id === r.scene.bg);
         html += `<div class="cin-scn">${t('cin.ed.scene', 'Cena {n}', { n: r.si + 1 })} · ${bg?.name ?? ''}</div>`;
       }
-      html += `<button class="cin-shot ${r.gi === ref.gi ? 'on' : ''}" data-gi="${r.gi}"><canvas width="192" height="108" data-shot="${r.shot.id}"></canvas><span>${r.gi + 1} · ${r.shot.dur.toFixed(1).replace('.', ',')}s</span>${r.shot.transition.kind !== 'cut' ? '<i>⇢</i>' : ''}</button>`;
+      html += `<button class="cin-shot ${r.gi === ref.gi ? 'on' : ''}" data-gi="${r.gi}"><canvas width="192" height="108" data-shot="${r.shot.id}"></canvas><span>${r.gi + 1} · ${fmtDec(r.shot.dur)}s</span>${r.shot.transition.kind !== 'cut' ? '<i>⇢</i>' : ''}</button>`;
     }
     html += `<button class="cin-addshot" data-add="shot">＋<small>${t('cin.ed.addShot', 'plano')}</small></button>`;
     host.innerHTML = html;
@@ -514,7 +596,7 @@ class CinemaApp {
     const pct = (tt: number) => `${(tt / shot.dur) * 100}%`;
     let ruler = '';
     const step = shot.dur > 12 ? 2 : shot.dur > 5 ? 1 : 0.5;
-    for (let s = 0; s <= shot.dur + 1e-6; s += step) ruler += `<b style="left:${pct(s)}">${s % 1 ? s.toFixed(1).replace('.', ',') : s}s</b>`;
+    for (let s = 0; s <= shot.dur + 1e-6; s += step) ruler += `<b style="left:${pct(s)}">${s % 1 ? fmtDec(s) : s}s</b>`;
     let html = `<div class="ruler">${ruler}</div>`;
     html += `<div class="cin-lane"><span class="lbl">🎥 ${t('cin.tab.camera', 'Câmera')}</span><div class="trk" data-trk="1">${shot.cam.map((k, i) => `<i class="cin-key cam" style="left:${pct(k.t)}" data-kind="cam" data-i="${i}"></i>`).join('')}</div></div>`;
     for (const a of shot.actors) {
@@ -524,7 +606,7 @@ class CinemaApp {
     }
     html += `<div class="cin-lane"><span class="lbl">💬 ${t('cin.tab.lines', 'Falas')}</span><div class="trk" data-trk="1">${shot.lines.map((l) => `<i class="cin-blk ${l.audio ? 'aud' : ''} ${l.id === S.selLine ? 'on' : ''}" style="left:${pct(l.t)};width:${pct(l.dur)}" data-kind="line" data-id="${l.id}">${esc(l.text || '…')}</i>`).join('')}</div></div>`;
     if (shot.fx.length || shot.sfx.length)
-      html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${f.kind}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
+      html += `<div class="cin-lane"><span class="lbl">✨ ${t('cin.tab.fx', 'Efeitos')}</span><div class="trk" data-trk="1">${shot.fx.map((f) => `<i class="cin-blk fx" style="left:${pct(f.t)};width:${pct(f.dur)}" data-kind="fx" data-id="${f.id}">${FX.find((x) => x.id === f.kind)?.glyph ?? '✨'} ${esc(FX.find((x) => x.id === f.kind)?.name ?? f.kind)}</i>`).join('')}${shot.sfx.map((f) => `<i class="cin-blk sfx" style="left:${pct(f.t)};width:${pct(Math.min(0.6, shot.dur - f.t))}" data-kind="sfx" data-id="${f.id}">♪</i>`).join('')}</div></div>`;
     html += `<div class="cin-head"></div>`;
     // coluna de rótulos do tamanho do maior nome (ícone + miniatura + texto), sem cortar
     const names = [t('cin.tab.camera', 'Câmera'), t('cin.tab.lines', 'Falas'), t('cin.tab.fx', 'Efeitos'), ...shot.actors.map((a) => castById(a.cast)?.name ?? '')];
@@ -682,7 +764,7 @@ class CinemaApp {
     if (this.exporting) return;
     this.frameN++;
     const dur = S.r.duration();
-    if (S.playing && this.pb) {
+    if (S.playing && this.pb && !Number.isNaN(this.pb.time())) {
       const T = this.pb.time();
       if (T >= dur) {
         S.T = Math.max(0, dur - 0.001);
@@ -843,7 +925,7 @@ class CinemaApp {
   private resultSheet(blob: Blob, ext: string, dur: number): void {
     const url = URL.createObjectURL(blob);
     const name = safeFileName(S.p.title, ext);
-    const mb = (blob.size / 1048576).toFixed(1).replace('.', ',');
+    const mb = fmtDec(blob.size / 1048576);
     const media = ext === 'gif' ? `<img src="${url}" style="width:100%;border-radius:12px;display:block;margin-bottom:10px" alt="">` : `<video src="${url}" controls playsinline></video>`;
     sheet(
       `<h3>✅ ${t('cin.ex.done', 'Filme pronto!')}</h3>${media}

@@ -19,6 +19,7 @@ import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
+import { aiStory } from './ai';
 import { HttpError, json } from './util';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
@@ -61,6 +62,7 @@ const PUBLIC: Record<string, PublicHandler> = {
   // casa, planeta & amigos (docs/CASA-AMIGOS.md)
   // Programa Beta: relatórios de bug (docs/BETA-TESTERS.md)
   'POST /api/feedback': feedbackPost,
+  'POST /api/ai/story': aiStory,
   'GET /api/handle/check': handleCheck,
   'POST /api/handle/claim': handleClaim,
   'GET /api/handle/mine': handleMine,

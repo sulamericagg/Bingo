@@ -22,4 +22,6 @@ interface Env {
   ADMIN_PASSWORD?: string;
   /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */
   ADMIN_PASSWORD_HASH?: string;
+  /** História Mágica (Bloop Cinema): chave da API da Anthropic — segredo, ver docs/IA.md. Sem ela, o app usa o gerador offline. */
+  ANTHROPIC_API_KEY?: string;
 }
