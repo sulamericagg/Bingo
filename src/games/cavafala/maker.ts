@@ -181,7 +181,7 @@ export class Maker {
   }
 
   /** IA em segundo plano → troca o objeto ("pop") e aprende a palavra */
-  private improve(m: Made, unknown: string[]): void {
+  private improve(m: Made, _unknown: string[]): void {
     const w = this.w;
     m.improving = true;
     const ac = new AbortController();
@@ -198,8 +198,7 @@ export class Maker {
       const keys = Object.keys(this.phrases);
       if (keys.length > 150) delete this.phrases[keys[0]];
       save(PHRASE_KEY, this.phrases);
-      if (r.learn) for (const [k, v] of Object.entries(r.learn)) this.learned[k] = v;
-      else if (r.plan?.main?.id && unknown.length === 1) this.learned[unknown[0]] = r.plan.main;
+      if (r.learn) for (const [k, v] of Object.entries(r.learn)) if (/^[a-z]{3,30}$/.test(k) && v && typeof v.id === 'string') this.learned[k] = { id: v.id, colors: v.colors, theme: v.theme, with: Array.isArray(v.with) ? v.with.slice(0, 3) : [] };
       const lk = Object.keys(this.learned);
       if (lk.length > 300) delete this.learned[lk[0]];
       save(LEARN_KEY, this.learned);

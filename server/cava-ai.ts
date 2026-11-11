@@ -267,6 +267,7 @@ export async function cavaMake(req: Request, env: Env, deps: CavaDeps = {}): Pro
   }
   if (!raw) return json({ error: 'upstream' }, 503);
   const { plan, safe: ok, learn } = planFromModel(raw, safe.text);
+  if (!plan.name) plan.name = gen.spec.name;
   if (!ok) {
     await logFlag(env, pid, text, 'model-unsafe', []);
     return json({ error: 'unsafe' }, 422);
@@ -278,7 +279,9 @@ export async function cavaMake(req: Request, env: Env, deps: CavaDeps = {}): Pro
   if (!spec) spec = gen.spec;
   spec = validateSpec(spec, { fallbackName: gen.spec.name }) ?? gen.spec;
   const learnMap: Record<string, Partial<NounPlan>> = {};
-  const word = learn || (gen.unknown.length === 1 ? gen.unknown[0] : '');
+  // só aprende quando o substantivo principal era desconhecido (não aprende adjetivo/palavra solta)
+  const headUnknown = gen.confidence <= 0.15;
+  const word = headUnknown ? learn || (gen.unknown.length === 1 ? gen.unknown[0] : '') : '';
   if (word && conceptById(plan.main.id) && /^[a-z]{3,30}$/.test(word)) learnMap[word] = { id: plan.main.id, colors: plan.main.colors, theme: plan.main.theme, with: plan.main.with };
   const out = { spec, plan: { main: plan.main }, learn: learnMap };
   await env.DATA.put(key, JSON.stringify(out), { expirationTtl: 30 * 86400 }).catch(() => {});

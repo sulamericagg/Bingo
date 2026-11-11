@@ -33,7 +33,7 @@ export const fold = (s: string) =>
 const FILLER = new Set(
   ('eu quero queria gostaria preciso um uma uns umas o a os as me faz faca fazer fazendo cria criar crie construir constroi construa monta montar monte gera gerar da dai entao por favor pf pfv agora aqui ai la ali isso essa esse este esta novo nova ' +
     'i want wanna need make build create give please an the some new now ok hey bloop ei oi ola tipo assim tem ter coloca colocar poe quero ver mostra mostrar desenha desenhar aparece aparecer ' +
-    'quiero un una el la los las hazme haz crea dame por favor bem muito super mega hiper so apenas really very so').split(' '),
+    'quiero un una el la los las hazme haz crea dame por favor bem muito super hiper so apenas really very so verdade real realista mesmo tipo parecido igual estilo jeito forma formato cara coisa coisinha negocio troco treco algo something thing like looks parece').split(' '),
 );
 /** conectores (decidem a composição) */
 const CONN: Record<string, 'of' | 'with' | 'that' | 'and' | 'on'> = {
