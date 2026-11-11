@@ -146,6 +146,8 @@ export class Highway {
   private nextEv: number;
   private visited = new Set<number>();
   private busy = false;
+  private pr = { s: 0, lat: 0 };
+  private uiT = 0;
   /** testes: sem eventos pelo caminho */
   noEvents = false;
   private lastHud = '';
@@ -732,6 +734,9 @@ export class Highway {
   private logic(dt: number): void {
     const rig = this.rig;
     const st = this.road.stopAt(rig.s, 55);
+    this.uiT -= dt;
+    const ui = this.uiT <= 0;
+    if (ui) this.uiT = 0.2;
     const acts: Parameters<HaulHost['actions']>[0] = [];
     const slow = Math.abs(rig.v) < 1.5;
     // engatar
@@ -764,7 +769,7 @@ export class Highway {
         rig.tr.z -= lz * off * Math.min(1, dt * 2);
       }
       if (Math.abs(gap) < 0.9 && Math.abs(ang) < 0.3 && slow) {
-        acts.push({ id: 'hitch', icon: 'hitch', label: t('gb.haul.hitch', 'Engatar'), cls: 'green', run: () => this.couple() });
+        ui && acts.push({ id: 'hitch', icon: 'hitch', label: t('gb.haul.hitch', 'Engatar'), cls: 'green', run: () => this.couple() });
       } else if (gap < -0.9 && gap > -4) {
         // passou do ponto
         if (this.hitchHelpT <= 0) {
@@ -778,18 +783,18 @@ export class Highway {
       if ((st.kind === 'station' || st.kind === 'rest') && this.host.fuelOn) {
         const need = Math.max(0, RIG_TANK - this.trip.fuel);
         const price = Math.ceil(need * this.host.dieselPrice);
-        if (need > 5) acts.push({ id: 'fuel', icon: 'pump', label: t('gb.rp.refuel', 'Abastecer'), sub: ['coin', String(price)], run: () => this.refuel() });
+        if (need > 5) ui && acts.push({ id: 'fuel', icon: 'pump', label: t('gb.rp.refuel', 'Abastecer'), sub: ['coin', String(price)], run: () => this.refuel() });
       }
       if (st.kind !== 'dest') {
-        acts.push({ id: 'eat', icon: 'food', label: t('gb.rp.eat', 'Comer'), sub: ['coin', '25'], run: () => this.host.eat() });
-        if (st.kind === 'rest' || st.kind === 'town') acts.push({ id: 'sleep', icon: 'bed', label: weather.isNight || this.host.energyLow() ? t('gb.rp.sleep', 'Dormir') : t('gb.rp.rest', 'Descansar'), cls: 'blue', run: () => void this.host.sleep(weather.isNight || this.host.energyLow() ? null : 1) });
+        ui && acts.push({ id: 'eat', icon: 'food', label: t('gb.rp.eat', 'Comer'), sub: ['coin', '25'], run: () => this.host.eat() });
+        if (st.kind === 'rest' || st.kind === 'town') ui && acts.push({ id: 'sleep', icon: 'bed', label: weather.isNight || this.host.energyLow() ? t('gb.rp.sleep', 'Dormir') : t('gb.rp.rest', 'Descansar'), cls: 'blue', run: () => void this.host.sleep(weather.isNight || this.host.energyLow() ? null : 1) });
         const nx = this.road.nextStop(rig.s);
-        if (nx) acts.push({ id: 'skip', icon: 'ff', label: t('gb.haul.skip', 'Pular trecho'), cls: 'blue', run: () => void this.skip(nx) });
+        if (nx) ui && acts.push({ id: 'skip', icon: 'ff', label: t('gb.haul.skip', 'Pular trecho'), cls: 'blue', run: () => void this.skip(nx) });
       }
     }
-    if (rig.coupled && rig.s > this.road.L - 45 && slow) acts.push({ id: 'deliver', icon: 'box', label: t('gb.haul.deliver', 'Desengatar e entregar'), cls: 'green', run: () => this.host.arrive() });
-    if (this.host.fuelOn && this.trip.fuel <= 0 && slow) acts.push({ id: 'tow', icon: 'sos', label: t('gb.rp.callHelp', 'Chamar socorro'), sub: ['coin', String(this.towFee())], run: () => this.tow(true) });
-    this.host.actions(acts);
+    if (rig.coupled && rig.s > this.road.L - 45 && slow) ui && acts.push({ id: 'deliver', icon: 'box', label: t('gb.haul.deliver', 'Desengatar e entregar'), cls: 'green', run: () => this.host.arrive() });
+    if (this.host.fuelOn && this.trip.fuel <= 0 && slow) ui && acts.push({ id: 'tow', icon: 'sos', label: t('gb.rp.callHelp', 'Chamar socorro'), sub: ['coin', String(this.towFee())], run: () => this.tow(true) });
+    if (ui) this.host.actions(acts);
     // eventos pelo caminho
     if (rig.coupled && rig.s > this.nextEv && !this.busy && !this.noEvents && rig.s < this.road.L - 300) {
       this.nextEv = rig.s + 700 + Math.random() * 600;
@@ -961,7 +966,7 @@ export class Highway {
     let cx = tx - Math.sin(this.camYaw) * dist;
     let cz = tz - Math.cos(this.camYaw) * dist;
     // nunca dentro do morro
-    const pr = { s: 0, lat: 0 };
+    const pr = this.pr;
     this.road.project(cx, cz, rig.s - dist, pr);
     this.road.sample(pr.s, P5);
     const gy = this.road.ground(pr.s, pr.lat, P5[1]);

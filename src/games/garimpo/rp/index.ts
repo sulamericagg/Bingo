@@ -81,6 +81,7 @@ export class RpLayer {
   private officeNote = false;
   private lastHudVis = true;
   private flashHold = 0;
+  private uiT = 0;
   private lvlPending = 0;
 
   constructor(private g: Garimpo) {
@@ -475,10 +476,14 @@ export class RpLayer {
       this.lastHudVis = vis;
       this.hud.setVisible(vis);
     }
-    this.hud.clock();
+    // HUD do RP a ~6 Hz (sem montar textos/listas a cada quadro)
+    this.uiT -= dt;
+    const ui = this.uiT <= 0;
+    if (ui) this.uiT = 0.16;
+    if (ui) this.hud.clock();
     const fuelK = this.sys.fuel && cur !== wk && this.tank(cur) > 0 ? (g.guest ? this.guestFuel[g.ms.indexOf(cur)] ?? 1 : (this.fuel.get(cur) ?? 0) / this.tank(cur)) : null;
     const show = (v: number) => (this.needsOn() && (v < 70 || this.nearStall()) ? v / 100 : null);
-    this.hud.meters(
+    if (ui) this.hud.meters(
       {
         food: show(n.food),
         water: show(n.water),
@@ -489,7 +494,7 @@ export class RpLayer {
       },
       this.sys.weight && this.kg > this.cap,
     );
-    this.hud.actions(g.inMine || this.P.paused ? [] : this.actions());
+    if (ui) this.hud.actions(g.inMine || this.P.paused ? [] : this.actions());
     this.rumorStep();
     if (this.lvlPending && !this.hud.cardOpen && !this.P.paused) {
       bigMoment(t('gb.rp.lvlUp', 'Força nível {n}!', { n: this.lvlPending }), { icon: 'trophy', sub: t('gb.rp.lvlSub', 'Carrega mais e cava mais rápido') });
@@ -1225,6 +1230,8 @@ export class RpLayer {
     const hw = this.hw;
     if (!hw) return false;
     const paused = this.P.paused || this.hud.cardOpen;
+    // a tela de pausa do jogo reacende o HUD do garimpo ao fechar: na estrada ele fica escondido
+    if (this.g.hud && !this.g.hud.el.hidden && !this.P.paused) this.g.hud.setVisible(false);
     if (!this.P.paused) weather.step(dt);
     // necessidades continuam
     if (!paused && this.needsOn()) {

@@ -245,6 +245,57 @@ const scenes = {
     await W(2200);
     await shot('19-delivery-result');
   },
+  async freight() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(10);
+      g.rp.st.haul.owned = 2;
+      g.rp.st.haul.deliveries = 1;
+      g.rp.st.haul.trip = null;
+      const m = g.w.map;
+      g.debug.tp(m.gate.x - 6, m.gate.z, 0);
+    });
+    await W(1500);
+    await shot('20-gate-road-button');
+    await ev(() => window.__garimpo.rp.debug.freight());
+    await W(1200);
+    await shot('21-freight-screen');
+    await ev(() => document.querySelector('.rp-scr [data-x]')?.click());
+  },
+  async persist() {
+    const before = await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(20.25);
+      g.rp.debug.needs(33, 44, 55);
+      g.rp.debug.item('lanterna', 1);
+      g.rp.st.str.lvl = 4;
+      g.persist();
+      return JSON.stringify({ h: Math.round(g.rp.st.wx?.hour ?? -1), n: g.rp.st.needs.food, inv: g.rp.st.inv.lanterna, lvl: g.rp.st.str.lvl });
+    });
+    await page.reload();
+    await W(1500);
+    await page.click('[data-go="0"]');
+    await W(4500);
+    const after = await ev(() => {
+      const g = window.__garimpo;
+      return JSON.stringify({ h: Math.round(window.__garimpo.rp.st.wx?.hour ?? -1), n: Math.round(g.rp.st.needs.food), inv: g.rp.st.inv.lanterna, lvl: g.rp.st.str.lvl });
+    });
+    console.log('SAVE before', before, 'after', after);
+  },
+  async perf() {
+    const r = await ev(async () => {
+      const g = window.__garimpo;
+      const info = () => g.r ? { calls: g.r.info.render.calls, tris: g.r.info.render.triangles } : null;
+      g.rp.debug.hour(21);
+      await new Promise((res) => setTimeout(res, 1500));
+      const a = { ...info(), step: g.prof.step.toFixed(2), render: g.prof.render.toFixed(2) };
+      g.rp.debug.haul(3, 3, 2800, 1200, true, true);
+      await new Promise((res) => setTimeout(res, 2500));
+      const b = info();
+      return { garimpoNight: a, highwayQuadri: b };
+    });
+    console.log('PERF', JSON.stringify(r));
+  },
 };
 await newGame(2);
 for (const [k, f] of Object.entries(scenes)) if (!only.length || only.includes(k)) await f();
