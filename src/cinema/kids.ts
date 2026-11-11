@@ -19,6 +19,7 @@ import { castFromRef } from './storybuild';
 import { putClip } from './store';
 import { actorThumb } from './rig2d';
 import { cleanText, isPro, paywall } from './gates';
+import { dictate, dictating, stopDictation } from './dictate';
 
 export interface WizardResult {
   spec: StorySpec;
@@ -117,15 +118,49 @@ class Wizard {
   }
   private finish(r: WizardResult | null): void {
     this.stopPlay();
+    stopDictation();
     this.rec?.m.cancel();
     this.pop();
     this.el.remove();
     this.done(r);
   }
 
+  /* ---------------------------- ditado: falar e virar texto ---------------------------- */
+  private async dictateBeat(i: number, btn: HTMLElement): Promise<void> {
+    if (dictating()) return stopDictation();
+    const ta = this.el.querySelector<HTMLTextAreaElement>(`textarea[data-t="${i}"]`);
+    const b = this.beats[i];
+    if (!ta || !b) return;
+    this.stopPlay();
+    const before = ta.value.trim();
+    const lvl = btn.querySelector<HTMLElement>('.kid-lvl')!;
+    btn.classList.add('on');
+    btn.querySelector('small')!.textContent = t('cin.dict.listening', 'Ouvindo...');
+    ta.placeholder = t('cin.dict.speak', 'Pode falar! Estou escrevendo...');
+    const put = (s: string) => {
+      ta.value = ((before ? before + ' ' : '') + s).slice(0, STORY_LIMITS.text);
+      b.text = ta.value;
+    };
+    const r = await dictate({ onText: put, onLevel: (v) => lvl.style.setProperty('--l', v.toFixed(2)) });
+    btn.classList.remove('on');
+    btn.querySelector('small')!.textContent = t('cin.dict.abc', 'Abc');
+    if ('text' in r) {
+      put(r.text);
+      b.text = cleanText(ta.value, STORY_LIMITS.text);
+      ta.value = b.text;
+    } else if (r.error === 'denied') notify(t('cin.rec.denied', 'Sem permissão do microfone. Libere nas configurações do aparelho.'), { kind: 'warn', icon: 'warning' });
+    else if (r.error === 'unsupported') {
+      notify(t('cin.easy.noStt', 'Este aparelho não transforma voz em texto. Escreva com o teclado!'), { kind: 'warn' });
+      ta.focus();
+    } else if (r.error !== 'busy') notify(t('cin.magic.noHear', 'Não ouvi direito. Tente de novo ou escreva!'), { icon: 'sound' });
+    this.syncGo();
+  }
+
   private act(k: string, b: HTMLElement): void {
     const v = b.dataset.v ?? '';
     const i = +(b.dataset.i ?? -1);
+    if (k === 'dict') return void this.dictateBeat(i, b);
+    if (dictating()) stopDictation();
     switch (k) {
       case 'back':
         this.pop();
@@ -241,7 +276,8 @@ class Wizard {
         html += `<div class="kid-beat">
           <button class="kid-who" data-k="who" data-i="${i}" aria-label="${t('cin.kid.who', 'Quem fala')}"><span class="th" data-beat="${i}">${who ? '' : '📜'}</span><small>${who ? esc(who.name) : t('cin.kid.narrator', 'Narrador')}</small></button>
           <div class="kid-bubble">
-            <textarea rows="2" maxlength="${STORY_LIMITS.text}" data-t="${i}" placeholder="${who ? t('cin.kid.ph', 'O que {n} fala?', { n: esc(who.name) }) : t('cin.kid.phN', 'O que acontece?')}">${esc(b.text)}</textarea>
+            <div class="kid-say"><textarea rows="2" maxlength="${STORY_LIMITS.text}" data-t="${i}" placeholder="${who ? t('cin.kid.ph', 'O que {n} fala?', { n: esc(who.name) }) : t('cin.kid.phN', 'O que acontece?')}">${esc(b.text)}</textarea>
+              <button class="kid-dict" data-k="dict" data-i="${i}" aria-label="${t('cin.dict.btn', 'Falar e virar texto')}"><b>🎤</b><small>${t('cin.dict.abc', 'Abc')}</small><i class="kid-lvl"></i></button></div>
             <div class="kid-moods">${MOODS.map(([e, g]) => `<button class="${b.expr === e ? 'on' : ''}" data-k="mood" data-i="${i}" data-v="${e}">${g}</button>`).join('')}</div>
             <div class="kid-mic-row">
               ${

@@ -11,7 +11,7 @@ import { pushBack } from '../core/back';
 import { t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
-import { listen, stopListening, sttAvailable } from '../pet/talk/stt';
+import { dictate, dictating, stopDictation } from './dictate';
 import { addChar, blankBoard, boardDetached, buildFromBoard, newBoardScene, STARTERS } from './board';
 import { BACKGROUNDS, EXPRESSIONS, POSES } from './data';
 import { Renderer } from './engine';
@@ -530,12 +530,13 @@ export class EasyBoard {
           s.el.querySelectorAll<HTMLElement>('[data-a="who"]').forEach((x) => x.classList.toggle('on', x === el));
         } else if (a === 'mic') {
           const ta = s.el.querySelector<HTMLTextAreaElement>('textarea')!;
-          if (el.classList.contains('rec')) return stopListening();
-          if (!(await sttAvailable())) return notify(t('cin.easy.noStt', 'Este aparelho não transforma voz em texto. Escreva com o teclado!'), { kind: 'warn' });
+          if (dictating()) return stopDictation();
           el.classList.add('rec');
-          const r = await listen({ onPartial: (x) => (ta.value = x.slice(0, 90)) });
+          const r = await dictate({ onText: (x) => (ta.value = x.slice(0, 90)), onLevel: (v) => el.style.setProperty('--l', v.toFixed(2)) });
           el.classList.remove('rec');
           if ('text' in r) ta.value = r.text.slice(0, 90);
+          else if (r.error === 'unsupported') notify(t('cin.easy.noStt', 'Este aparelho não transforma voz em texto. Escreva com o teclado!'), { kind: 'warn' });
+          else if (r.error === 'denied') notify(t('cin.rec.denied', 'Sem permissão do microfone. Libere nas configurações do aparelho.'), { kind: 'warn', icon: 'warning' });
         } else if (a === 'del') {
           sc.lines = sc.lines.filter((x) => x.id !== l.id);
           close();
