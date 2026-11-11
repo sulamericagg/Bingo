@@ -296,8 +296,10 @@ export class ArenaMode implements ModeCtl {
 
   status(): string {
     const all = this.w.actors.filter((a) => !a.helper);
+    // compacto: você com nome; os outros só cor + % (o nome está na etiqueta em cima do Bloop)
     return all
-      .map((a) => `<span class="cf-chip${a.alive ? '' : ' out'}${a.isPlayer ? ' me' : ''}"><i style="--c:${a.color}"></i>${a.name} ${Math.round(a.pct)}%</span>`)
+      .sort((a, b) => (a.isPlayer ? -1 : b.isPlayer ? 1 : 0))
+      .map((a) => `<span class="cf-chip${a.alive ? '' : ' out'}${a.isPlayer ? ' me' : ' sm'}" title="${a.name}"><i style="--c:${a.color}"></i>${a.isPlayer ? a.name + ' ' : ''}${Math.round(a.pct)}%</span>`)
       .join('');
   }
 
@@ -322,7 +324,7 @@ export class ArenaMode implements ModeCtl {
         this.phase = 'play';
         bigMoment(t('cavafala.arena.go', 'Cava!'), { color: 'linear-gradient(90deg,#ff8a3a,#ffd34a)' });
         sfx.swish();
-        notify(t('cavafala.arena.tip', 'Cave para juntar material e FALE para criar engenhocas!'), { ms: 4000 });
+        this.w.tipOnce('arenaTip', t('cavafala.arena.tip', 'Cave para juntar material e FALE para criar engenhocas!'));
         objective(null);
       }
       return;

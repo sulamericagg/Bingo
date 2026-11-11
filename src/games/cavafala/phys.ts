@@ -138,7 +138,7 @@ export interface PhysWorld {
   terrain: Terrain;
   boxes: OBox[];
   /** limites XZ (null = sem paredes: dá para cair no vazio) */
-  bounds: { x0: number; z0: number; x1: number; z1: number } | null;
+  bounds: { x0: number; z0: number; x1: number; z1: number; r?: number } | null;
   waterY: number;
   gravity: number;
 }
@@ -210,6 +210,18 @@ export function stepBody(w: PhysWorld, b: Body, dt: number, grav = 1): void {
       if (b.p.x > B.x1) (b.p.x = B.x1), (b.v.x = Math.min(0, b.v.x));
       if (b.p.z < B.z0) (b.p.z = B.z0), (b.v.z = Math.max(0, b.v.z));
       if (b.p.z > B.z1) (b.p.z = B.z1), (b.v.z = Math.min(0, b.v.z));
+      if (B.r) {
+        const rr = Math.hypot(b.p.x, b.p.z);
+        if (rr > B.r) {
+          const k = B.r / rr;
+          const nx = b.p.x / rr,
+            nz = b.p.z / rr;
+          b.p.x *= k;
+          b.p.z *= k;
+          const out = b.v.x * nx + b.v.z * nz;
+          if (out > 0) (b.v.x -= out * nx), (b.v.z -= out * nz);
+        }
+      }
     }
   }
   // "gruda" no chão ao descer rampas suaves

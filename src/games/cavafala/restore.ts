@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { sfx } from '../../3d/common/sfx';
 import { t } from '../../i18n';
+import { icon } from '../../ui/icons';
 import { bigMoment, notify, objective } from '../../ui/notify';
 import { BloopModel, type Hat } from './bloop';
 import { M, type Inv, type Theme } from './data';
@@ -119,7 +120,7 @@ export class RestoreMode implements ModeCtl {
     this.tutStart.copy(w.me.body.p);
     // aparência
     if (th.sea) {
-      this.sea = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: '#3aa8e8', transparent: true, opacity: 0.86, emissive: new THREE.Color('#0a3a6a') }));
+      this.sea = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: '#3aa8e8', transparent: true, opacity: 0.93, emissive: new THREE.Color('#0a3a6a') }));
       this.sea.rotation.x = -Math.PI / 2;
       this.sea.position.y = 7;
       w.scene.add(this.sea);
@@ -142,7 +143,6 @@ export class RestoreMode implements ModeCtl {
     w.me.yaw = Math.atan2(-(L.cx - L.spawn.x), -(L.cz - L.spawn.z));
     w.me.pitch = -0.12;
     if (this.tut === 0) setTimeout(() => this.tutStep(), 600);
-    else objective(t('cavafala.obj.restore', 'Restaure a vila: {n}/{m}', { n: 0, m: town.list.length }));
   }
 
   /* ------------------------------ cenário ------------------------------ */
@@ -292,7 +292,7 @@ export class RestoreMode implements ModeCtl {
     const mm = Math.floor(left / 60),
       ss = Math.floor(left % 60);
     const sun = this.w.dayK > 0.7 ? '🌙' : '☀️';
-    return `<span class="cf-chip">${this.town.restoredCount}/${this.town.list.length} ${t('cavafala.restored', 'restaurados')}</span><span class="cf-chip${left < 90 ? ' warn' : ''}">${sun} ${mm}:${String(ss).padStart(2, '0')}</span>`;
+    return `<span class="cf-chip" title="${t('cavafala.restored', 'restaurados')}">${icon('home', { size: 15 })}${this.town.restoredCount}/${this.town.list.length}</span><span class="cf-chip${left < 90 ? ' warn' : ''}">${sun} ${mm}:${String(ss).padStart(2, '0')}</span>`;
   }
 
   update(dt: number): void {
@@ -533,7 +533,6 @@ export class RestoreMode implements ModeCtl {
       if (i === 0) m.say([t('cavafala.res.thanks', 'Obrigado!'), t('cavafala.res.yay', 'Ebaaa!'), t('cavafala.res.home', 'Minha casa!')][b.i % 3], 2600);
       this.residents.push({ m, x, z, y: b.y, tx: x, tz: z, wait: 2.5 + i * 0.4, home: b });
     }
-    objective(t('cavafala.obj.restore', 'Restaure a vila: {n}/{m}', { n, m: this.town.list.length }));
     if (this.tut === 3) this.tutNext();
     if (n >= this.town.list.length) setTimeout(() => this.finish(true), 2500);
   }
@@ -726,7 +725,7 @@ export class RestoreMode implements ModeCtl {
       persist();
       this.tut = 99;
       bigMoment(t('cavafala.tut.done', 'Você pegou o jeito!'), { sub: t('cavafala.tut.doneSub', 'Restaure a vila antes do anoitecer') });
-      objective(t('cavafala.obj.restore', 'Restaure a vila: {n}/{m}', { n: this.town.restoredCount, m: this.town.list.length }));
+      objective(null);
       return;
     }
     if (this.tut === 2) {

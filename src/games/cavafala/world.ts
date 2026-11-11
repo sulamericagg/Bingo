@@ -18,14 +18,15 @@ import { BloopModel, disposeBloopCache, lam, type Hat } from './bloop';
 import { M, MATS, emptyInv, matColor, matName, type Inv, type Theme } from './data';
 import { Fx } from './fx';
 import { GADGETS, gadgetById, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
-import { Hud } from './hud';
+import { Hud, SVG } from './hud';
 import { OBox, makeBody, rayBox, stepBody, type Body, type PhysWorld } from './phys';
 import { parseBest, type Parsed } from './parser';
 import { cavaSave, discover, persist } from './save';
 import type { Terrain } from './terrain';
 import type { Town } from './town';
-import { listen, voiceKind, type VoiceSession } from './voice';
+import { askMicPermission, listen, openAppSettings, voiceKind, withTimeout, type VoiceFail, type VoiceSession } from './voice';
 
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const TAU = Math.PI * 2;
 export const EYE = 1.45;
 
@@ -1151,62 +1152,238 @@ export class World {
   }
 
   /* ---------------------------- voz / texto / círculo ---------------------------- */
+  private micCancel = false;
+  private lastPartial = '';
+  private misses: string[] = [];
   private async micDown(): Promise<void> {
     if (this.voiceBusy || this.hud.overlay) return;
-    this.voiceBusy = true;
-    sfx.pick();
-    this.hud.listening(true);
     audio.unlock();
-    const v = await listen(
-      (s) => this.hud.listening(true, '“' + s + '”'),
-      (err) => notify(err === 'perm' ? t('cavafala.voice.perm', 'Sem permissão do microfone — digite (T) ou use o círculo.') : t('cavafala.voice.err', 'Não deu para ouvir. Tente de novo ou digite.'), { kind: 'warn' }),
-    );
-    if (!v) {
+    sfx.pick();
+    if (voiceKind() === 'none') {
+      this.noVoiceCard();
+      return;
+    }
+    this.voiceBusy = true;
+    this.micCancel = false;
+    this.lastPartial = '';
+    this.hud.listening(true);
+    let why: VoiceFail | null = null;
+    let slow = false;
+    let askedPerm = false;
+    // nunca fica infinito: sem resposta do reconhecedor em 8 s → cai para digitar/escolher
+    let dog = window.setTimeout(() => (slow = true), 8000);
+    const v = await Promise.race([
+      listen({
+        onPartial: (s) => {
+          this.lastPartial = s;
+          this.hud.listening(true, s);
+        },
+        onLevel: (lv) => this.hud.level(lv),
+        onAskPerm: () => {
+          askedPerm = true;
+          clearTimeout(dog);
+          dog = window.setTimeout(() => (slow = true), 32000);
+          this.hud.listening(false);
+          this.permCard('ask');
+        },
+        onError: (w) => (why = w),
+      }),
+      new Promise<null>((r) => {
+        const chk = window.setInterval(() => {
+          if (slow) {
+            clearInterval(chk);
+            r(null);
+          }
+        }, 200);
+      }),
+    ]);
+    clearTimeout(dog);
+    if ((this.hud.overlay as HTMLDivElement | null)?.dataset.perm === 'ask') this.closePanelGo();
+    if (!v || slow || this.dead) {
+      v?.cancel();
       this.hud.listening(false);
       this.voiceBusy = false;
-      if (voiceKind() === 'none') notify(t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.'), { kind: 'warn' });
-      this.openType();
+      if (this.dead) return;
+      if (why === 'perm') this.permCard('denied');
+      else this.noVoiceCard(slow ? 'slow' : why === 'unavailable' ? 'none' : 'err');
+      return;
+    }
+    if (this.micCancel && !askedPerm) {
+      // soltou rápido (antes do reconhecedor abrir): segue normal com o que ouviu
+      this.voice = v;
+      void this.micUp();
+      return;
+    }
+    if (this.micCancel) {
+      // soltou o botão enquanto pedia a permissão: agora já pode falar
+      v.cancel();
+      this.hud.listening(false);
+      this.voiceBusy = false;
+      notify(t('cavafala.voice.ready', 'Microfone pronto! Segure FALAR e diga o que quer.'), { kind: 'good', icon: 'check' });
       return;
     }
     this.voice = v;
   }
   private async micUp(): Promise<void> {
     const v = this.voice;
-    if (!v) return;
+    if (!v) {
+      if (this.voiceBusy) this.micCancel = true;
+      return;
+    }
     this.voice = null;
-    const alts = await v.finish();
+    let alts = await withTimeout(v.finish(), 4000, [] as string[]);
     this.hud.listening(false);
     this.voiceBusy = false;
     sfx.drop();
+    if (!alts.length && this.lastPartial) alts = [this.lastPartial];
     if (!alts.length) {
-      notify(t('cavafala.voice.nothing', 'Não ouvi nada... segure o botão e fale.'), { kind: 'warn' });
+      this.hud.heard('', false);
+      this.chooseCard(null);
       return;
     }
+    this.heardText(alts, 'voice');
+  }
+
+  /** o que ouviu/leu → engenhoca (certeza), ou "você quis dizer?" com 3 opções (nunca "nada acontece") */
+  private heardText(alts: string[], how: 'voice' | 'type'): boolean {
     const p = parseBest(alts);
     this.lastParsed = p;
-    this.net?.voice(this.me, alts[0]);
-    if (p.g) {
-      const ok = this.create(this.me, p.g, p.mods, 'voice');
-      if (ok) {
+    this.net?.voice(this.me, p.heard || alts[0]);
+    if (p.g && (p.sure || how === 'type')) {
+      this.hud.heard(p.heard, true, fullName(p.g, p.mods));
+      const ok = this.create(this.me, p.g, p.mods, how);
+      if (ok && how === 'voice') {
         cavaSave().spoken++;
         persist();
       }
-    } else this.notUnderstood(p);
+      return ok;
+    }
+    this.hud.heard(p.heard, false);
+    this.logMiss(p);
+    this.chooseCard(p);
+    return false;
   }
-  private notUnderstood(p: Parsed): void {
-    const sug = p.suggest.map((g) => g.name()).join(', ');
-    notify(sug ? t('cavafala.voice.maybe', '“{h}”? Talvez: {s}', { h: p.heard, s: sug }) : t('cavafala.voice.unknown', 'Não conheço “{h}”. Tente “ponte”, “trampolim”...', { h: p.heard }), { kind: 'warn', ms: 3600 });
+  /** guarda o que não entendeu (só texto) e manda em lote para o serviço de relatórios */
+  private logMiss(p: Parsed): void {
+    if (!p.heard.trim()) return;
+    this.misses.push(`“${p.heard.slice(0, 60)}” → ${p.g ? '?' + p.g.id : '-'} [${p.suggest.map((g) => g.id).join(',')}]`);
+    if (this.misses.length >= 5) this.flushMisses();
+  }
+  private flushMisses(): void {
+    if (!this.misses.length) return;
+    const txt = '[cavafala voz não entendida] ' + this.misses.join(' | ');
+    this.misses = [];
+    void import('../../services/feedback').then((f) => f.submitReport(f.buildReport('other', txt, false, ''))).catch(() => {});
+  }
+
+  private closePanelGo(): void {
+    this.hud.closePanel();
+    this.paused = false;
+  }
+  /** "Você quis dizer?": até 3 engenhocas grandes para tocar + falar de novo / digitar */
+  chooseCard(p: Parsed | null): void {
+    if (this.hud.overlay) return;
+    const opts: { g: GDef; mods: Mods }[] = [];
+    if (p?.g) opts.push({ g: p.g, mods: p.mods });
+    for (const g of p?.suggest ?? []) if (opts.length < 3 && !opts.some((o) => o.g === g)) opts.push({ g, mods: noMods() });
+    const found = cavaSave().found;
+    for (const id of ['trampolim', 'ponte', 'escada', 'canhao', 'escudo']) {
+      const g = GADGETS.find((x) => x.id === id);
+      if (opts.length < 3 && g && found.includes(id) && (!this.arena || g.arena || g.kind === 'weapon') && !opts.some((o) => o.g === g)) opts.push({ g, mods: noMods() });
+    }
+    this.paused = true;
+    this.digHeld = this.useHeld = false;
+    const heard = p?.heard.trim() ?? '';
+    const d = this.hud.panel(
+      `<div class="cf-card cf-choose">
+        <h2>${heard ? `${esc(t('cavafala.voice.heard', 'Ouvi:'))} <q>${esc(heard)}</q>` : esc(t('cavafala.voice.nothing2', 'Não ouvi direito...'))}</h2>
+        <p>${esc(p?.g ? t('cavafala.voice.meant', 'Você quis dizer?') : t('cavafala.voice.pick', 'Toque no que você quer criar:'))}</p>
+        <div class="cf-opts3">${opts
+          .map((o, i) => `<button class="cf-opt" data-i="${i}"><img src="${this.thumb(o.g, o.mods)}" alt=""/><b>${esc(fullName(o.g, o.mods))}</b><span>${Hud.costChips(o.g, o.mods, this.me.inv, this.theme)}</span></button>`)
+          .join('')}</div>
+        <div class="cf-row"><button class="cf-btn p" data-a="mic">${SVG.mic}${esc(t('cavafala.voice.again', 'Falar de novo'))}</button><button class="cf-btn w" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div>
+      </div>`,
+    );
+    d.querySelectorAll<HTMLButtonElement>('.cf-opt').forEach((b) =>
+      b.addEventListener('click', () => {
+        const o = opts[+b.dataset.i!];
+        this.closePanelGo();
+        this.create(this.me, o.g, o.mods, 'radial');
+      }),
+    );
+    d.querySelector('[data-a=mic]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      notify(t('cavafala.voice.hold', 'Segure FALAR enquanto fala!'), { icon: 'hand-tap', key: 'hold' });
+    });
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=x]')!.addEventListener('click', () => this.closePanelGo());
+  }
+  /** microfone: pedindo permissão (ask) ou bloqueado (denied) */
+  private permCard(mode: 'ask' | 'denied'): void {
+    this.hud.closePanel();
+    this.paused = true;
+    const d = this.hud.panel(
+      `<div class="cf-card cf-perm"><div class="cf-permic">${SVG.mic}</div>
+        <h2>${esc(mode === 'ask' ? t('cavafala.perm.askT', 'Deixa o Bloop ouvir você?') : t('cavafala.perm.deniedT', 'O microfone está desligado'))}</h2>
+        <p>${esc(mode === 'ask' ? t('cavafala.perm.ask', 'Toque em PERMITIR na janelinha. O som só é usado para entender o que você quer criar.') : t('cavafala.perm.denied', 'Sem o microfone, o Bloop não escuta. Libere nos ajustes do aparelho ou crie digitando.'))}</p>
+        <div class="cf-row">${
+          mode === 'denied'
+            ? `<button class="cf-btn g" data-a="retry">${esc(t('cavafala.perm.retry', 'Permitir microfone'))}</button><button class="cf-btn" data-a="settings">${esc(t('cavafala.perm.settings', 'Abrir ajustes'))}</button>`
+            : ''
+        }<button class="cf-btn w" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn w" data-a="ring">${SVG.book}${esc(t('cavafala.btn.recipes', 'Receitas'))}</button></div>
+      </div>`,
+    );
+    d.dataset.perm = mode;
+    d.querySelector('[data-a=retry]')?.addEventListener('click', async () => {
+      const r = await askMicPermission();
+      this.closePanelGo();
+      if (r === 'granted') notify(t('cavafala.voice.ready', 'Microfone pronto! Segure FALAR e diga o que quer.'), { kind: 'good', icon: 'check' });
+      else this.permCard('denied');
+    });
+    d.querySelector('[data-a=settings]')?.addEventListener('click', async () => {
+      const ok = await openAppSettings();
+      if (!ok) notify(t('cavafala.perm.howto', 'Ajustes → Apps → Bloop World → Permissões → Microfone'), { ms: 6000, icon: 'gear' });
+    });
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=ring]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openRing();
+    });
+  }
+  /** sem voz agora (aparelho sem reconhecedor, demorou ou deu erro): digitar ou escolher */
+  private noVoiceCard(why: 'none' | 'slow' | 'err' = 'none'): void {
+    if (this.hud.overlay) return;
+    this.paused = true;
+    const msg =
+      why === 'slow'
+        ? t('cavafala.voice.slow', 'O reconhecimento de voz não respondeu. Crie digitando ou escolhendo:')
+        : why === 'err'
+          ? t('cavafala.voice.err', 'Não deu para ouvir. Tente de novo ou digite.')
+          : t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.');
+    const d = this.hud.panel(
+      `<div class="cf-card cf-perm"><div class="cf-permic off">${SVG.mic}</div><h2>${esc(msg)}</h2>
+        <div class="cf-row"><button class="cf-btn g" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn" data-a="ring">${SVG.book}${esc(t('cavafala.btn.recipes', 'Receitas'))}</button><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div></div>`,
+    );
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=ring]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openRing();
+    });
+    d.querySelector('[data-a=x]')!.addEventListener('click', () => this.closePanelGo());
   }
 
   /** cria pelo texto (painel de digitar e testes). Devolve true se começou a construir. */
   say(text: string): boolean {
-    const p = parseBest([text]);
-    this.lastParsed = p;
-    if (!p.g) {
-      this.notUnderstood(p);
-      return false;
-    }
-    return this.create(this.me, p.g, p.mods, 'type');
+    return this.heardText([text], 'type');
   }
 
   openType(): void {
@@ -1286,7 +1463,7 @@ export class World {
         return `<button class="cf-ri${ok ? '' : ' no'}" data-id="${g.id}" style="left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%"><img src="${this.thumb(g, noMods())}" alt=""/><b>${g.name()}</b></button>`;
       })
       .join('');
-    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button>`);
+    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button>`);
     const center = d.querySelector<HTMLDivElement>('.cf-rc')!;
     let picked: GDef | null = null;
     const close = () => {
@@ -1309,6 +1486,10 @@ export class World {
     );
     d.querySelector('[data-a=x]')!.addEventListener('click', close);
     d.querySelector('[data-a=more]')?.addEventListener('click', () => this.openRing(page + 1));
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      close();
+      this.openType();
+    });
     d.addEventListener('pointerdown', (e) => {
       if (e.target === d) close();
     });
@@ -2262,6 +2443,11 @@ export class World {
   tipOnce(id: string, text: string): void {
     if (this.tipShown.has(id)) return;
     this.tipShown.add(id);
+    // dica aparece uma vez só (fica guardada): nada de muro de texto toda partida
+    const sv = cavaSave() as { tips?: string[] };
+    if ((sv.tips ??= []).includes(id)) return;
+    sv.tips.push(id);
+    persist();
     notify(text, { ms: 4200 });
   }
 
@@ -2280,6 +2466,7 @@ export class World {
 
   dispose(): void {
     this.dead = true;
+    this.flushMisses();
     cancelAnimationFrame(this.raf);
     this.voice?.cancel();
     this.mode?.dispose?.();

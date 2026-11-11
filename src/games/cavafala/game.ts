@@ -25,13 +25,14 @@ import { fillRoom, fillStart, type RoomHandle, type RoomMode } from './lobby';
 import { codeFromRoom, createNet, MAX_PLAYERS, newCode, type CavaNet, type Me, type NetEvent } from './net';
 import { Binder, BOT_KS, PCOLS, PHATS, type RoundInit } from './online';
 import { takePendingCava } from './pending';
+import { parseBest } from './parser';
 import { GADGETS } from './gadgets';
 import { RestoreMode, type RestoreOnline, type RestoreResult } from './restore';
 import { cavaSave, persist, type Diff } from './save';
 import { injectCss } from './style';
 import { Town } from './town';
 import { World } from './world';
-import { genArena, genTown } from './worldgen';
+import { genArena, genTown, TOWN_WALK_R } from './worldgen';
 import { voiceKind } from './voice';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -228,7 +229,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     ld.set(0.15);
     await frame();
     const town = new Town(th, L, th.seed * 31 + variant);
-    const w = new World(el, { arena: false, theme: th, tier, T, town, spawn: L.spawn, waterY: th.sea ? 7 : -100, bounds: { x0: T.ox + 0.6, z0: T.oz + 0.6, x1: -T.ox - 0.6, z1: -T.oz - 0.6 }, onPause: pause });
+    const w = new World(el, { arena: false, theme: th, tier, T, town, spawn: L.spawn, waterY: th.sea ? 7 : -100, bounds: { x0: T.ox + 0.6, z0: T.oz + 0.6, x1: -T.ox - 0.6, z1: -T.oz - 0.6, r: TOWN_WALK_R }, onPause: pause });
     world = w;
     w.hud.show(false);
     await bake(w, ld, g);
@@ -726,12 +727,21 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       world: () => world,
       restore: () => restore,
       arena: () => arena,
-      startRestore: (th: ThemeId = 'pesca') => startRestore(th),
-      startArena: (bots = 2, diff: Diff = 1, practice = false) => {
+      startRestore: (th: ThemeId = 'pesca', variant?: number) => startRestore(th, variant != null ? ({ variant } as RoundInit) : null),
+      startArena: (bots = 2, diff: Diff = 1, practice = false, seed?: number) => {
         sv.bots = bots;
         sv.diff = diff;
         sv.practice = practice;
-        return startArena();
+        return startArena(seed != null ? ({ seed, players: [], bots: [] } as unknown as RoundInit) : null);
+      },
+      /** câmera de cima (testes de terreno) */
+      topView: (h = 60) => {
+        const w = world;
+        if (!w) return;
+        w.me.body.p.set(0, h, 0.01);
+        w.me.body.v.set(0, 0, 0);
+        w.me.yaw = 0;
+        w.me.pitch = -1.45;
       },
       menu,
       online: () => online && { code: online.net.code, host: online.net.isHost, peers: online.net.peers.map((p) => p.id), round: online.round, go: online.go, me: online.net.me.id },
@@ -750,6 +760,15 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         menu();
       },
       say: (s: string) => world?.say(s),
+      card: (k: 'ask' | 'denied' | 'none' | 'slow') => {
+        const w = world as unknown as { permCard(m: string): void; noVoiceCard(m: string): void } | null;
+        if (k === 'ask' || k === 'denied') w?.permCard(k);
+        else w?.noVoiceCard(k);
+      },
+      parse: (s: string) => {
+        const p = parseBest([s]);
+        return { g: p.g?.id ?? null, score: +p.score.toFixed(2), sure: p.sure, mods: p.mods, suggest: p.suggest.map((g) => g.id) };
+      },
       give: (n = 200) => {
         if (world) for (const m of MATS) world.me.inv[m] = (world.me.inv[m] ?? 0) + n;
       },
