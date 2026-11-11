@@ -36,13 +36,14 @@ export interface WControls {
   use: boolean;
   up: boolean;
   down: boolean;
+  jump: boolean;
 }
 
-export type WAct = 'ctl' | 'exit' | 'tool' | 'veh' | 'sell' | 'pets' | 'cmdChop' | 'cmdFetch' | 'cmdFollow' | 'solo' | 'cam';
+export type WAct = 'ctl' | 'exit' | 'tool' | 'veh' | 'sell' | 'pets' | 'cmdChop' | 'cmdFetch' | 'cmdFollow' | 'solo' | 'cam' | 'grab' | 'inv' | 'rot' | 'menu';
 
 export class WorldHud {
   el: HTMLDivElement;
-  ctl: WControls = { mx: 0, my: 0, lookDX: 0, lookDY: 0, use: false, up: false, down: false };
+  ctl: WControls = { mx: 0, my: 0, lookDX: 0, lookDY: 0, use: false, up: false, down: false, jump: false };
   private q = <T extends HTMLElement>(s: string) => this.el.querySelector(s) as T;
   private offs: (() => void)[] = [];
   private last: Record<string, string> = {};
@@ -76,6 +77,8 @@ export class WorldHud {
         <button class="fl-btn gold fw-sell hide" data-tap="sell">${flIcon('sell', 24)}<span>${t('floresta.w.sell', 'Vender')}</span></button>
         <button class="fl-btn fw-veh hide" data-tap="veh"><span data-v="veh"></span></button>
         <button class="fl-btn round fw-tool" data-tap="tool" aria-label="${t('floresta.w.tool', 'Ferramenta')}"><span data-v="tool"></span></button>
+        <button class="fl-btn round fw-grab hide" data-tap="grab" aria-label="${t('mundo.grab', 'Pegar')}">${flIcon('log', 26)}<b data-v="grab"></b></button>
+        <button class="fl-btn round fw-jump" data-hold="jump" aria-label="${t('mundo.jump', 'Pular')}">${WICONS.up}</button>
         <button class="fl-btn round fw-up hide" data-hold="up">${WICONS.up}</button>
         <button class="fl-btn round fw-down hide" data-hold="down">${WICONS.down}</button>
         <button class="fw-use" data-hold="use"><span data-v="useI"></span><b data-v="use"></b></button>
@@ -109,7 +112,7 @@ export class WorldHud {
       this.lookC?.destroy();
     });
     this.on(window, 'blur', () => {
-      this.ctl.use = this.ctl.up = this.ctl.down = false;
+      this.ctl.use = this.ctl.up = this.ctl.down = this.ctl.jump = false;
       this.keys.clear();
     });
   }
@@ -171,7 +174,7 @@ export class WorldHud {
       this.on(b, 'click', (e) => e.stopPropagation());
     }
     for (const b of Array.from(this.el.querySelectorAll<HTMLElement>('[data-hold]'))) {
-      const k = b.dataset.hold as 'use' | 'up' | 'down';
+      const k = b.dataset.hold as 'use' | 'up' | 'down' | 'jump';
       let id = -1;
       this.on(b, 'pointerdown', (e) => {
         e.stopPropagation();
@@ -198,7 +201,8 @@ export class WorldHud {
       const k = this.keys;
       this.ctl.mx = (k.has('d') ? 1 : 0) - (k.has('a') ? 1 : 0);
       this.ctl.my = (k.has('s') ? 1 : 0) - (k.has('w') ? 1 : 0);
-      this.ctl.use = k.has(' ');
+      this.ctl.use = k.has('x') || k.has('enter');
+      this.ctl.jump = k.has(' ');
       this.ctl.up = k.has('r');
       this.ctl.down = k.has('f');
     };
@@ -208,6 +212,7 @@ export class WorldHud {
       if (k === 'e') this.onAct('veh');
       else if (k === 'q') this.onAct('tool');
       else if (k === 'v') this.onAct('sell');
+      else if (k === 'g') this.onAct('grab');
       else if (k === 'arrowleft') this.ctl.lookDX -= 60;
       else if (k === 'arrowright') this.ctl.lookDX += 60;
       else if (k === 'arrowup') this.ctl.lookDY -= 40;

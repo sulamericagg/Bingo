@@ -7,6 +7,8 @@ export interface ChunkRec {
   e?: string;
   /** árvores: [índice, estado, crescimento×100] */
   t?: number[];
+  /** subsolo: diffs esparsos por seção (base64) */
+  v?: Record<string, string>;
 }
 export interface QuestRec {
   camp: string;
