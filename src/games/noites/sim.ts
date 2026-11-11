@@ -810,10 +810,11 @@ export class Sim {
     for (const k in st.cost) this.stash[k as Res]! -= st.cost[k as Res] ?? 0;
     const V = this.ensureVeh();
     const dl = Math.hypot(g.x, g.z) || 1;
-    const x = g.x + (g.x / dl) * 4.5;
-    const z = g.z + (g.z / dl) * 4.5;
+    const k = dl > 9 ? -4.5 : 4.5;
+    const x = g.x + (g.x / dl) * k;
+    const z = g.z + (g.z / dl) * k;
     this.designs.set(d.id + '@' + p.id, d);
-    const v = V.spawn(d, x, z, Math.atan2(g.x, g.z), p.id);
+    const v = V.spawn(d, x, z, Math.atan2(g.x, g.z) + Math.PI / 2, p.id);
     v.d = d;
     this.verVeh++;
     this.ev('vbuild', { p: p.id, x, z, n: v.id, i: d.id });
