@@ -23,6 +23,7 @@ import { roomEnv } from '../../3d/common/pbr';
 import { ensureCss, el } from '../../home3d/ui';
 import { notify } from '../../ui/notify';
 import { FpsControls } from '../../ui/touch';
+import { FpAim, FpCamera, FpController, FP_COZINHA, GridCollider } from '../../3d/fpkit';
 import {
   AimPicker, Beacon, HandButtons, Hesitation, HoverHighlight, Rescuer, SnapGlows, TicketPrinter, disposeStickers, feedback, resolveVerb, wallScreen,
   type AimTarget, type Control, type RescueState, type VerbDef, type VerbRule,
@@ -92,8 +93,7 @@ interface Loose extends RescueState {
   hard: number;
 }
 
-const EYE = 1.45;
-const RAD = 0.3;
+const EYE = FP_COZINHA.eye;
 const REACH = 2.5;
 const SKINS_CUST = ['bloop', 'mint', 'sunny', 'chef', 'bee', 'ocean', 'kitty', 'capy', 'pirate', 'astro'];
 const qs = new URLSearchParams(location.search);
@@ -162,26 +162,70 @@ class KitchenFps implements Renderer {
   private lost = false;
   private fallback: Render2D | null = null;
   /* jogador */
-  private px = 0;
-  private pz = 0;
-  private vx = 0;
-  private vz = 0;
-  private yaw = 0;
-  private pitch = -0.32;
-  private bob = 0;
-  private speedK = 0;
-  private lastLook: [number, number] = [0, 0];
-  private slip = 0;
-  private shake = 0;
+  /** corpo + câmera de 1ª pessoa: kit compartilhado (src/3d/fpkit) — este é o preset de referência */
+  private fp = new FpController(FP_COZINHA);
+  private fpc = new FpCamera(FP_COZINHA);
+  /** grade da cozinha (bancadas/geladeiras bloqueiam) — corpo e camClamp usam a mesma */
+  private grid = new GridCollider(T, (x, y) => this.sim.isFloor(x, y));
+  private get px(): number {
+    return this.fp.x;
+  }
+  private set px(v: number) {
+    this.fp.x = v;
+  }
+  private get pz(): number {
+    return this.fp.z;
+  }
+  private set pz(v: number) {
+    this.fp.z = v;
+  }
+  private get vx(): number {
+    return this.fp.vx;
+  }
+  private set vx(v: number) {
+    this.fp.vx = v;
+  }
+  private get vz(): number {
+    return this.fp.vz;
+  }
+  private set vz(v: number) {
+    this.fp.vz = v;
+  }
+  private get yaw(): number {
+    return this.fpc.yaw;
+  }
+  private set yaw(v: number) {
+    this.fpc.yaw = v;
+  }
+  private get pitch(): number {
+    return this.fpc.pitch;
+  }
+  private set pitch(v: number) {
+    this.fpc.pitch = v;
+  }
+  private get speedK(): number {
+    return this.fp.speedK;
+  }
+  /** tremor de câmera 0..1 */
+  private get shake(): number {
+    return this.fpc.shake;
+  }
+  private set shake(v: number) {
+    this.fpc.shake = v;
+  }
   /** tranco de câmera (picar) 0..1 */
-  private recoil = 0;
+  private set recoil(v: number) {
+    this.fpc.kick(v);
+  }
+  private slip = 0;
   /* mira */
   private tgSt = -1;
   private tgLoose: Loose | null = null;
   /** controle físico mirado (botão do fogo, porta, torneira...) */
   private tgCtl: Control | null = null;
   private picker = new AimPicker<Tg>();
-  private aimSkip = 0;
+  /** raio do centro (no RAY compartilhado) + "pula quando parado" */
+  private aimer = new FpAim(RAY);
   private hover: HoverHighlight;
   private snaps: SnapGlows;
   private beacon: Beacon;
@@ -251,6 +295,7 @@ class KitchenFps implements Renderer {
     private cv: HTMLCanvasElement,
   ) {
     ensureCss();
+    this.fpc.pitch = -0.32;
     if (!cssEl) {
       cssEl = document.createElement('style');
       cssEl.textContent = CSS;
@@ -531,6 +576,15 @@ class KitchenFps implements Renderer {
       pos: () => ({ x: self.px, z: self.pz, yaw: self.yaw, pitch: self.pitch }),
       setPitch: (v: number) => (self.pitch = v),
       setYaw: (v: number) => (self.yaw = v),
+      /** zera balanço/tremor/velocidade (A/B de "feel": scripts/dev/fpkit-trace.mjs) */
+      resetFeel() {
+        self.fp.stop();
+        self.fpc.reset();
+        self.slip = 0;
+        self.aimer.invalidate();
+      },
+      shakeNow: (v: number) => self.fpc.addShake(v),
+      recoilNow: () => self.fpc.kick(1),
     };
   }
   private spawnFromMe(): void {
@@ -631,10 +685,7 @@ class KitchenFps implements Renderer {
     // olhar
     // olhar (já suavizado pelos controles compartilhados)
     const [lx, ly] = this.input.consumeLook(dt);
-    this.yaw -= lx;
-    this.pitch = Math.max(-1.3, Math.min(1.1, this.pitch - ly));
-    this.lastLook[0] = lx;
-    this.lastLook[1] = ly;
+    this.fpc.look(lx, ly);
     if (auto) {
       // autoplay: a câmera segue o bot que joga por mim
       this.px += (me.x * T - this.px) * Math.min(1, dt * 10);
@@ -643,22 +694,16 @@ class KitchenFps implements Renderer {
       let d = ty - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.yaw += d * Math.min(1, dt * 4);
-      this.speedK = Math.min(1, Math.hypot(me.vx, me.vy) / 3);
+      this.fp.speedK = Math.min(1, Math.hypot(me.vx, me.vy) / 3);
     } else {
       // andar
       const [mx, my] = this.input.dir();
-      const fx = -Math.sin(this.yaw);
-      const fz = -Math.cos(this.yaw);
-      const rx = Math.cos(this.yaw);
-      const rz = -Math.sin(this.yaw);
-      const sp = 3.3 * (1 + sim.ups.shoes * 0.08) * (me.hold?.k === IK.Ext ? 0.85 : 1);
-      const tvx = (fx * my + rx * mx) * sp;
-      const tvz = (fz * my + rz * mx) * sp;
-      let k = mx || my ? 10 : 14;
-      if (sim.theme === 'space') k = 2.6;
-      if (this.slip > 0) k = 0.9;
-      this.vx += (tvx - this.vx) * Math.min(1, dt * k);
-      this.vz += (tvz - this.vz) * Math.min(1, dt * k);
+      const fp = this.fp;
+      const space = sim.theme === 'space';
+      fp.tune.speed = FP_COZINHA.speed * (1 + sim.ups.shoes * 0.08) * (me.hold?.k === IK.Ext ? 0.85 : 1);
+      fp.tune.bounce = space ? 0.4 : 0; // gravidade zero: rebate na parede
+      fp.accelOverride = this.slip > 0 ? 0.9 : space ? 2.6 : null;
+      fp.steer(dt, mx, my, this.yaw);
       // chão molhado: escorrega!
       if (this.puddle && Math.hypot(this.px - this.puddle.x, this.pz - this.puddle.z) < this.puddle.r) {
         if (this.slip <= 0 && Math.hypot(this.vx, this.vz) > 1.2) {
@@ -673,8 +718,10 @@ class KitchenFps implements Renderer {
         this.slip -= dt;
         this.yaw += dt * 2.2 * Math.max(0, this.slip);
       }
-      this.moveGrid(this.vx * dt, this.vz * dt);
-      this.speedK = Math.min(1, Math.hypot(this.vx, this.vz) / sp);
+      fp.collider = this.grid;
+      fp.move(dt);
+      // empurrão suave dos colegas
+      for (const p of sim.players) if (p !== me) fp.pushAway(p.x * T, p.y * T);
       me.x = this.px / T;
       me.y = this.pz / T;
       me.vx = this.vx / T;
@@ -741,96 +788,25 @@ class KitchenFps implements Renderer {
       }
   }
 
-  /** a câmera nunca entra em bancada/geladeira: empurra para fora das células bloqueadas com folga */
-  private camClamp(x: number, z: number): [number, number] {
-    const s = this.sim;
-    const M = 0.34; // folga (m) — maior que o meio do plano near com FOV largo
-    const gx = Math.floor(x / T);
-    const gz = Math.floor(z / T);
-    for (let oy = -1; oy <= 1; oy++)
-      for (let ox = -1; ox <= 1; ox++) {
-        const cx = gx + ox;
-        const cy = gz + oy;
-        if (s.isFloor(cx + 0.5, cy + 0.5)) continue;
-        // ponto mais próximo da caixa da célula
-        const nx = Math.max(cx * T, Math.min(x, (cx + 1) * T));
-        const nz = Math.max(cy * T, Math.min(z, (cy + 1) * T));
-        const dx = x - nx;
-        const dz = z - nz;
-        const d = Math.hypot(dx, dz);
-        if (d >= M) continue;
-        if (d < 1e-4) {
-          // dentro da célula: volta para o centro do chão onde o jogador está
-          const fx = (Math.floor(this.px / T) + 0.5) * T;
-          const fz = (Math.floor(this.pz / T) + 0.5) * T;
-          return [fx, fz];
-        }
-        x = nx + (dx / d) * M;
-        z = nz + (dz / d) * M;
-      }
-    return [x, z];
-  }
-  private moveGrid(dx: number, dz: number): void {
-    const s = this.sim;
-    const r = RAD / T;
-    const free = (x: number, y: number) => s.isFloor(x - r, y - r) && s.isFloor(x + r, y - r) && s.isFloor(x - r, y + r) && s.isFloor(x + r, y + r);
-    const nx = (this.px + dx) / T;
-    if (free(nx, this.pz / T)) this.px += dx;
-    else this.vx *= this.sim.theme === 'space' ? -0.4 : 0;
-    const nz = (this.pz + dz) / T;
-    if (free(this.px / T, nz)) this.pz += dz;
-    else this.vz *= this.sim.theme === 'space' ? -0.4 : 0;
-    // empurrão suave dos colegas
-    for (const p of s.players) {
-      if (p === this.me) continue;
-      const ox = this.px - p.x * T;
-      const oz = this.pz - p.y * T;
-      const d = Math.hypot(ox, oz);
-      if (d > 0.01 && d < 0.55) {
-        const push = (0.55 - d) * 0.5;
-        const ax = this.px + (ox / d) * push;
-        const az = this.pz + (oz / d) * push;
-        if (free(ax / T, this.pz / T)) this.px = ax;
-        if (free(this.px / T, az / T)) this.pz = az;
-      }
-    }
-  }
-
   private placeCamera(dt: number): void {
-    const cam = this.camera;
-    this.bob += dt * 9 * this.speedK;
-    const bobY = Math.sin(this.bob * 2) * 0.025 * this.speedK;
-    let roll = Math.cos(this.bob) * 0.008 * this.speedK;
+    const c = this.fpc;
     const th = this.sim.theme;
+    // extras do tema somados ao balanço do kit (barco balança, escorregão, flutuar no espaço)
+    let roll = 0;
     if (th === 'boat') roll += Math.sin(this.time * 0.9) * 0.045;
     if (this.slip > 0) roll += Math.sin(this.time * 14) * 0.05 * this.slip;
-    let sx = 0;
-    let sy = 0;
-    if (this.shake > 0) {
-      this.shake = Math.max(0, this.shake - dt * 1.6);
-      sx = (Math.random() - 0.5) * this.shake * 0.12;
-      sy = (Math.random() - 0.5) * this.shake * 0.12;
-    }
-    const space = th === 'space' ? Math.sin(this.time * 1.3) * 0.04 : 0;
-    this.recoil = Math.max(0, this.recoil - dt * 7);
-    sy -= Math.sin(this.recoil * Math.PI) * 0.012;
-    cam.rotation.order = 'YXZ';
-    cam.rotation.set(this.pitch + sy * 0.5 + (th === 'boat' ? Math.sin(this.time * 0.7) * 0.015 : 0), this.yaw + sx * 0.5, roll);
-    const [cx, cz] = this.camClamp(this.px + sx, this.pz);
-    cam.position.set(cx, EYE + bobY + sy + space, cz);
-    cam.updateMatrixWorld();
+    c.extraRoll = roll;
+    c.extraPitch = th === 'boat' ? Math.sin(this.time * 0.7) * 0.015 : 0;
+    c.extraY = th === 'space' ? Math.sin(this.time * 1.3) * 0.04 : 0;
+    c.apply(this.camera, dt, this.fp, this.grid);
   }
 
   /* ======================= mira ======================= */
   private aim(): void {
-    const cam = this.camera;
-    RAY.origin.copy(cam.position);
-    cam.getWorldDirection(RAY.direction);
-    FWD.copy(RAY.direction);
     // mira mais barata: com a câmera parada, só refaz a cada 3 quadros
-    const still = Math.abs(this.lastLook[0]) + Math.abs(this.lastLook[1]) < 1e-4 && this.speedK < 0.05;
-    if (still && this.aimSkip-- > 0) return;
-    this.aimSkip = 2;
+    const run = this.aimer.update(this.camera, this.fpc.lookDX, this.fpc.lookDY, this.speedK);
+    FWD.copy(RAY.direction);
+    if (!run) return;
     for (const l of this.loose.values()) {
       const p = l.body.position;
       l.tg.enabled = !l.local;
@@ -1725,7 +1701,7 @@ class KitchenFps implements Renderer {
       hd.stir += (0 - hd.stir) * k;
       hd.charge += (Math.max(0, this.charge) - hd.charge) * Math.min(1, dt * 20);
       hd.visible = this.fps && !qs.has('czauto');
-      hd.update(dt, this.speedK, this.lastLook[0], this.lastLook[1]);
+      hd.update(dt, this.speedK, this.fpc.lookDX, this.fpc.lookDY);
       // tranco sutil de câmera no impacto da faca
       if (hd.impact > 0.95 && this.fps) this.recoil = 1;
       if (this.speedK > 0.3 && dt > 0) {
