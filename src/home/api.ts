@@ -42,11 +42,13 @@ export interface HandleHit {
   /** relação comigo: amigo / pedido enviado / pedido recebido */
   rel: 'friend' | 'sent' | 'received' | null;
 }
-export type InviteKind = 'party' | 'house' | 'game';
+export type InviteKind = 'party' | 'house' | 'game' | 'squad';
 export interface FriendInvite {
   from: FriendInfo;
   kind: InviteKind;
   game?: string;
+  /** grupo (squad) do convite */
+  room?: string;
   at: number;
 }
 
@@ -168,6 +170,9 @@ export interface HomeApi {
   /** (opcional) aparecer na busca de @ (padrão: sim) */
   discoverable?(): boolean;
   setDiscoverable?(on: boolean): Promise<boolean>;
+  /** (opcional) quem pode te convidar: amigos (padrão) ou ninguém */
+  invitesFrom?(): 'friends' | 'nobody';
+  setInvitesFrom?(v: 'friends' | 'nobody'): Promise<boolean>;
   /** (opcional) denunciar jogador (por id ou, vindo da busca, pelo @) */
   report?(target: { id?: string; handle?: string; name?: string }, reason: string): Promise<boolean>;
 }

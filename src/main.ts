@@ -43,6 +43,7 @@ import { registerMontaLeva } from './games/montaleva/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { openFriendLink, registerSocial } from './social/register';
+import { openSquadLink, registerParty } from './party/register';
 import { registerHome } from './home/register';
 import { registerPass } from './pass/register';
 import { registerMirror } from './mirror/register';
@@ -115,6 +116,7 @@ async function boot(): Promise<void> {
   wireGlue();
   registerSocial();
   registerHome();
+  registerParty();
   registerCinema();
   if (import.meta.env.DEV && location.search.includes('hubdemo')) import('../scripts/dev/hub-demo').then((m) => m.registerHubDemo());
   if (location.search.includes('debug')) (window as any).__bloop = { game, ui, listGames, listPanels, launchGame, closeHost, save, bus };
@@ -171,8 +173,8 @@ async function boot(): Promise<void> {
     document.querySelector('.ob-root')?.remove();
   }
   // link/QR de amigo (?amigo=<@>) — abre Amigos com o @ preenchido
-  openFriendLink(location.href);
-  if (isNative) App.addListener('appUrlOpen', (e) => void openFriendLink(e.url));
+  openFriendLink(location.href) || openSquadLink(location.href);
+  if (isNative) App.addListener('appUrlOpen', (e) => void (openFriendLink(e.url) || openSquadLink(e.url)));
   initAds();
   initBilling();
   registerPass();

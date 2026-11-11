@@ -50,12 +50,16 @@ export interface Card {
   mess: number;
   /** não aparecer na busca de @ */
   hide?: boolean;
+  /** aceitar convites (festa/casa/jogo/grupo) de: amigos (padrão) ou ninguém */
+  inv?: 'friends' | 'nobody';
 }
-export type InviteKind = 'party' | 'house' | 'game';
+export type InviteKind = 'party' | 'house' | 'game' | 'squad';
 export interface Invite {
   from: string;
   kind: InviteKind;
   game?: string;
+  /** grupo (squad) do convite */
+  room?: string;
   at: number;
 }
 /** Perfil público resumido (cópia do prof:<id> do KV). */
@@ -299,17 +303,65 @@ export class FriendsHub extends DurableObject<Env> {
     const now = Date.now();
     return ((await this.ctx.storage.get<Invite[]>('i:' + id)) ?? []).filter((x) => now - x.at < INVITE_TTL);
   }
-  async invite(from: string, to: string, kind: InviteKind, game?: string): Promise<'sent' | 'not_friend' | 'wait'> {
+  async invite(from: string, to: string, kind: InviteKind, game?: string, room?: string): Promise<'sent' | 'not_friend' | 'wait' | 'off'> {
     const a = await this.rec(from);
     if (!a.friends.includes(to)) return 'not_friend';
     const b = await this.rec(to);
     if (b.blocked.includes(from) || !b.friends.includes(from)) return 'not_friend';
+    if ((await this.card(to)).inv === 'nobody') return 'off';
     const list = await this.invitesOf(to);
-    const prev = list.find((x) => x.from === from);
+    const prev = list.find((x) => x.from === from && x.kind === kind);
     if (prev && Date.now() - prev.at < INVITE_GAP) return 'wait';
-    const inv: Invite = { from, kind, ...(kind === 'game' && game ? { game } : {}), at: Date.now() };
-    await this.ctx.storage.put('i:' + to, [...list.filter((x) => x.from !== from), inv].slice(-20));
+    const inv: Invite = { from, kind, ...(kind === 'game' && game ? { game } : {}), ...(kind === 'squad' && room ? { room } : {}), at: Date.now() };
+    await this.ctx.storage.put('i:' + to, [...list.filter((x) => !(x.from === from && x.kind === kind)), inv].slice(-20));
+    this.ping(to);
     return 'sent';
+  }
+  async setInvitePref(id: string, inv: 'friends' | 'nobody'): Promise<void> {
+    await this.ctx.storage.put('s:' + id, { ...(await this.card(id)), inv });
+  }
+  /** `id` bloqueou alguém da lista, ou alguém da lista bloqueou `id`? */
+  async anyBlocked(id: string, others: string[]): Promise<boolean> {
+    const me = await this.rec(id);
+    if (others.some((o) => me.blocked.includes(o))) return true;
+    const recs = await this.ctx.storage.get<FriendRec>(others.slice(0, 16).map((o) => 'f:' + o));
+    return [...recs.values()].some((r) => r?.blocked?.includes(id));
+  }
+
+  /* ---------- tempo real: WebSocket /api/friends/live (hibernação; um "toque" quando algo muda) ---------- */
+
+  /** Avisa as conexões abertas de `id` para buscar /api/friends agora. */
+  private ping(id: string, what = 'friends'): void {
+    for (const ws of this.ctx.getWebSockets(id)) {
+      try {
+        ws.send(JSON.stringify({ t: 'ping', what }));
+      } catch {
+        /* */
+      }
+    }
+  }
+  async fetch(req: Request): Promise<Response> {
+    const id = new URL(req.url).searchParams.get('id') ?? '';
+    if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket' || !PLAYER_ID_RE.test(id)) return json({ error: 'expected_websocket' }, 426);
+    const wasOn = Date.now() - Math.max(this.seenMem.get(id) ?? 0, (await this.card(id)).seen) < ONLINE_MS;
+    // no máx. 3 conexões por jogador (abas/aparelhos)
+    const old = this.ctx.getWebSockets(id);
+    for (const ws of old.slice(0, Math.max(0, old.length - 2))) ws.close(1000, 'replaced');
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1], [id]);
+    await this.touch(id);
+    // amigos com o app aberto ficam sabendo que você entrou
+    if (!wasOn) for (const f of (await this.rec(id)).friends) this.ping(f, 'online');
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+  async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    if (data === 'hb' || (typeof data === 'string' && data.includes('"hb"'))) {
+      const id = this.ctx.getTags(ws)[0];
+      if (id) await this.touch(id);
+    }
+  }
+  async webSocketClose(): Promise<void> {
+    /* nada: "online" expira sozinho (ONLINE_MS) */
   }
   async clearInvite(id: string, from: string): Promise<void> {
     const list = await this.invitesOf(id);
@@ -355,10 +407,11 @@ export class FriendsHub extends DurableObject<Env> {
 
   /* ---------- amizades ---------- */
 
-  async list(id: string): Promise<{ friends: string[]; inbox: { from: string; at: number }[]; outbox: string[]; blocked: string[]; invites: Invite[]; hidden: boolean }> {
+  async list(id: string): Promise<{ friends: string[]; inbox: { from: string; at: number }[]; outbox: string[]; blocked: string[]; invites: Invite[]; hidden: boolean; inv: 'friends' | 'nobody' }> {
     const r = await this.rec(id);
     const inv = (await this.invitesOf(id)).filter((x) => r.friends.includes(x.from));
-    return { friends: r.friends, inbox: r.inbox, outbox: r.outbox, blocked: r.blocked, invites: inv, hidden: !!(await this.card(id)).hide };
+    const c = await this.card(id);
+    return { friends: r.friends, inbox: r.inbox, outbox: r.outbox, blocked: r.blocked, invites: inv, hidden: !!c.hide, inv: c.inv ?? 'friends' };
   }
 
   async areFriends(a: string, b: string): Promise<boolean> {
@@ -386,6 +439,7 @@ export class FriendsHub extends DurableObject<Env> {
     b.inbox = [...b.inbox.filter((x) => x.from !== from), { from, at: Date.now() }].slice(-INBOX_MAX);
     await this.put(from, a);
     await this.put(to, b);
+    this.ping(to);
     return 'sent';
   }
 
@@ -406,6 +460,7 @@ export class FriendsHub extends DurableObject<Env> {
     }
     await this.put(id, me);
     await this.put(from, other);
+    if (accept) this.ping(from);
     return true;
   }
 
@@ -520,9 +575,10 @@ export async function friendsGet(req: Request, env: Env): Promise<Response> {
     friends,
     requests: from.map((f, i) => ({ from: f, at: l.inbox[i].at })),
     sent: sent.map((f) => ({ handle: f.handle, name: f.name, skin: f.skin, ...(f.avatar ? { avatar: f.avatar } : {}) })),
-    invites: l.invites.filter((x) => byId.has(x.from)).map((x) => ({ from: byId.get(x.from), kind: x.kind, ...(x.game ? { game: x.game } : {}), at: x.at })),
+    invites: l.invites.filter((x) => byId.has(x.from)).map((x) => ({ from: byId.get(x.from), kind: x.kind, ...(x.game ? { game: x.game } : {}), ...(x.room ? { room: x.room } : {}), at: x.at })),
     blocked: l.blocked,
     hidden: l.hidden,
+    invitesFrom: l.inv,
   });
 }
 
@@ -566,11 +622,20 @@ export async function friendsInviteClear(req: Request, env: Env): Promise<Respon
   return json({ ok: true });
 }
 
-/** POST /api/friends/visibility { id, hidden } — aparecer (ou não) na busca de @. */
+/** POST /api/friends/visibility (ou /prefs) { id, hidden?, invites?: 'friends'|'nobody' } — busca de @ e quem pode convidar. */
 export async function friendsVisibility(req: Request, env: Env): Promise<Response> {
   const b = await readJson(req);
-  await hub(env).setHidden(requireId(b.id), !!b.hidden);
-  return json({ ok: true, hidden: !!b.hidden });
+  const id = requireId(b.id);
+  if (b.hidden !== undefined) await hub(env).setHidden(id, !!b.hidden);
+  if (b.invites === 'friends' || b.invites === 'nobody') await hub(env).setInvitePref(id, b.invites);
+  return json({ ok: true });
+}
+
+/** GET /api/friends/live?id= (WebSocket): recebe {t:'ping'} quando chega pedido/convite (o app então lê /api/friends). */
+export async function friendsLive(req: Request, env: Env): Promise<Response> {
+  if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'expected_websocket', message: 'Use WebSocket' }, 426);
+  requireId(new URL(req.url).searchParams.get('id'));
+  return hub(env).fetch(req);
 }
 
 /** POST /api/friends/respond { id, from, accept } */

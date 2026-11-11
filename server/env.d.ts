@@ -18,6 +18,8 @@ interface Env {
   PARTY: DurableObjectNamespace<import('./party').PartyRoom>;
   /** Amizades + cartão (online/@nome/bagunça) — instância única 'hub'. */
   FRIENDS: DurableObjectNamespace<import('./friends').FriendsHub>;
+  /** Grupo (party de até 4) — uma instância por grupo (docs/PARTY.md). */
+  SQUAD: DurableObjectNamespace<import('./squad').SquadRoom>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
   /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */

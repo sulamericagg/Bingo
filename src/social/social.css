@@ -500,3 +500,4 @@
 .fr-qr canvas { border-radius: 14px; background: #fff; max-width: 100%; }
 .fr-qr b { font-size: 20px; }
 .fr-qr-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.fr-sel { border: 0; border-radius: 10px; padding: 5px 8px; font: 600 14px var(--font, 'Fredoka', system-ui, sans-serif); background: #fff; color: #1a0b3d; }

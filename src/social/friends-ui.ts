@@ -43,6 +43,7 @@ export function inviteText(inv: FriendInvite): string {
   const h = inv.from.handle || inv.from.name;
   if (inv.kind === 'party') return t('fr.inv.party', '@{h} te chamou para uma festa na casa!', { h });
   if (inv.kind === 'house') return t('fr.inv.house', '@{h} te chamou para visitar a casa!', { h });
+  if (inv.kind === 'squad') return t('fr.inv.squad', '@{h} te chamou para o grupo!', { h });
   return t('fr.inv.game', '@{h} te chamou para jogar {g}!', { h, g: gameLabel(inv.game) });
 }
 
@@ -50,7 +51,10 @@ export function inviteText(inv: FriendInvite): string {
 export async function acceptInvite(inv: FriendInvite, close?: () => void): Promise<void> {
   void homeApi.clearInvite?.(inv.from.id);
   close?.();
-  if (inv.kind === 'party') await openHomeAt({ visit: inv.from.id, party: inv.from.id });
+  if (inv.kind === 'squad') {
+    const sq = await import('../party/squad');
+    if (!inv.room || !(await sq.joinSquad(inv.room))) toast(t('sq.gone', 'Esse grupo não existe mais.'), 'warning');
+  } else if (inv.kind === 'party') await openHomeAt({ visit: inv.from.id, party: inv.from.id });
   else if (inv.kind === 'house') await openHomeAt({ visit: inv.from.id });
   else if (!(inv.game && (await launchById(inv.game)))) toast(t('fr.inv.nogame', 'Esse jogo não está neste aparelho.'), 'warning');
 }
@@ -347,6 +351,23 @@ export function renderFriendsTab(ctx: FriendsTab): void {
       };
       mine.appendChild(row);
     }
+    if (homeApi.invitesFrom) {
+      // segurança: quem pode te convidar (festa, casa, jogo, grupo)
+      const row = document.createElement('label');
+      row.className = 'fr-switch';
+      row.innerHTML = `<span></span><select class="fr-sel"></select>`;
+      (row.firstElementChild as HTMLElement).textContent = t('fr.invfrom', 'Aceitar convites de');
+      const sel = row.querySelector('select')!;
+      for (const [v, l] of [['friends', t('fr.invfrom.friends', 'Amigos')], ['nobody', t('fr.invfrom.nobody', 'Ninguém')]] as const) sel.add(new Option(l, v));
+      sel.value = homeApi.invitesFrom();
+      sel.onchange = async () => {
+        if (!(await homeApi.setInvitesFrom!(sel.value as 'friends' | 'nobody'))) {
+          sel.value = homeApi.invitesFrom!();
+          toast(t('friends.offline', 'Sem conexão. Tente de novo.'), 'refresh');
+        }
+      };
+      mine.appendChild(row);
+    }
   };
   renderMine();
 
@@ -466,6 +487,7 @@ export function renderFriendsTab(ctx: FriendsTab): void {
       return r === 'sent';
     };
     const items: Parameters<typeof popMenu>[2] = [
+      { label: t('fr.inv.o.squad', 'Chamar para o grupo'), icon: 'user', run: () => void import('../party/panel').then((p) => p.inviteFriendToSquad(f.id, f.handle)) },
       { label: t('fr.inv.o.party', 'Festa na minha casa'), icon: 'party', run: async () => {
         if (await send('party')) {
           ctx.close();

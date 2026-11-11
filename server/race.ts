@@ -379,9 +379,10 @@ function weightedSkinIndex(r: () => number): number {
 export async function raceJoin(req: Request, env: Env): Promise<Response> {
   if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'expected_websocket', message: 'Use WebSocket' }, 426);
   if (!env.RACE) return json({ error: 'unavailable' }, 503);
-  const lobby = env.RACE.get(env.RACE.idFromName('lobby'));
-  const room = await lobby.assign();
   const url = new URL(req.url);
+  // grupo (docs/PARTY.md): todos do grupo caem na mesma sala; o resto completa com bots
+  const party = url.searchParams.get('party') ?? '';
+  const room = /^[a-z0-9-]{4,48}$/.test(party) ? 'room-party-' + party : await env.RACE.get(env.RACE.idFromName('lobby')).assign();
   url.searchParams.set('room', room);
   return env.RACE.get(env.RACE.idFromName(room)).fetch(new Request(url.toString(), req));
 }

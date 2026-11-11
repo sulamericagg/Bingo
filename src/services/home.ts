@@ -42,11 +42,12 @@ interface Cache {
   requests: FriendRequest[];
   invites: FriendInvite[];
   hidden: boolean;
+  invitesFrom: 'friends' | 'nobody';
   migrated: boolean;
 }
 
 function load(): Cache {
-  const d: Cache = { handle: null, home: null, pendingDesign: null, friends: [], requests: [], invites: [], hidden: false, migrated: false };
+  const d: Cache = { handle: null, home: null, pendingDesign: null, friends: [], requests: [], invites: [], hidden: false, invitesFrom: 'friends', migrated: false };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (o && typeof o === 'object') return { ...d, ...o };
@@ -191,12 +192,13 @@ function fetchFriends(): Promise<boolean> {
   const p = (async () => {
     const id = await myId();
     if (!id) return false;
-    const r = await req<{ friends: FriendInfo[]; requests: FriendRequest[]; invites?: FriendInvite[]; hidden?: boolean }>('GET', '/friends?id=' + id);
+    const r = await req<{ friends: FriendInfo[]; requests: FriendRequest[]; invites?: FriendInvite[]; hidden?: boolean; invitesFrom?: 'friends' | 'nobody' }>('GET', '/friends?id=' + id);
     if (!r?.ok) return false;
     cache.friends = r.data.friends ?? [];
     cache.requests = r.data.requests ?? [];
     cache.invites = r.data.invites ?? [];
     cache.hidden = !!r.data.hidden;
+    cache.invitesFrom = r.data.invitesFrom === 'nobody' ? 'nobody' : 'friends';
     persist();
     await migrateLocalFriends(id);
     syncSocial();
@@ -319,6 +321,15 @@ async function setDiscoverable(on: boolean): Promise<boolean> {
   const r = id ? await req<{ ok: boolean }>('POST', '/friends/visibility', { id, hidden: !on }, true) : null;
   if (!r?.ok) return false;
   cache.hidden = !on;
+  persist();
+  return true;
+}
+
+async function setInvitesFrom(v: 'friends' | 'nobody'): Promise<boolean> {
+  const id = await myId();
+  const r = id ? await req<{ ok: boolean }>('POST', '/friends/prefs', { id, invites: v }, true) : null;
+  if (!r?.ok) return false;
+  cache.invitesFrom = v;
   persist();
   return true;
 }
@@ -666,6 +677,8 @@ export const homeApi: HomeApi = {
   clearInvite,
   discoverable: () => !cache.hidden,
   setDiscoverable,
+  invitesFrom: () => cache.invitesFrom ?? 'friends',
+  setInvitesFrom,
   report,
 };
 export default homeApi;
