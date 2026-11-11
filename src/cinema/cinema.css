@@ -177,3 +177,23 @@
   .cin-tl{max-height:none}
 }
 @media (max-width:400px){.cin-exl{display:none}}
+
+/* ---------- Gravar com o rosto ---------- */
+.fc-root{position:fixed;inset:0;z-index:8600;display:flex;flex-direction:column;background:#1b0a40;color:#fff;font:600 14px/1.25 var(--font,'Fredoka',system-ui,sans-serif);padding:var(--edge-t,env(safe-area-inset-top,0px)) 0 var(--edge-b,env(safe-area-inset-bottom,0px));user-select:none;-webkit-user-select:none}
+.fc-root button{font:inherit;color:inherit;cursor:pointer}
+.fc-top{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:16px}
+.fc-left{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12.5px}
+.fc-stage{position:relative;flex:1;min-height:0;margin:0 8px;border-radius:20px;overflow:hidden}
+.fc-cv{display:block;width:100%;height:100%}
+.fc-video{position:absolute;right:10px;bottom:10px;width:96px;height:72px;object-fit:cover;border-radius:12px;transform:scaleX(-1);background:#000;opacity:.9;box-shadow:0 0 0 2px #fff}
+.fc-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:800;text-shadow:0 6px 0 rgba(0,0,0,.3);pointer-events:none}
+.fc-status{position:absolute;left:10px;right:116px;bottom:12px;padding:6px 10px;border-radius:12px;background:rgba(20,6,50,.6);font-size:13px}
+.fc-status:empty{display:none}
+.fc-ctrl{padding:10px 12px 14px;display:flex;flex-direction:column;gap:6px}
+.fc-ctrl .cin-hint.c{text-align:center}
+.fc-recbtn{min-width:160px;min-height:52px;font-size:18px}
+.fc-trim{display:grid;grid-template-columns:76px 1fr 56px;align-items:center;gap:8px}
+.fc-trim input{width:100%;accent-color:#ff5cc8}
+.fc-consent{text-align:center}
+.fc-consent ul{text-align:left;padding-left:4px;list-style:none;display:flex;flex-direction:column;gap:6px;font-weight:500}
+.fc-big{font-size:44px}

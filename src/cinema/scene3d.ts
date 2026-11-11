@@ -375,6 +375,12 @@ class Actor3D {
       b.position.z = -R * 0.6 * rig.lie;
     }
     b.scale.set(rig.sx, rig.sy, rig.sx);
+    if (a.cap) {
+      // cabeça capturada (o Bloop é cabeça e corpo): vira, inclina e deita
+      b.rotation.y += a.cap.yaw * 0.9 * flip;
+      b.rotation.x += a.cap.pit * 0.6;
+      b.rotation.z += -a.cap.rol * 0.8 * flip;
+    }
     if (this.cre) {
       const t = a.at;
       if (t - this.cre.last > 1 / 15 || this.cre.last < 0) {
@@ -419,7 +425,8 @@ class Actor3D {
     const talkQ = Math.round(a.talk * 8);
     const blinkQ = Math.round(a.blink * 4);
     const animated = a.expr === 'crying' || a.expr === 'laughing' || a.expr === 'sleepy' || a.expr === 'love' || a.expr === 'dizzy' || a.expr === 'scared' || a.expr === 'sad' || a.expr === 'confused' || a.expr === 'wink';
-    const key = `${a.expr}|${talkQ}|${blinkQ}|${animated ? Math.floor(a.at * 15) : 0}|${Math.round(rig.lookX * 4)}|${Math.round(rig.lookY * 4)}`;
+    const cq = a.cap ? Object.values(a.cap).map((v) => Math.round(v * 12)).join(',') + (a.capMouth ? 'm' : '') : '';
+    const key = `${a.expr}|${talkQ}|${blinkQ}|${animated || a.cap ? Math.floor(a.at * 15) : 0}|${Math.round(rig.lookX * 4)}|${Math.round(rig.lookY * 4)}|${cq}`;
     if (key !== this.faceKey) {
       this.faceKey = key;
       const x = this.faceCv.getContext('2d')!;
@@ -428,7 +435,7 @@ class Actor3D {
       x.clearRect(0, 0, FP, FP);
       const Rpx = FP / 2.6;
       x.translate(FP / 2, FP / 2);
-      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY, this.cast.makeup);
+      drawFaceTex(x, this.cast.avatar!, Rpx, a.expr, a.talk, a.blink, a.at, rig.lookX, rig.lookY, this.cast.makeup, a.cap, !!a.capMouth);
       this.faceTex.needsUpdate = true;
     }
   }

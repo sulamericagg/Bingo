@@ -27,7 +27,7 @@ export function isPro(): boolean {
 export const maxSeconds = (): number => (isPro() ? PRO_MAX_SEC : FREE_MAX_SEC);
 export const maxProjects = (): number => (isPro() ? Infinity : FREE_MAX_PROJECTS);
 
-export type PaywallReason = '3d' | 'time' | 'projects' | 'item' | 'watermark';
+export type PaywallReason = '3d' | 'time' | 'projects' | 'item' | 'watermark' | 'face';
 
 const REASON: Record<PaywallReason, () => string> = {
   '3d': () => t('cin.pw.3d', 'O modo 3D é do Cinema Pro.'),
@@ -35,6 +35,7 @@ const REASON: Record<PaywallReason, () => string> = {
   projects: () => t('cin.pw.projects', 'Você já tem 3 filmes. No Pro, filmes sem limite!'),
   item: () => t('cin.pw.item', 'Esse item é do Cinema Pro.'),
   watermark: () => t('cin.pw.watermark', 'Tirar a marca d’água é do Cinema Pro.'),
+  face: () => t('cin.pw.face', 'Seu tempo de rosto de hoje acabou (o mesmo do Bloop Espelho). No Pro, grave com o rosto sem limite!'),
 };
 
 /** Aviso amigável do Pro. Não vende nada novo: aponta para o Clube e os Passes que já existem. */

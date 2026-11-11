@@ -95,7 +95,36 @@ export interface Line {
   style: BubbleStyle;
   /** id do clipe de voz gravado (IndexedDB 'clips') */
   audio?: string;
+  /** "Gravar com o rosto": atuação facial gravada junto com a voz (mesmo relógio) */
+  face?: FaceTake;
+  /** corte [início, fim] em segundos DA GRAVAÇÃO (vale para a voz e o rosto) */
+  cut?: [number, number];
 }
+
+/* ---------------------------- captura de rosto ---------------------------- */
+/**
+ * Canais da captura (ordem fixa = ordem dos bytes de cada quadro):
+ *  bl/br piscar esq./dir. · bwl/bwr sobrancelha esq./dir. (-1..1) · bwi meio da sobrancelha ·
+ *  op boca aberta · A/O/E vogais · sm sorriso · pk bico · yaw/pit/rol cabeça (rad, ±0,6) ·
+ *  lx/ly olhar (-1..1). "Esquerda" = lado esquerdo da TELA (como no Espelho).
+ */
+export const FACE_CH = ['bl', 'br', 'bwl', 'bwr', 'bwi', 'op', 'A', 'O', 'E', 'sm', 'pk', 'yaw', 'pit', 'rol', 'lx', 'ly'] as const;
+export type FaceCh = (typeof FACE_CH)[number];
+export type FaceFrame = Record<FaceCh, number>;
+/** faixa de cada canal: 0 = 0..1, 1 = -1..1, 2 = -0,6..0,6 rad */
+export const FACE_RANGE: Record<FaceCh, 0 | 1 | 2> = { bl: 0, br: 0, bwl: 1, bwr: 1, bwi: 0, op: 0, A: 0, O: 0, E: 0, sm: 0, pk: 0, yaw: 2, pit: 2, rol: 2, lx: 1, ly: 1 };
+
+export interface FaceTake {
+  /** quadros por segundo (15..30) */
+  hz: number;
+  /** número de quadros */
+  n: number;
+  /** base64 de n × FACE_CH.length bytes (0..255), quadro a quadro */
+  q: string;
+  /** 'mouth' = usa só boca e cabeça; olhos/sobrancelhas seguem a expressão das chaves */
+  only?: 'mouth';
+}
+export const MAX_FACE_SEC = 15;
 
 export interface FxEvent {
   id: string;
@@ -306,7 +335,16 @@ export function parseProject(raw: unknown): Project | null {
           cast: str(a.cast, '', 40),
           keys: arr<ActorKey>(a.keys).map((k) => ({ ...defaultKey(8), ...k, t: num(k.t, 0, 0, 60), x: num(k.x, 8, -4, 20), z: num(k.z, 0, -4, 4), y: num(k.y, 0, -2, 8) })),
         })),
-        lines: arr<Line>(h.lines).map((l) => ({ ...l, id: str(l.id, uid('ln'), 40), t: num(l.t, 0, 0, 60), dur: num(l.dur, 2, 0.3, 30), text: str(l.text, '', 140), style: l.style ?? 'speech' })),
+        lines: arr<Line>(h.lines).map((l) => ({
+          ...l,
+          id: str(l.id, uid('ln'), 40),
+          t: num(l.t, 0, 0, 60),
+          dur: num(l.dur, 2, 0.3, 30),
+          text: str(l.text, '', 140),
+          style: l.style ?? 'speech',
+          face: parseFaceTake(l.face),
+          cut: Array.isArray(l.cut) && l.cut.length === 2 ? [num(l.cut[0], 0, 0, 60), num(l.cut[1], 60, 0, 60)] : undefined,
+        })),
         fx: arr<FxEvent>(h.fx).map((f) => ({ ...f, id: str(f.id, uid('fx'), 40), t: num(f.t, 0, 0, 60), dur: num(f.dur, 1, 0.1, 60) })),
         sfx: arr<SfxEvent>(h.sfx).map((f) => ({ ...f, id: str(f.id, uid('sf'), 40), t: num(f.t, 0, 0, 60), vol: num(f.vol, 1, 0, 1) })),
       };
@@ -317,4 +355,15 @@ export function parseProject(raw: unknown): Project | null {
   p.scenes = p.scenes.filter((s) => s.shots.length);
   if (!p.scenes.length) p.scenes = [newScene()];
   return p;
+}
+
+export function parseFaceTake(raw: unknown): FaceTake | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const hz = num(o.hz, 20, 10, 30);
+  const q = typeof o.q === 'string' && /^[A-Za-z0-9+/=]*$/.test(o.q) ? o.q : '';
+  const maxN = Math.ceil(hz * MAX_FACE_SEC) + 2;
+  const n = Math.min(maxN, Math.floor(num(o.n, 0, 0, maxN)), Math.floor((q.length * 3) / 4 / FACE_CH.length));
+  if (n < 2) return undefined;
+  return { hz, n, q, only: o.only === 'mouth' ? 'mouth' : undefined };
 }

@@ -6,9 +6,10 @@
  * ============================================================ */
 import { t } from '../i18n';
 import { BG_H, BG_W, BG_X0, BG_Y0, drawBg } from './bg2d';
-import { FLOOR_Y, flatShots, STAGE_H, STAGE_W, type ActorKey, type CamKey, type CastMember, type Ease, type ExprId, type PoseId, type Project, type Shot, type ShotRef, type VoiceFxId } from './format';
+import { FLOOR_Y, flatShots, STAGE_H, STAGE_W, type ActorKey, type CamKey, type CastMember, type Ease, type FaceFrame, type ExprId, type PoseId, type Project, type Shot, type ShotRef, type VoiceFxId } from './format';
 import { drawBubbles, drawFx, drawWatermark, shakeOffset, type ActorScreen, type BubbleIn } from './fx2d';
 import { blendRig, blinkAt, drawActor2D, restRig, type Rig } from './rig2d';
+import { sampleTake } from './facetake';
 
 /* ---------------------------- easing ---------------------------- */
 export function ease(e: Ease, u: number): number {
@@ -69,6 +70,23 @@ export interface ActorEval {
   at: number;
   moving: boolean;
   seed: number;
+  /** captura de rosto tocando agora (sobrepõe só os canais do rosto) */
+  cap?: FaceFrame | null;
+  /** captura só da boca + cabeça (olhos seguem a expressão) */
+  capMouth?: boolean;
+}
+
+/** Captura de rosto de `castId` no tempo local `tl` (fala com `face`). */
+function faceAt(shot: Shot, castId: string, tl: number, cast: CastMember): { f: FaceFrame; mouth: boolean } | null {
+  for (const l of shot.lines) {
+    if (!l.face || l.cast !== castId || tl < l.t || tl > l.t + l.dur) continue;
+    const rate = VOICE_RATE[cast.voice] ?? 1;
+    const s = (tl - l.t) * rate + (l.cut?.[0] ?? 0);
+    if (l.cut && s > l.cut[1]) return null;
+    const f = sampleTake(l.face, s);
+    return f ? { f, mouth: l.face.only === 'mouth' } : null;
+  }
+  return null;
 }
 
 const POSE_BLEND = 0.35;
@@ -87,7 +105,9 @@ function talkLevel(shot: Shot, castId: string, tl: number, cast: CastMember): nu
       const e = envs.get(l.audio);
       if (e) {
         const rate = VOICE_RATE[cast.voice] ?? 1;
-        const i = Math.floor(u * rate * 50);
+        const src = u * rate + (l.cut?.[0] ?? 0);
+        if (l.cut && src > l.cut[1]) return 0;
+        const i = Math.floor(src * 50);
         if (i >= e.env.length) return 0;
         return Math.min(1, e.env[i] * 1.6);
       }
@@ -152,7 +172,10 @@ export function evalActors(p: Project, ref: ShotRef, tl: number): ActorEval[] {
       poseW = 1 - (n.t - tl) / 0.18;
     }
     const seed = idx * 7 + cast.id.length * 3 + (cast.id.charCodeAt(cast.id.length - 1) || 0);
+    const fc = cast.kind === 'avatar' ? faceAt(shot, cast.id, tl, cast) : null;
     out.push({
+      cap: fc?.f ?? null,
+      capMouth: fc?.mouth,
       cast,
       x,
       y,
@@ -444,7 +467,7 @@ export class Renderer {
       if (visible) {
         ctx.save();
         ctx.translate(sx, sy);
-        head = drawActor2D(ctx, a.cast, hpx, { rig: rigTmp, expr: a.expr, talk: a.talk, t: a.at + a.seed * 0.13, face: a.face, blink: a.blink });
+        head = drawActor2D(ctx, a.cast, hpx, { rig: rigTmp, expr: a.expr, talk: a.talk, t: a.at + a.seed * 0.13, face: a.face, blink: a.blink, cap: a.cap, capMouth: a.capMouth });
         ctx.restore();
       }
       screens.push({ cast: a.cast.id, x: sx, y: sy, headY: sy + head.headY, mouthY: sy + head.mouthY, ppu, visible });
