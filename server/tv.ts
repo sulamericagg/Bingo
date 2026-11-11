@@ -13,10 +13,21 @@
  *   votes   "Gostei": 1 por conta por filme
  *   vday    moedas de TV por autor/dia (teto)
  *   sched   grade (start ms, filme, duração)
+ *   opl     filmes oficiais: última vez que passaram (rodízio)
+ *
+ * Filmes oficiais do "Estúdio Bloop" (shared/tv-official.ts, gerado com o app): ficam SEMPRE no ar,
+ * intercalados com os das crianças (nunca dois filmes de criança seguidos; a fatia das crianças cresce
+ * com a quantidade aprovada, até metade da grade). Não precisam de seed: vêm no código do Worker, e o app
+ * desenha a partir do mesmo catálogo embutido (nada é baixado). Votos neles contam, mas não dão moedas.
  */
 import { DurableObject } from 'cloudflare:workers';
 import { TV, type TvNow, type TvSlot } from '../shared/ugc';
 import { brDay } from './admin-hub';
+import { TV_OFFICIAL } from '../shared/tv-official';
+
+export const OFFICIAL_AUTHOR = 'Estúdio Bloop';
+const OFFICIAL = new Map(TV_OFFICIAL.map(([id, title, dur]) => [id, { id, title, dur }]));
+export const isOfficial = (id: string): boolean => OFFICIAL.has(id);
 
 type FilmRow = {
   id: string;
@@ -38,6 +49,7 @@ export class TvChannel extends DurableObject<Env> {
     sql.exec(`CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, pid TEXT NOT NULL, t INTEGER NOT NULL, trusted INTEGER NOT NULL, PRIMARY KEY (id, pid)) WITHOUT ROWID`);
     sql.exec(`CREATE TABLE IF NOT EXISTS vday (pid TEXT NOT NULL, day TEXT NOT NULL, coins INTEGER NOT NULL, PRIMARY KEY (pid, day)) WITHOUT ROWID`);
     sql.exec(`CREATE TABLE IF NOT EXISTS sched (start INTEGER PRIMARY KEY, id TEXT NOT NULL, dur INTEGER NOT NULL)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS opl (id TEXT PRIMARY KEY, last INTEGER NOT NULL) WITHOUT ROWID`);
   }
 
   /* ---------------- filmes ---------------- */
@@ -68,7 +80,31 @@ export class TvChannel extends DurableObject<Env> {
 
   /* ---------------- grade ---------------- */
 
-  private pick(recent: string[]): FilmRow | null {
+  /** Próximo da grade: filme de criança ou oficial (intercalados). */
+  private pick(recent: string[]): { id: string; dur: number } | null {
+    const kids = this.ctx.storage.sql.exec<{ c: number }>('SELECT COUNT(*) AS c FROM films').one().c;
+    const last = recent[recent.length - 1];
+    const lastKid = !!last && !OFFICIAL.has(last);
+    // fatia das crianças: 15% + 3,5% por filme aprovado, até 50%; nunca duas seguidas (se houver oficiais)
+    const share = kids ? Math.min(0.5, 0.15 + kids * 0.035) : 0;
+    if (kids && (!OFFICIAL.size || (!lastKid && Math.random() < share * 2))) {
+      const k = this.pickKid(recent);
+      if (k) return k;
+    }
+    return this.pickOfficial(recent);
+  }
+
+  /** Oficial: rodízio pelos que passaram há mais tempo (sorteio entre os 12 mais antigos). */
+  private pickOfficial(recent: string[]): { id: string; dur: number } | null {
+    if (!OFFICIAL.size) return null;
+    const lastAt = new Map(this.ctx.storage.sql.exec<{ id: string; last: number }>('SELECT id, last FROM opl').toArray().map((r) => [r.id, r.last]));
+    const rec = new Set(recent);
+    const pool = [...OFFICIAL.values()].filter((f) => !rec.has(f.id)).sort((a, b) => (lastAt.get(a.id) ?? 0) - (lastAt.get(b.id) ?? 0));
+    const f = pool.length ? pool[Math.floor(Math.random() * Math.min(12, pool.length))] : [...OFFICIAL.values()][0];
+    return { id: f.id, dur: f.dur };
+  }
+
+  private pickKid(recent: string[]): FilmRow | null {
     const films = this.ctx.storage.sql.exec<FilmRow>('SELECT id, author, aname, title, dur, votes, tvotes, approved, plays FROM films').toArray();
     if (!films.length) return null;
     if (films.length === 1) return films[0];
@@ -101,7 +137,8 @@ export class TvChannel extends DurableObject<Env> {
       // canal parado (ninguém assistindo há um tempo): começa daqui a 2 s
       const start = Math.max(tail, now + 2000);
       sql.exec('INSERT INTO sched (start, id, dur) VALUES (?, ?, ?)', start, f.id, f.dur);
-      sql.exec('UPDATE films SET plays = plays + 1 WHERE id = ?', f.id);
+      if (OFFICIAL.has(f.id)) sql.exec('INSERT INTO opl (id, last) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET last = excluded.last', f.id, start);
+      else sql.exec('UPDATE films SET plays = plays + 1 WHERE id = ?', f.id);
     }
   }
 
@@ -115,11 +152,20 @@ export class TvChannel extends DurableObject<Env> {
         now,
         TV.queue + 1,
       )
-      .toArray()
-      .filter((r) => r.title !== null);
-    const slots: TvSlot[] = rows.map((r) => ({ id: r.id, title: r.title!, author: r.aname!, start: r.start, dur: r.dur, votes: r.votes ?? 0 }));
-    const films = sql.exec<{ c: number }>('SELECT COUNT(*) AS c FROM films').one().c;
+      .toArray();
+    const slots: TvSlot[] = [];
+    for (const r of rows) {
+      const o = OFFICIAL.get(r.id);
+      if (o) slots.push({ id: r.id, title: o.title, author: OFFICIAL_AUTHOR, start: r.start, dur: r.dur, votes: this.officialVotes(r.id), official: true });
+      else if (r.title !== null) slots.push({ id: r.id, title: r.title, author: r.aname!, start: r.start, dur: r.dur, votes: r.votes ?? 0 });
+      // (filme oficial que saiu numa versão nova do app/Worker: some da grade sozinho)
+    }
+    const films = sql.exec<{ c: number }>('SELECT COUNT(*) AS c FROM films').one().c + OFFICIAL.size;
     return { now: Date.now(), cur: slots[0] ?? null, next: slots.slice(1), films };
+  }
+
+  private officialVotes(id: string): number {
+    return this.ctx.storage.sql.exec<{ c: number }>('SELECT COUNT(*) AS c FROM votes WHERE id = ?', id).one().c;
   }
 
   /* ---------------- votos ---------------- */
@@ -130,6 +176,11 @@ export class TvChannel extends DurableObject<Env> {
    */
   vote(id: string, pid: string, trusted: boolean): { ok: false; error: 'missing' | 'self' } | { ok: true; votes: number; voted: boolean; grant: { pid: string; coins: number } | null } {
     const sql = this.ctx.storage.sql;
+    if (OFFICIAL.has(id)) {
+      // oficial: o voto conta (o "mais votado" aparece no app), sem moedas
+      sql.exec('INSERT OR IGNORE INTO votes (id, pid, t, trusted) VALUES (?, ?, ?, ?)', id, pid, Date.now(), trusted ? 1 : 0);
+      return { ok: true, votes: this.officialVotes(id), voted: true, grant: null };
+    }
     const f = sql.exec<FilmRow>('SELECT id, author, aname, title, dur, votes, tvotes, approved, plays FROM films WHERE id = ?', id).toArray()[0];
     if (!f) return { ok: false, error: 'missing' };
     if (f.author === pid) return { ok: false, error: 'self' };

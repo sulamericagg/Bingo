@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OUT = path.join(ROOT, 'shared/tv-films.json');
+const IDX = path.join(ROOT, 'shared/tv-official.ts');
 const CHECK = process.argv.includes('--check');
 const tmp = path.join(os.tmpdir(), `tvfilms-${process.pid}.mjs`);
 await build({ entryPoints: [path.join(ROOT, 'src/cinema/tvfilms/index.ts')], bundle: true, format: 'esm', platform: 'node', outfile: tmp, logLevel: 'error' });
@@ -23,6 +24,13 @@ const mod = await import(pathToFileURL(tmp).href);
 fs.rmSync(tmp, { force: true });
 const { films, problems } = mod.buildAll();
 const json = JSON.stringify({ v: mod.versionOf(films), films });
+// índice leve para o servidor (grade ao vivo): id, título, duração (ms), modo
+const idx =
+  '/* GERADO por scripts/tv/gen-films.mjs — não edite. Filmes oficiais do Estúdio Bloop na grade da TV Bloop. */\n' +
+  `export const TV_OFFICIAL_V = ${JSON.stringify(mod.versionOf(films))};\n` +
+  'export const TV_OFFICIAL: readonly (readonly [id: string, title: string, durMs: number, mode: \'2d\' | \'3d\'])[] = [\n' +
+  films.map((f) => `  [${JSON.stringify(f.id)}, ${JSON.stringify(f.title)}, ${Math.round(f.dur * 1000)}, '${f.mode}'],`).join('\n') +
+  '\n];\n';
 const byGenre = {};
 let d2 = 0;
 let d3 = 0;
@@ -37,12 +45,13 @@ console.log(Object.entries(byGenre).map(([g, n]) => `${g}: ${n}`).join(' · '));
 for (const p of problems) console.log('  ! ' + p);
 if (CHECK) {
   const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
-  if (cur !== json) {
+  if (cur !== json || (fs.existsSync(IDX) ? fs.readFileSync(IDX, 'utf8') : '') !== idx) {
     console.error('shared/tv-films.json desatualizado: rode node scripts/tv/gen-films.mjs');
     process.exit(1);
   }
   process.exit(problems.length ? 1 : 0);
 }
 fs.writeFileSync(OUT, json);
-console.log('→ shared/tv-films.json');
+fs.writeFileSync(IDX, idx);
+console.log('→ shared/tv-films.json + shared/tv-official.ts');
 if (problems.length) process.exit(1);

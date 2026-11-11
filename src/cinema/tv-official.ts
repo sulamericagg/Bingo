@@ -114,3 +114,34 @@ export function localSlot(films: OfficialEntry[], now: number, gapMs = 4000): { 
   }
   return { ...cur, next };
 }
+
+/* ---------------------------- Remixar (TV → Cinema) ---------------------------- */
+let pendingRemix: string | null = null;
+let remixHandler: ((id: string) => void) | null = null;
+
+/** O Cinema aberto recebe os pedidos de remix (null = fechou). */
+export function onRemix(h: ((id: string) => void) | null): void {
+  remixHandler = h;
+}
+/** Pedido de remix feito com o Cinema fechado (o Cinema pega ao abrir). */
+export function takeRemix(): string | null {
+  const r = pendingRemix;
+  pendingRemix = null;
+  return r;
+}
+/** "Remixar": abre uma cópia do filme oficial no Cinema (abre o Cinema se precisar). */
+export async function requestRemix(id: string): Promise<void> {
+  if (remixHandler) return remixHandler(id);
+  pendingRemix = id;
+  const [{ listGames }, { launchGame }] = await Promise.all([import('../hub/registry'), import('../hub/hub')]);
+  const def = listGames().find((g) => g.id === 'cinema');
+  if (def) await launchGame(def);
+}
+
+/** Cópia do filme oficial pronta para editar (id novo, título "remix"). */
+export async function remixProject(id: string, newId: string): Promise<unknown> {
+  const raw = officialProject(await loadOfficial(), id) as Record<string, unknown> | null;
+  if (!raw) return null;
+  const now = Date.now();
+  return { ...raw, id: newId, title: t('tv.remixOf', '{n} (remix)', { n: String(raw.title ?? '') }).slice(0, 60), created: now, updated: now, template: `tv:${id}` };
+}

@@ -282,7 +282,20 @@
 .tv-acts{display:flex;gap:8px}
 .tv-next{max-width:1100px;width:100%;margin:0 auto}
 .tv-next h4{margin:4px 0 6px}
-.tv-nx{display:flex;flex-direction:column;padding:8px 10px;margin-bottom:6px;border-radius:12px;background:#ffffff14}
+.tv-nx{display:flex;align-items:center;gap:10px;padding:6px 8px;margin-bottom:6px;border-radius:12px;background:#ffffff14}
+.tv-nx>div{display:flex;flex-direction:column;min-width:0}
+.tv-nx b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-nx-th{flex:none;width:96px;height:54px;border-radius:8px;object-fit:cover;background:#2a0b5c}
+.tv-nx-th.kid{display:flex;align-items:center;justify-content:center;font-size:26px;background:linear-gradient(135deg,#2a0b5c,#ff5cc8)}
+.tv-cat-gs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}
+.tv-cat-gs .cin-chip{flex:none}
+.tv-cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:min(60vh,520px);overflow-y:auto}
+.tv-cat-it{display:flex;flex-direction:column;gap:2px;padding:0 0 6px;border:0;border-radius:12px;overflow:hidden;background:#f1e8ff;color:#2a0b5c;text-align:left;font:inherit}
+.tv-cat-it[hidden]{display:none}
+.tv-cat-it img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#2a0b5c}
+.tv-cat-it b{font-size:13px;padding:0 7px;line-height:1.15}
+.tv-cat-it small{font-size:11px;padding:0 7px;opacity:.75}
+@media (orientation:landscape) and (max-height:560px){.tv-cat{max-height:52vh}.tv-root{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,1fr);grid-auto-rows:min-content;column-gap:14px}.tv-top,.tv-foot{grid-column:1/-1}.tv-stage{grid-column:1;grid-row:2/span 2;max-width:none}.tv-info{grid-column:2;grid-row:2}.tv-next{grid-column:2;grid-row:3}.tv-acts{flex-wrap:wrap}}
 .tv-nx small{opacity:.75}
 .tv-foot{opacity:.6;font-size:12px;text-align:center;margin:0}
 .tv-rules{padding:10px 12px;border-radius:12px;background:#fff3c8;color:#5a3a00;font-size:13px}
@@ -475,3 +488,14 @@
   .mm-grid{--ch:clamp(10px,calc((100vh - 170px) / 15 - 2px),20px)}
   .mm-tip{display:none}
 }
+
+/* ---------------- Ditado: falar e virar texto (dictate.ts) ---------------- */
+.kid-say{display:flex;gap:6px;align-items:flex-start}
+.kid-say textarea{flex:1;min-width:0}
+.kid-dict{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:58px;min-height:54px;border:0;border-radius:16px;background:linear-gradient(180deg,#5fd0ff,#2a7de0);color:#fff;box-shadow:0 3px 0 #17508f;overflow:hidden}
+.kid-dict b{font-size:24px;line-height:1;position:relative;z-index:1}
+.kid-dict small{font-size:10.5px;font-weight:800;position:relative;z-index:1;white-space:nowrap}
+.kid-lvl{position:absolute;left:0;right:0;bottom:0;height:calc(var(--l,0) * 100%);background:#ffffff55;transition:height .06s linear}
+.kid-dict.on{background:linear-gradient(180deg,#ff5c5c,#d81e3a);box-shadow:0 3px 0 #8a1d2f;animation:cin-blink 1s infinite}
+.magic-mic{position:relative;overflow:hidden}
+.magic-mic.rec{box-shadow:0 0 0 calc(var(--l,0) * 14px) #ff5c5c55,0 4px 0 #8a1d5f}
