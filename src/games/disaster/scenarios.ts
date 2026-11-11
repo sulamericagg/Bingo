@@ -28,7 +28,9 @@ export type DisasterId =
   | 'avalanche'
   | 'raios'
   | 'acido'
-  | 'meteoro';
+  | 'meteoro'
+  | 'sumidouro'
+  | 'areia';
 
 export type ModId = 'none' | 'noite' | 'vento' | 'rapido' | 'dupla';
 
@@ -79,16 +81,18 @@ export interface DisasterInfo {
 }
 
 export const DISASTERS: Record<DisasterId, DisasterInfo> = {
-  tsunami: { id: 'tsunami', name: () => t('dz.d.tsunami', 'Tsunami'), hint: () => t('dz.h.tsunami', 'Suba bem alto! Não encoste na água.'), color: '#2f8cff' },
-  vulcao: { id: 'vulcao', name: () => t('dz.d.vulcao', 'Vulcão'), hint: () => t('dz.h.vulcao', 'A lava sobe do chão e caem bolas de fogo!'), color: '#ff5a1f' },
-  terremoto: { id: 'terremoto', name: () => t('dz.d.terremoto', 'Terremoto'), hint: () => t('dz.h.terremoto', 'Fuja das sombras: coisas vão cair!'), color: '#b07a43' },
-  tornado: { id: 'tornado', name: () => t('dz.d.tornado', 'Tornado'), hint: () => t('dz.h.tornado', 'Entre numa casa e fique lá dentro!'), color: '#8a94b8' },
-  meteoros: { id: 'meteoros', name: () => t('dz.d.meteoros', 'Chuva de Meteoros'), hint: () => t('dz.h.meteoros', 'Saia dos círculos vermelhos!'), color: '#ff7a2e' },
-  enchente: { id: 'enchente', name: () => t('dz.d.enchente', 'Enchente'), hint: () => t('dz.h.enchente', 'A água vai subir devagar. Procure um lugar alto!'), color: '#3fa0e0' },
-  avalanche: { id: 'avalanche', name: () => t('dz.d.avalanche', 'Avalanche'), hint: () => t('dz.h.avalanche', 'A neve vem da direita. Suba!'), color: '#e6f2ff' },
-  raios: { id: 'raios', name: () => t('dz.d.raios', 'Tempestade de Raios'), hint: () => t('dz.h.raios', 'Saia das colunas brilhantes!'), color: '#ffe14d' },
-  acido: { id: 'acido', name: () => t('dz.d.acido', 'Gosma Verde'), hint: () => t('dz.h.acido', 'A gosma sobe sem parar. Vá para o ponto mais alto!'), color: '#6aff3f' },
+  tsunami: { id: 'tsunami', name: () => t('dz.d.tsunami', 'Tsunami'), hint: () => t('dz.h2.tsunami', 'Ondas cada vez maiores! Suba e troque de lugar entre elas.'), color: '#2f8cff' },
+  vulcao: { id: 'vulcao', name: () => t('dz.d.vulcao', 'Vulcão'), hint: () => t('dz.h2.vulcao', 'A lava desce da direita e bolas de fogo caem. Fuja das sombras!'), color: '#ff5a1f' },
+  terremoto: { id: 'terremoto', name: () => t('dz.d.terremoto', 'Terremoto'), hint: () => t('dz.h2.terremoto', 'O chão vai rachar! Fuja das rachaduras e das sombras.'), color: '#b07a43' },
+  tornado: { id: 'tornado', name: () => t('dz.d.tornado', 'Tornado'), hint: () => t('dz.h2.tornado', 'Abrigue-se numa casa, mas o tornado arranca telhados. Fique longe dele!'), color: '#8a94b8' },
+  meteoros: { id: 'meteoros', name: () => t('dz.d.meteoros', 'Chuva de Meteoros'), hint: () => t('dz.h2.meteoros', 'Não pare! Os meteoros miram onde você vai estar.'), color: '#ff7a2e' },
+  enchente: { id: 'enchente', name: () => t('dz.d.enchente', 'Enchente'), hint: () => t('dz.h2.enchente', 'A água sobe em etapas. Suba aos poucos e nade se precisar!'), color: '#3fa0e0' },
+  avalanche: { id: 'avalanche', name: () => t('dz.d.avalanche', 'Avalanche'), hint: () => t('dz.h2.avalanche', 'Avalanches da direita e bolas de neve rolando. Suba e pule!'), color: '#e6f2ff' },
+  raios: { id: 'raios', name: () => t('dz.d.raios', 'Tempestade de Raios'), hint: () => t('dz.h2.raios', 'Os raios caem no mais alto! Fique baixo, mas fora da água.'), color: '#ffe14d' },
+  acido: { id: 'acido', name: () => t('dz.d.acido', 'Gosma Verde'), hint: () => t('dz.h2.acido', 'A gosma sobe e derrete as torres. Pule de uma para outra!'), color: '#6aff3f' },
   meteoro: { id: 'meteoro', name: () => t('dz.d.meteoro', 'Meteoro Gigante'), hint: () => t('dz.h.meteoro', 'Corra até o bunker antes do impacto!'), color: '#ff3f6a' },
+  sumidouro: { id: 'sumidouro', name: () => t('dz.d.sumidouro', 'Sumidouro'), hint: () => t('dz.h.sumidouro', 'O chão afunda onde aparecem rachaduras. Vá para o chão firme!'), color: '#8a5a33' },
+  areia: { id: 'areia', name: () => t('dz.d.areia', 'Tempestade de Areia'), hint: () => t('dz.h.areia', 'Rajadas e destroços voando! Entre numa casa ou pule os destroços.'), color: '#e0a060' },
 };
 
 export const MOD_NAMES: Record<ModId, () => string> = {
@@ -121,19 +125,19 @@ export function mulberry(seed: number): () => number {
 }
 
 /** desastres que combinam com cada mapa (o primeiro é o "clássico") */
-const FIT: Record<MapId, DisasterId[]> = {
+export const FIT: Record<MapId, DisasterId[]> = {
   vila: ['tsunami', 'terremoto', 'tornado', 'meteoros', 'enchente', 'raios'],
-  praia: ['tsunami', 'enchente', 'raios', 'meteoros', 'acido'],
-  cidade: ['terremoto', 'tornado', 'meteoros', 'acido', 'raios', 'enchente'],
+  praia: ['tsunami', 'enchente', 'raios', 'meteoros', 'acido', 'areia'],
+  cidade: ['terremoto', 'tornado', 'meteoros', 'acido', 'raios', 'enchente', 'sumidouro'],
   floresta: ['raios', 'enchente', 'tornado', 'acido', 'vulcao'],
   ilha: ['vulcao', 'tsunami', 'meteoros', 'raios'],
   montanha: ['avalanche', 'vulcao', 'terremoto', 'raios'],
-  parque: ['tornado', 'meteoros', 'acido', 'terremoto', 'raios'],
+  parque: ['tornado', 'meteoros', 'acido', 'terremoto', 'raios', 'sumidouro'],
   porto: ['tsunami', 'tornado', 'enchente', 'terremoto'],
-  deserto: ['meteoros', 'tornado', 'terremoto', 'acido', 'vulcao'],
+  deserto: ['areia', 'meteoros', 'tornado', 'sumidouro', 'terremoto', 'acido', 'vulcao'],
   estacao: ['meteoros', 'acido', 'terremoto', 'raios'],
   polo: ['avalanche', 'meteoros', 'tsunami', 'terremoto'],
-  fazenda: ['tornado', 'enchente', 'raios', 'terremoto', 'vulcao'],
+  fazenda: ['tornado', 'enchente', 'raios', 'areia', 'terremoto', 'vulcao', 'sumidouro'],
 };
 
 let cache: Scenario[] | null = null;

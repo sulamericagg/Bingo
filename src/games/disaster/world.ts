@@ -14,6 +14,30 @@ export interface Solid {
   h: number;
   kind: SolidKind;
   oneWay: boolean;
+  /** plataforma/copa que cedeu nesta rodada (não colide mais; desenho cai) */
+  gone?: boolean;
+  /** tempo com alguém em cima durante o desastre (s) */
+  stood?: number;
+  /** tremendo antes de cair (s restantes; 0 = firme) */
+  crumble?: number;
+  /** queda visual depois de ceder */
+  fallY?: number;
+}
+
+/** buraco no chão (rachadura do terremoto / sumidouro): avisa, abre, às vezes fecha */
+export interface Hole {
+  on: boolean;
+  x: number;
+  w: number;
+  /** aviso restante (s); > 0 = ainda fechado, piscando */
+  warn: number;
+  warnT: number;
+  /** aberto há (s) */
+  open: number;
+  /** fecha depois de (s) aberto; 0 = nunca */
+  life: number;
+  /** cresce (unidades/s) — sumidouro */
+  grow: number;
 }
 
 export type BodyKind = 'wall' | 'slab' | 'roof' | 'block' | 'crate' | 'ladder' | 'cap';
@@ -113,6 +137,8 @@ export class World {
   /** bunker do final (x inicial da porta) */
   bunker: { x: number; w: number; doorX: number; closed: number } | null = null;
   pits: { x: number; w: number }[] = [];
+  /** buracos abertos/avisando no chão da arena (tamanho fixo: nada alocado na rodada) */
+  holes: Hole[] = [];
   spawnX = 120;
   map: MapTheme;
   maxBodies: number;
@@ -123,6 +149,7 @@ export class World {
     this.map = sc.map;
     this.maxBodies = maxBodies;
     const r = mulberry(sc.seed);
+    for (let i = 0; i < 10; i++) this.holes.push({ on: false, x: 0, w: 0, warn: 0, warnT: 1, open: 0, life: 0, grow: 0 });
     if (sc.disasters[0] === 'meteoro') this.genCourse(r, sc);
     else this.genArena(r, sc);
   }
@@ -276,12 +303,29 @@ export class World {
 
   /* --------------------------- consultas --------------------------- */
 
+  /** x está sobre um buraco aberto no chão? (margem: o Bloop precisa estar bem dentro) */
+  inHole(x: number, margin = 0): boolean {
+    const hs = this.holes;
+    for (let i = 0; i < hs.length; i++) {
+      const h = hs[i];
+      if (h.on && h.warn <= 0 && x > h.x + margin && x < h.x + h.w - margin) return true;
+    }
+    return false;
+  }
+
+  /** sólido conta para colisão neste x? (chão some em cima de buraco; plataforma que cedeu some) */
+  solidAt(s: Solid, x: number): boolean {
+    if (s.gone) return false;
+    if (s.kind === 'ground' && this.inHole(x)) return false;
+    return true;
+  }
+
   /** topo da superfície mais alta em x abaixo de fromY (para sombras/IA). */
   surfaceBelow(x: number, fromY: number): number {
     let best = 400;
     for (let i = 0; i < this.solids.length; i++) {
       const s = this.solids[i];
-      if (x >= s.x && x <= s.x + s.w && s.y >= fromY && s.y < best) best = s.y;
+      if (x >= s.x && x <= s.x + s.w && s.y >= fromY && s.y < best && this.solidAt(s, x)) best = s.y;
     }
     for (let i = 0; i < this.bodies.length; i++) {
       const b = this.bodies[i];
@@ -471,7 +515,7 @@ export class World {
     const bottom = b.y + b.h;
     for (let i = 0; i < this.solids.length; i++) {
       const s = this.solids[i];
-      if (Math.abs(s.y - bottom) < 3 && b.x + b.w > s.x + 2 && b.x < s.x + s.w - 2) return true;
+      if (Math.abs(s.y - bottom) < 3 && b.x + b.w > s.x + 2 && b.x < s.x + s.w - 2 && this.solidAt(s, b.x + b.w * 0.5)) return true;
     }
     for (let i = 0; i < this.bodies.length; i++) {
       const o = this.bodies[i];
@@ -491,6 +535,7 @@ export class World {
     for (let i = 0; i < this.solids.length; i++) {
       const s = this.solids[i];
       if (b.x + b.w <= s.x || b.x >= s.x + s.w) continue;
+      if (!this.solidAt(s, b.x + b.w * 0.5)) continue;
       if (s.oneWay) {
         // varrido: a base cruzou o topo da plataforma neste passo (não depende do fps)
         if (b.vy >= 0 && b.py <= s.y + 2 && b.y + b.h >= s.y) {

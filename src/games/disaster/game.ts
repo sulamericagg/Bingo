@@ -21,6 +21,30 @@ import { Drawer } from './draw';
 import { Hud } from './hud';
 import { partyRoomFor, partyCode } from '../../party/contract';
 import type { LiveBar } from '../../party/duel';
+import { speak } from '../noites/speak';
+import { FIT } from './scenarios';
+import type { DzIcon } from './icons';
+import { drawAvatar, type AvatarData } from '../../game/avatar';
+
+/** modo de dificuldade (escolhido na tela 2D/3D; docs/DISASTER-DESIGN.md §3) */
+export type DzMode = 'facil' | 'normal' | 'dificil';
+export const MODE_KEY = 'bo-disaster-diff';
+export function loadMode(): DzMode {
+  try {
+    const m = localStorage.getItem(MODE_KEY);
+    if (m === 'facil' || m === 'dificil') return m;
+  } catch {
+    /* */
+  }
+  return 'normal';
+}
+export const MODE_MUL: Record<DzMode, number> = { facil: 0.72, normal: 1, dificil: 1.3 };
+/** intensidade: modo × (estrelas + sequência) — a mesma régua no 2D e no 3D */
+export function intensityOf(mode: DzMode, stars: number, streak: number, training: boolean): number {
+  return MODE_MUL[mode] * (0.85 + 0.1 * (stars - 1) + 0.035 * Math.min(12, Math.max(0, streak))) * (training ? 0.8 : 1);
+}
+/** desastres de fluido (combo = 1 fluido + 1 golpe) */
+export const isFluidD = (d: DisasterId): boolean => d === 'tsunami' || d === 'enchente' || d === 'acido' || d === 'avalanche' || d === 'vulcao';
 
 /* ------------------------------ tipos ------------------------------ */
 
@@ -82,11 +106,31 @@ export interface Player {
   skin: Skin;
   color: string;
   input: Input;
+  /** fôlego nadando (0..1) */
+  air: number;
+  /** dentro d'água agora */
+  swim: boolean;
+  /** índice do sólido (plataforma/copa) onde está em pé (-1) */
+  onSolid: number;
+  /** já foi resgatado nesta rodada (só uma vez) */
+  rescued: boolean;
+  /** bolha de resgate: segundos restantes (0 = sem bolha) */
+  bubble: number;
+  bx: number;
+  by: number;
+  /** invencível depois do resgate (s) */
+  shield: number;
+  /** recarga de "pancada" de destroço lateral (s) */
+  hit: number;
 }
 
 export interface Strike {
   on: boolean;
-  kind: 'bomb' | 'meteor' | 'bolt' | 'rock';
+  kind: 'bomb' | 'meteor' | 'bolt' | 'rock' | 'drop' | 'ball' | 'gust';
+  /** bola de neve / destroço da rajada: velocidade horizontal depois do aviso */
+  vx: number;
+  /** já está andando (depois do aviso) */
+  live: boolean;
   x: number;
   ty: number;
   sx: number;
@@ -107,6 +151,34 @@ export interface Fluid {
   speed: number;
   crest: number;
   push: number;
+  /** nível que fica no mapa todo (água das ondas anteriores) */
+  base: number;
+}
+
+/** fogo no chão (meteoro/bomba) */
+export interface Fire {
+  on: boolean;
+  x: number;
+  r: number;
+  y: number;
+  t: number;
+}
+/** moeda no meio do desastre (risco × recompensa) */
+export interface DCoin {
+  on: boolean;
+  x: number;
+  y: number;
+  t: number;
+}
+/** um tornado (até 2) */
+export interface Twister {
+  on: boolean;
+  x: number;
+  vx: number;
+  r: number;
+  /** alvo atual (índice de jogador) e quando trocar */
+  tgt: number;
+  tgtT: number;
 }
 
 export type Phase = 'intro' | 'prepare' | 'warn' | 'disaster' | 'impact' | 'end';
@@ -191,7 +263,55 @@ export class DisasterGame implements MiniGameHandle {
   strikes: Strike[] = [];
   strikeTimer = 0;
   quake = 0;
-  tornado = { on: false, x: 0, vx: 0, r: 62 };
+  tornado: Twister = { on: false, x: 0, vx: 0, r: 62, tgt: -1, tgtT: 0 };
+  tornado2: Twister = { on: false, x: 0, vx: 0, r: 62, tgt: -1, tgtT: 0 };
+
+  /* ---------- dificuldade (docs/DISASTER-DESIGN.md) ---------- */
+  mode: DzMode = loadMode();
+  /** intensidade desta rodada */
+  I = 1;
+  /** multiplicador dos tempos de aviso */
+  tele = 1;
+  /** 0→1 ao longo do desastre (acelera os golpes) */
+  heat = 0;
+  /** dev/banco: força a sequência usada na intensidade */
+  benchStreak = -1;
+  fires: Fire[] = [];
+  coins: DCoin[] = [];
+  private coinT = 0;
+  /** moedas pegas no meio do desastre (valem inteiras só se sobreviver) */
+  held = 0;
+  rescues = 0;
+  /** pontos da rodada / sessão */
+  points = 0;
+  sessionPoints = 0;
+  /** ondas (tsunami/avalanche): total, atual, tempo até a próxima */
+  wave = { n: 0, k: 0, next: 0, H: 0, recede: 0, warned: false };
+  /** pulsos (enchente/gosma/lava/terremoto): alvo por estágio */
+  stage = { k: 0, next: 0 };
+  /** tremores do terremoto */
+  pulse = { k: 0, t: 0, on: false };
+  /** rajada (areia): direção, aviso e força */
+  gust = { dir: 0, warn: 0, t: 0, next: 0, vis: 0 };
+  /** segundo desastre do combo começa no meio do primeiro */
+  private comboAt = -1;
+  /** aviso extra no meio do desastre (onda, tremor, rajada): ícone, contagem, de onde vem */
+  alertT = 0;
+  alertIcon: DzIcon = 'wave';
+  alertFrom = 0;
+  /** cinzas do vulcão / areia (0..1): escurece a tela */
+  haze = 0;
+  /** casas já destelhadas pelo tornado (índices) */
+  ripped = new Set<number>();
+  private ripCD: number[] = [];
+  /** online: meu id aleatório (resgate) e de quem fui salvo */
+  private rid = 1 + Math.floor(Math.random() * 1e6);
+  private helpHb = 0;
+  private helpHbT = 0;
+  private helpSeen = new Set<number>();
+  private reviveNear = 0;
+  /** sprites dos amigos online (skin/avatar deles) */
+  private peerSprites = new Map<string, { key: string; c: HTMLCanvasElement }>();
   meteor = { t: -1, x: 0, ring: -1, flash: 0 };
   wind = 0;
   night = false;
@@ -245,7 +365,9 @@ export class DisasterGame implements MiniGameHandle {
     this.gov = new QualityGovernor({ persist: false, emit: false, onChange: (tier, s) => this.applyQuality(tier, s) });
     this.tier = this.gov.tier;
     this.q = this.gov.settings;
-    for (let i = 0; i < MAX_STRIKES; i++) this.strikes.push({ on: false, kind: 'bomb', x: 0, ty: 0, sx: 0, sy: 0, t: 0, T: 1, r: 40, flash: 0 });
+    for (let i = 0; i < MAX_STRIKES; i++) this.strikes.push({ on: false, kind: 'bomb', vx: 0, live: false, x: 0, ty: 0, sx: 0, sy: 0, t: 0, T: 1, r: 40, flash: 0 });
+    for (let i = 0; i < 12; i++) this.fires.push({ on: false, x: 0, r: 0, y: 0, t: 0 });
+    for (let i = 0; i < 8; i++) this.coins.push({ on: false, x: 0, y: 0, t: 0 });
     const self = this;
     this.field = {
       surf: (x: number) => (self.sim ? self.sim.surf(x) : 9999),
@@ -402,8 +524,24 @@ export class DisasterGame implements MiniGameHandle {
     const pr = partyRoomFor('disaster');
     // grupo jogando junto: todos no mesmo cenário (a sala do grupo escolhe; muda a cada rodada igual para todos)
     const pIdx = pr ? (parseInt(partyCode(pr, 4, '0123456789'), 10) + this.sessionRounds) % 100 : -1;
-    this.sc = list[pIdx >= 0 ? pIdx : (this.progress.next - 1) % 100];
+    // cópia: o combo dinâmico muda a lista de desastres desta rodada sem mexer no cenário salvo
+    const base = list[pIdx >= 0 ? pIdx : (this.progress.next - 1) % 100];
+    this.sc = { ...base, disasters: [...base.disasters] };
     this.training = this.progress.played < 3 || /[?&]train=1/.test(location.search);
+    this.mode = loadMode();
+    const streak = this.benchStreak >= 0 ? this.benchStreak : this.streak;
+    this.I = intensityOf(this.mode, this.sc.difficulty, streak, this.training);
+    this.tele = Math.max(0.75, Math.min(1.15, 1.25 - 0.25 * this.I));
+    // desastre duplo dinâmico: com sequência alta, um 2º desastre (de outra família) entra no meio do 1º
+    {
+      const cr = mulberry(this.sc.seed * 3 + this.sessionRounds * 7 + streak);
+      const d1 = this.sc.disasters[0];
+      const chance = this.mode === 'facil' ? 0 : Math.min(0.6, 0.15 * (streak - 3) + (this.mode === 'dificil' ? 0.15 : 0));
+      if (d1 !== 'meteoro' && this.sc.disasters.length === 1 && !this.training && cr() < chance) {
+        const pool = (FIT[this.sc.map.id] || []).filter((d) => d !== d1 && isFluidD(d) !== isFluidD(d1));
+        if (pool.length) this.sc.disasters.push(pool[Math.floor(cr() * pool.length)]);
+      }
+    }
     this.safe = null;
     this.safeT = 0;
     this.world = new World(this.sc, this.maxBodies());
@@ -416,6 +554,29 @@ export class DisasterGame implements MiniGameHandle {
     this.dIndex = 0;
     this.quake = 0;
     this.tornado.on = false;
+    this.tornado2.on = false;
+    this.fires.forEach((f) => (f.on = false));
+    this.coins.forEach((c) => (c.on = false));
+    this.coinT = 2;
+    this.held = 0;
+    this.rescues = 0;
+    this.points = 0;
+    this.heat = 0;
+    this.wave.n = 0;
+    this.wave.k = 0;
+    this.stage.k = 0;
+    this.pulse.k = 0;
+    this.pulse.on = false;
+    this.gust.dir = 0;
+    this.gust.warn = 0;
+    this.gust.t = 0;
+    this.gust.vis = 0;
+    this.comboAt = -1;
+    this.alertT = 0;
+    this.haze = 0;
+    this.ripped.clear();
+    this.ripCD = [];
+    this.reviveNear = 0;
     this.meteor.t = -1;
     this.meteor.ring = -1;
     this.meteor.flash = 0;
@@ -483,6 +644,15 @@ export class DisasterGame implements MiniGameHandle {
         skin,
         color: skin.light,
         input: self ? this.keys : { l: false, r: false, j: false, u: false },
+        air: 1,
+        swim: false,
+        onSolid: -1,
+        rescued: false,
+        bubble: 0,
+        bx: 0,
+        by: 0,
+        shield: 0,
+        hit: 0,
       };
       this.players.push(p);
     }
@@ -516,8 +686,11 @@ export class DisasterGame implements MiniGameHandle {
         return this.nextSide();
       case 'vulcao':
         return 1;
+      case 'areia':
+        return this.gust.dir || 1;
       case 'enchente':
       case 'acido':
+      case 'sumidouro':
         return 3;
       default:
         return 2;
@@ -529,7 +702,7 @@ export class DisasterGame implements MiniGameHandle {
   }
 
   private disasterDur(): number {
-    const base = this.sc.disasters.length > 1 ? 30 : 46;
+    const base = this.sc.disasters.length > 1 ? 52 : 46;
     return base + this.sc.difficulty * 2;
   }
 
@@ -537,7 +710,8 @@ export class DisasterGame implements MiniGameHandle {
     switch (this.phase) {
       case 'intro':
         // final do meteoro: tempo curto o bastante para precisar correr (antes 18+df: quase todos chegavam andando)
-        this.setPhase('prepare', (this.finale ? 14 + this.sc.difficulty * 0.8 : 15) + (this.training ? 8 : 0));
+        // final: tempo que exige correr sem parar (menos com intensidade alta)
+        this.setPhase('prepare', (this.finale ? (15 + this.sc.difficulty * 0.8) / Math.sqrt(this.I) : 15) + (this.training ? 8 : 0));
         if (this.finale) audio.siren(3);
         break;
       case 'prepare':
@@ -545,24 +719,21 @@ export class DisasterGame implements MiniGameHandle {
           this.startMeteor();
           this.setPhase('impact', 7.5);
         } else {
-          this.setPhase('warn', 2.6);
+          this.setPhase('warn', 2.6 * Math.max(0.85, this.tele));
           this.hud.disasterCard(this.sc.disasters[0]);
           audio.siren(2.5);
           tap('heavy');
+          this.say(DISASTERS[this.sc.disasters[0]].name() + '! ' + DISASTERS[this.sc.disasters[0]].hint());
         }
         break;
       case 'warn':
-        this.beginDisaster(this.sc.disasters[this.dIndex]);
         this.setPhase('disaster', this.disasterDur());
+        this.beginDisaster(this.sc.disasters[this.dIndex]);
+        // desastre duplo: o 2º começa no meio do 1º (os dois juntos)
+        this.comboAt = this.sc.disasters.length > 1 ? this.phaseDur * 0.35 : -1;
         break;
       case 'disaster':
-        if (this.dIndex + 1 < this.sc.disasters.length) {
-          this.dIndex++;
-          this.setPhase('warn', 2.6);
-          this.hud.disasterCard(this.sc.disasters[this.dIndex]);
-          audio.siren(2.5);
-          tap('heavy');
-        } else this.endRound();
+        this.endRound();
         break;
       case 'impact':
         this.endRound();
@@ -606,59 +777,177 @@ export class DisasterGame implements MiniGameHandle {
     }
   }
 
-  private beginDisaster(d: DisasterId): void {
-    this.active.add(d);
-    const df = this.sc.difficulty;
-    // cenário duplo: cada desastre vem um pouco mais brando (somados já são difíceis)
-    const duo = (this.sc.disasters.length > 1 ? 0.8 : 1) * (this.training ? 0.8 : 1);
-    const fl = (f: Partial<Fluid> & { kind: Fluid['kind'] }): Fluid => {
-      const o: Fluid = { level: 0, target: 100, rate: 3, front: -300, dir: 0, speed: 0, crest: 0, push: 0, ...f };
-      o.target *= duo;
-      if (!o.dir) o.rate *= duo * (this.training ? 0.8 : 1);
-      else if (this.training) o.speed *= 0.75;
-      return o;
-    };
-    switch (d) {
-      case 'tsunami':
-        this.fluid = fl({ kind: 'water', target: 88 + df * 18, rate: 60, front: -260, dir: 1, speed: 250, crest: 90, push: 520 });
-        break;
-      case 'avalanche':
-        this.fluid = fl({ kind: 'snow', target: 76 + df * 16, rate: 50, front: this.world.W + 260, dir: -1, speed: 190, crest: 70, push: -420 });
-        break;
-      case 'enchente':
-        this.fluid = fl({ kind: 'water', target: 110 + df * 22, rate: (110 + df * 22) / 34 });
-        break;
-      case 'acido':
-        this.fluid = fl({ kind: 'goo', target: 130 + df * 22, rate: (130 + df * 22) / 40 });
-        break;
-      case 'vulcao':
-        // lava mais baixa e mais lenta: o perigo principal são as bombas (com marcador no chão)
-        this.fluid = fl({ kind: 'lava', target: 52 + df * 16, rate: (52 + df * 16) / 42 });
-        this.strikeTimer = 3;
-        break;
-      case 'tornado':
-        this.tornado.on = true;
-        this.tornado.x = this.nextSide() < 0 ? -120 : this.world.W + 120;
-        this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12) * (this.training ? 0.75 : 1);
-        this.tornado.r = 58 + df * 3;
-        break;
-      case 'terremoto':
-        this.quake = 0.01;
-        this.strikeTimer = 3;
-        break;
-      case 'meteoros':
-      case 'raios':
-        this.strikeTimer = 1.5;
-        break;
-      default:
-        break;
-    }
+  /** cria (ou reaproveita) a simulação do fluido atual */
+  private ensureSim(): void {
     if (this.fluid && (!this.sim || this.sim.kind !== this.fluid.kind)) {
       this.sim = new FluidSim(this.fluid.kind, this.world, this.tier);
       const k = this.fluid.kind;
       this.field.buoy = k === 'water' ? 2.1 : k === 'lava' ? 2.7 : k === 'goo' ? 2.0 : 1.5;
       this.field.drag = k === 'water' ? 1.8 : k === 'lava' ? 3.2 : k === 'goo' ? 3.6 : 5;
     }
+  }
+
+  /** aviso no meio do desastre (onda, tremor, rajada): cartão com ícone + contagem + seta, sirene e voz */
+  alert(icon: DzIcon, from: number, secs: number, say: string): void {
+    this.alertIcon = icon;
+    this.alertFrom = from;
+    this.alertT = secs;
+    audio.siren(Math.min(2, secs));
+    tap('medium');
+    this.hud.toast(say);
+    this.say(say);
+  }
+
+  /** voz só com a narração ligada (Configurações; padrão desligado) — src/games/noites/speak.ts */
+  say(text: string): void {
+    if (this.destroyed || this.benchStreak >= 0) return;
+    try {
+      speak(text, { cool: 2500, urgent: true });
+    } catch {
+      /* sem voz */
+    }
+  }
+
+  /** número de ondas do tsunami/avalanche nesta intensidade */
+  private waveCount(d: DisasterId): number {
+    const I = this.I;
+    if (d === 'avalanche') return I >= 1.05 ? 3 : 2;
+    return Math.max(2, Math.min(4, Math.round(1.5 + 1.2 * I)));
+  }
+  /** altura da onda k */
+  private waveH(d: DisasterId, k: number): number {
+    const I = this.I;
+    const duo = this.sc.disasters.length > 1 ? 0.85 : 1;
+    if (d === 'avalanche') return (70 + 35 * I) * (0.75 + 0.35 * k) * duo;
+    return (95 + 45 * I) * (0.7 + 0.3 * k) * duo;
+  }
+  /** nível final previsto do fluido (para a IA e para a seta do treino) */
+  fluidPeak(d: DisasterId): number {
+    const I = this.I;
+    const duo = this.sc.disasters.length > 1 ? 0.85 : 1;
+    switch (d) {
+      case 'tsunami':
+      case 'avalanche':
+        return this.waveH(d, this.waveCount(d) - 1) * (d === 'tsunami' ? 0.5 : 0.55) + 40;
+      case 'enchente':
+        return (105 + 75 * I) * duo;
+      case 'acido':
+        return (115 + 70 * I) * duo;
+      case 'vulcao':
+        return (50 + 30 * I) * duo;
+      case 'raios':
+        return 30 + 12 * I;
+      default:
+        return 0;
+    }
+  }
+
+  private startWave(d: DisasterId): void {
+    const f = this.fluid;
+    if (!f) return;
+    const k = this.wave.k;
+    const H = this.waveH(d, k);
+    this.wave.H = H;
+    f.front = f.dir > 0 ? -260 : this.world.W + 260;
+    f.level = Math.max(f.base, 4);
+    f.target = H;
+    f.rate = 70;
+    f.crest = d === 'avalanche' ? 60 + 15 * this.I : 70 + 22 * this.I;
+    f.speed = (d === 'avalanche' ? 175 + 35 * this.I : 225 + 45 * this.I) * (this.training ? 0.8 : 1);
+    this.wave.warned = false;
+    // destroços na frente da onda (troncos/caixas que já estavam soltos ganham um empurrão)
+    if (d === 'tsunami') this.shake = Math.max(this.shake, 0.3);
+  }
+
+  private beginDisaster(d: DisasterId): void {
+    this.active.add(d);
+    const I = this.I;
+    const duo = this.sc.disasters.length > 1 ? 0.85 : 1;
+    const dur = this.phaseDur || this.disasterDur();
+    const fl = (f: Partial<Fluid> & { kind: Fluid['kind'] }): Fluid => ({ level: 0, target: 100, rate: 3, front: -300, dir: 0, speed: 0, crest: 0, push: 0, base: 0, ...f });
+    switch (d) {
+      case 'tsunami':
+      case 'avalanche': {
+        const snow = d === 'avalanche';
+        this.fluid = fl({ kind: snow ? 'snow' : 'water', dir: snow ? -1 : 1, push: snow ? -420 : 520 });
+        this.wave.n = this.waveCount(d);
+        this.wave.k = 0;
+        this.wave.next = (dur - 4) / this.wave.n;
+        this.ensureSim();
+        this.startWave(d);
+        if (snow) this.strikeTimer = 2.5;
+        break;
+      }
+      case 'enchente':
+        this.fluid = fl({ kind: 'water', target: ((105 + 75 * I) * duo) / 3, rate: 6 + 3 * I });
+        this.stage.k = 0;
+        this.stage.next = dur / 3;
+        break;
+      case 'acido':
+        this.fluid = fl({ kind: 'goo', target: ((115 + 70 * I) * duo) / 3, rate: 5 + 3 * I });
+        this.stage.k = 0;
+        this.stage.next = dur / 3;
+        this.strikeTimer = 2;
+        break;
+      case 'vulcao':
+        // a lava DESCE da direita (frente lenta) e sobe em pulsos; bombas miradas deixam fogo
+        this.fluid = fl({ kind: 'lava', dir: -1, front: this.world.W + 60, speed: 20 + 14 * I, target: ((50 + 30 * I) * duo) / 3, rate: 4, crest: 8, push: -160 });
+        this.stage.k = 0;
+        this.stage.next = dur / 3;
+        this.strikeTimer = 2.4;
+        break;
+      case 'tornado': {
+        const tw = this.tornado.on ? this.tornado2 : this.tornado;
+        tw.on = true;
+        const side = tw === this.tornado ? this.nextSide() : -this.nextSide();
+        tw.x = side < 0 ? -120 : this.world.W + 120;
+        tw.vx = -side * (60 + 30 * I);
+        tw.r = 58 + 10 * I;
+        tw.tgt = -1;
+        tw.tgtT = 2;
+        this.ripCD = this.world.houses.map(() => 0);
+        break;
+      }
+      case 'terremoto':
+        this.quake = 0.01;
+        this.pulse.k = 0;
+        this.pulse.t = 0;
+        this.pulse.on = true;
+        this.strikeTimer = 1.5;
+        this.collapse(0.2 + 0.1 * I);
+        break;
+      case 'meteoros':
+      case 'raios':
+        this.strikeTimer = 1.5;
+        break;
+      case 'sumidouro':
+        this.strikeTimer = 1;
+        break;
+      case 'areia':
+        this.gust.next = 1.2;
+        this.strikeTimer = 2;
+        break;
+      default:
+        break;
+    }
+    this.ensureSim();
+  }
+
+  /** derruba parte das construções (terremoto): paredes e torres tombam */
+  private collapse(frac: number): void {
+    const w = this.world;
+    for (const h of w.houses) {
+      if (this.rng() > frac) continue;
+      const side = this.rng() < 0.5 ? -1 : 1;
+      w.push(w.bodies[h.wallL], side * 120, -20);
+      if (this.rng() < 0.6) w.push(w.bodies[h.wallR], side * 120, -20);
+    }
+    for (const b of w.bodies) {
+      if (!b.alive || b.awake || b.kind !== 'block') continue;
+      if (this.rng() < frac * 0.6) w.push(b, (this.rng() - 0.5) * 300, -60);
+    }
+    if (this.q.shake) this.shake = Math.max(this.shake, 0.8);
+    audio.crack();
   }
 
   /** algo entrou na água (corpo, jogador, bomba): onda nas colunas + respingo e bolhas */
