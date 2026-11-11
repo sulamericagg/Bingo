@@ -97,7 +97,7 @@ export function briefing(root: HTMLElement, b: Brief): Promise<string> {
   const cover = `<div style="font-size:14px;font-weight:800;letter-spacing:3px">${esc(t('voo.d.file', 'PASTA DE MISSÃO'))}</div><div class="ttl">${esc(t('voo.name', 'Pouso Forçado'))}</div>${vIcon('plane', 64)}<div class="voo-stamp" style="position:static;transform:rotate(-8deg)">${esc(t('voo.d.secret', 'CONFIDENCIAL'))}</div>`;
   // ícone primeiro, rótulo curto (criança que ainda não lê entende pelos desenhos — pedido do dono)
   const row = (ic: string, txt: string) => `<div class="ln ic">${vIcon(ic, 30)}<span>${esc(txt)}</span></div>`;
-  const wIc = ['star', 'turb', 'water'][b.weather] ?? 'star';
+  const wIc = ['star', 'turb', 'turb'][b.weather] ?? 'star';
   const mIc = b.mode === 'daily' ? 'calendar' : b.mode === 'training' ? 'school' : 'plane';
   const s1 = `<h3>${vIcon('plane', 26)}${esc(t('voo.d.mission', 'Missão: voo {f}', { f: b.flight }))}</h3>
     ${row('plane', `${b.from} → ${b.to}`)}

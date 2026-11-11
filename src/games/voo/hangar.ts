@@ -472,7 +472,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
 
   /* ---------- palco do hangar (canvas) ---------- */
   const x = cv.getContext('2d')!;
-  const dprCap = o.weak ? 1.25 : 2;
+  const dprCap = o.weak ? 1 : 1.75;
   let W = 0;
   let H = 0;
   let dpr = 1;
@@ -490,9 +490,12 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
   let time = 0;
   let cardT = 0;
 
+  // menu: 30 quadros/s bastam (24 em aparelho fraco) — o palco inteiro é redesenhado em canvas 2D (QA: 9 fps com CPU 4×)
+  const minFrame = o.weak ? 1000 / 24 : 1000 / 30;
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
     if (document.hidden) return;
+    if (now - last < minFrame - 2) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     time += dt;
@@ -513,13 +516,15 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     const cy = floorY - L * 0.148 + Math.sin(time * 1.6) * L * 0.004;
     let pcx = bx + bw * 0.5;
     if (leaving > 0) pcx += Math.pow(leaving * 1.7, 2) * W;
-    // reflexo no piso
-    x.save();
-    x.globalAlpha = 0.1;
-    x.translate(0, floorY * 2 + L * 0.02);
-    x.scale(1, -1);
-    drawPlane(x, pcx, cy, L, liv, time, { lights: true, cabin: cabinOf(sv) });
-    x.restore();
+    // reflexo no piso (some no aparelho fraco: desenhar o avião 2× é o mais caro do quadro)
+    if (!o.weak) {
+      x.save();
+      x.globalAlpha = 0.1;
+      x.translate(0, floorY * 2 + L * 0.02);
+      x.scale(1, -1);
+      drawPlane(x, pcx, cy, L, liv, time, { lights: true, cabin: cabinOf(sv) });
+      x.restore();
+    }
     // sombra
     const sh = x.createRadialGradient(pcx, floorY, 0, pcx, floorY, L * 0.45);
     sh.addColorStop(0, 'rgba(20,6,50,.45)');

@@ -63,7 +63,7 @@ export class Engine {
 
   private applyTier(t: Tier): void {
     this.q = q3For(t);
-    this.renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.q.pr * 1.25)));
+    this.renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.q.pr * (t <= 1 ? 1 : 1.25))));
     this.renderer.shadowMap.enabled = this.q.shadows;
     this.stage?.quality?.(this.q);
     this.resize();
@@ -101,6 +101,8 @@ export class Engine {
       this.last = now;
       return;
     }
+    // aparelho fraco (nível Baixo/Mínimo): 30 quadros/s — QA: 13 fps no ateliê com CPU 4×
+    if (this.q.tier <= 1 && now - this.last < 31) return;
     const dt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000));
     this.last = now;
     const t0 = performance.now();

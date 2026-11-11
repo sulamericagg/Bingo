@@ -66,6 +66,11 @@ export class Studio {
   private raf = 0;
   private last = 0;
   private paused = false;
+  /** editor parado (sem toque e câmera imóvel): redesenha só ~8×/s — QA: 7 fps no menu com CPU 4× */
+  private lastInput = 0;
+  private lastDraw = 0;
+  private readonly lastCam = new THREE.Matrix4();
+  private dirtyFrame = true;
   private sun: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
   private ro: ResizeObserver;
@@ -104,6 +109,8 @@ export class Studio {
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'bs-canvas';
     this.el.appendChild(this.canvas);
+    const poke = () => (this.lastInput = performance.now());
+    for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'input', 'click']) this.el.addEventListener(ev, poke, { capture: true, passive: true });
     if (q.standard) {
       this.scene.environment = roomEnv(this.renderer);
       this.scene.environmentIntensity = 0.5;
@@ -714,6 +721,15 @@ export class Studio {
     }
     this.sun.position.set(focus.x + 8, focus.y + 16, focus.z + 6);
     this.sun.target.position.set(focus.x, focus.y, focus.z);
+    if (this.mode !== 'play') {
+      this.camera.updateMatrixWorld();
+      const moved = !this.lastCam.equals(this.camera.matrixWorld);
+      this.lastCam.copy(this.camera.matrixWorld);
+      const idle = !moved && now - this.lastInput > 1200 && !this.dirtyFrame;
+      if (idle && now - this.lastDraw < 125) return;
+    }
+    this.dirtyFrame = false;
+    this.lastDraw = now;
     this.renderer.render(this.scene, this.camera);
     this.online?.afterRender(this.canvas);
   };

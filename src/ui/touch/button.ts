@@ -50,6 +50,9 @@ export function bindButton(el: HTMLElement, o: ButtonOptions): BoundButton {
       /* já saiu */
     }
     el.classList.add('tc-pressed');
+    // só enquanto apertado: botão descartado sem destroy() não deixa ouvinte global para trás (QA: vazamento)
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('blur', blurUp);
     if (o.haptic !== false) tap(o.haptic || 'light');
     o.onPress?.(e);
     if (o.onHold) holdT = window.setTimeout(() => pid >= 0 && o.onHold!(), o.holdMs ?? 450);
@@ -60,20 +63,20 @@ export function bindButton(el: HTMLElement, o: ButtonOptions): BoundButton {
     if (pid < 0) return;
     pid = -1;
     clear();
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('blur', blurUp);
     el.classList.remove('tc-pressed');
     o.onRelease?.(e);
   };
   const onUp = (e: PointerEvent) => up(e);
   const onVis = () => document.hidden && up(null);
+  const blurUp = () => up(null);
   const block = (e: Event) => e.preventDefault();
   el.addEventListener('pointerdown', down);
   el.addEventListener('pointerup', onUp);
   el.addEventListener('pointercancel', onUp);
   el.addEventListener('lostpointercapture', onUp);
   el.addEventListener('contextmenu', block);
-  document.addEventListener('visibilitychange', onVis);
-  const blurUp = () => up(null);
-  window.addEventListener('blur', blurUp);
   return {
     el,
     get held() {
