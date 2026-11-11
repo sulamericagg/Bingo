@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Taruh",
   "mundo.plant": "Tanam",
   "mundo.play": "Main",
+  "mundo.playOnline": "Main online",
+  "mundo.playOnlineD": "Server bersama teman, PvP dan gim mini — ketuk dan masuk!",
   "mundo.relief": "Ketinggian medan",
   "mundo.ride": "Naik gerobak",
   "mundo.ring": "Bunyikan",

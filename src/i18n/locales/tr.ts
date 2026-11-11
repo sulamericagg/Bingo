@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Yerleştir",
   "mundo.plant": "Ek",
   "mundo.play": "Oyna",
+  "mundo.playOnline": "Çevrim içi oyna",
+  "mundo.playOnlineD": "Arkadaşlarla sunucular, PvP ve mini oyunlar — dokun ve gir!",
   "mundo.relief": "Arazi yüksekliği",
   "mundo.ride": "Vagona bin",
   "mundo.ring": "Çal",

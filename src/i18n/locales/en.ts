@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Place",
   "mundo.plant": "Plant",
   "mundo.play": "Play",
+  "mundo.playOnline": "Play online",
+  "mundo.playOnlineD": "Servers with friends, PvP and minigames — tap and join!",
   "mundo.relief": "Terrain height",
   "mundo.ride": "Ride the cart",
   "mundo.ring": "Ring",

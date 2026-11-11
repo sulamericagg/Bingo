@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "おく",
   "mundo.plant": "うえる",
   "mundo.play": "あそぶ",
+  "mundo.playOnline": "オンラインで遊ぶ",
+  "mundo.playOnlineD": "友だちとサーバー、PvP、ミニゲーム — タップで参加！",
   "mundo.relief": "ちけいのたかさ",
   "mundo.ride": "トロッコにのる",
   "mundo.ring": "ならす",

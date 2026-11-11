@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "放置",
   "mundo.plant": "种植",
   "mundo.play": "开始玩",
+  "mundo.playOnline": "在线玩",
+  "mundo.playOnlineD": "和好友一起的服务器、PvP和小游戏——点一下就加入！",
   "mundo.relief": "地形高度",
   "mundo.ride": "乘坐矿车",
   "mundo.ring": "敲响",

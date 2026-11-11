@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Colocar",
   "mundo.plant": "Plantar",
   "mundo.play": "Jugar",
+  "mundo.playOnline": "Jugar en línea",
+  "mundo.playOnlineD": "Servidores con amigos, PvP y minijuegos: ¡toca y entra!",
   "mundo.relief": "Altura del relieve",
   "mundo.ride": "Subir a la vagoneta",
   "mundo.ring": "Tocar",

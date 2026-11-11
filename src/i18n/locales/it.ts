@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Piazza",
   "mundo.plant": "Pianta",
   "mundo.play": "Gioca",
+  "mundo.playOnline": "Gioca online",
+  "mundo.playOnlineD": "Server con amici, PvP e minigiochi: tocca ed entra!",
   "mundo.relief": "Altezza del rilievo",
   "mundo.ride": "Sali sul carrello",
   "mundo.ring": "Suona",

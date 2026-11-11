@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "놓기",
   "mundo.plant": "심기",
   "mundo.play": "플레이",
+  "mundo.playOnline": "온라인으로 놀기",
+  "mundo.playOnlineD": "친구들과 서버, PvP, 미니게임 — 눌러서 입장!",
   "mundo.relief": "지형 높이",
   "mundo.ride": "광차 타기",
   "mundo.ring": "울리기",

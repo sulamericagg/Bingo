@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Setzen",
   "mundo.plant": "Pflanzen",
   "mundo.play": "Spielen",
+  "mundo.playOnline": "Online spielen",
+  "mundo.playOnlineD": "Server mit Freunden, PvP und Minispielen – tippen und rein!",
   "mundo.relief": "Geländehöhe",
   "mundo.ride": "Mit der Lore fahren",
   "mundo.ring": "Läuten",

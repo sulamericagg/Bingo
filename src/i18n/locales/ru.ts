@@ -5948,6 +5948,8 @@ export default {
   "mundo.place": "Поставить",
   "mundo.plant": "Посадить",
   "mundo.play": "Играть",
+  "mundo.playOnline": "Играть онлайн",
+  "mundo.playOnlineD": "Серверы с друзьями, PvP и мини-игры — нажми и заходи!",
   "mundo.relief": "Высота рельефа",
   "mundo.ride": "Прокатиться",
   "mundo.ring": "Позвонить",
