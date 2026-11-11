@@ -17,6 +17,7 @@ import { consumePartySeat, partySeat } from '../../party/contract';
 import { reportPlaying, stopPlaying } from '../../party/join';
 import { diffName, type Diff } from './data';
 import { jIcon } from './icons';
+import { icon } from '../../ui/icons';
 import { fillRoom, fillStart, type RoomHandle } from './lobby';
 import { CODE_ALPHA, MAX_PLAYERS, codeFromRoom, createNet, newCode, type JNet, type Me } from './net';
 import { jgSave, persist } from './save';
@@ -131,7 +132,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <span class="jg-seg" data-seg="diff">${([0, 1, 2] as Diff[]).map((v) => `<button data-v="${v}" class="${sv.diff === v ? 'on' : ''}">${jIcon(['heart', 'shark', 'storm'][v], 20)}${esc(diffName(v))}</button>`).join('')}</span>
       <div class="jg-row" style="margin-top:2px">
         ${sv.bestDay ? `<span class="jg-cost">${jIcon('sun', 20)}${esc(t('jangada.best', 'Recorde: dia {n}', { n: sv.bestDay }))}</span>` : ''}
-        <button class="jg-b w" data-a="exit">${jIcon('close', 18)}${esc(t('jangada.exit', 'Sair'))}</button>
+        <button class="jg-b w" data-a="exit">${icon('home', { size: 20 })}${esc(t('jangada.exit', 'Sair'))}</button>
       </div>`;
     el.appendChild(d);
     d.querySelectorAll<HTMLButtonElement>('[data-seg] button').forEach((b) =>

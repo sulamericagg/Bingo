@@ -9,7 +9,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { bagAdd, PIECE, PIECES, type Bag, type ItemId, type PieceDef, type PK } from './data';
-import { CELL, DECK, FLOOR_H, MAT, floorGeo, foundationGeo, initMats, linkGeo, merge, pieceGeo, sph, stairsGeo, box, cyl } from './models';
+import { CELL, DECK, FLOOR_H, MAT, flameTexture, floorGeo, foundationGeo, initMats, linkGeo, merge, pieceGeo, sph, stairsGeo, box, cyl } from './models';
 
 export interface RPiece {
   id: number;
@@ -438,7 +438,10 @@ function cachedGeo(key: string, make: () => THREE.BufferGeometry): THREE.BufferG
   }
   return g;
 }
-let flameGeo: THREE.BufferGeometry | null = null;
+let fMat: THREE.SpriteMaterial | null = null;
+function flameMat(): THREE.SpriteMaterial {
+  return (fMat ??= new THREE.SpriteMaterial({ map: flameTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+}
 let clothGeo: THREE.BufferGeometry | null = null;
 
 export class RaftView {
@@ -564,14 +567,19 @@ export class RaftView {
       }
     }
     if (p.k === 'fire') {
-      flameGeo ??= new THREE.ConeGeometry(0.22, 0.7, 7, 1, true).translate(0, 0.35, 0);
-      const f = new THREE.Mesh(flameGeo, MAT.flame);
-      f.position.y = DECK + 0.08;
+      const f = new THREE.Group();
+      f.position.y = DECK + 0.06;
+      const fm = flameMat();
+      for (let i = 0; i < 4; i++) {
+        const sp = new THREE.Sprite(fm);
+        const k = i === 0 ? 1 : 0.62;
+        sp.scale.set(0.5 * k, 0.9 * k, 1);
+        sp.center.set(0.5, 0.05);
+        sp.position.set(i === 0 ? 0 : Math.cos(i * 2.1) * 0.13, 0, i === 0 ? 0 : Math.sin(i * 2.1) * 0.13);
+        f.add(sp);
+      }
       g.add(f);
-      const f2 = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: '#ffe680', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
-      f2.scale.setScalar(0.55);
-      f.add(f2);
-      v.flame = f;
+      v.flame = f as unknown as THREE.Mesh;
       if (this.lights < this.maxLights) {
         v.light = new THREE.PointLight('#ff9a40', 0, 9, 1.6);
         v.light.position.y = DECK + 0.9;
@@ -627,12 +635,12 @@ export class RaftView {
       w.position.y = DECK + 0.78;
       g.add(w);
       v.water = w;
-      flameGeo ??= new THREE.ConeGeometry(0.22, 0.7, 7, 1, true).translate(0, 0.35, 0);
-      const f = new THREE.Mesh(flameGeo, MAT.flame);
-      f.scale.setScalar(0.45);
-      f.position.y = DECK + 0.05;
+      const f = new THREE.Sprite(flameMat());
+      f.center.set(0.5, 0.05);
+      f.scale.set(0.25, 0.4, 1);
+      f.position.y = DECK + 0.03;
       g.add(f);
-      v.flame = f;
+      v.flame = f as unknown as THREE.Mesh;
     }
     if (p.k === 'anchor') {
       const c = new THREE.Mesh(cachedGeo('chain', () => cyl(0.03, 0.03, 1, '#6a6a7a', 0, -0.5, 0, 0, 0, 0, 4)), MAT.vc);
@@ -671,7 +679,11 @@ export class RaftView {
         const lv = d?.lv ?? 1;
         v.flame.visible = lit;
         const fl = 0.85 + Math.sin(time * 17 + p.id) * 0.08 + Math.sin(time * 29) * 0.05;
-        v.flame.scale.set((0.8 + lv * 0.25) * fl, (0.8 + lv * 0.3) * (fl + 0.1), (0.8 + lv * 0.25) * fl);
+        v.flame.scale.set(0.75 + lv * 0.22, (0.75 + lv * 0.28) * (fl + 0.1), 1);
+        v.flame.children.forEach((c, i) => {
+          c.position.y = i ? Math.abs(Math.sin(time * (5 + i) + i)) * 0.05 : 0;
+          (c as THREE.Sprite).scale.y = (i ? 0.56 : 0.9) * (0.85 + Math.sin(time * (13 + i * 4) + i) * 0.15);
+        });
         if (v.light) v.light.intensity = lit ? (0.6 + night * 2.2) * (0.85 + lv * 0.2) * fl : 0;
         this.showItems(v, d?.cook?.map((c) => c[0]).concat(d?.done ?? []) ?? [], DECK + 0.62, 0.18);
       }

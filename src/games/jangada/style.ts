@@ -40,7 +40,7 @@ const CSS = `
 .jg-hint .hp{width:44px;height:6px;border-radius:3px;background:rgba(255,255,255,.3);overflow:hidden}
 .jg-hint .hp i{display:block;height:100%;background:#ff5c6a}
 /* barra de atalhos */
-.jg-bot{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 6px);display:flex;flex-direction:column;align-items:center;gap:4px;max-width:calc(100vw - 2*var(--sl) - 330px);min-width:0}
+.jg-bot{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 6px);display:flex;flex-direction:column;align-items:center;gap:4px;max-width:calc(100vw - 2*var(--sl) - 2*max(190px, 23vw));min-width:0}
 .jg-hot{display:flex;gap:3px;padding:3px;border-radius:12px;background:rgba(10,30,60,.55);box-shadow:inset 0 0 0 2px rgba(255,255,255,.18);max-width:100%;overflow-x:auto;scrollbar-width:none}
 .jg-hot::-webkit-scrollbar{display:none}
 .jg-slot{flex:none;width:44px;height:44px;border-radius:9px;border:0;background:rgba(255,255,255,.14);position:relative;display:grid;place-items:center;padding:0;cursor:pointer}

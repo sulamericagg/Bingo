@@ -27,7 +27,7 @@ export function fillStart(el: HTMLElement, o: StartOpts): () => void {
     <div class="jg-row"><button class="jg-b p" data-create style="font-size:19px;padding:12px 20px">${jIcon('people', 28)}${esc(t('jangada.net.createCall', 'Criar jangada e chamar amigos'))}</button></div>
     <button class="jg-b w" data-code style="min-height:36px;padding:6px 12px;font-size:13px">${esc(t('fp.code', 'Entrar com código / QR'))}</button>
     <form class="jg-row" data-f style="display:none"><input maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7Q2M" style="font:800 22px/1 Fredoka,system-ui;letter-spacing:4px;text-align:center;width:150px;padding:8px;border-radius:12px;border:0" aria-label="${esc(t('jangada.net.code', 'Código da sala'))}"/><button class="jg-b g" type="submit">${esc(t('jangada.net.join', 'Entrar'))}</button></form>
-    <button class="jg-b w" data-back>${jIcon('close', 18)}${esc(t('jangada.back', 'Voltar'))}</button>`;
+    <button class="jg-b w" data-back>${esc(t('jangada.back', 'Voltar'))}</button>`;
   void import('../../party/friends-play').then((f) => !dead && f.playingStrip(el.querySelector('.jg-fplay') as HTMLElement, 'jangada'));
   const form = el.querySelector('[data-f]') as HTMLFormElement;
   const inp = el.querySelector('input') as HTMLInputElement;

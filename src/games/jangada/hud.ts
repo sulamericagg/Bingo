@@ -44,7 +44,7 @@ export function costChips(cost: Bag, have: Bag, size = 18): string {
     .map(([id, n]) => {
       const h = have[id as ItemId] ?? 0;
       const ok = h >= (n ?? 0);
-      return `<span class="jg-chip ${ok ? 'ok' : 'no'}" title="${esc(itemName(id as ItemId))}">${jIcon(id, size)}${Math.min(h, 99)}/${n}</span>`;
+      return `<span class="jg-chip ${ok ? 'ok' : 'no'}" title="${esc(itemName(id as ItemId))}">${jIcon(id, size)}${Math.min(h, 99)}/${n}${ok ? '✓' : ''}</span>`;
     })
     .join('');
 }
@@ -368,7 +368,7 @@ export class Hud {
       }
       const up = fl > 0 && fl < FIRE_MAX ? FIRE_UP[fl + 1] : null;
       card.innerHTML = `<button class="jg-close" data-x aria-label="${esc(t('jangada.close', 'Fechar'))}">${jIcon('close', 20)}</button>
-        <div class="jg-tabs">${tabs.map(([k, ic, n]) => `<button class="jg-tab${k === cat ? ' on' : ''}" data-c="${k}">${jIcon(ic, 28)}<span>${esc(n)}</span></button>`).join('')}
+        <div class="jg-tabs">${tabs.map(([k, ic, n]) => `<button class="jg-tab${k === cat ? ' on' : ''}" data-c="${k}" aria-label="${esc(n)}">${jIcon(ic, 28)}${k === cat ? `<span>${esc(n)}</span>` : ''}</button>`).join('')}
         <span class="jg-fire" title="${esc(fireTxt)}">${jIcon('fire', 24)}${esc(fireTxt)}${up && o.hasFire() ? ` <button class="jg-b o" data-up style="min-height:30px;padding:4px 8px;font-size:12px" ${bagHas(have, up) ? '' : 'disabled'}>${jIcon('up', 16)}${costChips(up, have, 14)}</button>` : ''}</span></div>
         <div class="jg-body"><div class="jg-grid">${grid}</div><div class="jg-side">${side}</div></div>`;
     };
@@ -387,14 +387,7 @@ export class Hud {
       else if (b.dataset.up !== undefined) o.upFire();
       draw();
     });
-    // abas curtas em telas pequenas
     draw();
-    if (this.root.clientWidth < 760) card.querySelectorAll('.jg-tab span').forEach((s) => ((s as HTMLElement).style.display = 'none'));
-    const redraw = draw;
-    (card as HTMLDivElement & { redraw?: () => void }).redraw = () => {
-      redraw();
-      if (this.root.clientWidth < 760) card.querySelectorAll('.jg-tab span').forEach((s) => ((s as HTMLElement).style.display = 'none'));
-    };
   }
 
   /** baú: toque num item para mover (tudo de uma vez) */

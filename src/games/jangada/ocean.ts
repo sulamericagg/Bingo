@@ -189,10 +189,12 @@ void main(){
   float foam = smoothstep(0.55, 1.05, vFoam / (0.55 + 0.25 * uAmp) + fn * 0.35) * 0.9;
   vec2 rq = clamp(vW.xz, uRaft.xy, uRaft.zw);
   float rd = length(vW.xz - rq);
-  foam += (1.0 - smoothstep(0.0, 1.6, rd)) * smoothstep(0.35, 0.8, fn) * 0.85;
+  float lace = vn(p * 3.7 + vec2(uTime * 0.6, uTime * 0.25)) * 0.65 + vn(p * 9.0 - uTime * 0.4) * 0.35;
+  foam += (1.0 - smoothstep(0.05, 0.9, rd)) * smoothstep(0.52, 0.78, lace) * 0.6;
   if (uIsl.w > 0.5) {
     float di = length(vW.xz - uIsl.xy) - uIsl.z;
-    foam += (1.0 - smoothstep(0.0, 3.5, abs(di + 1.0 + sin(uTime * 0.8 + fn * 3.0) * 0.8))) * smoothstep(0.3, 0.7, fn);
+    float lace2 = vn(p * 2.3 + vec2(uTime * 0.3, -uTime * 0.2));
+    foam += (1.0 - smoothstep(0.0, 2.2, abs(di + 1.2 + sin(uTime * 0.8 + fn * 3.0) * 0.7))) * smoothstep(0.42, 0.75, lace2) * 0.8;
   }
   col = mix(col, vec3(0.95, 0.98, 1.0) * (0.55 + uSunI * 0.3), clamp(foam, 0.0, 1.0));
   if (under) {

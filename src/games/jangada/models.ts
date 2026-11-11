@@ -47,6 +47,31 @@ export function woodTexture(): THREE.CanvasTexture {
   return woodTex;
 }
 
+let flameTex: THREE.CanvasTexture | null = null;
+/** chama em gota (sprite aditivo) */
+export function flameTexture(): THREE.CanvasTexture {
+  if (flameTex) return flameTex;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 128;
+  const x = c.getContext('2d')!;
+  const g = x.createRadialGradient(32, 92, 2, 32, 80, 40);
+  g.addColorStop(0, 'rgba(255,250,210,1)');
+  g.addColorStop(0.35, 'rgba(255,200,80,0.95)');
+  g.addColorStop(0.7, 'rgba(255,110,30,0.6)');
+  g.addColorStop(1, 'rgba(255,60,20,0)');
+  x.fillStyle = g;
+  x.beginPath();
+  x.moveTo(32, 4);
+  x.bezierCurveTo(46, 40, 62, 70, 58, 96);
+  x.bezierCurveTo(54, 122, 10, 122, 6, 96);
+  x.bezierCurveTo(2, 70, 18, 40, 32, 4);
+  x.fill();
+  flameTex = new THREE.CanvasTexture(c);
+  flameTex.colorSpace = THREE.SRGBColorSpace;
+  return flameTex;
+}
+
 /* ------------------------------ helpers ------------------------------ */
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -156,8 +181,10 @@ export function foundationGeo(seed: number): THREE.BufferGeometry {
   const pw = CELL / n;
   for (let i = 0; i < n; i++) {
     const off = ((seed * 7 + i * 3) % 5) * 0.012;
-    L.push(box(pw - 0.035, 0.09, CELL - 0.03 - off, WOOD[(seed + i) % WOOD.length], -h + pw * (i + 0.5), DECK - 0.045, off * 0.5, 0, ((seed + i) % 3 - 1) * 0.012, 0));
+    L.push(box(pw - 0.022, 0.09, CELL - 0.012 - off, WOOD[(seed + i) % WOOD.length], -h + pw * (i + 0.5), DECK - 0.045, off * 0.5, 0, ((seed + i) % 3 - 1) * 0.008, 0));
   }
+  // base escura: as frestas mostram madeira, não o mar
+  L.push(box(CELL, 0.04, CELL, '#5a3a20', 0, DECK - 0.1, 0, 0, 0, 0, 0));
   L.push(box(CELL - 0.06, 0.1, 0.14, '#9a6a3a', 0, DECK - 0.14, -h + 0.25));
   L.push(box(CELL - 0.06, 0.1, 0.14, '#9a6a3a', 0, DECK - 0.14, h - 0.25));
   // boias (garrafas/galões)

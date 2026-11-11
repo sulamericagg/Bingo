@@ -207,6 +207,7 @@ export class World {
   private buildRo = 0;
   private ghostOk = false;
   private ghostCell: [number, number, number] | null = null;
+  private ghostHit: [number, number] = [0, 0];
   private trashT: RPiece | null = null;
   private swingT = 0;
   private actCd = 0;
@@ -1312,6 +1313,7 @@ export class World {
       const hx = o.x + d.x * t0;
       const hz = o.z + d.z * t0;
       if (Math.hypot(hx - this.me.x, hz - this.me.z) > REACH) return null;
+      this.ghostHit = [hx, hz];
       return [cellOf(hx), cellOf(hz), lv];
     };
     let cell: [number, number, number] | null = null;
@@ -1327,6 +1329,24 @@ export class World {
       return;
     }
     if (def.slot === 'surf') cell[2] = 1;
+    // perdoa a mira: se a célula não serve, pega a vizinha válida mais perto do ponto mirado
+    if (this.raft.canPlace(k, cell[0], cell[1], cell[2], fl)) {
+      const hit = this.ghostHit;
+      let best: [number, number, number] | null = null;
+      let bd = 1.25 * CELL;
+      for (let ox = -1; ox <= 1; ox++)
+        for (let oz = -1; oz <= 1; oz++) {
+          const cx = cell[0] + ox;
+          const cz = cell[1] + oz;
+          if (this.raft.canPlace(k, cx, cz, cell[2], fl)) continue;
+          const dd = Math.hypot(cx * CELL - hit[0], cz * CELL - hit[1]);
+          if (dd < bd && Math.hypot(cx * CELL - this.me.x, cz * CELL - this.me.z) <= REACH) {
+            bd = dd;
+            best = [cx, cz, cell[2]];
+          }
+        }
+      if (best) cell = best;
+    }
     const why = this.raft.canPlace(k, cell[0], cell[1], cell[2], fl);
     this.ghostOk = why === '' && bagHas(this.inv, def.cost);
     this.ghostCell = cell;
