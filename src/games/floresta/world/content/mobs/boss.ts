@@ -153,6 +153,8 @@ export class BossCtl {
   private dirX = 0;
   private dirZ = 1;
   private tickT = 0;
+  /** relógio do sopro (separado do das poças, que zera o seu a cada 0,4 s) */
+  private breathT = 0;
   private puddles: Puddle[] = [];
   private tele: Telegraph | null = null;
   private ringHit = false;
@@ -457,7 +459,7 @@ export class BossCtl {
         if (this.t <= 0) {
           this.st = 'breath';
           this.t = 1.6;
-          this.tickT = 0;
+          this.breathT = 0;
           c.sound('fire', m.x, m.y, m.z);
         }
         return;
@@ -471,8 +473,9 @@ export class BossCtl {
           const sp = 10 + Math.random() * 8;
           c.fx.emitVel('fire', mx, my, mz, Math.sin(a) * sp, -3 + Math.random() * 2, Math.cos(a) * sp, 1, 1.1, 0.45);
         }
-        if (this.tickT <= 0) {
-          this.tickT = 0.3;
+        this.breathT -= dt;
+        if (this.breathT <= 0) {
+          this.breathT = 0.4;
           const dx = p.x - mx;
           const dz = p.z - mz;
           const dd = Math.hypot(dx, dz);

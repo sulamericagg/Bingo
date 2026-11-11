@@ -800,11 +800,19 @@ export class NetSession {
         }
       } else this.ripe.delete(p.uid);
     }
-    if (f.length || c.length) this.send({ t: 'mg', k: 'tm', f: f.slice(0, 60), c: c.slice(0, 200) });
+    // a hora do dia também é do anfitrião
+    this.send({ t: 'mg', k: 'tm', f: f.slice(0, 60), c: c.slice(0, 200), d: Math.round(sb.dayT * 10000) / 10000, nn: sb.nights });
   }
   private timersIn(m: Record<string, any>): void {
     const sb = this.g!.sb!;
     const now = performance.now();
+    if (typeof m.d === 'number' && m.d >= 0 && m.d < 1) {
+      let dd = m.d - sb.dayT;
+      if (dd > 0.5) dd -= 1;
+      if (dd < -0.5) dd += 1;
+      if (Math.abs(dd) > 0.004) sb.dayT = m.d;
+      if (typeof m.nn === 'number') sb.nights = m.nn;
+    }
     for (const [u, j] of Array.isArray(m.f) ? m.f : []) {
       const p = sb.builds.byUid(+u);
       // acabei de mexer nela: espera o anfitrião receber
