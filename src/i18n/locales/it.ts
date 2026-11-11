@@ -2941,6 +2941,8 @@ export default {
   "dz.h2.tornado": "Riparati in una casa, ma il tornado strappa i tetti. Stagli lontano!",
   "dz.h2.tsunami": "Onde sempre più grandi! Sali e cambia posto tra un'onda e l'altra.",
   "dz.h2.vulcao": "La lava scende da destra e cadono palle di fuoco. Evita le ombre!",
+  "dz.h3.avalanche": "La neve sale a ondate e rotolano palle di neve. Sali in alto e salta!",
+  "dz.h3.vulcao": "La lava sale a ondate e cadono palle di fuoco. Sali in alto e schiva le ombre!",
   "dz.helped": "Hai aiutato! Hai salvato {name}.",
   "dz.lost": "Quasi!",
   "dz.lostsolo": "La prossima volta ce la fai!",

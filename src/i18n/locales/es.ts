@@ -2941,6 +2941,8 @@ export default {
   "dz.h2.tornado": "Refúgiate en una casa, pero el tornado arranca techos. ¡Aléjate de él!",
   "dz.h2.tsunami": "¡Olas cada vez más grandes! Sube y cambia de lugar entre ellas.",
   "dz.h2.vulcao": "La lava baja desde la derecha y caen bolas de fuego. ¡Esquiva las sombras!",
+  "dz.h3.avalanche": "La nieve sube en olas y ruedan bolas de nieve. ¡Sube alto y salta!",
+  "dz.h3.vulcao": "La lava sube en olas y caen bolas de fuego. ¡Sube alto y esquiva las sombras!",
   "dz.helped": "¡Ayudaste! Salvaste a {name}.",
   "dz.lost": "¡Casi!",
   "dz.lostsolo": "¡La próxima lo logras!",

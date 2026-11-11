@@ -2941,6 +2941,8 @@ export default {
   "dz.h2.tornado": "Versteck dich in einem Haus, aber der Tornado reißt Dächer ab. Halt Abstand!",
   "dz.h2.tsunami": "Immer größere Wellen! Kletter hoch und wechsle dazwischen den Platz.",
   "dz.h2.vulcao": "Lava fließt von rechts und Feuerbälle fallen. Weich den Schatten aus!",
+  "dz.h3.avalanche": "Der Schnee steigt in Wellen und Schneebälle rollen. Klettere hoch und spring!",
+  "dz.h3.vulcao": "Die Lava steigt in Wellen und Feuerbälle fallen. Klettere hoch und weich den Schatten aus!",
   "dz.helped": "Geholfen! Du hast {name} gerettet.",
   "dz.lost": "Fast!",
   "dz.lostsolo": "Nächstes Mal schaffst du es!",
