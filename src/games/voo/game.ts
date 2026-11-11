@@ -134,9 +134,24 @@ export class VooGame implements MiniGameHandle, HudHost {
   private hangar: HangarHandle | null = null;
   private lobby(): void {
     const sv = this.sv;
-    const h = openHangar(this.wrap, { sv, gl: webglOk(), weak: detectInitialTier() <= 1, dailyBonus: 25 });
+    // voltar no hangar: com a folha de Ajustes aberta fecha a folha; sem ela vale o "Sair do jogo?" do hub
+    // (antes saía do jogo direto, sem perguntar)
+    const h = openHangar(this.wrap, {
+      sv,
+      gl: webglOk(),
+      weak: detectInitialTier() <= 1,
+      dailyBonus: 25,
+      onSheet: (open) => {
+        if (open) this.setBack(() => h.back());
+        else {
+          this.popBack?.();
+          this.popBack = null;
+        }
+      },
+    });
     this.hangar = h;
-    this.setBack(() => h.back());
+    this.popBack?.();
+    this.popBack = null;
     this.listenInvites(h);
     void h.done.then((pick) => {
       this.hangar = null;

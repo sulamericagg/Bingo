@@ -33,6 +33,8 @@ export interface HangarOpts {
   weak: boolean;
   /** moedas extras do primeiro voo do dia */
   dailyBonus: number;
+  /** a folha de Ajustes abriu/fechou (o jogo registra o voltar só enquanto ela está aberta) */
+  onSheet?(open: boolean): void;
 }
 
 /* ============================== arte 2D ============================== */
@@ -597,6 +599,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     s.classList.remove('in');
     setTimeout(() => s.remove(), 260);
     summary();
+    o.onSheet?.(false);
   };
   const openSheet = () => {
     if (sheet) return;
@@ -628,6 +631,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     </div>`;
     el.appendChild(s);
     sheet = s;
+    o.onSheet?.(true);
     // miniaturas
     s.querySelectorAll<HTMLButtonElement>('.vh-tile.liv').forEach((b) => {
       const l = LIVERIES.find((q) => q.id === b.dataset.l)!;

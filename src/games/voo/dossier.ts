@@ -95,19 +95,23 @@ const hatRow = (c: CrewLine) =>
 
 export function briefing(root: HTMLElement, b: Brief): Promise<string> {
   const cover = `<div style="font-size:14px;font-weight:800;letter-spacing:3px">${esc(t('voo.d.file', 'PASTA DE MISSÃO'))}</div><div class="ttl">${esc(t('voo.name', 'Pouso Forçado'))}</div>${vIcon('plane', 64)}<div class="voo-stamp" style="position:static;transform:rotate(-8deg)">${esc(t('voo.d.secret', 'CONFIDENCIAL'))}</div>`;
+  // ícone primeiro, rótulo curto (criança que ainda não lê entende pelos desenhos — pedido do dono)
+  const row = (ic: string, txt: string) => `<div class="ln ic">${vIcon(ic, 30)}<span>${esc(txt)}</span></div>`;
+  const wIc = ['star', 'turb', 'water'][b.weather] ?? 'star';
+  const mIc = b.mode === 'daily' ? 'calendar' : b.mode === 'training' ? 'school' : 'plane';
   const s1 = `<h3>${vIcon('plane', 26)}${esc(t('voo.d.mission', 'Missão: voo {f}', { f: b.flight }))}</h3>
-    <div class="ln"><b>${esc(t('voo.d.route', 'Rota'))}</b>${esc(b.from)} → ${esc(b.to)}</div>
-    <div class="ln"><b>${esc(t('voo.d.weather', 'Tempo'))}</b>${esc(weatherName(b.weather))}</div>
-    <div class="ln"><b>${esc(t('voo.d.type', 'Tipo'))}</b>${esc(b.mode === 'daily' ? t('voo.mode.daily', 'Voo do dia') : b.mode === 'training' ? t('voo.mode.training', 'Treino de pouso') : t('voo.mode.normal', 'Voo normal'))}</div>
-    <div class="ln"><b>${esc(t('voo.d.situation', 'Situação'))}</b>${esc(t('voo.d.sit', 'O comandante pode desmaiar a qualquer momento. Fiquem atentos!'))}</div>
+    ${row('plane', `${b.from} → ${b.to}`)}
+    ${row(wIc, weatherName(b.weather))}
+    ${row(mIc, b.mode === 'daily' ? t('voo.mode.daily', 'Voo do dia') : b.mode === 'training' ? t('voo.mode.training', 'Treino de pouso') : t('voo.mode.normal', 'Voo normal'))}
+    ${row('warn', t('voo.d.sitShort', 'O comandante pode desmaiar!'))}
     <div class="voo-stamp">${esc(t('voo.d.mStamp', 'MISSÃO'))}</div>`;
   const s2 = `<h3>${vIcon('crew', 26)}${esc(t('voo.d.crew', 'Tripulação'))}</h3><div class="crew">${b.crew.map(hatRow).join('')}</div>
     <div class="voo-stamp amber">${esc(t('voo.d.approved', 'APROVADO'))}</div>`;
   const s3 = `<h3>${vIcon('info', 26)}${esc(t('voo.d.orders', 'Ordens'))}</h3>
-    <div class="ln">1. ${esc(t('voo.d.o1', 'Alguém senta no manche e segue a seta rosa até a pista.'))}</div>
-    <div class="ln">2. ${esc(t('voo.d.o2', 'Apaguem fogos, tapem vazamentos e acalmem os passageiros.'))}</div>
-    <div class="ln">3. ${esc(t('voo.d.o3', 'Ajudantes Bloop só agem quando você manda (toque no retrato).'))}</div>
-    <div class="ln">4. ${esc(t('voo.d.o4', 'No fim: flapes, trem baixado, devagar e toque suave!'))}</div>
+    ${row('ap', t('voo.d.o1s', 'Siga a seta rosa'))}
+    ${row('water', t('voo.d.o2s', 'Apague o fogo, tape vazamentos'))}
+    ${row('crew', t('voo.d.o3s', 'Toque no retrato: o ajudante vai'))}
+    ${row('flaps', t('voo.d.o4s', 'Flapes, trem e toque suave'))}
     <div class="voo-stamp big">${esc(t('voo.d.go', 'BOA SORTE!'))}</div>`;
   return folder(root, cover, [s1, s2, s3], [{ id: 'go', label: t('voo.d.board', 'Embarcar!'), cls: 'green', ico: 'plane' }], t('voo.d.skip', 'Pular'));
 }
