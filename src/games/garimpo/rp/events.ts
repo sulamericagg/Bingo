@@ -44,6 +44,8 @@ export interface Fx {
   fill?: number;
   repair?: boolean;
   heart?: boolean;
+  /** quebra para o módulo de consertos (rp/breakdown.ts) */
+  brk?: import('./breakdown').BreakKind;
   /** frase do resultado (chave em OUT) */
   say?: OutKey;
 }
@@ -276,9 +278,9 @@ export const TEMPLATES: Tpl[] = [
     title: () => t('gb.ev.flat.t', 'Pneu furado!'),
     text: () => t('gb.ev.flat.x', 'Pof! Um pneu estourou.'),
     ch: () => [
-      { ic: 'tire', l: 'kit', need: 'kit', ok: { h: 0.4, xp: 12, it: ['kit', -1], say: 'good' } },
+      { ic: 'tire', l: 'kit', need: 'kit', ok: { h: 0.4, xp: 12, it: ['kit', -1], brk: 'tire', say: 'good' } },
       { ic: 'wrench', l: 'mech', cost: 90, ok: { h: 1, say: 'slow' } },
-      { ic: 'run', l: 'slow', p: 0.55, ok: { h: 0.3, say: 'phew' }, bad: { dmg: 12, m: -60, say: 'bad' } },
+      { ic: 'run', l: 'slow', p: 0.55, ok: { h: 0.3, say: 'phew' }, bad: { dmg: 12, m: -60, brk: 'tire', say: 'bad' } },
     ],
   },
   {
@@ -381,7 +383,7 @@ export const TEMPLATES: Tpl[] = [
     ch: () => [
       { ic: 'clock', l: 'stop', ok: { h: 0.7, say: 'safe' } },
       { ic: 'water', l: 'water', need: 'agua', ok: { h: 0.2, it: ['agua', -1], xp: 8, say: 'good' } },
-      { ic: 'run', l: 'ignore', p: 0.5, ok: { say: 'phew' }, bad: { dmg: 20, say: 'bad' } },
+      { ic: 'run', l: 'ignore', p: 0.5, ok: { say: 'phew' }, bad: { dmg: 20, brk: 'part', say: 'bad' } },
     ],
   },
   {
@@ -555,8 +557,8 @@ export const TEMPLATES: Tpl[] = [
     id: 'breakdown', cat: 'camp', icon: 'broken', where: ['camp', 'mine'], veh: ['light', 'heavy', 'heli'], minDiff: 1, w: 6, cd: 6, vars: PARTS,
     title: () => t('gb.ev.breakdown.t', 'Máquina quebrou'),
     text: () => t('gb.ev.breakdown.x', 'Estourou uma {v}! A máquina parou.'),
-    ch: () => [
-      { ic: 'wrench', l: 'fix', p: 0.6, ok: { h: 0.5, xp: 20, say: 'good' }, bad: { m: -150, h: 1, say: 'bad' } },
+    ch: (_c, v) => [
+      { ic: 'wrench', l: 'fix', p: 0.6, ok: { h: 0.5, xp: 20, brk: v?.k === 'battery' ? 'electric' : v?.k === 'belt' ? 'bushing' : 'part', say: 'good' }, bad: { m: -150, h: 1, say: 'bad' } },
       { ic: 'phone', l: 'mech', cost: 180, ok: { h: 0.6, say: 'good' } },
       { ic: 'clock', l: 'wait', ok: { h: 3, say: 'slow' } },
     ],

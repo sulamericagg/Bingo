@@ -47,6 +47,8 @@ export class Road {
   readonly K: Float32Array;
   readonly stops: Stop[] = [];
   readonly bridges: Bridge[] = [];
+  /** pontos para RAMPA DE ESCAPE (fim de descidas longas): s e lado livre (+1 esquerda / -1 direita) */
+  readonly ramps: { s: number; side: 1 | -1; drop: number }[] = [];
   readonly seed: number;
   private ph: number[];
 
@@ -114,6 +116,21 @@ export class Road {
       h += k * DS;
       x += Math.sin(h) * DS;
       z += Math.cos(h) * DS;
+    }
+    // rampas de escape: onde a pista desceu > 14 m nos últimos 400 m (freio pode falhar)
+    const look = Math.round(400 / DS);
+    let last = -1e9;
+    for (let i = look; i < n; i++) {
+      const si = i * DS - YARD;
+      if (si < 300 || si > this.L - 200) continue;
+      const drop = this.Y[i - look] - this.Y[i];
+      const still = this.Y[Math.min(n - 1, i + 10)] < this.Y[i];
+      if (drop > 14 && still && si - last > 700 && !this.stops.some((st) => Math.abs(st.s - si) < 150) && !this.bridges.some((b) => si > b.s0 - 80 && si < b.s1 + 80)) {
+        // lado de fora da curva (ou direita na reta)
+        const side: 1 | -1 = this.K[i] > 0.0005 ? -1 : this.K[i] < -0.0005 ? 1 : -1;
+        this.ramps.push({ s: si, side, drop: Math.round(drop) });
+        last = si;
+      }
     }
   }
 

@@ -34,6 +34,7 @@ import { howl, thunder } from './sound';
 import { capKg, digMul, fixRp, invKg, ITEMS, SACK_VOL, STR_MAX, stamMax, systems, TANK, xpNeed, type ItemId, type RpSave, type Systems } from './state';
 import { bagScreen, freightScreen, resultScreen, shopScreen, type DeliveryResult } from './screens';
 import { buildPump, buildShop } from '../haul/models';
+import { triggerBreakdown } from './breakdown';
 
 /** campos privados do Garimpo que a camada lê (acesso por índice, sem mudar a classe) */
 interface GPriv {
@@ -925,6 +926,8 @@ export class RpLayer {
     if (fx.fog) weather.fog = 1;
     if (fx.sky && !g.guest) weather.force(fx.sky as SkyKind, 3);
     if (fx.heart) sfx.sparkle();
+    // quebra: o módulo de consertos (se existir) abre o minijogo; senão fica o efeito simples acima
+    if (fx.brk) triggerBreakdown(fx.brk, this.hw ? this.hw.rig : g.cur);
     // estrada
     const hw = this.hw;
     if (hw) {
