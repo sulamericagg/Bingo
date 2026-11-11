@@ -187,12 +187,15 @@ export class Knob extends Control {
 export class PushButton extends Control {
   private cap: THREE.Mesh;
   private flash = 0;
+  /** cor própria (sininho dourado): antes virava vermelho depois do 1º toque e parecia "quebrado" */
+  private col: string;
   constructor(
     kit: ControlKit,
     o: ControlOpts,
     readonly toggle = true,
   ) {
     super(kit, o);
+    this.col = o.color ?? '#ff3e5e';
     const ring = kit.mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.016, 20).rotateX(Math.PI / 2), '#2a2238');
     ring.position.z = 0.008;
     this.cap = kit.mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.03, 18).rotateX(Math.PI / 2), o.color ?? '#ff3e5e');
@@ -209,15 +212,19 @@ export class PushButton extends Control {
     return this.flash > 0.5 ? 1 : this.on ? 0.5 : 0;
   }
   override update(dt: number, time: number): void {
-    if (this.flash > 0) {
+    const fl = this.flash > 0;
+    if (fl) {
       this.flash = Math.max(0, this.flash - dt * 6);
       this.spring.v += 0.0001; // força recalcular a pose
     }
     super.update(dt, time);
+    if (fl && this.flash === 0) this.pose(this.spring.x); // apaga a luz do toque
   }
   protected pose(k: number): void {
     this.cap.position.z = 0.022 - Math.max(0, Math.min(1, k)) * 0.014;
-    this.cap.material = this.kit.mat(this.on ? '#ffe14a' : '#ff3e5e', 0, this.on);
+    // momentâneo: acende só durante o toque; liga/desliga: aceso enquanto ligado
+    const lit = this.toggle ? this.on : this.flash > 0.05;
+    this.cap.material = this.kit.mat(lit ? '#ffe14a' : this.col, 0, lit);
   }
 }
 
@@ -296,7 +303,8 @@ export class HingedDoor extends Control {
     super.update(dt, time);
   }
   protected pose(k: number): void {
-    this.door.rotation.y = -this.side * k * this.openAngle;
+    // abre PARA FORA (na direção de quem olha, +z local) girando na dobradiça
+    this.door.rotation.y = this.side * k * this.openAngle;
   }
 }
 

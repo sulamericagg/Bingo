@@ -6,7 +6,7 @@
 import './caca.css';
 import type { MiniGameHandle } from '../hub/registry';
 import { reportRun } from '../hub/registry';
-import { t, fmt } from '../i18n';
+import { t, fmt, fmtDec } from '../i18n';
 import { gameFont } from '../i18n/font';
 import { audio } from '../core/audio';
 import * as haptics from '../core/haptics';
@@ -19,11 +19,19 @@ import { esc } from '../ui/dom';
 import { bindButton, edges, type BoundButton } from '../ui/touch';
 import { genome, powerOf, statsAt, uniqueSerial, rarityOdds, variationEstimate, SHAPES, ELEMENTS, withElement, type Genome, type Element, type Rarity } from './genome';
 import { drawGenome, genomeIcon, EL_COLOR, RARITY_COL, fitScale, paintGenome, rarityBackdrop } from './draw';
-import { distM, geohashEncode, metersPerPx, project } from './geo';
+import { distM, geohashEncode, metersPerPx, project, unproject } from './geo';
 import { Locator, SpeedLock, type Fix, type LocError } from './location';
-import { spawnsAround, homeSpawns, homeOrigin, windowOf, weatherAt, dayPart, CELL_PRECISION, type Spawn } from './spawns';
-import { ProceduralTileProvider, themeForHour, WZ, type TileProvider } from './world';
-import { cacaSave, persistCaca, addMon, teamMons, toggleTeam, releaseMon, giveXp, canEvolve, evolve, markDone, markSeen, bumpStreak, streakAlive, addEgg, walkEggs, starterSeeds, xpNeed, monById, EVO_LVL, type Mon } from './save';
+import { spawnsAround, homeSpawns, homeOrigin, windowOf, weatherAt, dayPart, setLandSampler, nestFamily, CELL_PRECISION, type LandSampler, type Spawn } from './spawns';
+import { biomeAtWorld, themeForHour, WZ } from './world';
+import { G_PARK, G_PLAZA, G_WATER, TILE_PX, type OsmPoi } from './osmdata';
+import { OsmStore } from './osmtiles';
+import { MapRenderer, toScreen, toWorld, visibleBounds, type Cam, type Mat, type Sprite } from './mapview';
+import { cacaSave, persistCaca, addMon, teamMons, toggleTeam, releaseMon, giveXp, canEvolve, evolve, markDone, markSeen, bumpStreak, streakAlive, addEgg, walkEggs, starterSeeds, xpNeed, monById, joyBudget, spendJoy, addRealWalk, stopReady, stopUsed, EVO_LVL, JOY_RADIUS_M, type Mon } from './save';
+import { dayNumber } from '../core/storage';
+import { detectInitialTier, loadMode, type Tier } from '../core/quality';
+import { createJoystick, type Joystick } from '../ui/touch';
+import { drawAvatar, type AvatarData } from '../game/avatar';
+import type { PlayerPose } from '../game/character';
 import { makeMinigame, gameName, gameHelp, EL_GAMES, GAME_KINDS, type Minigame, type GameKind } from './minigames';
 import { WebArLite, type ArProvider } from './ar';
 import { elName, rarName, shapeName, matName, patName, weatherName } from './text';
@@ -31,12 +39,59 @@ import { seedFrom } from './rng';
 
 const REACH_GPS = 40;
 const REACH_HOME = 160;
-const SCALE = 1.6; // px CSS por pixel do mundo (zoom 17)
+/** zoom do mapa em px CSS por metro */
+const ZOOM_MIN = 0.9;
+const ZOOM_MAX = 3.4;
+/** andar pelo jogo: velocidade de caminhada (m/s) e do passeio automático */
+const WALK_MPS = 1.4;
+const PASSEIO_MPS = 1.2;
+const STOP_CD_MS = 5 * 60 * 1000;
 
-/** Provedor de tiles: troque aqui (ou via setTileProvider) quando houver um serviço comercial configurado. */
-let tileFactory: () => TileProvider = () => new ProceduralTileProvider();
-export function setTileProvider(f: () => TileProvider): void {
-  tileFactory = f;
+interface StopRef {
+  p: OsmPoi;
+  wx: number;
+  wy: number;
+  lat: number;
+  lon: number;
+}
+interface Hit {
+  x: number;
+  y: number;
+  r: number;
+  spawn?: Spawn;
+  stop?: StopRef;
+}
+
+const SVG = (body: string) => `<svg class="ico" viewBox="0 0 48 48" width="1.25em" height="1.25em" aria-hidden="true">${body}</svg>`;
+const JOY_SVG = SVG(
+  '<rect x="5" y="16" width="38" height="22" rx="11" fill="#7a5cff" stroke="#2a0b5c" stroke-width="3"/><circle cx="16" cy="27" r="5" fill="#fff"/><circle cx="33" cy="24" r="3" fill="#ffd23a"/><circle cx="33" cy="31" r="3" fill="#ff5c8a"/>',
+);
+const FEET_SVG = SVG(
+  '<ellipse cx="17" cy="30" rx="6.5" ry="9" fill="#ffd23a" stroke="#2a0b5c" stroke-width="3"/><ellipse cx="31" cy="18" rx="6.5" ry="9" fill="#7dff9a" stroke="#2a0b5c" stroke-width="3"/><circle cx="17" cy="42" r="3" fill="#ffd23a"/><circle cx="31" cy="30" r="3" fill="#7dff9a"/>',
+);
+const COMPASS_SVG = '<svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true"><path d="M24 5 L31 24 L24 21 L17 24 Z" fill="#ff5c6a"/><path d="M24 43 L17 24 L24 27 L31 24 Z" fill="#fff"/><circle cx="24" cy="24" r="3" fill="#2a0b5c"/></svg>';
+const PIN_OFF_SVG = SVG(
+  '<path d="M24 44s14-14 14-24a14 14 0 0 0-28 0c0 10 14 24 14 24z" fill="#ffb3c7" stroke="#2a0b5c" stroke-width="3"/><circle cx="24" cy="20" r="5" fill="#fff" stroke="#2a0b5c" stroke-width="3"/><path d="M8 8 L40 40" stroke="#2a0b5c" stroke-width="4" stroke-linecap="round"/>',
+);
+const MOON_SVG = SVG('<path d="M30 6a18 18 0 1 0 12 30A15 15 0 0 1 30 6z" fill="#ffe48a" stroke="#2a0b5c" stroke-width="3"/><circle cx="12" cy="10" r="2" fill="#fff"/><circle cx="40" cy="12" r="1.6" fill="#fff"/>');
+
+function drawFlag(c: CanvasRenderingContext2D, x: number, y: number, k: number, tm: number): void {
+  c.save();
+  c.translate(x, y);
+  c.scale(k, k);
+  c.strokeStyle = '#2a0b5c';
+  c.lineWidth = 2.5;
+  c.beginPath();
+  c.moveTo(0, 0);
+  c.lineTo(0, -30);
+  c.stroke();
+  c.fillStyle = '#ffd23a';
+  c.beginPath();
+  c.moveTo(0, -30);
+  c.quadraticCurveTo(9, -28 + Math.sin(tm * 5) * 2, 16, -25);
+  c.lineTo(0, -19);
+  c.fill();
+  c.restore();
 }
 
 type Ability = 'forca' | 'lento' | 'escudo' | 'cura' | 'dica';
@@ -94,14 +149,42 @@ class CacaGame implements MiniGameHandle {
   private dpr = 1;
   private offs: (() => void)[] = [];
   private btns: BoundButton[] = [];
-  private tiles: TileProvider = tileFactory();
+  private tier: Tier;
+  private store: OsmStore | null = null;
+  private renderer: MapRenderer | null = null;
+  private tilesDirty = false;
+  private m: Mat | null = null;
+  private hits: Hit[] = [];
+  private stops: StopRef[] = [];
+  private selStop = '';
+  private pending = 0;
+  private rot = 0;
+  private rotAnim: number | null = null;
+  private follow = false;
+  private tiltNow = 0.7;
   private locator: Locator | null = null;
   private lock = new SpeedLock();
   private fix: Fix | null = null;
   private lastWalk: Fix | null = null;
-  private target: [number, number] | null = null; // mundo px
-  private view: [number, number] | null = null;
-  private heading = 0;
+  private target: [number, number] | null = null; // mundo px (posição filtrada)
+  /** posição desenhada do bonequinho (anda suave até target) */
+  private av: [number, number] | null = null;
+  private avSpeed = 0;
+  private heading: number | null = null;
+  private pose: PlayerPose = { t: 0, blink: 0, lookX: 0, lookY: 0, sx: 1, sy: 1, mood: 'idle', lx: -0.55, ly: -0.83 };
+  /* modo controle */
+  private joy: Joystick | null = null;
+  private joyZone!: HTMLDivElement;
+  private joyChip!: HTMLDivElement;
+  private joyMoving = false;
+  private joyAcc = 0;
+  private joyOverride: { x: number; y: number; until: number } | null = null;
+  private walkTo: [number, number] | null = null;
+  private anchor: [number, number] | null = null;
+  private walkBtn: HTMLButtonElement | null = null;
+  private compassBtn!: HTMLButtonElement;
+  private attrib!: HTMLDivElement;
+  private mapState!: HTMLDivElement;
   private spawns: Spawn[] = [];
   private spawnKey = '';
   private mapOn = false;
@@ -114,6 +197,8 @@ class CacaGame implements MiniGameHandle {
   private gpsWait = 0;
 
   constructor(root: HTMLElement, private exitFn: () => void) {
+    const qm = loadMode();
+    this.tier = qm === 'auto' ? detectInitialTier() : qm;
     this.el = h('div', 'cc-root');
     root.appendChild(this.el);
     this.cv = h('canvas', 'cc-map');
@@ -125,7 +210,11 @@ class CacaGame implements MiniGameHandle {
     this.offs.push(bus.on('wallet', () => this.updateCoins()));
     this.resize();
     this.buildMapUi();
-    this.cv.addEventListener('pointerdown', (e) => this.onMapTap(e));
+    this.cv.addEventListener('pointerdown', (e) => this.onMapDown(e));
+    this.cv.addEventListener('pointermove', (e) => this.onMapMove(e));
+    this.cv.addEventListener('pointerup', (e) => this.onMapUp(e));
+    this.cv.addEventListener('pointercancel', (e) => this.onMapUp(e));
+    this.cv.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     if (location.search.includes('debug')) this.exposeDebug();
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
@@ -276,7 +365,31 @@ class CacaGame implements MiniGameHandle {
     this.btn(team, () => this.showDex('mine'));
     this.btn(eggs, () => this.showDex('eggs'));
     bot.append(dex, team, eggs);
-    this.el.append(top, this.banner, this.hint, bot);
+    // coluna da direita: bússola + modo de andar
+    const side = h('div', 'cc-side');
+    this.compassBtn = h('button', 'cc-ibtn cc-compass', COMPASS_SVG) as HTMLButtonElement;
+    this.compassBtn.setAttribute('aria-label', t('caca.compass', 'Bússola'));
+    this.btn(this.compassBtn, () => {
+      // 1º toque: norte para cima; 2º: o mapa gira com você
+      const north = Math.abs(Math.atan2(Math.sin(this.rot), Math.cos(this.rot))) < 0.05;
+      if (north && !this.follow) {
+        this.follow = true;
+        notify(t('caca.compass.follow', 'O mapa gira junto com você.'), { icon: 'refresh', key: 'cmp' });
+      } else {
+        this.follow = false;
+        this.rotAnim = 0;
+      }
+    });
+    this.walkBtn = h('button', 'cc-ibtn cc-walk') as HTMLButtonElement;
+    this.btn(this.walkBtn, () => this.toggleWalkMode());
+    side.append(this.compassBtn, this.walkBtn);
+    this.joyChip = h('div', 'cc-joychip');
+    this.joyZone = h('div', 'cc-joyzone');
+    this.attrib = h('div', 'cc-attrib');
+    this.attrib.textContent = '© OpenStreetMap contributors';
+    this.mapState = h('div', 'cc-mapstate');
+    this.el.append(this.joyZone, top, this.banner, this.joyChip, this.mapState, this.hint, side, this.attrib, bot);
+    this.updWalkBtn();
     this.updateCoins();
   }
   private updateCoins(): void {
@@ -290,60 +403,194 @@ class CacaGame implements MiniGameHandle {
     this.locator = null;
     this.fix = null;
     this.target = null;
-    this.view = null;
+    this.av = null;
     this.spawnKey = '';
-    if (this.sv.locMode === 'casa') {
+    this.walkTo = null;
+    this.anchor = null;
+    this.stops = [];
+    const casa = this.sv.locMode === 'casa';
+    if (!casa && !this.store) this.store = new OsmStore(() => this.onTiles());
+    setLandSampler(casa || !this.store ? null : this.landSampler());
+    this.renderer?.dispose();
+    this.renderer = new MapRenderer(casa ? null : this.store, this.tier);
+    this.attrib.style.display = casa ? 'none' : '';
+    const joy = this.sv.walkMode === 'controle';
+    this.setJoystick(joy);
+    if (casa) {
       const [lat, lon] = homeOrigin(this.sv.homeSeed);
-      this.fix = { lat, lon, acc: 5, speed: 0, heading: null, t: Date.now() };
-      this.target = project(lat, lon, WZ);
+      this.anchor = [lat, lon];
+      const jp = this.sv.joyPos;
+      const p = joy && jp && distM(lat, lon, jp[0], jp[1]) < JOY_RADIUS_M ? jp : ([lat, lon] as [number, number]);
+      this.place(p[0], p[1]);
       this.setBanner('');
     } else {
       this.gpsWait = performance.now();
-      this.setBanner(t('caca.gps.wait', 'Procurando o GPS… vá para um lugar aberto.'), true);
-      this.locator = new Locator(
-        (f) => this.onFix(f),
-        (e) => this.onLocError(e),
-      );
-      void this.locator.start();
+      this.setBanner(joy ? t('caca.joy.findStart', 'Achando seu ponto de partida…') : t('caca.gps.wait', 'Procurando o GPS… vá para um lugar aberto.'), true);
+      const a = this.sv.anchor;
+      if (joy && a) {
+        this.anchor = a;
+        const jp = this.sv.joyPos;
+        const p = jp && distM(a[0], a[1], jp[0], jp[1]) < JOY_RADIUS_M ? jp : a;
+        this.place(p[0], p[1]);
+        this.setBanner('');
+      }
+      this.startLocator();
     }
+    this.updJoyChip();
     this.refreshSpawns(true);
+    this.maybeNightTip();
+  }
+  private startLocator(): void {
+    this.locator?.stop();
+    const store = this.store;
+    this.locator = new Locator(
+      (f) => this.onFix(f),
+      (e) => this.onLocError(e),
+      store
+        ? (lat, lon, maxM) => {
+            const [x, y] = project(lat, lon, WZ);
+            const p = store.nearestWay(x, y, maxM / metersPerPx(lat, WZ));
+            return p ? unproject(p[0], p[1], WZ) : null;
+          }
+        : undefined,
+    );
+    void this.locator.start();
+  }
+  /** põe o jogador num ponto (modo casa / controle) */
+  private place(lat: number, lon: number): void {
+    this.fix = { lat, lon, acc: 5, speed: 0, heading: this.fix?.heading ?? null, t: Date.now() };
+    this.target = project(lat, lon, WZ);
+    if (!this.av || Math.hypot(this.av[0] - this.target[0], this.av[1] - this.target[1]) > 400) this.av = [this.target[0], this.target[1]];
+  }
+  private landSampler(): LandSampler {
+    const store = this.store!;
+    return {
+      at: (lat, lon) => {
+        const [x, y] = project(lat, lon, WZ);
+        const l = store.landAt(x, y);
+        if (l === 'err') {
+          // sem mapa (offline e sem cache): usa o mundo procedural — todo mundo sem dados vê o mesmo
+          const b = biomeAtWorld(x, y);
+          return { g: b === 'parque' ? G_PARK : b === 'agua' ? G_WATER : b === 'praca' ? G_PLAZA : 0, nest: null, bld: false };
+        }
+        return l;
+      },
+    };
+  }
+  private onTiles(): void {
+    if (this.dead) return;
+    this.tilesDirty = true;
   }
 
   private onFix(f: Fix): void {
     if (this.dead) return;
+    if (this.sv.walkMode === 'controle') {
+      // modo controle: o GPS só dá o ponto de partida (e re-ancora se você foi para outro lugar). Depois desliga.
+      if (f.coarse && f.acc > 150) return;
+      const a = this.sv.anchor;
+      if (!a || distM(a[0], a[1], f.lat, f.lon) > JOY_RADIUS_M) {
+        // arredondado (~100 m): é só para o limite do passeio; fica no aparelho
+        this.sv.anchor = [Math.round(f.lat * 1000) / 1000, Math.round(f.lon * 1000) / 1000];
+        this.sv.joyPos = null;
+        persistCaca();
+        this.anchor = this.sv.anchor;
+        this.place(f.lat, f.lon);
+      } else if (!this.fix) {
+        this.anchor = a;
+        this.place(a[0], a[1]);
+      }
+      this.setBanner('');
+      this.locator?.stop();
+      this.locator = null;
+      this.refreshSpawns(true);
+      return;
+    }
     const locked = this.lock.update(f);
     const prev = this.lastWalk;
     if (!prev) this.lastWalk = f;
     else {
       const d = distM(prev.lat, prev.lon, f.lat, f.lon);
-      if (f.acc < 40 && !locked && d >= 5) {
-        if (d < 80 && f.speed < 7) this.walked(d / 1000);
+      if (f.acc < 40 && !locked && d >= 5 && f.moving !== false) {
+        if (d < 80 && f.speed < 7) {
+          this.walked(d / 1000);
+          addRealWalk(d);
+        }
         this.lastWalk = f;
       }
     }
     this.fix = f;
     this.target = project(f.lat, f.lon, WZ);
-    if (f.heading !== null && f.speed > 0.6) this.heading = f.heading;
-    this.setBanner(locked ? t('caca.vehicle', 'Parece que você está num veículo. As aparições estão pausadas — não jogue dirigindo!') : '');
+    if (f.heading !== null) this.heading = f.heading;
+    this.setBanner(
+      locked
+        ? t('caca.vehicle', 'Parece que você está num veículo. As aparições estão pausadas — não jogue dirigindo!')
+        : f.coarse
+          ? t('caca.gps.coarse', 'GPS fraco — a posição pode demorar para acertar.')
+          : '',
+      !locked,
+    );
     this.refreshSpawns();
   }
   private onLocError(e: LocError): void {
     if (this.dead) return;
     if (e === 'timeout' && this.fix) return;
-    this.setBanner(
-      e === 'denied'
-        ? t('caca.gps.denied', 'Sem permissão de localização. Você pode jogar no modo casa (Ajustes).')
-        : t('caca.gps.off', 'Não deu para achar o GPS agora. Tente ao ar livre ou use o modo casa.'),
-      true,
-      {
-        label: t('caca.mode.home', 'Modo casa'),
-        fn: () => {
-          this.sv.locMode = 'casa';
-          persistCaca();
-          this.startMap();
-        },
+    if (e === 'denied') return this.showDenied();
+    if (this.sv.walkMode === 'controle' && this.fix) return;
+    this.setBanner(t('caca.gps.off', 'Não deu para achar o GPS agora. Tente ao ar livre ou use o modo casa.'), true, {
+      label: t('caca.mode.home', 'Modo casa'),
+      fn: () => {
+        this.sv.locMode = 'casa';
+        persistCaca();
+        this.startMap();
       },
-    );
+    });
+  }
+  /** cartão amigável: sem permissão de localização */
+  private showDenied(): void {
+    this.locator?.stop();
+    this.locator = null;
+    this.setBanner('');
+    const o = this.openOverlay('cc-deny');
+    this.header(o, t('caca.deny.title', 'Sem localização'), () => this.exitFn());
+    const sc = h('div', 'cc-scroll');
+    sc.innerHTML = `<div class="cc-card cc-center"><div class="cc-bigico">${PIN_OFF_SVG}</div>
+      <h3>${esc(t('caca.deny.h', 'Tudo bem! Dá para jogar mesmo assim.'))}</h3>
+      <p>${esc(t('caca.deny.p1', 'O jogo não recebeu permissão para usar a localização, então não dá para mostrar o mapa da sua cidade.'))}</p>
+      <p>${esc(t('caca.deny.p2', 'Quer o mapa de verdade? Peça para um adulto liberar a localização do Bloop World nas configurações do aparelho.'))}</p></div>`;
+    const a = h('button', 'cc-btn', `${JOY_SVG} ${esc(t('caca.deny.joy', 'Jogar em casa com o controle'))}`);
+    const b = h('button', 'cc-btn sec', `${icon('refresh')} ${esc(t('caca.deny.retry', 'Tentar de novo'))}`);
+    this.btn(a, () => {
+      this.sv.locMode = 'casa';
+      this.sv.walkMode = 'controle';
+      persistCaca();
+      this.startMap();
+    });
+    this.btn(b, () => this.startMap());
+    sc.append(a, b);
+    o.appendChild(sc);
+  }
+  /** dica da noite (1× por dia): não sair sozinho no escuro */
+  private maybeNightTip(): void {
+    const hr = new Date().getHours();
+    if (this.sv.locMode !== 'gps' || this.sv.walkMode !== 'real' || !(hr >= 19 || hr < 6)) return;
+    const today = dayNumber();
+    if (this.sv.nightTip === today) return;
+    this.sv.nightTip = today;
+    persistCaca();
+    const o = this.openOverlay('cc-tipov');
+    const box = h('div', 'cc-card cc-tipcard');
+    box.innerHTML = `<div class="cc-bigico">${MOON_SVG}</div><h3>${esc(t('caca.night.h', 'Já está escuro lá fora'))}</h3>
+      <p>${esc(t('caca.night.p', 'À noite, não saia para caçar sozinho. Jogue em casa andando com o controle, ou só com um adulto por perto, em lugares iluminados.'))}</p>`;
+    const a = h('button', 'cc-btn', `${JOY_SVG} ${esc(t('caca.night.joy', 'Andar com o controle'))}`);
+    const b = h('button', 'cc-btn sec', esc(t('caca.night.adult', 'Estou com um adulto')));
+    this.btn(a, () => {
+      this.sv.walkMode = 'controle';
+      persistCaca();
+      this.startMap();
+    });
+    this.btn(b, () => this.closeOverlay());
+    box.append(a, b);
+    o.appendChild(box);
   }
   private walked(km: number): void {
     for (const { mon } of walkEggs(km)) {
@@ -368,49 +615,158 @@ class CacaGame implements MiniGameHandle {
   private refreshSpawns(force = false): void {
     if (!this.fix) return;
     const now = Date.now();
-    const key = this.sv.locMode === 'casa' ? 'casa:' + windowOf(now) : geohashEncode(this.fix.lat, this.fix.lon, CELL_PRECISION) + ':' + windowOf(now);
+    const casa = this.sv.locMode === 'casa';
+    const joy = this.sv.walkMode === 'controle';
+    const key = geohashEncode(this.fix.lat, this.fix.lon, CELL_PRECISION) + ':' + windowOf(now) + ':' + (this.store?.version ?? 0) + (casa ? 'c' : '') + (joy ? 'j' : '');
     if (!force && key === this.spawnKey) return;
     this.spawnKey = key;
-    const list = this.sv.locMode === 'casa' ? homeSpawns(this.sv.homeSeed, now) : spawnsAround(this.fix.lat, this.fix.lon, now);
+    let list: Spawn[];
+    if (casa && !joy) {
+      list = homeSpawns(this.sv.homeSeed, now);
+      this.pending = 0;
+    } else {
+      const around = spawnsAround(this.fix.lat, this.fix.lon, now);
+      this.pending = around.pending ?? 0;
+      list = casa ? [...homeSpawns(this.sv.homeSeed, now), ...around] : around;
+    }
     const done = new Set(this.sv.done);
-    this.spawns = list.filter((s) => !done.has(s.id));
+    const seen = new Set<string>();
+    this.spawns = list.filter((s) => !done.has(s.id) && !seen.has(s.id) && (seen.add(s.id), true));
+    this.refreshStops();
     const w = weatherAt(this.fix.lat, this.fix.lon, now);
     const part = dayPart();
     const pn = part === 'noite' ? t('caca.part.noite', 'Noite') : part === 'manha' ? t('caca.part.manha', 'Manhã') : t('caca.part.tarde', 'Tarde');
-    const mode = this.sv.locMode === 'casa' ? t('caca.mode.homeShort', 'Modo casa') : 'GPS';
+    const mode = joy ? t('caca.joy.short', 'Controle') : casa ? t('caca.mode.homeShort', 'Modo casa') : 'GPS';
     const wn = part === 'noite' && w === 'sol' ? t('caca.wx.clear', 'Céu limpo') : weatherName(w);
     this.subtitle.textContent = `${mode} · ${pn} · ${wn}`;
   }
+  /** Pontos Bloop e Arenas num raio de ~700 m (dados do mapa real) */
+  private refreshStops(): void {
+    this.stops = [];
+    if (!this.store || this.sv.locMode === 'casa' || !this.target) return;
+    const [x, y] = this.target;
+    const mpp = metersPerPx(this.fix!.lat, WZ);
+    const R = 700 / mpp;
+    for (const tl of this.store.loaded(x - R, y - R, x + R, y + R)) {
+      const ox = tl.tx * TILE_PX;
+      const oy = tl.ty * TILE_PX;
+      for (const p of tl.pois) {
+        const wx = ox + p.x;
+        const wy = oy + p.y;
+        if (Math.hypot(wx - x, wy - y) > R) continue;
+        const [lat, lon] = unproject(wx, wy, WZ);
+        this.stops.push({ p, wx, wy, lat, lon });
+      }
+    }
+  }
 
   private reach(): number {
-    return this.sv.locMode === 'casa' ? REACH_HOME : REACH_GPS;
+    return this.sv.locMode === 'casa' && this.sv.walkMode !== 'controle' ? REACH_HOME : REACH_GPS;
   }
-  private distTo(s: Spawn): number {
+  private distTo(s: { lat: number; lon: number }): number {
     if (!this.fix) return 1e9;
     return distM(this.fix.lat, this.fix.lon, s.lat, s.lon);
   }
   private screenOf(s: Spawn): [number, number] {
     const [x, y] = project(s.lat, s.lon, WZ);
-    const v = this.view ?? this.target ?? [x, y];
-    return [this.w / 2 + (x - v[0]) * SCALE, this.h * 0.56 + (y - v[1]) * SCALE];
+    return this.m ? toScreen(this.m, x, y) : [this.w / 2, this.h / 2];
   }
 
-  private onMapTap(e: PointerEvent): void {
+  /* ---------- gestos do mapa: arrastar gira, pinça dá zoom, toque escolhe ---------- */
+  private ptrs = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
+  private dragged = false;
+  private pinch: { d: number; a: number } | null = null;
+  private onMapDown(e: PointerEvent): void {
     if (!this.mapOn || this.overlay || this.enc) return;
-    const r = this.cv.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
-    let best: Spawn | null = null;
-    let bd = 44;
-    for (const s of this.spawns) {
-      const [sx, sy] = this.screenOf(s);
-      const d = Math.hypot(sx - x, sy - 14 - y);
-      if (d < bd) (bd = d), (best = s);
+    try {
+      this.cv.setPointerCapture(e.pointerId);
+    } catch {
+      /* ok */
     }
-    if (best) this.trySpawn(best);
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+    if (this.ptrs.size === 1) this.dragged = false;
+    if (this.ptrs.size === 2) {
+      const [a, b] = [...this.ptrs.values()];
+      this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x) };
+      this.dragged = true;
+    }
+  }
+  private onMapMove(e: PointerEvent): void {
+    const p = this.ptrs.get(e.pointerId);
+    if (!p) return;
+    const px = p.x;
+    const py = p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (this.ptrs.size >= 2 && this.pinch) {
+      const [a, b] = [...this.ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      if (this.pinch.d > 10) this.setZoom(this.sv.zoom * (d / this.pinch.d));
+      this.rot += ang - this.pinch.a;
+      this.follow = false;
+      this.pinch = { d, a: ang };
+      return;
+    }
+    if (!this.dragged && Math.hypot(p.x - p.x0, p.y - p.y0) > 8) this.dragged = true;
+    if (this.dragged) {
+      // arrastar de lado gira o mapa em volta do jogador (como no gênero); em cima/baixo inverte o sentido
+      const dx = p.x - px;
+      const dy = p.y - py;
+      const oy = this.h * 0.66;
+      const sgn = p.y > oy ? -1 : 1;
+      const sx = p.x > this.w / 2 ? 1 : -1;
+      this.rot += (dx * sgn + dy * sx * 0.6) * 0.0075;
+      this.follow = false;
+    }
+  }
+  private onMapUp(e: PointerEvent): void {
+    const p = this.ptrs.get(e.pointerId);
+    this.ptrs.delete(e.pointerId);
+    if (this.ptrs.size < 2) this.pinch = null;
+    if (!p) return;
+    if (this.ptrs.size === 0 && (this.dragged || this.pinch)) persistCaca();
+    if (!this.dragged && performance.now() - p.t0 < 600 && this.ptrs.size === 0) {
+      const r = this.cv.getBoundingClientRect();
+      this.onMapTap(e.clientX - r.left, e.clientY - r.top);
+    }
+  }
+  private onWheel(e: WheelEvent): void {
+    if (!this.mapOn || this.overlay || this.enc) return;
+    e.preventDefault();
+    this.setZoom(this.sv.zoom * Math.exp(-e.deltaY * 0.0015));
+  }
+  private setZoom(z: number): void {
+    this.sv.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  }
+
+  private onMapTap(x: number, y: number): void {
+    if (!this.mapOn || this.overlay || this.enc) return;
+    let best: Hit | null = null;
+    let bd = Infinity;
+    for (const hh of this.hits) {
+      const d = Math.hypot(hh.x - x, hh.y - y);
+      if (d < hh.r && d < bd) (bd = d), (best = hh);
+    }
+    if (best) {
+      if (best.spawn) this.trySpawn(best.spawn);
+      else if (best.stop) this.openStop(best.stop);
+      return;
+    }
+    // modo controle: tocar no chão = "Passeio" até lá
+    if (this.sv.walkMode === 'controle' && this.m && this.fix) {
+      const [wx, wy] = toWorld(this.m, x, y);
+      const [lat, lon] = unproject(wx, wy, WZ);
+      if (this.anchor && distM(this.anchor[0], this.anchor[1], lat, lon) > JOY_RADIUS_M) {
+        notify(t('caca.joy.edge', 'Limite do passeio: fique a até 1,5 km do ponto de partida.'), { icon: 'home', key: 'joyedge' });
+        return;
+      }
+      this.walkTo = [wx, wy];
+      haptics.tap('light');
+    }
   }
   private trySpawn(s: Spawn): boolean {
-    if (this.lock.locked) {
+    if (this.lock.locked && this.sv.walkMode === 'real') {
       notify(t('caca.vehicleShort', 'Pausado: parece que você está num veículo.'), { kind: 'warn', icon: 'car' });
       return false;
     }
@@ -418,15 +774,227 @@ class CacaGame implements MiniGameHandle {
     if (d > this.reach()) {
       notify(t('caca.tooFar', 'Chegue mais perto: faltam {m} m', { m: Math.round(d - this.reach()) }), { icon: 'target' });
       haptics.tap('light');
+      if (this.sv.walkMode === 'controle') this.walkTo = project(s.lat, s.lon, WZ);
       return false;
     }
     this.openEncounter(s);
     return true;
   }
 
+  /* ---------- Pontos Bloop e Arenas ---------- */
+  private guardCache = new Map<string, Spawn>();
+  private guardian(st: StopRef): Spawn {
+    const day = dayNumber();
+    const ck = st.p.id + ':' + day;
+    const hit = this.guardCache.get(ck);
+    if (hit) return hit;
+    const sp = this.makeGuardian(st, day);
+    if (this.guardCache.size > 64) this.guardCache.clear();
+    this.guardCache.set(ck, sp);
+    return sp;
+  }
+  private makeGuardian(st: StopRef, day: number): Spawn {
+    const base = seedFrom('bloop-caca-v1', 'arena', st.p.id, day);
+    const g = genome(base);
+    const level = Math.min(35, 12 + (base.lo % 9) + g.rarity * 2);
+    return { id: `arena:${st.p.id}:${day}`, lat: st.lat, lon: st.lon, seed: base, g, biome: 'praca', level, until: (day + 1) * 86400000 };
+  }
+  private openStop(st: StopRef): void {
+    this.selStop = st.p.id;
+    const d = this.distTo(st);
+    const inReach = d <= this.reach();
+    const o = this.openOverlay('cc-sheetov');
+    o.addEventListener('pointerdown', (e) => e.target === o && this.closeOverlay());
+    const sh = h('div', 'cc-sheet');
+    const kind = st.p.arena ? t('caca.arena', 'Arena Bloop') : t('caca.stop', 'Ponto Bloop');
+    sh.innerHTML = `<div class="cc-scroll"><div class="cc-stophead"><div class="cc-stopico ${st.p.arena ? 'arena' : ''}">${st.p.arena ? icon('trophy') : icon('gift')}</div><div><small>${esc(kind)}</small><h3></h3></div></div></div>`;
+    sh.querySelector('h3')!.textContent = st.p.name;
+    const sc = sh.querySelector('.cc-scroll')!;
+    const p = h('p', 'cc-stopp');
+    if (!inReach) p.textContent = t('caca.tooFar', 'Chegue mais perto: faltam {m} m', { m: Math.round(d - this.reach()) });
+    sc.appendChild(p);
+    if (st.p.arena) {
+      const gd = this.guardian(st);
+      const beaten = this.sv.done.includes(gd.id);
+      const row = h('div', 'cc-guard');
+      row.appendChild(genomeIcon(gd.g, 96));
+      const info = h('div');
+      info.innerHTML = `<b></b><div>${rarBadge(gd.g.rarity)} ${elBadge(gd.g.element)}</div><small>${esc(t('caca.lvl', 'Nv. {n}', { n: gd.level }))}</small>`;
+      info.querySelector('b')!.textContent = t('caca.guardian', 'Guardião: {name}', { name: gd.g.name });
+      row.appendChild(info);
+      sc.appendChild(row);
+      if (beaten) p.textContent = t('caca.arena.beaten', 'Você já venceu o guardião de hoje. Volte amanhã!');
+      else if (inReach) p.textContent = t('caca.arena.p', 'Vença o guardião desta arena! Ele muda todo dia.');
+      const go = h('button', 'cc-btn', `${icon('bolt')} ${esc(t('caca.arena.go', 'Desafiar'))}`) as HTMLButtonElement;
+      go.disabled = beaten || !inReach;
+      this.btn(go, () => {
+        if (go.disabled) return;
+        this.closeOverlay();
+        this.openEncounter(gd);
+      });
+      sc.appendChild(go);
+    } else {
+      const ready = stopReady(st.p.id);
+      if (inReach) p.textContent = ready ? t('caca.stop.p', 'Gire o Ponto Bloop para ganhar moedas e, às vezes, um ovo!') : t('caca.stop.wait', 'Já girado — ele recarrega em alguns minutos.');
+      const go = h('button', 'cc-btn', `${icon('refresh')} ${esc(t('caca.stop.spin', 'Girar!'))}`) as HTMLButtonElement;
+      go.disabled = !ready || !inReach;
+      this.btn(go, () => {
+        if (go.disabled) return;
+        this.spinStop(st);
+        this.closeOverlay();
+      });
+      sc.appendChild(go);
+    }
+    const close = h('button', 'cc-btn sec', esc(t('caca.back', 'Voltar')));
+    this.btn(close, () => this.closeOverlay());
+    sc.appendChild(close);
+    o.appendChild(sh);
+  }
+  private spinStop(st: StopRef): void {
+    stopUsed(st.p.id, STOP_CD_MS);
+    const coins = 4 + Math.floor(Math.random() * 7);
+    addCoins(coins);
+    audio.coin();
+    haptics.tap('medium');
+    notify(t('caca.stop.got', '+{n} moedas no Ponto Bloop!', { n: coins }), { icon: 'coin', kind: 'good' });
+    if (Math.random() < 0.15 && addEgg(0)) notify(t('caca.egg.found', 'Você achou um ovo!'), { icon: 'gift', kind: 'good' });
+    for (const m of teamMons()) giveXp(m, 8);
+    persistCaca();
+  }
+
+  /* ---------- andar pelo jogo (joystick / passeio) ---------- */
+  private setJoystick(on: boolean): void {
+    if (on && !this.joy) {
+      this.joy = createJoystick(this.joyZone, { zone: () => true, hint: true, mouse: true, zoneTop: 0 });
+    }
+    this.joy?.setEnabled(on);
+    this.joyZone.style.display = on ? '' : 'none';
+    this.el.classList.toggle('cc-joymode', on);
+    this.updWalkBtn();
+  }
+  private stepJoy(dt: number): void {
+    if (!this.fix || !this.target || this.overlay || this.enc) return;
+    let dx = 0;
+    let dy = 0;
+    let sp = 0;
+    const ov = this.joyOverride && performance.now() < this.joyOverride.until ? this.joyOverride : null;
+    const js = ov ? { x: ov.x, y: ov.y, mag: Math.min(1, Math.hypot(ov.x, ov.y)) } : this.joy?.read();
+    const mpp = metersPerPx(this.fix.lat, WZ);
+    if (js && js.mag > 0.06) {
+      this.walkTo = null;
+      const cs = Math.cos(this.rot);
+      const sn = Math.sin(this.rot);
+      const l = Math.hypot(js.x, js.y) || 1;
+      // direção da tela → mundo (inverso da rotação da câmera)
+      dx = (js.x * cs + (js.y / this.tiltNow) * sn) / l;
+      dy = (-js.x * sn + (js.y / this.tiltNow) * cs) / l;
+      const dl = Math.hypot(dx, dy) || 1;
+      dx /= dl;
+      dy /= dl;
+      sp = WALK_MPS * Math.min(1, js.mag);
+    } else if (this.walkTo) {
+      dx = this.walkTo[0] - this.target[0];
+      dy = this.walkTo[1] - this.target[1];
+      const dist = Math.hypot(dx, dy) * mpp;
+      if (dist < 1.2) {
+        this.walkTo = null;
+        this.joyMoving = false;
+        return;
+      }
+      const l = Math.hypot(dx, dy) || 1;
+      dx /= l;
+      dy /= l;
+      sp = Math.min(PASSEIO_MPS, dist * 1.5);
+    }
+    if (sp <= 0) {
+      this.joyMoving = false;
+      return;
+    }
+    const b = joyBudget();
+    if (b.left <= 0) {
+      this.walkTo = null;
+      this.joyMoving = false;
+      notify(t('caca.joy.empty', 'Os passos virtuais de hoje acabaram — amanhã tem mais! Andar de verdade, com um adulto, dá bônus.'), { icon: 'clock', key: 'joyempty' });
+      return;
+    }
+    const step = Math.min(sp * dt, b.left);
+    let nx = this.target[0] + (dx * step) / mpp;
+    let ny = this.target[1] + (dy * step) / mpp;
+    let [lat, lon] = unproject(nx, ny, WZ);
+    const a = this.anchor;
+    if (a && distM(a[0], a[1], lat, lon) > JOY_RADIUS_M) {
+      const [ax, ay] = project(a[0], a[1], WZ);
+      const r = JOY_RADIUS_M / mpp;
+      const vx = nx - ax;
+      const vy = ny - ay;
+      const k = (r * 0.999) / Math.hypot(vx, vy);
+      nx = ax + vx * k;
+      ny = ay + vy * k;
+      [lat, lon] = unproject(nx, ny, WZ);
+      this.walkTo = null;
+      notify(t('caca.joy.edge', 'Limite do passeio: fique a até 1,5 km do ponto de partida.'), { icon: 'home', key: 'joyedge' });
+    }
+    const moved = Math.hypot(nx - this.target[0], ny - this.target[1]) * mpp;
+    this.target = [nx, ny];
+    this.heading = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+    this.fix = { lat, lon, acc: 5, speed: sp, heading: this.heading, t: Date.now(), moving: true };
+    this.joyMoving = moved > 0.001;
+    spendJoy(moved);
+    this.joyAcc += moved;
+    if (this.joyAcc >= 25) {
+      // ovos chocam pela metade andando pelo jogo (andar de verdade vale mais)
+      this.walked((this.joyAcc / 1000) * 0.5);
+      this.joyAcc = 0;
+      this.sv.joyPos = [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5];
+      persistCaca();
+      this.updJoyChip();
+    }
+  }
+  private updJoyChip(): void {
+    const on = this.sv.walkMode === 'controle';
+    this.joyChip.style.display = on ? '' : 'none';
+    if (!on) return;
+    const b = joyBudget();
+    this.joyChip.innerHTML = `${JOY_SVG}<span>${esc(t('caca.joy.left', 'Passos virtuais: {km} km', { km: fmtDec(b.left / 1000, 1) }))}</span>`;
+  }
+  private updWalkBtn(): void {
+    if (!this.walkBtn) return;
+    const joy = this.sv.walkMode === 'controle';
+    this.walkBtn.innerHTML = joy ? FEET_SVG : JOY_SVG;
+    const lbl = joy ? t('caca.walk.real', 'Andar de verdade') : t('caca.walk.joy', 'Andar com o controle');
+    this.walkBtn.setAttribute('aria-label', lbl);
+    this.walkBtn.title = lbl;
+  }
+  private toggleWalkMode(): void {
+    if (this.sv.walkMode === 'controle') {
+      this.sv.walkMode = 'real';
+      persistCaca();
+      this.startMap();
+      return;
+    }
+    const o = this.openOverlay('cc-tipov');
+    const box = h('div', 'cc-card cc-tipcard');
+    const b = joyBudget();
+    box.innerHTML = `<div class="cc-bigico">${JOY_SVG}</div><h3>${esc(t('caca.joy.title', 'Andar com o controle'))}</h3><ul>
+      <li>${esc(t('caca.joy.r1', 'Seu Bloop anda pelo mapa com o controle, sem sair de casa.'))}</li>
+      <li>${esc(t('caca.joy.r2', 'Toque no mapa para ele passear até lá sozinho.'))}</li>
+      <li>${esc(t('caca.joy.r3', 'Dá para ir até 1,5 km do ponto de partida, com {km} km de passos virtuais hoje.', { km: fmtDec(b.left / 1000, 1) }))}</li>
+      <li>${esc(t('caca.joy.r4', 'Andar de verdade (com um adulto) dá mais passos virtuais e choca ovos mais rápido.'))}</li></ul>`;
+    const ok = h('button', 'cc-btn', `${JOY_SVG} ${esc(t('caca.joy.start', 'Vamos!'))}`);
+    const no = h('button', 'cc-btn sec', esc(t('caca.back', 'Voltar')));
+    this.btn(ok, () => {
+      this.sv.walkMode = 'controle';
+      persistCaca();
+      this.startMap();
+    });
+    this.btn(no, () => this.closeOverlay());
+    box.append(ok, no);
+    o.appendChild(box);
+  }
+
   /* ============================== laço e desenho ============================== */
   private resize(): void {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.tier >= 2 ? 2 : 1.5, window.devicePixelRatio || 1);
     this.w = this.el.clientWidth || window.innerWidth;
     this.h = this.el.clientHeight || window.innerHeight;
     this.cv.width = Math.round(this.w * this.dpr);
@@ -444,164 +1012,406 @@ class CacaGame implements MiniGameHandle {
       this.enc.frame(dt, this.time);
       return;
     }
-    if (!this.mapOn || this.overlay) return;
+    if (!this.mapOn || (this.overlay && !this.overlay.classList.contains('cc-sheetov') && !this.overlay.classList.contains('cc-tipov'))) return;
+    if (this.sv.walkMode === 'controle') this.stepJoy(dt);
     if (Math.floor(this.time) !== Math.floor(this.time - dt)) {
-      this.refreshSpawns();
+      if (this.tilesDirty) {
+        this.tilesDirty = false;
+        this.refreshSpawns();
+      } else this.refreshSpawns();
       const now2 = Date.now();
       this.spawns = this.spawns.filter((s) => s.until > now2);
-      if (this.sv.locMode === 'gps' && !this.fix && performance.now() - this.gpsWait > 25000) this.onLocError('unavailable');
+      if (this.sv.locMode === 'gps' && !this.fix && this.locator && performance.now() - this.gpsWait > 25000) this.onLocError('unavailable');
+      if (this.sv.walkMode === 'controle' && Math.floor(this.time) % 5 === 0) this.updJoyChip();
     }
+    this.stepAvatar(dt);
     this.drawMap(dt);
   }
+  /** bonequinho anda suave até a posição filtrada (sem teletransporte) */
+  private stepAvatar(dt: number): void {
+    if (!this.target || !this.fix) return;
+    if (!this.av) this.av = [this.target[0], this.target[1]];
+    const mpp = metersPerPx(this.fix.lat, WZ);
+    const dx = this.target[0] - this.av[0];
+    const dy = this.target[1] - this.av[1];
+    const dist = Math.hypot(dx, dy) * mpp;
+    let moved = 0;
+    if (this.sv.walkMode === 'controle' || dist > 150) {
+      moved = dist;
+      this.av = [this.target[0], this.target[1]];
+    } else if (dist > 0.05) {
+      const k = 1 - Math.exp(-dt * 2.2);
+      const maxM = Math.max(1.5, Math.min(8, dist)) * dt * 1.6;
+      const m = Math.min(dist * k, maxM);
+      this.av[0] += (dx / dist) * (m / mpp) * 1;
+      this.av[1] += (dy / dist) * (m / mpp) * 1;
+      moved = m;
+    }
+    const v = dt > 0 ? moved / dt : 0;
+    this.avSpeed = this.avSpeed * 0.85 + v * 0.15;
+    // rotação: segue o rumo no modo bússola
+    if (this.follow && this.heading !== null && (this.fix.moving || this.sv.walkMode === 'controle')) {
+      const want = (-this.heading * Math.PI) / 180;
+      let d = want - this.rot;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.rot += d * (1 - Math.exp(-dt * 2));
+    }
+    if (this.rotAnim !== null) {
+      let d = this.rotAnim - this.rot;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.rot += d * (1 - Math.exp(-dt * 6));
+      if (Math.abs(d) < 0.005) {
+        this.rot = this.rotAnim;
+        this.rotAnim = null;
+      }
+    }
+    this.compassBtn.firstElementChild?.setAttribute('style', `transform:rotate(${this.rot}rad)`);
+    this.compassBtn.classList.toggle('on', this.follow);
+  }
 
-  private drawMap(dt: number): void {
+  private drawMap(_dt: number): void {
     const c = this.cx;
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const W = this.w;
     const Hh = this.h;
     const th = themeForHour(new Date().getHours());
-    c.fillStyle = th.ground;
-    c.fillRect(0, 0, W, Hh);
-    if (!this.target) {
+    if (!this.av || !this.fix || !this.renderer) {
       this.drawNoFix(c);
       return;
     }
-    if (!this.view) this.view = [this.target[0], this.target[1]];
-    const k = 1 - Math.exp(-dt * 3);
-    this.view[0] += (this.target[0] - this.view[0]) * k;
-    this.view[1] += (this.target[1] - this.view[1]) * k;
-    const [vx, vy] = this.view;
-    const ox = W / 2;
-    const oy = Hh * 0.56;
-    // tiles
-    const z = this.tiles.zoom;
-    const f = 2 ** (z - WZ);
-    const ts = 256 * SCALE / f;
-    const px = Math.min(768, Math.round(ts * this.dpr));
-    const x0 = Math.floor(((vx - ox / SCALE) * f) / 256);
-    const x1 = Math.floor(((vx + (W - ox) / SCALE) * f) / 256);
-    const y0 = Math.floor(((vy - oy / SCALE) * f) / 256);
-    const y1 = Math.floor(((vy + (Hh - oy) / SCALE) * f) / 256);
-    const redraw = () => {};
-    for (let ty = y0; ty <= y1; ty++)
-      for (let tx = x0; tx <= x1; tx++) {
-        const img = this.tiles.getTile(tx, ty, px, th, redraw);
-        const sx = ox + ((tx * 256) / f - vx) * SCALE;
-        const sy = oy + ((ty * 256) / f - vy) * SCALE;
-        if (img) c.drawImage(img, Math.floor(sx), Math.floor(sy), Math.ceil(ts) + 1, Math.ceil(ts) + 1);
-      }
-    // névoa no topo (profundidade) + vinheta
-    const fog = c.createLinearGradient(0, 0, 0, Hh * 0.35);
-    fog.addColorStop(0, th.id === 'noite' ? 'rgba(14,8,40,0.85)' : 'rgba(120,90,200,0.55)');
-    fog.addColorStop(1, 'rgba(120,90,200,0)');
-    c.fillStyle = fog;
-    c.fillRect(0, 0, W, Hh * 0.35);
-    // alcance
-    const lat = this.fix?.lat ?? 0;
-    const mpp = metersPerPx(lat, WZ);
-    const pr = this.target ? [ox + (this.target[0] - vx) * SCALE, oy + (this.target[1] - vy) * SCALE] : [ox, oy];
-    const reachPx = Math.min(Math.max(W, Hh), (this.reach() / mpp) * SCALE);
+    const casa = this.sv.locMode === 'casa';
+    const mpp = metersPerPx(this.fix.lat, WZ);
+    const ppm = this.sv.zoom;
+    const zt = (ppm - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN);
+    const pitch = ((38 + zt * 20) * Math.PI) / 180;
+    this.tiltNow = Math.cos(pitch);
+    const cam: Cam = { cx: this.av[0], cy: this.av[1], S: ppm * mpp, rot: this.rot, tilt: Math.cos(pitch), elev: Math.sin(pitch), ox: W / 2, oy: Hh * 0.66, W, H: Hh };
+    const opts = { th, dpr: this.dpr, time: this.time, mpp, osm: !casa };
+    c.fillStyle = th.ground;
+    c.fillRect(0, 0, W, Hh);
+    const m = this.renderer.drawGround(c, cam, opts);
+    this.m = m;
+    // no plano do chão: alcance, precisão, limite do passeio, destino do passeio
+    const S = cam.S;
+    const reachW = this.reach() / mpp;
     c.save();
-    c.strokeStyle = 'rgba(255,255,255,0.75)';
-    c.fillStyle = 'rgba(255,255,255,0.10)';
-    c.lineWidth = 2.5;
-    c.setLineDash([10, 8]);
-    c.lineDashOffset = -this.time * 12;
+    c.lineWidth = 2.5 / S;
+    c.setLineDash([10 / S, 8 / S]);
+    c.lineDashOffset = (-this.time * 12) / S;
+    c.fillStyle = 'rgba(255,255,255,0.16)';
     c.beginPath();
-    c.arc(pr[0], pr[1], reachPx, 0, Math.PI * 2);
+    c.arc(this.av[0], this.av[1], reachW, 0, Math.PI * 2);
     c.fill();
+    c.strokeStyle = 'rgba(90,60,180,0.45)';
+    c.lineWidth = 5 / S;
     c.stroke();
-    c.restore();
-    if (this.fix && this.sv.locMode === 'gps' && this.fix.acc > this.reach()) {
-      c.fillStyle = 'rgba(80,160,255,0.12)';
+    c.strokeStyle = 'rgba(255,255,255,0.95)';
+    c.lineWidth = 2.5 / S;
+    c.stroke();
+    c.setLineDash([]);
+    if (this.sv.walkMode === 'real' && !casa && this.fix.acc > 12) {
+      c.fillStyle = 'rgba(80,160,255,0.14)';
       c.beginPath();
-      c.arc(pr[0], pr[1], Math.min(W, (this.fix.acc / mpp) * SCALE), 0, Math.PI * 2);
+      c.arc(this.av[0], this.av[1], Math.min(400, this.fix.acc / mpp), 0, Math.PI * 2);
       c.fill();
     }
-    // aparições
-    const locked = this.lock.locked;
-    const list = [...this.spawns].sort((a, b) => a.lat === b.lat ? 0 : b.lat - a.lat);
+    if (this.sv.walkMode === 'controle' && this.anchor) {
+      const [ax, ay] = project(this.anchor[0], this.anchor[1], WZ);
+      const r = JOY_RADIUS_M / mpp;
+      if (Math.hypot(this.av[0] - ax, this.av[1] - ay) > r - 450 / mpp) {
+        c.strokeStyle = 'rgba(255,92,138,0.85)';
+        c.lineWidth = 5 / S;
+        c.setLineDash([16 / S, 10 / S]);
+        c.beginPath();
+        c.arc(ax, ay, r, 0, Math.PI * 2);
+        c.stroke();
+        c.setLineDash([]);
+      }
+    }
+    if (this.walkTo) {
+      c.fillStyle = 'rgba(255,210,58,0.35)';
+      c.beginPath();
+      c.arc(this.walkTo[0], this.walkTo[1], 7 / S + Math.sin(this.time * 5) * (1.5 / S), 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    // fase de profundidade
+    const list: Sprite[] = [];
+    this.renderer.collect(cam, m, opts, list);
+    this.hits = [];
+    const zs = Math.max(0.78, Math.min(1.45, ppm / 1.7));
+    const persp = (y: number) => zs * Math.max(0.62, Math.min(1.12, 0.7 + (0.3 * y) / cam.oy));
+    const locked = this.lock.locked && this.sv.walkMode === 'real';
     let near = 0;
-    for (const s of list) {
-      const [sx, sy] = this.screenOf(s);
-      if (sx < -60 || sx > W + 60 || sy < -60 || sy > Hh + 80) continue;
+    for (const s of this.spawns) {
+      const [wx, wy] = project(s.lat, s.lon, WZ);
+      const [x, y] = toScreen(m, wx, wy);
+      if (x < -60 || x > W + 60 || y < -40 || y > Hh + 80) continue;
       const inReach = this.distTo(s) <= this.reach();
       if (inReach) near++;
-      c.save();
-      c.translate(sx, sy);
-      c.globalAlpha = locked ? 0.25 : 1;
-      const R = s.g.rarity;
-      if (R >= 2) {
-        const [a] = RARITY_COL[R];
-        c.fillStyle = a + '66';
-        c.beginPath();
-        c.ellipse(0, 6, 26 + Math.sin(this.time * 3) * 3, 9, 0, 0, Math.PI * 2);
-        c.fill();
-      }
-      if (inReach && !locked) {
-        c.strokeStyle = '#fff';
-        c.lineWidth = 3;
-        c.beginPath();
-        c.ellipse(0, 6, 30 + Math.sin(this.time * 5) * 3, 11, 0, 0, Math.PI * 2);
-        c.stroke();
-      }
-      c.translate(0, -16);
-      const sz = 66 * (0.92 + R * 0.04) * Math.min(1, fitScale(s.g, 40) * 1.1);
-      drawGenome(c, s.g, sz, this.time);
-      c.restore();
+      const k = persp(y);
+      this.hits.push({ x, y: y - 22 * k, r: 34 * k, spawn: s });
+      list.push({ d: y, draw: (cc) => this.drawSpawn(cc, s, x, y, k, inReach, locked) });
     }
-    // jogador
-    this.drawPlayer(c, pr[0], pr[1]);
-    c.globalAlpha = 1;
+    for (const st of this.stops) {
+      const [x, y] = toScreen(m, st.wx, st.wy);
+      if (x < -60 || x > W + 60 || y < -40 || y > Hh + 80) continue;
+      const k = persp(y);
+      const d = this.distTo(st);
+      const inReach = d <= this.reach();
+      const ready = st.p.arena ? !this.sv.done.includes(`arena:${st.p.id}:${dayNumber()}`) : stopReady(st.p.id);
+      this.hits.push({ x, y: y - 34 * k, r: 30 * k, stop: st });
+      const label = this.selStop === st.p.id || (inReach && d < 60);
+      list.push({ d: y, draw: (cc) => this.drawStop(cc, st, x, y, k, ready, inReach, label) });
+    }
+    if (this.walkTo) {
+      const [x, y] = toScreen(m, this.walkTo[0], this.walkTo[1]);
+      list.push({ d: y, draw: (cc) => drawFlag(cc, x, y, persp(y), this.time) });
+    }
+    const [px, py] = toScreen(m, this.av[0], this.av[1]);
+    list.sort((a, b) => a.d - b.d);
+    // o jogador fica sempre por cima (nunca some atrás de bichinho/prédio)
+    list.push({ d: Infinity, draw: (cc) => this.drawPlayer(cc, px, py, Math.max(1, persp(py)), m) });
+    for (const s of list) s.draw(c);
+    // céu / névoa no horizonte
+    const fogH = Hh * 0.2;
+    const fog = c.createLinearGradient(0, 0, 0, fogH);
+    fog.addColorStop(0, th.sky[0]);
+    fog.addColorStop(0.35, th.sky[1] + 'cc');
+    fog.addColorStop(1, th.sky[1] + '00');
+    c.fillStyle = fog;
+    c.fillRect(0, 0, W, fogH);
+    // estado do mapa real
+    if (!casa && this.store) {
+      const [x0, y0, x1, y1] = visibleBounds(m, W, Hh, Hh * 0.3);
+      const st = this.store.status(x0, y0, x1, y1);
+      this.mapState.textContent = st === 'load' ? t('caca.map.loading', 'Carregando o mapa da sua região…') : st === 'err' ? t('caca.map.offline', 'Sem internet: mapa de brincadeira por enquanto.') : '';
+      this.mapState.style.display = st === 'ok' ? 'none' : '';
+    } else this.mapState.style.display = 'none';
     // dica
-    const hint = locked ? '' : !this.spawns.length ? t('caca.hint.none', 'Nenhum bichinho por aqui agora — eles mudam a cada 15 min.') : near ? t('caca.hint.tap', 'Toque num bichinho dentro do círculo!') : t('caca.hint.walk', 'Ande até um bichinho para ele entrar no círculo.');
+    const joy = this.sv.walkMode === 'controle';
+    const hint = locked
+      ? ''
+      : this.pending && !this.spawns.length
+        ? t('caca.hint.loading', 'Procurando bichinhos no mapa…')
+        : !this.spawns.length
+          ? t('caca.hint.none', 'Nenhum bichinho por aqui agora — eles mudam a cada 15 min.')
+          : near
+            ? t('caca.hint.tap', 'Toque num bichinho dentro do círculo!')
+            : joy
+              ? t('caca.hint.joy', 'Use o controle ou toque no mapa para passear.')
+              : t('caca.hint.walk', 'Ande até um bichinho para ele entrar no círculo.');
     if (this.hint.textContent !== hint) this.hint.textContent = hint;
     this.hint.style.display = hint ? '' : 'none';
   }
 
-  private drawPlayer(c: CanvasRenderingContext2D, x: number, y: number): void {
-    const t0 = this.time;
+  private drawSpawn(c: CanvasRenderingContext2D, s: Spawn, x: number, y: number, k: number, inReach: boolean, locked: boolean): void {
     c.save();
     c.translate(x, y);
-    // cone de direção
-    if (this.sv.locMode === 'gps') {
-      c.rotate((this.heading * Math.PI) / 180);
-      const g = c.createRadialGradient(0, 0, 0, 0, 0, 60);
-      g.addColorStop(0, 'rgba(255,255,255,0.55)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      c.fillStyle = g;
+    c.globalAlpha = locked ? 0.25 : 1;
+    c.scale(k, k);
+    const R = s.g.rarity;
+    c.fillStyle = 'rgba(20,6,50,0.22)';
+    c.beginPath();
+    c.ellipse(0, 2, 20, 6, 0, 0, Math.PI * 2);
+    c.fill();
+    if (R >= 2) {
+      const [a] = RARITY_COL[R];
+      c.fillStyle = a + '66';
       c.beginPath();
-      c.moveTo(0, 0);
-      c.arc(0, 0, 60, -Math.PI / 2 - 0.45, -Math.PI / 2 + 0.45);
-      c.closePath();
+      c.ellipse(0, 2, 26 + Math.sin(this.time * 3) * 3, 9, 0, 0, Math.PI * 2);
       c.fill();
-      c.rotate((-this.heading * Math.PI) / 180);
     }
+    if (s.nest) {
+      c.strokeStyle = 'rgba(255,210,58,0.9)';
+      c.lineWidth = 2;
+      c.setLineDash([4, 4]);
+      c.beginPath();
+      c.ellipse(0, 2, 24, 8, 0, 0, Math.PI * 2);
+      c.stroke();
+      c.setLineDash([]);
+    }
+    if (inReach && !locked) {
+      c.strokeStyle = '#fff';
+      c.lineWidth = 3;
+      c.beginPath();
+      c.ellipse(0, 2, 30 + Math.sin(this.time * 5) * 3, 11, 0, 0, Math.PI * 2);
+      c.stroke();
+    }
+    c.translate(0, -22);
+    const sz = 62 * (0.92 + R * 0.04) * Math.min(1, fitScale(s.g, 40) * 1.1);
+    drawGenome(c, s.g, sz, this.time);
+    c.restore();
+  }
+
+  private drawStop(c: CanvasRenderingContext2D, st: StopRef, x: number, y: number, k: number, ready: boolean, inReach: boolean, label: boolean): void {
+    const tm = this.time;
+    c.save();
+    c.translate(x, y);
+    c.scale(k, k);
     c.fillStyle = 'rgba(20,6,50,0.25)';
     c.beginPath();
-    c.ellipse(0, 4, 18, 6, 0, 0, Math.PI * 2);
+    c.ellipse(0, 0, 16, 5, 0, 0, Math.PI * 2);
     c.fill();
-    const bob = Math.abs(Math.sin(t0 * 4)) * -3;
-    c.translate(0, -14 + bob);
-    c.lineWidth = 3;
-    c.strokeStyle = '#2a0b5c';
-    const g = c.createLinearGradient(0, -16, 0, 16);
-    g.addColorStop(0, '#d2a8ff');
-    g.addColorStop(1, '#8a4fff');
-    c.fillStyle = g;
+    if (inReach) {
+      c.strokeStyle = ready ? 'rgba(120,220,255,0.95)' : 'rgba(255,255,255,0.5)';
+      c.lineWidth = 3;
+      c.beginPath();
+      c.ellipse(0, 0, 24 + Math.sin(tm * 4) * 2, 8, 0, 0, Math.PI * 2);
+      c.stroke();
+    }
+    if (st.p.arena) {
+      // arena: pódio de 3 degraus + bandeira + guardião em cima
+      const cols = ready ? ['#ffd23a', '#ffb52e', '#e08a10'] : ['#c9bfe0', '#b2a6d0', '#9488b8'];
+      for (let i = 0; i < 3; i++) {
+        const w = 30 - i * 8;
+        const yy = -8 - i * 9;
+        c.fillStyle = cols[2];
+        c.beginPath();
+        c.roundRect(-w / 2, yy - 2, w, 11, 3);
+        c.fill();
+        c.fillStyle = cols[i % 2];
+        c.beginPath();
+        c.roundRect(-w / 2, yy - 4, w, 8, 3);
+        c.fill();
+      }
+      c.strokeStyle = '#5b4a8a';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(9, -30);
+      c.lineTo(9, -58);
+      c.stroke();
+      c.fillStyle = ready ? '#ff5c8a' : '#9488b8';
+      c.beginPath();
+      const wv = Math.sin(tm * 4) * 2;
+      c.moveTo(9, -58);
+      c.quadraticCurveTo(17, -56 + wv, 24, -54);
+      c.lineTo(9, -48);
+      c.fill();
+      if (ready) {
+        const gd = this.guardian(st);
+        c.save();
+        c.translate(-2, -42 + Math.sin(tm * 2) * 2);
+        drawGenome(c, gd.g, 34 * Math.min(1, fitScale(gd.g, 40) * 1.1), tm);
+        c.restore();
+      }
+    } else {
+      // Ponto Bloop: poste + bolha-presente girando
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = 4;
+      c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.lineTo(0, -30);
+      c.stroke();
+      c.strokeStyle = '#8a7ac8';
+      c.lineWidth = 1.5;
+      c.stroke();
+      const by = -42 + Math.sin(tm * 2.2) * 2.5;
+      const sq = Math.abs(Math.cos(tm * 1.6));
+      const g = c.createRadialGradient(-4, by - 5, 2, 0, by, 15);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.35, ready ? '#7fe3ff' : '#d6cdee');
+      g.addColorStop(1, ready ? '#5a6cff' : '#9a8cc6');
+      c.fillStyle = g;
+      c.beginPath();
+      c.ellipse(0, by, 13, 13, 0, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = 'rgba(42,11,92,0.55)';
+      c.lineWidth = 1.5;
+      c.stroke();
+      c.fillStyle = ready ? '#ffd23a' : '#ffffff';
+      c.beginPath();
+      c.roundRect(-7 * sq - 0.5, by - 6, 14 * sq + 1, 12, 3);
+      c.fill();
+      c.fillStyle = ready ? '#ff5c8a' : '#c9bfe0';
+      c.fillRect(-1.5 * sq - 0.3, by - 6, 3 * sq + 0.6, 12);
+    }
+    c.restore();
+    if (label) {
+      c.save();
+      c.font = gameFont(700, 12);
+      const txt = st.p.name.length > 28 ? st.p.name.slice(0, 27) + '…' : st.p.name;
+      const w = c.measureText(txt).width + 16;
+      const ly = y - (st.p.arena ? 70 : 64) * k;
+      c.fillStyle = 'rgba(26,11,61,0.86)';
+      c.beginPath();
+      c.roundRect(x - w / 2, ly - 11, w, 22, 11);
+      c.fill();
+      c.fillStyle = '#fff';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(txt, x, ly + 0.5);
+      c.restore();
+    }
+  }
+
+  private drawPlayer(c: CanvasRenderingContext2D, x: number, y: number, k: number, m: Mat): void {
+    const t0 = this.time;
+    const walking = this.sv.walkMode === 'controle' ? this.joyMoving : this.avSpeed > 0.3;
+    // direção na tela
+    let sdx = 0;
+    let sdy = 1;
+    if (this.heading !== null) {
+      const hr = (this.heading * Math.PI) / 180;
+      const vx = Math.sin(hr);
+      const vy = -Math.cos(hr);
+      sdx = m[0] * vx + m[2] * vy;
+      sdy = m[1] * vx + m[3] * vy;
+      const l = Math.hypot(sdx, sdy) || 1;
+      sdx /= l;
+      sdy /= l;
+    }
+    c.save();
+    c.translate(x, y);
+    // base do jogador: disco brilhante + seta de direção (lê bem em cima de qualquer mapa)
+    c.save();
+    c.scale(1, 0.5);
+    const pulse = 1 + Math.sin(t0 * 3) * 0.04;
+    c.fillStyle = 'rgba(122,92,255,0.28)';
     c.beginPath();
-    c.ellipse(0, 0, 17, 16, 0, 0, Math.PI * 2);
+    c.arc(0, 0, 30 * k * pulse, 0, Math.PI * 2);
     c.fill();
+    c.lineWidth = 4 * k;
+    c.strokeStyle = '#ffffff';
     c.stroke();
-    c.fillStyle = '#2a0b5c';
+    c.lineWidth = 2 * k;
+    c.strokeStyle = '#7a5cff';
     c.beginPath();
-    c.ellipse(-6, -2, 2.6, 3.4, 0, 0, Math.PI * 2);
-    c.ellipse(6, -2, 2.6, 3.4, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = 'rgba(255,255,255,0.7)';
-    c.beginPath();
-    c.ellipse(-8, -9, 4, 2.4, -0.5, 0, Math.PI * 2);
-    c.fill();
+    c.arc(0, 0, 24 * k, 0, Math.PI * 2);
+    c.stroke();
+    if (this.heading !== null) {
+      const ang = Math.atan2(sdy / 0.5, sdx);
+      c.rotate(ang);
+      c.fillStyle = '#ffffff';
+      c.strokeStyle = '#2a0b5c';
+      c.lineWidth = 2.5 * k;
+      c.beginPath();
+      c.moveTo(44 * k, 0);
+      c.lineTo(32 * k, -9 * k);
+      c.lineTo(35 * k, 0);
+      c.lineTo(32 * k, 9 * k);
+      c.closePath();
+      c.stroke();
+      c.fill();
+    }
+    c.restore();
+    const R = 17 * k;
+    const step = walking ? Math.sin(t0 * 10) : 0;
+    const bob = walking ? -Math.abs(step) * 4 * k : Math.sin(t0 * 2.4) * 0.8 * k;
+    c.translate(0, -R * 1.02 + bob);
+    if (walking) c.rotate(step * 0.07 + sdx * 0.06);
+    const pose = this.pose;
+    pose.t = t0;
+    pose.blink = (t0 % 4) < 0.12 ? 1 : 0;
+    pose.lookX = sdx * 0.6;
+    pose.lookY = Math.max(-0.3, Math.min(0.4, sdy * 0.3));
+    pose.sx = walking ? 1 + Math.abs(step) * 0.04 : 1;
+    pose.sy = walking ? 1 - Math.abs(step) * 0.05 : 1;
+    pose.mood = 'idle';
+    pose.view = walking && sdy < -0.45 ? 'back' : undefined;
+    drawAvatar(c, coreSave.avatar as AvatarData, R, pose);
     c.restore();
   }
 
@@ -621,7 +1431,13 @@ class CacaGame implements MiniGameHandle {
       c.arc(W / 2, Hh * 0.5, 20 + k * 120, 0, Math.PI * 2);
       c.stroke();
     }
-    this.drawPlayer(c, W / 2, Hh * 0.5 + 14);
+    const pose = this.pose;
+    pose.t = this.time;
+    pose.view = undefined;
+    c.save();
+    c.translate(W / 2, Hh * 0.5 - 4);
+    drawAvatar(c, coreSave.avatar as AvatarData, 22, pose);
+    c.restore();
   }
 
   /* ============================== encontro / batalha ============================== */
@@ -880,6 +1696,11 @@ class CacaGame implements MiniGameHandle {
       persistCaca();
       this.startMap();
     });
+    tog(t('caca.walk.joy', 'Andar com o controle'), this.sv.walkMode === 'controle', () => {
+      this.sv.walkMode = this.sv.walkMode === 'controle' ? 'real' : 'controle';
+      persistCaca();
+      this.startMap();
+    });
     tog(t('caca.set.ar', 'Câmera AR nos encontros'), this.sv.ar, () => {
       this.sv.ar = !this.sv.ar;
       persistCaca();
@@ -893,7 +1714,9 @@ class CacaGame implements MiniGameHandle {
       `<div class="cc-card"><h3>${esc(t('caca.odds', 'Chance por aparição'))}</h3><table class="cc-odds">${odds
         .map((p, i) => `<tr><td>${rarBadge(i as Rarity)}</td><td>${p >= 0.001 ? (p * 100).toFixed(1) + '%' : '1 / ' + fmt(Math.round(1 / p))}</td></tr>`)
         .join('')}</table><p style="margin-top:8px">${esc(t('caca.oddsNote', 'A raridade vem só do código genético do bichinho — é igual em qualquer lugar. Únicos não podem ser comprados nem trocados.'))}</p><p>${esc(t('caca.variety', 'Combinações possíveis: mais de {n}.', { n: fmt(Number(ve.total.toPrecision(2))) }))}</p></div>
-      <div class="cc-card"><h3>${esc(t('caca.privacy.h', 'Sua localização fica no aparelho'))}</h3><p>${esc(t('caca.privacy.p1', 'O GPS é usado só com o jogo aberto, para mostrar o mapa e calcular as aparições aqui mesmo no aparelho. Nada é enviado, salvo ou compartilhado — nem com a gente.'))}</p></div>`,
+      <div class="cc-card"><h3>${esc(t('caca.privacy.h', 'Sua localização fica no aparelho'))}</h3><p>${esc(t('caca.privacy.p1', 'O GPS é usado só com o jogo aberto, para mostrar o mapa e calcular as aparições aqui mesmo no aparelho. Nada é enviado, salvo ou compartilhado — nem com a gente.'))}</p>
+      <p>${esc(t('caca.privacy.map', 'O desenho do mapa vem por um quadradão de uns 2 km (nunca o ponto exato), e fica guardado no aparelho para funcionar sem internet.'))}</p></div>
+      <div class="cc-card"><h3>${esc(t('caca.credits', 'Mapa'))}</h3><p>${esc(t('caca.credits.p', 'Dados do mapa © colaboradores do OpenStreetMap (openstreetmap.org/copyright), licença ODbL. Desenho dos tiles: OpenFreeMap.'))}</p></div>`,
     );
     const saf = h('button', 'cc-btn sec', esc(t('caca.safety.title', 'Antes de caçar')));
     this.btn(saf, () => this.showSafety(() => this.startMap()));
@@ -915,6 +1738,45 @@ class CacaGame implements MiniGameHandle {
       spawns: () =>
         self.spawns.map((s) => ({ id: s.id, lat: s.lat, lon: s.lon, name: s.g.name, rarity: s.g.rarity, element: s.g.element, seed: seedHexOf(s), dist: Math.round(self.distTo(s)), screen: self.screenOf(s) })),
       fix: () => self.fix,
+      /** câmera: zoom (px/m) e rotação (graus) */
+      cam: (zoom?: number, rotDeg?: number) => {
+        if (zoom !== undefined) self.setZoom(zoom);
+        if (rotDeg !== undefined) self.rot = (rotDeg * Math.PI) / 180;
+        return { zoom: self.sv.zoom, rot: (self.rot * 180) / Math.PI, follow: self.follow };
+      },
+      /** joystick simulado: x,y em -1..1 por `secs` segundos */
+      joy: (x: number, y: number, secs = 2) => {
+        self.joyOverride = { x, y, until: performance.now() + secs * 1000 };
+      },
+      walkTo: (lat: number, lon: number) => {
+        self.walkTo = project(lat, lon, WZ);
+      },
+      walkMode: (m?: 'real' | 'controle') => {
+        if (m && m !== self.sv.walkMode) {
+          self.sv.walkMode = m;
+          persistCaca();
+          self.startMap();
+        }
+        return self.sv.walkMode;
+      },
+      stops: () => self.stops.map((s) => ({ id: s.p.id, name: s.p.name, cls: s.p.cls, arena: s.p.arena, lat: s.lat, lon: s.lon, dist: Math.round(self.distTo(s)) })),
+      openStop: (id: string) => {
+        const s = self.stops.find((x) => x.p.id === id);
+        if (s) self.openStop(s);
+        return !!s;
+      },
+      spawnsFull: () => self.spawns.map((s) => ({ id: s.id, lat: s.lat, lon: s.lon, biome: s.biome, element: s.g.element, nest: s.nest ?? null, nestFam: s.nest ? nestFamily(s.nest, Date.now()) : null, dist: Math.round(self.distTo(s)) })),
+      land: (lat: number, lon: number) => {
+        const [x, y] = project(lat, lon, WZ);
+        return self.store?.landAt(x, y) ?? null;
+      },
+      gps: () => ({ stats: self.locator?.filter.stats ?? null, av: self.av ? unproject(self.av[0], self.av[1], WZ) : null, fix: self.fix, pending: self.pending }),
+      mapReady: () => {
+        if (!self.store || !self.m) return false;
+        const [x0, y0, x1, y1] = visibleBounds(self.m, self.w, self.h, self.h * 0.3);
+        return self.store.status(x0, y0, x1, y1) === 'ok';
+      },
+      joyBudget: () => joyBudget(),
       tap: (id: string) => {
         const s = self.spawns.find((x) => x.id === id);
         return s ? self.trySpawn(s) : false;
@@ -948,14 +1810,7 @@ class CacaGame implements MiniGameHandle {
   resume(): void {
     this.paused = false;
     this.last = 0;
-    if (this.mapOn && this.sv.locMode === 'gps') {
-      this.locator?.stop();
-      this.locator = new Locator(
-        (f) => this.onFix(f),
-        (e) => this.onLocError(e),
-      );
-      void this.locator.start();
-    }
+    if (this.mapOn && this.sv.locMode === 'gps' && (this.sv.walkMode === 'real' || !this.fix)) this.startLocator();
     this.enc?.resume();
   }
   destroy(): void {
@@ -963,7 +1818,11 @@ class CacaGame implements MiniGameHandle {
     cancelAnimationFrame(this.raf);
     this.locator?.stop();
     this.enc?.destroy();
-    this.tiles.dispose();
+    this.renderer?.dispose();
+    this.store?.dispose();
+    setLandSampler(null);
+    this.joy?.destroy();
+    persistCaca();
     this.btns.forEach((b) => b.destroy());
     this.offs.forEach((f) => f());
     this.el.remove();

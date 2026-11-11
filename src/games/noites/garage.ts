@@ -5,7 +5,7 @@
  *  5 modelos prontos, projetos salvos e os da sala (online).
  * ============================================================ */
 import { t } from '../../i18n';
-import { RES, type Res } from './data';
+import { RES } from './data';
 import type { Sim } from './sim';
 import { ic } from './icons';
 import { speak } from './speak';
@@ -125,8 +125,9 @@ export class Garage {
     const s = this.sim;
     const d = this.d;
     const st = stats(d);
-    const stash = RES.filter((r) => (s.stash[r] ?? 0) > 0)
-      .map((r) => `<span class="nc-chip">${ic(r, 20)}${s.stash[r]}</span>`)
+    const me = s.player(this.myId);
+    const stash = RES.filter((r) => s.avail(r, me) > 0)
+      .map((r) => `<span class="nc-chip">${ic(r, 20)}${s.avail(r, me)}</span>`)
       .join('');
     const list = this.tab === 'ready' ? READY : this.tab === 'mine' ? this.mine : [...new Map([...s.designs].filter(([k]) => !k.endsWith('@' + this.myId)).map(([, v]) => [JSON.stringify({ ...v, id: '' }), v])).values()].slice(0, 8);
     const cards = list.map((q, i) => `<button class="nc-btn nc-vcard ${q.id === d.id ? 'gold' : ''}" data-pick="${i}" data-say="${esc(vName(q))}"><canvas width="120" height="64" data-cv="${i}"></canvas></button>`).join('');
@@ -137,10 +138,10 @@ export class Garage {
           .join('')}</div>`,
     ).join('');
     const cols = COLORS.map((c) => `<button class="nc-btn nc-vcol ${d.col === c ? 'on' : ''}" data-col="${c}" style="background:${c}"></button>`).join('');
-    const miss = Object.entries(st.cost).filter(([k, n]) => (s.stash[k as Res] ?? 0) < (n ?? 0));
+    const miss = Object.entries(st.cost).filter(([k, n]) => s.avail(k, me) < (n ?? 0));
     const lock = s.bench < st.bench;
     const cost = Object.entries(st.cost)
-      .map(([k, n]) => `<span class="nc-chip ${(s.stash[k as Res] ?? 0) < (n ?? 0) ? 'no' : ''}">${ic(k, 18)}${n}</span>`)
+      .map(([k, n]) => `<span class="nc-chip ${s.avail(k, me) < (n ?? 0) ? 'no' : ''}">${ic(k, 18)}${n}</span>`)
       .join('');
     const bars = (n: number, max: number) => '▮'.repeat(Math.max(1, Math.round((n / max) * 5)));
     this.el.innerHTML = `

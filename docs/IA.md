@@ -144,3 +144,61 @@ Sem a chave tudo funciona no modo offline (bot local). Para ligar a IA:
 - Playwright (Pixel 7): 6 turnos offline (fala simulada com `window.__bloopFakeStt = 'texto'` + teclado), resposta do
   servidor simulada (`page.route('**/api/ai/pet')`), seletor de vozes, limite diário → oferta de vídeo.
   Com `?debug`, `window.__bloopTalk` expõe `{ send, history, open, prefs }`.
+
+## Cava & Fala — OBJETO FALADO ("fale qualquer coisa e ela aparece")
+
+Pedido do dono: o jogo constrói QUALQUER coisa que a criança fala, não só receitas prontas. Como no jogo de
+referência, o caminho principal **não usa IA**: um gerador determinístico no aparelho entende a frase e monta o
+objeto com **blocos** tirados do material cavado.
+
+### Fluxo
+1. `world.ts → heardText`: pedido curto e certeiro ("ponte", "trampolim de ouro", "canhão de espuma duplo") continua
+   no catálogo fixo de engenhocas (`gadgets.ts`, balanceado para a arena). Qualquer frase descritiva vai para o
+   **Maker** (`src/games/cavafala/maker.ts`).
+2. `shared/cavaspec.ts → kidSafeRequest`: arma → "lançador de espuma", faca → "colher gigante de brinquedo", bomba →
+   "bomba de confete", sangue → "suco de morango", fogo → "faíscas de confete", marcas/personagens → genérico
+   ("pikachu" → "ratinho elétrico amarelo"). Palavrão/sexual/ódio/dado pessoal → bloqueado: vira "patinho de
+   borracha gigante" e o pedido (só texto) vai para Moderação → Denúncias (`report:…`, motivo `cava-ia:*`).
+3. `shared/cavagen` (gerador): ~300 conceitos (bichos, aves, mar, insetos, fantasia, veículos, construções, móveis,
+   comida, natureza, robôs, brinquedos) com ~1.700 palavras pt-BR/en/es, plural/diminutivo/aumentativo e erro de
+   digitação; adjetivos (tamanho, forma, cor, material, velocidade, quantidade, humor), verbos (voa, nada, pula, joga
+   bolhas, sopra, cava, gruda, cresce, brilha, segue, dá pra montar, sons) e composição "X de Y" (tema ou CASCO:
+   "barco de banana"), "X com Y" (acessórios: rodas, asas, hélice, molas, balões, luzes...), "X que Z", "X e Y",
+   "X no Y". Mesma frase + mesma variante = mesmo objeto em todos os aparelhos.
+4. `voxel.ts`: o objeto (peças primitivas) vira blocos; o custo é pelos blocos (`voxelCost`). Faltou um pouco? Faz
+   menor (75%/55%). Peças com junta (roda/asa/hélice/mola) viram grupos animados.
+5. `creation.ts` + `cbody.ts`: monta com os blocos voando das costas do Bloop, física de corpo composto (de pé,
+   contatos tirados dos blocos de baixo) e os comportamentos da lista branca.
+6. Só quando sobra palavra desconhecida (ex.: "ornitorrinco") o app chama `POST /api/cava/make` em segundo plano;
+   a resposta troca o objeto ("pop") e fica guardada (frase e palavra aprendida) para funcionar OFFLINE depois.
+
+### Servidor — `POST /api/cava/make` (`server/cava-ai.ts`)
+`{ text, lang, seed, pid?, ent: 'free'|'club' }` → `{ spec, plan, learn?, source }`.
+- Frase que o catálogo entende → `source:'lib'` (sem IA). Cache no KV `cava:obj:<chave>` por 30 dias.
+- A IA NÃO desenha livremente: devolve um **plano** com ids do catálogo (base, tema, acessórios, 3 cores da
+  paleta, tamanho, comportamentos da lista branca) + até 8 peças extras. O servidor monta com o mesmo gerador e
+  revalida tudo (`validateSpec`: ≤ 24 peças, números finitos e limitados, ≤ 10 m e ≤ 140 m³, cores da paleta,
+  comportamentos da lista, nome/descrição pelo filtro do chat).
+- Modelos: `claude-haiku-5-5` (SDK oficial, saída estruturada `json_schema`, esforço baixo, prompt de sistema em
+  cache) se houver `ANTHROPIC_API_KEY`; senão Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode)
+  pelo binding `AI`; senão `503 no_ai` (o app fica com o objeto do aparelho).
+- Limites (só pedidos que chegam à IA): 20/min por jogador, 40/dia grátis, 150/dia Clube, 300/dia por IP.
+- Custo estimado: prompt ≈ 3–4 mil tokens (cacheado) + ≈ 300 de saída → frações de centavo por pedido no Haiku;
+  no Workers AI, poucos "neurons" por pedido. Como o catálogo resolve a maioria e há cache, só palavras novas pagam.
+- Teste local sem rede: `--var CAVA_AI_MOCK:fixtures` (respostas fixas em `server/cava-ai-fixtures.ts`).
+  `wrangler dev --remote` (Workers AI de verdade) precisa de login da Cloudflare — não testado aqui.
+
+### Online
+`'build'` com `id:'@obj'` leva o objeto compacto (`packSpec`, ~1–2 KB). O servidor (CavaRoom) revalida e
+reempacota antes de repassar; quem recebe valida de novo (na arena com os limites da arena). Mesmo `uid` = troca
+(Refazer / IA melhorou).
+
+### Arena × vila
+Arena: lado ≤ 4,5 m, força ≤ 0,6, vida de 30 s, 2 por Bloop, custo com teto menor. Vila: até 10 por jogador;
+ponte/barco/guindaste contam para a ponte quebrada, bomba d'água/fonte/poço para a praça alagada, escadas/rampas
+para subir.
+
+### Testes
+`node scripts/test-cava-make.mjs` — validador (JSON malicioso/gigante), pedido seguro, gerador (200 frases
+aleatórias válidas e determinísticas, cobertura em 300 frases), montador (20 objetos, 10 s de física sem NaN) e
+endpoint (catálogo, cache, fixtures, Claude falso, Workers AI falso, 422, 429).

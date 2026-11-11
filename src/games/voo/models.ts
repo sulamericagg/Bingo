@@ -226,10 +226,11 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // ---------- copa ----------
   for (const side of [-1, 1]) {
     const x = side * 1.45;
-    b.box(0.62, 1.0, 2.0, x, 0, 4.9, '#e3dcef');
-    for (let z = 4.0; z < 5.9; z += 0.5) b.sharp(0.02, 0.85, 0.02, x - side * 0.31, 0.08, z, '#b5a8d0');
-    b.box(0.64, 0.05, 2.02, x, 1.0, 4.9, '#c7bde0');
-    b.box(0.45, 0.55, 2.0, side * 1.53, 1.7, 4.9, '#efe8f8');
+    // balcão na altura da cintura (0,9 m) para quem tem os olhos a 1,45 m
+    b.box(0.62, 0.88, 2.0, x, 0, 4.9, '#e3dcef');
+    for (let z = 4.0; z < 5.9; z += 0.5) b.sharp(0.02, 0.74, 0.02, x - side * 0.31, 0.08, z, '#b5a8d0');
+    b.box(0.64, 0.05, 2.02, x, 0.88, 4.9, '#c7bde0');
+    b.box(0.45, 0.5, 2.0, side * 1.53, 1.78, 4.9, '#efe8f8');
   }
   // bebedouro e cesta de lanches
   b.lathe(
@@ -243,15 +244,15 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
       [0, 0.46],
     ],
     SPOTS.water.x,
-    1.05,
+    0.93,
     SPOTS.water.z,
     '#7ad8ff',
     14,
   );
-  b.box(0.36, 0.2, 0.44, SPOTS.snack.x, 1.05, SPOTS.snack.z, '#ffb02e');
-  for (let i = 0; i < 5; i++) b.box(0.1, 0.12, 0.08, SPOTS.snack.x - 0.1 + (i % 3) * 0.1, 1.2, SPOTS.snack.z - 0.12 + i * 0.06, ['#ff5c7a', '#3fe06c', '#ffd34a', '#46d9e6', '#a78bff'][i]);
+  b.box(0.36, 0.2, 0.44, SPOTS.snack.x, 0.93, SPOTS.snack.z, '#ffb02e');
+  for (let i = 0; i < 5; i++) b.box(0.1, 0.12, 0.08, SPOTS.snack.x - 0.1 + (i % 3) * 0.1, 1.08, SPOTS.snack.z - 0.12 + i * 0.06, ['#ff5c7a', '#3fe06c', '#ffd34a', '#46d9e6', '#a78bff'][i]);
   // forno
-  b.box(0.5, 0.5, 0.6, 1.5, 1.05, SPOTS.oven.z, '#9aa0b8');
+  b.box(0.5, 0.5, 0.6, 1.5, 0.93, SPOTS.oven.z, '#9aa0b8');
   // suporte do extintor
   metal.box(0.08, 0.5, 0.2, 1.74, 0.8, 4.25, '#9aa0b8');
   metal.box(0.08, 0.5, 0.2, -1.74, 0.8, 18.3, '#9aa0b8');
@@ -492,7 +493,7 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   );
   group.add(pump);
   const ovenGlow = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.26), new THREE.MeshBasicMaterial({ color: '#3a2a3a', toneMapped: false }));
-  ovenGlow.position.set(1.24, 1.3, SPOTS.oven.z);
+  ovenGlow.position.set(1.24, 1.18, SPOTS.oven.z);
   ovenGlow.rotation.y = -Math.PI / 2;
   group.add(ovenGlow);
   // portas dos bagageiros (abrem na turbulência)
@@ -674,6 +675,8 @@ export function itemGeo(k: ItemKind, variant = 0): THREE.BufferGeometry {
   } else if (k === 'snack') {
     g.box(0.16, 0.2, 0.06, 0, -0.1, 0, ['#ffb02e', '#ff5cae', '#3fe06c'][variant % 3]);
     g.sph(0.04, 0, 0.0, -0.035, '#ffd34a', 1, 1, 0.4, 8);
+  } else if (k === 'tray') {
+    trayGeo(g, 0, 0, 0);
   } else {
     const cols = ['#8a5cff', '#2fb6ff', '#ff7a3a', '#3fe06c', '#ff5cae'];
     g.box(0.5, 0.36, 0.22, 0, -0.18, 0, cols[variant % cols.length]);
@@ -683,6 +686,36 @@ export function itemGeo(k: ItemKind, variant = 0): THREE.BufferGeometry {
   return g.build();
 }
 
+/** bandeja do serviço de bordo (prato, copo, guardanapo) — também vai no carrinho */
+export function trayGeo(g: GeoBuilder, x: number, y: number, z: number, main = 1, drink = 2): void {
+  g.box(0.36, 0.025, 0.26, x, y - 0.02, z, '#c9cfe0');
+  g.box(0.33, 0.012, 0.23, x, y + 0.005, z, '#eef1f8');
+  if (main) {
+    g.cyl(0.075, 0.07, 0.02, x - 0.06, y + 0.015, z, '#ffffff', 12);
+    if (main === 1) g.box(0.1, 0.035, 0.07, x - 0.06, y + 0.03, z, '#ffcc66');
+    else g.sph(0.05, x - 0.06, y + 0.04, z, '#ffd34a', 1, 0.45, 1, 8);
+  }
+  if (drink) {
+    const dc = ['#7ad8ff', '#7ad8ff', '#ff9a3a', '#ffffff'][drink];
+    g.cyl(0.032, 0.026, 0.09, x + 0.1, y + 0.015, z - 0.03, dc, 10);
+  }
+  g.box(0.06, 0.006, 0.08, x + 0.1, y + 0.012, z + 0.07, '#ff9ac8');
+}
+
+/** carrinho do serviço de bordo (alto e estreito, cabe no corredor) */
+export function cartGeo(standard: boolean): THREE.Mesh {
+  const g = new GeoBuilder();
+  g.bevel = 1;
+  g.ao = false;
+  g.box(0.42, 0.9, 0.7, 0, 0.08, 0, '#b9b2d6');
+  g.box(0.44, 0.06, 0.72, 0, 0.98, 0, '#8a7fc0');
+  for (let i = 0; i < 4; i++) g.sharp(0.43, 0.012, 0.66, 0, 0.25 + i * 0.18, 0.01, '#7f75b2');
+  g.box(0.36, 0.03, 0.05, 0, 0.92, -0.37, '#5b5e74');
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.cyl(0.04, 0.04, 0.04, sx * 0.15, 0.02, sz * 0.27, '#2a2d40', 8, 0, Math.PI / 2);
+  g.sph(0.06, 0, 0.6, 0.36, '#ff5cae', 1, 1, 0.4, 8);
+  return new THREE.Mesh(g.build(), mat(standard, { rough: 0.5, metal: 0.15 }));
+}
+
 /* ============================== AVIÃO POR FORA ============================== */
 
 export interface ExtRefs {
@@ -690,6 +723,18 @@ export interface ExtRefs {
   gear: THREE.Group[];
   beacon: THREE.Mesh;
   fans: THREE.Mesh[];
+  /** disco borrado na frente de cada ventoinha (opacidade ∝ rotação) */
+  fanBlur: THREE.Mesh[];
+  /** asas (pivô na raiz: flexão sob carga g) — [esquerda, direita] */
+  wings: THREE.Group[];
+  /** superfícies articuladas (girar em rotation.x; + = bordo de fuga para baixo / leme para a direita) */
+  ailerons: THREE.Group[];
+  flaps: THREE.Group[];
+  spoilers: THREE.Group[];
+  elevators: THREE.Group[];
+  rudder: THREE.Group;
+  /** pontas das asas (local do avião) para os vórtices */
+  tips: THREE.Vector3[];
   /** chamas dos motores (escala/visível) */
   engFire: THREE.Mesh[];
   wins: THREE.InstancedMesh;
@@ -780,13 +825,10 @@ export function buildExterior(l: Livery, standard: boolean, lite: boolean): ExtR
   for (const s of [-1, 1]) dk.box(0.3, 0.38, 0.7, s * 1.72, FUSE_Y + 0.42, -3.6, '#1e2440', s * 0.3);
   const darkWins = new THREE.Mesh(dk.build(), new THREE.MeshBasicMaterial({ vertexColors: true }));
   group.add(darkWins);
-  // asas (planta trapezoidal, diedro)
-  const wing = (s: number, x0: number, x1: number, zr0: number, zr1: number, zt0: number, zt1: number, y: number, dih: number, col: string, th: number) => {
+  // asas (planta com recortes para ailerons/flapes, diedro) — cada asa é um grupo com pivô na raiz (flexão)
+  const extrudePlan = (gb: GeoBuilder, pts: [number, number][], s: number, y: number, x0: number, dih: number, col: string, th: number) => {
     const shape = new THREE.Shape();
-    shape.moveTo(x0, zr0);
-    shape.lineTo(x1, zt0);
-    shape.lineTo(x1, zt1);
-    shape.lineTo(x0, zr1);
+    pts.forEach(([x, z], i) => (i ? shape.lineTo(x, z) : shape.moveTo(x, z)));
     shape.closePath();
     const g = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: true, bevelThickness: th * 0.4, bevelSize: th * 0.4, bevelSegments: 1, steps: 1 });
     g.rotateX(Math.PI / 2);
@@ -798,17 +840,107 @@ export function buildExterior(l: Livery, standard: boolean, lite: boolean): ExtR
     }
     const ng = s < 0 ? flipWinding(g) : g;
     ng.computeVertexNormals();
-    b.geo(ng, col);
+    gb.geo(ng, col);
   };
+  const surfMat = mat(standard, { rough: 0.4, metal: 0.12 });
+  const _x = new THREE.Vector3();
+  const _y = new THREE.Vector3();
+  const _z = new THREE.Vector3();
+  const _mm = new THREE.Matrix4();
+  /** superfície articulada: pivô na linha de articulação (a→b, sempre no sentido +x ou para cima), corda para trás */
+  const hinged = (parent: THREE.Object3D, a: THREE.Vector3, bb: THREE.Vector3, c0: number, c1: number, th: number, col: string, up: THREE.Vector3): THREE.Group => {
+    const L = a.distanceTo(bb);
+    _x.subVectors(bb, a).normalize();
+    _y.copy(up).addScaledVector(_x, -up.dot(_x)).normalize();
+    _z.crossVectors(_x, _y);
+    const pivot = new THREE.Group();
+    pivot.position.copy(a);
+    pivot.quaternion.setFromRotationMatrix(_mm.makeBasis(_x, _y, _z));
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(L, 0);
+    shape.lineTo(L, c1);
+    shape.lineTo(0, c0);
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: true, bevelThickness: th * 0.3, bevelSize: Math.min(th * 0.4, 0.04), bevelSegments: 1, steps: 1 });
+    g.rotateX(Math.PI / 2);
+    g.translate(0, th / 2, 0);
+    // afina no bordo de fuga
+    const pa = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pa.count; i++) {
+      const z = pa.getZ(i);
+      const c = c0 + (c1 - c0) * (pa.getX(i) / L);
+      pa.setY(i, pa.getY(i) * (1 - 0.7 * Math.min(1, Math.max(0, z / Math.max(0.05, c)))));
+    }
+    g.computeVertexNormals();
+    const gb = new GeoBuilder();
+    gb.ao = false;
+    gb.bevel = 0;
+    gb.geo(g, col);
+    const m = new THREE.Mesh(gb.build(), surfMat);
+    m.castShadow = true;
+    pivot.add(m);
+    parent.add(pivot);
+    return pivot;
+  };
+  const UPV = new THREE.Vector3(0, 1, 0);
+  const wings: THREE.Group[] = [];
+  const ailerons: THREE.Group[] = [];
+  const flaps: THREE.Group[] = [];
+  const spoilers: THREE.Group[] = [];
+  const elevators: THREE.Group[] = [];
+  const fans: THREE.Mesh[] = [];
+  const fanBlur: THREE.Mesh[] = [];
+  const engFire: THREE.Mesh[] = [];
+  // asa principal
+  const W = { x0: 1.6, x1: 16.5, zr0: 7.6, zr1: 12.8, zt0: 12.4, zt1: 13.9, y: FUSE_Y - 1.55, dih: 0.06, th: 0.22 };
+  const te = (x: number) => W.zr1 + ((W.zt1 - W.zr1) * (x - W.x0)) / (W.x1 - W.x0);
+  const midY = (x: number) => W.y + W.th / 2 + Math.max(0, x - W.x0) * W.dih;
+  const XA0 = 10.6;
+  const XA1 = 15.6;
+  const CA = 0.6;
+  const XF0 = 2.2;
+  const XF1 = 10.3;
+  const CF = 0.9;
+  const plan: [number, number][] = [
+    [W.x0, W.zr0],
+    [W.x1, W.zt0],
+    [W.x1, te(W.x1)],
+    [XA1, te(XA1)],
+    [XA1, te(XA1) - CA],
+    [XA0, te(XA0) - CA],
+    [XA0, te(XA0)],
+    [XF1, te(XF1)],
+    [XF1, te(XF1) - CF],
+    [XF0, te(XF0) - CF],
+    [XF0, te(XF0)],
+    [W.x0, te(W.x0)],
+  ];
+  // flapes (cor das asas) e ailerons/spoilers (faixa) — ficam na asa e se mexem pelas entradas
+  const fanG = new GeoBuilder();
+  fanG.ao = false;
+  fanG.bevel = 0;
+  fanG.cyl(0.62, 0.62, 0.04, 0, 0, 0, '#3a3f5a', 18, Math.PI / 2);
+  for (let i = 0; i < 8; i++) fanG.box(0.08, 0.58, 0.03, 0, 0, -0.04, '#c6c9d8', 0, 0, (i / 8) * TAU);
+  fanG.sph(0.18, 0, 0, -0.08, '#e8ecf6', 1, 1, 1.4, 10);
+  const fanGeo = fanG.build();
+  const blurMat = new THREE.MeshBasicMaterial({ map: fanBlurTexture(), transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const flameMat = new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   for (const s of [-1, 1]) {
-    wing(s, 1.6, 16.5, 7.6, 12.8, 12.4, 13.9, FUSE_Y - 1.55, 0.06, '#e8ecf6', 0.22);
+    const root = new THREE.Vector3(s * W.x0, midY(W.x0), 10.5);
+    const wg = new THREE.Group();
+    wg.position.copy(root);
+    group.add(wg);
+    wings.push(wg);
+    const gb = new GeoBuilder();
+    gb.bevel = lite ? 1 : 2;
+    gb.ao = false;
+    extrudePlan(gb, plan, s, W.y, W.x0, W.dih, '#e8ecf6', W.th);
     // winglet
-    b.box(0.12, 1.4, 1.2, s * 16.5, FUSE_Y - 0.6, 13.3, l.stripe, 0, 0.35, -s * 0.1);
-    // estabilizadores
-    wing(s, 0.4, 6.3, 20.6, 23.4, 23.0, 24.2, FUSE_Y + 1.5, 0.08, '#e8ecf6', 0.14);
-    // motor (nacele)
+    gb.box(0.12, 1.4, 1.2, s * 16.5, FUSE_Y - 0.6, 13.3, l.stripe, 0, 0.35, -s * 0.1);
+    // motor (nacele) + pilone
     const ex = s * 6.0;
-    b.lathe(
+    gb.lathe(
       [
         [0.62, 0],
         [0.78, 0.25],
@@ -824,20 +956,91 @@ export function buildExterior(l: Livery, standard: boolean, lite: boolean): ExtR
       seg,
       Math.PI / 2,
     );
-    b.torus(0.7, 0.07, ex, FUSE_Y - 2.35, 7.32, l.stripe, 0, seg);
-    b.box(0.22, 0.7, 2.4, ex, FUSE_Y - 1.85, 8.9, '#d9dde8');
+    gb.torus(0.7, 0.07, ex, FUSE_Y - 2.35, 7.32, l.stripe, 0, seg);
+    gb.box(0.22, 0.7, 2.4, ex, FUSE_Y - 1.85, 8.9, '#d9dde8');
+    const wgeo = gb.build();
+    wgeo.translate(-root.x, -root.y, -root.z);
+    const wm = new THREE.Mesh(wgeo, mat(standard, { rough: 0.4, metal: 0.12 }));
+    wm.castShadow = true;
+    wg.add(wm);
+    const loc = (x: number, y: number, z: number) => new THREE.Vector3(x - root.x, y - root.y, z - root.z);
+    // pontos de articulação (sempre do -x para o +x)
+    const pair = (xi: number, xo: number, c: number): [THREE.Vector3, THREE.Vector3] => {
+      const pi = loc(s * xi, midY(xi), te(xi) - c);
+      const po = loc(s * xo, midY(xo), te(xo) - c);
+      return s > 0 ? [pi, po] : [po, pi];
+    };
+    const [a0, a1] = pair(XA0 + 0.04, XA1 - 0.04, CA);
+    ailerons.push(hinged(wg, a0, a1, CA, CA, W.th * 0.8, l.stripe, UPV));
+    const [f0, f1] = pair(XF0 + 0.04, XF1 - 0.04, CF);
+    flaps.push(hinged(wg, f0, f1, CF, CF, W.th * 0.8, '#d9dde8', UPV));
+    // spoilers em cima da asa (dois painéis), à frente dos flapes
+    for (const [xs0, xs1] of [
+      [3.3, 6.0],
+      [6.4, 9.6],
+    ]) {
+      const sp0 = loc(s * xs0, midY(xs0) + W.th * 0.62, te(xs0) - CF - 0.6);
+      const sp1 = loc(s * xs1, midY(xs1) + W.th * 0.62, te(xs1) - CF - 0.6);
+      spoilers.push(hinged(wg, s > 0 ? sp0 : sp1, s > 0 ? sp1 : sp0, 0.58, 0.58, 0.05, '#cfd4e2', UPV));
+    }
+    // ventoinha (gira com a rotação) + disco borrado
+    const fan = new THREE.Mesh(fanGeo, mat(standard));
+    fan.position.copy(loc(ex, FUSE_Y - 2.35, 7.55));
+    wg.add(fan);
+    fans.push(fan);
+    const bl = new THREE.Mesh(new THREE.CircleGeometry(0.66, 24), blurMat);
+    bl.position.copy(loc(ex, FUSE_Y - 2.35, 7.47));
+    bl.rotation.y = Math.PI;
+    wg.add(bl);
+    fanBlur.push(bl);
+    // chama do motor
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.2, 10, 1, true), flameMat);
+    fl.rotation.x = Math.PI / 2;
+    fl.position.copy(loc(ex, FUSE_Y - 2.1, 12.2));
+    fl.visible = false;
+    wg.add(fl);
+    engFire.push(fl);
+    // luz de navegação na ponta
+    const nl = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: s < 0 ? '#ff3040' : '#30ff70', toneMapped: false }));
+    nl.position.copy(loc(s * 16.5, FUSE_Y - 0.6, 13.4));
+    wg.add(nl);
   }
-  // deriva com rosto de Bloop
+  // estabilizadores (com profundor)
+  const S = { x0: 0.4, x1: 6.3, zr0: 20.6, zr1: 23.4, zt0: 23.0, zt1: 24.2, y: FUSE_Y + 1.5, dih: 0.08, th: 0.14 };
+  const ste = (x: number) => S.zr1 + ((S.zt1 - S.zr1) * (x - S.x0)) / (S.x1 - S.x0);
+  const smid = (x: number) => S.y + S.th / 2 + Math.max(0, x - S.x0) * S.dih;
+  const CE = 0.55;
+  const XE0 = 0.55;
+  const XE1 = 6.1;
+  const splan: [number, number][] = [
+    [S.x0, S.zr0],
+    [S.x1, S.zt0],
+    [S.x1, ste(S.x1)],
+    [XE1, ste(XE1)],
+    [XE1, ste(XE1) - CE],
+    [XE0, ste(XE0) - CE],
+    [XE0, ste(XE0)],
+    [S.x0, ste(S.x0)],
+  ];
+  for (const s of [-1, 1]) {
+    extrudePlan(b, splan, s, S.y, S.x0, S.dih, '#e8ecf6', S.th);
+    const pi = new THREE.Vector3(s * XE0, smid(XE0), ste(XE0) - CE);
+    const po = new THREE.Vector3(s * XE1, smid(XE1), ste(XE1) - CE);
+    elevators.push(hinged(group, s > 0 ? pi : po, s > 0 ? po : pi, CE, CE, S.th * 0.8, '#d9dde8', UPV));
+  }
+  // deriva com rosto de Bloop (o leme é separado)
   const fin = new THREE.Shape();
   fin.moveTo(0, 0);
-  fin.lineTo(4.4, 0);
-  fin.lineTo(5.6, 4.8);
+  fin.lineTo(3.5, 0);
+  fin.lineTo(4.7, 4.8);
   fin.lineTo(4.0, 4.8);
   fin.closePath();
   const fing = new THREE.ExtrudeGeometry(fin, { depth: 0.24, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 1 });
   fing.rotateY(-Math.PI / 2);
   fing.translate(0.12, FUSE_Y + 1.9, 19.4);
   b.geo(fing, l.tail);
+  // leme: articulação do pé ao topo da deriva, corda para trás
+  const rudder = hinged(group, new THREE.Vector3(0, FUSE_Y + 1.95, 19.4 + 3.5), new THREE.Vector3(0, FUSE_Y + 1.9 + 4.75, 19.4 + 4.7), 0.9, 0.85, 0.2, l.tail, new THREE.Vector3(-1, 0, 0));
   for (const s of [-1, 1]) {
     b.sph(0.8, s * 0.2, FUSE_Y + 4.1, 22.7, l.belly === '#1c1f4a' ? '#ffd34a' : '#ffffff', 0.15, 1, 1, 14);
     b.sph(0.2, s * 0.27, FUSE_Y + 4.3, 22.35, '#ffffff', 0.12, 1.2, 1, 8);
@@ -849,21 +1052,6 @@ export function buildExterior(l: Livery, standard: boolean, lite: boolean): ExtR
   const body = new THREE.Mesh(b.build(), mat(standard, { rough: 0.4, metal: 0.12 }));
   body.castShadow = true;
   group.add(body);
-  // ventoinhas (giram)
-  const fans: THREE.Mesh[] = [];
-  const fanG = new GeoBuilder();
-  fanG.ao = false;
-  fanG.bevel = 0;
-  fanG.cyl(0.62, 0.62, 0.04, 0, 0, 0, '#3a3f5a', 18, Math.PI / 2);
-  for (let i = 0; i < 8; i++) fanG.box(0.08, 0.58, 0.03, 0, 0, -0.04, '#c6c9d8', 0, 0, (i / 8) * TAU);
-  fanG.sph(0.18, 0, 0, -0.08, '#e8ecf6', 1, 1, 1.4, 10);
-  const fanGeo = fanG.build();
-  for (const s of [-1, 1]) {
-    const f = new THREE.Mesh(fanGeo, mat(standard));
-    f.position.set(s * 6.0, FUSE_Y - 2.35, 7.55);
-    group.add(f);
-    fans.push(f);
-  }
   // trem de pouso
   const gear: THREE.Group[] = [];
   const gearG = (x: number, z: number, two: boolean) => {
@@ -886,27 +1074,37 @@ export function buildExterior(l: Livery, standard: boolean, lite: boolean): ExtR
   gearG(-2.7, 11.4, true);
   gearG(2.7, 11.4, true);
   gearG(0, -3.4, false);
-  // luzes de navegação
-  const navG = new THREE.SphereGeometry(0.16, 8, 6);
-  const red = new THREE.Mesh(navG, new THREE.MeshBasicMaterial({ color: '#ff3040', toneMapped: false }));
-  red.position.set(-16.5, FUSE_Y - 0.6, 13.4);
-  const green = new THREE.Mesh(navG, new THREE.MeshBasicMaterial({ color: '#30ff70', toneMapped: false }));
-  green.position.set(16.5, FUSE_Y - 0.6, 13.4);
-  const beacon = new THREE.Mesh(navG, new THREE.MeshBasicMaterial({ color: '#ff2020', toneMapped: false }));
+  // farol giratório
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff2020', toneMapped: false }));
   beacon.position.set(0, FUSE_Y + FUSE_R + 0.05, 9);
-  group.add(red, green, beacon);
-  // chamas dos motores (cones aditivos)
-  const engFire: THREE.Mesh[] = [];
-  const flameMat = new THREE.MeshBasicMaterial({ color: '#ff9a3a', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-  for (const s of [-1, 1]) {
-    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.2, 10, 1, true), flameMat);
-    fl.rotation.x = Math.PI / 2;
-    fl.position.set(s * 6.0, FUSE_Y - 2.1, 12.2);
-    fl.visible = false;
-    group.add(fl);
-    engFire.push(fl);
+  group.add(beacon);
+  // pontas das asas (para os vórtices) em coordenadas locais do avião
+  const tips = [new THREE.Vector3(-16.5, FUSE_Y - 0.1, 13.6), new THREE.Vector3(16.5, FUSE_Y - 0.1, 13.6)];
+  return { group, gear, beacon, fans, fanBlur, engFire, wins, darkWins, wings, ailerons, flaps, spoilers, elevators, rudder, tips };
+}
+
+/** disco borrado da ventoinha (listras radiais suaves) */
+function fanBlurTexture(): THREE.CanvasTexture {
+  const [cv, c] = canvas(128, 128);
+  const g = c.createRadialGradient(64, 64, 8, 64, 64, 64);
+  g.addColorStop(0, 'rgba(220,224,236,0.9)');
+  g.addColorStop(0.3, 'rgba(160,166,190,0.55)');
+  g.addColorStop(0.92, 'rgba(120,126,150,0.45)');
+  g.addColorStop(1, 'rgba(120,126,150,0)');
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(64, 64, 64, 0, TAU);
+  c.fill();
+  c.strokeStyle = 'rgba(255,255,255,0.35)';
+  c.lineWidth = 3;
+  for (let i = 0; i < 8; i++) {
+    c.beginPath();
+    c.arc(64, 64, 22 + i * 5, (i * 0.7) % TAU, (i * 0.7 + 1.1) % TAU);
+    c.stroke();
   }
-  return { group, gear, beacon, fans, engFire, wins, darkWins };
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function flipWinding(g: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -1093,34 +1291,6 @@ export function airportGeo(lite: boolean): THREE.BufferGeometry {
   // estacionamento e prédios menores
   for (let i = 0; i < 10; i++) b.box(30 + (i % 3) * 10, 12 + (i % 4) * 5, 40, 540 + (i % 2) * 60, 0, -1700 + i * 90, ['#e6d6c8', '#f0b8a0', '#d8d0e0', '#c9d4e6'][i % 4]);
   return b.build();
-}
-
-/** nuvem "fofa" (várias bolotas mescladas) */
-export function cloudGeo(lite: boolean): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const g = new GeoBuilder();
-  g.bevel = 0;
-  g.ao = false;
-  const det = lite ? 0 : 1;
-  const puffs: [number, number, number, number][] = [
-    [0, 0, 0, 1],
-    [1.1, -0.15, 0.2, 0.75],
-    [-1.05, -0.2, -0.1, 0.7],
-    [0.4, 0.35, -0.5, 0.65],
-    [-0.5, 0.25, 0.55, 0.6],
-    [1.8, -0.35, -0.3, 0.45],
-    [-1.8, -0.4, 0.3, 0.45],
-  ];
-  for (const [x, y, z, r] of puffs) {
-    const s = new THREE.IcosahedronGeometry(r, det);
-    // achata a base
-    const pa = s.getAttribute('position') as THREE.BufferAttribute;
-    for (let i = 0; i < pa.count; i++) if (pa.getY(i) < -r * 0.25) pa.setY(i, -r * 0.25 - (pa.getY(i) + r * 0.25) * 0.2);
-    s.computeVertexNormals();
-    g.geo(s, '#ffffff', x, y, z);
-    parts.push(s);
-  }
-  return g.build();
 }
 
 /** árvore e casinha para instanciar */

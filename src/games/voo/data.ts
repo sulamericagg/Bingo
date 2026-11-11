@@ -71,9 +71,9 @@ export const SPOTS: Record<Exclude<SpotId, 'win'>, Spot> = {
   elec: { x: 1.7, z: -0.72, y: 1.3 },
   doorF: { x: -1.72, z: -0.72, y: 1.1 },
   doorR: { x: -1.72, z: 15.6, y: 1.1 },
-  oven: { x: 1.5, z: 5.25, y: 1.62 },
-  water: { x: -1.55, z: 4.35, y: 1.1 },
-  snack: { x: -1.55, z: 5.35, y: 1.0 },
+  oven: { x: 1.5, z: 5.25, y: 1.5 },
+  water: { x: -1.55, z: 4.35, y: 1.0 },
+  snack: { x: -1.55, z: 5.35, y: 0.95 },
   engL: { x: -1.68, z: 10.6, y: 1.0 },
   engR: { x: 1.68, z: 10.6, y: 1.0 },
   cabinA: { x: -0.7, z: 8.0, y: 0.7 },
@@ -92,7 +92,7 @@ export const SEATS: [number, number][] = [];
 for (const z of [0.15, 1.95]) for (const x of [-1.15, 1.15]) SEATS.push([x, z]);
 for (const z of WIN_Z) for (const x of [-1.3, -0.82, 0.82, 1.3]) SEATS.push([x, z]);
 
-export type ItemKind = 'ext' | 'tape' | 'water' | 'snack' | 'bag';
+export type ItemKind = 'ext' | 'tape' | 'water' | 'snack' | 'bag' | 'tray';
 export const ITEM_HOMES: { kind: ItemKind; x: number; z: number; y: number }[] = [
   { kind: 'ext', x: 1.5, z: 4.25, y: 0.9 },
   { kind: 'ext', x: -1.48, z: 18.3, y: 0.95 },
@@ -109,6 +109,8 @@ export function itemName(k: ItemKind): string {
       return t('voo.i.water', 'Água');
     case 'snack':
       return t('voo.i.snack', 'Lanchinho');
+    case 'tray':
+      return t('voo.i.tray', 'Bandeja');
     default:
       return t('voo.i.bag', 'Mala');
   }

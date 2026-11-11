@@ -81,7 +81,7 @@ const CSS = `
 .cz-tip span{flex:1;min-width:0}
 .cz-tip.cz-pop{animation:czTipPop .35s cubic-bezier(.3,1.6,.6,1)}
 @keyframes czTipPop{from{transform:translateX(-50%) scale(.85)}}
-.cz-skip{position:absolute;right:var(--edge-r,10px);top:calc(env(safe-area-inset-top,0px) + 84px);pointer-events:auto;border:0;border-radius:9px;background:rgba(16,6,40,.55);color:#fff;font:inherit;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;z-index:9}
+.cz-skip{pointer-events:auto;border:2px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(42,11,92,.82);color:#fff;font:inherit;font-size:13px;font-weight:700;padding:5px 12px;cursor:pointer;white-space:nowrap}
 @media (orientation:portrait){.cz-pets{top:calc(env(safe-area-inset-top,0px) + 176px)}.cz-cmd{top:calc(env(safe-area-inset-top,0px) + 160px)}.cz-tip{top:calc(env(safe-area-inset-top,0px) + 132px);max-width:92vw}.cz-toasts{top:calc(env(safe-area-inset-top,0px) + 168px)}}
 .cz-pets{position:absolute;left:var(--edge-l,8px);top:calc(env(safe-area-inset-top,0px) + 128px);display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:6}
 .cz-chip{pointer-events:auto;position:relative;width:46px;height:50px;border-radius:14px;border:3px solid #2a0b5c;background:linear-gradient(#fff6e0,#ffd9a0);box-shadow:0 3px 0 #2a0b5c;padding:0;cursor:pointer;touch-action:manipulation}

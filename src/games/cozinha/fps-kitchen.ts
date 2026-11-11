@@ -44,6 +44,38 @@ export interface KitchenBuild {
   dispose(): void;
   /** cor do céu/fundo */
   bg: string;
+  /** salão: lugares onde os clientes sentam para comer (de frente para a cozinha) */
+  dine: DineSeat[];
+}
+
+/** lugar no salão: onde o cliente senta (x,z) e o tampo da mesa à frente (tx,tz) */
+export interface DineSeat {
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+}
+/** porta do salão (clientes entram/saem por aqui) */
+export const DOOR = { x: -1.7, z: -3.4 };
+/** degrau na frente do passa-pratos: o cliente sobe e o ROSTO aparece acima do balcão */
+export const STEP_H = 0.42;
+/** faixa da fila (entre a janela e as mesas) */
+export const QUEUE_Z = -1.45;
+/** mesas do salão: 2 fileiras; cada mesa tem um banquinho de cada lado (clientes sentam no do fundo) */
+export function dineLayout(W: number): { tables: [number, number][]; seats: DineSeat[] } {
+  const rows = [-2.75, -4.05];
+  const span = W + 1.5;
+  const n = Math.max(2, Math.floor(span / 1.9));
+  const tables: [number, number][] = [];
+  const seats: DineSeat[] = [];
+  rows.forEach((z, r) => {
+    for (let i = 0; i < n; i++) {
+      const x = ((i + 0.5 + (r ? 0.5 : 0)) / (n + (r ? 0.5 : 0))) * span - 0.75;
+      tables.push([x, z]);
+      seats.push({ x, z: z - 0.5, tx: x, tz: z });
+    }
+  });
+  return { tables, seats };
 }
 
 function wallTexture(theme: Theme, wall: string): THREE.CanvasTexture {
@@ -279,6 +311,10 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
         // toldo listrado com bordinha ondulada
         for (let i = 0; i < 6; i++) b.box(T / 6 + 0.002, 0.025, 0.46, x * T + (i + 0.5) * (T / 6), HATCH_TOP + 0.12, 0.2, i % 2 ? '#fff8ee' : '#ff5c7a', 0, -0.38);
         for (let i = 0; i < 6; i++) b.sph(T / 12, x * T + (i + 0.5) * (T / 6), HATCH_TOP - 0.05, 0.42, i % 2 ? '#fff8ee' : '#ff5c7a', 1, 0.55, 0.25, 10);
+        // degrau do cliente (do lado do salão): ele sobe e aparece de corpo inteiro na janela
+        wd.box(T * 0.86, STEP_H, 0.72, (x + 0.5) * T, 0, -0.78, '#b8742e');
+        wd.box(T * 0.9, 0.04, 0.76, (x + 0.5) * T, STEP_H, -0.78, '#d99a4e');
+        wd.box(T * 0.86, STEP_H * 0.5, 0.28, (x + 0.5) * T, 0, -1.26, '#a8682a');
         // trilho de comandas
         mt.cyl(0.012, 0.012, T - 0.2, x * T + 0.1, HATCH_TOP - 0.2, 0.14, '#cfd5e0', 8, 0, -Math.PI / 2);
         for (let i = 0; i < 3; i++) b.sharp(0.1, 0.13, 0.004, x * T + 0.28 + i * 0.27, HATCH_TOP - 0.34, 0.14, i === 1 ? '#fff6c4' : '#ffffff', (i - 1) * 0.08);
@@ -608,22 +644,27 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
     wd.box(0.7, 0.5, 0.04, px, 1.6, -4.96, '#8a5a30');
     b.sharp(0.6, 0.4, 0.01, px, 1.65, -4.93, ['#ffcf9a', '#9fe08a', '#7ad0ff'][i]);
   }
-  for (let i = 0; i < sim.seats; i++) {
-    const sx = ((i + 0.5) / sim.seats) * W;
+  const dine = dineLayout(W);
+  dine.tables.forEach(([sx, tz], i) => {
     // mesa redonda com toalha xadrez (torno) + pé de ferro
-    dk.lathe([[0.22, 0], [0.2, 0.02], [0.05, 0.05], [0.04, 0.7], [0, 0.7]], sx, 0, -2.4, '#2a2733', 16);
-    cer.lathe([[0, 0.72], [0.47, 0.72], [0.5, 0.71], [0.52, 0.6], [0.53, 0.58], [0.5, 0.6], [0.48, 0.7], [0, 0.7]], sx, 0, -2.4, i % 2 ? '#ff7a8a' : '#fff6ea', 24);
-    // cadeira bistrô: assento, encosto curvo de madeira, pernas de metal
-    const cz2 = -3.05;
-    wd.rcyl(0.21, 0.05, sx, 0.45, cz2, '#b8783e', 18, 0.35);
-    for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) dk.cyl(0.014, 0.014, 0.45, sx + a * 0.14, 0, cz2 + c * 0.14, '#2a2733', 6);
-    for (const sd of [-1, 1]) dk.cyl(0.014, 0.014, 0.45, sx + sd * 0.16, 0.5, cz2 - 0.15, '#2a2733', 6);
-    wd.tube([[sx - 0.18, 0.92, cz2 - 0.12], [sx, 0.95, cz2 - 0.2], [sx + 0.18, 0.92, cz2 - 0.12]], 0.035, '#b8783e', 10, 6);
+    dk.lathe([[0.22, 0], [0.2, 0.02], [0.05, 0.05], [0.04, 0.7], [0, 0.7]], sx, 0, tz, '#2a2733', 16);
+    cer.lathe([[0, 0.72], [0.47, 0.72], [0.5, 0.71], [0.52, 0.6], [0.53, 0.58], [0.5, 0.6], [0.48, 0.7], [0, 0.7]], sx, 0, tz, i % 2 ? '#ff7a8a' : '#fff6ea', 24);
+    // banquinhos dos dois lados (assento de madeira + pernas de metal)
+    for (const sd of [-1, 1]) {
+      const cz2 = tz + sd * 0.55;
+      wd.rcyl(0.19, 0.05, sx, 0.45, cz2, '#b8783e', 16, 0.35);
+      for (const [a2, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) dk.cyl(0.013, 0.013, 0.45, sx + a2 * 0.12, 0, cz2 + c * 0.12, '#2a2733', 6);
+    }
     // jarrinho com flor
-    glass.lathe([[0, 0], [0.04, 0], [0.045, 0.06], [0.02, 0.12], [0.025, 0.14]], sx + 0.15, 0.72, -2.35, '#d8f6ff', 10);
-    b.sph(0.03, sx + 0.15, 0.88, -2.35, ['#ff5c7a', '#ffd84a', '#c98aff'][i % 3], 1, 1, 1, 8);
-    b.cyl(0.004, 0.004, 0.16, sx + 0.15, 0.72, -2.35, '#3e9e54', 4);
-  }
+    glass.lathe([[0, 0], [0.04, 0], [0.045, 0.06], [0.02, 0.12], [0.025, 0.14]], sx + 0.28, 0.72, tz + 0.05, '#d8f6ff', 10);
+    b.sph(0.03, sx + 0.28, 0.88, tz + 0.05, ['#ff5c7a', '#ffd84a', '#c98aff'][i % 3], 1, 1, 1, 8);
+    b.cyl(0.004, 0.004, 0.16, sx + 0.28, 0.72, tz + 0.05, '#3e9e54', 4);
+  });
+  // porta do salão (à esquerda): batente + porta entreaberta + capacho
+  wd.box(0.12, 2.3, 0.12, DOOR.x + 0.55, 0, DOOR.z - 0.6, '#8a5a30');
+  wd.box(0.12, 2.3, 0.12, DOOR.x + 0.55, 0, DOOR.z + 0.6, '#8a5a30');
+  wd.box(0.12, 0.14, 1.32, DOOR.x + 0.55, 2.3, DOOR.z, '#8a5a30');
+  b.box(0.7, 0.012, 1.0, DOOR.x + 0.95, 0, DOOR.z, '#c94a5a');
 
   const solidMat = lam({ vertexColors: true, roughness: 0.55 });
   const woodMat = lam({ vertexColors: true, map: wood.map, roughness: 0.68, ...(standard ? { normalMap: wood.normal, normalScale: new THREE.Vector2(0.5, 0.5) } : {}) });
@@ -670,6 +711,7 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
   return {
     group,
     bg,
+    dine: dine.seats,
     dispose() {
       for (const o of owned) o.dispose();
       group.parent?.remove(group);

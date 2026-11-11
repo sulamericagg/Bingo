@@ -169,6 +169,47 @@ export class BloopModel {
     this.bubble = sp;
     this.bubbleT = ms / 1000;
   }
+  /** etiqueta com o nome (amigos online) */
+  nameTag(text: string, col: string): void {
+    const cv = document.createElement('canvas');
+    const c = cv.getContext('2d')!;
+    c.font = '800 34px Fredoka, system-ui, sans-serif';
+    const w = Math.min(420, Math.ceil(c.measureText(text).width) + 36);
+    cv.width = w;
+    cv.height = 52;
+    c.font = '800 34px Fredoka, system-ui, sans-serif';
+    c.fillStyle = 'rgba(20,8,48,.72)';
+    c.beginPath();
+    c.roundRect(2, 2, w - 4, 48, 22);
+    c.fill();
+    c.fillStyle = col;
+    c.beginPath();
+    c.arc(24, 26, 9, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#fff';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(text, w / 2 + 10, 28, w - 50);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    this.tag.renderOrder = 19;
+    const k = 0.0052;
+    this.tagW = w;
+    this.tag.scale.set(w * k, 52 * k, 1);
+    this.tag.position.y = 1.25;
+    this.root.add(this.tag);
+  }
+  private tag: THREE.Sprite | null = null;
+  private tagW = 0;
+  /** etiqueta legível de longe: cresce com a distância da câmera */
+  tagDist(d: number): void {
+    if (!this.tag) return;
+    const s = Math.max(1, Math.min(3.2, d / 4.5)) / this.scale;
+    const k = 0.0052 * s;
+    this.tag.scale.set(this.tagW * k, 52 * k, 1);
+    this.tag.position.y = 1.2 + 0.14 * s;
+  }
   splat(): void {
     this.splatT = 0.35;
   }
@@ -202,6 +243,7 @@ export class BloopModel {
     // piscar
     const blink = (t % 3.7) < 0.12 ? 0.15 : 1;
     this.eyes.scale.y = blink;
+    if (this.tag) this.tag.visible = !this.bubble;
     if (this.bubble) {
       this.bubbleT -= dt;
       const m = this.bubble.material as THREE.SpriteMaterial;
@@ -216,6 +258,10 @@ export class BloopModel {
   }
   dispose(): void {
     this.root.parent?.remove(this.root);
+    if (this.tag) {
+      (this.tag.material as THREE.SpriteMaterial).map?.dispose();
+      this.tag.material.dispose();
+    }
     if (this.bubble) {
       (this.bubble.material as THREE.SpriteMaterial).map?.dispose();
       this.bubble.material.dispose();

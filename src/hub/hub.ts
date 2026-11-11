@@ -15,6 +15,7 @@ import { paperPref, setPaperPref } from '../3d/paper/settings';
 import { ensureLandscape, restorePortrait, setPrefersPortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
+import { play } from '../audio/sound'; // AUDIO
 import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
 import { save } from '../core/storage';
@@ -533,7 +534,7 @@ function go(i: number): void {
   if (!cards.length) return;
   const n = (i + cards.length) % cards.length;
   if (n === idx) return layout(true);
-  audio.click();
+  play('hub.swipe'); // AUDIO: deslizar de carta (antes: clique genérico)
   haptics.tap('light');
   select(n, false);
 }
@@ -912,6 +913,7 @@ function buildNav(): void {
       const p = listPanels().find((x) => x.id === b.dataset.panel);
       if (!p) return;
       haptics.tap('light');
+      play('hub.open'); // AUDIO
       // Bichinho / Casa: a tela abre por baixo enquanto a intro toca por cima
       const pi = panelIntro(p.id);
       if (pi) startIntro(document.body, pi, opts.getTier(), true);
