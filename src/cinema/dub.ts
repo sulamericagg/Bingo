@@ -23,13 +23,13 @@ import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
 import { cancelListening, listen, stopListening, sttAvailable } from '../pet/talk/stt';
 import { scanText } from '../../shared/moderation';
-import { actx, loadClip, MicRecorder, Mixer, Playback, playSfx, preloadProjectClips, previewClip, rememberClip } from './audio';
+import { actx, MicRecorder, Mixer, Playback, playSfx, preloadProjectClips, rememberClip } from './audio';
 import { applyLineAudio, textPace } from './board';
-import { Renderer, setVoiceEnv, VOICE_RATE } from './engine';
+import { Renderer, setVoiceEnv } from './engine';
 import { clone, flatShots, type CastMember, type Line, type Project, type VoiceFxId } from './format';
 import { VOICES } from './data';
 import { actorThumbCopy as actorThumb } from './rig2d';
-import { getClip, putClip } from './store';
+import { putClip } from './store';
 import { uid } from './format';
 
 /** Quem abriu a dublagem: o quadro (modo fácil) ou o editor avançado. */
@@ -234,7 +234,6 @@ class Dub {
   private holdWait: ((down: boolean) => void) | null = null;
   private mode: RecMode;
   private warn = new Map<string, string>();
-  private stopPreview: (() => void) | null = null;
   private pop: () => void;
   private sel: string | null = null;
 
@@ -708,7 +707,6 @@ class Dub {
     this.stopNow?.();
     this.holdWait?.(false);
     cancelListening();
-    this.stopPreview?.();
     this.pb?.stop();
     this.st.dispose();
     this.m?.dispose();
@@ -730,26 +728,4 @@ async function startStt(): Promise<(() => Promise<string | undefined>) | null> {
     if (!r) cancelListening();
     return r && 'text' in r ? r.text.slice(0, 500) : undefined;
   };
-}
-
-/** Ouve uma gravação isolada (lista do quadro). */
-export async function hearLine(p: Project, lineId: string): Promise<void> {
-  for (const s of p.scenes)
-    for (const h of s.shots) {
-      const l = h.lines.find((x) => x.id === lineId);
-      if (!l?.audio) continue;
-      const m = getMixer();
-      if (!m) return;
-      m.setMix(p);
-      await loadClip(l.audio);
-      const fx = p.cast.find((c) => c.id === l.cast)?.voice ?? 'normal';
-      previewClip(m, l.audio, fx, l.cut);
-      void VOICE_RATE;
-      return;
-    }
-}
-
-/** O que o aparelho entendeu de uma gravação (para mostrar no quadro). */
-export async function clipTranscript(id: string): Promise<string | undefined> {
-  return (await getClip(id))?.tx;
 }

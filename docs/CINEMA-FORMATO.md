@@ -34,6 +34,7 @@ O mesmo projeto toca em 2D **ou** 3D (`mode`): as chaves dos atores servem para 
   "created": 1762700000000, "updated": 1762700000000,   // ms
   "mode": "2d",                    // "2d" | "3d" (3D = Cinema Pro)
   "template": "bolo",              // opcional: história de origem (remix)
+  "board": Board,                  // opcional: MODO FÁCIL (quadro de cenas) — fonte da verdade; `scenes` é gerado dele
   "story": StorySpec,              // opcional: roteiro do "Criar história"/História Mágica (shared/story.ts);
                                    // permite "Editar história" no modo simples (refaz os planos a partir dele)
   "watermark": true,               // marca "Feito no Bloop World" (só Pro pode desligar)
@@ -73,6 +74,23 @@ Espaço: unidades de R/100 do corpo, origem em `(0, fy·R)` (altura do rosto da 
 área ±130. Limites: 8 camadas, 400 traços, 600 pontos/traço. Grátis: 2 camadas e pincéis básicos;
 glitter, estrelas, corações, listras e camadas extras = Pro. O look do **jogador** fica em
 `localStorage['bw-makeup-player']` (não vai para `save.avatar`/rede); looks salvos em `bw-makeup-looks`.
+
+### Board (modo fácil — `src/cinema/board.ts`, tela `easy.ts`)
+O padrão para quem chega: cada cena é um cartão com fundo, personagens parados e até 3 falas. `buildFromBoard(p)`
+**regera** `p.scenes` (uma fala = um plano; câmera alterna geral / perto / dois; troca de cena = `fade`; sem falas = plano
+de 2,6 s). Ids estáveis: cena = `board.scenes[i].id`, plano = `"sh" + id da fala`, fala = id da fala do quadro (a dublagem
+liga a voz pelo id). Se o modo avançado mexer nas cenas, `board.sig` deixa de bater e o projeto abre no avançado
+(o botão 🧸 volta ao fácil remontando do quadro, com aviso).
+```jsonc
+{ "v": 1, "sig": "hash de scenes",
+  "scenes": [ { "id": "sc…", "bg": "park", "light": "day",
+    "chars": [ { "cast": "c…", "x": 5.2, "z": 0, "face": 0, "pose": "wave", "expr": "happy" } ],   // até 4
+    "lines": [ { "id": "ln…", "cast": "c…",          // vazio = narrador
+                 "text": "Oi!",                       // vazio = improviso (a duração segue a gravação)
+                 "audio": "clip…", "cut": [1.92, 4.1] } ] } ] }   // até 3 falas; até 12 cenas
+```
+Duração da fala: com voz = `(cut[1] − cut[0]) / velocidade da voz + 0,15`; sem voz = ritmo do texto
+(`0,075 s/letra + 0,8`, 1,6..7 s — o mesmo do teleprompter).
 
 ### Scene
 ```jsonc
@@ -163,7 +181,10 @@ Com `audio`, a boca segue o envelope de volume da gravação (50 Hz); sem, mexe 
 ```
 
 ## Gravações (`clips`)
-`{ id, pid (projeto), blob (webm/opus ou o que o aparelho gravar), dur, env: Float32Array }`.
+`{ id, pid (projeto), blob (webm/opus ou o que o aparelho gravar), dur, env: Float32Array, tx? }`.
+`tx` = o que o aparelho entendeu da fala durante a gravação (Dublar; melhor esforço, só web — no Android o
+reconhecedor nativo disputaria o microfone). Vai junto no envio para a TV (moderação). A dublagem grava desde a
+contagem 3-2-1: a fala usa `cut` para pular a contagem e o silêncio do fim.
 Exportar o projeto em `.json` **não** leva as gravações (ficam só no aparelho); ao importar, as
 falas perdem o `audio` e voltam a mexer a boca pelo texto.
 

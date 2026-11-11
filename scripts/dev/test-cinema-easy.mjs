@@ -197,16 +197,15 @@ if (SUBMIT) {
   ok(!(await p.isVisible('.tv-ai')), 'envio limpo aceito');
   // painel: fila com "IA: ok" e transcrições
   const adm = await ctx.newPage();
-  const login = await adm.evaluate(async (b) => (await fetch(b + '/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: 'senha-local' }) })).status, base);
-  console.log('   login admin:', login);
   await adm.goto(`${base}/admin#ugc`);
-  await adm.waitForTimeout(1500);
-  if (await adm.isVisible('input[type="password"]')) {
-    await adm.fill('input[type="password"]', 'senha-local');
-    await adm.keyboard.press('Enter');
+  await adm.waitForSelector('#pw', { state: 'visible', timeout: 15000 }).catch(() => {});
+  if (await adm.isVisible('#pw')) {
+    await adm.fill('#pw', 'senha-local');
+    await adm.fill('#who', 'teste');
+    await adm.click('#loginBtn');
   }
   await adm.waitForTimeout(2500);
-  await adm.goto(`${base}/admin#ugc`);
+  await adm.evaluate(() => (location.hash = '#ugc'));
   await adm.waitForTimeout(2500);
   await adm.screenshot({ path: `${out}/15-painel-fila.png`, fullPage: false });
   const body = await adm.textContent('body');
@@ -218,8 +217,9 @@ if (SUBMIT) {
     ok(/ouvido pela IA/.test(await adm.textContent('body')), 'detalhe mostra o que a IA ouviu ao lado do áudio');
   }
   // recusado aparece em "Recusados" com o motivo
-  const rej = await adm.evaluate(async (b) => (await (await fetch(b + '/api/admin/ugc/queue?status=rejected&type=filme')).json()).items, base).catch(() => []);
-  console.log('   recusados:', (rej || []).map((x) => x.reason));
+  // "Meus envios" do autor: o filme passou pela recusa automática e agora está em análise
+  const mine = await p.evaluate(async () => (await import('/src/cinema/tv-net.ts').catch(() => null))?.myFilms?.().catch(() => null)).catch(() => null);
+  if (mine) console.log('   meus envios:', mine.map((x) => x.review + (x.reviewReason ? ': ' + x.reviewReason : '')));
 }
 
 console.log(fails.length ? `\n${fails.length} FALHA(S)` : '\nTUDO OK');
