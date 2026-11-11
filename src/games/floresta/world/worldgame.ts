@@ -975,6 +975,12 @@ export class WorldGame {
   }
   /** dano (sobrevivência liga isso) */
   hurt: ((n: number, why: string) => void) | null = null;
+  /** dirigindo/montado: o corpo físico do jogador sai do caminho (não segura o veículo) */
+  stowBody(): void {
+    this.pBody.velocity.set(0, 0, 0);
+    this.pBody.position.set(this.px, -9999, this.pz);
+    this.pBody.aabbNeedsUpdate = true;
+  }
 
   /** parede/terreno íngreme ou sólido na altura do corpo em (x,z)? */
   private blocked(x: number, z: number, dx: number, dz: number): boolean {

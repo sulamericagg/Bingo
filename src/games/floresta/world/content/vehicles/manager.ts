@@ -52,6 +52,7 @@ export class VehicleManager {
     const v = new Vehicle(this.host, d, { x: state?.x ?? x, y: state?.y ?? gy, z: state?.z ?? z }, yaw, state);
     this.list.push(v);
     this.scene.add(v.model.root);
+    this.host.spawned?.(v);
     this.onSpawn?.(v);
     return v;
   }

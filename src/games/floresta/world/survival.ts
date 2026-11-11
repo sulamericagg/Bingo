@@ -17,7 +17,7 @@ import type { SBox } from './collide';
 import { Builds, CROPS, PDEFS, ghostMesh, type Piece } from './build';
 import { Spawner } from './mobs';
 import { iconURL } from './itemicons';
-import { MATS } from './vox';
+import { BED_Y, MATS } from './vox';
 import { Carts } from './rails';
 import { tntModel } from './wmodels';
 import { BLUEPRINT, BLUEPRINTS, ChaseCam, DriveHud, EXTRA_ITEMS, PARTS, VEH_GROUP, VEH_RECIPES, VehicleManager, openGarage, type PartCat } from './content/vehicles';
@@ -222,6 +222,7 @@ export class Sandbox implements MundoAPI {
     this.vm = new VehicleManager(
       {
         world: g.phys.w,
+        spawned: () => g.phys.forceSync(),
         material: g.phys.groundMat,
         group: VEH_GROUP,
         waterLevel: (x, z) => g.world.waterLevel(x, z),
@@ -262,7 +263,11 @@ export class Sandbox implements MundoAPI {
     );
     this.chase = new ChaseCam((this.vm as unknown as { host: ConstructorParameters<typeof ChaseCam>[0] }).host);
     g.physPts = (pts) => {
-      for (const v of this.vm.list) if (!v.parked) pts.push(v.body.position.x, v.body.position.z);
+      // parados perto também: se algo os acordar, o chão físico já está lá (senão caem através do terreno)
+      for (const v of this.vm.list) {
+        const p = v.body.position;
+        if (!v.parked || (!v.remote && (p.x - g.px) ** 2 + (p.z - g.pz) ** 2 < 50 * 50)) pts.push(p.x, p.z);
+      }
       this.syncSolidBodies();
     };
     g.prePhys = (dt) => {
@@ -274,6 +279,19 @@ export class Sandbox implements MundoAPI {
         this.dhud.apply(dt, kc);
       }
       this.net?.veh?.pre(dt);
+      // caiu pelo chão (chão físico ainda não existia): volta para a superfície
+      for (const v of this.vm.list) {
+        const b = v.body;
+        if (v.remote) continue;
+        const ck = g.world.chunks.get(Math.floor(b.position.x / 32) + ',' + Math.floor(b.position.z / 32));
+        const under = ck && !ck.vol ? b.position.y < g.world.heightAt(b.position.x, b.position.z) - 4 : b.position.y < BED_Y - 6;
+        if (!under) continue;
+        b.position.set(b.position.x, g.world.heightAt(b.position.x, b.position.z) + 1.5, b.position.z);
+        b.velocity.setZero();
+        b.angularVelocity.setZero();
+        b.quaternion.setFromEuler(0, v.yaw, 0);
+        g.phys.forceSync();
+      }
       this.vm.preStep(dt);
     };
     g.postPhys = (dt) => {
@@ -579,6 +597,7 @@ export class Sandbox implements MundoAPI {
     // online: veículo de outro → pede o volante (entra quando o servidor der)
     if (this.net?.veh && !this.net.veh.canDrive(v)) return;
     this.vm.enter(v);
+    g.stowBody();
     g.hud.el.style.display = 'none';
     g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = false;
     this.handMesh.visible = false;
@@ -1444,6 +1463,8 @@ export class Sandbox implements MundoAPI {
         if (b.off || (b.tag >= 100 && b.tag < 200)) return;
         if (Math.abs(b.x - x) < b.hx + 2.5 && Math.abs(b.z - z) < b.hz + 2.5) hit = true;
       });
+      // online: outro jogador já tem o carrinho dele aqui
+      for (const o of this.vm.list) if (Math.hypot(o.body.position.x - x, o.body.position.z - z) < 4.5) hit = true;
       if (!hit && !this.g.world.isWater(x, z)) break;
       x += Math.cos(k * 1.3) * 4;
       z += Math.sin(k * 1.3) * 4;

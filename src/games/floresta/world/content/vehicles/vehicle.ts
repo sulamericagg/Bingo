@@ -20,6 +20,8 @@ export type VSound = 'start' | 'stop' | 'horn' | 'crash' | 'refuel' | 'grab' | '
 /** o que o mundo oferece aos veículos (tudo opcional, menos `world`) */
 export interface VehicleHost {
   world: CANNON.World;
+  /** veículo novo no mundo (o motor garante o chão físico debaixo dele) */
+  spawned?: (v: Vehicle) => void;
   /** material do chassi (atrito com o chão) */
   material?: CANNON.Material;
   /** filtro de colisão do chassi (padrão VEH_GROUP / −1) */
