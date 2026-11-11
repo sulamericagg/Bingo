@@ -71,7 +71,7 @@
 .fl-item span{font-size:12px;opacity:.8}
 .fl-item .fl-btn{min-width:96px;font-size:14px}
 .fl-item.owned{opacity:.6}
-.fl-modes{display:flex;gap:12px;padding:8px 16px 18px;flex-wrap:wrap;justify-content:center}
+.fl-modes{display:flex;gap:12px;padding:8px 16px 18px;flex-wrap:wrap;justify-content:center;overflow-y:auto;min-height:0}
 .fl-mode{flex:1 1 200px;border:4px solid #2a0b5c;border-radius:20px;background:#fff;padding:0 0 10px;font:inherit;color:#2a0b5c;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;overflow:hidden;box-shadow:0 6px 0 #2a0b5c}
 .fl-mode:active{transform:translateY(4px);box-shadow:0 2px 0 #2a0b5c}
 .fl-mode canvas{width:100%;height:120px;display:block;background:#bfe8ff}
@@ -94,6 +94,10 @@
   .fl-emotes{top:56px}
   .fl-card{max-height:96vh}
   .fl-mode canvas{height:90px}
+  /* deitado: os 3 modos lado a lado (o 3º ficava abaixo da tela, sem como rolar) */
+  .fl-card:has(.fl-modes){width:min(860px,100%)}
+  .fl-modes{flex-wrap:nowrap}
+  .fl-mode{flex:1 1 0;min-width:0}
 }
 /* ---------- 3D primeira pessoa ---------- */
 .fl-fps{position:absolute;inset:0;pointer-events:none;z-index:6}
