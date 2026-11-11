@@ -12,6 +12,7 @@ interface Snap {
   logic: string;
   materials: string;
   meta: string;
+  extra: string;
 }
 export interface Command {
   label: string;
@@ -20,7 +21,15 @@ export interface Command {
   logic?: [LogicRule[], LogicRule[]];
   materials?: [Material[], Material[]];
   meta?: [Meta, Meta];
+  /** v3: terreno, mundo personalizado e missão (JSON inteiro de cada um) */
+  extra?: [Extra, Extra];
 }
+interface Extra {
+  terrain?: Creation['terrain'];
+  gen?: Creation['gen'];
+  mission?: Creation['mission'];
+}
+const extraOf = (d: Creation): Extra => ({ terrain: d.terrain, gen: d.gen, mission: d.mission });
 interface Meta {
   name: string;
   kind: Creation['kind'];
@@ -37,7 +46,7 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 function snapshot(d: Creation): Snap {
   const parts = new Map<number, string>();
   for (const p of d.parts) parts.set(p.id, JSON.stringify(p));
-  return { parts, joints: JSON.stringify(d.joints), logic: JSON.stringify(d.logic), materials: JSON.stringify(d.materials), meta: JSON.stringify(metaOf(d)) };
+  return { parts, joints: JSON.stringify(d.joints), logic: JSON.stringify(d.logic), materials: JSON.stringify(d.materials), meta: JSON.stringify(metaOf(d)), extra: JSON.stringify(extraOf(d)) };
 }
 
 export class History {
@@ -71,7 +80,9 @@ export class History {
     if (m !== before.materials) cmd.materials = [JSON.parse(before.materials), JSON.parse(m)];
     const mt = JSON.stringify(metaOf(d));
     if (mt !== before.meta) cmd.meta = [JSON.parse(before.meta), JSON.parse(mt)];
-    if (!cmd.parts.length && !cmd.joints && !cmd.logic && !cmd.materials && !cmd.meta) return null;
+    const ex = JSON.stringify(extraOf(d));
+    if (ex !== before.extra) cmd.extra = [JSON.parse(before.extra), JSON.parse(ex)];
+    if (!cmd.parts.length && !cmd.joints && !cmd.logic && !cmd.materials && !cmd.meta && !cmd.extra) return null;
     this.undoStack.push(cmd);
     if (this.undoStack.length > this.max) this.undoStack.shift();
     this.redoStack.length = 0;
@@ -119,6 +130,13 @@ export class History {
     if (c.logic) d.logic = clone(c.logic[fwd ? 1 : 0]);
     if (c.materials) d.materials = clone(c.materials[fwd ? 1 : 0]);
     if (c.meta) Object.assign(d, clone(c.meta[fwd ? 1 : 0]));
+    if (c.extra) {
+      const e = clone(c.extra[fwd ? 1 : 0]);
+      for (const k of ['terrain', 'gen', 'mission'] as const) {
+        if (e[k] === undefined) delete d[k];
+        else (d as unknown as Record<string, unknown>)[k] = e[k];
+      }
+    }
     this.onApply(c, ids);
   }
 }

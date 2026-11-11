@@ -13,7 +13,7 @@ import { Gizmo, rayLineParam, rayPlaneAngle, type GizmoMode, type Handle } from 
 import { MakerCam } from './camera';
 
 export type Tool = 'move' | 'rotate' | 'scale' | 'paint' | 'pen' | 'measure';
-export type ChangeKind = 'sel' | 'doc' | 'tool' | 'hist' | 'measure';
+export type ChangeKind = 'sel' | 'doc' | 'tool' | 'hist' | 'measure' | 'world';
 
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
@@ -212,6 +212,7 @@ export class Editor {
     if (cmd) {
       for (const [id] of cmd.parts) this.syncPart(id);
       if (cmd.materials) this.rebuildAll();
+      if (cmd.extra) this.emit('world');
       this.refreshDecor();
       this.emit('doc');
       this.emit('hist');
@@ -222,6 +223,7 @@ export class Editor {
   private onHistory(cmd: Command, ids: number[]): void {
     if (cmd.materials) this.rebuildAll();
     else for (const id of ids) this.syncPart(id);
+    if (cmd.extra) this.emit('world');
     for (const id of [...this.sel]) if (!this.part(id)) this.sel.delete(id);
     this.refreshDecor();
     this.refreshSelection();
@@ -740,6 +742,7 @@ export class Editor {
       light: ['#ffd34a', '✦'],
       hazard: ['#ff5a2e', '!'],
       collect: ['#ffd34a', '◆'],
+      enemy: ['#ff3a5a', '✖'],
     };
     const [bg, g] = S[role];
     const c = document.createElement('canvas');

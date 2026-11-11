@@ -54,6 +54,7 @@ export const roleName = (r: PartRole): string =>
     seat: t('studio.role.seat', 'Assento'),
     wheel: t('studio.role.wheel', 'Roda'),
     thruster: t('studio.role.thruster', 'Propulsor'),
+    enemy: t('studio.role.enemy', 'Inimigo'),
     spawn: t('studio.role.spawn', 'Início'),
     checkpoint: t('studio.role.checkpoint', 'Checkpoint'),
     goal: t('studio.role.goal', 'Chegada'),
@@ -320,7 +321,7 @@ export class Panels {
         <button data-ph="none" class="${ph === 'none' ? 'on' : ''}">${t('studio.phys.none', 'Fantasma')}</button></div></div>`);
       this.on(p, '[data-ph]', (b) => ed.setPhys(b.dataset.ph as 'static'));
       const role = sel[0].role;
-      const roles: PartRole[] = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect'];
+      const roles: PartRole[] = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect', 'enemy'];
       const r = this.h(`<div><h4>${t('studio.roleTitle', 'Papel ao jogar')}</h4><div class="bs-chips">
         <button class="bs-chip${!role ? ' on' : ''}" data-r="">${t('studio.role.none', 'Nenhum')}</button>
         ${roles.map((x) => `<button class="bs-chip${role === x ? ' on' : ''}" data-r="${x}">${roleName(x)}</button>`).join('')}</div></div>`);
