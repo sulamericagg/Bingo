@@ -65,11 +65,13 @@ export class Hud {
     this.el.className = 'fl-hud';
     this.el.innerHTML = `
       <div class="fl-top">
+        <div class="fl-left">
         <button class="fl-btn round red" data-a="exit" aria-label="${t('floresta.exit', 'Sair')}">${flIcon('close', 26)}</button>
         <div class="fl-pill">${flIcon('acorn', 26)}<span data-v="bol">0</span></div>
         <div class="fl-pill">${flIcon('plank', 26)}<span data-v="pl">0</span></div>
         <div class="fl-pill">${flIcon('log', 26)}<span data-v="carry">0</span></div>
         <div class="fl-health" title="${t('floresta.health', 'Floresta saudável')}">${flIcon('leaf', 26)}<div class="bar"><i></i></div><span data-v="hp">100%</span></div>
+        </div>
         <div class="fl-right">
           <div class="fl-pill fl-players" data-v="players"></div>
           <button class="fl-btn round" data-a="ctl" aria-label="${t('floresta.ctl.title', 'Controles')}">${GEAR_SVG(26)}</button>

@@ -18,6 +18,9 @@
 .fl-health .bar i{display:block;height:100%;background:linear-gradient(90deg,#ffcf2e,#3ee07a);border-radius:6px;transition:width .4s}
 .fl-health.happy{box-shadow:0 0 0 2px #7aff8a,0 0 14px rgba(122,255,138,.6)}
 .fl-right{margin-left:auto;display:flex;gap:6px}
+.fl-left{display:flex;gap:inherit;align-items:flex-start;flex-wrap:wrap;min-width:0}
+/* 3D: o meio do topo fica livre para o botão de girar do hub (.gh-rot) */
+#game-host:has(.gh-rot:not([hidden])) .fl-left{max-width:calc(50% - 30px)}
 .fl-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 54px);transform:translateX(-50%);background:rgba(42,11,92,.72);border:2px solid rgba(255,246,214,.6);border-radius:12px;padding:3px 12px;font-weight:800;font-size:14px;text-align:center;opacity:0;transition:opacity .4s;white-space:nowrap;pointer-events:none}
 .fl-banner small{display:block;font-size:11px;opacity:.85}
 .fl-banner.show{opacity:1}
