@@ -111,7 +111,8 @@ const UPGRADES: { id: 'motor' | 'grip' | 'spring' | 'pad'; cost: [number, number
   { id: 'pad', cost: [50, 130], name: () => t('ml.up.pad', 'Espuma protetora'), desc: () => t('ml.up.padD', 'O vidro aguenta pancadas mais fortes'), part: 'basket' },
 ];
 const PALS: { id: string; cost: number; name: () => string; sw: string[] }[] = [
-  { id: 'classic', cost: 0, name: () => t('ml.pal.classic', 'Clássica'), sw: ['#5b8def', '#8a6cf0', '#f2a541', '#ef5d60'] },
+  { id: 'classic', cost: 0, name: () => t('ml.pal.classic', 'Clássica'), sw: ['#f59a32', '#f7ab45', '#ffc25e', '#5d6573'] },
+  { id: 'blueprint', cost: 0, name: () => t('ml.pal.blueprint', 'Azul de oficina'), sw: ['#5b8def', '#8a6cf0', '#f2a541', '#ef5d60'] },
   { id: 'pastel', cost: 80, name: () => t('ml.pal.pastel', 'Pastel'), sw: ['#8fb3f5', '#b7a3f5', '#f7c98a', '#f59a9c'] },
   { id: 'citrus', cost: 100, name: () => t('ml.pal.citrus', 'Cítrica'), sw: ['#4cc38a', '#25a5b8', '#ffcf3d', '#ff6b3d'] },
   { id: 'graphite', cost: 120, name: () => t('ml.pal.graphite', 'Grafite'), sw: ['#4a5568', '#5f6b80', '#718096', '#e8505b'] },
@@ -136,7 +137,7 @@ const DEMO_LEVEL: LevelDef = {
   n: 0,
   grid: [10, 6],
   parts: {},
-  cargo: [{ t: 'crate', x: 3, y: 2 }],
+  cargo: [{ t: 'bot', x: 3, y: 2 }],
   track: [
     ['f', 3],
     ['b', 4, 0.5],
@@ -414,6 +415,7 @@ export class MontaLeva implements MiniGameHandle {
     this.sim = null;
     this.L = null;
     this.track = DEMO_TRACK;
+    this.botVis = [];
     this.demo = null;
     this.demoT = 0;
     const next = Math.min(LEVELS.length, unlockedUpTo());
@@ -537,7 +539,7 @@ export class MontaLeva implements MiniGameHandle {
       }
       html += `</div><div class="ml-sec">${t('ml.paint', 'Pintura')}</div><div class="ml-grid2">`;
       for (const p of PALS) {
-        const own = s.palettes.includes(p.id);
+        const own = p.cost === 0 || s.palettes.includes(p.id);
         const curr = s.palette === p.id;
         html += `<div class="ml-card"><div class="ml-ci">${IC.palette}</div><div class="ml-ct"><b>${esc(p.name())}</b><div class="ml-sw" style="margin-top:6px">${p.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div></div>
           <button class="ml-btn sm ${curr ? 'on' : own ? '' : s.gears >= p.cost ? 'blue' : 'off'}" data-p="${p.id}">${curr ? IC.check : own ? t('ml.use', 'Usar') : `⚙ ${p.cost}`}</button></div>`;
@@ -559,7 +561,7 @@ export class MontaLeva implements MiniGameHandle {
       });
       this.on(d, '[data-p]', (b) => {
         const p = PALS.find((x) => x.id === b.dataset.p)!;
-        if (!s.palettes.includes(p.id)) {
+        if (p.cost > 0 && !s.palettes.includes(p.id)) {
           if (s.gears < p.cost) return;
           s.gears -= p.cost;
           s.palettes.push(p.id);
@@ -611,7 +613,7 @@ export class MontaLeva implements MiniGameHandle {
     const L = LEVELS[n - 1];
     if (!L) return;
     this.L = L;
-    this.track = resolveTrack(L.track, L.grid[0] * U + 1.5);
+    this.track = resolveTrack(L.track, L.grid[0] * U + 1.5, !!L.mirror, !!L.wet);
     const rec = this.sv.levels[n];
     const start = rec?.design ? rec.design.filter((p) => PARTS[p.t]) : L.pre ? L.pre.map((p) => ({ ...p })) : [];
     this.hist = new History(start);
@@ -752,11 +754,11 @@ export class MontaLeva implements MiniGameHandle {
     const fh = Math.max(80, fr.y1 - fr.y0);
     if (this.overview) {
       const tr = this.track;
-      const span = tr.endX + 5;
+      const span = tr.maxX - tr.minX + 1;
       const hgt = tr.maxY - Math.min(0, tr.minY) + 5;
       const s = Math.min(fw / span, fh / hgt);
       this.camT.s = s;
-      this.camT.x = (tr.endX - 4) / 2 + (this.W / 2 - (fr.x0 + fr.x1) / 2) / s;
+      this.camT.x = (tr.minX + tr.maxX) / 2 + (this.W / 2 - (fr.x0 + fr.x1) / 2) / s;
       this.camT.y = (tr.maxY + Math.min(0, tr.minY)) / 2 + 0.5 - (this.H / 2 - (fr.y0 + fr.y1) / 2) / s;
     } else {
       const gw = L.grid[0] * U;
@@ -851,7 +853,8 @@ export class MontaLeva implements MiniGameHandle {
       const roots = new Set(an.groups.map((_, i) => f(i)));
       if (roots.size > 1) w.push(t('ml.w.loose', 'Há peças soltas'));
     }
-    if (this.hud.warn) this.hud.warn.innerHTML = w.map((s) => `<span class="ml-chip">${IC.warn}${esc(s)}</span>`).join('');
+    // durante o tutorial o balão já guia: sem avisos por cima
+    if (this.hud.warn) this.hud.warn.innerHTML = this.tut && this.tutIdx >= 0 ? '' : w.map((s) => `<span class="ml-chip">${IC.warn}${esc(s)}</span>`).join('');
     // salva o projeto da fase
     const rec = levelRec(L.n);
     rec.design = parts.map((p) => ({ ...p }));
@@ -1315,7 +1318,8 @@ export class MontaLeva implements MiniGameHandle {
     const out: { x: number; y: number; b: number; t: number }[] = [];
     if (this.sel < 0) return out;
     const parts = this.hist.parts;
-    const an = analyze(parts);
+    if (this.anCache.parts !== parts) this.anCache = { parts, an: analyze(parts) };
+    const an = this.anCache.an!;
     for (const w of an.wires) {
       if (w.b !== this.sel && w.t !== this.sel) continue;
       const [ax, ay] = this.nodeOf(parts[w.b]);
@@ -1360,6 +1364,7 @@ export class MontaLeva implements MiniGameHandle {
     }
     if (idx !== this.tutIdx) {
       this.tutIdx = idx;
+      this.afterChange();
       this.ui.querySelectorAll('.ml-tip,.ml-hand').forEach((e) => e.remove());
       if (idx < 0) return;
       const s = this.tut[idx];
@@ -1574,13 +1579,12 @@ export class MontaLeva implements MiniGameHandle {
     this.botVis = sim.cargo.map(() => ({ lean: 0, vl: 0, sq: 0, mood: 0, moodT: 0, vx: 0, face: sim.track.dir }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=edit]')!, { onPress: () => this.toBuild() }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=restart]')!, { onPress: () => this.startTest() }));
-    const zoneTxt = L.cargo.some((c) => c.t === 'bot') ? t('ml.objBot', 'Leve o passageiro até a SAÍDA') : t('ml.obj', 'Leve a carga até a placa verde de saída');
+    const zoneTxt = L.cargo.some((c) => c.t === 'bot') ? t('ml.objBot', 'Leve o passageiro até a SAÍDA') : t('ml.objExit', 'Leve a carga até a placa verde de saída');
     objective(zoneTxt, { icon: 'target' });
     setNotifyTop(top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 8);
     if (this.tut) {
       const tip = document.createElement('div');
       tip.className = 'ml-tip pad';
-      tip.style.bottom = '130px';
       tip.textContent = L.wired ? t('ml.tut.hold', 'Segure o botão para andar') : t('ml.tut.drive', 'Segure o botão verde para acelerar');
       ui.appendChild(tip);
       this.hud.tip = tip;
@@ -1695,7 +1699,7 @@ export class MontaLeva implements MiniGameHandle {
       if (!th.on) continue;
       const b = th.body;
       const a = b.getAngle() + (th.r * Math.PI) / 2;
-      const wp = b.getWorldPoint({ x: th.lx, y: th.ly });
+      const wp = this.localToWorld(b, th.lx, th.ly, this.tmpA);
       if (Math.random() < 0.7 * this.gov.settings.particleBudget + 0.2)
         this.fx.emit(1, wp.x - Math.cos(a) * 0.3, wp.y - Math.sin(a) * 0.3, { speed: 0.5, color: ['#ffd45c', '#ff7a59', '#cfd6e0'], size: 0.11, life: 0.35, up: 0, grav: -1, shape: 2 });
     }
@@ -1714,7 +1718,8 @@ export class MontaLeva implements MiniGameHandle {
     const vx = sim.speed();
     const sT = this.portrait ? Math.min(this.W / 7.5, this.H / 12) : Math.min(this.H / 8.2, this.W / 15);
     this.camT.s = sT;
-    const look = clamp(vx * 0.45, -2.5, 3.5) + (this.portrait ? 0.6 : 2);
+    const dir = sim.track.dir;
+    const look = clamp(vx * 0.45, -3.5, 3.5) + (this.portrait ? 0.6 : 2) * dir;
     this.camT.x = f.x + look;
     this.camT.y = f.y + (this.portrait ? 1.8 : 0.9);
     // HUD
@@ -2171,9 +2176,11 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   /** desenha o projeto (montagem), em unidades de célula */
+  private anCache: { parts: readonly Placed[] | null; an: Analysis | null } = { parts: null, an: null };
   private drawDesign(parts: readonly Placed[], hide: number, lw: number, alpha: number): void {
     const x = this.cx;
-    const an = analyze(parts);
+    if (this.anCache.parts !== parts) this.anCache = { parts, an: analyze(parts) };
+    const an = this.anCache.an!;
     const caps = an.buttons.length ? this.capColors(parts, an) : null;
     // sombra
     if (this.gov.settings.softShadows) {
@@ -2254,7 +2261,7 @@ export class MontaLeva implements MiniGameHandle {
     const an = sim.an;
     // balões (atrás de tudo)
     for (const bl of sim.balloons) {
-      const a = bl.body.getWorldPoint({ x: bl.lx, y: bl.ly });
+      const a = this.localToWorld(bl.body, bl.lx, bl.ly, this.tmpA);
       let vis = this.balloonVis.get(bl.idx);
       if (!vis) {
         vis = { x: a.x, y: a.y + 1.1, vx: 0, vy: 0 };
@@ -2302,14 +2309,18 @@ export class MontaLeva implements MiniGameHandle {
       const p = pin.body.getPosition();
       x.save();
       this.cellSpace(p.x, p.y, pin.body.getAngle());
-      drawStructCell(x, { ...parts[pin.idx], x: -0.5, y: -0.5 }, lw);
+      const pp = parts[pin.idx];
+      const ox = pp.x;
+      const oy = pp.y;
+      x.translate(-ox - 0.5, -oy - 0.5);
+      drawStructCell(x, pp, lw);
       x.restore();
     }
     // rodas + suspensão
     for (const w of sim.wheels) {
       const p = w.body.getPosition();
       if (w.spring) {
-        const a = w.base.getWorldPoint({ x: w.lx, y: w.ly + U * 0.45 });
+        const a = this.localToWorld(w.base, w.lx, w.ly + U * 0.45, this.tmpA);
         this.drawSpring(a.x, a.y, p.x, p.y, w.base.getAngle());
       }
       x.save();
@@ -2353,6 +2364,16 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private tmpA = { x: 0, y: 0 };
+  /** ponto local → mundo sem alocar */
+  private localToWorld(b: { getPosition(): { x: number; y: number }; getAngle(): number }, lx: number, ly: number, out: { x: number; y: number }): { x: number; y: number } {
+    const p = b.getPosition();
+    const a = b.getAngle();
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    out.x = p.x + c * lx - s * ly;
+    out.y = p.y + s * lx + c * ly;
+    return out;
+  }
   private tmpB = { x: 0, y: 0 };
   private treadPts: { x: number; y: number }[] = [];
   private treads: number[][] = [];

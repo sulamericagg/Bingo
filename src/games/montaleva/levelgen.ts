@@ -450,10 +450,10 @@ function recipe(ch: number, i: number, k: number): Recipe {
     }
     case 3: {
       const L: [string[], CargoType[], Partial<Recipe>?][] = [
+        [['hill'], ['crate', 'crate']],
         [['gapJ'], ['crate'], { jump: true }],
         [['drop', 'drop'], ['glass'], { prefer: [{ balloons: 2 }] }],
         [['gapJ', 'bumps'], ['bot'], { jump: true }],
-        [['hill'], ['crate', 'crate']],
         [['waterJ'], ['crate'], { jump: true, wet: true }],
         [['lift', 'gapS'], ['bot']],
         [['bumps', 'gapJ'], ['ball'], { jump: true }],
@@ -549,6 +549,21 @@ function recipe(ch: number, i: number, k: number): Recipe {
 /* ------------------------------ busca ------------------------------ */
 const WIRED_FROM_CH = 2;
 
+/** peças que o jogador já conheceu antes desta vaga (as soluções geradas só usam essas) */
+function allowedParts(ch: number, i: number, mirror: boolean): Set<PartId> {
+  const a = new Set<PartId>(['block', 'motor', 'wheelS', 'beam', 'tri']);
+  if (ch > 0 || i >= 2) a.add('wheelL');
+  if (ch > 0 || i >= 3) a.add('basket');
+  if (ch > 0 || i >= 8) a.add('spring');
+  if (ch > 1 || (ch === 1 && i >= 1)) a.add('wheelG');
+  if (ch > 1 || (ch === 1 && i >= 6)) a.add('weight');
+  if (ch >= WIRED_FROM_CH) a.add('btn');
+  if (ch >= 7 || mirror) a.add('btnR');
+  if (ch > 3 || (ch === 3 && i >= 1)) a.add('thruster');
+  if (ch > 3 || (ch === 3 && i >= 2)) a.add('balloon');
+  return a;
+}
+
 function carCandidates(r: R, rc: Recipe, wired: boolean): CarSpec[] {
   const base: CarSpec = { len: 5, wheel: 'wheelS', layout: 'ends', spring: false, walls: 0, weight: 0, basket: false, thr: 0, balloons: 0, wired, rev: false };
   const needWalls = rc.cargo.some((c) => c === 'bot' || c === 'ball' || c === 'drops');
@@ -598,8 +613,20 @@ export interface GenOut {
   time: number;
 }
 
-function quickRun(L: LevelDef, sol: Solution, maxT = 45): { ok: boolean; time: number; flipped: boolean } {
-  const sim = new Sim(L, sol.parts);
+/** a solução tem que passar no cenário nominal e com perturbações mínimas (outros motores JS arredondam diferente) */
+const JITS = [0, 2e-6, -3e-6, 7e-6, -1.3e-5, 3e-5, -4.5e-5, 8e-5, 3e-6, -4e-6, 1e-5, -2e-5, 5e-5];
+function robustRun(L: LevelDef, sol: Solution): { ok: boolean; time: number; flipped: boolean } {
+  let first: { ok: boolean; time: number; flipped: boolean } | null = null;
+  for (const j of JITS) {
+    const r = quickRun(L, sol, 45, j);
+    if (!r.ok) return r;
+    first ??= r;
+  }
+  return first!;
+}
+
+function quickRun(L: LevelDef, sol: Solution, maxT = 45, jit = 0): { ok: boolean; time: number; flipped: boolean } {
+  const sim = new Sim(L, sol.parts, undefined, jit);
   let best = -1e9;
   let bestT = 0;
   while (!sim.result && sim.time < maxT) {
@@ -627,9 +654,11 @@ function genOne(slot: Exclude<Slot, number>): GenOut | null {
       rc.segs = rc.segs.filter((s, j) => j < 2 || s[0] === 'f' || s[0] === 'zone' || j % 2 === 0);
     }
     const r = rngOf(31 + k * 131 + attempt);
+    const allow = allowedParts(ch, i, !!rc.mirror);
     for (const car of carCandidates(r, rc, wired)) {
       const b = buildCar(car, rc.cargo);
       if (!b) continue;
+      if (b.parts.some((p) => !allow.has(p.t))) continue;
       const tr = resolveTrack(rc.segs, b.grid[0] * U + 1.5, !!rc.mirror, !!rc.wet);
       for (const drive of drives(tr, wired, { jump: !!rc.jump, wait: !!rc.wait })) {
         tries++;
@@ -638,14 +667,14 @@ function genOne(slot: Exclude<Slot, number>): GenOut | null {
         const L: LevelDef = { n: 0, grid: b.grid, parts: counts, cargo: b.cargo, track: rc.segs, goals: { time: 99, parts: 99 }, wired, mirror: rc.mirror, wet: rc.wet, need: rc.need };
         const sol: Solution = { parts: b.parts, drive: drive.length === 1 && drive[0][1] === 'F' && !drive[0][2] ? undefined : drive };
         if (validate(L, sol.parts)) continue;
-        const res = quickRun(L, sol);
+        const res = robustRun(L, sol);
         if (!res.ok) continue;
         // fase final: peças = solução + sobras
         const parts = { ...counts };
         const tight = !!rc.tight;
         if (!tight) {
           parts.block = (parts.block ?? 0) + 1 + (k % 3);
-          for (const dcy of rc.decoy ?? []) if (dcy !== 'block' && (dcy !== 'btn' || wired)) parts[dcy] = (parts[dcy] ?? 0) + 1;
+          for (const dcy of rc.decoy ?? []) if (dcy !== 'block' && allow.has(dcy)) parts[dcy] = (parts[dcy] ?? 0) + 1;
           if (wired && !parts.btnR && ch >= 7) parts.btnR = 1;
         }
         const cost = partCost(b.parts);

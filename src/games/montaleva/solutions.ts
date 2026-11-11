@@ -38,7 +38,8 @@ export const CLASSIC_SOLUTIONS: Record<number, Solution> = {
     parts: [P('spring', 1, 2), P('block', 2, 2), P('motor', 3, 2), P('block', 4, 2), P('spring', 5, 2), P('block', 2, 3), P('block', 4, 3), P('wheelL', 1, 2), P('wheelL', 5, 2)],
     drive: [[0, 'F'], [0.5, 'B', 'z']],
   },
-  12: { parts: [P('block', 1, 1), P('motor', 2, 1), P('block', 3, 1), P('motor', 4, 1), P('block', 5, 1), P('wheelG', 1, 1), P('wheelG', 5, 1)] },
+  // paredinhas em volta da caixa: a solução fica estável mesmo com arredondamentos diferentes (WebView x Node)
+  12: { parts: [P('block', 1, 1), P('motor', 2, 1), P('block', 3, 1), P('motor', 4, 1), P('block', 5, 1), P('block', 2, 2), P('block', 4, 2), P('wheelG', 1, 1), P('wheelG', 5, 1)] },
   13: { parts: [P('beam', 1, 1), P('beam', 4, 1), P('motor', 2, 2), P('motor', 5, 2), P('wheelL', 1, 1), P('wheelL', 6, 1)] },
   14: { parts: [...row('block', 1, 4, 1), P('motor', 3, 2), P('wheelS', 1, 1), P('wheelS', 4, 1)] },
   15: { parts: [...row('block', 1, 2, 1), P('motor', 3, 1), ...row('block', 4, 6, 1), P('beam', 2, 2, 1), P('beam', 5, 2, 1), P('wheelS', 2, 1), P('wheelS', 5, 1)] },
@@ -56,7 +57,7 @@ export const CLASSIC_SOLUTIONS: Record<number, Solution> = {
     drive: [[0, 'F'], [11.6, 'FJ', 'x'], [13.5, 'F', 'x'], [0, 'B', 'z']],
   },
   23: { parts: [...row('block', 1, 2, 1), P('motor', 3, 1), ...row('block', 4, 5, 1), P('wheelS', 2, 1), P('wheelS', 4, 1), P('balloon', 1, 1), P('balloon', 5, 1)], drive: [[0, 'F'], [0, 'B', 'z']] },
-  24: { parts: [...row('block', 1, 2, 2), P('motor', 3, 2), ...row('block', 4, 5, 2), P('wheelL', 1, 2), P('wheelL', 5, 2)] },
+  24: { parts: [...row('block', 1, 2, 2), P('motor', 3, 2), ...row('block', 4, 5, 2), P('block', 2, 3), P('block', 4, 3), P('wheelL', 1, 2), P('wheelL', 5, 2)] },
   25: {
     parts: [P('spring', 1, 1), P('motor', 2, 1), P('block', 3, 1), P('block', 4, 1), P('motor', 5, 1), P('spring', 6, 1), P('beam', 2, 2, 1), P('beam', 5, 2, 1), P('wheelL', 1, 1), P('wheelL', 6, 1)],
     drive: [[0, 'F'], [0, 'B', 'z']],

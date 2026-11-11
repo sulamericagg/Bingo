@@ -137,6 +137,8 @@ export class Sim {
     public level: LevelDef,
     public parts: Placed[],
     public up: Upgrades = { motor: 0, grip: 0, spring: 0, pad: 0 },
+    /** perturbação mínima da posição inicial (só no gerador: testa se a solução é robusta a arredondamentos) */
+    jit = 0,
   ) {
     const w = new World({ gravity: new Vec2(0, -10) });
     this.world = w;
@@ -169,6 +171,10 @@ export class Sim {
     this.buildVehicle();
     this.buildCargo();
     this.liftToGround();
+    if (jit) {
+      for (const b of this.allVehicleBodies()) b.setPosition(new Vec2(b.getPosition().x + jit, b.getPosition().y + jit * 0.5));
+      for (const c of this.cargo) for (const b of c.bodies) b.setPosition(new Vec2(b.getPosition().x + jit, b.getPosition().y + jit * 0.5));
+    }
     this.buildObjs();
     let pieces = 0;
     for (const c of this.cargo) pieces += c.bodies.length;

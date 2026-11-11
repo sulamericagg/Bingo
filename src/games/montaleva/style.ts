@@ -188,11 +188,11 @@ const CSS = `
 .ml-hand{position:absolute;left:0;top:0;width:44px;height:44px;margin:-6px 0 0 -14px;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.25));z-index:5;will-change:transform}
 @keyframes mlTap{0%,100%{scale:1}50%{scale:.82}}
 .ml-hand.tap{animation:mlTap .9s ease-in-out infinite;margin:-2px 0 0 -8px}
-.ml-tip{position:absolute;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:14px;background:#3b6fe0;color:#fff;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(59,111,224,.35);pointer-events:none;max-width:min(460px,86vw);text-align:center;animation:mlFade .25s ease-out both}
+.ml-tip{position:absolute;left:50%;translate:-50% 0;padding:8px 14px;border-radius:14px;background:#3b6fe0;color:#fff;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(59,111,224,.35);pointer-events:none;max-width:min(460px,86vw);text-align:center;animation:mlFade .25s ease-out both}
 .ml-tipic{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px}
 .ml-tipic canvas{width:30px;height:30px;background:#fff;border-radius:8px;padding:2px}
 .ml-tipic b svg{width:18px;height:18px;display:block}
-.ml-tip.pad{display:flex;align-items:center;gap:8px}
+.ml-tip.pad{display:flex;align-items:center;gap:8px;left:auto;right:max(16px,var(--edge-r,0px));translate:none;bottom:calc(max(14px,var(--mlb,0px)) + 112px)}
 .ml-rot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:8px;color:#6b7686;font-size:13px;pointer-events:none}
 `;
 

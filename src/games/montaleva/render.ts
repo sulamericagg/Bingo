@@ -121,7 +121,7 @@ export function drawTrack(x: CanvasRenderingContext2D, v: View, tr: Track): void
   for (const line of tr.lines) drawGround(x, v, line, bottom);
   // parede final
   const wl = tr.wall;
-  ledgeBox(x, v, wl.x, wl.y0 - 30, 0.5, wl.y1 - wl.y0 + 30, bottom);
+  ledgeBox(x, v, tr.dir > 0 ? wl.x : wl.x - 5.5, wl.y0 - 30, 6, wl.y1 - wl.y0 + 30, bottom);
   for (const c of tr.ceils) drawCeil(x, v, c);
 }
 
