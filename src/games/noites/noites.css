@@ -23,7 +23,7 @@
 .nc-bar i{display:block;height:100%;background:#ffd34a;transition:width .3s}
 .nc-meter.low{animation:ncBlink .6s infinite}
 .nc-bag{display:flex;align-items:center;gap:2px;font-weight:700;font-size:15px}
-.nc-mid{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.nc-mid{flex:1;transform:translateX(56px);display:flex;flex-direction:column;align-items:center;gap:4px}
 .nc-phase{display:flex;align-items:center;gap:6px;background:rgba(20,10,50,.6);border-radius:20px;padding:3px 12px 3px 6px;font-weight:700;font-size:22px}
 .nc-phase .pbar{width:70px;height:8px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden}
 .nc-phase .pbar i{display:block;height:100%;background:linear-gradient(90deg,#ffd34a,#ff8a3a)}

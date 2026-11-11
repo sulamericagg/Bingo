@@ -387,7 +387,7 @@ export class NoitesGame implements MiniGameHandle {
             if (p.seat >= 0) s.drive(from, Number(g.th) || 0, Number(g.sr) || 0);
             else if (p.faint <= 0) {
               const [x, z] = s.collide(+g.x || 0, +g.z || 0, 0.4);
-              if (Math.hypot(x - p.x, z - p.z) < 6) [p.x, p.z] = [x, z];
+              [p.x, p.z] = [x, z];
               p.yaw = +g.yaw || 0;
               p.aim = +g.aim || 0;
               p.lightOn = !!g.l;
