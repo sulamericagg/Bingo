@@ -40,6 +40,9 @@ import {
   type Room,
 } from './render';
 import { sfx } from './sfx';
+import { closeTalk, layoutTalk, mountTalk, talkActive } from './talk/ui';
+import { ttsLevel, ttsSpeaking } from './talk/tts';
+import type { PetAction, PetEmotion, PetSnapshot } from './talk/types';
 import {
   onVoiceState,
   petVoiceEnabled,
@@ -70,6 +73,7 @@ import {
   polished,
   sleepTick,
   tick,
+  worstStat,
   type StatKey,
 } from './state';
 
@@ -118,6 +122,11 @@ let mouthOpenT = 0;
 let sayT = 0;
 let sayCd = 0;
 let lastSay = '';
+/* conversa (talk/): emoção e ação pedidas pela resposta */
+let emo: PetEmotion | null = null;
+let emoT = 0;
+let act: PetAction | null = null;
+let actT = 0;
 
 /* cozinha */
 const drag = { id: '', x: 0, y: 0, on: false, fly: 0, fx: 0, fy: 0 };
@@ -194,6 +203,7 @@ export function closePet(): boolean {
   }
   isOpen = false;
   stopVoice();
+  closeTalk();
   root!.classList.remove('on');
   cancelAnimationFrame(raf);
   unsub.forEach((u) => u());
@@ -268,6 +278,17 @@ function build(): void {
     }),
   );
   $('.pet-mic').addEventListener('click', onMicButton);
+  mountTalk({
+    root,
+    say: (text, secs) => say(true, text, secs),
+    react: talkReact,
+    snapshot: talkSnapshot,
+    setActive: (on) => {
+      if (!on) say(true);
+    },
+    toast,
+    stopRepeat: () => stopVoice(),
+  });
   onVoiceState(onVoice);
   $('.pet-tab-decor').addEventListener('click', () => {
     sfx.click();
@@ -304,6 +325,7 @@ function resize(): void {
   const say = $('.pet-say');
   say.style.top = `${Math.max(150, L.cy - L.R * 2.05)}px`;
   $('.pet-mic').style.top = `${Math.round(L.floorY - 64)}px`;
+  layoutTalk(Math.round(L.floorY - 64));
 }
 
 /* ---------------------------- HUD ---------------------------- */
@@ -333,7 +355,7 @@ function toast(msg: string, ico?: IconName): void {
 }
 
 /** Balão de fala do bichinho (o que ele quer agora). */
-function say(force = false, text?: string): void {
+function say(force = false, text?: string, secs = 3.6): void {
   const m = mood();
   let s = text ?? '';
   if (!s) {
@@ -353,7 +375,7 @@ function say(force = false, text?: string): void {
   el.classList.remove('show');
   void el.offsetWidth;
   el.classList.add('show');
-  sayT = 3.6;
+  sayT = secs;
   sayCd = 12;
 }
 
@@ -1209,6 +1231,53 @@ function tickle(dist: number): void {
  *  LAÇO
  * ============================================================ */
 
+/* ---------------------------- conversa (talk/) ---------------------------- */
+
+function talkSnapshot(): PetSnapshot {
+  tick();
+  const p = pet();
+  return {
+    name: t('pet.talk.name', 'Bloop'),
+    food: Math.round(p.food),
+    clean: Math.round(p.clean),
+    fun: Math.round(p.fun),
+    energy: Math.round(p.energy),
+    level: levelInfo().level,
+    sleeping: room === 'bed' && !lampOn,
+    worst: worstStat(),
+  };
+}
+
+function talkReact(e: PetEmotion, a?: PetAction): void {
+  emo = e;
+  emoT = 5;
+  if (e === 'happy' || e === 'love' || e === 'excited' || e === 'silly') happyT = Math.max(happyT, 3);
+  if (e === 'love') fx.burst(PK.Heart, L.cx, L.cy - L.R * 0.6, 6, 160, 1.1, 10, 0, 60);
+  if (!a) return;
+  act = a;
+  actT = a === 'sleep' ? 3 : a === 'jump' ? 1.4 : 2.6;
+  if (a === 'jump') {
+    hopPhase = 0.01;
+    squashV += 3;
+    sfx.chirp();
+  } else if (a === 'laugh') sfx.giggle();
+  else if (a === 'eat') {
+    mouthOpenT = 1.2;
+    sfx.chirp();
+  } else if (a === 'sleep') sfx.yawn();
+}
+
+function updateTalkMood(dt: number): void {
+  if (emoT <= 0) return;
+  emoT -= dt;
+  if (emo === 'sad') {
+    v.m.sad = true;
+    v.m.happy = false;
+  } else if (emo === 'hungry') v.m.hungry = true;
+  else if (emo === 'sleepy') v.m.tired = true;
+  if (act === 'jump' && actT > 0 && hopPhase === 0) hopPhase = 0.01;
+}
+
 function loop(ts: number): void {
   if (!isOpen) return;
   raf = requestAnimationFrame(loop);
@@ -1236,6 +1305,7 @@ function update(dt: number): void {
     v.m.happy = true;
     v.m.sad = false;
   }
+  updateTalkMood(dt);
   if (slideT < 1) slideT = Math.min(1, slideT + dt / 0.32);
   giggleCd -= dt;
   v.sleeping = room === 'bed' && !lampOn;
@@ -1318,6 +1388,45 @@ function update(dt: number): void {
     v.tilt += (Math.sin(v.t * 9) * 0.06 * lv - v.tilt) * Math.min(1, dt * 12);
     blink = 0;
   }
+  // conversa: boca no ritmo da voz (TTS) + ações pedidas pela resposta
+  if (ttsSpeaking()) {
+    const lv = ttsLevel();
+    m = lv > 0.3 ? 'fly' : 'happy';
+    squashV -= lv * 0.9;
+    blink = 0;
+  } else if (talkActive() && root?.classList.contains('thinking')) {
+    pose.lookY += (-0.6 - pose.lookY) * Math.min(1, dt * 5);
+    pose.lookX += (Math.sin(v.t * 2) * 0.5 - pose.lookX) * Math.min(1, dt * 5);
+  }
+  if (actT > 0) {
+    actT -= dt;
+    if (act === 'dance') {
+      v.tilt += (Math.sin(v.t * 9) * 0.22 - v.tilt) * Math.min(1, dt * 14);
+      if (Math.sin(v.t * 9) > 0.97) squashV += 1.2;
+      m = 'happy';
+    } else if (act === 'sleep') {
+      blink = 1;
+      m = 'idle';
+      zzzCd -= dt;
+      if (zzzCd <= 0) {
+        zzzCd = 0.9;
+        fx.emit(PK.Zzz, L.cx + L.R * 0.55, L.cy - L.R * 0.75, 30, -60, 2.2, L.R * 0.3, 6);
+      }
+    } else if (act === 'laugh') {
+      m = 'happy';
+      blink = 1;
+      v.tilt += (Math.sin(v.t * 22) * 0.06 - v.tilt) * Math.min(1, dt * 20);
+    } else if (act === 'eat') {
+      m = Math.sin(v.t * 14) > 0 ? 'fly' : 'happy';
+    }
+  }
+  if (emoT > 0 && actT <= 0) {
+    if (emo === 'sleepy') blink = Math.max(blink, 0.55);
+    else if (emo === 'surprised') {
+      m = 'fly';
+      blink = 0;
+    } else if (emo === 'shy' || emo === 'silly') v.tilt += ((emo === 'shy' ? 0.14 : Math.sin(v.t * 5) * 0.12) - v.tilt) * Math.min(1, dt * 6);
+  }
   pose.mood = m;
   pose.blink = blink;
   v.drool = v.m.hungry || foodNear ? Math.min(1, v.drool + dt * 2) : Math.max(0, v.drool - dt * 3);
@@ -1384,7 +1493,7 @@ function update(dt: number): void {
   if (sayT > 0) {
     sayT -= dt;
     if (sayT <= 0) $('.pet-say').classList.remove('show');
-  } else if (!v.sleeping) {
+  } else if (!v.sleeping && !talkActive()) {
     sayCd -= dt;
     if (sayCd <= 0) say(true);
   }
