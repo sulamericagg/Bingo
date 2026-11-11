@@ -52,7 +52,9 @@
       // Duelo (src/party/duel.ts): mesmo desafio para todos, placar ao vivo e pódio — jogos solo no grupo.
       { "name": "DUEL", "class_name": "DuelRoom" },
       // Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + convites.
-      { "name": "CAVA", "class_name": "CavaRoom" }
+      { "name": "CAVA", "class_name": "CavaRoom" },
+      // Jangada Bloop online: jangada por código (relé; o anfitrião manda no mundo) + convites.
+      { "name": "RAFT", "class_name": "RaftRoom" }
     ]
   },
   "migrations": [
@@ -67,7 +69,8 @@
     { "tag": "v7-loja-tv", "new_sqlite_classes": ["UgcHub", "TvChannel"] },
     { "tag": "v8-garimpo", "new_sqlite_classes": ["GarimpoRoom"] },
     { "tag": "v9-duel", "new_sqlite_classes": ["DuelRoom"] },
-    { "tag": "v10-cava", "new_sqlite_classes": ["CavaRoom"] }
+    { "tag": "v10-cava", "new_sqlite_classes": ["CavaRoom"] },
+    { "tag": "v12-raft", "new_sqlite_classes": ["RaftRoom"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em

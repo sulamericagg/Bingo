@@ -24,6 +24,7 @@ import { flightInvite, flightInvites, flightJoin } from './flight';
 import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
 import { garimpoInvite, garimpoInvites, garimpoJoin } from './garimpo';
 import { cavaInvite, cavaInvites, cavaJoin } from './cava';
+import { raftInvite, raftInvites, raftJoin } from './raft';
 import { duelJoin } from './duel';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
@@ -115,6 +116,9 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Cava & Fala online: convites entre amigos
   'POST /api/cava/invite': cavaInvite,
   'GET /api/cava/invites': cavaInvites,
+  // Jangada Bloop online: convites entre amigos
+  'POST /api/raft/invite': raftInvite,
+  'GET /api/raft/invites': raftInvites,
   // Loja de Criações do Bloop Studio + TV Bloop (docs/LOJA-TV.md)
   'POST /api/ugc/publish': ugcPublish,
   'GET /api/ugc/browse': ugcBrowse,
@@ -240,6 +244,7 @@ export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
 export { GarimpoRoom } from './garimpo';
 export { CavaRoom } from './cava';
+export { RaftRoom } from './raft';
 export { DuelRoom } from './duel';
 export { UgcHub } from './ugc-hub';
 export { TvChannel } from './tv';
@@ -314,6 +319,16 @@ export default {
     if (cm) {
       try {
         return await cavaJoin(req, env, cm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Jangada Bloop online (WebSocket): /api/raft/room/<CÓDIGO>
+    const rm = /^\/api\/raft\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (rm) {
+      try {
+        return await raftJoin(req, env, rm[1]);
       } catch (e) {
         return errorResponse(e);
       }
