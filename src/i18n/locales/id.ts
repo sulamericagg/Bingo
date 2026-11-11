@@ -6774,6 +6774,7 @@ export default {
   "settings.gfxAria": "Kualitas grafis",
   "settings.haptics": "Getaran",
   "settings.intro": "Animasi pembuka game",
+  "settings.narration": "Bacakan keras (untuk yang belum bisa membaca)",
   "settings.lang": "Bahasa",
   "settings.langTitle": "BAHASA",
   "settings.music": "Musik",

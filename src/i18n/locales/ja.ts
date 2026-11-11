@@ -6774,6 +6774,7 @@ export default {
   "settings.gfxAria": "画質",
   "settings.haptics": "振動",
   "settings.intro": "ゲーム開始アニメーション",
+  "settings.narration": "読み上げ（文字が読めない子向け）",
   "settings.lang": "言語",
   "settings.langTitle": "言語",
   "settings.music": "音楽",

@@ -6774,6 +6774,7 @@ export default {
   "settings.gfxAria": "Grafik kalitesi",
   "settings.haptics": "Titreşim",
   "settings.intro": "Oyun açılış animasyonu",
+  "settings.narration": "Sesli oku (okuyamayanlar için)",
   "settings.lang": "Dil",
   "settings.langTitle": "DİL",
   "settings.music": "Müzik",

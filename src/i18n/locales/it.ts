@@ -6774,6 +6774,7 @@ export default {
   "settings.gfxAria": "Qualità grafica",
   "settings.haptics": "Vibrazione",
   "settings.intro": "Animazione di apertura dei giochi",
+  "settings.narration": "Leggi ad alta voce (per chi non legge)",
   "settings.lang": "Lingua",
   "settings.langTitle": "LINGUA",
   "settings.music": "Musica",
