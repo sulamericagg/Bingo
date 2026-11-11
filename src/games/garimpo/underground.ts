@@ -315,7 +315,7 @@ export class Underground {
     this.scene.background = new THREE.Color(0x0d0907);
     this.scene.fog = new THREE.Fog(0x0d0907, 18, 46);
     this.worker = buildWorker(0x6a6a6a);
-    this.paper = paperize(this.worker, mySpec(), 128);
+    this.paper = paperize(this.worker, mySpec(), 128, true); // o jogador é SEMPRE o Bloop dele (o 3D clássico é um moço de bigode)
     // carrinho na frente, pegadores nas mãos (chão da mina é plano)
     const bw = this.worker.barrow;
     bw.position.set(0, 0, 0.42 - BW.grip.z);
@@ -969,9 +969,9 @@ export class Underground {
 }
 
 /** PAPER: troca o boneco 3D pelo Bloop 2D (o carrinho e a picareta 3D continuam) */
-function paperize(p: WorkerParts, spec: PaperSpec, cell: number): PaperChar | null {
-  if (!paperOn('garimpo')) return null;
-  const pc = new PaperChar(spec, { radius: 0.6, cell, shadow: true });
+function paperize(p: WorkerParts, spec: PaperSpec, cell: number, always = false): PaperChar | null {
+  if (!always && !paperOn('garimpo')) return null;
+  const pc = new PaperChar(spec, { radius: 0.52, cell, shadow: true });
   for (const c of p.root.children) if (c !== p.barrow) c.visible = false;
   p.root.add(pc.root);
   return pc;

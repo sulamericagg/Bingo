@@ -740,7 +740,9 @@ export class Worker extends Machine {
     this.p = buildWorker(shirt);
     this.group.add(this.p.root);
     let hand = '#' + C.skin.toString(16).padStart(6, '0');
-    if (paperOn('garimpo')) {
+    // jogadores (o meu Bloop / o de cada amigo) são SEMPRE o Bloop de papel — o boneco 3D clássico é um
+    // moço de bigode que "não tem nada a ver com o meu boneco"; a opção 2D/3D vale só para ajudantes
+    if (spec !== undefined || paperOn('garimpo')) {
       const sp = spec === 'me' ? mySpec() : (spec ?? (shirt !== undefined ? npcSpec('#' + shirt.toString(16).padStart(6, '0'), '#ffd34a', { head: 'h_cap' }) : npcSpec('#ffd34a', '#c87a2a', { head: 'h_cap', eyes: 'e_big' })));
       this.paper = new PaperChar(sp, { radius: 0.52, cell: spec === 'me' ? 128 : 96, shadow: true });
       hand = paperBodyColor(sp);
