@@ -65,7 +65,7 @@ const FRAG_BODY = /* glsl */ `
     else if (an.y >= an.z) bp = vBPos.xz;
     else bp = vBPos.xy;
   }
-  vec2 bf = fract(bp);
+  vec2 bf = vBUvMode > 0.5 ? clamp(bp, 0.0, 1.0) : fract(bp);
   vec2 bcell = vec2(mod(vBTile, ${ATLAS_COLS}.0), ${ATLAS_COLS - 1}.0 - floor(vBTile / ${ATLAS_COLS}.0));
   vec2 buvA = (bcell + 0.016 + bf * 0.968) / ${ATLAS_COLS}.0;
 #ifdef BLOCK_HQ
