@@ -312,7 +312,8 @@ export class Builds {
   ground: ((x: number, y: number, z: number) => number) | null = null;
   /** baú, fornalha, bancadas, cama: objetos soltos que nunca podem ficar flutuando */
   static loose(d: PDef | undefined): boolean {
-    return !!d && !!(d.chest || d.furnace || d.station || d.bed) && !d.floor;
+    // móveis soltos (baú, fornalha, bancadas, cama, mesa…): os de grade (piso, parede, trilho) ficam onde estão
+    return !!d && (!!(d.chest || d.furnace || d.station || d.bed) || !!d.floor) && d.snap === 'free' && !d.rail && !d.door;
   }
   private snapY(d: PDef, x: number, y: number, z: number): number {
     if (!this.ground || !Builds.loose(d)) return y;

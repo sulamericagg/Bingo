@@ -4,7 +4,7 @@
  *  consistentes nas bordas, consultas de densidade/chão/raio, save.
  * ============================================================ */
 import * as THREE from 'three';
-import { NL, TL, setSplat, splatAttributes } from '../../../3d/nature/textures';
+import { NL, TL, setSplat, splatAttributes, terrainMaterial } from '../../../3d/nature/textures';
 import { CH, RES, VN } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFacetMesh, takeFluid, takeMesh, type MeshCtx } from './vox';
@@ -34,7 +34,12 @@ export class VoxWorld {
   readonly vg: VolGen;
   readonly lavaMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
   /** subsolo: facetado (rocha lapidada, nítida perto da lanterna) */
-  readonly caveMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  readonly caveMat: THREE.MeshLambertMaterial = (() => {
+    // rocha lapidada COM textura (pedra/terra nas paredes, cascalho no chão): nada de cor chapada na caverna
+    const m = terrainMaterial({ tier: 2, noSplat: true, topLayer: 'gravel' });
+    m.flatShading = true;
+    return m;
+  })();
   private jobs: Job[] = [];
   private wantT = 0;
   /** jogador (para prioridade e seções "perto") */

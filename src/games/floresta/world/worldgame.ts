@@ -547,9 +547,14 @@ export class WorldGame {
     x.textAlign = 'center';
     x.fillText(t('floresta.w.mill', 'SERRARIA'), 128, 62);
     const tex = new THREE.CanvasTexture(cv);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.1), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-    sign.position.set(3, 3.2, 0);
+    // placa com as duas faces legíveis (antes o verso mostrava o texto espelhado)
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.1), new THREE.MeshBasicMaterial({ map: tex }));
+    sign.position.set(3, 3.2, 0.01);
     g.add(sign);
+    const back = new THREE.Mesh(sign.geometry, sign.material);
+    back.position.set(3, 3.2, -0.01);
+    back.rotation.y = Math.PI;
+    g.add(back);
     for (const s of [-1, 1]) box(0.15, 2.6, 0.15, '#6a3a1a', 3 + s * 1.3, 1.6, 0);
     // pilha de toras
     for (let i = 0; i < 5; i++) {
@@ -994,8 +999,12 @@ export class WorldGame {
     const fl = W.vox.matAt(this.px, this.py + 0.7, this.pz);
     const inAq = fl === VM.Agua;
     const inLava = fl === VM.Lava;
-    this.swimFloor = swim ? wl - 1.25 : -Infinity;
     const T = fp.tune;
+    // nadar: boia com a cabeça para fora; andando para a frente olhando para baixo, mergulha; solto, sobe de volta
+    const surf = wl - 1.25;
+    const diving = swim && c.my < -0.3 && this.pitch < -0.35;
+    const under = swim && (diving || this.py < surf - 0.05);
+    this.swimFloor = swim && !under ? surf : -Infinity;
     T.speed = (swim || inAq ? 2.6 : 5.0) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
     T.gravity = inAq || inLava ? 4 : 24;
     T.jumpV = swim || inAq || inLava ? 3.2 : 8.1;
@@ -1003,7 +1012,12 @@ export class WorldGame {
     const head = (y: number) => W.vox.dens(this.px, y, this.pz) > 0 || !!W.extraSolid?.(this.px, y, this.pz) || W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < y;
     // direcional: x = direita, y = frente
     fp.steer(dt, c.mx, -c.my, this.yaw);
-    if ((inAq || inLava) && (c.up || c.jump)) {
+    if (under) {
+      T.gravity = 0;
+      fp.grounded = false;
+      if (diving) fp.vy = Math.sin(this.pitch) * 2.4;
+      else fp.vy = Math.min(fp.vy + 5 * dt, c.jump || c.up ? 2.4 : 1.4);
+    } else if ((inAq || inLava) && (c.up || c.jump)) {
       fp.vy = Math.min(fp.vy + 14 * dt, 3);
       fp.grounded = false;
     } else if (c.jump) fp.jump();
@@ -2213,6 +2227,7 @@ export class WorldGame {
     const cx = this.cx();
     const cz = this.cz();
     this.underground(dt);
+    this.underwater();
     this.sun.position.set(cx + 30, 60, cz + 18);
     this.sun.target.position.set(cx, 0, cz);
     if (this.shake > 0) {
@@ -2221,6 +2236,31 @@ export class WorldGame {
       this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.5;
     }
   }
+
+  /** olhos debaixo d'água: neblina curta azul e um véu na tela (as bolhas de ar aparecem no HUD) */
+  private wetEl: HTMLDivElement | null = null;
+  private underwater(): void {
+    const cy = this.camera.position.y;
+    const wl = this.driving >= 0 ? -Infinity : this.world.waterLevel(this.camera.position.x, this.camera.position.z);
+    const wet = cy < wl - 0.02 || (this.driving < 0 && this.world.vox.matAt(this.camera.position.x, cy, this.camera.position.z) === VM.Agua);
+    if (wet) {
+      const f = this.scene.fog as THREE.Fog;
+      f.color.copy(this.world.waterMat.color).multiplyScalar(0.55);
+      (this.scene.background as THREE.Color).copy(f.color);
+      f.near = 0.5;
+      f.far = 16;
+      if (!this.wetEl) {
+        this.wetEl = document.createElement('div');
+        this.wetEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,rgba(40,120,200,.18),rgba(10,40,90,.5));transition:opacity .25s';
+        this.root.appendChild(this.wetEl);
+        this.offs.push(() => this.wetEl?.remove());
+      }
+    }
+    if (this.wetEl) this.wetEl.style.opacity = wet ? '1' : '0';
+    if (!wet && this.wasWet) this.skyT = 0; // sai d'água: a neblina normal volta já
+    this.wasWet = wet;
+  }
+  private wasWet = false;
 
   /** céu: horizonte = cor do fundo/neblina (já com noite/caverna); topo = céu do bioma escurecendo junto */
   private updateDome(): void {
