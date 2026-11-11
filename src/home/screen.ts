@@ -51,7 +51,7 @@ function addCoins(n: number): number {
 }
 import { showRewarded } from '../services/ads';
 import { detectInitialTier, settingsFor } from '../core/quality';
-import { openEmoteWheel } from '../social/emotes';
+import { openEmoteWheel, closeEmoteWheel } from '../social/emotes';
 import { getPlayer } from '../services/online';
 import { addStat } from '../pet/state';
 import { makeCanvas, alpha, star } from './gfx';
@@ -106,6 +106,16 @@ export function isHomeOpen(): boolean {
 export async function openHome(o: OpenOpts = {}): Promise<void> {
   installIconCss();
   if (!root) build();
+  if (isOpen) {
+    // já aberta (ex.: convite de festa / atalho do hub): não registra listeners/laço de novo
+    // (antes duplicava bus.on/resize e um openHome({}) no meio da festa jogava para o planeta com a festa rodando)
+    if (o.visit) await visit(o.visit, !!o.party);
+    else if (o.party) await startParty(o.party);
+    else if (o.tab === 'friends') showFriends();
+    else if (!session && o.tab === 'build') setView('build');
+    else if (!session && o.tab === 'rooms') enterRooms(o.room);
+    return;
+  }
   isOpen = true;
   root!.classList.add('on');
   const tier = detectInitialTier();
@@ -163,9 +173,23 @@ function refreshNet(): void {
 }
 export function closeHome(): boolean {
   if (!isOpen) return false;
+  // roda de emotes (overlay fora da .hm-scr): antes o voltar passava por baixo dela
+  if (document.querySelector('.sc-wheel')) {
+    closeEmoteWheel();
+    return true;
+  }
   const sh = $('.hm-sheet');
   if (sh.classList.contains('on')) {
     ui.close();
+    return true;
+  }
+  // festa: antes o voltar caía em finishMode() → setMode('party') de novo e o botão "não fazia nada"
+  if (joining) {
+    cancelJoin();
+    return true;
+  }
+  if (session && (view !== 'room' || scene.mode === 'party')) {
+    requestLeaveParty();
     return true;
   }
   if (view === 'room' && scene.mode !== 'look') {
@@ -182,6 +206,8 @@ export function closeHome(): boolean {
     return true;
   }
   isOpen = false;
+  closeEmoteWheel();
+  cancelJoin();
   leaveParty();
   flushSave();
   root!.classList.remove('on');
@@ -232,6 +258,7 @@ const ui: SocialUi = {
     const sh = $('.hm-sheet');
     sh.classList.remove('on');
     sh.innerHTML = '';
+    sh.onclick = null;
   },
   visit(f: FriendInfo) {
     ui.close();
@@ -575,7 +602,7 @@ function action(a: string, b: HTMLElement): void {
       refreshBar();
       break;
     case 'party':
-      void startParty(S.ownerId);
+      if (!session) void startParty(S.ownerId);
       break;
     case 'friends':
       showFriends();
@@ -611,6 +638,7 @@ function action(a: string, b: HTMLElement): void {
       break;
     case 'mode':
       scene.setMode(b.dataset.m as 'edit');
+      calmBots(scene.mode === 'clean');
       refreshBar();
       break;
     case 'done':
@@ -623,20 +651,18 @@ function action(a: string, b: HTMLElement): void {
       doRedo();
       break;
     case 'leave':
-      leaveParty(true);
-      setView(view);
-      scene.setMode('look');
-      refreshBar();
+      requestLeaveParty();
       break;
     case 'emote':
       openEmoteWheel((code) => {
+        if (!session && scene.mode !== 'party') return;
         scene.emoteOf(S.myId, code);
         session?.event({ t: 'chat', by: S.myId, code });
       });
       break;
     case 'food':
       scene.pickFood(b.dataset.f!);
-      root!.querySelectorAll('[data-a="food"]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.f === scene.holding));
+      syncFood();
       break;
     case 'ctool':
       scene.cleanTool = b.dataset.t as CleanTool;
@@ -791,6 +817,7 @@ function action(a: string, b: HTMLElement): void {
       if (!k?.item.kit) break;
       const list = k.item.kit.items.filter((id) => furnById(id));
       if (k.item.kit.room !== scene.room) scene.setRoom(k.item.kit.room);
+      scene.remapMoved(() => -1);
       scene.rd.items = list.map((id, i) => {
         const d = furnById(id)!;
         return { id, x: 50 + ((i * 70) % 280), y: d.wall ? 100 : 330 + (i % 2) * 40 };
@@ -812,8 +839,14 @@ function finishMode(): void {
     changed();
   }
   scene.setMode(session ? 'party' : 'look');
+  calmBots(false);
   refreshBar();
   flushSave();
+}
+/** limpando no meio da festa: os robôs (festa local) param de jogar comida — antes sujavam mais rápido do que dava para limpar */
+function calmBots(on: boolean): void {
+  const s = session as (PartySession & { calm?: boolean }) | null;
+  if (s && 'calm' in s) s.calm = on;
 }
 function firstMessRoom(): RoomId {
   return (S.mess.find((m) => !m.moved)?.room ?? S.mess[0]?.room ?? 'living') as RoomId;
@@ -881,8 +914,8 @@ function roomBar(bar: HTMLElement): void {
     </div>`;
   } else if (m === 'party') {
     bar.className = 'hm-bar panel';
-    bar.innerHTML = `<div class="hm-row"><b class="grow">${esc(t('home.party.hint', 'Toque no bolo para comer. Pegue comida e puxe para trás para jogar!'))}</b></div>
-      <div class="hm-row scroll">${FOODS.map((f) => `<button class="hm-btn hm-furn ${scene.holding === f ? 'on' : ''}" data-a="food" data-f="${f}"><canvas data-food="${f}" width="60" height="52"></canvas>${esc(foodName(f))}</button>`).join('')}</div>
+    bar.innerHTML = `<div class="hm-row"><b class="grow hm-hint">${esc(t('home.party.hint', 'Toque no bolo para comer. Pegue comida e puxe para trás para jogar!'))}</b></div>
+      <div class="hm-row scroll">${FOODS.map((f) => `<button class="hm-btn hm-furn hm-food ${scene.holding === f ? 'on' : ''}" data-a="food" data-f="${f}"><canvas data-food="${f}" width="60" height="52"></canvas>${esc(foodName(f))}</button>`).join('')}</div>
       <div class="hm-row">${btn('emote', t('home.emote', 'Emotes'), 'hm-gold', 'data-a="emote"')}${scene.canDo('clean') ? btn('sponge', t('home.clean', 'Limpar'), '', 'data-a="mode" data-m="clean"') : ''}${btn('cube', t('home.3d', 'Entrar em 3D'), '', 'data-a="3d"')}<span class="grow"></span>${btn('back', t('home.party.leave', 'Sair da festa'), '', 'data-a="leave"')}</div>`;
     bar.querySelectorAll('canvas[data-food]').forEach((c) => {
       const x = (c as HTMLCanvasElement).getContext('2d')!;
@@ -1204,18 +1237,49 @@ function paintExtBar(bar: HTMLElement): void {
 /* ============================================================
  *  festa
  * ============================================================ */
+let joining = false;
+let partyGen = 0;
+let partyT0 = 0;
+/** cancela uma entrada em festa ainda carregando (voltar durante "Preparando a festa...") */
+function cancelJoin(): void {
+  if (!joining) return;
+  joining = false;
+  partyGen++;
+  refreshBar();
+}
 async function startParty(hostId: string): Promise<void> {
+  if (joining) return; // toque duplo no "Festa!" abria 2 sessões e a 1ª ficava vazando (robôs fantasmas)
   leaveParty();
-  const api = await getApi();
+  const gen = ++partyGen;
+  joining = true;
   toast(t('home.party.joining', 'Preparando a festa...'), 'party');
-  const s = await api.joinParty(hostId === 'me' ? S.myId : hostId, { botsIfAlone: 3 });
+  let s: PartySession;
+  try {
+    const api = await getApi();
+    s = await api.joinParty(hostId === 'me' ? S.myId : hostId, { botsIfAlone: 3 });
+  } catch {
+    if (gen === partyGen) joining = false;
+    toast(t('home.visit.fail', 'Não deu para entrar agora. Tente de novo!'), 'close');
+    return;
+  }
+  if (gen !== partyGen || !isOpen) {
+    // cancelada (voltar / fechou a casa) enquanto conectava: descarta a sessão
+    s.leave();
+    return;
+  }
+  joining = false;
   session = s;
+  partyT0 = performance.now();
   scene.host.session = s;
   scene.chars = [];
   scene.cakeSlices = 8;
   const botsLocal = !s.online || s.hostId === S.myId;
-  s.onPeers((p) => scene.setPeers(p));
-  s.onEvent((e) => scene.onEvent(e, botsLocal));
+  s.onPeers((p) => {
+    if (session === s) scene.setPeers(p);
+  });
+  s.onEvent((e) => {
+    if (session === s) scene.onEvent(e, botsLocal);
+  });
   partyMusic(true);
   if (S.isOwner) bus.emit('party-host', { guests: 0 });
   else bus.emit('party-join', { hostId });
@@ -1225,13 +1289,46 @@ async function startParty(hostId: string): Promise<void> {
   toast(s.online ? t('home.party.on', 'Festa online! Só emotes, sem chat.') : t('home.party.bots', 'Festa com amigos-robô! (offline)'), 'party');
   if (isMock()) console.info('[casa] festa local (mock)');
 }
+/** "Sair da festa" (botão ou voltar). Quem está hospedando confirma antes: a festa acaba para todos. */
+function requestLeaveParty(): void {
+  if (!session) return;
+  const hosting = S.isOwner || session.hostId === S.myId;
+  if (!hosting) return endParty();
+  const sh = ui.sheet;
+  sh.innerHTML = `<div class="hm-card hm-confirm"><h2>${hicon('party', 26)}${esc(t('home.party.endq', 'Encerrar a festa?'))}</h2>
+    <p>${esc(t('home.party.endtxt', 'Você é o anfitrião: a festa acaba para todo mundo.'))}</p>
+    <div class="hm-row"><button class="hm-btn grow" data-c="no">${esc(t('home.party.stay', 'Continuar'))}</button><button class="hm-btn hm-pink grow" data-c="yes">${esc(t('home.party.end', 'Encerrar'))}</button></div></div>`;
+  sh.classList.add('on');
+  sh.onclick = (e) => {
+    const b = (e.target as HTMLElement).closest('[data-c]') as HTMLElement | null;
+    if (e.target === sh || b?.dataset.c === 'no') {
+      hsfx.click();
+      ui.close();
+    } else if (b?.dataset.c === 'yes') {
+      hsfx.click();
+      ui.close();
+      endParty();
+    }
+  };
+}
+function endParty(): void {
+  // recompensa só para festa de verdade (antes: abrir e sair repetido = moedas/diversão de graça)
+  leaveParty(performance.now() - partyT0 > 20_000);
+  if (view === 'room') {
+    scene.setMode('look');
+    setView('room');
+  } else refreshBar();
+}
 function leaveParty(reward = false): void {
   if (!session) return;
-  session.leave();
+  const s = session;
   session = null;
+  s.leave();
+  closeEmoteWheel();
   scene.host.session = null;
   scene.chars = [];
   scene.holding = null;
+  if (scene.mode === 'party') scene.setMode('look');
   partyMusic(false);
   persistMess();
   if (reward) {
@@ -1250,7 +1347,10 @@ function toExtL(x: number, y: number): [number, number] {
   return scene.toL(x, y);
 }
 function pdown(x: number, y: number): void {
-  if (view === 'room') scene.down(x, y);
+  if (view === 'room') {
+    scene.down(x, y);
+    syncFood();
+  }
   else if (view === 'paintExt') {
     extDrag = true;
     const [lx, ly] = toExtL(x, y);
@@ -1271,8 +1371,15 @@ function pmove(x: number, y: number): void {
   }
 }
 function pup(): void {
-  if (view === 'room') scene.up();
+  if (view === 'room') {
+    scene.up();
+    syncFood();
+  }
   extDrag = false;
+}
+/** destaque da comida na mão (antes ficava aceso depois de jogar e não acendia ao pegar fatia do bolo) */
+function syncFood(): void {
+  root?.querySelectorAll('[data-a="food"]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.f === scene.holding));
 }
 
 /* ============================================================
