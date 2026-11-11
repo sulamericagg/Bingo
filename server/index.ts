@@ -21,6 +21,7 @@ import { partyJoin } from './party';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
+import { aiPet } from './ai-pet';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -63,6 +64,7 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Programa Beta: relatórios de bug (docs/BETA-TESTERS.md)
   'POST /api/feedback': feedbackPost,
   'POST /api/ai/story': aiStory,
+  'POST /api/ai/pet': aiPet,
   'GET /api/handle/check': handleCheck,
   'POST /api/handle/claim': handleClaim,
   'GET /api/handle/mine': handleMine,
