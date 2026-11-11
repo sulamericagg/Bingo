@@ -46,6 +46,8 @@ export const IC = {
   friends: S('<circle cx="8.5" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.5"/><path d="M2.5 20c0-3.6 2.7-6.5 6-6.5s6 2.9 6 6.5"/><path d="M15 13.6c3.3-.6 6.5 1.8 6.5 5.4"/>'),
   qr: S('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M14 21h7v-4"/>'),
   share: S('<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>'),
+  barrowDrop: S('<path d="M2 10h11l-1.5 5H5z" fill="currentColor"/><path d="M13 12l5 1M2 10l-1-2"/><circle cx="8" cy="18.5" r="1.8"/><path d="M19 3v7M16.5 7.5L19 10l2.5-2.5"/>'),
+  barrowGrab: S('<path d="M2 12h11l-1.5 5H5z" fill="currentColor"/><path d="M13 14l4 1"/><circle cx="8" cy="20" r="1.6"/><path d="M17 15c0-3 1-5 2-7M19 8l-.5-4M19 8l1.8-3.4M19 8l2.6-1.4"/>'),
   check: S('<path d="M4 12.5l5 5L20 6.5"/>'),
 };
 export type IconKey = keyof typeof IC;

@@ -31,6 +31,8 @@ export interface SlotSave {
   plantGold: number;
   machines: MSave[];
   worker: { x: number; z: number; yaw: number; vol: number; gold: number };
+  /** CARRINHO largado no chão [x, z, guinada] (ausente = na mão) */
+  barrow?: number[];
   /** índice em machines da máquina dirigida (-1 = a pé) */
   driving: number;
   upg: { shovel: number; barrow: number; plant: number };
