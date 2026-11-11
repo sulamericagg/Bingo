@@ -120,7 +120,8 @@ const CSS = `
 .sv-st.bad{background:#ff4f6a;color:#fff}
 .sv-busy::after{content:attr(data-busy);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,8,48,.72);font-weight:900;font-size:15px}
 .sv-x{position:absolute;right:4px;top:30px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(20,8,48,.75);color:#fff;font-weight:900;cursor:pointer}
-.sv-empty{padding:26px 10px;text-align:center;font-weight:800;opacity:.8}
+.sv-wait[hidden],.sv-strip:empty{display:none!important}
+.sv-empty{grid-column:1/-1;padding:26px 10px;text-align:center;font-weight:800;opacity:.8}
 .sv-foot{display:flex;justify-content:center;gap:16px;padding:10px 0 2px}
 .sv-link{border:none;background:none;color:rgba(255,255,255,.7);font:inherit;font-weight:800;font-size:12px;text-decoration:underline;cursor:pointer;padding:4px}
 .sv-wait{display:flex;align-items:center;gap:8px;background:rgba(255,211,74,.16);border:2px solid #ffd34a;border-radius:14px;padding:6px 10px;margin-bottom:8px;font-weight:800;font-size:13px}
