@@ -118,8 +118,12 @@ export class BlockWorld {
   /** b: num ou id ('tijolo'); 0/'ar' tira. rot 0..3 (blocos que giram). */
   setBlock(x: number, y: number, z: number, b: number | string, rot = 0): boolean {
     const n = typeof b === 'string' ? blockNum(b) : b;
-    return this.store.setBlock(Math.floor(x), Math.floor(y), Math.floor(z), n, rot & 3);
+    const ok = this.store.setBlock(Math.floor(x), Math.floor(y), Math.floor(z), n, rot & 3);
+    if (ok) this.onEdit?.(x, y, z);
+    return ok;
   }
+  /** avisa quando um bloco muda (a grama embaixo é refeita) */
+  onEdit: ((x: number, y: number, z: number) => void) | null = null;
   /** gravidade (areia cai): chame algumas vezes por segundo */
   tickGravity(max = 64): FallMove[] {
     return this.store.tickGravity(max);

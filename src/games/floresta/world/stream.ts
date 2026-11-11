@@ -10,8 +10,10 @@ import { CH, RES, VN, WATER_Y, WorldGen, type Camp } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { WBIOMES, WSPECIES, NB } from './biomes';
 import type { WorldSave } from './wsave';
-import { rockGeometry, wTreeGeometry } from './wmodels';
-import { addWind, bushGeometry, lambert, stumpGeometry } from '../fps/models';
+import { wTreeGeometry } from './wmodels';
+import { stumpGeometry } from '../fps/models';
+import type { Tier } from '../../../core/quality';
+import { BlobShadows, GrassField, groundDetail, hash2, natureBush, natureFern, natureFlowers, natureMat, natureQ, natureRock, type GrassSource, type NatureQ } from '../../../3d/nature';
 import { Solids, type SBox } from './collide';
 import { VoxWorld } from './voxworld';
 
@@ -46,6 +48,12 @@ const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _c = new THREE.Color();
 const UP = new THREE.Vector3(0, 1, 0);
+const _n = new THREE.Vector3();
+const _g4 = new Float32Array(4);
+/** biomas com musgo nas pedras */
+const MOSSY = new Set(['bosque', 'tropical', 'cerejeiras', 'pantano', 'outono', 'bambu', 'cogumelos']);
+/** biomas com samambaias no lugar de parte dos arbustos */
+const FERNY = new Set(['bosque', 'tropical', 'pantano', 'bambu', 'cogumelos']);
 const RARE_TINT = [
   [1, 1, 1],
   [1.5, 1.25, 0.45],
@@ -112,13 +120,24 @@ export class World {
   readonly gen: WorldGen;
   readonly chunks = new Map<string, Chunk>();
   readonly groundMat: THREE.MeshLambertMaterial;
-  private treeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private treeMat = natureMat({ amp: 0.0022, y0: 1, rustle: 0.035 });
+  private decoMat = natureMat({ amp: 0.05, y0: 0.1, rustle: 0, tintGray: true });
+  private rockMat = natureMat({ amp: 0, y0: 50, rustle: 0, tintGray: true });
   private nearT: Inst[] = [];
   private farT: Inst[] = [];
   private stumps: Inst;
   private rocks: Inst;
+  private rocksBare: Inst;
   private bushes: Inst;
   private flowers: Inst;
+  private ferns: Inst;
+  /** sombras de contato sob árvores e pedras */
+  private blobs: BlobShadows;
+  /** grama de lâminas (canteiros em volta da câmera) */
+  readonly grass: GrassField;
+  nq: NatureQ;
+  /** quem amassa a grama (jogador a pé ou veículo): x, z, raio */
+  readonly push = { x: 0, z: 0, r: 0 };
   private dirty = true;
   private rebuildT = 0;
   private lastRX = 1e9;
@@ -145,27 +164,69 @@ export class World {
     readonly scene: THREE.Scene,
     readonly save: WorldSave,
     public q: StreamQ,
+    tier: Tier = 2,
   ) {
     this.gen = new WorldGen(save.seed, save.gen);
+    this.nq = natureQ(tier);
     this.groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    groundDetail(this.groundMat, { amount: 0.42, scale: 0.55, macro: this.nq.macro });
     this.vox = new VoxWorld(this);
-    addWind(this.treeMat);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {
       this.nearT.push(new Inst(wTreeGeometry(s, 0, q.lite), this.treeMat, scene, cap, true));
       this.farT.push(new Inst(wTreeGeometry(s, 1, true), this.treeMat, scene, cap * 2, false));
     }
     this.stumps = new Inst(stumpGeometry(), this.treeMat, scene, 32, false);
-    const rockMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.rocks = new Inst(rockGeometry(), rockMat, scene, 64, true);
-    this.bushes = new Inst(bushGeometry(), this.treeMat, scene, 128, false);
-    const fg = new THREE.IcosahedronGeometry(0.12, 0);
-    fg.translate(0, 0.35, 0);
-    const fcol: number[] = [];
-    for (let i = 0; i < fg.getAttribute('position').count; i++) fcol.push(1, 1, 1);
-    fg.setAttribute('color', new THREE.Float32BufferAttribute(fcol, 3));
-    this.flowers = new Inst(fg, lambert('#ffffff', 0.25), scene, 128, false);
+    this.rocks = new Inst(natureRock(3, '#5f8f34', 0.6), this.rockMat, scene, 64, true);
+    this.rocksBare = new Inst(natureRock(5, '#ffffff', 0), this.rockMat, scene, 32, true);
+    this.bushes = new Inst(natureBush(1), this.decoMat, scene, 128, false);
+    this.flowers = new Inst(natureFlowers(5), this.decoMat, scene, 128, false);
+    this.ferns = new Inst(natureFern(9), this.decoMat, scene, 64, false);
+    this.blobs = new BlobShadows(scene, 256, this.nq.blobAlpha);
+    this.grass = new GrassField(scene, this.grassSrc, this.nq.grass);
+    this.solids.onEdit = (x0, z0, x1, z1) => this.grass.invalidate(x0, z0, x1, z1);
   }
+
+  /** troca o orçamento da natureza (grama, sombras) pelo nível de qualidade */
+  setNatureTier(tier: Tier): void {
+    this.nq = natureQ(tier);
+    this.grass.setQuality(this.nq.grass);
+    this.blobs.opacity = this.nq.blobAlpha;
+    this.dirty = true;
+  }
+  /** refaz a grama de um pedaço (escavação, blocos, construções) */
+  grassDirty(c: Chunk): void {
+    this.grass.invalidate(c.x0, c.z0, c.x0 + CH, c.z0 + CH);
+  }
+  grassDirtyAt(x: number, z: number, r = 1.5): void {
+    this.grass.invalidate(x - r, z - r, x + r, z + r);
+  }
+
+  /** fonte da grama: cor/densidade do chão do pedaço + nada sob construções/blocos/cavernas */
+  private grassSrc: GrassSource = {
+    height: (x, z) => this.heightAt(x, z),
+    cell: (x, z, out) => {
+      const c = this.chunkAt(x, z);
+      if (!c || c.lod < 0) return 0;
+      const i = Math.round(x - c.x0);
+      const j = Math.round(z - c.z0);
+      // corta a franja de mistura (sem lâminas soltas na neve/areia)
+      const k = (c.grassAt(i, j, _g4) - 0.18) / 0.82;
+      if (k <= 0.02) return 0;
+      const y = c.h[j * VN + i];
+      // escavado (caverna, buraco, túnel) ou coberto
+      if (c.vol && (this.vox.dens(x, y + 0.35, z) > 0 || this.vox.dens(x, y - 0.45, z) <= 0)) return 0;
+      // construção, acampamento ou bloco em cima
+      if (this.solids.groundAt(x, z, y + 3) > y + 0.08) return 0;
+      if (this.extraFloor && this.extraFloor(x, y + 3, z) > y + 0.08) return 0;
+      if (this.extraSolid && this.extraSolid(x, y + 0.3, z)) return 0;
+      out[0] = _g4[0];
+      out[1] = _g4[1];
+      out[2] = _g4[2];
+      out[3] = c.grassH(i, j);
+      return k;
+    },
+  };
 
   static key(cx: number, cz: number): string {
     return cx + ',' + cz;
@@ -307,6 +368,7 @@ export class World {
       this.dirty = false;
       this.rebuildInstances(px, pz);
     }
+    this.grass.update(px, 0, pz, this.push.x, this.push.z, this.push.r);
   }
   private dirtyT = 0;
 
@@ -355,6 +417,7 @@ export class World {
       this.waterMesh.set(c, wm);
     }
     this.onLoad?.(c);
+    this.grassDirty(c);
     if (c.camp && this.onCampLoad) {
       const o = this.onCampLoad(c.camp, c);
       this.campObjs.set(c.key(), o);
@@ -439,8 +502,13 @@ export class World {
     for (const i of this.farT) i.begin();
     this.stumps.begin();
     this.rocks.begin();
+    this.rocksBare.begin();
     this.bushes.begin();
     this.flowers.begin();
+    this.ferns.begin();
+    const blobs = this.nq.blobs ? this.blobs : null;
+    blobs?.begin();
+    const blob2 = (this.q.near * 1.6) ** 2;
     const near2 = this.q.near * this.q.near;
     const deco2 = (this.q.near * 1.2) ** 2;
     const anyHidden = this.hidden.size > 0;
@@ -469,7 +537,17 @@ export class World {
         const sc = T[o + 4] * (st === TState.Sapling ? 0.15 + c.tgrow[i] * 0.85 : 1) * (rare ? 1.15 : 1);
         _m.compose(_p.set(x, y - 0.1, z), _q.setFromAxisAngle(UP, T[o + 3]), _s.set(sc, sc, sc));
         const tint = RARE_TINT[rare] ?? RARE_TINT[0];
-        (d2 < near2 ? this.nearT : this.farT)[sp].push(_m, tint[0], tint[1], tint[2]);
+        // variação por árvore (brilho e um puxão para amarelo/azul): bosque menos "clonado"
+        const hv = hash2(Math.round(x * 3), Math.round(z * 3), 11);
+        const br = rare ? 1 : 0.86 + hv * 0.26;
+        const hu = rare ? 0 : (hash2(Math.round(x * 3), Math.round(z * 3), 12) - 0.5) * 0.12;
+        (d2 < near2 ? this.nearT : this.farT)[sp].push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
+        if (blobs && d2 < blob2) {
+          const shp = WSPECIES[sp].shape;
+          const rr = sc * WSPECIES[sp].h * (shp === 'acacia' ? 0.42 : shp === 'pine' || shp === 'snowpine' || shp === 'cactus' || shp === 'bamboo' ? 0.26 : 0.34);
+          this.normalAt(x, z, _n);
+          blobs.push(x, y, z, rr, _n.x, _n.y, _n.z);
+        }
       }
       for (let i = 0; i < c.nr; i++) {
         const o = i * 5;
@@ -478,8 +556,10 @@ export class World {
         const s = c.rocks[o + 3];
         const y = c.hAt(x - c.x0, z - c.z0);
         _m.compose(_p.set(x, y, z), _q.setFromAxisAngle(UP, x * 1.7 + z), _s.set(s, s, s));
-        colOf(WBIOMES[c.rocks[o + 4]].rock, _c);
-        this.rocks.push(_m, _c.r * 1.2, _c.g * 1.2, _c.b * 1.2);
+        const rb = WBIOMES[c.rocks[o + 4]];
+        colOf(rb.rock, _c);
+        (MOSSY.has(rb.id) ? this.rocks : this.rocksBare).push(_m, _c.r * 1.2, _c.g * 1.2, _c.b * 1.2);
+        if (blobs) blobs.push(x, y, z, s * 1.25);
       }
       if (this.q.deco > 0)
         for (let i = 0; i < c.nd; i++) {
@@ -495,6 +575,10 @@ export class World {
           if (c.deco[o + 4]) {
             colOf(b.flower, _c);
             this.flowers.push(_m, _c.r, _c.g, _c.b);
+          } else if (FERNY.has(b.id) && hash2(i, c.cx + c.cz * 7, 5) < 0.45) {
+            colOf(b.bush, _c);
+            _m.compose(_p.set(x, y - 0.05, z), _q.setFromAxisAngle(UP, x + z), _s.set(s * 1.5, s * 1.3, s * 1.5));
+            this.ferns.push(_m, _c.r * 1.35, _c.g * 1.35, _c.b * 1.35);
           } else {
             colOf(b.bush, _c);
             this.bushes.push(_m, _c.r * 1.3, _c.g * 1.3, _c.b * 1.3);
@@ -505,8 +589,12 @@ export class World {
     for (const i of this.farT) i.end();
     this.stumps.end();
     this.rocks.end();
+    this.rocksBare.end();
     this.bushes.end();
     this.flowers.end();
+    this.ferns.end();
+    if (blobs) blobs.end();
+    else this.blobs.mesh.count = 0;
   }
 
   /* ------------------------------ árvores ------------------------------ */
@@ -708,6 +796,7 @@ export class World {
       c.fillMesh();
       c.treesDirty = true;
     }
+    if (touched.size) this.grass.invalidate(x - R - 1, z - R - 1, x + R + 1, z + R + 1);
     if (touched.size) this.dirty = true;
     return vol;
   }
@@ -732,8 +821,9 @@ export class World {
   }
 
   /** cor média de neblina/céu dos biomas no ponto */
+  private skyW = new Float32Array(NB);
   skyAt(x: number, z: number, fog: THREE.Color, top: THREE.Color): number {
-    const w = new Float32Array(NB);
+    const w = this.skyW;
     const best = this.gen.weights(x, z, w);
     fog.setRGB(0, 0, 0);
     top.setRGB(0, 0, 0);
@@ -760,8 +850,12 @@ export class World {
     for (const i of this.farT) i.dispose();
     this.stumps.dispose();
     this.rocks.dispose();
+    this.rocksBare.dispose();
     this.bushes.dispose();
     this.flowers.dispose();
+    this.ferns.dispose();
+    this.blobs.dispose();
+    this.grass.dispose();
     this.vox.dispose();
     for (const c of this.chunks.values()) {
       if (c.mesh) {

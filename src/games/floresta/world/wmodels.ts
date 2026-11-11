@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { geoms as base, lambert, mat4, mergeParts, shade, treeGeometry, INK } from '../fps/models';
 import type { Species } from '../data';
 import { WSPECIES } from './biomes';
+import { natureTree, type TreeKind, type TreeSpec } from '../../../3d/nature';
 
-const TAU = Math.PI * 2;
 type P = { g: THREE.BufferGeometry; c: string; m: THREE.Matrix4; ao?: number; groove?: number };
 
 /** geometria da espécie do mundo aberto (lod 0 = perto, 1 = longe) */
@@ -17,31 +17,16 @@ export function wTreeGeometry(sp: number, lod: number, lite: boolean): THREE.Buf
   const h = s.h;
   const parts: P[] = [];
   const add = (g: THREE.BufferGeometry, c: string, m: THREE.Matrix4, ao = 0, groove = 0) => parts.push({ g, c, m, ao, groove });
-  const bark = lod || lite ? base.barkLo : base.bark;
+  const nt = (kind: TreeKind, extra: Partial<TreeSpec> = {}) =>
+    natureTree({ kind, h, trunk: s.trunk, trunkDark: s.trunkDark, leaf: s.leaf, leaf2: s.leaf2, seed: sp * 13 + 5, lod: lod ? 1 : 0, ...extra });
+  if (sp === 12) return nt('birch');
   switch (s.shape) {
-    case 'snowpine': {
-      add(bark, s.trunk, mat4(0, 0, 0, 0.8, h * 0.5, 0.8), 0, 0.35);
-      const n = lod ? 3 : 5;
-      for (let i = 0; i < n; i++) {
-        const f = i / n;
-        const w = h * (0.33 - f * 0.22);
-        const y = h * (0.3 + f * 0.55) + h * 0.11;
-        add(lod ? base.pineLo : base.pine, i % 2 ? s.leaf2 : s.leaf, mat4(0, y, 0, w, h * (0.26 - f * 0.05), w, 0, i * 0.7, 0), 0.5);
-        // neve no topo de cada camada
-        add(lod ? base.pineLo : base.pine, '#f4f8ff', mat4(0, y + h * 0.06, 0, w * 0.82, h * 0.15, w * 0.82, 0, i * 0.7 + 0.2, 0), 0.2);
-      }
-      break;
-    }
-    case 'acacia': {
-      add(bark, s.trunk, mat4(0, 0, 0, 0.7, h * 0.55, 0.7, 0, 0, 0.12), 0, 0.3);
-      add(base.branch, s.trunkDark, mat4(0.4, h * 0.45, 0, 0.12, h * 0.3, 0.12, 0, 0, -0.7));
-      add(base.branch, s.trunkDark, mat4(0.4, h * 0.45, 0, 0.1, h * 0.28, 0.1, 0, 0, 0.6));
-      const cl = lod ? base.clumpLo : base.clumps[0];
-      add(cl, s.leaf, mat4(0.5, h * 0.78, 0, h * 0.42, h * 0.1, h * 0.36), 0.6);
-      add(cl, s.leaf2, mat4(-0.4, h * 0.7, 0.4, h * 0.26, h * 0.08, h * 0.24), 0.6);
-      if (!lod) add(base.clumps[1], s.leaf, mat4(1.4, h * 0.72, -0.6, h * 0.2, h * 0.07, h * 0.2), 0.6);
-      break;
-    }
+    case 'snowpine':
+      return nt('snowpine');
+    case 'acacia':
+      return nt('acacia');
+    case 'willow':
+      return nt('willow');
     case 'cactus': {
       const cyl = base.cyl;
       add(cyl, s.trunk, mat4(0, h * 0.42, 0, 0.42, h * 0.84, 0.42));
@@ -55,18 +40,6 @@ export function wTreeGeometry(sp: number, lod: number, lite: boolean): THREE.Buf
       if (!lod) {
         add(base.ico, s.leaf, mat4(0, h * 0.84 + 0.36, 0, 0.18, 0.12, 0.18));
         add(base.ico, s.leaf2, mat4(0.82, h * 0.67 + 0.25, 0, 0.12, 0.08, 0.12));
-      }
-      break;
-    }
-    case 'willow': {
-      add(bark, s.trunk, mat4(0, 0, 0, 1.2, h * 0.55, 1.2), 0, 0.35);
-      add(lod ? base.clumpLo : base.clumps[2], s.leaf2, mat4(0, h * 0.68, 0, h * 0.3, h * 0.2, h * 0.3), 0.5);
-      const n = lod ? 6 : 12;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * TAU;
-        const r = h * 0.27;
-        // cortinas caídas (cone de ponta para baixo)
-        add(base.cone, i % 2 ? s.leaf : s.leaf2, mat4(Math.cos(a) * r, h * 0.48, Math.sin(a) * r, h * 0.07, h * 0.5, h * 0.07, Math.PI, 0, 0), 0.3);
       }
       break;
     }
@@ -88,26 +61,9 @@ export function wTreeGeometry(sp: number, lod: number, lite: boolean): THREE.Buf
       break;
     }
     default:
-      return birchify(sp, treeGeometry(s as unknown as Species, 0, lod, lite));
+      return treeGeometry(s as unknown as Species, 0, lod, lite);
   }
   return mergeParts(parts);
-}
-
-/** bétula: casca clara com manchas (colore o tronco claro com faixas escuras) */
-function birchify(sp: number, g: THREE.BufferGeometry): THREE.BufferGeometry {
-  if (sp !== 12) return g;
-  const c = g.getAttribute('color') as THREE.BufferAttribute;
-  const p = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < c.count; i++) {
-    const r = c.getX(i);
-    const gg = c.getY(i);
-    const b = c.getZ(i);
-    if (r > 0.75 && gg > 0.72 && b > 0.6 && p.getY(i) < 6) {
-      const band = Math.sin(p.getY(i) * 7.3 + Math.atan2(p.getZ(i), p.getX(i)) * 2) > 0.72;
-      if (band) c.setXYZ(i, 0.18, 0.16, 0.15);
-    }
-  }
-  return g;
 }
 
 export function rockGeometry(): THREE.BufferGeometry {

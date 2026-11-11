@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { CH, RES, VN, WATER_Y, RAIL_Z, type Camp, type WorldGen } from './gen';
-import { hash2 } from './noise';
+import { hash2, vnoise } from './noise';
 import { NB, WBIOMES, WSPECIES } from './biomes';
 
 export const TREE_STRIDE = 8; // x, y, z, rotY, escala, espécie, rara, bioma
@@ -31,6 +31,25 @@ const MUD = rgb('#6a5236');
 const SNOW = rgb('#f4f8ff');
 const DUG = rgb('#7a5434');
 const RAIL_GRAVEL = rgb('#a89a88');
+const DRY = rgb('#c9b25e');
+/** grama de lâminas por bioma: [densidade 0..1, altura] (nevado = sem lâminas) */
+const BGRASS: Record<string, [number, number]> = {
+  bosque: [1, 1],
+  nevado: [0, 0.6],
+  tropical: [1, 1.2],
+  cerejeiras: [0.9, 0.9],
+  cogumelos: [0.75, 0.9],
+  cristal: [0.5, 0.75],
+  savana: [0.9, 1.45],
+  pantano: [0.9, 1.25],
+  deserto: [0.1, 0.8],
+  outono: [0.85, 1],
+  montanha: [0.45, 0.7],
+  bambu: [0.95, 1.1],
+};
+const BGK = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[0]);
+const BGH = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[1]);
+const _sh = new Float32Array(4);
 
 /** índices compartilhados por nível de detalhe (grade + saia) */
 const IDX = new Map<number, THREE.BufferAttribute>();
@@ -86,6 +105,8 @@ export class Chunk {
   edit: Float32Array | null = null;
   /** cores misturadas: grama(3) grama2(3) terra(3) rocha(3) + tom (1) */
   col = new Float32Array(VN * VN * 13);
+  /** natureza por vértice: densidade da grama do bioma, altura da grama, mancha seca (0..1), clareira de terra (0..1) */
+  nat = new Float32Array(VN * VN * 4);
   trees: Float32Array;
   nt = 0;
   tstate: Uint8Array;
@@ -192,6 +213,21 @@ export class Chunk {
         c[o + 6] = dr; c[o + 7] = dg; c[o + 8] = db;
         c[o + 9] = rr; c[o + 10] = rg; c[o + 11] = rb;
         c[o + 12] = gen.tint(x, z);
+        let gk = 0;
+        let gh = 0;
+        for (let b = 0; b < NB; b++) {
+          gk += BGK[b] * W[b];
+          gh += BGH[b] * W[b];
+        }
+        const n = k * 4;
+        const s = gen.seed;
+        this.nat[n] = gk;
+        this.nat[n + 1] = gh;
+        // manchas de capim seco e clareiras de terra (quebram o verde liso)
+        const dry = vnoise(x / 23, z / 23, s + 90) * 0.7 + vnoise(x / 7, z / 7, s + 91) * 0.3;
+        this.nat[n + 2] = Math.max(0, Math.min(1, (dry - 0.55) * 4));
+        const dirt = vnoise(x / 13, z / 13, s + 92) * 0.75 + vnoise(x / 3.1, z / 3.1, s + 93) * 0.25;
+        this.nat[n + 3] = Math.max(0, Math.min(1, (dirt - 0.71) * 6));
       }
     this.gMn = mn;
     this.gMx = mx;
@@ -368,6 +404,110 @@ export class Chunk {
     return m;
   }
 
+  /**
+   * Cor do chão no vértice (i,j) com inclinação (dx,dz): grama ↔ grama2 pelo tom, manchas secas,
+   * clareiras, rocha nas encostas, areia/lama na beira d'água, neve no alto, terra onde cavou,
+   * cascalho no trilho. out = [r, g, b, grama 0..1] (grama = quanto cabe de lâminas aqui).
+   */
+  shadeAt(i: number, j: number, dx: number, dz: number, out: Float32Array): Float32Array {
+    const k = j * VN + i;
+    const col = this.col;
+    const o = k * 13;
+    const y = this.h[k];
+    const tn = 0.3 + col[o + 12] * 0.4;
+    let r = col[o] + (col[o + 3] - col[o]) * tn;
+    let gg = col[o + 1] + (col[o + 4] - col[o + 1]) * tn;
+    let b = col[o + 2] + (col[o + 5] - col[o + 2]) * tn;
+    const na = k * 4;
+    let grass = this.nat[na];
+    // mancha seca: puxa para palha (menos nos biomas brancos/roxos — só escurece um pouco)
+    const dry = this.nat[na + 2] * 0.45;
+    if (dry > 0) {
+      const L = (r + gg + b) / (DRY[0] + DRY[1] + DRY[2]);
+      r += (DRY[0] * L - r) * dry;
+      gg += (DRY[1] * L - gg) * dry;
+      b += (DRY[2] * L - b) * dry;
+    }
+    // clareira de terra batida (pouca grama)
+    const dt = this.nat[na + 3];
+    if (dt > 0) {
+      const s = dt * 0.75;
+      r += (col[o + 6] * 1.05 - r) * s;
+      gg += (col[o + 7] * 1.05 - gg) * s;
+      b += (col[o + 8] * 1.05 - b) * s;
+      grass *= 1 - dt * 0.85;
+    }
+    const sl = Math.sqrt(dx * dx + dz * dz);
+    const rk = sl > 0.75 ? Math.min(1, (sl - 0.75) * 2.5) : 0;
+    if (rk > 0) {
+      r += (col[o + 9] - r) * rk;
+      gg += (col[o + 10] - gg) * rk;
+      b += (col[o + 11] - b) * rk;
+      grass *= 1 - rk;
+    }
+    if (sl > 0.55) grass *= Math.max(0, 1 - (sl - 0.55) * 3);
+    if (y > 34) {
+      const s = Math.min(1, (y - 34) / 8) * (1 - rk * 0.6);
+      r += (SNOW[0] - r) * s;
+      gg += (SNOW[1] - gg) * s;
+      b += (SNOW[2] - b) * s;
+      grass *= 1 - s;
+    }
+    const by = this.base[k];
+    if (by < WATER_Y + 1.1 && y > by - 1) {
+      const s = Math.min(1, (WATER_Y + 1.1 - by) / 0.8);
+      const sand = col[o + 1] > col[o] * 1.4 && col[o + 2] < 0.3 ? MUD : SAND;
+      r += (sand[0] - r) * s;
+      gg += (sand[1] - gg) * s;
+      b += (sand[2] - b) * s;
+      grass *= 1 - s;
+    }
+    if (y < WATER_Y + 0.15) grass = 0;
+    const ed = this.edit;
+    if (ed && ed[k] !== 0) {
+      const e = ed[k];
+      const s = Math.min(1, Math.abs(e) * 1.5);
+      const tgt = e < -1.4 ? col.subarray(o + 9, o + 12) : DUG;
+      r += (tgt[0] - r) * s;
+      gg += (tgt[1] - gg) * s;
+      b += (tgt[2] - b) * s;
+      grass *= 1 - Math.min(1, s * 2);
+    }
+    if (this.railK !== null) {
+      const d = Math.abs(this.z0 + j - this.railK * RAIL_Z);
+      if (d < 3.2) {
+        const s = d < 2.4 ? 0.85 : ((3.2 - d) / 0.8) * 0.85;
+        r += (RAIL_GRAVEL[0] - r) * s;
+        gg += (RAIL_GRAVEL[1] - gg) * s;
+        b += (RAIL_GRAVEL[2] - b) * s;
+        grass *= 1 - s;
+      }
+    }
+    // variação suave (sem o padrão listrado)
+    const sh = 0.95 + hash2(this.x0 + i, this.z0 + j, 7) * 0.07;
+    out[0] = r * sh;
+    out[1] = gg * sh;
+    out[2] = b * sh;
+    out[3] = grass;
+    return out;
+  }
+  /** cor do chão + quanto cabe de grama no vértice (i,j), com a inclinação local */
+  grassAt(i: number, j: number, out: Float32Array): number {
+    const h = this.h;
+    const hl = h[j * VN + Math.max(0, i - 1)];
+    const hr = h[j * VN + Math.min(RES, i + 1)];
+    const hd = h[Math.max(0, j - 1) * VN + i];
+    const hu = h[Math.min(RES, j + 1) * VN + i];
+    const dx = (hr - hl) / (i > 0 && i < RES ? 2 : 1);
+    const dz = (hu - hd) / (j > 0 && j < RES ? 2 : 1);
+    return this.shadeAt(i, j, dx, dz, out)[3];
+  }
+  /** altura da grama de lâminas no vértice (multiplicador do bioma; mais baixa nas manchas secas) */
+  grassH(i: number, j: number): number {
+    const na = (j * VN + i) * 4;
+    return this.nat[na + 1] * (1 - this.nat[na + 2] * 0.3);
+  }
+
   /** reescreve posições/normais/cores no lugar (sem alocar) */
   fillMesh(): void {
     const m = this.mesh!;
@@ -378,9 +518,6 @@ export class Chunk {
     const N = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
     const C = (g.getAttribute('color') as THREE.BufferAttribute).array as Float32Array;
     const h = this.h;
-    const col = this.col;
-    const ed = this.edit;
-    const rail = this.railK;
     for (let jj = 0; jj < n; jj++)
       for (let ii = 0; ii < n; ii++) {
         const i = ii * step;
@@ -401,55 +538,10 @@ export class Chunk {
         N[v * 3] = -dx * il;
         N[v * 3 + 1] = il;
         N[v * 3 + 2] = -dz * il;
-        // cor: grama ↔ grama2 pelo tom; rocha nas encostas; areia/lama na beira d'água; neve no alto; terra onde cavou
-        const o = k * 13;
-        const tn = col[o + 12];
-        let r = col[o] + (col[o + 3] - col[o]) * tn;
-        let gg = col[o + 1] + (col[o + 4] - col[o + 1]) * tn;
-        let b = col[o + 2] + (col[o + 5] - col[o + 2]) * tn;
-        const sl = Math.sqrt(dx * dx + dz * dz);
-        const rk = sl > 0.75 ? Math.min(1, (sl - 0.75) * 2.5) : 0;
-        if (rk > 0) {
-          r += (col[o + 9] - r) * rk;
-          gg += (col[o + 10] - gg) * rk;
-          b += (col[o + 11] - b) * rk;
-        }
-        if (y > 34) {
-          const s = Math.min(1, (y - 34) / 8) * (1 - rk * 0.6);
-          r += (SNOW[0] - r) * s;
-          gg += (SNOW[1] - gg) * s;
-          b += (SNOW[2] - b) * s;
-        }
-        const by = this.base[k];
-        if (by < WATER_Y + 1.1 && y > by - 1) {
-          const s = Math.min(1, (WATER_Y + 1.1 - by) / 0.8);
-          const sand = col[o + 1] > col[o] * 1.4 && col[o + 2] < 0.3 ? MUD : SAND;
-          r += (sand[0] - r) * s;
-          gg += (sand[1] - gg) * s;
-          b += (sand[2] - b) * s;
-        }
-        if (ed && ed[k] !== 0) {
-          const e = ed[k];
-          const s = Math.min(1, Math.abs(e) * 1.5);
-          const tgt = e < -1.4 ? col.subarray(o + 9, o + 12) : DUG;
-          r += (tgt[0] * (e < -1.4 ? 1 : 1) - r) * s;
-          gg += (tgt[1] - gg) * s;
-          b += (tgt[2] - b) * s;
-        }
-        if (rail !== null) {
-          const d = Math.abs(this.z0 + j - rail * RAIL_Z);
-          if (d < 3.2) {
-            const s = d < 2.4 ? 0.85 : (3.2 - d) / 0.8 * 0.85;
-            r += (RAIL_GRAVEL[0] - r) * s;
-            gg += (RAIL_GRAVEL[1] - gg) * s;
-            b += (RAIL_GRAVEL[2] - b) * s;
-          }
-        }
-        // listras suaves (variação)
-        const sh = 0.93 + ((i * 7 + j * 13) % 5) * 0.018;
-        C[v * 3] = r * sh;
-        C[v * 3 + 1] = gg * sh;
-        C[v * 3 + 2] = b * sh;
+        this.shadeAt(i, j, dx, dz, _sh);
+        C[v * 3] = _sh[0];
+        C[v * 3 + 1] = _sh[1];
+        C[v * 3 + 2] = _sh[2];
       }
     const base = n * n;
     const ring = RINGS.get(step)!;

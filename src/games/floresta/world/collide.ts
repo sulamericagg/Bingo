@@ -42,8 +42,12 @@ export class Solids {
     return { x, z, y0, y1, hx, hz, c: Math.cos(yaw), s: Math.sin(yaw), tag };
   }
 
+  /** avisa quando uma caixa fixa entra/sai (a grama embaixo é refeita) */
+  onEdit: ((x0: number, z0: number, x1: number, z1: number) => void) | null = null;
+
   add(b: SBox): SBox {
     const r = Math.max(b.hx, b.hz) * 1.42;
+    this.onEdit?.(b.x - r, b.z - r, b.x + r, b.z + r);
     const x0 = Math.floor((b.x - r) / CELL);
     const x1 = Math.floor((b.x + r) / CELL);
     const z0 = Math.floor((b.z - r) / CELL);
@@ -59,6 +63,7 @@ export class Solids {
   }
   remove(b: SBox): void {
     const r = Math.max(b.hx, b.hz) * 1.42;
+    this.onEdit?.(b.x - r, b.z - r, b.x + r, b.z + r);
     const x0 = Math.floor((b.x - r) / CELL);
     const x1 = Math.floor((b.x + r) / CELL);
     const z0 = Math.floor((b.z - r) / CELL);
