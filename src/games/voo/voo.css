@@ -36,7 +36,7 @@
 .voo-mk.edge{opacity:.95;transform:scale(.85)}
 .voo-mk.mine{box-shadow:0 0 0 3px #ffd34a,0 4px 10px rgba(0,0,0,.35)}
 .voo-mk .prog{position:absolute;inset:-6px;border-radius:50%}
-@keyframes vooPulse{to{transform:scale(1.1)}}
+@keyframes vooPulse{to{scale:1.1}}
 .voo-say{position:absolute;left:0;top:0;transform:translate(-50%,-100%);background:#fff;color:#2a0b5c;border-radius:12px;padding:3px 9px;font-weight:800;font-size:12px;white-space:nowrap;box-shadow:0 0 0 2px #2a0b5c}
 .voo-ret{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px #2a0b5c;transition:transform .12s,border-color .12s}
 .voo-ret.hot{transform:scale(1.4);border-color:#ffd34a}
