@@ -2873,7 +2873,8 @@ export class DisasterGame implements MiniGameHandle {
     if (W > c.vw) c.x = Math.max(half - 60, Math.min(W - half + 60, c.x));
     else c.x = W / 2;
     // chão perto da parte de baixo da tela
-    const maxY = GROUND_Y + 150 - c.vh / 2;
+    // chão perto da parte de baixo da tela (sem metade da tela de terra)
+    const maxY = GROUND_Y + 92 - c.vh / 2;
     if (c.y > maxY) c.y = maxY;
     if (c.y < -700 + c.vh / 2) c.y = -700 + c.vh / 2;
   }
