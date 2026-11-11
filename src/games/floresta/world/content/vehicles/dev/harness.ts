@@ -116,6 +116,7 @@ function assemblePickupByHand(): VehicleDesign {
 function loadLogs(v: Vehicle, n: number): void {
   // toras atravessadas (eixo X do veículo) se a caçamba tiver 1,5 m de largura; senão no comprido
   const s = v.lay.cargo[0];
+  if (!s) return;
   const across = s.hw * 2 >= 1.45;
   const span = across ? s.hl * 2 : s.hw * 2;
   const per = Math.max(1, Math.floor(span / 0.56));
@@ -254,27 +255,33 @@ btn('Picape', () => {
   if (v) drive(v);
 });
 btn('+6 toras', () => mgr.driving && loadLogs(mgr.driving, 6));
-for (const id of ['carrinho', 'carroca', 'kart', 'trator', 'caminhao', 'escavadeira', 'barco', 'ultraleve', 'helicoptero'])
-  btn(id, () => {
-    mgr.clear();
-    sb.clearLogs();
-    const bp = BLUEPRINT.get(id)!;
-    const x = id === 'barco' ? 40 : 0;
-    const z = id === 'barco' ? 18 : 0;
-    const v = spawnDesign(bp.design, x, z, 0);
-    if (bp.trailer) spawnDesign(bp.trailer, x, z + 5.5, 0);
-    if (v) drive(v);
-  });
+function spawnBp(id: string): Vehicle | null {
+  mgr.clear();
+  sb.clearLogs();
+  const bp = BLUEPRINT.get(id)!;
+  const x = id === 'barco' ? 40 : 0;
+  const z = id === 'barco' ? 18 : id === 'ultraleve' ? 70 : 0;
+  const v = spawnDesign(bp.design, x, z, 0);
+  if (bp.trailer && v) {
+    const tr = spawnDesign(bp.trailer, x, z + v.lay.hl + 3.4, 0);
+    if (tr) v.hitchTo(tr, 4);
+  }
+  if (v) drive(v);
+  return v;
+}
+for (const id of ['carrinho', 'carroca', 'kart', 'trator', 'caminhao', 'escavadeira', 'barco', 'ultraleve', 'helicoptero']) btn(id, () => spawnBp(id));
 
 function showGarage(): void {
   if (garage) return;
   hud?.destroy();
   hud = null;
+  bar.style.display = 'none';
   garage = openGarage(root, {
     inv,
     station: 'oficina',
     onClose: () => {
       garage = null;
+      bar.style.display = '';
       if (mgr.driving) drive(mgr.driving);
     },
     onBuild: (d) => {
@@ -291,6 +298,7 @@ function showGarage(): void {
 const api = {
   mgr,
   sb,
+  spawnBp,
   inv,
   BLUEPRINT,
   PART,

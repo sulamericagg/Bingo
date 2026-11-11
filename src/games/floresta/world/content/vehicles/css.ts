@@ -19,7 +19,7 @@ const CSS = `
 .mv-hint{position:absolute;left:50%;transform:translateX(-50%);background:rgba(20,16,48,.6);border-radius:12px;padding:5px 12px;font-size:14px;pointer-events:none;white-space:nowrap}
 
 .mv-gar{position:absolute;inset:0;z-index:40;background:linear-gradient(160deg,#2a1a5e,#160a3a);color:#fff;font-family:var(--font,'Fredoka',system-ui,sans-serif);display:flex;flex-direction:column;user-select:none;-webkit-user-select:none;touch-action:none}
-.mv-top{display:flex;align-items:center;gap:8px;padding:6px 10px;flex:0 0 auto}
+.mv-top{display:flex;align-items:center;gap:8px;padding:6px 10px;flex:0 0 auto;flex-wrap:wrap}
 .mv-top .mv-t{flex:1;font-size:18px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mv-ib{width:48px;height:48px;border-radius:14px;border:0;background:rgba(255,255,255,.12);color:#fff;padding:10px;box-sizing:border-box;flex:0 0 auto;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .mv-ib.on{background:#ffd34a;color:#2a1a00}
@@ -40,13 +40,13 @@ const CSS = `
 .mv-pp.under{border-style:dashed;opacity:.85;background:rgba(0,0,0,.25)!important}
 .mv-pp i{display:block;width:80%;height:80%;max-width:40px;max-height:40px}
 .mv-front{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-size:12px;opacity:.75;white-space:nowrap}
-.mv-side{width:min(36vw,300px);display:flex;flex-direction:column;gap:8px;min-height:0}
+.mv-side{width:min(36vw,300px);display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto;touch-action:pan-y}
 .mv-prev{flex:1 1 40%;min-height:110px;border-radius:12px;background:radial-gradient(#4a3a8e,#20124e);position:relative;overflow:hidden}
 .mv-prev canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
 .mv-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:13px;flex:0 0 auto}
 .mv-stat{display:flex;gap:5px;align-items:center;background:rgba(255,255,255,.08);border-radius:8px;padding:3px 6px;white-space:nowrap;overflow:hidden}
 .mv-stat i{width:18px;height:18px;display:block;flex:0 0 auto}
-.mv-errs{font-size:13px;display:flex;flex-direction:column;gap:3px;overflow:auto;max-height:22vh}
+.mv-errs{font-size:13px;display:flex;flex-direction:column;gap:3px;flex:0 0 auto}
 .mv-err{background:rgba(255,79,106,.3);border-radius:8px;padding:3px 8px}
 .mv-warn{background:rgba(255,211,74,.22);border-radius:8px;padding:3px 8px}
 .mv-okk{background:rgba(62,192,90,.35);border-radius:8px;padding:3px 8px;font-weight:600}
@@ -76,6 +76,7 @@ const CSS = `
 .mv-paints button.on{border-color:#fff}
 .mv-toast{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:6px 14px;border-radius:12px;font-size:14px;pointer-events:none;transition:opacity .3s;white-space:nowrap}
 @media (max-height:420px){.mv-slot{height:62px;width:58px}.mv-slot i{width:32px;height:32px}.mv-top{padding:4px 10px}.mv-ib{width:42px;height:42px;padding:9px}}
+@media (max-width:700px){.mv-tab span{display:none}.mv-top .mv-t{flex-basis:100%;order:9}}
 @media (orientation:portrait){.mv-main{flex-direction:column}.mv-side{width:auto;flex-direction:row;flex-wrap:wrap}.mv-prev{flex:1 1 45%;min-height:140px}.mv-stats{flex:1 1 50%}}
 `;
 let done = false;

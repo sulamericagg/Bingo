@@ -33,7 +33,7 @@ export const BLUEPRINTS: Blueprint[] = [
     name: () => t('mveic.bp.carrinho', 'Carrinho de Mão'),
     desc: () => t('mveic.bp.carrinhoD', 'Empurre com as pernas e leve 3 toras.'),
     design: D('carrinho', 'vp_chassi_p', '#d8a060', [
-      ['vp_roda_madeira', 1, 0], ['vp_roda_madeira', 0, 3], ['vp_roda_madeira', 2, 3],
+      ['vp_roda_madeira', 0, 0], ['vp_roda_madeira', 2, 0], ['vp_roda_madeira', 1, 3],
       ['vp_cacamba_p', 0, 0], ['vp_motor_pedal', 2, 1], ['vp_banco', 1, 3],
     ]),
   },

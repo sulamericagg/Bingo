@@ -57,6 +57,10 @@ export interface VInput {
 const _v = new CANNON.Vec3();
 const _v2 = new CANNON.Vec3();
 const _fwd = new CANNON.Vec3();
+const FWD_L = new CANNON.Vec3(0, 0, -1);
+const UP_L = new CANNON.Vec3(0, 1, 0);
+const RIGHT_L = new CANNON.Vec3(1, 0, 0);
+const _rel = new CANNON.Vec3();
 const _tv = new THREE.Vector3();
 const _tq = new THREE.Quaternion();
 const _tm = new THREE.Matrix4();
@@ -274,10 +278,10 @@ export class Vehicle {
   /* ------------------------------ consultas ------------------------------ */
   /** vetor frente (mundo) */
   forward(out = new CANNON.Vec3()): CANNON.Vec3 {
-    return this.body.quaternion.vmult(_v.set(0, 0, -1), out);
+    return this.body.quaternion.vmult(FWD_L, out);
   }
   up(out = new CANNON.Vec3()): CANNON.Vec3 {
-    return this.body.quaternion.vmult(_v.set(0, 1, 0), out);
+    return this.body.quaternion.vmult(UP_L, out);
   }
   /** ponto do projeto (referencial do layout) → mundo */
   toWorld(x: number, y: number, z: number, out = new CANNON.Vec3()): CANNON.Vec3 {
@@ -590,7 +594,11 @@ export class Vehicle {
         for (let i = 0; i < n; i++) {
           const w = this.lay.wheels[i];
           let f = rv.wheelInfos[i].isInContact ? per : 0;
-          if (tracked) f *= 1 + clamp(inp.steer, -1, 1) * 0.6 * (w.side > 0 ? -1 : 1);
+          if (tracked && rv.wheelInfos[i].isInContact && run) {
+            // tração diferencial: uma esteira para frente, a outra para trás (gira parado)
+            f *= 1 + clamp(inp.steer, -1, 1) * 0.6 * (w.side > 0 ? -1 : 1);
+            f += (w.side > 0 ? -1 : 1) * clamp(inp.steer, -1, 1) * driveForce(P, 2) * 0.5 / Math.max(1, contact);
+          }
           drive.push(f);
         }
       }
@@ -611,7 +619,7 @@ export class Vehicle {
         const want = -inp.steer * (tracked ? 1.1 : 0.8) * (v < -0.3 ? -1 : 1);
         const up = this.up(_v);
         const cur = b.angularVelocity.dot(up);
-        const k = Math.min(1, dt * 6) * (want - cur);
+        const k = Math.min(1, dt * (tracked ? 14 : 6)) * (want - cur);
         b.angularVelocity.x += up.x * k;
         b.angularVelocity.y += up.y * k;
         b.angularVelocity.z += up.z * k;
@@ -646,7 +654,8 @@ export class Vehicle {
           wet += sub * per;
           b.getVelocityAtWorldPoint(p, pv);
           const fy = B * g * sub - pv.y * B * sub * 1.5;
-          b.applyForce(new CANNON.Vec3(0, Math.max(0, fy), 0), p);
+          p.vsub(b.position, _rel); // applyForce quer o ponto RELATIVO ao centro
+          b.applyForce(new CANNON.Vec3(0, Math.max(0, fy), 0), _rel);
         }
       }
       if (wet > 0) {
@@ -698,25 +707,24 @@ export class Vehicle {
         used = lift / Math.max(1, maxLift);
       }
     }
-    // ---- avião ----
+    // ---- avião (arcade estável) ----
     if (s.kind === 'plane') {
       const air = this.wheelsOnGround === 0;
-      const lift = Math.min((b.mass + this.cargoMass) * g * 1.6, s.tools.wings * 2.4 * v * Math.abs(v) * (1 + clamp(-inp.throttle, -0.6, 0.8) * (air ? 0.6 : 0.2)));
-      const up = this.up(_v);
-      if (v > 0) b.applyForce(new CANNON.Vec3(up.x * lift, up.y * lift, up.z * lift));
+      const total = b.mass + this.cargoMass;
+      // sustentação ∝ v²; o manche pede uma razão de subida (baixo = sobe), sem input mantém a altura
+      const liftMax = s.tools.wings * 1.1 * Math.max(0, v) * Math.max(0, v);
+      const wantVy = air ? -inp.throttle * 6 : -inp.throttle > 0.3 ? 3 : 0;
+      const need = total * g + (wantVy - b.velocity.y) * total * 2;
+      const lift = clamp(need, 0, liftMax);
+      if (lift > 0) b.applyForce(_v.set(0, lift, 0));
+      mech += lift * 0.15 * Math.max(0, v) * 0.1;
       if (air) {
-        // manche: baixo = nariz para cima; lado = curva inclinada
-        const right = b.quaternion.vmult(new CANNON.Vec3(1, 0, 0));
-        const pitchRate = -inp.throttle * 1.1;
-        const yawRate = -inp.steer * 0.9;
-        const bank = -inp.steer * 0.6;
-        const roll = Math.asin(clamp(right.y, -1, 1));
-        const k = Math.min(1, dt * 4);
-        const wv = new CANNON.Vec3();
-        b.quaternion.vmult(new CANNON.Vec3(pitchRate, 0, (bank + roll) * 2), wv);
-        b.angularVelocity.x += (wv.x - b.angularVelocity.x) * k;
-        b.angularVelocity.z += (wv.z - b.angularVelocity.z) * k;
-        b.angularVelocity.y += (yawRate - b.angularVelocity.y) * k;
+        // quilha: a velocidade segue o nariz (curva de verdade)
+        const right = b.quaternion.vmult(RIGHT_L, new CANNON.Vec3());
+        const vs = b.velocity.dot(right);
+        b.applyForce(new CANNON.Vec3(-right.x * vs * total * 2, 0, -right.z * vs * total * 2));
+        const climb = clamp(b.velocity.y / Math.max(4, Math.abs(v)), -0.5, 0.5);
+        this.selfRight(dt, 4, -inp.steer * 0.9, -climb, -inp.steer * 0.5);
       }
     }
 
@@ -746,12 +754,13 @@ export class Vehicle {
     if (this.toolOn && this.driver && run && this.toolT <= 0) this.useTerrainTool();
   }
 
-  private selfRight(dt: number, k: number, yawRate: number, pitch: number): void {
+  /** põe o veículo "de pé" (ar): pitch > 0 = nariz para baixo; bank > 0 = inclina para a direita */
+  private selfRight(dt: number, k: number, yawRate: number, pitch: number, bank = 0): void {
     const b = this.body;
-    const up = this.up(_v);
-    // inclinação desejada: nariz um pouco para baixo para andar
+    const up = this.up(new CANNON.Vec3());
     const fwd = this.forward(new CANNON.Vec3());
-    const want = new CANNON.Vec3(fwd.x * pitch, 1, fwd.z * pitch);
+    const rt = b.quaternion.vmult(RIGHT_L, new CANNON.Vec3());
+    const want = new CANNON.Vec3(fwd.x * pitch + rt.x * bank, 1, fwd.z * pitch + rt.z * bank);
     want.normalize();
     const axis = up.cross(want);
     const kk = Math.min(1, dt * k);
@@ -767,7 +776,9 @@ export class Vehicle {
       this.toolT = 0.14;
       const sp = this.lay.spots.find((x) => x.def.cat === 'drill')!;
       const p = this.toWorld(sp.x, -0.25, -this.lay.hl - 1.05, _v);
-      const got = h.dig(p.x, p.y, p.z, 0.85);
+      // a broca morde o chão à frente (e um pouco abaixo): dá para abrir túnel/rampa
+      const top = h.heightAt ? h.heightAt(p.x, p.z) : p.y;
+      const got = h.dig(p.x, Math.min(p.y - 0.3, top - 0.15), p.z, 0.85);
       if (got && got.size) {
         const left = this.store(got);
         if (left.size) h.onItems?.(this, left);

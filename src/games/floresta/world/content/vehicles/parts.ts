@@ -173,7 +173,7 @@ R('vp_helice', 'oficina', [['barra_ferro', 2], ['engrenagem', 1]]);
 R('vp_rotor', 'oficina', [['barra_prata', 2], ['engrenagem', 2], ['fio', 2]]);
 R('vp_asa', 'oficina', [['tecido', 4], ['barra_ferro', 2], ['tabua', 2]]);
 R('vp_farol', 'oficina', [['vidro', 1], ['tocha', 1]], 2);
-R('vp_blindagem', 'bigorna', [['barra_ferro', 3]]);
+R('vp_blindagem', 'oficina', [['barra_ferro', 3]]);
 R('combustivel', 'oficina', [['resina', 2], ['carvao', 1]], 2);
 R('bateria', 'oficina', [['barra_cobre', 2], ['fio', 2], ['cristal', 1]]);
 R('kit_reparo', 'bancada', [['barra_ferro', 1], ['engrenagem', 1], ['corda', 1]]);

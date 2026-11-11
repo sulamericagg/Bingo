@@ -124,7 +124,7 @@ function wheelGeometry(): THREE.BufferGeometry {
 let WHEEL_GEO: THREE.BufferGeometry | null = null;
 
 /** monta o modelo do projeto (rodas como instâncias; posição/rotação vêm da física ou de `poseWheelsRest`) */
-export function buildVehicleModel(d: VehicleDesign, opts: { lite?: boolean } = {}): VehicleModel {
+export function buildVehicleModel(d: VehicleDesign, opts: { lite?: boolean; noCab?: boolean } = {}): VehicleModel {
   const lay = layout(d);
   const a = new Acc();
   const paint = d.paint;
@@ -330,6 +330,20 @@ export function buildVehicleModel(d: VehicleDesign, opts: { lite?: boolean } = {
         a.box(dark, s.x * 0.5, -DECK_T - 0.04, s.z, Math.abs(s.x) + 0.1, 0.06, 0.06);
         break;
     }
+  }
+
+  // cabine automática (carros/esteiras médios e grandes): colunas, teto e para-brisa sobre o banco
+  const seat = lay.spots.find((x) => x.def.cat === 'seat');
+  const airOrWater = lay.spots.some((x) => x.def.cat === 'rotor' || x.def.cat === 'wing' || x.def.cat === 'float');
+  if (seat && lay.W >= 4 && !airOrWater && !opts.noCab) {
+    const z0 = seat.z - 0.34;
+    const z1 = seat.z + 0.3;
+    const H = 1.3;
+    const x = lay.hw - 0.05;
+    for (const sx of [-x, x]) for (const sz of [z0, z1]) a.box(paint, sx, H / 2, sz, 0.08, H, 0.08);
+    a.box(paint, 0, H, (z0 + z1) / 2, lay.hw * 2 + 0.06, 0.08, z1 - z0 + 0.16);
+    a.box('#2a2e38', 0, H + 0.05, (z0 + z1) / 2, lay.hw * 1.6, 0.03, (z1 - z0) * 0.6);
+    a.box('#bfeaff', 0, H * 0.66, z0 - 0.02, lay.hw * 2 - 0.14, H * 0.5, 0.03, 0, -0.12);
   }
 
   const root = new THREE.Group();

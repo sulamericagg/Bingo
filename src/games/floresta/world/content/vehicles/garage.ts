@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { t, fmtDec } from '../../../../../i18n';
 import { ensureVehCss } from './css';
 import { UI_ICONS, partIcon, type UiIcon } from './icons';
-import { PARTS, PART, VEH_RECIPES, vItemName, fuelName, type Station, type VRecipe } from './parts';
+import { PARTS, PART, VEH_RECIPES, FUEL_ITEMS, vItemName, fuelName, type Station, type VRecipe } from './parts';
 import { analyze, canPlace, cloneDesign, footprint, gridOf, newDesign, place, placeErrText, removeAt, setChassis, PAINTS, DRIVER, MASS_KG, type Rot, type VehicleDesign } from './design';
 import { BLUEPRINTS } from './blueprints';
 import { craft, craftable, craftMissing, missingParts, stationOk, type VInventory } from './crafting';
@@ -80,9 +80,9 @@ export function openGarage(root: HTMLElement, o: GarageOptions): GarageHandle {
       <div class="mv-gridw"><div class="mv-grid"></div></div>
       <div class="mv-side">
         <div class="mv-prev"></div>
+        <div class="mv-errs"></div>
         <div class="mv-stats"></div>
         <div class="mv-paints"></div>
-        <div class="mv-errs"></div>
       </div>
     </div>
     <div class="mv-tray mv-pg" data-pg="build"></div>
@@ -106,6 +106,10 @@ export function openGarage(root: HTMLElement, o: GarageOptions): GarageHandle {
     clearTimeout(toastT);
     toastT = window.setTimeout(() => (toastEl.style.opacity = '0'), 1800);
   };
+
+  /** item principal de cada combustível (para mostrar o consumo em itens por km) */
+const FUEL_ITEM: Record<string, string> = { carvao: 'carvao', combustivel: 'combustivel', bateria: 'bateria' };
+const perKm = (a: ReturnType<typeof analyze>) => (a.topSpeed > 0 ? (a.fuelPerMin / 60 / a.topSpeed) * 1000 / (FUEL_ITEMS[FUEL_ITEM[a.fuel]]?.e || 1) : 0);
 
   /* ------------------------------ prévia 3D ------------------------------ */
   const prevEl = $('.mv-prev');
@@ -333,8 +337,8 @@ export function openGarage(root: HTMLElement, o: GarageOptions): GarageHandle {
       st('power', `${fmtDec(a.power, 0)} ${t('mveic.g.pw', 'pot.')}`),
       st('speed', `${kmh(a.topSpeed)} km/h`),
       a.kind === 'land' || a.kind === 'tracked' ? st('mountain', `${Math.round(a.climb)}°`) : st('speed', kindName(a.kind)),
-      st('fuel', a.fuel === 'none' ? fuelName('none') : `${fmtDec(a.fuelPerMin, 1)}/min`),
-      st('fuel', a.fuel === 'none' ? '∞' : `${Math.round(a.range / 1000 * 10) / 10} km`),
+      a.fuel === 'none' ? st('fuel', fuelName('none')) : st(partIcon(FUEL_ITEM[a.fuel]), `${fmtDec(perKm(a), 1)} / km`, true),
+      st('fuel', a.fuel === 'none' ? '∞' : `${fmtDec(a.range / 1000, 1)} km`),
       st('log', `${a.cargo} ${t('mveic.g.logs', 'toras')}${a.slots ? ` +${a.slots}▣` : ''}`),
       st('heart', `${a.hp} ${a.armor ? `+${Math.round(a.armor * 100)}%` : ''}`),
     ].join('');
