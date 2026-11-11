@@ -139,6 +139,46 @@ Durante a rodada há também o `calor` (0→1 ao longo do desastre) que acelera 
   o Bloop de papel só aparece em 3ª pessoa. Setas de ameaça fora da vista.
 - Seu Bloop = seu avatar salvo (skin ou "Meu Bloop"). Bots nunca usam o "custom" de outra pessoa.
 
-## 10. Resultado (depois)
+## 10. Resultado (depois) — medições
 
-Ver a seção "Medições" no fim deste arquivo (preenchida pelo banco após a implementação).
+### 2D (`scripts/dev/disaster-bench.mjs --rounds 6`, normal, ★1, sequência 0 → I = 0,85)
+
+Agora em duas passadas por rodada: (a) bots (você parado + 3 espertos + 4 médios); (b) só estátuas nos
+lugares altos (antes as estátuas paradas faziam plataformas cederem e atraíam golpes, poluindo a medida).
+"bot-esperto" nos fluidos usa a estratégia óbvia "torre mais alta e fica lá" — que agora **perde** (a torre
+racha/tomba), de propósito.
+
+| desastre | parado | mais-alto | lugar-alto | bot-esperto | **bot-médio antes → depois** | causa principal |
+|---|---|---|---|---|---|---|
+| tsunami | 8% | 50% | 11% | 36% | **70% → 57%** | fôlego (caldo da onda + água que fica) |
+| vulcão | 8% | 0% | 2% | 40% | **69% → 52%** | lava que desce + bombas miradas |
+| terremoto | 0% | 8% | 9% | 69% | **81% → 65%** | buracos das rachaduras |
+| tornado | 0% | 0% | 0% | 33% | **70% → 53%** | destroços arremessados, funil |
+| meteoros | 4% | 4% | 1% | 47% | **75% → 54%** | mira no futuro + fogo no chão |
+| enchente | 4% | 0% | 0% | 25% | **100% → 50%** | fôlego, raio no mais alto |
+| avalanche | 0% | 0% | 1% | 24% | **77% → 41%** | ondas de neve maiores a cada vez |
+| raios | 0% | 0% | 1% | 57% | **77% → 61%** | raio no mais alto |
+| gosma | 8% | 0% | 4% | 38% | **94% → 45%** | torres derretendo |
+| meteoro gigante | 0% | 0% | 0% | 98% | **98% → 73%** | não chegou ao bunker |
+| sumidouro (novo) | 33% | 42% | 53% | 54% | **— → 50%** | buracos que crescem |
+| areia (novo) | 17% | 8% | 13% | 46% | **— → 49%** | destroços na horizontal |
+
+★4 (`--df 4 --rounds 3`): bot-médio 17–52% (tsunami 23, vulcão 29, tornado 29, meteoros 52, enchente 29,
+avalanche 17, raios 40, gosma 25, terremoto 69, sumidouro 46, areia 25; meteoro gigante 63). A sequência de
+vitórias e o modo Difícil sobem `I` ainda mais; "Desastre duplo!" entra com sequência ≥ 4.
+
+Pontos ainda fora da meta (honesto): terremoto um pouco fácil no ★1 (65%) e no ★4; avalanche/gosma um pouco
+difíceis no ★1 (41–45%); "mais-alto" do tsunami 50% (a meta era ≤ 40%). O banco tem variância de ±8 pontos
+entre execuções (os bots se amontoam no mesmo lugar: tudo-ou-nada).
+
+### 3D (`scripts/dev/disaster3d-bench.mjs --rounds 3`, ★1, você parado + 5 bots habilidade 0,6)
+
+Antes (`git show 50ad382:src/games/disaster/d3/game3d.ts > src/games/disaster/d3/game3d_old.ts` e
+`--mod /src/games/disaster/d3/game3d_old.ts`): bot-médio 80–100% em tudo (terremoto, tornado, meteoros,
+raios, sumidouro, areia = 100%). Depois: tsunami 62, vulcão 45, terremoto 83, tornado 50, meteoros 53,
+enchente 45, avalanche 35, raios 45, gosma 40, sumidouro 30, areia 83. Parado: 0% (era 0–100%).
+
+### Screenshots
+
+`NODE_PATH=$(npm root -g) node scripts/dev/disaster-shots.mjs` → `shots-dgame/2d-*.png`, `3d-tp-*.png`
+(3ª pessoa com o seu "Meu Bloop" de papel), `3d-fp-*.png` (1ª pessoa com setas de ameaça na borda).

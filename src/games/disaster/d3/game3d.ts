@@ -1126,6 +1126,7 @@ export class Disaster3D implements MiniGameHandle {
     this.pulse.k = -1;
     this.gust.t = 0;
     this.held = 0;
+    this.swimTold = false;
     this.ripCD = [];
     for (const h of this.holes) {
       h.on = false;
@@ -1964,6 +1965,7 @@ export class Disaster3D implements MiniGameHandle {
     }
   }
   private alertK: DzIcon = 'wave';
+  private swimTold = false;
   private alertT = 0;
 
   /** um tornado: persegue um jogador (com inércia), arranca telhados, puxa escombros */
@@ -2139,7 +2141,10 @@ export class Disaster3D implements MiniGameHandle {
     const depth = wl - p.pos.y;
     if (!p.swim && depth > 0.75 && !p.climbing) {
       p.swim = true;
-      if (p.self) notify(t('dz.swim', 'Nade! Pule para sair da água.'), { key: 'dz-hint', ms: 2200 });
+      if (p.self && !this.swimTold) {
+        this.swimTold = true;
+        notify(t('dz.swim', 'Nade! Pule para sair da água.'), { key: 'dz-swim', ms: 2200 });
+      }
     } else if (p.swim && (depth < 0.15 || p.climbing)) p.swim = false;
     const runK = p.swim ? 0.55 : 1;
     if (p.self && !frozen) {
@@ -2798,7 +2803,11 @@ export class Disaster3D implements MiniGameHandle {
           dist: 7.5,
           smooth: 0.12,
           dt,
-          block: (x0, y0, z0, x1, y1, z1) => this.rayBoxes(x0, y0, z0, x1 - x0, y1 - y0, z1 - z0),
+          block: (x0, y0, z0, x1, y1, z1) => {
+            // para um pouco ANTES da parede (sem ver por dentro do morro/casa)
+            const h = this.rayBoxes(x0, y0, z0, x1 - x0, y1 - y0, z1 - z0);
+            return h < 1 ? Math.max(0, h - 0.12) : 1;
+          },
         },
         cam,
       );

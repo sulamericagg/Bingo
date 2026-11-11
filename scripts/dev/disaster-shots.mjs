@@ -75,12 +75,20 @@ if (!process.argv.includes('--no2d')) {
         g.startRound();
         // avança até o momento (seu Bloop protegido enquanto avança: só para a foto ter você vivo)
         let guard = 0;
-        const done = () => (pl.t < 0 ? g.phase === 'prepare' && g.phaseT > -pl.t : g.phase === 'disaster' && g.phaseT >= pl.t);
+        // ondas: espera a frente chegar perto de você (o momento tenso)
+        const near = () => !g.fluid || !g.fluid.dir || d === 'vulcao' || Math.abs(g.fluid.front - g.me.x) < 260 || g.phaseT > pl.t + 14;
+        const done = () => (pl.t < 0 ? g.phase === 'prepare' && g.phaseT > -pl.t : g.phase === 'disaster' && g.phaseT >= pl.t && near());
         while (!done() && guard++ < 60 * 140) {
           g.me.shield = 9;
           g.update(1 / 60);
         }
         g.me.shield = 0;
+        // caiu num buraco enquanto protegido: volta para o chão firme ao lado (só para a foto)
+        if (g.me.y > 30) {
+          g.me.x = Math.max(40, g.me.x - 120);
+          g.me.y = g.world.topAt(g.me.x);
+          g.me.vy = 0;
+        }
         for (let i = 0; i < 3; i++) g.update(1 / 60);
         g.draw.frame();
         return { phase: g.phase, t: g.phaseT.toFixed(1), alive: g.players.filter((q) => q.alive).length, me: [Math.round(g.me.x), Math.round(g.me.y)], swim: g.me.swim };
@@ -112,6 +120,10 @@ if (!process.argv.includes('--no3d')) {
           g.cv.mode = view;
           g.startRound();
           const me = g.me;
+          const ko = g.knockOut.bind(g);
+          g.knockOut = (q) => {
+            if (!q.self) ko(q);
+          };
           // você: anda um pouco pela ilha (protegido enquanto avança para a foto)
           let guard = 0;
           const tt = pl.t < 0 ? 6 : Math.min(pl.t, 18);
@@ -159,6 +171,7 @@ if (!process.argv.includes('--no3d')) {
               st.ring.position.set(st.x, st.y + 0.06, st.z);
             }
           }
+          g.knockOut = ko;
           for (let i = 0; i < 4; i++) {
             me.alive = true;
             g.update(1 / 60);

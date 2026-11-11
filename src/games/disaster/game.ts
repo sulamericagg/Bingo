@@ -709,7 +709,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'intro':
         // final do meteoro: tempo curto o bastante para precisar correr (antes 18+df: quase todos chegavam andando)
         // final: tempo que exige correr sem parar (menos com intensidade alta)
-        this.setPhase('prepare', (this.finale ? (12.4 + this.sc.difficulty * 0.8) / Math.sqrt(this.I) : 15) + (this.training ? 8 : 0));
+        this.setPhase('prepare', (this.finale ? (11.5 + this.sc.difficulty * 1.4) / Math.sqrt(this.I) : 15) + (this.training ? 8 : 0));
         if (this.finale) audio.siren(3);
         break;
       case 'prepare':
@@ -833,7 +833,7 @@ export class DisasterGame implements MiniGameHandle {
   private waveH(d: DisasterId, k: number): number {
     const I = this.I;
     const duo = this.sc.disasters.length > 1 ? 0.85 : 1;
-    if (d === 'avalanche') return (60 + 30 * I) * (0.55 + 0.38 * k) * duo;
+    if (d === 'avalanche') return (60 + 30 * I) * (0.42 + 0.38 * k) * duo;
     return (95 + 45 * I) * (0.7 + 0.3 * k) * duo;
   }
   /** nível final previsto do fluido (para a IA e para a seta do treino) */
@@ -847,7 +847,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'enchente':
         return (140 + 100 * I) * duo;
       case 'acido':
-        return (42 + 40 * I) * duo;
+        return (36 + 36 * I) * duo;
       case 'vulcao':
         return (45 + 28 * I) * duo;
       case 'raios':
@@ -1452,7 +1452,7 @@ export class DisasterGame implements MiniGameHandle {
         if (kk !== P.k && kk < 3) {
           P.k = kk;
           this.collapse((0.14 + 0.08 * I) * (kk === 0 ? 1 : 1.3));
-          this.crack(1 + Math.round(I * 1.5) + kk);
+          this.crack(2 + Math.round(I * 1.5) + kk);
         }
         if (!inP && kk < 2 && P.t - kk * period > period - 1.8 * this.tele && !P.on) {
           P.on = true;
@@ -1468,7 +1468,7 @@ export class DisasterGame implements MiniGameHandle {
             audio.crack();
           }
         }
-        if (inP) this.tick('terremoto', dt * k, () => this.spawnAimed('rock', 1.35 * this.tele, 24, 0.45), 1.3);
+        if (inP) this.tick('terremoto', dt * k, () => this.spawnAimed('rock', 1.35 * this.tele, 26, 0.55), 1.0);
       }
       // sumidouro: o chão afunda em círculos que crescem e se juntam (sempre sobra chão firme)
       if (this.active.has('sumidouro')) {
@@ -1507,14 +1507,14 @@ export class DisasterGame implements MiniGameHandle {
         this.tick('vulcao', dt * k, () => this.spawnAimed('bomb', 1.6 * this.tele, 28, 0.5), 2.4 - 0.6 * this.heat);
         this.haze = Math.min(0.5, this.haze + dt * 0.012 * I);
       }
-      if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnAimed('drop', 1.2 * this.tele, 18, 0.5), 1.8 - 0.5 * this.heat);
+      if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnAimed('drop', 1.2 * this.tele, 18, 0.5), 2.4 - 0.6 * this.heat);
       if (this.active.has('avalanche')) {
         this.tick('avalanche', dt * k, () => this.spawnBall(), 3.1 - 1.1 * this.heat);
         // blocos de gelo caindo da montanha (miram quem fica parado, inclusive lá no alto)
-        this.tick('ice', dt * k, () => this.spawnAimed('rock', 1.5 * this.tele, 22, 0.7), 4.6 - 1.2 * this.heat);
+        this.tick('ice', dt * k, () => this.spawnAimed('rock', 1.5 * this.tele, 22, 0.7), 6 - 1.5 * this.heat);
       }
       // enchente: a tempestade solta raios no ponto mais alto de vez em quando
-      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnBolt(true), 10 - 3 * this.heat);
+      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnBolt(true), 14 - 4 * this.heat);
       if (this.active.has('areia')) this.sandstorm(dt, k);
       // enchente: destroços boiando na correnteza (tiram fôlego de quem nada; derrubam quem está na beira)
       if (this.active.has('enchente') && f && f.level > 30)
