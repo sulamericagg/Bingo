@@ -16,6 +16,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
+import { BuildView } from './build/view'; // BUILD
 // PAPER: Bloops 2D de papel (src/3d/paper) — opção "Personagem 2D" + chave PAPER_GAMES.noites
 import { PaperChar, mySpec, npcSpec, paperOn, specOf, type PaperTool } from '../../3d/paper';
 import { squad } from '../../party/squad';
@@ -254,6 +255,8 @@ export class View {
   private shake = new Map<number, number>();
   private fireflies: THREE.Points;
   private vv: VehView;
+  /** construção em grade (peças, fantasma, barras) */
+  build: BuildView; // BUILD
   private lastBuild = { x: 1e9, z: 1e9, ver: -1, verC: -1, verS: -1 };
   private time = 0;
   private sunAmt = 1;
@@ -468,6 +471,7 @@ export class View {
     this.fireSign.scale.set(0.34, 0.149, 1);
     this.fireSign.renderOrder = 30;
     sc.add(this.fireSign);
+    this.build = new BuildView(sc, sim, this.parts); // BUILD
 
     // vagalumes
     const ff: number[] = [];
@@ -1050,6 +1054,7 @@ export class View {
     this.loot.update(dt, camX, camZ, this.q.draw);
     this.updCreatures(dt);
     this.vv.update(dt, 1 - this.sunAmt);
+    this.build.update(dt, this.camera, me ? me.x : camX, me ? me.z : camZ); // BUILD
 
     // bebês
     s.babies.forEach((b, i) => {
@@ -1600,6 +1605,7 @@ export class View {
   destroy(): void {
     this.loot.dispose();
     this.fp.dispose();
+    this.build.dispose(); // BUILD
     this.grass.dispose();
     this.blobs.dispose();
     this.leafFx.dispose();

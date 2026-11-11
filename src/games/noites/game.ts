@@ -30,6 +30,9 @@ import { Garage } from './garage';
 import { stats, vName, type VDesign } from './vehicles';
 import { NightsNet, apply, encode, guestLoot, newSnapState, roomCode, type GuestMsg, type Peer, type SnapState } from './net';
 import { bestAxe, countOf, heldKind, isRes } from './items';
+import { BuildController } from './build/controller'; // BUILD
+import { CamView } from '../../3d/camview';
+import { PIECE } from './build/pieces'; // BUILD
 import { consumePartySeat, partyRoomFor, partySeat } from '../../party/contract';
 import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
 
@@ -163,6 +166,8 @@ export class NoitesGame implements MiniGameHandle {
   private bobT = 0;
   private stepT = 0;
   private runSave: RunSave | null = null;
+  /** construção em grade (API para o inventário: build.enterPlacement/rotate/place/cancel...) */
+  build: BuildController | null = null; // BUILD
 
   constructor(
     root: HTMLElement,
@@ -195,8 +200,10 @@ export class NoitesGame implements MiniGameHandle {
   private get isClient(): boolean {
     return !!this.net && !this.net.isHost;
   }
+  /** câmera compartilhada (src/3d/camview.ts): 1ª → 3ª atrás → 3ª de frente; lembrada por jogo */
+  private camv = new CamView('noites', loadSave().cam === 'tp' ? 'tp' : 'fp');
   private get fp(): boolean {
-    return this.save.cam === 'fp';
+    return this.camv.mode === 'fp';
   }
 
   /* ------------------------------ menu ------------------------------ */
@@ -447,7 +454,6 @@ export class NoitesGame implements MiniGameHandle {
         setVoice(!voiceOn());
         this.hud?.setVoice(voiceOn());
       },
-      cam: () => this.toggleCam(),
       bag: () => this.me && this.sim && this.hud?.openInv(this.sim, this.me),
       panelOpen: (on) => this.ctl?.show(!on),
       swap: (i, j) => this.send({ a: 'swap', i, j }),
@@ -456,8 +462,21 @@ export class NoitesGame implements MiniGameHandle {
       unstore: (id) => this.send({ a: 'unstore', id }),
     });
     this.hud.setVoice(voiceOn());
-    this.hud.setCam(this.fp);
+    // botão de câmera no topo (componente compartilhado)
+    this.camv.onChange = () => this.camChanged();
+    const right = this.wrap.querySelector('.nc-right') as HTMLElement;
+    const cb = this.camv.mountButton(right, { cls: 'nc-btn round nc-cam', label: t('noites.say.cam', 'Trocar câmera') });
+    right.insertBefore(cb, right.querySelector('[data-b="voice"]'));
     this.hud.showBotsBtn(this.botsN > 0 || s.players.some((p) => p.bot));
+    // BUILD: modo construção
+    this.build = new BuildController({
+      wrap: this.wrap,
+      sim: () => this.sim,
+      view: () => this.view,
+      me: () => this.me,
+      send: (a) => this.send(a),
+      busy: () => !this.me || this.me.faint > 0 || this.me.seat >= 0 || !!this.hud?.panel || !!this.garage || !!this.placing,
+    });
     const top = this.wrap.querySelector('.nc-top') as HTMLElement;
     setNotifyTop(top.getBoundingClientRect().bottom + 4);
     const me = this.me!;
@@ -467,11 +486,26 @@ export class NoitesGame implements MiniGameHandle {
     this.raf = requestAnimationFrame(this.loop);
   }
   private toggleCam(): void {
-    this.save.cam = this.fp ? 'tp' : 'fp';
-    writeSave(this.save);
+    this.camv.cycle();
+  }
+  /** colisão da câmera de 3ª pessoa: encosta antes de árvores/pedras (fração livre 0..1) */
+  private camBlock(x0: number, z0: number, x1: number, z1: number): number {
+    const s = this.sim!;
+    for (let i = 1; i <= 8; i++) {
+      const k = i / 8;
+      const x = x0 + (x1 - x0) * k;
+      const z = z0 + (z1 - z0) * k;
+      const [cx, cz] = s.collide(x, z, 0.3);
+      if (Math.hypot(cx - x, cz - z) > 0.05) return Math.max(0.15, (i - 1) / 8);
+    }
+    return 1;
+  }
+  /** a câmera mudou (botão do topo ou tecla C) */
+  private camChanged(): void {
     if (this.view) this.view.firstPerson = this.fp;
-    this.hud?.setCam(this.fp);
-    speak(this.fp ? t('noites.say.camFp', 'Ver pelos olhos') : t('noites.say.camTp', 'Ver de fora'), { cool: 500, urgent: true });
+    const m = this.camv.mode;
+    speak(m === 'fp' ? t('noites.say.camFp', 'Ver pelos olhos') : m === 'tp' ? t('noites.say.camTp', 'Ver de fora') : t('noites.say.camFront', 'Ver de frente'), { cool: 500, urgent: true });
+    sfx.click();
   }
 
   private teardownRun(): void {
@@ -485,6 +519,8 @@ export class NoitesGame implements MiniGameHandle {
     this.garage?.destroy();
     this.garage = null;
     this.placing = null;
+    this.build?.dispose(); // BUILD
+    this.build = null;
   }
   /** salva a partida (solo/anfitrião) para continuar depois */
   private autosave(): void {
@@ -591,9 +627,17 @@ export class NoitesGame implements MiniGameHandle {
     if (!this.sim || !this.hud) return;
     if (down && !this.keys.has(e.code)) {
       if (e.code === 'KeyE' || e.code === 'Space') this.doAction();
-      if (e.code === 'KeyG') this.doThrow();
+      if (e.code === 'KeyG' && !this.build?.active) this.doThrow();
       if (e.code === 'KeyC') this.toggleCam();
       if (e.code === 'KeyQ' && this.me) this.send({ a: 'drop', s: this.me.sel });
+      // BUILD: B construir, R girar, G grade/livre, X desmontar, Esc sair
+      if (e.code === 'KeyB') this.build?.toggle();
+      if (this.build?.active) {
+        if (e.code === 'KeyR') this.build.rotate();
+        if (e.code === 'KeyG') this.build.toggleFree();
+        if (e.code === 'KeyX') this.build.tool('del');
+        if (e.code === 'Escape') this.build.cancel();
+      }
       if (e.code === 'Tab' || e.code === 'KeyI') {
         e.preventDefault();
         if (this.me) this.hud.openInv(this.sim, this.me);
@@ -747,6 +791,8 @@ export class NoitesGame implements MiniGameHandle {
         add({ k: 'felled', i: f.id, x, z, r: 0.6 }, 0.5 + tr.s * 0.25, H(x, z), H(x, z) + 1.2, 2.6, 2);
       }
     }
+    for (const bp of s.build.pieces) if (bp.k === PIECE.chest.idx) add({ k: 'store', i: -1, x: bp.x, z: bp.z, r: 0.9 }, 0.7, 0, 1, 3, 3); // BUILD: baú construído = baú do acampamento
+    for (const bp of s.build.pieces) if (bp.k === PIECE.bench.idx) add({ k: 'bench', i: -1, x: bp.x, z: bp.z, r: 1.2 }, 1, 0, 1.4, 3.2, 3); // BUILD: bancada extra
     for (const st of s.structs) {
       const d = ITEM[st.k]?.place;
       const kind = d?.kind;
@@ -855,6 +901,7 @@ export class NoitesGame implements MiniGameHandle {
     const me = this.me;
     const s = this.sim;
     if (!me || !s || me.faint > 0 || this.hud?.panel) return;
+    if (this.build?.active) return this.build.place(); // BUILD
     if (this.placing) return this.placeCmd('ok');
     if (me.seat >= 0) {
       this.send({ a: 'vexit' });
@@ -990,6 +1037,7 @@ export class NoitesGame implements MiniGameHandle {
     const mine = e.p === this.myId;
     const near = this.near(e.x, e.z);
     this.view?.fx(e);
+    this.build?.onEvent(e, this.myId); // BUILD
     switch (e.k) {
       case 'dusk': {
         const kinds = (e.i ?? '').split(',').filter(Boolean).map(Number);
@@ -1387,8 +1435,8 @@ export class NoitesGame implements MiniGameHandle {
     const [dy, dp] = ctl.consumeLook(dt);
     this.lastLook = [dy, dp];
     v.camYaw -= dy;
-    if (this.fp) v.fpPitch = Math.max(-1.25, Math.min(1.05, v.fpPitch - dp));
-    else v.camPitch = Math.max(0.05, Math.min(1.2, v.camPitch + dp * 0.8));
+    v.fpPitch = Math.max(-1.25, Math.min(1.05, v.fpPitch - dp));
+    v.camPitch = Math.max(0.05, Math.min(1.2, v.camPitch + dp * 0.8));
     // dirigir
     const vNow = me && me.seat >= 0 ? s.vehView.find((q) => q.id === me.seat) : undefined;
     if (me && vNow) {
@@ -1482,16 +1530,22 @@ export class NoitesGame implements MiniGameHandle {
     // câmera (antes da mira: o raio sai do olho)
     const fpNow = this.fp && !vNow;
     v.firstPerson = fpNow;
+    if (this.build) {
+      // BUILD: em 1ª pessoa a mira é o centro da tela e a construção não mexe na câmera
+      this.build.camAssist = !fpNow;
+      if (fpNow) this.build.aimY = 0;
+    }
     if (me && vNow) v.placeCamera(vNow.x, vNow.z, dt, vNow.y - 0.6, 9.5);
     else if (me && fpNow) {
       this.bobT += dt * Math.min(this.walkSpeed, 6) * 1.9;
       v.placeCameraFP(me.x, me.z, s.w.height(me.x, me.z), Math.abs(Math.sin(this.bobT)) * 0.045 * Math.min(1, this.walkSpeed / 4));
-    } else if (me) v.placeCamera(me.x, me.z, dt, s.w.height(me.x, me.z));
+    } else if (me) this.camv.pose({ x: me.x, y: s.w.height(me.x, me.z), z: me.z, yaw: v.camYaw, pitch: v.fpPitch, eye: 1.25, dist: 5.2, smooth: 0.08, dt, block: (x0, _y0, z0, x1, _y1, z1) => this.camBlock(x0, z0, x1, z1) }, v.camera);
     v.camera.updateMatrixWorld();
     // alvo e botão de ação
     this.target = me && me.faint <= 0 && me.seat < 0 && !hud.panel ? this.findTarget(me) : null;
     this.updAction(me);
-    const focus: Focus | null = this.target && (!fpNow || this.target.k !== 'tree') ? { x: this.target.x, z: this.target.z, r: this.target.r } : null;
+    this.build?.update(dt); // BUILD: fantasma (antes da vista desenhar)
+    const focus: Focus | null = this.target && !this.build?.active && (!fpNow || this.target.k !== 'tree') ? { x: this.target.x, z: this.target.z, r: this.target.r } : null;
     v.update(dt, me ?? null, focus, this.ghost(), me?.x ?? 0, me?.z ?? 0);
     // mão em 1ª pessoa
     if (me) {
@@ -1518,7 +1572,7 @@ export class NoitesGame implements MiniGameHandle {
           this.craftKey = key;
           hud.renderCraft(s, me);
         }
-        if (Math.hypot(me.x - BENCH_POS[0], me.z - BENCH_POS[1]) > 5) hud.closeCraft();
+        if (Math.hypot(me.x - BENCH_POS[0], me.z - BENCH_POS[1]) > 5 && !s.build.benchNear(me.x, me.z, 5)) hud.closeCraft(); // BUILD: bancada extra
       }
     }
     if (this.garage) {

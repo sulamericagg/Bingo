@@ -118,8 +118,8 @@
 @media (max-height:380px){.nc-vside{width:220px}.nc-vprev{width:210px;height:96px}.nc-vopt{width:44px;height:36px}}
 
 /* ---------- noites2: mão, mira, barra, mochila, bancada ---------- */
-.nc-act{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--nb) + 4px);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.nc-throw{width:60px!important;height:60px!important;margin-right:20px}
+.nc-act{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--nb) + 4px);display:flex;flex-direction:row;align-items:flex-end;gap:8px}
+.nc-throw{width:58px!important;height:58px!important;margin-bottom:4px}
 .nc-hotwrap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--nb) + 2px);display:flex;flex-direction:column;align-items:center;gap:4px}
 .nc-hotrow{display:flex;gap:8px;align-items:flex-end}
 .nc-hot{display:flex;gap:4px;padding:4px;background:rgba(20,10,50,.55);border-radius:16px}

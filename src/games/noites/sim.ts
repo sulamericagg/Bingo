@@ -41,6 +41,7 @@ import {
 import { addTo, bestAxe, capSlots, countOf, fitSlots, heldKind, isRes, packSlots, roomFor, stackMax, takeFrom, unpackSlots, type Slots } from './items';
 import { NODE_GIVES, NODE_R, NODE_REGROW, NK, World, treeR } from './world';
 import { ENERGY_PER, Vehicles, stats, validDesign, type VDesign } from './vehicles';
+import { BuildState, type BuildAction } from './build/state'; // BUILD
 
 /** estoque do acampamento (baú): qualquer item → quantidade */
 export type Bag = Record<string, number>;
@@ -234,7 +235,8 @@ export type Action =
   | { a: 'vexit' }
   | { a: 'vload'; v: number }
   | { a: 'vfuel'; v: number }
-  | { a: 'vstore'; v: number };
+  | { a: 'vstore'; v: number }
+  | BuildAction; // BUILD
 
 export interface VehView {
   id: number;
@@ -376,6 +378,8 @@ export class Sim {
   verVeh = 0;
   /** nível de qualidade do host (limita toras físicas) */
   logCap = 40;
+  /** construção em grade (cercas, muros, portões...) — src/games/noites/build */
+  build: BuildState = new BuildState(this); // BUILD
 
   constructor(readonly seed: number) {
     this.w = new World(seed);
@@ -522,6 +526,7 @@ export class Sim {
       else if (this.held(p) === 'torch') out.push({ x: p.x, z: p.z, r: 3.2 });
     }
     if (this.vehLights) out.push(...this.vehLights());
+    this.build.lights(out); // BUILD
     return out;
   }
   /** 0..1: quão iluminado está o ponto (0 = escuro) */
@@ -622,6 +627,7 @@ export class Sim {
       }
     }
     if (this.veh) [x, z] = this.veh.collide(x, z, r);
+    [x, z] = this.build.collide(x, z, r); // BUILD
     const d = Math.hypot(x, z);
     if (d > WORLD_R - 1) {
       x = (x / d) * (WORLD_R - 1);
@@ -716,6 +722,8 @@ export class Sim {
         this.ev('vstore', { p: p.id, x: v.x, z: v.z });
         return;
       }
+      case 'build': // BUILD
+        return this.build.act(p, A);
       case 'cmd':
         for (const b of this.players) if (b.bot) b.next = A.c;
         for (const b of this.players) if (b.bot) (b.delay = 0.6 + this.r() * 0.6), this.ev('think', { p: b.id, i: A.c });
@@ -799,6 +807,7 @@ export class Sim {
   /** perto do baú/estante? */
   nearStore(p: Player): boolean {
     if (Math.hypot(p.x - CHEST_POS[0], p.z - CHEST_POS[1]) < 3.6) return true;
+    if (this.build.pieces.some((q) => this.build.def(q).id === 'chest' && Math.hypot(q.x - p.x, q.z - p.z) < 3)) return true; // BUILD: baú construído
     return this.structs.some((s) => ITEM[s.k]?.place?.shows && Math.hypot(s.x - p.x, s.z - p.z) < 3.4);
   }
   private store(p: Player, i: number, quiet = false): void {
@@ -1260,7 +1269,7 @@ export class Sim {
   craft(p: Player, id: string): void {
     const d = ITEM[id];
     if (!d) return;
-    if (Math.hypot(p.x - BENCH_POS[0], p.z - BENCH_POS[1]) > 5) return;
+    if (Math.hypot(p.x - BENCH_POS[0], p.z - BENCH_POS[1]) > 5 && !this.build.benchNear(p.x, p.z, 5)) return; // BUILD: bancada extra
     const why = this.craftBlock(d, p);
     if (why) return void this.ev('need', { p: p.id, i: why === 'res' ? Object.keys(d.cost).find((k) => this.avail(k, p) < (d.cost[k as Res] ?? 0)) : why });
     if (d.camp === 'bench' && this.benchLocked(d.benchTo!)) return void this.ev('need', { p: p.id, i: 'baby' });
@@ -1518,6 +1527,7 @@ export class Sim {
     this.stepBabies(dt);
     this.stepCreatures(dt, L);
     this.stepStructs(dt);
+    this.build.step(dt); // BUILD
     this.stepVeh(dt);
     this.stepLoot(dt);
     for (const f of this.flashes) f.t -= dt;
@@ -1660,7 +1670,7 @@ export class Sim {
     p.warmth = Math.max(p.warmth, 60);
     p.hunger = Math.max(p.hunger, 30);
     p.invT = 3;
-    const bed = this.structs.find((s) => s.k === 'tent') ?? this.structs.find((s) => s.k === 'bedroll');
+    const bed = this.build.bed() ?? this.structs.find((s) => s.k === 'tent') ?? this.structs.find((s) => s.k === 'bedroll'); // BUILD: cama construída
     const a = this.r() * TAU;
     if (bed) [p.x, p.z] = [bed.x + Math.cos(a) * 1.4, bed.z + Math.sin(a) * 1.4];
     else [p.x, p.z] = [Math.cos(a) * 4, Math.sin(a) * 4];
@@ -1809,6 +1819,7 @@ export class Sim {
           if (f.k === 'fence3') c.hp -= dt * 2;
         }
       }
+      this.build.creature(c, dt); // BUILD
       // armadilhas
       for (const s of this.structs) {
         if (s.k !== 'trap' || s.a <= 0) continue;

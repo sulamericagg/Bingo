@@ -21,7 +21,6 @@ export interface HudCb {
   bot(c: 'follow' | 'stay' | 'wood' | 'guard'): void;
   exit(): void;
   voice(): void;
-  cam(): void;
   bag(): void;
   panelOpen(on: boolean): void;
   swap(i: number, j: number): void;
@@ -101,7 +100,6 @@ export class Hud {
         <div class="nc-right">
           <div class="nc-code" data-v="code" hidden></div>
           <button class="nc-btn round" data-b="bots" hidden data-say="${esc(t('noites.say.bots', 'Ajudantes'))}">${ic('people', 28)}</button>
-          <button class="nc-btn round" data-b="cam" data-say="${esc(t('noites.say.cam', 'Trocar câmera'))}"><span data-v="cam">${ic('cam', 26)}</span></button>
           <button class="nc-btn round" data-b="voice" data-say="${esc(t('noites.say.voice', 'Voz'))}"><span data-v="voice">${ic('speaker', 26, '#2a0b5c')}</span></button>
         </div>
       </div>
@@ -146,7 +144,6 @@ export class Hud {
     };
     btn(this.q('[data-b="exit"]'), () => cb.exit());
     btn(this.q('[data-b="voice"]'), () => cb.voice());
-    btn(this.q('[data-b="cam"]'), () => cb.cam());
     btn(this.q('[data-b="bag"]'), () => cb.bag());
     btn(this.q('[data-b="throw"]'), () => cb.throw(), { repeat: 330 });
     btn(this.q('[data-b="bots"]'), () => this.q('.nc-bots').classList.toggle('on'));
@@ -240,10 +237,6 @@ export class Hud {
   }
   showThrow(on: boolean): void {
     this.set('throw', String(on), () => (this.q('[data-b="throw"]').hidden = !on));
-  }
-  setCam(fp: boolean): void {
-    this.q('[data-v="cam"]').innerHTML = ic(fp ? 'person' : 'cam', 26);
-    this.q('[data-b="cam"]').dataset.say = fp ? t('noites.say.camTp', 'Ver de fora') : t('noites.say.camFp', 'Ver pelos olhos');
   }
   setObjective(icon: string, text: string, angle: number | null): void {
     this.set('obj', icon + text, () => {
@@ -479,7 +472,8 @@ export class Hud {
       .map((r) => `<span class="nc-chip">${ic(r, 22)}${s.avail(r, me)}</span>`)
       .join('');
     const tabs = CATS.map((c) => `<button class="nc-btn nc-tab ${c === this.cat ? 'gold on' : ''}" data-cat="${c}" data-say="${esc(catName(c))}">${ic(CAT_ICON[c], 34)}<span>${esc(catName(c))}</span></button>`).join('');
-    const items = ITEMS.filter((d) => d.cat === this.cat);
+    // cercas agora são do modo construção (botão de construir), não da bancada
+    const items = ITEMS.filter((d) => d.cat === this.cat && d.place?.kind !== 'fence');
     if (!ITEM[this.sel] || ITEM[this.sel].cat !== this.cat) this.sel = items.find((d) => !s.craftBlock(d, me))?.id ?? items[0]?.id ?? '';
     const cards = items.map((d) => this.card(d, s, me)).join('');
     const selD = ITEM[this.sel];
