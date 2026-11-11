@@ -46,6 +46,7 @@ import { registerNoites } from './games/noites/register';
 import { registerCavaFala } from './games/cavafala/register';
 import { registerStudio } from './studio/register';
 import { registerDesenho } from './games/desenho/register';
+import { registerGarimpo } from './games/garimpo/register';
 import { registerCreatures } from './creatures/register';
 import { wireGlue } from './hub/glue';
 import { openFriendLink, registerSocial } from './social/register';
@@ -122,6 +123,7 @@ async function boot(): Promise<void> {
   registerStudio();
   registerLugar();
   registerDesenho();
+  registerGarimpo();
   registerPet();
   registerMirror({ getTier: () => game.quality.tier });
   registerCreatures();
