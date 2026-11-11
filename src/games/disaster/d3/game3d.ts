@@ -726,6 +726,8 @@ export class Disaster3D implements MiniGameHandle {
     this.hintEl.className = 'd3-hint';
     this.hud.appendChild(this.hintEl);
     this.ex = new Extra3D(this);
+    // 1ª pessoa ao abrir (pedido do dono/QA); o botão de câmera troca durante a sessão
+    this.cv.mode = 'fp';
     this.resize();
     this.startRound();
     this.last = performance.now();
@@ -1012,6 +1014,26 @@ export class Disaster3D implements MiniGameHandle {
       this.batchBox(x, rt + 0.12, z1 + 0.15, w + 0.4, 0.24, 0.12, trim);
       if (side > 0) this.batchBox(x0 - 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
       else this.batchBox(x1 + 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
+      if (m.id === 'doces') {
+        // casa de doce: glacê escorrendo na beira do telhado, quinas de bengala listrada, jujubas e pirulito
+        for (let k = 0; k <= Math.round(w / 0.5); k++) {
+          const gx = x0 - 0.1 + k * 0.5;
+          this.batchBox(gx, h - 0.12 - (k % 3) * 0.08, z0 - 0.05, 0.42, 0.3 + (k % 3) * 0.16, 0.14, '#fff6fb');
+          this.batchBox(gx, h - 0.12 - ((k + 1) % 3) * 0.08, z1 + 0.05, 0.42, 0.3 + ((k + 1) % 3) * 0.16, 0.14, '#fff6fb');
+        }
+        for (const [cx2, cz2] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]])
+          for (let k = 0; k < Math.ceil(h / 0.4); k++) this.batchBox(cx2, 0.2 + k * 0.4, cz2, 0.3, 0.4, 0.3, k % 2 ? '#ffffff' : '#ff3d6a');
+        const gum = ['#ff5aa5', '#7ad8ff', '#ffe14d', '#5ee08a', '#9b5de5'];
+        const sg = new THREE.SphereGeometry(0.28, 10, 7);
+        for (let k = 0; k < 5; k++) this.batchGeo(sg, x0 + 0.6 + r() * (w - 1.2), h + 0.6, z0 + 0.6 + r() * (d - 1.2), 1, 0.8, 1, 0, gum[k % gum.length]);
+        sg.dispose();
+        const lx2 = x + door / 2 + 0.9;
+        this.batchBox(lx2, 0.9, z0 - 0.7, 0.08, 1.8, 0.08, '#ffffff');
+        const disc = new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16);
+        disc.rotateX(Math.PI / 2);
+        this.batchGeo(disc, lx2, 1.95, z0 - 0.7, 1, 1, 1, 0, gum[Math.floor(r() * gum.length)]);
+        disc.dispose();
+      }
       const chx = side < 0 ? x1 - 0.8 : x0 + 0.8;
       this.solid(chx - 0.3, rt, z1 - 1.1, chx + 0.3, rt + 1.0, z1 - 0.5, '#a0523d');
       const roofBoxes = this.statics.slice(st0);
@@ -3220,7 +3242,7 @@ export class Disaster3D implements MiniGameHandle {
       this.time,
       this.camera,
       {
-        storm: this.storm * (stormy ? (A.has('meteoros') && !A.has('raios') ? 0.45 : 0.9) : 0.15),
+        storm: this.storm * (stormy ? (A.has('meteoros') && !A.has('raios') ? 0.45 : 0.9) : 0.15) * (this.sc.map.id === 'doces' ? 0.35 : 1),
         flash,
         wind: this.wind + (A.has('tornado') ? 2 : 0),
         rain: dis && (A.has('raios') || A.has('enchente') || (A.has('tornado') && !!tn?.hurricane) || !!tn?.rain) ? 1 : 0,

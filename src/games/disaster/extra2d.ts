@@ -1396,7 +1396,7 @@ export class Extra2D {
         const a0 = dir < 0 ? fx - F.band : fx;
         const a1 = dir < 0 ? fx : fx + F.band;
         if (a1 < x0 || a0 > x1) continue;
-        if (g.q.dynLights) {
+        if (g.q.dynLights && g.tier >= 3) {
           const gr = x.createRadialGradient((a0 + a1) / 2, -30, 10, (a0 + a1) / 2, -30, F.band * 1.4);
           gr.addColorStop(0, 'rgba(255,150,40,.45)');
           gr.addColorStop(1, 'rgba(255,90,20,0)');

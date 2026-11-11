@@ -51,7 +51,7 @@ const FSURF: Record<FSkin, [string, string, string, string]> = {
 type FSkin = 'water' | 'lava' | 'goo' | 'snow' | 'jelly' | 'choco' | 'bubble' | 'mud';
 const FLUID_GRAD: Record<FSkin, [number, string][]> = {
   jelly: [[0, 'rgba(255,170,220,.75)'], [0.15, 'rgba(255,110,190,.8)'], [0.55, 'rgba(220,60,150,.86)'], [1, 'rgba(140,20,90,.92)']],
-  choco: [[0, '#b07a4a'], [0.12, '#8a5530'], [0.5, '#5e3418'], [1, '#2e160a']],
+  choco: [[0, '#c48a56'], [0.06, '#8a5530'], [0.35, '#5a3016'], [1, '#1e0d04']],
   bubble: [[0, 'rgba(255,255,255,.9)'], [0.2, 'rgba(225,245,255,.86)'], [0.6, 'rgba(170,215,250,.85)'], [1, 'rgba(110,160,220,.9)']],
   mud: [[0, '#a07a52'], [0.3, '#7a5233'], [0.75, '#5e3d22'], [1, '#3e2614']],
   water: [[0, 'rgba(120,212,255,.6)'], [0.12, 'rgba(56,150,240,.7)'], [0.5, 'rgba(26,92,200,.8)'], [1, 'rgba(12,40,120,.9)']],
@@ -271,7 +271,9 @@ export class Drawer {
         for (let i = -10; i < W; i += 30 + rnd() * 26) {
           const bw = 26 + rnd() * 30;
           const h = 90 + rnd() * 200;
-          x.fillStyle = shade(col, (rnd() - 0.5) * 0.12);
+          // tons variados (tijolo, areia, azul, verde-água, lilás) misturados ao tom da camada → cidade colorida mas com profundidade
+          const tint = ['#d9876a', '#e8c37a', '#7fa8d8', '#86c9b4', '#b49ad8', '#e89a9a'][Math.floor(rnd() * 6)];
+          x.fillStyle = shade(mixHex(col, tint, 0.45), (rnd() - 0.5) * 0.12);
           x.fillRect(i, H - h - 40, bw, h + 40);
           x.fillStyle = 'rgba(255,255,255,.22)';
           x.fillRect(i, H - h - 40, 3, h + 40);
@@ -1400,7 +1402,7 @@ export class Drawer {
         x.arc(wx + 3 + k * (ww / 2.4), fy + 37, 2.6, 0, TAU);
         x.fill();
       }
-      if (lit && g.q.dynLights) drawLight(x, '255,210,120', wx + ww / 2, fy + 27, 40, 0.35);
+      if (lit && g.tier >= 3) drawLight(x, '255,210,120', wx + ww / 2, fy + 27, 40, 0.35);
     }
     // porta
     const dw = 22;
@@ -1810,6 +1812,38 @@ export class Drawer {
     x.fill();
     x.restore();
 
+    // ---- chocolate: profundidade (faixas de ondulação em perspectiva + brilho de cobertura) ----
+    if (sk === 'choco' && lvl > 40) {
+      const span = x1 - x0;
+      const rows = tier === 0 ? 4 : 7;
+      for (let r = 0; r < rows; r++) {
+        const fr = (r + 1) / (rows + 1); // 0 = perto da superfície (longe), 1 = fundo (perto)
+        const yy = GROUND_Y - lvl + 14 + fr * fr * (lvl - 20);
+        if (yy > GROUND_Y - 4) continue;
+        const sp = 6 + fr * 26; // parallax: faixas mais "perto" andam mais rápido
+        const len = 26 + fr * 70;
+        const n = 4 + Math.floor((1 - fr) * 6);
+        x.beginPath();
+        for (let k = 0; k < n; k++) {
+          let px = (k * (span / n) + r * 97 + t * sp) % span;
+          if (px < 0) px += span;
+          px += x0;
+          const wob = Math.sin(t * 1.3 + k * 1.7 + r) * (1 + fr * 3);
+          x.moveTo(px - len / 2, yy + wob);
+          x.quadraticCurveTo(px, yy - 3 - fr * 5 + wob, px + len / 2, yy + wob);
+        }
+        x.strokeStyle = 'rgba(255,214,170,' + (0.2 - fr * 0.1).toFixed(3) + ')';
+        x.lineWidth = 1.5 + fr * 3;
+        x.stroke();
+        x.strokeStyle = 'rgba(30,10,2,' + (0.1 + fr * 0.12).toFixed(3) + ')';
+        x.lineWidth = 1 + fr * 2;
+        x.save();
+        x.translate(0, 3 + fr * 4);
+        x.stroke();
+        x.restore();
+      }
+    }
+
     // ---- reflexos de luz andando por baixo da superfície (água e gosma) ----
     if (kind === 'water' || kind === 'goo') {
       const ns = tier === 0 ? 4 : tier === 1 ? 6 : tier === 2 ? 9 : 12;
@@ -1871,6 +1905,33 @@ export class Drawer {
       }
       x.fillStyle = SC[2];
       x.fill();
+      if (sk === 'choco') {
+        // chocolate brilhante: faixa de brilho logo abaixo da superfície + redemoinhos de creme
+        this.surfPath(x, i0, i1, 7);
+        x.strokeStyle = 'rgba(255,214,170,.32)';
+        x.lineWidth = 4;
+        x.stroke();
+        this.surfPath(x, i0, i1, 16);
+        x.strokeStyle = 'rgba(40,14,4,.35)';
+        x.lineWidth = 8;
+        x.stroke();
+        x.strokeStyle = 'rgba(255,236,210,.45)';
+        x.lineWidth = 2.2;
+        const span = x1 - x0;
+        for (let k = 0; k < 9; k++) {
+          const px = x0 + ((k * 173.3 + t * 12) % span);
+          const py = s.surf(px);
+          if (py > 5000 || py + 30 > GROUND_Y) continue;
+          x.beginPath();
+          x.arc(px, py + 22 + (k % 3) * 9, 7 + (k % 4) * 3, 0.3 + t * 0.5, 3.6 + t * 0.5);
+          x.stroke();
+        }
+        for (let k = 0; k < 6; k++) {
+          const px = x0 + ((k * 211.7 + t * 20) % span);
+          const py = s.surf(px);
+          if (py < 5000) drawSpecular(x, px, py + 2, 5, 0.6);
+        }
+      }
       if (sk === 'bubble') {
         // espuma: bolhas grandes na superfície
         x.beginPath();

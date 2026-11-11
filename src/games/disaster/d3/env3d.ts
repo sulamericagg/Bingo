@@ -469,7 +469,13 @@ void main(){
     // opaco/fosco (neve, lama, chocolate): luz difusa simples
     float d = 0.55 + 0.45 * max(dot(N, normalize(uSun)), 0.0);
     col = body * d + vec3(1.0) * foam * 0.4;
-    col += uSunC * pow(max(dot(R, normalize(uSun)), 0.0), 40.0) * uSpec;
+    col += uSunC * pow(max(dot(R, normalize(uSun)), 0.0), 40.0) * min(uSpec, 1.0);
+    if (uSpec > 1.5) {
+      // chocolate brilhante: reflexo fraco tingido + brilho estreito e forte (cobertura de bolo)
+      col = mix(col, refl * body * 2.2, F * 0.45);
+      col += uSunC * pow(max(dot(R, normalize(uSun)), 0.0), 160.0) * uSpec;
+      col += vec3(1.0, 0.85, 0.7) * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.12;
+    }
   } else {
     col = mix(body, refl, F * 0.8);
     col += uSunC * pow(max(dot(R, normalize(uSun)), 0.0), 120.0) * uSpec * 2.0;
@@ -496,7 +502,7 @@ export const FLUID_LOOK: Record<string, FluidLook> = {
   water: { deep: '#0e4a8a', shal: '#3ab6e8', opa: 0.72, emis: 0, spec: 1, flow: 1, kind: 0 },
   jelly: { deep: '#c82a8a', shal: '#ff8ad0', opa: 0.8, emis: 0.12, spec: 1.2, flow: 0.6, kind: 0 },
   bubble: { deep: '#a8d8f8', shal: '#ffffff', opa: 0.9, emis: 0.15, spec: 0.8, flow: 0.4, kind: 1 },
-  choco: { deep: '#3a1a0a', shal: '#8a5530', opa: 1, emis: 0, spec: 0.8, flow: 0.4, kind: 1 },
+  choco: { deep: '#3a1808', shal: '#8a4e26', opa: 1, emis: 0.04, spec: 2.2, flow: 0.35, kind: 1 },
   goo: { deep: '#2a8a2a', shal: '#9af04a', opa: 0.92, emis: 0.25, spec: 0.9, flow: 0.5, kind: 0 },
   lava: { deep: '#3a0a04', shal: '#ff7a1a', opa: 1, emis: 0.9, spec: 0, flow: 0.25, kind: 2 },
   snow: { deep: '#c8d8f0', shal: '#ffffff', opa: 1, emis: 0.05, spec: 0.2, flow: 0, kind: 1 },
