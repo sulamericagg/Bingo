@@ -15,8 +15,9 @@ export class BloopAvatar {
   private t = 0;
   private blink = 2;
 
-  constructor(standard: boolean) {
-    const col = handColors();
+  /** skin: id da skin de outra pessoa (servidor online); sem ela, a do jogador */
+  constructor(standard: boolean, skin?: string) {
+    const col = handColors(skin);
     const M = (c: string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
       const m = standard ? new THREE.MeshStandardMaterial({ color: c, roughness: 0.45, ...o }) : new THREE.MeshLambertMaterial({ color: c });
       this.mats.push(m);

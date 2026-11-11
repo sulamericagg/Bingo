@@ -168,6 +168,8 @@ export class PlaySession {
   private yaw = 0;
   private pitch = 0.32;
   private faceYaw = 0;
+  /** empurrão do PvP online: controle fraco por um instante */
+  private shoveT = 0;
   private spawn = new THREE.Vector3(0, 1, 6);
   private spawnYaw = 0;
   private checkpoint: THREE.Vector3 | null = null;
@@ -1728,7 +1730,8 @@ export class PlaySession {
     const sp = 5.6;
     const tx = want.x * sp + this.groundVel.x;
     const tz = want.z * sp + this.groundVel.z;
-    const acc = this.grounded ? 14 : 5;
+    const acc = this.shoveT > 0 ? 1.5 : this.grounded ? 14 : 5;
+    this.shoveT -= dt;
     const k = 1 - Math.exp(-acc * dt);
     me.velocity.x += (tx - me.velocity.x) * k;
     me.velocity.z += (tz - me.velocity.z) * k;
@@ -1913,6 +1916,26 @@ export class PlaySession {
     for (const v of this.vehicles) v.rv?.removeFromWorld(this.world);
     while (this.world.bodies.length) this.world.removeBody(this.world.bodies[0]);
     this.h.world.resetOres?.();
+  }
+
+  /** servidor online (play/online.ts): onde estou e para onde olho */
+  netPose(): { x: number; y: number; z: number; yaw: number; seated: boolean } {
+    const f = this.focus();
+    return { x: f.x, y: f.y, z: f.z, yaw: this.faceYaw, seated: !!this.driving };
+  }
+  /** servidor online com PvP: empurrão vindo de (fx, fz) — sem dano, só pulinho para longe */
+  shove(fx: number, fz: number, power: number): void {
+    if (this.driving) return;
+    let dx = this.me.position.x - fx;
+    let dz = this.me.position.z - fz;
+    const d = Math.hypot(dx, dz) || 1;
+    if (d < 0.05) (dx = -Math.sin(this.yaw)), (dz = -Math.cos(this.yaw));
+    else (dx /= d), (dz /= d);
+    this.me.velocity.x = dx * power;
+    this.me.velocity.z = dz * power;
+    this.me.velocity.y = Math.max(this.me.velocity.y, 4.5);
+    this.shoveT = 0.45;
+    this.me.wakeUp();
   }
 
   /** dirigindo? e onde está (usado pelo passo a passo) */

@@ -34,7 +34,7 @@ export default defineConfig({
   plugins: [mediapipeWasm()],
   // teste local com o Worker: BLOOP_API=http://127.0.0.1:8787 npx vite  (encaminha /api para o wrangler dev)
   server: process.env.BLOOP_API
-    ? { proxy: { '/api': { target: process.env.BLOOP_API, changeOrigin: true } }, fs: { allow: [process.cwd(), realpathSync('node_modules')] } }
+    ? { proxy: { '/api': { target: process.env.BLOOP_API, changeOrigin: true, ws: true } }, fs: { allow: [process.cwd(), realpathSync('node_modules')] } }
     : undefined,
   build: {
     target: 'es2020',
