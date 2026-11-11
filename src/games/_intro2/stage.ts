@@ -63,9 +63,10 @@ const CSS = `
 .i2-sub.on{opacity:1;transform:translate(-50%,0)}
 .i2-ic{display:flex;gap:4px;flex:0 0 auto}
 .i2-ic svg{width:32px;height:32px;padding:3px;border-radius:50%;background:#fff6d8;box-sizing:border-box}
-.i2-title{position:absolute;left:0;right:0;top:15%;display:flex;flex-direction:column;align-items:center;gap:2px;opacity:0;transform:scale(.7);transition:opacity .7s,transform 1.2s cubic-bezier(.2,1.5,.4,1);pointer-events:none;text-align:center;padding:0 12px}
+.i2-title{position:absolute;left:0;right:0;top:calc(8.5% + 50px);display:flex;flex-direction:column;align-items:center;gap:2px;opacity:0;transform:scale(.7);transition:opacity .7s,transform 1.2s cubic-bezier(.2,1.5,.4,1);pointer-events:none;text-align:center;padding:0 12px}
 .i2-title.on{opacity:1;transform:scale(1)}
 .i2-title b{position:relative;display:block;font-weight:800;font-size:clamp(32px,7.5vmax,86px);line-height:1.02;letter-spacing:.03em;color:var(--i2-c1);background:linear-gradient(180deg,var(--i2-c0) 0%,var(--i2-c1) 48%,var(--i2-c2) 74%,var(--i2-c1) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 4px 0 var(--i2-c3)) drop-shadow(0 9px 14px rgba(0,0,0,.5))}
+.i2-title.long b{font-size:clamp(26px,5.4vmax,66px)}
 .i2-title b::after{content:attr(data-t);position:absolute;inset:0;background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.95) 50%,transparent 60%);background-size:250% 100%;background-position:130% 0;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .i2-title.on b::after{animation:i2-glint 2.2s .5s ease-in-out 2}
 @keyframes i2-glint{to{background-position:-30% 0}}
@@ -146,7 +147,7 @@ export class Stage {
     tc.forEach((c, i) => el.style.setProperty(`--i2-c${i}`, c));
     const title = esc(spec.title().toUpperCase());
     el.innerHTML = `<canvas></canvas><div class="i2-grade"></div><div class="i2-vig"></div>
-      <div class="i2-title"><b data-t="${title}">${title}</b>${spec.tagline ? `<small>${esc(spec.tagline())}</small>` : ''}<i></i></div>
+      <div class="i2-title${title.length > 14 ? ' long' : ''}"><b data-t="${title}">${title}</b>${spec.tagline ? `<small>${esc(spec.tagline())}</small>` : ''}<i></i></div>
       <div class="i2-bar t"></div><div class="i2-bar b"></div>
       <div class="i2-sub"><span class="i2-ic"></span><span class="i2-tx"></span></div>
       <div class="i2-flash"></div><div class="i2-fade on"></div>
