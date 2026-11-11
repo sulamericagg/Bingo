@@ -51,6 +51,8 @@ export interface SlotSave {
   water?: import('./water/system').WaterSave;
   /** beneficiamento: melhorias da lavadora, calhas, caixa do ouro, rejeitos (proc/system.ts) */
   proc?: import('./proc/system').ProcSave;
+  /** CONSERTOS: desgaste/quebras por máquina, peças no estoque (repair/) */
+  repair?: import('./repair/model').RepairSave;
 }
 export interface SlotMeta {
   seed: number;
