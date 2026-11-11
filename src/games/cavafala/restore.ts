@@ -9,9 +9,10 @@ import * as THREE from 'three';
 import { sfx } from '../../3d/common/sfx';
 import { t } from '../../i18n';
 import { bigMoment, notify, objective } from '../../ui/notify';
-import { BloopModel } from './bloop';
+import { BloopModel, type Hat } from './bloop';
 import { M, type Inv, type Theme } from './data';
 import { GADGETS, costOf, gadgetById, noMods, type GDef, type Mods } from './gadgets';
+import type { NetEvent } from './net';
 import { rng } from './noise';
 import { cavaSave, discover, persist } from './save';
 import type { Building, Town, TownLayout } from './town';
@@ -53,6 +54,13 @@ interface Tree {
   dead: boolean;
 }
 
+/** vila online (co-op): o anfitrião decide as restaurações; todos cavam a mesma terra */
+export interface RestoreOnline {
+  host: boolean;
+  players: { nid: string; name: string; col: string; hat: string }[];
+  send(e: NetEvent): void;
+}
+
 export interface RestoreResult {
   restored: number;
   total: number;
@@ -83,6 +91,8 @@ export class RestoreMode implements ModeCtl {
   private sea: THREE.Mesh | null = null;
   private clouds: THREE.Group = new THREE.Group();
   private clearQ: [number, number, number][] = [];
+  private pzSent = new Set<number>();
+  private clockT = 0;
   /** de onde procurar o chão (abaixo do teto da caverna) */
   private get topY(): number {
     return this.th.cave ? 25 : 31;
@@ -95,8 +105,17 @@ export class RestoreMode implements ModeCtl {
     private L: TownLayout,
     solo: boolean,
     private onEnd: (r: RestoreResult) => void,
+    private net: RestoreOnline | null = null,
   ) {
-    this.tut = cavaSave().tut ? 99 : 0;
+    this.tut = cavaSave().tut || net ? 99 : 0;
+    if (net)
+      net.players.forEach((p, i) => {
+        const at = w.me.body.p.clone().add(new THREE.Vector3((i - 1) * 2, 0.5, 1.5));
+        const a = w.addActor(p.name, p.col, at, false, p.hat as Hat);
+        a.nid = p.nid;
+        a.remote = true;
+        a.model?.nameTag(p.name, p.col);
+      });
     this.tutStart.copy(w.me.body.p);
     // aparência
     if (th.sea) {
@@ -289,7 +308,15 @@ export class RestoreMode implements ModeCtl {
         b.puzzleHint = true;
         this.hint(b);
       }
-      if (b.uncovered >= 0.78 && b.puzzleDone) this.restore(b);
+      if (b.puzzleDone && this.net && !this.pzSent.has(b.i)) {
+        this.pzSent.add(b.i);
+        this.net.send({ t: 'restore', i: b.i, k: 'pz' });
+      }
+      if (b.uncovered >= 0.78 && b.puzzleDone && (!this.net || this.net.host)) this.restore(b);
+    }
+    if (this.net?.host && (this.clockT -= dt) <= 0) {
+      this.clockT = 5;
+      this.net.send({ t: 'clock', time: this.time });
     }
     if (this.clearQ.length) {
       const got: Inv = {};
@@ -309,7 +336,32 @@ export class RestoreMode implements ModeCtl {
       this.warned = true;
       notify(t('cavafala.dusk', 'Está anoitecendo! Corra para restaurar o que falta.'), { kind: 'warn' });
     }
-    if (this.time >= DAY) this.finish(false);
+    if (this.time >= DAY && (!this.net || this.net.host)) this.finish(false);
+  }
+
+  /* ------------------------------ online ------------------------------ */
+  netRestore(i: number, k: 'pz' | 'ok'): void {
+    const b = this.town.list.find((x) => x.i === i);
+    if (!b || b.restored) return;
+    if (k === 'pz') {
+      this.pzSent.add(i);
+      if (!b.puzzleDone) {
+        b.puzzleDone = true;
+        if (b.puzzle === 'bell') this.bell(b);
+        else notify(t('cavafala.net.puzzle', 'Um amigo resolveu o desafio de {b}!', { b: b.name }), { kind: 'good' });
+      }
+    } else {
+      b.puzzleDone = true;
+      this.pzSent.add(i);
+      this.restore(b);
+    }
+  }
+  netClock(time: number): void {
+    this.time = time;
+  }
+  /** o anfitrião saiu: este aparelho passa a decidir */
+  becomeHost(): void {
+    if (this.net) this.net.host = true;
   }
 
   private hint(b: Building): void {
@@ -421,6 +473,7 @@ export class RestoreMode implements ModeCtl {
   /* ------------------------------ restauração ------------------------------ */
   restore(b: Building): void {
     if (b.restored) return;
+    if (this.net?.host) this.net.send({ t: 'restore', i: b.i, k: 'ok' });
     this.town.restore(b);
     this.w.refreshBoxes();
     // tira a terra que sobrou dentro/colada no prédio (vira bônus)
@@ -732,6 +785,7 @@ export class RestoreMode implements ModeCtl {
     const stars = n >= total ? 3 : n >= Math.ceil(total * 0.7) ? 2 : n >= Math.ceil(total * 0.4) ? 1 : 0;
     const coins = this.coins + stars * 20;
     objective(null);
+    if (this.net?.host) this.net.send({ t: 'end', win });
     this.onEnd({ restored: n, total, stars, coins, time: this.time, win });
   }
 

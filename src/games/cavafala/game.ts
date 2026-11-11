@@ -14,11 +14,19 @@ import { fmt, t } from '../../i18n';
 import { icon } from '../../ui/icons';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { isSolo, soloToggle } from '../../ui/touch';
-import { disposeSfx } from '../../3d/common/sfx';
-import { ArenaMode, type ArenaResult } from './arena';
+import { disposeSfx, sfx } from '../../3d/common/sfx';
+import { tap } from '../../core/haptics';
+import { me as socialMe } from '../../social/net';
+import { displayName } from '../../services/leaderboard';
+import { ArenaMode, COLS, HATS, NAMES, type ArenaOnline, type ArenaResult } from './arena';
+import type { Hat } from './bloop';
 import { MATS, THEMES, themeById, type ThemeId } from './data';
+import { fillRoom, fillStart, type RoomHandle, type RoomMode } from './lobby';
+import { codeFromRoom, createNet, MAX_PLAYERS, newCode, type CavaNet, type Me, type NetEvent } from './net';
+import { Binder, BOT_KS, PCOLS, PHATS, type RoundInit } from './online';
+import { takePendingCava } from './pending';
 import { GADGETS } from './gadgets';
-import { RestoreMode, type RestoreResult } from './restore';
+import { RestoreMode, type RestoreOnline, type RestoreResult } from './restore';
 import { cavaSave, persist, type Diff } from './save';
 import { injectCss } from './style';
 import { Town } from './town';
@@ -51,6 +59,35 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   let dead = false;
   let menuEl: HTMLDivElement | null = null;
   let last: { kind: 'restore'; theme: ThemeId } | { kind: 'arena' } = { kind: 'restore', theme: sv.lastTheme };
+  /** cada partida nova invalida a carga anterior (online: o anfitrião pode recomeçar no meio) */
+  let gen = 0;
+  /* ------------------------------ online ------------------------------ */
+  interface Online {
+    net: CavaNet;
+    party: boolean;
+    pick: RoomMode;
+    round: number;
+    init: RoundInit | null;
+    /** o anfitrião já deu a largada desta rodada */
+    go: boolean;
+    ready: Set<string>;
+    readyTimer: number;
+    partyTimer: number;
+    partyAt: number;
+    binder: Binder | null;
+    room: RoomHandle | null;
+    busy: boolean;
+    offs: (() => void)[];
+  }
+  let online: Online | null = null;
+  let meP: Promise<Me> | null = null;
+  const myself = (): Promise<Me> =>
+    (meP ??= socialMe()
+      .then((m) => ({ id: m.id, name: m.name || displayName() || 'Bloop', skin: m.skin }))
+      .catch((e) => {
+        meP = null;
+        throw e;
+      }));
   const forced = /[?&]cftier=(\d)/.exec(location.search);
   const tier: Tier = forced ? (Math.min(3, +forced[1]) as Tier) : detectInitialTier();
   const vs = tier <= 1 ? 2 / 3 : 0.5;
@@ -61,6 +98,8 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     popBack = fn ? pushBack(fn) : null;
   };
   const endWorld = () => {
+    online?.binder?.dispose();
+    if (online) online.binder = null;
     world?.dispose();
     world = null;
     restore = null;
@@ -69,6 +108,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     objective(null);
   };
   const quit = () => {
+    leaveOnline();
     endWorld();
     setBack(null);
     exit();
@@ -76,6 +116,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 
   /* ------------------------------ menu ------------------------------ */
   function menu(): void {
+    leaveOnline();
     endWorld();
     menuEl?.remove();
     const d = document.createElement('div');
@@ -102,6 +143,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         ${seg('practice', [['0', t('cavafala.opt.match', 'Partida')], ['1', t('cavafala.opt.practice', 'Treino')]], sv.practice ? '1' : '0')}
       </div>
       <div class="cf-row" style="margin-top:0">
+        <button class="cf-btn p" data-a="online">${icon('party', { size: 20 })}${esc(t('cavafala.net.title', 'Jogar com amigos'))}</button>
         <span class="cf-solo-slot"></span>
         <button class="cf-btn w" data-a="exit">${icon('home', { size: 20 })}${esc(t('cavafala.exit', 'Sair'))}</button>
       </div>`;
@@ -140,6 +182,11 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       void startArena();
     });
     d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
+    d.querySelector('[data-a=online]')!.addEventListener('click', () => {
+      audio.unlock();
+      audio.click();
+      onlineStart();
+    });
     setBack(quit);
   }
 
@@ -151,9 +198,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     el.appendChild(l);
     return { el: l, set: (v) => ((l.querySelector('b') as HTMLElement).style.width = Math.round(v * 100) + '%') };
   }
-  async function bake(w: World, ld: { set(v: number): void }): Promise<void> {
+  async function bake(w: World, ld: { set(v: number): void }, g: number): Promise<void> {
     const tot = Math.max(1, w.T.pending);
-    while (w.T.pending > 0 && !dead) {
+    while (w.T.pending > 0 && !dead && g === gen) {
       const t0 = performance.now();
       while (w.T.pending > 0 && performance.now() - t0 < 30) w.T.update(1, null);
       ld.set(0.25 + 0.75 * (1 - w.T.pending / tot));
@@ -161,19 +208,22 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     }
   }
 
-  async function startRestore(themeId: ThemeId): Promise<void> {
+  async function startRestore(themeId: ThemeId, init: RoundInit | null = null): Promise<void> {
     if (!webglOk()) {
       notify(t('cavafala.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
     last = { kind: 'restore', theme: themeId };
+    const g = ++gen;
     endWorld();
     menuEl?.remove();
     menuEl = null;
+    online?.room?.dispose();
     const ld = loading();
     await frame();
+    if (g !== gen) return ld.el.remove();
     const th = themeById(themeId);
-    const variant = Math.floor(Math.random() * 1000);
+    const variant = init ? (init.variant ?? 0) : Math.floor(Math.random() * 1000);
     const { T, L } = genTown(th, vs, tier >= 1, variant);
     ld.set(0.15);
     await frame();
@@ -181,41 +231,377 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const w = new World(el, { arena: false, theme: th, tier, T, town, spawn: L.spawn, waterY: th.sea ? 7 : -100, bounds: { x0: T.ox + 0.6, z0: T.oz + 0.6, x1: -T.ox - 0.6, z1: -T.oz - 0.6 }, onPause: pause });
     world = w;
     w.hud.show(false);
-    await bake(w, ld);
-    if (dead) return;
-    restore = new RestoreMode(w, town, th, L, isSolo('cavafala'), (r) => resultsRestore(th.id, r));
-    w.mode = restore;
+    await bake(w, ld, g);
     ld.el.remove();
+    if (dead || g !== gen) return;
+    const on = init && online ? online : null;
+    let ro: RestoreOnline | null = null;
+    if (on && init) {
+      w.me.nid = on.net.me.id;
+      w.me.color = playersOf(init, on.net).find((p) => p.nid === on.net.me.id)?.col ?? w.me.color;
+      ro = {
+        host: on.net.isHost,
+        players: playersOf(init, on.net).filter((p) => p.nid !== on.net.me.id),
+        send: (e) => on.net.send(e),
+      };
+    }
+    restore = new RestoreMode(w, town, th, L, on ? true : isSolo('cavafala'), (r) => resultsRestore(th.id, r), ro);
+    w.mode = restore;
+    if (on) on.binder = new Binder(on.net, w, { arena: null, restore });
     w.hud.show(true);
     w.start();
     setBack(pause);
   }
 
-  async function startArena(): Promise<void> {
+  async function startArena(init: RoundInit | null = null): Promise<void> {
     if (!webglOk()) {
       notify(t('cavafala.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
     last = { kind: 'arena' };
+    const g = ++gen;
     endWorld();
     menuEl?.remove();
     menuEl = null;
+    online?.room?.dispose();
     const ld = loading();
     await frame();
-    const { T, topY, R } = genArena(vs, tier >= 1, Math.floor(Math.random() * 9999));
+    if (g !== gen) return ld.el.remove();
+    const { T, topY, R } = genArena(vs, tier >= 1, init ? init.seed : Math.floor(Math.random() * 9999));
     ld.set(0.2);
     await frame();
     const w = new World(el, { arena: true, theme: null, tier, T, town: null, spawn: new THREE.Vector3(0, topY + 2, 0), waterY: -100, bounds: null, onPause: pause });
     world = w;
     w.hud.show(false);
-    await bake(w, ld);
-    if (dead) return;
-    arena = new ArenaMode(w, { bots: sv.bots, diff: sv.diff, practice: sv.practice, R, topY }, resultsArena);
-    w.mode = arena;
+    await bake(w, ld, g);
     ld.el.remove();
+    if (dead || g !== gen) return;
+    const on = init && online ? online : null;
+    let ao: ArenaOnline | null = null;
+    if (on && init) {
+      const myId = on.net.me.id;
+      ao = {
+        host: on.net.isHost,
+        myId,
+        slots: [
+          ...playersOf(init, on.net).map((p) => ({ nid: p.nid, name: p.name, col: p.col, hat: p.hat, kind: p.nid === myId ? ('me' as const) : ('remote' as const) })),
+          ...init.bots.map((b) => ({ nid: b.id, name: NAMES[b.k % NAMES.length], col: COLS[b.k % COLS.length], hat: HATS[b.k % HATS.length], kind: 'bot' as const, k: b.k })),
+        ],
+        send: (e) => on.net.send(e),
+      };
+    }
+    arena = new ArenaMode(w, { bots: sv.bots, diff: on ? ((init?.diff ?? 1) as Diff) : sv.diff, practice: on ? false : sv.practice, R, topY }, resultsArena, ao);
+    w.mode = arena;
+    if (on) {
+      on.binder = new Binder(on.net, w, { arena, restore: null });
+      if (on.go) arena.netGo();
+      else if (!on.net.isHost) on.net.send({ t: 'ready', round: on.round });
+      else checkReady();
+    }
     w.hud.show(true);
     w.start();
     setBack(pause);
+  }
+
+  /* ------------------------------ online: sala ------------------------------ */
+  /** jogadores da rodada (nomes vêm da sala, que passou pelo servidor) */
+  function playersOf(init: RoundInit, net: CavaNet): { nid: string; name: string; col: string; hat: Hat }[] {
+    return init.players.map((p, i) => ({
+      nid: p.id,
+      name: net.peers.find((x) => x.id === p.id)?.name ?? 'Bloop',
+      col: /^#[0-9a-f]{6}$/i.test(p.col) ? p.col : PCOLS[i % PCOLS.length],
+      hat: (PHATS.includes(p.hat as Hat) ? p.hat : '') as Hat,
+    }));
+  }
+
+  function screen(): HTMLDivElement {
+    endWorld();
+    menuEl?.remove();
+    const d = document.createElement('div');
+    d.className = 'cf-menu';
+    el.appendChild(d);
+    menuEl = d;
+    return d;
+  }
+
+  /** "Jogar com amigos": criar sala ou entrar numa */
+  function onlineStart(): void {
+    leaveOnline();
+    const d = screen();
+    fillStart(d, {
+      me: () => myself().catch(() => null),
+      create: () => void connect(newCode(), 'create', false),
+      join: (code) => void connect(code, 'join', false),
+      back: menu,
+    });
+    setBack(menu);
+  }
+
+  async function connect(code: string, how: 'create' | 'join' | 'auto', party: boolean): Promise<void> {
+    leaveOnline();
+    const d = screen();
+    d.innerHTML = `<div class="cf-title" style="font-size:24px">${esc(t('cavafala.net.connecting', 'Conectando...'))}</div><div class="cf-sub">${esc(t('cavafala.net.code', 'Código da sala'))}: <b>${esc(code)}</b></div>`;
+    setBack(menu);
+    let net: CavaNet;
+    try {
+      const me = await myself();
+      net = await createNet(code, how, me);
+    } catch (e) {
+      if (menuEl !== d) return;
+      const why = (e as Error)?.message ?? '';
+      const msg =
+        why === 'no_room' || why === 'bad_code'
+          ? t('cavafala.net.noRoom', 'Não achei essa sala. Confira o código!')
+          : why === 'full'
+            ? t('cavafala.net.full', 'A sala está cheia (4 Bloops).')
+            : why === 'taken'
+              ? t('cavafala.net.taken', 'Esse código já está em uso. Tente de novo.')
+              : t('cavafala.net.offline', 'Sem conexão com o servidor agora.');
+      notify(msg, { icon: 'cloud-off', kind: 'bad', ms: 3600 });
+      if (party) menu();
+      else onlineStart();
+      return;
+    }
+    if (menuEl !== d || dead) {
+      net.close();
+      return;
+    }
+    const o: Online = {
+      net,
+      party,
+      pick: { mode: party ? 'arena' : 'arena', theme: sv.lastTheme, bots: MAX_PLAYERS - 1 },
+      round: 0,
+      init: null,
+      go: false,
+      ready: new Set(),
+      readyTimer: 0,
+      partyTimer: 0,
+      partyAt: Date.now(),
+      binder: null,
+      room: null,
+      busy: false,
+      offs: [],
+    };
+    online = o;
+    o.offs.push(net.onEvent((from, e) => onNet(from, e)));
+    o.offs.push(
+      net.onRoster((why, id) => {
+        if (online !== o) return;
+        if (why === 'join') {
+          tap('light');
+          sfx.pop();
+          const p = net.peers.find((x) => x.id === id);
+          nameOf(id);
+          if (world) notify(t('cavafala.net.joinedLate', '{n} entrou na sala (joga na próxima rodada)', { n: p?.name ?? 'Bloop' }), { icon: 'user' });
+          else notify(t('cavafala.net.joined', '{n} entrou na sala!', { n: p?.name ?? 'Bloop' }), { icon: 'user', kind: 'good' });
+          if (net.isHost) sendLobby(id);
+        } else if (why === 'leave') {
+          const nm = o.init ? 'Bloop' : '';
+          o.binder?.left(id, nameOf(id) || nm || 'Bloop');
+          if (!o.binder) notify(t('cavafala.net.left', '{n} saiu da sala', { n: nameOf(id) || 'Bloop' }), { icon: 'user' });
+          if (net.isHost) checkReady();
+        } else if (why === 'host') {
+          const old = o.init?.players[0]?.id ?? '';
+          o.binder?.hostChanged(old);
+          if (net.isHost && !o.binder) notify(t('cavafala.net.nowHost', 'Agora você é o anfitrião da sala!'), { icon: 'star', kind: 'good' });
+          if (net.isHost && o.party && !world) partyAuto();
+        }
+        o.room?.refresh();
+      }),
+    );
+    net.onClose(() => {
+      if (online !== o) return;
+      online = null;
+      for (const f of o.offs) f();
+      notify(t('cavafala.net.lost', 'A conexão com a sala caiu.'), { icon: 'cloud-off', kind: 'bad' });
+      if (world) {
+        // segue jogando sozinho? não: a partida dependia dos outros — volta ao menu
+        menu();
+      } else menu();
+    });
+    showRoom();
+    if (party && net.isHost) partyAuto();
+  }
+  const peersNameCache = new Map<string, string>();
+  function nameOf(id: string): string {
+    const p = online?.net.peers.find((x) => x.id === id);
+    if (p) peersNameCache.set(id, p.name);
+    return p?.name ?? peersNameCache.get(id) ?? '';
+  }
+
+  function showRoom(): void {
+    const o = online;
+    if (!o) return menu();
+    gen++;
+    o.room?.dispose();
+    o.init = null;
+    const d = screen();
+    for (const p of o.net.peers) peersNameCache.set(p.id, p.name);
+    o.room = fillRoom(d, {
+      net: o.net,
+      party: o.party,
+      pick: () => o.pick,
+      setPick: (p) => {
+        Object.assign(o.pick, p);
+        if (p.theme) {
+          sv.lastTheme = p.theme;
+          persist();
+        }
+        sendLobby();
+      },
+      start: () => hostStart(),
+      leave: () => {
+        leaveOnline();
+        menu();
+      },
+      status: () => (o.busy && !o.net.isHost ? t('cavafala.net.busy', 'Partida em andamento: você entra na próxima!') : o.party ? (o.net.isHost ? t('cavafala.net.partyStart', 'A Arena começa assim que o grupo chegar…') : t('cavafala.net.partyWait', 'Esperando o grupo…')) : ''),
+    });
+    if (o.net.isHost) sendLobby();
+    setBack(() => {
+      leaveOnline();
+      menu();
+    });
+  }
+
+  function sendLobby(to?: string): void {
+    const o = online;
+    if (!o || !o.net.isHost) return;
+    o.net.send({ t: 'lobby', mode: o.pick.mode, theme: o.pick.theme, bots: o.pick.bots, busy: !!world }, to);
+  }
+
+  /** grupo (party): o anfitrião começa a Arena quando o grupo chegou (ou depois de alguns segundos) */
+  function partyAuto(): void {
+    const o = online;
+    if (!o || !o.party || !o.net.isHost) return;
+    clearTimeout(o.partyTimer);
+    const check = async () => {
+      if (online !== o || world || o.init) return;
+      let want = 2;
+      try {
+        const sq = (await import('../../party/squad')).squad();
+        want = Math.max(2, Math.min(MAX_PLAYERS, sq?.members.filter((m) => m.on).length ?? 2));
+      } catch {
+        /* */
+      }
+      if (o.net.peers.length >= want || Date.now() - o.partyAt > 9000) hostStart();
+      else o.partyTimer = window.setTimeout(() => void check(), 700);
+    };
+    o.partyTimer = window.setTimeout(() => void check(), 1200);
+  }
+
+  function leaveOnline(): void {
+    const o = online;
+    if (!o) return;
+    online = null;
+    clearTimeout(o.readyTimer);
+    clearTimeout(o.partyTimer);
+    o.binder?.dispose();
+    o.room?.dispose();
+    for (const f of o.offs) f();
+    o.net.close();
+  }
+
+  /** anfitrião: monta a rodada e manda para todos */
+  function hostStart(): void {
+    const o = online;
+    if (!o || !o.net.isHost) return;
+    const ps = o.net.peers.slice(0, MAX_PLAYERS);
+    const mode = o.party ? 'arena' : o.pick.mode;
+    const nb = mode === 'arena' ? Math.max(ps.length < 2 ? 1 : 0, Math.min(o.pick.bots, MAX_PLAYERS - ps.length)) : 0;
+    const ks: number[] = [];
+    while (ks.length < nb) {
+      const k = BOT_KS[Math.floor(Math.random() * BOT_KS.length)];
+      if (!ks.includes(k)) ks.push(k);
+    }
+    const init: RoundInit = {
+      t: 'init',
+      mode,
+      seed: Math.floor(Math.random() * 9999),
+      theme: o.pick.theme,
+      variant: Math.floor(Math.random() * 1000),
+      diff: sv.diff,
+      players: ps.map((p, i) => ({ id: p.id, col: PCOLS[i], hat: PHATS[i] })),
+      bots: ks.map((k, i) => ({ id: 'b' + i, k })),
+      round: o.round + 1,
+    };
+    o.net.send(init);
+    beginRound(init);
+  }
+
+  function beginRound(init: RoundInit): void {
+    const o = online;
+    if (!o) return;
+    if (!init.players.some((p) => p.id === o.net.me.id)) {
+      // entrou depois: espera a próxima rodada na sala
+      o.busy = true;
+      o.room?.refresh();
+      return;
+    }
+    o.busy = false;
+    o.round = init.round;
+    o.go = false;
+    o.ready = new Set();
+    clearTimeout(o.readyTimer);
+    o.room?.dispose();
+    o.room = null;
+    if (init.mode === 'restore') {
+      const th = THEMES.some((x) => x.id === init.theme) ? (init.theme as ThemeId) : sv.lastTheme;
+      void startRestore(th, init).then(() => {
+        if (online === o) o.init = init;
+      });
+      o.init = init;
+    } else {
+      o.init = init;
+      void startArena(init);
+      if (o.net.isHost) o.readyTimer = window.setTimeout(() => sendGo(), 20000);
+    }
+  }
+  /** anfitrião: todos carregaram? larga */
+  function checkReady(): void {
+    const o = online;
+    if (!o || !o.net.isHost || !o.init || o.go || o.init.mode !== 'arena' || !arena) return;
+    const want = o.init.players.filter((p) => p.id !== o.net.me.id && o.net.peers.some((x) => x.id === p.id));
+    if (want.every((p) => o.ready.has(p.id))) sendGo();
+  }
+  function sendGo(): void {
+    const o = online;
+    if (!o || !o.net.isHost || o.go || !o.init) return;
+    o.go = true;
+    clearTimeout(o.readyTimer);
+    o.net.send({ t: 'go', round: o.round });
+    arena?.netGo();
+  }
+
+  /** mensagens da sala que não são da partida em si (essas ficam no Binder) */
+  function onNet(from: string, e: NetEvent): void {
+    const o = online;
+    if (!o) return;
+    const fromHost = from === o.net.hostId;
+    switch (e.t) {
+      case 'init':
+        if (fromHost && Array.isArray(e.players) && Array.isArray(e.bots)) beginRound(e);
+        break;
+      case 'lobby':
+        if (!fromHost) break;
+        o.pick.mode = e.mode === 'restore' ? 'restore' : 'arena';
+        if (THEMES.some((x) => x.id === e.theme)) o.pick.theme = e.theme as ThemeId;
+        o.pick.bots = Math.max(0, Math.min(3, Number(e.bots) | 0));
+        o.busy = !!e.busy && !o.init;
+        o.room?.refresh();
+        break;
+      case 'menu':
+        if (fromHost) showRoom();
+        break;
+      case 'ready':
+        if (o.net.isHost && e.round === o.round) {
+          o.ready.add(from);
+          checkReady();
+        }
+        break;
+      case 'go':
+        if (fromHost && e.round === o.round) o.go = true;
+        break;
+    }
   }
 
   /* ------------------------------ pausa / fim ------------------------------ */
@@ -234,7 +620,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       <div class="cf-row">
         <button class="cf-btn g" data-a="go">${icon('play', { size: 18 })}${esc(t('cavafala.resume', 'Continuar'))}</button>
         ${restore ? `<button class="cf-btn o" data-a="top">${esc(t('cavafala.toTop', 'Voltar ao topo'))}</button>` : ''}
-        <button class="cf-btn" data-a="menu">${esc(t('cavafala.menu', 'Menu'))}</button>
+        ${online ? `<button class="cf-btn" data-a="room">${esc(online.net.isHost ? t('cavafala.net.toRoom', 'Voltar à sala') : t('cavafala.net.leave', 'Sair da sala'))}</button>` : `<button class="cf-btn" data-a="menu">${esc(t('cavafala.menu', 'Menu'))}</button>`}
         <button class="cf-btn w" data-a="exit">${icon('home', { size: 18 })}${esc(t('cavafala.exit', 'Sair'))}</button>
       </div></div>`);
     const close = () => {
@@ -247,9 +633,22 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       restore?.respawn();
       close();
     });
-    d.querySelector('[data-a=menu]')!.addEventListener('click', menu);
+    d.querySelector('[data-a=menu]')?.addEventListener('click', menu);
+    d.querySelector('[data-a=room]')?.addEventListener('click', toRoomOrLeave);
     d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
     setBack(close);
+  }
+  /** online: anfitrião leva todos de volta à sala; convidado sai */
+  function toRoomOrLeave(): void {
+    const o = online;
+    if (!o) return menu();
+    if (o.net.isHost) {
+      o.net.send({ t: 'menu' });
+      showRoom();
+    } else {
+      leaveOnline();
+      menu();
+    }
   }
 
   function resultsRestore(theme: ThemeId, r: RestoreResult): void {
@@ -284,6 +683,24 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const w = world;
     if (!w || dead) return;
     w.setPaused(true);
+    const o = online;
+    if (o) {
+      const host = o.net.isHost;
+      const d = w.hud.panel(`<div class="cf-card" style="text-align:center;min-width:280px">
+      <h2>${esc(title)}</h2>
+      <div class="cf-stars">${'★'.repeat(stars)}<span style="opacity:.25">${'★'.repeat(3 - stars)}</span></div>
+      <div class="cf-res">${rows.map(([a, b]) => `<span>${esc(a)}</span><b>${esc(b)}</b>`).join('')}</div>
+      <div class="cf-row">${
+        host
+          ? `<button class="cf-btn g" data-a="again">${icon('refresh', { size: 18 })}${esc(t('cavafala.again', 'Jogar de novo'))}</button><button class="cf-btn" data-a="room">${esc(t('cavafala.net.toRoom', 'Voltar à sala'))}</button>`
+          : `<span class="cf-note" style="color:#2a0b5c;opacity:.75;font-weight:700">${esc(t('cavafala.net.waitAgain', 'Esperando o anfitrião escolher a próxima…'))}</span><button class="cf-btn" data-a="room">${esc(t('cavafala.net.leave', 'Sair da sala'))}</button>`
+      }<button class="cf-btn w" data-a="exit">${icon('home', { size: 18 })}${esc(t('cavafala.exit', 'Sair'))}</button></div></div>`);
+      d.querySelector('[data-a=again]')?.addEventListener('click', () => hostStart());
+      d.querySelector('[data-a=room]')!.addEventListener('click', toRoomOrLeave);
+      d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
+      setBack(toRoomOrLeave);
+      return;
+    }
     const d = w.hud.panel(`<div class="cf-card" style="text-align:center;min-width:280px">
       <h2>${esc(title)}</h2>
       <div class="cf-stars">${'★'.repeat(stars)}<span style="opacity:.25">${'★'.repeat(3 - stars)}</span></div>
@@ -317,6 +734,21 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         return startArena();
       },
       menu,
+      online: () => online && { code: online.net.code, host: online.net.isHost, peers: online.net.peers.map((p) => p.id), round: online.round, go: online.go, me: online.net.me.id },
+      host: (mode: 'arena' | 'restore' = 'arena', bots = 0, theme?: ThemeId) => {
+        if (!online) return;
+        online.pick.mode = mode;
+        online.pick.bots = bots;
+        if (theme) online.pick.theme = theme;
+        hostStart();
+      },
+      create: () => connect(newCode(), 'create', false),
+      join: (code: string) => connect(code, 'join', false),
+      party: (room: string) => connect(codeFromRoom(room), 'auto', true),
+      leave: () => {
+        leaveOnline();
+        menu();
+      },
       say: (s: string) => world?.say(s),
       give: (n = 200) => {
         if (world) for (const m of MATS) world.me.inv[m] = (world.me.inv[m] ?? 0) + n;
@@ -354,10 +786,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     };
   }
 
-  menu();
+  const pend = takePendingCava();
+  if (pend?.party) void connect(codeFromRoom(pend.party), 'auto', true);
+  else if (pend?.code) void connect(pend.code, 'join', false);
+  else menu();
   return {
     destroy() {
       dead = true;
+      leaveOnline();
       endWorld();
       menuEl?.remove();
       setBack(null);

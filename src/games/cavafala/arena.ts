@@ -12,6 +12,7 @@ import { bigMoment, notify, objective } from '../../ui/notify';
 import type { Hat } from './bloop';
 import { M } from './data';
 import { canPay, costOf, gadgetById, noMods, type GDef } from './gadgets';
+import type { NetEvent } from './net';
 import type { Diff } from './save';
 import { PAZINHA, type Actor, type ModeCtl, type World } from './world';
 
@@ -38,9 +39,17 @@ export interface ArenaResult {
   kos: number;
 }
 
-const NAMES = ['Pipoca', 'Jujuba', 'Bolota', 'Tatu', 'Fofão', 'Paçoca'];
-const COLS = ['#ff8a3a', '#5ad6a0', '#b08aff', '#ffd34a', '#ff5a8a', '#5ab0ff'];
-const HATS: Hat[] = ['cap', 'crown', 'bow', 'straw', 'beanie', 'helmet'];
+export const NAMES = ['Pipoca', 'Jujuba', 'Bolota', 'Tatu', 'Fofão', 'Paçoca'];
+export const COLS = ['#ff8a3a', '#5ad6a0', '#b08aff', '#ffd34a', '#ff5a8a', '#5ab0ff'];
+export const HATS: Hat[] = ['cap', 'crown', 'bow', 'straw', 'beanie', 'helmet'];
+
+/** partida online: quem está em cada lugar da ilha (mesma ordem em todos os aparelhos) */
+export interface ArenaOnline {
+  host: boolean;
+  myId: string;
+  slots: { nid: string; name: string; col: string; hat: Hat; kind: 'me' | 'remote' | 'bot'; k?: number }[];
+  send(e: NetEvent): void;
+}
 const BOT_GADGETS = ['escudo', 'bolhas', 'luva', 'tornado', 'trampolim', 'ventilador', 'cavabomba', 'martelo', 'neve', 'muralha', 'geleia', 'boneco'];
 const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -57,15 +66,21 @@ export class ArenaMode implements ModeCtl {
   private clouds = new THREE.Group();
   private bots: Actor[] = [];
   private lastBeat = 4;
+  /** online: esperando o 'go' do anfitrião */
+  private waiting = false;
+  private crumbles = 0;
+  private total: number;
 
   constructor(
     private w: World,
     private o: { bots: number; diff: Diff; practice: boolean; R: number; topY: number },
     private onEnd: (r: ArenaResult) => void,
+    private net: ArenaOnline | null = null,
   ) {
     this.Rcur = o.R;
-    const n = Math.max(1, Math.min(3, o.bots));
+    const n = net ? net.slots.length - 1 : Math.max(1, Math.min(3, o.bots));
     this.placeN = n + 1;
+    this.total = n + 1;
     const ring = o.R * 0.55;
     const pos = (i: number) => {
       const a = (i / (n + 1)) * Math.PI * 2 + Math.PI / 2;
@@ -74,32 +89,41 @@ export class ArenaMode implements ModeCtl {
       return new THREE.Vector3(x, w.T.groundY(x, z, o.topY + 6) + 0.3, z);
     };
     const me = w.me;
-    me.body.p.copy(pos(0));
-    this.face(me, 0, 0);
-    this.kit(me);
-    const used = new Set<number>();
-    for (let i = 0; i < n; i++) {
-      let k = Math.floor(Math.random() * NAMES.length);
-      while (used.has(k)) k = (k + 1) % NAMES.length;
-      used.add(k);
-      const a = w.addActor(NAMES[k], COLS[k], pos(i + 1), false, HATS[k], COLS[(k + 2) % COLS.length]);
-      const d = o.diff;
-      a.ai = {
-        st: 'roam',
-        think: 0.5 + Math.random(),
-        target: null,
-        react: [1.3, 0.75, 0.4][d],
-        aimErr: [0.2, 0.1, 0.045][d],
-        speedK: [0.72, 0.88, 1][d],
-        edge: [3.2, 2.6, 2.2][d],
-        aggro: o.practice ? 0 : [0.5, 0.75, 1][d],
-        wander: new THREE.Vector3(),
-        fireT: 1,
-        hitT: 0,
-      } satisfies BotAI;
-      this.face(a, 0, 0);
-      this.kit(a);
-      this.bots.push(a);
+    if (net) {
+      this.waiting = true;
+      net.slots.forEach((sl, i) => {
+        if (sl.kind === 'me') {
+          me.body.p.copy(pos(i));
+          me.nid = sl.nid;
+          me.color = sl.col;
+          this.face(me, 0, 0);
+          this.kit(me);
+          return;
+        }
+        const a = w.addActor(sl.name, sl.col, pos(i), false, sl.hat, COLS[((sl.k ?? i) + 2) % COLS.length]);
+        a.nid = sl.nid;
+        this.face(a, 0, 0);
+        if (sl.kind === 'bot') this.bots.push(a);
+        if (sl.kind === 'bot' && net.host) this.makeBot(a);
+        else {
+          a.remote = true;
+          if (sl.kind === 'remote') a.model?.nameTag(sl.name, sl.col);
+        }
+      });
+    } else {
+      me.body.p.copy(pos(0));
+      this.face(me, 0, 0);
+      this.kit(me);
+      const used = new Set<number>();
+      for (let i = 0; i < n; i++) {
+        let k = Math.floor(Math.random() * NAMES.length);
+        while (used.has(k)) k = (k + 1) % NAMES.length;
+        used.add(k);
+        const a = w.addActor(NAMES[k], COLS[k], pos(i + 1), false, HATS[k], COLS[(k + 2) % COLS.length]);
+        this.face(a, 0, 0);
+        this.makeBot(a);
+        this.bots.push(a);
+      }
     }
     // nuvens lá embaixo (o "vazio")
     const m = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: new THREE.Color('#6a7aa0'), transparent: true, opacity: 0.85 });
@@ -120,8 +144,142 @@ export class ArenaMode implements ModeCtl {
     }
     w.scene.add(this.clouds);
     w.setSky('#7ac8ff', '#e0f4ff', 1, '#bfe6ff');
-    objective(o.practice ? t('cavafala.arena.objPractice', 'Treino: teste engenhocas nos rivais') : t('cavafala.arena.obj', 'Empurre os rivais para fora da ilha!'));
+    if (this.waiting) objective(t('cavafala.net.waitAll', 'Esperando todo mundo carregar...'));
+    else this.ready();
+  }
+  private ready(): void {
+    objective(this.o.practice ? t('cavafala.arena.objPractice', 'Treino: teste engenhocas nos rivais') : t('cavafala.arena.obj', 'Empurre os rivais para fora da ilha!'));
     bigMoment(t('cavafala.arena.ready', 'Preparar...'), { sub: t('cavafala.arena.title', 'Arena Cava-Cava') });
+  }
+
+  /** bot com cérebro (offline, ou no aparelho do anfitrião) */
+  private makeBot(a: Actor): void {
+    const d = this.o.diff;
+    a.remote = false;
+    a.snaps = undefined;
+    a.body.v.set(0, 0, 0);
+    a.ai = {
+      st: 'roam',
+      think: 0.5 + Math.random(),
+      target: null,
+      react: [1.3, 0.75, 0.4][d],
+      aimErr: [0.2, 0.1, 0.045][d],
+      speedK: [0.72, 0.88, 1][d],
+      edge: [3.2, 2.6, 2.2][d],
+      aggro: this.o.practice ? 0 : [0.5, 0.75, 1][d],
+      wander: new THREE.Vector3(),
+      fireT: 1,
+      hitT: 0,
+    } satisfies BotAI;
+    if (!a.slots.some((x) => x.g.id === PAZINHA.id)) {
+      a.slots.length = 0;
+      this.kit(a);
+    }
+  }
+
+  /* ------------------------------ online ------------------------------ */
+  /** o anfitrião deu a largada (todos carregaram) */
+  netGo(): void {
+    if (!this.waiting) return;
+    this.waiting = false;
+    this.ready();
+  }
+  get isWaiting(): boolean {
+    return this.waiting;
+  }
+  /** a borda desmoronou no anfitrião */
+  netCrumble(n: number, warn: boolean): void {
+    if (warn) {
+      this.warnT = 2.5;
+      notify(t('cavafala.arena.crumble', 'A borda vai desmoronar!'), { kind: 'warn', key: 'crumble' });
+      sfx.whoosh();
+      return;
+    }
+    while (this.crumbles < n) this.crumble();
+    this.warnT = -1;
+  }
+  /** anfitrião: alguém (de outro aparelho) caiu */
+  netOut(id: string, by: string): void {
+    if (!this.net?.host) return;
+    const a = this.w.actorByNid(id);
+    if (a && a.alive) this.ko(a, by);
+  }
+  /** todos: o anfitrião confirmou quem caiu e a colocação */
+  netKo(id: string, place: number, by: string): void {
+    const a = this.w.actorByNid(id);
+    if (!a) return;
+    if (a.isPlayer && a.place) {
+      a.place = place;
+      return;
+    }
+    this.placeN = Math.min(this.placeN, place - 1);
+    this.announceOut(a, place, by);
+  }
+  /** todos: fim pelo anfitrião */
+  netEnd(places: Record<string, number>): void {
+    const me = this.w.me;
+    const p = places[this.net?.myId ?? ''];
+    if (p) me.place = p;
+    if (me.alive && p && p > 1) me.alive = false;
+    this.end();
+  }
+  /** alguém saiu da sala no meio da partida */
+  netLeave(id: string): void {
+    const a = this.w.actorByNid(id);
+    if (!a) return;
+    if (this.net?.host && a.alive && this.phase !== 'end') this.ko(a, '');
+    else if (!a.alive && a.model) a.model.root.visible = false;
+  }
+  /** o anfitrião saiu: este aparelho assume os bots, a borda e o placar */
+  becomeHost(oldHost: string): void {
+    if (!this.net || this.net.host) return;
+    this.net.host = true;
+    for (const b of this.bots) if (b.alive) this.makeBot(b);
+    const old = this.w.actorByNid(oldHost);
+    if (old && old.alive && this.phase !== 'end') this.ko(old, '');
+    if (this.waiting) {
+      this.net.send({ t: 'go', round: 0 });
+      this.netGo();
+    }
+  }
+  /** anfitrião decide: tira da partida, dá a colocação e avisa todo mundo */
+  private ko(a: Actor, by: string): void {
+    if (!a.alive || this.phase === 'end') return;
+    const place = this.placeN--;
+    this.net?.send({ t: 'ko', id: a.nid ?? '', place, by });
+    this.announceOut(a, place, by);
+    const alive = this.w.actors.filter((x) => x.alive && !x.helper);
+    if (alive.length <= 1 && this.net) {
+      const places: Record<string, number> = {};
+      for (const x of this.w.actors) if (x.nid && !x.helper) places[x.nid] = x.alive ? 1 : x.place;
+      if (alive[0]) alive[0].place = 1;
+      setTimeout(() => {
+        this.net?.send({ t: 'end', places });
+        this.netEnd(places);
+      }, 1500);
+    }
+  }
+  private announceOut(a: Actor, place: number, by: string): void {
+    const w = this.w;
+    const wasAlive = a.alive;
+    a.alive = false;
+    a.place = place;
+    if (!wasAlive && a.isPlayer) return;
+    sfx.whoosh();
+    const me = this.net?.myId ?? '';
+    if (by && by === me && !a.isPlayer) this.kos++;
+    const byA = by ? w.actorByNid(by) : null;
+    const byName = byA ? (byA.isPlayer ? t('cavafala.you', 'Você') : byA.name) : '';
+    bigMoment(a.isPlayer ? t('cavafala.arena.youFell', 'Você caiu!') : t('cavafala.arena.ko', 'Plof! {n} caiu!', { n: a.name }), { sub: byA && byA !== a ? t('cavafala.arena.by', 'empurrado por {n}', { n: byName }) : '' });
+    if (a.isPlayer) this.spectate();
+  }
+  private spectate(): void {
+    const a = this.w.me;
+    a.body.p.set(0, this.o.topY + 14, this.o.R + 8);
+    a.body.v.set(0, 0, 0);
+    a.yaw = 0;
+    a.pitch = -0.55;
+    if (this.net) objective(t('cavafala.net.spectate', 'Você caiu! Torça pelos amigos...'));
   }
 
   private face(a: Actor, x: number, z: number): void {
@@ -145,6 +303,11 @@ export class ArenaMode implements ModeCtl {
 
   update(dt: number): void {
     if (this.phase === 'end') return;
+    if (this.waiting) {
+      for (const a of this.w.actors) a.move.set(0, 0, 0);
+      this.w.me.body.v.x = this.w.me.body.v.z = 0;
+      return;
+    }
     if (this.phase === 'count') {
       const before = Math.ceil(this.count);
       this.count -= dt;
@@ -165,12 +328,14 @@ export class ArenaMode implements ModeCtl {
       return;
     }
     this.time += dt;
-    // encolhe a borda
-    this.shrinkT -= dt;
-    if (this.shrinkT < 2.5 && this.warnT < 0) {
+    const boss = !this.net || this.net.host;
+    // encolhe a borda (online: o anfitrião decide quando)
+    if (boss) this.shrinkT -= dt;
+    if (boss && this.shrinkT < 2.5 && this.warnT < 0) {
       this.warnT = 2.5;
       notify(t('cavafala.arena.crumble', 'A borda vai desmoronar!'), { kind: 'warn', key: 'crumble' });
       sfx.whoosh();
+      this.net?.send({ t: 'crumble', n: this.crumbles, w: 1 });
     }
     if (this.warnT > 0) {
       this.warnT -= dt;
@@ -181,12 +346,13 @@ export class ArenaMode implements ModeCtl {
         this.w.fx.dust(x, this.o.topY + 0.3, z, '#c8a070', 2);
       }
     }
-    if (this.shrinkT <= 0 && this.Rcur > 6) {
+    if (boss && this.shrinkT <= 0 && this.Rcur > 6) {
       this.shrinkT = 11;
       this.warnT = -1;
       this.crumble();
+      this.net?.send({ t: 'crumble', n: this.crumbles });
     }
-    for (const b of this.bots) if (b.alive) this.think(b, dt);
+    for (const b of this.bots) if (b.alive && !b.remote) this.think(b, dt);
     // batida de tensão quando sobram 2
     const alive = this.w.actors.filter((a) => a.alive && !a.helper);
     if (alive.length === 2 && this.lastBeat > 0) {
@@ -206,6 +372,7 @@ export class ArenaMode implements ModeCtl {
       if (Math.random() < 0.25) this.w.fx.chunks(x, this.o.topY, z, Math.cos(a), 0.2, Math.sin(a), '#9a6a3f', 2, 3);
     }
     this.Rcur -= 1.7;
+    this.crumbles++;
     sfx.bump();
     this.w.fx.addShake(0.25);
   }
@@ -334,6 +501,17 @@ export class ArenaMode implements ModeCtl {
   /* ------------------------------ eventos ------------------------------ */
   onOut(a: Actor): void {
     if (!a.alive || this.phase === 'end') return;
+    if (this.net) {
+      if (a.remote) return;
+      const by = a.lastHit && a.lastHit !== a ? (a.lastHit.nid ?? '') : '';
+      if (this.net.host) this.ko(a, by);
+      else if (a.isPlayer) {
+        // o anfitrião confirma a colocação ('ko'); enquanto isso, vira espectador
+        this.net.send({ t: 'out', id: a.nid ?? '', by });
+        this.announceOut(a, 0, by);
+      }
+      return;
+    }
     const w = this.w;
     if (this.o.practice && a.isPlayer) {
       // treino: volta para a ilha
@@ -378,7 +556,7 @@ export class ArenaMode implements ModeCtl {
     if (this.phase === 'end') return;
     this.phase = 'end';
     const me = this.w.me;
-    const total = this.bots.length + 1;
+    const total = this.total;
     const place = me.alive ? 1 : me.place || total;
     const win = place === 1;
     if (win) {

@@ -17,7 +17,7 @@ import { FpsControls } from '../../ui/touch';
 import { BloopModel, disposeBloopCache, lam, type Hat } from './bloop';
 import { M, MATS, emptyInv, matColor, matName, type Inv, type Theme } from './data';
 import { Fx } from './fx';
-import { GADGETS, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
+import { GADGETS, gadgetById, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
 import { Hud } from './hud';
 import { OBox, makeBody, rayBox, stepBody, type Body, type PhysWorld } from './phys';
 import { parseBest, type Parsed } from './parser';
@@ -77,7 +77,39 @@ export interface Actor {
   teleCd: number;
   place: number;
   outT: number;
+  /** online: id na rede (jogador = id do jogador; bot = 'b<n>') */
+  nid?: string;
+  /** online: boneco de outro aparelho (posição vem da rede, sem física aqui) */
+  remote?: boolean;
+  snaps?: Snap[];
+  /** online: bandeiras do último retrato (1 escudo · 2 bolha · 4 montado) */
+  netF?: number;
+  /** online: engenhoca na mão (id) */
+  netG?: string;
+  /** online: quando falou por último (balão) */
+  voiceAt?: number;
 }
+
+/** retrato de um Bloop de outro aparelho (interpolação) */
+export interface Snap {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+}
+
+/** online: o que o motor manda para a rede (net.ts / online.ts) */
+export interface WorldNet {
+  dig(x: number, y: number, z: number, r: number, p: number): void;
+  build(a: Actor, g: GDef, mods: Mods, pos: THREE.Vector3, yaw: number, tp: THREE.Vector3 | null): void;
+  fire(a: Actor, s: Slot, o: THREE.Vector3, d: THREE.Vector3): void;
+  hit(target: Actor, dx: number, dy: number, dz: number, power: number, by: Actor): void;
+  voice(a: Actor, text: string): void;
+}
+/** atraso da interpolação dos Bloops remotos (ms) */
+const INTERP_MS = 140;
 
 export interface Struct {
   g: GDef;
@@ -251,6 +283,12 @@ export class World {
   private digbots: Bot2[] = [];
   private tornados: Tornado[] = [];
   mode: ModeCtl | null = null;
+  /** online (null = offline) */
+  net: WorldNet | null = null;
+  /** chamado a cada passo da simulação (online: manda o retrato) */
+  onStep: ((dt: number) => void) | null = null;
+  private teleFar: THREE.Vector3 | null = null;
+  private teleForce: THREE.Vector3 | null = null;
   readonly theme: Theme | null;
   readonly arena: boolean;
   time = 0;
@@ -553,7 +591,7 @@ export class World {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
       const t0 = performance.now();
-      if (!this.paused) this.step(dt);
+      if (!this.paused || this.net) this.step(dt);
       this.render();
       this.gov.sample(dt * 1000, performance.now() - t0);
     };
@@ -567,7 +605,8 @@ export class World {
 
   private step(dt: number): void {
     this.time += dt;
-    this.controlPlayer(dt);
+    if (!this.paused) this.controlPlayer(dt);
+    else this.me.move.set(0, 0, 0);
     this.mode?.update(dt);
     for (const a of this.actors) this.simActor(a, dt);
     this.updateStructs(dt);
@@ -585,6 +624,7 @@ export class World {
     this.fx.update(dt, this.cam, this.renderer.domElement.height);
     this.updateHand(dt);
     this.updateHudLive();
+    this.onStep?.(dt);
   }
 
   private render(): void {
@@ -726,6 +766,10 @@ export class World {
       if (a.model) a.model.root.visible = false;
       return;
     }
+    if (a.remote) {
+      this.simPuppet(a, dt);
+      return;
+    }
     a.shieldT = Math.max(0, a.shieldT - dt);
     a.shieldCd = Math.max(0, a.shieldCd - dt);
     a.slowT = Math.max(0, a.slowT - dt);
@@ -824,12 +868,22 @@ export class World {
     }
     // caiu no vazio / muito fundo
     if (b.p.y < this.T.oy - 6) this.mode?.onOut?.(a);
+    this.visuals(a, dt);
+    // jetpack recarrega no chão
+    if (b.onGround) a.fuel = Math.min(1, a.fuel + dt * 0.6);
+  }
+
+  /** modelo, carrinho, escudo e bolha (todos os Bloops, inclusive os de outros aparelhos) */
+  private visuals(a: Actor, dt: number): void {
+    const b = a.body;
+    const sel = a.slots[a.sel];
     // modelo
     if (a.model) {
       a.model.root.visible = true;
       a.model.root.position.copy(b.p);
       a.model.root.rotation.y = a.yaw;
       a.model.update(dt, Math.hypot(b.v.x, b.v.z), !b.onGround);
+      if (a.remote) a.model.tagDist(this.cam.position.distanceTo(b.p));
       this.syncHeld(a);
     }
     // carrinho montado: modelo segue o Bloop e dá trombada
@@ -841,7 +895,7 @@ export class World {
       a.cart.position.set(b.p.x, b.p.y - 0.05, b.p.z);
       a.cart.rotation.y = a.yaw;
       const spd = Math.hypot(b.v.x, b.v.z);
-      if (spd > 6)
+      if (spd > 6 && !a.remote)
         for (const o of this.actors) {
           if (o === a || !o.alive) continue;
           V1.copy(o.body.p).sub(b.p);
@@ -874,8 +928,110 @@ export class World {
       a.bubbleMesh.visible = !a.isPlayer;
       a.bubbleMesh.position.set(b.p.x, b.p.y + 0.7, b.p.z);
     } else if (a.bubbleMesh) a.bubbleMesh.visible = false;
-    // jetpack recarrega no chão
-    if (b.onGround) a.fuel = Math.min(1, a.fuel + dt * 0.6);
+  }
+
+  /* ---------------------------- Bloops de outros aparelhos (online) ---------------------------- */
+  /** guarda um retrato vindo da rede */
+  pushSnap(a: Actor, x: number, y: number, z: number, yaw: number, pitch: number, pct: number, f: number, g: string): void {
+    const s = (a.snaps ??= []);
+    const now = performance.now();
+    if (!s.length) a.body.p.set(x, y, z);
+    s.push({ t: now, x, y, z, yaw, pitch });
+    if (s.length > 24) s.splice(0, s.length - 24);
+    a.pct = pct;
+    a.netF = f;
+    if (g !== a.netG) {
+      a.netG = g;
+      this.puppetHeld(a, g);
+    }
+  }
+  private puppetHeld(a: Actor, id: string): void {
+    let i = a.slots.findIndex((s) => s.g.id === id);
+    if (i < 0) {
+      const g = id === PAZINHA.id ? PAZINHA : gadgetById(id);
+      if (!g) return;
+      a.slots.push({ g, mods: noMods(), uses: 0, thumb: '', on: false });
+      if (a.slots.length > 8) a.slots.splice(0, 1);
+      i = a.slots.length - 1;
+    }
+    a.sel = i;
+  }
+  private simPuppet(a: Actor, dt: number): void {
+    const b = a.body;
+    const s = a.snaps;
+    if (s && s.length) {
+      const rt = performance.now() - INTERP_MS;
+      let k = s.length - 1;
+      while (k > 0 && s[k - 1].t > rt) k--;
+      const B = s[k];
+      const A = k > 0 ? s[k - 1] : B;
+      const px = b.p.x,
+        py = b.p.y,
+        pz = b.p.z;
+      if (A === B || rt >= B.t) {
+        // sem retrato novo: segura no último (sem extrapolar longe)
+        b.p.set(B.x, B.y, B.z);
+        a.yaw = B.yaw;
+        a.pitch = B.pitch;
+      } else {
+        const u = Math.max(0, Math.min(1, (rt - A.t) / Math.max(1, B.t - A.t)));
+        b.p.set(A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u, A.z + (B.z - A.z) * u);
+        let dy = B.yaw - A.yaw;
+        dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        a.yaw = A.yaw + dy * u;
+        a.pitch = A.pitch + (B.pitch - A.pitch) * u;
+      }
+      if (dt > 0) {
+        b.v.set((b.p.x - px) / dt, (b.p.y - py) / dt, (b.p.z - pz) / dt);
+        if (b.v.lengthSq() > 900) b.v.setLength(30);
+      }
+      // no chão? (para a animação)
+      b.onGround = this.T.sample(b.p.x, b.p.y - 0.15, b.p.z) > 0 || Math.abs(b.v.y) < 0.6;
+      if (s.length > 2 && s[0].t < rt - 1000) s.splice(0, 1);
+    }
+    const f = a.netF ?? 0;
+    a.shieldT = f & 1 ? 1 : 0;
+    a.trapT = f & 2 ? 1 : 0;
+    a.mounted = !!(f & 4);
+    this.visuals(a, dt);
+  }
+  /** cavada que veio da rede */
+  netDig(x: number, y: number, z: number, r: number, p: number): void {
+    const n = this.T.dig(x, y, z, r, null, p);
+    if (n > 0 && this.isNear(x, y, z)) {
+      const col = matColor(this.T.matAt(x, y - r, z) || M.Terra, this.theme ?? undefined);
+      this.fx.chunks(x, y, z, 0, 1, 0, col, 3 + Math.min(5, Math.round(n / 6)), 4);
+      this.fx.dust(x, y, z, col, 4);
+    }
+  }
+  /** engenhoca que alguém (de outro aparelho) montou: mesmo lugar, sem pagar */
+  netCreate(a: Actor, g: GDef, mods: Mods, x: number, y: number, z: number, yaw: number, tp: THREE.Vector3 | null): void {
+    a.body.p.set(x, y, z);
+    a.yaw = yaw;
+    if (!a.voiceAt || performance.now() - a.voiceAt > 2500) a.model?.say(fullName(g, mods) + '!', 1800);
+    this.teleForce = tp;
+    if (g.kind === 'struct') this.placeStruct(a, g, mods);
+    else this.buildTool(a, g, mods);
+    this.teleForce = null;
+  }
+  /** espuma/martelo/tornado/robô de outro aparelho (o acerto é decidido por quem usou) */
+  netFire(a: Actor, g: GDef, mods: Mods, o: THREE.Vector3, d: THREE.Vector3): void {
+    let s = a.slots.find((x) => x.g.id === g.id && JSON.stringify(x.mods) === JSON.stringify(mods));
+    if (!s) {
+      s = { g, mods, uses: 0, thumb: '', on: false };
+      a.slots.push(s);
+      if (a.slots.length > 8) a.slots.splice(0, 1);
+    }
+    a.useCd = 0;
+    this.useSlot(a, s, true, 1 / 30, o, d);
+  }
+  /** balão com o que alguém falou */
+  netVoice(a: Actor, text: string): void {
+    a.voiceAt = performance.now();
+    a.model?.say('“' + text + '”', 2600);
+  }
+  actorByNid(nid: string): Actor | null {
+    return this.actors.find((a) => a.nid === nid) ?? null;
   }
 
   /** engenhoca na mão dos Bloops (bots/ajudantes) */
@@ -945,6 +1101,7 @@ export class World {
     }
     const got: Inv = {};
     const n = this.T.dig(x, y, z, R, got, tool.power);
+    if (n > 0 && this.net) this.net.dig(x, y, z, R, tool.power);
     const col = matColor(mat || M.Terra, this.theme ?? undefined);
     const ex = hit ? hit.x : x,
       ey = hit ? hit.y : y,
@@ -1027,6 +1184,7 @@ export class World {
     }
     const p = parseBest(alts);
     this.lastParsed = p;
+    this.net?.voice(this.me, alts[0]);
     if (p.g) {
       const ok = this.create(this.me, p.g, p.mods, 'voice');
       if (ok) {
@@ -1179,8 +1337,12 @@ export class World {
       this.lastCreated = g.id;
       this.created++;
     } else a.model?.say(fullName(g, mods) + '!', 1800);
+    const at = a.body.p.clone();
+    const yaw = a.yaw;
+    this.teleFar = null;
     if (g.kind === 'struct') this.placeStruct(a, g, mods);
     else this.buildTool(a, g, mods);
+    this.net?.build(a, g, mods, at, yaw, this.teleFar);
     return true;
   }
 
@@ -1311,13 +1473,17 @@ export class World {
     if (g.beh === 'teleport' && a) {
       // par: o 2º portal vai onde você está mirando (ou 12 m à frente)
       let far: THREE.Vector3;
-      const dir = a.isPlayer ? this.aimDir(V2) : V2.set(-Math.sin(yaw), -0.3, -Math.cos(yaw)).normalize();
-      const o = a.isPlayer ? this.cam.position : V3.copy(a.body.p).add(UP);
-      const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 30);
-      if (hit && hit.dist > 5) far = new THREE.Vector3(hit.x, hit.y, hit.z).add(new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-2));
-      else far = pos.clone().addScaledVector(new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), 14);
-      const gy = this.T.groundY(far.x, far.z, far.y + 3, far.y - 8);
-      if (gy > -Infinity) far.y = gy;
+      if (this.teleForce) far = this.teleForce.clone();
+      else {
+        const dir = a.isPlayer ? this.aimDir(V2) : V2.set(-Math.sin(yaw), -0.3, -Math.cos(yaw)).normalize();
+        const o = a.isPlayer ? this.cam.position : V3.copy(a.body.p).add(UP);
+        const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 30);
+        if (hit && hit.dist > 5) far = new THREE.Vector3(hit.x, hit.y, hit.z).add(new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-2));
+        else far = pos.clone().addScaledVector(new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), 14);
+        const gy = this.T.groundY(far.x, far.z, far.y + 3, far.y - 8);
+        if (gy > -Infinity) far.y = gy;
+      }
+      this.teleFar = far.clone();
       const twin = this.spawnStruct(null, g, mods, far, yaw + Math.PI, true);
       twin.owner = a;
       s.pair = twin;
@@ -1585,6 +1751,7 @@ export class World {
         if (beh === 'glove' || beh === 'hammer') this.melee(a, s, o, dir);
         else if (beh === 'tornado') this.spawnTornado(a, s, o, dir);
         else this.shoot(a, s, o, dir);
+        if (!a.remote) this.net?.fire(a, s, o, dir);
         if (s.g.beh === 'digbomb') consume();
         this.mode?.onUse?.(a, s, null);
         break;
@@ -1674,6 +1841,7 @@ export class World {
             const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 20);
             const at = hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : V1.copy(b.p).addScaledVector(dir, 4).clone();
             this.spawnDigbot(a, s, at);
+            if (!a.remote) this.net?.fire(a, s, o, dir);
             consume();
             break;
           }
@@ -1815,7 +1983,9 @@ export class World {
         const ang = this.time * 2.3;
         const p = V1.set(d.p.x + Math.cos(ang) * 1.2, d.p.y - 0.4, d.p.z + Math.sin(ang) * 1.2);
         const got: Inv = {};
-        const n = this.T.dig(p.x, p.y, p.z, 1.1, got, 1.4);
+        // robô de outro aparelho: só o dono cava (a cavada chega pela rede)
+        const n = d.owner.remote ? 0 : this.T.dig(p.x, p.y, p.z, 1.1, got, 1.4);
+        if (n > 0 && this.net) this.net.dig(p.x, p.y, p.z, 1.1, 1.4);
         if (n > 0) {
           for (const [k, v] of Object.entries(got)) d.owner.inv[+k] = (d.owner.inv[+k] ?? 0) + v!;
           const mm = this.T.matAt(p.x, p.y - 0.5, p.z);
@@ -1914,7 +2084,8 @@ export class World {
     if (p.kind === 'digbomb') {
       const got: Inv = {};
       const R = 2.5 * Math.sqrt(p.power);
-      const n = this.T.dig(x, y, z, R, got, 1.3);
+      const n = p.owner.remote ? 0 : this.T.dig(x, y, z, R, got, 1.3);
+      if (n > 0 && this.net) this.net.dig(x, y, z, R, 1.3);
       for (const [k, v] of Object.entries(got)) p.owner.inv[+k] = (p.owner.inv[+k] ?? 0) + v!;
       if (p.owner.isPlayer) this.hud.setInv(p.owner.inv);
       const col = matColor(this.T.matAt(x, y - 1, z) || M.Terra, this.theme ?? undefined);
@@ -1973,6 +2144,20 @@ export class World {
 
   /** empurrão de desenho animado (sem dano: só a % de "splat" sobe e empurra mais) */
   knock(a: Actor, dx: number, dy: number, dz: number, power: number, by: Actor | null): void {
+    if (!a.alive) return;
+    if (this.net) {
+      // online: quem usou a engenhoca decide o acerto
+      if (by?.remote) return; // o dono manda o 'hit' (se acertou na tela dele)
+      if (a.remote) {
+        if (by) this.net.hit(a, dx, dy, dz, power, by);
+        a.model?.splat();
+        return;
+      }
+    }
+    this.applyKnock(a, dx, dy, dz, power, by);
+  }
+  /** aplica o empurrão (local ou vindo da rede) */
+  applyKnock(a: Actor, dx: number, dy: number, dz: number, power: number, by: Actor | null): void {
     if (!a.alive) return;
     if (a.shieldT > 0) {
       power *= 0.15;

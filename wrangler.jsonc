@@ -48,7 +48,9 @@
       // TV Bloop: canal ao vivo com os filmes aprovados do Bloop Cinema.
       { "name": "TV", "class_name": "TvChannel" },
       // Garimpo Bruto online: sala por código (relé; o anfitrião simula com o save dele) + convites.
-      { "name": "GARIMPO", "class_name": "GarimpoRoom" }
+      { "name": "GARIMPO", "class_name": "GarimpoRoom" },
+      // Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + convites.
+      { "name": "CAVA", "class_name": "CavaRoom" }
     ]
   },
   "migrations": [
@@ -61,7 +63,8 @@
     { "tag": "v5-noites", "new_sqlite_classes": ["NightsRoom"] },
     { "tag": "v6-mundo", "new_sqlite_classes": ["WorldRoom"] },
     { "tag": "v7-loja-tv", "new_sqlite_classes": ["UgcHub", "TvChannel"] },
-    { "tag": "v8-garimpo", "new_sqlite_classes": ["GarimpoRoom"] }
+    { "tag": "v8-garimpo", "new_sqlite_classes": ["GarimpoRoom"] },
+    { "tag": "v10-cava", "new_sqlite_classes": ["CavaRoom"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em

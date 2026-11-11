@@ -1,7 +1,10 @@
 /* Registro do minigame "Cava & Fala" no hub.
  * Só a vitrine (leve) entra no pacote principal; o jogo (three.js) é carregado sob demanda. */
-import { registerGame, type MiniGameHandle } from '../../hub/registry';
+import { bus } from '../../core/events';
+import { listGames, registerGame, type MiniGameHandle } from '../../hub/registry';
 import { t } from '../../i18n';
+import { registerPartyGame } from '../../party/contract';
+import { setPendingCava } from './pending';
 
 export function registerCavaFala(): void {
   registerGame({
@@ -18,6 +21,19 @@ export function registerCavaFala(): void {
     async launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
       const m = await import('./game');
       return m.launch(root, exit);
+    },
+  });
+  // GRUPO: quando o líder aperta JOGAR, todos caem na mesma Arena (sala = código derivado da sala do grupo)
+  bus.on('party-launch', (p: { game: string; room: string }) => {
+    if (p?.game === 'cavafala') setPendingCava({ party: p.room });
+  });
+  registerPartyGame('cavafala', {
+    async join(room: string) {
+      setPendingCava({ party: room });
+      const hub = await import('../../hub/hub');
+      hub.closeHost();
+      const def = listGames().find((g) => g.id === 'cavafala');
+      if (def) await hub.launchGame(def);
     },
   });
 }
