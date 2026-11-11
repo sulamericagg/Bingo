@@ -1,0 +1,67 @@
+/* GARIMPO BRUTO — beneficiamento (bateia, peneira, calha, lavadora) */
+.gbp-pan{position:absolute;inset:0;z-index:60;background:#1d2a26;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.gbp-pan canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.gbp-ptop{position:absolute;left:var(--edge-l,10px);right:var(--edge-r,10px);top:calc(var(--edge-t,8px) + 2px);display:flex;align-items:center;gap:8px;pointer-events:none}
+.gbp-ptop>*{pointer-events:auto}
+.gbp-sp{flex:1;pointer-events:none}
+.gbp-b{display:flex;align-items:center;justify-content:center;width:46px;height:46px;min-width:46px;padding:0;border:2px solid rgba(255,255,255,.6);border-radius:14px;background:rgba(20,30,28,.6);color:#fff;cursor:pointer;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.gbp-b svg{width:26px;height:26px}
+.gbp-b.on{background:rgba(255,190,40,.9);color:#3a2000;border-color:#fff3c0}
+.gbp-b[hidden]{display:none!important}
+.gbp-stages{position:absolute;left:50%;transform:translateX(-50%);top:4px;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:22px;background:rgba(10,20,18,.55);pointer-events:none}
+.gbp-stages i{display:flex;width:32px;height:32px;border-radius:50%;align-items:center;justify-content:center;color:#fff;opacity:.45;transition:transform .25s,opacity .25s,background .25s}
+.gbp-stages i svg{width:24px;height:24px}
+.gbp-stages i.on{opacity:1;background:rgba(255,200,60,.9);color:#3a2000;transform:scale(1.18)}
+.gbp-stages i.done{opacity:.9;background:rgba(60,190,90,.75)}
+.gbp-stages i.off{display:none}
+.gbp-stages i.off+b{display:none}
+.gbp-stages b{display:block;width:10px;height:3px;border-radius:2px;background:rgba(255,255,255,.35)}
+.gbp-res{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,8,4,.45);animation:gbpIn .25s ease-out}
+.gbp-res[hidden]{display:none}
+.gbp-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 28px 14px;border-radius:26px;background:radial-gradient(ellipse at 50% 20%,#5b3a1a,#2a1a0c);border:3px solid #ffd76a;box-shadow:0 10px 40px rgba(0,0,0,.6),inset 0 0 30px rgba(255,200,80,.15);color:#fff;font:800 16px var(--font,'Fredoka',sans-serif);animation:gbpPop .45s cubic-bezier(.2,1.6,.4,1)}
+.gbp-card>b{font-size:38px;color:#ffd23a;text-shadow:0 3px 0 #6b3500,0 6px 14px rgba(0,0,0,.6);line-height:1}
+.gbp-vial svg{width:58px;height:58px;color:#e9f8ff;filter:drop-shadow(0 0 12px rgba(255,210,60,.7))}
+.gbp-stars{display:flex;gap:6px}
+.gbp-stars i{display:flex;opacity:.25;transform:scale(.8)}
+.gbp-stars i svg{width:38px;height:38px}
+.gbp-stars i.on{opacity:1;transform:scale(1);animation:gbpStar .5s cubic-bezier(.2,1.6,.4,1) backwards}
+.gbp-stars i.on:nth-child(2){animation-delay:.15s}
+.gbp-stars i.on:nth-child(3){animation-delay:.3s}
+.gbp-rec{display:flex;align-items:center;gap:10px;font-size:20px}
+.gbp-rec span{padding:2px 12px;border-radius:12px;background:rgba(255,255,255,.14)}
+.gbp-rec em{display:flex;align-items:center;font-style:normal;color:#ffb35a}
+.gbp-rec em svg{width:26px;height:26px}
+.gbp-ok{width:64px;height:64px;border-radius:50%;border-color:#fff;background:#2fae4f;margin-top:4px}
+.gbp-ok svg{width:44px;height:44px}
+@keyframes gbpIn{from{opacity:0}}
+@keyframes gbpPop{from{transform:scale(.4);opacity:0}}
+@keyframes gbpStar{from{transform:scale(0) rotate(-90deg)}}
+
+/* barra de ações do beneficiamento (perto da água, da calha, da lavadora) */
+.gbp-bar{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 168px);z-index:21;display:flex;gap:8px;align-items:flex-end;pointer-events:none}
+.gbp-bar>*{pointer-events:auto}
+.gbp-bar .gbp-b{position:relative;width:60px;height:60px;border-radius:50%;background:rgba(36,20,10,.62)}
+.gbp-bar .gbp-b svg{width:36px;height:36px}
+.gbp-bar .gbp-b.hot{background:rgba(214,150,24,.9);border-color:#fff1b8;box-shadow:0 0 0 3px rgba(255,220,80,.5);animation:gbpGlow 1s ease-in-out infinite alternate}
+.gbp-bar .gbp-b small{position:absolute;right:-6px;bottom:-6px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#ffcf2e;color:#3a2200;font:800 12px/20px var(--font,'Fredoka',sans-serif)}
+@keyframes gbpGlow{to{box-shadow:0 0 0 7px rgba(255,220,80,.15)}}
+/* painel da calha / lavadora (medidor) */
+.gbp-panel{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 8px);transform:translateX(-50%);z-index:22;display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:20px;background:rgba(20,14,8,.7);color:#fff;font:800 15px var(--font,'Fredoka',sans-serif);pointer-events:none;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.gbp-panel[hidden]{display:none}
+.gbp-panel>*{pointer-events:auto}
+.gbp-panel svg{width:26px;height:26px}
+.gbp-panel .gbp-b{width:42px;height:42px;min-width:42px;border-radius:12px}
+.gbp-panel .gbp-b svg{width:26px;height:26px}
+.gbp-gauge{width:108px;height:58px;pointer-events:none}
+.gbp-meter{display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;min-width:52px}
+.gbp-meter i{display:block;width:52px;height:9px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden}
+.gbp-meter u{display:block;height:100%;background:#ffcf2e;border-radius:5px}
+.gbp-rpct{display:flex;align-items:center;gap:4px;padding:3px 10px;border-radius:14px;background:linear-gradient(#ffd23a,#e39a10);color:#3a2000;font-size:18px;pointer-events:none}
+.gbp-rpct svg{width:22px;height:22px;color:#3a2000}
+.gbp-ico svg{color:#fff}
+/* limpeza da calha */
+.gbp-clean .gbp-choice{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 14px);transform:translateX(-50%);display:flex;gap:18px}
+.gbp-clean .gbp-choice[hidden]{display:none}
+.gbp-clean .gbp-choice .gbp-b{width:84px;height:84px;border-radius:24px;flex-direction:column;gap:2px;font:800 14px var(--font,'Fredoka',sans-serif)}
+.gbp-clean .gbp-choice .gbp-b svg{width:48px;height:48px}
+.gbp-clean .gbp-choice .gbp-b.go{background:rgba(214,150,24,.92);border-color:#fff1b8}
