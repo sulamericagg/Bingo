@@ -35,7 +35,7 @@
 .fl-joy.h{height:96px;border-radius:48px}
 .fl-hud.lefty .fl-chop{right:auto;left:18px}
 .fl-hud.lefty .fl-ctx{right:auto;left:18px}
-.fl-ctlpanel{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:20;pointer-events:auto;background:rgba(20,8,48,.92);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:calc(100% - 64px);overflow:auto;min-width:220px}
+.fl-ctlpanel{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:20;pointer-events:auto;background:#160a34;border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:calc(100% - 64px);overflow:auto;min-width:220px}
 .fl-ctlpanel .hd{display:flex;justify-content:space-between;align-items:center;font-size:14px}
 .fl-ctlpanel .x{background:none;border:none;color:#fff;font-size:18px;cursor:pointer}
 .fl-ctlpanel label{opacity:.85;font-weight:700;margin-top:2px}
