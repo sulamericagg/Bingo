@@ -49,6 +49,8 @@ export interface SlotSave {
   ug?: import('./underground').UgSave;
   /** água: profundidades, tanque da lavadora, poços/bombas/canos, tempo */
   water?: import('./water/system').WaterSave;
+  /** beneficiamento: melhorias da lavadora, calhas, caixa do ouro, rejeitos (proc/system.ts) */
+  proc?: import('./proc/system').ProcSave;
 }
 export interface SlotMeta {
   seed: number;

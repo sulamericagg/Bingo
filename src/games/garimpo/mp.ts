@@ -263,6 +263,7 @@ export class MpHost {
     } else if (m.k === 'buy' && typeof m.id === 'string' && m.id.length < 16) {
       if (g.buy(m.id)) this.event(['buy', m.id, r.name]);
     } else if (m.k === 'water') g.water?.remoteAct(m);
+    else if (m.k === 'proc') g.proc?.netAction(r.id, r.worker, m); // beneficiamento (proc/)
   }
   private freeSeat(r: Remote): void {
     const mc = r.m!;
@@ -372,6 +373,8 @@ export class MpHost {
     if (tr) msg.tr = tr;
     const wa = g.water?.netTake();
     if (wa) msg.wa = wa;
+    const pr = g.proc?.netTake();
+    if (pr) msg.pr = pr;
     const fire = g.fire;
     if (fire?.active) {
       msg.fi = fire.netPts();
@@ -548,6 +551,7 @@ export class MpGuest {
     this.plantSpin = num(m.ps);
     if (typeof m.tr === 'string' && m.tr) w.T.applyNetDelta(m.tr);
     if (m.wa) g.water?.netApply(m.wa);
+    if (m.pr) g.proc?.netApply(m.pr);
     const fi = m.fi as number[] | undefined;
     this.fireOn = !!fi;
     this.fireN = 0;
