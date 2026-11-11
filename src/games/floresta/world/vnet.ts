@@ -46,6 +46,7 @@ export class VehNet {
   private cargoSp = new Map<Vehicle, number[]>();
   private stillT = new Map<Vehicle, number>();
   private sentParked = new Set<Vehicle>();
+  private lastSent = new Map<Vehicle, number[]>();
   private applying = false;
   private pendingDrive = '';
   private sendT = 0;
@@ -96,6 +97,7 @@ export class VehNet {
     this.cargoSp.delete(v);
     this.stillT.delete(v);
     this.sentParked.delete(v);
+    this.lastSent.delete(v);
   }
 
   private add(r: VRec): void {
@@ -369,6 +371,11 @@ export class VehNet {
         if (fin) this.sendFin(v);
       }
       const b = v.body;
+      // quase parado (rampa, tremidinha da física): manda só a cada 1 s
+      const lp = this.lastSent.get(v);
+      const now = performance.now();
+      if (lp && !v.parked && now - lp[7] < 1000 && Math.abs(lp[0] - b.position.x) + Math.abs(lp[1] - b.position.y) + Math.abs(lp[2] - b.position.z) < 0.04 && Math.abs(lp[3] - b.quaternion.x) + Math.abs(lp[4] - b.quaternion.y) + Math.abs(lp[5] - b.quaternion.z) + Math.abs(lp[6] - b.quaternion.w) < 0.004) continue;
+      this.lastSent.set(v, [b.position.x, b.position.y, b.position.z, b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w, now]);
       const bits = (v.engineOn ? 1 : 0) | (v.lights ? 2 : 0) | (v.driver ? 4 : 0) | (v.broken ? 8 : 0) | (v.parked ? 16 : 0);
       l.push([v.nid, r3(b.position.x), r3(b.position.y), r3(b.position.z), r3(b.quaternion.x), r3(b.quaternion.y), r3(b.quaternion.z), r3(b.quaternion.w), v.parked ? 0 : r3(b.velocity.x), v.parked ? 0 : r3(b.velocity.y), v.parked ? 0 : r3(b.velocity.z), v.parked ? 0 : r3(b.angularVelocity.y), r3(v.steerAngle), bits, v.cargo.size]);
       if (l.length >= 24) break;
