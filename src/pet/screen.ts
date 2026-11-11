@@ -201,6 +201,10 @@ export function closePet(): boolean {
     modal.classList.remove('on');
     return true;
   }
+  if (talkActive()) {
+    closeTalk(); // voltar (Android) fecha primeiro a conversa
+    return true;
+  }
   isOpen = false;
   stopVoice();
   closeTalk();
