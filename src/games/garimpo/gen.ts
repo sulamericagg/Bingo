@@ -117,19 +117,28 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
   const toC = Math.atan2(camp.z - mountain.z, camp.x - mountain.x);
   const mine = { x: mountain.x + Math.cos(toC) * 40, z: mountain.z + Math.sin(toC) * 40 };
   const lake = { x: fx(44 + J(6)), z: 140 + J(6), r: 13 + J(2), level: 0 };
-  const plant = { x: camp.x + (flip ? -1 : 1) * 20, z: camp.z + 10, rot: flip ? Math.PI / 2 : -Math.PI / 2 };
+  const plant = { x: camp.x + (flip ? -1 : 1) * 19, z: camp.z + 9, rot: 0 };
+  // a moega (lado +z da lavadora) fica virada para o meio do acampamento: caminhões chegam por ali
+  plant.rot = Math.atan2(camp.x - plant.x, camp.z - plant.z);
   const stock = { x: camp.x + (flip ? 1 : -1) * 8, z: camp.z - 14 };
   const garage = { x: camp.x + (flip ? -1 : 1) * 12, z: camp.z - 16, rot: 0 };
   const gate = { x: fx(SIZE - 6), z: 26 };
-  const houses: MapInfo['houses'] = [];
-  for (let i = 0; i < 4; i++) {
-    const a = (flip ? Math.PI : 0) + Math.PI * (0.62 + i * 0.22);
-    houses.push({ x: camp.x + Math.cos(a) * 21, z: camp.z + Math.sin(a) * 21, rot: -a + Math.PI / 2, color: i });
-  }
   // estrada: acampamento → mina com uma curva, e um ramal até o portão (caminhão de exportação)
   const mid = { x: (camp.x + mine.x) / 2 + J(10) + (flip ? 10 : -10), z: (camp.z + mine.z) / 2 + 12 };
   const road: P2[] = [{ x: camp.x, z: camp.z }, mid, { x: mine.x, z: mine.z }];
   const gateRoad: P2[] = [{ x: stock.x, z: stock.z }, { x: (stock.x + gate.x) / 2, z: 18 + J(4) }, gate];
+  // casas em volta do acampamento, longe da estrada, da lavadora, do estoque e da garagem
+  const houses: MapInfo['houses'] = [];
+  {
+    const avoid = [mid, plant, stock, garage, gateRoad[1]].map((p) => Math.atan2(p.z - camp.z, p.x - camp.x));
+    const diff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+    const start = r() * Math.PI * 2;
+    for (let i = 0; i < 18 && houses.length < 4; i++) {
+      const a = start + (i / 18) * Math.PI * 2;
+      if (avoid.some((b) => diff(a, b) < 0.62) || houses.some((h) => diff(a, Math.atan2(h.z - camp.z, h.x - camp.x)) < 0.7)) continue;
+      houses.push({ x: camp.x + Math.cos(a) * 21, z: camp.z + Math.sin(a) * 21, rot: -a + Math.PI / 2, color: houses.length });
+    }
+  }
 
   // ---- alturas ----
   const h = T.h;
@@ -213,6 +222,12 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
         }
         p.y = s / c;
       });
+      if (rd === road) {
+        // estrada da mina: rampa de inclinação constante (caminhão carregado sobe e desce sem susto)
+        let L = 0;
+        const acc = pts.map((p, q) => (q ? (L += Math.hypot(p.x - pts[q - 1].x, p.z - pts[q - 1].z)) : 0));
+        pts.forEach((p, q) => (p.y = campH + (mineH - campH) * (acc[q] / L)));
+      }
       for (const p of pts) flatten(p.x, p.z, roadW * 0.6, roadW + 4, p.y);
     }
     // os platôs ficam por cima (a estrada encosta neles sem degrau)
@@ -241,7 +256,7 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
       if (dl < lake.r + 6) w = Math.max(w, 0.75 * (1 - sstep(lake.r, lake.r + 6, dl)));
       // poças de lama na baixada perto do lago e pelo caminho
       const mud = nC(x / 11 + 40, z / 11) - 0.45;
-      if (mud > 0 && m !== MAT_SAND && dc > 30) {
+      if (mud > 0 && m !== MAT_SAND && m !== MAT_ROAD && dc > 30) {
         m = MAT_MUD;
         w = Math.max(w, 0.55 + mud * 2);
       }

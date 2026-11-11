@@ -116,7 +116,7 @@ export class World {
     plant.root.rotation.y = m.plant.rot;
     this.plant = plant;
     this.addStatic(plant.root);
-    this.solidBox(plant.root, 0, 0, 3.4, 7);
+    this.solidBox(plant.root, 0, -1.8, 3.4, 5.6);
     const st = buildStock();
     st.root.position.set(m.stock.x, this.T.heightAt(m.stock.x, m.stock.z), m.stock.z);
     this.stock = st;

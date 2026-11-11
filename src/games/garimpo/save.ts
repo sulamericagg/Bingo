@@ -34,6 +34,8 @@ export interface SlotSave {
   /** índice em machines da máquina dirigida (-1 = a pé) */
   driving: number;
   upg: { shovel: number; barrow: number; plant: number };
+  /** ajudantes contratados */
+  bots: { drivers: number; miners: number };
   expert: boolean;
   rain: boolean;
   /** tempo até o próximo caminhão de exportação e o próximo incêndio */
@@ -81,6 +83,7 @@ export function loadSlot(n: number): SlotSave | null {
     if (!o || o.v !== 1) return null;
     o.upg = Object.assign({ shovel: 0, barrow: 0, plant: 0 }, o.upg || {});
     o.tips = o.tips || [];
+    o.bots = Object.assign({ drivers: 0, miners: 0 }, o.bots || {});
     return o;
   } catch {
     return null;
@@ -137,6 +140,7 @@ export function freshSlot(seed: number, diff: Diff): SlotSave {
     worker: { x: -1, z: -1, yaw: 0, vol: 0, gold: 0 },
     driving: -1,
     upg: { shovel: 0, barrow: 0, plant: 0 },
+    bots: { drivers: 0, miners: 0 },
     expert: false,
     rain: false,
     exportT: EXPORT_EVERY[diff],

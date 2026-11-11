@@ -16,6 +16,7 @@ import { sfx } from '../../3d/common/sfx';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { bigMoment, notify, setNotifyAlign, setNotifyTop, resetNotifyTop } from '../../ui/notify';
 import { hush, speak } from '../voo/voice';
+import { Driver, MinerBot, type BotHost } from './bots';
 import { Fire } from './fire';
 import { Hud } from './hud';
 import { IC, type IconKey } from './icons';
@@ -41,6 +42,10 @@ export const MACHINES: ShopItem[] = [
   { id: 'truck', kind: 'truck', icon: 'tip', name: () => t('gb.m.truck', 'Caminhão basculante'), price: [5000], max: 3 },
   { id: 'dozer', kind: 'dozer', icon: 'bladeDown', name: () => t('gb.m.dozer', 'Trator de esteira'), price: [9000], max: 1 },
   { id: 'heli', kind: 'heli', icon: 'water', name: () => t('gb.m.heli', 'Helicóptero com balde'), price: [16000], max: 1 },
+];
+export const HELPERS: ShopItem[] = [
+  { id: 'driver', icon: 'tip', name: () => t('gb.h.driver', 'Motorista (caminhão)'), price: [2500, 3500, 5000] },
+  { id: 'miner', icon: 'shovel', name: () => t('gb.h.miner', 'Garimpeiro ajudante'), price: [800, 1400, 2200, 3200] },
 ];
 export const UPGRADES: ShopItem[] = [
   { id: 'shovel', icon: 'shovel', name: () => t('gb.u.shovel', 'Pá melhor'), price: [180, 700, 2200] },
@@ -69,7 +74,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 
-export class Garimpo implements MiniGameHandle {
+export class Garimpo implements MiniGameHandle, BotHost {
   private wrap: HTMLDivElement;
   private cv: HTMLCanvasElement | null = null;
   private r: THREE.WebGLRenderer | null = null;
@@ -81,6 +86,8 @@ export class Garimpo implements MiniGameHandle {
   worker: Worker | null = null;
   cur: Machine | null = null;
   fire: Fire | null = null;
+  drivers: Driver[] = [];
+  miners: MinerBot[] = [];
   private raf = 0;
   private last = 0;
   private acc = 0;
@@ -291,6 +298,8 @@ export class Garimpo implements MiniGameHandle {
     this.cur = wk;
     if (s.driving >= 0 && this.ms[s.driving]) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
+    for (let i = 0; i < s.bots.drivers; i++) this.drivers.push(new Driver(this));
+    for (let i = 0; i < s.bots.miners; i++) this.addMiner();
     this.rainOn = s.rain;
     this.rainK = s.rain ? 1 : 0;
     // HUD
@@ -354,6 +363,19 @@ export class Garimpo implements MiniGameHandle {
     return mc;
   }
 
+  private addMiner(): void {
+    const b = new MinerBot(this, this.miners.length);
+    b.worker.cargo.cap = 0.14;
+    b.place();
+    this.w!.scene.add(b.worker.group);
+    this.miners.push(b);
+  }
+  loadSpot(): { x: number; z: number; yaw: number } {
+    const m = this.w!.map;
+    const r1 = m.road[m.road.length - 2];
+    const yaw = Math.atan2(r1.x - m.mine.x, r1.z - m.mine.z);
+    return { x: m.mine.x, z: m.mine.z, yaw };
+  }
   /** onde uma máquina nova aparece (na frente da garagem, sem bater em ninguém) */
   private spawnSpot(kind: Kind): [number, number, number] {
     const m = this.w!.map;
@@ -368,7 +390,7 @@ export class Garimpo implements MiniGameHandle {
   }
 
   /* ---------------- moega, caçambas ---------------- */
-  private hopperPos(out: THREE.Vector3): THREE.Vector3 {
+  hopperPos(out: THREE.Vector3): THREE.Vector3 {
     out.set(0, 1.4, 6);
     return this.w!.plant.root.localToWorld(out);
   }
@@ -462,6 +484,7 @@ export class Garimpo implements MiniGameHandle {
     this.cur = wk;
     this.hud?.setKind('worker', this.sv!.expert);
     sfx.door();
+    this.drivers.find((d) => d.truck === m)?.resume();
   }
 
   private toggleExpert(): void {
@@ -481,7 +504,7 @@ export class Garimpo implements MiniGameHandle {
     if (this.paused || !this.w || !this.r) return;
     const w0 = performance.now();
     const dt = Math.min(0.066, Math.max(0, el / 1000));
-    this.step(dt);
+    for (let i = 0; i < this.speedup; i++) this.step(dt);
     const w1 = performance.now();
     this.render();
     const w2 = performance.now();
@@ -501,14 +524,22 @@ export class Garimpo implements MiniGameHandle {
     const cur = this.cur!;
     // ferramentas e entradas (por quadro)
     this.worker!.update(dt, cur === this.worker ? ctl : null, this.env);
-    for (const m of this.ms) m.update(dt, m === cur ? ctl : null, this.env);
+    for (const d of this.drivers) {
+      d.claim(this.drivers);
+      d.update(dt);
+    }
+    for (const b of this.miners) b.update(dt, this.env);
+    for (const m of this.ms) {
+      const drv = m === cur ? null : this.drivers.find((d) => d.truck === m);
+      m.update(dt, m === cur ? ctl : drv ? drv.ctl : null, this.env);
+    }
     // física em passos fixos de 1/120 s
     this.acc += dt;
     const h = 1 / 120;
     let n = 0;
     const p0 = performance.now();
     while (this.acc >= h && n < 8) {
-      for (const m of this.ms) m.physics(h, this.env, m === cur);
+      for (const m of this.ms) m.physics(h, this.env, m === cur || this.drivers.some((d) => d.truck === m));
       this.acc -= h;
       n++;
     }
@@ -524,6 +555,18 @@ export class Garimpo implements MiniGameHandle {
         const v = cur.veh;
         v.place(v.pos.x, v.pos.z, v.yaw(), w.T);
         notify(t('gb.unflip', 'Desvirado!'), { icon: 'refresh' });
+      }
+    }
+    // máquinas dos ajudantes também se desviram sozinhas
+    for (const m of this.ms) {
+      const v = m.veh;
+      if (!v || m === cur || v.asleep) continue;
+      if (v.flipped()) {
+        this.flipT.set(m, (this.flipT.get(m) ?? 0) + dt);
+        if ((this.flipT.get(m) ?? 0) > 2) {
+          v.place(v.pos.x, v.pos.z, v.yaw(), w.T);
+          this.flipT.delete(m);
+        }
       }
     }
     this.plantStep(dt);
@@ -870,6 +913,9 @@ export class Garimpo implements MiniGameHandle {
     w.follow(tx, tz);
   }
   camOverride: number[] | null = null;
+  /** testes: passos de simulação por quadro */
+  speedup = 1;
+  private flipT = new Map<Machine, number>();
   prof = { step: 0, render: 0, phys: 0, flush: 0 };
 
   private render(): void {
@@ -991,7 +1037,7 @@ export class Garimpo implements MiniGameHandle {
     if (!s) return;
     const owned = (k: Kind) => this.ms.filter((m) => m.kind === k).length;
     const item = (it: ShopItem, isUp: boolean) => {
-      const lvl = isUp ? s.upg[it.id as 'shovel'] : owned(it.kind!);
+      const lvl = isUp ? (it.id === 'driver' ? s.bots.drivers : it.id === 'miner' ? s.bots.miners : s.upg[it.id as 'shovel']) : owned(it.kind!);
       const max = isUp ? it.price.length : it.max ?? 1;
       const price = isUp ? it.price[lvl] : it.price[0];
       const done = lvl >= max;
@@ -1001,7 +1047,7 @@ export class Garimpo implements MiniGameHandle {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}</div>`,
+      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -1023,6 +1069,24 @@ export class Garimpo implements MiniGameHandle {
       this.addMachine(mi.kind!, x, z, yaw);
       audio.cash();
       bigMoment(t('gb.bought', 'Comprou: {n}', { n: mi.name() }), { icon: 'gift' });
+      this.persist();
+      return true;
+    }
+    const hi = HELPERS.find((u) => u.id === id);
+    if (hi) {
+      const k = hi.id === 'driver' ? 'drivers' : 'miners';
+      const lvl = s.bots[k];
+      if (lvl >= hi.price.length || s.money < hi.price[lvl]) return false;
+      if (k === 'drivers' && this.ms.filter((m) => m instanceof Truck).length <= lvl) {
+        notify(t('gb.needTruck', 'Compre um caminhão para o motorista'), { icon: 'warning', kind: 'warn' });
+        return false;
+      }
+      s.money -= hi.price[lvl];
+      s.bots[k] = lvl + 1;
+      if (k === 'drivers') this.drivers.push(new Driver(this));
+      else this.addMiner();
+      audio.cash();
+      bigMoment(t('gb.hired', 'Contratou: {n}', { n: hi.name() }), { icon: 'user' });
       this.persist();
       return true;
     }
@@ -1087,6 +1151,9 @@ export class Garimpo implements MiniGameHandle {
       m.dispose();
     }
     this.ms.length = 0;
+    for (const b of this.miners) b.worker.dispose();
+    this.miners = [];
+    this.drivers = [];
     this.worker?.dispose();
     this.worker = null;
     this.cur = null;
