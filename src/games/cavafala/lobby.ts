@@ -1,24 +1,32 @@
 /* ============================================================
- *  CAVA & FALA — telas online: "Jogar com amigos" (criar sala / entrar pelo
- *  código, QR ou convite) e a SALA (código + QR, quem está, chamar amigos
- *  online, modo escolhido pelo anfitrião, JOGAR).
- *  Usa os módulos compartilhados de QR/links (ui/scan.ts) e a lista de amigos.
+ *  CAVA & FALA — telas online, AMIGOS PRIMEIRO (componentes do grupo: src/party/friends-play.ts):
+ *   - "Jogar com amigos": "Fulano está jogando — ENTRAR", botão grande "Criar sala e chamar amigos";
+ *     "Entrar com código / QR" é só um link pequeno.
+ *   - a SALA: quem está (4 lugares; vagas viram bots na Arena), modo do anfitrião, "Chamar amigos"
+ *     (convite na hora, sem código) e JOGAR. O código/QR fica num link pequeno no rodapé.
  * ============================================================ */
 import { sfx } from '../../3d/common/sfx';
-import { tap } from '../../core/haptics';
 import { t } from '../../i18n';
-import { api } from '../../social/net';
 import { icon } from '../../ui/icons';
 import { notify } from '../../ui/notify';
 import { bloopLink, drawBloopQr, scanBloopLink } from '../../ui/scan';
 import { THEMES, themeById, type ThemeId } from './data';
-import { CODE_OK, MAX_PLAYERS, type CavaNet, type Me } from './net';
+import { CODE_OK, MAX_PLAYERS, type CavaNet } from './net';
 import { PCOLS } from './online';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 const CSS = `
 .cf-on{justify-content:flex-start;gap:6px}
+.cf-big{font-size:18px!important;padding:14px 22px!important;min-height:56px!important}
+.cf-link{border:0;background:none;color:#fff;opacity:.8;font:700 13px/1 inherit;text-decoration:underline;cursor:pointer;padding:8px;min-height:36px}
+.cf-codepop{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(16,6,40,.6)}
+.cf-root .cf-codepop canvas{position:static;inset:auto;border-radius:12px;display:block}
+.cf-codepop>div{background:#fff;color:#2a0b5c;border-radius:20px;padding:14px;display:flex;gap:14px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.cf-codepop small{font:700 12px/1 inherit;opacity:.7}
+.cf-codepop .cf-code i{box-shadow:0 3px 0 #c8b8ff;background:#f3eeff}
+.cf-jform{display:none;width:min(320px,80vw)}
+.cf-jform.on{display:flex}
 .cf-on h1{margin:0;font:800 22px/1.1 inherit;display:flex;align-items:center;gap:8px;text-shadow:0 2px 0 #2a0b5c}
 .cf-on .cf-x{position:absolute;right:calc(var(--edge-r,12px) + 4px);top:calc(env(safe-area-inset-top,0px) + 8px);width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;cursor:pointer;padding:0}
 .cf-ocards{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:stretch}
@@ -68,77 +76,30 @@ function css(): void {
   document.head.appendChild(s);
 }
 
-/* ------------------------------ convites ------------------------------ */
-export interface CavaInvite {
-  from: string;
-  name: string;
-  code: string;
-  at: number;
-}
-/** consulta convites a cada ~6 s enquanto `alive()` */
-export function pollInvites(me: () => Promise<Me | null>, cb: (inv: CavaInvite) => void, alive: () => boolean): void {
-  const seen = new Set<string>();
-  const tick = async () => {
-    if (!alive()) return;
-    try {
-      const m = await me();
-      if (m?.id) {
-        const r = await api<{ invites: CavaInvite[] }>(`/cava/invites?id=${encodeURIComponent(m.id)}`);
-        for (const inv of r.invites ?? []) {
-          const k = inv.from + inv.code + inv.at;
-          if (seen.has(k) || !CODE_OK.test(inv.code)) continue;
-          seen.add(k);
-          if (alive()) cb(inv);
-        }
-      }
-    } catch {
-      /* sem rede: tenta depois */
-    }
-    if (alive()) setTimeout(tick, 6000);
-  };
-  setTimeout(tick, 800);
-}
-function inviteCard(root: HTMLElement, inv: CavaInvite, onJoin: () => void): void {
-  const d = document.createElement('div');
-  d.className = 'cf-inv';
-  d.innerHTML = `${icon('party', { size: 26 })}<span><b>${esc(inv.name)}</b><small>${esc(t('cavafala.net.invited', 'te chamou para cavar!'))}</small></span><button class="cf-btn g" data-go>${esc(t('cavafala.net.join', 'Entrar'))}</button>`;
-  root.appendChild(d);
-  tap('medium');
-  sfx.sparkle();
-  setTimeout(() => d.remove(), 30000);
-  d.querySelector('[data-go]')!.addEventListener('click', () => {
-    d.remove();
-    onJoin();
-  });
-}
-
 /* ------------------------------ criar / entrar ------------------------------ */
 export interface StartOpts {
-  me: () => Promise<Me | null>;
   create: () => void;
   join: (code: string) => void;
   back: () => void;
 }
-/** tela "Jogar com amigos": criar sala ou entrar numa */
+/** tela "Jogar com amigos": amigos jogando (ENTRAR) + criar sala; código/QR é secundário */
 export function fillStart(el: HTMLElement, o: StartOpts): () => void {
   css();
   let dead = false;
   el.classList.add('cf-on');
   el.innerHTML = `<button class="cf-x" data-back aria-label="${esc(t('cavafala.close', 'Fechar'))}">${icon('close', { size: 22 })}</button>
     <h1>${icon('party', { size: 28 })}${esc(t('cavafala.net.title', 'Jogar com amigos'))}</h1>
-    <div class="cf-ocards">
-      <div class="cf-ocard"><b>${esc(t('cavafala.net.create', 'Criar sala'))}</b><small>${esc(t('cavafala.net.createD', 'Você escolhe o modo e chama até 3 amigos. Vagas vazias viram bots na Arena.'))}</small><button class="cf-btn p" data-create>${icon('play', { size: 18 })}${esc(t('cavafala.net.createGo', 'Criar'))}</button></div>
-      <div class="cf-ocard"><b>${esc(t('cavafala.net.joinTitle', 'Entrar na sala de um amigo'))}</b>
-        <form class="cf-input" data-f><input maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7Q2M" aria-label="${esc(t('cavafala.net.code', 'Código da sala'))}"/><button class="cf-btn g" type="submit">${esc(t('cavafala.net.join', 'Entrar'))}</button></form>
-        <button class="cf-btn w" data-scan type="button">${icon('camera', { size: 18 })}${esc(t('cavafala.net.scan', 'Escanear QR'))}</button>
-      </div>
-    </div>
-    <div class="cf-note">${esc(t('cavafala.net.joinHint', 'Peça o código de 5 letras para quem criou a sala.'))}</div>
-    <div class="cf-jinv"></div>`;
+    <div class="cf-fplay"></div>
+    <div class="cf-sub">${esc(t('cavafala.net.createD', 'Você escolhe o modo e chama até 3 amigos. Vagas vazias viram bots na Arena.'))}</div>
+    <button class="cf-btn p cf-big" data-create>${icon('party', { size: 24 })}${esc(t('cavafala.net.createCall', 'Criar sala e chamar amigos'))}</button>
+    <button class="cf-link" data-code type="button">${esc(t('fp.code', 'Entrar com código / QR'))}</button>
+    <form class="cf-input cf-jform" data-f><input maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7Q2M" aria-label="${esc(t('cavafala.net.code', 'Código da sala'))}"/><button class="cf-btn g" type="submit">${esc(t('cavafala.net.join', 'Entrar'))}</button><button class="cf-btn w" data-scan type="button" aria-label="${esc(t('cavafala.net.scan', 'Escanear QR'))}">${icon('camera', { size: 18 })}</button></form>`;
+  void import('../../party/friends-play').then((f) => !dead && f.playingStrip(el.querySelector('.cf-fplay') as HTMLElement, 'cavafala'));
+  const form = el.querySelector('[data-f]') as HTMLFormElement;
   const inp = el.querySelector('input') as HTMLInputElement;
   inp.addEventListener('input', () => (inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '')));
   inp.addEventListener('keydown', (e) => e.stopPropagation());
-  el.querySelector('[data-f]')!.addEventListener('submit', (e) => {
+  form.addEventListener('submit', (e) => {
     e.preventDefault();
     const v = inp.value.toUpperCase();
     if (!CODE_OK.test(v)) {
@@ -159,18 +120,19 @@ export function fillStart(el: HTMLElement, o: StartOpts): () => void {
       sfx.click();
       return o.create();
     }
+    if (b.dataset.code !== undefined) {
+      sfx.click();
+      form.classList.add('on');
+      b.remove();
+      inp.focus();
+      return;
+    }
     if (b.dataset.scan !== undefined) {
       sfx.click();
       const l = await scanBloopLink({ types: ['cava'], title: t('cavafala.net.scan', 'Escanear QR'), hint: t('cavafala.net.scanHint', 'Aponte para o QR da sala do amigo') });
       if (l && !dead) o.join(l.code);
     }
   });
-  const box = el.querySelector('.cf-jinv') as HTMLElement;
-  pollInvites(
-    o.me,
-    (inv) => inviteCard(box, inv, () => !dead && o.join(inv.code)),
-    () => !dead && el.isConnected,
-  );
   return () => {
     dead = true;
   };
@@ -186,6 +148,8 @@ export interface RoomOpts {
   setPick: (p: Partial<RoomMode>) => void;
   start: () => void;
   leave: () => void;
+  /** chamar amigos já ao abrir (quem criou a sala pelo botão "Criar sala e chamar amigos") */
+  callNow?: boolean;
   /** texto de estado (ex.: "começando em 3...") */
   status?: () => string;
 }
@@ -199,29 +163,42 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
   const net = o.net;
   const link = bloopLink('cava', net.code);
   let dead = false;
-  const invited = new Set<string>();
   el.classList.add('cf-on');
   el.innerHTML = `<button class="cf-x" data-leave aria-label="${esc(t('cavafala.net.leave', 'Sair da sala'))}">${icon('close', { size: 22 })}</button>
     <h1>${icon('party', { size: 28 })}${esc(o.party ? t('cavafala.net.partyTitle', 'Grupo na Arena') : t('cavafala.net.title', 'Jogar com amigos'))}</h1>
-    <div class="cf-room">
-      <div class="cf-rcode"><canvas></canvas><small>${esc(t('cavafala.net.code', 'Código da sala'))}</small><div class="cf-code">${net.code
-        .split('')
-        .map((c) => `<i>${c}</i>`)
-        .join('')}</div><button class="cf-btn w" data-share style="min-height:36px;padding:7px 12px;font-size:13px">${icon('link', { size: 16 })}${esc(t('cavafala.net.share', 'Mandar código'))}</button></div>
-      <div class="cf-rside">
-        <div class="cf-lbl" data-cnt></div>
-        <div class="cf-pl"></div>
-        <div class="cf-lbl">${esc(t('cavafala.net.mode', 'Modo'))}</div>
-        <div class="cf-rmode"></div>
-        ${net.isHost && !o.party ? `<div class="cf-lbl">${esc(t('cavafala.net.call', 'Chamar amigos'))}</div><div class="cf-fr"><div class="cf-note" style="text-align:left">${esc(t('cavafala.net.loading', 'Procurando amigos online…'))}</div></div>` : ''}
-      </div>
-    </div>
-    <div class="cf-row" style="margin-top:2px" data-act></div>`;
-  void drawBloopQr(el.querySelector('.cf-rcode canvas') as HTMLCanvasElement, link, 104).catch(() => {});
+    <div class="cf-room"><div class="cf-rside">
+      <div class="cf-lbl" data-cnt></div>
+      <div class="cf-pl"></div>
+      <div class="cf-lbl">${esc(t('cavafala.net.mode', 'Modo'))}</div>
+      <div class="cf-rmode"></div>
+    </div></div>
+    <div class="cf-row" style="margin-top:2px" data-act></div>
+    <button class="cf-link" data-codepop>${esc(t('cavafala.net.codeLink', 'Código {c} · QR', { c: net.code }))}</button>`;
   const pl = el.querySelector('.cf-pl') as HTMLElement;
   const cnt = el.querySelector('[data-cnt]') as HTMLElement;
   const modeEl = el.querySelector('.cf-rmode') as HTMLElement;
   const act = el.querySelector('[data-act]') as HTMLElement;
+  const callFriends = () =>
+    void Promise.all([import('../../party/friends-play'), import('../../party/join')]).then(([f, j]) =>
+      f.openCallFriends({ game: 'cavafala', j: j.joinStr('cavafala', net.code), onCode: codePop }),
+    );
+  /** código + QR (para quem ainda não é amigo) */
+  const codePop = () => {
+    el.querySelector('.cf-codepop')?.remove();
+    const d = document.createElement('div');
+    d.className = 'cf-codepop';
+    d.innerHTML = `<div><canvas></canvas><div style="display:flex;flex-direction:column;gap:8px;align-items:center"><small>${esc(t('cavafala.net.code', 'Código da sala'))}</small><div class="cf-code">${net.code
+      .split('')
+      .map((c) => `<i>${c}</i>`)
+      .join('')}</div><button class="cf-btn" data-share>${icon('link', { size: 16 })}${esc(t('cavafala.net.share', 'Mandar código'))}</button><button class="cf-btn w" data-close>${esc(t('cavafala.close', 'Fechar'))}</button></div></div>`;
+    el.appendChild(d);
+    void drawBloopQr(d.querySelector('canvas') as HTMLCanvasElement, link, 140).catch(() => {});
+    d.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (e.target === d || b?.dataset.close !== undefined) d.remove();
+      else if (b?.dataset.share !== undefined) void share();
+    });
+  };
   const refresh = () => {
     if (dead) return;
     const ps = net.peers;
@@ -235,7 +212,6 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
       else h += `<div class="cf-p free"><i></i><b>${esc(pk.mode === 'arena' && i < ps.length + pk.bots ? t('cavafala.net.bot', 'Bot') : t('cavafala.net.free', 'Vaga livre'))}</b></div>`;
     }
     pl.innerHTML = h;
-    // modo
     if (net.isHost && !o.party) {
       const free = MAX_PLAYERS - ps.length;
       modeEl.innerHTML =
@@ -247,34 +223,13 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
       modeEl.innerHTML = `<span class="cf-chip" style="font-size:13px;padding:7px 11px">${esc(pk.mode === 'arena' ? t('cavafala.mode.arena', 'Arena Cava-Cava') : t('cavafala.mode.restore', 'Restaurar a Vila') + ' · ' + themeById(pk.theme).name())}</span>`;
     }
     const st = o.status?.() ?? '';
+    const call = o.party ? '' : `<button class="cf-btn p" data-call>${icon('party', { size: 20 })}${esc(t('cavafala.net.call', 'Chamar amigos'))}</button>`;
     if (net.isHost && !o.party)
-      act.innerHTML = `<button class="cf-btn w" data-leave>${icon('home', { size: 18 })}${esc(t('cavafala.net.leave', 'Sair da sala'))}</button><button class="cf-btn g" data-start style="font-size:18px;padding:10px 22px">${icon('play', { size: 20 })}${esc(t('cavafala.net.play', 'JOGAR!'))}</button>`;
+      act.innerHTML = `<button class="cf-btn w" data-leave>${icon('home', { size: 18 })}${esc(t('cavafala.net.leave', 'Sair da sala'))}</button>${call}<button class="cf-btn g" data-start style="font-size:18px;padding:10px 22px">${icon('play', { size: 20 })}${esc(t('cavafala.net.play', 'JOGAR!'))}</button>`;
     else
-      act.innerHTML = `<button class="cf-btn w" data-leave>${icon('home', { size: 18 })}${esc(t('cavafala.net.leave', 'Sair da sala'))}</button><span class="cf-wait"><span class="cf-dots"><i></i><i></i><i></i></span>${esc(st || t('cavafala.net.waitHost', 'Esperando o anfitrião começar…'))}</span>`;
+      act.innerHTML = `<button class="cf-btn w" data-leave>${icon('home', { size: 18 })}${esc(t('cavafala.net.leave', 'Sair da sala'))}</button>${call}<span class="cf-wait"><span class="cf-dots"><i></i><i></i><i></i></span>${esc(st || t('cavafala.net.waitHost', 'Esperando o anfitrião começar…'))}</span>`;
   };
   refresh();
-  // amigos online (anfitrião chama)
-  const flist = el.querySelector('.cf-fr') as HTMLElement | null;
-  const loadFriends = async () => {
-    if (!flist) return;
-    try {
-      const { homeApi } = await import('../../services/home');
-      const all = await homeApi.friends();
-      if (dead) return;
-      const on = all.filter((f) => f.online && !net.peers.some((p) => p.id === f.id)).slice(0, 8);
-      if (!on.length) {
-        flist.innerHTML = `<div class="cf-note" style="text-align:left">${esc(all.length ? t('cavafala.net.noneOnline', 'Nenhum amigo online agora. Mande o código!') : t('cavafala.net.noFriends', 'Sem amigos ainda. Mande o código ou mostre o QR!'))}</div>`;
-        return;
-      }
-      flist.innerHTML = on
-        .map((f) => `<div class="cf-f"><b>${esc(f.name || '@' + f.handle)}</b><button class="cf-call${invited.has(f.id) ? ' done' : ''}" data-call="${esc(f.id)}">${esc(invited.has(f.id) ? t('cavafala.net.called', 'Chamado') : t('cavafala.net.callOne', 'Chamar'))}</button></div>`)
-        .join('');
-    } catch {
-      if (!dead) flist.innerHTML = `<div class="cf-note" style="text-align:left">${esc(t('cavafala.net.noFriends', 'Sem amigos ainda. Mande o código ou mostre o QR!'))}</div>`;
-    }
-  };
-  void loadFriends();
-  const fTimer = window.setInterval(() => void loadFriends(), 20000);
   const share = async () => {
     const txt = t('cavafala.net.shareTxt', 'Vem cavar comigo no Cava & Fala (Bloop World)! Código: {c}', { c: net.code });
     try {
@@ -292,9 +247,9 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
       notify(net.code, { icon: 'link' });
     }
   };
-  el.addEventListener('click', async (e) => {
+  el.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-    if (!b || dead) return;
+    if (!b || dead || b.closest('.cf-codepop')) return;
     if (b.dataset.leave !== undefined) {
       sfx.click();
       return o.leave();
@@ -303,9 +258,13 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
       sfx.click();
       return o.start();
     }
-    if (b.dataset.share !== undefined) {
+    if (b.dataset.call !== undefined) {
       sfx.click();
-      return void share();
+      return callFriends();
+    }
+    if (b.dataset.codepop !== undefined) {
+      sfx.click();
+      return codePop();
     }
     if (b.dataset.town) {
       sfx.click();
@@ -319,27 +278,13 @@ export function fillRoom(el: HTMLElement, o: RoomOpts): RoomHandle {
       if (seg.dataset.seg === 'bots') o.setPick({ bots: +b.dataset.v });
       return refresh();
     }
-    if (b.dataset.call) {
-      const id = b.dataset.call;
-      if (invited.has(id)) return;
-      sfx.click();
-      invited.add(id);
-      b.classList.add('done');
-      b.textContent = t('cavafala.net.called', 'Chamado');
-      try {
-        await api('/cava/invite', { id: net.me.id, to: id, code: net.code, name: net.me.name });
-      } catch {
-        invited.delete(id);
-        notify(t('cavafala.net.callFail', 'Não deu para chamar agora'), { icon: 'cloud-off', kind: 'bad' });
-        void loadFriends();
-      }
-    }
   });
+  if (o.callNow) callFriends();
   return {
     refresh,
     dispose: () => {
       dead = true;
-      clearInterval(fTimer);
+      document.querySelector('.fp-pop')?.remove();
     },
   };
 }

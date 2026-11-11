@@ -66,7 +66,8 @@ export interface CavaNet {
   close(): void;
 }
 
-const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const CODE_ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const ALPHA = CODE_ALPHA;
 export const newCode = (): string => Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
 export const CODE_OK = /^[A-HJ-NP-Z2-9]{5}$/;
 export const MAX_PLAYERS = 4;

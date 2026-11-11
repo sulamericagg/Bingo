@@ -22,9 +22,11 @@ import { ArenaMode, COLS, HATS, NAMES, type ArenaOnline, type ArenaResult } from
 import type { Hat } from './bloop';
 import { MATS, THEMES, themeById, type ThemeId } from './data';
 import { fillRoom, fillStart, type RoomHandle, type RoomMode } from './lobby';
-import { codeFromRoom, createNet, MAX_PLAYERS, newCode, type CavaNet, type Me, type NetEvent } from './net';
+import { CODE_ALPHA, codeFromRoom, createNet, MAX_PLAYERS, newCode, type CavaNet, type Me, type NetEvent } from './net';
 import { Binder, BOT_KS, PCOLS, PHATS, type RoundInit } from './online';
 import { takePendingCava } from './pending';
+import { consumePartySeat, partySeat } from '../../party/contract';
+import { reportPlaying, stopPlaying } from '../../party/join';
 import { parseBest } from './parser';
 import { GADGETS } from './gadgets';
 import { RestoreMode, type RestoreOnline, type RestoreResult } from './restore';
@@ -81,6 +83,10 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     offs: (() => void)[];
   }
   let online: Online | null = null;
+  /** grupo: quantos do grupo devem chegar antes da Arena começar sozinha */
+  let partyWant = 2;
+  /** abrir "Chamar amigos" assim que a sala abrir */
+  let callNext = false;
   let meP: Promise<Me> | null = null;
   const myself = (): Promise<Me> =>
     (meP ??= socialMe()
@@ -330,8 +336,10 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     leaveOnline();
     const d = screen();
     fillStart(d, {
-      me: () => myself().catch(() => null),
-      create: () => void connect(newCode(), 'create', false),
+      create: () => {
+        callNext = true;
+        void connect(newCode(), 'create', false);
+      },
       join: (code) => void connect(code, 'join', false),
       back: menu,
     });
@@ -384,6 +392,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       offs: [],
     };
     online = o;
+    reportPlaying('cavafala', net.code); // amigos veem "Fulano está jogando — ENTRAR"
     o.offs.push(net.onEvent((from, e) => onNet(from, e)));
     o.offs.push(
       net.onRoster((why, id) => {
@@ -413,6 +422,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     net.onClose(() => {
       if (online !== o) return;
       online = null;
+      stopPlaying();
       for (const f of o.offs) f();
       notify(t('cavafala.net.lost', 'A conexão com a sala caiu.'), { icon: 'cloud-off', kind: 'bad' });
       if (world) {
@@ -451,12 +461,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         sendLobby();
       },
       start: () => hostStart(),
+      callNow: callNext && o.net.isHost,
       leave: () => {
         leaveOnline();
         menu();
       },
       status: () => (o.busy && !o.net.isHost ? t('cavafala.net.busy', 'Partida em andamento: você entra na próxima!') : o.party ? (o.net.isHost ? t('cavafala.net.partyStart', 'A Arena começa assim que o grupo chegar…') : t('cavafala.net.partyWait', 'Esperando o grupo…')) : ''),
     });
+    callNext = false;
     if (o.net.isHost) sendLobby();
     setBack(() => {
       leaveOnline();
@@ -477,13 +489,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     clearTimeout(o.partyTimer);
     const check = async () => {
       if (online !== o || world || o.init) return;
-      let want = 2;
-      try {
-        const sq = (await import('../../party/squad')).squad();
-        want = Math.max(2, Math.min(MAX_PLAYERS, sq?.members.filter((m) => m.on).length ?? 2));
-      } catch {
-        /* */
-      }
+      const want = partyWant;
       if (o.net.peers.length >= want || Date.now() - o.partyAt > 9000) hostStart();
       else o.partyTimer = window.setTimeout(() => void check(), 700);
     };
@@ -494,6 +500,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const o = online;
     if (!o) return;
     online = null;
+    stopPlaying();
     clearTimeout(o.readyTimer);
     clearTimeout(o.partyTimer);
     o.binder?.dispose();
@@ -805,10 +812,17 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     };
   }
 
+  // link/QR (?cava=) · grupo (o líder apertou JOGAR) · "Fulano está jogando — ENTRAR" (docs/PARTY.md)
   const pend = takePendingCava();
+  const seat = pend ? null : partySeat('cavafala');
+  if (seat) consumePartySeat('cavafala');
   if (pend?.party) void connect(codeFromRoom(pend.party), 'auto', true);
   else if (pend?.code) void connect(pend.code, 'join', false);
-  else menu();
+  else if (seat?.direct) void connect(seat.code(5, CODE_ALPHA), 'join', false);
+  else if (seat) {
+    partyWant = Math.max(2, Math.min(MAX_PLAYERS, seat.n));
+    void connect(seat.code(5, CODE_ALPHA), 'auto', true);
+  } else menu();
   return {
     destroy() {
       dead = true;

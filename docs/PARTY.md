@@ -37,12 +37,12 @@ sem código, sem botão extra. Jogos com `join(room)` registrado são chamados d
 
 | Modo | Jogos | Como entra |
 |---|---|---|
-| sala própria (`mode:'room'`) | voo, noites, garimpo, floresta (Mundo Aberto) | `partySeat(jogo)` → `{ host, leader, code() }`: o líder cria a sala com o código derivado do grupo; os outros entram nela (tentam de novo até o líder abrir). Garimpo: o líder escolhe o save, os outros esperam. |
+| sala própria (`mode:'room'`) | voo, noites, garimpo, floresta (Mundo Aberto), cavafala (Arena: o grupo cai na mesma ilha; vagas viram bots) | `partySeat(jogo)` → `{ host, leader, code() }`: o líder cria a sala com o código derivado do grupo; os outros entram nela (tentam de novo até o líder abrir). Garimpo: o líder escolhe o save, os outros esperam. |
 | presença | disaster (mesmo cenário + placar "quem sobreviveu mais"), band, cozinha, rally (placar de distância), tycoon | `joinPresence(jogo)` já usa `?party=<room>` |
 | duelo (`mode:'duel'`) | cor, lugar, tubo, montaleva, desenho | `registerDuelGame(jogo)` + `takeDuel(jogo)` → `startDuel({...})` (abaixo) |
 | corrida | orbit → Corrida Orbital | `partyRoomFor('race')` |
 | juntos (`mode:'together'`) | caca, studio, cinema | faixa com quem do grupo está no jogo + emotes (`src/party/together.ts`) |
-| ainda solo | cavafala, anomalias (em obra — `PARTY_WIP`) | aviso "Esse jogo ainda é solo" |
+| ainda solo | anomalias (em obra — `PARTY_WIP`) | aviso "Esse jogo ainda é solo" |
 
 ```ts
 import { partySeat, consumePartySeat, registerPartyGame } from '../../party/contract';
