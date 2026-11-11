@@ -12,6 +12,8 @@ import { audio } from './core/audio';
 import { bus } from './core/events';
 import { isNative } from './core/platform';
 import { restorePortrait } from './core/orientation';
+import { installFrameCap } from './core/framecap';
+import { needsDeviceCheck } from './core/quality';
 import { persistNow, save } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
@@ -94,6 +96,18 @@ async function boot(): Promise<void> {
 
   initLang(); // idioma salvo ou detectado do aparelho (1ª execução)
   applyI18n(document);
+  installFrameCap(); // "Economia de bateria": 30 fps em todo o app
+  // instalou / atualizou / trocou de aparelho: testa a GPU (~2-3 s, tela "Ajustando os gráficos…")
+  // ANTES de montar o jogo — todos os QualityGovernor começam no nível medido
+  if (needsDeviceCheck()) {
+    try {
+      const { showDeviceCheck } = await import('./ui/gfxcheck');
+      await Promise.race([showDeviceCheck(), new Promise((r) => setTimeout(r, 7000))]);
+    } catch (e) {
+      console.warn('[gfxcheck]', e);
+    }
+    document.querySelector('.gfxc')?.remove();
+  }
   const intro = playIntro(); // abertura do estúdio: roda por cima enquanto o jogo monta
   const game = new Game(document.getElementById('game') as HTMLCanvasElement);
   const ui = new UI(game);

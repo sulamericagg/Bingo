@@ -41,7 +41,8 @@ import { priceOf, restore, type Granted } from '../services/billing';
 import { shareScore } from '../services/share';
 import { celebrate, celebrating } from './celebrate';
 import { $, $$, COIN, GEM, clock, countUp, esc, fmt, msToMidnight } from './dom';
-import { TIER_LABELS, type QualityMode } from '../core/quality';
+import { deviceCeiling, detectInitialTier, type QualityMode } from '../core/quality';
+import { renderGfxSettings } from './gfx-settings';
 import { hydrateIcons, icon, type IconName } from './icons';
 import { closeCreator } from './creator';
 import { closePetScreen } from '../pet/register';
@@ -873,20 +874,30 @@ export class UI {
   }
 
   private bindQuality(): void {
-    const sel = $<HTMLSelectElement>('#sel-quality');
-    sel.onchange = () => {
-      const v = sel.value;
-      this.game.setQuality(v === 'auto' ? 'auto' : (Number(v) as QualityMode));
-      this.renderSettings();
-    };
-    bus.on('quality', () => this.renderSettings());
+    bus.on('quality', () => {
+      const host = document.getElementById('gfx-settings');
+      if (host?.isConnected && host.closest('.on')) this.renderGfx(host);
+    });
+  }
+
+  /** Ajustes > Gráficos (src/ui/gfx-settings.ts) */
+  private renderGfx(host: HTMLElement): void {
+    renderGfxSettings(host, {
+      gov: this.game.quality,
+      setMode: (m: QualityMode) => this.game.setQuality(m),
+      retest: async () => {
+        const { showDeviceCheck } = await import('./gfxcheck');
+        const { clearCrashMark } = await import('../core/devicecheck');
+        clearCrashMark();
+        await showDeviceCheck({ retest: true });
+        this.game.quality.rebase(detectInitialTier(), deviceCeiling());
+      },
+    });
   }
 
   private renderSettings(): void {
-    const sel = $<HTMLSelectElement>('#sel-quality');
-    sel.value = String(this.game.quality.mode);
-    const tier = this.game.quality.tier;
-    sel.options[0].textContent = tr('quality.auto', 'Auto ({tier})', { tier: tr(`quality.${tier}`, TIER_LABELS[tier]) });
+    const gfx = document.getElementById('gfx-settings');
+    if (gfx) this.renderGfx(gfx);
     $('#lang-cur').textContent = langInfo().native;
     $$<HTMLInputElement>('[data-setting]').forEach((inp) => {
       inp.checked = !!save[inp.dataset.setting as 'sound'];
