@@ -20,18 +20,22 @@ import { Particles, PT } from '../../3d/common/particles';
 import { q3For, type Q3 } from '../../3d/common/quality';
 import { sfx } from '../../3d/common/sfx';
 import { roomEnv } from '../../3d/common/pbr';
-import { Actions, ICON, ensureCss, el, type ActDef } from '../../home3d/ui';
+import { ensureCss, el } from '../../home3d/ui';
 import { notify } from '../../ui/notify';
 import { FpsControls } from '../../ui/touch';
-import { ING_INDEX, INGS, PROC_TIME, RECIPES, compIng, ingName } from './data';
+import {
+  AimPicker, Beacon, HandButtons, Hesitation, HoverHighlight, Rescuer, SnapGlows, TicketPrinter, disposeStickers, feedback, resolveVerb, wallScreen,
+  type AimTarget, type Control, type RescueState, type VerbDef, type VerbRule,
+} from '../../3d/common/interact';
+import { ING_INDEX, INGS, RECIPES, compIng, ingName } from './data';
 import { blitIng, charSprite, drawPetIcon } from './art';
-import { buildKitchen, H, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
+import { buildKitchen, H, HATCH_TOP, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
 import { GK, Items3D } from './fps-items';
+import { FRIDGE_H, KitchenProps, type StProps } from './fps-props';
+import { drawScreen, drawTicket } from './fps-tickets';
 import { Render2D } from './render2d';
 import { COOKERS, FX, IK, type FxEv, type Item, type Player, type Sim, type Station } from './sim';
 import type { Renderer } from './game';
-
-/** ponte online (só existe com amigos conectados) */
 
 /**
  * Aquecimento: um quadro com o culling desligado sobe TODAS as geometrias e texturas para a
@@ -60,15 +64,19 @@ function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): 
     for (const o of hid) o.visible = false;
   }
 }
-const COL_FIRE = new THREE.Color('#ff5c7a');
-const COL_HOT = new THREE.Color('#ffe14a');
+/** ponte online (só existe com amigos conectados) */
 export interface FpsNet {
   notePick(target: number): void;
   noteThrow(st: number, x: number, y: number): void;
 }
 
-interface Loose {
+/** alvo da mira: estação, controle físico (botão/porta/torneira) ou item solto */
+type Tg = { k: 0; st: Station } | { k: 1; c: Control; st: Station } | { k: 2; l: Loose };
+
+interface Loose extends RescueState {
   it: Item;
+  /** alvo de mira deste item */
+  tg: AimTarget<Tg>;
   body: CANNON.Body;
   /** id de quem jogou (0 = caiu sozinho) */
   by: number;
@@ -102,31 +110,13 @@ const HIT = new THREE.Vector3();
 const TV = new THREE.Vector3();
 const AIMP = new THREE.Vector3();
 
-ICON.knife = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l9-9"/><path d="M13 11l6-7c2 3 1 6-2 9l-2 1z"/></svg>';
-ICON.spray = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="7" height="12" rx="3"/><path d="M8 9V6h5l3-2"/><path d="M18 8h.01M20 11h.01M18 13h.01"/></svg>';
-ICON.stir = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13h16l-2 7H6z"/><path d="M14 13l4-10"/><path d="M8 10c1-1 2 1 3 0"/></svg>';
-ICON.serve = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M5 18a7 7 0 0114 0"/><path d="M12 9V7"/></svg>';
-
 const CSS = `
 .czf-layer{position:absolute;inset:0;touch-action:none}
 .czf-float{position:absolute;left:0;top:0;font-weight:700;font-size:22px;color:#ffe14a;-webkit-text-stroke:4px #2a0b5c;paint-order:stroke fill;pointer-events:none;white-space:nowrap;will-change:transform,opacity}
 .czf-float small{display:block;font-size:14px;color:#fff;-webkit-text-stroke:3px #2a0b5c;text-align:center}
-.czf-layer .h3-acts{right:calc(var(--edge-r,12px) + 14px);bottom:calc(var(--edge-b,12px) + 18px);flex-direction:row-reverse;align-items:center;gap:10px}
-.czf-layer .h3-act{width:52px;height:52px;font-size:10px;background:rgba(255,255,255,.72);box-shadow:0 3px 0 #2a0b5c44,0 0 0 3px #2a0b5ccc inset;backdrop-filter:blur(2px)}
-.czf-layer .h3-act svg{width:22px;height:22px}
-.czf-layer .h3-act.big{width:auto;min-width:104px;max-width:210px;height:54px;border-radius:27px;flex-direction:row;gap:7px;padding:0 16px 0 12px;font-size:14px;background:rgba(255,216,74,.86);white-space:nowrap}
-.czf-layer .h3-act.big .lbl{overflow:hidden;text-overflow:ellipsis}
-.czf-layer .h3-act.big .ring{border-radius:27px}
-.czf-layer .h3-acts.czf-idle .h3-act.big{opacity:.45;background:rgba(255,255,255,.6)}
-.czf-layer .h3-acts.czf-guide .h3-act.big{animation:czfGlow .7s infinite alternate;box-shadow:0 0 0 3px #2a0b5c inset,0 0 0 4px #3effa0,0 0 18px #3effa0}
-@keyframes czfGlow{to{transform:scale(1.07)}}
-.czf-layer .h3-act[data-id=throw] .ring{opacity:1;border-top-color:#ff5c7a;border-right-color:var(--pw1,transparent);border-bottom-color:var(--pw2,transparent);border-left-color:var(--pw3,transparent);animation:none}
-.czf-layer .h3-tgt{top:calc(50% + 24px)}
 .czf-hint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);font-size:13px;font-weight:600;padding:4px 12px;border-radius:12px;background:#2a0b5caa;pointer-events:none;white-space:nowrap;transition:opacity .4s}
 @media (orientation:portrait){.czf-hint{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 140px)}}
 .czf-layer .h3-toast{top:calc(env(safe-area-inset-top,0px) + 112px);font-size:14px;padding:5px 12px;border-radius:12px;box-shadow:0 0 0 3px #2a0b5c inset,0 3px 0 #2a0b5c55}
-.czf-garrow{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;pointer-events:none;display:none;filter:drop-shadow(0 2px 0 #2a0b5c)}
-.czf-garrow svg{width:100%;height:100%}
 `;
 let cssEl: HTMLStyleElement | null = null;
 
@@ -158,15 +148,13 @@ class KitchenFps implements Renderer {
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private fireLight: THREE.PointLight | null = null;
-  private overlay: HTMLCanvasElement;
-  private o2d: Render2D;
   private layer: HTMLDivElement;
   private input: FpsControls;
-  private acts: Actions;
+  /** HUD mínimo: UM botão da mão (verbo contextual) + JOGAR */
+  private hb: HandButtons;
   /** avisos: pílula pequena compartilhada (src/ui/notify) */
   private toast = { show: (txt: string, ms = 1400) => void notify(txt, { ms: Math.max(1400, ms) }) };
   private ret: HTMLDivElement;
-  private tgtEl: HTMLDivElement;
   private hint: HTMLDivElement;
   private hand: Hand | null = null;
   private w = 1;
@@ -190,17 +178,47 @@ class KitchenFps implements Renderer {
   /* mira */
   private tgSt = -1;
   private tgLoose: Loose | null = null;
-  private outline: THREE.LineSegments;
-  private ring: THREE.Mesh;
+  /** controle físico mirado (botão do fogo, porta, torneira...) */
+  private tgCtl: Control | null = null;
+  private picker = new AimPicker<Tg>();
+  private aimSkip = 0;
+  private hover: HoverHighlight;
+  private snaps: SnapGlows;
+  private beacon: Beacon;
+  private hes = new Hesitation(3.5, 7);
   private landRing: THREE.Mesh;
+  /* peças físicas e interface no mundo */
+  private props: KitchenProps | null = null;
+  private screen: ReturnType<typeof wallScreen> | null = null;
+  private printer: TicketPrinter | null = null;
+  private screenT = 0;
+  private screenSig = '';
+  private seenOrder = 0;
+  private rescuer: Rescuer | null = null;
+  /** texto do passo do treino (vai na nota adesiva da tela e no balão do alvo) */
+  private tipTxt = '';
+  /** lugares que aceitam o que está na mão (recalculado 6×/s): índice da estação e tipo */
+  private snapSt: number[] = [];
+  private snapK: number[] = [];
+  private snapT = 0;
+  private snapFor: Item | null = null;
+  /** comemoração/reação do cliente na janela */
+  private cheer = { t: 0, ok: true, skin: 'bloop', x: 0 };
+  /** tampa do lixo aberta por mais (s), por estação */
+  private lidT = new Float32Array(0);
+  /** torneira aberta sem louça (s) — fecha sozinha */
+  private dryT = new Float32Array(0);
   /* botões */
-  private ctxAct: '' | 'chop' | 'wash' | 'spray' | 'stir' | 'serve' = '';
-  private actSig = '';
+  /** verbo contextual atual (id) */
+  private ctxAct = '';
+  /** toque curto em CORTAR/ESFREGAR conta como um golpe (s) */
+  private actPulse = 0;
   private charge = -1;
   private throwHeld = false;
   private keyThrow = false;
   private keyAct = false;
   private actOn = false;
+  private verbDef: VerbDef = FALLBACK;
   private pendingThrow = 0;
   /* visuais */
   private spr: THREE.Sprite[] = [];
@@ -217,13 +235,8 @@ class KitchenFps implements Renderer {
   private lastTips = 0;
   private time = 0;
   private hintT = 9;
-  /** guia (treino/dica): estação a destacar */
+  /** guia (treino/dica): estação a destacar — só aparece se o jogador hesitar */
   guide: { st: number; strong: boolean } | null = null;
-  private gOutline: THREE.LineSegments;
-  private gArrow: HTMLDivElement;
-  /** seta 3D sobre a estação do guia */
-  private gCone: THREE.Mesh;
-  private glowOn = false;
   private onKey = (e: KeyboardEvent) => this.key(e, true);
   private onKeyUp = (e: KeyboardEvent) => this.key(e, false);
   private ctxLost = (e: Event) => {
@@ -251,24 +264,18 @@ class KitchenFps implements Renderer {
     this.renderer.shadowMap.enabled = this.q.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     cv.addEventListener('webglcontextlost', this.ctxLost, false);
-    // tickets dos pedidos (mesmo desenho do 2D) por cima
-    this.overlay = document.createElement('canvas');
-    this.overlay.className = 'cz-cv';
-    this.overlay.style.pointerEvents = 'none';
-    cv.after(this.overlay);
-    this.o2d = new Render2D(this.overlay, true);
+    // pedidos e dicas ficam NO MUNDO (tela sobre o passa-pratos, comanda impressa): sem painel por cima
     // camada de controles (fica ABAIXO do HUD do jogo, que é criado depois)
     this.layer = el('div', 'czf-layer');
-    this.overlay.after(this.layer);
+    cv.after(this.layer);
     this.input = new FpsControls(this.layer, { joystick: { zoneTop: 0.25 } });
-    this.acts = new Actions(this.layer);
-    this.acts.onTap = (id) => this.tap(id);
+    this.hb = new HandButtons(this.layer, t('cozinha.fps.throwIt', 'Jogar'));
+    this.hb.onMain = (id) => this.tap(id);
+    this.hb.onAlt = (id) => this.tap(id);
     this.ret = el('div', 'h3-ret');
-    this.tgtEl = el('div', 'h3-tgt');
     this.hint = el('div', 'czf-hint');
-    this.hint.textContent = t('cozinha.fps.hint2', 'Arraste à direita para olhar · o botão faz o que você mira');
-    this.gArrow = el('div', 'czf-garrow', '<svg viewBox="0 0 40 40"><path d="M20 38L4 18h9V3h14v15h9z" fill="#3effa0" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/></svg>');
-    this.layer.append(this.ret, this.tgtEl, this.hint, this.gArrow);
+    this.hint.textContent = t('cozinha.fps.hint3', 'Arraste à direita para olhar · o botão amarelo faz o que você mira');
+    this.layer.append(this.ret, this.hint);
 
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
@@ -293,27 +300,11 @@ class KitchenFps implements Renderer {
     this.flames = new Particles(Math.round(80 + 100 * this.q.particles), true);
     this.flames.budget = this.q.particles;
     this.scene.add(this.parts.obj, this.flames.obj);
-    // destaque do alvo: contorno amarelo
-    const eg = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-    this.outline = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: '#ffe14a', transparent: true, depthTest: false }));
-    this.outline.renderOrder = 6;
-    this.outline.visible = false;
-    this.scene.add(this.outline);
-    this.gOutline = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: '#3effa0', transparent: true, depthTest: false }));
-    this.gOutline.renderOrder = 6;
-    this.gOutline.visible = false;
-    this.scene.add(this.gOutline);
-    const cg = new THREE.ConeGeometry(0.14, 0.3, 4);
-    cg.rotateX(Math.PI); // ponta para baixo
-    this.gCone = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: '#3effa0', depthTest: false, transparent: true, opacity: 0.95 }));
-    this.gCone.renderOrder = 7;
-    this.gCone.visible = false;
-    this.scene.add(this.gCone);
-    const rg = new THREE.RingGeometry(0.16, 0.21, 20);
-    this.ring = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: '#ffe14a', transparent: true, depthTest: false, side: THREE.DoubleSide }));
-    this.ring.renderOrder = 6;
-    this.ring.visible = false;
-    this.scene.add(this.ring);
+    // afordâncias: contorno + rótulo no alvo, discos onde dá para soltar, dica por hesitação
+    this.hover = new HoverHighlight(this.scene, this.layer);
+    this.snaps = new SnapGlows(this.scene, 28);
+    this.beacon = new Beacon(this.scene, this.layer);
+    this.picker.reach = REACH;
     const lg = new THREE.RingGeometry(0.18, 0.26, 20);
     lg.rotateX(-Math.PI / 2);
     this.landRing = new THREE.Mesh(lg, new THREE.MeshBasicMaterial({ color: '#ff5c7a', transparent: true, opacity: 0.85, depthWrite: false }));
@@ -349,9 +340,9 @@ class KitchenFps implements Renderer {
     if (this.sim === sim) return;
     this.sim = sim;
     sim.physFloor = true;
-    this.o2d.setSim(sim, decor);
     this.kit = buildKitchen(sim, decor, this.q.standard, this.world, this.staticMat);
     this.scene.add(this.kit.group);
+    this.buildInteract();
     this.scene.background = new THREE.Color(this.kit.bg);
     this.scene.fog = new THREE.Fog(this.kit.bg, 14, 34);
     this.items = new Items3D(this.q.standard, sim);
@@ -386,6 +377,92 @@ class KitchenFps implements Renderer {
     this.scene.remove(tmpSpr);
     if (qs.has('czdebug') || import.meta.env.DEV) this.debugApi();
   }
+  /** peças físicas, alvos de mira, tela de pedidos, impressora de comandas, resgate */
+  private buildInteract(): void {
+    const sim = this.sim;
+    const props = new KitchenProps(sim, this.q.standard, this.world, this.staticMat);
+    this.props = props;
+    this.scene.add(props.group);
+    this.lidT = new Float32Array(sim.st.length);
+    this.dryT = new Float32Array(sim.st.length);
+    const pk = this.picker;
+    for (const st of sim.st) {
+      if (!st.fx && !st.fy) continue;
+      const b = new THREE.Box3();
+      const top = st.k === 'crate' ? FRIDGE_H : st.k === 'oven' ? 0.7 : st.k === 'blender' ? 0.6 : st.k === 'trash' ? 0.62 : 0.4;
+      b.min.set(st.x * T + 0.02, 0, st.y * T + 0.02);
+      b.max.set((st.x + 1) * T - 0.02, H + top, (st.y + 1) * T - 0.02);
+      pk.add({ k: 0, st }, b, 0);
+      const p = props.by[st.i];
+      // controles pequenos ganham do móvel atrás deles; a tampa do lixo e a porta só animam
+      if (p) for (const c of [p.heat, p.faucet, p.bell]) if (c) pk.add({ k: 1, c, st }, c.box, -0.3);
+      if (p?.heat) {
+        const c = p.heat;
+        c.on = st.heat;
+        c.onChange = (on) => {
+          st.heat = on;
+          const x = (st.x + 0.5) * T;
+          const z = (st.y + 0.5) * T;
+          if (on) {
+            feedback(st.k === 'blender' ? 'press' : 'knobOn');
+            if (st.k === 'pot' || st.k === 'pan') this.parts.burst(x, H + 0.08, z, 8, 'spark', '#7ac8ff', 0.8);
+            this.hes.poke();
+          } else feedback(st.k === 'blender' ? 'press' : 'knobOff');
+        };
+      }
+      if (p?.faucet)
+        p.faucet.onChange = (on) => {
+          feedback('lever');
+          if (on) feedback('splash', false);
+        };
+      if (p?.bell)
+        p.bell.onChange = () => {
+          feedback('ding');
+          this.cheer.t = Math.max(this.cheer.t, 0.6);
+        };
+      if (p?.door)
+        p.door.onChange = (on) => {
+          feedback(on ? 'doorOpen' : 'doorClose');
+          if (on && p.cold) this.parts.burst((st.x + 0.5 + st.fx * 0.4) * T, H + 0.5, (st.y + 0.5 + st.fy * 0.4) * T, 6, 'steam', '#e8f6ff', 0.5);
+        };
+    }
+    // tela de pedidos sobre o 1º passa-pratos + impressora de comandas ao lado
+    const win = sim.st.find((s) => s.k === 'window' || s.k === 'belt');
+    if (win) {
+      const wx = (win.x + 0.5) * T;
+      const sw = Math.min(2.6, sim.cols * T - 0.6);
+      const scr = wallScreen(sw, sw * 0.27, 1024);
+      scr.group.position.set(Math.max(sw / 2 + 0.2, Math.min(sim.cols * T - sw / 2 - 0.2, wx)), HATCH_TOP + 0.48, 0.035);
+      this.scene.add(scr.group);
+      this.screen = scr;
+      const pr = new TicketPrinter(0.2, 0.3);
+      const left = win.x >= 1 ? -1 : 1;
+      pr.group.position.set(wx + left * (T / 2 + 0.2), 1.62, 0);
+      this.scene.add(pr.group);
+      pr.onPrint = () => feedback('print');
+      pr.refreshBox();
+      this.printer = pr;
+    }
+    // nada se perde: saiu da cozinha ou ficou parado onde a mão não alcança → volta
+    this.rescuer = new Rescuer({
+      min: [-0.6, -1, -0.5],
+      max: [sim.cols * T + 0.6, WALL_H + 1, sim.rows * T + 0.6],
+      wait: 2,
+      reachable: (x, y, z) => {
+        if (z < 0.05) return false; // passou pela janela para o salão
+        if (y > 1.75) return false; // em cima do exaustor/prateleira
+        const tx = Math.floor(x / T);
+        const ty = Math.floor(z / T);
+        if (tx < 0 || ty < 0 || tx >= sim.cols || ty >= sim.rows) return false;
+        const si = sim.stAt[ty * sim.cols + tx];
+        if (si < 0) return true;
+        const st = sim.st[si];
+        // bancada de canto (sem frente) ou atrás/dentro da geladeira
+        return !!(st.fx || st.fy) && st.k !== 'crate';
+      },
+    });
+  }
+
   /** depuração / screenshots (window.__czfps) */
   private debugApi(): void {
     const self = this;
@@ -470,8 +547,6 @@ class KitchenFps implements Renderer {
   resize(w: number, h: number, dpr: number, topPad: number, botPad: number): void {
     this.w = w;
     this.h = h;
-    void botPad;
-    this.o2d.resize(w, h, Math.min(2, dpr || 1), topPad, 8);
     this.fallback?.resize(w, h, dpr, topPad, botPad);
     this.resizeGL();
   }
@@ -490,13 +565,40 @@ class KitchenFps implements Renderer {
   private key(e: KeyboardEvent, down: boolean): void {
     if (!this.fps) return;
     if (e.code === 'KeyE' || e.code === 'KeyK') {
-      if (down && !e.repeat) this.tap('pick');
+      if (down && !e.repeat) this.tap(this.ctxAct || 'pick');
     } else if (e.code === 'Space' || e.code === 'KeyR') this.keyThrow = down;
     else if (e.code === 'KeyF' || e.code === 'KeyJ') this.keyAct = down;
   }
+  /** toque no botão da mão (id = verbo atual) */
   private tap(id: string): void {
-    if (id === 'pick') this.doPick();
-    else if (id === 'act' && this.ctxAct === 'serve') this.doPick();
+    const sim = this.sim;
+    const st = this.tgSt >= 0 ? sim.st[this.tgSt] : null;
+    switch (id) {
+      case 'open': {
+        const d = st ? this.props?.by[st.i]?.door : null;
+        if (d) {
+          d.set(true);
+          this.hand?.play('grab');
+          this.hes.poke();
+        }
+        break;
+      }
+      case 'ctl':
+        if (this.tgCtl) {
+          this.tgCtl.press();
+          this.hand?.play('grab');
+        }
+        break;
+      case 'chop':
+      case 'scrub':
+        // toque curto = um golpe (segurar = contínuo)
+        this.actPulse = 0.3;
+        break;
+      case 'spray':
+        break;
+      default:
+        this.doPick();
+    }
   }
   /** mãos do jogador local (no cliente online, ignora o que já foi jogado e o host ainda não soube) */
   private held(): Item | null {
@@ -580,30 +682,30 @@ class KitchenFps implements Renderer {
     this.aim();
     if (auto) return;
     me.force = this.tgSt;
-    // contexto do botão AÇÃO
+    sim.manualHeat = !client && !this.net;
+    // botão da mão: verbo contextual (regras puras, ver VERB_RULES)
     const h = this.held();
-    let ctx: typeof this.ctxAct = '';
     const st = this.tgSt >= 0 ? sim.st[this.tgSt] : null;
-    if (h?.k === IK.Ext) ctx = 'spray';
-    else if (h?.k === IK.Plate && h.parts.length && st && (st.k === 'window' || st.k === 'belt')) ctx = 'serve';
-    else if (!h && st && st.fire <= 0) {
-      if (st.k === 'board' && st.item && sim.nextProc(st.item) === 'chop') ctx = 'chop';
-      else if (st.k === 'sink' && st.n > 0) ctx = 'wash';
-      else if ((st.k === 'pot' || st.k === 'pan') && st.item && st.item.k === IK.Ing && !st.item.burnt) ctx = 'stir';
-    }
-    this.ctxAct = ctx;
-    const actHeld = this.acts.held.has('act') || this.keyAct;
-    this.actOn = actHeld && (ctx === 'chop' || ctx === 'wash' || ctx === 'spray' || ctx === 'stir');
-    me.in.act = this.actOn && ctx !== 'stir';
-    if (this.actOn && ctx === 'stir' && st?.item && !client) {
-      // mexer: cozinha um pouquinho mais rápido e segura o ponto
-      const proc = COOKERS[st.k];
-      if (proc && sim.nextProc(st.item) === proc) st.item.prog = Math.min(0.999, st.item.prog + (dt * 0.35) / PROC_TIME[proc]);
-      else st.item.over = Math.max(0, st.item.over - dt * 1.2);
-      if (Math.random() < dt * 6) this.parts.burst((st.x + 0.5) * T, restY(st) + 0.15, (st.y + 0.5) * T, 2, st.k === 'pot' ? 'foam' : 'spark', st.k === 'pot' ? '#e0feff' : '#ffd84a', 0.6);
-    }
+    const vc = VC;
+    vc.sim = sim;
+    vc.h = h;
+    vc.st = st;
+    vc.ctl = this.tgCtl;
+    vc.loose = this.tgLoose;
+    vc.p = st ? this.props?.by[st.i] ?? null : null;
+    vc.acc = h && st ? sim.wouldAccept(st.i, h) : 0;
+    const verb = resolveVerb(vc, VERB_RULES, FALLBACK);
+    this.ctxAct = verb.id;
+    this.verbDef = verb;
+    if (this.actPulse > 0) this.actPulse -= dt;
+    const holdVerb = verb.id === 'chop' || verb.id === 'scrub' || verb.id === 'spray';
+    this.actOn = holdVerb && (this.hb.mainHeld || this.keyAct || this.actPulse > 0);
+    if (!holdVerb) this.actPulse = 0;
+    me.in.act = this.actOn;
+    // fridge aberta enquanto você mexe nela
+    if (vc.p?.door?.on) vc.p.door.touch();
     // jogar: segurar carrega a força, soltar lança
-    const th = (this.acts.held.has('throw') || this.keyThrow) && !!h;
+    const th = (this.hb.throwHeld || this.keyThrow) && !!h;
     if (th) this.charge = Math.min(1, Math.max(0, this.charge) + dt / 0.9);
     else if (this.throwHeld && this.charge >= 0) {
       this.doThrow(this.charge);
@@ -611,7 +713,7 @@ class KitchenFps implements Renderer {
     } else this.charge = -1;
     this.throwHeld = th;
     // extintor
-    if (this.actOn && ctx === 'spray') this.spray(dt);
+    if (this.actOn && verb.id === 'spray') this.spray(dt);
     // chute nos itens do chão ao andar (caos)
     const sp2 = this.vx * this.vx + this.vz * this.vz;
     if (sp2 > 1)
@@ -714,38 +816,20 @@ class KitchenFps implements Renderer {
     RAY.origin.copy(cam.position);
     cam.getWorldDirection(RAY.direction);
     FWD.copy(RAY.direction);
-    const s = this.sim;
-    let best = -1;
-    let bd = REACH;
-    for (const st of s.st) {
-      if (!st.fx && !st.fy) continue;
-      BOX.min.set(st.x * T + 0.02, 0, st.y * T + 0.02);
-      BOX.max.set((st.x + 1) * T - 0.02, H + (st.k === 'oven' ? 0.7 : st.k === 'blender' ? 0.6 : 0.4), (st.y + 1) * T - 0.02);
-      if (RAY.intersectBox(BOX, HIT)) {
-        const d = HIT.distanceTo(RAY.origin);
-        if (d < bd) {
-          bd = d;
-          best = st.i;
-        }
-      }
-    }
-    // itens soltos (esfera generosa) ganham se estiverem mais perto
-    let bl: Loose | null = null;
-    let ld = Math.min(bd + 0.3, REACH);
+    // mira mais barata: com a câmera parada, só refaz a cada 3 quadros
+    const still = Math.abs(this.lastLook[0]) + Math.abs(this.lastLook[1]) < 1e-4 && this.speedK < 0.05;
+    if (still && this.aimSkip-- > 0) return;
+    this.aimSkip = 2;
     for (const l of this.loose.values()) {
-      if (l.local) continue;
       const p = l.body.position;
-      V.set(p.x, p.y, p.z);
-      const d = RAY.distanceSqToPoint(V);
-      if (d > 0.07) continue;
-      const along = V.sub(RAY.origin).dot(RAY.direction);
-      if (along > 0 && along < ld) {
-        ld = along;
-        bl = l;
-      }
+      l.tg.enabled = !l.local;
+      AimPicker.sphere(l.tg, p.x, p.y, p.z, 0.13);
     }
-    this.tgLoose = bl;
-    this.tgSt = bl ? -1 : best;
+    const tg = this.picker.pick(RAY);
+    const d = tg?.data;
+    this.tgLoose = d?.k === 2 ? d.l : null;
+    this.tgCtl = d?.k === 1 ? d.c : null;
+    this.tgSt = d && d.k !== 2 ? d.st.i : -1;
   }
 
   /* ======================= pegar / soltar / jogar ======================= */
@@ -886,7 +970,8 @@ class KitchenFps implements Renderer {
     body.allowSleep = true;
     body.sleepSpeedLimit = 0.15;
     body.sleepTimeLimit = 0.6;
-    const l: Loose = { it, body, by, tried: -1, botTry: 0, age: 0, still: 0, local, hard: 0 };
+    const l: Loose = { it, body, by, tried: -1, botTry: 0, age: 0, still: 0, local, hard: 0, stuck: 0, tg: null as unknown as AimTarget<Tg> };
+    l.tg = this.picker.add({ k: 2, l }, undefined, -0.05);
     body.addEventListener('collide', (e: { contact: CANNON.ContactEquation }) => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
       if (v > l.hard) l.hard = v;
@@ -898,6 +983,7 @@ class KitchenFps implements Renderer {
   private removeLoose(l: Loose): void {
     this.world.removeBody(l.body);
     this.loose.delete(l.it);
+    this.picker.remove(l.tg);
     if (this.tgLoose === l) this.tgLoose = null;
   }
 
@@ -1051,9 +1137,14 @@ class KitchenFps implements Renderer {
       }
       const p = b.position;
       const sp2 = b.velocity.lengthSquared();
-      if (p.y < -1 || p.y > WALL_H + 2 || p.x < -1 || p.z < -1 || p.x > s.cols * T + 1 || p.z > s.rows * T + 1) {
-        this.removeLoose(l);
-        if (host && !l.local) s.lose(it);
+      if (l.local) {
+        if (p.y < -1 || p.y > WALL_H + 2 || p.x < -1 || p.z < -1 || p.x > s.cols * T + 1 || p.z > s.rows * T + 1) {
+          this.removeLoose(l);
+          continue;
+        }
+      } else if (host && this.rescuer && this.rescuer.check(l, p.x, p.y, p.z, sp2, dt) !== 'ok') {
+        // nada se perde: volta (com "puf") para perto de você
+        this.rescue(l);
         continue;
       }
       if (!l.local && host) {
@@ -1146,6 +1237,29 @@ class KitchenFps implements Renderer {
         }
       }
     }
+  }
+  /** item fora de alcance volta para o chão à sua frente */
+  private rescue(l: Loose): void {
+    const b = l.body;
+    const p = b.position;
+    this.parts.burst(p.x, p.y, p.z, 8, 'poof', '#ffffff', 0.9);
+    const fx = -Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    let x = this.px + fx * 0.7;
+    let z = this.pz + fz * 0.7;
+    if (!this.sim.isFloor(x / T, z / T)) {
+      x = this.px;
+      z = this.pz;
+    }
+    b.position.set(x, 1.3, z);
+    b.velocity.set(0, 0.5, 0);
+    b.angularVelocity.set(2, 3, 1);
+    b.wakeUp();
+    l.stuck = 0;
+    l.tried = -1;
+    this.parts.burst(x, 1.3, z, 10, 'spark', '#7dffd8', 1);
+    feedback('rescue');
+    this.float(t('cozinha.fps.back', 'Voltou!'), '', x, 1.7, z, '#7dffd8');
   }
   private magnet(l: Loose): void {
     const b = l.body;
@@ -1249,13 +1363,43 @@ class KitchenFps implements Renderer {
         this.lastTips = this.sim.tips;
         for (let i = 0; i < 18; i++) this.parts.emit(x, y + 0.3, z, (Math.random() - 0.5) * 3, 2 + Math.random() * 2, (Math.random() - 0.5) * 3, { tile: i % 2 ? PT.Spark : PT.Chunk, color: i % 3 ? '#ffd84a' : '#ff5cc8', life: 1, size: 0.07, grav: 5 });
         this.float('+' + e.v, tip ? t('cozinha.fps.tip', '+{n} de gorjeta!', { n: tip }) : '', x, y + 0.7, z, '#ffe14a');
+        // o cliente na janela comemora
+        this.cheer = { t: 1.8, ok: true, skin: this.cheer.skin, x };
+        feedback('serve');
+        this.hes.poke();
         break;
       }
+      case FX.Order:
+        // a impressora cospe a comanda nova (som + papel saindo)
+        this.printer?.print((c, w, h) => drawTicket(c, w, h, e.v, ++this.seenOrder));
+        this.screenSig = '';
+        break;
+      case FX.Pick:
+        if (st?.k === 'crate') {
+          // alguém pegou na geladeira: a porta abre (ajudantes também)
+          const d = this.props?.by[st.i]?.door;
+          if (d) {
+            if (!d.on) d.set(true);
+            d.touch();
+          }
+        }
+        if (st) this.hes.poke();
+        break;
+      case FX.Place:
+        if (st) {
+          feedback(e.v ? 'combine' : 'place', false);
+          this.parts.burst(x, y + 0.05, z, e.v ? 8 : 4, e.v ? 'spark' : 'poof', e.v ? '#7dffd8' : '#ffffff', 0.7);
+          this.hes.poke();
+        }
+        break;
       case FX.Wrong:
         this.float('?!', t('cozinha.fps.wrong', 'Não pediram isso!'), x, y + 0.6, z, '#ff4f6a');
+        this.cheer = { t: 1.4, ok: false, skin: this.cheer.skin, x };
+        feedback('wrong');
         this.shake = Math.max(this.shake, 0.25);
         break;
       case FX.Drop:
+        if (st?.k === 'trash') this.lidT[st.i] = 0.9;
         this.parts.burst(x, 0.15, z, 4, 'poof', '#ffffff', 0.6);
         break;
       case FX.Wash:
@@ -1359,11 +1503,18 @@ class KitchenFps implements Renderer {
         for (let i = 0; i < Math.min(4, st.n); i++) I.dirtyPlate(MB, i * 0.03, 0.9, i);
         if (st.prog > 0) this.bar(cx, H + 0.75, cz, st.prog);
       } else if (st.k === 'crate') {
-        for (let i = 0; i < 3; i++) {
-          MB.compose(V.set(cx - 0.22 + i * 0.22, restY(st) + hop, cz + (i === 1 ? 0.1 : -0.08)), QB.setFromAxisAngle(V2.set(0, 1, 0), i * 1.7), SB);
-          I.ing(MB, st.ing * 16, false, 1.25, i);
+        // estoque dentro da geladeira/armário: 2 prateleiras de 3 (só quando a porta abre)
+        const door = this.props?.by[st.i]?.door;
+        if (door && (door.on || door.door.rotation.y !== 0)) {
+          for (let i = 0; i < 6; i++) {
+            const lx = -0.24 + (i % 3) * 0.24;
+            const ly = i < 3 ? restY(st) : H + 0.46;
+            const lz = -0.12 + (i % 2) * 0.08;
+            MB.compose(V.set(cx + lx * st.fy + lz * st.fx, ly + hop, cz + lz * st.fy - lx * st.fx), QB.setFromAxisAngle(V2.set(0, 1, 0), i * 1.7), SB);
+            I.ing(MB, st.ing * 16, false, 1.1, i);
+          }
+          QB.identity();
         }
-        QB.identity();
       }
       const it = st.item;
       if (it) {
@@ -1371,7 +1522,7 @@ class KitchenFps implements Renderer {
         if (st.k === 'board' && st.busy > 0) y += Math.abs(Math.sin(time * 22)) * 0.04;
         let ox = 0;
         if (st.k === 'belt') ox = st.prog * 0.8 - 0.4;
-        const cooking = COOKERS[st.k] && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k] && !s.outage;
+        const cooking = COOKERS[st.k] && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k] && !s.outage && (st.heat || !s.manualHeat);
         if (st.k === 'blender' && cooking) QB.setFromAxisAngle(V2.set(0, 1, 0), time * 18);
         MB.compose(V.set(cx + ox * (st.fy ? 1 : 0), y, cz + ox * (st.fx ? 1 : 0)), QB, SB);
         I.item(MB, it, st.k === 'pot' ? 0.9 : st.k === 'blender' ? 0.8 : 1);
@@ -1381,21 +1532,22 @@ class KitchenFps implements Renderer {
         const prog = it.k === IK.Ing ? it.prog : 0;
         const warn = proc && proc !== 'blend' && it.k === IK.Ing && !it.burnt && it.over > 1.5 && s.nextProc(it) !== proc && ((time * 6) | 0) % 2 === 0;
         if ((prog > 0 && prog < 1) || warn) this.bar(cx, restY(st) + 0.62, cz, prog, warn);
-        if (cooking) {
-          // boca do fogão acesa + vapor/chiado
-          if (st.k === 'pot' || st.k === 'pan') {
-            MB.compose(V.set(cx, H + 0.05, cz), QB, SB);
-            for (let k = 0; k < 6; k++) {
-              const a = k * 1.047 + time * 0.5;
-              I.flame(MB, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, 0.035, 0.05 + Math.sin(time * 20 + k) * 0.015, '#4fa8ff');
-            }
-          }
+        if (cooking && (st.heat || !s.manualHeat)) {
+          // vapor/chiado
           if (st.k === 'pot' && Math.random() < dt * 5) this.parts.burst(cx, H + 0.45, cz, 1, 'steam', '#ffffff', 0.4);
           if (st.k === 'pot' && Math.random() < dt * 2) sfx.bubble();
           if (st.k === 'pan' && Math.random() < dt * 6) this.parts.burst(cx, H + 0.15, cz, 1, 'spark', '#fff3c4', 0.8);
           if (st.k === 'oven' && Math.random() < dt * 2) this.parts.burst(cx, H + 0.75, cz, 1, 'steam', '#ffe8d0', 0.3);
         }
         if (it.burnt && st.fire <= 0 && Math.random() < dt * 3) this.parts.burst(cx, y + 0.2, cz, 1, 'poof', '#4a4458', 0.3);
+      }
+      if (this.stationProps(st, it, cx, cz, time, dt)) {
+        // boca do fogão acesa (chama azul) — com ou sem panela cheia
+        MB.compose(V.set(cx, H + 0.05, cz), QB, SB);
+        for (let k = 0; k < 6; k++) {
+          const a = k * 1.047 + time * 0.5;
+          I.flame(MB, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, 0.035, 0.05 + Math.sin(time * 20 + k) * 0.015, '#4fa8ff');
+        }
       }
       if (st.k === 'board' && it && it.k === IK.Ing && it.prog > 0 && it.prog < 1 && !(it.prog > 0 && st.busy > 0)) this.bar(cx, restY(st) + 0.5, cz, it.prog);
       // fogo!
@@ -1482,16 +1634,28 @@ class KitchenFps implements Renderer {
       }
       bi++;
     }
-    // ---------------- clientes no salão ----------------
+    // ---------------- clientes no salão (o 1º da fila espera NA JANELA) ----------------
+    const win = this.screen ? s.st.find((x) => x.k === 'window') : undefined;
+    let first = true;
     for (const o of s.orders) {
       const c = this.sprite();
       const skin = SKINS_CUST[o.id % SKINS_CUST.length];
       const happy = o.t / o.max > 0.5;
       c.material = this.smat('cu' + skin + (happy ? 1 : 0), () => charSprite(skin, 'server', 128, happy));
-      const sx = (((o.seat % s.seats) + 0.5) / s.seats) * s.cols * T;
+      let sx = (((o.seat % s.seats) + 0.5) / s.seats) * s.cols * T;
       c.center.set(0.5, 0.02);
-      c.position.set(sx, Math.abs(Math.sin(time * 3 + o.id)) * 0.04, -3.1 - (1 - o.a) * 2);
-      c.scale.set(1, 1.25, 1);
+      const atWin = first && !!win && this.cheer.t <= 0;
+      if (atWin) {
+        sx = (win.x + 0.5) * T;
+        this.cheer.skin = skin;
+        c.position.set(sx, Math.abs(Math.sin(time * 3 + o.id)) * 0.04, -0.7 - (1 - o.a) * 2);
+        c.scale.set(1.05, 1.3, 1);
+      } else {
+        c.position.set(sx, Math.abs(Math.sin(time * 3 + o.id)) * 0.04, -3.1 - (1 - o.a) * 2);
+        c.scale.set(1, 1.25, 1);
+      }
+      first = false;
+      if (atWin) continue;
       const bub = this.sprite();
       const rr = RECIPES[o.r];
       bub.material = this.smat('ord' + o.r, () => {
@@ -1511,21 +1675,44 @@ class KitchenFps implements Renderer {
       bub.position.set(sx + 0.4, 1.6 + Math.sin(time * 2 + o.id) * 0.05, -3.1);
       bub.scale.setScalar(0.5);
     }
+    // comemoração (ou "?!") do cliente na janela
+    if (this.cheer.t > 0 && win) {
+      this.cheer.t -= dt;
+      const ok = this.cheer.ok;
+      const c = this.sprite();
+      const skin = this.cheer.skin;
+      c.material = this.smat('cu' + skin + (ok ? 1 : 0), () => charSprite(skin, 'server', 128, ok));
+      c.center.set(0.5, 0.02);
+      const hop = ok ? Math.abs(Math.sin(this.cheer.t * 9)) * 0.25 : 0;
+      const wob = ok ? 0 : Math.sin(this.cheer.t * 30) * 0.06;
+      c.position.set((win.x + 0.5) * T + wob, hop, -0.7);
+      c.scale.set(1.05, 1.3, 1);
+      const e = this.sprite();
+      const code = ok ? 'coracao' : 'uau';
+      e.material = this.smat('em' + code, () => {
+        const cv = document.createElement('canvas');
+        cv.width = 160;
+        cv.height = 120;
+        drawEmoteBubble(cv.getContext('2d')!, code, 80, 112, 1.1, 1);
+        return cv;
+      });
+      e.center.set(0.5, 0);
+      e.position.set((win.x + 0.5) * T, 1.45 + hop, -0.7);
+      e.scale.set(0.8, 0.6, 1);
+    }
     const h = this.held();
     // ---------------- mão ----------------
     if (this.hand) {
       const hd = this.hand;
       const ctx = this.ctxAct;
       let pose: Parameters<Hand['setPose']>[0] = h ? 'grab' : 'open';
-      if (this.actOn && ctx === 'chop') pose = 'knife';
-      else if (this.actOn && ctx === 'wash') pose = 'sponge';
-      else if (this.actOn && ctx === 'stir') pose = 'spoon';
-      else if (!h && ctx === 'chop') pose = 'knife';
+      if (ctx === 'chop') pose = 'knife';
+      else if (this.actOn && ctx === 'scrub') pose = 'sponge';
       hd.setPose(pose, '#ff5c7a');
       const k = Math.min(1, dt * 12);
       hd.chop += ((this.actOn && ctx === 'chop' ? 1 : 0) - hd.chop) * k;
-      hd.scrub += ((this.actOn && (ctx === 'wash' || ctx === 'spray') ? (ctx === 'spray' ? 0.25 : 1) : 0) - hd.scrub) * k;
-      hd.stir += ((this.actOn && ctx === 'stir' ? 1 : 0) - hd.stir) * k;
+      hd.scrub += ((this.actOn && (ctx === 'scrub' || ctx === 'spray') ? (ctx === 'spray' ? 0.25 : 1) : 0) - hd.scrub) * k;
+      hd.stir += (0 - hd.stir) * k;
       hd.charge += (Math.max(0, this.charge) - hd.charge) * Math.min(1, dt * 20);
       hd.visible = this.fps && !qs.has('czauto');
       hd.update(dt, this.speedK, this.lastLook[0], this.lastLook[1]);
@@ -1569,25 +1756,71 @@ class KitchenFps implements Renderer {
     if (this.charge >= 0 && h) this.arc(Math.max(0.05, this.charge));
     else this.landRing.visible = false;
     I.end();
+    // ---------------- peças físicas, tela de pedidos, comanda ----------------
+    this.props?.update(dt, time);
+    this.printer?.update(dt, time);
+    this.screenFrame(dt, time);
     // ---------------- mira / destaque ----------------
-    this.highlight(time);
+    this.highlight(time, dt);
     this.uiFrame(dt);
     // esconde sprites que sobraram
     for (let i = this.sprUsed; i < this.spr.length; i++) this.spr[i].visible = false;
     this.parts.update(dt, this.camera.fov, this.renderer.domElement.height);
     this.flames.update(dt, this.camera.fov, this.renderer.domElement.height);
     this.renderer.render(this.scene, this.camera);
-    // comandas (Canvas 2D por cima): 30 Hz (15 Hz nos níveis baixos) bastam para os relógios
-    this.ovT -= dt;
-    if (this.ovT <= 0 || dt === 0) {
-      this.ovT = this.q.tier >= 2 ? 1 / 30 : 1 / 15;
-      this.o2d.drawOverlay(time);
-    }
     this.gov.sample(dt * 1000, performance.now() - t0);
   }
 
-  private ovT = 0;
-  private ringStep = -1;
+  /** peças físicas da estação (botões, torneira, tampa): sincroniza com a Sim, dicas, água. true = acende a boca do fogão */
+  private stationProps(st: Station, it: Item | null, cx: number, cz: number, time: number, dt: number): boolean {
+    const p = this.props?.by[st.i];
+    const s = this.sim;
+    if (!p) return false;
+    const stove = st.k === 'pot' || st.k === 'pan';
+    if (p.heat) {
+      const c = p.heat;
+      if (c.on !== st.heat) c.set(st.heat, true); // ajudante ligou / liquidificador desligou sozinho
+      const waiting = s.manualHeat && !st.heat && st.fire <= 0 && !!it && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k];
+      c.hint += ((waiting ? 1 : 0) - c.hint) * Math.min(1, dt * 6);
+      if (st.k === 'blender' && st.heat && it) {
+        // liquidificador batendo: treme e respinga
+        if (Math.random() < dt * 8) this.parts.burst(cx, H + 0.5, cz, 1, 'foam', INGS[compIng(it.c)].c[0], 0.5);
+      }
+    }
+    if (p.faucet) {
+      const f = p.faucet;
+      f.hint += ((st.n > 0 && !f.on ? 1 : 0) - f.hint) * Math.min(1, dt * 6);
+      if (f.on) {
+        // água caindo da bica + lava sozinho enquanto houver louça
+        const sx = cx - st.fx * 0.18;
+        const sz = cz - st.fy * 0.18;
+        if (Math.random() < dt * 30) this.parts.emit(sx, H + 0.24, sz, (Math.random() - 0.5) * 0.2, -1.5, (Math.random() - 0.5) * 0.2, { tile: PT.Foam, color: '#9fe0ff', life: 0.35, size: 0.04, grav: 6 });
+        if (st.n > 0 && !s.o.client && dt > 0) {
+          s.washAt(st.i, dt * 0.8, this.me);
+          this.dryT[st.i] = 0;
+        } else if ((this.dryT[st.i] += dt) > 2.5) f.set(false);
+        if (Math.random() < dt * 3) sfx.scrub();
+      }
+    }
+    if (p.lid) {
+      if (this.lidT[st.i] > 0) this.lidT[st.i] -= dt;
+      let open = this.lidT[st.i] > 0 || (this.tgSt === st.i && !!this.held());
+      if (!open)
+        for (const l of this.loose.values()) {
+          const b = l.body.position;
+          if (Math.abs(b.x - cx) < 0.7 && Math.abs(b.z - cz) < 0.7 && b.y > H && b.y < H + 1.6) {
+            open = true;
+            break;
+          }
+        }
+      if (open !== p.lid.on) p.lid.set(open, true);
+    }
+    void time;
+    if (!stove || st.fire > 0) return false;
+    if (s.manualHeat) return st.heat;
+    return !!it && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k] && !s.outage;
+  }
+
   private barKeys: string[] = Array.from({ length: 11 }, (_, i) => 'bar' + i);
   private bar(x: number, y: number, z: number, k: number, warn = false): void {
     const b = this.sprite();
@@ -1632,171 +1865,135 @@ class KitchenFps implements Renderer {
       }
     }
   }
-  private highlight(time: number): void {
+  /** caixa de mira de uma estação (contorno/dica) */
+  private stBox(si: number): THREE.Box3 | null {
+    for (const tg of this.picker.list) if (tg.data.k === 0 && tg.data.st.i === si) return tg.box;
+    return null;
+  }
+  /** onde a dica deve apontar: o botão do fogo / torneira se é isso que falta, senão a estação */
+  private guideBox(st: Station): THREE.Box3 | null {
+    const p = this.props?.by[st.i];
+    const it = st.item;
+    if (p?.heat && this.sim.manualHeat && !st.heat && it && it.k === IK.Ing && this.sim.nextProc(it) === COOKERS[st.k]) return p.heat.box;
+    if (p?.faucet && st.n > 0 && !p.faucet.on && !this.held()) return p.faucet.box;
+    return this.stBox(st.i);
+  }
+  private highlight(time: number, dt: number): void {
     const s = this.sim;
-    const o = this.outline;
-    const hot = this.tgSt >= 0 || !!this.tgLoose;
-    if (this.tgSt >= 0 && this.fps) {
-      const st = s.st[this.tgSt];
-      const top = st.k === 'oven' ? 0.72 : st.k === 'blender' ? 0.62 : st.k === 'pot' ? 0.45 : 0.3;
-      o.visible = true;
-      o.position.set((st.x + 0.5) * T, H + top / 2 - 0.05, (st.y + 0.5) * T);
-      o.scale.set(T * 0.96, top + 0.1, T * 0.96);
-      (o.material as THREE.LineBasicMaterial).opacity = 0.55 + Math.sin(time * 8) * 0.35;
-      (o.material as THREE.LineBasicMaterial).color.copy(st.fire > 0 ? COL_FIRE : COL_HOT);
-    } else o.visible = false;
-    if (this.tgLoose && this.fps) {
-      const p = this.tgLoose.body.position;
-      this.ring.visible = true;
-      this.ring.position.set(p.x, p.y, p.z);
-      this.ring.quaternion.copy(this.camera.quaternion);
-      this.ring.scale.setScalar(1 + Math.sin(time * 8) * 0.12);
-    } else this.ring.visible = false;
-    this.ret.classList.toggle('hot', hot);
-    // guia: contorno verde + seta (na estação, ou na borda da tela apontando)
+    const h = this.held();
+    const on = this.fps && !qs.has('czauto');
+    // ---- alvo: contorno + rótulo minúsculo preso ao objeto ----
+    const cur = on ? this.picker.current : null;
+    if (cur) {
+      let label = '';
+      let warn = false;
+      const d = cur.data;
+      if (d.k === 1) label = d.c.label();
+      else if (d.k === 2) label = itemName(d.l.it);
+      else {
+        const st = d.st;
+        label = stName(s, st);
+        warn = st.fire > 0 || (!!h && h.k !== IK.Ext && s.wouldAccept(st.i, h) === 0);
+        const p = this.props?.by[st.i];
+        const it = st.item;
+        if (!h && p?.heat && s.manualHeat && !st.heat && it && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k]) label += ' · ' + (st.k === 'blender' ? t('cozinha.fps.pressBtn', 'aperte o botão') : t('cozinha.fps.turnKnob', 'gire o botão'));
+        else if (p?.faucet && st.n > 0 && !p.faucet.on) label += ' · ' + t('cozinha.fps.openTap', 'abra a torneira');
+      }
+      this.hover.show(cur.box, label, warn);
+    } else this.hover.hide();
+    this.hover.frame(this.camera, this.w, this.h, time);
+    this.ret.classList.toggle('hot', !!cur);
+    // ---- discos verdes: onde dá para soltar o que você segura ----
+    this.snaps.begin();
+    if (on && h && h.k !== IK.Ext) {
+      this.snapT -= dt;
+      if (this.snapT <= 0 || this.snapFor !== h) {
+        this.snapT = 0.16;
+        this.snapFor = h;
+        this.snapSt.length = 0;
+        this.snapK.length = 0;
+        for (const st of s.st) {
+          if (!st.fx && !st.fy) continue;
+          const a = s.wouldAccept(st.i, h);
+          if (!a) continue;
+          // bancadas livres e lixo aceitam quase tudo: só brilham quando fazem sentido
+          if (a === 1 && st.k === 'counter') continue;
+          if (a === 1 && st.k === 'trash' && !(h.k === IK.Ing && h.burnt) && !(h.k === IK.Plate && h.parts.length && !s.orders.some((o) => h.parts.every((x) => RECIPES[o.r].parts.includes(x))))) continue;
+          if (a === 1 && st.k === 'crate') continue;
+          this.snapSt.push(st.i);
+          this.snapK.push(a);
+        }
+      }
+      for (let i = 0; i < this.snapSt.length; i++) {
+        const st = s.st[this.snapSt[i]];
+        this.snaps.add((st.x + 0.5) * T, restY(st), (st.y + 0.5) * T, st.k === 'window' ? 0.4 : 0.3, this.snapK[i] === 2);
+      }
+    } else this.snapFor = null;
+    this.snaps.end(time);
+    // ---- dica de "vá ali": só se o jogador hesitar ----
     const g = this.guide;
-    const go = this.gOutline;
-    if (g && g.st >= 0 && this.fps) {
-      const st = s.st[g.st];
-      const top = st.k === 'oven' ? 0.72 : st.k === 'blender' ? 0.62 : st.k === 'pot' ? 0.45 : 0.3;
-      const pulse = 0.5 + Math.sin(time * 6) * 0.5;
-      go.visible = g.st !== this.tgSt;
-      go.position.set((st.x + 0.5) * T, H + top / 2 - 0.05, (st.y + 0.5) * T);
-      const k = g.strong ? 1 + pulse * 0.08 : 1;
-      go.scale.set(T * 0.98 * k, (top + 0.12) * k, T * 0.98 * k);
-      (go.material as THREE.LineBasicMaterial).opacity = g.strong ? 0.7 + pulse * 0.3 : 0.35 + pulse * 0.3;
-      this.gCone.visible = g.strong && Math.hypot((st.x + 0.5) * T - this.px, (st.y + 0.5) * T - this.pz) > 1.1; // perto demais: o contorno basta
-      this.gCone.position.set((st.x + 0.5) * T, H + top + 0.2 + Math.abs(Math.sin(time * 4)) * 0.1, (st.y + 0.5) * T);
-      this.gCone.rotation.y = time * 2;
-      if (g.strong) {
-        V.set((st.x + 0.5) * T, H + top + 0.35 + Math.abs(Math.sin(time * 5)) * 0.15, (st.y + 0.5) * T).project(this.camera);
-        const behind = V.z > 1;
-        let sx = ((V.x + 1) / 2) * this.w;
-        let sy = ((1 - V.y) / 2) * this.h;
-        if (behind) {
-          sx = this.w - sx;
-          sy = this.h - sy;
-        }
-        const m = 40;
-        // a estação está na tela? então a seta 3D basta
-        V2.set((st.x + 0.5) * T, H, (st.y + 0.5) * T).project(this.camera);
-        const inside = V2.z < 1 && Math.abs(V2.x) < 0.92 && Math.abs(V2.y) < 0.9;
-        let rot = 0;
-        if (!inside) {
-          const cx = this.w / 2;
-          const cy = this.h / 2;
-          let dx = sx - cx;
-          let dy = sy - cy;
-          if (behind && Math.abs(dx) < 1 && Math.abs(dy) < 1) dx = 1;
-          const ang = Math.atan2(dy, dx);
-          const kx = (this.w / 2 - m) / Math.max(1e-3, Math.abs(Math.cos(ang)));
-          const ky = (this.h / 2 - m - 50) / Math.max(1e-3, Math.abs(Math.sin(ang)));
-          const r = Math.min(kx, ky);
-          dx = Math.cos(ang) * r;
-          dy = Math.sin(ang) * r;
-          sx = cx + dx;
-          sy = cy + dy + 25;
-          rot = (ang * 180) / Math.PI - 90;
-        }
-        const a = this.gArrow;
-        // dentro da tela a seta 3D já aponta; a de tela só aparece na borda
-        a.style.display = inside ? 'none' : 'block';
-        a.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) rotate(${rot.toFixed(1)}deg)`;
-      } else this.gArrow.style.display = 'none';
-    } else {
-      go.visible = false;
-      this.gCone.visible = false;
-      this.gArrow.style.display = 'none';
+    const gst = g && g.st >= 0 ? s.st[g.st] : null;
+    const key = gst ? gst.i + ':' + this.tipTxt + (h ? h.id : '') : '';
+    const lvl = this.hes.update(on ? key : '', dt);
+    let level: 0 | 1 | 2 = 0;
+    if (gst) level = g!.strong ? lvl : lvl >= 1 ? 1 : 0;
+    const gb = gst && level ? this.guideBox(gst) : null;
+    this.beacon.set(gb, gb ? level : 0, this.tipTxt);
+    this.beacon.frame(this.camera, this.w, this.h, time, !!gst && gst.i === this.tgSt);
+    this.hb.glow(level >= 1 && !!gst && (this.tgSt === gst.i || (!!this.tgCtl && gb === this.tgCtl.box)));
+  }
+
+  /** tela de pedidos: redesenha só quando muda (e 4×/s para a barra de paciência) */
+  private screenFrame(dt: number, time: number): void {
+    const scr = this.screen;
+    if (this.tipId && this.screenT <= dt) this.tipTxt = this.tip3d();
+    if (!scr) return;
+    const s = this.sim;
+    this.screenT -= dt;
+    const h = this.held();
+    let sig = this.tipTxt + '|' + (h && h.k === IK.Plate ? h.parts.join(',') : '');
+    for (const o of s.orders) sig += o.id + (o.a < 1 ? 'a' + o.a.toFixed(1) : '');
+    if (sig === this.screenSig && this.screenT > 0) return;
+    this.screenSig = sig;
+    this.screenT = 0.25;
+    scr.panel.draw((c, w, hh) => drawScreen(c, w, hh, s, h && h.k === IK.Plate ? h.parts : null, this.tipTxt, time));
+    if (!s.orders.length) this.printer?.clear();
+  }
+  /** texto do passo do treino: vai para a nota adesiva da tela e para o balão da dica */
+  tip(id: string, txt: string): void {
+    this.tipId = id;
+    this.tipRaw = txt;
+    this.tipTxt = this.tip3d();
+  }
+  private tipId = '';
+  private tipRaw = '';
+  /** alguns passos do treino ganham texto do 3D (geladeira, botão do fogo, torneira) */
+  private tip3d(): string {
+    const id = this.tipId.replace(/^f/, '');
+    const g = this.guide;
+    const st = g && g.st >= 0 ? this.sim.st[g.st] : null;
+    if (id === 'crate' && st?.k === 'crate') {
+      const cold = this.props?.by[st.i]?.cold;
+      const x = ingName(INGS[st.ing].id);
+      return cold ? t('cozinha.fps.tutFridge', 'Abra a geladeira e pegue: {x}', { x }) : t('cozinha.fps.tutPantry', 'Abra o armário e pegue: {x}', { x });
     }
-    // destaca só o botão certo: quando a mira está na estação do guia
-    const want = !!g && g.strong && g.st >= 0 && (this.tgSt === g.st || (!!this.held() && this.tgSt === g.st));
-    if (want !== this.glowOn) {
-      this.glowOn = want;
-      this.acts.box.classList.toggle('czf-guide', want);
-    }
+    if (id === 'chop') return t('cozinha.fps.tutChop', 'Toque em CORTAR várias vezes!');
+    if (id === 'wash') return t('cozinha.fps.tutWash', 'Abra a torneira da pia');
+    if (id === 'wait' && st && this.sim.manualHeat && !st.heat) return st.k === 'blender' ? t('cozinha.fps.tutBlend', 'Aperte o botão do liquidificador') : t('cozinha.fps.tutKnob', 'Gire o botão para ligar o fogo');
+    return this.tipRaw;
   }
 
   /* ======================= HUD ======================= */
   private uiFrame(dt: number): void {
     const me = this.me;
-    const s = this.sim;
     if (!me) return;
     const h = this.held();
-    // botões: só reconstrói quando o contexto muda
-    const ctx = this.ctxAct;
-    const toSt = this.tgSt >= 0;
-    const st = toSt ? s.st[this.tgSt] : null;
-    // UM botão principal com o verbo do que você está olhando ("Pegar tomate", "Cortar", "Colocar na panela")
-    let mainId = 'pick';
-    let mainLab = '';
-    let mainIcon = 'grab';
-    let mainHold = false;
-    let second: ActDef | null = null;
-    if (h) {
-      if (ctx === 'spray') {
-        mainId = 'act';
-        mainLab = t('cozinha.spray', 'Apagar');
-        mainIcon = 'spray';
-        mainHold = true;
-      } else if (ctx === 'serve') {
-        mainLab = t('cozinha.fps.serveIt', 'Entregar');
-        mainIcon = 'serve';
-      } else if (st) {
-        mainLab = putLabel(s, st, h);
-        mainIcon = 'check';
-      } else {
-        mainLab = t('cozinha.fps.dropIt', 'Soltar');
-        mainIcon = 'drop';
-      }
-      if (ctx !== 'spray') second = { id: 'throw', label: t('cozinha.fps.throwIt', 'Jogar'), icon: 'throw', size: 'small', hold: true };
-    } else if (ctx === 'chop' || ctx === 'wash' || ctx === 'stir') {
-      mainId = 'act';
-      mainHold = true;
-      mainLab = ctx === 'chop' ? t('cozinha.fps.chopIt', 'Cortar') : ctx === 'wash' ? t('cozinha.wash', 'Lavar') : t('cozinha.fps.stir', 'Mexer');
-      mainIcon = ctx === 'chop' ? 'knife' : ctx === 'wash' ? 'clean' : 'stir';
-      if (ctx !== 'wash') second = { id: 'pick', label: t('cozinha.fps.pick', 'Pegar'), icon: 'grab', size: 'small' };
-    } else if (this.tgLoose) mainLab = t('cozinha.fps.pickX', 'Pegar {x}', { x: itemName(this.tgLoose.it).toLowerCase() });
-    else if (st) mainLab = pickLabel(st);
-    else mainLab = t('cozinha.fps.pick', 'Pegar');
-    const idle = !h && !this.tgLoose && !st;
-    const sig = mainId + mainLab + (second ? second.id : '') + (idle ? 'i' : '');
-    if (sig !== this.actSig && this.fps) {
-      this.actSig = sig;
-      const L: ActDef[] = [{ id: mainId, label: mainLab, icon: mainIcon, size: 'big', hold: mainHold }];
-      if (second) L.push(second);
-      this.acts.set(L);
-      // o mesmo botão (id) pode trocar de tamanho: acerta a classe
-      for (const a of L) {
-        const b = this.acts.box.querySelector<HTMLElement>(`[data-id=${a.id}]`);
-        if (b) {
-          b.classList.toggle('big', a.size === 'big');
-          b.classList.toggle('small', a.size === 'small');
-        }
-      }
-      this.acts.box.classList.toggle('czf-idle', idle);
-      const tb = this.acts.box.querySelector<HTMLElement>('[data-id=throw]');
-      if (tb) tb.style.setProperty('--pw1', 'transparent');
-      this.ringStep = -1;
-    }
-    // anel de força do JOGAR
-    if (h && this.charge >= 0) {
-      const tb = this.acts.box.querySelector<HTMLElement>('[data-id=throw]');
-      const step = this.charge > 0.75 ? 3 : this.charge > 0.5 ? 2 : this.charge > 0.25 ? 1 : 0;
-      if (tb && step !== this.ringStep) {
-        this.ringStep = step;
-        const c = this.charge;
-        tb.style.setProperty('--pw1', c > 0.25 ? '#ff5c7a' : 'transparent');
-        tb.style.setProperty('--pw2', c > 0.5 ? '#ff5c7a' : 'transparent');
-        tb.style.setProperty('--pw3', c > 0.75 ? '#ff5c7a' : 'transparent');
-      }
-    }
-    // rótulo do alvo
-    let label = '';
-    if (this.tgLoose) label = itemName(this.tgLoose.it);
-    else if (this.tgSt >= 0) label = stName(s, s.st[this.tgSt]);
-    if (this.tgtEl.textContent !== label) {
-      this.tgtEl.textContent = label;
-      this.tgtEl.classList.toggle('on', !!label);
+    const v = this.verbDef;
+    if (this.fps) {
+      if (!v.label) v.label = t('cozinha.fps.pick', 'Pegar');
+      const alt = v.id === 'chop' ? ALT_PICK() : null;
+      this.hb.set(v, alt, !!h && v.id !== 'spray');
+      this.hb.charge(h && this.charge >= 0 ? this.charge : -1);
     }
     // textos flutuantes no mundo
     for (const f of this.floats) {
@@ -1823,7 +2020,6 @@ class KitchenFps implements Renderer {
     c2.className = 'cz-cv';
     this.cv.after(c2);
     this.cv.style.display = 'none';
-    this.overlay.style.display = 'none';
     this.layer.style.display = 'none';
     this.input.show(false);
     const f = new Render2D(c2);
@@ -1844,20 +2040,22 @@ class KitchenFps implements Renderer {
     window.removeEventListener('keyup', this.onKeyUp);
     this.cv.removeEventListener('webglcontextlost', this.ctxLost);
     this.input.dispose();
+    this.hb.dispose();
+    this.hover.dispose();
+    this.snaps.dispose();
+    this.beacon.dispose();
+    this.props?.dispose();
+    this.screen?.dispose();
+    this.printer?.dispose();
+    disposeStickers();
     this.layer.remove();
-    this.overlay.remove();
     this.fallback?.destroy();
     this.hand?.dispose();
     this.items?.dispose();
     this.kit?.dispose();
     this.parts.dispose();
     this.flames.dispose();
-    (this.gOutline.material as THREE.Material).dispose();
-    this.gCone.geometry.dispose();
-    (this.gCone.material as THREE.Material).dispose();
-    this.outline.geometry.dispose();
-    (this.outline.material as THREE.Material).dispose();
-    for (const m of [this.ring, this.landRing, this.puddleMesh]) {
+    for (const m of [this.landRing, this.puddleMesh]) {
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
     }
@@ -1867,12 +2065,63 @@ class KitchenFps implements Renderer {
     }
     for (const b of [...this.world.bodies]) this.world.removeBody(b);
     this.loose.clear();
-    if (this.sim) this.sim.physFloor = false;
+    if (this.sim) {
+      this.sim.physFloor = false;
+      this.sim.manualHeat = false;
+    }
     this.renderer.renderLists.dispose();
     this.renderer.dispose();
     if (!this.lost) this.renderer.forceContextLoss();
     void this.host;
   }
+}
+
+/* ======================= verbo do botão da mão ======================= */
+interface VCtx {
+  sim: Sim;
+  h: Item | null;
+  st: Station | null;
+  ctl: Control | null;
+  loose: Loose | null;
+  p: StProps | null;
+  /** sim.wouldAccept(estação, mão) */
+  acc: 0 | 1 | 2 | 3;
+}
+const VC: VCtx = { sim: null as unknown as Sim, h: null, st: null, ctl: null, loose: null, p: null, acc: 0 };
+const FALLBACK: VerbDef = { id: 'pick', label: '', icon: 'grab', dim: true };
+const V_: VerbDef[] = [];
+/** objeto de verbo reaproveitado (sem alocação por quadro) */
+function vd(slot: number, id: string, label: string, icon: string, hold = false, dim = false): VerbDef {
+  let v = V_[slot];
+  if (!v) v = V_[slot] = { id, label, icon };
+  v.id = id;
+  v.label = label;
+  v.icon = icon;
+  v.hold = hold;
+  v.dim = dim;
+  return v;
+}
+const ctlIcon = (st: Station): string => (st.k === 'sink' ? 'water' : st.k === 'window' || st.k === 'belt' ? 'bell' : st.k === 'blender' ? 'power' : 'fire');
+/** primeira regra verdadeira decide: o que você segura > controle mirado > o que está na estação */
+const VERB_RULES: VerbRule<VCtx>[] = [
+  { when: (c) => c.h?.k === IK.Ext, verb: () => vd(0, 'spray', t('cozinha.spray', 'Apagar'), 'spray', true) },
+  { when: (c) => !!c.ctl && !!c.st, verb: (c) => vd(0, 'ctl', c.ctl!.verb(c.ctl!.on), ctlIcon(c.st!)) },
+  { when: (c) => !!c.h && !!c.st && c.acc === 3, verb: () => vd(0, 'serve', t('cozinha.fps.serveIt', 'Entregar'), 'serve') },
+  { when: (c) => !!c.h && !!c.st && c.acc === 2, verb: (c) => vd(0, 'pick', putLabel(c.sim, c.st!, c.h!), 'plus') },
+  { when: (c) => !!c.h && !!c.st && c.acc === 1, verb: (c) => vd(0, 'pick', putLabel(c.sim, c.st!, c.h!), 'put') },
+  { when: (c) => !!c.h && !!c.st, verb: () => vd(0, 'nope', t('cozinha.fps.nope2', 'Não cabe aqui'), 'x', false, true) },
+  { when: (c) => !!c.h, verb: () => vd(0, 'pick', t('cozinha.fps.dropIt', 'Soltar'), 'drop') },
+  { when: (c) => !!c.st && c.st.fire > 0, verb: () => vd(0, 'pick', t('cozinha.fps.onFire', 'Pegando fogo!'), 'fire', false, true) },
+  { when: (c) => !!c.p?.door && !c.p.door.on && !c.loose, verb: () => vd(0, 'open', t('cozinha.fps.open', 'Abrir'), 'door') },
+  { when: (c) => !c.loose && c.st?.k === 'board' && !!c.st.item && c.sim.nextProc(c.st.item) === 'chop', verb: () => vd(0, 'chop', t('cozinha.fps.chopIt', 'Cortar'), 'knife', true) },
+  { when: (c) => !c.loose && c.st?.k === 'sink' && c.st.n > 0, verb: () => vd(0, 'scrub', t('cozinha.fps.scrub', 'Esfregar'), 'scrub', true) },
+  { when: (c) => !!c.loose, verb: (c) => vd(0, 'pick', t('cozinha.fps.pickX', 'Pegar {x}', { x: itemName(c.loose!.it).toLowerCase() }), 'grab') },
+  { when: (c) => !!c.st, verb: (c) => vd(0, 'pick', pickLabel(c.st!), 'grab', false, !canTakeFrom(c.st!)) },
+];
+let altPick: VerbDef | null = null;
+const ALT_PICK = (): VerbDef => (altPick ??= { id: 'pick', label: t('cozinha.fps.pick', 'Pegar'), icon: 'grab' });
+function canTakeFrom(st: Station): boolean {
+  return !!st.item || st.k === 'crate' || ((st.k === 'plates' || st.k === 'dirty') && st.n > 0);
 }
 
 /** "Pegar tomate", "Pegar prato"... (o que o botão faz ao olhar para a estação) */

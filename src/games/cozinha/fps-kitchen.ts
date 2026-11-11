@@ -31,7 +31,7 @@ export function restY(st: Station): number {
     case 'sink':
       return H - 0.06;
     case 'crate':
-      return H + 0.3;
+      return H + 0.06;
     case 'board':
       return H + 0.05;
     default:
@@ -443,23 +443,9 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
     else lb(sn, T + 0.01, 0.05, T + 0.02, 0, H - 0.05, 0.01, topCol);
     const top = H;
     switch (st.k) {
-      case 'crate': {
-        // caixote de feira: ripas com frestas, cantoneiras, palha por dentro
-        const cw = 0.84;
-        const ch = 0.3;
-        for (const sd of [-1, 1])
-          for (let i = 0; i < 3; i++) {
-            lb(wd, cw, 0.075, 0.022, 0, top + 0.02 + i * 0.095, sd * (cw / 2 - 0.011), '#d9a868');
-            lb(wd, 0.022, 0.075, cw, sd * (cw / 2 - 0.011), top + 0.02 + i * 0.095, 0, '#cf9d5e');
-          }
-        for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) lb(wd, 0.05, ch, 0.05, a * (cw / 2 - 0.02), top, c * (cw / 2 - 0.02), '#a8743c');
-        lb(wd, cw - 0.04, 0.02, cw - 0.04, 0, top + 0.01, 0, '#b88a50');
-        // palha / papel de seda
-        b.sph(0.38, cx, top + 0.2, cz, '#e9d59a', 1, 0.18, 1, 14);
-        // etiqueta
-        lb(cer, 0.22, 0.06, 0.006, 0, top + 0.13, cw / 2 + 0.002, '#fff6e0');
+      case 'crate':
+        // geladeira/armário com porta: peça interativa (fps-props.ts)
         break;
-      }
       case 'board': {
         // tábua de madeira grossa com canaleta + faca de chef
         lb(wd, 0.7, 0.04, 0.46, 0, top, 0, '#d9a868');
@@ -486,7 +472,7 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
           const [gx, gz] = [cx + Math.sin(a) * 0.15, cz + Math.cos(a) * 0.15];
           dk.box(0.16, 0.022, 0.02, gx, top + 0.045, gz, '#24222c', a + Math.PI / 2);
         }
-        for (const o of [-0.3, -0.1, 0.1, 0.3]) knob(o, H * 0.82, T / 2 + 0.005);
+        for (const o of [-0.36, 0.36]) knob(o, H * 0.82, T / 2 + 0.005); // o do meio é o botão de verdade (fps-props)
         if (st.k === 'pot') {
           // caldeirão de inox: parede dupla, borda virada, alças, tampa de vidro
           ll(mt, [[0, 0.0], [0.21, 0.0], [0.235, 0.015], [0.245, 0.04], [0.245, 0.3], [0.258, 0.315], [0.25, 0.325], [0.232, 0.315], [0.228, 0.05], [0.0, 0.05]], 0, top + 0.065, 0, '#d4d8e2', RS + 4);
@@ -510,7 +496,7 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
         for (const [a, c] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) lc(dk, 0.025, 0.03, a * 0.42, top, c * 0.38, '#1a1820', 10);
         lb(mt, 0.98, 0.6, 0.86, 0, top + 0.03, -0.03, steel);
         lb(mt, 0.24, 0.5, 0.02, 0.36, top + 0.08, 0.4, shade(steel, -0.1));
-        for (const yy of [0.47, 0.34, 0.21]) knob(0.36, top + yy, 0.415);
+        for (const yy of [0.47, 0.21]) knob(0.36, top + yy, 0.415);
         lb(dk, 0.64, 0.46, 0.03, -0.12, top + 0.1, 0.4, '#2a2733');
         {
           const [gx, gz] = P(-0.12, 0.42);
@@ -525,10 +511,6 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
       case 'blender': {
         // base pesada, jarra de vidro facetada, tampa e botões
         ll(b, [[0, 0], [0.16, 0], [0.17, 0.02], [0.15, 0.14], [0.12, 0.16], [0, 0.16]], 0, top, 0, '#3a3546', 12);
-        for (const o of [-0.05, 0, 0.05]) {
-          const [x, z] = P(o, 0.145);
-          b.rcyl(0.016, 0.012, x, top + 0.07, z, o ? '#dfe3ea' : '#ff5c7a', 10, 0.4, Math.PI / 2, 0, face);
-        }
         glass.lathe([[0.0, 0.0], [0.1, 0.0], [0.17, 0.4], [0.165, 0.42], [0.0, 0.42]], cx, top + 0.16, cz, '#e0feff', 8);
         lc(dk, 0.175, 0.04, 0, top + 0.575, 0, '#2a2238', 16, 0.3);
         lc(dk, 0.05, 0.03, 0, top + 0.61, 0, '#2a2238', 12, 0.4);
@@ -559,7 +541,7 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
         lc(mt, 0.035, 0.05, 0, top, fz, '#e9ecf2', 14);
         lt(mt, [[0, top + 0.04, fz], [0, top + 0.3, fz], [0, top + 0.4, fz + 0.06], [0, top + 0.36, fz + 0.2], [0, top + 0.26, fz + 0.24]], 0.016, '#e9ecf2', 20);
         lc(mt, 0.02, 0.03, 0, top + 0.23, fz + 0.24, '#d4d8e2', 10);
-        for (const sd of [-1, 1]) {
+        for (const sd of [-1]) {
           lc(mt, 0.025, 0.05, sd * 0.16, top, fz, '#e9ecf2', 10);
           lt(mt, [[sd * 0.16, top + 0.05, fz], [sd * 0.16, top + 0.065, fz + 0.03], [sd * 0.16, top + 0.07, fz + 0.08]], 0.008, '#e9ecf2', 6);
           const [x, z] = P(sd * 0.16, fz);
@@ -574,18 +556,13 @@ export function buildKitchen(sim: Sim, decor: number, standard: boolean, world: 
       case 'trash': {
         // lixeira de pedal: corpo cilíndrico, tampa abaulada, pedal
         ll(b, [[0, 0], [0.24, 0], [0.26, 0.02], [0.28, 0.5], [0.29, 0.52], [0, 0.52]], 0, top, 0, '#3ec96a', RS, 0.25);
-        ll(b, [[0.295, 0], [0.295, 0.03], [0.24, 0.07], [0.12, 0.09], [0, 0.095]], 0, top + 0.52, 0, '#2f9e54', RS);
         lb(mt, 0.12, 0.02, 0.08, 0, top + 0.01, 0.27, '#cfd3dc');
-        lc(dk, 0.05, 0.03, 0, top + 0.6, 0, '#26803f', 12, 0.4);
         break;
       }
       case 'window': {
         // balcão de entrega de inox, lâmpada de aquecimento, sininho
         lb(mt, T - 0.04, 0.035, T - 0.1, 0, top, 0, steel);
-        const [bx, bz] = P(0.36, 0.2);
-        mt.lathe([[0.06, 0], [0.065, 0.006], [0.06, 0.02], [0.045, 0.045], [0.02, 0.06], [0, 0.064]], bx, top + 0.04, bz, '#e8c24a', 16);
-        mt.rcyl(0.07, 0.008, bx, top + 0.035, bz, '#2a2238', 16, 0.3);
-        mt.rcyl(0.01, 0.025, bx, top + 0.1, bz, '#cfd3dc', 8);
+        { const [bx, bz] = P(0.36, 0.2); mt.rcyl(0.08, 0.04, bx, top, bz, '#2a2238', 16, 0.3); }
         // lâmpada de aquecimento
         mt.box(T - 0.16, 0.06, 0.18, cx, HATCH_TOP - 0.42, cz + 0.05, '#b9bcc6');
         glow.box(T - 0.24, 0.012, 0.12, cx, HATCH_TOP - 0.43, cz + 0.05, '#ff9a4a');

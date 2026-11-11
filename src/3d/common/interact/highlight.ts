@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 
 const V = new THREE.Vector3();
+const COL_WARN = new THREE.Color('#ff5c7a');
 const V2 = new THREE.Vector3();
 const CSS = `
 .ix-tag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:9px;background:rgba(16,6,40,.66);color:#fff;font:600 12px/1.2 var(--font,'Fredoka',system-ui,sans-serif);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s;will-change:transform;z-index:3}
@@ -91,11 +92,13 @@ export class HoverHighlight {
   readonly line: THREE.LineSegments;
   readonly tag: WorldTag;
   private on = false;
+  private col: THREE.Color;
   constructor(
     scene: THREE.Scene,
     layer: HTMLElement,
     readonly color = '#ffe14a',
   ) {
+    this.col = new THREE.Color(color);
     this.line = boxLines(color);
     scene.add(this.line);
     this.tag = new WorldTag(layer);
@@ -105,7 +108,7 @@ export class HoverHighlight {
     this.on = true;
     fitBox(this.line, b, 1.04);
     this.line.visible = true;
-    (this.line.material as THREE.LineBasicMaterial).color.set(warn ? '#ff5c7a' : this.color);
+    (this.line.material as THREE.LineBasicMaterial).color.copy(warn ? COL_WARN : this.col);
     this.tag.set(label, warn ? 'hot' : '');
     this.tag.at((b.min.x + b.max.x) / 2, b.max.y + 0.06, (b.min.z + b.max.z) / 2);
   }

@@ -42,6 +42,8 @@ export interface Renderer {
   preStep?(dt: number): void;
   /** ponte online do 1ª pessoa (pegar com alvo, resultado de arremesso) */
   net?: { notePick(target: number): void; noteThrow(st: number, x: number, y: number): void } | null;
+  /** 3D: o passo do treino vai para objetos do mundo (nota adesiva na tela de pedidos, balão no alvo) */
+  tip?(id: string, txt: string): void;
 }
 
 const qs = new URLSearchParams(location.search);
@@ -722,7 +724,11 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     const setTip = (id: string, txt: string) => {
       if (id === tipId) return;
       tipId = id;
-      objective(txt || null, { icon: 'target' });
+      // 3D: a dica é diegética (nota na tela de pedidos); o chip só no 2D
+      if (rend.fps && rend.tip) {
+        rend.tip(id, txt);
+        objective(null);
+      } else objective(txt || null, { icon: 'target' });
       skipEl.style.display = txt ? '' : 'none';
     };
     bind(hud, '[data-a=skip]', () => {

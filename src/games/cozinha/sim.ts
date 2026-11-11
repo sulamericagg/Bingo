@@ -62,6 +62,8 @@ export interface Station {
   claim: number;
   /** animação de "bump" */
   bump: number;
+  /** fogo/forno/liquidificador ligado (só conta com sim.manualHeat — 3D com botão físico) */
+  heat: boolean;
 }
 export interface PIn {
   mx: number;
@@ -208,6 +210,8 @@ export class Sim {
   private returnQ: number[] = [];
   /** 3D em 1ª pessoa: a física dos itens soltos é do renderizador (não pula/escorrega aqui) */
   physFloor = false;
+  /** 3D físico: fogão/forno/liquidificador só cozinham com o botão ligado (station.heat) */
+  manualHeat = false;
   /** pratos quebrados (3D) */
   broken = 0;
   private ghost: Player | null = null;
@@ -434,6 +438,7 @@ export class Sim {
         fy: face[i * 2 + 1],
         claim: 0,
         bump: 0,
+        heat: false,
       };
       if (grid[i] === 2) s.k = 'counter';
       this.stAt[i] = s.i;
@@ -529,6 +534,51 @@ export class Sim {
       return false;
     }
     return g.routes[compRoute(it.c)][s] === proc;
+  }
+
+  /** como acceptProc, sem mudar nada */
+  private acceptsProc(it: Item, proc: Proc): boolean {
+    if (it.k !== IK.Ing || it.burnt) return false;
+    const g = INGS[compIng(it.c)];
+    const s = compStage(it.c);
+    if (s === 0) return g.routes.some((r) => r[0] === proc);
+    return g.routes[compRoute(it.c)][s] === proc;
+  }
+  /**
+   * O que aconteceria se `h` fosse solto na estação (mesmas regras de pickRaw, sem efeitos):
+   * 0 = recusa, 1 = fica/entra, 2 = combina com o prato ("+"), 3 = entrega.
+   */
+  wouldAccept(si: number, h: Item): 0 | 1 | 2 | 3 {
+    const s = this.st[si];
+    if (!s || s.fire > 0 || (!s.fx && !s.fy)) return 0;
+    if (s.k === 'window' || s.k === 'belt') return h.k === IK.Plate && h.parts.length && !(s.k === 'belt' && s.item) ? 3 : 0;
+    if (s.k === 'trash') return (h.k === IK.Plate && h.parts.length) || h.k === IK.Ing ? 1 : 0;
+    if (s.k === 'sink') return h.k === IK.Dirty ? 1 : 0;
+    if (s.k === 'plates') return h.k === IK.Plate && !h.parts.length ? 1 : 0;
+    if (s.k === 'crate') return h.k === IK.Ing && compIng(h.c) === s.ing && compStage(h.c) === 0 && !h.burnt ? 1 : 0;
+    if (s.k === 'dirty') return 0;
+    const it = s.item;
+    if (it) {
+      if (it.k === IK.Plate && h.k === IK.Ing && !h.burnt && it.parts.length < 4) return 2;
+      if (h.k === IK.Plate && it.k === IK.Ing && !it.burnt && h.parts.length < 4 && (!COOKERS[s.k] || this.nextProc(it) !== COOKERS[s.k] || s.k === 'counter')) return 2;
+      return 0;
+    }
+    const proc = COOKERS[s.k];
+    if (proc) return this.acceptsProc(h, proc) ? 1 : 0;
+    return h.k === IK.Dirty ? 0 : 1;
+  }
+  /** lavar na pia sem "mirar" (torneira aberta no 3D). Retorna true se lavou algo */
+  washAt(si: number, dt: number, p: Player | null): boolean {
+    const s = this.st[si];
+    if (!s || s.k !== 'sink' || s.n <= 0 || s.fire > 0) return false;
+    s.prog += (dt * (p?.bot ? 0.6 : 1)) / 1.6;
+    s.busy = 0.15;
+    if (Math.random() < dt * 3) this.emit(FX.Wash, s.x + 0.5, s.y + 0.5);
+    if (s.prog >= 1) {
+      this.washOne(s);
+      this.credit(p);
+    }
+    return true;
   }
 
   emit(t: FX, x: number, y: number, v = 0): void {
@@ -830,6 +880,8 @@ export class Sim {
         h.over = 0;
         p.hold = null;
         s.claim = p.bot ? p.id : 0;
+        // ajudantes ligam o fogo sozinhos (no 3D o jogador gira o botão)
+        if (p.bot) s.heat = true;
         this.emit(FX.Place, s.x + 0.5, s.y + 0.5);
         return;
       }
@@ -899,16 +951,7 @@ export class Sim {
       }
       return true;
     }
-    if (s.k === 'sink' && s.n > 0) {
-      s.prog += (dt * (p.bot ? 0.6 : 1)) / 1.6;
-      s.busy = 0.15;
-      if (Math.random() < dt * 3) this.emit(FX.Wash, s.x + 0.5, s.y + 0.5);
-      if (s.prog >= 1) {
-        this.washOne(s);
-        this.credit(p);
-      }
-      return true;
-    }
+    if (s.k === 'sink' && s.n > 0) return this.washAt(si, dt, p);
     return false;
   }
   private washOne(s: Station): void {
@@ -1058,12 +1101,15 @@ export class Sim {
       const proc = COOKERS[s.k];
       if (!proc || !it || it.k !== IK.Ing) continue;
       if (this.outage) continue;
+      if (this.manualHeat && !s.heat) continue;
       if (this.nextProc(it) === proc) {
         it.prog += (dt * cookMul) / PROC_TIME[proc];
         if (it.prog >= 1) {
           it.prog = 0;
           it.c += 1;
           it.over = 0;
+          // o liquidificador desliga sozinho quando termina
+          if (proc === 'blend') s.heat = false;
           this.emit(FX.Done, s.x + 0.5, s.y + 0.5);
         } else if (Math.random() < dt * 2) this.emit(FX.Sizzle, s.x + 0.5, s.y + 0.5, proc === 'boil' ? 1 : 0);
       } else if (proc !== 'blend' && !it.burnt) {
