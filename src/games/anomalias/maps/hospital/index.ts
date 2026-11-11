@@ -366,7 +366,37 @@ function build({ tier }: { tier: 0 | 1 | 2 | 3 }): MapBuild {
   k.slot('lamp_cor', 'corr', corLamps[3].group, { kinds: ['light'], lamp: corLamps[3], variants: 4, anchor: v3(0, 2.9, 0) });
   k.slot('lamp_cor2', 'corr', corLamps[5].group, { kinds: ['light'], lamp: corLamps[5], variants: 4, anchor: v3(8, 2.9, 0) });
   // corrimão nas paredes
-  for (const z of [-1.37, 1.37]) k.box(root, k.lam('#d9a35e'), 27.8, 0.06, 0.06, 0, 0.9, z);
+  {
+    const rail = k.lam('#d9a35e');
+    const run = (z: number, gaps: [number, number][]) => {
+      let cur = -13.9;
+      const gs = [...gaps].sort((a, b) => a[0] - b[0]);
+      for (const [c, w] of [...gs, [14.0, 0] as [number, number]]) {
+        const a = cur,
+          b = c - w / 2 - 0.12;
+        if (b - a > 0.3) {
+          k.box(root, rail, b - a, 0.06, 0.06, (a + b) / 2, 0.87, z);
+          for (const x of [a + 0.1, b - 0.1]) k.box(root, rail, 0.04, 0.04, 0.06, x, 0.86, z + Math.sign(z) * 0.02);
+        }
+        cur = c + w / 2 + 0.12;
+      }
+    };
+    run(-1.36, [
+      [-8.5, 1.3],
+      [-1.5, 1.3],
+      [3, 1.3],
+      [8, 1.1],
+      [12, 1.1],
+    ]);
+    run(1.36, [
+      [-12.5, 1.3],
+      [-9.1, 1.7],
+      [-5.5, 1.3],
+      [3.5, 4],
+      [7.4, 1.7],
+      [10.5, 2.2],
+    ]);
+  }
   // banco fixo
   const bench = (p: THREE.Object3D, x: number, z: number, ry = 0): THREE.Group => {
     const g = k.group(p, x, 0, z, ry);
@@ -403,7 +433,7 @@ function build({ tier }: { tier: 0 | 1 | 2 | 3 }): MapBuild {
   }
   // maca
   {
-    const g = k.group(root, -10.6, 0, -1.05);
+    const g = k.group(root, -10.6, 0, -0.98);
     k.box(g, M.white, 1.9, 0.12, 0.62, 0, 0.72, 0);
     k.box(g, M.metal, 1.9, 0.05, 0.6, 0, 0.62, 0);
     k.sph(g, M.white, 0.25, -0.75, 0.86, 0, 1, 0.3, 1.1, 10);
@@ -422,13 +452,13 @@ function build({ tier }: { tier: 0 | 1 | 2 | 3 }): MapBuild {
   }
   // extintor
   {
-    const g = k.group(root, 5.7, 0.55, -1.32);
+    const g = k.group(root, 5.7, 1.0, -1.28);
     const body = k.cyl(g, M.red, 0.09, 0.09, 0.48, 0, 0, 0, 12);
     body.userData.paint = true;
     k.sph(g, M.red, 0.09, 0, 0.48, 0, 1, 0.6, 1, 10).userData.paint = true;
     k.box(g, M.dark, 0.05, 0.08, 0.05, 0, 0.53, 0);
     k.box(g, M.dark, 0.16, 0.03, 0.03, 0.06, 0.6, 0);
-    k.box(root, k.lam('#ffffff'), 0.32, 0.4, 0.02, 5.7, 1.15, -1.395);
+    k.box(root, k.lam('#ffffff'), 0.32, 0.72, 0.02, 5.7, 0.98, -1.392);
     k.slot('fire', 'corr', g, { kinds: ['color', 'missing', 'scale'], colors: ['#45d16b', '#3f6bff', '#ff9a2e'] });
   }
   // saída (placa verde no fim do corredor)

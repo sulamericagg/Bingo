@@ -82,7 +82,7 @@
 .ano-stamp.ok{background:linear-gradient(180deg,#9dffc4,#2fbf6f);color:var(--ink)}
 .ano-stamp.no{background:linear-gradient(180deg,#ffd0d8,#ff6f86);color:var(--ink);font-size:22px}
 @keyframes anoStamp{0%{transform:translate(-50%,-50%) scale(2.2) rotate(-8deg);opacity:0}18%{transform:translate(-50%,-50%) scale(1) rotate(-3deg);opacity:1}80%{opacity:1}100%{transform:translate(-50%,-60%) scale(.95) rotate(-3deg);opacity:0}}
-.ano-toast{position:absolute;left:50%;top:calc(var(--ano-t) + 50px);transform:translateX(-50%);z-index:25;display:flex;align-items:center;gap:8px;background:rgba(10,8,30,.85);border:2px solid rgba(255,255,255,.25);border-radius:16px;padding:5px 14px 5px 6px;font-size:16px;font-weight:600;max-width:60%;pointer-events:none;animation:anoToast 3.2s ease forwards}
+.ano-toast{position:absolute;left:calc(50% + 60px);top:calc(var(--ano-t) + 64px);transform:translateX(-50%);z-index:25;display:flex;align-items:center;gap:8px;background:rgba(10,8,30,.85);border:2px solid rgba(255,255,255,.25);border-radius:16px;padding:5px 14px 5px 6px;font-size:16px;font-weight:600;max-width:min(440px,52%);pointer-events:none;animation:anoToast 3.2s ease forwards}
 .ano-toast .ic{font-size:24px;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
 .ano-toast.warn{border-color:#ff4f6a;background:rgba(60,8,24,.9)}
 @keyframes anoToast{0%{opacity:0;transform:translate(-50%,-10px)}8%{opacity:1;transform:translate(-50%,0)}85%{opacity:1}100%{opacity:0}}
@@ -144,16 +144,19 @@
 .ano-title{font-size:26px;font-weight:700;line-height:1;letter-spacing:.5px;text-shadow:0 3px 0 #000;display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .ano-title i{width:46px;height:46px;display:block;flex:none}
 .ano-title small{display:block;font-size:13px;font-weight:600;color:#c8b9f5;text-shadow:none;letter-spacing:0}
-.ano-maps{display:flex;gap:10px;margin:8px 0 6px;overflow-x:auto;padding:4px 2px 8px;flex:none}
+.ano-maps{display:flex;gap:10px;margin:8px 0 6px;overflow-x:auto;padding:12px 2px 8px;flex:none}
 .ano-map{flex:none;width:122px;height:118px;border-radius:22px;border:4px solid var(--ink);background:var(--c);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px;color:var(--ink);font:700 15px Fredoka,system-ui;box-shadow:0 5px 0 rgba(0,0,0,.4)}
 .ano-map .em{font-size:44px;line-height:1.1}
 .ano-map .st{display:flex;align-items:center;gap:3px;font-size:13px}
 .ano-map .st i{width:16px;height:16px;display:block}
 .ano-map.on{outline:4px solid #fff;outline-offset:2px;transform:translateY(-3px)}
-.ano-map.off{filter:saturate(.25) brightness(.65)}
+.ano-map.off{color:#cfc6ea}
+.ano-map.off .em{filter:grayscale(.85) brightness(.85);opacity:.8}
+.ano-map .soon{position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(-3deg);background:var(--gold);color:var(--ink);font-size:12px;border-radius:9px;padding:1px 8px;border:2px solid var(--ink);white-space:nowrap;filter:none}
 .ano-map .lk{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;border-radius:18px;background:rgba(10,8,30,.55);color:#fff;font-size:13px}
 .ano-map .lk i{width:34px;height:34px;display:block}
 .ano-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ano-row.last{margin-top:auto}
 .ano-nights{display:flex;gap:8px}
 .ano-night{width:64px;height:64px;border-radius:18px;border:3px solid var(--ink);background:#3a2f66;color:#fff;font:700 24px Fredoka,system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:0}
 .ano-night .ss{display:flex;gap:1px;height:14px}
@@ -194,5 +197,6 @@
 .ano-dawn{position:absolute;inset:0;z-index:39;pointer-events:none;background:linear-gradient(180deg,#ffd58a,#ff9a6a 60%,#ff6fa0);opacity:0;transition:opacity 1.6s}
 .ano-dawn.on{opacity:.85}
 .ano-arrow{position:absolute;width:44px;height:44px;margin:-22px;z-index:19;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
-@media (max-height:340px){.ano-pol-grid{grid-template-columns:repeat(5,1fr)}.ano-map{height:100px;width:108px}.ano-map .em{font-size:36px}}
+@media (max-height:400px){.ano-map{height:100px;width:112px}.ano-map .em{font-size:36px}.ano-night{width:56px;height:56px;font-size:21px}.ano-menu .top{min-height:50px}.ano-maps{margin:4px 0 2px}}
+@media (max-height:340px){.ano-pol-grid{grid-template-columns:repeat(5,1fr)}.ano-map{height:88px;width:100px}.ano-map .em{font-size:30px}}
 @media (max-aspect-ratio:1/1){.ano-pol-grid{grid-template-columns:repeat(2,1fr)}}

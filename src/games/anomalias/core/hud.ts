@@ -250,7 +250,9 @@ export class Hud {
       `<div class="bezel"></div><div class="lbl"><em></em><span></span><b>REC</b></div>
 <button class="ano-btn nav l" data-d="-1">${IC.left()}</button><button class="ano-btn nav r" data-d="1">${IC.right()}</button>
 <button class="ref" data-ref hidden><img alt=""><div><i>${IC.book()}</i>${esc(t('ano.before', 'Antes'))}</div></button>
-<div class="tabs">${cams.map((c, i) => `<button class="tab" data-i="${i}">${esc(c.room.icon ?? '🚪')}${alertRooms.has(c.room.id) ? '<span class="dot"></span>' : ''}</button>`).join('')}</div>
+<div class="tabs">${cams
+        .map((c, i) => (c.k === 0 ? `<button class="tab" data-i="${i}" data-room="${esc(c.room.id)}">${esc(c.room.icon ?? '🚪')}${alertRooms.has(c.room.id) ? '<span class="dot"></span>' : ''}</button>` : ''))
+        .join('')}</div>
 <button class="ano-btn close" data-x>${IC.close()}</button>`,
       onClose,
       'ano-mon',
@@ -261,7 +263,7 @@ export class Hud {
       const c = cams[cur];
       (p.querySelector('.lbl em') as HTMLElement).textContent = c.room.icon ?? '🚪';
       (p.querySelector('.lbl span') as HTMLElement).textContent = `CAM ${cur + 1} · ${roomName(c.room)}`;
-      p.querySelectorAll('.tab').forEach((b, j) => b.classList.toggle('on', j === cur));
+      p.querySelectorAll<HTMLElement>('.tab').forEach((b) => b.classList.toggle('on', b.dataset.room === c.room.id));
       p.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'center' });
       const r = ref(c.room.id);
       const rb = p.querySelector('[data-ref]') as HTMLElement;

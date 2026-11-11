@@ -92,7 +92,7 @@ const scenes = {
     // monitor: vai até a câmera do Quarto 1
     await tapSel('[data-k="mon"]');
     await W(600);
-    await tapSel('.ano-mon .tab:nth-child(3)');
+    await tapSel('.ano-mon .tab[data-room="q1"]');
     await W(1200);
     await shot('05-monitor-q1');
     await tapSel('.ano-mon [data-ref]');

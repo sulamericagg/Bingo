@@ -84,6 +84,9 @@ export class Shift {
   private peekers = new Map<number, Bocudo>();
   private soundT = new Map<number, number>();
   private bubbles = new Map<InteractDef, THREE.Sprite>();
+  /** fácil: "?" piscando em cima da anomalia esquecida */
+  private marks = new Map<number, THREE.Sprite>();
+  private markTex: THREE.Texture | null = null;
   private poofs: { s: THREE.Sprite; t: number }[] = [];
   private poofTex: THREE.Texture;
   private hold: { def: InteractDef; t: number; sec: number } | null = null;
@@ -374,6 +377,11 @@ export class Shift {
         }
       }
     this.hud.alert('mon', this.dir.active.some((a) => a.hinted));
+    if (this.o.diff === 'facil')
+      for (const a of this.dir.active)
+        if (!this.marks.has(a.id) && this.t - a.at > this.cfg.hintAfter + 25) this.addMark(a);
+    const pulse = 0.35 + Math.abs(Math.sin(this.t * 3)) * 0.2;
+    for (const [, m] of this.marks) m.scale.setScalar(pulse);
     // sons de anomalia
     for (const a of this.dir.active) if (a.kind === 'sound') this.soundStep(a, dt);
     // energia
@@ -423,7 +431,15 @@ export class Shift {
   private applyAnomaly(a: Active, on: boolean): void {
     const si = this.world.slots[a.slot];
     if (on) this.live.set(a.id, a);
-    else this.live.delete(a.id);
+    else {
+      this.live.delete(a.id);
+      const mk = this.marks.get(a.id);
+      if (mk) {
+        mk.removeFromParent();
+        mk.material.dispose();
+        this.marks.delete(a.id);
+      }
+    }
     try {
       si.slot.apply(a.kind, on, a.variant);
     } catch (e) {
@@ -614,6 +630,35 @@ export class Shift {
       this.hud.stamp(false, t('ano.nothing', 'Nada estranho aqui...'));
       this.au.bad();
     }
+  }
+
+  private addMark(a: Active): void {
+    if (!this.markTex) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const x = cv.getContext('2d')!;
+      x.fillStyle = '#ffd34a';
+      x.strokeStyle = '#1d0b3a';
+      x.lineWidth = 5;
+      x.beginPath();
+      x.arc(32, 32, 27, 0, Math.PI * 2);
+      x.fill();
+      x.stroke();
+      x.fillStyle = '#1d0b3a';
+      x.font = '700 40px Fredoka, sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText('?', 32, 35);
+      this.markTex = new THREE.CanvasTexture(cv);
+      this.markTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.markTex, transparent: true, depthWrite: false }));
+    const p = this.world.anchorOf(this.world.slots[a.slot], new THREE.Vector3());
+    s.position.set(p.x, p.y + 0.55, p.z);
+    s.scale.setScalar(0.4);
+    s.renderOrder = 6;
+    this.world.scene.add(s);
+    this.marks.set(a.id, s);
   }
 
   private poof(at: THREE.Vector3): void {
@@ -1151,6 +1196,7 @@ export class Shift {
     this.hud.dispose();
     this.au.dispose();
     this.poofTex.dispose();
+    this.markTex?.dispose();
     for (const [, s] of this.bubbles) {
       (s.material as THREE.SpriteMaterial).map?.dispose();
       s.material.dispose();

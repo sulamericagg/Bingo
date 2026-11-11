@@ -82,11 +82,11 @@ class MenuScene {
       l.position.set(i * 2.2, 2.45, -3.94);
       this.scene.add(l);
     }
-    this.m.root.position.set(1.7, 0, 0);
-    this.m.root.rotation.y = -0.5;
+    this.m.root.position.set(1.15, 0.15, 1.2);
+    this.m.root.rotation.y = Math.PI - 0.35;
     this.scene.add(this.m.root);
-    this.cam.position.set(0, 1.6, 6.5);
-    this.cam.lookAt(0.9, 1.1, 0);
+    this.cam.position.set(0, 1.9, 6.5);
+    this.cam.lookAt(1.1, 1.85, 0);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
     this.resize();
@@ -99,7 +99,7 @@ class MenuScene {
       this.last = now;
       this.t += dt;
       this.m.open = 0.35 + Math.max(0, Math.sin(this.t * 1.3)) * 0.55;
-      this.m.root.rotation.y = -0.5 + Math.sin(this.t * 0.7) * 0.25;
+      this.m.root.rotation.y = Math.PI - 0.35 + Math.sin(this.t * 0.7) * 0.2;
       this.m.update(dt);
       this.r.render(this.scene, this.cam);
     };
@@ -175,8 +175,8 @@ export class AnomaliasGame implements MiniGameHandle {
       const avail = mapAvailable(mm.id);
       const unl = mapUnlocked(i);
       const stars = totalStars(mm.id);
-      const lock = !avail ? `<span class="lk">${esc(t('ano.soon', 'Em breve'))}</span>` : !unl ? `<span class="lk"><i>${IC.lock()}</i>${esc(t('ano.unlockAt', '{n} noites', { n: i * 2 }))}</span>` : '';
-      return `<button class="ano-map${mm.id === this.selMap ? ' on' : ''}${!avail || !unl ? ' off' : ''}" data-map="${mm.id}" style="--c:${mm.color}"><span class="em">${mm.icon}</span>${esc(mapName(mm.id))}<span class="st"><i>${IC.star()}</i>${stars}/${NIGHTS * 3}</span>${lock}</button>`;
+      const lock = !avail ? `<span class="soon">${esc(t('ano.soon', 'Em breve'))}</span>` : !unl ? `<span class="lk"><i>${IC.lock()}</i>${esc(t('ano.unlockAt', '{n} noites', { n: i * 2 }))}</span>` : '';
+      return `<button class="ano-map${mm.id === this.selMap ? ' on' : ''}${!avail || !unl ? ' off' : ''}" data-map="${mm.id}" style="--c:${avail && unl ? mm.color : '#4a4466'}"><span class="em">${mm.icon}</span>${esc(mapName(mm.id))}<span class="st"><i>${IC.star()}</i>${stars}/${NIGHTS * 3}</span>${lock}</button>`;
     }).join('');
     const rec = mapRec(this.selMap);
     const nights = Array.from({ length: NIGHTS }, (_, k) => {
@@ -192,7 +192,7 @@ export class AnomaliasGame implements MiniGameHandle {
 <button class="ano-btn sm" data-exit aria-label="${esc(t('ano.exit', 'Sair'))}" style="background:#ff4f6a">${IC.close()}</button></div>
 <div class="ano-maps">${maps}</div>
 <div class="ano-row"><div class="ano-nights">${nights}</div></div>
-<div class="ano-row" style="margin-top:10px"><div class="ano-diffs">${diffs}</div>
+<div class="ano-row last"><div class="ano-diffs">${diffs}</div>
 <button class="ano-play" data-play><i>${IC.moon()}</i>${esc(t('ano.play', 'Começar turno'))}</button></div>`;
     const on = (sel: string, f: (b: HTMLElement) => void) =>
       m.querySelectorAll<HTMLElement>(sel).forEach((b) =>
