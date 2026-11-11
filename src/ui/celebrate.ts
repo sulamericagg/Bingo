@@ -50,6 +50,8 @@ export function mergePacks(packs: RewardPack[]): CelebratePack {
     if (p.skins?.length) out.skins = [...new Set([...(out.skins ?? []), ...p.skins])];
     if (p.trails?.length) out.trails = [...new Set([...(out.trails ?? []), ...p.trails])];
     if (p.noAds) out.noAds = true;
+    if (p.passSeason !== undefined) out.passSeason = p.passSeason;
+    if (p.clubDays) out.clubDays = (out.clubDays ?? 0) + p.clubDays;
     if (p.boosts) {
       const b = (out.boosts ??= {});
       for (const k of ['shield', 'magnet', 'headstart'] as const) if (p.boosts[k]) b[k] = (b[k] ?? 0) + p.boosts[k]!;
@@ -79,6 +81,8 @@ function tiles(p: CelebratePack, big: boolean): Tile[] {
   }
   if (p.coinDoubler) out.push({ art: icon('coins'), amount: '2x', label: t('cel.coinsForever', 'moedas para sempre'), plate: 'green' });
   if (p.noAds) out.push({ art: icon('no-ads'), amount: t('shop.noAds', 'Sem anúncios'), label: t('cel.forever', 'para sempre'), plate: 'violet' });
+  if (p.passSeason !== undefined) out.push({ art: icon('crown'), amount: t('cel.passPremium', 'Passe Premium'), label: t('cel.passSeason', 'temporada {n}', { n: p.passSeason + 1 }), plate: 'gold' });
+  if (p.clubDays) out.push({ art: icon('star'), amount: `+${p.clubDays}`, label: t('cel.clubDays', 'dias de Clube Bloop'), plate: 'pink' });
   for (const e of p.extras ?? []) out.push({ art: icon(e.icon), amount: e.label, label: '', plate: e.plate ?? 'violet' });
   return out;
 }

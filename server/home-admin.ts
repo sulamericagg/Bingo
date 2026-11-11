@@ -8,7 +8,7 @@
  */
 import { requireAdmin } from './auth';
 import { hub, requireId } from './friends';
-import { BANNED, HANDLE_RE, myHandle, normalizeHandle, writeHandle } from './handles';
+import { BANNED, HANDLE_RE, myHandle, normalizeHandle, syncPlayerHandle, writeHandle } from './handles';
 import { loadHome, loadMess, saveMess } from './home';
 import { HttpError, json, readJson } from './util';
 
@@ -45,6 +45,7 @@ export async function handleHomeAdmin(req: Request, env: Env, url: URL): Promise
     if (id && id !== BANNED) {
       await env.DATA.delete('ph:' + id); // o jogador escolhe outro nome (sem esperar 30 dias)
       await hub(env).setHandle(id, '');
+      await syncPlayerHandle(env, id, '');
     }
     return json({ ok: true, id: id === BANNED ? null : id });
   }

@@ -19,6 +19,7 @@ import { searchNorm } from '../shared/handle-search';
 import { buildExtra, loadExtraWords } from './moderation';
 import { HANDLE_RE, handleRuleProblem, normalizeHandle } from '../shared/handle-rules';
 import { json, readJson } from './util';
+import { getPlayer, putPlayer } from './store';
 
 export { HANDLE_RE, normalizeHandle } from '../shared/handle-rules';
 export const HANDLE_CHANGE_MS = 30 * 86400_000;
@@ -81,6 +82,26 @@ export async function writeHandle(env: Env, id: string, h: string, prev: string 
   await env.DATA.put('ph:' + id, JSON.stringify({ h, at: Date.now() }));
   if (prev && prev !== h && (await env.DATA.get('handle:' + prev)) === id) await env.DATA.delete('handle:' + prev);
   await hub(env).setHandle(id, h);
+  await syncPlayerHandle(env, id, h);
+}
+
+/** Copia o @ para o registro do jogador (lista/busca do painel). Troca de @ é rara: 1 escrita extra. */
+export async function syncPlayerHandle(env: Env, id: string, h: string): Promise<void> {
+  const p = await getPlayer(env, id);
+  if (p && (p.handle ?? '') !== h) {
+    p.handle = h || undefined;
+    await putPlayer(env, p);
+  }
+}
+
+/** Painel: libera o @ do jogador (o nome volta a ficar livre e ele escolhe outro sem esperar 30 dias). */
+export async function resetHandle(env: Env, id: string): Promise<string | null> {
+  const cur = await myHandle(env, id);
+  if (cur && (await env.DATA.get('handle:' + cur.h)) === id) await env.DATA.delete('handle:' + cur.h);
+  await env.DATA.delete('ph:' + id);
+  await hub(env).setHandle(id, '');
+  await syncPlayerHandle(env, id, '');
+  return cur?.h ?? null;
 }
 
 export async function myHandle(env: Env, id: string): Promise<{ h: string; at: number } | null> {

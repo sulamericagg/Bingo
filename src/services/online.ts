@@ -10,17 +10,22 @@
  * applyReward de novo com o resultado delas — só use o retorno para mostrar
  * a animação/tela de prêmio (o evento bus 'reward' também é emitido).
  */
-import { ONLINE } from '../config';
+import { CLUB, ONLINE } from '../config';
 import { addCoins, addGems, unlockSkin, unlockTrail } from '../core/economy';
 import { bus } from '../core/events';
 import { isAndroid, isNative } from '../core/platform';
 import { persistNow, save } from '../core/storage';
+import { seasonIndexAt } from '../../shared/season-calendar';
 import type { Gift, PublicChallenge, RedeemResult, RewardPack } from '../../shared/reward';
 import { onNoAdsPurchased } from './ads';
 
 export type { Gift, PublicChallenge, RedeemResult, RewardPack } from '../../shared/reward';
 
 const PLAYER_KEY = 'bo-player';
+const FLAGS_KEY = 'bo-flags';
+/** Passe premium dado pelo painel para uma temporada que ainda não começou (lido por pass/state.ts). */
+export const PASS_GIFT_KEY = 'bo-pass-gift';
+const REPORTED_KEY = 'bo-purchases-reported';
 
 interface StoredPlayer {
   id: string;
@@ -133,8 +138,18 @@ export function setPlayerName(name: string): void {
  * Registra/sincroniza o jogador em segundo plano. Não bloqueia e nunca lança erro.
  * Emite bus 'inbox' (Gift[]) quando houver presentes pendentes.
  */
+let lastSync = 0;
+let watching = false;
+
 export async function initOnline(): Promise<void> {
   const p = ensureLocalPlayer();
+  // Correio: presentes do painel chegam também ao voltar para o app (no máx. 1 consulta a cada 3 min)
+  if (!watching && typeof document !== 'undefined') {
+    watching = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastSync > 3 * 60_000) syncNow().catch(() => {});
+    });
+  }
   try {
     if (!p.name) {
       const r = await post<{ id: string; name: string }>('/player/register', {
@@ -160,8 +175,9 @@ export function syncNow(): Promise<Gift[]> {
   if (syncing) return syncing;
   const p = ensureLocalPlayer();
   syncing = (async () => {
+    lastSync = Date.now();
     try {
-      const r = await post<{ name: string; inbox: Gift[] }>('/player/sync', {
+      const r = await post<{ name: string; inbox: Gift[]; flags?: string[] }>('/player/sync', {
         id: p.id,
         best: save.best,
         runs: save.runs,
@@ -181,6 +197,7 @@ export function syncNow(): Promise<Gift[]> {
       }
       inbox = Array.isArray(r.inbox) ? r.inbox : [];
       bus.emit('inbox', inbox);
+      if (Array.isArray(r.flags)) setFlags(r.flags);
     } catch {
       /* offline */
     }
@@ -246,7 +263,121 @@ export async function fetchChallenges(): Promise<PublicChallenge[]> {
   }
 }
 
+/* ---------------- Selos / permissões (dados pelo painel admin) ---------------- */
+
+let flags: string[] = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FLAGS_KEY) ?? '[]');
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+})();
+
+/** Selos do jogador: 'beta' | 'mod' | 'vip' | 'tester' | 'creator'. Emite bus 'flags' quando mudam. */
+export const playerFlags = (): string[] => flags;
+
+function setFlags(list: string[]): void {
+  const next = list.map(String).slice(0, 20);
+  if (next.join(',') === flags.join(',')) return;
+  flags = next;
+  try {
+    localStorage.setItem(FLAGS_KEY, JSON.stringify(flags));
+  } catch {
+    /* ignora */
+  }
+  bus.emit('flags', flags);
+}
+
+/* ---------------- Compras (relatório ao servidor) ---------------- */
+
+export interface PurchaseReport {
+  productId: string;
+  /** purchaseToken do Google Play (ou transactionId) */
+  token: string;
+  orderId?: string;
+  type: 'inapp' | 'subs';
+  source: 'buy' | 'restore';
+  price?: string;
+  /** validade da assinatura (ms), se a loja informou */
+  expires?: number;
+}
+
+function reportedSet(): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(REPORTED_KEY) ?? '[]');
+    return new Set(Array.isArray(v) ? v.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Avisa o servidor de uma compra/restauração bem-sucedida (painel → Pagamentos).
+ * Só para estatística: NÃO entrega nada e nunca lança erro. Cada token é enviado 1x por aparelho.
+ */
+export async function reportPurchase(r: PurchaseReport): Promise<void> {
+  if (!r.token || !r.productId) return;
+  const done = reportedSet();
+  const tag = r.productId + ':' + r.token.slice(-24);
+  if (done.has(tag)) return;
+  try {
+    const p = ensureLocalPlayer();
+    await post('/player/purchase', {
+      id: p.id,
+      name: p.pendingName || p.name,
+      productId: r.productId,
+      purchaseToken: r.token,
+      orderId: r.orderId,
+      type: r.type,
+      source: r.source,
+      price: r.price,
+      expires: r.expires,
+    });
+    done.add(tag);
+    localStorage.setItem(REPORTED_KEY, JSON.stringify([...done].slice(-200)));
+  } catch {
+    /* offline: tenta de novo na próxima restauração (abertura do app) */
+  }
+}
+
 /* ---------------- Recompensas ---------------- */
+
+const DAY_MS = 86_400_000;
+
+/** Passe Estelar premium dado pelo painel: vale já se for a temporada atual; senão guarda para quando ela começar. */
+function grantPassSeason(index: number): void {
+  if (seasonIndexAt() === index) {
+    import('../pass/state')
+      .then((m) => {
+        m.ensureSeason();
+        if (save.pass.season === index && !save.pass.cur.premium) {
+          save.pass.cur.premium = true;
+          persistNow();
+          bus.emit('pass');
+        }
+      })
+      .catch(() => {});
+  } else {
+    try {
+      localStorage.setItem(PASS_GIFT_KEY, String(index));
+    } catch {
+      /* ignora */
+    }
+  }
+}
+
+/** Dias de Clube Bloop dados pelo painel (somam a partir do fim do Clube atual). */
+function grantClubDays(days: number): void {
+  const now = Date.now();
+  const until = Math.max(save.club.expires, now) + days * DAY_MS;
+  save.club.expires = until;
+  // guardado à parte: a checagem do Google Play (billing.refreshClub) não derruba dias de presente
+  save.club.gift = Math.max(save.club.gift ?? 0, until);
+  if (!save.passItems.includes(CLUB.frame)) save.passItems.push(CLUB.frame);
+  bus.emit('club', true);
+  bus.emit('inventory');
+}
 
 const int = (v: unknown): number => {
   const n = Math.floor(Number(v));
@@ -270,6 +401,8 @@ export function applyReward(pack: RewardPack): void {
     b.magnet = (b.magnet ?? 0) + int(pack.boosts.magnet);
     b.headstart = (b.headstart ?? 0) + int(pack.boosts.headstart);
   }
+  if (typeof pack.passSeason === 'number' && pack.passSeason >= 0) grantPassSeason(pack.passSeason);
+  if (int(pack.clubDays)) grantClubDays(int(pack.clubDays));
   persistNow();
   bus.emit('wallet');
   bus.emit('reward', pack);

@@ -41,9 +41,9 @@ async function passwordMatches(env: Env, given: string): Promise<boolean> {
   return timingSafeEqual(await sha256(got), await sha256(m[3]));
 }
 
-export async function createToken(password: string, now = Date.now()): Promise<{ token: string; expiresAt: number }> {
+export async function createToken(password: string, now = Date.now(), who = ''): Promise<{ token: string; expiresAt: number }> {
   const expiresAt = now + SESSION_HOURS * 3600_000;
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ iat: now, exp: expiresAt, n: crypto.randomUUID() })));
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ iat: now, exp: expiresAt, n: crypto.randomUUID(), ...(who ? { w: who } : {}) })));
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(password), new TextEncoder().encode(payload));
   return { token: `${payload}.${b64url(sig)}`, expiresAt };
 }
@@ -68,6 +68,21 @@ export async function verifyToken(password: string, token: string): Promise<bool
   }
 }
 
+/**
+ * Quem fez a ação (para o registro): nome digitado no login + 6 letras da sessão.
+ * Só decodifica: chame DEPOIS de requireAdmin ter aprovado o token.
+ */
+export function sessionWho(req: Request): string {
+  const m = /^Bearer\s+([^.]+)\./i.exec(req.headers.get('authorization') ?? '');
+  if (!m) return '?';
+  try {
+    const d = JSON.parse(new TextDecoder().decode(fromB64url(m[1])));
+    return `${d.w ? String(d.w).slice(0, 24) : 'admin'}#${String(d.n ?? '').slice(0, 6)}`;
+  } catch {
+    return '?';
+  }
+}
+
 /** Lança 401 se a requisição não tiver um token válido. */
 export async function requireAdmin(req: Request, env: Env): Promise<void> {
   const pw = requirePassword(env);
@@ -84,13 +99,14 @@ export async function handleLogin(req: Request, env: Env): Promise<Response> {
   if (fails >= MAX_FAILS) {
     return json({ error: 'rate_limited', message: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.' }, 429);
   }
-  const body = await readJson<{ password?: string }>(req);
+  const body = await readJson<{ password?: string; who?: string }>(req);
   const given = String(body.password ?? '');
+  const who = String(body.who ?? '').replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 24);
   const ok = await passwordMatches(env, given);
   if (!ok) {
     await env.DATA.put(rlKey, String(fails + 1), { expirationTtl: FAIL_WINDOW_S });
     return json({ error: 'wrong_password', message: 'Senha incorreta.' }, 401);
   }
   if (fails) await env.DATA.delete(rlKey);
-  return json(await createToken(pw));
+  return json(await createToken(pw, Date.now(), who));
 }

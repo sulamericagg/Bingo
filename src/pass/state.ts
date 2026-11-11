@@ -69,6 +69,18 @@ export function ensureSeason(): SeasonInfo | null {
     persist();
     bus.emit('season-theme', { index: s.index, id: s.id, theme: s.theme, palette: s.palette });
   }
+  // Passe premium dado pelo painel admin para esta temporada (services/online.ts guarda até ela começar)
+  try {
+    if (localStorage.getItem('bo-pass-gift') === String(s.index)) {
+      localStorage.removeItem('bo-pass-gift');
+      if (!p.cur.premium) {
+        p.cur.premium = true;
+        persist();
+      }
+    }
+  } catch {
+    /* sem localStorage */
+  }
   // Clube inclui o passe da temporada (fica seu mesmo se o Clube acabar no meio do mês)
   if (!p.cur.premium && clubActive()) {
     p.cur.premium = true;

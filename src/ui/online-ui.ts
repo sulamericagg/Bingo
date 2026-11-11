@@ -16,6 +16,7 @@ const ERR: Record<NonNullable<RedeemResult['error']>, string> = {
   get expired() { return t('redeem.err.expired', 'Esse código expirou. Fique de olho nos próximos desafios!'); },
   get used() { return t('redeem.err.used', 'Você já resgatou esse código.'); },
   get limit() { return t('redeem.err.limit', 'Esse código já atingiu o limite de resgates.'); },
+  get rate() { return t('redeem.err.rate', 'Muitas tentativas. Espere alguns minutos e tente de novo.'); },
   get network() { return t('redeem.err.network', 'Sem conexão. Verifique a internet e tente de novo.'); },
 };
 
