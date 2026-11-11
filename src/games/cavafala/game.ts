@@ -54,7 +54,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   const forced = /[?&]cftier=(\d)/.exec(location.search);
   const tier: Tier = forced ? (Math.min(3, +forced[1]) as Tier) : detectInitialTier();
   const vs = tier <= 1 ? 2 / 3 : 0.5;
-  setNotifyTop(52);
+  setNotifyTop(60); // abaixo das fichas de material (podem quebrar em 2 linhas por causa do botão de girar do hub)
 
   const setBack = (fn: (() => void) | null) => {
     popBack?.();
