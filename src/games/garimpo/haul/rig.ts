@@ -183,6 +183,11 @@ export class Rig {
     // fora da pista: grama segura
     this.offroad = Math.max(0, Math.abs(this.lat) - HALF - 0.6);
     if (this.offroad > 0) a -= Math.sign(this.v) * Math.min(4, this.offroad * 1.2);
+    // segura parado sem pedal (ladeira não arrasta o caminhão)
+    if (gas < 0.05 && brake < 0.05 && Math.abs(this.v) < 0.6 && inp.cruise <= 0) {
+      this.v = 0;
+      a = 0;
+    }
     this.v += a * dt;
     if (this.jack) this.v *= 1 - Math.min(1, dt * 2.5);
     // marcha (só para mostrar) e giro

@@ -23,7 +23,7 @@ const KEYS: [number, number, number, number, number, number][] = [
   [6.3, 0x4a74bf, 0xf4a35e, 0xffa865, 1.3, 1.25],
   [7.6, 0x4d93dc, 0xd9e2e4, 0xffe2b8, 2.3, 1.8],
   [12, 0x4f9be0, 0xbdd4e6, 0xfff0d0, 2.6, 2.0],
-  [16.4, 0x4a8cd8, 0xe8d6b4, 0xffe0b0, 2.4, 1.85],
+  [16.4, 0x4a8cd8, 0xd8e0e0, 0xffe6c0, 2.4, 1.85],
   [17.7, 0x4766a8, 0xff9a5a, 0xff9050, 1.5, 1.4],
   [18.5, 0x2c3470, 0xd0606a, 0xff7a50, 0.7, 0.95],
   [19.3, 0x141d48, 0x3c3460, 0x9db4ff, 0.45, 0.66],
@@ -145,7 +145,7 @@ export function beam(len: number, rad: number): THREE.Mesh {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       vertexShader: 'varying float vL; void main(){ vL = -position.z; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'uniform float uK; varying float vL; void main(){ float a = (1.0 - vL) * (1.0 - vL) * 0.22 * uK; gl_FragColor = vec4(1.0, 0.93, 0.72, a); }',
+      fragmentShader: 'uniform float uK; varying float vL; void main(){ float a = (1.0 - vL) * (1.0 - vL) * 0.13 * uK; gl_FragColor = vec4(1.0, 0.93, 0.72, a); }',
     });
   const m = new THREE.Mesh(beamGeo, beamMat);
   m.scale.set(rad, rad * 0.55, len);

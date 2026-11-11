@@ -130,6 +130,9 @@ export class Highway {
   private camLook = new THREE.Vector3();
   private camYaw = 0;
   camMode = 0;
+  /** testes: câmera alta de lado (mostra a composição inteira na curva) */
+  camSide = false;
+  camSideSign = 0;
   private time = 0;
   private ahead: number;
   // HUD
@@ -143,6 +146,8 @@ export class Highway {
   private nextEv: number;
   private visited = new Set<number>();
   private busy = false;
+  /** testes: sem eventos pelo caminho */
+  noEvents = false;
   private lastHud = '';
   private hint: HTMLDivElement;
   private riskEl: HTMLDivElement;
@@ -261,8 +266,7 @@ export class Highway {
     this.hud = document.createElement('div');
     this.hud.className = 'hw-hud';
     this.hud.innerHTML = `
-      <div class="hw-tl"><button class="hw-b hw-pause" data-touch-ignore>${RI.gear}</button></div>
-      <div class="hw-tr"><button class="hw-b hw-cruise" data-touch-ignore>${RI.ff}</button><button class="hw-b hw-radio" data-touch-ignore>${RI.radio}</button><button class="hw-b hw-cam" data-touch-ignore>${RI.camera}</button></div>
+      <div class="hw-tr"><button class="hw-b hw-pause" data-touch-ignore>${RI.gear}</button><button class="hw-b hw-cruise" data-touch-ignore>${RI.ff}</button><button class="hw-b hw-radio" data-touch-ignore>${RI.radio}</button><button class="hw-b hw-cam" data-touch-ignore>${RI.camera}</button></div>
       <div class="hw-prog"><div class="hw-line"></div><div class="hw-done"></div>${this.road.stops
         .map((st) => `<div class="hw-st" style="left:${((st.s / this.road.L) * 100).toFixed(1)}%">${RI[st.kind === 'station' ? 'pump' : st.kind === 'rest' ? 'bed' : st.kind === 'town' ? 'station' : 'flag']}</div>`)
         .join('')}<div class="hw-me">${RI.truck}</div><div class="hw-km"></div></div>
@@ -420,7 +424,7 @@ export class Highway {
         }
         if (r < rows - 1) {
           const a = r * 2;
-          idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
       }
       const g = new THREE.BufferGeometry();
@@ -530,8 +534,10 @@ export class Highway {
       const m = (br.s0 + br.s1) / 2;
       if (m >= sA && m < sA + CH) {
         road.sample(m, o);
-        const w = new THREE.Mesh(new THREE.PlaneGeometry(36, 220), this.waterMat);
-        w.rotation.set(-Math.PI / 2, 0, o[3] + Math.PI / 2);
+        const wg = new THREE.PlaneGeometry(36, 220);
+        wg.rotateX(-Math.PI / 2);
+        const w = new THREE.Mesh(wg, this.waterMat);
+        w.rotation.y = o[3] + Math.PI / 2;
         w.position.set(o[0], o[1] - 6.6, o[2]);
         grp.add(w);
       }
@@ -778,18 +784,18 @@ export class Highway {
         acts.push({ id: 'eat', icon: 'food', label: t('gb.rp.eat', 'Comer'), sub: ['coin', '25'], run: () => this.host.eat() });
         if (st.kind === 'rest' || st.kind === 'town') acts.push({ id: 'sleep', icon: 'bed', label: weather.isNight || this.host.energyLow() ? t('gb.rp.sleep', 'Dormir') : t('gb.rp.rest', 'Descansar'), cls: 'blue', run: () => void this.host.sleep(weather.isNight || this.host.energyLow() ? null : 1) });
         const nx = this.road.nextStop(rig.s);
-        if (nx) acts.push({ id: 'skip', icon: 'ff', label: t('gb.haul.skip', 'Pular até a próxima parada'), cls: 'blue', run: () => void this.skip(nx) });
+        if (nx) acts.push({ id: 'skip', icon: 'ff', label: t('gb.haul.skip', 'Pular trecho'), cls: 'blue', run: () => void this.skip(nx) });
       }
     }
     if (rig.coupled && rig.s > this.road.L - 45 && slow) acts.push({ id: 'deliver', icon: 'box', label: t('gb.haul.deliver', 'Desengatar e entregar'), cls: 'green', run: () => this.host.arrive() });
     if (this.host.fuelOn && this.trip.fuel <= 0 && slow) acts.push({ id: 'tow', icon: 'sos', label: t('gb.rp.callHelp', 'Chamar socorro'), sub: ['coin', String(this.towFee())], run: () => this.tow(true) });
     this.host.actions(acts);
     // eventos pelo caminho
-    if (rig.coupled && rig.s > this.nextEv && !this.busy && rig.s < this.road.L - 300) {
+    if (rig.coupled && rig.s > this.nextEv && !this.busy && !this.noEvents && rig.s < this.road.L - 300) {
       this.nextEv = rig.s + 700 + Math.random() * 600;
       void this.runEvent({ loc: 'road', veh: 'rig' });
     }
-    if (st && st.kind === 'town' && !this.visited.has(st.s) && rig.coupled) {
+    if (st && st.kind === 'town' && !this.visited.has(st.s) && rig.coupled && !this.noEvents) {
       this.visited.add(st.s);
       if (Math.random() < 0.7) void this.runEvent({ loc: 'town', veh: 'rig' });
     }
@@ -921,6 +927,30 @@ export class Highway {
       return;
     }
     this.tractor.visible = true;
+    if (this.camSide && n) {
+      const mid = rig.tl[Math.floor(n / 2)];
+      this.road.sample(rig.s - 12, P5);
+      const sgn = this.camSideSign || (P5[4] > 0 ? -1 : 1);
+      _v.set(mid.x + Math.cos(P5[3]) * 26 * sgn - Math.sin(P5[3]) * 6, mid.y + 17, mid.z - Math.sin(P5[3]) * 26 * sgn - Math.cos(P5[3]) * 6);
+      cam.position.copy(_v);
+      this.camPos.copy(_v);
+      cam.lookAt(mid.x, mid.y + 1, mid.z);
+      return;
+    }
+    if (!rig.coupled && this.camMode === 0) {
+      // engate: câmera alta de lado, olhando a 5ª roda e o pino
+      const u = rig.tl[0];
+      const kx = u.x + Math.sin(u.yaw) * u.len;
+      const kz = u.z + Math.cos(u.yaw) * u.len;
+      const sx = Math.cos(u.yaw);
+      const sz = -Math.sin(u.yaw);
+      _v.set(kx + sx * 9 + Math.sin(u.yaw) * 7, t0.y + 6.5, kz + sz * 9 + Math.cos(u.yaw) * 7);
+      const k = snap ? 1 : Math.min(1, dt * 3);
+      this.camPos.lerp(_v, k);
+      cam.position.copy(this.camPos);
+      cam.lookAt(kx + Math.sin(u.yaw) * 1.5, t0.y + 1.2, kz + Math.cos(u.yaw) * 1.5);
+      return;
+    }
     const far = this.camMode === 1;
     const dist = (far ? 26 : 13) + n * (far ? 5 : 2.6) + (rig.coupled ? 0 : 4);
     const hgt = (far ? 14 : 5.6) + n * (far ? 2 : 0.8) + (rig.coupled ? 0 : 3);
@@ -973,7 +1003,7 @@ export class Highway {
       this.lastHud = key;
       const q = (s: string) => this.hud.querySelector(s) as HTMLElement;
       q('.hw-spd b').textContent = String(kmh);
-      q('.hw-spd em').textContent = rig.gear < 0 ? 'R' : (this.ctl.cruise > 0 ? '⏵ ' : 'A') + rig.gear;
+      q('.hw-spd em').textContent = rig.gear < 0 ? 'R' : 'A' + rig.gear;
       (q('.hw-fuel i') as HTMLElement).style.height = Math.round(fuelK * 100) + '%';
       q('.hw-fuel').classList.toggle('low', this.host.fuelOn && fuelK < 0.12);
       q('.hw-fuel').hidden = !this.host.fuelOn;

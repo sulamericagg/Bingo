@@ -91,7 +91,8 @@ export class Road {
     for (let p = 900 + R() * 300; p < this.L - 400; p += 1300 + R() * 500) {
       const k = this.stops.length % 3;
       const kind: StopKind = k === 1 ? 'rest' : k === 2 ? 'town' : 'station';
-      if (this.bridges.some((br) => p > br.s0 - 120 && p < br.s1 + 120)) p += 200;
+      while (this.bridges.some((br) => p > br.s0 - 140 && p < br.s1 + 140)) p += 60;
+      if (p > this.L - 400) break;
       this.stops.push({ s: p, kind, side: R() < 0.5 ? 1 : -1, name: name++ % 20 });
     }
     this.stops.push({ s: this.L, kind: 'dest', side: 1, name: 0 });

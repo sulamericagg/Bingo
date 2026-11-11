@@ -130,7 +130,7 @@ export class RpHud {
     set('water', v.water, '#2f9be8');
     set('energy', v.energy, '#9a8cff');
     set('stam', v.stam, '#7ee05a');
-    set('fuel', v.fuel, '#ffcf2e');
+    set('fuel', v.fuel, '#ffcf2e', v.fuel === null ? '' : Math.round(v.fuel * 100) + '%');
     set('kg', v.kg ? Math.min(1, v.kg[0] / v.kg[1]) : null, v.kg && v.kg[0] > v.kg[1] ? '#e8442e' : '#c8a070', v.kg ? `${Math.round(v.kg[0])}/${v.kg[1]}` : '');
     this.bag.classList.toggle('over', bagOver);
   }
@@ -197,7 +197,7 @@ export class RpHud {
       const chip = (ic: RIcon, s: string) => `<span>${RI[ic]}${esc(s)}</span>`;
       d.innerHTML = `<div class="rp-card"><div class="rp-big">${RI[icon]}</div>
         <h3>${esc(r.title)}</h3><p>${esc(r.text)}</p>
-        <div class="rp-chips">${chip(LOC_ICON[c.loc], LOC_NAME[c.loc]())}${chip(c.night ? 'moon' : 'sun', c.night ? t('gb.rp.night', 'Noite') : t('gb.rp.day', 'Dia'))}${chip(SKY_ICON[c.sky], SKY_NAME[c.sky]())}</div>
+        <div class="rp-chips">${chip(LOC_ICON[c.loc], LOC_NAME[c.loc]())}${chip(c.night ? 'moon' : 'sun', c.night ? t('gb.rp.night', 'Noite') : t('gb.rp.day', 'Dia'))}${c.night && c.sky === 'clear' ? chip('star', t('gb.wx.clearNight', 'Céu limpo')) : chip(SKY_ICON[c.sky], SKY_NAME[c.sky]())}</div>
         <div class="rp-chs">${chs
           .map((ch, i) => {
             const ok = can(ch);

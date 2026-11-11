@@ -26,11 +26,11 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   kit: { id: 'kit', icon: 'tire', kg: 6, price: 120, name: () => t('gb.rp.it.kit', 'Kit de pneu') },
   cinta: { id: 'cinta', icon: 'hitch', kg: 3, price: 80, name: () => t('gb.rp.it.cinta', 'Cinta de reboque') },
   lanterna: { id: 'lanterna', icon: 'lights', kg: 0.4, price: 35, name: () => t('gb.rp.it.lanterna', 'Lanterna') },
-  saco: { id: 'saco', icon: 'bag', kg: 25, price: 0, name: () => t('gb.rp.it.saco', 'Saco de cascalho') },
+  saco: { id: 'saco', icon: 'bag', kg: 12, price: 0, name: () => t('gb.rp.it.saco', 'Saco de cascalho') },
   pepita: { id: 'pepita', icon: 'nugget', kg: 0.001, price: 0, name: () => t('gb.rp.it.pepita', 'Pepitas (g)') },
 };
 /** m³ de terra num saco de cascalho */
-export const SACK_VOL = 0.016;
+export const SACK_VOL = 0.008;
 
 export interface Needs {
   food: number;

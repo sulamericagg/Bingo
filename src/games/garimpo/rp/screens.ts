@@ -231,6 +231,7 @@ export function resultScreen(root: HTMLElement, r: DeliveryResult, unlocked: str
     ${unlocked ? `<div class="rp-sum"><span>${RI.map}${esc(t('gb.haul.unlocked', 'Novo destino: {d}', { d: unlocked }))}</span></div>` : ''}
     <button class="rp-go" data-done>${RI.station}${esc(t('gb.haul.home', 'Voltar ao garimpo'))}</button>`;
   const sc = screen(root, html, done);
+  sc.d.classList.add('rp-result');
   sc.d.querySelector('[data-x]')?.remove();
   speak(t('gb.haul.paySay', 'Entrega feita! Você ganhou {n}.', { n: fmt(r.total) }), { urgent: true });
   sfx.yay();

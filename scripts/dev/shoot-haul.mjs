@@ -80,6 +80,171 @@ const scenes = {
     await shot('05-storm-lightning');
     await free();
   },
+  async needs() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(13);
+      g.rp.debug.sky('cloudy');
+      const st = g.rp.debug.stall();
+      g.debug.tp(st.x + 3.5, st.z + 3.5, Math.atan2(-1, -1));
+      g.rp.debug.needs(16, 28, 9);
+      g.rp.debug.item('saco', 2);
+    });
+    await W(2500);
+    await shot('06-needs-hud');
+  },
+  async bag() {
+    await ev(() => {
+      const g = window.__garimpo;
+      const r = g.rp;
+      r.debug.item('marmita', 2);
+      r.debug.item('jerry', 1);
+      r.debug.item('lanterna', 1);
+      r.debug.item('pepita', 14);
+      r.debug.xp(300);
+      r.openBag();
+    });
+    await W(1500);
+    await shot('07-backpack-strength');
+    await ev(() => document.querySelector('.rp-scr [data-x]').click());
+    await W(300);
+  },
+  async fuel() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.needs(80, 80, 80);
+      g.rp.debug.hour(16.5);
+      g.rp.debug.sky('clear');
+      const m = g.debug.give('truck');
+      g.debug.enter(m);
+      const p = g.rp.debug.pump();
+      const c = g.w.map.camp;
+      const a = Math.atan2(p.x - c.x, p.z - c.z);
+      g.debug.tp(p.x - Math.sin(a) * 6.5, p.z - Math.cos(a) * 6.5, a);
+      g.rp.debug.fuel(12);
+    });
+    await W(2500);
+    await shot('08-fuel-station');
+    await ev(() => { const g = window.__garimpo; g.debug.exit(); });
+    await W(300);
+  },
+  async events() {
+    await ev(() => { const g = window.__garimpo; g.rp.debug.hour(10); g.rp.debug.sky('clear'); g.debug.tp(g.w.map.deposits[1].x, g.w.map.deposits[1].z, 0); });
+    await W(800);
+    await ev(() => { void window.__garimpo.rp.debug.event('animal', 'mine', 0); });
+    await W(1200);
+    await shot('09-event-animal');
+    await ev(() => document.querySelector('.rp-ch').click());
+    await W(900);
+    await shot('10-event-result');
+    await ev(() => document.querySelector('.rp-ok').click());
+    await ev(() => { const g = window.__garimpo; g.rp.debug.hour(23); g.debug.tp(g.w.map.camp.x + 5, g.w.map.camp.z + 5, 0); });
+    await W(800);
+    await ev(() => { void window.__garimpo.rp.debug.event('thief', 'camp'); });
+    await W(1200);
+    await shot('11-event-thief');
+    await ev(() => document.querySelector('.rp-ch').click());
+    await W(400);
+    await ev(() => document.querySelector('.rp-ok')?.click());
+    await ev(() => { void window.__garimpo.rp.debug.event('werewolf', 'mine'); });
+    await W(1400);
+    await shot('12-event-spooky');
+    await ev(() => document.querySelector('.rp-ch').click());
+    await W(400);
+    await ev(() => document.querySelector('.rp-ok')?.click());
+  },
+  async hitch() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(9);
+      g.rp.debug.sky('clear');
+      const hw = g.rp.debug.haul(3, 2, 2000, 0, false, true);
+      const r = hw.rig;
+      const u = r.tl[0];
+      // cavalo 1,2 m à frente do pino, alinhado
+      const kx = u.x + Math.sin(u.yaw) * u.len, kz = u.z + Math.cos(u.yaw) * u.len;
+      r.tr.yaw = u.yaw + 0.04;
+      r.tr.x = kx + Math.sin(u.yaw) * (1.2 - 0.35);
+      r.tr.z = kz + Math.cos(u.yaw) * (1.2 - 0.35);
+    });
+    await W(2500);
+    await shot('13-coupling-tritrem');
+    await ev(() => {
+      const hw = window.__garimpo.rp.debug.hw();
+      const r = hw.rig;
+      const u = r.tl[0];
+      r.tr.x = u.x + Math.sin(u.yaw) * (u.len - 0.35);
+      r.tr.z = u.z + Math.cos(u.yaw) * (u.len - 0.35);
+      r.tr.yaw = u.yaw;
+    });
+    await W(1200);
+    await ev(() => document.querySelector('.rp-act')?.click());
+    await W(1500);
+    await shot('14-coupled');
+  },
+  async curve() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(16);
+      const rp = g.rp;
+      rp.debug.haul(3, 3, 2800, 0, true, true);
+      const road = rp.debug.hw().road;
+      // curva mais fechada depois de 300 m
+      let bs = 400, bk = 0;
+      for (let s = 300; s < road.L - 400; s += 10) {
+        const o = [0, 0, 0, 0, 0];
+        road.sample(s, o);
+        if (Math.abs(o[4]) > bk && !road.stopAt(s, 150)) { bk = Math.abs(o[4]); bs = s; }
+      }
+      window.__bs = bs;
+      rp.endHaulForTest = null;
+    });
+    await ev(() => {
+      const g = window.__garimpo;
+      const hw = g.rp.debug.hw();
+      hw.rig.placeAt(window.__bs - 70, -1.9);
+      hw.rig.v = 14;
+      hw.ctl.cruise = 14;
+      hw.camSide = true;
+    });
+    await W(4500);
+    await shot('15-quadritrem-curve');
+    await ev(() => { const hw = window.__garimpo.rp.debug.hw(); hw.camSide = false; hw.camMode = 0; });
+    await W(1200);
+    await shot('16-quadritrem-chase');
+  },
+  async rest() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(19.1);
+      const hw = g.rp.debug.hw();
+      const st = hw.road.stops.find((s) => s.kind === 'rest') || hw.road.stops[0];
+      hw.ctl.cruise = 0;
+      hw.rig.placeAt(st.s - 5, -1.9);
+      hw.rig.v = 0;
+      hw.camSide = true;
+      hw.camSideSign = -st.side;
+      g.rp.debug.needs(60, 55, 30);
+    });
+    await W(3000);
+    await shot('17-rest-stop');
+    await ev(() => { window.__garimpo.rp.debug.hw().camSide = false; });
+  },
+  async deliver() {
+    await ev(() => {
+      const g = window.__garimpo;
+      g.rp.debug.hour(11);
+      const hw = g.rp.debug.hw();
+      hw.camMode = 0;
+      hw.rig.placeAt(hw.road.L - 20, -1.9);
+      hw.rig.v = 0;
+    });
+    await W(2000);
+    await shot('18-destination');
+    await ev(() => window.__garimpo.rp.debug.deliver());
+    await W(2200);
+    await shot('19-delivery-result');
+  },
 };
 await newGame(2);
 for (const [k, f] of Object.entries(scenes)) if (!only.length || only.includes(k)) await f();

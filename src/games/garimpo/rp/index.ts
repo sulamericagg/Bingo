@@ -80,6 +80,7 @@ export class RpLayer {
   private officeNote = false;
   private lastHudVis = true;
   private flashHold = 0;
+  private lvlPending = 0;
 
   constructor(private g: Garimpo) {
     this.P = g as unknown as GPriv;
@@ -181,7 +182,7 @@ export class RpLayer {
     const pump = this.freeSpot(w, m.garage.x, m.garage.z, 9, 22, 3.2, spawn);
     this.pumpAt = pump;
     const pm = buildPump();
-    pm.scale.setScalar(0.55);
+    pm.scale.setScalar(0.75);
     pm.position.set(pump.x, w.T.heightAt(pump.x, pump.z), pump.z);
     pm.rotation.y = Math.atan2(m.camp.x - pump.x, m.camp.z - pump.z) + Math.PI / 2;
     w.scene.add(pm);
@@ -289,7 +290,7 @@ export class RpLayer {
     else delete this.st.inv[id];
   }
   get kg(): number {
-    return invKg(this.st) + (this.g.worker ? this.g.worker.cargo.vol * 120 : 0);
+    return invKg(this.st);
   }
   get cap(): number {
     return capKg(this.st.str.lvl);
@@ -340,7 +341,7 @@ export class RpLayer {
         }
       }
       // carrinho cheio + cavar: enche um saco na mochila (difícil+)
-      if (this.sys.weight && ctl.act && wk.cargo.vol >= wk.cargo.cap - 1e-3 && wk.water <= 0 && this.kg + 25 <= this.cap * 1.5) {
+      if (this.sys.weight && ctl.act && wk.cargo.vol >= wk.cargo.cap - 1e-3 && wk.water <= 0 && this.kg + ITEMS.saco.kg <= this.cap * 1.6) {
         const k2 = SACK_VOL / Math.max(1e-6, wk.cargo.vol);
         const gold = wk.cargo.gold * k2;
         wk.cargo.vol -= SACK_VOL;
@@ -489,6 +490,12 @@ export class RpLayer {
     );
     this.hud.actions(g.inMine || this.P.paused ? [] : this.actions());
     this.rumorStep();
+    if (this.lvlPending && !this.hud.cardOpen && !this.P.paused) {
+      bigMoment(t('gb.rp.lvlUp', 'Força nível {n}!', { n: this.lvlPending }), { icon: 'trophy', sub: t('gb.rp.lvlSub', 'Carrega mais e cava mais rápido') });
+      sfx.yay();
+      speak(t('gb.rp.lvlUp', 'Força nível {n}!', { n: this.lvlPending }), { gap: 300 });
+      this.lvlPending = 0;
+    }
     // ---- eventos ----
     if (!this.hud.cardOpen && !g.inMine && !this.P.paused && !this.fading) {
       this.evT -= hours;
@@ -517,8 +524,7 @@ export class RpLayer {
     if (S.xp >= xpNeed(S.lvl)) {
       S.xp -= xpNeed(S.lvl);
       S.lvl++;
-      bigMoment(t('gb.rp.lvlUp', 'Força nível {n}!', { n: S.lvl }), { icon: 'trophy', sub: t('gb.rp.lvlSub', 'Carrega mais e cava mais rápido') });
-      sfx.yay();
+      this.lvlPending = S.lvl;
       this.st.needs.stam = stamMax(S.lvl);
     }
   }
@@ -1098,6 +1104,8 @@ export class RpLayer {
     this.hud.vignette(0, false);
     this.rumorEl.hidden = true;
     const self = this;
+    this.hw?.dispose();
+    this.hud.el.classList.add('road');
     this.hw = new Highway(
       {
         root: this.P.wrap,
@@ -1198,6 +1206,7 @@ export class RpLayer {
     }
     hw.dispose();
     this.hw = null;
+    this.hud.el.classList.remove('road');
     audio.engineSet(0, 0);
     const m = g.w!.map;
     const a = Math.atan2(m.camp.x - m.gate.x, m.camp.z - m.gate.z);
@@ -1300,11 +1309,12 @@ export class RpLayer {
     needs: (f: number, w: number, e: number) => Object.assign(this.st.needs, { food: f, water: w, energy: e }),
     fuel: (L: number) => this.fuel.set(this.g.cur!, L),
     item: (id: ItemId, n: number) => this.addItem(id, n),
-    haul: (dest: number, combo: number, gold: number, s = 0, coupled = false) => {
+    haul: (dest: number, combo: number, gold: number, s = 0, coupled = false, noEvents = false) => {
       this.st.haul!.owned = 4;
       const trip: Trip = { dest, combo, gold, s, dmg: 0, day: weather.day, hour: weather.hour, fuel: 400, coupled, night: 0 };
       this.st.haul!.trip = trip;
       this.startHaul(trip);
+      if (noEvents && this.hw) this.hw.noEvents = true;
       return this.hw;
     },
     hw: () => this.hw,

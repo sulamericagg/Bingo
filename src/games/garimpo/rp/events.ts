@@ -882,7 +882,7 @@ export const TEMPLATES: Tpl[] = [
   {
     id: 'werewolf', cat: 'spooky', icon: 'wolf', where: ['road', 'mine'], time: 'night', sky: ['clear', 'cloudy'], w: 4, cd: 24,
     title: () => t('gb.ev.werewolf.t', 'A lenda do lobisomem'),
-    text: () => t('gb.ev.werewolf.x', 'Uma sombra peluda cruzou a estrada na lua cheia!'),
+    text: () => t('gb.ev.werewolf.x', 'Uma sombra peluda cruzou o caminho na lua cheia!'),
     ch: () => [
       { ic: 'no', l: 'brake', ok: { xp: 10, say: 'dog' } },
       { ic: 'horn', l: 'honk', ok: { say: 'dog' } },
