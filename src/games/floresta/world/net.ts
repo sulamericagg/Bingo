@@ -134,7 +134,7 @@ export class Avatar implements Entity {
     private sess: NetSession,
   ) {
     this.tag = nameSprite(name);
-    if (paperOn('floresta')) {
+    if (paperOn('mundo')) {
       // PAPER: o avatar do grupo (se o amigo está no grupo), senão a skin
       this.paper = new PaperChar(specOf(skin, squad()?.members.find((m) => m.id === pid)?.avatar), { radius: 0.55, cell: 96 });
       this.g.add(this.paper.root, this.tag);

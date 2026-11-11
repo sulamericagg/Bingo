@@ -1,12 +1,12 @@
 // Suíte de QA do Bloop World.  npm run qa  [-- partes]
-//   partes: hub, small, games, leaks, online, perf   (padrão: hub small games leaks online)
+//   partes: hub, small, en, games, hud, deep, leaks, online, perf   (padrão: hub small games hud deep leaks online)
 //   QA_NOBUILD=1  pula o `vite build`;  QA_URL=http://...  usa um servidor já aberto
 // Capturas e relatórios JSON: shots-qa/   (fora do git)
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { ROOT, SHOTS } from './lib.mjs';
 
-const parts = process.argv.slice(2).length ? process.argv.slice(2) : ['hub', 'small', 'games', 'leaks', 'online'];
+const parts = process.argv.slice(2).length ? process.argv.slice(2) : ['hub', 'small', 'games', 'hud', 'deep', 'leaks', 'online'];
 const URL = process.env.QA_URL || 'http://127.0.0.1:5310/';
 let preview = null;
 
@@ -20,6 +20,8 @@ const steps = {
   leaks: ['leaks.mjs', '10'],
   online: ['online.mjs'],
   perf: ['perf.mjs'],
+  hud: ['hud.mjs'],
+  deep: ['deep.mjs'],
 };
 
 (async () => {

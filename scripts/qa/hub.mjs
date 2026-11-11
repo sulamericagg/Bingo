@@ -11,7 +11,7 @@ const ok = (name, pass, detail = '', shot = '') => { checks.push({ name, pass: !
 
 async function closeAll(page) {
   for (let i = 0; i < 6; i++) {
-    const st = await page.evaluate(() => ({ menu: !!document.querySelector('#menu.on'), modal: !!document.querySelector('.modal-screen.on'), busy: !window.__bloop || !document.querySelector('#menu.on') || !!document.querySelector('.modal-screen.on, .pet-scr.on, .hm-scr.on, #creator.on, .pass-panel, .crc-overlay, .sc-overlay, .pp-root, .mr-root, .h3, .tv-root, .fake-ad, .ip-pop, [class*=sheet-bg]') }));
+    const st = await page.evaluate(() => ({ menu: !!document.querySelector('#menu.on'), modal: !!document.querySelector('.modal-screen.on'), busy: !window.__bloop || !document.querySelector('#menu.on') || !!document.querySelector('.modal-screen.on, .pet-scr.on, .hm-scr.on, #creator.on, .pass-panel, .crc-overlay, .sc-overlay, .pp-root, .mr-root, .h3, .tv-root, .fake-ad, .ip-pop, .rk-screen.on, [class*=sheet-bg]') }));
     if (st.menu && !st.busy) return true;
     await q.back(page); await page.waitForTimeout(700);
   }
@@ -83,7 +83,7 @@ async function closeAll(page) {
     if (!el || !(await el.isVisible())) { ok(`atalho ${sel} visível`, false); continue; }
     await q.tapSel(page, el); await page.waitForTimeout(1100);
     s = await q.shot(page, `${tag}-top-${sel.replace(/\W+/g, '')}`);
-    const opened = await page.evaluate(() => !!document.querySelector('.modal-screen.on, .ob-root, [class*=sheet-bg], .ad-test, [class*=adsim], [class*=reward]') || !document.querySelector('#menu.on'));
+    const opened = await page.evaluate(() => !!document.querySelector('.modal-screen.on, .ob-root, [class*=sheet-bg], .fake-ad, .rk-screen.on, [class*=reward]') || !document.querySelector('#menu.on'));
     const au = await q.audit(page, '.modal-screen.on') ;
     const bad = au.filter((x) => /BLOCKED|CUT|TEXTCLIP|BADTEXT/.test(x));
     ok(`atalho ${sel} abre`, opened, bad.slice(0, 4).join(' | '), s);

@@ -17,6 +17,7 @@ export const PAPER_GAMES: Record<string, boolean> = {
   noites: true,
   garimpo: true,
   floresta: true,
+  mundo: true,
   disaster: true,
 };
 

@@ -137,7 +137,8 @@ const CSS = `
 export type WorldPick = { kind: 'world'; meta: WorldMeta; save: WorldSave; fresh: boolean } | { kind: 'classic' } | { kind: 'servers' } | null;
 
 /** mostra a lista de mundos; resolve com a escolha (ou null = voltar) */
-export function pickWorld(root: HTMLElement, opts: { servers?: boolean } = {}): Promise<WorldPick> {
+/** `classic`: mostra o atalho para o mundo antigo dos Lenhadores (o Mundo Bloop não mostra: HUD antigo; o Lenhadores tem a carta própria no hub) */
+export function pickWorld(root: HTMLElement, opts: { servers?: boolean; classic?: boolean } = {}): Promise<WorldPick> {
   if (!document.getElementById('mw-css')) {
     const s = document.createElement('style');
     s.id = 'mw-css';
@@ -166,7 +167,7 @@ export function pickWorld(root: HTMLElement, opts: { servers?: boolean } = {}): 
           ${opts.servers ? `<button class="mw-online" data-srv="1" style="background-image:linear-gradient(90deg,rgba(42,11,92,.92) 30%,rgba(42,11,92,.15)),url('${coverFor('pvp')}')"><b>🌐 ${t('mundo.playOnline', 'Jogar online')}</b><small>${t('mundo.playOnlineD', 'Servidores com amigos, PvP e minigames — toque e entre!')}</small></button>` : ''}
           <div class="mw-row2"><button class="fl-btn gold" data-new="1" style="flex:1">+ ${t('mundo.newWorld', 'Novo mundo')}</button></div>
           ${rows || `<div style="font-weight:700;opacity:.7;padding:6px">${t('mundo.noWorlds', 'Nenhum mundo ainda — crie o primeiro!')}</div>`}
-          <button class="fl-btn wood" data-classic="1">${t('mundo.classic', 'Mundo dos Lenhadores (clássico)')}</button>
+          ${opts.classic ? `<button class="fl-btn wood" data-classic="1">${t('mundo.classic', 'Mundo dos Lenhadores (clássico)')}</button>` : ''}
         </div></div>`;
     };
     let mode: GameMode = 'sobrevivencia';
