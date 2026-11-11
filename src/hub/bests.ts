@@ -51,6 +51,17 @@ export function bestLabel(id: string): string {
       const b = lsNum('bw-voo', 'best');
       return b ? t('best.voo', 'Recorde: {n} pts', { n: fmt(b) }) : '';
     }
+    case 'garimpo': {
+      // maior quantia de ouro vendida entre os espaços de save
+      let b = 0;
+      try {
+        const m = JSON.parse(localStorage.getItem('bw-garimpo') || '[]') as ({ sold?: number } | null)[];
+        for (const x of m) b = Math.max(b, Math.round(x?.sold ?? 0));
+      } catch {
+        /* */
+      }
+      return b ? t('best.garimpo', 'Ouro vendido: {n} g', { n: fmt(b) }) : '';
+    }
     default:
       return '';
   }
