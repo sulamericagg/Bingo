@@ -28,3 +28,8 @@ export function popBack(): boolean {
   }
   return true;
 }
+
+/** Quantos painéis estão empilhados (o hub usa para saber se um jogo abriu telas próprias). */
+export function backDepth(): number {
+  return stack.length;
+}

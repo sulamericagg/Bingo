@@ -17,6 +17,7 @@ import { bus } from '../core/events';
 import * as haptics from '../core/haptics';
 import { save } from '../core/storage';
 import { t } from '../i18n';
+import { backDepth, popBack } from '../core/back';
 import { applyI18n } from '../i18n/langs';
 import { hideBanner, setHostProbe, showBanner } from '../services/ads';
 import { displayName } from '../services/leaderboard';
@@ -60,6 +61,8 @@ let cards: CardView[] = [];
 let idx = 0;
 let hostActive = false;
 let hostDef: MiniGameDef | null = null;
+/** profundidade da pilha de voltar quando o jogo abriu */
+let hostBackBase = 0;
 let handle: MiniGameHandle | null = null;
 let launching = false;
 /** anúncios: quando o minigame abriu e quantas partidas terminou nesta visita (pausa na saída) */
@@ -168,6 +171,7 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   }
   launching = true;
   hostActive = true;
+  hostBackBase = backDepth();
   hostDef = def;
   hostOpenAt = Date.now();
   hostRuns = 0;
@@ -263,6 +267,8 @@ export function closeHost(): void {
  */
 export function hubBack(): boolean {
   if (!hostActive) return false;
+  // telas próprias do jogo (registradas com pushBack depois que ele abriu) fecham antes do "Sair do jogo?"
+  if (!hostConfirm.classList.contains('on') && backDepth() > hostBackBase && popBack()) return true;
   if (hostConfirm.classList.contains('on')) {
     hideConfirm();
     handle?.resume?.();
