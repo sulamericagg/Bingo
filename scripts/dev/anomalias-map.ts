@@ -18,6 +18,8 @@ const LOADERS: Record<string, () => Promise<{ default: MapDef }>> = {
 };
 
 const q = new URLSearchParams(location.search);
+// no jogo o núcleo desenha o Bocudo nas anomalias 'creature'; aqui o mapa mostra o modelo próprio
+(globalThis as { __anoOwnCreature?: boolean }).__anoOwnCreature = q.get('bocudo') !== '0';
 const mapId = q.get('map') ?? 'creche';
 const tier = Number(q.get('tier') ?? 1) as 0 | 1 | 2 | 3;
 
@@ -35,8 +37,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: tier >= 2, powerPreference
 renderer.setPixelRatio(1);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+// igual ao núcleo (core/world.ts): sem tone mapping, hemisférica de env.ambient, lanterna
+renderer.toneMapping = THREE.NoToneMapping;
 app.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.05, 120);
@@ -98,10 +100,10 @@ async function main(): Promise<void> {
   B = await def.build({ tier });
   const buildMs = performance.now() - t0;
   scene.add(B.root);
-  const atm = (B as MapBuild & { atmosphere?: { background?: THREE.ColorRepresentation; fog?: { color: THREE.ColorRepresentation; near: number; far: number }; exposure?: number } }).atmosphere;
-  scene.background = new THREE.Color(atm?.background ?? '#05040a');
-  if (atm?.fog) scene.fog = new THREE.Fog(atm.fog.color, atm.fog.near, atm.fog.far);
-  if (atm?.exposure) renderer.toneMappingExposure = atm.exposure;
+  const env = B.env ?? {};
+  scene.background = new THREE.Color(env.fog ?? '#0a0f1f');
+  scene.fog = new THREE.Fog(env.fog ?? '#0a0f1f', env.fogNear ?? 5, env.fogFar ?? 24);
+  scene.add(new THREE.HemisphereLight(env.sky ?? '#8796c8', env.ground ?? '#3a2f4a', env.ambient ?? 1.15));
   cam.position.set(B.spawn.pos.x, B.spawn.pos.y + 1.6, B.spawn.pos.z);
   yaw = B.spawn.yaw;
   applyPose();

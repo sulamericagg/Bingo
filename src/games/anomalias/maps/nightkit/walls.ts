@@ -77,8 +77,9 @@ export function wall(k: MapKit, w: WallSpec): void {
       const u1 = w.from + h.at + h.w / 2;
       const ya = y0 + (h.sill ?? 0);
       const yb = ya + h.h;
-      if (w.axis === 'x') k.portal(w.neg.zone, w.pos.zone, u0, ya, w.at - t / 2, u1, yb, w.at + t / 2);
-      else k.portal(w.neg.zone, w.pos.zone, w.at - t / 2, ya, u0, w.at + t / 2, yb, u1);
+      const walk = !h.sill && !h.block;
+      if (w.axis === 'x') k.portal(w.neg.zone, w.pos.zone, u0, ya, w.at - t / 2, u1, yb, w.at + t / 2, walk);
+      else k.portal(w.neg.zone, w.pos.zone, w.at - t / 2, ya, u0, w.at + t / 2, yb, u1, walk);
     }
   // colisores
   for (const [a, b] of solids) col(k, w, a, b, t, y0);

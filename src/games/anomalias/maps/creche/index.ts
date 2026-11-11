@@ -751,12 +751,23 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
     patio: ['patio', 'brinquedoteca'],
   };
   k.root.userData.views = views;
-  return k.finish(
-    { pos: { x: 2.5, y: 0, z: 4.6 }, yaw: 0 },
-    {
-      atmosphere: { background: '#0a0d22', fog: { color: '#0a0d22', near: 14, far: 42 }, exposure: 1.1 },
-    } as Partial<MapBuild>,
-  );
+  const icons: Record<string, string> = { recepcao: '🚪', monitores: '🖥️', refeitorio: '🍼', trocador: '🛁', corredor: '🚶', bercario: '🛏️', brinquedoteca: '🧸', patio: '🌳' };
+  for (const r of k.rooms) r.icon = icons[r.id];
+  // nav: o centro do refeitório tem a mesinha → dois pontos livres
+  k.navAdd('refeitorio', [[11.4, -0.9], [11.3, 2.6], [9.0, 2.6]]);
+  return k.finish({ pos: { x: 2.5, y: 0, z: 4.6 }, yaw: 0 }, {
+    env: { fog: '#0a0d22', fogNear: 14, fogFar: 42, sky: '#6a78b0', ground: '#2a2030', ambient: 0.3 },
+    items: [
+      { id: 'leite', color: '#ffffff', shape: 'drop' },
+      { id: 'suco', color: '#ffb43a', shape: 'drop' },
+      { id: 'fralda', color: '#7ad0ff', shape: 'square' },
+    ],
+    creatureSpawns: [
+      { x: 19.5, y: 0, z: -5.0 },
+      { x: 6.5, y: 0, z: -11.2 },
+      { x: 14.5, y: 0, z: -5.0 },
+    ],
+  });
 }
 
 /* ============================================================
@@ -1133,6 +1144,7 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
         id: 'brinquedos' + (i + 1),
         room: 'brinquedoteca',
         kind: 'toy',
+        icon: '🧸',
         object: mess,
         at: { x: gp.x + 0.5, y: 0, z: gp.z + 0.5 },
         states: ['messy', 'tidy'],
@@ -1230,20 +1242,25 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
     const wb = k.part((g) => bottle(g), 0, 0.06, 0, 0, warmer);
     const led = k.part((g) => g('glow').sph(0.008, 0, 0, 0, '#ff6a3a', 1, 1, 1, 6), 0, 0.05, 0.085, 0, warmer);
     led.visible = false;
-    const states = ['cold', 'warm', 'given'];
+    // FONTE: aquecedor → leite ou suco (o núcleo deixa escolher e carregar)
+    k.interact({ id: 'aquecedor', room: 'refeitorio', kind: 'bottle', icon: '🍼', object: warmer, at: { x: 11.5, y: 0, z: 1.8 }, gives: ['leite', 'suco'] });
+    k.anim((_dt, t) => (led.visible = Math.sin(t * 3) > 0));
+    void wb;
+    // DESTINO 1: bebê do cadeirão pede leite ou suco
     k.interact({
       id: 'mamadeira1',
       room: 'refeitorio',
       kind: 'bottle',
-      object: warmer,
-      at: { x: 11.5, y: 0, z: 1.8 },
-      states,
+      icon: '🍼',
+      object: b.g,
+      at: { x: 10.4, y: 0, z: 2.7 },
+      wants: ['leite', 'suco'],
+      states: ['hungry', 'fed'],
       setState(s) {
-        led.visible = s === 'warm';
-        wb.visible = s !== 'given';
-        bt.visible = s === 'given';
+        bt.visible = s === 'fed';
       },
     });
+    const states = ['hungry', 'fed'];
     // segunda mamadeira: geladeira → bebê da brinquedoteca
     const bt2 = k.part((g) => bottle(g, '#fff6e8', '#ff9ec4'), 0.12, 0.16, 0.12, 0, matBabies[0].g);
     bt2.visible = false;
@@ -1252,16 +1269,19 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
       id: 'mamadeira2',
       room: 'brinquedoteca',
       kind: 'bottle',
+      icon: '🍼',
       object: matBabies[0].g,
       at: { x: 10.9, y: 0, z: -7.3 },
+      wants: ['leite', 'suco'],
       states,
       setState(s) {
-        fridgeBottle.visible = s === 'cold';
-        bt2.visible = s === 'given';
+        fridgeBottle.visible = s !== 'fed';
+        bt2.visible = s === 'fed';
       },
     });
-    k.npc('cadeirao_esq', 'refeitorio', 9.3, 0.72, 3.8, Math.PI, 'sit');
-    k.npc('cadeirao_dir', 'refeitorio', 11.5, 0.72, 3.8, Math.PI, 'sit');
+    k.npc('cadeirao_esq', 'refeitorio', 9.3, 0.74, 3.8, Math.PI, 'sit', { color: '#ffd27a', scale: 0.55, hat: 'bow' });
+    k.npc('cadeirao_dir', 'refeitorio', 11.5, 0.74, 3.8, Math.PI, 'sit', { color: '#9be8b4', scale: 0.55, hat: 'beanie' });
+    k.slot({ id: 'npc_cadeirao', room: 'refeitorio', object: new THREE.Group(), npc: 'cadeirao_esq', kinds: { face: [], move: [], color: [] } });
   }
 
   // mamadeiras na prateleira (a mais / sumiram / leite roxo)
@@ -1335,6 +1355,8 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
       id: 'fralda',
       room: 'trocador',
       kind: 'diaper',
+      icon: '🧷',
+      wants: ['fralda'],
       object: b.g,
       at: { x: 14.8, y: 0, z: 1.35 },
       states: ['dirty', 'clean'],
@@ -1348,6 +1370,7 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
     const st = k.part((g) => diaperStack(g, 6, '#ffffff'), 15.8, 1.63, 1.3, Math.PI / 2);
     const st2 = k.part((g) => diaperStack(g, 8, '#ffffff'), 15.65, 0.0, -0.9, 0.4);
     st2.visible = false;
+    k.interact({ id: 'prateleira_fraldas', room: 'trocador', kind: 'diaper', icon: '🧷', object: st, at: { x: 15.0, y: 0, z: 0.4 }, gives: ['fralda'] });
     k.slot({ id: 'fraldas', room: 'trocador', object: st, kinds: { missing: [hide(st)], extra: [show(st2)], color: [tint(k, st, '#ffb3c8')] } });
   }
   // patinho na banheira
@@ -1649,9 +1672,11 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
       id: 'berco' + (i + 1),
       room: 'bercario',
       kind: 'crib',
+      icon: '😴',
+      holdSec: 2.5,
       object: b.g,
       at: { x: front.x, y: 0, z: front.z },
-      states: ['asleep', 'awake'],
+      states: ['awake', 'asleep'],
       setState(s) {
         if (s === 'awake') {
           b.setPose('sit');
@@ -1685,6 +1710,7 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
       id: 'luznoturna' + (i + 1),
       room,
       kind: 'nightlight',
+      icon: '💡',
       object: plug,
       at: { x: x + Math.sin(ry) * 0.8, y: 0, z: zz + Math.cos(ry) * 0.8 },
       states: ['off', 'on'],
@@ -1698,12 +1724,15 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
   });
 
   /* ---------- lugares livres para bebês do núcleo ---------- */
-  k.npc('tatame1', 'brinquedoteca', 11.8, 0, -9.6, 0.2, 'sit');
-  k.npc('tatame2', 'brinquedoteca', 13.6, 0, -8.2, -0.8, 'sit');
-  k.npc('mesinha1', 'refeitorio', 10.0 + 0.78, 0.28, 1.0, -Math.PI / 2, 'sit');
-  k.npc('mesinha2', 'refeitorio', 10.0, 0.28, 1.78, Math.PI, 'sit');
-  k.npc('banco_corredor', 'corredor', 4.85, 0.42, -1.95, Math.PI, 'sit');
-  k.npc('recepcao', 'recepcao', 1.4, 0, 3.4, 0.4, 'stand');
+  k.npc('tatame1', 'brinquedoteca', 11.8, 0, -9.6, 0.2, 'sit', { color: '#ffb39a', scale: 0.55, hat: 'cap' });
+  k.npc('tatame2', 'brinquedoteca', 13.6, 0, -8.2, -0.8, 'sit', { color: '#c9a8ff', scale: 0.55, hat: 'bow' });
+  k.npc('mesinha1', 'refeitorio', 10.0 + 0.78, 0.31, 1.0, -Math.PI / 2, 'sit', { color: '#8fd3ff', scale: 0.55 });
+  k.npc('mesinha2', 'refeitorio', 10.0, 0.31, 1.78, Math.PI, 'sit', { color: '#ff9ec7', scale: 0.55, hat: 'bow' });
+  k.npc('banco_corredor', 'corredor', 4.85, 0.43, -1.95, Math.PI, 'sit', { color: '#ffd27a', scale: 0.55 });
+  k.npc('professora', 'recepcao', 1.4, 0, 3.4, 0.4, 'stand', { color: '#ff7aa8', scale: 1, hat: '' });
+  k.slot({ id: 'npc_tatame1', room: 'brinquedoteca', object: new THREE.Group(), npc: 'tatame1', kinds: { face: [], move: [], scale: [] } });
+  k.slot({ id: 'npc_mesinha2', room: 'refeitorio', object: new THREE.Group(), npc: 'mesinha2', kinds: { face: [], missing: [] } });
+  k.slot({ id: 'npc_professora', room: 'recepcao', object: new THREE.Group(), npc: 'professora', kinds: { face: [], move: [] } });
 
   void kidChair;
 }

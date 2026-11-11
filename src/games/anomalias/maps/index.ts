@@ -31,8 +31,8 @@ type Loader = () => Promise<{ default?: MapDef; map?: MapDef }>;
 /** Uma linha por mapa — é só isto que os merges mexem. */
 export const LOADERS: Record<string, Loader> = {
   hospital: () => import('./hospital'),
-  // creche: () => import('./creche'),
-  // cabanas: () => import('./cabanas'),
+  creche: () => import('./creche'),
+  cabanas: () => import('./cabanas'),
   // fastfood: () => import('./fastfood'),
   // posto24h: () => import('./posto24h'),
 };

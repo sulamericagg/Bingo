@@ -48,6 +48,10 @@ export interface SlotSpec {
   kinds: KindMap;
   /** som que o núcleo deve tocar no lugar enquanto a anomalia estiver ligada */
   sound?: string;
+  /** (v1.1) NPC do núcleo (id de npcSpots) — os tipos podem vir com lista vazia [] */
+  npc?: string;
+  minNight?: number;
+  anchor?: Vec3;
 }
 
 const _v = new THREE.Vector3();
@@ -82,10 +86,10 @@ export class MapKit {
   near: Record<string, string[]> = {};
   private details = new Map<string, THREE.Group>();
   /** vãos entre zonas (portas, arcos, janelas internas) — corte por portal */
-  readonly portals: { a: string; b: string; box: THREE.Box3 }[] = [];
+  readonly portals: { a: string; b: string; box: THREE.Box3; walk: boolean }[] = [];
   /** vãos mais longe que isto (m) não abrem a sala do outro lado (janelas de casinhas ao longe) */
   portalDist = 1e9;
-  portal(a: string, b: string, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
+  portal(a: string, b: string, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, walk = true): void {
     if (this.xf) {
       const [ax, az] = this.wxz(x0, z0);
       const [bx, bz] = this.wxz(x1, z1);
@@ -93,7 +97,7 @@ export class MapKit {
       y0 = this.wy(y0);
       y1 = this.wy(y1);
     }
-    this.portals.push({ a, b, box: new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)) });
+    this.portals.push({ a, b, walk, box: new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)) });
   }
   /** subgrupo de detalhes da zona (peças soltas: só desenhadas de perto) */
   detail(zone: string): THREE.Group {
@@ -472,28 +476,114 @@ export class MapKit {
       },
     };
     if (s.sound) slot.sound = s.sound;
+    if (s.npc) slot.npc = s.npc;
+    if (s.minNight) slot.minNight = s.minNight;
+    if (s.anchor) slot.anchor = s.anchor;
     s.object.userData.slot = s.id;
     this.slots.push(slot);
     return slot;
   }
-  interact(d: InteractDef & { states?: string[] }): void {
+  /**
+   * Tarefa. `states` = estados visuais do mapa; o núcleo manda 'todo' (→ 1º estado),
+   * 'done' (→ último) e 'want:<item>' (→ onWant). Os nomes próprios continuam valendo.
+   */
+  interact(d: InteractDef & { states?: string[]; onWant?: (item: string) => void }): void {
     if (this.xf) {
       const [x, z] = this.wxz(d.at.x, d.at.z);
       d.at = { x, y: this.wy(d.at.y), z };
     }
+    const own = d.setState;
+    const st = d.states;
+    if (own && st?.length)
+      d.setState = (s: string) => {
+        if (s === 'todo') own(st[0]);
+        else if (s === 'done') own(st[st.length - 1]);
+        else if (s.startsWith('want:')) d.onWant?.(s.slice(5));
+        else own(s);
+      };
     this.interacts.push(d);
   }
-  npc(id: string, room: string, x: number, y: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie'): void {
+  /**
+   * Lugar de NPC (o núcleo desenha o Bloop). `yaw` aqui é na convenção dos modelos do mapa
+   * (frente = +z); convertido para a do contrato (frente = −z com yaw 0).
+   */
+  npc(id: string, room: string, x: number, y: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie', look: { color?: string; scale?: number; hat?: string } = {}): void {
     [x, z] = this.wxz(x, z);
     y = this.wy(y);
-    yaw = this.wry(yaw);
-    this.npcSpots.push({ id, room, pos: { x, y, z }, yaw, pose });
+    yaw = this.wry(yaw) + Math.PI;
+    this.npcSpots.push({ id, room, pos: { x, y, z }, yaw, pose, ...look });
   }
 
   /** animação por quadro (ventilador, móbile, fogo); devolve função para remover */
   anim(f: (dt: number, t: number) => void): () => void {
     this.anims.add(f);
     return () => this.anims.delete(f);
+  }
+
+  /* ------------------------------ navegação do Bocudo (v1.1) ------------------------------ */
+  /** pontos extras por sala; com `chain`, ligados em sequência (trilha) e os vãos ao mais próximo */
+  readonly navPts: Record<string, { pts: Vec3[]; chain: boolean }> = {};
+  navAdd(room: string, pts: [number, number][], chain = false, y = 0): void {
+    const e = (this.navPts[room] ??= { pts: [], chain });
+    e.chain = e.chain || chain;
+    for (const [x, z] of pts) {
+      const [a, b] = this.wxz(x, z);
+      e.pts.push({ x: a, y: this.wy(y), z: b });
+    }
+  }
+  /** sem pontos próprios a sala usa o centro */
+  private buildNav(): { nodes: Vec3[]; links: [number, number][] } {
+    const nodes: Vec3[] = [];
+    const links: [number, number][] = [];
+    const byRoom = new Map<string, number[]>();
+    const add = (room: string, i: number) => {
+      if (!byRoom.has(room)) byRoom.set(room, []);
+      byRoom.get(room)!.push(i);
+    };
+    const chained = new Set<string>();
+    for (const r of this.rooms) {
+      const e = this.navPts[r.id];
+      if (e && e.pts.length) {
+        const first = nodes.length;
+        for (const p of e.pts) {
+          nodes.push(p);
+          add(r.id, nodes.length - 1);
+        }
+        if (e.chain) {
+          chained.add(r.id);
+          for (let i = first; i < nodes.length - 1; i++) links.push([i, i + 1]);
+        }
+      } else {
+        nodes.push({ x: (r.min.x + r.max.x) / 2, y: r.min.y, z: (r.min.z + r.max.z) / 2 });
+        add(r.id, nodes.length - 1);
+      }
+    }
+    const roomNodes = new Map(byRoom);
+    for (const p of this.portals) {
+      if (!p.walk) continue;
+      const c = p.box.getCenter(new THREE.Vector3());
+      const i = nodes.push({ x: c.x, y: p.box.min.y, z: c.z }) - 1;
+      for (const rid of [p.a, p.b]) {
+        const list = roomNodes.get(rid);
+        if (!list) continue;
+        if (chained.has(rid)) {
+          let best = list[0];
+          let bd = Infinity;
+          for (const j of list) {
+            const d = Math.hypot(nodes[j].x - c.x, nodes[j].z - c.z);
+            if (d < bd) (bd = d), (best = j);
+          }
+          links.push([i, best]);
+        } else for (const j of byRoom.get(rid) ?? []) links.push([i, j]);
+        add(rid, i);
+      }
+    }
+    // dentro de cada sala comum: todos os pontos se ligam
+    for (const [rid, list] of byRoom) {
+      if (chained.has(rid)) continue;
+      for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) if (!links.some(([x, y]) => (x === list[a] && y === list[b]) || (x === list[b] && y === list[a]))) links.push([list[a], list[b]]);
+    }
+    return { nodes, links };
   }
 
   /* ------------------------------ fechamento ------------------------------ */
@@ -592,14 +682,18 @@ export class MapKit {
     // detalhes: some de longe (camada 1 = invisível para a câmera padrão) — independe de .visible (anomalias)
     const farK = [0.7, 0.85, 1.3, 1.8][this.tier];
     const dets: { o: THREE.Object3D; ms: THREE.Object3D[]; r: number; far: boolean; c: THREE.Vector3 }[] = [];
+    // cada detalhe ganha um "suporte" (Group identidade): o corte por distância mexe só no
+    // suporte.visible — não briga com anomalias (.visible do objeto) nem com camadas do núcleo
     for (const [, d] of this.details)
-      for (const o of d.children) {
-        const ms: THREE.Object3D[] = [];
-        o.traverse((c) => ((c as THREE.Mesh).isMesh || (c as THREE.Sprite).isSprite) && ms.push(c));
+      for (const o of d.children.slice()) {
+        const hold = new THREE.Group();
+        hold.name = 'hold';
+        d.add(hold);
+        hold.add(o);
         box.setFromObject(o, false);
         const r = box.isEmpty() ? 0.3 : box.getSize(ctr).length() / 2;
         const c = box.isEmpty() ? new THREE.Vector3() : o.worldToLocal(box.getCenter(new THREE.Vector3()));
-        dets.push({ o, ms, r, far: false, c });
+        dets.push({ o, ms: [hold], r, far: false, c });
       }
     const wp = new THREE.Vector3();
     const frustum = new THREE.Frustum();
@@ -638,13 +732,13 @@ export class MapKit {
     const cull = (cam: THREE.Camera) => {
       const p = cam.getWorldPosition(ctr);
       for (const e of dets) {
-        if (!e.o.parent?.visible) continue;
+        if (!e.o.parent?.parent?.visible) continue;
         wp.copy(e.c);
         e.o.localToWorld(wp);
         const far = wp.distanceTo(p) > (4 + 16 * e.r) * farK;
         if (far !== e.far) {
           e.far = far;
-          for (const m of e.ms) m.layers.mask = far ? 2 : 1;
+          for (const m of e.ms) m.visible = !far;
         }
       }
       const r = sorted.find((rr) => p.x >= rr.min.x && p.x <= rr.max.x && p.z >= rr.min.z && p.z <= rr.max.z && p.y >= rr.min.y - 0.5 && p.y <= rr.max.y + 0.5);
@@ -684,7 +778,8 @@ export class MapKit {
     };
     this.root.addEventListener('added', onAdded);
     const K = this;
-    const build: MapBuild & { atmosphere?: unknown; cull: (c: THREE.Camera) => void } = {
+    const nav = this.buildNav();
+    const build: MapBuild & { cull: (c: THREE.Camera) => void } = {
       id: this.id,
       root: this.root,
       rooms: this.rooms,
@@ -699,6 +794,7 @@ export class MapKit {
         for (const o of K.powerObjs) o.visible = on;
       },
       cull,
+      nav,
       update(dt: number) {
         K.time += dt;
         for (const f of K.anims) f(dt, K.time);

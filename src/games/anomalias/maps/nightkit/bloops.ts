@@ -328,6 +328,14 @@ export interface Creature {
  */
 export function creature(k: MapKit, s = 1, parent: THREE.Object3D = k.root, mood: 'grin' | 'open' = 'open'): Creature {
   const g = new THREE.Group();
+  // No jogo, o NÚCLEO desenha o Bocudo espiando no ponto do slot (anchor / centro do objeto):
+  // aqui fica só um marcador vazio. O visualizador dev liga o modelo próprio com
+  // globalThis.__anoOwnCreature = true (para conferir posições sem o núcleo).
+  if (!(globalThis as { __anoOwnCreature?: boolean }).__anoOwnCreature) {
+    g.name = 'creature-marker';
+    parent.add(g);
+    return { g, eyes: new THREE.Mesh() };
+  }
   const body = k.part((gg) => {
     const p = gg('paint');
     const purple = '#3a1c52';

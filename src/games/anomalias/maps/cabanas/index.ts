@@ -50,7 +50,7 @@ interface CabinInfo {
 const CABINS: CabinInfo[] = [
   { n: 1, id: 'cabana1', x: -9, z: -14, ry: Math.PI / 2, col: '#e0503a', icon: 'star', quilt: '#b84a3a' },
   { n: 2, id: 'cabana2', x: 8.5, z: -18, ry: -Math.PI / 2, col: '#3a7ae0', icon: 'moon', quilt: '#3a5a8a' },
-  { n: 3, id: 'cabana3', x: -9, z: -27, ry: Math.PI / 2, col: '#3aa05a', icon: 'leaf', quilt: '#3a7a4a' },
+  { n: 3, id: 'cabana3', x: -9, z: -27, ry: Math.PI / 2, col: '#3aa05a', icon: 'drop', quilt: '#3a7a4a' },
   { n: 4, id: 'cabana4', x: 8.5, z: -31, ry: -Math.PI / 2, col: '#e0b03a', icon: 'sun', quilt: '#c8903a' },
   { n: 5, id: 'cabana5', x: 0, z: -42.5, ry: 0, col: '#9a5ad0', icon: 'heart', quilt: '#7a4a9a' },
 ];
@@ -405,10 +405,24 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
     view('lavanderia', ax, az, -Math.PI / 2 + 0.6, -0.15);
   }
   k.root.userData.views = views;
-  return k.finish(
-    { pos: { x: -3.5, y: 0, z: 3.6 }, yaw: 0 },
-    { atmosphere: { background: '#0a1220', fog: { color: '#0a1220', near: tier >= 2 ? 9 : 7, far: tier >= 2 ? 40 : 32 }, exposure: 1.1 } } as Partial<MapBuild>,
-  );
+  const icons: Record<string, string> = { recepcao: '🛎️', lareira: '🔥', lavanderia: '🧺', trilha: '🌲' };
+  for (const r of k.rooms) r.icon = icons[r.id] ?? '🛖';
+  // nav: trilha em corrente (contorna a casa pela esquerda até a frente); lareira tem o sofá no centro
+  k.navAdd('trilha', [[-3.5, 8.0], [-8.4, 7.2], [-8.6, -6.6], [-2.0, -6.4], [-1.2, -8.6], [-0.2, -11.5], [0, -14], [0, -18], [0, -20.5], [0, -24], [0, -27], [0, -31], [0, -34.5], [0, -37.5]], true);
+  k.navAdd('lareira', [[1.4, 0.0], [2.2, -3.2], [2.2, 3.0]]);
+  return k.finish({ pos: { x: -3.5, y: 0, z: 3.6 }, yaw: 0 }, {
+    env: { fog: '#0a1220', fogNear: tier >= 2 ? 9 : 7, fogFar: tier >= 2 ? 40 : 32, sky: '#5a6a96', ground: '#1e2418', ambient: 0.3, outdoor: true },
+    items: [
+      ...CABINS.map((c) => ({ id: 'chave' + c.n, color: c.col, shape: ({ star: 'star', moon: 'moon', drop: 'drop', sun: 'circle', heart: 'heart', leaf: 'triangle' } as const)[c.icon as 'star'] })),
+      { id: 'lenha', color: '#8a5a32', shape: 'square' as const },
+      { id: 'toalha', color: '#7ad0ff', shape: 'square' as const },
+    ],
+    creatureSpawns: [
+      { x: 0, y: 0, z: -37.5 },
+      { x: -8.6, y: 0, z: -6.6 },
+      { x: 0, y: 0, z: -24 },
+    ],
+  });
 }
 
 /** azulejo simples (banheirinho) */
@@ -488,11 +502,12 @@ function buildCabin(k: MapKit, c: CabinInfo): CabinParts {
     zo('wood').cyl(0.07, 0.08, CH + 0.05, s * 2.0, 0, 4.1, '#7a4a2a', 8);
     zo('wood').box(0.06, 0.06, 1.6, s * 2.1, 0.85, 3.3, '#7a4a2a');
     for (let i = 0; i < 6; i++) zo('wood').box(0.035, 0.85, 0.035, s * 2.1, 0, 2.6 + i * 0.28, '#7a4a2a');
-    zo('wood').box(1.4, 0.06, 0.06, s * 1.35, 0.85, 4.12, '#7a4a2a');
-    for (let i = 0; i < 4; i++) zo('wood').box(0.035, 0.85, 0.035, s * (0.8 + i * 0.35), 0, 4.12, '#7a4a2a');
+    const r0 = s > 0 ? 1.4 : 0.6;
+    zo('wood').box(2.1 - r0, 0.06, 0.06, s * (r0 + 2.1) / 2, 0.85, 4.12, '#7a4a2a');
+    for (let i = 0; i < 4; i++) zo('wood').box(0.035, 0.85, 0.035, s * (r0 + (i / 3) * (2.0 - r0)), 0, 4.12, '#7a4a2a');
     zo('stone').box(0.3, FY, 0.3, s * 2.0, -FY, 4.1, '#8a847c');
     k.solid(s * 2.15 - 0.06, 2.55, s * 2.15 + 0.06, 4.2, 1.0);
-    k.solid(s * 0.65, 4.06, s * 2.1, 4.18, 1.0);
+    k.solid(s * (s > 0 ? 1.4 : 0.6), 4.06, s * 2.1, 4.18, 1.0);
   }
   // degraus
   for (let i = 0; i < 2; i++) sbox(zo('planks'), 1.2, 0.08, 0.32, 0, -0.18 - i * 0.17, 4.35 + i * 0.3, '#8a5a32');
@@ -548,7 +563,7 @@ function buildCabin(k: MapKit, c: CabinInfo): CabinParts {
   // guarda-roupa (corpo fixo, portas são peças)
   k.part((g) => wardrobeBody(g, 1.1, 2.0, 0.55, '#8a5a32'), 1.63, 0, 0.75, -Math.PI / 2, k.zoneGroup(id));
   const wardrobe = new THREE.Group();
-  k.place(wardrobe, 1.35, 0, 1.3, -Math.PI / 2);
+  k.place(wardrobe, 1.35, 0, 0.2, -Math.PI / 2);
   k.root.add(wardrobe);
   const dL = k.part((g) => wardrobeDoor(g, 0.53, 1.86), 0, 0.07, 0, 0, wardrobe);
   const dR = k.part((g) => wardrobeDoor(g, 0.53, 1.86), 1.08, 0.07, 0, Math.PI, wardrobe);
@@ -602,8 +617,8 @@ function buildCabin(k: MapKit, c: CabinInfo): CabinParts {
   // porta (abre para dentro)
   const dr = door(k, 0.35, 2.5, 0, 0.9, 2.03, '#7a4a2a', { knob: '#d8c27a' });
   // pontos
-  k.npc(id + '_varanda', 'trilha', 0.2, 0, 3.6, 0, 'stand');
-  k.npc(id + '_poltrona', id, -1.45, 0.42, 1.55, Math.PI / 2 + 0.5, 'sit');
+  if (c.n % 2) k.npc(id + '_varanda', 'trilha', -0.3, 0, 3.3, 0.4, 'stand', { color: c.col, hat: c.n === 3 ? 'beanie' : 'cap' });
+  else k.npc(id + '_poltrona', id, -1.45, 0.42, 1.55, Math.PI / 2 + 0.5, 'sit', { color: c.col, hat: 'beanie' });
   k.end();
   return { c, door: dr, made, messy, towelsBed, towelsFloor, winGlow, winPool, guest, sign, rocker, wardrobe, painting, lump, bed };
 }
@@ -921,8 +936,9 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
     key.add(tag);
     key.userData.tag = { cabin: c.id, n: c.n, color: c.col, icon: c.icon };
     keys.push(key);
-    k.interact({ id: 'chave' + c.n, room: 'recepcao', kind: 'checkin', object: key, at: { x: -5.1, y: 0, z: -4.2 }, states: ['onboard', 'taken'], setState: (s) => (key.visible = s !== 'taken') });
   });
+  // FONTE: quadro de chaves (a criança escolhe a chave pela cor/ícone da etiqueta)
+  k.interact({ id: 'quadro_chaves', room: 'recepcao', kind: 'checkin', icon: '🔑', object: keys[2], at: { x: -5.1, y: 0, z: -4.2 }, gives: CABINS.map((c) => 'chave' + c.n) });
   {
     const blackKey = k.part((g) => {
       g('paint').torus(0.02, 0.006, 0, -0.03, 0, '#3a3a3a', 0, 10);
@@ -953,16 +969,28 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
       g('paint').lathe([[0.055, 0], [0.05, 0.02], [0.03, 0.05], [0, 0.058]], 0, 0.015, 0, '#e8c860', 14);
       g('paint').sph(0.01, 0, 0.075, 0, '#e8c860', 1, 1, 1, 6);
     }, -3.95, 1.06, -2.95);
-    const ticket = k.part((g) => g('paint').box(0.12, 0.004, 0.08, 0, 0, 0, '#ffffff'), -4.3, 1.065, -2.8, 0.3);
+    // ficha da reserva no balcão: mostra a etiqueta (cor + ícone) da chave pedida
+    const ticket = k.part((g) => g('paint').box(0.16, 0.004, 0.16, 0, 0, 0, '#ffffff'), -4.3, 1.065, -2.8, 0.3);
+    const tagMesh = new THREE.Mesh(quad(0.12, 0.12), k.tmat(tagTex(CABINS[0].col, CABINS[0].icon)));
+    tagMesh.rotation.x = -Math.PI / 2;
+    tagMesh.position.y = 0.005;
+    ticket.add(tagMesh);
     ticket.visible = false;
     k.interact({
       id: 'balcao',
       room: 'recepcao',
       kind: 'checkin',
+      icon: '🛎️',
       object: bell,
       at: { x: -4.3, y: 0, z: -1.9 },
-      states: ['idle', 'waiting', 'done'],
+      wants: CABINS.map((c) => 'chave' + c.n),
+      states: ['waiting', 'done'],
       setState: (s) => (ticket.visible = s === 'waiting'),
+      onWant: (item) => {
+        const c = CABINS.find((x) => 'chave' + x.n === item);
+        if (c) (tagMesh.material as THREE.MeshLambertMaterial).map = tagTex(c.col, c.icon);
+        ticket.visible = true;
+      },
     });
     bell.userData.keys = CABINS.map((c) => ({ cabin: c.id, n: c.n, color: c.col, icon: c.icon }));
     k.slot({
@@ -975,7 +1003,8 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
         move: [moveBy(bell, -1.2, 0, -0.3)],
       },
     });
-    k.npc('hospede_balcao', 'recepcao', -4.6, 0, -1.7, Math.PI, 'stand');
+    k.npc('hospede_balcao', 'recepcao', -4.6, 0, -1.7, Math.PI, 'stand', { color: '#7ad0ff', hat: 'cap' });
+    k.slot({ id: 'npc_hospede', room: 'recepcao', object: new THREE.Group(), npc: 'hospede_balcao', kinds: { face: [], move: [] } });
   }
   // relógio cuco (parede oeste)
   {
@@ -1057,7 +1086,7 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
     g.scale.y = 0.75;
     g.visible = false;
     k.slot({ id: 'banco_sombra', room: 'recepcao', object: g, kinds: { extra: [show(g)] } });
-    k.npc('banco_recepcao', 'recepcao', -6.5, 0.45, 2.0, Math.PI / 2, 'sit');
+    k.npc('banco_recepcao', 'recepcao', -6.5, 0.45, 1.8, Math.PI / 2, 'sit', { color: '#ffb39a', hat: '' });
   }
 
   /* ---------- LAREIRA ---------- */
@@ -1093,6 +1122,8 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
       id: 'lenha_lareira',
       room: 'lareira',
       kind: 'firewood',
+      icon: '🪵',
+      wants: ['lenha'],
       object: fireBig,
       at: { x: 5.0, y: 0, z: 0.8 },
       states: ['low', 'full'],
@@ -1147,8 +1178,9 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
     c.g.rotation.y = -Math.PI / 2 - 0.6;
     c.g.visible = false;
     k.slot({ id: 'poltrona', room: 'lareira', object: ch, kinds: { move: [moveBy(ch, -1.2, 0, 1.4, 0.8)], rotate: [rotBy(ch, 0, Math.PI, 0)], creature: [show(c.g)] } });
-    k.npc('poltrona_lareira', 'lareira', 5.0, 0.42, -2.3, -Math.PI / 2 + 0.6, 'sit');
-    k.npc('sofa', 'lareira', 3.4, 0.45, 0.5, Math.PI / 2, 'sit');
+    k.npc('poltrona_lareira', 'lareira', 5.0, 0.42, -2.3, -Math.PI / 2 + 0.6, 'sit', { color: '#c9a8ff', hat: 'beanie' });
+    k.npc('sofa', 'lareira', 3.4, 0.46, 0.5, Math.PI / 2, 'sit', { color: '#9be8b4' });
+    k.slot({ id: 'npc_sofa', room: 'lareira', object: new THREE.Group(), npc: 'sofa', kinds: { face: [], move: [], color: [] } });
   }
   // criatura na janela da lareira (lado de fora)
   {
@@ -1261,18 +1293,19 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
       pool.visible = on;
       if (halo) halo.visible = on;
     };
-    k.interact({ id: 'lenha_fogueira', room: 'trilha', kind: 'firewood', object: fl, at: { x: -3.4, y: 0, z: -20.5 }, states: ['out', 'lit'], setState: (s) => setLit(s === 'lit') });
+    k.interact({ id: 'lenha_fogueira', room: 'trilha', kind: 'firewood', icon: '🔥', wants: ['lenha'], object: fl, at: { x: -3.4, y: 0, z: -20.5 }, states: ['out', 'lit'], setState: (s) => setLit(s === 'lit') });
     const c = cr(0.85);
     c.g.position.set(-6.0, 0.35, -20.3);
     c.g.rotation.y = Math.PI / 2;
     c.g.visible = false;
     k.slot({ id: 'fogueira', room: 'trilha', object: fl, sound: 'crackle', kinds: { creature: [show(c.g)], sound: [(on) => setLit(on ? true : lit)] } });
-    k.npc('fogueira1', 'trilha', -4.5, 0.4, -22.0, 0, 'sit');
+    k.npc('fogueira1', 'trilha', -4.5, 0.4, -22.0, 0, 'sit', { color: '#ffd27a', hat: 'beanie' });
+    k.slot({ id: 'npc_fogueira', room: 'trilha', object: new THREE.Group(), npc: 'fogueira1', kinds: { face: [], move: [] }, minNight: 2 });
   }
   // pilha de lenha (tarefa: pegar lenha)
   {
     const pile = k.part((g) => woodPile(g, 0, 0, 0, 2, 1.0), 3.6, 0.44, -5.75);
-    k.interact({ id: 'lenha_pilha', room: 'trilha', kind: 'firewood', object: pile, at: { x: 3.6, y: 0, z: -6.9 }, states: ['full', 'empty'], setState: (s) => (pile.visible = s === 'full') });
+    k.interact({ id: 'lenha_pilha', room: 'trilha', kind: 'firewood', icon: '🪵', object: pile, at: { x: 3.6, y: 0, z: -6.9 }, gives: ['lenha'] });
   }
 
   /* ---------- LAVANDERIA ---------- */
@@ -1287,6 +1320,7 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
     },
   });
   k.slot({ id: 'lampada', room: 'lavanderia', object: L.bulb, kinds: { light: [flicker(k, [L.bulb], 2), tint(k, L.bulb, '#5aff6a')] } });
+  k.interact({ id: 'prateleira_toalhas', room: 'lavanderia', kind: 'cleanroom', icon: '🧺', object: L.pile, at: wLaundry(-0.6, 0.4), gives: ['toalha'] });
   k.slot({ id: 'cesto', room: 'lavanderia', object: L.pile, kinds: { extra: [all(show(L.basketMore), hide(L.pile))] } });
   k.slot({ id: 'varal', room: 'trilha', object: L.sheets[0], kinds: { creature: [show(L.ghost)], missing: [hide(L.sheets[1])], move: [animate(k, (_dt, t) => (L.sheets[0].rotation.x = 0.25 + Math.sin(t * 3) * 0.2), () => (L.sheets[0].rotation.x = 0))] } });
 
@@ -1316,6 +1350,8 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
       id: 'limpar_' + id,
       room: id,
       kind: 'cleanroom',
+      icon: '🛏️',
+      wants: ['toalha'],
       object: cp.bed,
       at: wAt(c, 0.4, -0.2),
       states: ['dirty', 'clean'],
@@ -1355,8 +1391,14 @@ function anomalies(k: MapKit, cabins: CabinParts[], L: LaundryParts, lamps: Lamp
     const o = new THREE.Object3D();
     o.position.set(x, 1.42, z);
     k.root.add(o);
-    k.interact({ id: 'lampiao' + (i + 1), room: 'trilha', kind: 'lantern', object: o, at: { x: x + (x > 0 ? -0.8 : 0.8), y: 0, z }, states: ['off', 'lit'], setState: (s) => lamps.set(i, s === 'lit') });
+    k.interact({ id: 'lampiao' + (i + 1), room: 'trilha', kind: 'lantern', icon: '🏮', holdSec: 1.5, object: o, at: { x: x + (x > 0 ? -0.8 : 0.8), y: 0, z }, states: ['off', 'lit'], setState: (s) => lamps.set(i, s === 'lit') });
   });
+}
+
+/** ponto local da lavanderia → mundo */
+function wLaundry(lx: number, lz: number): { x: number; y: number; z: number } {
+  const ry = -Math.PI / 2;
+  return { x: 11 + lx * Math.cos(ry) + lz * Math.sin(ry), y: 0.15, z: -9.5 - lx * Math.sin(ry) + lz * Math.cos(ry) };
 }
 
 /** ponto local (lx, lz) de uma cabana → mundo */
