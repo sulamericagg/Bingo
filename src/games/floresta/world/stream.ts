@@ -172,9 +172,9 @@ export class World {
   ) {
     this.gen = new WorldGen(save.seed, save.gen);
     this.nq = natureQ(tier);
-    // chão com texturas misturadas por vértice (grama, terra, pedra, areia...); volumes/cavernas: topo de grama, paredes de pedra
+    // chão com texturas misturadas por vértice (grama, terra, pedra, areia...), também nas malhas de volume (cavernas abertas)
     this.terrainMat = terrainMaterial({ tier });
-    this.groundMat = terrainMaterial({ tier, noSplat: true });
+    this.groundMat = this.terrainMat;
     this.vox = new VoxWorld(this);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {

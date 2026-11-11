@@ -28,7 +28,7 @@ export const NL = TERRAIN_LAYERS.length;
 export const TL: Record<TerrainLayer, number> = Object.fromEntries(TERRAIN_LAYERS.map((n, i) => [n, i])) as Record<TerrainLayer, number>;
 
 /** quanto da cor própria da textura aparece (o resto é a cor do vértice com a estrutura da textura) */
-const OWN: Record<TerrainLayer, number> = { grass: 0.12, dryGrass: 0.35, forestFloor: 0.55, snow: 0.45, dirt: 0.3, redDirt: 0.55, mud: 0.4, gravel: 0.55, stone: 0.3, sand: 0.4 };
+const OWN: Record<TerrainLayer, number> = { grass: 0.12, dryGrass: 0.35, forestFloor: 0.35, snow: 0.6, dirt: 0.3, redDirt: 0.55, mud: 0.4, gravel: 0.55, stone: 0.3, sand: 0.4 };
 /** repetições por metro */
 const SCALE: Record<TerrainLayer, number> = { grass: 0.42, dryGrass: 0.4, forestFloor: 0.3, snow: 0.25, dirt: 0.35, redDirt: 0.35, mud: 0.3, gravel: 0.45, stone: 0.18, sand: 0.3 };
 
@@ -242,15 +242,15 @@ const RECIPES: Record<TerrainLayer, (x: CanvasRenderingContext2D) => void> = {
     blades(x, 2200, ['#8a6e34', '#b8984c', '#d8c070', '#e8d48a', '#a88a44', '#7a8a3a'], 22, [5, 13], 1.4);
   },
   forestFloor: (x) => {
-    base(x, '#3e3020', '#5a4a2e', 31, 16);
-    specks(x, 300, ['rgba(30,20,10,0.5)', 'rgba(90,110,50,0.5)'], 32, [1, 2.5]);
-    leaves(x, 520, ['#b8642a', '#d8902e', '#8a4a22', '#a87a34', '#6a7a2e', '#c8a040', '#7a3a1e'], 33);
-    cracks(x, 22, 'rgba(40,26,14,0.8)', 34, 1.4);
+    base(x, '#4a3a26', '#5e4c30', 31, 12);
+    specks(x, 200, ['rgba(40,28,14,0.35)', 'rgba(90,100,50,0.35)'], 32, [1, 2.5]);
+    leaves(x, 240, ['#8a5a2e', '#9a6a34', '#7a4a26', '#8a7036', '#6a6a30', '#a07a3a'], 33);
+    cracks(x, 10, 'rgba(40,26,14,0.5)', 34, 1.2);
   },
   snow: (x) => {
-    base(x, '#d8e2f0', '#f6f9ff', 41, 8);
-    specks(x, 500, ['rgba(255,255,255,0.9)', 'rgba(190,205,230,0.6)'], 42, [0.6, 1.6]);
-    specks(x, 90, ['rgba(170,190,220,0.35)'], 43, [3, 7]);
+    base(x, '#e2eaf4', '#f6f9ff', 41, 5);
+    specks(x, 90, ['rgba(255,255,255,0.5)', 'rgba(215,222,238,0.3)'], 42, [0.8, 1.6]);
+    specks(x, 40, ['rgba(200,212,232,0.18)'], 43, [6, 12]);
   },
   dirt: (x) => {
     base(x, '#5e4228', '#8a6640', 51, 22);

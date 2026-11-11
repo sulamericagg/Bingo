@@ -49,11 +49,12 @@ const BGRASS: Record<string, [number, number]> = {
   bambu: [0.95, 1.1],
 };
 /** camadas de textura por bioma: cobertura (onde tem grama) e terra (clareiras, escavação) */
-const BCOVER: Record<string, number> = { bosque: TL.grass, nevado: TL.snow, tropical: TL.grass, cerejeiras: TL.grass, cogumelos: TL.forestFloor, cristal: TL.snow, savana: TL.dryGrass, pantano: TL.grass, deserto: TL.sand, outono: TL.forestFloor, montanha: TL.dryGrass, bambu: TL.grass };
+const BCOVER: Record<string, number> = { bosque: TL.grass, nevado: TL.snow, tropical: TL.grass, cerejeiras: TL.grass, cogumelos: TL.grass, cristal: TL.snow, savana: TL.dryGrass, pantano: TL.grass, deserto: TL.sand, outono: TL.forestFloor, montanha: TL.dryGrass, bambu: TL.grass };
 const BDIRT: Record<string, number> = { bosque: TL.dirt, nevado: TL.gravel, tropical: TL.redDirt, cerejeiras: TL.dirt, cogumelos: TL.mud, cristal: TL.gravel, savana: TL.redDirt, pantano: TL.mud, deserto: TL.redDirt, outono: TL.dirt, montanha: TL.gravel, bambu: TL.dirt };
 const BCV = WBIOMES.map((b) => BCOVER[b.id] ?? TL.grass);
 const BDT = WBIOMES.map((b) => BDIRT[b.id] ?? TL.dirt);
 const _w = new Float32Array(NL);
+const _sh2 = new Float32Array(4);
 const BGK = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[0]);
 const BGH = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[1]);
 const _sh = new Float32Array(4);
@@ -537,6 +538,16 @@ export class Chunk {
     const dx = (hr - hl) / (i > 0 && i < RES ? 2 : 1);
     const dz = (hu - hd) / (j > 0 && j < RES ? 2 : 1);
     return this.shadeAt(i, j, dx, dz, out)[3];
+  }
+  /** pesos das texturas do chão no vértice (i,j) em w (NL) */
+  splatAt(i: number, j: number, w: Float32Array): Float32Array {
+    const h = this.h;
+    const hl = h[j * VN + Math.max(0, i - 1)];
+    const hr = h[j * VN + Math.min(RES, i + 1)];
+    const hd = h[Math.max(0, j - 1) * VN + i];
+    const hu = h[Math.min(RES, j + 1) * VN + i];
+    this.shadeAt(i, j, (hr - hl) / (i > 0 && i < RES ? 2 : 1), (hu - hd) / (j > 0 && j < RES ? 2 : 1), _sh2, w);
+    return w;
   }
   /** altura da grama de lâminas no vértice (multiplicador do bioma; mais baixa nas manchas secas) */
   grassH(i: number, j: number): number {
