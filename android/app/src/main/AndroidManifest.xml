@@ -50,6 +50,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Caça Bloop: localização só com o jogo aberto (sem ACCESS_BACKGROUND_LOCATION); processada só no aparelho -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <!-- Lembretes do bichinho (local-notifications) no Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- O bichinho usa lembretes aproximados; alarme exato é restrito pela Google Play -->
