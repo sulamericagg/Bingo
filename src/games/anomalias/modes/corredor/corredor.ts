@@ -112,7 +112,6 @@ export class CorredorRun implements ModeRun {
     this.me.x = 0;
     this.me.z = 1.2;
     this.me.yaw = 0;
-    this.me.speed = 2.9;
     this.ui = new ModeUi(o.root, 'co-hud');
     this.buildHud();
     this.ctl = new FpsControls(o.root, { joystick: { zoneWidth: 0.45, zoneTop: 0.25 }, look: { mouse: true } });
@@ -182,9 +181,9 @@ export class CorredorRun implements ModeRun {
     for (const f of this.anims) f(dt, this.loopT);
     this.walkerStep(dt);
     // câmera (rolagem só dentro do corredor, para a anomalia "torto")
-    this.me.apply(this.cam, EYE_H);
     const inHall = this.me.z < 0 && this.me.z > -HL;
-    if (this.roll.v) this.cam.rotation.z += this.roll.v * (inHall ? 1 : 0);
+    this.me.lastDt = dt;
+    this.me.apply(this.cam, inHall ? this.roll.v : 0);
     if (this.state === 'win') {
       this.winT += dt;
       if (this.winT > 2.6) this.finish(true);

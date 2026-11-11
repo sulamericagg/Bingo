@@ -317,7 +317,7 @@ ${card('corredor', `<i>${MI.exit()}</i><em>${MI.uturn()}</em>`, t('ano.mode.corr
     }).join('');
     const diffs = DIFFS.map((d) => `<button class="ano-diff${d === sv.diff ? ' on' : ''}" data-d="${d}">${DIFF_EMOJI[d]} ${esc(diffName(d))}</button>`).join('');
     m.innerHTML = `
-${this.subTop(t('ano.mode.turno', 'Turno da noite'), t('ano.tagline', 'Turno da noite: ache o que mudou e tire foto!'), IC.camera())}
+${this.subTop(t('ano.mode.turno', 'Turno da noite'), t('ano.mode.turnoSub', 'Ache o que mudou e tire foto'), IC.camera())}
 <div class="ano-maps">${maps}</div>
 <div class="ano-row"><div class="ano-nights">${nights}</div></div>
 <div class="ano-row last"><div class="ano-diffs">${diffs}</div>

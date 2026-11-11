@@ -10,7 +10,8 @@
 import * as THREE from 'three';
 import { settingsFor, type Tier } from '../../../core/quality';
 import type { FpsControls } from '../../../ui/touch';
-import { slide, type Box } from '../core/world';
+import type { Box } from '../core/world';
+import { AabbCollider, FpCamera, FpController, fpTuning } from '../../../3d/fpkit';
 import type { ModeUi } from './ui';
 
 export interface ModeRun {
@@ -56,73 +57,103 @@ export function snap(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Came
 
 export const EYE_H = 1.55;
 
-/** andar em 1ª pessoa — mesma sensação da Cozinha (render3d.ts): acelera ~10/s, freia ~14/s, bob ×9 */
+/**
+ * andar em 1ª pessoa com o kit compartilhado (src/3d/fpkit — o "feel" da Cozinha), preset indoor.
+ * Colisão: AabbCollider com o filtro de altura do núcleo (0,15–1,7 m). API pequena para os modos.
+ */
 export class Walker {
-  x = 0;
-  z = 0;
-  yaw = 0;
-  pitch = 0;
-  vx = 0;
-  vz = 0;
-  speedK = 0;
-  private bob = 0;
+  readonly fp: FpController;
+  readonly cam: FpCamera;
+  private col = new AabbCollider();
+  private colSrc: Box[] | null = null;
   private stepAcc = 0;
-  speed = 3.0;
-  r = 0.3;
   /** giro automático (botão "voltar"): radianos que faltam */
   turnLeft = 0;
+  constructor(speed = 2.9) {
+    const tune = fpTuning('indoor', { speed, eye: EYE_H, pitchMin: -1.2, pitchMax: 1.05 });
+    this.col.y0 = 0.15;
+    this.col.y1 = 1.7;
+    this.fp = new FpController(tune, this.col);
+    this.cam = new FpCamera(tune);
+  }
+  get x(): number {
+    return this.fp.x;
+  }
+  set x(v: number) {
+    this.fp.x = v;
+  }
+  get z(): number {
+    return this.fp.z;
+  }
+  set z(v: number) {
+    this.fp.z = v;
+  }
+  get vx(): number {
+    return this.fp.vx;
+  }
+  set vx(v: number) {
+    this.fp.vx = v;
+  }
+  get vz(): number {
+    return this.fp.vz;
+  }
+  set vz(v: number) {
+    this.fp.vz = v;
+  }
+  get yaw(): number {
+    return this.cam.yaw;
+  }
+  set yaw(v: number) {
+    this.cam.yaw = v;
+  }
+  get pitch(): number {
+    return this.cam.pitch;
+  }
+  set pitch(v: number) {
+    this.cam.pitch = v;
+  }
+  get speedK(): number {
+    return this.fp.speedK;
+  }
+  set speed(v: number) {
+    this.fp.tune.speed = v;
+  }
 
   /** devolve true quando deu um passo (som) */
-  update(dt: number, ctl: FpsControls | null, cols: Box[], lock = false): boolean {
+  update(dt: number, ctl: FpsControls | null, cols: Box[]): boolean {
+    if (cols !== this.colSrc) {
+      this.colSrc = cols;
+      this.col.boxes = cols.map((b) => ({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z, y0: b.min.y, y1: b.max.y }));
+    }
     let mx = 0,
       my = 0;
-    if (ctl && !lock) {
+    if (ctl) {
       const [lx, ly] = ctl.consumeLook(dt);
-      this.yaw -= lx;
-      this.pitch = Math.max(-1.2, Math.min(1.05, this.pitch - ly));
+      this.cam.look(lx, ly);
       [mx, my] = ctl.dir();
     }
     if (this.turnLeft !== 0) {
       const s = Math.sign(this.turnLeft) * Math.min(Math.abs(this.turnLeft), dt * 5.2);
-      this.yaw += s;
+      this.cam.yaw += s;
       this.turnLeft -= s;
-      this.pitch *= 1 - Math.min(1, dt * 4);
+      this.cam.pitch *= 1 - Math.min(1, dt * 4);
     }
-    const fx = -Math.sin(this.yaw),
-      fz = -Math.cos(this.yaw);
-    const rx = Math.cos(this.yaw),
-      rz = -Math.sin(this.yaw);
-    const sp = this.speed;
-    const tvx = (fx * my + rx * mx) * sp;
-    const tvz = (fz * my + rz * mx) * sp;
-    const k = mx || my ? 10 : 14;
-    this.vx += (tvx - this.vx) * Math.min(1, dt * k);
-    this.vz += (tvz - this.vz) * Math.min(1, dt * k);
-    const ox = this.x,
-      oz = this.z;
-    this.x += this.vx * dt;
-    this.z += this.vz * dt;
-    slide(this, this.r, cols);
-    const moved = Math.hypot(this.x - ox, this.z - oz);
-    this.speedK = Math.min(1, moved / Math.max(1e-4, dt) / sp);
-    this.bob += dt * 9 * this.speedK;
-    this.stepAcc += moved;
+    const ox = this.fp.x,
+      oz = this.fp.z;
+    this.fp.steer(dt, mx, my, this.cam.yaw);
+    this.fp.move(dt);
+    this.stepAcc += Math.hypot(this.fp.x - ox, this.fp.z - oz);
     if (this.stepAcc > 0.7) {
       this.stepAcc = 0;
       return true;
     }
     return false;
   }
-  apply(cam: THREE.PerspectiveCamera, eye = EYE_H, shake = 0): void {
-    const bobY = Math.sin(this.bob * 2) * 0.025 * this.speedK;
-    const roll = Math.cos(this.bob) * 0.008 * this.speedK;
-    const sx = shake ? (Math.random() - 0.5) * shake : 0;
-    const sy = shake ? (Math.random() - 0.5) * shake : 0;
-    cam.rotation.order = 'YXZ';
-    cam.rotation.set(this.pitch + sy * 0.5, this.yaw + sx * 0.5, roll);
-    cam.position.set(this.x + sx, eye + bobY + sy, this.z);
-    cam.updateMatrixWorld();
+  apply(cam: THREE.PerspectiveCamera, extraRoll = 0): void {
+    this.cam.extraRoll = extraRoll;
+    this.cam.apply(cam, this.lastDt, this.fp, this.col);
   }
+  lastDt = 1 / 60;
 }
 
 /** materiais simples em cache por cor (o modo descarta tudo no fim) */
