@@ -1665,22 +1665,72 @@ export class Extra2D {
   }
 
   private foot(x: CanvasRenderingContext2D, fx: number, fy: number, r: number, top: number): void {
-    // perna (calça) + tênis de desenho animado
-    const w = r * 1.5;
-    x.fillStyle = '#3f5fbf';
-    x.fillRect(fx - r * 0.45, top - 60, r * 0.9, fy - r * 0.55 - (top - 60));
-    x.fillStyle = '#2f4a9a';
-    x.fillRect(fx - r * 0.45, fy - r * 0.75, r * 0.9, 12);
-    x.fillStyle = '#2a0b5c';
-    roundRect(x, fx - w / 2 - 4, fy - r * 0.62 - 4, w + 8, r * 0.62 + 8, r * 0.3);
+    // perna de calça jeans + tênis de desenho (sola branca, bico arredondado, cadarços, listra)
+    const ink = '#2a0b5c';
+    const legW = r * 0.95;
+    const ankle = fy - r * 0.62;
+    x.fillStyle = ink;
+    x.fillRect(fx - legW / 2 - 3, top - 80, legW + 6, ankle - (top - 80) + 4);
+    const jg = x.createLinearGradient(fx - legW / 2, 0, fx + legW / 2, 0);
+    jg.addColorStop(0, '#2f4a9a');
+    jg.addColorStop(0.5, '#4a6ad0');
+    jg.addColorStop(1, '#2a3e86');
+    x.fillStyle = jg;
+    x.fillRect(fx - legW / 2, top - 80, legW, ankle - (top - 80));
+    x.strokeStyle = 'rgba(255,220,120,.6)';
+    x.setLineDash([5, 4]);
+    x.lineWidth = 2;
+    x.beginPath();
+    x.moveTo(fx - legW * 0.35, top - 80);
+    x.lineTo(fx - legW * 0.35, ankle);
+    x.stroke();
+    x.setLineDash([]);
+    x.fillStyle = '#26387a';
+    x.fillRect(fx - legW / 2 - 4, ankle - 14, legW + 8, 14);
+    // tênis
+    const back = fx - r * 0.75;
+    const toe = fx + r * 0.95;
+    const h = r * 0.62;
+    x.fillStyle = ink;
+    x.beginPath();
+    x.moveTo(back - 4, fy + 3);
+    x.lineTo(back - 4, fy - h - 4);
+    x.quadraticCurveTo(fx, fy - h - 10, fx + r * 0.35, fy - h * 0.62);
+    x.quadraticCurveTo(toe + 6, fy - h * 0.55, toe + 6, fy - 4);
+    x.lineTo(toe + 6, fy + 3);
+    x.closePath();
     x.fill();
-    x.fillStyle = '#ff5a5a';
-    roundRect(x, fx - w / 2, fy - r * 0.62, w, r * 0.62, r * 0.28);
+    x.fillStyle = '#ff4a5a';
+    x.beginPath();
+    x.moveTo(back, fy - 8);
+    x.lineTo(back, fy - h);
+    x.quadraticCurveTo(fx, fy - h - 6, fx + r * 0.35, fy - h * 0.6);
+    x.quadraticCurveTo(toe, fy - h * 0.52, toe, fy - 8);
+    x.closePath();
     x.fill();
-    x.fillStyle = '#fff';
-    x.fillRect(fx - w / 2, fy - 12, w, 10);
-    x.fillStyle = '#ffe14d';
-    for (let i = 0; i < 3; i++) x.fillRect(fx - r * 0.2 + i * r * 0.18, fy - r * 0.55, r * 0.08, r * 0.3);
+    // bico branco + sola
+    x.fillStyle = '#ffffff';
+    x.beginPath();
+    x.ellipse(toe - r * 0.28, fy - 10, r * 0.32, h * 0.22, 0, Math.PI, TAU);
+    x.fill();
+    x.fillRect(back, fy - 10, toe - back, 10);
+    x.fillStyle = '#d8dce8';
+    x.fillRect(back, fy - 3, toe - back, 3);
+    // listra e cadarços
+    x.strokeStyle = '#ffffff';
+    x.lineWidth = r * 0.08;
+    x.beginPath();
+    x.moveTo(back + r * 0.25, fy - h * 0.25);
+    x.quadraticCurveTo(fx, fy - h * 0.7, fx + r * 0.3, fy - h * 0.3);
+    x.stroke();
+    x.strokeStyle = '#ffe14d';
+    x.lineWidth = 3;
+    for (let i = 0; i < 3; i++) {
+      x.beginPath();
+      x.moveTo(fx - r * 0.12 + i * r * 0.14, fy - h * 0.92 + i * 4);
+      x.lineTo(fx + r * 0.08 + i * r * 0.14, fy - h * 0.78 + i * 4);
+      x.stroke();
+    }
   }
 
   private ufo(x: CanvasRenderingContext2D, ux: number, uy: number, time: number): void {

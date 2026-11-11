@@ -16,6 +16,8 @@ const PORT = Number(arg('port', 5291));
 const OUT = arg('out', 'shots-dis3');
 const ONLY = arg('only', '');
 const TIER = Number(arg('tier', 2));
+const [VW, VH] = arg('size', '844x390').split('x').map(Number);
+const SUF = arg('suffix', '');
 mkdirSync(OUT, { recursive: true });
 
 const SAVE = {
@@ -38,7 +40,7 @@ const list = (ONLY ? ONLY.split(',') : PLAN).map((s) => {
 });
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 1 });
+const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
 await ctx.addInitScript(
   ({ save, tier }) => {
     try {
@@ -111,7 +113,7 @@ if (!process.argv.includes('--no2d')) {
       g.startRound();
       let guard = 0;
       const near = () => !g.fluid || !g.fluid.dir || it.key.startsWith('vulcao') || Math.abs(g.fluid.front - g.me.x) < 260 || g.phaseT > it.t + 14;
-      const done = () => (it.t < 0 ? g.phase === 'prepare' && g.phaseT > -it.t : g.phase === 'disaster' && g.phaseT >= it.t && near());
+      const done = () => (it.t === 0 ? g.phase === 'warn' && g.phaseT > 1 : it.t < 0 ? g.phase === 'prepare' && g.phaseT > -it.t : g.phase === 'disaster' && g.phaseT >= it.t && near());
       while (!done() && guard++ < 60 * 140) {
         g.me.shield = 9;
         g.update(1 / 60);
@@ -128,7 +130,7 @@ if (!process.argv.includes('--no2d')) {
     }, it);
     await p.waitForTimeout(250);
     await p.evaluate(() => window.dz.draw.frame());
-    await p.screenshot({ path: `${OUT}/2d-${it.key}.png` });
+    await p.screenshot({ path: `${OUT}/2d-${it.key}${SUF}.png` });
     console.log('2d', it.key, JSON.stringify(info));
   }
 }
@@ -158,7 +160,7 @@ if (!process.argv.includes('--no3d')) {
           };
           let guard = 0;
           const tt = it.t < 0 ? 6 : Math.min(it.t, 18);
-          while (!(g.phase === 'disaster' && g.phaseT >= tt) && guard++ < 60 * 120) {
+          while (!(it.t === 0 ? g.phase === 'warn' && g.phaseT > 1 : g.phase === 'disaster' && g.phaseT >= tt) && guard++ < 60 * 120) {
             if (!me.alive) {
               me.alive = true;
               me.pos.set(0, g.topAt(0, -12), -12);
@@ -187,7 +189,7 @@ if (!process.argv.includes('--no3d')) {
       );
       await p.waitForTimeout(900);
       await p.evaluate(() => window.dz3.render(1 / 60));
-      await p.screenshot({ path: `${OUT}/3d-${view}-${it.key}.png` });
+      await p.screenshot({ path: `${OUT}/3d-${view}-${it.key}${SUF}.png` });
       console.log('3d', view, it.key, JSON.stringify(info));
     }
   }
