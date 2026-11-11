@@ -15,7 +15,7 @@ import { tap } from '../../core/haptics';
 import { sfx } from '../../3d/common/sfx';
 import { bigMoment, notify } from '../../ui/notify';
 import { bindButton, createJoystick, createLook, type Joystick, type LookDrag, type BoundButton } from '../../ui/touch';
-import { LIMITS, isVehicle, type Action, type Creation, type Joint, type LogicRule, type Part, type SoundId, type Vec3 } from '../format';
+import { LIMITS, isVehicle, type Objective, type Action, type Creation, type Joint, type LogicRule, type Part, type SoundId, type Vec3 } from '../format';
 import { Batcher, buildPart, disposeTree, partMatrix, resolveRef, type Resolver } from '../render/build';
 import { primGeometry } from '../render/geo';
 import { materialFor } from '../render/mats';
@@ -46,6 +46,23 @@ export interface PlayHost {
   onExit(): void;
   /** venceu o mapa (chegada ou ficha "vencer") */
   onWin?(timeSec: number, score: number): void;
+  /** "Testar daqui": começa neste ponto em vez do ponto de início */
+  spawnAt?: THREE.Vector3;
+}
+
+interface Enemy {
+  inst: Inst;
+  part: Part;
+  cl: Cluster;
+  home: THREE.Vector3;
+  dead: boolean;
+  t: number;
+  half: THREE.Vector3;
+}
+interface ObjState {
+  o: Objective;
+  done: boolean;
+  box?: THREE.Box3;
 }
 
 interface Pose {
@@ -186,6 +203,15 @@ export class PlaySession {
   private pressCd = 0;
   private camPos = new THREE.Vector3();
   private disposed = false;
+  private enemies: Enemy[] = [];
+  private defeated = 0;
+  private collected = 0;
+  private hurtCd = 0;
+  private objs: ObjState[] = [];
+  private missionEl: HTMLElement | null = null;
+  private endEl: HTMLElement | null = null;
+  private islandBodies = new Map<string, CANNON.Body>();
+  private inWater = false;
 
   constructor(
     private C: CannonNS,
@@ -212,6 +238,10 @@ export class PlaySession {
     this.addInstance(doc, new THREE.Matrix4(), 0);
     this.flushStatic();
     this.findSpawn();
+    if (h.spawnAt) {
+      const gh = h.world.heightAt(h.spawnAt.x, h.spawnAt.z);
+      this.spawn.set(h.spawnAt.x, Math.max(h.spawnAt.y, Number.isFinite(gh) ? gh : 0) + 1.2, h.spawnAt.z);
+    }
 
     // o Bloop
     this.avatar = new BloopAvatar(h.standard);
@@ -244,8 +274,245 @@ export class PlaySession {
     for (const inst of this.insts) inst.vm?.emit('start');
     this.updateChip();
     // testar um veículo (sem ponto de início): já começa sentado ao volante
-    if (doc.kind === 'vehicle' && this.vehicles.length && !doc.parts.some((p) => p.role === 'spawn')) this.enter(this.vehicles[0]);
+    if (doc.kind === 'vehicle' && this.vehicles.length && !doc.parts.some((p) => p.role === 'spawn') && !h.spawnAt) this.enter(this.vehicles[0]);
+    this.setupMission();
   }
+
+  /* --------------------------------- missão --------------------------------- */
+
+  private get mission() {
+    return this.doc.mission && this.doc.mission.objectives.length ? this.doc.mission : null;
+  }
+
+  private setupMission(): void {
+    const m = this.mission;
+    if (!m) return;
+    if (m.lives) this.lives = this.livesStart = m.lives;
+    const inst = this.insts[0];
+    this.objs = m.objectives.map((o) => {
+      const st: ObjState = { o, done: false };
+      if (o.part != null && inst?.pose.has(o.part)) {
+        const p = inst.c.parts.find((q) => q.id === o.part);
+        if (p) st.box = this.boxOf(p, inst);
+      }
+      return st;
+    });
+    this.missionEl = document.createElement('div');
+    this.missionEl.className = 'bs-mission';
+    this.hud.appendChild(this.missionEl);
+    this.hasGoal = true;
+    this.renderMission();
+    notify(this.objText(this.objs[0].o, 0), { icon: 'target', key: 'mission' });
+  }
+
+  /** quanto falta: total de coletáveis / inimigos se o objetivo não disse N */
+  private objTarget(o: Objective): number {
+    if (o.k === 'collect') return o.n ?? Math.max(1, this.collects.length);
+    if (o.k === 'defeat') return o.n ?? Math.max(1, this.enemies.length);
+    if (o.k === 'survive') return o.sec ?? 30;
+    return 1;
+  }
+  private objText(o: Objective, have: number): string {
+    const n = this.objTarget(o);
+    switch (o.k) {
+      case 'reach':
+        return t('studio.mis.reach', 'Chegue ao ponto final');
+      case 'drive':
+        return t('studio.mis.drive', 'Pilote até a chegada');
+      case 'collect':
+        return t('studio.mis.collectN', 'Colete {a}/{b}', { a: Math.min(have, n), b: n });
+      case 'defeat':
+        return t('studio.mis.defeatN', 'Derrote {a}/{b} inimigos', { a: Math.min(have, n), b: n });
+      case 'survive':
+        return t('studio.mis.surviveN', 'Sobreviva {a}/{b} s', { a: Math.min(Math.floor(have), n), b: n });
+    }
+  }
+  private objHave(o: Objective): number {
+    return o.k === 'collect' ? this.collected : o.k === 'defeat' ? this.defeated : o.k === 'survive' ? this.time : 0;
+  }
+  private renderMission(): void {
+    const el = this.missionEl;
+    const m = this.mission;
+    if (!el || !m) return;
+    const seq = m.order === 'seq';
+    const cur = this.objs.findIndex((x) => !x.done);
+    const ICON: Record<string, string> = { reach: '⚑', drive: '🏁', collect: '◆', defeat: '✖', survive: '⏱' };
+    const rows = this.objs
+      .map((x, i) => (seq && i > cur && cur >= 0 ? '' : `<div class="${x.done ? 'ok' : ''}"><i>${x.done ? '✔' : ICON[x.o.k]}</i>${this.objText(x.o, this.objHave(x.o))}</div>`))
+      .join('');
+    const tl = m.time ? `<div class="tl"><i>⏱</i>${Math.max(0, Math.ceil(m.time - this.time))} s</div>` : '';
+    const html = rows + tl;
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  /** confere objetivos; vence quando todos estão feitos */
+  private checkMission(pos: THREE.Vector3): void {
+    const m = this.mission;
+    if (!m || this.won || this.lost) return;
+    const seq = m.order === 'seq';
+    let changed = false;
+    for (let i = 0; i < this.objs.length; i++) {
+      const x = this.objs[i];
+      if (x.done) continue;
+      const o = x.o;
+      let ok = false;
+      if (o.k === 'collect' || o.k === 'defeat' || o.k === 'survive') ok = this.objHave(o) >= this.objTarget(o);
+      else if (o.k === 'reach' || o.k === 'drive') {
+        if (o.k === 'drive' && !this.driving) ok = false;
+        else if (x.box) ok = x.box.distanceToPoint(pos) < (o.k === 'drive' ? 2.2 : 0.7);
+        else ok = this.goals.some((g) => g.box.distanceToPoint(pos) < (o.k === 'drive' ? 2.2 : 0.7));
+      }
+      if (ok) {
+        x.done = true;
+        changed = true;
+        sfx.catch();
+        tap('medium');
+        const next = this.objs.find((y) => !y.done);
+        if (next) notify(t('studio.mis.next', 'Feito! Agora: {o}', { o: this.objText(next.o, this.objHave(next.o)) }), { icon: 'check', kind: 'good', key: 'mission' });
+      }
+      if (seq) break;
+    }
+    if (m.time && this.time >= m.time && !this.objs.every((x) => x.done)) {
+      if (this.objs.every((x) => x.done || x.o.k === 'survive')) this.objs.forEach((x) => (x.done = true));
+      else return this.lose();
+    }
+    if (this.objs.every((x) => x.done)) this.win();
+    else if (changed) this.renderMission();
+  }
+
+  /** tela de fim (vitória ou derrota) com Jogar de novo / Editar */
+  private endScreen(won: boolean): void {
+    this.endEl?.remove();
+    const m = this.mission;
+    const el = document.createElement('div');
+    el.className = 'bs-end ' + (won ? 'win' : 'lose');
+    el.setAttribute('data-touch-ignore', '');
+    const title = won ? m?.win || t('studio.end.win', 'Você venceu!') : m?.lose || t('studio.end.lose', 'Não foi dessa vez!');
+    const stats = [`⏱ ${this.timeStr()}`];
+    if (this.score) stats.push(`★ ${this.score}`);
+    if (this.collected) stats.push(`◆ ${this.collected}`);
+    if (this.defeated) stats.push(`✖ ${this.defeated}`);
+    el.innerHTML = `<div class="bs-endcard"><div class="bs-endic">${won ? '🏆' : '💥'}</div><h2></h2><p>${stats.join('   ')}</p>
+      <div class="bs-endrow"><button class="bs-endbtn" data-e="again">${t('studio.end.again', 'Jogar de novo')}</button><button class="bs-endbtn alt" data-e="exit">${this.h.exitLabel}</button></div></div>`;
+    el.querySelector('h2')!.textContent = title;
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-e]');
+      if (!b) return;
+      if (b.dataset.e === 'again') this.restart();
+      else this.h.onExit();
+    });
+    this.hud.appendChild(el);
+    this.endEl = el;
+  }
+
+  /* --------------------------------- inimigos --------------------------------- */
+
+  private stepEnemies(dt: number, pos: THREE.Vector3): void {
+    this.hurtCd -= dt;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      e.t += dt;
+      const b = e.cl.body;
+      const cur = new THREE.Vector3(b.position.x, b.position.y, b.position.z);
+      const toMe = pos.clone().sub(cur);
+      toMe.y = 0;
+      let want: THREE.Vector3;
+      if (!this.driving && toMe.length() < 9 && Math.abs(pos.y - cur.y) < 4) want = toMe.normalize().multiplyScalar(2.3);
+      else {
+        // passeia em volta de casa
+        const tgt = e.home.clone().add(new THREE.Vector3(Math.sin(e.t * 0.6) * 3, 0, Math.cos(e.t * 0.45) * 3));
+        want = tgt.sub(cur);
+        want.y = 0;
+        if (want.length() > 0.1) want.normalize().multiplyScalar(1.4);
+      }
+      const np = cur.clone().addScaledVector(want, dt);
+      if (np.distanceTo(e.home) > 14) np.copy(cur);
+      b.velocity.set((np.x - cur.x) / dt, 0, (np.z - cur.z) / dt);
+      b.position.set(np.x, e.home.y + Math.abs(Math.sin(e.t * 6)) * 0.12, np.z);
+      if (want.lengthSq() > 0.01) b.quaternion.setFromEuler(0, Math.atan2(want.x, want.z), 0);
+      // encostou?
+      if (this.driving) {
+        const vp = this.driving.cl.body.position;
+        if (Math.hypot(vp.x - np.x, vp.z - np.z) < e.half.x + 1.2 && Math.abs(vp.y - np.y) < 2) this.defeat(e);
+        continue;
+      }
+      const box = new THREE.Box3(np.clone().sub(e.half), np.clone().add(e.half));
+      if (box.distanceToPoint(pos) < 0.5) {
+        if (pos.y > box.max.y - 0.1 && this.me.velocity.y < 0.5) {
+          this.defeat(e);
+          this.me.velocity.y = 6.5;
+        } else if (this.hurtCd <= 0) {
+          this.hurtCd = 1.2;
+          this.die();
+          notify(t('studio.play.ouch', 'Ops! De volta ao checkpoint'), { icon: 'warning', kind: 'warn', key: 'ouch' });
+        }
+      }
+    }
+  }
+  private defeat(e: Enemy): void {
+    e.dead = true;
+    e.cl.obj.visible = false;
+    this.world.removeBody(e.cl.body);
+    this.defeated++;
+    sfx.pop();
+    tap('medium');
+    this.renderMission();
+  }
+
+  /* ---------------------------------- água ---------------------------------- */
+
+  private buoyancy(dt: number): void {
+    const W = this.h.world;
+    const C = this.C;
+    const float = (b: CANNON.Body, size: number) => {
+      if (b.mass <= 0 || b.sleepState === 2) return false;
+      const wy = W.waterAt(b.position.x, b.position.z);
+      if (!Number.isFinite(wy)) return false;
+      const depth = wy + size * 0.25 - b.position.y;
+      if (depth <= 0) return false;
+      const k = Math.min(1.6, depth / Math.max(0.3, size * 0.5));
+      b.applyForce(new C.Vec3(0, b.mass * 9.82 * (0.4 + k * 1.1), 0));
+      b.velocity.scale(1 - Math.min(0.5, 1.6 * dt), b.velocity);
+      b.angularVelocity.scale(1 - Math.min(0.5, 2 * dt), b.angularVelocity);
+      return true;
+    };
+    for (const v of this.vehicles) {
+      const inW = float(v.cl.body, 1.2 + v.size * 0.1);
+      if (inW) {
+        // boia de pé: endireita com força (barquinho não vira)
+        const b = v.cl.body;
+        const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+        const ax = up.y < -0.9 ? new THREE.Vector3(1, 0, 0).applyQuaternion(q) : up.clone().cross(UP);
+        const tq = ax.multiplyScalar(v.mass * 40);
+        b.applyTorque(new C.Vec3(tq.x, tq.y, tq.z));
+        b.angularVelocity.x *= 1 - Math.min(0.8, 6 * dt);
+        b.angularVelocity.z *= 1 - Math.min(0.8, 6 * dt);
+      }
+      if (inW && this.driving === v) {
+        // na água o carro vira barquinho: o joystick empurra e vira
+        const b = v.cl.body;
+        const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q).multiplyScalar(this.joyY * v.mass * 5);
+        b.applyForce(new C.Vec3(f.x, 0, f.z));
+        b.angularVelocity.y += -this.joyX * 1.6 * dt;
+      }
+    }
+    for (const cl of this.clusters) if (cl.kind === 'dynamic' && !this.vehicles.some((v) => v.cl === cl)) float(cl.body, 1);
+    for (const sp of this.spawned) float(sp.body, 0.8);
+    // o Bloop nada: sobe devagar até a superfície e pode pular para sair
+    this.inWater = false;
+    if (!this.driving) {
+      const me = this.me;
+      const wy = W.waterAt(me.position.x, me.position.z);
+      if (Number.isFinite(wy) && me.position.y < wy + 0.1) {
+        this.inWater = true;
+        me.velocity.y += (wy - 0.15 - me.position.y) * 30 * dt + 9.82 * dt * 0.9;
+        me.velocity.y *= 1 - Math.min(0.6, 3 * dt);
+      }
+    }
+  }
+  private joyX = 0;
+  private joyY = 0;
 
   /** todo corpo do mundo usa o material "sólido" (o Bloop desliza sem grudar em nada) */
   private add(b: CANNON.Body): void {
@@ -258,7 +525,34 @@ export class PlaySession {
   private groundBodies(): void {
     const C = this.C;
     const k = this.h.world.kind;
-    if (k === 'flat') {
+    const f = this.h.world.field;
+    if (k === 'flat' && f) {
+      // relevo: heightfield na grade + 4 lajes em volta (o relevo pode ficar abaixo de 0)
+      const n = f.n;
+      const H = f.half;
+      const data: number[][] = [];
+      for (let i = 0; i < n; i++) {
+        const row: number[] = [];
+        for (let j = 0; j < n; j++) row.push(f.h[(n - 1 - j) * n + i]);
+        data.push(row);
+      }
+      const hb = new C.Body({ mass: 0 });
+      hb.addShape(new C.Heightfield(data, { elementSize: f.cell }));
+      hb.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+      hb.position.set(-H, 0, H);
+      this.add(hb);
+      const S = 2000;
+      const slab = (cx: number, cz: number, hx: number, hz: number) => {
+        const b = new C.Body({ mass: 0 });
+        b.addShape(new C.Box(new C.Vec3(hx, 25, hz)));
+        b.position.set(cx, -25, cz);
+        this.add(b);
+      };
+      slab(0, -(H + S) / 2 - 0, S, (S - H) / 2);
+      slab(0, (H + S) / 2, S, (S - H) / 2);
+      slab(-(H + S) / 2, 0, (S - H) / 2, H);
+      slab((H + S) / 2, 0, (S - H) / 2, H);
+    } else if (k === 'flat') {
       const b = new C.Body({ mass: 0 });
       b.addShape(new C.Plane());
       b.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
@@ -313,6 +607,23 @@ export class PlaySession {
     this.treeT -= dt;
     if (this.treeT <= 0) {
       this.treeT = 0.5;
+      const isl = this.h.world.islandsNear?.(focus.x, focus.z, 60) ?? [];
+      const iw = new Set<string>();
+      for (const s of isl) {
+        const k = s.x.toFixed(1) + ',' + s.z.toFixed(1);
+        iw.add(k);
+        if (this.islandBodies.has(k)) continue;
+        const b = new C.Body({ mass: 0 });
+        b.addShape(new C.Cylinder(s.r, s.r * 0.92, 0.35, 16));
+        b.position.set(s.x, s.y - 0.175, s.z);
+        this.add(b);
+        this.islandBodies.set(k, b);
+      }
+      for (const [k, b] of this.islandBodies)
+        if (!iw.has(k)) {
+          this.world.removeBody(b);
+          this.islandBodies.delete(k);
+        }
       const near = this.h.world.treesNear(focus.x, focus.z, 40);
       const want = new Set<string>();
       for (const tr of near) {
@@ -397,6 +708,8 @@ export class PlaySession {
           for (const q of grp(tp)) if (!moving.has(q.id)) moving.set(q.id, 'dynamic');
         } else if (b.k === 'color' || b.k === 'destroy' || b.k === 'light') scriptSpecial.add(pid);
       });
+    // inimigos: cada um é um corpo cinemático que anda sozinho
+    for (const p of c.parts) if (p.role === 'enemy' && !p.hide) for (const q of grp(p)) moving.set(q.id, 'kinematic');
     // aglomerados
     const byKey = new Map<string, Part[]>();
     for (const p of c.parts) {
@@ -409,6 +722,12 @@ export class PlaySession {
       const kind = parts.some((p) => moving.get(p.id) === 'kinematic') ? 'kinematic' : 'dynamic';
       const cl = this.makeCluster(inst, k, parts, kind, null);
       for (const p of parts) inst.clusterOf.set(p.id, cl);
+      const en = parts.find((p) => p.role === 'enemy');
+      if (en) {
+        const bb = new THREE.Box3();
+        for (const p of parts) bb.union(this.boxOf(p, inst));
+        this.enemies.push({ inst, part: en, cl, home: cl.p0.clone(), dead: false, t: Math.random() * 6, half: bb.getSize(new THREE.Vector3()).multiplyScalar(0.5) });
+      }
     }
     // parados
     for (const p of c.parts) {
@@ -1054,14 +1373,37 @@ export class PlaySession {
     if (this.lost || this.won) return;
     this.lost = true;
     sfx.bump();
+    if (this.mission) {
+      bigMoment(t('studio.play.lose', 'Fim de jogo!'), { icon: 'warning' });
+      setTimeout(() => !this.disposed && this.lost && this.endScreen(false), 1200);
+      return;
+    }
     bigMoment(t('studio.play.lose', 'Fim de jogo!'), { icon: 'warning', sub: t('studio.play.again', 'Tentando de novo…') });
     setTimeout(() => !this.disposed && this.restart(), 2200);
   }
 
   /** recomeça a partida (bloco "iniciar partida" ou depois de perder) */
   private restart(): void {
+    this.endEl?.remove();
+    this.endEl = null;
     this.lost = false;
     this.won = false;
+    this.collected = 0;
+    this.defeated = 0;
+    for (const x of this.objs) x.done = false;
+    for (const c of this.collects) {
+      c.inst.gone.delete(c.part.id);
+      const m = c.inst.meshes.get(c.part.id);
+      if (m) m.visible = true;
+    }
+    for (const e of this.enemies)
+      if (e.dead) {
+        e.dead = false;
+        e.cl.obj.visible = true;
+        e.cl.body.position.set(e.home.x, e.home.y, e.home.z);
+        this.world.addBody(e.cl.body);
+      }
+    this.renderMission();
     this.score = 0;
     this.time = 0;
     this.lives = this.livesStart;
@@ -1168,6 +1510,7 @@ export class PlaySession {
     tap('heavy');
     bigMoment(t('studio.play.win', 'Chegou!'), { icon: 'trophy', sub: this.timeStr() });
     this.h.onWin?.(this.time, this.score);
+    setTimeout(() => !this.disposed && this.won && this.endScreen(true), 1400);
     void this.lost;
   }
 
@@ -1306,9 +1649,13 @@ export class PlaySession {
 
     if (this.driving) this.drive(this.driving, dt, jx, jy);
     else this.walk(dt, jx, jy);
+    this.joyX = jx;
+    this.joyY = jy;
+    this.buoyancy(dt);
 
     this.world.step(1 / 60, dt, 4);
     this.detectGround();
+    if (this.inWater) this.grounded = true;
 
     // sincroniza malhas
     for (const cl of this.clusters) {
@@ -1334,6 +1681,11 @@ export class PlaySession {
     this.streamGround(focus, dt);
     this.h.world.update(focus);
     this.triggers(dt, focus);
+    if (this.enemies.length) this.stepEnemies(dt, focus);
+    if (this.objs.length && !this.won && !this.lost) {
+      this.checkMission(focus);
+      this.renderMission();
+    }
     this.camera(dt, focus);
     if ((this.hasGoal || this.insts[0]?.vm) && !this.won) this.updateChip();
   }
@@ -1424,11 +1776,12 @@ export class PlaySession {
         }
       }
     }
-    for (const g of this.goals) if (near(g.box, 0.6)) this.win();
+    if (!this.mission) for (const g of this.goals) if (near(g.box, 0.6)) this.win();
     // coletáveis e "ao tocar"
     for (const c of this.collects) {
       if (c.inst.gone.has(c.part.id) || !near(c.box, 0.7)) continue;
       c.inst.gone.add(c.part.id);
+      this.collected++;
       const m = c.inst.meshes.get(c.part.id);
       if (m) m.visible = false;
       sfx.pop();

@@ -11,8 +11,9 @@
  *  do assento (part.role 'seat'). Rotação: Euler XYZ em graus.
  * ============================================================ */
 
-/** v1: peças, juntas, fichas. v2: + `scripts` (Blocos de lógica), + `game` (Jogo da Comunidade), + papel 'collect'. */
-export const FORMAT_VERSION = 2;
+/** v1: peças, juntas, fichas. v2: + `scripts` (Blocos de lógica), + `game` (Jogo da Comunidade), + papel 'collect'.
+ *  v3: + `terrain` (relevo esculpido + água), + `gen` (mundo infinito personalizado), + `mission` (objetivos), + papel 'enemy'. */
+export const FORMAT_VERSION = 3;
 
 export type Vec3 = [number, number, number];
 export type CreationKind = 'object' | 'vehicle' | 'map';
@@ -27,7 +28,7 @@ export const FINISHES = ['plastic', 'metal', 'glass', 'wood', 'neon', 'rubber'] 
 export type Finish = (typeof FINISHES)[number];
 
 /** Papel especial de uma peça na hora de JOGAR. */
-export const ROLES = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect'] as const;
+export const ROLES = ['seat', 'wheel', 'thruster', 'spawn', 'checkpoint', 'goal', 'button', 'zone', 'light', 'hazard', 'collect', 'enemy'] as const;
 export type PartRole = (typeof ROLES)[number];
 
 /** Física por peça: 'static' (padrão, parada e sólida), 'dynamic' (cai/empurra), 'none' (só visual, atravessável). */
@@ -212,6 +213,90 @@ export interface GameMeta {
   maxPlayers: number;
 }
 
+/* ---------------------------- v3: terreno ---------------------------- */
+
+/** materiais do chão esculpido (índice = valor no mapa de materiais) */
+export const TERRAIN_MATS = ['grass', 'sand', 'snow', 'rock', 'dirt', 'water'] as const;
+export type TerrainMat = (typeof TERRAIN_MATS)[number];
+
+/** corpo d'água retangular: superfície na altura `y`, centro (x,z), tamanho w×d (m) */
+export interface WaterBody {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  y: number;
+}
+
+/**
+ * Relevo esculpido (mapas no mundo Plano). Grade quadrada de n×n VÉRTICES centrada na origem,
+ * `cell` metros entre vértices. Fora da grade o chão continua plano em y=0.
+ *  - `h`: base64 de Int16 little-endian, n×n alturas em CENTÍMETROS (linha a linha, z crescente, x crescente);
+ *  - `m`: base64 de Uint8, n×n índices de TERRAIN_MATS (omitido = tudo grama);
+ *  - `wy`: altura da superfície da água nos vértices pintados com 'water' (padrão −0,3);
+ *  - `water`: lagos/rios retangulares extras.
+ */
+export interface TerrainData {
+  n: number;
+  cell: number;
+  h: string;
+  m?: string;
+  wy?: number;
+  water?: WaterBody[];
+}
+
+/* -------------------------- v3: mundo personalizado -------------------------- */
+
+export const BIOME_IDS = ['campo', 'floresta', 'deserto', 'neve', 'pantano', 'montanhas', 'oceano', 'savana', 'outono', 'cogumelos', 'tropical', 'ilhas'] as const;
+export type BiomeId = (typeof BIOME_IDS)[number];
+export type WorldPreset = 'normal' | 'flat' | 'islands' | 'flatIslands' | 'floating';
+
+/** Ajustes do mundo Infinito (tudo opcional; ausente = padrão). Multiplicadores 1 = normal. */
+export interface WorldGenSettings {
+  preset?: WorldPreset;
+  /** altura dos morros 0..2 */
+  height?: number;
+  /** aspereza 0..2 */
+  rough?: number;
+  /** nível do mar (m) −12..12 */
+  sea?: number;
+  /** tamanho dos biomas 0,25..4 */
+  biomeSize?: number;
+  /** peso de cada bioma 0..3 (0 = desligado) */
+  biomes?: Partial<Record<BiomeId, number>>;
+  /** cavernas (entradas de pedra), minérios (cristais), árvores: 0..2 */
+  caves?: number;
+  ores?: number;
+  trees?: number;
+  /** preset 'flat': camadas de baixo para cima (≤ 8), espessura em m */
+  layers?: { k: TerrainMat; n: number }[];
+}
+
+/* ---------------------------- v3: missão ---------------------------- */
+
+export const OBJECTIVES = ['reach', 'collect', 'defeat', 'survive', 'drive'] as const;
+export type ObjectiveKind = (typeof OBJECTIVES)[number];
+/** reach: chegar à peça `part` (ou a qualquer chegada) · collect: coletar `n` · defeat: derrotar `n` inimigos ·
+ *  survive: sobreviver `sec` segundos · drive: chegar pilotando um veículo à peça `part` (ou chegada) */
+export interface Objective {
+  k: ObjectiveKind;
+  n?: number;
+  sec?: number;
+  part?: number;
+}
+export interface Mission {
+  objectives: Objective[];
+  /** 'all' (qualquer ordem, padrão) ou 'seq' (um depois do outro) */
+  order?: 'all' | 'seq';
+  /** vidas (0 = infinitas) */
+  lives?: number;
+  /** tempo limite em s (0 = sem) */
+  time?: number;
+  /** textos das telas de vitória/derrota (≤ 60) */
+  win?: string;
+  lose?: string;
+}
+
 export interface Creation {
   /** versão do formato */
   v: number;
@@ -239,6 +324,12 @@ export interface Creation {
   scripts?: Script[];
   /** v2: metadados de jogo (mapas publicados como Jogo da Comunidade) */
   game?: GameMeta;
+  /** v3: relevo esculpido (mundo Plano) */
+  terrain?: TerrainData;
+  /** v3: ajustes do mundo Infinito */
+  gen?: WorldGenSettings;
+  /** v3: objetivos da partida */
+  mission?: Mission;
   /** criações importadas embutidas (para o mapa abrir sem rede). Só 1 nível: deps não têm deps. */
   deps?: Creation[];
   /** ms desde 1970 */
@@ -277,6 +368,11 @@ export const LIMITS = {
   repeatMax: 1000,
   gameDesc: 200,
   gameTags: 5,
+  /** terreno: vértices por lado e tamanho total máximo (m) */
+  terrainN: 129,
+  terrainSize: 512,
+  water: 16,
+  objectives: 8,
 } as const;
 
 /* -------------------------------- criação -------------------------------- */
@@ -533,6 +629,12 @@ export function validate(input: unknown, depth = 0): ValidateResult {
         maxPlayers: isNum(gm.maxPlayers) ? clamp(Math.round(gm.maxPlayers), 1, 16) : 1,
       };
   }
+  const tr = sanitizeTerrain(o.terrain, errors);
+  if (tr) c.terrain = tr;
+  const gen = sanitizeGen(o.gen);
+  if (gen) c.gen = gen;
+  const mi = sanitizeMission(o.mission, ids);
+  if (mi) c.mission = mi;
   if (Array.isArray(o.deps) && depth === 0) {
     const deps: Creation[] = [];
     for (const d of o.deps.slice(0, LIMITS.deps)) {
@@ -546,6 +648,130 @@ export function validate(input: unknown, depth = 0): ValidateResult {
   }
   if (jsonBytes(c) > LIMITS.bytes) errors.push('bytes');
   return { ok: errors.length === 0, errors, creation: c };
+}
+
+/* ------------------------- validação v3 ------------------------- */
+
+/** base64 ↔ bytes (sem DOM; btoa/atob existem no navegador, Worker e Node ≥ 16) */
+export function bytesToB64(b: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+export function b64ToBytes(s: string): Uint8Array | null {
+  try {
+    const bin = atob(s);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+/** alturas (m) → TerrainData.h */
+export function encodeHeights(h: Float32Array): string {
+  const b = new Uint8Array(h.length * 2);
+  const dv = new DataView(b.buffer);
+  for (let i = 0; i < h.length; i++) dv.setInt16(i * 2, clamp(Math.round(h[i] * 100), -32768, 32767), true);
+  return bytesToB64(b);
+}
+export function decodeHeights(s: string, count: number): Float32Array | null {
+  const b = b64ToBytes(s);
+  if (!b || b.length !== count * 2) return null;
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const out = new Float32Array(count);
+  for (let i = 0; i < count; i++) out[i] = dv.getInt16(i * 2, true) / 100;
+  return out;
+}
+
+function sanitizeTerrain(x: unknown, errors: string[]): TerrainData | null {
+  if (!x || typeof x !== 'object') return null;
+  const o = x as Record<string, unknown>;
+  const n = isNum(o.n) ? Math.round(o.n) : 0;
+  const cell = isNum(o.cell) ? clamp(o.cell, 0.25, 8) : 0;
+  if (n < 9 || n > LIMITS.terrainN || !cell || (n - 1) * cell > LIMITS.terrainSize || typeof o.h !== 'string' || !decodeHeights(o.h, n * n)) {
+    errors.push('terrain');
+    return null;
+  }
+  const t: TerrainData = { n, cell, h: o.h };
+  if (typeof o.m === 'string') {
+    const m = b64ToBytes(o.m);
+    if (m && m.length === n * n) {
+      for (let i = 0; i < m.length; i++) if (m[i] >= TERRAIN_MATS.length) m[i] = 0;
+      t.m = bytesToB64(m);
+    }
+  }
+  if (isNum(o.wy)) t.wy = clamp(o.wy, -50, 100);
+  if (Array.isArray(o.water)) {
+    const w: WaterBody[] = [];
+    for (const q of o.water.slice(0, LIMITS.water)) {
+      const b = q as Record<string, unknown>;
+      if (![b.x, b.z, b.w, b.d, b.y].every(isNum)) continue;
+      w.push({ x: clamp(b.x as number, -LIMITS.extent, LIMITS.extent), z: clamp(b.z as number, -LIMITS.extent, LIMITS.extent), w: clamp(b.w as number, 0.5, 400), d: clamp(b.d as number, 0.5, 400), y: clamp(b.y as number, -50, 100) });
+    }
+    if (w.length) t.water = w;
+  }
+  return t;
+}
+
+const PRESETS: WorldPreset[] = ['normal', 'flat', 'islands', 'flatIslands', 'floating'];
+function sanitizeGen(x: unknown): WorldGenSettings | null {
+  if (!x || typeof x !== 'object') return null;
+  const o = x as Record<string, unknown>;
+  const g: WorldGenSettings = {};
+  if (PRESETS.includes(o.preset as WorldPreset)) g.preset = o.preset as WorldPreset;
+  const num = (k: keyof WorldGenSettings, a: number, b: number) => {
+    if (isNum(o[k])) (g as Record<string, number>)[k] = clamp(o[k] as number, a, b);
+  };
+  num('height', 0, 2);
+  num('rough', 0, 2);
+  num('sea', -12, 12);
+  num('biomeSize', 0.25, 4);
+  num('caves', 0, 2);
+  num('ores', 0, 2);
+  num('trees', 0, 2);
+  if (o.biomes && typeof o.biomes === 'object') {
+    const b: Partial<Record<BiomeId, number>> = {};
+    for (const id of BIOME_IDS) {
+      const v = (o.biomes as Record<string, unknown>)[id];
+      if (isNum(v)) b[id] = clamp(v, 0, 3);
+    }
+    g.biomes = b;
+  }
+  if (Array.isArray(o.layers)) {
+    const L: { k: TerrainMat; n: number }[] = [];
+    for (const q of o.layers.slice(0, 8)) {
+      const l = q as Record<string, unknown>;
+      if ((TERRAIN_MATS as readonly string[]).includes(l?.k as string) && isNum(l.n)) L.push({ k: l.k as TerrainMat, n: clamp(l.n, 0.1, 20) });
+    }
+    if (L.length) g.layers = L;
+  }
+  return g;
+}
+
+function sanitizeMission(x: unknown, ids: Set<number>): Mission | null {
+  if (!x || typeof x !== 'object') return null;
+  const o = x as Record<string, unknown>;
+  const obj: Objective[] = [];
+  if (Array.isArray(o.objectives))
+    for (const q of o.objectives.slice(0, LIMITS.objectives)) {
+      const b = q as Record<string, unknown>;
+      if (!(OBJECTIVES as readonly string[]).includes(b?.k as string)) continue;
+      const ob: Objective = { k: b.k as ObjectiveKind };
+      if (isNum(b.n)) ob.n = clamp(Math.round(b.n), 1, 999);
+      if (isNum(b.sec)) ob.sec = clamp(Math.round(b.sec), 1, 3600);
+      if (isNum(b.part) && ids.has(b.part)) ob.part = b.part;
+      obj.push(ob);
+    }
+  const m: Mission = { objectives: obj };
+  if (o.order === 'seq') m.order = 'seq';
+  if (isNum(o.lives)) m.lives = clamp(Math.round(o.lives), 0, 99);
+  if (isNum(o.time)) m.time = clamp(Math.round(o.time), 0, 3600);
+  const w = str(o.win, LIMITS.textLen);
+  if (w) m.win = w;
+  const l = str(o.lose, LIMITS.textLen);
+  if (l) m.lose = l;
+  return m;
 }
 
 /* ------------------------- validação dos blocos ------------------------- */
@@ -779,9 +1005,10 @@ export async function deserialize(s: string): Promise<ValidateResult> {
   return validate(migrate(obj));
 }
 
-/** Atualiza versões antigas do formato. v1 → v2 é compatível (só campos novos opcionais). */
+/** Atualiza versões antigas do formato. v1 → v2 → v3 são compatíveis (só campos novos opcionais). */
 export function migrate(o: unknown): unknown {
-  if (o && typeof o === 'object' && (o as { v?: number }).v === 1) return { ...(o as object), v: 2 };
+  const v = o && typeof o === 'object' ? (o as { v?: number }).v : undefined;
+  if (v === 1 || v === 2) return { ...(o as object), v: FORMAT_VERSION };
   return o;
 }
 

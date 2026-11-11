@@ -19,7 +19,7 @@ interface Extra {
   hide?: boolean;
 }
 
-class B {
+export class B {
   c: Creation;
   private n = 1;
   private mats = new Map<string, number>();
@@ -89,7 +89,7 @@ function car(): Creation {
   return b.c;
 }
 
-function kart(): Creation {
+export function kart(): Creation {
   const b = new B('st_kart', 'vehicle', 'Kart Turbo');
   const body = b.m('#ffd34a');
   const tire = b.m('#2e2440', 'rubber');

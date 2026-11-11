@@ -12,8 +12,15 @@ import { History, type Command } from './history';
 import { Gizmo, rayLineParam, rayPlaneAngle, type GizmoMode, type Handle } from './gizmo';
 import { MakerCam } from './camera';
 
-export type Tool = 'move' | 'rotate' | 'scale' | 'paint' | 'pen' | 'measure';
-export type ChangeKind = 'sel' | 'doc' | 'tool' | 'hist' | 'measure';
+export type Tool = 'move' | 'rotate' | 'scale' | 'paint' | 'pen' | 'measure' | 'terrain';
+
+/** pincel de relevo (Studio liga quando a ferramenta Terreno está ativa) */
+export interface SculptHook {
+  down(x: number, y: number): boolean;
+  move(x: number, y: number): void;
+  up(): void;
+}
+export type ChangeKind = 'sel' | 'doc' | 'tool' | 'hist' | 'measure' | 'world';
 
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
@@ -212,6 +219,7 @@ export class Editor {
     if (cmd) {
       for (const [id] of cmd.parts) this.syncPart(id);
       if (cmd.materials) this.rebuildAll();
+      if (cmd.extra) this.emit('world');
       this.refreshDecor();
       this.emit('doc');
       this.emit('hist');
@@ -222,6 +230,7 @@ export class Editor {
   private onHistory(cmd: Command, ids: number[]): void {
     if (cmd.materials) this.rebuildAll();
     else for (const id of ids) this.syncPart(id);
+    if (cmd.extra) this.emit('world');
     for (const id of [...this.sel]) if (!this.part(id)) this.sel.delete(id);
     this.refreshDecor();
     this.refreshSelection();
@@ -317,8 +326,25 @@ export class Editor {
     g.root.position.copy(this.pivot());
   }
 
+  sculpt: SculptHook | null = null;
+  private sculpting = false;
+  private endSculpt(): void {
+    if (!this.sculpting) return;
+    this.sculpting = false;
+    this.sculpt?.up();
+  }
+  /** abre/fecha um passo de desfazer que dura vários quadros (pincel de relevo) */
+  beginTx(): ReturnType<History['begin']> {
+    return this.hist.begin(this.doc);
+  }
+  endTx(tx: ReturnType<History['begin']>, label: string): void {
+    this.finish(tx, label);
+  }
+
   setTool(t: Tool): void {
+    if (this.tool === 'terrain' && t !== 'terrain') this.endSculpt();
     this.tool = t;
+    if (t === 'terrain') this.clearSelection();
     this.cancelPen();
     if (t !== 'measure') this.clearMeasure();
     this.placeGizmo();
@@ -740,6 +766,7 @@ export class Editor {
       light: ['#ffd34a', '✦'],
       hazard: ['#ff5a2e', '!'],
       collect: ['#ffd34a', '◆'],
+      enemy: ['#ff3a5a', '✖'],
     };
     const [bg, g] = S[role];
     const c = document.createElement('canvas');
@@ -791,6 +818,7 @@ export class Editor {
     this.ptrs.set(e.pointerId, p);
     if (this.ptrs.size === 2) {
       // segundo dedo: cancela arraste/desenho e vira pinça
+      this.endSculpt();
       this.abortDrag();
       this.cancelPen();
       clearTimeout(this.longT);
@@ -814,6 +842,10 @@ export class Editor {
     if (this.tool === 'pen' && !this.picker) {
       this.startPen(e.clientX, e.clientY);
       return;
+    }
+    if (this.tool === 'terrain' && this.sculpt && !this.picker && e.button !== 2) {
+      this.sculpting = this.sculpt.down(e.clientX, e.clientY);
+      if (this.sculpting) return;
     }
     clearTimeout(this.longT);
     this.longT = window.setTimeout(() => {
@@ -851,6 +883,10 @@ export class Editor {
       this.penMove(e.clientX, e.clientY);
       return;
     }
+    if (this.sculpting) {
+      this.sculpt?.move(e.clientX, e.clientY);
+      return;
+    }
     if (Math.hypot(p.x - p.sx, p.y - p.sy) < 8 && e.pointerType !== 'mouse') return;
     if (Math.hypot(p.x - p.sx, p.y - p.sy) >= 8) clearTimeout(this.longT);
     if (e.pointerType === 'mouse' && e.buttons === 0) return;
@@ -874,6 +910,10 @@ export class Editor {
       this.endPen();
       return;
     }
+    if (this.sculpting) {
+      this.endSculpt();
+      return;
+    }
     const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
     if (p.t > 0 && moved < 10 && performance.now() - p.t < 450 && this.ptrs.size === 0 && e.button !== 2) this.tap(p.x, p.y);
   };
@@ -883,6 +923,7 @@ export class Editor {
     this.pinch = null;
     if (this.drag) this.endDrag();
     this.cancelPen();
+    this.endSculpt();
   };
   private onWheel = (e: WheelEvent) => {
     if (!this.enabled) return;
