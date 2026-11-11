@@ -27,7 +27,7 @@ const CSS = `
 .cf-codepop .cf-code i{box-shadow:0 3px 0 #c8b8ff;background:#f3eeff}
 .cf-jform{display:none;width:min(320px,80vw)}
 .cf-jform.on{display:flex}
-.cf-on h1{margin:0;font:800 22px/1.1 inherit;display:flex;align-items:center;gap:8px;text-shadow:0 2px 0 #2a0b5c}
+.cf-on h1{margin:0;font:800 22px/1.1 inherit;display:flex;align-items:center;gap:8px;text-shadow:0 2px 0 #2a0b5c;max-width:calc(100% - 104px);text-align:center;justify-content:center}
 .cf-on .cf-x{position:absolute;right:calc(var(--edge-r,12px) + 4px);top:calc(env(safe-area-inset-top,0px) + 8px);width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;cursor:pointer;padding:0}
 .cf-ocards{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:stretch}
 .cf-ocard{width:min(300px,44vw);border-radius:18px;padding:12px;background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 2px rgba(255,255,255,.18);display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center}

@@ -976,6 +976,12 @@ body.hub-lowfx .hub-card.active {
   position: absolute;
   inset: 0;
 }
+/* o jogo também tem contexto próprio: menus com z-index alto (ex.: Anomalias, z 50) apareciam POR CIMA
+   da intro 3D (z 6), misturando as duas telas (QA) */
+.gh-game {
+  z-index: 0;
+  isolation: isolate;
+}
 /* contexto de empilhamento próprio: z-index alto dentro do jogo não cobre o "Sair do jogo?" */
 .gh-root {
   z-index: 0;

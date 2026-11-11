@@ -664,15 +664,18 @@ async function homeTests(T) {
   const hRace = 'race_' + tag;
   const [r1, r2] = await Promise.all([call('POST', '/api/handle/claim', { id: C, handle: hRace }), call('POST', '/api/handle/claim', { id: D, handle: hRace })]);
   const winners = [r1, r2].filter((x) => x.data?.ok).length;
+  // by-handle não devolve o id (nunca expor a estranhos): o dono é conferido pelo handle/mine de cada um
   const owner = await call('GET', '/api/player/by-handle?h=' + hRace);
-  const winnerId = r1.data?.ok ? C : D;
-  check('claim simultâneo: só um fica com o nome (índice consistente)', winners >= 1 && owner.data?.id === (winners === 1 ? winnerId : owner.data?.id) && [C, D].includes(owner.data?.id), { winners, o: owner.data });
-  if (owner.data?.id !== C) await call('POST', '/api/handle/claim', { id: C, handle: 'cia_' + tag });
-  if (owner.data?.id !== D) await call('POST', '/api/handle/claim', { id: D, handle: 'dan_' + tag });
+  const [mC, mD] = await Promise.all([call('GET', '/api/handle/mine?id=' + C), call('GET', '/api/handle/mine?id=' + D)]);
+  const holders = [mC, mD].filter((x) => x.data?.handle === hRace).length;
+  check('claim simultâneo: só um fica com o nome (índice consistente)', winners === 1 && holders === 1 && owner.data?.handle === hRace && !owner.data?.id, { winners, holders, o: owner.data });
+  const ownerId = mC.data?.handle === hRace ? C : D;
+  if (ownerId !== C) await call('POST', '/api/handle/claim', { id: C, handle: 'cia_' + tag });
+  if (ownerId !== D) await call('POST', '/api/handle/claim', { id: D, handle: 'dan_' + tag });
   const hB = 'beto_' + tag;
   await call('POST', '/api/handle/claim', { id: B, handle: hB });
   r = await call('GET', '/api/player/by-handle?h=@' + hB.toUpperCase());
-  check('by-handle acha o jogador (sem status online para estranhos)', r.data?.id === B && r.data.handle === hB && r.data.online === false && r.data.lastSeen === 0, r.data);
+  check('by-handle acha o jogador (sem status online para estranhos)', !r.data?.id && r.data?.handle === hB && r.data.online === false && r.data.lastSeen === 0, r.data);
   r = await call('GET', '/api/player/by-handle?h=ninguem_' + tag);
   check('by-handle inexistente → 404', r.status === 404);
 

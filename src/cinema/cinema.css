@@ -119,6 +119,7 @@
 .cin-cell.bg{padding:0;min-height:0}
 .cin-cell.bg canvas{width:100%;aspect-ratio:16/9;height:auto}
 .cin-cell.bg span{padding:3px 0 4px}
+.cin-cell>span:not(.g):not(.cin-pro){max-width:100%;letter-spacing:-.2px;overflow-wrap:anywhere;hyphens:auto} /* "Envergonhado"/"Apaixonado" cortavam (QA) */
 .cin-chips{display:flex;flex-wrap:wrap;gap:5px}
 .cin-chip{min-height:34px;padding:0 11px;border:0;border-radius:17px;background:#4a2390;font-size:12.5px;font-weight:700}
 .cin-chip.on{background:#ffd93b;color:#2a0b5c}

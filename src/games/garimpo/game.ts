@@ -1445,9 +1445,12 @@ export class Garimpo implements MiniGameHandle, BotHost {
     // olhos um pouco atrás do centro do corpo: pegadores e mãos embaixo, a caçamba na frente
     const fx = Math.sin(g.rotation.y);
     const fz = Math.cos(g.rotation.y);
-    _fpv.x = g.position.x - fx * 0.12;
-    _fpv.z = g.position.z - fz * 0.12;
-    _fpv.y = g.position.y;
+    // empurrando o carrinho: olhos mais atrás e um pouco mais altos — a caçamba desce para o terço de
+    // baixo da tela (borda + pegadores + mãos) e o caminho fica visível (antes tapava ~60% do centro)
+    const back = wk.held ? 0.4 : 0.12;
+    _fpv.x = g.position.x - fx * back;
+    _fpv.z = g.position.z - fz * back;
+    _fpv.y = g.position.y + (wk.held ? 0.22 : 0);
     _fpv.speedK = b.speedK;
     _fpv.grounded = b.grounded;
     fpc.apply(cam, dt, _fpv, null);
@@ -1469,7 +1472,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     cam.near = 0.12;
     cam.updateProjectionMatrix();
     this.fpc.reset();
-    this.fpc.pitch = this.inMine ? -0.2 : -0.42;
+    this.fpc.pitch = this.inMine ? -0.2 : -0.24;
     this.lookYaw = this.lookPitch = 0;
   }
   private footFpOff(): void {
@@ -1759,7 +1762,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     // o garimpeiro e o helicóptero: câmera só segue devagar (andam relativos à tela)
     const free = (c instanceof Worker || c instanceof Heli) && !front;
     // de frente a pé: na diagonal (o carrinho na frente do Bloop não tapa o rosto)
-    let want = c.yaw() + c.cam.yawOff + (front ? Math.PI - (c instanceof Worker ? 0.42 : 0) : 0);
+    let want = c.yaw() + c.cam.yawOff + (front ? Math.PI - (c instanceof Worker ? 0.72 : 0) : 0);
     // dando ré até a moega: câmera de lado mostra caminhão e moega juntos
     if (c instanceof Truck && c.veh && (c.veh.gear < 0 || c.tilt > 0.1) && c.pos.distanceTo(this.hopperPos(_v2)) < 22) want += 1.15;
     if (free) {
@@ -1778,7 +1781,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const mul = [1, 1.6, 0.72][this.camMode];
     const dist = c.cam.dist * mul * (front && c instanceof Worker ? 0.8 : 1);
     // de frente a pé: um pouco mais alto (olha por cima do carrinho e vê o Bloop)
-    const hgt = c.cam.height * mul * (front ? (c instanceof Worker ? 0.42 : 0.55) : 1) * (1 + this.lookPitch * 1.4);
+    const hgt = c.cam.height * mul * (front ? (c instanceof Worker ? 0.62 : 0.55) : 1) * (1 + this.lookPitch * 1.4);
     const p = c.pos;
     // a pé: mira um pouco à frente (o carrinho de mão aparece na tela)
     const fwd = c instanceof Worker ? (front ? 0.3 : 1.6) : 0;

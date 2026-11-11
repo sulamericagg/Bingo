@@ -7,7 +7,7 @@ import * as q from './lib.mjs';
 const only = process.argv[2] ? process.argv[2].split(',') : null;
 const PORTRAIT = [412, 915];
 const LAND = [844, 390];
-const START = /^(jogar|começar|comecar|iniciar|play|start|bora|novo jogo|nova partida|continuar|sozinho|jogar sozinho|solo|acelerar|vamos|entrar|ok|pronto|3d|modo 3d|criar|tocar)\b/i;
+const START = /^(voar|embarcar|jogar|começar|comecar|iniciar|play|start|bora|novo jogo|nova partida|continuar|sozinho|jogar sozinho|solo|acelerar|vamos|entrar|ok|pronto|3d|modo 3d|criar|tocar)\b/i;
 const AVOID = /online|duelo|amigo|sair|voltar|menu|loja|comprar|código|codigo|anúncio|grupo|convidar|excluir|apagar/i;
 
 async function startButtons(page, id, tag) {
@@ -68,6 +68,7 @@ async function hubState(page) {
     if (only && !only.includes(id)) continue;
     const r = { id, errors: [], issues: [], notes: [], shots: [] };
     errs.length = 0;
+    if (await page.$('#game-host.on')) await page.evaluate(() => window.__bloop.closeHost());
     const t0 = Date.now();
     try {
       // abre pelo hub: bolinha do carrossel até a carta do jogo, depois JOGAR de verdade
@@ -87,7 +88,7 @@ async function hubState(page) {
       const play1 = await page.$(`#hub-track .hub-card.active[data-game="${id}"] .hub-play`);
       if (ok && play1 && await play1.isVisible()) await q.tapSel(page, play1);
       let launched = false;
-      for (let k = 0; k < 12 && !launched; k++) { await page.waitForTimeout(250); launched = await page.evaluate((id) => (id === 'orbit' ? !document.querySelector('#menu.on') : !!document.querySelector('#game-host.on')), id); }
+      for (let k = 0; k < 12 && !launched; k++) { await page.waitForTimeout(250); launched = await page.evaluate((id) => (id === 'orbit' ? !document.querySelector('#menu.on') || !!document.querySelector('#hud.on, .i3-root, [data-intro]') : !!document.querySelector('#game-host.on')), id); }
       if (!launched) { r.issues.push('JOGAR na carta do hub não abriu o jogo (abrindo por launchGame)'); await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id); }
       await page.waitForTimeout(800);
       if (id === 'orbit') {
@@ -145,21 +146,31 @@ async function hubState(page) {
       const b1 = await q.back(page); await page.waitForTimeout(700);
       st = await hubState(page);
       if (!b1) r.issues.push('voltar (Android) não foi tratado dentro do jogo — o app minimizaria');
-      if (!st.confirm) { // jogo pode ter uma tela própria primeiro (popBack)
-        r.notes.push('1º voltar fechou uma tela do jogo'); await q.back(page); await page.waitForTimeout(700); st = await hubState(page);
-      }
       r.shots.push(await q.shot(page, `g-${id}-4-back`));
-      if (!st.confirm) r.issues.push('"Sair do jogo?" não apareceu com o voltar');
-      else {
+      if (!st.confirm) {
+        // o jogo tem a própria pausa/menu no voltar (ex.: Bloop no Lugar): procura o "Sair"/"Menu" dela
+        r.ownPause = await page.evaluate(() => [...document.querySelectorAll('#game-host .gh-root button')].filter((b) => b.getBoundingClientRect().width > 4).map((b) => (b.textContent || b.getAttribute('aria-label') || '').trim().slice(0, 18)).filter(Boolean).slice(0, 12));
+        r.notes.push('voltar abriu a tela própria do jogo: ' + r.ownPause.join(' | '));
+        for (let k = 0; k < 4 && !st.confirm && st.host; k++) {
+          const ex = await page.evaluateHandle(() => [...document.querySelectorAll('#game-host .gh-root button')].find((b) => b.getBoundingClientRect().width > 4 && /^(sair|menu|início|inicio|voltar ao menu|sair do jogo|sair para o menu|mapa de fases|salvar e sair|exit)/i.test((b.textContent || b.getAttribute('aria-label') || '').trim())) || null);
+          if (await ex.evaluate((x) => !!x)) { await q.tapSel(page, ex.asElement()); await page.waitForTimeout(1200); }
+          else { await q.back(page); await page.waitForTimeout(900); }
+          st = await hubState(page);
+        }
+        if (st.host && !st.confirm) r.issues.push('não deu para sair do jogo com voltar/Sair (preso no jogo)');
+      }
+      if (st.confirm) {
         const pa = await q.audit(page, '.gh-confirm');
         if (pa.some((x) => /BLOCKED|CUT/.test(x))) r.issues.push('Sair do jogo? com botão tapado/cortado: ' + pa.filter((x) => /BLOCKED|CUT/.test(x)).join(' | '));
         await q.back(page); await page.waitForTimeout(700); // continua
         st = await hubState(page);
         if (st.confirm) r.issues.push('voltar de novo não fechou o "Sair do jogo?"');
-        await q.back(page); await page.waitForTimeout(700);
+        for (let k = 0; k < 3 && !(await page.$('.gh-confirm.on')); k++) { await q.back(page); await page.waitForTimeout(700); }
         const exit = await page.$('.gh-confirm.on [data-gh=exit]');
-        if (exit) await q.tapSel(page, exit); else { r.issues.push('sem botão Sair'); await page.evaluate(() => window.__bloop.closeHost()); }
+        if (exit) await q.tapSel(page, exit); else r.issues.push('"Sair do jogo?" não voltou no 2º voltar');
       }
+      await page.waitForTimeout(800);
+      if (await page.$('#game-host.on')) { await page.evaluate(() => window.__bloop.closeHost()); r.notes.push('fechado à força (closeHost)'); }
       await page.waitForTimeout(1800);
       st = await hubState(page);
       r.after = st;
@@ -171,7 +182,9 @@ async function hubState(page) {
       r.shots.push(await q.shot(page, `g-${id}-5-hub`));
       const res = await q.resources(page, cdp);
       r.res = res;
-      if (res.glLive > base.glLive + 1) r.issues.push(`contextos WebGL vivos depois de sair: ${res.glLive} (base ${base.glLive})`);
+      // alguns renderizadores compartilhados ficam em cache (Bloop de papel, mãos do fpkit): até 4 é cache; acima é vazamento
+      if (res.glLive > 4) r.issues.push(`contextos WebGL vivos depois de sair: ${res.glLive} (base ${base.glLive})`);
+      else if (res.glLive > base.glLive) r.notes.push(`WebGL em cache depois de sair: ${res.glLive}`);
       if (res.audios > base.audios) r.issues.push(`<audio>/<video> sobrando: ${res.audios}`);
     } catch (e) {
       r.issues.push('EXCEÇÃO no teste: ' + String(e.message || e).slice(0, 200));

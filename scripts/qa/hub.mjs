@@ -11,7 +11,7 @@ const ok = (name, pass, detail = '', shot = '') => { checks.push({ name, pass: !
 
 async function closeAll(page) {
   for (let i = 0; i < 6; i++) {
-    const st = await page.evaluate(() => ({ menu: !!document.querySelector('#menu.on'), modal: !!document.querySelector('.modal-screen.on'), busy: !window.__bloop || !document.querySelector('#menu.on') || !!document.querySelector('.modal-screen.on, .pet-scr.on, .hm-scr.on, #creator.on, .pass-panel, .crc-overlay, .sc-overlay, .pp-root, .mr-root, .h3, .tv-root, [class*=sheet-bg]') }));
+    const st = await page.evaluate(() => ({ menu: !!document.querySelector('#menu.on'), modal: !!document.querySelector('.modal-screen.on'), busy: !window.__bloop || !document.querySelector('#menu.on') || !!document.querySelector('.modal-screen.on, .pet-scr.on, .hm-scr.on, #creator.on, .pass-panel, .crc-overlay, .sc-overlay, .pp-root, .mr-root, .h3, .tv-root, .fake-ad, .ip-pop, [class*=sheet-bg]') }));
     if (st.menu && !st.busy) return true;
     await q.back(page); await page.waitForTimeout(700);
   }
