@@ -765,7 +765,7 @@ export class Extra3D {
     if (g.active.has('calor')) {
       const hi = this.houseIdx(p);
       const cov = hi >= 0 ? this.roofT[hi] >= 0 : this.shaded(p) || p.swim;
-      const k = this.sun.st === 2 ? 0.25 + 0.07 * g.I : 0.035;
+      const k = this.sun.st === 2 ? 0.2 + 0.05 * g.I : 0.03;
       p.meter = cov ? Math.max(0, p.meter - dt * 0.3) : Math.min(1.05, p.meter + dt * k * (g.training ? 0.7 : 1));
     } else if (g.active.has('nevasca')) {
       let warm = g.insideHouse(p) ? 0.5 : 0;
@@ -894,7 +894,7 @@ export class Extra3D {
           h.t = 0;
         }
       } else {
-        h.pull = (5.5 + 2.2 * I) * (this.tn?.mini ? 0.7 : 1);
+        h.pull = (4.4 + 1.8 * I) * (this.tn?.mini ? 0.7 : 1);
         g.shake = Math.max(g.shake, 0.12);
         for (let i = 0; i < g.houses.length; i++) {
           const hs = g.houses[i];
@@ -1176,7 +1176,7 @@ export class Extra3D {
           if (hi && r() < 0.5) g.spawnStrikeAt('bomb', hi.pos.x, hi.pos.z);
           else g.spawnStrike('bomb');
         },
-        (3.0 - 0.8 * g.heat) / this.rate(),
+        (2.4 - 0.7 * g.heat) / this.rate(),
       );
       this.drawFire();
     }
@@ -1255,7 +1255,7 @@ export class Extra3D {
           if (!best) return;
           best.warn = 1.7 * g.tele;
         },
-        (2.0 - 0.7 * g.heat) / this.rate(),
+        (1.5 - 0.5 * g.heat) / this.rate(),
       );
     }
     for (const v of this.vents) {
@@ -1385,7 +1385,7 @@ export class Extra3D {
       const tx = p && !hidden ? p.pos.x : o.x + Math.sin(g.time) * 2;
       const tz = p && !hidden ? p.pos.z : o.z + Math.cos(g.time) * 2;
       const ty = p && !hidden ? p.pos.y + 0.7 : 3;
-      const sp = 4.2 * (0.92 + 0.12 * I + 0.15 * g.heat) * (o.dash > 0 ? 1.6 : o.dash < 0 ? 0.25 : 1) * (this.tn?.giant ? 0.85 : 1) * (this.tn?.turbo ? 1.15 : 1);
+      const sp = 4.6 * (0.92 + 0.12 * I + 0.15 * g.heat) * (o.dash > 0 ? 1.6 : o.dash < 0 ? 0.25 : 1) * (this.tn?.giant ? 0.85 : 1) * (this.tn?.turbo ? 1.15 : 1);
       this.chase(o, tx, ty, tz, sp, dt, 3);
       const pts = o.g as THREE.Points;
       const pa = (pts.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
@@ -1446,7 +1446,7 @@ export class Extra3D {
           b.lane.rotation.z = -Math.atan2(dz, dx) + Math.PI / 2;
           b.m.position.set(sx, b.r, sz);
         },
-        (2.4 - 0.8 * g.heat) / this.rate(),
+        (2.0 - 0.6 * g.heat) / this.rate(),
       );
     }
     for (const b of this.balls) {

@@ -54,6 +54,7 @@ const CSS = `
 .dz-chip.c{background:rgba(120,80,0,.72)}
 .dz-hint{position:absolute;left:50%;top:calc(max(10px,env(safe-area-inset-top)) + 62px);transform:translate(-50%,-4px);max-width:min(64vw,460px);padding:5px 14px;border-radius:16px;background:rgba(24,14,60,.82);border:2px solid rgba(255,255,255,.22);font-weight:600;font-size:14px;line-height:1.2;text-align:center;pointer-events:none;opacity:0;transition:opacity .18s,transform .18s;z-index:4}
 .dz-hint.on{opacity:1;transform:translate(-50%,0)}
+.dz-hint.low{top:calc(max(10px,env(safe-area-inset-top)) + 168px)}
 .dz-hint.alert{background:rgba(170,24,48,.9);border-color:#ffd0d8;font-weight:700}
 .dz-hint.good{background:rgba(24,120,70,.9);border-color:#c8ffd8}
 .dz-hint .ico{width:18px;height:18px;vertical-align:-3px;margin-right:4px}
@@ -70,7 +71,7 @@ const CSS = `
 .dz-edge.t{left:50%;top:28%;margin-left:-66px}.dz-edge.t .ico{transform:rotate(180deg)}
 .dz-edge.b{left:50%;bottom:calc(var(--edge-b,14px) + 110px);margin-left:-66px}
 @keyframes dzpulse{from{transform:scale(.92)}to{transform:scale(1.1)}}
-@media (orientation:landscape) and (max-height:500px){.dz-hint{top:calc(max(10px,env(safe-area-inset-top)) + 54px);font-size:13px}.dz-warn{top:calc(max(10px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
+@media (orientation:landscape) and (max-height:500px){.dz-hint{top:calc(max(10px,env(safe-area-inset-top)) + 54px);font-size:13px}.dz-hint.low{top:calc(max(10px,env(safe-area-inset-top)) + 140px)}.dz-warn{top:calc(max(10px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -236,7 +237,7 @@ export class Hud {
     if (this.hintT > 0 && pri < this.hintPri && now - this.hintAt < 1600) return;
     const el = this.hintEl;
     if (el.textContent !== msg) el.textContent = msg;
-    el.className = 'dz-hint on' + (pri === 3 ? ' alert' : key === 'dz-good' || key === 'dz-saved' ? ' good' : '');
+    el.className = 'dz-hint on' + (pri === 3 ? ' alert' : key === 'dz-good' || key === 'dz-saved' ? ' good' : '') + (this.warnEl.classList.contains('on') ? ' low' : '');
     this.hintT = pri === 3 ? 2.6 : 3.2;
     this.hintPri = pri;
     this.hintAt = now;
@@ -287,6 +288,8 @@ export class Hud {
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
+      // a dica desce para baixo do cartão de alerta (nunca um em cima do outro)
+      this.hintEl.classList.toggle('low', show);
       // o chip de fase (com a outra contagem) some enquanto o cartão de alerta está na tela
       this.phase.style.visibility = show ? 'hidden' : '';
       this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');

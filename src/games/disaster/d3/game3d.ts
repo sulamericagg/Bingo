@@ -196,6 +196,7 @@ const CSS = `
 .d3-root{position:fixed;inset:0;overflow:hidden;background:#0e1a33;touch-action:none;user-select:none;-webkit-user-select:none;font-family:'Fredoka',system-ui,sans-serif;color:#fff}
 .d3-hint{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 58px);transform:translate(-50%,-4px);max-width:min(62vw,460px);padding:5px 14px;border-radius:16px;background:rgba(24,14,60,.82);border:2px solid rgba(255,255,255,.22);font-weight:600;font-size:14px;line-height:1.2;text-align:center;pointer-events:none;opacity:0;transition:opacity .18s,transform .18s;z-index:4}
 .d3-hint.on{opacity:1;transform:translate(-50%,0)}
+.d3-hint.low{top:calc(max(8px,env(safe-area-inset-top)) + 166px)}
 .d3-hint.alert{background:rgba(170,24,48,.9);border-color:#ffd0d8;font-weight:700}
 .d3-hint.good{background:rgba(24,120,70,.9);border-color:#c8ffd8}
 .d3-air.heat i{background:linear-gradient(90deg,#ffd23f,#ff6a1e)}
@@ -245,7 +246,7 @@ const CSS = `
 .d3-panel{background:linear-gradient(180deg,#2c3f7a,#1a2350);border:3px solid #2a0b5c;border-radius:22px;box-shadow:0 6px 0 #2a0b5c;padding:16px;width:min(88vw,340px);text-align:center;display:flex;flex-direction:column;gap:8px}
 .d3-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .d3-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
-@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-hint{top:calc(max(6px,env(safe-area-inset-top)) + 52px);font-size:13px}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
+@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-hint{top:calc(max(6px,env(safe-area-inset-top)) + 52px);font-size:13px}.d3-hint.low{top:calc(max(6px,env(safe-area-inset-top)) + 140px)}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
 `;
 let cssDone = false;
 
@@ -1453,7 +1454,7 @@ export class Disaster3D implements MiniGameHandle {
       case 'vulcao':
         // a lava desce do vulcão (+x) numa frente lenta e sobe em pulsos; bombas miradas deixam fogo.
         // "O chão é lava": sobe por igual (sem bombas)
-        if (this.tn.lavaFloor) fl('lava', this.peak3('vulcao') / 3, 0.03 + 0.012 * I);
+        if (this.tn.lavaFloor) fl('lava', (this.peak3('vulcao') * 1.15) / 3, 0.045 + 0.015 * I);
         else fl('lava', this.peak3('vulcao') / 3, 0.05, -1, 1.0 + 0.45 * I);
         this.stage.k = 0;
         this.stage.next = dur * 0.28;
@@ -1556,7 +1557,7 @@ export class Disaster3D implements MiniGameHandle {
     const pri = kind === 'alert' ? 3 : kind === 'good' ? 2 : 1;
     if (this.hintT > 0 && pri < this.hintPri && this.hintT > 1.2) return;
     if (this.hintEl.textContent !== msg) this.hintEl.textContent = msg;
-    this.hintEl.className = 'd3-hint on' + (kind ? ' ' + kind : '');
+    this.hintEl.className = 'd3-hint on' + (kind ? ' ' + kind : '') + (this.warnEl.classList.contains('on') ? ' low' : '');
     this.hintT = kind === 'alert' ? 2.6 : 3.2;
     this.hintPri = pri;
   }
@@ -2059,17 +2060,17 @@ export class Disaster3D implements MiniGameHandle {
             const p = this.pickTarget();
             const a = this.rng() * Math.PI * 2;
             const rr = Math.sqrt(this.rng()) * (ISLAND_R - 5);
-            if (this.tn.ice) this.holeAt(p ? p.pos.x : Math.cos(a) * rr, p ? p.pos.z : Math.sin(a) * rr, 1.6 + this.rng() * 0.6, 1.7 * this.tele, 5 + 2 * I, 0);
+            if (this.tn.ice) this.holeAt(p ? p.pos.x : Math.cos(a) * rr, p ? p.pos.z : Math.sin(a) * rr, 1.4 + this.rng() * 0.5, 1.9 * this.tele, 4 + 1.5 * I, 0);
             else this.holeAt(p ? p.pos.x : Math.cos(a) * rr, p ? p.pos.z : Math.sin(a) * rr, 1.1, 2.8 * this.tele, 0, 0.08 + 0.06 * I);
           },
-          (this.tn.ice ? 3 : 8) - 2 * this.heat,
+          (this.tn.ice ? 4.2 : 8) - (this.tn.ice ? 1.5 : 2) * this.heat,
         );
       }
       if (this.active.has('areia')) {
         const g = this.gust;
         if (g.t > 0) {
           g.t -= dt;
-          this.tick('areia', dt * k, () => this.spawnStrike('debris'), 0.32 - 0.08 * this.heat);
+          this.tick('areia', dt * k * this.tn.rate * (this.tn.gust === 'wind' ? 1.3 : 1), () => this.spawnStrike('debris'), 0.32 - 0.08 * this.heat);
           if (g.t <= 0) {
             g.a += Math.PI * (0.6 + this.rng() * 0.8);
             g.next = Math.max(3, 7 - 1.4 * I) + this.rng() * 2;
@@ -2096,7 +2097,7 @@ export class Disaster3D implements MiniGameHandle {
       if (this.active.has('meteoros') || this.active.has('meteoro')) this.tick('meteoros', dt * k * this.tn.rate, () => this.spawnStrike('meteor'), 1.15 - 0.3 * this.heat);
       if (this.active.has('raios')) this.tick('raios', dt * k, () => this.spawnStrike('bolt'), 1.5 - 0.35 * this.heat);
       if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnStrike('bolt', true), 9 - 2 * this.heat);
-      if (this.active.has('vulcao') && !this.tn.lavaFloor) this.tick('vulcao', dt * k, () => this.spawnStrike('bomb'), 3.6 - 0.9 * this.heat);
+      if (this.active.has('vulcao') && !this.tn.lavaFloor) this.tick('vulcao', dt * k, () => this.spawnStrike('bomb'), 4.2 - 1 * this.heat);
       if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnStrike('drop'), 3.2 - 0.8 * this.heat);
       if (this.active.has('avalanche')) this.tick('avalanche', dt * k, () => this.spawnStrike('rock'), 4.6 - 1.2 * this.heat);
       if (this.active.has('avalanche')) this.wind = Math.sin(this.time * 0.7) > 0.3 ? this.windDir * (1.6 + 0.3 * I) : 0;
@@ -3267,6 +3268,7 @@ export class Disaster3D implements MiniGameHandle {
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
+      this.hintEl.classList.toggle('low', show);
       this.phaseEl.style.visibility = show ? 'hidden' : '';
       if (show) {
         (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(ic === d ? this.hzOf(d).icon : ic, 50);
