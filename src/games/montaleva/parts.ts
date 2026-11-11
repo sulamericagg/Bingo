@@ -115,7 +115,7 @@ export function partDesc(id: PartId): string {
     case 'basket':
       return t('ml.d.basket', 'Bordas que seguram a carga.');
     case 'thruster':
-      return t('ml.d.thruster', 'Empurra ao acelerar. Combustível limitado.');
+      return t('ml.d.thruster', 'Empurra quando você aperta o jato. Combustível limitado.');
     case 'balloon':
       return t('ml.d.balloon', 'Puxa para cima o tempo todo.');
   }

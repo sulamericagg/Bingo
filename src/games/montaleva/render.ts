@@ -20,7 +20,6 @@ export const INK = '#26303d';
 export const COL = {
   bg: '#f3f5f8',
   dot: '#dfe4ec',
-  far: '#eef1f5',
   ground: '#dde3eb',
   groundTop: '#8f9bad',
   groundIn: '#cfd6e0',
@@ -72,32 +71,10 @@ export const wx = (v: View, x: number) => v.ox + x * v.s;
 export const wy = (v: View, y: number) => v.oy - y * v.s;
 
 /* ------------------------------ fundo ------------------------------ */
-export function drawBackground(x: CanvasRenderingContext2D, v: View, time: number, far = true): void {
+export function drawBackground(x: CanvasRenderingContext2D, v: View): void {
   x.fillStyle = COL.bg;
   x.fillRect(0, 0, v.w, v.h);
-  if (far) drawFar(x, v);
   drawDots(x, v);
-  void time;
-}
-
-function drawFar(x: CanvasRenderingContext2D, v: View): void {
-  // formas grandes e claras ao longe (paralaxe lenta)
-  const par = 0.25;
-  const camX = (v.w / 2 - v.ox) / v.s;
-  x.fillStyle = COL.far;
-  const step = 9;
-  const base = Math.floor((camX * par) / step) - 2;
-  for (let i = base; i < base + 8; i++) {
-    const h = 2.5 + ((i * 7919) % 5) * 0.6;
-    const px = i * step;
-    const sx = v.w / 2 + (px - camX * par) * v.s * 0.6;
-    const sw = (3 + ((i * 31) % 3)) * v.s * 0.6;
-    const sy = v.h * 0.72;
-    const hh = h * v.s * 0.6;
-    x.beginPath();
-    x.roundRect(sx, sy - hh, sw, hh + v.h, sw * 0.18);
-    x.fill();
-  }
 }
 
 function drawDots(x: CanvasRenderingContext2D, v: View): void {

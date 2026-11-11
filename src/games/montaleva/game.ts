@@ -204,6 +204,7 @@ export class MontaLeva implements MiniGameHandle {
   private overview = false;
   private pan: { pid: number; sx: number; cx: number } | null = null;
   private placeFx: { x: number; y: number; t: number }[] = [];
+  private snapCache: { key: string; cells: [number, number][] } = { key: '', cells: [] };
   // pista
   private sim: Sim | null = null;
   private acc = 0;
@@ -1552,7 +1553,7 @@ export class MontaLeva implements MiniGameHandle {
     v.ox = this.W / 2 - this.cam.x * v.s + sx;
     v.oy = this.H / 2 + this.cam.y * v.s + sy;
     x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    drawBackground(x, v, this.time, this.screen !== 'build');
+    drawBackground(x, v);
     if (this.screen === 'levels' || this.screen === 'shop' || this.screen === 'settings') return;
     const tr = this.screen === 'menu' ? DEMO_TRACK : this.track;
     if (!tr) return;
@@ -1643,7 +1644,9 @@ export class MontaLeva implements MiniGameHandle {
     // pontos de encaixe (arrastando ou peça armada)
     const showFor = d && d.moved ? { t: d.t, r: d.r, skip: d.kind === 'move' ? d.from : -1 } : this.armed ? { t: this.armed, r: this.trayRot[this.armed] ?? 0, skip: -1 } : null;
     if (showFor) {
-      const cells = snapCells(L, parts, showFor.t, showFor.r, showFor.skip);
+      const key = `${showFor.t},${showFor.r},${showFor.skip},${JSON.stringify(parts)}`;
+      if (this.snapCache.key !== key) this.snapCache = { key, cells: snapCells(L, parts, showFor.t, showFor.r, showFor.skip) };
+      const cells = this.snapCache.cells;
       const fp = footprint(showFor.t, showFor.r);
       const fw = Math.max(...fp.map((c) => c[0])) + 1;
       const fh = Math.max(...fp.map((c) => c[1])) + 1;
