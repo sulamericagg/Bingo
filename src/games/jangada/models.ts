@@ -77,7 +77,7 @@ const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _c = new THREE.Color();
-function paint(g: THREE.BufferGeometry, col: string, jitter = 0): THREE.BufferGeometry {
+export function paint(g: THREE.BufferGeometry, col: string, jitter = 0): THREE.BufferGeometry {
   const n = g.getAttribute('position').count;
   const a = new Float32Array(n * 3);
   _c.set(col);
@@ -90,14 +90,14 @@ function paint(g: THREE.BufferGeometry, col: string, jitter = 0): THREE.BufferGe
   g.setAttribute('color', new THREE.BufferAttribute(a, 3));
   return g;
 }
-function place(g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, s = 1): THREE.BufferGeometry {
+export function place(g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, s = 1): THREE.BufferGeometry {
   _q.setFromEuler(_e.set(rx, ry, rz));
   _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(s, s, s));
   g.applyMatrix4(_m);
   return g;
 }
 /** só posição/normal/uv/cor (para juntar sem erro de atributos) */
-function clean(g: THREE.BufferGeometry): THREE.BufferGeometry {
+export function clean(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const ng = g.index ? g.toNonIndexed() : g;
   for (const k of Object.keys(ng.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) ng.deleteAttribute(k);
   if (!ng.getAttribute('uv')) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(ng.getAttribute('position').count * 2), 2));

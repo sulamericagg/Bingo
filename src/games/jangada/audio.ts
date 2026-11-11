@@ -25,7 +25,7 @@ const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
 
-export type Song = 'day' | 'night' | 'storm' | 'off';
+export type Song = 'day' | 'night' | 'storm' | 'mega' | 'kraken' | 'off';
 type V3 = { x: number; y: number; z: number };
 
 /* ------------------------------ composição ------------------------------ */
@@ -73,7 +73,7 @@ const STORM = [
   { v: [55, 59, 62], b: 31 }, // G
   { v: [56, 59, 64], b: 28 }, // E
 ];
-const BPM: Record<Exclude<Song, 'off'>, number> = { day: 96, night: 70, storm: 108 };
+const BPM: Record<Exclude<Song, 'off'>, number> = { day: 96, night: 70, storm: 108, mega: 132, kraken: 100 };
 
 /** sintetizador da Jangada: ao vivo (música + ambiente) ou offline (receitas do pacote 'jangada') */
 class JSynth {
@@ -176,7 +176,7 @@ class JSynth {
     dw.gain.value = 0.28;
     this.delay.connect(dl).connect(fb).connect(this.delay);
     dl.connect(dw).connect(this.mus);
-    for (const k of ['day', 'night', 'storm']) {
+    for (const k of ['day', 'night', 'storm', 'mega', 'kraken']) {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(this.mus);
@@ -225,6 +225,19 @@ class JSynth {
     this.mus?.gain.setTargetAtTime(0, t, 0.15);
     this.world?.gain.setTargetAtTime(0, t, 0.1);
     const nodes = [this.mus, this.world, this.uw, this.revIn];
+    if (this.motorN) {
+      const mn = this.motorN;
+      window.setTimeout(() => {
+        try {
+          mn.o.stop();
+          mn.o2.stop();
+        } catch {
+          /* */
+        }
+      }, 700);
+      this.motorN = null;
+    }
+    this.unmuffle();
     const srcs = this.amb?.srcs ?? [];
     window.setTimeout(() => {
       for (const x of srcs)
@@ -246,6 +259,7 @@ class JSynth {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return;
     this.ambience();
+    this.ambienceV2();
     if (this.want !== this.song) this.switchSong();
     if (this.song === 'off') return;
     const spb = 60 / BPM[this.song] / 4; // semicolcheia
@@ -271,6 +285,8 @@ class JSynth {
     if (this.song === 'day') this.day(t, step, spb);
     else if (this.song === 'night') this.nightSong(t, step, spb);
     else if (this.song === 'storm') this.stormSong(t, step, spb);
+    else if (this.song === 'mega') this.megaSong(t, step, spb);
+    else if (this.song === 'kraken') this.krakenSong(t, step, spb);
   }
 
   private day(t: number, step: number, spb: number): void {
@@ -629,6 +645,45 @@ class JSynth {
 
   /* ============================== efeitos 3D ============================== */
   private listenerPos = { x: 0, y: 0, z: 0 };
+  /** filtro na saída dos efeitos (sfx) do motor do app: abafa tudo debaixo d'água; desfeito ao sair */
+  private muf: BiquadFilterNode | null = null;
+  private mufOn = false;
+  private muffle(on: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || this.offline) return;
+    const eng = engine as unknown as { sfxGain?: GainNode; master?: GainNode };
+    if (!eng.sfxGain || !eng.master) return;
+    if (on && !this.muf) {
+      try {
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = 18000;
+        f.Q.value = 0.5;
+        eng.sfxGain.disconnect(eng.master);
+        eng.sfxGain.connect(f).connect(eng.master);
+        this.muf = f;
+      } catch {
+        return;
+      }
+    }
+    if (this.muf && on !== this.mufOn) {
+      this.mufOn = on;
+      this.muf.frequency.setTargetAtTime(on ? 900 : 18000, ctx.currentTime, 0.12);
+    }
+  }
+  private unmuffle(): void {
+    const eng = engine as unknown as { sfxGain?: GainNode; master?: GainNode };
+    if (!this.muf || !eng.sfxGain || !eng.master) return;
+    try {
+      eng.sfxGain.disconnect(this.muf);
+      this.muf.disconnect();
+      eng.sfxGain.connect(eng.master);
+    } catch {
+      /* */
+    }
+    this.muf = null;
+    this.mufOn = false;
+  }
   /** posiciona o ouvinte (câmera) */
   listener(p: V3): void {
     this.listenerPos = { x: p.x, y: p.y, z: p.z };
@@ -1255,8 +1310,9 @@ class JSynth {
       a.windG.gain.setTargetAtTime((0.008 + st * 0.06) * rnd(0.5, 1.2) * (this.underwater ? 0.2 : 1), t, 0.9);
       a.rainG.gain.setTargetAtTime(st > 0.35 ? (st - 0.3) * 0.09 * (this.underwater ? 0.2 : 1) : 0.0001, t, 1.2);
     }
-    // embaixo d'água: tudo abafado
+    // embaixo d'água: tudo abafado (ambiente e também os efeitos do motor de áudio)
     this.uw?.frequency.setTargetAtTime(this.underwater ? 650 : 18000, t, 0.12);
+    this.muffle(this.underwater);
     // água batendo na madeira
     this.slapT -= dt;
     if (this.slapT <= 0 && save.sound) {
@@ -1290,6 +1346,421 @@ class JSynth {
       const tt = t + Math.random() * 0.05;
       this.noiseHit(out, tt, rnd(0.03, 0.09) * (0.7 + f.lv * 0.2), rnd(0.008, 0.02), 'bandpass', rnd(1800, 5200), 1500, 2);
       if (Math.random() < 0.15) this.noiseHit(out, tt, 0.035, 0.35, 'lowpass', 300, 150);
+    }
+  }
+  /* ============================== v2: chefes, QTE, barcos, donos ============================== */
+  /** "MAR BRAVO" (Megalodonte, Ré menor, 132 bpm): baixo pulsando em semicolcheias, tambores, metais curtos e melodia heroica */
+  private megaSong(t: number, step: number, spb: number): void {
+    const out = this.songG.mega;
+    const s = step % 16;
+    const bar = Math.floor(step / 16);
+    const prog = [38, 38, 34, 36, 38, 38, 41, 40];
+    const root = prog[bar % 8];
+    // ostinato
+    const pat = [0, 0, 12, 0, 0, 12, 0, 7, 0, 0, 12, 0, 10, 0, 7, 0];
+    this.bass(out, t, root + pat[s], spb * 0.9, s % 4 === 0 ? 0.2 : 0.13, 520);
+    if (s === 0 || s === 8) this.kick(out, t, 0.28);
+    if (s === 4 || s === 12) this.tom(out, t, 110, 0.22);
+    if (s === 14 && bar % 2) this.tom(out, t, 140, 0.16);
+    this.shaker(out, t, s % 2 ? 0.014 : 0.03);
+    // metais (acorde curto)
+    if (s === 0 || (s === 6 && bar % 2 === 1) || s === 10) this.brass(out, t, [root + 24, root + 27, root + 31], spb * 2.2, 0.05);
+    // melodia (a cada 2 compassos, voltas pares)
+    const MEL = [74, -1, 77, 76, 74, -1, 72, 74, 69, -1, -1, 72, 74, -1, -1, -1, 77, -1, 81, 79, 77, -1, 76, 77, 74, -1, -1, -1, -1, -1, -1, -1];
+    if (Math.floor(bar / 4) % 2 === 1 && s % 2 === 0) {
+      const m = MEL[(bar % 2) * 16 + s];
+      if (m > 0) this.steel(out, t, m, spb * 3, 0.07);
+    }
+  }
+  /** "ABISMO" (Polvo Gigante, Mi frígio, 100 bpm em 6/8): órgão misterioso, sinos, tímpanos */
+  private krakenSong(t: number, step: number, spb: number): void {
+    const out = this.songG.kraken;
+    const s = step % 12;
+    const bar = Math.floor(step / 12);
+    const CH = [
+      [40, 52, 55, 59],
+      [41, 53, 57, 60],
+      [40, 52, 55, 59],
+      [38, 50, 53, 57],
+    ];
+    const c = CH[bar % 4];
+    if (s === 0) {
+      this.pad(out, t, c.slice(1).map((m) => m + 12), spb * 12, 0.03, 900);
+      this.bass(out, t, c[0], spb * 5, 0.22, 380);
+      this.tom(out, t, 60, 0.3);
+    }
+    if (s === 6) {
+      this.bass(out, t, c[0] + 7, spb * 4, 0.14, 380);
+      this.tom(out, t, 75, 0.18);
+    }
+    if (s % 2 === 0) this.kalimba(out, t, c[1 + ((s / 2) % 3)] + 24, 0.035);
+    if (s === 9 && bar % 2) this.tom(out, t, 95, 0.14);
+    const MEL = [76, -1, -1, 77, -1, 76, 74, -1, -1, 72, -1, -1];
+    if (bar % 4 >= 2 && MEL[s] > 0) this.bell(out, t, MEL[s] - (bar % 4 === 3 ? 2 : 0), 0.05);
+    this.shaker(out, t, s % 3 === 0 ? 0.02 : 0.008);
+  }
+  /** metal curto (saw filtrado) */
+  private brass(out: AudioNode, t: number, notes: number[], dur: number, vol: number): void {
+    const ctx = this.ctx!;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(600, t);
+    lp.frequency.exponentialRampToValueAtTime(2600, t + 0.05);
+    lp.frequency.exponentialRampToValueAtTime(800, t + dur);
+    const g = ctx.createGain();
+    this.env(g, t, vol, 0.02, dur);
+    lp.connect(g).connect(out);
+    g.connect(this.revIn!);
+    for (const m of notes) {
+      this.osc('sawtooth', mtof(m), t, t + dur + 0.1, lp, -6);
+      this.osc('sawtooth', mtof(m), t, t + dur + 0.1, lp, 6);
+    }
+  }
+  qteShow(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.bell(this.ui!, t, 88, 0.1);
+    this.bell(this.ui!, t + 0.08, 95, 0.08);
+    this.noiseHit(this.ui!, t, 0.05, 0.12, 'highpass', 5000, 8000);
+  }
+  qteOk(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.duck(0.4, 0.5);
+    [72, 76, 79, 84, 88].forEach((m, i) => this.marimba(this.ui!, t + i * 0.055, m, 0.4, 0.13));
+    this.bell(this.ui!, t + 0.28, 96, 0.06);
+  }
+  qteFail(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    const g = this.ctx!.createGain();
+    this.env(g, t, 0.14, 0.01, 0.5);
+    const lp = this.ctx!.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1800, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    lp.connect(g).connect(this.ui!);
+    const o = this.osc('sawtooth', 380, t, t + 0.55, lp);
+    o.frequency.exponentialRampToValueAtTime(140, t + 0.5);
+  }
+  alert(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    for (const [dt, f] of [
+      [0, 880],
+      [0.09, 1320],
+    ]) {
+      const g = this.ctx!.createGain();
+      this.env(g, t + dt, 0.12, 0.004, 0.09);
+      g.connect(this.ui!);
+      this.osc('square', f, t + dt, t + dt + 0.12, g);
+    }
+  }
+  bonk(p: V3 | null): void {
+    if (!this.okFx) return;
+    const out = this.at(p, 3);
+    if (!out) return;
+    const t = this.now();
+    const g = this.ctx!.createGain();
+    this.env(g, t, 0.28, 0.002, 0.18);
+    g.connect(out);
+    const o = this.osc('sine', 620, t, t + 0.22, g);
+    o.frequency.exponentialRampToValueAtTime(150, t + 0.16);
+    this.noiseHit(out, t, 0.12, 0.04, 'bandpass', 1800, 900, 3);
+    // estrelinhas
+    [96, 100].forEach((m, i) => this.bell(out, t + 0.12 + i * 0.07, m, 0.03));
+  }
+  toss(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.noiseHit(this.ui!, t, 0.08, 0.25, 'bandpass', 900, 2800, 1.5);
+    const g = this.ctx!.createGain();
+    this.env(g, t + 0.32, 0.12, 0.003, 0.1);
+    g.connect(this.ui!);
+    const o = this.osc('sine', 420, t + 0.32, t + 0.45, g);
+    o.frequency.exponentialRampToValueAtTime(240, t + 0.42);
+  }
+  trade(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.duck(0.4, 0.6);
+    [84, 88, 91].forEach((m, i) => this.bell(this.ui!, t + i * 0.07, m, 0.07));
+    for (let i = 0; i < 5; i++) this.noiseHit(this.ui!, t + 0.25 + i * 0.04, 0.05, 0.05, 'bandpass', rnd(5000, 8000), 6000, 4);
+  }
+  harpoon(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.noiseHit(this.ui!, t, 0.16, 0.3, 'bandpass', 2400, 600, 1.4);
+    const g = this.ctx!.createGain();
+    this.env(g, t, 0.06, 0.003, 0.35);
+    g.connect(this.ui!);
+    const o = this.osc('triangle', 900, t, t + 0.4, g);
+    o.frequency.exponentialRampToValueAtTime(300, t + 0.35);
+  }
+  boardBoat(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.noiseHit(this.ui!, t, 0.2, 0.12, 'lowpass', 600, 200);
+    this.noiseHit(this.ui!, t + 0.05, 0.08, 0.5, 'bandpass', 800, 300, 1.2);
+    this.creak(this.ui!, t + 0.1, 0.05);
+  }
+  paddle(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.noiseHit(this.ui!, t, 0.09, 0.45, 'bandpass', 900, 350, 1.4);
+    for (let i = 0; i < 3; i++) {
+      const g = this.ctx!.createGain();
+      const tt = t + 0.35 + i * rnd(0.06, 0.12);
+      this.env(g, tt, 0.03, 0.002, 0.05);
+      g.connect(this.ui!);
+      this.osc('sine', rnd(900, 1600), tt, tt + 0.07, g);
+    }
+  }
+  faint(): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.duck(0.8, 1.6);
+    [79, 76, 72, 67, 64].forEach((m, i) => this.bell(this.ui!, t + i * 0.16, m, 0.06));
+    this.noiseHit(this.ui!, t, 0.06, 1.2, 'lowpass', 1200, 200);
+  }
+  chestOpen(r: number): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.duck(0.3 + r * 0.15, 0.6 + r * 0.3);
+    this.creak(this.ui!, t, 0.08);
+    const notes = [
+      [76, 79],
+      [74, 78, 81],
+      [72, 76, 79, 84],
+      [72, 76, 79, 84, 88, 91],
+    ][Math.max(0, Math.min(3, r))];
+    notes.forEach((m, i) => this.marimba(this.ui!, t + 0.18 + i * 0.07, m, 0.6, 0.13));
+    if (r >= 2) this.bell(this.ui!, t + 0.18 + notes.length * 0.07, 96, 0.08);
+    if (r >= 3) for (let i = 0; i < 8; i++) this.noiseHit(this.ui!, t + 0.4 + i * 0.05, 0.04, 0.08, 'highpass', 7000, 9000);
+  }
+  /** rugido de chefe (desenho animado, grave e borbulhante) */
+  bossRoar(k: number): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    this.duck(0.7, 1.5);
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    this.env(g, t, 0.32, 0.12, 1.6);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(k ? 700 : 480, t);
+    lp.frequency.exponentialRampToValueAtTime(180, t + 1.6);
+    lp.Q.value = 4;
+    lp.connect(g).connect(this.ui!);
+    g.connect(this.revIn!);
+    const o = this.osc('sawtooth', k ? 95 : 62, t, t + 1.8, lp);
+    o.frequency.setValueAtTime(k ? 95 : 62, t);
+    o.frequency.linearRampToValueAtTime(k ? 70 : 48, t + 1.6);
+    const lfo = this.osc('sine', k ? 11 : 7, t, t + 1.8, o.frequency as unknown as AudioNode);
+    void lfo;
+    this.noiseHit(this.ui!, t, 0.12, 1.5, 'lowpass', 400, 120);
+    if (k) for (let i = 0; i < 10; i++) this.bubble(this.ui!, t + 0.2 + i * rnd(0.05, 0.12));
+  }
+  private bubble(out: AudioNode, t: number): void {
+    const g = this.ctx!.createGain();
+    this.env(g, t, 0.06, 0.002, 0.06);
+    g.connect(out);
+    const f = rnd(300, 900);
+    const o = this.osc('sine', f, t, t + 0.08, g);
+    o.frequency.exponentialRampToValueAtTime(f * 2.2, t + 0.06);
+  }
+  megaWarn(p: V3 | null): void {
+    if (!this.okFx) return;
+    const out = this.at(p, 12, 140) ?? this.ui!;
+    const t = this.now();
+    this.duck(0.5, 1.2);
+    for (let i = 0; i < 3; i++) {
+      const g = this.ctx!.createGain();
+      this.env(g, t + i * 0.32, 0.3, 0.01, 0.28);
+      g.connect(out);
+      const o = this.osc('sine', 70 + i * 8, t + i * 0.32, t + i * 0.32 + 0.32, g);
+      o.frequency.exponentialRampToValueAtTime(48, t + i * 0.32 + 0.28);
+    }
+    this.noiseHit(out, t + 0.6, 0.08, 0.8, 'bandpass', 400, 2400, 2);
+  }
+  bossWhoosh(p: V3 | null): void {
+    if (!this.okFx) return;
+    const out = this.at(p, 10, 140) ?? this.ui!;
+    const t = this.now();
+    this.noiseHit(out, t, 0.25, 0.9, 'lowpass', 300, 1800, 2);
+    this.noiseHit(out, t + 0.3, 0.12, 0.6, 'bandpass', 1500, 400, 1.2);
+  }
+  bossHit(weak: boolean): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    const g = this.ctx!.createGain();
+    this.env(g, t, weak ? 0.3 : 0.22, 0.002, weak ? 0.4 : 0.2);
+    g.connect(this.ui!);
+    const o = this.osc('sine', weak ? 300 : 180, t, t + 0.45, g);
+    o.frequency.exponentialRampToValueAtTime(weak ? 900 : 90, t + (weak ? 0.25 : 0.15));
+    this.noiseHit(this.ui!, t, 0.15, 0.08, 'bandpass', 900, 500, 2);
+    if (weak) [91, 95, 98].forEach((m, i) => this.bell(this.ui!, t + 0.1 + i * 0.05, m, 0.05));
+  }
+  /** vozes dos donos das ilhas */
+  npc(f: string, k: string): void {
+    if (!this.okFx) return;
+    const t = this.now();
+    const out = this.ui!;
+    const ctx = this.ctx!;
+    const syl = (tt: number, f0: number, f1: number, dur: number, type: OscillatorType, form: number, vol: number) => {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = form;
+      bp.Q.value = 2.5;
+      const g = ctx.createGain();
+      this.env(g, tt, vol, 0.01, dur);
+      bp.connect(g).connect(out);
+      const o = this.osc(type, f0, tt, tt + dur + 0.05, bp);
+      o.frequency.exponentialRampToValueAtTime(f1, tt + dur);
+    };
+    const mood = k === 'alert' ? 1.25 : k === 'dizzy' ? 0.8 : k === 'eat' ? 1 : 1.1;
+    switch (f) {
+      case 'crab':
+        for (let i = 0; i < (k === 'hi' ? 4 : 3); i++) this.noiseHit(out, t + i * 0.09, 0.14, 0.03, 'bandpass', rnd(2500, 4200) * mood, 2000, 6);
+        syl(t + 0.36, 700 * mood, 900 * mood, 0.12, 'square', 1400, 0.05);
+        break;
+      case 'monkey':
+        syl(t, 380 * mood, 620 * mood, 0.18, 'sawtooth', 900, 0.12);
+        syl(t + 0.2, 620 * mood, 300 * mood, 0.22, 'sawtooth', 1100, 0.12);
+        if (k === 'alert') syl(t + 0.45, 500, 800, 0.12, 'sawtooth', 1300, 0.1);
+        break;
+      case 'penguin':
+        syl(t, 330 * mood, 300 * mood, 0.16, 'sawtooth', 900, 0.12);
+        syl(t + 0.2, 350 * mood, 420 * mood, 0.2, 'sawtooth', 1000, 0.12);
+        break;
+      case 'lizard':
+        this.noiseHit(out, t, 0.12, 0.35, 'highpass', 3500, 5000);
+        syl(t + 0.1, 160 * mood, 120 * mood, 0.3, 'sawtooth', 500, 0.1);
+        break;
+      default: {
+        const g = ctx.createGain();
+        this.env(g, t, 0.1, 0.1, 0.8);
+        g.connect(out);
+        g.connect(this.revIn!);
+        const o = this.osc('sine', 500 * mood, t, t + 0.95, g);
+        o.frequency.linearRampToValueAtTime(700 * mood, t + 0.4);
+        o.frequency.linearRampToValueAtTime(420 * mood, t + 0.9);
+      }
+    }
+    if (k === 'dizzy') [88, 84, 91].forEach((m, i) => this.bell(out, t + 0.3 + i * 0.1, m, 0.04));
+    if (k === 'eat') for (let i = 0; i < 4; i++) this.noiseHit(out, t + 0.3 + i * 0.12, 0.06, 0.05, 'bandpass', 1200, 800, 2);
+  }
+  /* ------------------------------ v2: ambiente (bioma, caverna, motor) ------------------------------ */
+  biome = '';
+  cave = 0;
+  motor = 0;
+  private bioT = 3;
+  private dripT = 2;
+  private motorN: { o: OscillatorNode; o2: OscillatorNode; g: GainNode; f: BiquadFilterNode } | null = null;
+  private ambienceV2(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.offline) return;
+    const t = ctx.currentTime;
+    const dt = 0.05;
+    // motor da lancha (contínuo)
+    if (this.motor > 0.01 && !this.motorN && save.sound) {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 600;
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = 50;
+      const o2 = ctx.createOscillator();
+      o2.type = 'square';
+      o2.frequency.value = 25;
+      o.connect(f);
+      o2.connect(f);
+      f.connect(g).connect(this.world!);
+      o.start();
+      o2.start();
+      this.motorN = { o, o2, g, f };
+    }
+    if (this.motorN) {
+      const m = this.motor;
+      this.motorN.g.gain.setTargetAtTime(m > 0.01 && save.sound ? 0.05 + m * 0.07 : 0, t, 0.2);
+      this.motorN.o.frequency.setTargetAtTime(48 + m * 70, t, 0.25);
+      this.motorN.o2.frequency.setTargetAtTime(24 + m * 35, t, 0.25);
+      this.motorN.f.frequency.setTargetAtTime(500 + m * 1400, t, 0.25);
+    }
+    if (!save.sound) return;
+    // pingos na caverna (com eco)
+    if (this.cave > 0.5) {
+      this.dripT -= dt;
+      if (this.dripT <= 0) {
+        this.dripT = rnd(0.5, 1.6);
+        const g = ctx.createGain();
+        this.env(g, t, 0.05, 0.002, 0.12);
+        g.connect(this.world!);
+        g.connect(this.delay!);
+        g.connect(this.revIn!);
+        const f = rnd(1200, 2600);
+        const o = this.osc('sine', f, t, t + 0.15, g);
+        o.frequency.exponentialRampToValueAtTime(f * 1.6, t + 0.08);
+      }
+    }
+    // bioma
+    if (!this.biome || this.underwater) return;
+    this.bioT -= dt;
+    if (this.bioT > 0) return;
+    const L = this.listenerPos;
+    const ang = Math.random() * Math.PI * 2;
+    const p = { x: L.x + Math.cos(ang) * 12, y: L.y + 3, z: L.z + Math.sin(ang) * 12 };
+    const out = this.at(p, 6, 40);
+    if (!out) return;
+    const tt = t + 0.02;
+    switch (this.biome) {
+      case 'jungle': {
+        this.bioT = rnd(0.8, 2.4);
+        // pássaros tropicais (trinado) ou insetos
+        if (Math.random() < 0.6) {
+          const g = ctx.createGain();
+          this.env(g, tt, 0.05, 0.01, 0.5);
+          g.connect(out);
+          const o = this.osc('sine', rnd(1800, 2800), tt, tt + 0.55, g);
+          for (let i = 0; i < 5; i++) o.frequency.setValueAtTime(rnd(1600, 3200), tt + i * 0.09);
+        } else for (let i = 0; i < 8; i++) this.noiseHit(out, tt + i * 0.05, 0.02, 0.03, 'bandpass', 6500, 6500, 8);
+        break;
+      }
+      case 'mangrove': {
+        this.bioT = rnd(0.9, 2.2);
+        // sapinhos
+        for (let i = 0; i < 2; i++) {
+          const g = ctx.createGain();
+          this.env(g, tt + i * 0.16, 0.06, 0.005, 0.1);
+          g.connect(out);
+          this.osc('square', rnd(110, 160), tt + i * 0.16, tt + i * 0.16 + 0.12, g);
+        }
+        break;
+      }
+      case 'snowy':
+        this.bioT = rnd(1.5, 3.5);
+        this.noiseHit(out, tt, 0.05, 1.6, 'bandpass', 500, 1400, 1.2);
+        break;
+      case 'volcanic':
+        this.bioT = rnd(1.2, 3);
+        this.noiseHit(out, tt, 0.12, 1.4, 'lowpass', 110, 60);
+        for (let i = 0; i < 3; i++) this.bubble(out, tt + 0.3 + i * rnd(0.1, 0.2));
+        break;
+      case 'legend':
+      case 'krakenIsle':
+        this.bioT = rnd(1.5, 3.5);
+        this.bell(out, tt, pick([84, 88, 91, 95]), 0.025);
+        break;
+      case 'rocky':
+        this.bioT = rnd(2, 4);
+        this.noiseHit(out, tt, 0.04, 0.2, 'bandpass', 1500, 800, 2);
+        break;
+      default:
+        this.bioT = rnd(1.5, 3.5);
+        // caranguejinhos na areia
+        for (let i = 0; i < 3; i++) this.noiseHit(out, tt + i * 0.07, 0.03, 0.02, 'bandpass', 3800, 3000, 6);
     }
   }
   /** fogueiras acesas (posição + nível) — chamar quando mudam */
@@ -1367,6 +1838,31 @@ definePack({
     dawn: D((s) => s.dawn(), 1.6, { ...JINGLE, duck: 0.6 }),
     dusk: D((s) => s.dusk(), 1.4, { ...JINGLE, duck: 0.5 }),
     sharkWarn: D((s) => s.sharkWarn(), 1.9, { ...JINGLE, duck: 0.6 }),
+    // v2
+    qteShow: D((s) => s.qteShow(), 1.0, { ...JINGLE }),
+    qteOk: D((s) => s.qteOk(), 1.1, { ...JINGLE, duck: 0.4 }),
+    qteFail: D((s) => s.qteFail(), 0.7, { ...JINGLE }),
+    alert: D((s) => s.alert(), 0.3, { bus: 'ui', cool: 0.6 }),
+    bonk: D((s) => s.bonk(null), 0.6, { pitch: 80, cool: 0.15 }),
+    toss: D((s) => s.toss(), 0.6, { bus: 'ui' }),
+    trade: D((s) => s.trade(), 0.9, { ...JINGLE }),
+    harpoon: D((s) => s.harpoon(), 0.5, { bus: 'ui', cool: 0.2 }),
+    boardBoat: D((s) => s.boardBoat(), 0.8),
+    paddle: D((s) => s.paddle(), 0.8, { db: -4, cool: 0.4 }),
+    faint: D((s) => s.faint(), 2.0, { ...JINGLE, duck: 0.8 }),
+    chest0: D((s) => s.chestOpen(0), 1.0, { ...JINGLE }),
+    chest1: D((s) => s.chestOpen(1), 1.1, { ...JINGLE }),
+    chest2: D((s) => s.chestOpen(2), 1.4, { ...JINGLE }),
+    chest3: D((s) => s.chestOpen(3), 1.8, { ...JINGLE, duck: 0.6 }),
+    roarMega: D((s) => s.bossRoar(0), 2.2, { ...JINGLE, duck: 0.7 }),
+    roarKraken: D((s) => s.bossRoar(1), 2.2, { ...JINGLE, duck: 0.7 }),
+    megaWarn: D((s) => s.megaWarn(null), 1.8, { duck: 0.5, cool: 1 }),
+    bossWhoosh: D((s) => s.bossWhoosh(null), 1.4, { cool: 0.5 }),
+    bossHit: D((s) => s.bossHit(false), 0.6, { bus: 'ui', cool: 0.1 }),
+    bossWeak: D((s) => s.bossHit(true), 0.8, { bus: 'ui', cool: 0.1 }),
+    ...Object.fromEntries(
+      ['crab', 'monkey', 'penguin', 'lizard', 'pirate'].flatMap((f) => ['hi', 'alert', 'eat', 'dizzy'].map((k) => [`npc_${f}_${k}`, D((s) => s.npc(f, k), 1.2, { cool: 0.8 })])),
+    ),
   },
 });
 
@@ -1549,5 +2045,67 @@ export class JAudio {
   }
   sharkWarn(): void {
     this.play('sharkWarn');
+  }
+  /* ---------- v2 ---------- */
+  set biome(v: string) {
+    this.s.biome = v;
+  }
+  set cave(v: number) {
+    this.s.cave = v;
+  }
+  set motor(v: number) {
+    this.s.motor = v;
+  }
+  qteShow(): void {
+    this.play('qteShow');
+  }
+  qteOk(): void {
+    this.play('qteOk');
+  }
+  qteFail(): void {
+    this.play('qteFail');
+  }
+  alert(): void {
+    this.play('alert');
+  }
+  bonk(p: V3 | null = null): void {
+    this.play('bonk', p);
+  }
+  toss(): void {
+    this.play('toss');
+  }
+  trade(): void {
+    this.play('trade');
+  }
+  harpoon(): void {
+    this.play('harpoon');
+  }
+  boardBoat(): void {
+    this.play('boardBoat');
+  }
+  paddle(): void {
+    this.play('paddle');
+  }
+  faint(): void {
+    this.play('faint');
+  }
+  chestOpen(r: number): void {
+    this.play('chest' + Math.max(0, Math.min(3, r)));
+  }
+  bossRoar(k: number): void {
+    this.play(k ? 'roarKraken' : 'roarMega');
+  }
+  megaWarn(p: V3 | null): void {
+    this.play('megaWarn', p);
+  }
+  bossWhoosh(p: V3 | null): void {
+    this.play('bossWhoosh', p);
+  }
+  bossHit(weak: boolean): void {
+    this.play(weak ? 'bossWeak' : 'bossHit');
+  }
+  npc(f: string, k: string, p: V3 | null): void {
+    if (k === 'bonk') return this.bonk(p);
+    this.play(`npc_${f}_${k}`, p);
   }
 }

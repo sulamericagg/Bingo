@@ -33,6 +33,8 @@ export interface SharkCtx {
   fin(x: number, z: number): void;
   wait: [number, number];
   enabled: boolean;
+  /** espera entre mordidas em quem nada (s) */
+  cd?: number;
 }
 
 export class Shark {
@@ -54,17 +56,34 @@ export class Shark {
   /** pancada recente (anima) */
   hurtT = 0;
   chomp = 0;
-  constructor() {
+  /** 0 = Mordelão (fica na jangada) · 1 = tubarão-tigre do mar aberto (maior, mais forte) */
+  readonly variant: number;
+  /** espera para morder de novo */
+  cdT = 0;
+  constructor(variant = 0) {
+    this.variant = variant;
     const m = sharkModel();
     this.root = m.root;
     this.tail = m.tail;
     this.jaw = m.jaw;
-    this.root.scale.setScalar(0.95);
+    this.root.scale.setScalar(variant ? 1.35 : 0.95);
+    if (variant) {
+      // listrado/cinza-azulado (material próprio, multiplica as cores)
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, color: '#8a9ab8' });
+      this.root.traverse((o) => {
+        if (o instanceof THREE.Mesh) o.material = mat;
+      });
+    }
+  }
+  get maxHp(): number {
+    return this.variant ? 5 : 3;
   }
   /** lado do anfitrião */
   sim(dt: number, c: SharkCtx): void {
     this.timer -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
+    if (this.cdT > 0) this.cdT -= dt;
+    const fast = this.variant ? 1.25 : 1;
     const sp = (tx: number, tz: number, v: number) => {
       const a = Math.atan2(tx - this.x, tz - this.z);
       this.yaw += angTo(this.yaw, a) * Math.min(1, dt * 3);
@@ -83,7 +102,7 @@ export class Shark {
           this.z = c.cz + Math.sin(a) * 32;
           this.orbitA = a;
           this.timer = 7 + Math.random() * 6;
-          this.hp = 3;
+          this.hp = this.maxHp;
           c.warn();
         }
         break;
@@ -92,8 +111,8 @@ export class Shark {
         const R = 9 + Math.sin(this.orbitA * 2) * 1.5;
         sp(c.cx + Math.cos(this.orbitA) * R, c.cz + Math.sin(this.orbitA) * R, 3.4);
         this.y = c.waterH(this.x, this.z) - 0.42;
-        const near = swim.filter((s) => Math.hypot(s[1] - this.x, s[3] - this.z) < 18);
-        if (near.length) {
+        const near = swim.filter((s) => Math.hypot(s[1] - this.x, s[3] - this.z) < (this.variant ? 30 : 18));
+        if (near.length && this.cdT <= 0) {
           this.st = 'hunt';
           this.huntId = near[0][0];
           this.timer = 14;
@@ -149,14 +168,21 @@ export class Shark {
           this.timer = 6;
           break;
         }
-        const d = sp(s[1], s[3], 4.6);
         this.y = Math.min(c.waterH(this.x, this.z) - 0.42, s[2] + 0.4);
+        if (this.cdT > 0) {
+          // acabou de morder: passa direto, faz a curva e volta
+          const a = Math.atan2(s[1] - this.x, s[3] - this.z);
+          this.yaw += angTo(this.yaw, a) * Math.min(1, dt * 0.9);
+          this.x += Math.sin(this.yaw) * 4.2 * fast * dt;
+          this.z += Math.cos(this.yaw) * 4.2 * fast * dt;
+          break;
+        }
+        const d = sp(s[1], s[3], 4.8 * fast);
         if (d < 1.3) {
           this.chomp = 1;
           c.biteMe(s[0]);
-          this.st = 'circle';
-          this.timer = 10;
-          this.orbitA = Math.atan2(this.z - c.cz, this.x - c.cx);
+          this.cdT = c.cd ?? 1.6;
+          this.timer = Math.max(this.timer, 6);
         }
         break;
       }

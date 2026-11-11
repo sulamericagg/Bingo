@@ -20,6 +20,13 @@ import { FpCamera, FpController, fpTuning } from '../../3d/fpkit';
 import { PaperChar, mySpec, specOf, type PaperTool } from '../../3d/paper';
 import { JAudio } from './audio';
 import { Ghost, Shark } from './creatures';
+import { BIOMES, FACTIONS, RING, TRADES, chestLoot, rarityName, worldMap, zoneAt, type BiomeDef, type IsleSpec } from './biomes';
+import { Boat, type BoatSave } from './boats';
+import { Kraken, Megalodon, type Boss, type BossCtx, type HitSphere } from './boss';
+import { mapHtml, mapLegend, type Marker } from './mapui';
+import { Owners, type Npc } from './owners';
+import type { QteReq } from './qte';
+import { chestModel, deathChestModel, harpoonGeo, isleFarGeo, spear3Geo } from './models2';
 import {
   COOK,
   DAILY,
@@ -31,8 +38,15 @@ import {
   FIRE_UP,
   FOOD,
   FUEL,
+  BOATS,
+  FUEL_SEC,
+  HOT_MAX,
   HOT_ORDER,
   ITEM,
+  WEAPON,
+  bagCount,
+  isHarpoon,
+  type BoatK,
   MISSIONS,
   NIGHT0,
   PIECE,
@@ -52,10 +66,10 @@ import {
 } from './data';
 import { Hud, type HotItem, type MisView } from './hud';
 import { iconImage } from './icons';
-import { Island, nodeLoot, underwaterNode, type INode } from './island';
+import { Island, axeNode, nodeLoot, solidNode, underwaterNode, type INode } from './island';
 import { CELL, DECK, FLOOR_H, MAT, debrisGeo, iconTexture, initMats, linkGeo, pieceGeo, floorGeo, foundationGeo, stairsGeo, toolGeo } from './models';
 import type { JNet, NetEvent } from './net';
-import { Ocean, Sky, skyAt, waveH, type SkyCols } from './ocean';
+import { Ocean, SEABED_U, Sky, Underwater, skyAt, waveH, type SkyCols } from './ocean';
 import { Raft, RaftView, bagMove, cellOf, pieceBag, type RPiece } from './raft';
 import type { JgStats, JgWorld } from './save';
 
@@ -105,7 +119,44 @@ interface Remote {
   seen: number;
   speed: number;
 }
-type Aim = { k: 'piece'; p: RPiece } | { k: 'node'; n: INode } | { k: 'shark' } | { k: 'ghost' } | null;
+type Aim =
+  | { k: 'piece'; p: RPiece }
+  | { k: 'node'; n: INode; i: Island }
+  | { k: 'shark'; s: Shark }
+  | { k: 'ghost' }
+  | { k: 'boat'; b: Boat }
+  | { k: 'dchest'; c: DChest }
+  | { k: 'npc'; n: Npc; o: Owners }
+  | { k: 'boss'; b: Boss; h: HitSphere }
+  | null;
+/** baú boiando: itens de quem desmaiou (kind 0) ou tesouro do chefe (kind 1) */
+interface DChest {
+  id: number;
+  kind: number;
+  x: number;
+  z: number;
+  bag: Bag;
+  coins: number;
+  root: THREE.Group;
+  beam: THREE.Mesh | null;
+  ph: number;
+}
+interface Harpoon {
+  p: THREE.Vector3;
+  v: THREE.Vector3;
+  life: number;
+  dmg: number;
+  mesh: THREE.Mesh;
+  hit: boolean;
+}
+interface IsleSt {
+  /** nós mortos */
+  d: number[];
+  /** descoberta */
+  k?: 1;
+  /** pedido do dono feito */
+  q?: 1;
+}
 
 export interface WorldInit {
   root: HTMLElement;
@@ -146,8 +197,35 @@ export class World {
   private ghostMesh: THREE.Mesh | null = null;
   private ghostKey = '';
   shark = new Shark();
+  /** tubarões-tigre do mar aberto (meio/longe) */
+  sharks2 = [new Shark(1), new Shark(1)];
   ghost = new Ghost();
+  /** ilha carregada mais perto de mim (atualizada a cada quadro) */
   isl: Island | null = null;
+  /** mapa do mar (fixo pela semente) */
+  map: IsleSpec[] = [];
+  isles = new Map<number, Island>();
+  owners = new Map<number, Owners>();
+  isleSt: Record<number, IsleSt> = {};
+  private far = new Map<number, THREE.Mesh>();
+  private streamT = 0;
+  boats: Boat[] = [];
+  myBoat: Boat | null = null;
+  private boatSeq = 1;
+  dch: DChest[] = [];
+  private dchSeq = 1;
+  bosses: Boss[] = [];
+  bossDone: Record<string, number> = {};
+  harpoons: Harpoon[] = [];
+  private harpGeo = new Map<string, THREE.BufferGeometry>();
+  target = -1;
+  wind = 0.6;
+  sneak = false;
+  private caveK = 0;
+  private uw: Underwater;
+  private introCam = 0;
+  private biomeNear: BiomeDef | null = null;
+  private wxT = 0;
   debris: Debris[] = [];
   private debGeo = new Map<DK, THREE.BufferGeometry>();
   private remotes = new Map<string, Remote>();
@@ -266,8 +344,10 @@ export class World {
     this.scene.add(this.hemi, this.sun, this.sun.target);
     this.sky = new Sky(this.tier);
     this.scene.add(this.sky.group);
-    this.ocean = new Ocean(this.tier);
+    this.ocean = new Ocean(this.tier, this.sky.cloudTex);
     this.scene.add(this.ocean.mesh);
+    this.uw = new Underwater(this.tier);
+    this.scene.add(this.uw.group);
     this.fx = new Particles(this.tier <= 0 ? 220 : 420);
     this.fx.floorY = -50;
     this.fx.budget = [0.4, 0.65, 0.9, 1][this.tier];
@@ -276,12 +356,14 @@ export class World {
     const d = o.data;
     this.seed = d?.seed ?? Math.floor(Math.random() * 1e6);
     this.raft = d ? Raft.from(d.raft) : Raft.starter();
+    this.buildMap();
     if (d) this.load(d);
     this.rv = new RaftView(this.raft, this.tier >= 2 ? 4 : this.tier === 1 ? 2 : 1);
     this.raftG.add(this.rv.group);
     this.scene.add(this.raftG);
     this.rv.sync(true);
     this.scene.add(this.shark.root, this.ghost.root, this.ghost.ship);
+    for (const s of this.sharks2) this.scene.add(s.root);
     // eu (3ª pessoa): Bloop de papel
     this.paper = new PaperChar(mySpec(), { radius: 0.42, cell: 128, shadow: true });
     this.scene.add(this.paper.root);
@@ -334,7 +416,13 @@ export class World {
         this.au.ui1();
         if (k !== 'trash' && this.buildSel) notify(PIECE[k].say(), { icon: 'sparkle', ms: 2200, key: 'jgsay' });
       },
+      map: () => this.openMap(),
+      sneak: () => {
+        this.sneak = !this.sneak;
+        this.au.ui1();
+      },
     });
+    this.hud.qte.onInput = () => tap('light');
     this.ctl = new FpsControls(this.touch, { joystick: { zoneWidth: 0.42, zoneTop: 0.2 }, look: { mouse: true } });
     window.addEventListener('keydown', this.kd);
     window.addEventListener('keyup', this.ku);
@@ -376,14 +464,17 @@ export class World {
     this.ghostNight = d.ghostDone ?? -1;
     this.coinsDay = d.coinsDay ?? 0;
     if (d.pos) [this.me.x, this.me.y, this.me.z] = d.pos;
-    if (d.isl) {
-      this.isl = new Island(d.isl.seed, d.isl.x, d.isl.z, this.tier);
-      for (const id of d.isl.dead) {
-        const n = this.isl.nodes.find((q) => q.id === id);
-        if (n) this.isl.kill(n);
-      }
-      this.scene.add(this.isl.group);
+    // v1 → v2: a ilha que passava era temporária; quem estava fora da jangada volta para ela
+    if (d.v !== 2) {
+      if (this.raft.groundAt(this.me.x, this.me.z, 5) === null) [this.me.x, this.me.y, this.me.z] = [0.75, DECK, 0.75];
     }
+    for (const [k, v] of Object.entries(d.isles ?? {})) this.isleSt[+k] = { d: [...(v.d ?? [])], k: v.k ?? this.isleSt[+k]?.k, q: v.q };
+    for (const b of d.boats ?? []) this.addBoat(b);
+    for (const c of d.dch ?? []) this.addDChest(c[0], c[1], c[2], c[3], c[4], c[5]);
+    this.bossDone = { ...(d.boss ?? {}) };
+    this.target = d.target ?? -1;
+    this.wind = d.wind ?? this.wind;
+    this.quests = new Set(d.quests ?? []);
     for (const p of this.raft.pieces) {
       if (p.k === 'anchor' && p.d?.on) this.anchored = true;
       if (p.k === 'sail' && p.d?.on) this.sailOn = true;
@@ -391,7 +482,7 @@ export class World {
   }
   toSave(): JgWorld {
     return {
-      v: 1,
+      v: 2,
       seed: this.seed,
       day: this.day,
       tod: this.tod,
@@ -406,17 +497,25 @@ export class World {
       dailyDay: this.dailyDay,
       off: [Math.round(this.off[0] * 10) / 10, Math.round(this.off[1] * 10) / 10],
       hdg: this.hdg,
-      isl: this.isl ? { seed: this.isl.seed, x: this.isl.x, z: this.isl.z, dead: this.isl.nodes.filter((n) => !n.alive).map((n) => n.id) } : null,
+      isl: null,
       nextIsl: this.nextIsl,
       stats: this.stats,
-      pos: this.me.swim ? [0.75, DECK, 0.75] : [this.me.x, this.me.y, this.me.z],
+      pos: this.me.swim || this.myBoat ? [0.75, DECK, 0.75] : [this.me.x, this.me.y, this.me.z],
       bed: this.bed,
       sharkT: Math.max(20, this.shark.active ? 40 : this.shark.timer),
       stormT: this.stormT,
       ghostDone: this.ghostNight,
       coinsDay: this.coinsDay,
+      isles: this.isleSt,
+      boats: this.boats.map((b) => b.save()),
+      dch: this.dch.map((c) => [c.id, c.kind, r1(c.x), r1(c.z), c.bag, c.coins]),
+      boss: this.bossDone,
+      target: this.target,
+      wind: r2(this.wind),
+      quests: [...this.quests],
     };
   }
+  quests = new Set<string>();
 
   /* ============================== qualidade/tela ============================== */
   private pr(): number {
@@ -466,7 +565,9 @@ export class World {
     }
   }
 
-  private step(dt: number): void {
+  private step(dt0: number): void {
+    // câmera lenta durante o QTE (só jogando sozinho)
+    const dt = this.hud.qte.active && !this.net ? dt0 * 0.4 : dt0;
     const online = !!this.net;
     if (this.paused && !online) {
       this.au.setSong(this.isNightNow() ? 'night' : 'day');
@@ -491,6 +592,7 @@ export class World {
     }
     this.updateRemotes(dt);
     this.shark.view(dt);
+    this.stepV2(dt);
     this.ghost.view(dt, (x, z) => this.waterAt(x, z));
     this.updateDebrisView(dt);
     this.rv.sync();
@@ -539,8 +641,8 @@ export class World {
       this.dawn();
     }
     if (prevTod < NIGHT0 && this.tod >= NIGHT0) this.sendFx('dusk');
-    // clima
-    this.stormT -= dt;
+    // clima (no mar aberto as tempestades vêm mais vezes)
+    this.stormT -= dt * (this.farOut() >= 2 ? 2.2 : 1);
     if (this.stormT <= 0) {
       if (this.stormOn) {
         this.stormOn = false;
@@ -552,24 +654,15 @@ export class World {
       } else this.stormT = 150 + Math.random() * 150;
     }
     this.storm += ((this.stormOn ? 1 : 0) - this.storm) * Math.min(1, dt * 0.12);
-    // deriva (vela/âncora)
+    // a jangada é a casa: fica no meio do mapa. Vela aberta = o vento traz mais coisas boiando;
+    // âncora baixada = balança menos (e a correnteza fica mais mansa)
     this.anchored = this.raft.pieces.some((p) => p.k === 'anchor' && p.d?.on);
-    const sail = this.raft.pieces.find((p) => p.k === 'sail' && p.d?.on);
-    this.sailOn = !!sail;
-    let dx = 0;
-    let dz = 0;
-    if (!this.anchored) {
-      dx = this.hdg[0] * CURRENT;
-      dz = this.hdg[1] * CURRENT;
-      if (sail) {
-        const y = sail.d!.yaw ?? 0;
-        const n = Math.min(3, this.raft.count('sail'));
-        dx += -Math.sin(y) * SAIL * (0.8 + n * 0.2);
-        dz += -Math.cos(y) * SAIL * (0.8 + n * 0.2);
-      }
-    }
-    this.drift = [dx, dz];
-    this.flow = this.anchored ? [-this.hdg[0] * CURRENT, -this.hdg[1] * CURRENT] : [-dx, -dz];
+    this.sailOn = this.raft.pieces.some((p) => p.k === 'sail' && p.d?.on);
+    const cur = CURRENT * (this.sailOn ? 1 + Math.min(3, this.raft.count('sail')) * 0.35 * SAIL * 0.5 : 1) * (this.anchored ? 0.7 : 1);
+    this.drift = [0, 0];
+    this.flow = [-this.hdg[0] * cur, -this.hdg[1] * cur];
+    // vento gira devagar (veleiro)
+    this.wind += dt * 0.004 * Math.sin(this.time * 0.01 + 1);
     this.moveWorld(dt);
     // restos boiando
     this.debT -= dt;
@@ -608,28 +701,24 @@ export class World {
     if (gone.length) this.removeDebris(gone, true);
     // peças com estado
     this.simPieces(dt);
-    // ilhas
-    this.nextIsl -= dt;
-    if (!this.isl && this.nextIsl <= 0) this.spawnIsland();
-    if (this.isl) {
-      const [ix, iz] = [this.isl.x - cx, this.isl.z - cz];
-      const ahead = (ix * this.flow[0] + iz * this.flow[1]) / fl;
-      if (ahead > 90 || Math.hypot(ix, iz) > 260) this.dropIsland();
-    }
-    // tubarão
+    void fl;
+    // tubarão (Mordelão: mora em volta da jangada)
+    const swimHome = () => this.swimmers().filter((s) => Math.hypot(s[1] - cx, s[3] - cz) < 70);
     this.shark.sim(dt, {
       cx,
       cz,
       edges: () => this.edges(),
-      swimmers: () => this.swimmers(),
+      swimmers: swimHome,
       bite: (id, x, z) => this.sharkBite(id, x, z),
-      biteMe: (who) => this.sharkBiteMe(who),
+      biteMe: (who) => this.sharkBiteMe(who, this.shark),
       waterH: (x, z) => this.waterAt(x, z),
       warn: () => this.sendFx('warn'),
       fin: (x, z) => this.sendFx('fin', x, 0, z),
       wait: D.shark,
       enabled: this.day >= D.sharkDay,
+      cd: [2.2, 1.6, 1.15][this.diff],
     });
+    this.simSea(dt);
     // fantasma (uma visita por noite, a partir da 1ª noite)
     if (this.isNightNow() && this.ghostNight !== this.day && !this.ghost.active && this.tod > NIGHT0 + 0.06) {
       this.ghostNight = this.day;
@@ -656,19 +745,6 @@ export class World {
     this.moveWorld(dt);
   }
   private moveWorld(dt: number): void {
-    const [dx, dz] = this.drift;
-    this.off[0] += dx * dt;
-    this.off[1] += dz * dt;
-    if (this.isl) {
-      this.isl.x -= dx * dt;
-      this.isl.z -= dz * dt;
-      this.isl.group.position.set(this.isl.x, 0, this.isl.z);
-      // quem está na ilha vai junto
-      if (this.me.onIsl && !this.me.swim) {
-        this.me.x -= dx * dt;
-        this.me.z -= dz * dt;
-      }
-    }
     for (const d of this.debris) {
       if (d.hooked) continue;
       d.x += d.vx * dt;
@@ -705,7 +781,7 @@ export class World {
     // não nasce em cima da jangada
     const b = this.raft.bounds();
     if (x > b[0] - 2 && x < b[2] + 2 && z > b[1] - 2 && z < b[3] + 2) x += 6 * Math.sign(side || 1);
-    if (this.isl && Math.hypot(x - this.isl.x, z - this.isl.z) < this.isl.r + 4) return;
+    for (const s of this.map) if (Math.hypot(x - s.x, z - s.z) < s.r + 6) return;
     let w = Math.random() * Object.values(DEBRIS_W).reduce((a, v) => a + v, 0);
     let k: DK = 'plank';
     for (const dk of DEBRIS) {
@@ -752,37 +828,962 @@ export class World {
   }
 
   /* ------------------------------ ilhas ------------------------------ */
-  private spawnIsland(): void {
-    const f = this.flow;
-    const fl = Math.hypot(f[0], f[1]) || 1;
-    const ux = f[0] / fl;
-    const uz = f[1] / fl;
-    const seed = Math.floor(Math.random() * 1e6);
-    const side = (Math.random() < 0.5 ? -1 : 1) * 1;
-    const isl = new Island(seed, 0, 0, this.tier);
-    const lat = side * (isl.r * 1.15 + 9);
-    const [cx, cz] = this.raft.center();
-    isl.x = cx - ux * 115 - uz * lat;
-    isl.z = cz - uz * 115 + ux * lat;
-    isl.group.position.set(isl.x, 0, isl.z);
-    this.isl = isl;
+  /* ============================== v2: mapa, ilhas, barcos, chefes ============================== */
+  /** cria o mapa fixo (ilhas, silhuetas distantes, chefes) */
+  private buildMap(): void {
+    this.map = worldMap(this.seed);
+    for (const s of this.map) {
+      // as ilhas de perto já aparecem no mapa (dá para vê-las da jangada)
+      if (BIOMES[s.biome].tier === 1) (this.isleSt[s.id] ??= { d: [] }).k = 1;
+      const B = BIOMES[s.biome];
+      const m = new THREE.Mesh(isleFarGeo(s.r, 2.5, s.biome, B.grass, B.sand), MAT.vc);
+      m.position.set(s.x, -0.2, s.z);
+      this.scene.add(m);
+      this.far.set(s.id, m);
+      if (s.biome === 'megaIsle' || s.biome === 'krakenIsle') {
+        const d = Math.hypot(s.x, s.z);
+        const k = (d - s.r - 34) / d;
+        const boss = s.biome === 'megaIsle' ? new Megalodon(s.x * k, s.z * k, this.diff) : new Kraken(s.x * k, s.z * k, this.diff);
+        this.scene.add(boss.root);
+        if (boss instanceof Kraken) this.scene.add(boss.shadowMesh);
+        this.bosses.push(boss);
+      }
+    }
+  }
+  private loadIsle(s: IsleSpec): Island {
+    const isl = new Island(s, this.tier);
+    for (const id of this.isleSt[s.id]?.d ?? []) {
+      const n = isl.nodes.find((q) => q.id === id);
+      if (n && n.alive) {
+        isl.kill(n);
+        if (n.k === 'chest' && n.lid) n.lid.rotation.x = -1.9;
+      }
+    }
     this.scene.add(isl.group);
-    this.nextIsl = 300 + Math.random() * 160;
-    this.sendFx('isl');
-    this.sendIsl();
+    this.isles.set(s.id, isl);
+    if (isl.def.owner !== 'none') this.owners.set(s.id, new Owners(isl));
+    const f = this.far.get(s.id);
+    if (f) f.visible = false;
+    return isl;
   }
-  private dropIsland(): void {
-    if (!this.isl) return;
-    this.scene.remove(this.isl.group);
-    this.isl.dispose();
-    this.isl = null;
-    if (this.me.onIsl) this.me.onIsl = false;
-    this.sendIsl();
+  private dropIsle(id: number): void {
+    const isl = this.isles.get(id);
+    if (!isl) return;
+    this.owners.get(id)?.dispose();
+    this.owners.delete(id);
+    this.scene.remove(isl.group);
+    isl.dispose();
+    this.isles.delete(id);
+    const f = this.far.get(id);
+    if (f) f.visible = true;
   }
-  private sendIsl(): void {
-    if (!this.net || !this.isHost) return;
-    const i = this.isl;
-    this.net.send({ t: 'isl', i: i ? [i.seed, r1(i.x), r1(i.z), i.nodes.filter((n) => !n.alive).map((n) => n.id)] : 0 });
+  /** ilha carregada (o anfitrião carrega sob demanda quando um convidado mexe nela) */
+  private ensureIsle(id: number): Island | null {
+    const l = this.isles.get(id);
+    if (l) return l;
+    const s = this.map.find((q) => q.id === id);
+    return s ? this.loadIsle(s) : null;
+  }
+  private plist(): { id: string; x: number; y: number; z: number; boat: boolean; swim: boolean }[] {
+    const myId = this.net?.me.id ?? 'me';
+    const out = [{ id: myId, x: this.me.x, y: this.me.y, z: this.me.z, boat: !!this.myBoat, swim: this.me.swim }];
+    for (const r of this.remotes.values()) out.push({ id: r.id, x: r.x, y: r.y, z: r.z, boat: this.boats.some((b) => b.drv === r.id), swim: r.sw });
+    return out;
+  }
+  /** maior zona de perigo onde há alguém no mar aberto (1 perto · 2 meio · 3 longe) */
+  private farOut(): number {
+    let z = 1;
+    for (const p of this.plist()) if (p.boat || p.swim) z = Math.max(z, zoneAt(p.x, p.z));
+    return z;
+  }
+  private updateIsles(dt: number): void {
+    this.streamT -= dt;
+    if (this.streamT <= 0) {
+      this.streamT = 0.5;
+      const ps = this.isHost ? this.plist() : this.plist().slice(0, 1);
+      for (const s of this.map) {
+        let d = 1e9;
+        for (const p of ps) d = Math.min(d, Math.hypot(p.x - s.x, p.z - s.z));
+        const loaded = this.isles.has(s.id);
+        if (!loaded && d < 230) this.loadIsle(s);
+        else if (loaded && d > 300) this.dropIsle(s.id);
+        // detalhe (árvores, baús, donos) só perto: longe fica só o chão
+        const il = this.isles.get(s.id);
+        if (il) il.detail(Math.hypot(this.cam.position.x - s.x, this.cam.position.z - s.z) < s.r + (this.tier >= 2 ? 150 : 110));
+        // descobriu (chegou perto)
+        const dm = Math.hypot(this.me.x - s.x, this.me.z - s.z);
+        if (dm < 175 && !this.isleSt[s.id]?.k) this.discover(s);
+      }
+    }
+    // ilha mais perto de mim
+    let best: Island | null = null;
+    let bd = 1e9;
+    for (const isl of this.isles.values()) {
+      const d = Math.hypot(isl.x - this.me.x, isl.z - this.me.z) - isl.outer;
+      if (d < 40 && d < bd) {
+        bd = d;
+        best = isl;
+      }
+    }
+    this.isl = best;
+    this.biomeNear = best?.def ?? null;
+  }
+  private discover(s: IsleSpec): void {
+    (this.isleSt[s.id] ??= { d: [] }).k = 1;
+    const B = BIOMES[s.biome];
+    this.au.jingleIsland();
+    this.hud.banner(B.icon, t('jangada.isleFound', 'Ilha descoberta!'), `${B.n()} · ${t('jangada.danger', 'Perigo {n}', { n: Math.min(4, B.tier) })}`, 3);
+    this.prog('disc', this.knownCount());
+  }
+  knownCount(): number {
+    return Object.values(this.isleSt).filter((v) => v.k).length;
+  }
+  private visited = new Set<number>();
+  private caveSeen = new Set<number>();
+  /** pisou numa ilha */
+  private landedOn(isl: Island): void {
+    if (!this.visited.has(isl.id)) {
+      this.visited.add(isl.id);
+      this.stats.islands++;
+      this.prog('island', 1);
+      this.prog('tier', isl.def.tier);
+      const f = isl.def.owner;
+      const sub = f === 'none' ? t('jangada.islandSub', 'Use o machado nas árvores e pedras') : FACTIONS[f].friendly ? t('jangada.ownerFriend', '{n}: amigos! Fale com o chefe para trocar.', { n: FACTIONS[f].n() }) : t('jangada.ownerFoe', '{n} guardam o tesouro. Cuidado!', { n: FACTIONS[f].n() });
+      this.hud.banner(isl.def.icon, isl.def.n(), sub, 3.2);
+    }
+    if (isl.inCave(this.me.x, this.me.z) && !this.caveSeen.has(isl.id)) {
+      this.caveSeen.add(isl.id);
+      this.prog('cave', 1);
+      if (!(this.sel === 'lantern' && this.lanternOn)) notify(t('jangada.caveDark', 'Que escuro! Use a lanterna.'), { icon: 'warning', key: 'jgcave' });
+    }
+  }
+
+  /* ------------------------------ v2: cada quadro ------------------------------ */
+  private harpCd = 0;
+  private stepV2(dt: number): void {
+    this.updateIsles(dt);
+    if (this.harpCd > 0) this.harpCd -= dt;
+    if (this.introCam > 0) this.introCam -= dt;
+    const water = (x: number, z: number) => this.waterAt(x, z);
+    // donos das ilhas (simulação local)
+    for (const [id, o] of this.owners) {
+      const isl = this.isles.get(id)!;
+      if (Math.hypot(isl.x - this.me.x, isl.z - this.me.z) > isl.r + 45 || !isl.detailOn) continue;
+      o.update(dt, {
+        px: this.me.x,
+        py: this.me.y,
+        pz: this.me.z,
+        sneak: this.sneak,
+        swim: this.me.swim || !!this.myBoat,
+        light: this.sel === 'lantern' && this.lanternOn,
+        night: this.sc.night,
+        bonk: (dmg, fx, fz) => this.hurt(dmg, true, fx, fz, 'bonk'),
+        seen: () => {
+          this.au.alert();
+          notify(t('jangada.spotted', 'Te viram! Fuja, distraia com comida ou lute.'), { icon: 'warning', kind: 'bad', key: 'jgseen', ms: 1800 });
+        },
+        voice: (n, k) => this.au.npc(n.f, k, { x: n.x + isl.x, y: n.y + 1, z: n.z + isl.z }),
+      });
+      isl.animate(this.time);
+    }
+    // barcos
+    for (const b of this.boats) {
+      if (b !== this.myBoat) b.follow(dt);
+      b.view(dt, this.time, water, b === this.myBoat && Math.abs(b.v) > 0.3);
+    }
+    // baús boiando
+    for (const c of this.dch) {
+      const isl = this.isl;
+      const ground = isl ? isl.heightAt(c.x, c.z) : -99;
+      const w = water(c.x, c.z);
+      const y = ground > w - 0.25 ? ground : w - 0.12 + Math.sin(this.time * 1.8 + c.ph) * 0.05;
+      c.root.position.set(c.x, y, c.z);
+      c.root.rotation.set(Math.sin(this.time * 1.2 + c.ph) * 0.1, this.time * 0.2 + c.ph, Math.cos(this.time * 1.1 + c.ph) * 0.08);
+      if (c.beam) {
+        c.beam.rotation.set(-c.root.rotation.x, 0, -c.root.rotation.z);
+        (c.beam.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(this.time * 3 + c.ph) * 0.15;
+      }
+    }
+    // arpões
+    this.updateHarpoons(dt);
+    for (const s of this.sharks2) s.view(dt);
+    for (const b of this.bosses) b.view(dt, this.time, water);
+  }
+
+  /* ------------------------------ v2: mar aberto (anfitrião) ------------------------------ */
+  private simSea(dt: number): void {
+    const ps = this.plist();
+    const [cx, cz] = this.raft.center();
+    // tubarões-tigre: um por jogador no mar aberto (meio/longe)
+    const out = ps.filter((p) => (p.boat || p.swim) && Math.hypot(p.x - cx, p.z - cz) > 150 && zoneAt(p.x, p.z) >= 2);
+    this.sharks2.forEach((s, i) => {
+      const p = out[i];
+      if (!p && s.active && s.st !== 'flee') {
+        s.st = 'flee';
+        s.timer = 5;
+      }
+      const z = p ? zoneAt(p.x, p.z) : 2;
+      s.sim(dt, {
+        cx: p ? p.x : s.x,
+        cz: p ? p.z : s.z,
+        edges: () => [],
+        swimmers: () => this.swimmers(true).filter((q) => p && Math.hypot(q[1] - p.x, q[3] - p.z) < 45),
+        bite: () => {},
+        biteMe: (who) => this.sharkBiteMe(who, s),
+        waterH: (x, zz) => this.waterAt(x, zz),
+        warn: () => this.sendFx('warn2'),
+        fin: (x, zz) => this.sendFx('fin', x, 0, zz),
+        wait: z >= 3 ? [12, 25] : [25, 45],
+        enabled: !!p,
+        cd: [2.4, 1.8, 1.3][this.diff],
+      });
+    });
+    // chefes
+    this.bosses.forEach((b, idx) => {
+      if (b.st === 'gone') return;
+      const near = ps.filter((p) => Math.hypot(p.x - b.cx, p.z - b.cz) < 75);
+      if (b.st === 'off') {
+        if (near.length && !this.bossDone[b.kind]) {
+          b.target = near[0].id;
+          b.wake();
+          this.sendFx('bossIntro', b.cx, 0, b.cz, b.kind === 'mega' ? 0 : 1);
+        }
+        return;
+      }
+      if (b.fighting && !ps.some((p) => Math.hypot(p.x - b.x, p.z - b.z) < 170)) {
+        // todo mundo fugiu: o chefe volta a dormir (vida cheia)
+        b.st = 'off';
+        b.hp = b.max;
+        b.root.visible = false;
+        return;
+      }
+      b.sim(dt, this.bossCtx(b, idx));
+    });
+  }
+  private bossCtx(b: Boss, idx: number): BossCtx {
+    const myId = this.net?.me.id ?? 'me';
+    return {
+      targets: () => this.plist().filter((p) => Math.hypot(p.x - b.x, p.z - b.z) < 95),
+      water: (x, z) => this.waterAt(x, z),
+      qte: (target, req, id) => {
+        if (target === myId) this.startQte(req, id, idx);
+        else this.net?.send({ t: 'qte', b: idx, id, k: req.kind, d: req.dir ?? '', du: r2(req.dur), n: req.n ?? 0 }, target);
+      },
+      hurt: (target, dmg, fx, fz, boatDmg) => {
+        const boat = this.boats.find((q) => q.drv === target);
+        if (boat) this.boatHit(boat, boatDmg, fx, fz);
+        const d = boat ? dmg * 0.5 : dmg;
+        if (target === myId) this.hurt(d, true, fx, fz);
+        else this.net?.send({ t: 'hurt', d, fx: r1(fx), fz: r1(fz) }, target);
+      },
+      fx: (k, x, y, z) => this.sendFx(k, x, y, z, 0, b.target),
+      diff: this.diff,
+    };
+  }
+  private startQte(req: QteReq, id: number, bossIdx: number): void {
+    this.au.qteShow();
+    this.hud.qte.start(req, (ok) => {
+      if (ok) this.au.qteOk();
+      else this.au.qteFail();
+      this.act({ o: 'qte', b: bossIdx, id, ok: ok ? 1 : 0 });
+    });
+  }
+  private bossDefeated(b: Boss): void {
+    this.bossDone[b.kind] = this.day;
+    const s = this.map.find((q) => q.biome === (b.kind === 'mega' ? 'megaIsle' : 'krakenIsle'));
+    const L = chestLoot(3, s?.biome ?? 'legend', Math.random);
+    bagAdd(L.bag, b.kind === 'mega' ? { tooth: 1, gold: 2 } : { ink: 2, pearl: 3 });
+    const w = this.waterAt(b.x, b.z);
+    void w;
+    this.spawnDChest(1, b.x + 3, b.z, L.bag, 150);
+    this.sendFx('bossDown', b.x, 0, b.z, b.kind === 'mega' ? 0 : 1);
+  }
+
+  /* ------------------------------ v2: baús boiando ------------------------------ */
+  private addDChest(id: number, kind: number, x: number, z: number, bag: Bag, coins: number): DChest {
+    let root: THREE.Group;
+    let beam: THREE.Mesh | null = null;
+    if (kind === 0) {
+      const m = deathChestModel();
+      root = m.root;
+      beam = m.beam;
+    } else {
+      const m = chestModel(3);
+      root = new THREE.Group();
+      root.add(m.root);
+      m.root.scale.setScalar(1.3);
+      const dm = deathChestModel();
+      beam = dm.beam;
+      (beam.material as THREE.MeshBasicMaterial).color.set('#ffcf2e');
+      root.add(beam);
+    }
+    this.scene.add(root);
+    const c: DChest = { id, kind, x, z, bag, coins, root, beam, ph: Math.random() * 6 };
+    this.dch.push(c);
+    this.dchSeq = Math.max(this.dchSeq, id + 1);
+    return c;
+  }
+  private spawnDChest(kind: number, x: number, z: number, bag: Bag, coins: number): void {
+    this.addDChest(this.dchSeq++, kind, x, z, bag, coins);
+    this.sendDch();
+  }
+  private removeDChest(id: number): void {
+    const i = this.dch.findIndex((c) => c.id === id);
+    if (i < 0) return;
+    const c = this.dch[i];
+    this.scene.remove(c.root);
+    this.dch.splice(i, 1);
+    if (this.target === -100 - id) this.target = -1;
+  }
+  private sendDch(): void {
+    if (this.net && this.isHost) this.net.send({ t: 'dch', l: this.dch.map((c) => [c.id, c.kind, r1(c.x), r1(c.z)]) });
+  }
+
+  /* ------------------------------ v2: barcos ------------------------------ */
+  private addBoat(s: BoatSave): Boat {
+    const b = new Boat(s.id, s.k, s.x, s.z, s.yaw, s.hp, s.fuel);
+    this.scene.add(b.m.root);
+    this.boats.push(b);
+    this.boatSeq = Math.max(this.boatSeq, s.id + 1);
+    return b;
+  }
+  /** lugar livre na água ao lado da jangada */
+  private dockSpot(): [number, number, number] {
+    const b = this.raft.bounds();
+    const cx = (b[0] + b[2]) / 2;
+    const cz = (b[1] + b[3]) / 2;
+    const cand: [number, number, number][] = [];
+    for (let i = 0; i < 4; i++) {
+      cand.push([b[2] + 2.6, cz + i * 3.2 - 1.6, 0]);
+      cand.push([b[0] - 2.6, cz + i * 3.2 - 1.6, Math.PI]);
+      cand.push([cx + i * 3.2 - 1.6, b[3] + 2.6, Math.PI / 2]);
+    }
+    return cand.find((c) => !this.boats.some((q) => Math.hypot(q.x - c[0], q.z - c[1]) < 2.8)) ?? cand[0];
+  }
+  private boatBlocked(x: number, z: number): boolean {
+    for (const isl of this.isles.values()) if (Math.hypot(isl.x - x, isl.z - z) < isl.outer && isl.heightAt(x, z) > -0.45) return true;
+    const b = this.raft.bounds();
+    if (x > b[0] - 1.1 && x < b[2] + 1.1 && z > b[1] - 1.1 && z < b[3] + 1.1) return true;
+    return false;
+  }
+  private buildBoat(k: BoatK): boolean {
+    const D = BOATS[k];
+    if ((D.fire ?? 0) > this.raft.fireLv() || !bagHas(this.inv, D.cost)) {
+      this.au.nope();
+      return false;
+    }
+    bagAdd(this.inv, D.cost, -1);
+    this.act({ o: 'boat', k });
+    this.au.fanfare();
+    this.hud.banner(D.icon, D.n(), t('jangada.boatReady', 'Está na água do lado da jangada! Toque em ENTRAR.'), 3);
+    this.prog('boat', k + 1);
+    this.updateHot();
+    this.hud.closePanel();
+    this.setPaused(false);
+    return true;
+  }
+  private lastBoatYaw = 0;
+  private paddleT = 0;
+  private useBoat(b: Boat): void {
+    if (b.flip) {
+      this.act({ o: 'boatFix', id: b.id, flip: 1 });
+      this.au.splash(null, 0.8);
+      return;
+    }
+    if (b.def.fuel && b.fuel < FUEL_SEC * 2 && (this.inv.fuel ?? 0) > 0) {
+      const n = Math.min(this.inv.fuel ?? 0, 3);
+      bagAdd(this.inv, { fuel: n }, -1);
+      this.act({ o: 'refuel', id: b.id, n });
+      this.au.drink();
+      notify(t('jangada.refueled', 'Tanque cheio!'), { icon: 'check', key: 'jgfuel', ms: 1400 });
+      this.updateHot();
+      return;
+    }
+    const myId = this.net?.me.id ?? 'me';
+    if (b.drv && b.drv !== myId) return this.au.nope();
+    this.myBoat = b;
+    b.drv = myId;
+    this.act({ o: 'board', id: b.id });
+    const m = this.me;
+    m.yaw = b.yaw + Math.PI;
+    m.pitch = -0.1;
+    this.lastBoatYaw = b.yaw;
+    m.swim = false;
+    this.dropHook();
+    this.endFish(false);
+    this.au.boardBoat();
+    if (!this.boatTip) {
+      this.boatTip = true;
+      notify(t('jangada.boatTip', 'Joystick: frente acelera, lados viram. Pular = sair do barco. Toque na bússola para o mapa!'), { icon: 'sparkle', ms: 5000 });
+    }
+  }
+  private boatTip = false;
+  private driveBoat(dt: number, mx: number, my: number): void {
+    const b = this.myBoat!;
+    const m = this.me;
+    const r = b.drive(dt, my, mx, this.wind, this.storm, (x, z) => this.boatBlocked(x, z));
+    void r;
+    b.view(0, this.time, (x, z) => this.waterAt(x, z), Math.abs(b.v) > 0.3);
+    const [sx, sy, sz] = b.seat();
+    m.x = sx;
+    m.z = sz;
+    m.y = sy;
+    m.vx = m.vy = m.vz = 0;
+    m.swim = false;
+    m.grounded = true;
+    m.onIsl = false;
+    m.speedK = 0;
+    m.yaw += b.yaw - this.lastBoatYaw;
+    this.lastBoatYaw = b.yaw;
+    if (b.k === 0 && Math.abs(my) > 0.15) {
+      this.paddleT -= dt;
+      if (this.paddleT <= 0) {
+        this.paddleT = 0.75;
+        this.au.paddle();
+      }
+    }
+    if (Math.abs(b.v) > 3 && Math.random() < dt * Math.abs(b.v) * this.fx.budget) {
+      const s = Math.random() < 0.5 ? 1 : -1;
+      this.fx.emit(b.x + Math.sin(b.yaw) * 1.8 + Math.cos(b.yaw) * 0.5 * s, b.y - 0.1, b.z + Math.cos(b.yaw) * 1.8 - Math.sin(b.yaw) * 0.5 * s, Math.cos(b.yaw) * s * 1.2, 1.4, -Math.sin(b.yaw) * s * 1.2, { life: 0.6, size: 0.08, grow: 0.15, grav: 6 });
+    }
+    if (b.flip) {
+      this.leaveBoat(false);
+      return;
+    }
+    if (this.jumpQ) {
+      this.jumpQ = false;
+      this.leaveBoat(false);
+    }
+  }
+  /** sai do barco: no convés/areia se der, senão na água do lado */
+  private leaveBoat(dead: boolean): void {
+    const b = this.myBoat;
+    if (!b) return;
+    this.myBoat = null;
+    b.drv = '';
+    b.v = 0;
+    this.act({ o: 'board', id: b.id, off: 1 });
+    if (dead) return;
+    const m = this.me;
+    const w = (x: number, z: number) => this.waterAt(x, z);
+    const tries: [number, number][] = [];
+    for (const d of [1.8, 2.6, 3.4])
+      for (const a of [Math.PI / 2, -Math.PI / 2, 0, Math.PI]) tries.push([b.x + Math.sin(b.yaw + a) * d, b.z + Math.cos(b.yaw + a) * d]);
+    for (const [x, z] of tries) {
+      const g = this.groundAt(x, z, 6);
+      if (g !== null && g > w(x, z) - 0.2 && !this.collides(x, z, g)) {
+        m.x = x;
+        m.z = z;
+        m.y = g + 0.05;
+        m.swim = false;
+        m.grounded = false;
+        m.vy = 1.5;
+        this.au.jump();
+        return;
+      }
+    }
+    m.x = tries[0][0];
+    m.z = tries[0][1];
+    m.y = w(m.x, m.z) - 1.2;
+    m.swim = true;
+    m.grounded = false;
+    this.au.plunge();
+    this.fx.burst(m.x, w(m.x, m.z) + 0.1, m.z, 12, 'foam', '#ffffff', 2);
+  }
+  /** casco levou pancada (anfitrião) */
+  private boatHit(b: Boat, dmg: number, fx: number, fz: number): void {
+    b.hp = Math.max(0, b.hp - dmg);
+    this.sendFx('boatHit', b.x, 0, b.z, 0, b.drv);
+    if (b.hp <= 0 && !b.flip) {
+      b.flip = 1;
+      this.sendFx('boatSink', b.x, 0, b.z, 0, b.drv);
+    }
+    void fx;
+    void fz;
+  }
+  private fixBoat(b: Boat): void {
+    if (b.hp >= b.maxHp && !b.flip) return;
+    if (!bagHas(this.inv, { wood: 2 })) {
+      this.au.nope();
+      notify(t('jangada.needFix', 'Precisa de tábua (e plástico) para consertar'), { icon: 'warning', key: 'jgfix' });
+      return;
+    }
+    bagAdd(this.inv, { wood: 2 }, -1);
+    this.act({ o: 'boatFix', id: b.id });
+    this.au.hammer({ x: b.x, y: b.y, z: b.z }, 3);
+    this.swingT = 0.35;
+    this.actCd = 0.5;
+    this.updateHot();
+  }
+
+  /* ------------------------------ v2: armas ------------------------------ */
+  private throwHarpoon(id: ItemId): void {
+    if (this.harpCd > 0) return;
+    this.harpCd = 0.85;
+    const key = id;
+    let g = this.harpGeo.get(key);
+    if (!g) {
+      g = harpoonGeo(id === 'harpoon2');
+      this.harpGeo.set(key, g);
+    }
+    const mesh = new THREE.Mesh(g, MAT.vc);
+    const p = this.handWorld();
+    p.y += 0.25;
+    const v = this.lookDir().multiplyScalar(this.me.swim && this.cam.position.y < this.waterAt(p.x, p.z) ? 16 : 34);
+    v.y += 1.2;
+    this.scene.add(mesh);
+    this.harpoons.push({ p, v, life: 2.2, dmg: WEAPON[id] ?? 3, mesh, hit: false });
+    this.au.harpoon();
+    this.swingT = 0.35;
+    tap('light');
+  }
+  private updateHarpoons(dt: number): void {
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const h of this.harpoons) {
+      h.life -= dt;
+      const w = this.waterAt(h.p.x, h.p.z);
+      const inWater = h.p.y < w;
+      h.v.y -= 9.8 * dt * (inWater ? 0.2 : 0.55);
+      if (inWater) h.v.multiplyScalar(1 - Math.min(0.9, dt * 2.2));
+      const prevY = h.p.y;
+      h.p.addScaledVector(h.v, dt);
+      if (prevY >= w && h.p.y < w) {
+        this.au.splash({ x: h.p.x, y: w, z: h.p.z }, 0.3);
+        this.fx.burst(h.p.x, w + 0.05, h.p.z, 8, 'foam', '#ffffff', 1.4);
+      }
+      h.mesh.position.copy(h.p);
+      h.mesh.quaternion.setFromUnitVectors(up, h.v.clone().normalize());
+      if (h.hit) continue;
+      // acertos
+      for (const s of [this.shark, ...this.sharks2]) {
+        if (!s.active) continue;
+        if (Math.hypot(s.x - h.p.x, s.y + 0.3 - h.p.y, s.z - h.p.z) < 1.4 * (s.variant ? 1.35 : 1)) {
+          this.hitShark(s, h.dmg);
+          h.hit = true;
+        }
+      }
+      if (this.isl) {
+        const ow = this.owners.get(this.isl.id);
+        for (const n of ow?.npcs ?? []) {
+          if (Math.hypot(n.x + this.isl.x - h.p.x, n.y + 0.8 - h.p.y, n.z + this.isl.z - h.p.z) < 0.9) {
+            this.hitNpc(n, ow!, h.dmg);
+            h.hit = true;
+          }
+        }
+      }
+      for (const b of this.bosses) {
+        if (!b.fighting || Math.hypot(b.x - h.p.x, b.z - h.p.z) > 25) continue;
+        let best: HitSphere | null = null;
+        for (const s of b.hitSpheres()) if (Math.hypot(s.x - h.p.x, s.y - h.p.y, s.z - h.p.z) < s.r && (!best || s.w > best.w)) best = s;
+        if (best) {
+          this.hitBoss(b, best, h.dmg);
+          h.hit = true;
+          break;
+        }
+      }
+      if (h.hit) h.life = Math.min(h.life, 0.25);
+    }
+    this.harpoons = this.harpoons.filter((h) => {
+      if (h.life > 0) return true;
+      this.scene.remove(h.mesh);
+      return false;
+    });
+  }
+  private hitShark(s: Shark, dmg: number): void {
+    const idx = [this.shark, ...this.sharks2].indexOf(s);
+    this.act({ o: 'shark', s: idx, dmg });
+    this.au.sharkHurt({ x: s.x, y: s.y, z: s.z });
+    this.fx.burst(s.x, s.y + 0.5, s.z, 10, 'foam', '#ffffff', 2);
+    this.fx.burst(s.x, s.y + 0.8, s.z, 6, 'spark', '#ffe45c', 1.6);
+    tap('medium');
+  }
+  private hitNpc(n: Npc, o: Owners, dmg: number): void {
+    const isl = this.isl!;
+    if (o.friendly) {
+      this.au.nope();
+      notify(t('jangada.friends', 'Eles são amigos! Toque em TROCAR.'), { icon: 'heart', key: 'jgfriend', ms: 1600 });
+      return;
+    }
+    const down = o.strike(n, Math.max(1, dmg), this.me.x, this.me.z);
+    const p = { x: n.x + isl.x, y: n.y + 1, z: n.z + isl.z };
+    this.fx.burst(p.x, p.y, p.z, 8, 'spark', '#ffe45c', 1.6);
+    this.au.bonk(p);
+    tap('medium');
+    if (down) {
+      this.au.npc(n.f, 'dizzy', p);
+      notify(t('jangada.npcDizzy', 'Ficou tonto! Corra pegar o tesouro.'), { icon: 'star', kind: 'good', key: 'jgdizzy', ms: 1800 });
+    }
+  }
+  private hitBoss(b: Boss, h: HitSphere, dmg: number): void {
+    const idx = this.bosses.indexOf(b);
+    const d = dmg * h.w;
+    this.act({ o: 'boss', b: idx, part: h.part, dmg: r1(d) });
+    this.fx.burst(h.x, h.y, h.z, h.w > 1 ? 16 : 8, 'spark', h.w > 1 ? '#ffe45c' : '#ffffff', h.w > 1 ? 3 : 1.8);
+    this.au.bossHit(h.w > 1);
+    if (h.w > 1) this.hud.banner('star', t('jangada.weakHit', 'No ponto fraco!'), '', 0.9);
+    tap(h.w > 1 ? 'heavy' : 'medium');
+  }
+  private throwBait(id: ItemId, o: Owners): void {
+    const isl = this.isl;
+    if (!isl) return;
+    const d = this.lookDir();
+    const x = this.me.x + d.x * 6;
+    const z = this.me.z + d.z * 6;
+    if (isl.heightAt(x, z) < 0) return this.au.nope();
+    bagAdd(this.inv, { [id]: 1 }, -1);
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshLambertMaterial({ color: ITEM[id].col }));
+    const n = o.bait(x, z, mesh);
+    this.au.toss();
+    this.swingT = 0.35;
+    this.actCd = 0.6;
+    if (n) notify(t('jangada.baited', 'Eles foram comer! Corra!'), { icon: 'star', kind: 'good', key: 'jgbait', ms: 1800 });
+    this.updateHot();
+  }
+
+  /* ------------------------------ v2: donos amigos ------------------------------ */
+  private openTrade(o: Owners): void {
+    const f = o.faction;
+    const list = TRADES[f] ?? [];
+    if (!list.length) return;
+    this.setPaused(!this.net);
+    this.ctl.show(false);
+    this.au.npc(f, 'hi', null);
+    this.hud.openTrade({
+      title: FACTIONS[f as 'crab'].boss(),
+      icon: FACTIONS[f as 'crab'].icon,
+      hi: f === 'crab' ? t('jangada.hiCrab', 'Clic-clac! Bem-vindo ao meu reino. Vamos trocar?') : t('jangada.hiPenguin', 'Quá-quá! Peixe fresquinho? Eu troco por coisas boas!'),
+      trades: list,
+      done: (i) => !!list[i].quest && this.quests.has(`${f}:${i}`),
+      have: () => this.inv,
+      trade: (i) => {
+        const tr = list[i];
+        if (tr.quest && this.quests.has(`${f}:${i}`)) return false;
+        if (!bagHas(this.inv, tr.give)) {
+          this.au.nope();
+          return false;
+        }
+        bagAdd(this.inv, tr.give, -1);
+        if (Object.keys(tr.get).length) this.addItems(tr.get);
+        if (tr.coins) this.coins(tr.coins);
+        this.au.trade();
+        this.prog('trade', 1);
+        if (tr.quest) {
+          this.quests.add(`${f}:${i}`);
+          for (const s of this.map) if ((tr.quest === 'mid' ? BIOMES[s.biome].tier === 2 : BIOMES[s.biome].tier >= 3) && !this.isleSt[s.id]?.k) (this.isleSt[s.id] ??= { d: [] }).k = 1;
+          this.prog('disc', this.knownCount());
+          notify(t('jangada.mapMore', 'Novas ilhas no mapa!'), { icon: 'star', kind: 'good' });
+        }
+        this.updateHot();
+        return true;
+      },
+      close: () => {
+        this.hud.closePanel();
+        this.setPaused(false);
+      },
+    });
+  }
+
+  /* ------------------------------ v2: mapa e bússola ------------------------------ */
+  openMap(): void {
+    if (this.hud.overlay) return;
+    this.au.ui1();
+    this.setPaused(!this.net);
+    this.ctl.show(false);
+    const known = new Set(Object.entries(this.isleSt).filter(([, v]) => v.k).map(([k]) => +k));
+    this.hud.openMap({
+      html: (size) =>
+        mapHtml(
+          {
+            isles: this.map,
+            known,
+            px: this.me.x,
+            pz: this.me.z,
+            yaw: this.me.yaw,
+            boats: this.boats.filter((b) => b !== this.myBoat).map((b) => [b.x, b.z]),
+            chests: this.dch.map((c) => [c.x, c.z]),
+            target: this.target,
+          },
+          size,
+        ),
+      legend: mapLegend(),
+      pick: (id) => {
+        this.target = this.target === id ? -1 : id;
+        this.au.ui1();
+      },
+      close: () => {
+        this.hud.closePanel();
+        this.setPaused(false);
+      },
+    });
+  }
+  private updateCompass(): void {
+    const m = this.me;
+    const [cx, cz] = this.raft.center();
+    const marks: Marker[] = [];
+    if (Math.hypot(m.x - cx, m.z - cz) > 12) marks.push({ x: cx, z: cz, icon: 'found', main: this.target === -1 && Math.hypot(m.x - cx, m.z - cz) > 60 });
+    for (const c of this.dch) marks.push({ x: c.x, z: c.z, icon: 'beacon', main: this.target === -100 - c.id });
+    const known = this.map.filter((s) => this.isleSt[s.id]?.k && Math.hypot(s.x - m.x, s.z - m.z) > s.r + 15);
+    known.sort((a, b) => Math.hypot(a.x - m.x, a.z - m.z) - Math.hypot(b.x - m.x, b.z - m.z));
+    for (const s of known.slice(0, 4)) if (s.id !== this.target) marks.push({ x: s.x, z: s.z, icon: BIOMES[s.biome].icon });
+    const tg = this.map.find((s) => s.id === this.target);
+    if (tg) marks.push({ x: tg.x, z: tg.z, icon: BIOMES[tg.biome].icon, main: true });
+    if (this.myBoat?.def.wind) marks.push({ x: m.x + Math.sin(this.wind) * 100, z: m.z + Math.cos(this.wind) * 100, icon: 'wind' });
+    this.hud.compass.update(m.x, m.z, m.yaw, marks);
+  }
+
+  /* ------------------------------ v2: câmera dos chefes, clima ------------------------------ */
+  private bossCamera(): void {
+    const b = this.bosses.find((q) => q.st === 'intro' && Math.hypot(q.x - this.me.x, q.z - this.me.z) < 90);
+    const on = !!b && this.introCam > 0;
+    this.hud.letterbox(on);
+    if (!on || !b) return;
+    const f = b.focus(new THREE.Vector3());
+    const cam = this.cam;
+    // recua um pouco e olha para o chefe
+    const back = new THREE.Vector3(cam.position.x - f.x, 0, cam.position.z - f.z).normalize();
+    cam.position.addScaledVector(back, 2.5);
+    cam.position.y = Math.max(cam.position.y + 1.2, this.waterAt(cam.position.x, cam.position.z) + 1.5);
+    cam.lookAt(f);
+    cam.updateMatrixWorld();
+  }
+  private updateWeather(dt: number): void {
+    const B = this.biomeNear;
+    const isl = this.isl;
+    if (!B || !isl || this.caveK > 0.5) return;
+    const near = Math.hypot(isl.x - this.cam.position.x, isl.z - this.cam.position.z) < isl.r + 50;
+    if (!near) return;
+    this.wxT += dt * (this.tier >= 2 ? 40 : 18) * this.fx.budget;
+    const c = this.cam.position;
+    while (this.wxT >= 1) {
+      this.wxT -= 1;
+      const x = c.x + (Math.random() - 0.5) * 22;
+      const z = c.z + (Math.random() - 0.5) * 22;
+      if (B.snow) this.fx.emit(x, c.y + 6 + Math.random() * 4, z, (Math.random() - 0.5) * 0.4, -1.1, (Math.random() - 0.5) * 0.4, { color: '#ffffff', life: 6, size: 0.06, grav: 0, drag: 0 });
+      else if (B.ash) this.fx.emit(x, c.y - 1 + Math.random() * 3, z, (Math.random() - 0.5) * 0.3, 0.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.3, { color: Math.random() < 0.3 ? '#ff8a3a' : '#5a5050', life: 3.5, size: 0.05, grav: 0 });
+      else if (B.id === 'legend' || B.id === 'krakenIsle') this.fx.emit(x, c.y - 1 + Math.random() * 3, z, 0, 0.25, 0, { tile: 1, color: Math.random() < 0.5 ? '#c89aff' : '#7af0ff', life: 3, size: 0.05, grav: 0 });
+      else if (B.id === 'jungle' && this.sc.night > 0.3) this.fx.emit(x, c.y - 1 + Math.random() * 2, z, (Math.random() - 0.5) * 0.3, 0.1, (Math.random() - 0.5) * 0.3, { tile: 1, color: '#e8ff6a', life: 2.5, size: 0.05, grav: 0 });
+      else break;
+    }
+  }
+
+  /* ------------------------------ v2: ações do anfitrião ------------------------------ */
+  private applyV2(o: string, op: Record<string, unknown>, from: string, me: boolean, give: (b: Bag) => void): boolean {
+    switch (o) {
+      case 'dchest': {
+        const b = op.b && typeof op.b === 'object' ? (op.b as Bag) : {};
+        const bag: Bag = {};
+        for (const [k, n] of Object.entries(b)) if (ITEM[k as ItemId] && Number(n) > 0) bag[k as ItemId] = Math.min(999, Number(n) | 0);
+        this.spawnDChest(0, Number(op.x) || 0, Number(op.z) || 0, bag, 0);
+        return true;
+      }
+      case 'dget': {
+        const c = this.dch.find((q) => q.id === Number(op.id));
+        if (!c) return true;
+        give(c.bag);
+        if (c.coins) this.sendFx('coin', 0, 0, 0, c.coins, from);
+        this.sendFx('rescued', c.x, 0, c.z, c.kind, from);
+        this.removeDChest(c.id);
+        this.sendDch();
+        return true;
+      }
+      case 'boat': {
+        const k = (Number(op.k) | 0) as BoatK;
+        if (!BOATS[k]) return true;
+        const [x, z, yaw] = this.dockSpot();
+        this.addBoat({ id: this.boatSeq++, k, x, z, yaw, hp: BOATS[k].hp, fuel: BOATS[k].fuel ? FUEL_SEC : 0 });
+        this.sendBoats();
+        return true;
+      }
+      case 'board': {
+        const b = this.boats.find((q) => q.id === Number(op.id));
+        if (!b) return true;
+        if (op.off) {
+          if (b.drv === from) b.drv = '';
+        } else if (!b.drv || b.drv === from) b.drv = from;
+        this.sendBoats();
+        return true;
+      }
+      case 'boatHome': {
+        const b = this.boats.find((q) => q.id === Number(op.id));
+        if (!b) return true;
+        const [x, z, yaw] = this.dockSpot();
+        b.x = b.tx = x;
+        b.z = b.tz = z;
+        b.yaw = b.tyaw = yaw;
+        b.drv = '';
+        b.flip = 0;
+        b.hp = Math.max(b.hp, b.maxHp * 0.5);
+        this.sendBoats();
+        return true;
+      }
+      case 'boatFix': {
+        const b = this.boats.find((q) => q.id === Number(op.id));
+        if (!b) return true;
+        if (op.flip) {
+          b.flip = 0;
+          b.hp = Math.max(b.hp, b.maxHp * 0.4);
+        } else b.hp = Math.min(b.maxHp, b.hp + 30);
+        this.sendBoats();
+        return true;
+      }
+      case 'refuel': {
+        const b = this.boats.find((q) => q.id === Number(op.id));
+        if (b) b.fuel = Math.min(FUEL_SEC * 3, b.fuel + Math.max(0, Number(op.n) | 0) * FUEL_SEC);
+        this.sendBoats();
+        return true;
+      }
+      case 'boss': {
+        const b = this.bosses[Number(op.b) | 0];
+        if (!b || !b.fighting) return true;
+        const dmg = Math.min(40, Math.max(0, Number(op.dmg) || 0));
+        const down = b instanceof Kraken ? b.hitPart(Number(op.part) | 0, dmg) : b.hit(dmg);
+        if (!me) this.sendFx('bossHurt', b.x, 0, b.z, dmg);
+        if (down) this.bossDefeated(b);
+        return true;
+      }
+      case 'qte': {
+        const b = this.bosses[Number(op.b) | 0];
+        b?.qteResult(Number(op.id), !!op.ok);
+        return true;
+      }
+    }
+    return false;
+  }
+  private sendBoats(): void {
+    if (this.net && this.isHost) this.net.send({ t: 'bts', l: this.boatList() });
+  }
+  private boatList(): unknown[] {
+    return this.boats.map((b) => [b.id, b.k, r1(b.x), r1(b.z), r2(b.yaw), Math.round(b.hp), Math.round(b.fuel), b.drv, b.flip]);
+  }
+  /** convidado: aplica a lista de barcos do anfitrião */
+  private applyBoats(l: unknown): void {
+    if (!Array.isArray(l)) return;
+    const seen = new Set<number>();
+    const myId = this.net?.me.id ?? 'me';
+    for (const a of l as [number, BoatK, number, number, number, number, number, string, number][]) {
+      seen.add(a[0]);
+      let b = this.boats.find((q) => q.id === a[0]);
+      if (!b) b = this.addBoat({ id: a[0], k: a[1], x: a[2], z: a[3], yaw: a[4], hp: a[5], fuel: a[6] });
+      b.hp = a[5];
+      b.flip = a[8] | 0;
+      if (b !== this.myBoat) {
+        b.tx = a[2];
+        b.tz = a[3];
+        b.tyaw = a[4];
+        b.fuel = a[6];
+        b.drv = a[7] ?? '';
+        if (b.drv === myId) b.drv = '';
+      }
+    }
+    for (const b of [...this.boats])
+      if (!seen.has(b.id)) {
+        if (b === this.myBoat) this.leaveBoat(false);
+        b.dispose();
+        this.boats.splice(this.boats.indexOf(b), 1);
+      }
+  }
+
+  /* ------------------------------ v2: efeitos ------------------------------ */
+  private playFxV2(k: string, x: number, y: number, z: number, v: number, mine: boolean | string): void {
+    const p = { x, y, z };
+    const near = Math.hypot(x - this.me.x, z - this.me.z) < 90;
+    switch (k) {
+      case 'chest': {
+        const r = Math.floor(v / 1000) as 0 | 1 | 2 | 3;
+        this.fx.burst(x, y + 0.8, z, 10 + r * 8, 'spark', ['#ffe8a0', '#7fd0ff', '#d89aff', '#ffcf2e'][r], 2 + r * 0.6);
+        if (mine) {
+          this.coins(v % 1000);
+          this.prog('chest', 1);
+          this.hud.banner(r ? 'chestR' : 'chest', t('jangada.chestOpen', 'Baú {r}!', { r: rarityName(r) }), `+${v % 1000}`, 1.8);
+        }
+        break;
+      }
+      case 'coin':
+        if (mine) this.coins(v);
+        break;
+      case 'rescued':
+        this.fx.burst(x, this.waterAt(x, z) + 0.5, z, 14, 'spark', '#ffd34a', 2);
+        if (mine) {
+          this.au.fanfare();
+          this.hud.banner(v ? 'star' : 'beacon', v ? t('jangada.treasureGot', 'Tesouro lendário!') : t('jangada.rescuedOk', 'Coisas recuperadas!'), '', 2);
+        }
+        break;
+      case 'warn2':
+        if (near) {
+          this.au.sharkWarn();
+          this.hud.banner('shark', t('jangada.shark2Coming', 'Tubarão-tigre!'), t('jangada.shark2Tip', 'No mar aberto eles são mais fortes'), 2.2);
+        }
+        break;
+      case 'bossIntro':
+        if (near) {
+          this.introCam = 3.4;
+          this.au.bossRoar(v);
+          this.hud.banner(v ? 'kraken' : 'mega', v ? t('jangada.boss.kraken', 'POLVO GIGANTE') : t('jangada.boss.mega', 'MEGALODONTE'), t('jangada.bossTip', 'Use o arpão nos pontos que brilham!'), 3.4);
+        }
+        break;
+      case 'megaWarn':
+        if (near) this.au.megaWarn(p);
+        break;
+      case 'megaCharge':
+      case 'krakenRaise':
+      case 'krakenGrab':
+        if (near) this.au.bossWhoosh(p);
+        break;
+      case 'megaRoar':
+      case 'megaTail':
+        if (near) this.au.bossRoar(0);
+        break;
+      case 'megaBite':
+        if (near) {
+          this.au.bite(p);
+          this.camShake = 1;
+        }
+        break;
+      case 'megaSplash':
+      case 'krakenSlam':
+        if (near) {
+          this.au.splash(p, 1);
+          this.fx.burst(x, this.waterAt(x, z) + 0.2, z, 40, 'foam', '#ffffff', 5);
+          this.camShake = Math.max(this.camShake, 0.7);
+        }
+        break;
+      case 'bubbles':
+        if (near) {
+          this.au.bubbles(8);
+          for (let i = 0; i < 24; i++) this.fx.emit(x + (Math.random() - 0.5) * 6, this.waterAt(x, z), z + (Math.random() - 0.5) * 6, 0, 0.6, 0, { life: 0.8, size: 0.1, grow: 0.15 });
+        }
+        break;
+      case 'dodge':
+        if (mine) this.au.qteOk();
+        break;
+      case 'krakenInk':
+        if (near) this.au.splash(p, 0.7);
+        break;
+      case 'inked':
+        if (mine) this.hud.ink(4);
+        break;
+      case 'bossHurt':
+        if (near) this.au.bossHit(false);
+        break;
+      case 'bossDown':
+        if (near) {
+          this.au.fanfare();
+          this.hud.banner('star', t('jangada.bossDown', 'Chefe derrotado!'), t('jangada.bossLoot', 'Pegue o tesouro lendário boiando!'), 4);
+          this.prog('boss', 1);
+          this.bossDone[v ? 'kraken' : 'mega'] = this.day;
+        }
+        break;
+      case 'boatHit':
+        if (mine) {
+          this.camShake = 0.8;
+          this.au.crack(null);
+          this.hud.flash();
+        } else if (near) this.au.crack(p);
+        break;
+      case 'boatSink':
+        if (mine) notify(t('jangada.boatFlip', 'O barco virou! Toque em USAR nele para desvirar.'), { icon: 'warning', kind: 'bad' });
+        break;
+    }
   }
 
   /* ------------------------------ peças ------------------------------ */
@@ -860,11 +1861,12 @@ export class World {
     }
     return out;
   }
-  private swimmers(): [string, number, number, number][] {
+  private swimmers(boats = false): [string, number, number, number][] {
     const out: [string, number, number, number][] = [];
     const myId = this.net?.me.id ?? 'me';
     if (this.me.swim) out.push([myId, this.me.x, this.me.y, this.me.z]);
     for (const r of this.remotes.values()) if (r.sw) out.push([r.id, r.x, r.y, r.z]);
+    if (boats) for (const b of this.boats) if (b.drv && !b.flip) out.push([b.drv, b.x, b.y - 0.6, b.z]);
     return out;
   }
   private sharkBite(id: number, x: number, z: number): void {
@@ -876,11 +1878,17 @@ export class World {
       // quem estava em cima cai na água: a física cuida
     } else if (Math.random() < 0.4) notify(t('jangada.biting', 'O Mordelão está mordendo a jangada! Use a lança!'), { icon: 'warning', kind: 'bad', key: 'jgbite' });
   }
-  private sharkBiteMe(who: string): void {
+  /** mordida em quem nada (~5% da vida por mordida; tubarão-tigre um pouco mais). Em barco: bate no casco. */
+  private sharkBiteMe(who: string, s: Shark): void {
     const myId = this.net?.me.id ?? 'me';
-    const dmg = DIFFS[this.diff].biteMe;
-    if (who === myId) this.hurt(dmg, true);
-    else this.net?.send({ t: 'hurt', d: dmg }, who);
+    const dmg = [4, 5, 6][this.diff] * (s.variant ? 1.4 : 1);
+    const boat = this.boats.find((b) => b.drv === who);
+    if (boat) {
+      this.boatHit(boat, s.variant ? 12 : 8, s.x, s.z);
+      return;
+    }
+    if (who === myId) this.hurt(dmg, true, s.x, s.z);
+    else this.net?.send({ t: 'hurt', d: dmg, fx: r1(s.x), fz: r1(s.z) }, who);
   }
   private ghostTarget(): [number, number, number, 'chest' | 'fire'] | null {
     const chests = this.raft.pieces.filter((p) => p.k === 'chest' && Object.keys(p.d?.bag ?? {}).length);
@@ -958,6 +1966,9 @@ export class World {
     }
     return best;
   }
+  private collidesAt(x: number, z: number, y: number): boolean {
+    return this.collides(x, z, y);
+  }
   private collides(x: number, z: number, y: number): boolean {
     const by = this.bobY;
     for (const b of this.raft.boxes()) {
@@ -976,12 +1987,14 @@ export class World {
           if (Math.abs(x - bx) < CELL / 2 + RAD * 0.8 && Math.abs(z - bz) < CELL / 2 + RAD * 0.8) return true;
         }
     }
-    if (this.isl) {
-      for (const n of this.isl.nodes) {
-        if (!n.alive || (n.k !== 'palm' && n.k !== 'rock')) continue;
-        const r = n.k === 'palm' ? 0.25 : 0.7;
-        if (Math.hypot(x - (n.x + this.isl.x), z - (n.z + this.isl.z)) < r + RAD) return true;
+    const isl = this.isl;
+    if (isl && Math.hypot(x - isl.x, z - isl.z) < isl.r + 6) {
+      for (const n of isl.nodes) {
+        if (!solidNode(n.k) || (!n.alive && n.k !== 'chest')) continue;
+        const r = n.k === 'palm' ? 0.25 : n.k === 'tree' ? 0.4 : n.k === 'chest' ? 0.45 : 0.7;
+        if (Math.hypot(x - (n.x + isl.x), z - (n.z + isl.z)) < r + RAD) return true;
       }
+      if (isl.blocks(x, z, RAD)) return true;
     }
     return false;
   }
@@ -996,12 +2009,20 @@ export class World {
     m.yaw = fpc.yaw;
     m.pitch = fpc.pitch;
     let [mx, my] = this.ctl.dir();
-    if (this.hud.overlay) mx = my = 0;
-    if (this.camMode === 2) {
-      // de frente: o direcional continua relativo ao Bloop
+    if (this.hud.overlay || this.hud.qte.active) mx = my = 0;
+    if (this.keys.size) {
+      if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) my = 1;
+      if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) my = -1;
+      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) mx = -1;
+      if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx = 1;
+    }
+    if (this.myBoat) {
+      this.driveBoat(dt, mx, my);
+      return;
     }
     const starving = (m.food <= 0 || m.water <= 0) && DIFFS[this.diff].starve === 0;
-    const sp = (m.swim ? SWIM_SPEED : SPEED) * (starving ? 0.6 : 1) * (this.fish.st !== 'idle' ? 0.5 : 1);
+    const sneaking = this.sneak && !m.swim;
+    const sp = (m.swim ? SWIM_SPEED : SPEED) * (starving ? 0.6 : 1) * (this.fish.st !== 'idle' ? 0.5 : 1) * (sneaking ? 0.5 : 1);
     const fp = this.fp;
     fp.tune.speed = sp;
     fp.x = m.x;
@@ -1050,12 +2071,7 @@ export class World {
         m.grounded = true;
       }
       m.onIsl = !!this.isl && g !== null && Math.abs(g - this.isl.heightAt(m.x, m.z)) < 0.05 && this.raft.groundAt(m.x, m.z, m.y - this.bobY) === null;
-      if (m.onIsl && this.stats.islands >= 0 && !this.islVisited) {
-        this.islVisited = true;
-        this.stats.islands++;
-        this.prog('island', 1);
-        this.hud.banner('island', t('jangada.islandHi', 'Terra firme!'), t('jangada.islandSub', 'Use o machado nas árvores e pedras'), 2.6);
-      }
+      if (m.onIsl && this.isl) this.landedOn(this.isl);
       // caiu na água
       if (g === null && m.y < water - 0.6) {
         m.swim = true;
@@ -1076,6 +2092,7 @@ export class World {
       // nadando
       const float = water - 1.2;
       const floor = this.isl ? Math.max(this.isl.heightAt(m.x, m.z), -16) : -16;
+      this.sneak = false;
       if (this.diveHeld) m.vy += (-2.6 - m.vy) * Math.min(1, dt * 4);
       else if (this.jumpHeld && m.y < float - 0.3) m.vy += (2.8 - m.vy) * Math.min(1, dt * 4);
       else m.vy += ((float - m.y) * 2.2 - m.vy) * Math.min(1, dt * 3);
@@ -1110,15 +2127,13 @@ export class World {
     }
     m.bob = this.fpc.bob;
     if (m.invT > 0) m.invT -= dt;
-    // longe demais da jangada nadando: a correnteza devolve (crianças não se perdem)
-    const [cx, cz] = this.raft.center();
-    const far = Math.hypot(m.x - cx, m.z - cz);
-    if (far > 70 && !m.onIsl) {
-      m.x += ((cx - m.x) / far) * dt * 2;
-      m.z += ((cz - m.z) / far) * dt * 2;
+    // fim do mapa: a correnteza devolve (crianças não se perdem)
+    const far = Math.hypot(m.x, m.z);
+    if (far > RING.far[1] + 140) {
+      m.x -= (m.x / far) * dt * 3;
+      m.z -= (m.z / far) * dt * 3;
     }
   }
-  private islVisited = false;
   /** ponto do convés mais perto para subir (nadando na beirada) */
   private climbSpot(): [number, number] | null {
     const m = this.me;
@@ -1184,46 +2199,79 @@ export class World {
     }
     if (m.hp <= 0) this.faint();
   }
-  private hurt(n: number, big: boolean): void {
+  private hurt(n: number, big: boolean, fromX?: number, fromZ?: number, sound: 'chomp' | 'bonk' | 'none' = 'chomp'): void {
     const m = this.me;
     if (big && m.invT > 0) return;
+    if (this.dying) return;
     m.hp = Math.max(0, m.hp - n);
     if (big) {
-      m.invT = 1;
+      m.invT = 0.6;
       this.hud.flash();
-      this.au.chomp();
+      if (sound === 'chomp') this.au.chomp();
+      else if (sound === 'bonk') this.au.bonk();
       this.au.hurt();
       tap('heavy');
       this.camShake = 0.8;
+      // empurrão para longe de quem bateu
+      if (fromX !== undefined && fromZ !== undefined && !this.myBoat) {
+        const dx = m.x - fromX;
+        const dz = m.z - fromZ;
+        const d = Math.hypot(dx, dz) || 1;
+        const k = m.swim ? 3.2 : 4.5;
+        m.vx += (dx / d) * k;
+        m.vz += (dz / d) * k;
+        if (!m.swim && m.grounded) {
+          m.vy = 3;
+          m.grounded = false;
+        }
+      }
     }
   }
+  private dying = false;
   private camShake = 0;
+  private uwCol = new THREE.Color();
+  private photo: [number, number, number, number, number, number] | null = null;
+  private handHidden = false;
   /** kit de 1ª pessoa: corpo (aceleração/frenagem da Cozinha, deslizar nas paredes) e câmera (balanço, tremor) */
   private fp = new FpController(fpTuning('cozinha', { radius: RAD }), { isFree: (x, z) => !this.collides(x, z, this.me.y) });
   private fpc = new FpCamera(fpTuning('cozinha', { eye: EYE, pitchMin: -1.35, pitchMax: 1.3 }));
+  /** desmaiou: tudo o que carregava vai para um baú boiando no lugar; acorda na cama/jangada */
   private faint(): void {
+    if (this.dying) return;
+    this.dying = true;
     const m = this.me;
     this.hud.fade(true);
-    this.au.miss();
-    const lost: Bag = {};
-    if (DIFFS[this.diff].lose)
-      for (const k in this.inv) {
-        const id = k as ItemId;
-        if (ITEM[id].kind === 'mat') {
-          const n = Math.floor((this.inv[id] ?? 0) / 2);
-          if (n) lost[id] = n;
-        }
-      }
-    bagAdd(this.inv, lost, -1);
-    m.hp = 60;
-    m.food = Math.max(m.food, 40);
-    m.water = Math.max(m.water, 40);
-    this.respawn();
-    this.updateHot();
+    this.au.faint();
+    this.hud.qte.cancel();
+    const x = m.x;
+    const z = m.z;
+    const bag: Bag = { ...this.inv };
+    const had = bagCount(bag) > 0;
+    if (had) this.act({ o: 'dchest', x: r1(x), z: r1(z), b: bag });
+    this.inv = {};
+    this.dropHook();
+    this.endFish(false);
+    if (this.myBoat) {
+      // o barco volta sozinho para a jangada
+      const b = this.myBoat;
+      this.leaveBoat(true);
+      this.act({ o: 'boatHome', id: b.id });
+    }
     setTimeout(() => {
+      m.hp = 100;
+      m.food = Math.max(m.food, 55);
+      m.water = Math.max(m.water, 55);
+      m.invT = 2;
+      this.respawn();
+      this.updateHot();
+      this.dying = false;
       this.hud.fade(false);
-      notify(t('jangada.faint', 'Você desmaiou e acordou na jangada. Coma e beba!'), { icon: 'heart', ms: 3500 });
-    }, 900);
+      this.hud.banner('beacon', t('jangada.died', 'Você desmaiou!'), had ? t('jangada.diedSub', 'Suas coisas estão num baú boiando: siga a luz amarela') : t('jangada.diedSub2', 'Acordou na jangada. Coma e beba!'), 4);
+      if (had) {
+        const c = this.dch.filter((q) => q.kind === 0).sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0];
+        if (c) this.target = -100 - c.id;
+      }
+    }, 1100);
   }
   private sleeping = false;
   private sleep(): void {
@@ -1291,14 +2339,46 @@ export class World {
     if (this.isl) {
       const pt = o.clone().addScaledVector(d, 1.6);
       const n = this.isl.nearest(pt.x, pt.z, pt.y, 2.4, null);
-      if (n && (!this.aim || this.aim.k !== 'piece')) this.aim = { k: 'node', n };
+      if (n && (!this.aim || this.aim.k !== 'piece')) this.aim = { k: 'node', n, i: this.isl };
+      const ow = this.owners.get(this.isl.id);
+      const np = ow?.aim(o, d, ow.friendly ? 4 : held === 'lantern' ? 9 : isHarpoon(held) ? 14 : 4);
+      if (np && ow) this.aim = { k: 'npc', n: np, o: ow };
+    }
+    // barcos e baús boiando
+    for (const b of this.boats) {
+      if (b === this.myBoat || (b.drv && b.drv !== (this.net?.me.id ?? 'me'))) continue;
+      const to = new THREE.Vector3(b.x, b.y + 0.3, b.z).sub(o);
+      const dist = to.length();
+      if (dist < 4.2 && to.normalize().dot(d) > 0.6) this.aim = { k: 'boat', b };
+    }
+    for (const c of this.dch) {
+      const to = new THREE.Vector3(c.x, this.waterAt(c.x, c.z) + 0.3, c.z).sub(o);
+      const dist = to.length();
+      if (dist < 3.6 && to.normalize().dot(d) > 0.55) this.aim = { k: 'dchest', c };
     }
     // bichos (lança/machado/lanterna)
-    if (this.shark.active) {
-      const sp = new THREE.Vector3(this.shark.x, this.shark.y + 0.3, this.shark.z);
+    for (const s of [this.shark, ...this.sharks2]) {
+      if (!s.active) continue;
+      const sp = new THREE.Vector3(s.x, s.y + 0.3, s.z);
       const to = sp.sub(o);
       const dist = to.length();
-      if (dist < 4.2 && to.normalize().dot(d) > 0.7) this.aim = { k: 'shark' };
+      if (dist < (isHarpoon(held) ? 16 : 4.2) && to.normalize().dot(d) > (isHarpoon(held) ? 0.93 : 0.7)) this.aim = { k: 'shark', s };
+    }
+    // chefes: esferas de acerto ao longo do corpo
+    for (const b of this.bosses) {
+      if (!b.fighting) continue;
+      const reach = isHarpoon(held) ? 40 : 5.5;
+      let bestT = reach;
+      for (const h of b.hitSpheres()) {
+        const to = new THREE.Vector3(h.x, h.y, h.z).sub(o);
+        const along = to.dot(d);
+        if (along < 0 || along > bestT + h.r) continue;
+        const perp = to.addScaledVector(d, -along).length();
+        if (perp < h.r * (isHarpoon(held) ? 1.1 : 1.5) && (!this.aim || this.aim.k !== 'boss' || h.w > this.aim.h.w)) {
+          bestT = along;
+          this.aim = { k: 'boss', b, h };
+        }
+      }
     }
     if (this.ghost.active && this.ghost.st !== 'scared') {
       const gp = new THREE.Vector3(this.ghost.x, this.ghost.y + 0.5, this.ghost.z);
@@ -1421,7 +2501,7 @@ export class World {
   }
   private hotList(): HotItem[] {
     return HOT_ORDER.filter((id) => (this.inv[id] ?? 0) > 0)
-      .slice(0, 8)
+      .slice(0, HOT_MAX)
       .map((id) => ({ id, n: this.inv[id] ?? 0 }));
   }
   private updateHot(): void {
@@ -1454,13 +2534,20 @@ export class World {
     }
     if (!down) return;
     if (this.actCd > 0) return;
+    // comida na mão mirando um guarda: joga de isca (distrai)
+    if (ITEM[id]?.kind === 'food' && this.aim?.k === 'npc' && !this.aim.o.friendly) return this.throwBait(id, this.aim.o);
+    if (id === 'hammer' && this.aim?.k === 'boat') return this.fixBoat(this.aim.b);
     switch (id) {
       case 'hammer':
         return this.hammerAct();
       case 'spear':
       case 'spear2':
+      case 'spear3':
       case 'axe':
         return this.swing(id);
+      case 'harpoon':
+      case 'harpoon2':
+        return this.throwHarpoon(id);
       case 'rod':
         return this.rodAct();
       case 'lantern':
@@ -1587,6 +2674,14 @@ export class World {
           tap('light');
         }
       }
+      // o gancho também puxa baús boiando
+      for (const c of this.dch)
+        if (Math.hypot(c.x - h.p.x, c.z - h.p.z) < 1.3) {
+          this.act({ o: 'dget', id: c.id });
+          this.au.splash({ x: c.x, y: h.p.y, z: c.z }, 0.4);
+          this.dropHook();
+          return;
+        }
       h.caught.forEach((d, i) => {
         d.x = h.p.x + Math.cos(i * 2.1) * 0.25;
         d.z = h.p.z + Math.sin(i * 2.1) * 0.25;
@@ -1629,11 +2724,16 @@ export class World {
   /** ganhou itens (pop + toast curto) */
   addItems(b: Bag, popSound = true, delayIdx = 0): void {
     bagAdd(this.inv, b);
-    for (const k in b) {
-      const id = k as ItemId;
+    const keys = Object.keys(b) as ItemId[];
+    for (const id of keys) {
       if (id === 'shell') this.coins(2 * (b[id] ?? 0));
-      if (popSound) setTimeout(() => this.au.pop(['wood', 'plastic', 'leaf', 'scrap', 'rope'].indexOf(id) + 1), delayIdx * 110);
-      notify(`+${b[id]} ${itemName(id)}`, { icon: 'gift', ms: 1400, key: 'jg+' + id });
+      if (popSound && keys.length <= 4) setTimeout(() => this.au.pop(['wood', 'plastic', 'leaf', 'scrap', 'rope'].indexOf(id) + 1), delayIdx * 110);
+      if (keys.length <= 4) notify(`+${b[id]} ${itemName(id)}`, { icon: 'gift', ms: 1400, key: 'jg+' + id });
+    }
+    // muitas coisas de uma vez (baú): um aviso só
+    if (keys.length > 4) {
+      if (popSound) this.au.pop(4);
+      notify(t('jangada.gotMany', '+{n} coisas', { n: bagCount(b) }), { icon: 'gift', ms: 1800, key: 'jg+many' });
     }
     this.updateHot();
   }
@@ -1734,26 +2834,32 @@ export class World {
     this.actCd = id === 'axe' ? 0.55 : 0.5;
     this.au.swing();
     const a = this.aim;
+    const dmg = WEAPON[id] ?? 0.5;
     if (a?.k === 'shark') {
-      const dmg = id === 'spear2' ? 2 : id === 'spear' ? 1 : 0.5;
-      this.act({ o: 'shark', dmg });
-      this.au.sharkHurt({ x: this.shark.x, y: this.shark.y, z: this.shark.z });
-      this.fx.burst(this.shark.x, this.shark.y + 0.5, this.shark.z, 10, 'foam', '#ffffff', 2);
-      tap('medium');
+      this.hitShark(a.s, dmg);
       return;
     }
     if (a?.k === 'ghost') {
       this.act({ o: 'ghost' });
       return;
     }
+    if (a?.k === 'npc') {
+      this.hitNpc(a.n, a.o, dmg);
+      return;
+    }
+    if (a?.k === 'boss' && id !== 'axe') {
+      this.hitBoss(a.b, a.h, dmg);
+      return;
+    }
     if (a?.k === 'node' && id === 'axe') {
       const n = a.n;
-      if (n.k === 'palm' || n.k === 'rock') {
-        const isl = this.isl!;
-        this.au.chop({ x: n.x + isl.x, y: n.y + 1, z: n.z + isl.z }, n.k === 'rock');
-        this.fx.burst(n.x + isl.x, n.y + 1, n.z + isl.z, 8, 'chunk', n.k === 'rock' ? '#a8a6b8' : '#c08850', 1.5);
+      if (axeNode(n.k)) {
+        const isl = a.i;
+        const stone = n.k === 'rock' || n.k === 'ore';
+        this.au.chop({ x: n.x + isl.x, y: n.y + 1, z: n.z + isl.z }, stone);
+        this.fx.burst(n.x + isl.x, n.y + 1, n.z + isl.z, 8, 'chunk', stone ? isl.def.rock : '#c08850', 1.5);
         isl.hit(n);
-        this.act({ o: 'node', id: n.id });
+        this.act({ o: 'node', i: isl.id, id: n.id });
         return;
       }
     }
@@ -1873,10 +2979,19 @@ export class World {
     if (!a) return null;
     if (a.k === 'node') {
       const n = a.n;
-      if (n.k === 'bush') return ['berry', t('jangada.u.pick', 'Colher')];
-      if (underwaterNode(n.k)) return [n.k, t('jangada.u.grab', 'Pegar')];
+      if (n.k === 'bush') return [a.i.def.fruit, t('jangada.u.pick', 'Colher')];
+      if (n.k === 'chest') return [n.r ? 'chestR' : 'chest', t('jangada.u.open', 'Abrir')];
+      if (underwaterNode(n.k)) return [n.k === 'pearl' ? 'pearl' : n.k, t('jangada.u.grab', 'Pegar')];
       return this.sel === 'axe' ? null : ['axe', t('jangada.u.needAxe', 'Machado!')];
     }
+    if (a.k === 'boat') {
+      const b = a.b;
+      if (b.flip) return ['up', t('jangada.u.flip', 'Desvirar')];
+      if (b.def.fuel && b.fuel < FUEL_SEC * 2 && (this.inv.fuel ?? 0) > 0) return ['fuel', t('jangada.u.refuel', 'Abastecer')];
+      return [b.def.icon, t('jangada.u.board', 'Entrar')];
+    }
+    if (a.k === 'dchest') return ['beacon', t('jangada.u.take', 'Pegar')];
+    if (a.k === 'npc') return a.o.friendly && a.n.chief ? ['hand', t('jangada.u.trade', 'Trocar')] : null;
     if (a.k !== 'piece') return null;
     const p = a.p;
     const d = p.d ?? {};
@@ -1921,8 +3036,28 @@ export class World {
     const w = this.useWhat();
     if (!a || !w) return;
     if (a.k === 'node') {
-      if (a.n.k === 'bush' || underwaterNode(a.n.k)) this.act({ o: 'node', id: a.n.id });
-      else this.au.nope();
+      if (a.n.k === 'bush' || a.n.k === 'chest' || underwaterNode(a.n.k)) {
+        if (a.n.k === 'chest' && a.n.guarded && a.i.def.owner !== 'none') {
+          // abrir o baú guardado com guarda olhando = bonk
+          const ow = this.owners.get(a.i.id);
+          if (ow?.danger) {
+            this.au.nope();
+            notify(t('jangada.guarded', 'Os guardas estão de olho! Distraia, esgueire ou derrote.'), { icon: 'warning', key: 'jgguard' });
+            return;
+          }
+        }
+        if (a.n.k === 'chest') this.au.chestOpen(a.n.r ?? 0);
+        this.act({ o: 'node', i: a.i.id, id: a.n.id });
+      } else this.au.nope();
+      return;
+    }
+    if (a.k === 'boat') return this.useBoat(a.b);
+    if (a.k === 'dchest') {
+      this.act({ o: 'dget', id: a.c.id });
+      return;
+    }
+    if (a.k === 'npc') {
+      if (a.o.friendly && a.n.chief) this.openTrade(a.o);
       return;
     }
     if (a.k !== 'piece') return;
@@ -2051,6 +3186,7 @@ export class World {
       fireLv: () => this.raft.fireLv(),
       hasFire: () => this.raft.count('fire') > 0,
       craft: (r: Recipe) => this.craft(r),
+      boat: (k) => this.buildBoat(k),
       build: (k) => {
         this.hud.closePanel();
         this.setPaused(false);
@@ -2146,8 +3282,9 @@ export class World {
       return;
     }
     if (o === 'shark') {
-      const fled = this.shark.hit(Number(op.dmg) || 1);
-      if (!me) this.sendFx('sharkHurt', this.shark.x, this.shark.y, this.shark.z);
+      const sh = [this.shark, ...this.sharks2][Number(op.s) | 0] ?? this.shark;
+      const fled = sh.hit(Number(op.dmg) || 1);
+      if (!me) this.sendFx('sharkHurt', sh.x, sh.y, sh.z);
       if (fled) {
         this.sendFx('sharkFlee', 0, 0, 0, 0, from);
       }
@@ -2169,21 +3306,25 @@ export class World {
       return;
     }
     if (o === 'node') {
-      const isl = this.isl;
+      const isl = this.ensureIsle(Number(op.i));
       const n = isl?.nodes.find((q) => q.id === Number(op.id));
       if (!isl || !n || !n.alive) return;
       n.hp -= 1;
       if (n.hp > 0) {
-        if (!me) this.net?.send({ t: 'fx', k: 'nodehit', id: n.id });
+        if (!me) this.net?.send({ t: 'fx', k: 'nodehit', i: isl.id, id: n.id });
         return;
       }
       isl.kill(n);
-      if (n.k === 'palm') this.sendFx('timber', n.x + isl.x, n.y, n.z + isl.z);
-      if (this.net) this.net.send({ t: 'node', id: n.id });
-      give(nodeLoot(n.k, Math.random));
+      (this.isleSt[isl.id] ??= { d: [] }).d.push(n.id);
+      if (n.k === 'palm' || n.k === 'tree') this.sendFx('timber', n.x + isl.x, n.y, n.z + isl.z);
+      if (this.net) this.net.send({ t: 'node', i: isl.id, id: n.id });
+      const L = nodeLoot(n, isl.biome, Math.random);
+      give(L.bag);
+      if (n.k === 'chest') this.sendFx('chest', n.x + isl.x, n.y, n.z + isl.z, (n.r ?? 0) * 1000 + L.coins, from);
       if (underwaterNode(n.k)) this.sendFx('divegrab', 0, 0, 0, 0, from);
       return;
     }
+    if (this.applyV2(o, op, from, me, give)) return;
     const p = this.raft.get(Number(op.id));
     if (!p) return;
     const d = (p.d ??= {});
@@ -2390,6 +3531,8 @@ export class World {
       case 'divegrab':
         if (mine) this.prog('dive', 1);
         break;
+      default:
+        this.playFxV2(k, x, y, z, v, mine);
     }
   }
 
@@ -2407,7 +3550,7 @@ export class World {
     const tryM = (m: Mission, cur: number): number => {
       if (m.k !== k) return cur;
       if (m.a && m.a !== a) return cur;
-      if (k === 'fireLv') return Math.max(cur, n);
+      if (k === 'fireLv' || k === 'boat' || k === 'tier' || k === 'disc') return Math.max(cur, n);
       return cur + n;
     };
     if (this.mis < MISSIONS.length) {
@@ -2416,6 +3559,8 @@ export class World {
       if (m.k === 'tiles') cur = this.raft.tiles;
       if (m.k === 'up') cur = this.raft.count('floor');
       if (m.k === 'fireLv') cur = Math.max(cur, this.raft.fireLv());
+      if (m.k === 'disc') cur = Math.max(cur, this.knownCount());
+      if (m.k === 'boat') cur = Math.max(cur, ...this.boats.map((b) => b.k + 1), 0);
       this.misN = Math.min(m.n, cur);
       if (this.misN >= m.n) this.completeMission(m);
     }
@@ -2529,42 +3674,69 @@ export class World {
     const wx = this.waterAt(b[2], cz) - this.waterAt(b[0], cz);
     const wz = this.waterAt(cx, b[3]) - this.waterAt(cx, b[1]);
     const size = Math.max(1, Math.sqrt(this.raft.tiles));
-    const damp = 0.55 / Math.sqrt(size);
+    const damp = (this.anchored ? 0.35 : 0.55) / Math.sqrt(size);
     this.bobY += (w0 * damp - this.bobY) * 0.15;
     this.tiltZ += (-(wx / Math.max(2, b[2] - b[0])) * 0.5 - this.tiltZ) * 0.1;
     this.tiltX += ((wz / Math.max(2, b[3] - b[1])) * 0.5 - this.tiltX) * 0.1;
     this.raftG.position.y = this.bobY;
     this.raftG.rotation.set(this.tiltX * 0.5, 0, this.tiltZ * 0.5);
     this.placeCamera(dt);
+    this.bossCamera();
+    if (this.photo) {
+      // modo foto (testes): câmera livre
+      const [x, y, z, lx, ly, lz] = this.photo;
+      this.cam.position.set(x, y, z);
+      this.cam.lookAt(lx, ly, lz);
+      this.cam.updateMatrixWorld();
+    }
     // céu/luz
     this.sc = skyAt(this.tod, this.storm, this.sc);
     const c = this.sc;
     const flash = this.lightning;
     if (this.lightning > 0) this.lightning = Math.max(0, this.lightning - 0.08);
+    // caverna: escuro (só a lanterna e os cristais iluminam)
+    const inCave = !!this.isl?.inCave(this.cam.position.x, this.cam.position.z) && !this.me.swim;
+    this.caveK += ((inCave ? 1 : 0) - this.caveK) * 0.08;
+    const dark = 1 - this.caveK * 0.95;
     this.hemi.color.copy(c.amb);
     this.hemi.groundColor.set(c.night > 0.5 ? '#0a1a3a' : '#2a6a8a');
-    this.hemi.intensity = c.ambI + flash * 2;
+    this.hemi.intensity = (c.ambI + flash * 2) * dark;
     const ld = c.night > 0.5 ? c.moon : c.dir;
     this.sun.position.set(ld.x * 40 + this.me.x, Math.max(4, ld.y * 40), ld.z * 40 + this.me.z);
     this.sun.target.position.set(this.me.x, 0, this.me.z);
     this.sun.color.copy(c.sun);
-    this.sun.intensity = c.night > 0.5 ? 0.35 : c.sunI;
-    const under = this.cam.position.y < this.waterAt(this.cam.position.x, this.cam.position.z);
+    this.sun.intensity = (c.night > 0.5 ? 0.35 : c.sunI) * (1 - this.caveK * 0.99);
+    const wCam = this.waterAt(this.cam.position.x, this.cam.position.z);
+    const under = this.cam.position.y < wCam;
     const fog = this.scene.fog as THREE.FogExp2;
+    const uwFog = this.uwCol.copy(c.shallow).lerp(c.deep, 0.55).multiplyScalar(0.62 + c.sunI * 0.12);
     if (under) {
-      fog.color.copy(c.shallow).multiplyScalar(0.55);
-      fog.density = 0.075;
+      // mais escuro quanto mais fundo
+      const depth = Math.max(0, wCam - this.cam.position.y);
+      fog.color.copy(uwFog).multiplyScalar(Math.max(0.35, 1 - depth * 0.04));
+      fog.density = 0.055 + depth * 0.002;
+    } else if (this.caveK > 0.02) {
+      fog.color.copy(c.fog).lerp(this.uwCol.set('#0a0a14'), this.caveK);
+      fog.density = 0.0045 + this.caveK * 0.06;
     } else {
       fog.color.copy(c.fog);
-      fog.density = 0.0045 + this.storm * 0.01 + c.night * 0.002;
+      fog.density = 0.0036 + this.storm * 0.011 + c.night * 0.002;
     }
     this.renderer.setClearColor(fog.color);
-    this.ocean.update(this.cam, this.time, this.amp, this.off[0], this.off[1], c, under ? 0.06 : fog.density * 0.9);
+    this.ocean.update(this.cam, this.time, this.amp, this.off[0], this.off[1], c, under ? 0.06 : fog.density, this.storm, uwFog);
     const ou = this.ocean.mat.uniforms;
-    ou.uRaft.value.set(b[0] + this.raftG.position.x, b[1], b[2], b[3]);
-    if (this.isl) ou.uIsl.value.set(this.isl.x, this.isl.z, this.isl.r * 1.05, 1);
-    else ou.uIsl.value.w = 0;
+    ou.uRaft.value.set(b[0], b[1], b[2], b[3]);
+    this.ocean.setIsles([...this.isles.values()].sort((p, q) => Math.hypot(p.x - this.cam.position.x, p.z - this.cam.position.z) - Math.hypot(q.x - this.cam.position.x, q.z - this.cam.position.z)).map((i) => i.shapeU()));
+    const wake: [number, number, number, number][] = [];
+    for (const bt of this.boats) wake.push(...bt.wake.slice(0, 3));
+    for (const bs of this.bosses) if (bs.fighting && bs.kind === 'mega' && bs.y > this.waterAt(bs.x, bs.z) - 2) wake.push([bs.x, bs.z, 4, 0.9]);
+    this.ocean.setWake(wake.slice(0, 8));
+    SEABED_U.uCTime.value = this.time;
+    SEABED_U.uCSun.value = (c.night > 0.5 ? 0.15 : c.sunI * 0.7) * (1 - this.storm * 0.6);
+    SEABED_U.uCDeep.value.copy(uwFog);
     this.sky.update(this.cam, this.time, dt, c, this.storm);
+    this.sky.group.visible = !under;
+    this.uw.update(this.cam, under, this.time, dt, ld, (c.night > 0.5 ? 0.2 : c.sunI * 0.6) * (1 - this.storm * 0.6), wCam);
     this.hud.underwater(under);
     this.au.underwater = under;
     // eu em 3ª pessoa
@@ -2579,10 +3751,11 @@ export class World {
     this.updateHand(dt);
     this.updateRain(dt);
     this.updateBirds(dt);
+    this.updateWeather(dt);
     // lanterna
     if (this.lanternLight) {
       const on = this.sel === 'lantern' && this.lanternOn;
-      this.lanternLight.intensity = on ? 1.4 + c.night * 1.6 : 0;
+      this.lanternLight.intensity = on ? 1.4 + c.night * 1.6 + this.caveK * 2.2 : 0;
       this.lanternLight.position.set(m.x - Math.sin(m.yaw) * 0.8, m.y + 1.4, m.z - Math.cos(m.yaw) * 0.8);
 
     }
@@ -2591,14 +3764,14 @@ export class World {
   }
   private updateHand(dt: number): void {
     const id = this.sel;
-    const show = this.camMode === 0;
+    const show = this.camMode === 0 && !this.handHidden;
     this.hand.visible = show;
     if (!show) return;
     const key = id;
     if (key !== this.handKey) {
       this.handKey = key;
       if (this.handObj) this.hand.remove(this.handObj);
-      const g = toolGeo(id);
+      const g = handGeo(id);
       if (g) {
         const msh = new THREE.Mesh(g, this.handMat);
         msh.renderOrder = 100;
@@ -2615,12 +3788,12 @@ export class World {
     const m = this.me;
     const bob = Math.sin(m.bob) * 0.012 * m.speedK;
     const bob2 = Math.abs(Math.cos(m.bob)) * 0.01 * m.speedK;
-    const isTool = !!toolGeo(id);
+    const isTool = !!handGeo(id);
     const sw = this.swingT > 0 ? Math.sin((1 - this.swingT / 0.4) * Math.PI) : 0;
     const ch = this.hook.st === 'charge' ? this.hook.charge : 0;
     if (isTool) {
-      o.position.set(0.24 + bob, -0.27 + bob2 - sw * 0.05 - ch * 0.04, -0.42 + ch * 0.1 - (id.startsWith('spear') ? sw * 0.35 : 0));
-      const spear = id.startsWith('spear');
+      o.position.set(0.24 + bob, -0.27 + bob2 - sw * 0.05 - ch * 0.04, -0.42 + ch * 0.1 - (id.startsWith('spear') || id.startsWith('harpoon') ? sw * 0.35 : 0));
+      const spear = id.startsWith('spear') || id.startsWith('harpoon');
       o.rotation.set(-0.5 - (spear ? 0.9 : 0) - (spear ? 0 : sw * 1.2) + ch * 0.6, 0.2, -0.2 + (id === 'rod' ? 0.3 : 0));
       o.scale.setScalar(id === 'rod' ? 0.6 : spear ? 0.55 : 0.75);
       if ((id === 'hook' || id === 'hook2') && (this.hook.st === 'fly' || this.hook.st === 'water')) o.scale.setScalar(0.0001);
@@ -2705,8 +3878,15 @@ export class World {
   private updateHud(): void {
     const m = this.me;
     this.hud.setDay(this.day, this.isNightNow(), this.storm > 0.4, this.camLbl());
-    this.hud.setBars(m.hp, m.food, m.water, m.swim && m.air < 0.999 ? m.air * 100 : null);
+    const bt = this.myBoat;
+    this.hud.setBars(m.hp, m.food, m.water, m.swim && m.air < 0.999 ? m.air * 100 : null, bt ? (bt.def.fuel ? ['fuel', (bt.fuel / (FUEL_SEC * 3)) * 100, '#ff9a3a'] : ['fix', (bt.hp / bt.maxHp) * 100, '#a8e86a']) : null);
     this.hud.setWater(m.swim);
+    this.hud.vignette(m.hp);
+    const ow = this.isl ? this.owners.get(this.isl.id) : null;
+    this.hud.setSneak(!m.swim && !bt && !!ow && !ow.friendly && ow.npcs.length > 0 && m.onIsl, this.sneak);
+    this.updateCompass();
+    const boss = this.bosses.find((q) => q.fighting && Math.hypot(q.x - m.x, q.z - m.z) < 120);
+    this.hud.setBoss(boss ? (boss.kind === 'mega' ? t('jangada.boss.mega', 'MEGALODONTE') : t('jangada.boss.kraken', 'POLVO GIGANTE')) : null, boss ? boss.hp / boss.max : 0);
     this.hud.setMissions(this.misViews());
     // ação
     const id = this.sel;
@@ -2722,7 +3902,10 @@ export class World {
     else if (id === 'lantern') act = ['lantern', this.lanternOn ? t('jangada.u.off', 'Apagar') : t('jangada.u.on', 'Acender'), false];
     else if (ITEM[id]?.kind === 'food') act = [id === 'water' ? 'drop' : 'eat', id === 'water' || id === 'coco' ? t('jangada.a.drink', 'Beber') : t('jangada.a.eat', 'Comer'), false];
     else if (id === 'axe') act = ['axe', this.aim?.k === 'node' && (this.aim.n.k === 'palm' || this.aim.n.k === 'rock') ? t('jangada.a.chop', 'Cortar') : '', false];
-    else if (id.startsWith('spear')) act = [id, this.aim?.k === 'shark' || this.aim?.k === 'ghost' ? t('jangada.a.poke', 'Cutucar!') : '', false];
+    else if (id.startsWith('spear')) act = [id, this.aim?.k === 'shark' || this.aim?.k === 'ghost' || this.aim?.k === 'npc' || this.aim?.k === 'boss' ? t('jangada.a.poke', 'Cutucar!') : '', false];
+    else if (isHarpoon(id)) act = [id, t('jangada.a.harpoon', 'Arremessar'), this.harpCd > 0];
+    if (ITEM[id]?.kind === 'food' && this.aim?.k === 'npc' && !this.aim.o.friendly) act = [id, t('jangada.a.bait', 'Jogar isca'), false];
+    if (id === 'hammer' && this.aim?.k === 'boat') act = ['fix', t('jangada.a.fix', 'Consertar'), false];
     this.hud.setAction(act[0], act[1], act[2]);
     const u = this.useWhat();
     this.hud.setUse(u ? u[0] : null, u ? u[1] : '');
@@ -2737,8 +3920,15 @@ export class World {
       if (a.p.k === 'planter' && (d?.g ?? -1) >= 0) txt += ` · ${Math.round((d?.g ?? 0) * 100)}%`;
       this.hud.setHint(a.p.k, txt, a.p.hp < def.hp * 0.98 ? a.p.hp / def.hp : -1);
     } else if (a?.k === 'piece' && a.p.hp < PIECE.found.hp * 0.98) this.hud.setHint('found', PIECE.found.n(), a.p.hp / PIECE.found.hp);
-    else if (a?.k === 'node') this.hud.setHint(a.n.k === 'palm' ? 'leaf' : a.n.k === 'rock' ? 'stone' : a.n.k === 'bush' ? 'berry' : a.n.k, '');
-    else if (a?.k === 'shark') this.hud.setHint('shark', t('jangada.shark', 'Mordelão'));
+    else if (a?.k === 'node') {
+      const n = a.n;
+      if (n.k === 'chest') this.hud.setHint(n.r ? 'chestR' : 'chest', `${t('jangada.p.chest', 'Baú')} · ${rarityName(n.r ?? 0)}${n.alive ? '' : ' ✓'}`);
+      else this.hud.setHint(n.k === 'palm' ? 'leaf' : n.k === 'tree' ? (n.tk === 'jungle' || n.tk === 'mangrove' ? 'hardwood' : 'wood') : n.k === 'rock' ? 'stone' : n.k === 'ore' ? (a.i.def.ore ?? 'stone') : n.k === 'bush' ? a.i.def.fruit : n.k, '');
+    } else if (a?.k === 'shark') this.hud.setHint('shark', a.s.variant ? t('jangada.shark2', 'Tubarão-tigre') : t('jangada.shark', 'Mordelão'));
+    else if (a?.k === 'boat') this.hud.setHint(a.b.def.icon, a.b.def.n(), a.b.hp / a.b.maxHp);
+    else if (a?.k === 'dchest') this.hud.setHint('beacon', a.c.kind ? t('jangada.treasure', 'Tesouro do chefe') : t('jangada.rescue', 'Baú de resgate'));
+    else if (a?.k === 'npc') this.hud.setHint(FACTIONS[a.o.faction as 'crab'].icon, a.n.chief ? FACTIONS[a.o.faction as 'crab'].boss() : a.o.name);
+    else if (a?.k === 'boss') this.hud.setHint(a.h.w > 1 ? 'star' : a.b.kind, a.h.w > 1 ? t('jangada.weak', 'Ponto fraco!') : '');
     else if (a?.k === 'ghost') this.hud.setHint('ghost', t('jangada.ghost', 'Capitão Bu'));
     else this.hud.setHint(null);
     // paleta
@@ -2751,8 +3941,12 @@ export class World {
   /* ============================== áudio ============================== */
   private updateAudio(dt: number): void {
     const night = this.isNightNow();
-    const danger = this.shark.danger || this.storm > 0.55;
-    this.au.setSong(danger ? 'storm' : night ? 'night' : 'day');
+    const danger = this.shark.danger || this.sharks2.some((s) => s.danger) || this.storm > 0.55 || (this.isl ? !!this.owners.get(this.isl.id)?.danger : false);
+    const boss = this.bosses.find((q) => q.fighting && Math.hypot(q.x - this.me.x, q.z - this.me.z) < 130);
+    this.au.setSong(boss ? (boss.kind === 'mega' ? 'mega' : 'kraken') : danger ? 'storm' : night ? 'night' : 'day');
+    this.au.biome = this.biomeNear && Math.hypot(this.isl!.x - this.me.x, this.isl!.z - this.me.z) < this.isl!.r + 25 ? this.biomeNear.id : '';
+    this.au.cave = this.caveK;
+    this.au.motor = this.myBoat && this.myBoat.def.fuel ? Math.abs(this.myBoat.v) / this.myBoat.def.speed + (this.myBoat.fuel > 0 ? 0.15 : 0) : 0;
     this.au.storm = this.storm;
     this.au.night = this.sc.night;
     const cam = this.cam;
@@ -2796,7 +3990,11 @@ export class World {
         dr: this.drift,
         fl: this.flow,
         deb: this.debris.filter((d) => !d.hooked).map((d) => [d.id, DEBRIS.indexOf(d.k), r1(d.x), r1(d.z), r2(d.vx), r2(d.vz)]),
-        isl: this.isl ? [this.isl.seed, r1(this.isl.x), r1(this.isl.z), this.isl.nodes.filter((n) => !n.alive).map((n) => n.id)] : 0,
+        seed: this.seed,
+        il: Object.fromEntries(Object.entries(this.isleSt).map(([k, v]) => [k, v.d])),
+        bt: this.boatList(),
+        dc: this.dch.map((c) => [c.id, c.kind, r1(c.x), r1(c.z)]),
+        bd: this.bossDone,
         st: r2(this.storm),
       },
       to,
@@ -2819,7 +4017,16 @@ export class World {
         if (fromHost && e.b && typeof e.b === 'object') this.addItems(e.b as Bag);
         break;
       case 'hurt':
-        if (fromHost) this.hurt(Number(e.d) || 10, true);
+        if (fromHost) this.hurt(Number(e.d) || 10, true, e.fx === undefined ? undefined : Number(e.fx), e.fz === undefined ? undefined : Number(e.fz));
+        break;
+      case 'qte':
+        if (fromHost) this.startQte({ kind: String(e.k) as QteReq['kind'], dir: (String(e.d) || undefined) as QteReq['dir'], dur: Number(e.du) || 1.2, n: Number(e.n) || undefined }, Number(e.id), Number(e.b) | 0);
+        break;
+      case 'bts':
+        if (fromHost && !this.isHost) this.applyBoats(e.l);
+        break;
+      case 'dch':
+        if (fromHost && !this.isHost) this.applyDch(e.l);
         break;
       case 'init':
         if (!fromHost) break;
@@ -2835,7 +4042,16 @@ export class World {
         for (const d of [...this.debris]) this.scene.remove(d.mesh);
         this.debris = [];
         for (const l of (e.deb as number[][]) ?? []) this.addDebris(l[0], DEBRIS[l[1]] ?? 'plank', l[2], l[3], l[4], l[5]);
-        this.setIsland(e.isl as number[] | 0);
+        if (Number(e.seed) && Number(e.seed) !== this.seed) this.reseed(Number(e.seed));
+        for (const [k, v] of Object.entries((e.il as Record<string, number[]>) ?? {})) {
+          const st = (this.isleSt[+k] ??= { d: [] });
+          st.d = [...v];
+          const isl = this.isles.get(+k);
+          if (isl) for (const id of v) this.killNode(isl, id);
+        }
+        this.applyBoats(e.bt);
+        this.applyDch(e.dc);
+        this.bossDone = { ...((e.bd as Record<string, number>) ?? {}) };
         this.respawn();
         this.rv.sync(true);
         break;
@@ -2868,46 +4084,48 @@ export class World {
             }
           }
         break;
-      case 'isl':
-        if (fromHost && !this.isHost) this.setIsland(e.i as number[] | 0);
-        break;
       case 'node':
-        if (fromHost && !this.isHost && this.isl) {
-          const n = this.isl.nodes.find((q) => q.id === Number(e.id));
-          if (n && n.alive) this.isl.kill(n);
+        if (fromHost && !this.isHost) {
+          const st = (this.isleSt[Number(e.i)] ??= { d: [] });
+          if (!st.d.includes(Number(e.id))) st.d.push(Number(e.id));
+          const isl = this.isles.get(Number(e.i));
+          if (isl) this.killNode(isl, Number(e.id));
         }
         break;
       case 'fx':
         if (!fromHost || this.isHost) break;
         if (e.k === 'nodehit') {
-          const n = this.isl?.nodes.find((q) => q.id === Number(e.id));
-          if (n) this.isl!.hit(n);
+          const isl = this.isles.get(Number(e.i));
+          const n = isl?.nodes.find((q) => q.id === Number(e.id));
+          if (n) isl!.hit(n);
           break;
         }
         this.playFx(String(e.k), Number(e.x) || 0, Number(e.y) || 0, Number(e.z) || 0, Number(e.v) || 0, String(e.by ?? ''));
         break;
     }
   }
-  private setIsland(i: number[] | 0): void {
-    if (!i) {
-      if (this.isl) {
-        this.scene.remove(this.isl.group);
-        this.isl.dispose();
-        this.isl = null;
-      }
-      return;
+  private killNode(isl: Island, id: number): void {
+    const n = isl.nodes.find((q) => q.id === id);
+    if (n && n.alive) isl.kill(n);
+  }
+  private applyDch(l: unknown): void {
+    if (!Array.isArray(l)) return;
+    const seen = new Set<number>();
+    for (const a of l as number[][]) {
+      seen.add(a[0]);
+      if (!this.dch.some((c) => c.id === a[0])) this.addDChest(a[0], a[1], a[2], a[3], {}, 0);
     }
-    const [seed, x, z, dead] = i as unknown as [number, number, number, number[]];
-    if (!this.isl || this.isl.seed !== seed) {
-      if (this.isl) this.scene.remove(this.isl.group);
-      this.isl = new Island(seed, x, z, this.tier);
-      this.scene.add(this.isl.group);
-      this.islVisited = false;
-    }
-    for (const id of dead ?? []) {
-      const n = this.isl.nodes.find((q) => q.id === id);
-      if (n && n.alive) this.isl.kill(n);
-    }
+    for (const c of [...this.dch]) if (!seen.has(c.id)) this.removeDChest(c.id);
+  }
+  /** convidado: o mapa é o do anfitrião */
+  private reseed(seed: number): void {
+    for (const id of [...this.isles.keys()]) this.dropIsle(id);
+    for (const m of this.far.values()) this.scene.remove(m);
+    this.far.clear();
+    for (const b of this.bosses) this.scene.remove(b.root);
+    this.bosses = [];
+    this.seed = seed;
+    this.buildMap();
   }
   private applySnap(e: NetEvent): void {
     const prevDay = this.day;
@@ -2923,17 +4141,14 @@ export class World {
     }
     if (Array.isArray(e.sh)) this.shark.setPose(e.sh as number[]);
     if (Array.isArray(e.gh)) this.ghost.setPose(e.gh as number[]);
-    const ip = e.ip as [number, number] | 0;
-    if (ip && this.isl) {
-      const dx = ip[0] - this.isl.x;
-      const dz = ip[1] - this.isl.z;
-      this.isl.x += dx * 0.3;
-      this.isl.z += dz * 0.3;
-      if (this.me.onIsl && !this.me.swim) {
-        this.me.x += dx * 0.3;
-        this.me.z += dz * 0.3;
+    if (Array.isArray(e.s2)) (e.s2 as number[][]).forEach((p, i) => this.sharks2[i]?.setPose(p));
+    if (Array.isArray(e.bs))
+      for (const p of e.bs as number[][]) {
+        const b = this.bosses[p[0]];
+        if (b) b.setPose(p.slice(1));
       }
-    }
+    if (typeof e.wd === 'number') this.wind = e.wd;
+    this.applyBoats(e.bt);
     if (prevDay !== this.day && this.dailyDay !== this.day) this.rollDaily();
   }
   private netTick(dt: number): void {
@@ -2942,13 +4157,15 @@ export class World {
     if (this.netT <= 0) {
       this.netT = 0.1;
       const m = this.me;
-      net.send({ t: 'p', x: r2(m.x), y: r2(m.y), z: r2(m.z), yaw: r2(m.yaw), h: this.sel, sw: m.swim ? 1 : 0, a: this.swingT > 0 ? 1 : 0, sp: r2(m.speedK) });
+      const bt = this.myBoat;
+      net.send({ t: 'p', x: r2(m.x), y: r2(m.y), z: r2(m.z), yaw: r2(m.yaw), h: this.sel, sw: m.swim ? 1 : 0, a: this.swingT > 0 ? 1 : 0, sp: r2(m.speedK), ...(bt ? { bt: [bt.id, r1(bt.x), r1(bt.z), r2(bt.yaw), r1(bt.v), Math.round(bt.fuel)] } : {}) });
     }
     if (!this.isHost) return;
     this.snapT -= dt;
     if (this.snapT <= 0) {
       this.snapT = 0.2;
-      net.send({ t: 's', tod: Math.round(this.tod * 10000) / 10000, day: this.day, st: r2(this.storm), dr: [r2(this.drift[0]), r2(this.drift[1])], fl: [r2(this.flow[0]), r2(this.flow[1])], off: [r2(this.off[0]), r2(this.off[1])], sh: this.shark.pose(), gh: this.ghost.pose(), ip: this.isl ? [r1(this.isl.x), r1(this.isl.z)] : 0 });
+      const bs = this.bosses.map((b, i) => (b.st !== 'off' && b.st !== 'gone' ? [i, ...b.pose()] : null)).filter((x) => x);
+      net.send({ t: 's', tod: Math.round(this.tod * 10000) / 10000, day: this.day, st: r2(this.storm), dr: [r2(this.drift[0]), r2(this.drift[1])], fl: [r2(this.flow[0]), r2(this.flow[1])], off: [r2(this.off[0]), r2(this.off[1])], sh: this.shark.pose(), gh: this.ghost.pose(), s2: this.sharks2.map((s) => s.pose()), bs, wd: r2(this.wind), bt: this.boatList() });
     }
     this.raftT -= dt;
     const key = `${this.raft.ver}|${this.raft.hpVer}`;
@@ -2985,6 +4202,19 @@ export class World {
     r.act = Number(e.a) || 0;
     r.speed = Number(e.sp) || 0;
     r.seen = this.time;
+    // barco que ele dirige (pose do motorista)
+    const bt = e.bt as number[] | undefined;
+    if (Array.isArray(bt)) {
+      const b = this.boats.find((q) => q.id === bt[0]);
+      if (b && b !== this.myBoat) {
+        b.tx = bt[1];
+        b.tz = bt[2];
+        b.tyaw = bt[3];
+        b.v = bt[4];
+        b.fuel = bt[5];
+        if (this.isHost) b.drv = id;
+      }
+    }
   }
   private updateRemotes(dt: number): void {
     for (const r of this.remotes.values()) {
@@ -3071,21 +4301,131 @@ export class World {
         this.ghostNight = this.day;
         this.ghost.arrive(cx, cz);
       },
-      island: (near = false) => {
-        this.nextIsl = 0;
-        if (this.isl) this.dropIsland();
-        this.spawnIsland();
-        if (near && this.isl) {
-          const [cx, cz] = this.raft.center();
-          const dx = this.isl.x - cx;
-          const dz = this.isl.z - cz;
-          const d = Math.hypot(dx, dz);
-          const want = this.isl.r * 1.15 + 7;
-          this.isl.x = cx + (dx / d) * want;
-          this.isl.z = cz + (dz / d) * want;
-          this.isl.group.position.set(this.isl.x, 0, this.isl.z);
+      /** teleporta para a ilha (id ou bioma): 'shore' praia · 'center' · 'cave' porta da caverna · 'guard' perto do baú guardado · 'chief' perto do chefe */
+      isle: (which: number | string = 'tropical', where = 'shore') => {
+        const sp = typeof which === 'number' ? this.map.find((q) => q.id === which) : this.map.find((q) => q.biome === which);
+        if (!sp) return null;
+        const isl = this.ensureIsle(sp.id)!;
+        let lx = 0;
+        let lz = 0;
+        const out = Math.atan2(-sp.z, -sp.x);
+        if (where === 'shore') {
+          lx = Math.cos(out) * isl.r * 0.82;
+          lz = Math.sin(out) * isl.r * 0.82;
+        } else if (where === 'cave' && isl.cave) {
+          lx = isl.cave.x + Math.cos(isl.cave.door) * (isl.cave.R + 3);
+          lz = isl.cave.z + Math.sin(isl.cave.door) * (isl.cave.R + 3);
+        } else if (where === 'guard' && isl.guard) {
+          const a = Math.atan2(isl.guard.z, isl.guard.x);
+          lx = isl.guard.x + Math.cos(a) * 9;
+          lz = isl.guard.z + Math.sin(a) * 9;
+        } else if (where === 'chief' && isl.ownerSpots[0]) {
+          lx = isl.ownerSpots[0][0] + 2.5;
+          lz = isl.ownerSpots[0][1] + 1;
         }
-        return this.isl && { x: this.isl.x, z: this.isl.z, r: this.isl.r };
+        let tries = 0;
+        while (this.collidesAt(isl.x + lx, isl.z + lz, isl.hLocal(lx, lz)) && tries++ < 20) {
+          lx += 0.7;
+          lz += 0.4;
+        }
+        if (this.myBoat) this.leaveBoat(true);
+        this.me.x = isl.x + lx;
+        this.me.z = isl.z + lz;
+        this.me.y = isl.hLocal(lx, lz) + 0.1;
+        this.me.vx = this.me.vy = this.me.vz = 0;
+        this.me.swim = false;
+        this.me.grounded = false;
+        this.streamT = 0;
+        this.updateIsles(0);
+        return { id: sp.id, biome: sp.biome, x: isl.x, z: isl.z, r: isl.r, cave: isl.cave, guard: isl.guard && [isl.guard.x + isl.x, isl.guard.y, isl.guard.z + isl.z], spots: isl.ownerSpots.map(([x, z]) => [x + isl.x, z + isl.z]) };
+      },
+      map: () => this.map.map((s) => ({ id: s.id, biome: s.biome, x: s.x, z: s.z, r: s.r, d: Math.round(Math.hypot(s.x, s.z)), known: !!this.isleSt[s.id]?.k })),
+      discoverAll: () => {
+        for (const s of this.map) (this.isleSt[s.id] ??= { d: [] }).k = 1;
+      },
+      openMap: () => this.openMap(),
+      setTarget: (id: number) => (this.target = id),
+      boat: (k: BoatK = 0) => {
+        this.act({ o: 'boat', k });
+        return this.boats.length;
+      },
+      boats: () => this.boats.map((b) => ({ id: b.id, k: b.k, x: +b.x.toFixed(1), z: +b.z.toFixed(1), yaw: +b.yaw.toFixed(2), hp: b.hp, fuel: Math.round(b.fuel), drv: b.drv, v: +b.v.toFixed(2), flip: b.flip })),
+      board: (i = 0) => {
+        const b = this.boats[i];
+        if (b) this.useBoat(b);
+        return !!this.myBoat;
+      },
+      leave: () => this.leaveBoat(false),
+      /** coloca o barco que eu dirijo em (x, z) virado para yaw */
+      boatTo: (x: number, z: number, yaw = 0) => {
+        const b = this.myBoat ?? this.boats[0];
+        if (!b) return;
+        b.x = b.tx = x;
+        b.z = b.tz = z;
+        b.yaw = b.tyaw = yaw;
+        this.lastBoatYaw = yaw;
+        this.me.yaw = yaw + Math.PI;
+        this.streamT = 0;
+      },
+      /** dirige o barco por N segundos (acelerador, volante) */
+      drive: (sec: number, thr = 1, steer = 0) => {
+        const b = this.myBoat;
+        if (!b) return null;
+        for (let t = 0; t < sec; t += 0.05) {
+          b.drive(0.05, thr, steer, this.wind, this.storm, (x, z) => this.boatBlocked(x, z));
+          this.step(0.05);
+        }
+        return { x: +b.x.toFixed(1), z: +b.z.toFixed(1), v: +b.v.toFixed(1), fuel: Math.round(b.fuel) };
+      },
+      die: () => {
+        this.me.hp = 0;
+        this.faint();
+      },
+      dchests: () => this.dch.map((c) => ({ id: c.id, kind: c.kind, x: c.x, z: c.z, n: bagCount(c.bag) })),
+      /** chefe: libera a luta de novo (kind 'mega' | 'kraken') */
+      boss: (kind: 'mega' | 'kraken') => {
+        const b = this.bosses.find((q) => q.kind === kind);
+        if (!b) return null;
+        delete this.bossDone[kind];
+        if (b.st === 'gone') b.st = 'off';
+        return { cx: b.cx, cz: b.cz, st: b.st, hp: b.hp };
+      },
+      bossState: () => this.bosses.map((b) => ({ kind: b.kind, st: b.st, hp: b.hp, max: b.max, x: +b.x.toFixed(1), y: +b.y.toFixed(1), z: +b.z.toFixed(1), t: +b.t.toFixed(2) })),
+      bossSet: (kind: string, st: string, t = 2) => {
+        const b = this.bosses.find((q) => q.kind === kind);
+        if (b) {
+          b.st = st;
+          b.t = t;
+        }
+      },
+      bossHit: (kind: string, dmg: number) => {
+        const b = this.bosses.find((q) => q.kind === kind);
+        if (!b) return;
+        const h = b.hitSpheres().sort((p, q) => q.w - p.w)[0];
+        if (h) this.hitBoss(b, h, dmg);
+        return b.hp;
+      },
+      qte: () => (this.hud.qte.active ? 'on' : 'off'),
+      qteSolve: (ok: boolean) => this.hud.qte.debugSolve(ok),
+      owners: () => {
+        const o = this.isl ? this.owners.get(this.isl.id) : null;
+        return o ? { f: o.faction, friendly: o.friendly, npcs: o.npcs.map((n) => ({ st: n.st, x: +(n.x + this.isl!.x).toFixed(1), y: +n.y.toFixed(1), z: +(n.z + this.isl!.z).toFixed(1), chief: n.chief })) } : null;
+      },
+      trade: () => {
+        const o = this.isl ? this.owners.get(this.isl.id) : null;
+        if (o) this.openTrade(o);
+      },
+      sneak: (on: boolean) => (this.sneak = on),
+      biteMe: () => this.sharkBiteMe(this.net?.me.id ?? 'me', this.shark),
+      wind: (w: number) => (this.wind = w),
+      harpoon: () => this.throwHarpoon(this.sel),
+      /** modo foto: câmera em (x,y,z) olhando (lx,ly,lz); sem args desliga */
+      photo: (...a: number[]) => (this.photo = a.length === 6 ? (a as [number, number, number, number, number, number]) : null),
+      hud: (on: boolean) => {
+        this.hud.show(on);
+        this.ctl.show(on);
+        this.hand.visible = on;
+        this.handHidden = !on;
       },
       placeTestRaft: () => {
         const tryP = (k: PK, x: number, z: number, lv = 0, ro = 0) => {
@@ -3119,9 +4459,14 @@ export class World {
           .map((d) => ({ id: d.id, k: d.k, x: +d.x.toFixed(1), z: +d.z.toFixed(1), d: +Math.hypot(d.x - this.me.x, d.z - this.me.z).toFixed(1) }))
           .sort((a, b) => a.d - b.d)
           .slice(0, 5),
-        shark: { st: this.shark.st, hp: this.shark.hp, x: +this.shark.x.toFixed(1), z: +this.shark.z.toFixed(1), timer: +this.shark.timer.toFixed(1) },
+        shark: { st: this.shark.st, hp: this.shark.hp, x: +this.shark.x.toFixed(1), z: +this.shark.z.toFixed(1), timer: +this.shark.timer.toFixed(1), cd: +this.shark.cdT.toFixed(2) },
+        sharks2: this.sharks2.map((q) => ({ st: q.st, x: +q.x.toFixed(1), z: +q.z.toFixed(1) })),
         ghost: { st: this.ghost.st, x: +this.ghost.x.toFixed(1), z: +this.ghost.z.toFixed(1) },
-        isl: this.isl ? { x: +this.isl.x.toFixed(1), z: +this.isl.z.toFixed(1), r: +this.isl.r.toFixed(1), alive: this.isl.nodes.filter((n) => n.alive).map((n) => [n.id, n.k, +(n.x + this.isl!.x).toFixed(1), +n.y.toFixed(1), +(n.z + this.isl!.z).toFixed(1)]) } : null,
+        isl: this.isl ? { id: this.isl.id, biome: this.isl.biome, x: +this.isl.x.toFixed(1), z: +this.isl.z.toFixed(1), r: +this.isl.r.toFixed(1), alive: this.isl.nodes.filter((n) => n.alive).map((n) => [n.id, n.k, +(n.x + this.isl!.x).toFixed(1), +n.y.toFixed(1), +(n.z + this.isl!.z).toFixed(1), n.r ?? -1]) } : null,
+        boat: this.myBoat ? this.myBoat.id : null,
+        cave: +this.caveK.toFixed(2),
+        known: this.knownCount(),
+        loaded: [...this.isles.keys()],
         mis: this.mis,
         misN: this.misN,
         daily: this.daily,
@@ -3161,11 +4506,13 @@ export class World {
         this.me.food = food;
         this.me.water = water;
       },
-      swimTo: (x: number, z: number) => {
+      swimTo: (x: number, z: number, depth = 1.2) => {
+        if (this.myBoat) this.leaveBoat(true);
         this.me.x = x;
         this.me.z = z;
-        this.me.y = this.waterAt(x, z) - 1.2;
+        this.me.y = this.waterAt(x, z) - depth;
         this.me.swim = true;
+        this.streamT = 0;
       },
       camMode: (m: number) => (this.camMode = m),
       quality: (tr: Tier) => this.applyQ(tr),
@@ -3186,12 +4533,20 @@ export class World {
     this.ocean.dispose();
     this.sky.dispose();
     this.fx.dispose();
-    this.isl?.dispose();
+    for (const id of [...this.isles.keys()]) this.dropIsle(id);
+    for (const b of this.boats) b.dispose();
+    this.uw.dispose();
     for (const r of this.remotes.values()) r.label.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.touch.remove();
   }
+}
+const handCache = new Map<string, THREE.BufferGeometry | null>();
+/** ferramenta na mão (1ª pessoa) */
+function handGeo(id: ItemId): THREE.BufferGeometry | null {
+  if (!handCache.has(id)) handCache.set(id, id === 'spear3' ? spear3Geo() : id === 'harpoon' || id === 'harpoon2' ? harpoonGeo(id === 'harpoon2') : toolGeo(id));
+  return handCache.get(id)!;
 }
 function r1(v: number): number {
   return Math.round(v * 10) / 10;

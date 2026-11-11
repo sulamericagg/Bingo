@@ -10,7 +10,8 @@ export interface JgStats {
   fish: number;
 }
 export interface JgWorld {
-  v: 1;
+  /** 1 = jangada que vai à deriva com 1 ilha por vez; 2 = mapa com ilhas fixas, barcos, chefes */
+  v: 1 | 2;
   seed: number;
   day: number;
   /** hora do dia 0..1 */
@@ -38,6 +39,18 @@ export interface JgWorld {
   stormT: number;
   ghostDone: number;
   coinsDay: number;
+  /* ---------- v2 ---------- */
+  /** estado das ilhas: nós mortos, descoberta, pedido feito */
+  isles?: Record<number, { d: number[]; k?: 1; q?: 1 }>;
+  boats?: import('./boats').BoatSave[];
+  /** baús boiando: [id, tipo, x, z, itens, moedas] */
+  dch?: [number, number, number, number, Bag, number][];
+  /** chefes derrotados (dia) */
+  boss?: Record<string, number>;
+  target?: number;
+  wind?: number;
+  /** trocas feitas (pedidos) */
+  quests?: string[];
 }
 export interface JgSave {
   v: 1;
