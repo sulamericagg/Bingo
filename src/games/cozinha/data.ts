@@ -14,6 +14,9 @@ export const PROC_TIME: Record<Proc, number> = { chop: 1.5, boil: 8, fry: 6, bak
 export const BURN_AFTER = 8;
 export const FIRE_AFTER = 4;
 export const FIRE_SPREAD = 7;
+/** fogão ligado com a panela VAZIA: fumaça depois de (s), fogo depois de mais (s) — × sim.fireMul */
+export const EMPTY_SMOKE = 14;
+export const EMPTY_FIRE = 8;
 
 /* ------------------------------ ingredientes ------------------------------ */
 export type Shape = 'round' | 'leaf' | 'block' | 'long' | 'bun' | 'meat' | 'fish' | 'grain' | 'egg' | 'dough' | 'bottle' | 'berry' | 'drop' | 'sheet' | 'nut';

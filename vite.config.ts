@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync } from 'node:fs';
+import { createReadStream, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
@@ -32,6 +32,10 @@ export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [mediapipeWasm()],
+  // teste local com o Worker: BLOOP_API=http://127.0.0.1:8787 npx vite  (encaminha /api para o wrangler dev)
+  server: process.env.BLOOP_API
+    ? { proxy: { '/api': { target: process.env.BLOOP_API, changeOrigin: true } }, fs: { allow: [process.cwd(), realpathSync('node_modules')] } }
+    : undefined,
   build: {
     target: 'es2020',
     outDir: 'dist',

@@ -23,16 +23,20 @@ import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
 import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
 import { garimpoInvite, garimpoInvites, garimpoJoin } from './garimpo';
+import { cavaInvite, cavaInvites, cavaJoin } from './cava';
+import { raftInvite, raftInvites, raftJoin } from './raft';
 import { duelJoin } from './duel';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
 import { aiPet } from './ai-pet';
+import { cavaMake } from './cava-ai';
 import { adminHub } from './admin-hub';
 import { sessionWho } from './auth';
 import { purchaseReport } from './purchases';
 import { tvFilm, tvNow, tvSubmit, tvVote, tvVoted, ugcBoard, ugcBrowse, ugcEarnings, ugcFav, ugcGet, ugcLike, ugcMine, ugcPublish, ugcReport, ugcScore, ugcThumb, ugcUnpublish, ugcUse } from './ugc';
 import { handleUgcAdmin } from './ugc-admin';
+import { cacaTile } from './caca-tiles';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -110,6 +114,13 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Garimpo Bruto online: convites entre amigos
   'POST /api/garimpo/invite': garimpoInvite,
   'GET /api/garimpo/invites': garimpoInvites,
+  // Cava & Fala online: convites entre amigos
+  'POST /api/cava/invite': cavaInvite,
+  'POST /api/cava/make': cavaMake,
+  'GET /api/cava/invites': cavaInvites,
+  // Jangada Bloop online: convites entre amigos
+  'POST /api/raft/invite': raftInvite,
+  'GET /api/raft/invites': raftInvites,
   // Loja de Criações do Bloop Studio + TV Bloop (docs/LOJA-TV.md)
   'POST /api/ugc/publish': ugcPublish,
   'GET /api/ugc/browse': ugcBrowse,
@@ -234,6 +245,8 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
 export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
 export { GarimpoRoom } from './garimpo';
+export { CavaRoom } from './cava';
+export { RaftRoom } from './raft';
 export { DuelRoom } from './duel';
 export { UgcHub } from './ugc-hub';
 export { TvChannel } from './tv';
@@ -303,6 +316,26 @@ export default {
       }
     }
 
+    // Cava & Fala online (WebSocket): /api/cava/room/<CÓDIGO>
+    const cm = /^\/api\/cava\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (cm) {
+      try {
+        return await cavaJoin(req, env, cm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Jangada Bloop online (WebSocket): /api/raft/room/<CÓDIGO>
+    const rm = /^\/api\/raft\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (rm) {
+      try {
+        return await raftJoin(req, env, rm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
     // Duelo (WebSocket): /api/duel/<jogo>/<CÓDIGO> — mesmo desafio para todos (src/party/duel.ts)
     const dm = /^\/api\/duel\/([a-z]{2,12})\/([A-Z0-9]{5})$/.exec(path);
     if (dm) {
@@ -340,6 +373,18 @@ export default {
         return await partyJoin(req, env, pm[1]);
       } catch (e) {
         return errorResponse(e);
+      }
+    }
+
+    // Caça Bloop: tiles vetoriais do OpenStreetMap (proxy + cache) — /api/caca/tile/14/<x>/<y>
+    const ct = /^\/api\/caca\/tile\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})(?:\.pbf)?$/.exec(path);
+    if (ct) {
+      const cors = corsHeaders(req, url);
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+      try {
+        return await cacaTile(req, env, ctx, Number(ct[1]), Number(ct[2]), Number(ct[3]), cors);
+      } catch (e) {
+        return withHeaders(errorResponse(e), cors);
       }
     }
 

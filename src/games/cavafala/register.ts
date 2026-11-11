@@ -2,6 +2,7 @@
  * Só a vitrine (leve) entra no pacote principal; o jogo (three.js) é carregado sob demanda. */
 import { registerGame, type MiniGameHandle } from '../../hub/registry';
 import { t } from '../../i18n';
+import { registerPartyGame } from '../../party/contract';
 
 export function registerCavaFala(): void {
   registerGame({
@@ -20,6 +21,8 @@ export function registerCavaFala(): void {
       return m.launch(root, exit);
     },
   });
+  // GRUPO: quando o líder aperta JOGAR, todos caem na mesma Arena (gancho em game.ts → partySeat)
+  registerPartyGame('cavafala', { mode: 'room' });
 }
 
 const TAU = Math.PI * 2;

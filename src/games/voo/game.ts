@@ -34,6 +34,9 @@ import type { View3D } from './view3d';
 import { consumePartySeat, partySeat } from '../../party/contract';
 import { reportPlaying, stopPlaying } from '../../party/join';
 
+/** passo fixo da simulação (s) */
+const STEP = 1 / 60;
+
 export interface LaunchOpts {
   mode?: '2d' | '3d';
   flight?: 'normal' | 'daily' | 'training';
@@ -363,7 +366,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     });
     // os papéis certos (crewLines já está em ordem de papel)
     this.sim.players.forEach((p, i) => (p.role = crew[i].role as 0));
-    if (this.weather === 1) this.sim.startEmer('turb', 'pilot');
+    if (this.weather === 1) this.sim.warnTurb(9);
     if (this.weather === 2) this.sim.wind *= 1.6;
     if (mode === '3d' && webglOk()) {
       try {
@@ -561,15 +564,27 @@ export class VooGame implements MiniGameHandle, HudHost {
     }
     this.hud!.readInput(dt);
     if (this.tut >= 0) this.tutorial(dt);
-    // passos menores para o voo ficar estável
-    const n = dt > 0.025 ? 2 : 1;
     if (this.snapSync) {
-      // convidado: só o meu boneco anda aqui; o resto vem do anfitrião
+      // convidado: só o meu boneco anda aqui; o resto vem do anfitrião (já suavizado por quadro)
+      s.savePose();
       s.stepClient(dt);
       this.snapSync.smooth(dt);
       this.inOut?.tick(dt);
-    } else if (!this.simHeld) for (let i = 0; i < n; i++) s.step(dt / n);
-    s.input.tap = false;
+      s.lerpK = 1;
+      s.input.tap = false;
+    } else if (!this.simHeld) {
+      // passo FIXO de 1/60 s (estável e igual em qualquer celular); a vista interpola entre passos
+      this.acc += dt;
+      let n = 0;
+      while (this.acc >= STEP && n < 6) {
+        s.step(STEP);
+        this.acc -= STEP;
+        n++;
+        s.input.tap = false;
+      }
+      if (n >= 6) this.acc = 0;
+      s.lerpK = Math.min(1, this.acc / STEP);
+    } else s.input.tap = false;
     this.events();
     this.hostSync?.tick(dt);
     this.view!.frame(dt);
@@ -697,10 +712,26 @@ export class VooGame implements MiniGameHandle, HudHost {
   onCam(): void {
     if (!this.is3d) return;
     const v = this.view as View3D;
-    v.extCam = !v.extCam && this.sim.players[this.sim.me].seated;
+    if (!this.sim.players[this.sim.me].seated) return void (v.camMode = 0);
+    const m = v.cycleCam();
+    sfx.click();
+    this.hud?.toast(m === 0 ? t('voo.cam.fp', 'Câmera: cabine') : m === 1 ? t('voo.cam.chase', 'Câmera: atrás do avião') : t('voo.cam.orbit', 'Câmera: órbita livre (arraste e use a pinça)'), 'info', 'info');
   }
   extCam(): boolean {
     return this.is3d && (this.view as View3D).extCam;
+  }
+  camMode(): number {
+    return this.is3d ? (this.view as View3D).camMode : 0;
+  }
+  orbit(dx: number, dy: number): void {
+    if (this.is3d) (this.view as View3D).orbit(dx, dy);
+  }
+  zoom(k: number): void {
+    if (this.is3d) (this.view as View3D).zoom(k);
+  }
+  onAP(): void {
+    const s = this.sim;
+    s.setAP(!s.f.ap);
   }
   holdSim(on: boolean): void {
     if (this.net.online) return;
@@ -708,6 +739,8 @@ export class VooGame implements MiniGameHandle, HudHost {
     if (!on) this.last = performance.now();
   }
   private simHeld = false;
+  /** sobra de tempo do passo fixo */
+  private acc = 0;
 
   /* ------------------------------ fim ------------------------------ */
 

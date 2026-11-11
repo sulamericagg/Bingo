@@ -12,10 +12,11 @@ import { emerHow, emerName, roleName, zoneName } from './data';
 import { hatIcon, vIcon } from './icons';
 import { drawNav, drawPFD } from './instruments';
 import { MiniGame } from './minigames';
+import { Galley } from './galley';
 import { FpsControls, bindButton, createJoystick, type BoundButton, type Joystick } from '../../ui/touch';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
 import type { IconName } from '../../ui/icons';
-import type { Cmd, Ctx, Sim } from './sim';
+import { seatLabel, type Cmd, type Ctx, type Sim } from './sim';
 import { SPOTS } from './data';
 import { speak } from './voice';
 
@@ -33,6 +34,11 @@ export interface HudHost {
   onStand(): void;
   onCam(): void;
   extCam(): boolean;
+  /** 0 cabine, 1 externa atrás, 2 órbita livre */
+  camMode(): number;
+  orbit(dx: number, dy: number): void;
+  zoom(k: number): void;
+  onAP(): void;
   /** pausa a simulação (só sozinho; online não pausa) */
   holdSim?(on: boolean): void;
 }
@@ -64,6 +70,7 @@ export class Hud {
   private hullI!: HTMLElement;
   private panI!: HTMLElement;
   miniGame: MiniGame | null = null;
+  galley: Galley | null = null;
   private pfdX: CanvasRenderingContext2D;
   private navX: CanvasRenderingContext2D;
   private instT = 0;
@@ -87,6 +94,7 @@ export class Hud {
   private joy2d: Joystick | null = null;
   private yoke!: Joystick;
   private ctlSig = -1;
+  private cartSig = '\u0000';
   private pr = { x: 0, y: 0, behind: false };
   private ctx: Ctx | null = null;
   private _hidden = false;
@@ -145,23 +153,28 @@ export class Hud {
           <button class="voo-btn ghost" data-gear>${vIcon('gear', 22)}<span></span></button>
         </div>
         <div class="voo-flytop">
-          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}</button>
+          <button class="voo-btn round ghost voo-ap" data-ap aria-label="${t('voo.f.ap', 'Piloto automático')}" title="${t('voo.f.ap', 'Piloto automático')}">${vIcon('ap', 30)}</button>
+          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}<i class="cm"></i></button>
           <button class="voo-btn round gold" data-stand aria-label="${t('voo.f.stand', 'Levantar')}" title="${t('voo.f.stand', 'Levantar')}">${vIcon('up', 24)}</button>
         </div>
         <div class="voo-chud"><div><small>${t('voo.ch.spd', 'VEL')}</small><b data-c="spd"></b></div><div><small>${t('voo.ch.alt', 'ALT')}</small><b data-c="alt"></b></div><div><small>${t('voo.ch.vs', 'V/S')}</small><b data-c="vs"></b></div><svg data-c="brg" viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="17" fill="rgba(0,0,0,.25)" stroke="#fff" stroke-width="2"/><path d="M20 5L28 24H12Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg></div>
       </div>
       <div class="voo-top">
         <button class="voo-btn round red" data-exit aria-label="${t('voo.exit', 'Sair')}">${vIcon('close', 26)}</button>
-        <div class="voo-pill" data-phase></div>
-        <div class="voo-bars">
-          <div>${t('voo.hud.hull', 'Casco')}<b><i data-hull style="background:linear-gradient(90deg,#ff5c7a,#5ef08a)"></i></b></div>
-          <div>${t('voo.hud.panic', 'Pânico')}<b><i data-pan style="background:linear-gradient(90deg,#ffd34a,#ff4d6a)"></i></b></div>
+        <div class="voo-tlc">
+          <div class="voo-pill" data-phase></div>
+          <div class="voo-bars">
+            <div>${t('voo.hud.hull', 'Casco')}<b><i data-hull style="background:linear-gradient(90deg,#ff5c7a,#5ef08a)"></i></b></div>
+            <div>${t('voo.hud.panic', 'Pânico')}<b><i data-pan style="background:linear-gradient(90deg,#ffd34a,#ff4d6a)"></i></b></div>
+          </div>
+          <div class="voo-obj" style="display:none"></div>
         </div>
         <div class="voo-right">
           <canvas class="voo-mini" width="440" height="116"></canvas>
           <div class="voo-crew"></div>
         </div>
       </div>
+      <div class="voo-trays" style="display:none"></div>
       <div class="voo-banner"></div>
       <div class="voo-mks"></div>`;
     root.appendChild(this.el);
@@ -188,8 +201,9 @@ export class Hud {
     }
     this.buildCrew();
     this.bind();
-    setNotifyTop(66);
+    setNotifyTop(54);
     setNotifyAlign('center');
+    document.body.classList.add('voo-hud-on');
   }
 
   /* ------------------------------ entrada ------------------------------ */
@@ -198,13 +212,14 @@ export class Hud {
     const h = this.host;
     const s = h.sim;
     this.el.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-mate],[data-cmd]') as HTMLElement | null;
+      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-ap],[data-mate],[data-cmd]') as HTMLElement | null;
       if (!b) return;
       if (b.dataset.exit !== undefined) h.onExit();
       else if (b.dataset.flaps !== undefined) s.setFlaps((s.f.flaps + 1) % 3);
       else if (b.dataset.gear !== undefined) this.toggleGear();
       else if (b.dataset.stand !== undefined) h.onStand();
       else if (b.dataset.cam !== undefined) h.onCam();
+      else if (b.dataset.ap !== undefined) h.onAP();
       else if (b.dataset.mate !== undefined) {
         if (performance.now() - this.dragged > 300) this.openMenu(+b.dataset.mate);
       }
@@ -227,6 +242,57 @@ export class Hud {
     // manche: joystick flutuante que volta ao centro (só aparece sentado)
     this.yoke = createJoystick(this.surface, { zoneTop: 0.25, zoneWidth: 0.42, expo: 0.55, smoothing: 22, hint: false }); // sem anel parado: não cobre as telas do painel
     this.yoke.setEnabled(false);
+    // câmera externa: arrastar (fora do manche e dos botões) gira em volta do avião; pinça aproxima
+    const ptrs = new Map<number, { x: number; y: number }>();
+    let pinch0 = 0;
+    const isView = (e: PointerEvent) => (e.target as HTMLElement)?.classList?.contains('voo-canvas');
+    const pd = (e: PointerEvent) => {
+      if (!h.camMode() || !isView(e)) return;
+      // a zona do manche (esquerda, abaixo de 25%) continua sendo o manche
+      const r = this.surface.getBoundingClientRect();
+      if (e.clientX - r.left < r.width * 0.42 && e.clientY - r.top > r.height * 0.25) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 2) {
+        const [a, b] = [...ptrs.values()];
+        pinch0 = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    };
+    const pm = (e: PointerEvent) => {
+      const p0 = ptrs.get(e.pointerId);
+      if (!p0) return;
+      if (ptrs.size >= 2) {
+        p0.x = e.clientX;
+        p0.y = e.clientY;
+        const [a, b] = [...ptrs.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch0 > 10 && d > 10) h.zoom(pinch0 / d);
+        pinch0 = d;
+        return;
+      }
+      h.orbit(e.clientX - p0.x, e.clientY - p0.y);
+      p0.x = e.clientX;
+      p0.y = e.clientY;
+    };
+    const pu = (e: PointerEvent) => {
+      ptrs.delete(e.pointerId);
+      pinch0 = 0;
+    };
+    const wheel = (e: WheelEvent) => {
+      if (!h.camMode()) return;
+      h.zoom(e.deltaY > 0 ? 1.1 : 0.9);
+    };
+    this.surface.addEventListener('pointerdown', pd);
+    window.addEventListener('pointermove', pm);
+    window.addEventListener('pointerup', pu);
+    window.addEventListener('pointercancel', pu);
+    this.surface.addEventListener('wheel', wheel, { passive: true });
+    this.offs.push(() => {
+      this.surface.removeEventListener('pointerdown', pd);
+      window.removeEventListener('pointermove', pm);
+      window.removeEventListener('pointerup', pu);
+      window.removeEventListener('pointercancel', pu);
+      this.surface.removeEventListener('wheel', wheel);
+    });
     // manete (fica onde soltar)
     const te = this.thrEl;
     let tid = -1;
@@ -255,6 +321,7 @@ export class Hud {
       else if (e.code === 'KeyF' && me.seated) s.setFlaps((s.f.flaps + 1) % 3);
       else if (e.code === 'KeyG' && me.seated) this.toggleGear();
       else if (e.code === 'KeyC') h.onCam();
+      else if (e.code === 'KeyP' && me.seated) h.onAP();
       else if (e.code === 'KeyX' && me.seated) h.onStand();
       else return;
       e.preventDefault();
@@ -294,7 +361,7 @@ export class Hud {
     const me = s.players[s.me];
     // só os controles do lugar onde você está
     const sit = me.seated && !this.hidden;
-    const walk = !me.seated && !this.hidden && me.busy < 0;
+    const walk = !me.seated && !this.hidden && me.busy < 0 && !me.prep;
     // só troca quando muda (setEnabled reposiciona o joystick)
     const sig = (sit ? 1 : 0) + (walk ? 2 : 0);
     if (sig !== this.ctlSig) {
@@ -553,7 +620,8 @@ export class Hud {
 
   toast(msg: string, ico: string, tone: string): void {
     // avisos compartilhados: pequenos, sem duplicados (contador ×2), fila
-    const icon: IconName = ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'info' ? 'sparkle' : 'warning';
+    const icon: IconName =
+      ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'serve' || ico === 'cart' ? 'food' : ico === 'yoke' ? 'planet' : ico === 'turb' ? 'warning' : ico === 'info' ? 'sparkle' : 'warning';
     notify(msg, { icon, kind: tone === 'bad' ? 'bad' : tone === 'good' ? 'good' : 'info', key: msg });
   }
   showBanner(txt: string, sub = '', sec = 2.4): void {
@@ -617,6 +685,41 @@ export class Hud {
         me.busy = -1;
       }
     }
+    // copa (serviço de bordo) aberta pela sim
+    if (s.prepOpen && !this.galley) {
+      this.galley = new Galley(
+        this.el,
+        s,
+        (o, m, d, hot, full) => s.addTray(me, o.id, m, d, hot, full),
+        () => s.prepClose(me),
+      );
+    }
+    if (this.galley) {
+      if (!s.prepOpen || !s.flying) {
+        this.galley.destroy();
+        this.galley = null;
+        if (s.prepOpen) s.prepClose(me);
+      } else this.galley.update(dt);
+    }
+    // bandejas no carrinho (quem empurra vê para onde levar)
+    const cartSig = s.cart.by === me.idx ? s.cart.trays.map((tr) => tr.order).join(',') + '|' + s.orders.map((o) => o.id + ':' + o.tray).join(',') : '';
+    if (cartSig !== this.cartSig) {
+      this.cartSig = cartSig;
+      const el = this.q('.voo-trays') as HTMLElement;
+      el.innerHTML = cartSig
+        ? vIcon('cart', 22) +
+          (s.cart.trays.length
+            ? s.cart.trays
+                .map((tr) => {
+                  const o = s.orders.find((x) => x.id === tr.order);
+                  const q = o ? s.pax[o.pax] : null;
+                  return `<b>${q ? seatLabel(q.seat) : '?'}</b>`;
+                })
+                .join('')
+            : `<small>${t('voo.g.empty', 'Vazio: monte bandejas na copa')}</small>`)
+        : '';
+      el.style.display = cartSig ? '' : 'none';
+    }
     // modo sentado x a pé
     if (me.seated !== this.seated) {
       this.seated = me.seated;
@@ -629,7 +732,7 @@ export class Hud {
     // topo
     const phaseTxt =
       s.phase === 'cruise' ? t('voo.p.cruise', 'Cruzeiro') : s.phase === 'descent' ? t('voo.p.descent', 'Descida') : s.phase === 'final' ? t('voo.p.final', 'Aproximação') : t('voo.p.land', 'Pouso');
-    const ph = `${vIcon('plane', 24)}<span>${phaseTxt} · ${(f.dist / 1000).toFixed(1)} km · ${Math.round(f.alt)} m</span>`;
+    const ph = `${vIcon('plane', 22)}<span><b>${phaseTxt}</b><small>${(f.dist / 1000).toFixed(1)} km · ${Math.round(f.alt)} m</small></span>`;
     if (this.phase.dataset.v !== ph) {
       this.phase.dataset.v = ph;
       this.phase.innerHTML = ph;
@@ -695,7 +798,16 @@ export class Hud {
       const th = this.thrEl.clientHeight || 170;
       ti.style.top = 4 + (1 - s.ctrl.thr) * (th - 48) + 'px';
       ti.textContent = String(Math.round(s.ctrl.thr * 100));
-      this.q('[data-cam]').classList.toggle('on', h.extCam());
+      const cm = h.camMode();
+      const camB = this.q('[data-cam]');
+      camB.classList.toggle('on', cm > 0);
+      if (camB.dataset.m !== String(cm)) {
+        camB.dataset.m = String(cm);
+        (camB.querySelector('.cm') as HTMLElement).textContent = cm === 0 ? '1' : cm === 1 ? '2' : '3';
+      }
+      const apB = this.q('[data-ap]');
+      apB.classList.toggle('on', !!f.ap);
+      this.el.classList.toggle('apon', !!f.ap);
     }
     // dica
     if (this.tutText !== this.lastTut) {
@@ -706,8 +818,12 @@ export class Hud {
     if (tip !== this.lastTip) {
       this.lastTip = tip;
       const ek = s.active().filter((e) => e.kind !== 'turb').pop()?.kind;
-      const oi: IconName = this.tutText ? 'target' : me.seated ? 'planet' : ek === 'fire' ? 'fire' : ek === 'leak' ? 'drop' : ek === 'spark' ? 'bolt' : ek === 'panic' ? 'heart' : ek ? 'warning' : 'sparkle';
-      objective(tip || null, { icon: oi });
+      const oi = this.tutText ? 'star' : me.seated ? 'plane' : ek ?? 'info';
+      // objetivo dentro do HUD (coluna da esquerda): não briga com retratos, minimapa nem botão de girar
+      const ob = this.q('.voo-obj') as HTMLElement;
+      ob.style.display = tip ? '' : 'none';
+      ob.innerHTML = tip ? `${vIcon(oi, 16)}<span></span>` : '';
+      if (tip) (ob.querySelector('span') as HTMLElement).textContent = tip;
     }
     // instrumentos
     this.instT -= dt;
@@ -869,32 +985,127 @@ export class Hud {
     }
   }
 
-  private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number }): void {
+  /* ------------------------------ marcadores sem bagunça ------------------------------
+   * Regras: nunca em cima de controles/painéis (retângulos de exclusão lidos ~3x/s), fora da tela
+   * vão para a borda da área segura com seta, sobrepostos se empilham, perto somem/encolhem (o
+   * contorno amarelo do objeto já mostra), sentado na cabine ficam no para-brisa (não no painel). */
+  private excl: { l: number; t: number; r: number; b: number }[] = [];
+  private exclW = 0;
+  private wasModal = false;
+  private exclH = 0;
+  private exclT = 0;
+  private mkR = 26;
+  private placed: { x: number; y: number }[] = [];
+  private refreshExcl(W: number, H: number): void {
+    const er = this.el.getBoundingClientRect();
+    const out: { l: number; t: number; r: number; b: number }[] = [];
+    const add = (el: Element, pad = 6) => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;
+      out.push({ l: r.left - er.left - pad, t: r.top - er.top - pad, r: r.right - er.left + pad, b: r.bottom - er.top + pad });
+    };
+    this.el
+      .querySelectorAll(
+        '.voo-top .voo-btn,.voo-pill,.voo-bars,.voo-obj,.voo-mini,.voo-mate,.voo-acts .voo-act:not(.hide),.voo-thr,.voo-flyb .voo-btn:not(.hide),.voo-flytop .voo-btn,.voo-chud,.voo-trays,.voo-stickhint,.voo-menu,.voo-pfd',
+      )
+      .forEach((e) => add(e));
+    // botões globais por cima do jogo (girar tela do hub, besouro do beta) e o joystick visível
+    document.querySelectorAll('.gh-rot:not([hidden]),.beta-bug,.tc-joy.on .tc-ring,.tc-joy.idle .tc-ring,#nt-root .nt.on,.nt-big.on').forEach((e) => add(e, 8));
+    const me = this.host.sim.players[this.host.sim.me];
+    // sentado na cabine (1ª pessoa): o painel 3D com as telas e o manche fica livre
+    if (me.seated && this.host.is3d && !this.host.extCam()) out.push({ l: 0, t: H * 0.6, r: W, b: H });
+    this.excl = out;
+    this.mkR = H <= 420 ? 22 : 26;
+  }
+  private inExcl(x: number, y: number, rad: number): number {
+    for (let i = 0; i < this.excl.length; i++) {
+      const e = this.excl[i];
+      if (x + rad > e.l && x - rad < e.r && y + rad > e.t && y - rad < e.b) return i;
+    }
+    return -1;
+  }
+  /** posiciona um marcador (emergência/objetivo/destino) */
+  private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number; seated: boolean }): void {
     const h = this.host;
     h.project(x, y, z, this.pr);
+    const R = this.mkR;
+    const lab = 18; // rótulo de distância embaixo
+    const seatedFP = me.seated && h.is3d && !h.extCam();
+    const S = { l: R + 8, t: 58 + R, r: W - R - 8, b: (seatedFP ? H * 0.6 : H - 30) - R - lab };
     let px = this.pr.x;
     let py = this.pr.y;
-    const m = 44;
-    let edge = this.pr.behind || px < m || px > W - m || py < 96 || py > H - m;
-    if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
-    const em = d.querySelector('em') as HTMLElement;
+    let edge = this.pr.behind || px < S.l || px > S.r || py < S.t || py > S.b;
+    if (!h.is3d) edge = px < S.l || px > S.r || py < S.t || py > S.b;
+    const cx = W / 2;
+    const cy = (S.t + S.b) / 2;
+    let dx = px - cx;
+    let dy = py - cy;
     if (edge) {
-      const cx = W / 2;
-      const cy = H / 2;
-      const dx = px - cx;
-      let dy = py - cy;
-      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
-      const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
+      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 40; // atrás de mim: vai para a borda de baixo da área
+      const k = Math.min((S.r - cx) / Math.max(1, Math.abs(dx)), (S.b - cy) / Math.max(1, Math.abs(dy)));
       px = cx + dx * k;
-      py = Math.min(H - m, Math.max(100, cy + dy * k + 15));
-      em.style.display = '';
-      em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
-    } else em.style.display = 'none';
+      py = cy + dy * k;
+    }
+    // nunca em cima de controles: empurra para fora do retângulo pelo lado mais perto (dentro da área segura)
+    for (let it = 0; it < 4; it++) {
+      const i = this.inExcl(px, py, R);
+      if (i < 0) break;
+      const e = this.excl[i];
+      const opts: [number, number][] = [
+        [e.l - R - 2, py],
+        [e.r + R + 2, py],
+        [px, e.t - R - 2],
+        [px, e.b + R + lab + 2],
+      ];
+      let best: [number, number] | null = null;
+      let bd = 1e9;
+      for (const o of opts) {
+        if (o[0] < S.l || o[0] > S.r || o[1] < S.t || o[1] > S.b) continue;
+        const dd = Math.hypot(o[0] - px, o[1] - py);
+        if (dd < bd) (bd = dd), (best = o);
+      }
+      if (!best) break;
+      [px, py] = best;
+    }
+    // empilha os que se sobrepõem (coluna, na direção do centro)
+    let dir = py > cy ? -1 : 1;
+    const y0 = py;
+    const side = px > W / 2 ? -1 : 1;
+    for (let it = 0; it < 8; it++) {
+      const hit = this.placed.find((q) => Math.abs(q.x - px) < R * 2 + 6 && Math.abs(q.y - py) < R * 2 + lab - 2);
+      if (!hit) break;
+      py = hit.y + dir * (R * 2 + lab);
+      // saiu da área segura ou caiu num controle: empilha para o outro lado / para o lado
+      if (py < S.t || py > S.b || this.inExcl(px, py, R) >= 0) {
+        if (dir === (y0 > cy ? -1 : 1)) {
+          dir = -dir;
+          py = y0;
+        } else {
+          px += side * (R * 2 + 10);
+          py = y0;
+          dir = y0 > cy ? -1 : 1;
+        }
+      }
+    }
+    this.placed.push({ x: px, y: py });
+    const blocked = this.inExcl(px, py, R * 0.6) >= 0;
+    const em = d.querySelector('em') as HTMLElement | null;
+    if (em) {
+      if (edge) {
+        em.style.display = '';
+        em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+      } else em.style.display = 'none';
+    }
+    // perto: encolhe e some (o contorno amarelo do objeto já mostra onde é)
+    const dist = Math.hypot(x - me.x, z - me.z);
+    const near = !edge && !me.seated && dist < 3;
     d.classList.toggle('edge', edge);
+    d.classList.toggle('near', near);
+    d.style.display = blocked || (!edge && !me.seated && dist < 1.3) ? 'none' : '';
     d.style.transform = `translate(${px}px,${py}px)`;
-    const lbl = `${Math.round(Math.hypot(x - me.x, z - me.z))} m`;
-    const sp = d.querySelector('span')!;
-    if (sp.textContent !== lbl) sp.textContent = lbl;
+    const sp = d.querySelector('span');
+    const lbl = `${Math.round(dist)} m`;
+    if (sp && sp.textContent !== lbl) sp.textContent = lbl;
   }
 
   private ctxIcon(c: Ctx): string {
@@ -925,6 +1136,12 @@ export class Hud {
         return s.item(c.target)?.kind ?? 'hand';
       case 'stow':
         return 'bag';
+      case 'prep':
+        return 'tray';
+      case 'cart':
+        return 'cart';
+      case 'serve':
+        return 'serve';
     }
     return 'hand';
   }
@@ -958,8 +1175,42 @@ export class Hud {
     const H = this.el.clientHeight;
     const seen = new Set<number>();
     const box = this.q('.voo-mks');
-    for (const e of s.active()) {
-      if (e.kind === 'turb') continue;
+    // janela modal (copa/minijogo/menu de ordens): sem marcadores por cima
+    const modal = !!this.galley || !!this.miniGame;
+    box.style.display = modal ? 'none' : '';
+    if (modal !== this.wasModal) {
+      this.wasModal = modal;
+      document.body.classList.toggle('voo-modal', modal);
+    }
+    if (modal) return;
+    this.exclT -= 1 / 60;
+    if (this.exclT <= 0 || this.exclW !== W || this.exclH !== H) {
+      this.exclT = 0.25;
+      this.exclW = W;
+      this.exclH = H;
+      this.refreshExcl(W, H);
+    }
+    this.placed.length = 0;
+    // prioridade: objetivo do tutorial, depois as emergências mais graves
+    const ems = s
+      .active()
+      .filter((e) => e.kind !== 'turb')
+      .sort((a, b) => b.sev - a.sev);
+    // alvo do tutorial
+    const tt = this.tutTarget;
+    if (tt) {
+      if (!this.tutMk) {
+        this.tutMk = document.createElement('div');
+        this.tutMk.className = 'voo-mk obj';
+        this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
+        box.appendChild(this.tutMk);
+      }
+      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
+    } else if (this.tutMk) {
+      this.tutMk.remove();
+      this.tutMk = null;
+    }
+    for (const e of ems) {
       seen.add(e.id);
       let d = this.mk.get(e.id);
       if (!d) {
@@ -975,20 +1226,6 @@ export class Hud {
       // anel de progresso (segurar para fechar/tapar, fogo diminuindo)
       const pr = e.kind === 'fire' ? Math.max(0, 1 - e.sev / 1.2) * (e.sev < 0.34 ? 1 : 0.4) : e.prog;
       (d.querySelector('.prog') as HTMLElement).style.background = pr > 0.02 ? `conic-gradient(#5ef08a ${pr * 360}deg, transparent 0)` : '';
-    }
-    // alvo do tutorial
-    const tt = this.tutTarget;
-    if (tt) {
-      if (!this.tutMk) {
-        this.tutMk = document.createElement('div');
-        this.tutMk.className = 'voo-mk obj';
-        this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
-        box.appendChild(this.tutMk);
-      }
-      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
-    } else if (this.tutMk) {
-      this.tutMk.remove();
-      this.tutMk = null;
     }
     for (const [id, d] of this.mk)
       if (!seen.has(id)) {
@@ -1016,7 +1253,7 @@ export class Hud {
         this.aimEl.innerHTML = vIcon(this.aimIco, 30);
       }
       h.project(c.x, c.y, c.z, this.pr);
-      this.aimEl.style.display = this.pr.behind ? 'none' : '';
+      this.aimEl.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 20) >= 0 ? 'none' : '';
       this.aimEl.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
     } else if (this.aimEl) this.aimEl.style.display = 'none';
     // medidor de calma em cima dos passageiros aflitos perto de mim
@@ -1034,8 +1271,8 @@ export class Hud {
         d.style.display = 'none';
         return;
       }
-      h.project(q.x, q.standing ? 1.45 : 1.2, q.z, this.pr);
-      d.style.display = this.pr.behind ? 'none' : '';
+      h.project(q.x, q.standing ? 1.5 : 1.25, q.z, this.pr);
+      d.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 14) >= 0 ? 'none' : '';
       d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
       const bar = d.querySelector('i') as HTMLElement;
       bar.style.width = Math.round((1 - q.panic) * 100) + '%';
@@ -1050,8 +1287,8 @@ export class Hud {
         d.style.display = 'none';
         continue;
       }
-      h.project(p.x, p.seated ? 1.6 : 1.55, p.seated ? -2.9 : p.z, this.pr);
-      d.style.display = this.pr.behind ? 'none' : '';
+      h.project(p.x, p.seated ? 1.75 : 1.95, p.seated ? -2.9 : p.z, this.pr);
+      d.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y - 14, 12) >= 0 ? 'none' : '';
       d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px) translate(-50%,-100%)`;
     }
   }
@@ -1063,10 +1300,12 @@ export class Hud {
     this.joy2d?.destroy();
     this.yoke.destroy();
     this.miniGame?.destroy();
+    this.galley?.destroy();
     objective(null);
     clearNotify();
     resetNotifyTop();
     setNotifyAlign('left');
+    document.body.classList.remove('voo-hud-on', 'voo-modal');
     this.el.remove();
   }
 }
