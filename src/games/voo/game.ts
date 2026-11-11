@@ -23,7 +23,9 @@ import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
 import type { FlightKind } from './hangar';
 import { vIcon } from './icons';
-import { LocalNet, type VooNet } from './net';
+import { FlightNet, HostSync, InputOut, LocalNet, SnapSync, newCode, type Me, type NetMsg, type VooNet } from './net';
+import { inviteCard, openRoom, pollInvites, type RoomHandle, type StartCrew } from './room';
+import { me as socialMe } from '../../social/net';
 import { cabinOf, dayIndex, liveryOf, loadSave, writeSave, type VooSave } from './save';
 import { Sim, mulberry } from './sim';
 import { View2D } from './view2d';
@@ -118,23 +120,173 @@ export class VooGame implements MiniGameHandle, HudHost {
     const h = openHangar(this.wrap, { sv, gl: webglOk(), weak: detectInitialTier() <= 1, dailyBonus: 25 });
     this.hangar = h;
     this.setBack(() => h.back());
+    this.listenInvites(h);
     void h.done.then((pick) => {
       this.hangar = null;
       if (this.destroyed) return;
       if (pick.kind === 'exit') return this.finish();
       this.role = sv.role;
       this.bots = sv.bots;
-      if (pick.kind === 'friends') return this.friends(pick.mode);
+      if (pick.kind === 'friends') return void this.friends(pick.mode);
       this.flightKind = pick.flight;
       void this.brief(pick.mode);
     });
   }
 
-  /** "Voar com amigos" (co-op online) */
-  private friends(mode: '2d' | '3d'): void {
-    void mode;
-    notify(t('voo.hg.soon', 'Em breve!'));
-    this.lobby();
+  /* ============================== online ============================== */
+
+  private meP: Promise<Me> | null = null;
+  private myself(): Promise<Me> {
+    if (!this.meP) {
+      this.meP = socialMe().then((m) => ({ id: m.id, name: m.name || displayName() || 'Bloop', skin: m.skin }));
+      this.meP.catch(() => (this.meP = null));
+    }
+    return this.meP;
+  }
+  private room: RoomHandle | null = null;
+  private hostSync: HostSync | null = null;
+  private snapSync: SnapSync | null = null;
+  private inOut: InputOut | null = null;
+  private crewOverride: CrewLine[] | null = null;
+
+  /** convites de amigos enquanto estou no hangar */
+  private listenInvites(h: HangarHandle): void {
+    pollInvites(
+      () => this.myself().catch(() => null),
+      (inv) =>
+        inviteCard(this.wrap, inv, () => {
+          if (this.hangar !== h) return;
+          h.destroy();
+          this.hangar = null;
+          void this.joinRoom(inv.code, this.sv.mode === '2d' ? '2d' : '3d');
+        }),
+      () => this.hangar === h && !this.destroyed,
+    );
+  }
+
+  /** "Voar com amigos": cria a sala na hora (um toque) */
+  private async friends(mode: '2d' | '3d'): Promise<void> {
+    const wait = this.waiting(t('voo.r.creating', 'Abrindo a sala…'));
+    try {
+      const me = await this.myself();
+      let net: FlightNet | null = null;
+      for (let k = 0; k < 3 && !net; k++) {
+        try {
+          net = await FlightNet.open(newCode(), true, me);
+        } catch (e) {
+          if ((e as Error).message !== 'taken') throw e;
+        }
+      }
+      wait();
+      if (!net || this.destroyed) return void net?.leave();
+      this.inRoom(net, me, mode);
+    } catch {
+      wait();
+      if (this.destroyed) return;
+      notify(t('voo.r.offline', 'Sem internet agora: voe com os ajudantes!'), { icon: 'cloud-off', kind: 'bad' });
+      this.lobby();
+    }
+  }
+  private async joinRoom(code: string, mode: '2d' | '3d'): Promise<void> {
+    const wait = this.waiting(t('voo.r.joining', 'Entrando na sala {c}…', { c: code }));
+    try {
+      const me = await this.myself();
+      const net = await FlightNet.open(code, false, me);
+      wait();
+      if (this.destroyed) return net.leave();
+      this.inRoom(net, me, mode);
+    } catch (e) {
+      wait();
+      if (this.destroyed) return;
+      const why = (e as Error).message;
+      notify(
+        why === 'no_room' ? t('voo.r.noRoom', 'Sala {c} não encontrada', { c: code }) : why === 'started' ? t('voo.r.started', 'Esse voo já decolou') : why === 'full' ? t('voo.r.full', 'A sala está cheia (4)') : t('voo.r.offline', 'Sem internet agora: voe com os ajudantes!'),
+        { icon: 'warning', kind: 'bad' },
+      );
+      this.lobby();
+    }
+  }
+  private inRoom(net: FlightNet, me: Me, mode: '2d' | '3d'): void {
+    const r = openRoom(this.wrap, { net, me, role: this.sv.role, mode });
+    this.room = r;
+    this.setBack(() => r.back());
+    void r.done.then((res) => {
+      this.room = null;
+      if (this.destroyed) return net.leave();
+      if (res.kind === 'start') return void this.beginOnline(net, me, res.start, mode);
+      net.leave();
+      if (res.kind === 'join') return void this.joinRoom(res.code, mode);
+      this.lobby();
+    });
+  }
+  private waiting(txt: string): () => void {
+    const d = document.createElement('div');
+    d.className = 'voo-scr vr-wait';
+    d.innerHTML = `<div>${vIcon('plane', 56)}<b>${txt.replace(/[&<>]/g, '')}</b></div>`;
+    this.wrap.appendChild(d);
+    return () => d.remove();
+  }
+
+  private async beginOnline(net: FlightNet, me: Me, start: NetMsg, mode: '2d' | '3d'): Promise<void> {
+    this.net = net;
+    this.flightKind = 'normal';
+    this.seedCache = (+start.seed | 0) || 1;
+    const crew = ((start.crew ?? []) as StartCrew[]).slice(0, 4).sort((a, b) => a.r - b.r);
+    this.crewOverride = crew.map((c) => ({ name: String(c.name).slice(0, 24), role: c.r, bot: !!c.bot, me: c.id === me.id, skin: c.bot ? c.skin : c.id === me.id ? globalSave.skin : c.skin, id: c.id }));
+    const mine = crew.find((c) => c.id === me.id);
+    if (mine) this.role = mine.r;
+    const rnd = mulberry(this.seed());
+    const a = Math.floor(rnd() * CITIES.length);
+    const b = (a + 1 + Math.floor(rnd() * (CITIES.length - 1))) % CITIES.length;
+    this.route = [CITIES[a], CITIES[b]];
+    this.flightNo = 'BL-' + (100 + Math.floor(rnd() * 900));
+    this.weather = Math.floor(rnd() * 3);
+    net.onClose((why) => {
+      if (this.destroyed || this.reported) return;
+      this.netEnded(why === 'hostLeft' ? t('voo.r.hostLeftF', 'O anfitrião saiu: o voo acabou') : t('voo.r.lost', 'Conexão perdida'));
+    });
+    await this.begin(mode);
+    if (this.destroyed || !this.sim) return;
+    const s = this.sim;
+    if (net.isHost) {
+      this.hostSync = new HostSync(s, net, crew.map((c) => (c.bot ? '' : c.id)), (i) => {
+        const p = s.players[i];
+        this.hud?.toast(t('voo.r.leftBot', '{n} saiu: um ajudante assumiu', { n: p.name }), 'crew', 'info');
+        this.hud?.rebuildCrew();
+      });
+    } else {
+      s.client = true;
+      this.snapSync = new SnapSync(s);
+      this.inOut = new InputOut(s, net);
+      s.proxy = (a) => this.inOut?.push(a);
+      net.on('snap', (m) => this.snapSync?.apply(m));
+    }
+  }
+
+  private leaveNet(): void {
+    this.hostSync?.dispose();
+    this.hostSync = null;
+    this.snapSync = null;
+    this.inOut = null;
+    this.crewOverride = null;
+    this.net.leave();
+    this.net = new LocalNet();
+  }
+
+  /** voo online interrompido (anfitrião saiu ou caiu a conexão) */
+  private netEnded(msg: string): void {
+    this.paused = true;
+    audio.engineStop();
+    const d = document.createElement('div');
+    d.className = 'voo-scr';
+    d.style.background = 'rgba(20,8,48,.7)';
+    d.innerHTML = `<div class="voo-lcard" style="width:min(380px,100%);grid-template-columns:1fr;text-align:center"><h2 style="justify-content:center">${vIcon('crew', 34)}${esc(msg)}</h2><div class="voo-go" style="justify-content:center"><button class="voo-btn green" data-ok>${vIcon('plane', 22)}${esc(t('voo.r.backHangar', 'Voltar ao hangar'))}</button></div></div>`;
+    this.wrap.appendChild(d);
+    speak(msg, { urgent: true });
+    d.querySelector('[data-ok]')!.addEventListener('click', () => {
+      d.remove();
+      this.restart();
+    });
   }
 
   private crewLines(): CrewLine[] {
@@ -174,14 +326,14 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   private async begin(mode: '2d' | '3d'): Promise<void> {
     const sv = this.sv;
-    const crew = this.crewLines();
+    const crew = this.crewOverride ?? this.crewLines();
     const rnd = mulberry(this.seed() ^ 99);
     const skins = BOT_SKINS.slice().sort(() => rnd() - 0.5);
     const tier = this.gov.tier;
     this.sim = new Sim({
       seed: this.seed(),
       mode: this.flightKind,
-      crew: crew.map((c, i) => ({ name: c.name, skin: c.me ? globalSave.skin : skins[i % skins.length], bot: c.bot, local: c.me })),
+      crew: crew.map((c, i) => ({ name: c.name, skin: c.me ? globalSave.skin : c.skin ?? skins[i % skins.length], bot: c.bot, local: c.me })),
       maxBags: [3, 5, 8, 12][tier],
     });
     // os papéis certos (crewLines já está em ordem de papel)
@@ -215,7 +367,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.offs.push(() => window.removeEventListener('resize', ro));
     this.setBack(() => this.onExit());
     // primeiro voo: tutorial guiado (um objetivo por vez + seta)
-    if ((!sv.tutDone && this.flightKind === 'normal') || this.opts.tutorial) {
+    if (((!sv.tutDone && this.flightKind === 'normal') || this.opts.tutorial) && !this.net.online) {
       this.tut = 0;
       this.tutT = 0;
       this.sim.paused = true;
@@ -225,8 +377,11 @@ export class VooGame implements MiniGameHandle, HudHost {
     }
     sv.flights++;
     writeSave(sv);
-    if (!this.opts.quick) this.startCutscene();
-    else this.cut = -1;
+    if (!this.opts.quick && !this.net.online) this.startCutscene();
+    else {
+      this.cut = -1;
+      if (this.net.online) this.hud?.showBanner(t('voo.go.title', 'Alguém no manche!'), t('voo.go.sub', 'Siga a seta rosa até a pista'), 3);
+    }
     this.startT = performance.now();
     this.last = performance.now();
     audio.engineStart();
@@ -383,9 +538,15 @@ export class VooGame implements MiniGameHandle, HudHost {
     if (this.tut >= 0) this.tutorial(dt);
     // passos menores para o voo ficar estável
     const n = dt > 0.025 ? 2 : 1;
-    if (!this.simHeld) for (let i = 0; i < n; i++) s.step(dt / n);
+    if (this.snapSync) {
+      // convidado: só o meu boneco anda aqui; o resto vem do anfitrião
+      s.stepClient(dt);
+      this.snapSync.smooth(dt);
+      this.inOut?.tick(dt);
+    } else if (!this.simHeld) for (let i = 0; i < n; i++) s.step(dt / n);
     s.input.tap = false;
     this.events();
+    this.hostSync?.tick(dt);
     this.view!.frame(dt);
     this.hud!.update(dt);
     this.sounds(dt);
@@ -420,6 +581,7 @@ export class VooGame implements MiniGameHandle, HudHost {
       }
     }
     for (const p of s.players) if (p.bot && p.sayT > 2.35 && p.say) this.hud?.say(p.idx, p.say);
+    this.hostSync?.capture(s.ev);
     s.ev.length = 0;
   }
 
@@ -526,6 +688,7 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   private async finishFlight(): Promise<void> {
     this.reported = true;
+    this.hostSync?.tick(0, true);
     const s = this.sim;
     const sv = this.sv;
     const o = s.outcome!;
@@ -576,6 +739,7 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   private restart(): void {
     cancelAnimationFrame(this.raf);
+    this.leaveNet();
     this.view?.destroy();
     this.hud?.destroy();
     for (const f of this.offs) f();
@@ -634,6 +798,8 @@ export class VooGame implements MiniGameHandle, HudHost {
     cancelAnimationFrame(this.raf);
     this.popBack?.();
     this.hangar?.destroy();
+    this.room?.back();
+    this.leaveNet();
     for (const f of this.offs) f();
     audio.engineStop();
     hush();

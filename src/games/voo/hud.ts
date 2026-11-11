@@ -201,7 +201,7 @@ export class Hud {
       const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-mate],[data-cmd]') as HTMLElement | null;
       if (!b) return;
       if (b.dataset.exit !== undefined) h.onExit();
-      else if (b.dataset.flaps !== undefined) s.f.flaps = (s.f.flaps + 1) % 3;
+      else if (b.dataset.flaps !== undefined) s.setFlaps((s.f.flaps + 1) % 3);
       else if (b.dataset.gear !== undefined) this.toggleGear();
       else if (b.dataset.stand !== undefined) h.onStand();
       else if (b.dataset.cam !== undefined) h.onCam();
@@ -252,7 +252,7 @@ export class Hud {
         h.actHeld = true;
         h.onTap();
       } else if (e.code === 'KeyQ') h.onThrow();
-      else if (e.code === 'KeyF' && me.seated) s.f.flaps = (s.f.flaps + 1) % 3;
+      else if (e.code === 'KeyF' && me.seated) s.setFlaps((s.f.flaps + 1) % 3);
       else if (e.code === 'KeyG' && me.seated) this.toggleGear();
       else if (e.code === 'KeyC') h.onCam();
       else if (e.code === 'KeyX' && me.seated) h.onStand();
@@ -283,7 +283,7 @@ export class Hud {
       this.toast(t('voo.t.gearStuck', 'O trem não desce! Alguém precisa girar a manivela no porão'), 'gear', 'bad');
       return;
     }
-    s.f.gear = s.f.gear ? 0 : 1;
+    s.setGear(s.f.gear ? 0 : 1);
   }
 
   /** teclado/joystick → entrada da sim e do manche */
@@ -354,6 +354,10 @@ export class Hud {
 
   /* ------------------------------ tripulação ------------------------------ */
 
+  rebuildCrew(): void {
+    this.closeMenu();
+    this.buildCrew();
+  }
   private buildCrew(): void {
     const s = this.host.sim;
     this.crewEl.innerHTML = '';

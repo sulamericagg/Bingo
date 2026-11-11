@@ -16,6 +16,9 @@ export interface CrewLine {
   bot: boolean;
   me: boolean;
   stats?: Stats;
+  /** online: skin e id do jogador */
+  skin?: string;
+  id?: string;
 }
 export interface Brief {
   flight: string;
