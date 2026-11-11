@@ -167,6 +167,8 @@ if (SUBMIT) {
     await p.waitForTimeout(500);
     await p.check('.cin-sheet [data-r="agree"]');
     await p.click('.cin-sheet [data-a="go"]');
+    // toque perdido (a folha ignora cliques logo após abrir): tenta de novo
+    if (!(await waitFor(() => !!document.querySelector('.tv-ai') || !document.querySelector('.cin-sheet [data-a="go"]') || document.querySelector('.cin-sheet [data-a="go"]').disabled, 1500))) await p.click('.cin-sheet [data-a="go"]');
     await waitFor(() => !document.querySelector('.cin-sheet [data-a="go"]') || !!document.querySelector('.tv-ai'), 60000);
     await p.waitForTimeout(600);
     await shot(name);
