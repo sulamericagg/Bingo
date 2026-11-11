@@ -31,6 +31,8 @@ export class Phys {
   private treeT = 0;
   private boxes = new Map<number, CANNON.Body>();
   private lastSync = 0;
+  /** pedaços volumétricos com algo físico por perto (precisam de trimesh) */
+  readonly active = new Set<Chunk>();
 
   constructor() {
     const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -20, 0) });
@@ -127,6 +129,7 @@ export class Phys {
     if (now - this.lastSync < 0.25) return;
     this.lastSync = now;
     const want = new Set<Chunk>();
+    this.active.clear();
     for (let i = 0; i + 1 < pts.length; i += 2) {
       const cx = Math.floor(pts[i] / CH);
       const cz = Math.floor(pts[i + 1] / CH);
@@ -134,6 +137,7 @@ export class Phys {
         for (let dx = -1; dx <= 1; dx++) {
           const c = chunks.get(cx + dx + ',' + (cz + dz));
           if (c && !c.vol) want.add(c);
+          if (c && c.vol) this.active.add(c);
         }
     }
     for (const [c, b] of this.hf) {

@@ -1965,8 +1965,8 @@ export class WorldGame {
     const tgt = clamp((depth - 3) / 7, 0, 1);
     this.under += (tgt - this.under) * damp(2, dt);
     const u = this.under;
-    this.lantern.intensity = u * 2.2;
-    this.hemi.intensity = 1.25 * (1 - u * 0.72) * this.dayLight;
+    this.lantern.intensity = u * 3;
+    this.hemi.intensity = 1.25 * (1 - u * 0.55) * this.dayLight;
     this.sun.intensity = 1.7 * (1 - u) * this.dayLight;
     if (u > 0.01) {
       const f = this.scene.fog as THREE.Fog;

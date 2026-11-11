@@ -242,15 +242,27 @@ export class VoxWorld {
           if (!S || S.edited || (s >= s0 && s <= s1)) continue;
           if (dc > 2 || Math.abs(s - ps) > 2) this.dropMesh(v, S);
         }
-        // física: trimesh só perto
-        if (this.phys)
-          for (let s = 0; s < NSEC; s++) {
-            const S = v.secs[s];
-            if (!S) continue;
-            const k = c.key() + '/' + s;
-            if (dc <= 1 && S.pos && !this.phys.hasMesh(k)) this.phys.setMesh(k, S.pos, S.idx);
-            else if (dc > 1 && this.phys.hasMesh(k)) this.phys.setMesh(k, null, null);
-          }
+      }
+    }
+    // física: trimesh só nos pedaços com toras/jogador por perto, 1 por quadro (é caro de montar)
+    if (this.phys) {
+      const ph = this.phys;
+      let made = 0;
+      const ps = Math.floor((py - BED_Y) / SEC);
+      for (const c of this.h.chunks.values()) {
+        const v = c.vol;
+        if (!v) continue;
+        const on = ph.active.has(c);
+        for (let s = 0; s < NSEC; s++) {
+          const S = v.secs[s];
+          if (!S) continue;
+          const k = c.key() + '/' + s;
+          const has = ph.hasMesh(k);
+          if (on && S.pos && !has && made < 1 && Math.abs(s - ps) <= 2) {
+            ph.setMesh(k, S.pos, S.idx);
+            made++;
+          } else if (has && (!on || !S.pos)) ph.setMesh(k, null, null);
+        }
       }
     }
     // processa a fila
@@ -332,11 +344,8 @@ export class VoxWorld {
         S.lava = m;
       }
     }
-    const k = c.key() + '/' + S.s;
-    if (this.phys) {
-      const dc = Math.max(Math.abs(c.cx - Math.floor(this.px / CH)), Math.abs(c.cz - Math.floor(this.pz / CH)));
-      if (dc <= 1) this.phys.setMesh(k, S.pos, S.idx);
-    }
+    // trimesh velho fica inválido: refeito pelo update (se ainda houver algo físico perto)
+    if (this.phys?.hasMesh(c.key() + '/' + S.s)) this.phys.setMesh(c.key() + '/' + S.s, null, null);
     // a faixa da superfície ficou pronta? esconde o heightfield
     if (!c.volReady) {
       const [s0, s1] = this.band(v);
