@@ -46,16 +46,75 @@ export function lev(a: string, b: string): number {
   return prev[n];
 }
 
-/** semelhança 0..1 (com tolerância a plural) */
+/**
+ * "Como soa" em pt-BR (o reconhecedor erra a grafia, não o som): ç/c/s/ss/z, ch/x, lh/li, nh/ni,
+ * qu/k, ão/am/ã, e/i e o/u finais, h mudo, letras dobradas, l final = u.
+ */
+export function phon(w: string): string {
+  return w
+    .replace(/^h/, '')
+    .replace(/ph/g, 'f')
+    .replace(/(ch|sh)/g, 'x')
+    .replace(/lh/g, 'li')
+    .replace(/nh/g, 'ni')
+    .replace(/qu([ei])/g, 'k$1')
+    .replace(/qu/g, 'kw')
+    .replace(/sc([ei])/g, 's$1')
+    .replace(/c([ei])/g, 's$1')
+    .replace(/c/g, 'k')
+    .replace(/g([ei])/g, 'j$1')
+    .replace(/z/g, 's')
+    .replace(/w/g, 'v')
+    .replace(/y/g, 'i')
+    .replace(/(am|an|ao)$/, 'ao')
+    .replace(/em$/, 'ei')
+    .replace(/l$/, 'u')
+    .replace(/(.)\1+/g, '$1')
+    .replace(/e$/, 'i')
+    .replace(/o$/, 'u')
+    .replace(/h/g, '');
+}
+
+/** variantes de uma palavra falada: plural, diminutivo (-inho/-zinho), feminino/masculino */
+export function variants(a: string): string[] {
+  const out = [a];
+  const add = (x: string) => x.length >= 2 && !out.includes(x) && out.push(x);
+  if (a.endsWith('oes') || a.endsWith('aes')) add(a.slice(0, -3) + 'ao');
+  if (a.endsWith('ns')) add(a.slice(0, -2) + 'm');
+  if (a.endsWith('es')) add(a.slice(0, -2));
+  if (a.endsWith('s')) add(a.slice(0, -1));
+  for (const x of [...out]) {
+    const z = /^(.+?)zinh[oa]s?$/.exec(x);
+    if (z) add(z[1]);
+    const i = /^(.+?)inh([oa])s?$/.exec(x);
+    if (i) add(i[1] + i[2]);
+  }
+  for (const x of [...out]) {
+    if (x.endsWith('a')) add(x.slice(0, -1) + 'o');
+    else if (x.endsWith('o')) add(x.slice(0, -1) + 'a');
+  }
+  return out;
+}
+
+const simCache = new Map<string, number>();
+/** semelhança 0..1 (tolera plural, diminutivo, gênero e erros "de som") */
 export function sim(a: string, b: string): number {
   if (a === b) return 1;
+  const key = a + '|' + b;
+  const c = simCache.get(key);
+  if (c !== undefined) return c;
   const s = (x: string, y: string) => 1 - lev(x, y) / Math.max(x.length, y.length);
-  let v = s(a, b);
-  if (a.endsWith('s')) v = Math.max(v, s(a.slice(0, -1), b) * 0.99);
-  if (a.endsWith('es')) v = Math.max(v, s(a.slice(0, -2), b) * 0.99);
-  if (a.endsWith('oes')) v = Math.max(v, s(a.slice(0, -3) + 'ao', b) * 0.99);
+  let v = 0;
+  const pb = phon(b);
+  for (const va of variants(a)) {
+    const k = va === a ? 1 : 0.985;
+    v = Math.max(v, s(va, b) * k);
+    if (va.length >= 3) v = Math.max(v, s(phon(va), pb) * 0.97 * k);
+  }
   // palavras curtas pedem mais precisão
   if (Math.min(a.length, b.length) <= 3 && v < 1) v *= 0.85;
+  if (simCache.size > 20000) simCache.clear();
+  simCache.set(key, v);
   return v;
 }
 
@@ -89,6 +148,8 @@ export interface Parsed {
   /** sugestões quando não achou */
   suggest: GDef[];
   heard: string;
+  /** certeza alta: cria direto (senão o jogo pergunta "você quis dizer?") */
+  sure: boolean;
 }
 
 const THRESH = 0.74;
@@ -110,6 +171,14 @@ export function parse(text: string): Parsed {
       const win = content.slice(s, s + L);
       const joined = win.map((x) => x.w).join(' ');
       let sc = sim(joined, ph.joined);
+      // o reconhecedor às vezes quebra a palavra ("trampo lim"): tenta grudar com a próxima
+      if (L === 1 && s + 1 < content.length) {
+        const two = sim(win[0].w + content[s + 1].w, ph.joined.replace(/ /g, ''));
+        if (two > sc + 0.05 && two >= THRESH) {
+          sc = two - 0.01;
+          win.push(content[s + 1]);
+        }
+      }
       if (L > 1) {
         // também compara palavra a palavra
         let per = 0;
@@ -195,22 +264,31 @@ export function parse(text: string): Parsed {
     rest.push(w);
   }
   mods.modules = modules;
-  let suggest: GDef[] = [];
-  if (!best) {
-    // sugestões: frases mais próximas de qualquer palavra
-    const sc = new Map<GDef, number>();
-    for (const ph of allPhrases())
-      for (const c of content) {
-        const v = sim(c.w, ph.toks[0]);
-        if (v > (sc.get(ph.g) ?? 0)) sc.set(ph.g, v);
-      }
-    suggest = [...sc.entries()]
-      .filter(([, v]) => v > 0.45)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([g]) => g);
+  // sugestões (sempre): frases mais próximas de qualquer palavra — para o "você quis dizer?"
+  const sc = new Map<GDef, number>();
+  for (const ph of allPhrases())
+    for (const c of content) {
+      if (ph.g === best?.g) continue;
+      const v = Math.max(sim(c.w, ph.toks[0]), ph.toks.length > 1 ? sim(c.w, ph.toks.join('')) : 0);
+      if (v > (sc.get(ph.g) ?? 0)) sc.set(ph.g, v);
+    }
+  const suggest = [...sc.entries()]
+    .filter(([, v]) => v > 0.45)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([g]) => g);
+  const score = best ? Math.min(1, best.score) : 0;
+  // certeza: bem parecido, e as mesmas palavras não lembram outra engenhoca
+  let rival = 0;
+  if (best) {
+    const usedJ = [...best.used]
+      .sort((a, b) => a - b)
+      .map((i) => toks[i])
+      .join(' ');
+    for (const ph of allPhrases()) if (ph.g !== best.g) rival = Math.max(rival, sim(usedJ, ph.joined));
   }
-  return { g: best?.g ?? null, mods, score: best ? Math.min(1, best.score) : 0, rest, suggest, heard };
+  const sure = !!best && score >= 0.84 && rival < score - 0.04;
+  return { g: best?.g ?? null, mods, score, rest, suggest, heard, sure };
 }
 
 /** escolhe a melhor entre várias transcrições (o reconhecedor devolve alternativas) */

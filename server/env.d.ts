@@ -34,6 +34,8 @@ interface Env {
   TV: DurableObjectNamespace<import('./tv').TvChannel>;
   /** Garimpo Bruto online: salas de garimpo (relé anfitrião↔convidados) + caixas de convite. */
   GARIMPO: DurableObjectNamespace<import('./garimpo').GarimpoRoom>;
+  /** Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + caixas de convite. */
+  CAVA: DurableObjectNamespace<import('./cava').CavaRoom>;
   /** Duelo: mesmo desafio para todos ao mesmo tempo (jogos solo jogados em grupo) — uma instância por jogo+código. */
   DUEL: DurableObjectNamespace<import('./duel').DuelRoom>;
   /** Horas mínimas de conta para gerar moedas a criadores (padrão 72; .dev.vars usa 0 no teste local). */
