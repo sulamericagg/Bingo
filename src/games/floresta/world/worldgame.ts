@@ -473,12 +473,8 @@ export class WorldGame {
       if (opts.net) {
         opts.net.attach(this);
         // minijogos não ganham carrinho (atrapalha lotes/esconderijos)
-        if (!this.save.vehPlaced && !opts.net.meta?.mini) {
-          this.save.vehPlaced = true;
-          this.save.veh.owned = [];
-          this.sb.starterVehicle(this.px + 4, this.pz + 3, this.yaw);
-          this.applyOwned();
-        }
+        // sem carrinho surgindo ao lado de quem entra (o kit inicial fica na mochila)
+        this.save.vehPlaced = true;
         this.hud.addNet(() => void import('./net').then((n) => n.inviteFriends(opts.net!, root)));
         void import('./mini').then((mm) => mm.startMini(this, opts.net!));
       }
@@ -600,8 +596,13 @@ export class WorldGame {
 
   /** sobrevivência: só aparecem os veículos montados (o quadriciclo é o carrinho inicial) */
   applyOwned(): void {
+    const sp = this.save.veh.pos;
     for (const v of this.vehs) {
-      const on = !this.sb || this.save.veh.owned.includes(v.k);
+      // modo blocos: os veículos antigos da floresta não aparecem do nada na garagem perto do início —
+      // só um que o jogador já levou para outro lugar (saves antigos); os novos vêm de kits/oficina
+      const p = sp[v.k];
+      const moved = !!p && p.length >= 2 && Math.hypot(p[0] - (-18 + v.k * 5.2), p[1] - 46) > 3;
+      const on = !this.sb || (this.save.veh.owned.includes(v.k) && moved);
       v.m.g.visible = on;
       v.box.off = !on;
       if (!on) this.phys.moveKin(v.kin, 0, -9999, 0, 0, 0, 0, 0);
@@ -898,7 +899,7 @@ export class WorldGame {
     const el = now - this.last;
     this.last = now;
     if (this.paused) return;
-    const dt = Math.min(0.05, el / 1000);
+    const dt = Math.max(0, Math.min(0.05, el / 1000)); // o 1º quadro pode vir com "now" anterior ao início
     const w0 = performance.now();
     this.step(dt);
     this.renderer.render(this.scene, this.camera);
@@ -2365,6 +2366,7 @@ export class WorldGame {
     if (this.destroyed) return;
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    this.sb?.flushDrops();
     this.persist();
     for (const f of this.offs) f();
     this.hud.destroy();

@@ -16,7 +16,15 @@ import { iconURL } from './itemicons';
 import { Furnace, HOTBAR, Inventory, Slots, maxStack, type Stack } from './inv';
 
 const CSS = `
-.mi-hot{position:absolute;left:50%;bottom:calc(var(--edgeB,10px) + 2px);transform:translateX(-50%);display:flex;gap:3px;pointer-events:auto;z-index:6;background:rgba(20,8,48,.45);padding:3px;border-radius:12px}
+.mi-hot{position:absolute;left:50%;bottom:var(--edgeB,10px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:stretch;gap:2px;pointer-events:none;z-index:6;--hs:var(--slot,38px)}
+.mi-hot .mi-row9{display:flex;gap:3px;align-items:center;pointer-events:auto;background:rgba(20,8,48,.5);padding:3px;border-radius:calc(var(--hs) * .3)}
+.mi-hot .mi-slots{display:flex;gap:3px}
+.mi-hot .mi-s{width:var(--hs);height:var(--hs);border-radius:calc(var(--hs) * .22)}
+.mi-hot .mi-s img{width:calc(var(--hs) * .78);height:calc(var(--hs) * .78)}
+.mi-hot .mi-s b{font-size:calc(var(--hs) * .3)}
+.mi-hot .mi-bag-btn{position:relative;left:auto;bottom:auto;width:var(--hs);height:var(--hs);margin-left:3px;flex:none;min-height:0;padding:0;box-shadow:0 3px 0 #2a0b5c}
+.mi-hot .mi-bag-btn svg{width:calc(var(--hs) * .66);height:calc(var(--hs) * .66)}
+.mi-stats{position:relative;pointer-events:none}
 .mi-s{position:relative;width:38px;height:38px;border-radius:9px;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-tap-highlight-color:transparent;flex:none}
 .mi-s img{width:30px;height:30px;pointer-events:none;image-rendering:auto}
 .mi-s b{position:absolute;right:2px;bottom:0;font-size:11px;font-weight:900;color:#fff;text-shadow:0 1px 0 #2a0b5c,0 0 3px #2a0b5c;pointer-events:none}
@@ -26,8 +34,7 @@ const CSS = `
 .mi-s.res.no{opacity:.45}
 .mi-s.drag{opacity:.35}
 .mi-s.ghost{position:fixed;z-index:60;pointer-events:none;background:none;border:none;transform:translate(-50%,-60%) scale(1.15)}
-.mi-hname{position:absolute;left:50%;bottom:calc(var(--edgeB,10px) + 72px);transform:translateX(-50%);font-weight:800;font-size:13px;color:#fff;text-shadow:0 1px 0 #2a0b5c,0 0 4px #2a0b5c;pointer-events:none;transition:opacity .4s;white-space:nowrap}
-.mi-bag-btn{position:absolute;left:calc(50% + 196px);bottom:calc(var(--edgeB,10px) + 2px);width:44px;height:44px}
+.mi-hname{position:absolute;left:50%;bottom:calc(100% + 4px);transform:translateX(-50%);font-weight:800;font-size:13px;color:#fff;text-shadow:0 1px 0 #2a0b5c,0 0 4px #2a0b5c;pointer-events:none;transition:opacity .4s;white-space:nowrap}
 .mi-ov{position:absolute;inset:0;z-index:40;background:rgba(14,6,34,.8);display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;font-family:inherit;color:#fff}
 .mi-card{background:linear-gradient(#4a2a8a,#2e1660);border:3px solid #2a0b5c;border-radius:18px;box-shadow:0 6px 0 #1a0638;padding:6px 8px 8px;max-width:calc(100vw - 16px);max-height:calc(100vh - 12px);display:flex;flex-direction:column;gap:5px}
 .mi-head{display:flex;align-items:center;gap:8px;font-weight:900;font-size:15px}
@@ -72,7 +79,7 @@ function slotHTML(st: Stack | null, ref: string, extra = ''): string {
     const dur = ITEM.get(st.id)?.dur;
     if (dur && st.d) {
       const k = Math.max(0, 1 - st.d / dur);
-      inner += `<i style="width:${Math.round(k * 30)}px;background:${k > 0.5 ? '#7aff8a' : k > 0.2 ? '#ffd34a' : '#ff5a6a'}"></i>`;
+      inner += `<i style="right:auto;width:calc((100% - 8px) * ${k.toFixed(2)});background:${k > 0.5 ? '#7aff8a' : k > 0.2 ? '#ffd34a' : '#ff5a6a'}"></i>`;
     }
   }
   return `<div class="mi-s ${extra}" data-s="${ref}">${inner}</div>`;
@@ -82,6 +89,9 @@ function slotHTML(st: Stack | null, ref: string, extra = ''): string {
 
 export class Hotbar {
   el: HTMLDivElement;
+  /** linha de vida/fome/XP/fôlego logo acima dos espaços (o jogo desenha aqui) */
+  stats: HTMLDivElement;
+  private slots: HTMLDivElement;
   private name: HTMLDivElement;
   private ver = '';
   private nameT = 0;
@@ -92,23 +102,30 @@ export class Hotbar {
     onBag: () => void,
   ) {
     ensureCss();
+    // [nome do item] / [vida · fome · XP] / [9 espaços + mochila] — uma coluna centralizada embaixo
     this.el = document.createElement('div');
     this.el.className = 'mi-hot';
-    root.appendChild(this.el);
     this.name = document.createElement('div');
     this.name.className = 'mi-hname';
-    root.appendChild(this.name);
+    this.stats = document.createElement('div');
+    this.stats.className = 'mi-stats';
+    const row = document.createElement('div');
+    row.className = 'mi-row9';
+    this.slots = document.createElement('div');
+    this.slots.className = 'mi-slots';
     const bag = document.createElement('button');
     bag.className = 'fl-btn round mi-bag-btn';
     bag.setAttribute('aria-label', t('mundo.inv', 'Mochila'));
     bag.innerHTML = `<svg viewBox="0 0 48 48" width="28" height="28"><path d="M12 18h24l3 24H9z" fill="#ffb02e" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/><path d="M18 18c0-8 12-8 12 0" fill="none" stroke="#2a0b5c" stroke-width="3"/><rect x="19" y="26" width="10" height="7" rx="2" fill="#ffd34a" stroke="#2a0b5c" stroke-width="2.5"/></svg>`;
-    root.appendChild(bag);
+    row.append(this.slots, bag);
+    this.el.append(this.name, this.stats, row);
+    root.appendChild(this.el);
     bag.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       e.preventDefault();
       onBag();
     });
-    this.el.addEventListener('pointerdown', (e) => {
+    this.slots.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       e.preventDefault();
       const s = (e.target as HTMLElement).closest('[data-s]') as HTMLElement | null;
@@ -116,9 +133,8 @@ export class Hotbar {
       const i = +s.dataset.s!.split(':')[1];
       this.onSelect(i);
     });
-    this.extra = [bag];
+    row.addEventListener('pointerdown', (e) => e.stopPropagation());
   }
-  private extra: HTMLElement[];
   /** chame com frequência: só mexe no DOM quando algo mudou */
   refresh(dt = 0): void {
     const inv = this.inv;
@@ -130,10 +146,10 @@ export class Hotbar {
     if (v !== this.ver) {
       const prevSel = this.ver.split('|')[0];
       const prevId = this.ver.split('|')[1 + inv.sel] ?? '';
-      this.ver = v;
       let h = '';
       for (let i = 0; i < HOTBAR; i++) h += slotHTML(inv.s[i], 'hot:' + i, i === inv.sel ? 'sel' : '');
-      this.el.innerHTML = h;
+      this.slots.innerHTML = h;
+      this.ver = v;
       const st = inv.s[inv.sel];
       if (String(inv.sel) !== prevSel || (st ? st.id : '') !== prevId.split(':')[0]) {
         this.name.textContent = st ? itemName(st.id) : '';
@@ -148,12 +164,9 @@ export class Hotbar {
   }
   show(on: boolean): void {
     this.el.style.display = on ? '' : 'none';
-    for (const e of this.extra) e.style.display = on ? '' : 'none';
   }
   destroy(): void {
     this.el.remove();
-    this.name.remove();
-    for (const e of this.extra) e.remove();
   }
 }
 

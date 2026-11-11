@@ -32,6 +32,9 @@ export interface JoystickOptions {
   priority?: number;
   /** vibração leve ao começar. Padrão true */
   haptic?: boolean;
+  /** limite (px a partir da borda do lado do joystick) para a borda de dentro do anel em descanso —
+   *  ex.: não encostar na barra de itens centralizada. Padrão: sem limite */
+  homeMax?: () => number;
 }
 
 export interface JoyState {
@@ -81,7 +84,7 @@ export class Joystick implements TouchClaimer {
     opts: JoystickOptions = {},
   ) {
     ensureTouchCss();
-    this.o = { side: 'left', zoneWidth: 0.5, zoneTop: 0.25, deadZone: 0.1, expo: 0.35, smoothing: 30, hint: true, mouse: false, priority: 10, haptic: true, ...opts };
+    this.o = { side: 'left', zoneWidth: 0.5, zoneTop: 0.25, deadZone: 0.1, expo: 0.35, smoothing: 30, hint: true, mouse: false, priority: 10, haptic: true, homeMax: () => Infinity, ...opts };
     this.priority = this.o.priority;
     this.out = new Spring2(this.o.smoothing);
     if (getComputedStyle(surface).position === 'static') surface.style.position = 'relative';
@@ -117,7 +120,7 @@ export class Joystick implements TouchClaimer {
       p = controls.joyPos;
     const E = edges();
     const ed = this.side === 'left' ? E.l : E.r;
-    const fx = Math.max(R + ed + 8, Math.min(r.width / 2 - R * 0.5, p.x * r.width));
+    const fx = Math.max(R + ed + 8, Math.min(r.width / 2 - R * 0.5, p.x * r.width, this.o.homeMax() - R - 6));
     this.homeX = this.side === 'left' ? fx : r.width - fx;
     this.homeY = Math.max(r.height * 0.3 + R, Math.min(r.height - R - E.b - 8, p.y * r.height));
   }
@@ -238,6 +241,10 @@ export class Joystick implements TouchClaimer {
   }
   get active(): boolean {
     return this.pid >= 0;
+  }
+  /** recalcula tamanho e posição de descanso (o HUD do jogo mudou) */
+  refresh(): void {
+    this.layout();
   }
   setEnabled(on: boolean): void {
     this.enabled = on;

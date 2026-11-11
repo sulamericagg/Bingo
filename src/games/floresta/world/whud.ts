@@ -16,7 +16,7 @@
 import { t } from '../../../i18n';
 import { flIcon } from '../icons';
 import { GEAR_SVG, openControls } from '../touchcfg';
-import { createJoystick, createLook, surfaceOf, type Joystick, type LookDrag } from '../../../ui/touch';
+import { controls, createJoystick, createLook, onControlsChange, surfaceOf, type Joystick, type LookDrag } from '../../../ui/touch';
 import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../../ui/notify';
 
 const svg = (body: string, size = 30) => `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
@@ -90,7 +90,7 @@ const CSS = `
 .fl-root .fw-hud{position:absolute;inset:0;z-index:5;pointer-events:none;
   --edgeL:max(env(safe-area-inset-left,0px),var(--safe-left,0px),12px);--edgeR:max(env(safe-area-inset-right,0px),var(--safe-right,0px),12px);
   --edgeB:max(var(--safe-bot,env(safe-area-inset-bottom,0px)),8px);--edgeT:max(env(safe-area-inset-top,0px),6px);
-  --slot:clamp(32px,10.4vh,46px);--hotW:calc(var(--slot)*10 + 9*3px + 6px)}
+  --slot:clamp(30px,min(10.6vh,4.6vw),46px)}
 @media (orientation:landscape){.fl-root .fw-hud{--edgeL:max(env(safe-area-inset-left,0px),var(--safe-left,0px),28px);--edgeR:max(env(safe-area-inset-right,0px),var(--safe-right,0px),28px)}}
 .fl-root .fw-hud *{box-sizing:border-box}
 .fw-hud .hide{display:none!important}
@@ -119,35 +119,39 @@ const CSS = `
 .fw-cmd{position:absolute;right:var(--edgeR);top:calc(var(--edgeT) + 42px);display:none;flex-direction:column;gap:6px;align-items:stretch;background:rgba(20,8,48,.55);padding:6px;border-radius:14px;max-width:62vw;pointer-events:auto}
 .fw-cmd.show{display:flex}
 .fw-cmd .fl-btn{min-height:34px;font-size:13px;padding:4px 10px;justify-content:flex-start}
-/* grupo de botões: canto inferior direito, ACIMA da linha da barra de itens no modo sandbox */
-.fw-btns{position:absolute;right:var(--edgeR);bottom:var(--edgeB);width:200px;height:220px;pointer-events:none}
+/* grupo de botões: canto inferior direito. PULAR rente ao canto (nunca na barra de itens);
+   botões de contexto empilhados ACIMA dele; esquema "Botões": Quebrar acima do pulo, Colocar à esquerda */
+.fw-btns{position:absolute;right:var(--edgeR);bottom:var(--edgeB);width:0;height:0;pointer-events:none;--jump:clamp(50px,calc(var(--slot)*1.45),64px)}
 .fw-btns>*{position:absolute;pointer-events:auto}
 .fw-btns .fl-btn.round{width:50px;height:50px}
-.fw-jump{right:0;bottom:0;width:62px!important;height:62px!important;background:rgba(255,255,255,.18)!important;border:2px solid rgba(255,255,255,.55)!important;box-shadow:0 3px 8px rgba(0,0,0,.25)!important}
-.fw-jump.on{background:rgba(255,255,255,.4)!important}
-.fw-use{right:0;bottom:72px;width:78px;height:78px;border-radius:50%;border:none;font:inherit;color:#3a1a00;font-weight:800;font-size:11px;background:radial-gradient(circle at 40% 35%,#fff3a8,#ffb02e 75%);box-shadow:0 4px 0 #8a4a00,0 6px 12px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
+.fw-jump{right:0;bottom:0;width:var(--jump)!important;height:var(--jump)!important;background:rgba(255,255,255,.2)!important;border:2.5px solid rgba(255,255,255,.7)!important;box-shadow:0 3px 8px rgba(0,0,0,.25)!important}
+.fw-jump.on{background:rgba(255,255,255,.45)!important}
+.fw-ctx{right:0;bottom:calc(var(--jump) + 10px);display:flex;flex-direction:column-reverse;align-items:flex-end;gap:6px;pointer-events:none}
+.fw-ctx>*{pointer-events:auto;position:static!important}
+.fw-ctx .fl-btn{min-height:38px;font-size:12px;padding:3px 11px;white-space:nowrap}
+.fw-ctx .fl-btn.round{width:46px;height:46px;min-height:0;padding:0}
+.fw-use{right:0;bottom:calc(var(--jump) + 10px);width:78px;height:78px;border-radius:50%;border:none;font:inherit;color:#3a1a00;font-weight:800;font-size:11px;background:radial-gradient(circle at 40% 35%,#fff3a8,#ffb02e 75%);box-shadow:0 4px 0 #8a4a00,0 6px 12px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
 .fw-use span{display:flex}
 .fw-use.on{transform:translateY(3px);box-shadow:0 1px 0 #8a4a00}
-.fw-tool{right:72px;bottom:6px}
-.fw-up{right:72px;bottom:64px}
-.fw-down{right:72px;bottom:6px}
-.fw-grab{right:86px;bottom:150px;flex-direction:column;gap:0}
+.fw-tool{right:calc(var(--jump) + 10px);bottom:4px}
+.fw-up{right:calc(var(--jump) + 10px);bottom:60px}
+.fw-down{right:calc(var(--jump) + 10px);bottom:4px}
+.fw-grab{flex-direction:column;gap:0}
 .fw-grab b{font-size:9px;line-height:1}
-.fw-veh{right:0;bottom:158px;font-size:12px;min-height:36px;padding:4px 10px;white-space:nowrap}
-.fw-sell{right:0;bottom:200px;font-size:12px;min-height:36px;padding:4px 12px}
 /* botões Quebrar / Colocar (esquema "Botões") */
-.fw-brk,.fw-put{border-radius:50%;border:2px solid rgba(255,255,255,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font:800 10px/1 inherit;color:#fff;text-shadow:0 1px 0 ${INK};touch-action:none;-webkit-tap-highlight-color:transparent;padding:0;gap:1px}
-.fw-brk{right:0;bottom:72px;width:64px;height:64px;background:rgba(255,90,110,.55)}
-.fw-put{right:72px;bottom:44px;width:56px;height:56px;background:rgba(90,200,120,.55)}
+.fw-brk,.fw-put{border-radius:50%;border:2.5px solid rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;font:800 10px/1 inherit;color:#fff;text-shadow:0 1px 0 ${INK};touch-action:none;-webkit-tap-highlight-color:transparent;padding:0;gap:1px}
+.fw-brk{right:0;bottom:calc(var(--jump) + 10px);width:var(--jump);height:var(--jump);background:rgba(255,90,110,.6)}
+.fw-put{right:calc(var(--jump) + 10px);bottom:0;width:calc(var(--jump) * .9);height:calc(var(--jump) * .9);background:rgba(90,200,120,.6)}
 .fw-brk.on,.fw-put.on{filter:brightness(1.3);transform:scale(.94)}
-.fw-hud.fw-sandbox .fw-btns{bottom:calc(var(--edgeB) + 2px)}
-.fw-hud.fw-sandbox:not(.fw-btnmode) .fw-brk,.fw-hud.fw-sandbox:not(.fw-btnmode) .fw-put,.fw-hud:not(.fw-sandbox) .fw-brk,.fw-hud:not(.fw-sandbox) .fw-put{display:none}
-.fw-hud.fw-sandbox .fw-use{display:none}
-.fw-hud.fw-sandbox.fw-btnmode .fw-veh{bottom:144px}
+.fw-hud.fw-btnmode .fw-ctx{bottom:calc(var(--jump) * 2 + 20px)}
+.fw-hud:not(.fw-btnmode) .fw-brk,.fw-hud:not(.fw-btnmode) .fw-put,.fw-hud:not(.fw-sandbox) .fw-brk,.fw-hud:not(.fw-sandbox) .fw-put{display:none}
+/* modo blocos: nada do modo clássico (ferramenta fixa, ajudantes, vender, botão de usar) */
+.fw-hud.fw-sandbox .fw-use,.fw-hud.fw-sandbox .fw-tool,.fw-hud.fw-sandbox .fw-up,.fw-hud.fw-sandbox .fw-down,.fw-hud.fw-sandbox .fw-pets,.fw-hud.fw-sandbox .fw-sell,.fw-hud.fw-sandbox .fw-cmd{display:none!important}
+.fw-hud:not(.fw-sandbox) .fw-ctx{bottom:calc(var(--jump) + 98px)}
 .fw-hud.lefty .fw-btns{right:auto;left:var(--edgeL)}
 .fw-hud.lefty .fw-btns>*{right:auto!important;left:0}
-.fw-hud.lefty .fw-tool,.fw-hud.lefty .fw-up,.fw-hud.lefty .fw-down,.fw-hud.lefty .fw-put{left:72px!important}
-.fw-hud.lefty .fw-grab{left:86px!important}
+.fw-hud.lefty .fw-ctx{align-items:flex-start}
+.fw-hud.lefty .fw-tool,.fw-hud.lefty .fw-up,.fw-hud.lefty .fw-down,.fw-hud.lefty .fw-put{left:calc(var(--jump) + 10px)!important}
 /* mira */
 .fw-xh{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;--xs:1;--xc:#fff}
 .fw-xh i{position:absolute;left:0;top:0;background:var(--xc);border-radius:2px;box-shadow:0 0 0 1.5px rgba(20,8,48,.85);transition:transform .12s,background .12s}
@@ -214,7 +218,8 @@ class TapHold {
     this.pid = e.pointerId;
     this.x0 = x;
     this.y0 = y;
-    this.t0 = performance.now();
+    // hora do evento (não a do processamento): quadro lento não transforma toque em "segurar"
+    this.t0 = e.timeStamp || performance.now();
     this.moved = false;
     this.holding = false;
     this.look.down(e, x, y);
@@ -227,7 +232,7 @@ class TapHold {
   up(e: PointerEvent | null): void {
     if (this.pid < 0) return;
     this.look.up(e);
-    const quick = performance.now() - this.t0 < 320;
+    const quick = (e?.timeStamp || performance.now()) - this.t0 < 320;
     if (e && e.type === 'pointerup' && !this.moved && !this.holding && quick && this.tapMode()) this.onTap();
     this.pid = -1;
     this.holding = false;
@@ -258,6 +263,8 @@ export class WorldHud {
   private ring: SVGCircleElement;
   private objEl: HTMLDivElement;
   private objT = 0;
+  /** pilha de botões de contexto acima do PULAR (outros módulos põem botões aqui) */
+  ctxEl!: HTMLDivElement;
 
   constructor(
     private root: HTMLElement,
@@ -294,10 +301,12 @@ export class WorldHud {
         <button class="fl-btn wood" data-tap="solo">${WICONS.solo}<span data-v="solo">${t('floresta.w.solo', 'Jogar sozinho (sem ajudantes)')}</span></button>
       </div>
       <div class="fw-btns">
-        <button class="fl-btn gold fw-sell hide" data-tap="sell">${flIcon('sell', 22)}<span>${t('floresta.w.sell', 'Vender')}</span></button>
-        <button class="fl-btn fw-veh hide" data-tap="veh"><span data-v="veh"></span></button>
+        <div class="fw-ctx">
+          <button class="fl-btn fw-veh hide" data-tap="veh"><span data-v="veh"></span></button>
+          <button class="fl-btn gold fw-sell hide" data-tap="sell">${flIcon('sell', 22)}<span>${t('floresta.w.sell', 'Vender')}</span></button>
+          <button class="fl-btn round fw-grab hide" data-tap="grab" aria-label="${t('mundo.grab', 'Pegar')}">${flIcon('log', 24)}<b data-v="grab"></b></button>
+        </div>
         <button class="fl-btn round fw-tool" data-tap="tool" aria-label="${t('floresta.w.tool', 'Ferramenta')}"><span data-v="tool"></span></button>
-        <button class="fl-btn round fw-grab hide" data-tap="grab" aria-label="${t('mundo.grab', 'Pegar')}">${flIcon('log', 24)}<b data-v="grab"></b></button>
         <button class="fl-btn round fw-up hide" data-hold="up">${WICONS.up}</button>
         <button class="fl-btn round fw-down hide" data-hold="down">${WICONS.down}</button>
         <button class="fw-use" data-hold="use"><span data-v="useI"></span><b data-v="use"></b></button>
@@ -310,6 +319,7 @@ export class WorldHud {
     this.xh = el.querySelector('.fw-xh') as HTMLDivElement;
     this.ring = el.querySelector('.fw-xh .fg') as SVGCircleElement;
     this.objEl = el.querySelector('.fw-obj') as HTMLDivElement;
+    this.ctxEl = el.querySelector('.fw-ctx') as HTMLDivElement;
     this.objEl.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -337,7 +347,17 @@ export class WorldHud {
   private tapHold: TapHold | null = null;
   private bindTouch(root: HTMLElement): void {
     // controles compartilhados (src/ui/touch): analógico flutuante + arrastar para olhar (+ tocar/segurar)
-    this.joyC = createJoystick(root, { zoneTop: 0.18 });
+    // analógico em descanso nunca encosta na barra de itens (centralizada embaixo)
+    this.joyC = createJoystick(root, {
+      zoneTop: 0.18,
+      homeMax: () => {
+        const hb = root.querySelector('.mi-hot .mi-row9');
+        if (!hb || !this.sandbox) return Infinity;
+        const r = hb.getBoundingClientRect();
+        const rr = root.getBoundingClientRect();
+        return controls.lefty ? rr.right - r.right : r.left - rr.left;
+      },
+    });
     this.lookC = createLook(root, { zone: () => false });
     this.tapHold = new TapHold(
       root,
@@ -347,6 +367,10 @@ export class WorldHud {
       },
       () => this.sandbox && this.prefs.scheme === 'tap',
     );
+    // canhoto: analógico à direita, botões espelhados à esquerda
+    const lefty = () => this.el.classList.toggle('lefty', controls.lefty);
+    lefty();
+    this.offs.push(onControlsChange(lefty));
     this.offs.push(() => {
       this.joyC?.destroy();
       this.lookC?.destroy();
@@ -363,6 +387,10 @@ export class WorldHud {
   private lookC: LookDrag | null = null;
   /** modo sandbox (survival.ts liga) */
   sandbox = false;
+  /** a barra de itens apareceu/mudou: reposiciona o analógico em descanso */
+  relayout(): void {
+    this.joyC?.refresh();
+  }
   /** liga/desliga o analógico e o olhar deste HUD (veículo com HUD próprio, telas por cima) */
   setControls(on: boolean): void {
     this.joyC?.setEnabled(on);

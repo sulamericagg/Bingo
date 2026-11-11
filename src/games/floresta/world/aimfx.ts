@@ -4,7 +4,7 @@
  *  - "fantasma" do bloco que vai ser colocado (cubo translúcido);
  *  - rachaduras em 10 estágios enquanto segura para quebrar
  *    (caixa por cima do bloco; no terreno suave, decalque na superfície);
- *  - item que voa do bloco quebrado até o jogador (sem bolinhas largadas).
+ *  - item que sai do bloco quebrado, quica no chão e é puxado quando o jogador chega perto.
  *  Tudo barato: 1 geometria de cada, texturas de canvas geradas uma vez.
  * ============================================================ */
 import * as THREE from 'three';
@@ -68,12 +68,19 @@ function crackAtlas(): THREE.CanvasTexture {
   return t;
 }
 
-interface Fly {
+/** item solto no chão (sai do bloco quebrado, quica, e é puxado quando o jogador chega perto) */
+interface Drop {
   s: THREE.Sprite;
   t: number;
   x: number;
   y: number;
   z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** puxado pelo jogador */
+  pull: boolean;
+  rest: boolean;
   done: () => void;
 }
 
@@ -85,7 +92,9 @@ export class AimFx {
   private crackDecal: THREE.Mesh;
   private tex: THREE.CanvasTexture;
   private texD: THREE.CanvasTexture;
-  private flies: Fly[] = [];
+  private drops: Drop[] = [];
+  /** chão (terreno + blocos) — o motor liga */
+  ground: ((x: number, y: number, z: number) => number) | null = null;
   private iconTex = new Map<string, THREE.Texture>();
   private loader = new THREE.TextureLoader();
 
@@ -173,46 +182,85 @@ export class AimFx {
     this.hideCrack();
   }
 
-  /** item que voa do ponto até o alvo (a mão do jogador) e então entra na mochila */
-  fly(url: string, x: number, y: number, z: number, done: () => void): void {
+  /** item sai do bloco (pulinho), cai no chão e fica girando até o jogador chegar perto */
+  drop(url: string, x: number, y: number, z: number, done: () => void): void {
     let tex = this.iconTex.get(url);
     if (!tex) {
       tex = this.loader.load(url);
       tex.colorSpace = THREE.SRGBColorSpace;
       this.iconTex.set(url, tex);
     }
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
-    s.renderOrder = 9;
-    s.scale.setScalar(0.42);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.1, fog: true }));
+    s.renderOrder = 2;
+    s.scale.setScalar(0.34);
     s.position.set(x, y, z);
     this.scene.add(s);
-    this.flies.push({ s, t: 0, x, y, z, done });
+    const a = Math.random() * Math.PI * 2;
+    this.drops.push({ s, t: 0, x, y, z, vx: Math.cos(a) * 1.1, vy: 3.2, vz: Math.sin(a) * 1.1, pull: false, rest: false, done });
+    // muita coisa no chão: o mais antigo vai direto para a mochila
+    if (this.drops.length > 160) this.collect(0);
   }
-  /** por quadro: (tx,ty,tz) = para onde os itens voam */
+  private collect(i: number): void {
+    const d = this.drops[i];
+    this.scene.remove(d.s);
+    d.s.material.dispose();
+    this.drops.splice(i, 1);
+    d.done();
+  }
+  /** por quadro: (tx,ty,tz) = centro do corpo do jogador (puxa os itens perto) */
   update(dt: number, tx: number, ty: number, tz: number): void {
-    for (let i = this.flies.length - 1; i >= 0; i--) {
-      const f = this.flies[i];
-      f.t += dt;
-      const k = Math.min(1, f.t / 0.45);
-      // pulinho e depois atraído
-      const up = f.t < 0.15 ? f.t * 3 : 0.45 * (1 - k);
-      const e = k * k;
-      f.s.position.set(f.x + (tx - f.x) * e, f.y + up + (ty - f.y) * e, f.z + (tz - f.z) * e);
-      f.s.scale.setScalar(0.42 * (1 - e * 0.5));
-      if (k >= 1) {
-        this.scene.remove(f.s);
-        f.s.material.dispose();
-        this.flies.splice(i, 1);
-        f.done();
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      const d = this.drops[i];
+      d.t += dt;
+      const dx = tx - d.x;
+      const dy = ty - d.y;
+      const dz = tz - d.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (!d.pull && d.t > 0.35 && dist < 2.6) d.pull = true;
+      if (d.pull) {
+        if (dist < 0.45 || d.t > 600) {
+          this.collect(i);
+          continue;
+        }
+        const sp = Math.min(14, 4 + d.t * 6) * dt;
+        const k = Math.min(1, sp / dist);
+        d.x += dx * k;
+        d.y += dy * k;
+        d.z += dz * k;
+        if (dist > 4) d.pull = false;
+      } else if (!d.rest) {
+        d.vy -= 16 * dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        d.z += d.vz * dt;
+        const g = this.ground ? this.ground(d.x, d.y + 0.6, d.z) + 0.17 : -Infinity;
+        if (d.y <= g) {
+          d.y = g;
+          if (d.vy < -2) d.vy *= -0.3;
+          else {
+            d.vy = 0;
+            d.rest = true;
+          }
+          d.vx *= 0.5;
+          d.vz *= 0.5;
+        }
+      } else if (this.ground && ((d.t * 10) | 0) % 6 === 0) {
+        // chão sumiu embaixo (cavaram): volta a cair
+        const g = this.ground(d.x, d.y + 0.3, d.z) + 0.17;
+        if (g < d.y - 0.05) d.rest = false;
       }
+      // flutua girando de leve sobre o chão (como item largado)
+      d.s.position.set(d.x, d.y + (d.rest && !d.pull ? Math.sin(d.t * 3) * 0.05 + 0.05 : 0), d.z);
+      d.s.material.rotation = Math.sin(d.t * 2) * 0.25;
     }
+  }
+  /** quantos itens soltos (depuração) */
+  get dropCount(): number {
+    return this.drops.length;
   }
   dispose(): void {
-    for (const f of this.flies) {
-      this.scene.remove(f.s);
-      f.done();
-    }
-    this.flies = [];
+    // ao sair, o que estava no chão vai para a mochila (nada se perde)
+    while (this.drops.length) this.collect(this.drops.length - 1);
     this.scene.remove(this.outline, this.ghost, this.crackBox, this.crackDecal);
     this.tex.dispose();
     this.texD.dispose();
