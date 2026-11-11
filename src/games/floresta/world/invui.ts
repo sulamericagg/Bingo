@@ -195,6 +195,7 @@ export class InvScreen {
   private lastTap = { ref: '', t: 0 };
   private lpTimer = 0;
   private furnT = 0;
+  private btnDown: { el: HTMLElement; x: number; y: number } | null = null;
 
   constructor(
     root: HTMLElement,
@@ -215,10 +216,22 @@ export class InvScreen {
     el.addEventListener('pointermove', this.onMove);
     el.addEventListener('pointerup', this.onUp);
     el.addEventListener('pointercancel', this.onUp);
-    el.addEventListener('click', (e) => {
+    // o jogo escuta toques na raiz (olhar/joystick): nada daqui pode vazar para lá
+    for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'wheel'] as const) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: ev.startsWith('touch') || ev === 'wheel' });
+    el.addEventListener('pointerdown', (e) => {
       const b = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
-      if (!b) return;
-      const a = b.dataset.a!;
+      this.btnDown = b ? { el: b, x: e.clientX, y: e.clientY } : null;
+    });
+    el.addEventListener('pointerup', (e) => {
+      const d = this.btnDown;
+      this.btnDown = null;
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) return;
+      const b = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
+      if (b !== d.el && !(b && d.el.contains(b))) {
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-a]');
+        if (under !== d.el) return;
+      }
+      const a = d.el.dataset.a!;
       if (a === 'x') this.close();
       else if (a.startsWith('cat:')) {
         this.cat = a.slice(4) as Cat | 'all';

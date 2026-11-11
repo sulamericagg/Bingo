@@ -41,6 +41,8 @@ export class VoxWorld {
   natR = 2;
   phys: Phys | null = null;
   onEditChunk: ((c: Chunk) => void) | null = null;
+  /** edição feita (rede): centro, raio, material (−1 cava), dureza máxima */
+  onEdit: ((x: number, y: number, z: number, r: number, fill: number, hard: number) => void) | null = null;
   private ctx: MeshCtx;
 
   constructor(private h: VoxHost) {
@@ -496,6 +498,7 @@ export class VoxWorld {
       n++;
     }
     for (const j of this.jobs) if (j.pri < 0) j.pri = 0;
+    if (changed > 0) this.onEdit?.(x, y, z, r, fill, maxHard);
     return changed;
   }
 

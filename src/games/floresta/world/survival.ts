@@ -80,6 +80,8 @@ export class Sandbox implements MundoAPI {
   private placeables = new Map<string, Placeable>();
   private uiT = 0;
   private lastHeld = '';
+  /** sessão online (servidores) */
+  net: import('./net').NetSession | null = null;
 
   constructor(
     private g: WorldGame,
@@ -349,6 +351,7 @@ export class Sandbox implements MundoAPI {
       onClose: () => {
         this.scr = null;
         this.hot.refresh();
+        if (p?.chest) this.builds.onChange?.('upd', p);
       },
       onCraft: (r) => {
         audio.coin(3);
@@ -389,7 +392,8 @@ export class Sandbox implements MundoAPI {
         e.dispose(this);
       }
     }
-    if (this.mode !== 'criativo' || true) this.spawner.update(dt, this);
+    if (!this.net || this.net.isHost) this.spawner.update(dt, this);
+    this.net?.tick(dt);
     this.carts.update(dt);
     const dark = Math.max(1 - g.dayLight, g.under);
     this.builds.update(dt, g.px, g.py, g.pz, Math.min(1, dark * 1.3));

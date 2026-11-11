@@ -251,6 +251,20 @@ export class WorldHud {
     const e = this.q('[data-v="arrow"]');
     if (e) e.style.transform = `rotate(${rad}rad)`;
   }
+  /** botão de convidar amigos (online) */
+  addNet(f: () => void): void {
+    const b = document.createElement('button');
+    b.className = 'fl-btn round';
+    b.style.pointerEvents = 'auto';
+    b.setAttribute('aria-label', t('mundo.net.invite', 'Chamar amigos'));
+    b.innerHTML = '<svg viewBox="0 0 48 48" width="24" height="24"><circle cx="18" cy="16" r="7" fill="#8ad8ff" stroke="#2a0b5c" stroke-width="3"/><path d="M5 40c0-8 6-13 13-13s13 5 13 13z" fill="#8ad8ff" stroke="#2a0b5c" stroke-width="3"/><path d="M36 14v14M29 21h14" stroke="#7aff8a" stroke-width="5" stroke-linecap="round"/></svg>';
+    b.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      f();
+    });
+    this.q('.fw-right').prepend(b);
+  }
   cmdOpen(on?: boolean): boolean {
     const c = this.q('.fw-cmd');
     c.classList.toggle('show', on);

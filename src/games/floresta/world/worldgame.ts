@@ -183,6 +183,8 @@ export interface WorldOpts {
   /** save a usar (multi-mundos); sem isso, o save antigo único */
   save?: WorldSave;
   onSave?: (s: WorldSave) => void;
+  /** sessão online */
+  net?: import('./net').NetSession;
 }
 
 export class WorldGame {
@@ -393,7 +395,21 @@ export class WorldGame {
       this.applyOwned();
       if (fresh) {
         this.sb.starter();
-        if (!this.save.vehPlaced) this.introPending = true;
+        if (!this.save.vehPlaced && !opts.net) this.introPending = true;
+      }
+      if (opts.net) {
+        opts.net.attach(this);
+        if (!this.save.vehPlaced) {
+          this.save.vehPlaced = true;
+          this.save.veh.owned = [0];
+          const v = this.vehs[0];
+          v.x = this.px + 4;
+          v.z = this.pz + 3;
+          v.y = this.world.floorAt(v.x, this.py + 4, v.z);
+          this.applyOwned();
+        }
+        this.hud.addNet(() => void import('./net').then((n) => n.inviteFriends(opts.net!, root)));
+        void import('./mini').then((mm) => mm.startMini(this, opts.net!));
       }
       this.hud.el.classList.add('fw-sandbox');
       this.hud.onHotkey = (i) => this.sb?.select(i);
@@ -776,6 +792,11 @@ export class WorldGame {
     audio.cash();
     tap('medium');
     this.hud.toast(t('floresta.w.sold', '+{v} bolotas ({n} toras)', { v: short(v), n }), 'gold');
+  }
+
+  /** volta para o menu (rede caiu etc.) */
+  goHome(): void {
+    this.exit();
   }
 
   exit(): void {

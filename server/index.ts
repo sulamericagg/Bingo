@@ -21,6 +21,7 @@ import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
 import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
+import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
@@ -98,6 +99,9 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Pouso Forçado online: convites entre amigos
   'POST /api/voo/invite': flightInvite,
   'GET /api/voo/invites': flightInvites,
+  // Mundo Aberto online (servidores): convites entre amigos
+  'POST /api/mundo/invite': mundoInvite,
+  'GET /api/mundo/invites': mundoInvites,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -200,6 +204,7 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
   return handleAdminApi(req, env, url);
 }
 export { NightsRoom } from './nights';
+export { WorldRoom } from './mundo';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -241,6 +246,16 @@ export default {
     if (sq) {
       try {
         return await squadJoin(req, env, sq[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Mundo Aberto online (WebSocket): /api/mundo/room/<CÓDIGO>
+    const mm = /^\/api\/mundo\/room\/([A-Z0-9]{6})$/.exec(path);
+    if (mm) {
+      try {
+        return await mundoJoin(req, env, mm[1]);
       } catch (e) {
         return errorResponse(e);
       }
