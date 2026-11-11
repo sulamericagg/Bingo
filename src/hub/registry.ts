@@ -40,6 +40,8 @@ export interface MiniGameDef {
   launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle>;
   /** true se tiver modo online opcional (jogadores entram/saem a qualquer momento) */
   online?: boolean;
+  /** true: sem o botão manual de girar tela do hub (.gh-rot) — o jogo é sempre paisagem automática */
+  noRotate?: boolean;
 }
 
 /** Painéis globais acessíveis do hub (Loja, Passe, Bichinho, Social, Campeonatos...). */

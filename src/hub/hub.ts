@@ -1080,7 +1080,7 @@ function ensureRotBtn(show: boolean, game: string): void {
       void ensureLandscape(game);
     }
   };
-  rotBtn.hidden = !show;
+  rotBtn.hidden = !show || !!listGames().find((g) => g.id === game)?.noRotate;
 }
 function watch3d(root: HTMLElement, game: string): void {
   unwatch3d();

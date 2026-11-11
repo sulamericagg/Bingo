@@ -130,52 +130,6 @@
   .fl-toast,.fl-banner{top:calc(env(safe-area-inset-top,0px) + 100px)}
 }
 /* ---------- mundo aberto ---------- */
-.fw-hud{position:absolute;inset:0;z-index:5;pointer-events:none}
-.fw-hud *{box-sizing:border-box}
-.fw-touch{position:absolute;inset:0;pointer-events:auto;touch-action:none}
-.fw-joy{--jr:56px;position:absolute;left:calc(max(56px,9vw) + env(safe-area-inset-left,0px) + var(--jr));top:calc(100% - 18vh - env(safe-area-inset-bottom,0px) - var(--jr));width:calc(var(--jr)*2);height:calc(var(--jr)*2);transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);opacity:.35;transition:opacity .25s;pointer-events:none}
-.fw-joy.on{opacity:1;transition:opacity .08s}
-.fw-hud.lefty .fw-joy:not(.on){left:calc(100% - max(56px,9vw) - env(safe-area-inset-right,0px) - var(--jr))}
-.fw-hud.lefty .fw-btns{right:auto;left:calc(env(safe-area-inset-left,0px) + 10px)}
-.fw-hud.lefty .fw-use,.fw-hud.lefty .fw-veh,.fw-hud.lefty .fw-sell{right:auto;left:0}
-.fw-hud.lefty .fw-tool,.fw-hud.lefty .fw-up,.fw-hud.lefty .fw-down{right:auto;left:104px}
-.fw-joy i{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 2px 6px rgba(0,0,0,.3);transform:translate(-50%,-50%)}
-.fw-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 6px) 0 calc(env(safe-area-inset-left,0px) + 6px);display:flex;gap:5px;align-items:center;flex-wrap:wrap;pointer-events:none}
-.fw-top .fl-pill{min-height:30px;font-size:13px;padding:2px 9px 2px 3px;pointer-events:none}
-.fw-top .fl-btn.round{width:38px;height:38px}
-.fw-biome{padding-left:9px!important;font-size:12px!important;opacity:.9}
-.fw-nav i{display:flex;transition:transform .2s}
-.fw-right{margin-left:auto;display:flex;gap:5px}
-/* o meio do topo fica livre para o botão de girar do hub (.gh-rot, 40 px no centro) */
-.fw-left{display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:calc(50% - 30px);pointer-events:none}
-.fw-toasts{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 48px);transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:center;max-width:64%}
-.fw-toasts div{background:rgba(20,8,48,.7);border-radius:10px;padding:3px 10px;font-weight:700;font-size:12.5px;text-align:center;animation:flToast 2.6s forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.fw-toasts div.gold{color:#ffd34a}
-.fw-toasts div.warn{color:#ff9aa8}
-.fw-toasts div.biome{color:#bfffc8;font-size:14px}
-.fw-cmd{position:absolute;right:calc(env(safe-area-inset-right,0px) + 6px);top:calc(env(safe-area-inset-top,0px) + 50px);display:none;flex-direction:column;gap:6px;align-items:stretch;background:rgba(20,8,48,.55);padding:6px;border-radius:14px;max-width:62vw}
-.fw-cmd.show{display:flex}
-.fw-cmd .fl-btn{min-height:36px;font-size:13px;padding:4px 10px;justify-content:flex-start}
-.fw-btns{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:250px;height:200px;pointer-events:none}
-.fw-btns .hide{display:none!important}
-.fw-use{pointer-events:auto;position:absolute;right:0;bottom:0;width:92px;height:92px;border-radius:50%;border:none;font:inherit;color:#3a1a00;font-weight:800;font-size:12px;background:radial-gradient(circle at 40% 35%,#fff3a8,#ffb02e 75%);box-shadow:0 5px 0 #8a4a00,0 7px 14px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
-.fw-use span{display:flex}
-.fw-use.on{transform:translateY(3px);box-shadow:0 2px 0 #8a4a00}
-.fw-tool{position:absolute;right:104px;bottom:4px;width:52px!important;height:52px!important}
-.fw-up{position:absolute;right:104px;bottom:62px;width:52px!important;height:52px!important}
-.fw-down{position:absolute;right:104px;bottom:2px;width:52px!important;height:52px!important}
-.fw-grab{position:absolute;right:104px;bottom:122px;width:52px!important;height:52px!important;flex-direction:column;gap:0}
-.fw-grab b{font-size:9px;line-height:1}
-.fw-jump{position:absolute;right:164px;bottom:4px;width:52px!important;height:52px!important}
-.fw-hud.lefty .fw-grab{right:auto;left:104px}
-.fw-hud.lefty .fw-jump{right:auto;left:164px}
-.fw-veh{position:absolute;right:0;bottom:104px;font-size:12px;min-height:38px;padding:4px 10px;white-space:nowrap}
-.fw-sell{position:absolute;right:0;bottom:150px;font-size:13px;min-height:38px;padding:4px 12px}
-@media (orientation:portrait){
-  .fw-btns{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
-  .fw-toasts{top:calc(env(safe-area-inset-top,0px) + 86px);max-width:92%}
-  .fw-cmd{top:calc(env(safe-area-inset-top,0px) + 86px)}
-}
 /* ---------- margens seguras (barra de navegação do Android; env() costuma ser 0 no WebView) ---------- */
 .fl-hud,.fl-fps,.fw-hud{--edgeL:12px;--edgeR:12px;--edgeB:max(env(safe-area-inset-bottom,0px),14px)}
 @media (orientation:landscape){
@@ -196,10 +150,6 @@
 .fl-emotes{right:calc(var(--edgeR) + 40px);top:calc(env(safe-area-inset-top,0px) + 54px);flex-direction:row;gap:4px;background:rgba(20,8,48,.75);padding:5px;border-radius:14px}
 .fl-emotes .fl-btn.round{width:38px;height:38px}
 .fl-ctlpanel{right:var(--edgeR)}
-.fw-top{padding-left:var(--edgeL);padding-right:var(--edgeR)}
-.fw-btns{right:var(--edgeR);bottom:var(--edgeB)}
-.fw-hud.lefty .fw-btns{right:auto;left:var(--edgeL)}
-.fw-cmd{right:var(--edgeR)}
 @media (orientation:landscape) and (max-height:500px){
   .fl-chop{width:92px;height:92px}
   .fl-ctx{bottom:calc(var(--edgeB) + 100px)}
@@ -244,7 +194,6 @@
 .fl-pets.hide{display:none}
 .fl-lefty .fl-pets{right:auto;left:calc(var(--edgeL) + 104px)}
 @media (orientation:portrait){.fl-pets{right:var(--edgeR);bottom:calc(var(--edgeB) + 250px)}}
-.fw-top .fl-pill:has(> span:empty){display:none}
 /* minigame da serra: painel baixo e compacto, sem cobrir o centro */
 .fl-sawgame{position:absolute;left:50%;bottom:calc(var(--edgeB) + 8px);transform:translateX(-50%);width:min(380px,56vw);pointer-events:auto;background:rgba(20,8,48,.78);border-radius:16px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:stretch;z-index:8}
 .fl-sawgame .sg-t{display:flex;justify-content:space-between;font-weight:800;font-size:13px}

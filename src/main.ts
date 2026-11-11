@@ -37,6 +37,7 @@ import { registerTycoon } from './games/tycoon/register';
 import { registerDisaster } from './games/disaster/register';
 import { registerBand } from './games/band/register';
 import { registerFloresta } from './games/floresta/register';
+import { registerMundo } from './games/mundo/register';
 import { registerVoo } from './games/voo/register';
 import { registerCozinha } from './games/cozinha/register';
 import { registerCor } from './games/cor/register';
@@ -128,6 +129,7 @@ async function boot(): Promise<void> {
   registerDisaster();
   registerBand();
   registerFloresta();
+  registerMundo();
   registerVoo();
   registerCozinha();
   registerCor();

@@ -127,7 +127,10 @@ export function blockForItem(itemId: string): BlockDef | null {
   return null;
 }
 
-const soft = (id: string, n: () => string, cat: BlockCat, tex: Tex, o?: Opts) => def(id, n, cat, Render.Soft, tex, o);
+/* "macios" (terra, areia, neve…): o jogador espera CUBOS encaixados na grade (um macio sozinho virava um
+ * torrão redondo "flutuando"). Agora são caixas de quinas bem arredondadas que se juntam sem emenda com
+ * os vizinhos iguais; a ligação com o terreno suave é feita no motor (enche o chão por baixo ao colocar). */
+const soft = (id: string, n: () => string, cat: BlockCat, tex: Tex, o?: Opts) => def(id, n, cat, Render.Hard, tex, { tool: 'shovel', tier: 0, hardness: 0.6, bevel: 0.13, ...o });
 const hard = (id: string, n: () => string, cat: BlockCat, tex: Tex, o?: Opts) => def(id, n, cat, Render.Hard, tex, o);
 const plant = (id: string, n: () => string, tex: Tex, o?: Opts) => def(id, n, 'planta', Render.Cross, tex, { flammable: 2, ...o });
 const shape = (id: string, n: () => string, cat: BlockCat, sh: ShapeKind, tex: Tex, o?: Opts) => def(id, n, cat, Render.Shape, tex, { shape: sh, ...o });

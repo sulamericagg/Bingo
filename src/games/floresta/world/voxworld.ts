@@ -443,8 +443,15 @@ export class VoxWorld {
    * Amostras mais duras que `maxHard` ficam. Conta materiais removidos/colocados em `counts`.
    * Devolve quantas amostras mudaram de estado; `blocked` conta as duras demais.
    */
-  edit(x: number, y: number, z: number, r: number, fill: number, maxHard: number, counts: Map<number, number>, stat = { blocked: 0 }): number {
+  /** zonas protegidas (acampamentos/serraria, nave): true = não cava aqui */
+  guard: ((x: number, y: number, z: number, r: number) => boolean) | null = null;
+  edit(x: number, y: number, z: number, r: number, fill: number, maxHard: number, counts: Map<number, number>, stat: { blocked: number; prot?: number } = { blocked: 0 }): number {
     if (y + r > TOP_Y - 1) return 0;
+    if (fill < 0 && this.guard?.(x, y, z, r)) {
+      stat.blocked++;
+      stat.prot = (stat.prot ?? 0) + 1;
+      return 0;
+    }
     const x0 = Math.floor(x - r - 1);
     const x1 = Math.ceil(x + r + 1);
     const y0 = Math.max(BED_Y, Math.floor(y - r - 1));

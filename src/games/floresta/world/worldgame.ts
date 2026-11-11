@@ -335,6 +335,13 @@ export class WorldGame {
     this.world.vox.budgetMs = [2, 3, 4, 6][opts.tier];
     this.world.vox.natR = opts.tier <= 1 ? 1 : 2;
     this.world.onUnload = (c) => this.phys.forgetChunk(c);
+    // acampamentos (serraria) e a nave caída: o chão em volta não se cava (nada fica voando)
+    this.world.vox.guard = (x, y, z, r) => {
+      const c = this.world.gen.nearestCamp(x, z, 24);
+      if (c && Math.abs(x - (c.x + 1)) < 10 + r && Math.abs(z - c.z) < 5 + r && y > this.world.baseAt(c.x, c.z) - 6) return true;
+      const w = this.save.wreck;
+      return !!w && (x - w[0]) ** 2 + (z - w[2]) ** 2 < (5.5 + r) ** 2 && y > w[1] - 5;
+    };
     this.world.vox.onEditChunk = (c) => {
       this.phys.touchChunk(c);
       this.world.grassDirty(c);
@@ -979,8 +986,12 @@ export class WorldGame {
     } else this.vy -= 22 * dt;
     if (this.vy > 0 && (W.vox.dens(this.px, this.py + 1.85 + this.vy * dt, this.pz) > 0 || W.extraSolid?.(this.px, this.py + 1.85 + this.vy * dt, this.pz))) this.vy = 0;
     if (this.vy > 0 && W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < this.py + 1.85) this.vy = 0;
+    const wasGround = this.onGround;
     this.py += this.vy * dt;
     this.onGround = false;
+    // tolerância de descida: andando em rampa/duna para baixo o pé "gruda" no chão
+    // (antes: cada quadro virava queda livre → alterna chão/ar = tremedeira e pulo falhando)
+    const snapDown = wasGround && this.vy <= 0 && !swim && !inAq ? 0.3 + total * 1.6 : 0;
     if (this.py <= floor) {
       // degrau: sobe suave (sem teleporte visível)
       const up = floor - this.py;
@@ -988,16 +999,30 @@ export class WorldGame {
       if (this.py > floor) this.py = floor;
       if (this.vy < 0) this.vy = 0;
       this.onGround = true;
+    } else if (snapDown > 0 && this.py - floor <= snapDown) {
+      this.py = floor;
+      this.vy = 0;
+      this.onGround = true;
     }
+    this.coyote = this.onGround ? 0.12 : Math.max(0, this.coyote - dt);
     if (this.py < BED_Y - 4) {
       // caiu do mundo (não deveria): volta para a superfície
       this.py = W.heightAt(this.px, this.pz) + 1;
       this.vy = 0;
     }
-    if ((c.jump || (swim && c.up)) && (this.onGround || swim)) this.vy = swim ? 3.5 : 7.2;
+    if ((c.jump || (swim && c.up)) && (this.onGround || this.coyote > 0 || swim)) {
+      this.vy = swim ? 3.5 : 7.2;
+      this.coyote = 0;
+      this.onGround = false;
+    }
     if (inLava) this.hurt?.(dt * 18, 'lava');
     this.walkT += len * dt * 9;
-    const eye = this.py + EYE + Math.sin(this.walkT) * 0.05 * Math.min(1, len);
+    // altura da câmera suavizada no chão (degraus/rampas sem tranco); no ar segue direto
+    const eyeT = this.py + EYE;
+    const de = eyeT - this.eyeY;
+    if (this.onGround && Math.abs(de) < 0.6) this.eyeY += de * damp(22, dt);
+    else this.eyeY = eyeT;
+    const eye = this.eyeY + Math.sin(this.walkT) * 0.03 * Math.min(1, len);
     this.camera.position.set(this.px, eye, this.pz);
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
     if (this.camera.fov !== 70) {
@@ -1008,6 +1033,10 @@ export class WorldGame {
     this.poseHand(dt, len);
     this.phys.moveKin(this.pBody, this.px, this.py + 0.9, this.pz, this.yaw, 0, 0, dt);
   }
+  /** tempo de "coiote": ainda pode pular logo depois de sair da beirada */
+  private coyote = 0;
+  /** olho suavizado (m) */
+  private eyeY = 0;
   /** dano (sobrevivência liga isso) */
   hurt: ((n: number, why: string) => void) | null = null;
   /** dirigindo/montado: o corpo físico do jogador sai do caminho (não segura o veículo) */
@@ -1097,16 +1126,18 @@ export class WorldGame {
   }
 
   private _counts = new Map<number, number>();
-  private _stat = { blocked: 0 };
+  private _stat: { blocked: number; prot?: number } = { blocked: 0 };
   /** escava uma esfera no volume (pá, picareta, máquinas, explosões) */
   carve(x: number, y: number, z: number, r: number, hard: number, machine: boolean): Map<number, number> {
     const counts = this._counts;
     counts.clear();
     this._stat.blocked = 0;
+    this._stat.prot = 0;
     const W = this.world;
     const n = W.vox.edit(x, y, z, r, -1, hard, counts, this._stat);
     if (this._stat.blocked > 0 && n === 0) {
-      this.hud.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
+      if (this._stat.prot) this.hud.toast(t('mundo.protected', 'Aqui não dá para cavar: área protegida'), 'warn');
+      else this.hud.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
       audio.click();
       return counts;
     }

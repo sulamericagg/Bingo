@@ -47,6 +47,8 @@ export interface WorldSave {
   solo: boolean;
   /** sobrevivência/criação (inventário, construções…) */
   sb?: unknown;
+  /** destroços da nave da abertura [x, y, z, yaw] (marco no ponto de partida) */
+  wreck?: [number, number, number, number];
   /** o carrinho inicial já foi posto (pula a abertura) */
   vehPlaced?: boolean;
   /** opções de criação (tipo, relevo, biomas) */

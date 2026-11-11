@@ -19,7 +19,6 @@ import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
 import { Hud, type CtxKind, type HudHost } from './hud';
 import { forestSolo } from './touchcfg';
-import { consumePartySeat, partySeat } from '../../party/contract';
 
 /** visão (2D ou 3D) */
 export interface View {
@@ -39,7 +38,7 @@ export interface View {
 }
 
 export interface LaunchOpts {
-  mode?: '2d' | '3d' | 'world';
+  mode?: '2d' | '3d';
   /** dev: o seu Bloop é controlado pela IA */
   auto?: boolean;
   seed?: number;
@@ -67,7 +66,6 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   hud!: Hud;
   view: View | null = null;
   is3d = false;
-  world: import('./world/worldgame').WorldGame | null = null;
   joy = { x: 0, y: 0 };
   chopHeld = false;
   gov: QualityGovernor;
@@ -105,10 +103,8 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier, s) => {
         this.view?.setQuality?.(s);
         this.view?.setTier?.(tier);
-        this.world?.setTier(tier, s);
       }, onResScale: (k) => {
         this.view?.setResScale?.(k);
-        this.world?.setResScale(k);
       } });
     this.autoMe = !!opts.auto;
     this.sim.onFell = (tr) => this.announceFell(tr);
@@ -117,42 +113,10 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   }
 
   async start(): Promise<void> {
-    let mode = this.opts.mode;
-    // grupo (docs/PARTY.md): todos no mesmo Mundo Aberto online (o líder cria; código do grupo)
-    const seat = partySeat('floresta');
-    if (seat) consumePartySeat('floresta');
-    if (!mode && seat && webglOk()) mode = 'world';
-    if (!mode) mode = await this.chooseMode();
+    // o mundo aberto virou jogo próprio (games/mundo); aqui só 2D/3D
+    let mode: '2d' | '3d' = this.opts.mode === '2d' || this.opts.mode === '3d' ? this.opts.mode : await this.chooseMode();
     if (this.destroyed) return;
-    if (mode === 'world') {
-      try {
-        const m = await import('./world/worldgame');
-        const W = await import('./world/worlds');
-        if (this.destroyed) return;
-        if (seat) {
-          this.world = await m.openServers(this.wrap, { tier: this.gov.tier, exit: () => this.finish() }, { code: seat.code(6, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), host: seat.host });
-          if (!this.world) return this.finish();
-          this.world.onSample = (a, b) => this.gov.sample(a, b);
-          return;
-        }
-        const pick = await W.pickWorld(this.wrap, { servers: m.serversAvailable() });
-        if (this.destroyed) return;
-        if (!pick) return this.finish();
-        if (pick.kind === 'servers') {
-          this.world = await m.openServers(this.wrap, { tier: this.gov.tier, exit: () => this.finish() });
-          if (!this.world) return this.finish();
-        } else if (pick.kind === 'world') {
-          const id = pick.meta.id;
-          this.world = m.createWorld(this.wrap, { tier: this.gov.tier, exit: () => this.finish(), mode: pick.meta.mode, save: pick.save, onSave: (sv) => W.saveWorldById(id, sv) });
-        } else this.world = m.createWorld(this.wrap, { tier: this.gov.tier, exit: () => this.finish() });
-        this.world.onSample = (a, b) => this.gov.sample(a, b);
-        return;
-      } catch (e) {
-        console.warn('[floresta] mundo aberto indisponível', e);
-        this.wrap.querySelector('canvas')?.remove();
-        mode = '3d';
-      }
-    }
+    if (mode === '3d' && !webglOk()) mode = '2d';
     this.sim.s.mode = mode;
     writeSave(this.sim.s);
     if (mode === '3d') {
@@ -185,7 +149,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
 
   /* ------------------------------ escolha de modo ------------------------------ */
 
-  private chooseMode(): Promise<'2d' | '3d' | 'world'> {
+  private chooseMode(): Promise<'2d' | '3d'> {
     return new Promise((resolve) => {
       const gl = webglOk();
       const m = document.createElement('div');
@@ -195,13 +159,11 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
         <div class="fl-modes">
           <button class="fl-mode" data-m="2d"><canvas width="320" height="150"></canvas><b>${flIcon('square', 22)} 2D</b><span>${t('floresta.mode2d', 'Visão de lado, leve e rapidinho')}</span></button>
           <button class="fl-mode" data-m="3d" ${gl ? '' : 'disabled'}><canvas width="320" height="150"></canvas><b>${flIcon('cube', 22)} 3D · ${t('floresta.firstPerson', 'Primeira pessoa')}</b><span>${gl ? t('floresta.mode3dFps', 'Corte, carregue, jogue toras e dirija o caminhão!') : t('floresta.no3d', '3D indisponível neste aparelho')}</span></button>
-          <button class="fl-mode" data-m="world" ${gl ? '' : 'disabled'}><canvas width="320" height="150"></canvas><b>${flIcon('map', 22)} ${t('floresta.modeWorld', 'Mundo Aberto 3D')}</b><span>${t('floresta.modeWorldSub', 'Infinito: biomas, veículos, cavar e explodir!')}</span></button>
         </div></div>`;
       this.wrap.appendChild(m);
       const cvs = m.querySelectorAll('canvas');
       previewCard(cvs[0], false, this.sim.s.mode === '2d');
       previewCard(cvs[1], true, this.sim.s.mode === '3d');
-      previewCard(cvs[2], true, false);
       m.addEventListener('click', (e) => {
         const el = e.target as HTMLElement;
         if (el.closest('[data-x]')) {
@@ -212,7 +174,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
         const b = el.closest('[data-m]') as HTMLButtonElement | null;
         if (!b || b.disabled) return;
         m.remove();
-        resolve(b.dataset.m as '2d' | '3d' | 'world');
+        resolve(b.dataset.m as '2d' | '3d');
       });
     });
   }
@@ -587,13 +549,11 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   /* ------------------------------ handle ------------------------------ */
 
   pause(): void {
-    if (this.world) return this.world.pause();
     this.paused = true;
     this.chopHeld = false;
     writeSave(this.sim.s);
   }
   resume(): void {
-    if (this.world) return this.world.resume();
     if (this.hud?.modalOpen) return;
     this.paused = false;
     this.last = performance.now();
@@ -606,8 +566,6 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     if (this.destroyed) return;
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
-    this.world?.destroy();
-    this.world = null;
     writeSave(this.sim.s);
     for (const f of this.offs) f();
     try {
