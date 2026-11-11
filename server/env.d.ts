@@ -20,4 +20,6 @@ interface Env {
   FRIENDS: DurableObjectNamespace<import('./friends').FriendsHub>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
+  /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */
+  ADMIN_PASSWORD_HASH?: string;
 }

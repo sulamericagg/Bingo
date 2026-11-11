@@ -12,6 +12,8 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*", "/admin*"]
   },
+  // Hash PBKDF2 da senha do painel admin (seguro em público). O segredo ADMIN_PASSWORD, se existir, tem prioridade.
+  "vars": { "ADMIN_PASSWORD_HASH": "pbkdf2:100000:bc2d3d18e294745b5ddf0c25cae18ddf:711891b6519b683eef6ccfbf4d9ad2a1ef77e91ebf8cdf98b132a1e16050f4c1" },
   "kv_namespaces": [
     // sem "id": o banco KV é criado automaticamente na conta no primeiro deploy
     { "binding": "DATA" }

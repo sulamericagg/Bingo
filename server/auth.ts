@@ -15,10 +15,30 @@ async function hmacKey(password: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 
+/**
+ * Material secreto da sessão: o segredo ADMIN_PASSWORD (se configurado) ou, na falta dele,
+ * o hash PBKDF2 público ADMIN_PASSWORD_HASH ("pbkdf2:<iter>:<salt hex>:<hash hex>") do wrangler.jsonc.
+ */
 function requirePassword(env: Env): string {
-  const pw = env.ADMIN_PASSWORD;
+  const pw = env.ADMIN_PASSWORD || env.ADMIN_PASSWORD_HASH;
   if (!pw) throw new HttpError(503, 'no_password', 'O segredo ADMIN_PASSWORD ainda não foi configurado na Cloudflare.');
   return pw;
+}
+
+async function pbkdf2Hex(password: string, saltHex: string, iter: number): Promise<string> {
+  const salt = new Uint8Array(saltHex.match(/../g)!.map((x) => parseInt(x, 16)));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256);
+  return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Confere a senha digitada contra o segredo em texto ou contra o hash PBKDF2. */
+async function passwordMatches(env: Env, given: string): Promise<boolean> {
+  if (env.ADMIN_PASSWORD) return timingSafeEqual(await sha256(given), await sha256(env.ADMIN_PASSWORD));
+  const m = /^pbkdf2:(\d+):([0-9a-f]+):([0-9a-f]+)$/.exec(env.ADMIN_PASSWORD_HASH ?? '');
+  if (!m) return false;
+  const got = await pbkdf2Hex(given, m[2], Math.min(Number(m[1]), 100000));
+  return timingSafeEqual(await sha256(got), await sha256(m[3]));
 }
 
 export async function createToken(password: string, now = Date.now()): Promise<{ token: string; expiresAt: number }> {
@@ -66,7 +86,7 @@ export async function handleLogin(req: Request, env: Env): Promise<Response> {
   }
   const body = await readJson<{ password?: string }>(req);
   const given = String(body.password ?? '');
-  const ok = timingSafeEqual(await sha256(given), await sha256(pw));
+  const ok = await passwordMatches(env, given);
   if (!ok) {
     await env.DATA.put(rlKey, String(fails + 1), { expirationTtl: FAIL_WINDOW_S });
     return json({ error: 'wrong_password', message: 'Senha incorreta.' }, 401);
