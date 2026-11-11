@@ -257,3 +257,40 @@
 .vh-sheet{max-height:94%}
 .vh-vthumb{height:44px}
 }
+
+/* ---- cabine: só o essencial (o painel 3D já mostra os instrumentos) ---- */
+.voo-hud.seated .voo-mini{display:none}
+.voo-hud.seated .voo-crew{margin-top:0}
+.voo-hud.seated .voo-mate{width:38px;height:38px;border-radius:12px}
+.voo-hud.seated .voo-mate canvas{width:32px;height:32px}
+.voo-hud.seated .voo-mate .hat svg{width:18px;height:18px}
+.voo-hud.seated .voo-mate .st{width:16px;height:16px}
+.voo-hud.seated .voo-mate .st svg{width:12px;height:12px}
+.voo-hud.seated .voo-bars{padding:3px 6px}
+.voo-hud.seated .voo-bars b{width:44px}
+.voo-hud.seated.is3d .voo-pfd{display:none}
+.voo-hud.seated .voo-flytop{top:calc(var(--edge-t,8px) + 54px);right:var(--edge-r,12px);flex-direction:row;gap:8px}
+.voo-flytop .voo-btn.round{width:40px;height:40px}
+.voo-flytop .voo-btn.on{box-shadow:0 0 0 3px #ffd34a}
+.voo-hud.seated .voo-thr{width:50px;height:132px;bottom:calc(var(--edge-b,12px) + 10px);border-radius:14px}
+.voo-hud.seated .voo-thr i{height:30px;font-size:11px;border-radius:10px}
+.voo-hud.seated .voo-thr span{font-size:10px;top:-17px}
+.voo-hud.seated .voo-flyb{right:calc(var(--edge-r,12px) + 60px);bottom:calc(var(--edge-b,12px) + 10px);gap:5px}
+.voo-hud.seated .voo-flyb .voo-btn{min-height:32px;font-size:11px;padding:2px 8px;border-radius:12px}
+.voo-hud.seated .voo-flyb .voo-btn svg{width:18px;height:18px}
+.voo-hud.seated .voo-stickhint{font-size:11px;opacity:.75}
+.voo-chud{display:none;position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + 8px);transform:translateX(-50%);align-items:center;gap:10px;padding:4px 10px;border-radius:14px;background:rgba(20,10,50,.45);border:1.5px solid rgba(255,255,255,.35);backdrop-filter:blur(2px);font-weight:800;pointer-events:none}
+.voo-chud div{display:flex;flex-direction:column;align-items:center;line-height:1;min-width:38px}
+.voo-chud small{font-size:9px;opacity:.75;letter-spacing:1px}
+.voo-chud b{font-size:15px;font-variant-numeric:tabular-nums}
+.voo-chud svg{transition:transform .1s linear}
+.voo-hud.seated.ext .voo-chud{display:flex}
+.voo-hud.seated.ext .voo-pfd{display:none}
+.voo-ftut{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(20,8,48,.55);pointer-events:auto;padding:12px}
+.voo-ftut .card{width:min(360px,92%);background:linear-gradient(#fff9ec,#ffeccc);color:#2a0b5c;border:4px solid #2a0b5c;border-radius:22px;padding:10px 16px 14px;box-shadow:0 8px 0 rgba(42,11,92,.45);display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;animation:vooFolderIn .35s cubic-bezier(.2,1.4,.4,1)}
+.voo-ftut .dots{display:flex;gap:6px}
+.voo-ftut .dots i{width:9px;height:9px;border-radius:50%;background:rgba(42,11,92,.25)}
+.voo-ftut .dots i.on{background:#ff5cae}
+.voo-ftut h3{margin:0;font-size:18px}
+.voo-ftut p{margin:0 0 4px;font-size:13px;font-weight:700;opacity:.85;line-height:1.3}
+@media (max-height:380px){.voo-ftut .ic svg{width:40px;height:40px}.voo-ftut p{font-size:12px}}

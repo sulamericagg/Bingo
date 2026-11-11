@@ -353,14 +353,16 @@ export class View2D {
     const R = k * 0.42;
     for (const p of s.pax) {
       const c = this.sprite(PAX_SKINS[p.skin], p.panic > 0.55, -1);
-      const jump = p.standing ? Math.abs(Math.sin(p.bob * 6)) * k * 0.1 : 0;
-      const jit = p.panic > 0.55 ? Math.sin(p.bob * 22) * 2 : 0;
-      x.drawImage(c, this.sx(p.z) - R + jit, this.sy(p.x) - R - jump, R * 2, R * 2);
+      // sentado: preso à poltrona; de pé: pulinho lento (sem tremedeira)
+      const jump = p.standing ? Math.abs(Math.sin(p.bob * 3.4)) * k * 0.06 : 0;
+      const px = p.standing ? p.x : p.sx;
+      const pz = p.standing ? p.z : p.sz;
+      x.drawImage(c, this.sx(pz) - R, this.sy(px) - R - jump, R * 2, R * 2);
       if (p.panic > 0.7) {
         x.fillStyle = '#ff4d6a';
         x.font = gameFont(900, k * 0.35);
         x.textAlign = 'center';
-        x.fillText('!', this.sx(p.z), this.sy(p.x) - R - jump);
+        x.fillText('!', this.sx(p.standing ? p.z : p.sz), this.sy(p.standing ? p.x : p.sx) - R - jump);
       }
     }
     // comandante desmaiado

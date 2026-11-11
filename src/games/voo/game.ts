@@ -379,7 +379,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     if (this.tut >= 0) this.tutorial(dt);
     // passos menores para o voo ficar estável
     const n = dt > 0.025 ? 2 : 1;
-    for (let i = 0; i < n; i++) s.step(dt / n);
+    if (!this.simHeld) for (let i = 0; i < n; i++) s.step(dt / n);
     s.input.tap = false;
     this.events();
     this.view!.frame(dt);
@@ -509,6 +509,12 @@ export class VooGame implements MiniGameHandle, HudHost {
   extCam(): boolean {
     return this.is3d && (this.view as View3D).extCam;
   }
+  holdSim(on: boolean): void {
+    if (this.net.online) return;
+    this.simHeld = on;
+    if (!on) this.last = performance.now();
+  }
+  private simHeld = false;
 
   /* ------------------------------ fim ------------------------------ */
 

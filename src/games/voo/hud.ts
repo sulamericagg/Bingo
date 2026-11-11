@@ -31,6 +31,8 @@ export interface HudHost {
   onStand(): void;
   onCam(): void;
   extCam(): boolean;
+  /** pausa a simulação (só sozinho; online não pausa) */
+  holdSim?(on: boolean): void;
 }
 
 const TAU = Math.PI * 2;
@@ -63,6 +65,8 @@ export class Hud {
   private pfdX: CanvasRenderingContext2D;
   private navX: CanvasRenderingContext2D;
   private instT = 0;
+  private chudT = 0;
+  private flyTutEl: HTMLDivElement | null = null;
   private bannerT = 0;
   private lastCtx = '';
   private seated = false;
@@ -131,9 +135,10 @@ export class Hud {
           <button class="voo-btn ghost" data-gear>${vIcon('gear', 22)}<span></span></button>
         </div>
         <div class="voo-flytop">
-          <button class="voo-btn gold" data-stand>${vIcon('up', 22)}<span>${t('voo.f.stand', 'Levantar')}</span></button>
-          <button class="voo-btn ghost" data-cam>${vIcon('cam', 22)}<span>${t('voo.f.cam', 'Câmera')}</span></button>
+          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}</button>
+          <button class="voo-btn round gold" data-stand aria-label="${t('voo.f.stand', 'Levantar')}" title="${t('voo.f.stand', 'Levantar')}">${vIcon('up', 24)}</button>
         </div>
+        <div class="voo-chud"><div><small>${t('voo.ch.spd', 'VEL')}</small><b data-c="spd"></b></div><div><small>${t('voo.ch.alt', 'ALT')}</small><b data-c="alt"></b></div><div><small>${t('voo.ch.vs', 'V/S')}</small><b data-c="vs"></b></div><svg data-c="brg" viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="17" fill="rgba(0,0,0,.25)" stroke="#fff" stroke-width="2"/><path d="M20 5L28 24H12Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg></div>
       </div>
       <div class="voo-top">
         <button class="voo-btn round red" data-exit aria-label="${t('voo.exit', 'Sair')}">${vIcon('close', 26)}</button>
@@ -166,6 +171,7 @@ export class Hud {
     this.phase = this.q('[data-phase]');
     this.hullI = this.q('[data-hull]');
     this.panI = this.q('[data-pan]');
+    this.el.classList.toggle('is3d', host.is3d);
     if (!host.is3d) {
       this.ret.style.display = 'none';
       this.q('[data-cam]').style.display = 'none';
@@ -471,6 +477,8 @@ export class Hud {
     // modo sentado x a pé
     if (me.seated !== this.seated) {
       this.seated = me.seated;
+      this.el.classList.toggle('seated', me.seated);
+      if (me.seated) this.maybeFlyTut();
       this.walk.style.display = me.seated ? 'none' : '';
       this.fly.style.display = me.seated ? '' : 'none';
       h.actHeld = false;
@@ -506,6 +514,18 @@ export class Hud {
       const prog = me.actKind === 'spray' ? me.actProg : me.actProg;
       this.ring.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, h.actHeld && c.hold ? prog : 0))));
     } else {
+      const ext = h.extCam();
+      this.el.classList.toggle('ext', ext);
+      this.chudT -= dt;
+      if (ext && this.chudT <= 0) {
+        this.chudT = 0.1;
+        (this.q('[data-c="spd"]') as HTMLElement).textContent = String(Math.round(f.spd * 1.944));
+        (this.q('[data-c="alt"]') as HTMLElement).textContent = String(Math.round(f.alt));
+        const vs = this.q('[data-c="vs"]') as HTMLElement;
+        vs.textContent = (f.vs >= 0 ? '+' : '') + f.vs.toFixed(1);
+        vs.style.color = f.vs < -9 ? '#ff8aa0' : '';
+        (this.q('[data-c="brg"]') as HTMLElement).style.transform = `rotate(${f.brg}rad)`;
+      }
       const fb = this.q('[data-flaps] span');
       const ft = t('voo.f.flaps', 'Flape {n}', { n: f.flaps });
       if (fb.textContent !== ft) fb.textContent = ft;
@@ -553,6 +573,46 @@ export class Hud {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner.classList.remove('show');
     }
+  }
+
+  /** "Como pilotar": 3 passos na primeira vez que alguém senta no manche */
+  private maybeFlyTut(): void {
+    let seen = false;
+    try {
+      seen = localStorage.getItem('bw-voo-flytut') === '1';
+    } catch {
+      /* */
+    }
+    if (seen || this.flyTutEl) return;
+    const steps = [
+      { ico: vIcon('yoke', 54), title: t('voo.ft.t1', 'O manche (lado esquerdo)'), txt: t('voo.ft.s1', 'Arraste para baixo: o nariz sobe. Para cima: o nariz desce. Para os lados: o avião inclina e faz a curva.') },
+      { ico: vIcon('fuel', 54), title: t('voo.ft.t2', 'Potência (lado direito)'), txt: t('voo.ft.s2', 'Mais potência = mais velocidade. Devagar demais o avião perde sustentação (estol)!') },
+      { ico: `<svg viewBox="0 0 48 48" width="54" height="54"><path d="M24 4L40 40L24 31L8 40Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/></svg>`, title: t('voo.ft.t3', 'Siga a seta rosa'), txt: t('voo.ft.s3', 'A seta rosa aponta para a pista. Na descida, baixe flapes e trem e toque o chão bem devagar.') },
+    ];
+    let i = 0;
+    const d = document.createElement('div');
+    d.className = 'voo-ftut';
+    const render = () => {
+      const st = steps[i];
+      d.innerHTML = `<div class="card"><div class="dots">${steps.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div><div class="ic">${st.ico}</div><h3>${st.title}</h3><p>${st.txt}</p><button class="voo-btn ${i === steps.length - 1 ? 'green' : 'gold'}" data-n>${i === steps.length - 1 ? t('voo.ft.go', 'Voar!') : t('voo.ft.next', 'Próximo')}</button></div>`;
+    };
+    render();
+    d.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('[data-n]')) return;
+      i++;
+      if (i < steps.length) return render();
+      d.remove();
+      this.flyTutEl = null;
+      this.host.holdSim?.(false);
+      try {
+        localStorage.setItem('bw-voo-flytut', '1');
+      } catch {
+        /* */
+      }
+    });
+    this.el.appendChild(d);
+    this.flyTutEl = d;
+    this.host.holdSim?.(true);
   }
 
   private tipText(): string {
