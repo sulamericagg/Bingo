@@ -312,7 +312,7 @@ export class WorldGame {
     this.world.onUnload = (c) => this.phys.forgetChunk(c);
     this.world.vox.onEditChunk = (c) => this.phys.touchChunk(c);
     this.pBody = this.phys.kinBox(1, 0.32, 0.85, 0.32);
-    this.lantern = new THREE.PointLight(0xffd8a0, 0, 16, 1.6);
+    this.lantern = new THREE.PointLight(0xffd8a0, 0, 20, 1.6);
     this.camera.add(this.lantern);
 
     const lg = looseLogGeometry();
@@ -401,11 +401,8 @@ export class WorldGame {
         opts.net.attach(this);
         if (!this.save.vehPlaced) {
           this.save.vehPlaced = true;
-          this.save.veh.owned = [0];
-          const v = this.vehs[0];
-          v.x = this.px + 4;
-          v.z = this.pz + 3;
-          v.y = this.world.floorAt(v.x, this.py + 4, v.z);
+          this.save.veh.owned = [];
+          this.sb.starterVehicle(this.px + 4, this.pz + 3, this.yaw);
           this.applyOwned();
         }
         this.hud.addNet(() => void import('./net').then((n) => n.inviteFriends(opts.net!, root)));
@@ -530,7 +527,7 @@ export class WorldGame {
   /** sobrevivência: só aparecem os veículos montados (o quadriciclo é o carrinho inicial) */
   applyOwned(): void {
     for (const v of this.vehs) {
-      const on = !this.sb || this.save.veh.owned.includes(v.k);
+      const on = !this.sb;
       v.m.g.visible = on;
       v.box.off = !on;
       if (!on) this.phys.moveKin(v.kin, 0, -9999, 0, 0, 0, 0, 0);
@@ -710,7 +707,17 @@ export class WorldGame {
     return best;
   }
 
+  /** módulos (veículos fabricáveis): pontos físicos extras, passos antes/depois da física, toras em caçambas */
+  physPts: ((pts: number[]) => void) | null = null;
+  prePhys: ((dt: number) => void) | null = null;
+  postPhys: ((dt: number) => void) | null = null;
+  inCargo: ((b: CANNON.Body) => boolean) | null = null;
+  /** veículo fabricável perto (o botão de veículo entra nele) */
+  altVehicle: (() => boolean) | null = null;
+  altNear: (() => string | null) | null = null;
+
   toggleVehicle(): void {
+    if (this.driving < 0 && !this.nearVeh() && this.altVehicle?.()) return;
     if (this.driving >= 0) {
       const v = this.vehs[this.driving];
       if (v.k === VK.Heli && v.y - Math.max(this.world.waterLevel(v.x, v.z), this.world.heightAt(v.x, v.z)) > 2.5) {
@@ -850,6 +857,7 @@ export class WorldGame {
       if (!this.cine(dt)) this.cine = null;
     } else if (this.driving >= 0) this.drive(dt);
     else if (this.sb?.mm?.riding) this.poseHand(dt, 0);
+    else if (this.sb?.vm.driving) this.sb.driveTick(dt);
     else if (this.sb?.carts.riding) {
       this.sb.carts.ride(this);
       this.poseHand(dt, 0);
@@ -1218,16 +1226,19 @@ export class WorldGame {
         }
         if (!l.rest) pts.push(l.x, l.z);
         // longe e parada: congela (sem custo de física)
-        if (l.rest && d2 > 40 * 40) {
+        if (l.rest && d2 > 40 * 40 && !this.inCargo?.(b)) {
           this.phys.removeBody(b);
           l.b = null;
         }
       }
     }
+    this.physPts?.(pts);
     this.phys.syncGround(this.world.chunks, pts, this.time);
     this.phys.syncTrees(this.world.chunks, pts, this.world.hidden, dt);
     for (const v of this.vehs) this.bedLoad(v);
+    this.prePhys?.(dt);
     this.phys.step(dt);
+    this.postPhys?.(dt);
     let n = 0;
     for (const l of L) {
       if (n >= MAX_LOGS) break;
@@ -2037,21 +2048,36 @@ export class WorldGame {
   /** no subsolo: escurece, neblina fechada e lanterna */
   private underground(dt: number): void {
     const depth = this.driving >= 0 ? 0 : this.world.heightAt(this.px, this.pz) - this.py;
-    const tgt = clamp((depth - 3) / 7, 0, 1);
+    // coberto por rocha (caverna/túnel) mesmo num poço aberto ao lado
+    this.coverT -= dt;
+    if (this.coverT <= 0) {
+      this.coverT = 0.25;
+      const V = this.world.vox;
+      this.covered = this.driving < 0 && (V.dens(this.px, this.py + 5, this.pz) > 0 || V.dens(this.px, this.py + 11, this.pz) > 0);
+    }
+    const tgt = Math.max(clamp((depth - 3) / 7, 0, 1), this.covered ? 1 : 0);
     this.under += (tgt - this.under) * damp(2, dt);
     const u = this.under;
-    this.lantern.intensity = u * 3;
-    this.hemi.intensity = 1.25 * (1 - u * 0.55) * this.dayLight;
+    // tocha na mão: luz quente mais forte (também à noite na superfície)
+    const torch = this.sb?.held() === 'tocha' || this.sb?.held() === 'lampiao';
+    const night = 1 - this.dayLight;
+    this.lantern.intensity = u * 1.3 + (torch ? 1.1 * Math.max(u, night) : 0);
+    this.lantern.color.setHex(torch ? 0xffb060 : 0xffd8a0);
+    this.hemi.intensity = 1.25 * this.dayLight * (1 - u) + 0.62 * u;
     this.sun.intensity = 1.7 * (1 - u) * this.dayLight;
     if (u > 0.01) {
       const f = this.scene.fog as THREE.Fog;
-      _c.set('#120c1e');
+      _c.set('#2a2244');
       f.color.lerp(_c, u);
       (this.scene.background as THREE.Color).lerp(_c, u);
-      f.far = f.far * (1 - u) + 46 * u;
-      f.near = f.far * 0.25;
+      _top.set('#b8b0e0');
+      this.hemi.color.lerp(_top, u * 0.5);
+      f.far = f.far * (1 - u) + 72 * u;
+      f.near = f.far * (0.35 + 0.3 * u);
     }
   }
+  private coverT = 0;
+  private covered = false;
   /** 0..1 (noite → dia), controlado pelo ciclo de dia */
   dayLight = 1;
 
@@ -2088,7 +2114,9 @@ export class WorldGame {
       h.set('camp', d < 14 ? t('floresta.w.atMill', 'Serraria') : `${Math.round(d)} m`);
     }
     const near = !v ? this.nearVeh() : null;
-    h.show('.fw-veh', !!v || !!near);
+    const alt = !v && !near ? this.altNear?.() ?? null : null;
+    h.show('.fw-veh', !!v || !!near || !!alt);
+    if (alt) h.set('veh', `${flIcon('wheel', 24)}<span>${alt}</span>`, true);
     if (v) h.set('veh', `${WICONS.exitv}<span>${t('floresta.w.exit', 'Sair')}</span>`, true);
     else if (near) h.set('veh', `${flIcon('wheel', 24)}<span>${VDEFS[near.k].name()}</span>`, true);
     const canSell = !!this.campNear(16) && (this.carry > 0 || this.ore > 0 || (!!v && v.cargo > 0) || this.vehs.some((x) => x.cargo > 0 && !!this.world.gen.nearestCamp(x.x, x.z, 18)));

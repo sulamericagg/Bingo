@@ -48,7 +48,7 @@ export class WorldHud {
   private q = <T extends HTMLElement>(s: string) => this.el.querySelector(s) as T;
   private offs: (() => void)[] = [];
   private last: Record<string, string> = {};
-  private keys = new Set<string>();
+  keys = new Set<string>();
 
   constructor(
     root: HTMLElement,

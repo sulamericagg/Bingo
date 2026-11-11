@@ -9,7 +9,6 @@ import { t } from '../../../i18n';
 import { audio } from '../../../core/audio';
 import { tap } from '../../../core/haptics';
 import type { WorldGame } from './worldgame';
-import { VDEFS } from './worldgame';
 import { Bus, MODULES, type Entity, type GameMode, type MundoAPI, type MundoEvents, type Placeable } from './engine';
 import { ITEM, ITEMS, RECIPES, TOOL_TIERS, itemName, type ItemDef, type Recipe } from './items';
 import { Inventory, HOTBAR, type Stack } from './inv';
@@ -20,12 +19,16 @@ import { iconURL } from './itemicons';
 import { MATS } from './vox';
 import { Carts } from './rails';
 import { tntModel } from './wmodels';
+import { BLUEPRINT, BLUEPRINTS, ChaseCam, DriveHud, EXTRA_ITEMS, PARTS, VEH_GROUP, VEH_RECIPES, VehicleManager, openGarage, type PartCat } from './content/vehicles';
 import { MobManager, MOB_ITEMS, type MobHost, type Mob as BigMob, type BiomeId } from './content/mobs';
 import { WBIOMES } from './biomes';
 import { BLOCKS, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
 
-const DAY = 720; // s por dia inteiro
+const DAY = 720;
+/** kit antigo → planta do módulo de veículos */
+const KIT_BP = ['kart', 'trator', 'caminhao', 'escavadeira', 'trator', 'helicoptero', 'barco', 'picape'];
+const KEYMAP: Record<string, string> = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', q: 'KeyQ', r: 'KeyR', f: 'KeyF', ' ': 'Space', arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight' }; // s por dia inteiro
 const _v = new THREE.Vector3();
 const _c = new THREE.Color();
 const NIGHT = new THREE.Color('#1a1848');
@@ -87,6 +90,12 @@ export class Sandbox implements MundoAPI {
   blocks: BlockWorld;
   private grav = 0;
   private dig: { x: number; y: number; z: number; t: number } | null = null;
+  /** veículos fabricáveis (garagem da oficina) */
+  vm: VehicleManager;
+  private chase: ChaseCam;
+  private dhud: DriveHud | null = null;
+  private garageOpen = false;
+  private keyCodes = new Set<string>();
   /** bichos completos (animais, monstros, chefes) — no jogo solo */
   mm: MobManager | null = null;
   private aimMob: BigMob | null = null;
@@ -122,6 +131,11 @@ export class Sandbox implements MundoAPI {
       if (!ITEM.has(mi.id)) this.registerItem({ id: mi.id, name: mi.name, cat: mi.cat, stack: mi.stack ?? (mi.cat === 'comida' ? 32 : 99), ic: mi.ic as ItemDef['ic'], food: mi.food });
       if (mi.cook && !RECIPES.some((r) => r.st === 'fornalha' && r.ing?.[0][0] === mi.id)) RECIPES.push({ out: mi.cook, n: 1, st: 'fornalha', ing: [[mi.id, 1]], time: 5 });
     }
+    // peças de veículo (vp_*) + combustível/bateria/kit de reparo e receitas
+    const SHAPE: Record<PartCat, ItemDef['ic']['s']> = { chassis: 'chassis', wheel: 'wheel', track: 'tracks', engine: 'engine', seat: 'seat', cargo: 'bucket', box: 'chest', tank: 'cup', hitch: 'gear', crane: 'fork', drill: 'spike', blade: 'shovel', plow: 'hoe', float: 'balloon', propeller: 'rotor', rotor: 'rotor', wing: 'flag', light: 'lamp', armor: 'shell' };
+    for (const pd of PARTS) if (!ITEM.has(pd.id)) this.registerItem({ id: pd.id, name: pd.name, cat: 'peca', stack: 8, ic: { s: SHAPE[pd.cat] ?? 'gear', c: pd.color, c2: pd.color2 } });
+    for (const x of EXTRA_ITEMS) if (!ITEM.has(x.id)) this.registerItem({ id: x.id, name: x.name, cat: 'peca', stack: 16, ic: { s: 'kit', c: x.color } });
+    for (const r of VEH_RECIPES) if (!RECIPES.some((q) => q.out === r.out && q.st === r.st)) RECIPES.push({ out: r.out, n: r.n, st: r.st as Recipe['st'], ing: r.ing });
     const solidAt = (x: number, y: number, z: number) => {
       const n = this.blocks.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
       return n > 0 && blockDef(n).solid;
@@ -197,6 +211,68 @@ export class Sandbox implements MundoAPI {
     g.world.onUnload = (c) => {
       ou?.(c);
       this.bus.emit('chunkUnload', c);
+    };
+    // veículos fabricáveis
+    this.vm = new VehicleManager(
+      {
+        world: g.phys.w,
+        material: g.phys.groundMat,
+        group: VEH_GROUP,
+        waterLevel: (x, z) => g.world.waterLevel(x, z),
+        heightAt: (x, z) => g.world.heightAt(x, z),
+        dig: (x, y, z, r) => {
+          const m = new Map<number, number>();
+          g.world.vox.edit(x, y, z, r, -1, 4, m);
+          const out = new Map<string, number>();
+          for (const [mat, n] of m) {
+            const mi = MATS[mat];
+            if (mi?.drop) out.set(mi.drop, (out.get(mi.drop) ?? 0) + Math.max(1, Math.floor(n / mi.per)));
+          }
+          return out;
+        },
+        flatten: (x, z, r, y) => {
+          g.world.vox.edit(x, y + r + 0.2, z, r, -1, 2, new Map());
+        },
+        till: (x, z) => {
+          const cx = Math.floor(x / 2) * 2 + 1;
+          const cz = Math.floor(z / 2) * 2 + 1;
+          const y = g.world.floorAt(cx, g.py + 3, cz);
+          if (!this.builds.occupied('canteiro', cx, y, cz, 0)) this.builds.add('canteiro', cx, y, cz, 0);
+        },
+        onItems: (_v, items) => {
+          for (const [id, n] of items) if (ITEM.has(id)) this.give(id, n);
+        },
+        sound: (id) => {
+          if (id === 'crash') audio.crack();
+          else audio.click();
+        },
+        say: (text) => this.toast(text),
+      },
+      g.scene,
+      g.opts.tier as 0 | 1 | 2 | 3,
+    );
+    this.chase = new ChaseCam((this.vm as unknown as { host: ConstructorParameters<typeof ChaseCam>[0] }).host);
+    g.physPts = (pts) => {
+      for (const v of this.vm.list) if (!v.parked) pts.push(v.body.position.x, v.body.position.z);
+    };
+    g.prePhys = (dt) => {
+      this.vm.focus.set(g.px, 0, g.pz);
+      if (this.dhud) {
+        const kc = this.keyCodes;
+        kc.clear();
+        for (const k of g.hud.keys) kc.add(KEYMAP[k] ?? k);
+        this.dhud.apply(dt, kc);
+      }
+      this.vm.preStep(dt);
+    };
+    g.postPhys = (dt) => this.vm.postStep(dt);
+    g.inCargo = (b) => this.vm.list.some((v) => v.cargo.has(b));
+    g.altNear = () => (this.vm.nearest(g.px, g.py, g.pz) ? t('mundo.drive', 'Dirigir') : null);
+    g.altVehicle = () => {
+      const v = this.vm.nearest(g.px, g.py, g.pz);
+      if (!v) return false;
+      this.drive(v);
+      return true;
     };
     if (!g.opts.net) {
       this.mm = new MobManager(this.mobHost(), g.scene, g.renderer, g.opts.tier as 0 | 1 | 2 | 3, g.hud.el);
@@ -421,6 +497,92 @@ export class Sandbox implements MundoAPI {
     };
   }
 
+  /* ============================ veículos fabricáveis ============================ */
+
+  private openGarage(p: Piece): void {
+    if (this.garageOpen) return;
+    this.garageOpen = true;
+    const g = this.g;
+    const inv = this.inv;
+    const creative = this.mode === 'criativo';
+    openGarage(g.root, {
+      inv: { count: (id) => (creative ? 999 : inv.count(id)), take: (id, n) => creative || inv.remove(id, n), give: (id, n) => void inv.give(id, n) },
+      station: 'oficina',
+      maxTier: 3,
+      onBuild: (d) => {
+        const yaw = g.yaw;
+        this.vm.spawn(d, p.x - Math.sin(yaw) * 0 + 4 * Math.cos(yaw), p.z + 4 * Math.sin(yaw), yaw);
+        this.toast(t('mundo.vehBuilt', 'Veículo pronto! Chegue perto e toque em Dirigir'), 'good');
+        audio.cash();
+      },
+      onClose: () => {
+        this.garageOpen = false;
+        this.hot.refresh();
+      },
+    });
+    void BLUEPRINTS;
+  }
+
+  /** entra num veículo fabricável */
+  drive(v: import('./content/vehicles').Vehicle): void {
+    const g = this.g;
+    this.vm.enter(v);
+    g.hud.el.style.display = 'none';
+    g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = false;
+    this.handMesh.visible = false;
+    this.chase.reset();
+    this.dhud = new DriveHud(g.root, v, {
+      exit: () => {
+        const p = this.vm.exit();
+        this.dhud?.destroy();
+        this.dhud = null;
+        g.hud.el.style.display = '';
+        g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = true;
+        if (p) {
+          g.px = p.x;
+          g.py = p.y;
+          g.pz = p.z;
+          g.vy = 0;
+        }
+      },
+      refuel: () => {
+        let used = 0;
+        for (const id of ['combustivel', 'bateria', 'carvao', 'tora', 'tabua', 'graveto']) {
+          const n = this.inv.count(id);
+          if (!n) continue;
+          const u = v.refuel(id, n);
+          if (u > 0) {
+            this.inv.remove(id, u);
+            used += u;
+            break;
+          }
+        }
+        return used;
+      },
+      repair: () => (this.inv.remove('kit_reparo', 1) ? (v.repair('kit_reparo'), true) : this.inv.remove('barra_ferro', 1) ? (v.repair('barra_ferro'), true) : false),
+      hitch: () => {
+        const tr = this.vm.trailerNear(v);
+        if (v.hitch) v.unhitch();
+        else if (tr) v.hitchTo(tr);
+      },
+      canHitch: () => !!v.hitch || !!this.vm.trailerNear(v),
+      camDrag: (dy, dp) => this.chase.drag(dy, dp),
+      horn: () => audio.click(),
+    });
+  }
+  /** chamado no lugar de andar enquanto dirige um veículo fabricável */
+  driveTick(dt: number): boolean {
+    const v = this.vm.driving;
+    if (!v) return false;
+    const g = this.g;
+    this.chase.update(g.camera, v, dt);
+    this.dhud?.update(dt);
+    g.px = v.body.position.x;
+    g.py = v.body.position.y;
+    g.pz = v.body.position.z;
+    return true;
+  }
+
   /* ============================ início ============================ */
 
   /** kit inicial (depois da queda da nave) */
@@ -573,8 +735,9 @@ export class Sandbox implements MundoAPI {
     const f = g.scene.fog as THREE.Fog;
     const dusk = Math.max(0, 1 - Math.abs(s) * 4) * 0.35;
     if (day < 1) {
-      bg.lerp(NIGHT, (1 - day) * 0.9);
-      f.color.lerp(NIGHT, (1 - day) * 0.9);
+      const nk = (1 - day) * 0.9 * (1 - g.under);
+      bg.lerp(NIGHT, nk);
+      f.color.lerp(NIGHT, nk);
     }
     if (dusk > 0) {
       bg.lerp(DUSK, dusk);
@@ -782,6 +945,7 @@ export class Sandbox implements MundoAPI {
       audio.click();
       return this.builds.onChange?.('upd', p);
     }
+    if (d.station === 'oficina') return this.openGarage(p);
     if (d.chest || d.furnace || d.station) return this.openInv(p);
     if (d.bed) return this.sleep(p);
     if (d.plot) {
@@ -1169,22 +1333,27 @@ export class Sandbox implements MundoAPI {
     this.burst(5, s.x, s.y + 0.3, s.z, it.ic.c, 2);
   }
 
+  /** kits antigos montam a planta equivalente dos veículos fabricáveis */
   private buildVehicle(k: number): void {
     const g = this.g;
-    const v = g.vehs[k];
+    const bp = BLUEPRINT.get(KIT_BP[k] ?? 'kart');
+    if (!bp) return;
+    const yaw = g.yaw;
+    const x = g.px - Math.sin(yaw) * 5;
+    const z = g.pz - Math.cos(yaw) * 5;
+    const v = this.vm.spawn(bp.design, x, z, yaw);
     if (!v) return;
-    const fx = -Math.sin(g.yaw);
-    const fz = -Math.cos(g.yaw);
-    v.x = g.px + fx * 5;
-    v.z = g.pz + fz * 5;
-    v.y = g.world.floorAt(v.x, g.py + 3, v.z);
-    v.yaw = g.yaw + Math.PI / 2;
-    if (!g.save.veh.owned.includes(k)) g.save.veh.owned.push(k);
-    g.applyOwned();
+    if (bp.trailer) this.vm.spawn(bp.trailer, x + Math.sin(yaw) * 5, z + Math.cos(yaw) * 5, yaw);
     if (this.mode !== 'criativo') this.inv.useHeld();
-    this.burst(30, v.x, v.y + 1, v.z, '#ffd34a', 6);
-    this.toast(t('mundo.vehReady', '{v} montado!', { v: VDEFS[k].name() }), 'good');
+    this.burst(30, x, g.py + 1, z, '#ffd34a', 6);
+    this.toast(t('mundo.vehReady', '{v} montado!', { v: bp.name() }), 'good');
     audio.cash();
+  }
+  /** veículo inicial (depois da queda da nave) */
+  starterVehicle(x: number, z: number, yaw: number): void {
+    const bp = BLUEPRINT.get('kart') ?? BLUEPRINTS[0];
+    const v = this.vm.spawn(bp.design, x, z, yaw);
+    if (v) v.refuel('carvao', 3);
   }
 
   /* ============================ mão ============================ */
@@ -1209,7 +1378,7 @@ export class Sandbox implements MundoAPI {
       }
     }
     this.lastHeld = id;
-    const show = !useModel && !!it && g.driving < 0 && !g.held;
+    const show = !useModel && !!it && g.driving < 0 && !g.held && !this.vm.driving;
     this.handMesh.visible = show;
     if (!show) return;
     if (this.handId !== id) {
@@ -1251,6 +1420,7 @@ export class Sandbox implements MundoAPI {
       carts: this.carts.toJSON(),
       blk: this.encodeBlocks(),
       mobs: this.mm?.save(),
+      vparts: this.vm.save(),
       nights: this.nights,
       ext,
     };
@@ -1268,6 +1438,7 @@ export class Sandbox implements MundoAPI {
     this.carts.load(o.carts);
     if (o.blk) this.decodeBlocks(o.blk);
     if (o.mobs) this.mm?.load(o.mobs);
+    if (o.vparts) this.vm.load(o.vparts);
     this.nights = +o.nights || 0;
     if (o.ext) this.bus.emit('load', o.ext);
     this.hot.refresh();
@@ -1303,6 +1474,8 @@ export class Sandbox implements MundoAPI {
   dispose(): void {
     this.blocks.dispose();
     this.mm?.dispose();
+    this.dhud?.destroy();
+    this.vm.dispose();
     for (const e of this.ents) e.dispose(this);
     this.ents = [];
     this.builds.dispose();

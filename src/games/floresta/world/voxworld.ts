@@ -30,6 +30,8 @@ interface Job {
 export class VoxWorld {
   readonly vg: VolGen;
   readonly lavaMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
+  /** subsolo: facetado (rocha lapidada, nítida perto da lanterna) */
+  readonly caveMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   private jobs: Job[] = [];
   private wantT = 0;
   /** jogador (para prioridade e seções "perto") */
@@ -341,7 +343,8 @@ export class VoxWorld {
     S.idx = null;
     if (ni > 0) {
       const { g, pos, idx } = takeMesh(nv, ni);
-      const m = new THREE.Mesh(g, this.h.groundMat);
+      const [s0] = this.band(v);
+      const m = new THREE.Mesh(g, S.s < s0 || BED_Y + (S.s + 1) * SEC < Math.min(...[c.minY]) - 1 ? this.caveMat : this.h.groundMat);
       m.matrixAutoUpdate = false;
       m.receiveShadow = true;
       this.h.scene.add(m);

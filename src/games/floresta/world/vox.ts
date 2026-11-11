@@ -10,7 +10,7 @@
  *  Densidade > 0 = sólido.  Valores quantizados em int8 (×10).
  * ============================================================ */
 import * as THREE from 'three';
-import { CH, RES, VN, WATER_Y } from './gen';
+import { CH, RES, VN } from './gen';
 import type { Chunk } from './chunk';
 import { fbm } from './noise';
 
@@ -665,9 +665,17 @@ export function meshSection(v: VolChunk, S: Section, ctx: MeshCtx): { nv: number
           r = g = b = 0.5;
         }
         // cavernas mais escuras quanto mais fundo (sem luz real)
-        const wy = y0 + vy;
-        if (wy < WATER_Y - 6 && bm !== M.Cristal && bm !== M.Gema) {
-          const k = Math.max(0.55, 1 - (WATER_Y - 6 - wy) / 110);
+
+        if (bm >= M.Carvao && bm <= M.Gema && bm !== M.Carvao) {
+          // minério: pintinhas que brilham (alguns vértices bem claros)
+          const h = hash3(x0 + x, y0 + y, z0 + z, 77);
+          const k = h > 0.72 ? 1.9 : 1.15 + h * 0.3;
+          r = Math.min(1, r * k);
+          g = Math.min(1, g * k);
+          b = Math.min(1, b * k);
+        } else if (bm !== M.Topo) {
+          // granulado: cada vértice um tom (dá textura sem textura)
+          const k = 0.8 + hash3(x0 + x, y0 + y, z0 + z, 91) * 0.32;
           r *= k;
           g *= k;
           b *= k;
