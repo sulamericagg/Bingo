@@ -83,7 +83,8 @@ export class Creation {
     this.mesh.receiveShadow = !!o.shadows;
     this.mesh.userData.creation = this;
     this.group.add(this.mesh);
-    this.body = partsToBody(b.parts, this.scale, this.mass(), b.mat === 'inflate' ? o.matBouncy : o.matDef);
+    // veículo nunca quica (balão-carro empinava ao cair)
+    this.body = partsToBody(b.parts, this.scale, this.mass(), b.mat === 'inflate' && !b.wheels.length ? o.matBouncy : o.matDef);
     this.body.position.set(o.pos.x, o.pos.y, o.pos.z);
     if (o.quat) this.body.quaternion.set(o.quat.x, o.quat.y, o.quat.z, o.quat.w);
     if (o.plane2d) {
@@ -189,6 +190,15 @@ export class Creation {
       w.body.wakeUp();
     }
     if (Math.abs(throttle) + Math.abs(steer) > 0.05) this.body.wakeUp();
+  }
+
+  /** fica de pé (a cada sub-passo): o torque de reação do motor empinava o carrinho até capotar */
+  upright(h: number, k = 40): void {
+    const av = this.body.angularVelocity;
+    const up = this.body.quaternion.vmult(new CANNON.Vec3(0, 1, 0));
+    if (up.y < -0.3) return; // de ponta-cabeça: deixa o jogador desvirar
+    av.x += (up.z * k - av.x * 7) * h;
+    av.z += (-up.x * k - av.z * 7) * h;
   }
 
   setScale(s: number): void {

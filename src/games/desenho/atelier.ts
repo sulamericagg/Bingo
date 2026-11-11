@@ -606,6 +606,7 @@ export class Atelier implements Stage {
   private preStep = (): void => {
     const g = 9.82;
     const tm0 = performance.now() / 1000;
+    if (this.pilot?.isVehicle && this.pilot.spawned) this.pilot.upright(1 / 60, 25);
     for (const c of this.creations) {
       if (!c.spawned || !c.recipe.fly || this.held?.c === c) continue;
       const home = this.homes.get(c.id);

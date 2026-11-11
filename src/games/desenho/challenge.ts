@@ -159,6 +159,7 @@ export class Challenge implements Stage {
     // empuxo a cada sub-passo da física (o cannon zera as forças depois de cada um)
     this.world.addEventListener('preStep', () => {
       if (this.started) this.buoyancy(1 / 60);
+      if (this.started && this.lv.kind === 'car') for (const c of this.creations) if (c.isVehicle && c.spawned) c.upright(1 / 60);
     });
     // papel transparente por cima de tudo
     const r = layer.getBoundingClientRect();
