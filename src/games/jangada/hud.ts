@@ -8,7 +8,10 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { bindButton, type BoundButton } from '../../ui/touch';
-import { BUILD_ORDER, COOK_LIST, FIRE_MAX, FIRE_UP, ITEM, PIECE, RECIPES, bagHas, itemName, type Bag, type Cat, type ItemId, type PK, type Recipe } from './data';
+import { BOATS, BUILD_ORDER, COOK_LIST, FIRE_MAX, FIRE_UP, ITEM, PIECE, RECIPES, bagHas, itemName, type Bag, type BoatK, type Cat, type ItemId, type PK, type Recipe } from './data';
+import type { Trade } from './biomes';
+import { Compass } from './mapui';
+import { Qte } from './qte';
 import { jIcon } from './icons';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -25,6 +28,8 @@ export interface HudCb {
   rotate(): void;
   cancel(): void;
   pick(k: PK | 'trash'): void;
+  map(): void;
+  sneak(): void;
 }
 export interface HotItem {
   id: ItemId;
@@ -67,6 +72,10 @@ export class Hud {
   private useKey = '';
   private hintKey = '';
   private bannerT = 0;
+  readonly compass: Compass;
+  readonly qte: Qte;
+  private bossKey = '';
+  private inkT = 0;
   constructor(
     private root: HTMLElement,
     cb: HudCb,
@@ -75,7 +84,11 @@ export class Hud {
     d.className = 'jg-hud';
     d.innerHTML = `
       <div class="jg-uw"></div>
+      <div class="jg-vig"></div>
+      <div class="jg-ink"></div>
       <div class="jg-flash"></div>
+      <div class="jg-lbx"></div>
+      <div class="jg-boss"><b></b><div><i></i></div></div>
       <div class="jg-top">
         <button class="jg-ib" data-a="pause" aria-label="${esc(t('jangada.pause', 'Pausa'))}">${jIcon('pause', 26)}</button>
         <div class="jg-day jg-pe"></div>
@@ -100,6 +113,7 @@ export class Hud {
       <button class="jg-btn jg-act" data-a="act"></button>
       <button class="jg-btn jg-jump" data-a="jump" aria-label="${esc(t('jangada.jump', 'Pular'))}">${jIcon('jump', 34)}</button>
       <button class="jg-btn jg-dive" data-a="dive" aria-label="${esc(t('jangada.diveB', 'Mergulhar'))}">${jIcon('dive', 30)}</button>
+      <button class="jg-btn jg-sneak" data-a="sneak" aria-label="${esc(t('jangada.sneak', 'Agachar'))}">${jIcon('sneak', 32)}</button>
       <div class="jg-fade"></div>`;
     root.appendChild(d);
     this.el = d;
@@ -108,6 +122,9 @@ export class Hud {
     this.pal = this.q('.jg-pal');
     this.cost = this.q('.jg-cost');
     this.objEl = this.q('.jg-obj');
+    this.compass = new Compass(this.q('.jg-top'), () => cb.map());
+    this.q('.jg-top').insertBefore(this.compass.el, this.q('.jg-cam'));
+    this.qte = new Qte(d);
     const b = (sel: string, o: Parameters<typeof bindButton>[1]) => this.binds.push(bindButton(this.q(sel), o));
     b('[data-a=pause]', { onPress: () => cb.pause() });
     b('[data-a=cam]', { onPress: () => cb.cam() });
@@ -117,6 +134,7 @@ export class Hud {
     b('[data-a=dive]', { onPress: () => cb.dive(true), onRelease: () => cb.dive(false) });
     b('[data-a=rot]', { onPress: () => cb.rotate() });
     b('[data-a=cancel]', { onPress: () => cb.cancel() });
+    b('[data-a=sneak]', { onPress: () => cb.sneak() });
     this.hot.addEventListener('pointerdown', (e) => {
       const s = (e.target as HTMLElement).closest<HTMLElement>('[data-i]');
       if (!s) return;
@@ -152,6 +170,42 @@ export class Hud {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.q('.jg-banner').classList.remove('on');
     }
+    if (this.inkT > 0) {
+      this.inkT -= dt;
+      if (this.inkT <= 0) this.q('.jg-ink').classList.remove('on');
+    }
+    this.qte.update(dt);
+  }
+  /** vida baixa: borda vermelha que pulsa */
+  vignette(hp: number): void {
+    const v = this.q('.jg-vig');
+    const k = hp < 50 ? Math.min(1, (50 - hp) / 30) : 0;
+    v.style.opacity = k.toFixed(2);
+  }
+  /** barra do chefe (null = some) */
+  setBoss(name: string | null, frac = 0): void {
+    const k = name ? `${name}|${Math.round(frac * 200)}` : '';
+    if (k === this.bossKey) return;
+    this.bossKey = k;
+    const el = this.q('.jg-boss');
+    el.classList.toggle('on', !!name);
+    this.el.classList.toggle('bossOn', !!name);
+    if (name) {
+      el.querySelector('b')!.textContent = name;
+      (el.querySelector('i') as HTMLElement).style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+    }
+  }
+  letterbox(on: boolean): void {
+    this.q('.jg-lbx').classList.toggle('on', on);
+  }
+  ink(sec: number): void {
+    this.inkT = sec;
+    this.q('.jg-ink').classList.add('on');
+  }
+  setSneak(show: boolean, on: boolean): void {
+    const b = this.q('.jg-sneak');
+    b.style.display = show ? 'grid' : 'none';
+    b.classList.toggle('down', on);
   }
 
   setDay(day: number, night: boolean, storm: boolean, camLbl: string): void {
@@ -169,9 +223,13 @@ export class Hud {
       items.map((it, i) => `<button class="jg-slot${i === sel ? ' on' : ''}" data-i="${i}" aria-label="${esc(itemName(it.id))}">${jIcon(it.id, 32)}${ITEM[it.id].kind === 'tool' ? '' : `<i>${it.n}</i>`}</button>`).join('') +
       `<button class="jg-slot craft" data-i="craft" aria-label="${esc(t('jangada.craft', 'Oficina'))}">${jIcon('craft', 30)}</button>`;
   }
-  setBars(hp: number, food: number, water: number, air: number | null): void {
+  private barsKey = '';
+  setBars(hp: number, food: number, water: number, air: number | null, extra: [string, number, string] | null = null): void {
+    const k = [hp, food, water, air ?? -1, extra ? extra[0] + extra[1] : ''].map((v) => (typeof v === 'number' ? Math.round(v) : v)).join('|');
+    if (k === this.barsKey) return;
+    this.barsKey = k;
     const bar = (ic: string, v: number, col: string) => `<div class="jg-bar${v < 22 ? ' low' : ''}">${jIcon(ic, 17)}<div><i style="width:${Math.max(0, Math.min(100, v))}%;background:${col}"></i></div></div>`;
-    this.q('.jg-bars').innerHTML = bar('heart', hp, '#ff5c6a') + bar('food', food, '#ffad3a') + bar('drop', water, '#3ac8ff') + (air !== null ? bar('air', air, '#d8f6ff') : '');
+    this.q('.jg-bars').innerHTML = bar('heart', hp, '#ff5c6a') + bar('food', food, '#ffad3a') + bar('drop', water, '#3ac8ff') + (air !== null ? bar('air', air, '#d8f6ff') : '') + (extra ? bar(extra[0], extra[1], extra[2]) : '');
   }
   setMissions(list: MisView[]): void {
     const k = list.map((m) => m.txt + m.n + '/' + m.of).join('|');
@@ -311,15 +369,16 @@ export class Hud {
   }
 
   /** oficina: abas, grade de receitas, detalhes com tenho/preciso */
-  openCraft(o: { have: () => Bag; fireLv: () => number; craft: (r: Recipe) => boolean; build: (k: PK) => void; close: () => void; upFire: () => boolean; hasFire: () => boolean }): void {
-    let cat: Cat = 'mat';
-    let sel: string = 'rope';
+  openCraft(o: { have: () => Bag; fireLv: () => number; craft: (r: Recipe) => boolean; build: (k: PK) => void; close: () => void; upFire: () => boolean; hasFire: () => boolean; boat: (k: BoatK) => boolean; tab?: Cat }): void {
+    let cat: Cat = o.tab ?? 'mat';
+    let sel: string = cat === 'boat' ? 'b0' : 'rope';
     const card = this.panel('', 'jg-craft');
     const tabs: [Cat, string, string][] = [
       ['mat', 'rope', t('jangada.cat.mat', 'Materiais')],
       ['tool', 'axe', t('jangada.cat.tool', 'Ferramentas')],
       ['build', 'found', t('jangada.cat.build', 'Construir')],
       ['food', 'fishc', t('jangada.cat.food', 'Comida')],
+      ['boat', 'canoe', t('jangada.cat.boat', 'Barcos')],
     ];
     const draw = () => {
       const have = o.have();
@@ -357,6 +416,17 @@ export class Hud {
         side = `${jIcon(d.id, 56)}<b>${esc(d.n())}</b><small>${esc(d.say())}</small><div class="jg-costs">${costChips(d.cost, have, 22)}</div>
           ${lock ? `<span class="jg-tag">${jIcon('fire', 14)}${esc(t('jangada.needFire', 'Fogueira {n}', { n: d.fire ?? 1 }))}</span>` : ''}
           <button class="jg-b o" data-build ${lock ? 'disabled' : ''}>${jIcon('hammer', 22)}${esc(t('jangada.build', 'Construir'))}</button>`;
+      } else if (cat === 'boat') {
+        if (!/^b[0-2]$/.test(sel)) sel = 'b0';
+        grid = BOATS.map((b) => {
+          const lock = (b.fire ?? 0) > fl;
+          return `<button class="jg-rc${'b' + b.k === sel ? ' on' : ''}${!lock && bagHas(have, b.cost) ? ' can' : ''}${lock ? ' lock' : ''}" data-r="b${b.k}" aria-label="${esc(b.n())}">${jIcon(b.icon, 44)}</button>`;
+        }).join('');
+        const b = BOATS[+sel.slice(1)];
+        const lock = (b.fire ?? 0) > fl;
+        side = `${jIcon(b.icon, 56)}<b>${esc(b.n())}</b><small>${esc(b.say())}</small><div class="jg-costs">${costChips(b.cost, have, 22)}</div>
+          ${lock ? `<span class="jg-tag">${jIcon('fire', 14)}${esc(t('jangada.needFire', 'Fogueira {n}', { n: b.fire ?? 1 }))}</span>` : ''}
+          <button class="jg-b g" data-boat ${lock || !bagHas(have, b.cost) ? 'disabled' : ''}>${jIcon('build', 22)}${esc(t('jangada.makeBoat', 'Pôr na água'))}</button>`;
       } else {
         grid = COOK_LIST.map(([a, b, lv]) => `<button class="jg-rc${b === sel ? ' on' : ''}${(have[a] ?? 0) > 0 && lv <= fl ? ' can' : ''}${lv > fl ? ' lock' : ''}" data-r="${b}">${jIcon(b, 40)}</button>`).join('') + `<button class="jg-rc${sel === 'water' ? ' on' : ''}" data-r="water">${jIcon('water', 40)}</button>`;
         if (!COOK_LIST.some((c) => c[1] === sel) && sel !== 'water') sel = 'fishc';
@@ -384,6 +454,9 @@ export class Hud {
         const r = RECIPES.find((x) => x.id === sel);
         if (r) o.craft(r);
       } else if (b.dataset.build !== undefined) return o.build(sel as PK);
+      else if (b.dataset.boat !== undefined) {
+        if (o.boat(+sel.slice(1) as BoatK)) return o.close();
+      }
       else if (b.dataset.up !== undefined) o.upFire();
       draw();
     });
@@ -416,7 +489,51 @@ export class Hud {
     return draw;
   }
 
+  /** trocas com um dono amigo */
+  openTrade(o: { title: string; icon: string; hi: string; trades: Trade[]; done: (i: number) => boolean; have: () => Bag; trade: (i: number) => boolean; close: () => void }): void {
+    const card = this.panel('', 'jg-trade');
+    const draw = () => {
+      const have = o.have();
+      const row = (tr: Trade, i: number) => {
+        const done = o.done(i);
+        const can = !done && bagHas(have, tr.give);
+        const get = Object.entries(tr.get)
+          .map(([id, n]) => `<span class="jg-chip ok">${jIcon(id, 20)}${n}</span>`)
+          .join('') + (tr.coins ? `<span class="jg-chip ok">${jIcon('coin', 20)}${tr.coins}</span>` : '') + (tr.quest ? `<span class="jg-chip ok">${jIcon('map', 20)}</span>` : '');
+        return `<div class="jg-tr${tr.quest ? ' q' : ''}${done ? ' done' : ''}">${tr.quest ? `<small>${jIcon('star', 14)}${esc(tr.say?.() ?? '')}</small>` : ''}<div class="row">${costChips(tr.give, have, 20)}<b>→</b>${get}<button class="jg-b ${can ? 'g' : 'w'}" data-t="${i}" ${can ? '' : 'disabled'}>${done ? '✓' : jIcon('hand', 20)}</button></div></div>`;
+      };
+      card.innerHTML = `<button class="jg-close" data-x>${jIcon('close', 20)}</button><h2>${jIcon(o.icon, 34)}${esc(o.title)}</h2><p>${esc(o.hi)}</p><div class="jg-trades">${o.trades.map(row).join('')}</div>`;
+    };
+    card.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+      if (!b) return;
+      if (b.dataset.x !== undefined) return o.close();
+      if (b.dataset.t) o.trade(+b.dataset.t);
+      draw();
+    });
+    draw();
+  }
+  /** mapa do mar */
+  openMap(o: { html: (size: number) => string; legend: string; pick: (id: number) => void; close: () => void }): void {
+    const card = this.panel('', 'jg-mapc');
+    const draw = () => {
+      const size = Math.max(200, Math.min(window.innerHeight - 40, window.innerWidth - 260, 520));
+      card.innerHTML = `<button class="jg-close" data-x>${jIcon('close', 20)}</button><div class="jg-mapw">${o.html(size)}${o.legend}</div>`;
+    };
+    card.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+      if (!b) return;
+      if (b.dataset.x !== undefined) return o.close();
+      if (b.dataset.i) {
+        o.pick(+b.dataset.i);
+        draw();
+      }
+    });
+    draw();
+  }
+
   dispose(): void {
+    this.qte.dispose();
     for (const b of this.binds) b.destroy();
     this.closePanel();
     this.el.remove();

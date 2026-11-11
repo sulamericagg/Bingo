@@ -6,9 +6,9 @@
 import { t } from '../../i18n';
 
 /* ------------------------------ itens ------------------------------ */
-export type Mat = 'wood' | 'plastic' | 'leaf' | 'rope' | 'scrap' | 'stone' | 'clay' | 'seaweed' | 'shell' | 'seed';
-export type Food = 'fish' | 'fishc' | 'bigfish' | 'bigfishc' | 'potato' | 'potatoc' | 'coco' | 'berry' | 'water';
-export type Tool = 'hook' | 'hook2' | 'hammer' | 'spear' | 'spear2' | 'axe' | 'rod' | 'lantern';
+export type Mat = 'wood' | 'plastic' | 'leaf' | 'rope' | 'scrap' | 'stone' | 'clay' | 'seaweed' | 'shell' | 'seed' | 'bamboo' | 'hardwood' | 'iron' | 'ice' | 'obsidian' | 'gold' | 'pearl' | 'fuel' | 'tooth' | 'ink';
+export type Food = 'fish' | 'fishc' | 'bigfish' | 'bigfishc' | 'potato' | 'potatoc' | 'coco' | 'berry' | 'water' | 'banana' | 'mango' | 'caju' | 'snowberry' | 'pepper' | 'starfruit';
+export type Tool = 'hook' | 'hook2' | 'hammer' | 'spear' | 'spear2' | 'axe' | 'rod' | 'lantern' | 'spear3' | 'harpoon' | 'harpoon2';
 export type ItemId = Mat | Food | Tool;
 export type Bag = Partial<Record<ItemId, number>>;
 
@@ -30,6 +30,16 @@ export const ITEMS: ItemDef[] = [
   I('seaweed', 'mat', '#3aa86a', () => t('jangada.i.seaweed', 'Alga')),
   I('shell', 'mat', '#ffb8d0', () => t('jangada.i.shell', 'Concha')),
   I('seed', 'mat', '#b88a3a', () => t('jangada.i.seed', 'Semente de batata')),
+  I('bamboo', 'mat', '#a8d860', () => t('jangada.i.bamboo', 'Bambu')),
+  I('hardwood', 'mat', '#8a4a2a', () => t('jangada.i.hardwood', 'Madeira-de-lei')),
+  I('iron', 'mat', '#c87a5a', () => t('jangada.i.iron', 'Ferro')),
+  I('ice', 'mat', '#bff0ff', () => t('jangada.i.ice', 'Cristal de gelo')),
+  I('obsidian', 'mat', '#5a3a8a', () => t('jangada.i.obsidian', 'Obsidiana')),
+  I('gold', 'mat', '#ffcf2e', () => t('jangada.i.gold', 'Ouro')),
+  I('pearl', 'mat', '#f4f0ff', () => t('jangada.i.pearl', 'Pérola')),
+  I('fuel', 'mat', '#ff7a3a', () => t('jangada.i.fuel', 'Combustível')),
+  I('tooth', 'mat', '#fffbe8', () => t('jangada.i.tooth', 'Dente de Megalodonte')),
+  I('ink', 'mat', '#7a4ad8', () => t('jangada.i.ink', 'Tinta mágica de polvo')),
   I('fish', 'food', '#8ad0ff', () => t('jangada.i.fish', 'Peixe cru')),
   I('fishc', 'food', '#ffb05a', () => t('jangada.i.fishc', 'Peixe assado')),
   I('bigfish', 'food', '#6aa8ff', () => t('jangada.i.bigfish', 'Peixão cru')),
@@ -39,6 +49,12 @@ export const ITEMS: ItemDef[] = [
   I('coco', 'food', '#8a5a32', () => t('jangada.i.coco', 'Coco')),
   I('berry', 'food', '#ff4f8a', () => t('jangada.i.berry', 'Frutinha')),
   I('water', 'food', '#4fd8ff', () => t('jangada.i.water', 'Água doce')),
+  I('banana', 'food', '#ffe04a', () => t('jangada.i.banana', 'Banana')),
+  I('mango', 'food', '#ffa83a', () => t('jangada.i.mango', 'Manga')),
+  I('caju', 'food', '#ff6a4a', () => t('jangada.i.caju', 'Caju')),
+  I('snowberry', 'food', '#8ab8ff', () => t('jangada.i.snowberry', 'Amora-da-neve')),
+  I('pepper', 'food', '#ff3a2a', () => t('jangada.i.pepper', 'Pimenta-de-fogo')),
+  I('starfruit', 'food', '#ffe86a', () => t('jangada.i.starfruit', 'Fruta-estrela')),
   I('hook', 'tool', '#c8d0e0', () => t('jangada.i.hook', 'Gancho')),
   I('hook2', 'tool', '#7fe0ff', () => t('jangada.i.hook2', 'Gancho de metal')),
   I('hammer', 'tool', '#ffb03a', () => t('jangada.i.hammer', 'Martelo')),
@@ -47,13 +63,22 @@ export const ITEMS: ItemDef[] = [
   I('axe', 'tool', '#ff7a5a', () => t('jangada.i.axe', 'Machado')),
   I('rod', 'tool', '#7ad86a', () => t('jangada.i.rod', 'Vara de pesca')),
   I('lantern', 'tool', '#ffe45c', () => t('jangada.i.lantern', 'Lanterna')),
+  I('spear3', 'tool', '#8a5ae8', () => t('jangada.i.spear3', 'Lança de obsidiana')),
+  I('harpoon', 'tool', '#9aa8c8', () => t('jangada.i.harpoon', 'Arpão')),
+  I('harpoon2', 'tool', '#fff4c8', () => t('jangada.i.harpoon2', 'Arpão lendário')),
 ];
 export const ITEM = Object.fromEntries(ITEMS.map((d) => [d.id, d])) as Record<ItemId, ItemDef>;
 export const isTool = (id: ItemId) => ITEM[id]?.kind === 'tool';
 export const isFood = (id: ItemId) => ITEM[id]?.kind === 'food';
 export const itemName = (id: ItemId) => ITEM[id]?.n() ?? id;
 /** ordem da barra de atalhos: ferramentas primeiro, depois comida */
-export const HOT_ORDER: ItemId[] = ['hook2', 'hook', 'hammer', 'spear2', 'spear', 'axe', 'rod', 'lantern', 'water', 'coco', 'berry', 'fishc', 'bigfishc', 'potatoc', 'fish', 'bigfish', 'potato'];
+export const HOT_ORDER: ItemId[] = ['hook2', 'hook', 'hammer', 'harpoon2', 'harpoon', 'spear3', 'spear2', 'spear', 'axe', 'rod', 'lantern', 'water', 'starfruit', 'coco', 'banana', 'mango', 'caju', 'snowberry', 'pepper', 'berry', 'fishc', 'bigfishc', 'potatoc', 'fish', 'bigfish', 'potato'];
+/** quantos espaços cabem na barra de atalhos */
+export const HOT_MAX = 9;
+/** dano das armas (tubarão, guardas, chefes) */
+export const WEAPON: Partial<Record<ItemId, number>> = { spear: 1, spear2: 2, spear3: 3, harpoon: 3, harpoon2: 5, axe: 0.5 };
+export const isHarpoon = (id: ItemId) => id === 'harpoon' || id === 'harpoon2';
+export const isSpear = (id: ItemId) => id === 'spear' || id === 'spear2' || id === 'spear3';
 
 /** comida: [fome, sede, vida] */
 export const FOOD: Record<Food, [number, number, number]> = {
@@ -66,6 +91,12 @@ export const FOOD: Record<Food, [number, number, number]> = {
   coco: [12, 18, 0],
   berry: [8, 5, 2],
   water: [0, 38, 0],
+  banana: [16, 4, 2],
+  mango: [18, 10, 2],
+  caju: [12, 14, 2],
+  snowberry: [10, 12, 4],
+  pepper: [14, -4, 6],
+  starfruit: [40, 30, 40],
 };
 /** cru → assado (fogueira) */
 export const COOK: Partial<Record<ItemId, ItemId>> = { fish: 'fishc', bigfish: 'bigfishc', potato: 'potatoc' };
@@ -107,8 +138,8 @@ export const PIECES: PieceDef[] = [
   P({ id: 'fire', idx: 9, cost: { wood: 5, rope: 2, leaf: 3 }, hp: 70, slot: 'obj', col: '#ff8a3a', n: () => t('jangada.p.fire', 'Fogueira'), say: () => t('jangada.s.fire', 'Assa comida. Fogo maior = mais receitas!') }),
   P({ id: 'purifier', idx: 10, cost: { plastic: 6, leaf: 4, rope: 1 }, hp: 60, slot: 'obj', col: '#4fd8ff', n: () => t('jangada.p.purifier', 'Purificador'), say: () => t('jangada.s.purifier', 'Ferve a água do mar: vira água doce.') }),
   P({ id: 'planter', idx: 11, cost: { wood: 4, rope: 2, plastic: 2 }, hp: 60, slot: 'obj', up: true, col: '#7ad86a', n: () => t('jangada.p.planter', 'Horta'), say: () => t('jangada.s.planter', 'Plante sementes de batata.') }),
-  P({ id: 'sail', idx: 12, cost: { wood: 8, rope: 6, plastic: 4, leaf: 4 }, hp: 80, slot: 'obj', col: '#fff3d6', n: () => t('jangada.p.sail', 'Vela'), say: () => t('jangada.s.sail', 'Abra a vela para ir para onde você olha!') }),
-  P({ id: 'anchor', idx: 13, cost: { wood: 4, rope: 4, scrap: 2 }, hp: 90, slot: 'obj', col: '#8a94a8', n: () => t('jangada.p.anchor', 'Âncora'), say: () => t('jangada.s.anchor', 'Para a jangada (perto de ilhas!).') }),
+  P({ id: 'sail', idx: 12, cost: { wood: 8, rope: 6, plastic: 4, leaf: 4 }, hp: 80, slot: 'obj', col: '#fff3d6', n: () => t('jangada.p.sail', 'Vela'), say: () => t('jangada.s.sail2', 'Abra a vela: o vento traz mais coisas boiando!') }),
+  P({ id: 'anchor', idx: 13, cost: { wood: 4, rope: 4, scrap: 2 }, hp: 90, slot: 'obj', col: '#8a94a8', n: () => t('jangada.p.anchor', 'Âncora'), say: () => t('jangada.s.anchor2', 'Baixe a âncora: a jangada balança menos.') }),
   P({ id: 'lamp', idx: 14, cost: { wood: 2, leaf: 2, scrap: 1 }, hp: 40, slot: 'obj', up: true, fire: 2, col: '#ffd34a', n: () => t('jangada.p.lamp', 'Lampião'), say: () => t('jangada.s.lamp', 'Luz à noite: o fantasminha não gosta!') }),
   P({ id: 'flag', idx: 15, cost: { wood: 2, plastic: 2 }, hp: 30, slot: 'obj', up: true, col: '#ff4fa3', n: () => t('jangada.p.flag', 'Bandeira Bloop'), say: () => t('jangada.s.flag', 'A bandeira da sua jangada!') }),
 ];
@@ -123,7 +154,7 @@ export const FIRE_UP: Record<number, Bag> = {
 export const FIRE_MAX = 3;
 
 /* ------------------------------ receitas ------------------------------ */
-export type Cat = 'mat' | 'tool' | 'build' | 'food';
+export type Cat = 'mat' | 'tool' | 'build' | 'food' | 'boat';
 export interface Recipe {
   id: string;
   out: ItemId;
@@ -143,7 +174,38 @@ export const RECIPES: Recipe[] = [
   { id: 'lantern', out: 'lantern', n: 1, cost: { scrap: 2, wood: 1, leaf: 2 }, fire: 2, cat: 'tool' },
   { id: 'hammer', out: 'hammer', n: 1, cost: { wood: 3, rope: 1 }, cat: 'tool' },
   { id: 'hook', out: 'hook', n: 1, cost: { wood: 2, plastic: 2, rope: 2 }, cat: 'tool' },
+  { id: 'fuel', out: 'fuel', n: 1, cost: { seaweed: 3, coco: 1 }, fire: 2, cat: 'mat' },
+  { id: 'melt', out: 'water', n: 2, cost: { ice: 1 }, cat: 'mat' },
+  { id: 'rope3', out: 'rope', n: 3, cost: { bamboo: 2 }, cat: 'mat' },
+  { id: 'harpoon', out: 'harpoon', n: 1, cost: { iron: 2, bamboo: 3, rope: 2 }, fire: 2, cat: 'tool' },
+  { id: 'spear3', out: 'spear3', n: 1, cost: { obsidian: 3, hardwood: 2, rope: 2 }, fire: 3, cat: 'tool' },
+  { id: 'harpoon2', out: 'harpoon2', n: 1, cost: { tooth: 1, gold: 2, iron: 3 }, fire: 3, cat: 'tool' },
 ];
+
+/* ------------------------------ barcos ------------------------------ */
+export type BoatK = 0 | 1 | 2;
+export interface BoatDef {
+  k: BoatK;
+  icon: string;
+  cost: Bag;
+  fire?: number;
+  /** velocidade máx (m/s) */
+  speed: number;
+  hp: number;
+  /** precisa de combustível (lancha) */
+  fuel?: boolean;
+  /** usa o vento (veleiro) */
+  wind?: boolean;
+  n: () => string;
+  say: () => string;
+}
+export const BOATS: BoatDef[] = [
+  { k: 0, icon: 'canoe', cost: { wood: 10, rope: 4, leaf: 4 }, speed: 5.5, hp: 60, n: () => t('jangada.b.canoe', 'Canoa'), say: () => t('jangada.b.canoeD', 'Remo devagar até as ilhas perto.') },
+  { k: 1, icon: 'sailboat', cost: { hardwood: 8, bamboo: 6, rope: 8, leaf: 8 }, fire: 2, speed: 9.5, hp: 90, wind: true, n: () => t('jangada.b.sail', 'Veleiro'), say: () => t('jangada.b.sailD', 'Rápido com o vento a favor. Bom para ilhas do meio.') },
+  { k: 2, icon: 'motorboat', cost: { iron: 8, hardwood: 6, scrap: 10, fuel: 2 }, fire: 3, speed: 15, hp: 140, fuel: true, n: () => t('jangada.b.motor', 'Lancha'), say: () => t('jangada.b.motorD', 'Muito rápida, gasta combustível. Chega nas ilhas lendárias.') },
+];
+/** segundos de motor por combustível */
+export const FUEL_SEC = 70;
 /** cozinhar (informativo na aba Comida: assa na fogueira) */
 export const COOK_LIST: [ItemId, ItemId, number][] = [
   ['fish', 'fishc', 1],
@@ -190,7 +252,7 @@ export const NIGHT1 = 0.96;
 export const isNight = (tod: number) => tod > NIGHT0 + 0.03 && tod < NIGHT1 - 0.01;
 
 /* ------------------------------ missões ------------------------------ */
-export type MisKind = 'hook' | 'found' | 'craft' | 'build' | 'drink' | 'catch' | 'cook' | 'shark' | 'island' | 'night' | 'ghost' | 'fireLv' | 'harvest' | 'tiles' | 'up' | 'eat' | 'dive';
+export type MisKind = 'hook' | 'found' | 'craft' | 'build' | 'drink' | 'catch' | 'cook' | 'shark' | 'island' | 'night' | 'ghost' | 'fireLv' | 'harvest' | 'tiles' | 'up' | 'eat' | 'dive' | 'boat' | 'disc' | 'chest' | 'cave' | 'trade' | 'boss' | 'tier';
 export interface Mission {
   k: MisKind;
   /** item/peça alvo (craft/build) */
@@ -225,6 +287,16 @@ export const MISSIONS: Mission[] = [
   M('tiles', 16, 25, 'found', () => t('jangada.m.tiles', 'Jangada com 16 pisos')),
   M('up', 1, 25, 'stairs', () => t('jangada.m.up', 'Construa um andar de cima')),
   M('fireLv', 3, 40, 'fire', () => t('jangada.m.fireLv3', 'Fogueira nível 3')),
+  M('boat', 1, 30, 'canoe', () => t('jangada.m.canoe', 'Faça uma canoa (Oficina › Barcos)')),
+  M('disc', 3, 25, 'map', () => t('jangada.m.disc', 'Descubra 3 ilhas no mapa')),
+  M('trade', 1, 25, 'crab', () => t('jangada.m.trade', 'Troque com um dono de ilha')),
+  M('chest', 2, 25, 'chestR', () => t('jangada.m.chest2', 'Abra 2 baús de ilha')),
+  M('tier', 2, 40, 'jungle', () => t('jangada.m.tier2', 'Pise numa ilha do meio (perigo 2)')),
+  M('cave', 1, 30, 'cave', () => t('jangada.m.cave', 'Explore uma caverna (leve luz!)')),
+  M('boat', 2, 40, 'sailboat', () => t('jangada.m.sailboat', 'Faça um veleiro')),
+  M('boat', 3, 50, 'motorboat', () => t('jangada.m.motor', 'Faça uma lancha')),
+  M('tier', 3, 60, 'legend', () => t('jangada.m.tier3', 'Chegue numa ilha lendária')),
+  M('boss', 1, 100, 'mega', () => t('jangada.m.boss', 'Derrote um chefe: Megalodonte ou Polvo Gigante')),
 ];
 /** missões do dia (depois da lista principal): sorteadas a cada amanhecer */
 export const DAILY: Mission[] = [
