@@ -3,15 +3,16 @@
  *  Usado pelo modo debug (window.__montaleva.verifyAll()) e pelo verificador em Node.
  *  Carregado sob demanda: não pesa no jogo normal.
  * ============================================================ */
-import { canPlace, countOf, partCost } from './design';
+import { analyze, canPlace, countOf, partCost } from './design';
 import { LEVELS, type LevelDef } from './levels';
-import { PARTS, type PartId, type Placed } from './parts';
-import { Sim, type Upgrades } from './sim';
+import { PARTS, isButton, type PartId, type Placed } from './parts';
+import { GEN_SOLUTIONS } from './solutions-data';
+import { Sim, applyCmd, driveCmd, type DriveStep, type Upgrades } from './sim';
 
 export interface Solution {
   parts: Placed[];
   /** roteiro de direção: [segundo (ou posição x com 'x', ou x relativo ao início da zona com 'z'), comandos] com F=frente R=ré B=freio J=propulsor; padrão: F */
-  drive?: [number, string, ('x' | 'z' | 't')?][];
+  drive?: DriveStep[];
 }
 
 const P = (t: PartId, x: number, y: number, r = 0): Placed => ({ t, x, y, r });
@@ -21,7 +22,8 @@ const row = (t: PartId, x0: number, x1: number, y: number): Placed[] => {
   return o;
 };
 
-export const SOLUTIONS: Record<number, Solution> = {
+/** soluções das 30 fases clássicas (numeração antiga) */
+export const CLASSIC_SOLUTIONS: Record<number, Solution> = {
   1: { parts: [...row('block', 1, 4, 1), P('wheelS', 1, 1), P('wheelS', 4, 1), P('motor', 2, 2)] },
   2: { parts: [...row('block', 1, 4, 1), P('wheelS', 1, 1), P('wheelS', 4, 1), P('motor', 2, 2)] },
   3: { parts: [P('beam', 0, 1, 1), P('beam', 1, 1), P('block', 4, 1), P('block', 4, 2), P('wheelS', 0, 1), P('wheelS', 4, 1), P('motor', 3, 2)] },
@@ -74,6 +76,13 @@ export const SOLUTIONS: Record<number, Solution> = {
   },
 };
 
+/** soluções na numeração final (1..200) */
+export const SOLUTIONS: Record<number, Solution> = {};
+for (const L of LEVELS) {
+  const s = L.old ? CLASSIC_SOLUTIONS[L.old] : GEN_SOLUTIONS[L.n];
+  if (s) SOLUTIONS[L.n] = s;
+}
+
 export const SOLUTION_UPGRADES: Upgrades = { motor: 0, grip: 0, spring: 0, pad: 0 };
 
 export interface VerifyResult {
@@ -92,6 +101,10 @@ export function validate(L: LevelDef, parts: Placed[]): string | null {
   for (const id of ids) if (countOf(parts, id) > (L.parts[id] ?? 0)) return 'too many ' + id;
   if (L.budget && partCost(parts) > L.budget) return 'budget ' + partCost(parts);
   // coloca uma a uma (estruturas primeiro) como o jogador faria
+  if (parts.some((p) => p.w && !isButton(p.t))) return 'wire on non-button';
+  const an = analyze(parts);
+  const nw = parts.reduce((s, p) => s + (p.w?.length ?? 0), 0);
+  if (an.wires.length !== nw) return 'dangling wire';
   const order = [...parts].sort((a, b) => (PARTS[a.t].layer === 'struct' ? 0 : 1) - (PARTS[b.t].layer === 'struct' ? 0 : 1));
   const acc: Placed[] = [];
   for (const p of order) {
@@ -102,24 +115,12 @@ export function validate(L: LevelDef, parts: Placed[]): string | null {
   return null;
 }
 
-export function inputAt(drive: Solution['drive'], time: number, x: number, zoneX = 0): string {
-  if (!drive || !drive.length) return 'F';
-  let cur = 'F';
-  for (const [v, s, k] of drive) if (k === 'x' ? x >= v : k === 'z' ? x >= zoneX + v : time >= v) cur = s;
-  return cur;
-}
-
-export function runSolution(n: number, sol: Solution | undefined = SOLUTIONS[n], maxT = 60): VerifyResult {
-  const L = LEVELS[n - 1];
+export function runSolution(n: number, sol: Solution | undefined = SOLUTIONS[n], maxT = 60, L: LevelDef = LEVELS[n - 1]): VerifyResult {
   if (!sol) return { n, ok: false, valid: 'no solution', time: 0, flipped: false, parts: 0 };
   const valid = validate(L, sol.parts);
   const sim = new Sim(L, sol.parts, SOLUTION_UPGRADES);
   while (!sim.result && sim.time < maxT) {
-    const s = inputAt(sol.drive, sim.time, sim.focus().x, sim.track.zone.x0);
-    sim.input.fwd = s.includes('F');
-    sim.input.back = s.includes('R');
-    sim.input.brake = s.includes('B');
-    sim.input.boost = s.includes('J');
+    applyCmd(sim, driveCmd(sol.drive, sim));
     sim.step();
   }
   const r = sim.result;

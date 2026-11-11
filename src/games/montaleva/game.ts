@@ -14,9 +14,9 @@ import { fmt, t } from '../../i18n';
 import { bindButton, edges, type BoundButton } from '../../ui/touch';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { MLAudio } from './audio';
-import { History, analyze, canPlace, countOf, normRot, partAt, partCost, removeAt, snapCells, type PlaceError } from './design';
-import { LEVELS, chapterName, chapterOf, type LevelDef } from './levels';
-import { PARTS, PART_IDS, U, cellsOf, footprint, partDesc, partName, type PartId, type Placed } from './parts';
+import { History, analyze, canPlace, countOf, normRot, partAt, partCost, pruneWires, remapWires, removeAt, snapCells, type Analysis, type PlaceError } from './design';
+import { CHAPTERS, CHAPTER_ACCENT, CHAPTER_SIZE, CHAPTER_TINT, LEVELS, chapterName, chapterOf, type LevelDef } from './levels';
+import { CAP_FWD, CAP_REV, PARTS, PART_IDS, U, WIRABLE, cellsOf, footprint, isButton, partDesc, partName, type PartId, type Placed } from './parts';
 import {
   COL,
   INK,
@@ -25,8 +25,13 @@ import {
   colorOf,
   drawBackground,
   drawBalloon,
+  drawBot,
   drawCargo,
   drawLink,
+  drawNode,
+  drawTread,
+  drawWater,
+  drawWire,
   drawObj,
   drawStructCell,
   drawThruster,
@@ -40,10 +45,10 @@ import {
   wy,
   type View,
 } from './render';
-import { levelRec, mlSave, persistML, starsOf, unlockedUpTo } from './save';
-import { DT, Sim, designCOM, norm } from './sim';
+import { isUnlocked, levelRec, mlSave, persistML, starsOf, unlockedUpTo } from './save';
+import { DT, Sim, applyCmd, designCOM, driveCmd, norm, type DriveStep } from './sim';
 import { IC, injectMLCss } from './style';
-import { resolveTrack, type Track } from './track';
+import { resolveTrack, type Track, type TrackObj } from './track';
 
 type Screen = 'menu' | 'levels' | 'shop' | 'settings' | 'build' | 'test';
 
@@ -53,7 +58,28 @@ interface TutStep {
   cells?: [number, number][];
   need?: number;
   test?: boolean;
+  /** passo do fio: puxar do botão até o motor */
+  wire?: boolean;
+  /** ícones (peças) mostrados no balão, com seta entre eles */
+  icons?: PartId[];
   msg: () => string;
+}
+
+/** tutorial dos fios (montado na hora, a partir do carrinho pronto da fase) */
+function wireTutorial(L: LevelDef): TutStep[] {
+  const pre = L.pre ?? [];
+  let cell: [number, number] = [1, 2];
+  const xs = pre.filter((p) => PARTS[p.t].layer === 'struct');
+  if (xs.length) {
+    const y = Math.min(...xs.map((p) => p.y));
+    const x0 = Math.min(...xs.filter((p) => p.y === y).map((p) => p.x));
+    cell = [x0, y + 1];
+  }
+  return [
+    { t: 'btn', cells: [cell], need: 1, icons: ['btn'], msg: () => t('ml.tut.btn', 'Coloque o botão no carrinho') },
+    { wire: true, icons: ['btn', 'motor'], msg: () => t('ml.tut.wire', 'Puxe um fio do botão até o motor') },
+    { test: true, msg: () => t('ml.tut.test', 'Pronto! Toque em Testar') },
+  ];
 }
 
 const TUTORIAL: Record<number, TutStep[]> = {
@@ -214,7 +240,7 @@ export class MontaLeva implements MiniGameHandle {
   private btnHeld = { fwd: false, back: false, brake: false, boost: false };
   private shake = 0;
   private balloonVis = new Map<number, { x: number; y: number; vx: number; vy: number }>();
-  private auto: { drive: [number, string, ('x' | 'z' | 't')?][] | undefined } | null = null;
+  private auto: { drive: DriveStep[] | undefined } | null = null;
   private runId = 0;
   // menu
   private demo: Sim | null = null;
@@ -225,6 +251,13 @@ export class MontaLeva implements MiniGameHandle {
   private lastHudT = -1;
   private tut: TutStep[] | null = null;
   private tutIdx = -1;
+  /** fio sendo puxado (a = peça de origem: botão ou alvo) */
+  private wdrag: { a: number; pid: number; px: number; py: number; tgt: number; moved: boolean } | null = null;
+  /** botões segurados na pista (bit = ordem do botão) */
+  private padMask = 0;
+  private padEls: HTMLElement[] = [];
+  /** estado visual dos passageiros (bamboleio, humor) */
+  private botVis: { lean: number; vl: number; sq: number; mood: number; moodT: number; vx: number; face: number }[] = [];
 
   constructor(
     root: HTMLElement,
@@ -398,7 +431,7 @@ export class MontaLeva implements MiniGameHandle {
       </div>`;
     this.ui.appendChild(d);
     this.on(d, '[data-a=play]', () => this.openLevel(next));
-    this.on(d, '[data-a=levels]', () => this.levels());
+    this.on(d, '[data-a=levels]', () => this.levels(-1));
     this.on(d, '[data-a=shop]', () => this.shop());
     this.on(d, '[data-a=settings]', () => this.settings());
     this.on(d, '[data-a=exit]', () => this.exitFn());
@@ -429,34 +462,60 @@ export class MontaLeva implements MiniGameHandle {
     this.camT.y = f.y + (this.portrait ? -1.2 : 0.6);
   }
 
-  /* ---------------------------- fases ---------------------------- */
-  private levels(): void {
+  /* ---------------------------- capítulos e fases ---------------------------- */
+  private chap = -1;
+  /** seleção de capítulos (ch < 0) ou grade de fases do capítulo ch */
+  private levels(ch = this.chap): void {
     this.clearScreen();
     this.screen = 'levels';
     this.au.mood = 'menu';
-    const cur = Math.min(LEVELS.length, unlockedUpTo());
+    this.chap = ch;
+    const total = LEVELS.reduce((s, L) => s + starsOf(L.n), 0);
     const d = document.createElement('div');
     d.className = 'ml-page ml-fade';
-    let html = `<div class="ml-head"><button class="ml-btn ic" data-a="back" aria-label="${t('ml.back', 'Voltar')}">${IC.back}</button><h2>${t('ml.levels', 'Fases')}</h2><span class="ml-chip">★ ${LEVELS.reduce((s, L) => s + starsOf(L.n), 0)}/${LEVELS.length * 3}</span></div><div class="ml-scroll"><div class="ml-chaps">`;
-    for (let c = 0; c < 3; c++) {
-      const ls = LEVELS.filter((L) => chapterOf(L.n) === c);
+    const back = `<button class="ml-btn ic round" data-a="back" aria-label="${t('ml.back', 'Voltar')}">${IC.back}</button>`;
+    let html: string;
+    if (ch < 0) {
+      html = `<div class="ml-head">${back}<h2>${t('ml.chapters', 'Capítulos')}</h2><span class="ml-chip">★ ${total}/${LEVELS.length * 3}</span></div><div class="ml-scroll"><div class="ml-chaps2">`;
+      for (let c = 0; c < CHAPTERS; c++) {
+        const ls = LEVELS.slice(c * CHAPTER_SIZE, (c + 1) * CHAPTER_SIZE);
+        const st = ls.reduce((s, L) => s + starsOf(L.n), 0);
+        const done = ls.filter((L) => this.sv.levels[L.n]?.done).length;
+        const lock = !isUnlocked(ls[0].n);
+        html += `<button class="ml-chcard ${lock ? 'lock' : ''}" data-c="${c}" style="--acc:${CHAPTER_ACCENT[c]};--tint:${CHAPTER_TINT[c]}">
+          <span class="ml-chn">${c + 1}</span>
+          <span class="ml-cht"><b>${esc(chapterName(c))}</b><small>${lock ? IC.lock : `★ ${st}/${ls.length * 3}`}</small></span>
+          <span class="ml-chbar"><i style="width:${Math.round((done / ls.length) * 100)}%"></i></span>
+        </button>`;
+      }
+      html += `</div></div>`;
+    } else {
+      const ls = LEVELS.slice(ch * CHAPTER_SIZE, (ch + 1) * CHAPTER_SIZE);
       const st = ls.reduce((s, L) => s + starsOf(L.n), 0);
-      html += `<div class="ml-chap"><h3><span>${c + 1}. ${esc(chapterName(c))}</span><span>★ ${st}/${ls.length * 3}</span></h3><div class="ml-tiles">`;
+      const cur = unlockedUpTo();
+      html = `<div class="ml-head">${back}<h2><small style="color:${CHAPTER_ACCENT[ch]}">${t('ml.chapterN', 'Capítulo {n}', { n: ch + 1 })}</small>${esc(chapterName(ch))}</h2><span class="ml-chip">★ ${st}/${ls.length * 3}</span></div><div class="ml-scroll"><div class="ml-tiles2">`;
       for (const L of ls) {
         const rec = this.sv.levels[L.n];
-        const lock = L.n > cur;
-        const s = starsOf(L.n);
+        const lock = !isUnlocked(L.n);
+        const sN = starsOf(L.n);
         const cls = lock ? 'lock' : L.n === cur && !rec?.done ? 'cur' : rec?.done ? 'done' : '';
-        html += `<button class="ml-tile ${cls}" data-n="${L.n}">${lock ? IC.lock : L.n}${lock ? '' : `<span class="ml-stars">${[0, 1, 2].map((i) => `<i class="${i < s ? 'on' : ''}"></i>`).join('')}</span>`}</button>`;
+        const tag = L.cargo.some((c) => c.t === 'bot') ? '<span class="ml-tag bot"></span>' : L.wired ? '<span class="ml-tag wire"></span>' : '';
+        html += `<button class="ml-tile ${cls}" data-n="${L.n}">${lock ? IC.lock : L.n}${lock ? '' : `<span class="ml-stars">${[0, 1, 2].map((i) => `<i class="${i < sN ? 'on' : ''}"></i>`).join('')}</span>`}${lock ? '' : tag}</button>`;
       }
       html += `</div></div>`;
     }
-    html += `</div></div>`;
     d.innerHTML = html;
     this.ui.appendChild(d);
-    this.on(d, '[data-a=back]', () => this.menu());
+    this.on(d, '[data-a=back]', () => (ch < 0 ? this.menu() : this.levels(-1)));
+    this.on(d, '[data-c]', (b) => {
+      if (b.classList.contains('lock')) {
+        this.au.bad();
+        return;
+      }
+      this.levels(+b.dataset.c!);
+    });
     this.on(d, '[data-n]', (b) => this.openLevel(+b.dataset.n!));
-    this.setBack(() => this.menu());
+    this.setBack(() => (ch < 0 ? this.menu() : this.levels(-1)));
   }
 
   /* ---------------------------- oficina ---------------------------- */
@@ -560,7 +619,8 @@ export class MontaLeva implements MiniGameHandle {
     this.armed = null;
     this.trayRot = {};
     this.overview = false;
-    this.tut = L.tut && !rec?.done ? TUTORIAL[L.tut] : null;
+    this.tut = L.tut && !rec?.done ? (L.tut === 4 ? wireTutorial(L) : TUTORIAL[L.tut]) : null;
+    this.wdrag = null;
     this.tutIdx = -1;
     this.build(true);
   }
@@ -605,7 +665,7 @@ export class MontaLeva implements MiniGameHandle {
     warn.className = 'ml-warn ml-pass';
     ui.appendChild(warn);
     this.hud = { top, tray, acts, info, warn, goals: top.querySelector('[data-r=goals]')!, budget: top.querySelector('[data-r=budget]')! };
-    this.on(top, '[data-a=back]', () => this.levels());
+    this.on(top, '[data-a=back]', () => this.levels(chapterOf(L.n)));
     this.on(top, '[data-a=view]', (b) => {
       this.overview = !this.overview;
       b.classList.toggle('on', this.overview);
@@ -647,7 +707,7 @@ export class MontaLeva implements MiniGameHandle {
     this.layoutBuild();
     this.fitBuild(fresh);
     this.afterChange();
-    this.setBack(() => this.levels());
+    this.setBack(() => this.levels(chapterOf(L.n)));
   }
 
   /** mede a área livre (sem barra de cima, bandeja e botões) */
@@ -744,7 +804,7 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private commit(next: Placed[]): void {
-    this.hist.commit(next);
+    this.hist.commit(pruneWires(next));
     this.afterChange();
   }
 
@@ -779,7 +839,9 @@ export class MontaLeva implements MiniGameHandle {
     const an = analyze(parts);
     const w: string[] = [];
     const wheels = parts.filter((p) => PARTS[p.t].radius);
-    if (parts.length && wheels.length && !parts.some((p) => p.t === 'motor')) w.push(t('ml.w.noMotor', 'Sem motor: as rodas não giram'));
+    if (L.wired && parts.some((p) => p.t === 'motor') && !an.wires.some((x) => parts[x.t].t === 'motor'))
+      w.push(t('ml.w.noWire', 'Ligue um botão ao motor com um fio'));
+    else if (parts.length && wheels.length && !parts.some((p) => p.t === 'motor')) w.push(t('ml.w.noMotor', 'Sem motor: as rodas não giram'));
     else if (wheels.length && parts.some((p) => p.t === 'motor') && ![...an.power.keys()].length) w.push(t('ml.w.far', 'Motor longe demais das rodas'));
     // peças soltas: grupos não ligados entre si (nem por dobradiça)
     if (an.groups.length > 1) {
@@ -910,6 +972,7 @@ export class MontaLeva implements MiniGameHandle {
       this.pan = { pid: e.pointerId, sx: e.clientX, cx: this.camT.x };
       return;
     }
+    if (this.wireDown(e, w.x / U, w.y / U)) return;
     const cx = Math.floor(w.x / U);
     const cy = Math.floor(w.y / U);
     const parts = this.hist.parts;
@@ -986,6 +1049,20 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private onMove(e: PointerEvent): void {
+    const wd = this.wdrag;
+    if (wd && e.pointerId === wd.pid) {
+      wd.px = e.clientX;
+      wd.py = e.clientY;
+      wd.moved = true;
+      const w = this.toWorld(e.clientX, e.clientY);
+      const prev = wd.tgt;
+      wd.tgt = this.wireTargetNear(wd.a, w.x / U, w.y / U);
+      if (wd.tgt >= 0 && wd.tgt !== prev) {
+        tap('light');
+        this.au.pick();
+      }
+      return;
+    }
     if (this.pan && e.pointerId === this.pan.pid) {
       this.camT.x = this.pan.cx - (e.clientX - this.pan.sx) / this.cam.s;
       this.cam.x = this.camT.x;
@@ -1015,6 +1092,18 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private onUp(e: PointerEvent): void {
+    const wd = this.wdrag;
+    if (wd && e.pointerId === wd.pid) {
+      this.wdrag = null;
+      if (wd.tgt >= 0) this.toggleWire(wd.a, wd.tgt);
+      else if (!wd.moved) {
+        // toque simples no nó: seleciona a peça
+        this.sel = wd.a;
+        this.showInfo(this.hist.parts[wd.a]?.t ?? null);
+        this.afterChange();
+      } else this.au.bad();
+      return;
+    }
     if (this.pan && e.pointerId === this.pan.pid) {
       this.pan = null;
       return;
@@ -1092,7 +1181,7 @@ export class MontaLeva implements MiniGameHandle {
 
   private place(p: Placed, from: number): void {
     const parts = this.hist.parts;
-    const next = from >= 0 ? parts.map((o, i) => (i === from ? p : o)) : [...parts, p];
+    const next = from >= 0 ? parts.map((o, i) => (i === from ? { ...o, ...p } : o)) : [...parts, p];
     // ao mover uma estrutura, leva junto o que estava montado nela
     if (from >= 0 && PARTS[p.t].layer === 'struct') {
       const o = parts[from];
@@ -1106,7 +1195,12 @@ export class MontaLeva implements MiniGameHandle {
       let ok = true;
       const cand = next.map((q, i) => (moved.includes(i) ? { ...q, x: q.x + dx, y: q.y + dy } : q));
       for (const i of moved) if (canPlace(this.L!, cand, cand[i], i) !== null) ok = false;
-      this.commit(ok ? cand : next.filter((_, i) => !moved.includes(i)));
+      const mv: [number, number, number, number][] = [[o.x, o.y, p.x, p.y]];
+      if (ok) for (const i of moved) mv.push([parts[i].x, parts[i].y, parts[i].x + dx, parts[i].y + dy]);
+      this.commit(remapWires(ok ? cand : next.filter((_, i) => !moved.includes(i)), mv));
+    } else if (from >= 0) {
+      const o = parts[from];
+      this.commit(remapWires(next, [[o.x, o.y, p.x, p.y]]));
     } else this.commit(next);
     this.sel = from >= 0 ? from : this.hist.parts.length - 1;
     if (this.sel >= this.hist.parts.length) this.sel = -1;
@@ -1124,6 +1218,122 @@ export class MontaLeva implements MiniGameHandle {
     this.fx.emit(7, cx * U, cy * U, { speed: 1.6, color: [color, '#ffffff', INK], size: 0.08, life: 0.45, up: 0.6, grav: 4 });
   }
 
+  /* ---------------------------- fios ---------------------------- */
+  /** ponto de conexão de uma peça (em células) */
+  private nodeOf(p: Placed): [number, number] {
+    if (isButton(p.t)) return [p.x + 0.84, p.y + 0.84];
+    if (p.t === 'thruster') return [p.x + 0.5, p.y + 0.5];
+    return [p.x + 0.5, p.y + 0.86];
+  }
+  private wirable(p: Placed): boolean {
+    return isButton(p.t) || !!WIRABLE[p.t];
+  }
+  /** raio de toque do nó, em células (no mínimo ~22 px na tela) */
+  private nodeHit(): number {
+    return Math.max(0.42, 22 / (this.view.s * U));
+  }
+  /** começa a puxar um fio (nó de botão ou de motor/propulsor/dobradiça) ou corta um fio pela tesourinha */
+  private wireDown(e: PointerEvent, cx: number, cy: number): boolean {
+    const parts = this.hist.parts;
+    const L = this.L!;
+    const hasBtn = parts.some((p) => isButton(p.t));
+    if (!hasBtn && !(L.parts.btn || L.parts.btnR)) return false;
+    // tesourinha no meio dos fios da peça selecionada
+    for (const h of this.wireHandles()) {
+      if (Math.hypot(cx - h.x, cy - h.y) < this.nodeHit()) {
+        this.toggleWire(h.b, h.t);
+        return true;
+      }
+    }
+    if (!hasBtn) return false;
+    let best = -1;
+    let bd = this.nodeHit();
+    parts.forEach((p, i) => {
+      if (!this.wirable(p)) return;
+      const [nx, ny] = this.nodeOf(p);
+      const d = Math.hypot(cx - nx, cy - ny);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    if (best < 0) return false;
+    this.wdrag = { a: best, pid: e.pointerId, px: e.clientX, py: e.clientY, tgt: -1, moved: false };
+    this.au.pick();
+    tap('light');
+    return true;
+  }
+  /** alvo válido mais perto do dedo para um fio que sai da peça a */
+  private wireTargetNear(a: number, cx: number, cy: number): number {
+    const parts = this.hist.parts;
+    const pa = parts[a];
+    if (!pa) return -1;
+    const fromBtn = isButton(pa.t);
+    let best = -1;
+    let bd = 1.1;
+    parts.forEach((p, i) => {
+      if (i === a) return;
+      if (fromBtn ? !WIRABLE[p.t] : !isButton(p.t)) return;
+      const [nx, ny] = this.nodeOf(p);
+      const cells = cellsOf(p);
+      let d = Math.hypot(cx - nx, cy - ny);
+      for (const [qx, qy] of cells) if (cx >= qx && cx < qx + 1 && cy >= qy && cy < qy + 1) d = Math.min(d, 0.3);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+  /** liga (ou desliga, se já existe) o fio entre botão e alvo */
+  private toggleWire(a: number, b: number): void {
+    const parts = this.hist.parts;
+    const bi = isButton(parts[a].t) ? a : b;
+    const ti = bi === a ? b : a;
+    const bp = parts[bi];
+    const tp = parts[ti];
+    if (!bp || !tp || !isButton(bp.t) || !WIRABLE[tp.t]) return;
+    const w = bp.w ?? [];
+    const has = w.some(([x, y]) => x === tp.x && y === tp.y);
+    const nw: [number, number][] = has ? w.filter(([x, y]) => !(x === tp.x && y === tp.y)) : [...w, [tp.x, tp.y]];
+    this.commit(parts.map((p, i) => (i === bi ? { ...p, w: nw } : p)));
+    if (has) {
+      this.au.remove();
+      tap('light');
+    } else {
+      this.au.wire();
+      tap('medium');
+      const [nx, ny] = this.nodeOf(tp);
+      this.fx.emit(9, nx * U, ny * U, { speed: 1.4, color: ['#7cc6f2', '#ffffff', '#3a9bd6'], size: 0.07, life: 0.45, up: 0.5, grav: 3 });
+      this.placeFx.push({ x: tp.x, y: tp.y, t: this.time });
+    }
+    this.sel = bi;
+    this.afterChange();
+  }
+  /** tesourinhas: meio de cada fio ligado à peça selecionada */
+  private wireHandles(): { x: number; y: number; b: number; t: number }[] {
+    const out: { x: number; y: number; b: number; t: number }[] = [];
+    if (this.sel < 0) return out;
+    const parts = this.hist.parts;
+    const an = analyze(parts);
+    for (const w of an.wires) {
+      if (w.b !== this.sel && w.t !== this.sel) continue;
+      const [ax, ay] = this.nodeOf(parts[w.b]);
+      const [bx, by] = this.nodeOf(parts[w.t]);
+      const sag = 0.25 + Math.hypot(bx - ax, by - ay) * 0.22;
+      out.push({ x: (ax + bx) / 2, y: (ay + by) / 2 - sag * 0.75, b: w.b, t: w.t });
+    }
+    return out;
+  }
+  /** cor da tampa de cada botão (por tipo e ordem) */
+  private capColors(parts: readonly Placed[], an: Analysis): Map<number, string> {
+    const m = new Map<number, string>();
+    let f = 0;
+    let r = 0;
+    for (const bi of an.buttons) m.set(bi, parts[bi].t === 'btnR' ? CAP_REV[r++ % CAP_REV.length] : CAP_FWD[f++ % CAP_FWD.length]);
+    return m;
+  }
+
   /* ---------------------------- tutorial ---------------------------- */
   private updateTutorial(): void {
     if (!this.tut || this.screen !== 'build') return;
@@ -1134,6 +1344,13 @@ export class MontaLeva implements MiniGameHandle {
       if (s.test) {
         idx = i;
         break;
+      }
+      if (s.wire) {
+        if (!parts.some((p) => p.w && p.w.length)) {
+          idx = i;
+          break;
+        }
+        continue;
       }
       const have = parts.filter((p) => p.t === s.t && (s.r === undefined || p.r === s.r)).length;
       if (have < (s.need ?? 1)) {
@@ -1149,6 +1366,15 @@ export class MontaLeva implements MiniGameHandle {
       const tip = document.createElement('div');
       tip.className = 'ml-tip';
       tip.textContent = s.msg();
+      if (s.icons) {
+        const row = document.createElement('span');
+        row.className = 'ml-tipic';
+        s.icons.forEach((id, k) => {
+          if (k) row.insertAdjacentHTML('beforeend', `<b>${IC.right}</b>`);
+          row.appendChild(partIcon(id, 0, 30, this.dpr));
+        });
+        tip.prepend(row);
+      }
       const fr = this.freeRect();
       tip.style.top = `${fr.y0 + 4}px`;
       this.ui.appendChild(tip);
@@ -1170,6 +1396,16 @@ export class MontaLeva implements MiniGameHandle {
     if (s.test) {
       const b = this.hud.acts?.querySelector('[data-a=test]')?.getBoundingClientRect();
       if (b) to = { x: b.left - host.left + b.width / 2, y: b.top - host.top + b.height / 2 };
+    } else if (s.wire) {
+      const parts = this.hist.parts;
+      const b = parts.find((p) => isButton(p.t));
+      const m = parts.find((p) => p.t === 'motor');
+      if (b && m) {
+        const [ax, ay] = this.nodeOf(b);
+        const [bx, by] = this.nodeOf(m);
+        from = { x: wx(this.view, ax * U), y: wy(this.view, ay * U) };
+        to = { x: wx(this.view, bx * U), y: wy(this.view, by * U) };
+      }
     } else {
       const slot = this.hud.tray?.querySelector<HTMLElement>(`[data-t=${s.t}]`)?.getBoundingClientRect();
       if (s.r !== undefined && (this.trayRot[s.t!] ?? 0) !== s.r) {
@@ -1191,7 +1427,7 @@ export class MontaLeva implements MiniGameHandle {
       hand.style.opacity = '0';
       return;
     }
-    hand.style.opacity = this.drag ? '0' : '1';
+    hand.style.opacity = this.drag || this.wdrag ? '0' : '1';
     let px = to.x;
     let py = to.y;
     if (from) {
@@ -1200,7 +1436,7 @@ export class MontaLeva implements MiniGameHandle {
       const ee = e * e * (3 - 2 * e);
       px = from.x + (to.x - from.x) * ee;
       py = from.y + (to.y - from.y) * ee;
-      hand.style.opacity = this.drag ? '0' : String(k > 0.9 ? 1 - (k - 0.9) * 10 : 1);
+      hand.style.opacity = this.drag || this.wdrag ? '0' : String(k > 0.9 ? 1 - (k - 0.9) * 10 : 1);
     } else {
       py += Math.sin(this.time * 6) * 4;
     }
@@ -1236,27 +1472,21 @@ export class MontaLeva implements MiniGameHandle {
     const top = document.createElement('div');
     top.className = 'ml-top ml-fade';
     top.innerHTML = `
-      <button class="ml-btn ic" data-a="edit" aria-label="${t('ml.toWorkshop', 'Voltar à montagem')}" title="${t('ml.toWorkshop', 'Voltar à montagem')}">${IC.wrench}</button>
-      <button class="ml-btn ic" data-a="restart" aria-label="${t('ml.restart', 'Reiniciar')}" title="${t('ml.restart', 'Reiniciar')}">${IC.restart}</button>`;
+      <button class="ml-btn ic round" data-a="edit" aria-label="${t('ml.toWorkshop', 'Voltar à montagem')}" title="${t('ml.toWorkshop', 'Voltar à montagem')}">${IC.wrench}</button>
+      <div class="ml-sp"></div>
+      <button class="ml-btn ic round" data-a="restart" aria-label="${t('ml.restart', 'Reiniciar')}" title="${t('ml.restart', 'Reiniciar')}">${IC.restart}</button>`;
     ui.appendChild(top);
     const hud = document.createElement('div');
     hud.className = 'ml-hud ml-fade';
     hud.innerHTML = `<span class="ml-chip ml-time">${IC.clock}<span data-r="time">0,0</span></span><span class="ml-chip"><span class="ml-pips" data-r="pips"></span></span>`;
     ui.appendChild(hud);
-    const left = document.createElement('div');
-    left.className = 'ml-drive l ml-fade';
-    left.innerHTML = `<button class="ml-pad" data-a="back" aria-label="${t('ml.reverse', 'Ré')}">${IC.rev}</button><button class="ml-pad sm" data-a="brake" aria-label="${t('ml.brake', 'Freio')}">${IC.brake}</button>`;
-    ui.appendChild(left);
-    const right = document.createElement('div');
-    right.className = 'ml-drive r ml-fade';
-    const hasJet = this.sim.thrusters.length > 0;
-    right.innerHTML = `${hasJet ? `<button class="ml-pad jet" data-a="boost" aria-label="${t('ml.boost', 'Propulsor')}" style="position:relative">${IC.jet}<span class="ml-fuel"><i data-r="fuel" style="width:100%"></i></span></button>` : ''}<button class="ml-pad go" data-a="fwd" aria-label="${t('ml.forward', 'Acelerar')}">${IC.fwd}</button>`;
-    ui.appendChild(right);
-    this.hud = { top, hud, left, right, time: hud.querySelector('[data-r=time]')!, pips: hud.querySelector('[data-r=pips]')! };
-    const fuel = right.querySelector<HTMLElement>('[data-r=fuel]');
-    if (fuel) this.hud.fuel = fuel;
-    const pad = (sel: string, k: keyof MontaLeva['btnHeld']) => {
-      const el = ui.querySelector<HTMLElement>(sel);
+    this.hud = { top, hud, time: hud.querySelector('[data-r=time]')!, pips: hud.querySelector('[data-r=pips]')! };
+    this.padMask = 0;
+    this.padEls = [];
+    const sim = this.sim;
+    const an = sim.an;
+    const unwiredJet = sim.thrusters.some((th) => !sim.thrusterWires.has(th.idx));
+    const pad = (el: HTMLElement | null, k: keyof MontaLeva['btnHeld']) => {
       if (!el) return;
       this.buttons.push(
         bindButton(el, {
@@ -1265,26 +1495,105 @@ export class MontaLeva implements MiniGameHandle {
             this.tutTestDone();
           },
           onRelease: () => (this.btnHeld[k] = false),
-          haptic: k === 'fwd' ? 'light' : 'light',
+          haptic: 'light',
         }),
       );
     };
-    pad('[data-a=fwd]', 'fwd');
-    pad('[data-a=back]', 'back');
-    pad('[data-a=brake]', 'brake');
-    pad('[data-a=boost]', 'boost');
+    if (L.wired) {
+      // um botão grande na tela para cada botão do carrinho (mesma cor da tampa)
+      const caps = this.capColors(sim.parts, an);
+      const bar = document.createElement('div');
+      bar.className = 'ml-bpads ml-fade';
+      const lft = document.createElement('div');
+      const rgt = document.createElement('div');
+      bar.append(lft, rgt);
+      an.buttons.forEach((bi, o) => {
+        const p = sim.parts[bi];
+        const tg = an.wires.filter((w) => w.b === bi).map((w) => sim.parts[w.t].t);
+        const ic = !tg.length ? IC.x : tg.every((tt) => tt === 'thruster') ? IC.jet : tg.every((tt) => tt === 'hinge') ? IC.rotate : p.t === 'btnR' ? IC.rev : IC.fwd;
+        const b = document.createElement('button');
+        b.className = 'ml-bpad';
+        b.style.setProperty('--cap', caps.get(bi) ?? '#ef4444');
+        b.setAttribute('aria-label', partName(p.t));
+        b.innerHTML = `<i>${ic}</i>`;
+        (p.t === 'btnR' || (sim.track.dir < 0 && false) ? lft : rgt).appendChild(b);
+        this.padEls[o] = b;
+        this.buttons.push(
+          bindButton(b, {
+            onPress: () => {
+              this.padMask |= 1 << o;
+              this.au.press(true);
+              this.tutTestDone();
+            },
+            onRelease: () => {
+              this.padMask &= ~(1 << o);
+              this.au.press(false);
+            },
+            haptic: 'light',
+          }),
+        );
+      });
+      if (unwiredJet) {
+        const j = document.createElement('button');
+        j.className = 'ml-pad jet';
+        j.dataset.a = 'boost';
+        j.style.position = 'relative';
+        j.innerHTML = `${IC.jet}<span class="ml-fuel"><i data-r="fuel" style="width:100%"></i></span>`;
+        lft.appendChild(j);
+        pad(j, 'boost');
+      }
+      ui.appendChild(bar);
+      this.hud.bpads = bar;
+      if (!an.buttons.length) {
+        const tip = document.createElement('div');
+        tip.className = 'ml-tip';
+        tip.style.bottom = '40%';
+        tip.textContent = t('ml.noBtn', 'Sem botão o motor não liga! Volte e ligue um fio.');
+        ui.appendChild(tip);
+      }
+    } else {
+      const left = document.createElement('div');
+      left.className = 'ml-drive l ml-fade';
+      left.innerHTML = `<button class="ml-pad" data-a="back" aria-label="${t('ml.reverse', 'Ré')}">${IC.rev}</button><button class="ml-pad sm" data-a="brake" aria-label="${t('ml.brake', 'Freio')}">${IC.brake}</button>`;
+      ui.appendChild(left);
+      const right = document.createElement('div');
+      right.className = 'ml-drive r ml-fade';
+      right.innerHTML = `${unwiredJet ? `<button class="ml-pad jet" data-a="boost" aria-label="${t('ml.boost', 'Propulsor')}" style="position:relative">${IC.jet}<span class="ml-fuel"><i data-r="fuel" style="width:100%"></i></span></button>` : ''}<button class="ml-pad go" data-a="fwd" aria-label="${t('ml.forward', 'Acelerar')}">${IC.fwd}</button>`;
+      ui.appendChild(right);
+      this.hud.left = left;
+      this.hud.right = right;
+      pad(ui.querySelector<HTMLElement>('[data-a=fwd]'), 'fwd');
+      pad(ui.querySelector<HTMLElement>('[data-a=back]'), 'back');
+      pad(ui.querySelector<HTMLElement>('[data-a=brake]'), 'brake');
+      pad(ui.querySelector<HTMLElement>('[data-a=boost]'), 'boost');
+    }
+    const fuel = ui.querySelector<HTMLElement>('[data-r=fuel]');
+    if (fuel) this.hud.fuel = fuel;
+    this.treads = this.findTreads(sim);
+    this.simCaps = this.capColors(sim.parts, an);
+    this.botVis = sim.cargo.map(() => ({ lean: 0, vl: 0, sq: 0, mood: 0, moodT: 0, vx: 0, face: sim.track.dir }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=edit]')!, { onPress: () => this.toBuild() }));
     this.buttons.push(bindButton(top.querySelector<HTMLElement>('[data-a=restart]')!, { onPress: () => this.startTest() }));
-    const zoneTxt = t('ml.obj', 'Leve a carga até a bandeira verde');
+    const zoneTxt = L.cargo.some((c) => c.t === 'bot') ? t('ml.objBot', 'Leve o passageiro até a SAÍDA') : t('ml.obj', 'Leve a carga até a placa verde de saída');
     objective(zoneTxt, { icon: 'target' });
     setNotifyTop(top.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 8);
     if (this.tut) {
       const tip = document.createElement('div');
-      tip.className = 'ml-tip';
-      tip.style.bottom = '120px';
-      tip.textContent = t('ml.tut.drive', 'Segure o botão verde para acelerar');
+      tip.className = 'ml-tip pad';
+      tip.style.bottom = '130px';
+      tip.textContent = L.wired ? t('ml.tut.hold', 'Segure o botão para andar') : t('ml.tut.drive', 'Segure o botão verde para acelerar');
       ui.appendChild(tip);
       this.hud.tip = tip;
+      if (L.wired && this.padEls[0]) {
+        const hand = document.createElement('div');
+        hand.className = 'ml-hand tap';
+        hand.innerHTML = IC.hand;
+        ui.appendChild(hand);
+        const r = this.padEls[0].getBoundingClientRect();
+        const host = this.el.getBoundingClientRect();
+        hand.style.transform = `translate(${r.left - host.left + r.width / 2}px,${r.top - host.top + r.height / 2}px)`;
+        this.hud.hand = hand;
+      }
     }
     this.updatePips();
     this.setBack(() => this.toBuild());
@@ -1294,6 +1603,8 @@ export class MontaLeva implements MiniGameHandle {
     if (this.hud.tip && this.screen === 'test') {
       this.hud.tip.remove();
       delete this.hud.tip;
+      this.hud.hand?.remove();
+      delete this.hud.hand;
     }
   }
 
@@ -1323,18 +1634,21 @@ export class MontaLeva implements MiniGameHandle {
     const sim = this.sim!;
     // entradas
     if (this.auto) {
-      const s = autoInput(this.auto.drive, sim.time, sim.focus().x, sim.track.zone.x0);
-      sim.input.fwd = s.includes('F');
-      sim.input.back = s.includes('R');
-      sim.input.brake = s.includes('B');
-      sim.input.boost = s.includes('J');
+      applyCmd(sim, driveCmd(this.auto.drive, sim));
+      this.padMask = sim.input.btn;
     } else {
       const k = this.keys;
-      sim.input.fwd = this.btnHeld.fwd || k.has('ArrowRight') || k.has('KeyD');
-      sim.input.back = this.btnHeld.back || k.has('ArrowLeft') || k.has('KeyA');
-      sim.input.brake = this.btnHeld.brake || k.has('Space') || k.has('KeyS') || k.has('ArrowDown');
-      sim.input.boost = this.btnHeld.boost || k.has('ArrowUp') || k.has('KeyW');
+      let cmd = '';
+      if (this.btnHeld.fwd || k.has('ArrowRight') || k.has('KeyD')) cmd += 'F';
+      if (this.btnHeld.back || k.has('ArrowLeft') || k.has('KeyA')) cmd += 'R';
+      if (this.btnHeld.brake || k.has('Space') || k.has('KeyS') || k.has('ArrowDown')) cmd += 'B';
+      if (this.btnHeld.boost || k.has('ArrowUp') || k.has('KeyW')) cmd += 'J';
+      for (let i = 0; i < 4; i++) if (k.has('Digit' + (i + 1))) cmd += String.fromCharCode(97 + i);
+      applyCmd(sim, cmd);
+      sim.input.btn |= this.padMask;
+      if (sim.wired && this.btnHeld.boost) sim.input.boost = true;
     }
+    if (sim.wired) for (let o = 0; o < this.padEls.length; o++) this.padEls[o]?.classList.toggle('on', !!(sim.input.btn & (1 << o)));
     if (this.endKind) {
       // câmera lenta no fim
       this.ending += dt;
@@ -1350,8 +1664,10 @@ export class MontaLeva implements MiniGameHandle {
       }
     }
     if (n >= 4) this.acc = 0;
+    this.updateBots(dt);
     // efeitos
     for (const e of sim.fx) {
+      if (e.kind === 'cargo' || e.kind === 'hit') this.squashBots(e.x, e.y, e.power);
       if (e.kind === 'glass') {
         this.au.glass();
         this.fx.emit(18, e.x, e.y, { speed: 3, color: ['#bfe6ff', '#ffffff', '#7cc4f0'], size: 0.12, life: 0.8, shape: 1 });
@@ -1416,6 +1732,51 @@ export class MontaLeva implements MiniGameHandle {
     if (this.endKind === 'win' && this.ending > 0.7 && !this.hud.res) this.showWin();
   }
 
+  /** passageiros: bamboleio (mola visual), carinhas e vozinha */
+  private updateBots(dt: number): void {
+    const sim = this.sim;
+    if (!sim) return;
+    sim.cargo.forEach((c, ci) => {
+      if (c.def.t !== 'bot') return;
+      const bv = this.botVis[ci];
+      if (!bv) return;
+      const b = c.bodies[0];
+      const v = b.getLinearVelocity();
+      const ax = (v.x - bv.vx) / Math.max(dt, 1e-3);
+      bv.vx = v.x;
+      const target = clamp(ax * 0.03, -0.32, 0.32);
+      bv.vl += ((target - bv.lean) * 70 - bv.vl * 6) * dt;
+      bv.lean = clamp(bv.lean + bv.vl * dt, -0.5, 0.5);
+      bv.sq *= Math.exp(-dt * 9);
+      if (Math.abs(v.x) > 0.4) bv.face = Math.sign(v.x);
+      bv.moodT = Math.max(0, bv.moodT - dt);
+      let mood = 0;
+      const z = sim.track.zone;
+      const p = b.getPosition();
+      if (c.st[0] !== 'ok') mood = 3;
+      else if ((sim.result && sim.result.win) || (p.x > z.x0 && p.x < z.x1 && Math.abs(v.x) < 1.2)) mood = 2;
+      else if (Math.abs(norm(b.getAngle())) > 0.5 || v.y < -2.6 || Math.abs(v.x) > 5.8 || Math.abs(ax) > 30) mood = 1;
+      if (mood === 0 && bv.mood === 1 && bv.moodT > 0) mood = 1;
+      if (mood !== bv.mood) {
+        if (mood === 1) {
+          if (bv.moodT <= 0) this.au.bot(1);
+          bv.moodT = 0.7;
+        } else if (mood === 2 || mood === 3) this.au.bot(mood);
+        bv.mood = mood;
+      }
+    });
+  }
+
+  private squashBots(x: number, y: number, power: number): void {
+    const sim = this.sim;
+    if (!sim) return;
+    sim.cargo.forEach((c, ci) => {
+      if (c.def.t !== 'bot' || !this.botVis[ci]) return;
+      const p = c.bodies[0].getPosition();
+      if (Math.abs(p.x - x) < 1.2 && Math.abs(p.y - y) < 1.2) this.botVis[ci].sq = Math.max(this.botVis[ci].sq, Math.min(0.2, power * 0.22));
+    });
+  }
+
   private onResult(): void {
     const sim = this.sim!;
     const r = sim.result!;
@@ -1437,7 +1798,9 @@ export class MontaLeva implements MiniGameHandle {
       const msg =
         r.reason === 'broken'
           ? t('ml.f.broken', 'O vidro quebrou!')
-          : r.reason === 'time'
+          : r.reason === 'bot'
+            ? t('ml.f.bot', 'O passageiro caiu!')
+            : r.reason === 'time'
             ? t('ml.f.time', 'Tempo esgotado')
             : t('ml.f.lost', 'Carga perdida!');
       const fl = document.createElement('div');
@@ -1445,7 +1808,7 @@ export class MontaLeva implements MiniGameHandle {
       this.ui.appendChild(fl);
       const d = document.createElement('div');
       d.className = 'ml-fail';
-      d.innerHTML = `${r.reason === 'broken' ? IC.glass : IC.box}<span>${esc(msg)}</span>`;
+      d.innerHTML = `${r.reason === 'broken' ? IC.glass : r.reason === 'bot' ? IC.bot : IC.box}<span>${esc(msg)}</span>`;
       this.ui.appendChild(d);
       reportRun({ game: 'montaleva', score: 0, coins: 0, durationSec: Math.round(sim.time), won: false, stats: { level: this.L!.n } });
     }
@@ -1519,7 +1882,7 @@ export class MontaLeva implements MiniGameHandle {
     this.on(ov, '[data-a=edit]', () => this.toBuild());
     this.on(ov, '[data-a=again]', () => this.startTest());
     this.on(ov, '[data-a=next]', () => this.openLevel(L.n + 1));
-    this.on(ov, '[data-a=map]', () => this.levels());
+    this.on(ov, '[data-a=map]', () => this.levels(chapterOf(L.n)));
     this.setBack(() => this.toBuild());
   }
 
@@ -1556,12 +1919,13 @@ export class MontaLeva implements MiniGameHandle {
     v.ox = this.W / 2 - this.cam.x * v.s + sx;
     v.oy = this.H / 2 + this.cam.y * v.s + sy;
     x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    drawBackground(x, v);
+    const inLevel = this.L && (this.screen === 'build' || this.screen === 'test');
+    drawBackground(x, v, inLevel ? CHAPTER_TINT[chapterOf(this.L!.n)] : undefined);
     if (this.screen === 'levels' || this.screen === 'shop' || this.screen === 'settings') return;
     const tr = this.screen === 'menu' ? DEMO_TRACK : this.track;
     if (!tr) return;
     const sim = this.screen === 'menu' ? this.demo : this.screen === 'test' ? this.sim : null;
-    drawZone(x, v, tr, this.time, t('ml.zone', 'ENTREGA'), !!(sim && sim.result && sim.result.win));
+    drawZone(x, v, tr, this.time, inLevel ? this.L!.n : 0, !!(sim && sim.result && sim.result.win));
     if (sim) this.drawObjs(sim);
     else this.drawStaticObjs(tr);
     drawTrack(x, v, tr);
@@ -1570,6 +1934,7 @@ export class MontaLeva implements MiniGameHandle {
       this.drawSimVehicle(sim);
       this.drawSimCargo(sim);
     }
+    drawWater(x, v, tr, this.time);
     this.fx.draw(x, v);
   }
 
@@ -1577,33 +1942,35 @@ export class MontaLeva implements MiniGameHandle {
     // estado inicial dos objetos (montagem)
     for (const o of tr.objs) {
       const bodies: { x: number; y: number; a: number }[] = [];
-      if (o.k === 'seesaw') bodies.push({ x: o.x, y: o.y + 0.62, a: Math.asin(Math.min(0.95, 0.62 / (o.len / 2))) });
+      if (o.k === 'seesaw') bodies.push({ x: o.x, y: o.y + 0.62, a: Math.asin(Math.min(0.95, 0.62 / (o.len / 2))) * tr.dir });
       else if (o.k === 'lift') bodies.push({ x: o.x, y: o.y0 - 0.15, a: 0 });
       else if (o.k === 'bridge') {
         const n = Math.max(3, Math.round((o.x1 - o.x0) / 0.62));
         const pw = (o.x1 - o.x0) / n;
         for (let i = 0; i < n; i++) bodies.push({ x: o.x0 + pw * (i + 0.5), y: o.y - 0.08, a: 0 });
       } else if (o.k === 'gate') bodies.push({ x: o.x, y: o.y + 0.75, a: 0 });
-      else if (o.k === 'pend') bodies.push({ x: o.x + Math.sin(1.05) * o.len, y: o.y - Math.cos(1.05) * o.len, a: 0 });
+      else if (o.k === 'pend') bodies.push({ x: o.x + Math.sin(1.05) * o.len * tr.dir, y: o.y - Math.cos(1.05) * o.len, a: 0 });
+      else if (o.k === 'ferry') bodies.push({ x: o.x0, y: o.y - 0.15, a: 0 });
       else if (o.k === 'box') bodies.push({ x: o.x, y: o.y, a: 0 });
       drawObj(this.cx, this.view, { o, bodies }, this.time);
     }
   }
 
+  private objPose: { o: TrackObj; bodies: { x: number; y: number; a: number }[] } = { o: { k: 'box', x: 0, y: 0, s: 0 }, bodies: [] };
   private drawObjs(sim: Sim): void {
+    const op = this.objPose;
     for (const so of sim.objs) {
-      drawObj(
-        this.cx,
-        this.view,
-        {
-          o: so.o,
-          bodies: so.bodies.map((b) => {
-            const p = b.getPosition();
-            return { x: p.x, y: p.y, a: b.getAngle() };
-          }),
-        },
-        this.time,
-      );
+      op.o = so.o;
+      const bs = op.bodies;
+      while (bs.length < so.bodies.length) bs.push({ x: 0, y: 0, a: 0 });
+      bs.length = so.bodies.length;
+      for (let i = 0; i < so.bodies.length; i++) {
+        const p = so.bodies[i].getPosition();
+        bs[i].x = p.x;
+        bs[i].y = p.y;
+        bs[i].a = so.bodies[i].getAngle();
+      }
+      drawObj(this.cx, this.view, op, this.time);
     }
   }
 
@@ -1698,6 +2065,39 @@ export class MontaLeva implements MiniGameHandle {
       else for (const [cx, cy] of cellsOf(p)) x.roundRect(cx - 0.06, cy - 0.06, 1.12, 1.12, 0.18);
       x.stroke();
     }
+    // fio sendo puxado
+    const wd = this.wdrag;
+    if (wd && parts[wd.a]) {
+      const [ax, ay] = this.nodeOf(parts[wd.a]);
+      let bx: number;
+      let by: number;
+      if (wd.tgt >= 0) [bx, by] = this.nodeOf(parts[wd.tgt]);
+      else {
+        const w = this.toWorld(wd.px, wd.py);
+        bx = w.x / U;
+        by = w.y / U;
+      }
+      drawWire(x, ax, ay, bx, by, lw, true, 0.9);
+      drawNode(x, bx, by, lw, true, wd.tgt >= 0 ? 1.6 : 1.2);
+    }
+    // tesourinhas (cortar fio) da peça selecionada
+    for (const h of this.wireHandles()) {
+      x.fillStyle = '#fff';
+      x.strokeStyle = '#3a9bd6';
+      x.lineWidth = lw * 1.2;
+      x.beginPath();
+      x.arc(h.x, h.y, 0.2, 0, Math.PI * 2);
+      x.fill();
+      x.stroke();
+      x.strokeStyle = '#ef4444';
+      x.lineWidth = lw * 1.6;
+      x.beginPath();
+      x.moveTo(h.x - 0.08, h.y - 0.08);
+      x.lineTo(h.x + 0.08, h.y + 0.08);
+      x.moveTo(h.x + 0.08, h.y - 0.08);
+      x.lineTo(h.x - 0.08, h.y + 0.08);
+      x.stroke();
+    }
     // brilho de encaixe recente
     this.placeFx = this.placeFx.filter((f) => this.time - f.t < 0.35);
     for (const f of this.placeFx) {
@@ -1774,6 +2174,7 @@ export class MontaLeva implements MiniGameHandle {
   private drawDesign(parts: readonly Placed[], hide: number, lw: number, alpha: number): void {
     const x = this.cx;
     const an = analyze(parts);
+    const caps = an.buttons.length ? this.capColors(parts, an) : null;
     // sombra
     if (this.gov.settings.softShadows) {
       x.save();
@@ -1788,13 +2189,13 @@ export class MontaLeva implements MiniGameHandle {
       x.restore();
     }
     parts.forEach((p, i) => {
-      if (i !== hide && PARTS[p.t].layer === 'struct') drawStructCell(x, p, lw, alpha);
+      if (i !== hide && PARTS[p.t].layer === 'struct') drawStructCell(x, p, lw, alpha, caps?.get(i) ?? '');
     });
     for (const l of an.links) drawLink(x, l.x, l.y, lw);
-    // correias motor → rodas
-    x.strokeStyle = 'rgba(239,93,96,0.55)';
-    x.lineWidth = lw * 1.2;
-    x.setLineDash([0.12, 0.1]);
+    // correias motor → rodas (alcance do motor)
+    x.strokeStyle = 'rgba(42,47,56,0.22)';
+    x.lineWidth = lw * 1.1;
+    x.setLineDash([0.1, 0.1]);
     for (const [mi, ws] of an.drives) {
       if (mi === hide) continue;
       const m = parts[mi];
@@ -1810,7 +2211,29 @@ export class MontaLeva implements MiniGameHandle {
     x.setLineDash([]);
     parts.forEach((p, i) => {
       if (i === hide || PARTS[p.t].layer !== 'mount') return;
-      this.drawPart(p, lw, alpha, 0, an.power.has(i));
+      this.drawPart(p, lw, alpha, 0, an.power.has(i) && (!this.L?.wired || an.wires.some((w) => an.power.get(i)!.includes(w.t))));
+    });
+    // fios + nós
+    const wd = this.wdrag;
+    const wiredT = new Set<number>();
+    for (const w of an.wires) {
+      if (w.b === hide || w.t === hide) continue;
+      wiredT.add(w.t);
+      const [ax, ay] = this.nodeOf(parts[w.b]);
+      const [bx, by] = this.nodeOf(parts[w.t]);
+      drawWire(x, ax, ay, bx, by, lw, w.b === this.sel || w.t === this.sel);
+    }
+    const fromBtn = wd ? isButton(parts[wd.a]?.t) : false;
+    parts.forEach((p, i) => {
+      if (i === hide) return;
+      const btn = isButton(p.t);
+      const tgt = !!WIRABLE[p.t];
+      if (!btn && !tgt) return;
+      const cand = wd && i !== wd.a && (fromBtn ? tgt : btn);
+      if (!btn && !wiredT.has(i) && !cand && !(this.L?.wired && an.buttons.length)) return;
+      const [nx, ny] = this.nodeOf(p);
+      const pulse = cand ? 1.25 + 0.2 * Math.sin(this.time * 8) : wd?.tgt === i ? 1.5 : 1;
+      drawNode(x, nx, ny, lw, wiredT.has(i) || cand || wd?.a === i, wd?.tgt === i ? 1.6 : pulse);
     });
   }
 
@@ -1862,7 +2285,10 @@ export class MontaLeva implements MiniGameHandle {
         x.fill();
         x.restore();
       }
-      for (const i of an.groups[gi]) drawStructCell(x, parts[i], lw);
+      for (const i of an.groups[gi]) {
+        const o = isButton(parts[i].t) ? an.buttons.indexOf(i) : -1;
+        drawStructCell(x, parts[i], lw, 1, o >= 0 ? (this.simCaps.get(i) ?? '') : '', o >= 0 && sim.input.btn & (1 << o) ? 1 : 0);
+      }
       for (const l of an.links) if (an.group[l.i] === gi) drawLink(x, l.x, l.y, lw);
       // propulsores deste grupo
       for (const th of sim.thrusters) {
@@ -1891,6 +2317,92 @@ export class MontaLeva implements MiniGameHandle {
       drawWheel(x, parts[w.idx].t, 0, 0, w.body.getAngle(), lw, w.powered > 0);
       x.restore();
     }
+    // esteiras (fileiras de 3+ rodas iguais)
+    if (this.treads.length) {
+      x.save();
+      this.cellSpace(0, 0, 0);
+      for (const row of this.treads) {
+        const pts = this.treadPts;
+        pts.length = row.length;
+        for (let k = 0; k < row.length; k++) {
+          const p = sim.wheels[row[k]].body.getPosition();
+          pts[k] = pts[k] ?? { x: 0, y: 0 };
+          pts[k].x = p.x / U;
+          pts[k].y = p.y / U;
+        }
+        const w0 = sim.wheels[row[0]];
+        drawTread(x, pts, w0.r / U, lw, -w0.body.getAngle());
+      }
+      x.restore();
+    }
+    // fios (por cima de tudo, como no editor)
+    if (an.wires.length) {
+      x.save();
+      this.cellSpace(0, 0, 0);
+      for (const w of an.wires) {
+        const o = an.buttons.indexOf(w.b);
+        this.partNodeWorld(sim, w.b, this.tmpA);
+        this.partNodeWorld(sim, w.t, this.tmpB);
+        const hot = o >= 0 && !!(sim.input.btn & (1 << o));
+        drawWire(x, this.tmpA.x / U, this.tmpA.y / U, this.tmpB.x / U, this.tmpB.y / U, lw, hot);
+        drawNode(x, this.tmpA.x / U, this.tmpA.y / U, lw, hot);
+        drawNode(x, this.tmpB.x / U, this.tmpB.y / U, lw, hot);
+      }
+      x.restore();
+    }
+  }
+
+  private tmpA = { x: 0, y: 0 };
+  private tmpB = { x: 0, y: 0 };
+  private treadPts: { x: number; y: number }[] = [];
+  private treads: number[][] = [];
+  private simCaps = new Map<number, string>();
+  /** posição no mundo do nó de conexão da peça i (sem alocar) */
+  private partNodeWorld(sim: Sim, i: number, out: { x: number; y: number }): void {
+    const p = sim.parts[i];
+    const [nx, ny] = this.nodeOf(p);
+    let body = sim.bodyOfPart(i);
+    let lx = nx * U;
+    let ly = ny * U;
+    if (!body) {
+      const bi = sim.an.base.get(i);
+      body = bi !== undefined ? sim.bodyOfPart(bi) : null;
+    }
+    if (!body) {
+      out.x = out.y = 0;
+      return;
+    }
+    const pin = sim.pins.find((q) => q.body === body);
+    if (pin) {
+      const pp = sim.parts[pin.idx];
+      lx = (nx - pp.x - 0.5) * U;
+      ly = (ny - pp.y - 0.5) * U;
+    }
+    const bp = body.getPosition();
+    const a = body.getAngle();
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    out.x = bp.x + c * lx - s * ly;
+    out.y = bp.y + s * lx + c * ly;
+  }
+  /** fileiras de rodas para desenhar esteira */
+  private findTreads(sim: Sim): number[][] {
+    const rows: number[][] = [];
+    const used = new Set<number>();
+    sim.wheels.forEach((w, i) => {
+      if (used.has(i)) return;
+      const row = sim.wheels
+        .map((q, k) => ({ q, k }))
+        .filter(({ q }) => q.base === w.base && Math.abs(q.ly - w.ly) < 1e-6 && q.r === w.r && !q.spring)
+        .sort((a, b) => a.q.lx - b.q.lx);
+      if (row.length < 3) return;
+      let ok = true;
+      for (let k = 1; k < row.length; k++) if (row[k].q.lx - row[k - 1].q.lx > w.r * 3.2) ok = false;
+      if (!ok) return;
+      for (const r of row) used.add(r.k);
+      rows.push(row.map((r) => r.k));
+    });
+    return rows;
   }
 
   private drawSpring(ax: number, ay: number, bx: number, by: number, ang: number): void {
@@ -1914,11 +2426,21 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private drawSimCargo(sim: Sim): void {
-    for (const c of sim.cargo)
+    sim.cargo.forEach((c, ci) => {
+      if (c.def.t === 'bot') {
+        const b = c.bodies[0];
+        const p = b.getPosition();
+        const bv = this.botVis[ci];
+        if (c.st[0] === 'lost') this.cx.globalAlpha = 0.75;
+        drawBot(this.cx, this.view, p.x, p.y, b.getAngle(), bv ? bv.mood : 0, bv ? bv.lean : 0, bv ? bv.sq : 0, this.time, bv ? bv.face : 1);
+        this.cx.globalAlpha = 1;
+        return;
+      }
       c.bodies.forEach((b, k) => {
         const p = b.getPosition();
         drawCargo(this.cx, this.view, c.def.t, p.x, p.y, b.getAngle(), c.st[k] === 'broken', c.st[k] === 'lost');
       });
+    });
   }
 
   /* ================================ API de teste (só com ?debug) ================================ */
@@ -1940,7 +2462,7 @@ export class MontaLeva implements MiniGameHandle {
       }),
       openLevel: (n: number) => this.openLevel(n),
       menu: () => this.menu(),
-      levels: () => this.levels(),
+      levels: (c = -1) => this.levels(c),
       shop: () => this.shop(),
       settings: () => this.settings(),
       /** coloca uma peça pela API (mesmas regras do arrastar) */
@@ -1958,7 +2480,7 @@ export class MontaLeva implements MiniGameHandle {
       test: () => this.startTest(),
       toBuild: () => this.toBuild(),
       input: (o: Partial<MontaLeva['btnHeld']>) => Object.assign(this.btnHeld, o),
-      auto: (drive?: [number, string, ('x' | 'z' | 't')?][]) => (this.auto = { drive }),
+      auto: (drive?: DriveStep[]) => (this.auto = { drive }),
       manual: () => (this.auto = null),
       /** centro de uma célula da grade em coordenadas de tela (para arrastar com toque) */
       cellToClient: (cx: number, cy: number, tt?: PartId, r = 0) => {
@@ -1985,13 +2507,6 @@ export class MontaLeva implements MiniGameHandle {
       },
     };
   }
-}
-
-function autoInput(drive: [number, string, ('x' | 'z' | 't')?][] | undefined, time: number, x: number, zx: number): string {
-  if (!drive || !drive.length) return 'F';
-  let cur = 'F';
-  for (const [v, s, k] of drive) if (k === 'x' ? x >= v : k === 'z' ? x >= zx + v : time >= v) cur = s;
-  return cur;
 }
 
 function logoSvg(): string {

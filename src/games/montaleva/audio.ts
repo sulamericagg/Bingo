@@ -270,6 +270,33 @@ export class MLAudio {
     this.tone(mtof(86 + [0, 4, 7][i % 3]), 0.35, 'sine', 0.12);
     this.tone(mtof(98 + [0, 4, 7][i % 3]), 0.25, 'sine', 0.04, 1, 0.02);
   }
+  /** fio ligado: estalinho + "zip" subindo */
+  wire(): void {
+    this.tone(980, 0.04, 'triangle', 0.1, 0.8);
+    this.tone(620, 0.16, 'sine', 0.07, 2.2, 0.03);
+    this.noise(0.03, 0.08, 3800, 3, 'bandpass', 0.02);
+  }
+  /** botão da tela apertado / solto */
+  press(down: boolean): void {
+    if (down) {
+      this.noise(0.03, 0.1, 1800, 2);
+      this.tone(240, 0.06, 'triangle', 0.08, 0.7);
+    } else this.tone(520, 0.04, 'sine', 0.04, 1.2);
+  }
+  /** vozinha do passageiro: 0 contente, 1 susto, 2 festa, 3 tombo */
+  bot(kind: number): void {
+    if (kind === 0) {
+      this.tone(988, 0.07, 'sine', 0.06, 1.3);
+      this.tone(1318, 0.08, 'sine', 0.05, 1.2, 0.07);
+    } else if (kind === 1) {
+      this.tone(1200, 0.18, 'square', 0.025, 1.6);
+      this.tone(1500, 0.12, 'sine', 0.04, 0.7, 0.1);
+    } else if (kind === 2) {
+      [0, 4, 7, 12].forEach((n, i) => this.tone(mtof(84 + n), 0.09, 'sine', 0.06, 1.1, i * 0.06));
+    } else {
+      this.tone(700, 0.35, 'triangle', 0.06, 0.35);
+    }
+  }
   coin(): void {
     this.tone(1568, 0.06, 'square', 0.035);
     this.tone(2093, 0.12, 'square', 0.035, 1, 0.06);

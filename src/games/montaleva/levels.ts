@@ -6,8 +6,9 @@
 import { t } from '../../i18n';
 import type { PartId, Placed } from './parts';
 import type { Seg } from './track';
+import { GEN_LEVELS } from './levels-data';
 
-export type CargoType = 'crate' | 'big' | 'ball' | 'glass' | 'drops';
+export type CargoType = 'crate' | 'big' | 'ball' | 'glass' | 'drops' | 'bot';
 export interface CargoDef {
   t: CargoType;
   x: number;
@@ -27,15 +28,24 @@ export interface LevelDef {
   goals: { time: number; parts: number };
   /** peças já montadas (tutorial) */
   pre?: Placed[];
-  tut?: 1 | 2 | 3;
+  tut?: 1 | 2 | 3 | 4;
   /** peças apresentadas nesta fase (destaque "novo") */
   intro?: PartId[];
+  /** motores só giram ligados por fio a um botão (controles = botões na tela) */
+  wired?: boolean;
+  /** pista espelhada: a saída fica à esquerda */
+  mirror?: boolean;
+  /** poços com água (buracos, pontes e balsas ganham água) */
+  wet?: boolean;
+  /** nº da fase clássica de origem (1..30), se for uma delas */
+  old?: number;
 }
 
 const c = (t: CargoType, x: number, y: number): CargoDef => ({ t, x, y });
 const P = (t: PartId, x: number, y: number, r = 0): Placed => ({ t, x, y, r });
 
-export const LEVELS: LevelDef[] = [
+/** as 30 fases originais (numeração antiga, usada pela migração do save e pelas soluções de 1ª geração) */
+export const CLASSIC: LevelDef[] = [
   /* ---------------- Capítulo 1 — Primeiros passos ---------------- */
   {
     n: 1,
@@ -301,9 +311,34 @@ export const LEVELS: LevelDef[] = [
   },
 ];
 
+/** composição final: 200 fases em 10 capítulos de 20 (dados gerados em levels-data.ts; número = fase clássica) */
+export const LEVELS: LevelDef[] = GEN_LEVELS.map((e, i) =>
+  typeof e === 'number' ? { ...CLASSIC[e - 1], n: i + 1, old: e } : ({ ...e, n: i + 1 } as LevelDef),
+);
+
+export const CHAPTER_SIZE = 20;
+export const CHAPTERS = Math.ceil(LEVELS.length / CHAPTER_SIZE);
+
 export function chapterOf(n: number): number {
-  return n <= 10 ? 0 : n <= 20 ? 1 : 2;
+  return Math.floor((n - 1) / CHAPTER_SIZE);
 }
 export function chapterName(i: number): string {
-  return [t('ml.ch1', 'Primeiros passos'), t('ml.ch2', 'Terreno difícil'), t('ml.ch3', 'Engenhocas')][i] ?? '';
+  return (
+    [
+      t('ml.ch1', 'Primeiros passos'),
+      t('ml.ch2', 'Terreno difícil'),
+      t('ml.chW', 'Botões e fios'),
+      t('ml.ch3', 'Engenhocas'),
+      t('ml.chUp', 'Sobe e desce'),
+      t('ml.chCeil', 'Teto baixo'),
+      t('ml.chWater', 'Água à vista'),
+      t('ml.chRev', 'De marcha à ré'),
+      t('ml.chGlass', 'Frágil!'),
+      t('ml.chMaster', 'Mestre construtor'),
+    ][i] ?? ''
+  );
 }
+/** cor de fundo (tinta suave) de cada capítulo */
+export const CHAPTER_TINT = ['#f6f7f9', '#f7f6f2', '#f3f6fa', '#f8f4f1', '#f2f7f4', '#f5f3f8', '#eef6f9', '#f8f5ef', '#f3f7f8', '#f7f3f4'];
+/** cor de destaque de cada capítulo (cartões da seleção) */
+export const CHAPTER_ACCENT = ['#f59a32', '#c98a3a', '#ef4444', '#8b5cf6', '#22b07d', '#64748b', '#0ea5e9', '#f97316', '#38bdf8', '#e11d48'];

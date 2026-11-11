@@ -13,9 +13,10 @@ await build({ entryPoints: [root + 'src/games/montaleva/solutions.ts'], bundle: 
 const { verifyAll } = await import(pathToFileURL(out).href);
 rmSync(dir, { recursive: true, force: true });
 let bad = 0;
-for (const r of verifyAll()) {
+const all = verifyAll();
+for (const r of all) {
   if (!r.ok) bad++;
   console.log(`${r.ok ? 'OK  ' : 'FAIL'} fase ${String(r.n).padStart(2)}  t=${r.time}s  peças=${r.parts}${r.flipped ? ' (tombou)' : ''}${r.valid ? '  inválida: ' + r.valid : ''}${r.reason ? '  motivo: ' + r.reason : ''}`);
 }
-console.log(bad ? `${bad} fase(s) falharam` : 'todas as 30 fases têm solução');
+console.log(bad ? `${bad} fase(s) falharam` : `todas as ${all.length} fases têm solução`);
 process.exit(bad ? 1 : 0);
