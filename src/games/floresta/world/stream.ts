@@ -13,7 +13,7 @@ import type { WorldSave } from './wsave';
 import { wTreeGeometry } from './wmodels';
 import { stumpGeometry } from '../fps/models';
 import type { Tier } from '../../../core/quality';
-import { BlobShadows, GrassField, groundDetail, hash2, natureBush, natureFern, natureFlowers, natureMat, natureQ, natureRock, type GrassSource, type NatureQ } from '../../../3d/nature';
+import { BlobShadows, GrassField, groundDetail, hash2, natureBush, natureFern, natureFlowers, leafCardMat, natureLeafCards, natureMat, natureQ, natureRock, type GrassSource, type NatureQ } from '../../../3d/nature';
 import { Solids, type SBox } from './collide';
 import { VoxWorld } from './voxworld';
 
@@ -120,11 +120,14 @@ export class World {
   readonly gen: WorldGen;
   readonly chunks = new Map<string, Chunk>();
   readonly groundMat: THREE.MeshLambertMaterial;
-  private treeMat = natureMat({ amp: 0.0022, y0: 1, rustle: 0.035 });
-  private decoMat = natureMat({ amp: 0.05, y0: 0.1, rustle: 0, tintGray: true });
+  private treeMat = natureMat({ amp: 0.0022, y0: 1, rustle: 0.035, wrap: 0.45 });
+  private cardMat = leafCardMat({ amp: 0.0022, y0: 1, rustle: 0.035, wrap: 0.45 });
+  private decoMat = natureMat({ amp: 0.05, y0: 0.1, rustle: 0, tintGray: true, wrap: 0.35 });
   private rockMat = natureMat({ amp: 0, y0: 50, rustle: 0, tintGray: true });
   private nearT: Inst[] = [];
   private farT: Inst[] = [];
+  /** cartões de folhas das árvores de perto (Médio/Alto) */
+  private nearC: (Inst | null)[] = [];
   private stumps: Inst;
   private rocks: Inst;
   private rocksBare: Inst;
@@ -173,7 +176,10 @@ export class World {
     this.vox = new VoxWorld(this);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {
-      this.nearT.push(new Inst(wTreeGeometry(s, 0, q.lite), this.treeMat, scene, cap, true));
+      const tg = wTreeGeometry(s, 0, q.lite);
+      this.nearT.push(new Inst(tg, this.treeMat, scene, cap, true));
+      const cg = natureLeafCards(tg, 14, s + 1);
+      this.nearC.push(cg ? new Inst(cg, this.cardMat, scene, cap, false) : null);
       this.farT.push(new Inst(wTreeGeometry(s, 1, true), this.treeMat, scene, cap * 2, false));
     }
     this.stumps = new Inst(stumpGeometry(), this.treeMat, scene, 32, false);
@@ -221,7 +227,7 @@ export class World {
         if (Math.abs(f - y) > 0.35 || this.vox.dens(x, y + 1.4, z) > 0) return 0;
       }
       // construção, acampamento ou bloco em cima
-      if (this.solids.groundAt(x, z, y + 3) > y + 0.08) return 0;
+      if (this.solids.groundAt(x, z, y + 3) > y + 0.08 || this.solids.staticAt(x, z, y - 0.2, y + 0.6)) return 0;
       if (this.extraFloor && this.extraFloor(x, y + 3, z) > y + 0.08) return 0;
       if (this.extraSolid && this.extraSolid(x, y + 0.3, z)) return 0;
       out[0] = _g4[0];
@@ -504,6 +510,8 @@ export class World {
   private rebuildInstances(px: number, pz: number): void {
     for (const i of this.nearT) i.begin();
     for (const i of this.farT) i.begin();
+    for (const i of this.nearC) i?.begin();
+    const cards = this.nq.cards;
     this.stumps.begin();
     this.rocks.begin();
     this.rocksBare.begin();
@@ -546,6 +554,7 @@ export class World {
         const br = rare ? 1 : 0.86 + hv * 0.26;
         const hu = rare ? 0 : (hash2(Math.round(x * 3), Math.round(z * 3), 12) - 0.5) * 0.12;
         (d2 < near2 ? this.nearT : this.farT)[sp].push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
+        if (cards && d2 < near2) this.nearC[sp]?.push(_m, tint[0] * br * (1 + hu), tint[1] * br, tint[2] * br * (1 - hu));
         if (blobs && d2 < blob2) {
           const shp = WSPECIES[sp].shape;
           const rr = sc * WSPECIES[sp].h * (shp === 'acacia' ? 0.42 : shp === 'pine' || shp === 'snowpine' || shp === 'cactus' || shp === 'bamboo' ? 0.26 : 0.34);
@@ -591,6 +600,7 @@ export class World {
     }
     for (const i of this.nearT) i.end();
     for (const i of this.farT) i.end();
+    for (const i of this.nearC) i?.end();
     this.stumps.end();
     this.rocks.end();
     this.rocksBare.end();
@@ -852,6 +862,7 @@ export class World {
   dispose(): void {
     for (const i of this.nearT) i.dispose();
     for (const i of this.farT) i.dispose();
+    for (const i of this.nearC) i?.dispose();
     this.stumps.dispose();
     this.rocks.dispose();
     this.rocksBare.dispose();

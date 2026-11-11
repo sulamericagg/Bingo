@@ -176,6 +176,22 @@ export class Solids {
     return best;
   }
 
+  /** alguma caixa FIXA (não veículo) ocupa (x,z) entre y0 e y1? — grama sob cabanas/construções */
+  staticAt(x: number, z: number, y0: number, y1: number): boolean {
+    const a = this.grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (!a) return false;
+    for (let i = 0; i < a.length; i++) {
+      const b = a[i];
+      if (b.off || b.y1 < y0 || b.y0 > y1) continue;
+      const dx = x - b.x;
+      const dz = z - b.z;
+      const lx = dx * b.c - dz * b.s;
+      const lz = dx * b.s + dz * b.c;
+      if (Math.abs(lx) <= b.hx + 0.15 && Math.abs(lz) <= b.hz + 0.15) return true;
+    }
+    return false;
+  }
+
   /** chão (topo de caixa) sob o ponto até `y`, ou -Infinity */
   groundAt(x: number, z: number, y: number): number {
     let best = -Infinity;

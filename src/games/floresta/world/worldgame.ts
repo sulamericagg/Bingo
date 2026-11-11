@@ -13,7 +13,7 @@ import { reportRun } from '../../../hub/registry';
 import type { QualitySettings, Tier } from '../../../core/quality';
 import { short } from '../data';
 import { handTexture, lambert, myHandColors, toolModel, windTime } from '../fps/models';
-import { SkyDome } from '../../../3d/nature';
+import { SkyDome, natureAnisotropy } from '../../../3d/nature';
 import { Forearm } from '../../../3d/common/hand';
 import { CH, WATER_Y, type Camp } from './gen';
 import { WBIOMES, WSPECIES } from './biomes';
@@ -291,6 +291,7 @@ export class WorldGame {
     r.domElement.className = 'fl-canvas';
     root.appendChild(r.domElement);
     this.renderer = r;
+    natureAnisotropy(r);
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 400);
     this.scene.add(this.camera);
     this.scene.fog = new THREE.Fog(0xcfeaf2, 30, 120);

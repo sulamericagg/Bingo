@@ -24,11 +24,11 @@ import type { View } from './game';
 import { createLook, type LookDrag } from '../../ui/touch';
 import { guideStep } from './guide';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundColorAt, groundH } from './fps/terrain';
-import { BlobShadows, GrassField, groundDetail, natureQ } from '../../3d/nature';
+import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureQ } from '../../3d/nature';
 
 const _gc = new THREE.Color();
 import {
-  INK, addWind, windTime, birdTexture, bushGeometry, dotTexture, geoms, handTexture, impostorAtlas, impostorGeometry, lambert, logCapGeometry, logSideGeometry,
+  INK, addWind, windTime, birdTexture, bushGeometry, dotTexture, geoms, handTexture, lambert, logCapGeometry, logSideGeometry,
   myHandColors, steeringWheel, stumpGeometry, toolModel, treeGeometry, vehicleModel, type VehModel,
 } from './fps/models';
 
@@ -202,6 +202,9 @@ class View3D implements View {
   private tv: TreeVis[] = [];
   private treeGeo = new Map<number, THREE.BufferGeometry>();
   private treeInst = new Map<number, THREE.InstancedMesh>();
+  private treeCards = new Map<number, THREE.InstancedMesh>();
+  private tier: Tier;
+  private cardMat!: THREE.Material;
   private treeMat: THREE.MeshLambertMaterial;
   private glowMat: THREE.MeshLambertMaterial;
   private stumps!: THREE.InstancedMesh;
@@ -322,10 +325,13 @@ class View3D implements View {
     tier: Tier,
   ) {
     this.q = qFor(tier);
+    this.tier = tier;
+    this.cardMat = this.track(leafCardMat({ amp: 0.0022, y0: 1, rustle: 0.035, wrap: 0.45 }));
     sim.fps = true;
     sim.groundY = groundH;
     this.renderer = new THREE.WebGLRenderer({ antialias: this.q.aa, powerPreference: 'high-performance', stencil: false });
     if (!this.renderer.getContext()) throw new Error('webgl');
+    natureAnisotropy(this.renderer);
     this.renderer.setPixelRatio(this.q.pr);
     this.renderer.shadowMap.enabled = this.q.shadows;
     this.renderer.autoClear = false;
@@ -393,7 +399,7 @@ class View3D implements View {
       out[2] = _gc.b;
       out[3] = 1;
       return k;
-    } }, nq.grass);
+    } }, nq.grass, { width: 1.5, height: 1.35, contrast: 1.6 });
     this.blobs = new BlobShadows(this.scene, 128, nq.blobAlpha);
     this.buildTrees();
     this.buildDeco();
@@ -620,6 +626,15 @@ class View3D implements View {
       for (const tr of this.sim.trees) if (tr.sp === sp) cap++;
       const glow = sp === 4 || sp === 5 || rare >= 2;
       m = new THREE.InstancedMesh(this.geoFor(sp, rare), glow ? this.glowMat : this.treeMat, Math.max(1, cap));
+      // cartões de folhas na borda da copa (Médio/Alto)
+      const cg = this.tier >= 2 ? natureLeafCards(this.geoFor(sp, rare), 14, sp * 4 + rare + 1) : null;
+      if (cg) {
+        const cm = new THREE.InstancedMesh(this.trackG(cg), this.cardMat, Math.max(1, cap));
+        cm.count = 0;
+        cm.frustumCulled = false;
+        this.scene.add(cm);
+        this.treeCards.set(k, cm);
+      }
       m.count = 0;
       m.castShadow = this.q.shadows;
       m.frustumCulled = false;
@@ -697,9 +712,7 @@ class View3D implements View {
     }
     for (const im of this.bushes) im.computeBoundingSphere();
 
-    // árvores de fundo (3D simplificado) e impostores
-    const atlas = this.trackT(impostorAtlas());
-    const impMat = this.track(new THREE.MeshLambertMaterial({ map: atlas, alphaTest: 0.5, side: THREE.DoubleSide }));
+    // árvores de fundo (3D simplificado, modelo leve ~70 tri)
     const segs = [-40, ...BIOMES.map((_, b) => gateX(b)), WORLD_X1];
     for (let k = 0; k < segs.length - 1; k++) {
       // um pedaço por bioma: o frustum culling corta o que está longe
@@ -711,20 +724,22 @@ class View3D implements View {
         for (const side of [-1, 1]) {
           const z = side * (10 + r() * 12);
           near[r() < 0.75 ? sp : alt].push(x + r() * 2, z, 0.8 + r() * 0.5, r() * TAU);
-          for (let j = 0; j < 2; j++) {
+          // fundo: o mesmo modelo leve 3D (no lugar dos recortes 2D); menos no Mínimo/Baixo
+          const nf = this.q.deco < 0.7 ? 1 : 2;
+          for (let j = 0; j < nf; j++) {
             const zf = side * (24 + r() * 40);
-            far[r() < 0.8 ? sp : alt].push(x + r() * 3, zf, 0.9 + r() * 0.7, 0);
+            far[r() < 0.8 ? sp : alt].push(x + r() * 3, zf, 0.9 + r() * 0.7, r() * TAU);
           }
         }
       }
-      this.decoChunk(near, far, impMat);
+      this.decoChunk(near, far);
     }
   }
 
   private decoGeo = new Map<string, THREE.BufferGeometry>();
-  private decoChunk(near: number[][], far: number[][], impMat: THREE.Material): void {
+  private decoChunk(near: number[][], far: number[][]): void {
     for (let sp = 0; sp < SPECIES.length; sp++) {
-      const list = near[sp];
+      const list = near[sp].concat(far[sp]);
       if (list.length) {
         let dg = this.decoGeo.get('n' + sp);
         if (!dg) this.decoGeo.set('n' + sp, (dg = this.trackG(treeGeometry(SPECIES[sp], 0, 1))));
@@ -734,22 +749,6 @@ class View3D implements View {
           const z = list[i * 4 + 1];
           const s = list[i * 4 + 2];
           _m.compose(_v.set(x, groundH(x, z) - 0.1, z), _q.setFromAxisAngle(UP, list[i * 4 + 3]), _s.set(s, s, s));
-          im.setMatrixAt(i, _m);
-        }
-        im.computeBoundingSphere();
-        this.scene.add(im);
-      }
-      const fl = far[sp];
-      if (fl.length) {
-        const h = SPECIES[sp].h * 1.05;
-        let dg = this.decoGeo.get('f' + sp);
-        if (!dg) this.decoGeo.set('f' + sp, (dg = this.trackG(impostorGeometry(sp, h))));
-        const im = new THREE.InstancedMesh(dg, impMat, fl.length / 4);
-        for (let i = 0; i < fl.length / 4; i++) {
-          const x = fl[i * 4];
-          const z = fl[i * 4 + 1];
-          const s = fl[i * 4 + 2];
-          _m.compose(_v.set(x, groundH(x, z) - 0.2, z), _q.setFromAxisAngle(UP, (i * 0.7) % 1.5), _s.set(s, s, s));
           im.setMatrixAt(i, _m);
         }
         im.computeBoundingSphere();
@@ -2771,6 +2770,7 @@ class View3D implements View {
     const sim = this.sim;
     const cx = this.cam.position.x;
     for (const im of this.treeInst.values()) im.count = 0;
+    for (const im of this.treeCards.values()) im.count = 0;
     let ns = 0;
     let nn = 0;
     this.blobs.begin();
@@ -2828,12 +2828,17 @@ class View3D implements View {
       _q.setFromAxisAngle(AXIS, tilt).multiply(_q2.setFromAxisAngle(UP, v.rotY));
       _m.compose(_v.set(tr.x, v.gy - 0.05, tr.z), _q, _s.set(s, s, s));
       const im = this.instFor(tr.sp, tr.rare);
-      if (im.count < im.instanceMatrix.count) im.setMatrixAt(im.count++, _m);
+      if (im.count < im.instanceMatrix.count) {
+        const cm = this.treeCards.get(tr.sp * 4 + tr.rare);
+        if (cm) cm.setMatrixAt(cm.count++, _m);
+        im.setMatrixAt(im.count++, _m);
+      }
       if (st !== TS.Falling && Math.abs(tr.x - cx) < 45) this.blobs.push(tr.x, v.gy, tr.z, SPECIES[tr.sp].h * s * (SPECIES[tr.sp].shape === 'pine' ? 0.27 : 0.34));
     }
     this.blobs.end();
     // só a parte usada vai para a GPU (o buffer tem lugar para todas as árvores da espécie)
     for (const im of this.treeInst.values()) dirtyRange(im.instanceMatrix, im.count * 16);
+    for (const im of this.treeCards.values()) dirtyRange(im.instanceMatrix, im.count * 16);
     this.stumps.count = ns;
     dirtyRange(this.stumps.instanceMatrix, ns * 16);
     if (this.stumps.instanceColor) dirtyRange(this.stumps.instanceColor, ns * 3);

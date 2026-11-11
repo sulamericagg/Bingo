@@ -23,7 +23,7 @@ import { tntModel } from './wmodels';
 import { BLUEPRINT, BLUEPRINTS, ChaseCam, DriveHud, EXTRA_ITEMS, PARTS, VEH_GROUP, VEH_RECIPES, VehicleManager, openGarage, type PartCat } from './content/vehicles';
 import { MobManager, MOB_ITEMS, type MobHost, type Mob as BigMob, type BiomeId } from './content/mobs';
 import { WBIOMES } from './biomes';
-import { BLOCKS, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
+import { BLOCKS, BLOCK_CHUNK, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
 
 const DAY = 720;
@@ -1596,6 +1596,8 @@ export class Sandbox implements MundoAPI {
         const b = new Uint8Array(s.length);
         for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
         this.blocks.loadChunk(p[0], p[1], p[2], b);
+        // blocos vindos do save (vidro, pisos): a grama embaixo é refeita
+        this.g.world.grassDirtyAt((p[0] + 0.5) * BLOCK_CHUNK, (p[2] + 0.5) * BLOCK_CHUNK, BLOCK_CHUNK * 0.5 + 1);
       } catch {
         /* */
       }

@@ -12,7 +12,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
-import { BlobShadows, GrassField, groundDetail, natureMat, natureQ, type GrassSource } from '../../3d/nature';
+import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
   PB,
@@ -102,6 +102,7 @@ interface Fall {
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _c = new THREE.Color();
@@ -157,6 +158,8 @@ export class View {
   private trees: THREE.InstancedMesh[] = [];
   private treeIdx: number[][] = [];
   private farTrees: THREE.InstancedMesh[] = [];
+  private cards: THREE.InstancedMesh[] = [];
+  private cardMat = leafCardMat({ amp: 0.004, y0: 1, rustle: 0.03, wrap: 0.45 });
   private stumps: THREE.InstancedMesh;
   private nodes: THREE.InstancedMesh[] = [];
   private chests: THREE.InstancedMesh[] = [];
@@ -196,7 +199,7 @@ export class View {
   /** grama de lâminas (canteiros em volta da câmera) */
   private grass: GrassField;
   private blobs: BlobShadows;
-  private treeMat = natureMat({ amp: 0.004, y0: 1, rustle: 0.03 });
+  private treeMat = natureMat({ amp: 0.004, y0: 1, rustle: 0.03, wrap: 0.45 });
 
   constructor(
     private wrap: HTMLElement,
@@ -212,6 +215,7 @@ export class View {
     r.domElement.className = 'nc-canvas';
     wrap.appendChild(r.domElement);
     this.renderer = r;
+    natureAnisotropy(r);
     this.camera = new THREE.PerspectiveCamera(62, (wrap.clientWidth || innerWidth) / (wrap.clientHeight || innerHeight), 0.1, 420);
     const sc = this.scene;
     sc.fog = new THREE.Fog('#bfe6ff', 40, 120);
@@ -286,6 +290,14 @@ export class View {
       sc.add(im);
       this.trees.push(im);
       this.treeIdx.push([]);
+      // cartões de folhas na borda das copas (Médio/Alto)
+      const cg = tier >= 2 ? natureLeafCards(im.geometry, 14, k + 3) : null;
+      const cm = new THREE.InstancedMesh(cg ?? new THREE.BufferGeometry(), this.cardMat, Math.max(1, n));
+      cm.count = 0;
+      cm.frustumCulled = false;
+      cm.visible = !!cg;
+      sc.add(cm);
+      this.cards.push(cm);
       // longe: modelo leve (~70 tri)
       const fm = new THREE.InstancedMesh(treeGeo(k as TK, 1), this.treeMat, Math.max(1, n));
       fm.count = 0;
@@ -494,11 +506,14 @@ export class View {
         return;
       }
       this.trees[t.k].setMatrixAt(cnt[t.k], _m);
+      this.cards[t.k].setMatrixAt(cnt[t.k], _m);
       this.treeIdx[t.k][cnt[t.k]++] = i;
     });
     this.trees.forEach((m, k) => {
       m.count = cnt[k];
       m.instanceMatrix.needsUpdate = true;
+      this.cards[k].count = cnt[k];
+      this.cards[k].instanceMatrix.needsUpdate = true;
     });
     this.farTrees.forEach((m, k) => {
       m.count = fcnt[k];
@@ -846,8 +861,10 @@ export class View {
       const nt = t - dt;
       if (ii >= 0) {
         const a = nt > 0 ? Math.sin(nt * 60) * 0.05 * nt * 3 : 0;
-        this.trees[k].setMatrixAt(ii, _m.compose(_v.set(tr.x, s.w.height(tr.x, tr.z) - 0.15, tr.z), _q.setFromAxisAngle(UP, tr.rot).multiply(new THREE.Quaternion().setFromAxisAngle(_s.set(1, 0, 0), a)), _s.setScalar(tr.s)));
+        this.trees[k].setMatrixAt(ii, _m.compose(_v.set(tr.x, s.w.height(tr.x, tr.z) - 0.15, tr.z), _q.setFromAxisAngle(UP, tr.rot).multiply(_q2.setFromAxisAngle(_s.set(1, 0, 0), a)), _s.setScalar(tr.s)));
         this.trees[k].instanceMatrix.needsUpdate = true;
+        this.cards[k].setMatrixAt(ii, _m);
+        this.cards[k].instanceMatrix.needsUpdate = true;
       }
       if (nt <= 0) this.shake.delete(i);
       else this.shake.set(i, nt);

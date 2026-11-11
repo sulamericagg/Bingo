@@ -14,17 +14,19 @@ export interface NatureQ {
   blobAlpha: number;
   /** textura de detalhe do chão: 2ª amostra (manchas grandes) */
   macro: boolean;
+  /** cartões de folhas na borda das copas */
+  cards: boolean;
 }
 
 export function natureQ(tier: Tier): NatureQ {
   switch (tier) {
     case 0:
-      return { grass: null, blobs: true, blobAlpha: 0.4, macro: false };
+      return { grass: null, blobs: true, blobAlpha: 0.4, macro: false, cards: false };
     case 1:
-      return { grass: { density: 4, dist: 15, segs: 1, width: 0.07, height: 0.9 }, blobs: true, blobAlpha: 0.4, macro: true };
+      return { grass: { density: 4, dist: 15, segs: 1, width: 0.07, height: 0.9 }, blobs: true, blobAlpha: 0.4, macro: true, cards: false };
     case 2:
-      return { grass: { density: 9, dist: 22, segs: 2, width: 0.055, height: 0.95 }, blobs: true, blobAlpha: 0.38, macro: true };
+      return { grass: { density: 9, dist: 22, segs: 2, width: 0.055, height: 0.95 }, blobs: true, blobAlpha: 0.38, macro: true, cards: true };
     default:
-      return { grass: { density: 14, dist: 30, segs: 2, width: 0.05, height: 1 }, blobs: true, blobAlpha: 0.26, macro: true };
+      return { grass: { density: 14, dist: 30, segs: 2, width: 0.05, height: 1 }, blobs: true, blobAlpha: 0.26, macro: true, cards: true };
   }
 }

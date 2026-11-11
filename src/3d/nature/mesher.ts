@@ -8,7 +8,21 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { hash3, vnoise3 } from './noise';
 
+/** bolha de copa registrada (para os cartões de folhas) */
+export interface Lump {
+  x: number;
+  y: number;
+  z: number;
+  sx: number;
+  sy: number;
+  sz: number;
+  cp: Canopy;
+  tone: number;
+}
+
 export class Mesher {
+  /** bolhas de folhagem (copas) — viram userData.lumps da geometria */
+  lumps: Lump[] = [];
   pos: number[] = [];
   nor: number[] = [];
   col: number[] = [];
@@ -40,6 +54,7 @@ export class Mesher {
     g.setIndex(this.nv > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     g.computeBoundingSphere();
     g.computeBoundingBox();
+    if (this.lumps.length) g.userData.lumps = this.lumps;
     return g;
   }
 }
@@ -84,12 +99,14 @@ export interface Canopy {
   lift: number;
   /** variação de brilho por vértice */
   jit: number;
+  /** recebe cartões de folhas (níveis Médio/Alto) */
+  cards?: boolean;
   /** salpicos (flores) — cor e fração */
   speck?: THREE.Color;
   speckK?: number;
 }
 
-export function canopy(cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, light: string | THREE.Color, dark: string | THREE.Color, soft = 0.62): Canopy {
+export function canopy(cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, light: string | THREE.Color, dark: string | THREE.Color, soft = 0.88): Canopy {
   return {
     cx,
     cy,
@@ -112,7 +129,8 @@ export function leafColor(cp: Canopy, px: number, py: number, pz: number, tone: 
   const qz = (pz - cp.cz) / cp.rz;
   const ql = Math.min(1, Math.hypot(qx, qy, qz));
   const up = Math.min(1, Math.max(0, qy * 0.5 + 0.5));
-  let k = 0.12 + 0.55 * ql * ql + 0.45 * up + tone * 0.12;
+  // oclusão: escuro por dentro e embaixo; claro na casca e no topo; cada bolha com seu tom
+  let k = 0.1 + 0.55 * ql * ql + 0.45 * up + tone * 0.2;
   k = Math.max(0, Math.min(1.15, k));
   out.copy(cp.dark).lerp(cp.light, Math.min(1, k));
   if (k > 1) out.multiplyScalar(1 + (k - 1) * 0.8);
@@ -128,6 +146,7 @@ export function leafColor(cp: Canopy, px: number, py: number, pz: number, tone: 
  */
 export function blob(m: Mesher, cp: Canopy, x: number, y: number, z: number, sx: number, sy: number, sz: number, detail: 0 | 1 | 2, seed: number, amp = 0.16, tone = 0, rotY = 0): void {
   const u = unitIco(detail);
+  if (cp.cards) m.lumps.push({ x, y, z, sx, sy, sz, cp, tone });
   const base = m.nv;
   const cs = Math.cos(rotY);
   const sn = Math.sin(rotY);

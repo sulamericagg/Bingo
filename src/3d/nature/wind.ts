@@ -17,6 +17,10 @@ export interface WindOpts {
   rustle?: number;
   /** multiplica a cor da instância só nos vértices sem saturação (cinza/branco) */
   tintGray?: boolean;
+  /** luz "envolvente" (half-Lambert): 0 = Lambert, 0.5 = sombra próprio bem suave */
+  wrap?: number;
+  /** dois lados sem inverter a normal no verso (cartões de folhas) */
+  noFlip?: boolean;
 }
 
 /**
@@ -28,7 +32,18 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
   const y0 = o.y0 ?? 1;
   const rus = o.rustle ?? 0.03;
   const tint = !!o.tintGray;
+  const wrap = o.wrap ?? 0;
+  const noFlip = !!o.noFlip;
   mat.onBeforeCompile = (sh) => {
+    if (wrap > 0)
+      sh.fragmentShader = sh.fragmentShader.replace(
+        '#include <lights_lambert_pars_fragment>',
+        THREE.ShaderChunk.lights_lambert_pars_fragment.replace(
+          'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
+          `float dotNL = saturate( ( dot( geometryNormal, directLight.direction ) + ${wrap.toFixed(3)} ) / ${(1 + wrap).toFixed(3)} );`,
+        ),
+      );
+    if (noFlip) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''));
     sh.uniforms.uWindT = windTime;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWindT;');
     if (tint)
@@ -69,7 +84,7 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
 }`,
     );
   };
-  mat.customProgramCacheKey = () => `nwind${amp}_${y0}_${rus}_${tint ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `nwind${amp}_${y0}_${rus}_${tint ? 1 : 0}_${wrap}_${noFlip ? 1 : 0}`;
   return mat;
 }
 

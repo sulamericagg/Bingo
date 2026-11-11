@@ -830,5 +830,5 @@ export const geoms = base;
  * Barato: só vertex shader (módulo compartilhado src/3d/nature).
  */
 export function addWind(mat: THREE.Material, amp = 0.0022): void {
-  natureWind(mat, { amp, y0: 1, rustle: 0.035 });
+  natureWind(mat, { amp, y0: 1, rustle: 0.035, wrap: 0.45 });
 }

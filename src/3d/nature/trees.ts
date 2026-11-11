@@ -64,10 +64,11 @@ export function natureTree(s: TreeSpec): THREE.BufferGeometry {
   return m.build();
 }
 
-function leafCp(s: TreeSpec, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, soft = 0.62): Canopy {
+function leafCp(s: TreeSpec, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, soft = 0.88): Canopy {
   const dark = new THREE.Color(s.leaf2).multiplyScalar(0.5);
   const light = new THREE.Color(s.leaf).lerp(_c.set('#fff6c8'), 0.12);
   const cp = canopy(cx, cy, cz, rx, ry, rz, light, dark, soft);
+  cp.cards = true;
   if (s.speck) {
     cp.speck = new THREE.Color(s.speck);
     cp.speckK = 0.16;
@@ -126,6 +127,7 @@ function broadleaf(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
       fc.light = _c.clone().multiplyScalar(1.1);
       fc.dark = _c.clone().multiplyScalar(0.55);
       fc.speck = undefined;
+      fc.cards = false;
       fc.jit = 0.02;
       blob(m, fc, x, y, z, h * 0.022, h * 0.022, h * 0.022, 0, i, 0.05);
     }
@@ -155,7 +157,7 @@ function acacia(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
   const top = at(1, new THREE.Vector3());
   const cy = h * 0.8;
   const cw = h * 0.42;
-  const cp = leafCp(s, top.x, cy, top.z, cw, h * 0.12, cw, 0.75);
+  const cp = leafCp(s, top.x, cy, top.z, cw, h * 0.12, cw, 0.9);
   cp.lift = 0.45;
   const dark = new THREE.Color(s.trunkDark ?? s.trunk);
   const n = lod ? 2 : 3;
@@ -178,7 +180,7 @@ function willow(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
   const top = at(1, new THREE.Vector3());
   const cw = h * 0.3;
   const cy = h * 0.74;
-  const cp = leafCp(s, top.x, h * 0.55, top.z, cw * 1.25, h * 0.38, cw * 1.25, 0.7);
+  const cp = leafCp(s, top.x, h * 0.55, top.z, cw * 1.25, h * 0.38, cw * 1.25, 0.88);
   blob(m, cp, top.x, cy, top.z, cw, h * 0.18, cw, lod ? 0 : 1, R() * 10, 0.15, 0.15);
   // cortinas pendentes: fitas estreitas caindo em volta da copa (com frestas), frente e verso
   const n = lod ? 7 : 12;
@@ -221,6 +223,34 @@ function willow(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
 }
 
 /* ------------------------------ coníferas ------------------------------ */
+
+/** mistura as normais dos vértices [from, to) com a normal "da copa inteira" (elipsoide cp) */
+function softenRange(m: Mesher, from: number, to: number, cp: Canopy, k: number): void {
+  const P = m.pos;
+  const N = m.nor;
+  for (let v = from; v < to; v++) {
+    const o = v * 3;
+    const ny0 = N[o + 1];
+    if (ny0 < -0.9) continue; // fundo das camadas fica para baixo
+    let qx = (P[o] - cp.cx) / cp.rx;
+    let qy = (P[o + 1] - cp.cy) / cp.ry;
+    let qz = (P[o + 2] - cp.cz) / cp.rz;
+    const ql = Math.hypot(qx, qy, qz) || 1;
+    qx /= ql;
+    qy /= ql;
+    qz /= ql;
+    let nx = N[o] * (1 - k) + qx * k;
+    let ny = ny0 * (1 - k) + qy * k + 0.15;
+    let nz = N[o + 2] * (1 - k) + qz * k;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l;
+    ny /= l;
+    nz /= l;
+    N[o] = nx;
+    N[o + 1] = ny;
+    N[o + 2] = nz;
+  }
+}
 
 /** camada macia de pinheiro: ápice, 2 anéis convexos, saia com lóbulos caídos, fundo côncavo */
 function pineTier(m: Mesher, cp: Canopy, x: number, y: number, z: number, Rr: number, H: number, n: number, rot: number, snow: boolean, snowCol: THREE.Color, lo: boolean): void {
@@ -281,6 +311,8 @@ function pine(m: Mesher, s: TreeSpec, R: () => number, lod: number, snow: boolea
   const cw = h * 0.3;
   const cp = leafCp(s, 0, h * 0.58, 0, cw, h * 0.42, cw, 0.35);
   cp.jit = 0.06;
+  cp.cards = false;
+  const v0 = m.nv;
   const white = new THREE.Color('#f4f8ff');
   const n = lod ? 3 : 4;
   const radial = lod ? 6 : 10;
@@ -291,6 +323,8 @@ function pine(m: Mesher, s: TreeSpec, R: () => number, lod: number, snow: boolea
     const H = h * (0.3 - f * 0.06);
     pineTier(m, cp, p.x, h * (0.2 + f * 0.6), p.z, Rr, H, radial, R() * TAU, snow, white, lod > 0);
   }
+  // normais puxadas para o volume do pinheiro inteiro: camadas sem facetas, luz contínua
+  softenRange(m, v0, m.nv, cp, 0.55);
 }
 
 /* ------------------------------ palmeira ------------------------------ */
@@ -351,6 +385,7 @@ function palm(m: Mesher, s: TreeSpec, R: () => number, lod: number): void {
     cp.light = new THREE.Color('#8a5a2e');
     cp.dark = new THREE.Color('#4a2e14');
     cp.speck = undefined;
+    cp.cards = false;
     for (let i = 0; i < 2; i++) {
       const a = i * 3.1 + 0.3;
       blob(m, cp, top.x + Math.cos(a) * h * 0.025, top.y - h * 0.03, top.z + Math.sin(a) * h * 0.025, h * 0.022, h * 0.025, h * 0.022, 0, i, 0.05);

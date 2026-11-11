@@ -59,6 +59,8 @@ export class GrassField {
     uPush: { value: new THREE.Vector3(0, 0, -1e5) },
     uGrass: { value: new THREE.Vector4(20, 10, 0.08, 1) },
     uWind: { value: new THREE.Vector2(0.18, 0.1) },
+    /** cor da raiz e da ponta (multiplicadores da cor do chão) */
+    uGrassC: { value: new THREE.Vector2(0.78, 1.32) },
   };
   private q: GrassQ | null;
   private map = new Map<number, Patch>();
@@ -80,7 +82,7 @@ export class GrassField {
     private src: GrassSource,
     q: GrassQ | null,
     /** ajuste do jogo: câmera alta pede lâminas mais largas */
-    private look: { width?: number; height?: number } = {},
+    private look: { width?: number; height?: number; contrast?: number } = {},
   ) {
     this.group.name = 'grass';
     parent.add(this.group);
@@ -92,6 +94,7 @@ export class GrassField {
       sh.uniforms.uPush = U.uPush;
       sh.uniforms.uGrass = U.uGrass;
       sh.uniforms.uWind = U.uWind;
+      sh.uniforms.uGrassC = U.uGrassC;
       sh.vertexShader = sh.vertexShader
         .replace(
           '#include <common>',
@@ -101,12 +104,13 @@ uniform vec3 uCam;
 uniform vec3 uPush;
 uniform vec4 uGrass;
 uniform vec2 uWind;
+uniform vec2 uGrassC;
 attribute vec4 aBlade;
 attribute vec2 aShape;`,
         )
         .replace(
           '#include <color_vertex>',
-          `vColor = color * mix(0.78, 1.32, aShape.x) + vec3(0.06, 0.055, 0.0) * aShape.x * aShape.x;`,
+          `vColor = color * mix(uGrassC.x, uGrassC.y, aShape.x) + vec3(0.06, 0.055, 0.0) * aShape.x * aShape.x;`,
         )
         .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);')
         .replace(
@@ -136,7 +140,9 @@ vec3 transformed = root + vec3(perp.x * side * w + bend.x * tb * hh, hh * t * (1
         );
       sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''));
     };
-    this.mat.customProgramCacheKey = () => 'natureGrass1';
+    this.mat.customProgramCacheKey = () => 'natureGrass2';
+    const ct = look.contrast ?? 1;
+    this.uniforms.uGrassC.value.set(1 - 0.22 * ct, 1 + 0.32 * ct);
     this.q = null;
     this.setQuality(q);
   }
