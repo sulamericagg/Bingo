@@ -78,8 +78,9 @@ export function vgrad(x: X, y0: number, y1: number, stops: string[]): CanvasGrad
 }
 /** fundo que cobre a tela toda (qualquer orientação) */
 export function fillAll(x: X, st: { hw: number; hh: number }, fill: string | CanvasGradient): void {
+  // cobre com folga (a cena pode estar com zoom < 1)
   x.fillStyle = fill;
-  x.fillRect(-st.hw - 2, -st.hh - 2, st.hw * 2 + 4, st.hh * 2 + 4);
+  x.fillRect(-st.hw * 3 - 2, -st.hh * 3 - 2, st.hw * 6 + 4, st.hh * 6 + 4);
 }
 export function star5(x: X, cx: number, cy: number, R: number, rot = 0, inner = 0.48): void {
   x.beginPath();

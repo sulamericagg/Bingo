@@ -6,6 +6,7 @@
  *  Duelo: você (+ até 4 amigos no mesmo aparelho, passando o celular)
  *  contra robôs com atraso e erro conforme a dificuldade. Total ≤ 5.
  * ============================================================ */
+import { corIntro } from './intro';
 import { audio } from '../../core/audio';
 import { addCoins } from '../../core/economy';
 import { success, tap } from '../../core/haptics';
@@ -444,6 +445,13 @@ class CorGame implements MiniGameHandle {
   }
 
   private begin(n: number): void {
+    // abertura (1ª rodada, fora do duelo): src/games/cor/intro
+    if (!this.duel && corIntro.due()) {
+      void corIntro.once(this.root).then(() => {
+        if (!this.dead) this.begin(n);
+      });
+      return;
+    }
     this.setNo = 0;
     this.t0 = performance.now();
     this.humans = this.players.map((p, i) => (p.bot < 0 ? i : -1)).filter((i) => i >= 0);

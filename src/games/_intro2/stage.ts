@@ -121,11 +121,10 @@ export class Stage {
   private prevTheme: string | null;
   private flashK = 0;
   private ro: ResizeObserver | null = null;
+  /** teclas não chegam ao jogo por baixo; Esc = pular */
   private onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      this.finish();
-    }
+    e.stopPropagation();
+    if (e.key === 'Escape') this.finish();
   };
 
   constructor(parent: HTMLElement, spec: FilmSpec) {
@@ -271,9 +270,10 @@ export class Stage {
     if (si !== this.subI) {
       this.subI = si;
       const sub = this.el.querySelector('.i2-sub') as HTMLElement;
-      if (si >= 0) {
+      const tx0 = si >= 0 ? sp.subs[si].text() : '';
+      if (si >= 0 && tx0) {
         const s = sp.subs[si];
-        const tx = s.text();
+        const tx = tx0;
         (sub.querySelector('.i2-ic') as HTMLElement).innerHTML = s.icons.map((k) => icon(k)).join('');
         (sub.querySelector('.i2-tx') as HTMLElement).textContent = tx;
         sub.classList.remove('on');

@@ -3,6 +3,7 @@
  *  bots, julgamento de tempo, Modo Estrela, resultados.
  *  Telas DOM em ui.ts; Estúdio em studio.ts; online em net.ts.
  * ============================================================ */
+import { bandIntro } from './intro';
 import './band.css';
 import { t, fmt } from '../../i18n';
 import { gameFont } from '../../i18n/font';
@@ -356,6 +357,13 @@ export class BandGame implements MiniGameHandle {
    * a música começa (multiplayer); sem ele, contagem local.
    */
   startSong(song: SongDef, inst: Instrument, diff: Difficulty, slots: BandSlot[], opts: { startEpochMs?: number; net?: BandNet | null; onEnd?: (r: RunResult) => void } = {}): void {
+    // abertura (1ª música sozinho): src/games/band/intro
+    if (!opts.net && opts.startEpochMs === undefined && bandIntro.due()) {
+      void bandIntro.once(this.root).then(() => {
+        if (this.root.isConnected) this.startSong(song, inst, diff, slots, opts);
+      });
+      return;
+    }
     const ctx = this.ensureAudio();
     this.stopPlayer();
     this.song = song;

@@ -3,6 +3,7 @@
  *  Menu (sobre o ateliê 3D) → Ateliê (caixa de areia) | Desafios (20 fases) | Galeria.
  *  Tutorial guiado na 1ª vez: desenhar → escolher material → BUM! → brincar.
  * ============================================================ */
+import { desenhoIntro } from './intro';
 import * as THREE from 'three';
 import { addCoins } from '../../core/economy';
 import { success, tap } from '../../core/haptics';
@@ -211,6 +212,13 @@ class DesenhoGame implements MiniGameHandle {
   }
 
   private enterAtelier(): void {
+    // abertura (1ª vez no ateliê ou nos desafios): src/games/desenho/intro
+    if (desenhoIntro.due()) {
+      void desenhoIntro.once(this.root).then(() => {
+        if (!this.dead) this.enterAtelier();
+      });
+      return;
+    }
     this.closeOv();
     const a = this.ensureAtelier();
     a.setMenuMode(false);
@@ -439,6 +447,12 @@ class DesenhoGame implements MiniGameHandle {
   }
 
   playLevel(i: number): void {
+    if (!this.duelOn && !this.duel && desenhoIntro.due()) {
+      void desenhoIntro.once(this.root).then(() => {
+        if (!this.dead) this.playLevel(i);
+      });
+      return;
+    }
     this.closeOv();
     this.closeDraw();
     this.drawUI?.destroy();

@@ -232,18 +232,18 @@ function kitchenWall(x: X, st: Stage, tt: number, floorY: number): void {
     x.lineTo(gx, floorY);
   }
   for (let gy = floorY; gy > -st.hh - 2; gy -= 8) {
-    x.moveTo(-st.hw - 2, gy);
+    x.moveTo(-st.hw * 3, gy);
     x.lineTo(st.hw + 2, gy);
   }
   x.stroke();
   // piso xadrez
   x.fillStyle = '#c96b4a';
-  x.fillRect(-st.hw - 2, floorY, st.hw * 2 + 4, st.hh + 4 - floorY + 2);
+  x.fillRect(-st.hw * 3, floorY, st.hw * 6, st.hh * 3);
   x.fillStyle = '#e8946a';
   for (let gx = -132; gx < 132; gx += 10)
     for (let gy = 0; gy < 3; gy++) if (((gx / 10) | 0) % 2 === gy % 2) x.fillRect(gx, floorY + gy * 6, 10, 6);
   x.fillStyle = 'rgba(0,0,0,.08)';
-  x.fillRect(-st.hw - 2, floorY, st.hw * 2 + 4, 1.2);
+  x.fillRect(-st.hw * 3, floorY, st.hw * 6, 1.2);
   void tt;
 }
 /** janela com sol da manhã + fachos de luz */
@@ -319,11 +319,11 @@ function street(x: X, st: Stage, tt: number): void {
   }
   // calçada e rua
   x.fillStyle = '#d9c8b8';
-  x.fillRect(-st.hw - 2, GY, st.hw * 2 + 4, 8);
+  x.fillRect(-st.hw * 3, GY, st.hw * 6, 8);
   x.fillStyle = '#b8a594';
   for (let i = -20; i < 20; i++) x.fillRect(i * 12, GY, 0.4, 8);
   x.fillStyle = '#6a6a80';
-  x.fillRect(-st.hw - 2, GY + 8, st.hw * 2 + 4, st.hh + 4);
+  x.fillRect(-st.hw * 3, GY + 8, st.hw * 6, st.hh * 3);
   x.fillStyle = '#fff';
   for (let i = -20; i < 20; i++) x.fillRect(i * 16, GY + 15, 8, 1.2);
 }

@@ -3,6 +3,7 @@
  *  Estados: garagem → corrida → resultado. Física em passo fixo (120 Hz),
  *  desenho limitado pelo nível de qualidade.
  * ============================================================ */
+import { rallyIntro } from './intro';
 import { celebrateRecord } from '../../ui/record';
 import './rally.css';
 import { t, fmt } from '../../i18n';
@@ -488,6 +489,11 @@ class RallyGame {
       this.renderGarage();
     } else if (a === 'play') {
       selectVehicle(v.id);
+      // abertura (1ª corrida): src/games/rally/intro
+      if (rallyIntro.due()) {
+        await rallyIntro.once(this.root);
+        if (this.destroyed) return;
+      }
       this.startRun();
     }
   }

@@ -69,11 +69,11 @@ function park(x: X, st: Stage, tt: number): void {
     fs(x, i % 2 ? TH.tree : TH.tree2, 0.5);
   }
   x.fillStyle = TH.park;
-  x.fillRect(-st.hw - 2, GY, st.hw * 2 + 4, st.hh + 4);
+  x.fillRect(-st.hw * 3, GY, st.hw * 6, st.hh * 3);
   x.fillStyle = TH.sidewalk;
-  x.fillRect(-st.hw - 2, GY + 3, st.hw * 2 + 4, 6);
+  x.fillRect(-st.hw * 3, GY + 3, st.hw * 6, 6);
   x.fillStyle = TH.park2;
-  x.fillRect(-st.hw - 2, GY, st.hw * 2 + 4, 1.2);
+  x.fillRect(-st.hw * 3, GY, st.hw * 6, 1.2);
   // flores
   for (let i = 0; i < 14; i++) {
     const px = -110 + i * 17;

@@ -249,9 +249,9 @@ function town(x: X, st: Stage, tt: number, ox = 0, tilt: (i: number) => number =
     x.stroke();
   }
   x.fillStyle = '#7ad35a';
-  x.fillRect(-st.hw - 2, GY, st.hw * 2 + 4, st.hh + 4);
+  x.fillRect(-st.hw * 3, GY, st.hw * 6, st.hh * 3);
   x.fillStyle = '#5ab84a';
-  x.fillRect(-st.hw - 2, GY, st.hw * 2 + 4, 1.4);
+  x.fillRect(-st.hw * 3, GY, st.hw * 6, 1.4);
 }
 
 /* ------------------------------ 1. TV ------------------------------ */
@@ -267,7 +267,7 @@ function sceneTV(st: Stage, tt: number): void {
   x.fillStyle = 'rgba(255,255,255,.07)';
   for (let i = -12; i < 12; i++) x.fillRect(i * 10, -st.hh - 2, 4, st.hh * 2);
   x.fillStyle = '#c98a5a';
-  x.fillRect(-st.hw - 2, 26, st.hw * 2 + 4, st.hh);
+  x.fillRect(-st.hw * 3, 26, st.hw * 6, st.hh * 3);
   // abajur e planta
   rr(x, -54, 4, 3, 22, 1);
   fs(x, '#8a5a3a', 0.5);
@@ -444,7 +444,7 @@ function tsunami(st: Stage, tt: number, t0: number): void {
   x.save();
   x.translate(front, 0);
   x.beginPath();
-  x.moveTo(-400, st.hh + 4);
+  x.moveTo(-400, st.hh * 3);
   x.lineTo(-400, 12);
   for (let px = -400; px < -26; px += 8) x.lineTo(px, 12 + Math.sin(px * 0.2 + tt * 5) * 1.2);
   x.quadraticCurveTo(-8, 6, 0, -10);
@@ -452,7 +452,7 @@ function tsunami(st: Stage, tt: number, t0: number): void {
   x.quadraticCurveTo(22, -13, 19, -6);
   x.quadraticCurveTo(14, -11, 9, -7);
   x.quadraticCurveTo(10, 8, 20, GY + 2);
-  x.lineTo(20, st.hh + 4);
+  x.lineTo(20, st.hh * 3);
   x.closePath();
   fs(x, vgrad(x, -16, GY, ['#7adcff', '#1e6fd8']), 0.9);
   x.strokeStyle = 'rgba(255,255,255,.5)';

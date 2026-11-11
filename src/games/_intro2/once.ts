@@ -8,7 +8,7 @@
  *    await xxxIntro.play(root)    → "Ver abertura" do menu (sempre toca)
  *
  *  Nunca toca: abertura desligada nos ajustes do hub (bw-intro = '0') ou navegador automatizado
- *  (Playwright/testes de outros jogos), a não ser com ?intro2=1 na URL.
+ *  (Playwright/testes de outros jogos), a não ser com ?intro=1 (ou ?intro2=1) na URL; ?intro=0 nunca toca.
  * ============================================================ */
 
 export interface IntroHandle {
@@ -45,8 +45,9 @@ function lsSet(k: string, v: string | null): void {
 
 /** pode tocar a abertura automática? */
 function allowed(): boolean {
-  const force = typeof location !== 'undefined' && /[?&]intro2=1/.test(location.search);
-  if (force) return true;
+  const q = typeof location !== 'undefined' ? location.search : '';
+  if (/[?&]intro2?=0/.test(q)) return false;
+  if (/[?&]intro2?=1/.test(q)) return true;
   if (typeof navigator !== 'undefined' && navigator.webdriver) return false;
   return lsGet('bw-intro') !== '0';
 }

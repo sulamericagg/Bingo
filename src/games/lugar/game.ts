@@ -5,6 +5,7 @@
  *  Fases da trilha e do dia são conferidas com a solução única: Bloop no lugar errado custa
  *  um coração. No Zen não há corações: conflitos só ficam destacados.
  * ============================================================ */
+import { lugarIntro } from './intro';
 import { audio } from '../../core/audio';
 import { pushBack } from '../../core/back';
 import { addCoins } from '../../core/economy';
@@ -410,6 +411,13 @@ class LugarGame implements MiniGameHandle {
   /* ============================== partida ============================== */
   private key = '';
   private begin(p: Puzzle, key: string): void {
+    // abertura (1º tabuleiro, fora do duelo): src/games/lugar/intro
+    if (key !== 'duel' && !this.duel && lugarIntro.due()) {
+      void lugarIntro.once(this.root).then(() => {
+        if (!this.dead) this.begin(p, key);
+      });
+      return;
+    }
     this.pz = p;
     this.key = key;
     this.L0 = new Logic(p.n, p.reg);
