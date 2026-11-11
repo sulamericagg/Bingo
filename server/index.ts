@@ -29,6 +29,8 @@ import { aiPet } from './ai-pet';
 import { adminHub } from './admin-hub';
 import { sessionWho } from './auth';
 import { purchaseReport } from './purchases';
+import { tvFilm, tvNow, tvSubmit, tvVote, tvVoted, ugcBoard, ugcBrowse, ugcEarnings, ugcFav, ugcGet, ugcLike, ugcMine, ugcPublish, ugcReport, ugcScore, ugcThumb, ugcUnpublish, ugcUse } from './ugc';
+import { handleUgcAdmin } from './ugc-admin';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -102,6 +104,25 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Mundo Aberto online (servidores): convites entre amigos
   'POST /api/mundo/invite': mundoInvite,
   'GET /api/mundo/invites': mundoInvites,
+  // Loja de Criações do Bloop Studio + TV Bloop (docs/LOJA-TV.md)
+  'POST /api/ugc/publish': ugcPublish,
+  'GET /api/ugc/browse': ugcBrowse,
+  'GET /api/ugc/get': ugcGet,
+  'GET /api/ugc/thumb': ugcThumb,
+  'POST /api/ugc/like': ugcLike,
+  'POST /api/ugc/fav': ugcFav,
+  'POST /api/ugc/use': ugcUse,
+  'POST /api/ugc/report': ugcReport,
+  'GET /api/ugc/mine': ugcMine,
+  'POST /api/ugc/unpublish': ugcUnpublish,
+  'GET /api/ugc/earnings': ugcEarnings,
+  'POST /api/ugc/score': ugcScore,
+  'GET /api/ugc/board': ugcBoard,
+  'GET /api/tv/now': tvNow,
+  'GET /api/tv/film': tvFilm,
+  'POST /api/tv/submit': tvSubmit,
+  'POST /api/tv/vote': tvVote,
+  'GET /api/tv/voted': tvVoted,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -201,10 +222,13 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
   if (path.startsWith('/api/admin/social/')) return handleSocialAdmin(req, env, url);
   if (path === '/api/admin/feedback' || path.startsWith('/api/admin/feedback/')) return handleFeedbackAdmin(req, env, url);
   if (path.startsWith('/api/admin/home/')) return handleHomeAdmin(req, env, url);
+  if (path.startsWith('/api/admin/ugc/')) return handleUgcAdmin(req, env, url);
   return handleAdminApi(req, env, url);
 }
 export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
+export { UgcHub } from './ugc-hub';
+export { TvChannel } from './tv';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

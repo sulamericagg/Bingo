@@ -3,7 +3,7 @@ import { CATALOG_BOOSTS, CATALOG_SKINS, CATALOG_TRAILS } from '../shared/catalog
 import { normalizeCode, packIsEmpty, sanitizePack, type RewardPack } from '../shared/reward';
 import { nextSeasonIndex, seasonIndexAt, seasonWindow } from '../shared/season-calendar';
 import { adminHub, type CodeDef } from './admin-hub';
-import { handleLogin, requireAdmin } from './auth';
+import { handleLogin, hashPassword, modKey, requireAdmin } from './auth';
 import { HANDLE_RE, myHandle, normalizeHandle, resetHandle } from './handles';
 import { adminLeaderboard, adminRemove, adminUnban } from './leaderboard';
 import { banKey } from './moderation';
@@ -32,6 +32,9 @@ import {
   type PlayerRow,
 } from './store';
 import { codeSummary } from './summary';
+import { sessionWho } from './auth';
+
+const sessionWhoName = (req: Request) => sessionWho(req).replace(/#.*$/, '');
 import { HttpError, json, num, optDate, PLAYER_ID_RE, randomCode, randomId, readJson } from './util';
 
 const DAY = 86_400_000;
@@ -107,6 +110,11 @@ const route = (method: string, path: string, h: Handler) => routes.push([method,
 export async function handleAdminApi(req: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname.replace(/^\/api\/admin/, '') || '/';
   if (path === '/login' && req.method === 'POST') return handleLogin(req, env);
+  // /me abre também para moderadores (o painel decide quais páginas mostrar)
+  if (path === '/me' && req.method === 'GET') {
+    const s = await requireAdmin(req, env, { allowMod: true });
+    return json({ ok: true, role: s.role, who: s.who });
+  }
   await requireAdmin(req, env);
   for (const [method, re, h] of routes) {
     if (method !== req.method) continue;
@@ -116,7 +124,30 @@ export async function handleAdminApi(req: Request, env: Env, url: URL): Promise<
   throw new HttpError(404, 'not_found', 'Rota não encontrada');
 }
 
-route('GET', '/me', async () => json({ ok: true }));
+/* ---- Moderadores (só o dono) — o login deles usa nome + senha; papel "moderador" só abre a Moderação ---- */
+route('GET', '/mods', async (_req, env) => json({ items: await adminHub(env).modList() }));
+
+route('POST', '/mods', async (req, env) => {
+  const body = await readJson(req);
+  const display = text(body.name, 24).replace(/[^\p{L}\p{N} ._-]/gu, '');
+  const name = modKey(display);
+  if (name.length < 3) throw new HttpError(400, 'bad_name', 'O nome precisa ter pelo menos 3 letras ou números.');
+  const password = String(body.password ?? '');
+  if (password.length < 10) throw new HttpError(400, 'weak', 'A senha precisa ter pelo menos 10 caracteres.');
+  const r = await adminHub(env).modPut(name, display, await hashPassword(password), sessionWhoName(req));
+  return json({ ok: true, name, result: r });
+});
+
+route('POST', '/mods/([^/]+)/active', async (req, env, [name]) => {
+  const ok = await adminHub(env).modSetActive(modKey(name), (await readJson(req)).active !== false);
+  if (!ok) throw new HttpError(404, 'not_found', 'Moderador não encontrado');
+  return json({ ok: true });
+});
+
+route('DELETE', '/mods/([^/]+)', async (_req, env, [name]) => {
+  if (!(await adminHub(env).modDelete(modKey(name)))) throw new HttpError(404, 'not_found', 'Moderador não encontrado');
+  return json({ ok: true });
+});
 
 route('GET', '/catalog', async () => json({ skins: CATALOG_SKINS, trails: CATALOG_TRAILS, boosts: CATALOG_BOOSTS, products: PRODUCT_INFO }));
 

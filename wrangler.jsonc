@@ -38,7 +38,11 @@
       // Noites do Acampamento: sala co-op por código (relé; o anfitrião simula).
       { "name": "NIGHTS", "class_name": "NightsRoom" },
       // Mundo Aberto online (docs/MUNDO-MOTOR.md): mundos de até 8 com edições guardadas.
-      { "name": "MUNDO", "class_name": "WorldRoom" }
+      { "name": "MUNDO", "class_name": "WorldRoom" },
+      // Loja de Criações do Bloop Studio + fila de moderação (docs/LOJA-TV.md).
+      { "name": "UGC", "class_name": "UgcHub" },
+      // TV Bloop: canal ao vivo com os filmes aprovados do Bloop Cinema.
+      { "name": "TV", "class_name": "TvChannel" }
     ]
   },
   "migrations": [
@@ -49,7 +53,8 @@
     { "tag": "v4-voo", "new_sqlite_classes": ["FlightRoom"] },
     { "tag": "v5-admin", "new_sqlite_classes": ["AdminHub"] },
     { "tag": "v5-noites", "new_sqlite_classes": ["NightsRoom"] },
-    { "tag": "v6-mundo", "new_sqlite_classes": ["WorldRoom"] }
+    { "tag": "v6-mundo", "new_sqlite_classes": ["WorldRoom"] },
+    { "tag": "v7-loja-tv", "new_sqlite_classes": ["UgcHub", "TvChannel"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em

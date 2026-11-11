@@ -957,8 +957,9 @@ function b64urlDecode(s: string): Uint8Array {
   return out;
 }
 
-async function pipe(bytes: Uint8Array, stream: GenericTransformStream): Promise<Uint8Array> {
-  const out = new Blob([bytes as BlobPart]).stream().pipeThrough(stream as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+// tipos estruturais (sem lib DOM): o Worker também importa este arquivo
+async function pipe(bytes: Uint8Array, stream: { readable: unknown; writable: unknown }): Promise<Uint8Array> {
+  const out = new Blob([bytes.slice().buffer as ArrayBuffer]).stream().pipeThrough(stream as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
   return new Uint8Array(await new Response(out).arrayBuffer());
 }
 

@@ -28,6 +28,12 @@ interface Env {
   NIGHTS: DurableObjectNamespace<import('./nights').NightsRoom>;
   /** Mundo Aberto online: mundos de até 8 (edições guardadas) + caixas de convite. */
   MUNDO: DurableObjectNamespace<import('./mundo').WorldRoom>;
+  /** Loja de Criações + fila de moderação (UGC) — instância única 'hub' (docs/LOJA-TV.md). */
+  UGC: DurableObjectNamespace<import('./ugc-hub').UgcHub>;
+  /** TV Bloop: grade ao vivo + votos — instância única 'main'. */
+  TV: DurableObjectNamespace<import('./tv').TvChannel>;
+  /** Horas mínimas de conta para gerar moedas a criadores (padrão 72; .dev.vars usa 0 no teste local). */
+  UGC_MIN_AGE_H?: string;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
   /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */

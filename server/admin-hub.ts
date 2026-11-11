@@ -8,6 +8,8 @@
  *   gift_seen    quem já recebeu o presente na caixa (status "entregue")
  *   purchases    compras reportadas pelo app (NÃO verificadas no Google Play)
  *   audit        registro de ações do painel
+ *   pgifts       presentes PESSOAIS no Correio (moedas de criador da Loja / TV Bloop) — docs/LOJA-TV.md
+ *   mods         contas de MODERADOR do painel (nome + hash PBKDF2; papel "moderador")
  *
  * O DO processa uma chamada por vez: check + gravação dentro do mesmo método síncrono = atômico.
  * Limites de taxa ficam em memória (zeram se o DO dormir — aceitável para frear abuso).
@@ -120,6 +122,9 @@ export class AdminHub extends DurableObject<Env> {
     sql.exec(`CREATE INDEX IF NOT EXISTS purchases_t ON purchases(t)`);
     sql.exec(`CREATE INDEX IF NOT EXISTS purchases_pid ON purchases(pid)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, who TEXT NOT NULL, ip TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, status INTEGER NOT NULL)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS pgifts (gid TEXT PRIMARY KEY, pid TEXT NOT NULL, src TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, coins INTEGER NOT NULL, t INTEGER NOT NULL, claimed INTEGER)`);
+    sql.exec(`CREATE INDEX IF NOT EXISTS pgifts_pid ON pgifts(pid, claimed)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS mods (name TEXT PRIMARY KEY, display TEXT NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, since INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1, by TEXT NOT NULL DEFAULT '')`);
   }
 
   /* ---------------- limite de taxa (memória) ---------------- */
@@ -337,6 +342,86 @@ export class AdminHub extends DurableObject<Env> {
     for (const s of seen) map.set(s.gid, { gid: s.gid, claimed: null, seen: s.t });
     for (const c of claimed) map.set(c.gid, { gid: c.gid, seen: map.get(c.gid)?.seen ?? null, claimed: c.t });
     return [...map.values()];
+  }
+
+  /* ---------------- presentes pessoais (Correio) ---------------- */
+
+  /**
+   * Credita moedas no Correio de UM jogador. Junta com o presente ainda não pego da mesma origem
+   * (src: 'loja' | 'tv'), para a caixa não encher de cartinhas de 10 moedas.
+   */
+  grantPersonal(pid: string, src: string, coins: number, title: string, message: string): string {
+    const sql = this.ctx.storage.sql;
+    const now = Date.now();
+    const open = sql.exec<{ gid: string }>('SELECT gid FROM pgifts WHERE pid = ? AND src = ? AND claimed IS NULL ORDER BY t DESC LIMIT 1', pid, src).toArray()[0];
+    if (open) {
+      sql.exec('UPDATE pgifts SET coins = coins + ?, t = ?, message = ? WHERE gid = ?', coins, now, message, open.gid);
+      return open.gid;
+    }
+    const gid = 'pg' + now.toString(36) + Math.random().toString(36).slice(2, 8);
+    sql.exec('INSERT INTO pgifts (gid, pid, src, title, message, coins, t) VALUES (?, ?, ?, ?, ?, ?, ?)', gid, pid, src, title, message, coins, now);
+    // limpeza ocasional: pegos há mais de 90 dias
+    if (Math.random() < 0.02) sql.exec('DELETE FROM pgifts WHERE claimed IS NOT NULL AND claimed < ?', now - 90 * DAY);
+    return gid;
+  }
+
+  /** Presentes pessoais ainda não pegos (aparecem no Correio junto com os do painel). */
+  personalInbox(pid: string): { id: string; title: string; message: string; reward: RewardPack; sentAt: number; expiresAt: null }[] {
+    return this.ctx.storage.sql
+      .exec<{ gid: string; title: string; message: string; coins: number; t: number }>('SELECT gid, title, message, coins, t FROM pgifts WHERE pid = ? AND claimed IS NULL ORDER BY t DESC LIMIT 20', pid)
+      .toArray()
+      .map((r) => ({ id: r.gid, title: r.title, message: r.message, reward: { coins: r.coins, title: r.title, message: r.message }, sentAt: r.t, expiresAt: null }));
+  }
+
+  /** Pega (atômico): devolve as recompensas dos que ainda não tinham sido pegos. */
+  claimPersonal(pid: string, gids: string[]): { id: string; title: string; message: string; reward: RewardPack }[] {
+    const sql = this.ctx.storage.sql;
+    const now = Date.now();
+    const out: { id: string; title: string; message: string; reward: RewardPack }[] = [];
+    this.ctx.storage.transactionSync(() => {
+      for (const g of gids) {
+        const r = sql.exec<{ title: string; message: string; coins: number }>('SELECT title, message, coins FROM pgifts WHERE gid = ? AND pid = ? AND claimed IS NULL', g, pid).toArray()[0];
+        if (!r) continue;
+        sql.exec('UPDATE pgifts SET claimed = ? WHERE gid = ?', now, g);
+        out.push({ id: g, title: r.title, message: r.message, reward: { coins: r.coins, title: r.title, message: r.message } });
+      }
+    });
+    return out;
+  }
+
+  /** Histórico (painel / depuração). */
+  personalOf(pid: string): { gid: string; src: string; coins: number; t: number; claimed: number | null }[] {
+    return this.ctx.storage.sql
+      .exec<{ gid: string; src: string; coins: number; t: number; claimed: number | null }>('SELECT gid, src, coins, t, claimed FROM pgifts WHERE pid = ? ORDER BY t DESC LIMIT 100', pid)
+      .toArray();
+  }
+
+  /* ---------------- moderadores ---------------- */
+
+  modList(): { name: string; display: string; created: number; since: number; active: number; by: string }[] {
+    return this.ctx.storage.sql.exec<{ name: string; display: string; created: number; since: number; active: number; by: string }>('SELECT name, display, created, since, active, by FROM mods ORDER BY name').toArray();
+  }
+
+  /** Cria ou troca a senha (since = agora: sessões antigas deste moderador deixam de valer). */
+  modPut(name: string, display: string, hash: string, by: string): 'created' | 'updated' {
+    const sql = this.ctx.storage.sql;
+    const now = Date.now();
+    const cur = sql.exec('SELECT 1 FROM mods WHERE name = ?', name).toArray().length > 0;
+    if (cur) sql.exec('UPDATE mods SET display = ?, hash = ?, since = ?, active = 1 WHERE name = ?', display, hash, now, name);
+    else sql.exec('INSERT INTO mods (name, display, hash, created, since, active, by) VALUES (?, ?, ?, ?, ?, 1, ?)', name, display, hash, now, now, by);
+    return cur ? 'updated' : 'created';
+  }
+
+  modSetActive(name: string, active: boolean): boolean {
+    return this.ctx.storage.sql.exec('UPDATE mods SET active = ?, since = ? WHERE name = ?', active ? 1 : 0, Date.now(), name).rowsWritten > 0;
+  }
+
+  modDelete(name: string): boolean {
+    return this.ctx.storage.sql.exec('DELETE FROM mods WHERE name = ?', name).rowsWritten > 0;
+  }
+
+  modGet(name: string): { name: string; display: string; hash: string; since: number; active: number } | null {
+    return this.ctx.storage.sql.exec<{ name: string; display: string; hash: string; since: number; active: number }>('SELECT name, display, hash, since, active FROM mods WHERE name = ?', name).toArray()[0] ?? null;
   }
 
   /* ---------------- compras ---------------- */

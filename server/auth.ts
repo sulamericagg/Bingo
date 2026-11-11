@@ -3,8 +3,20 @@
  * Senha = segredo ADMIN_PASSWORD. O login troca a senha por um token de sessão
  * assinado com HMAC-SHA256 (chave derivada da senha) que expira em SESSION_HOURS.
  * Trocar a senha invalida todas as sessões.
+ *
+ * Papéis: "dono" (senha do painel) e "moderador" (nome + senha própria, hash PBKDF2 guardado no AdminHub;
+ * criado pelo dono na página Moderadores). O token do moderador leva `r: 'mod'` e só abre as rotas de
+ * moderação (requireAdmin(..., { allowMod: true })). Trocar a senha/desativar o moderador derruba as sessões dele.
  */
+import { adminHub } from './admin-hub';
 import { b64url, fromB64url, HttpError, json, readJson, sha256, timingSafeEqual } from './util';
+
+export type AdminRole = 'owner' | 'mod';
+export interface AdminSession {
+  role: AdminRole;
+  /** nome digitado no login (dono) ou nome do moderador */
+  who: string;
+}
 
 const SESSION_HOURS = 72;
 const MAX_FAILS = 8;
@@ -25,7 +37,7 @@ function requirePassword(env: Env): string {
   return pw;
 }
 
-async function pbkdf2Hex(password: string, saltHex: string, iter: number): Promise<string> {
+export async function pbkdf2Hex(password: string, saltHex: string, iter: number): Promise<string> {
   const salt = new Uint8Array(saltHex.match(/../g)!.map((x) => parseInt(x, 16)));
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256);
@@ -41,31 +53,66 @@ async function passwordMatches(env: Env, given: string): Promise<boolean> {
   return timingSafeEqual(await sha256(got), await sha256(m[3]));
 }
 
-export async function createToken(password: string, now = Date.now(), who = ''): Promise<{ token: string; expiresAt: number }> {
+/** Hash "pbkdf2:<iter>:<salt hex>:<hash hex>" de uma senha nova (moderadores). */
+export async function hashPassword(password: string, iter = 100000): Promise<string> {
+  const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2:${iter}:${salt}:${await pbkdf2Hex(password, salt, iter)}`;
+}
+
+/** Confere uma senha contra um hash "pbkdf2:…". */
+export async function verifyHash(hash: string, given: string): Promise<boolean> {
+  const m = /^pbkdf2:(\d+):([0-9a-f]+):([0-9a-f]+)$/.exec(hash);
+  if (!m) return false;
+  const got = await pbkdf2Hex(given, m[2], Math.min(Number(m[1]), 100000));
+  return timingSafeEqual(await sha256(got), await sha256(m[3]));
+}
+
+/** Nome de login do moderador: minúsculas, letras/números/._- (3..24). */
+export const modKey = (v: unknown): string =>
+  String(v ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '')
+    .slice(0, 24);
+
+export async function createToken(password: string, now = Date.now(), who = '', role: AdminRole = 'owner'): Promise<{ token: string; expiresAt: number }> {
   const expiresAt = now + SESSION_HOURS * 3600_000;
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ iat: now, exp: expiresAt, n: crypto.randomUUID(), ...(who ? { w: who } : {}) })));
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ iat: now, exp: expiresAt, n: crypto.randomUUID(), ...(who ? { w: who } : {}), ...(role === 'mod' ? { r: 'mod' } : {}) })));
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(password), new TextEncoder().encode(payload));
   return { token: `${payload}.${b64url(sig)}`, expiresAt };
 }
 
-export async function verifyToken(password: string, token: string): Promise<boolean> {
+interface TokenData {
+  iat: number;
+  exp: number;
+  n: string;
+  w?: string;
+  r?: 'mod';
+}
+
+async function readToken(password: string, token: string): Promise<TokenData | null> {
   const [payload, sig, extra] = token.split('.');
-  if (!payload || !sig || extra !== undefined) return false;
+  if (!payload || !sig || extra !== undefined) return null;
   let sigBytes: Uint8Array;
   try {
     sigBytes = fromB64url(sig);
   } catch {
-    return false;
+    return null;
   }
   // verify() do WebCrypto já compara em tempo constante.
   const ok = await crypto.subtle.verify('HMAC', await hmacKey(password), sigBytes, new TextEncoder().encode(payload));
-  if (!ok) return false;
+  if (!ok) return null;
   try {
-    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
-    return typeof data.exp === 'number' && data.exp > Date.now();
+    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as TokenData;
+    return typeof data.exp === 'number' && data.exp > Date.now() ? data : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export async function verifyToken(password: string, token: string): Promise<boolean> {
+  return !!(await readToken(password, token));
 }
 
 /**
@@ -77,18 +124,27 @@ export function sessionWho(req: Request): string {
   if (!m) return '?';
   try {
     const d = JSON.parse(new TextDecoder().decode(fromB64url(m[1])));
-    return `${d.w ? String(d.w).slice(0, 24) : 'admin'}#${String(d.n ?? '').slice(0, 6)}`;
+    return `${d.r === 'mod' ? 'mod:' : ''}${d.w ? String(d.w).slice(0, 24) : 'admin'}#${String(d.n ?? '').slice(0, 6)}`;
   } catch {
     return '?';
   }
 }
 
-/** Lança 401 se a requisição não tiver um token válido. */
-export async function requireAdmin(req: Request, env: Env): Promise<void> {
+/**
+ * Lança 401 se a requisição não tiver um token válido; 403 se for moderador numa rota só do dono.
+ * Sessão de moderador: confere no AdminHub se ele ainda existe/está ativo e se a sessão é mais nova que a última troca de senha.
+ */
+export async function requireAdmin(req: Request, env: Env, opts: { allowMod?: boolean } = {}): Promise<AdminSession> {
   const pw = requirePassword(env);
   const h = req.headers.get('authorization') ?? '';
   const m = /^Bearer\s+(.+)$/i.exec(h);
-  if (!m || !(await verifyToken(pw, m[1].trim()))) throw new HttpError(401, 'unauthorized', 'Sessão expirada. Entre novamente.');
+  const d = m ? await readToken(pw, m[1].trim()) : null;
+  if (!d) throw new HttpError(401, 'unauthorized', 'Sessão expirada. Entre novamente.');
+  if (d.r !== 'mod') return { role: 'owner', who: d.w ?? 'admin' };
+  const mod = await adminHub(env).modGet(modKey(d.w));
+  if (!mod || !mod.active || d.iat < mod.since) throw new HttpError(401, 'unauthorized', 'Sessão de moderador encerrada. Entre novamente.');
+  if (!opts.allowMod) throw new HttpError(403, 'forbidden', 'Moderadores só podem usar as páginas de moderação.');
+  return { role: 'mod', who: mod.display };
 }
 
 export async function handleLogin(req: Request, env: Env): Promise<Response> {
@@ -103,10 +159,17 @@ export async function handleLogin(req: Request, env: Env): Promise<Response> {
   const given = String(body.password ?? '');
   const who = String(body.who ?? '').replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 24);
   const ok = await passwordMatches(env, given);
-  if (!ok) {
+  // moderador: nome + senha própria
+  let mod: { display: string } | null = null;
+  if (!ok && who && given) {
+    const m = await adminHub(env).modGet(modKey(who));
+    if (m && m.active && (await verifyHash(m.hash, given))) mod = m;
+  }
+  if (!ok && !mod) {
     await env.DATA.put(rlKey, String(fails + 1), { expirationTtl: FAIL_WINDOW_S });
     return json({ error: 'wrong_password', message: 'Senha incorreta.' }, 401);
   }
   if (fails) await env.DATA.delete(rlKey);
-  return json(await createToken(pw, Date.now(), who));
+  if (mod) return json({ ...(await createToken(pw, Date.now(), mod.display, 'mod')), role: 'mod' });
+  return json({ ...(await createToken(pw, Date.now(), who)), role: 'owner' });
 }

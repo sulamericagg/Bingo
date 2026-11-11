@@ -84,9 +84,12 @@ export async function sync(req: Request, env: Env): Promise<Response> {
   await env.FRIENDS.get(env.FRIENDS.idFromName('hub'))
     .touch(id)
     .catch(() => {});
-  const inbox = p.banned ? [] : pendingGiftsFor(p, await getGifts(env)).map(giftOut);
+  // Correio = presentes do painel (índice global) + presentes pessoais (moedas de criador da Loja/TV, no AdminHub)
+  const personal = p.banned ? [] : await adminHub(env).personalInbox(id).catch(() => []);
+  const inbox = p.banned ? [] : [...personal, ...pendingGiftsFor(p, await getGifts(env)).map(giftOut)];
   // status "entregue" no painel (só quando há algo na caixa: não custa nada no caso comum)
-  if (inbox.length) await adminHub(env).markSeen(id, inbox.map((g) => g.id)).catch(() => {});
+  const global = inbox.filter((g) => !g.id.startsWith('pg'));
+  if (global.length) await adminHub(env).markSeen(id, global.map((g) => g.id)).catch(() => {});
   return json({ name: p.name, inbox, flags: p.flags ?? [] });
 }
 
@@ -105,9 +108,12 @@ export async function claim(req: Request, env: Env): Promise<Response> {
   const ids: string[] = Array.isArray(body.giftIds) ? body.giftIds.map(String).slice(0, 200) : [];
   const p = await getPlayer(env, id);
   if (!p || !ids.length || p.banned) return json({ rewards: [], claimed: [] });
+  // presentes pessoais (pg…): pegos atomicamente no AdminHub
+  const pids = ids.filter((g) => g.startsWith('pg'));
+  const mine = pids.length ? await adminHub(env).claimPersonal(id, pids) : [];
   const gifts = await getGifts(env, true);
   let pending = pendingGiftsFor(p, gifts).filter((g) => ids.includes(g.id));
-  if (!pending.length) return json({ rewards: [], claimed: [] });
+  if (!pending.length) return json({ rewards: mine.map((g) => g.reward), claimed: mine.map((g) => g.id) });
   // Atômico no AdminHub: dois aparelhos pegando ao mesmo tempo não recebem em dobro.
   const fresh = new Set(await adminHub(env).claimGifts(id, pending.map((g) => g.id)));
   pending = pending.filter((g) => fresh.has(g.id));
@@ -117,7 +123,7 @@ export async function claim(req: Request, env: Env): Promise<Response> {
   p.lastSeen = Date.now();
   for (const g of pending) trackPack(p, g.reward);
   await putPlayer(env, p);
-  return json({ rewards: pending.map((g) => withText(g.reward, g.title, g.message)), claimed: pending.map((g) => g.id) });
+  return json({ rewards: [...mine.map((g) => g.reward), ...pending.map((g) => withText(g.reward, g.title, g.message))], claimed: [...mine.map((g) => g.id), ...pending.map((g) => g.id)] });
 }
 
 /** POST /api/redeem { id, code } → { ok, reward?, error? }  (regras e contagem atômicas no AdminHub) */
