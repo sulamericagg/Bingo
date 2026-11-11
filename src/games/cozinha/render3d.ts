@@ -23,13 +23,14 @@ import { roomEnv } from '../../3d/common/pbr';
 import { ensureCss, el } from '../../home3d/ui';
 import { notify } from '../../ui/notify';
 import { FpsControls } from '../../ui/touch';
+import { FpAim, FpCamera, FpController, FP_COZINHA, GridCollider } from '../../3d/fpkit';
 import {
   AimPicker, Beacon, HandButtons, Hesitation, HoverHighlight, Rescuer, SnapGlows, TicketPrinter, disposeStickers, feedback, resolveVerb, wallScreen,
   type AimTarget, type Control, type RescueState, type VerbDef, type VerbRule,
 } from '../../3d/common/interact';
-import { ING_INDEX, INGS, RECIPES, compIng, ingName } from './data';
+import { EMPTY_SMOKE, ING_INDEX, INGS, RECIPES, comp, compIng, ingName } from './data';
 import { blitIng, charSprite, drawPetIcon } from './art';
-import { buildKitchen, H, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
+import { buildKitchen, DOOR, H, QUEUE_Z, restY, STEP_H, T, WALL_H, type DineSeat, type KitchenBuild } from './fps-kitchen';
 import { GK, Items3D } from './fps-items';
 import { FRIDGE_H, KitchenProps, type StProps } from './fps-props';
 import { drawScreen, drawTicket } from './fps-tickets';
@@ -92,9 +93,27 @@ interface Loose extends RescueState {
   hard: number;
 }
 
-const EYE = 1.45;
-const RAD = 0.3;
+const EYE = FP_COZINHA.eye;
 const REACH = 2.5;
+/** cliente no salão (fila, indo sentar, comendo, indo embora) */
+interface Walker {
+  id: number;
+  skin: string;
+  x: number;
+  z: number;
+  y: number;
+  /** receita (prato na bandeja/mesa) */
+  r: number;
+  seat: number;
+  /** 0 andando até o lugar · 1 comendo · 2 indo embora */
+  mode: 0 | 1 | 2;
+  t: number;
+  /** caminho restante (pares x,z) */
+  path: number[];
+  /** espera antes de andar (s) */
+  wait: number;
+  ph: number;
+}
 const SKINS_CUST = ['bloop', 'mint', 'sunny', 'chef', 'bee', 'ocean', 'kitty', 'capy', 'pirate', 'astro'];
 const qs = new URLSearchParams(location.search);
 
@@ -162,26 +181,70 @@ class KitchenFps implements Renderer {
   private lost = false;
   private fallback: Render2D | null = null;
   /* jogador */
-  private px = 0;
-  private pz = 0;
-  private vx = 0;
-  private vz = 0;
-  private yaw = 0;
-  private pitch = -0.32;
-  private bob = 0;
-  private speedK = 0;
-  private lastLook: [number, number] = [0, 0];
-  private slip = 0;
-  private shake = 0;
+  /** corpo + câmera de 1ª pessoa: kit compartilhado (src/3d/fpkit) — este é o preset de referência */
+  private fp = new FpController(FP_COZINHA);
+  private fpc = new FpCamera(FP_COZINHA);
+  /** grade da cozinha (bancadas/geladeiras bloqueiam) — corpo e camClamp usam a mesma */
+  private grid = new GridCollider(T, (x, y) => this.sim.isFloor(x, y));
+  private get px(): number {
+    return this.fp.x;
+  }
+  private set px(v: number) {
+    this.fp.x = v;
+  }
+  private get pz(): number {
+    return this.fp.z;
+  }
+  private set pz(v: number) {
+    this.fp.z = v;
+  }
+  private get vx(): number {
+    return this.fp.vx;
+  }
+  private set vx(v: number) {
+    this.fp.vx = v;
+  }
+  private get vz(): number {
+    return this.fp.vz;
+  }
+  private set vz(v: number) {
+    this.fp.vz = v;
+  }
+  private get yaw(): number {
+    return this.fpc.yaw;
+  }
+  private set yaw(v: number) {
+    this.fpc.yaw = v;
+  }
+  private get pitch(): number {
+    return this.fpc.pitch;
+  }
+  private set pitch(v: number) {
+    this.fpc.pitch = v;
+  }
+  private get speedK(): number {
+    return this.fp.speedK;
+  }
+  /** tremor de câmera 0..1 */
+  private get shake(): number {
+    return this.fpc.shake;
+  }
+  private set shake(v: number) {
+    this.fpc.shake = v;
+  }
   /** tranco de câmera (picar) 0..1 */
-  private recoil = 0;
+  private set recoil(v: number) {
+    this.fpc.kick(v);
+  }
+  private slip = 0;
   /* mira */
   private tgSt = -1;
   private tgLoose: Loose | null = null;
   /** controle físico mirado (botão do fogo, porta, torneira...) */
   private tgCtl: Control | null = null;
   private picker = new AimPicker<Tg>();
-  private aimSkip = 0;
+  /** raio do centro (no RAY compartilhado) + "pula quando parado" */
+  private aimer = new FpAim(RAY);
   private hover: HoverHighlight;
   private snaps: SnapGlows;
   private beacon: Beacon;
@@ -204,10 +267,21 @@ class KitchenFps implements Renderer {
   private snapFor: Item | null = null;
   /** comemoração/reação do cliente na janela */
   private cheer = { t: 0, ok: true, skin: 'bloop', x: 0 };
+  /* salão vivo: fila (um por pedido), clientes comendo nas mesas, gente entrando/saindo */
+  private crowd = new Map<number, Walker>();
+  private diners: Walker[] = [];
+  private seatUsed = new Uint8Array(0);
+  private servedPending = 0;
+  private ambientT = 5;
+  private crowdInit = false;
   /** tampa do lixo aberta por mais (s), por estação */
   private lidT = new Float32Array(0);
   /** torneira aberta sem louça (s) — fecha sozinha */
   private dryT = new Float32Array(0);
+  /** aviso "cheiro de queimado" por estação (s até poder avisar de novo) */
+  private smokeWarn = new Float32Array(0);
+  /** bipe do alarme de fumaça enquanto houver fogo */
+  private alarmT = 0;
   /* botões */
   /** verbo contextual atual (id) */
   private ctxAct = '';
@@ -251,6 +325,7 @@ class KitchenFps implements Renderer {
     private cv: HTMLCanvasElement,
   ) {
     ensureCss();
+    this.fpc.pitch = -0.32;
     if (!cssEl) {
       cssEl = document.createElement('style');
       cssEl.textContent = CSS;
@@ -342,6 +417,10 @@ class KitchenFps implements Renderer {
     if (this.sim === sim) return;
     this.sim = sim;
     sim.physFloor = true;
+    this.crowd.clear();
+    this.diners.length = 0;
+    this.servedPending = 0;
+    this.crowdInit = false;
     this.kit = buildKitchen(sim, decor, this.q.standard, this.world, this.staticMat);
     this.scene.add(this.kit.group);
     this.buildInteract();
@@ -387,6 +466,7 @@ class KitchenFps implements Renderer {
     this.scene.add(props.group);
     this.lidT = new Float32Array(sim.st.length);
     this.dryT = new Float32Array(sim.st.length);
+    this.smokeWarn = new Float32Array(sim.st.length);
     const pk = this.picker;
     for (const st of sim.st) {
       if (!st.fx && !st.fy) continue;
@@ -419,8 +499,15 @@ class KitchenFps implements Renderer {
         };
       if (p?.bell)
         p.bell.onChange = () => {
+          // toca SEMPRE (sem trava): som, "Plim!" e o cliente da janela olha/pula
           feedback('ding');
-          this.cheer.t = Math.max(this.cheer.t, 0.6);
+          this.hand?.play('grab');
+          const bx = (p.bell!.box.min.x + p.bell!.box.max.x) / 2;
+          const bz = (p.bell!.box.min.z + p.bell!.box.max.z) / 2;
+          this.float(t('cozinha.fps.ding', 'Plim!'), '', bx, H + 0.35, bz, '#ffe14a');
+          this.parts.burst(bx, H + 0.12, bz, 5, 'spark', '#ffe14a', 0.8);
+          if (this.cheer.t <= 0) this.cheer = { t: 0.7, ok: true, skin: this.cheer.skin, x: this.cheer.x };
+          this.hes.poke();
         };
       if (p?.door)
         p.door.onChange = (on) => {
@@ -531,6 +618,15 @@ class KitchenFps implements Renderer {
       pos: () => ({ x: self.px, z: self.pz, yaw: self.yaw, pitch: self.pitch }),
       setPitch: (v: number) => (self.pitch = v),
       setYaw: (v: number) => (self.yaw = v),
+      /** zera balanço/tremor/velocidade (A/B de "feel": scripts/dev/fpkit-trace.mjs) */
+      resetFeel() {
+        self.fp.stop();
+        self.fpc.reset();
+        self.slip = 0;
+        self.aimer.invalidate();
+      },
+      shakeNow: (v: number) => self.fpc.addShake(v),
+      recoilNow: () => self.fpc.kick(1),
     };
   }
   private spawnFromMe(): void {
@@ -573,6 +669,8 @@ class KitchenFps implements Renderer {
     if (!this.fps) return;
     if (e.code === 'KeyE' || e.code === 'KeyK') {
       if (down && !e.repeat) this.tap(this.ctxAct || 'pick');
+    } else if (e.code === 'KeyQ' || e.code === 'KeyG') {
+      if (down && !e.repeat) this.tap('drop');
     } else if (e.code === 'Space' || e.code === 'KeyR') this.keyThrow = down;
     else if (e.code === 'KeyF' || e.code === 'KeyJ') this.keyAct = down;
   }
@@ -605,6 +703,9 @@ class KitchenFps implements Renderer {
         break;
       case 'spray':
         break;
+      case 'drop':
+        this.dropFeet();
+        break;
       default:
         this.doPick();
     }
@@ -631,10 +732,7 @@ class KitchenFps implements Renderer {
     // olhar
     // olhar (já suavizado pelos controles compartilhados)
     const [lx, ly] = this.input.consumeLook(dt);
-    this.yaw -= lx;
-    this.pitch = Math.max(-1.3, Math.min(1.1, this.pitch - ly));
-    this.lastLook[0] = lx;
-    this.lastLook[1] = ly;
+    this.fpc.look(lx, ly);
     if (auto) {
       // autoplay: a câmera segue o bot que joga por mim
       this.px += (me.x * T - this.px) * Math.min(1, dt * 10);
@@ -643,22 +741,16 @@ class KitchenFps implements Renderer {
       let d = ty - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.yaw += d * Math.min(1, dt * 4);
-      this.speedK = Math.min(1, Math.hypot(me.vx, me.vy) / 3);
+      this.fp.speedK = Math.min(1, Math.hypot(me.vx, me.vy) / 3);
     } else {
       // andar
       const [mx, my] = this.input.dir();
-      const fx = -Math.sin(this.yaw);
-      const fz = -Math.cos(this.yaw);
-      const rx = Math.cos(this.yaw);
-      const rz = -Math.sin(this.yaw);
-      const sp = 3.3 * (1 + sim.ups.shoes * 0.08) * (me.hold?.k === IK.Ext ? 0.85 : 1);
-      const tvx = (fx * my + rx * mx) * sp;
-      const tvz = (fz * my + rz * mx) * sp;
-      let k = mx || my ? 10 : 14;
-      if (sim.theme === 'space') k = 2.6;
-      if (this.slip > 0) k = 0.9;
-      this.vx += (tvx - this.vx) * Math.min(1, dt * k);
-      this.vz += (tvz - this.vz) * Math.min(1, dt * k);
+      const fp = this.fp;
+      const space = sim.theme === 'space';
+      fp.tune.speed = FP_COZINHA.speed * (1 + sim.ups.shoes * 0.08) * (me.hold?.k === IK.Ext ? 0.85 : 1);
+      fp.tune.bounce = space ? 0.4 : 0; // gravidade zero: rebate na parede
+      fp.accelOverride = this.slip > 0 ? 0.9 : space ? 2.6 : null;
+      fp.steer(dt, mx, my, this.yaw);
       // chão molhado: escorrega!
       if (this.puddle && Math.hypot(this.px - this.puddle.x, this.pz - this.puddle.z) < this.puddle.r) {
         if (this.slip <= 0 && Math.hypot(this.vx, this.vz) > 1.2) {
@@ -673,8 +765,10 @@ class KitchenFps implements Renderer {
         this.slip -= dt;
         this.yaw += dt * 2.2 * Math.max(0, this.slip);
       }
-      this.moveGrid(this.vx * dt, this.vz * dt);
-      this.speedK = Math.min(1, Math.hypot(this.vx, this.vz) / sp);
+      fp.collider = this.grid;
+      fp.move(dt);
+      // empurrão suave dos colegas
+      for (const p of sim.players) if (p !== me) fp.pushAway(p.x * T, p.y * T);
       me.x = this.px / T;
       me.y = this.pz / T;
       me.vx = this.vx / T;
@@ -741,102 +835,56 @@ class KitchenFps implements Renderer {
       }
   }
 
-  /** a câmera nunca entra em bancada/geladeira: empurra para fora das células bloqueadas com folga */
-  private camClamp(x: number, z: number): [number, number] {
-    const s = this.sim;
-    const M = 0.34; // folga (m) — maior que o meio do plano near com FOV largo
-    const gx = Math.floor(x / T);
-    const gz = Math.floor(z / T);
-    for (let oy = -1; oy <= 1; oy++)
-      for (let ox = -1; ox <= 1; ox++) {
-        const cx = gx + ox;
-        const cy = gz + oy;
-        if (s.isFloor(cx + 0.5, cy + 0.5)) continue;
-        // ponto mais próximo da caixa da célula
-        const nx = Math.max(cx * T, Math.min(x, (cx + 1) * T));
-        const nz = Math.max(cy * T, Math.min(z, (cy + 1) * T));
-        const dx = x - nx;
-        const dz = z - nz;
-        const d = Math.hypot(dx, dz);
-        if (d >= M) continue;
-        if (d < 1e-4) {
-          // dentro da célula: volta para o centro do chão onde o jogador está
-          const fx = (Math.floor(this.px / T) + 0.5) * T;
-          const fz = (Math.floor(this.pz / T) + 0.5) * T;
-          return [fx, fz];
-        }
-        x = nx + (dx / d) * M;
-        z = nz + (dz / d) * M;
-      }
-    return [x, z];
-  }
-  private moveGrid(dx: number, dz: number): void {
-    const s = this.sim;
-    const r = RAD / T;
-    const free = (x: number, y: number) => s.isFloor(x - r, y - r) && s.isFloor(x + r, y - r) && s.isFloor(x - r, y + r) && s.isFloor(x + r, y + r);
-    const nx = (this.px + dx) / T;
-    if (free(nx, this.pz / T)) this.px += dx;
-    else this.vx *= this.sim.theme === 'space' ? -0.4 : 0;
-    const nz = (this.pz + dz) / T;
-    if (free(this.px / T, nz)) this.pz += dz;
-    else this.vz *= this.sim.theme === 'space' ? -0.4 : 0;
-    // empurrão suave dos colegas
-    for (const p of s.players) {
-      if (p === this.me) continue;
-      const ox = this.px - p.x * T;
-      const oz = this.pz - p.y * T;
-      const d = Math.hypot(ox, oz);
-      if (d > 0.01 && d < 0.55) {
-        const push = (0.55 - d) * 0.5;
-        const ax = this.px + (ox / d) * push;
-        const az = this.pz + (oz / d) * push;
-        if (free(ax / T, this.pz / T)) this.px = ax;
-        if (free(this.px / T, az / T)) this.pz = az;
-      }
-    }
-  }
-
   private placeCamera(dt: number): void {
-    const cam = this.camera;
-    this.bob += dt * 9 * this.speedK;
-    const bobY = Math.sin(this.bob * 2) * 0.025 * this.speedK;
-    let roll = Math.cos(this.bob) * 0.008 * this.speedK;
+    const c = this.fpc;
     const th = this.sim.theme;
+    // extras do tema somados ao balanço do kit (barco balança, escorregão, flutuar no espaço)
+    let roll = 0;
     if (th === 'boat') roll += Math.sin(this.time * 0.9) * 0.045;
     if (this.slip > 0) roll += Math.sin(this.time * 14) * 0.05 * this.slip;
-    let sx = 0;
-    let sy = 0;
-    if (this.shake > 0) {
-      this.shake = Math.max(0, this.shake - dt * 1.6);
-      sx = (Math.random() - 0.5) * this.shake * 0.12;
-      sy = (Math.random() - 0.5) * this.shake * 0.12;
-    }
-    const space = th === 'space' ? Math.sin(this.time * 1.3) * 0.04 : 0;
-    this.recoil = Math.max(0, this.recoil - dt * 7);
-    sy -= Math.sin(this.recoil * Math.PI) * 0.012;
-    cam.rotation.order = 'YXZ';
-    cam.rotation.set(this.pitch + sy * 0.5 + (th === 'boat' ? Math.sin(this.time * 0.7) * 0.015 : 0), this.yaw + sx * 0.5, roll);
-    const [cx, cz] = this.camClamp(this.px + sx, this.pz);
-    cam.position.set(cx, EYE + bobY + sy + space, cz);
-    cam.updateMatrixWorld();
+    c.extraRoll = roll;
+    c.extraPitch = th === 'boat' ? Math.sin(this.time * 0.7) * 0.015 : 0;
+    c.extraY = th === 'space' ? Math.sin(this.time * 1.3) * 0.04 : 0;
+    c.apply(this.camera, dt, this.fp, this.grid);
   }
 
   /* ======================= mira ======================= */
   private aim(): void {
-    const cam = this.camera;
-    RAY.origin.copy(cam.position);
-    cam.getWorldDirection(RAY.direction);
-    FWD.copy(RAY.direction);
     // mira mais barata: com a câmera parada, só refaz a cada 3 quadros
-    const still = Math.abs(this.lastLook[0]) + Math.abs(this.lastLook[1]) < 1e-4 && this.speedK < 0.05;
-    if (still && this.aimSkip-- > 0) return;
-    this.aimSkip = 2;
+    const run = this.aimer.update(this.camera, this.fpc.lookDX, this.fpc.lookDY, this.speedK);
+    FWD.copy(RAY.direction);
+    if (!run) return;
+    // itens soltos: caixa de mira generosa (dedo no celular) e preferida ao móvel atrás
     for (const l of this.loose.values()) {
       const p = l.body.position;
       l.tg.enabled = !l.local;
-      AimPicker.sphere(l.tg, p.x, p.y, p.z, 0.13);
+      const plate = l.it.k === IK.Plate || l.it.k === IK.Dirty;
+      AimPicker.sphere(l.tg, p.x, p.y, p.z, plate ? 0.24 : 0.2);
     }
-    const tg = this.picker.pick(RAY);
+    let tg = this.picker.pick(RAY);
+    // mirou uma bancada vazia com algo SOLTO em cima (milho que caiu ali): pega o solto
+    if (tg && tg.data.k === 0 && !this.held() && !canTakeFrom(tg.data.st)) {
+      const st = tg.data.st;
+      let best: Loose | null = null;
+      let bd = 1e9;
+      for (const l of this.loose.values()) {
+        if (l.local) continue;
+        const p = l.body.position;
+        if (p.y < H - 0.15 || p.y > H + 0.7) continue;
+        const dx = p.x - (st.x + 0.5) * T;
+        const dz = p.z - (st.y + 0.5) * T;
+        if (Math.abs(dx) > T * 0.6 || Math.abs(dz) > T * 0.6) continue;
+        const d = RAY.distanceSqToPoint(V.set(p.x, p.y, p.z));
+        if (d < bd) {
+          bd = d;
+          best = l;
+        }
+      }
+      if (best) {
+        tg = best.tg;
+        this.picker.current = tg;
+      }
+    }
     const d = tg?.data;
     this.tgLoose = d?.k === 2 ? d.l : null;
     this.tgCtl = d?.k === 1 ? d.c : null;
@@ -890,10 +938,34 @@ class KitchenFps implements Renderer {
       }
       return;
     }
-    // solta na frente (com física)
-    me.hold = null;
-    this.launch(h, 0.6, 0.4, false);
-    sfx.drop();
+    // nada mirado: larga aos pés (arremesso só no JOGAR, segurando e soltando)
+    this.dropFeet();
+  }
+  /** "Largar": solta o que está na mão no chão à sua frente, sem arremessar */
+  private dropFeet(): void {
+    const me = this.me;
+    const h = this.held();
+    if (!me || !h || !this.fps) return;
+    if (this.sim.o.client) {
+      // cliente: voo local curto; quando parar, o host fica sabendo (noteThrow)
+      this.launch(h, 0.4, 0.2, true);
+    } else {
+      me.hold = null;
+      const fx = -Math.sin(this.yaw);
+      const fz = -Math.cos(this.yaw);
+      let x = this.px + fx * 0.45;
+      let z = this.pz + fz * 0.45;
+      if (!this.sim.isFloor(x / T, z / T)) {
+        x = this.px;
+        z = this.pz;
+      }
+      const l = this.addLoose(h, x, 0.5, z, false, 0);
+      l.body.velocity.set(this.vx * 0.4, 0.4, this.vz * 0.4);
+      l.body.angularVelocity.set((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+      this.sim.dropAt(h, x / T, z / T);
+    }
+    this.hand?.play('grab');
+    feedback('drop');
   }
   private doThrow(power: number): void {
     const h = this.held();
@@ -982,7 +1054,8 @@ class KitchenFps implements Renderer {
     body.sleepSpeedLimit = 0.15;
     body.sleepTimeLimit = 0.6;
     const l: Loose = { it, body, by, tried: -1, botTry: 0, age: 0, still: 0, local, hard: 0, stuck: 0, tg: null as unknown as AimTarget<Tg> };
-    l.tg = this.picker.add({ k: 2, l }, undefined, -0.05);
+    // viés forte: o item solto ganha da bancada/geladeira atrás dele
+    l.tg = this.picker.add({ k: 2, l }, undefined, -0.3);
     body.addEventListener('collide', (e: { contact: CANNON.ContactEquation }) => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
       if (v > l.hard) l.hard = v;
@@ -1376,6 +1449,7 @@ class KitchenFps implements Renderer {
         this.float('+' + e.v, tip ? t('cozinha.fps.tip', '+{n} de gorjeta!', { n: tip }) : '', x, y + 0.7, z, '#ffe14a');
         // o cliente na janela comemora
         this.cheer = { t: 1.8, ok: true, skin: this.cheer.skin, x };
+        this.servedPending++;
         feedback('serve');
         this.hes.poke();
         break;
@@ -1421,6 +1495,32 @@ class KitchenFps implements Renderer {
         break;
       case FX.Bump:
         break;
+      case FX.Smoke: {
+        // fumaça cinza subindo da panela esquecida / comida queimando + aviso (1× a cada 9 s)
+        this.parts.burst(x + (Math.random() - 0.5) * 0.2, y + 0.3, z + (Math.random() - 0.5) * 0.2, 3, 'steam', '#5d566e', 0.6);
+        if (st && this.smokeWarn[st.i] <= 0) {
+          this.smokeWarn[st.i] = 9;
+          this.float(t('cozinha.fps.smoke', 'Cheiro de queimado!'), st.fire <= 0 && !st.item ? t('cozinha.fps.smokeOff', 'Desligue o fogo') : '', x, y + 0.8, z, '#c9c2d8');
+        }
+        break;
+      }
+      case FX.Pop: {
+        // "POC!" de desenho: a frigideira pula e o carvão voa para fora (seguro: sem dano, só bagunça)
+        this.parts.burst(x, y + 0.2, z, 14, 'spark', '#ffd84a', 1.8);
+        this.parts.burst(x, y + 0.3, z, 8, 'poof', '#5a5068', 1.2);
+        this.shake = Math.max(this.shake, 0.45);
+        sfx.pop();
+        this.float(t('cozinha.fps.pop', 'POC!'), '', x, y + 0.7, z, '#ffd84a');
+        if (st && st.item && e.v && !this.sim.o.client) {
+          const it = st.item;
+          st.item = null;
+          const l = this.addLoose(it, x, y + 0.35, z, false, 0);
+          l.body.velocity.set((this.px - x) * 0.6 + (Math.random() - 0.5), 3.2, (this.pz - z) * 0.6 + (Math.random() - 0.5));
+          l.body.angularVelocity.set(8, 5, 3);
+          this.sim.dropAt(it, x / T, z / T);
+        }
+        break;
+      }
     }
   }
   private stationAt(x: number, y: number): Station | null {
@@ -1449,6 +1549,208 @@ class KitchenFps implements Renderer {
   }
 
   /* ======================= sprites (colegas, clientes, barras) ======================= */
+  /* ======================= salão (fila, mesas, entrando/saindo) ======================= */
+  private crowdFrame(dt: number, time: number, win: Station | undefined): void {
+    const s = this.sim;
+    const seats = this.kit?.dine ?? [];
+    if (this.seatUsed.length !== seats.length) this.seatUsed = new Uint8Array(seats.length);
+    if (!this.crowdInit && seats.length) {
+      // o salão já tem gente quando o turno começa (mais nos dias avançados)
+      this.crowdInit = true;
+      const n = Math.min(seats.length - 2, 2 + Math.floor(s.day / 3));
+      for (let i = 0; i < n; i++) {
+        const si = this.freeSeat();
+        if (si < 0) break;
+        const st = seats[si];
+        this.diners.push({ id: -1, skin: SKINS_CUST[(i * 7 + 3) % SKINS_CUST.length], x: st.x, z: st.z, y: 0, r: Math.floor(Math.random() * RECIPES.length), seat: si, mode: 1, t: 8 + Math.random() * 25, path: [], wait: 0, ph: Math.random() * 6 });
+      }
+    }
+    const wx = win ? (win.x + 0.5) * T : (s.cols / 2) * T;
+    // fila: um cliente por pedido; o 1º sobe no degrau da janela
+    let qi = 0;
+    for (const o of s.orders) {
+      let w = this.crowd.get(o.id);
+      if (!w) {
+        w = { id: o.id, skin: SKINS_CUST[o.id % SKINS_CUST.length], x: DOOR.x, z: DOOR.z, y: 0, r: o.r, seat: -1, mode: 0, t: 0, path: [], wait: 0, ph: o.id };
+        this.crowd.set(o.id, w);
+      }
+      let tx = wx;
+      let tz = -0.78;
+      if (qi > 0 || !win) {
+        tx = Math.max(-1.3, wx - 0.75 * qi);
+        tz = QUEUE_Z - (wx - 0.75 * qi < -1.3 ? 0.6 : 0);
+      }
+      w.path.length = 0;
+      // da porta: passa pela faixa entre a fila e as mesas
+      if (w.z < -2.2) w.path.push(-1.0, -1.95);
+      w.path.push(tx, tz);
+      const moving = this.walk(w, dt, 1.5);
+      const dw = Math.hypot(w.x - wx, w.z + 0.78);
+      w.y = win && qi === 0 ? STEP_H * Math.max(0, Math.min(1, 1 - (dw - 0.1) / 0.5)) : 0;
+      const atWin = qi === 0 && !!win && dw < 0.15;
+      if (atWin) this.cheer.skin = w.skin;
+      qi++;
+      if (atWin && this.cheer.t > 0) continue; // a comemoração desenha este cliente
+      const happy = o.t / o.max > 0.5;
+      this.drawWalker(w, happy, moving, time, atWin ? 1.1 : 1);
+      if (!atWin) {
+        const bub = this.sprite();
+        bub.material = this.orderMat(o.r);
+        bub.position.set(w.x + 0.3, w.y + 1.62 + Math.sin(time * 2 + o.id) * 0.05, w.z);
+        bub.scale.setScalar(0.42);
+      }
+    }
+    // quem saiu da fila: servido → vai comer; cansou → vai embora
+    for (const [id, w] of this.crowd) {
+      if (s.orders.some((o) => o.id === id)) continue;
+      this.crowd.delete(id);
+      w.path.length = 0;
+      if (this.servedPending > 0) {
+        this.servedPending--;
+        const si = this.freeSeat();
+        if (si >= 0) {
+          w.seat = si;
+          w.mode = 0;
+          w.wait = 1.7; // comemora na janela primeiro
+          this.routeToSeat(w, seats[si]);
+          this.diners.push(w);
+          continue;
+        }
+      }
+      w.mode = 2;
+      w.seat = -2; // cansou de esperar: sai emburrado
+      this.routeOut(w);
+      this.diners.push(w);
+    }
+    // gente chegando sozinha (já com a bandeja) até o salão encher com o turno
+    this.ambientT -= dt;
+    if (this.ambientT <= 0 && seats.length) {
+      this.ambientT = 9 + Math.random() * 8;
+      const fill = Math.round(seats.length * Math.min(0.85, 0.3 + 0.55 * (s.time / Math.max(30, s.p.len))));
+      let used = 0;
+      for (const u of this.seatUsed) used += u;
+      const si = used < fill && this.diners.length < 14 ? this.freeSeat() : -1;
+      if (si >= 0) {
+        const w: Walker = { id: -1, skin: SKINS_CUST[Math.floor(Math.random() * SKINS_CUST.length)], x: DOOR.x, z: DOOR.z, y: 0, r: Math.floor(Math.random() * RECIPES.length), seat: si, mode: 0, t: 0, path: [], wait: 0, ph: Math.random() * 6 };
+        this.routeToSeat(w, seats[si]);
+        this.diners.push(w);
+      }
+    }
+    for (let i = this.diners.length - 1; i >= 0; i--) {
+      const w = this.diners[i];
+      if (w.wait > 0) {
+        w.wait -= dt;
+        continue;
+      }
+      if (w.mode === 0) {
+        const moving = this.walk(w, dt, 1.3);
+        w.y = Math.max(0, w.y - dt * 1.5);
+        if (!moving) {
+          w.mode = 1;
+          w.t = 18 + Math.random() * 18;
+        }
+        this.drawWalker(w, true, moving, time, 1);
+        // bandeja nas mãos
+        const f = this.sprite();
+        f.material = this.orderMat(w.r);
+        f.position.set(w.x, w.y + 0.62, w.z + 0.12);
+        f.scale.setScalar(0.3);
+      } else if (w.mode === 1) {
+        // sentado comendo: balança a cabeça, prato na mesa
+        w.t -= dt;
+        const st = this.kit!.dine[w.seat];
+        const c = this.sprite();
+        c.material = this.smat('cu' + w.skin + 1, () => charSprite(w.skin, 'server', 128, true));
+        c.center.set(0.5, 0.02);
+        c.position.set(st.x, 0.14 + Math.abs(Math.sin(time * 5 + w.ph)) * 0.03, st.z);
+        c.scale.set(0.92, 1.12, 1);
+        const f = this.sprite();
+        f.material = this.orderMat(w.r);
+        f.position.set(st.tx, 0.86, st.tz + 0.08);
+        f.scale.setScalar(0.3 * Math.max(0.35, Math.min(1, w.t / 10)));
+        if (w.t <= 0) {
+          w.mode = 2;
+          this.seatUsed[w.seat] = 0;
+          w.seat = -1;
+          this.routeOut(w);
+        }
+      } else {
+        const moving = this.walk(w, dt, 1.4);
+        w.y = Math.max(0, w.y - dt * 1.5);
+        this.drawWalker(w, w.seat !== -2, moving, time, 1);
+        if (!moving) this.diners.splice(i, 1);
+      }
+    }
+  }
+  private freeSeat(): number {
+    const n = this.seatUsed.length;
+    if (!n) return -1;
+    const k = Math.floor(Math.random() * n);
+    for (let j = 0; j < n; j++) {
+      const i = (k + j) % n;
+      if (!this.seatUsed[i]) {
+        this.seatUsed[i] = 1;
+        return i;
+      }
+    }
+    return -1;
+  }
+  private routeToSeat(w: Walker, st: DineSeat): void {
+    // entre as mesas: faixa da frente → corredor ao lado da mesa → banquinho do fundo
+    w.path.length = 0;
+    w.path.push(w.x, -1.95, st.x + 0.85, -1.95, st.x + 0.85, st.z, st.x, st.z);
+  }
+  private routeOut(w: Walker): void {
+    w.path.length = 0;
+    if (w.z < -2.2) w.path.push(w.x + 0.85, w.z, w.x + 0.85, -1.95);
+    else w.path.push(w.x, -1.95);
+    w.path.push(DOOR.x + 0.3, -1.95, DOOR.x - 0.6, DOOR.z);
+  }
+  /** anda pelo caminho (pares x,z). false = chegou */
+  private walk(w: Walker, dt: number, sp: number): boolean {
+    let step = sp * dt;
+    while (w.path.length && step > 0) {
+      const dx = w.path[0] - w.x;
+      const dz = w.path[1] - w.z;
+      const d = Math.hypot(dx, dz);
+      if (d <= step) {
+        w.x = w.path[0];
+        w.z = w.path[1];
+        w.path.splice(0, 2);
+        step -= d;
+      } else {
+        w.x += (dx / d) * step;
+        w.z += (dz / d) * step;
+        step = 0;
+      }
+    }
+    return w.path.length > 0;
+  }
+  private drawWalker(w: Walker, happy: boolean, moving: boolean, time: number, k: number): void {
+    const c = this.sprite();
+    c.material = this.smat('cu' + w.skin + (happy ? 1 : 0), () => charSprite(w.skin, 'server', 128, happy));
+    c.center.set(0.5, 0.02);
+    const hop = moving ? Math.abs(Math.sin(time * 9 + w.ph)) * 0.06 : Math.abs(Math.sin(time * 3 + w.ph)) * 0.03;
+    c.position.set(w.x, w.y + hop, w.z);
+    c.scale.set(1.05 * k, 1.28 * k, 1);
+  }
+  private orderMat(r: number): THREE.SpriteMaterial {
+    return this.smat('ord' + r, () => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const x = cv.getContext('2d')!;
+      x.beginPath();
+      x.arc(32, 32, 30, 0, Math.PI * 2);
+      x.fillStyle = '#ffffff';
+      x.fill();
+      x.lineWidth = 3;
+      x.strokeStyle = '#2a0b5c';
+      x.stroke();
+      const rr = RECIPES[r];
+      blitIng(x, rr.parts[rr.parts.length - 1], false, 32, 32, 44);
+      return cv;
+    });
+  }
   private sprite(): THREE.Sprite {
     let s = this.spr[this.sprUsed];
     if (!s) {
@@ -1578,6 +1880,15 @@ class KitchenFps implements Renderer {
         if (Math.random() < dt * 4) this.parts.burst(cx, H + 0.9, cz, 1, 'poof', '#5a5068', 0.4);
       }
     }
+    for (let i = 0; i < this.smokeWarn.length; i++) if (this.smokeWarn[i] > 0) this.smokeWarn[i] -= dt;
+    if (fireN && this.fps) {
+      // alarme de fumaça: bip-bip de desenho enquanto houver fogo
+      this.alarmT -= dt;
+      if (this.alarmT <= 0) {
+        this.alarmT = 1.4;
+        sfx.alarm();
+      }
+    } else this.alarmT = 0;
     if (this.fireLight) {
       this.fireLight.intensity = fireN ? 4 + Math.sin(time * 23) * 1.2 : 0;
       this.fireLight.position.set(fx, H + 0.9, fz);
@@ -1644,47 +1955,9 @@ class KitchenFps implements Renderer {
       }
       bi++;
     }
-    // ---------------- clientes no salão (o 1º da fila espera NA JANELA) ----------------
+    // ---------------- salão: fila na janela, gente entrando, comendo nas mesas ----------------
     const win = this.screen ? s.st.find((x) => x.k === 'window') : undefined;
-    let first = true;
-    for (const o of s.orders) {
-      const c = this.sprite();
-      const skin = SKINS_CUST[o.id % SKINS_CUST.length];
-      const happy = o.t / o.max > 0.5;
-      c.material = this.smat('cu' + skin + (happy ? 1 : 0), () => charSprite(skin, 'server', 128, happy));
-      let sx = (((o.seat % s.seats) + 0.5) / s.seats) * s.cols * T;
-      c.center.set(0.5, 0.02);
-      const atWin = first && !!win && this.cheer.t <= 0;
-      if (atWin) {
-        sx = (win.x + 0.5) * T;
-        this.cheer.skin = skin;
-        c.position.set(sx, Math.abs(Math.sin(time * 3 + o.id)) * 0.04, -0.7 - (1 - o.a) * 2);
-        c.scale.set(1.05, 1.3, 1);
-      } else {
-        c.position.set(sx, Math.abs(Math.sin(time * 3 + o.id)) * 0.04, -3.1 - (1 - o.a) * 2);
-        c.scale.set(1, 1.25, 1);
-      }
-      first = false;
-      if (atWin) continue;
-      const bub = this.sprite();
-      const rr = RECIPES[o.r];
-      bub.material = this.smat('ord' + o.r, () => {
-        const cv = document.createElement('canvas');
-        cv.width = cv.height = 64;
-        const x = cv.getContext('2d')!;
-        x.beginPath();
-        x.arc(32, 32, 30, 0, Math.PI * 2);
-        x.fillStyle = '#ffffff';
-        x.fill();
-        x.lineWidth = 3;
-        x.strokeStyle = '#2a0b5c';
-        x.stroke();
-        blitIng(x, rr.parts[rr.parts.length - 1], false, 32, 32, 44);
-        return cv;
-      });
-      bub.position.set(sx + 0.4, 1.6 + Math.sin(time * 2 + o.id) * 0.05, -3.1);
-      bub.scale.setScalar(0.5);
-    }
+    this.crowdFrame(dt, time, win);
     // comemoração (ou "?!") do cliente na janela
     if (this.cheer.t > 0 && win) {
       this.cheer.t -= dt;
@@ -1695,8 +1968,8 @@ class KitchenFps implements Renderer {
       c.center.set(0.5, 0.02);
       const hop = ok ? Math.abs(Math.sin(this.cheer.t * 9)) * 0.25 : 0;
       const wob = ok ? 0 : Math.sin(this.cheer.t * 30) * 0.06;
-      c.position.set((win.x + 0.5) * T + wob, hop, -0.7);
-      c.scale.set(1.05, 1.3, 1);
+      c.position.set((win.x + 0.5) * T + wob, STEP_H + hop, -0.78);
+      c.scale.set(1.1, 1.38, 1);
       const e = this.sprite();
       const code = ok ? 'coracao' : 'uau';
       e.material = this.smat('em' + code, () => {
@@ -1707,7 +1980,7 @@ class KitchenFps implements Renderer {
         return cv;
       });
       e.center.set(0.5, 0);
-      e.position.set((win.x + 0.5) * T, 1.3 + hop, -0.7);
+      e.position.set((win.x + 0.5) * T + 0.42, STEP_H + 1.0 + hop, -0.78); // ao lado da cabeça (a lâmpada da janela tapava)
       e.scale.set(0.8, 0.6, 1);
     }
     const h = this.held();
@@ -1725,7 +1998,7 @@ class KitchenFps implements Renderer {
       hd.stir += (0 - hd.stir) * k;
       hd.charge += (Math.max(0, this.charge) - hd.charge) * Math.min(1, dt * 20);
       hd.visible = this.fps && !qs.has('czauto');
-      hd.update(dt, this.speedK, this.lastLook[0], this.lastLook[1]);
+      hd.update(dt, this.speedK, this.fpc.lookDX, this.fpc.lookDY);
       // tranco sutil de câmera no impacto da faca
       if (hd.impact > 0.95 && this.fps) this.recoil = 1;
       if (this.speedK > 0.3 && dt > 0) {
@@ -1909,6 +2182,11 @@ class KitchenFps implements Renderer {
         const it = st.item;
         if (!h && p?.heat && s.manualHeat && !st.heat && it && it.k === IK.Ing && s.nextProc(it) === COOKERS[st.k]) label += ' · ' + (st.k === 'blender' ? t('cozinha.fps.pressBtn', 'aperte o botão') : t('cozinha.fps.turnKnob', 'gire o botão'));
         else if (p?.faucet && st.n > 0 && !p.faucet.on) label += ' · ' + t('cozinha.fps.openTap', 'abra a torneira');
+        // fogão esquecido soltando fumaça: o rótulo avisa (vermelho)
+        if (st.fire <= 0 && st.heat && (st.dry > EMPTY_SMOKE * s.fireMul || st.item?.burnt)) {
+          label += ' · ' + t('cozinha.fps.smokeOff', 'Desligue o fogo');
+          warn = true;
+        }
       }
       this.hover.show(cur.box, label, warn);
     } else this.hover.hide();
@@ -2004,7 +2282,7 @@ class KitchenFps implements Renderer {
     const v = this.verbDef;
     if (this.fps) {
       if (!v.label) v.label = t('cozinha.fps.pick', 'Pegar');
-      const alt = v.id === 'chop' ? ALT_PICK() : null;
+      const alt = v.id === 'chop' ? ALT_PICK() : h && v.id !== 'drop' ? ALT_DROP() : null;
       this.hb.set(v, alt, !!h && v.id !== 'spray');
       this.hb.charge(h && this.charge >= 0 ? this.charge : -1);
     }
@@ -2117,22 +2395,63 @@ function vd(slot: number, id: string, label: string, icon: string, hold = false,
 const ctlIcon = (st: Station): string => (st.k === 'sink' ? 'water' : st.k === 'window' || st.k === 'belt' ? 'bell' : st.k === 'blender' ? 'power' : 'fire');
 /** primeira regra verdadeira decide: o que você segura > controle mirado > o que está na estação */
 const VERB_RULES: VerbRule<VCtx>[] = [
-  { when: (c) => c.h?.k === IK.Ext, verb: () => vd(0, 'spray', t('cozinha.spray', 'Apagar'), 'spray', true) },
+  // extintor: APAGAR só mirando no fogo; fora isso ele é um item como outro (pôr na bancada, largar)
+  { when: (c) => c.h?.k === IK.Ext && !!c.st && c.st.fire > 0, verb: () => vd(0, 'spray', t('cozinha.spray', 'Apagar'), 'spray', true) },
   { when: (c) => !!c.ctl && !!c.st, verb: (c) => vd(0, 'ctl', c.ctl!.verb(c.ctl!.on), ctlIcon(c.st!)) },
   { when: (c) => !!c.h && !!c.st && c.acc === 3, verb: () => vd(0, 'serve', t('cozinha.fps.serveIt', 'Entregar'), 'serve') },
   { when: (c) => !!c.h && !!c.st && c.acc === 2, verb: (c) => vd(0, 'pick', putLabel(c.sim, c.st!, c.h!), 'plus') },
   { when: (c) => !!c.h && !!c.st && c.acc === 1, verb: (c) => vd(0, 'pick', putLabel(c.sim, c.st!, c.h!), 'put') },
+  { when: (c) => !!c.h && !!c.st && c.st.fire > 0, verb: () => vd(0, 'nope', t('cozinha.fps.onFire', 'Pegando fogo!'), 'fire', false, true) },
   { when: (c) => !!c.h && !!c.st, verb: () => vd(0, 'nope', t('cozinha.fps.nope2', 'Não cabe aqui'), 'x', false, true) },
-  { when: (c) => !!c.h, verb: () => vd(0, 'pick', t('cozinha.fps.dropIt', 'Soltar'), 'drop') },
+  { when: (c) => !!c.h, verb: () => vd(0, 'drop', t('cozinha.fps.dropFeet', 'Largar'), 'drop') },
   { when: (c) => !!c.st && c.st.fire > 0, verb: () => vd(0, 'pick', t('cozinha.fps.onFire', 'Pegando fogo!'), 'fire', false, true) },
   { when: (c) => !!c.p?.door && !c.p.door.on && !c.loose, verb: () => vd(0, 'open', t('cozinha.fps.open', 'Abrir'), 'door') },
   { when: (c) => !c.loose && c.st?.k === 'board' && !!c.st.item && c.sim.nextProc(c.st.item) === 'chop', verb: () => vd(0, 'chop', t('cozinha.fps.chopIt', 'Cortar'), 'knife', true) },
   { when: (c) => !c.loose && c.st?.k === 'sink' && c.st.n > 0, verb: () => vd(0, 'scrub', t('cozinha.fps.scrub', 'Esfregar'), 'scrub', true) },
-  { when: (c) => !!c.loose, verb: (c) => vd(0, 'pick', t('cozinha.fps.pickX', 'Pegar {x}', { x: itemName(c.loose!.it).toLowerCase() }), 'grab') },
-  { when: (c) => !!c.st, verb: (c) => vd(0, 'pick', pickLabel(c.st!), 'grab', false, !canTakeFrom(c.st!)) },
+  { when: (c) => !!c.loose, verb: (c) => vd(0, 'pick', t('cozinha.fps.pickX', 'Pegar {x}', { x: itemName(c.loose!.it).toLowerCase() }), itemIcon(c.loose!.it)) },
+  { when: (c) => !!c.st, verb: (c) => vd(0, 'pick', pickLabel(c.st!), stIcon(c.st!), false, !canTakeFrom(c.st!)) },
 ];
 let altPick: VerbDef | null = null;
 const ALT_PICK = (): VerbDef => (altPick ??= { id: 'pick', label: t('cozinha.fps.pick', 'Pegar'), icon: 'grab' });
+let altDrop: VerbDef | null = null;
+/** botãozinho "Largar" (aos pés) sempre que a mão está cheia — separado do botão de pôr/entregar */
+const ALT_DROP = (): VerbDef => (altDrop ??= { id: 'drop', label: t('cozinha.fps.dropFeet', 'Largar'), icon: 'drop' });
+/** ícone do item (desenho do ingrediente) para o botão da mão — cache de <img> por tipo */
+const ICONS = new Map<string, string>();
+function itemIcon(it: Item): string {
+  if (it.k === IK.Plate) return it.parts.length ? iconOf('p' + it.parts.join('.'), (x) => drawPlateIcon(x, it.parts)) : 'serve';
+  if (it.k === IK.Dirty) return 'scrub';
+  if (it.k === IK.Ext) return 'spray';
+  return iconOf('i' + it.c + (it.burnt ? 'b' : ''), (x) => blitIng(x, it.c, it.burnt, 32, 32, 50));
+}
+function stIcon(st: Station): string {
+  if (st.fire > 0) return 'fire';
+  if (st.item) return itemIcon(st.item);
+  if (st.k === 'crate') return iconOf('c' + st.ing, (x) => blitIng(x, comp(st.ing, 0, 0), false, 32, 32, 50));
+  return 'grab';
+}
+function iconOf(key: string, draw: (x: CanvasRenderingContext2D) => void): string {
+  let v = ICONS.get(key);
+  if (!v) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    draw(c.getContext('2d')!);
+    v = `<img src="${c.toDataURL()}" alt="" style="width:36px;height:36px;display:block">`;
+    ICONS.set(key, v);
+  }
+  return v;
+}
+function drawPlateIcon(x: CanvasRenderingContext2D, parts: number[]): void {
+  x.fillStyle = '#ffffff';
+  x.strokeStyle = '#2a0b5c';
+  x.lineWidth = 3;
+  x.beginPath();
+  x.ellipse(32, 40, 28, 16, 0, 0, Math.PI * 2);
+  x.fill();
+  x.stroke();
+  const n = Math.min(4, parts.length);
+  for (let i = 0; i < n; i++) blitIng(x, parts[i], false, 32 + (i - (n - 1) / 2) * 14, 30, n > 2 ? 26 : 34);
+}
 function canTakeFrom(st: Station): boolean {
   return !!st.item || st.k === 'crate' || ((st.k === 'plates' || st.k === 'dirty') && st.n > 0);
 }

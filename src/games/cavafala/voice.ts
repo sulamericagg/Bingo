@@ -9,6 +9,9 @@
  *   Testes: window.__cavafalaSpeechMock = 'canhão de espuma' (ou lista) simula
  *     o resultado do reconhecedor passando pelo mesmo caminho do botão.
  *   Sem nada disso: o jogo cai para digitar (T) ou escolher no círculo.
+ *  Dois jeitos de ouvir: segurar para falar (listen) e LIGA/DESLIGA contínuo (listenContinuous):
+ *  o reconhecedor reinicia sozinho depois de cada frase/silêncio (com espera crescente se der erro)
+ *  e para limpo ao desligar, pausar ou o app ir para o fundo.
  *  NUNCA trava: toda espera do plugin tem tempo-limite; permissão é pedida ANTES de ouvir
  *  (cartão amigável se negar); o medidor da onda usa o nível REAL do microfone quando dá
  *  (web: getUserMedia + AnalyserNode) e, no Android (o reconhecedor do Google segura o
@@ -38,7 +41,7 @@ type WebRec = {
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onresult: ((e: { resultIndex?: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
 };
@@ -409,6 +412,248 @@ function listenWeb(hk: ListenHooks): VoiceSession | null {
       } catch {
         /* */
       }
+    },
+  };
+}
+
+/* ============================== LIGA/DESLIGA (contínuo) ============================== */
+export interface ContHooks extends ListenHooks {
+  /** frase completa reconhecida (alternativas) */
+  onFinal(alts: string[]): void;
+  /** o reconhecedor reiniciou (Android: depois de cada frase/silêncio) */
+  onRestart?(): void;
+}
+export interface ContSession {
+  stop(): void;
+}
+
+/** permissão + reconhecedor nativo prontos? (com tempo-limite) */
+async function nativeReady(hk: ListenHooks): Promise<boolean> {
+  if (nativeOk === null) nativeOk = (await withTimeout(Native.available(), 3000, { available: false })).available;
+  if (!nativeOk) {
+    hk.onError?.('unavailable');
+    return false;
+  }
+  let perm = await micPermission();
+  if (perm !== 'granted') {
+    hk.onAskPerm?.();
+    perm = await askMicPermission();
+  }
+  if (perm !== 'granted') {
+    hk.onError?.('perm', perm);
+    return false;
+  }
+  return true;
+}
+
+/** ouve sem parar até stop(): cada frase vira onFinal; parciais palavra por palavra em onPartial */
+export async function listenContinuous(hk: ContHooks): Promise<ContSession | null> {
+  const kind = voiceKind();
+  if (kind === 'mock') return contMock(hk);
+  if (kind === 'web') return contWeb(hk);
+  if (kind === 'native') return (await nativeReady(hk)) ? contNative(hk) : null;
+  hk.onError?.('unavailable');
+  return null;
+}
+
+/** testes: cada valor novo em window.__cavafalaSpeechMock é "falado" palavra por palavra */
+function contMock(hk: ContHooks): ContSession {
+  const act = bothMeters(hk.onLevel);
+  const W = window as unknown as { __cavafalaSpeechMock?: string | string[] };
+  let last = '';
+  let busy = false;
+  const tm = window.setInterval(() => {
+    const m = W.__cavafalaSpeechMock;
+    const txt = Array.isArray(m) ? m[0] : m;
+    if (busy || !txt || txt === last) return;
+    last = txt;
+    busy = true;
+    const words = txt.split(/\s+/);
+    let i = 0;
+    const step = () => {
+      if (!busy) return;
+      i++;
+      act.bump();
+      hk.onPartial(words.slice(0, i).join(' '));
+      if (i < words.length) setTimeout(step, 260);
+      else
+        setTimeout(() => {
+          if (!busy) return;
+          busy = false;
+          hk.onFinal(Array.isArray(m) ? m : [txt]);
+          W.__cavafalaSpeechMock = '';
+          last = '';
+        }, 350);
+    };
+    setTimeout(step, 150);
+  }, 150);
+  return {
+    stop() {
+      busy = false;
+      clearInterval(tm);
+      act.stop();
+    },
+  };
+}
+
+function contWeb(hk: ContHooks): ContSession | null {
+  const C = webCtor();
+  if (!C) {
+    hk.onError?.('unavailable');
+    return null;
+  }
+  const act = bothMeters(hk.onLevel);
+  let alive = true;
+  let rec: WebRec | null = null;
+  let backoff = 250;
+  let tm = 0;
+  const start = () => {
+    if (!alive) return;
+    try {
+      rec = new C();
+    } catch {
+      hk.onError?.('unavailable');
+      alive = false;
+      act.stop();
+      return;
+    }
+    const r = rec;
+    r.lang = speechLang();
+    r.interimResults = true;
+    r.continuous = true;
+    r.maxAlternatives = 5;
+    r.onresult = (e) => {
+      backoff = 250;
+      for (let i = e.resultIndex ?? 0; i < e.results.length; i++) {
+        const res = e.results[i];
+        const alts: string[] = [];
+        for (let j = 0; j < res.length; j++) alts.push(res[j].transcript.trim());
+        act.bump();
+        if (res.isFinal) hk.onFinal(alts.filter(Boolean));
+        else hk.onPartial(alts[0] ?? '');
+      }
+    };
+    r.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        alive = false;
+        act.stop();
+        hk.onError?.('perm', e.error);
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') backoff = Math.min(4000, backoff * 2);
+    };
+    r.onend = () => {
+      if (!alive) return;
+      hk.onRestart?.();
+      tm = window.setTimeout(start, backoff);
+    };
+    try {
+      r.start();
+    } catch {
+      backoff = Math.min(4000, backoff * 2);
+      tm = window.setTimeout(start, backoff);
+    }
+  };
+  start();
+  return {
+    stop() {
+      alive = false;
+      clearTimeout(tm);
+      act.stop();
+      try {
+        rec?.abort();
+      } catch {
+        /* */
+      }
+    },
+  };
+}
+
+/** Android: o reconhecedor do Google para sozinho depois de cada frase/silêncio → recomeça (com espera crescente) */
+function contNative(hk: ContHooks): ContSession {
+  const act = hk.onLevel ? activityMeter(hk.onLevel) : { bump() {}, stop() {} };
+  let alive = true;
+  let latest: string[] = [];
+  let backoff = 300;
+  let tm = 0;
+  let lastStart = 0;
+  let lastEvt = 0;
+  let running = false;
+  const subs: PluginListenerHandle[] = [];
+  const flush = () => {
+    if (latest.length) hk.onFinal(latest);
+    latest = [];
+  };
+  const restart = (delay = backoff) => {
+    if (!alive) return;
+    clearTimeout(tm);
+    tm = window.setTimeout(() => {
+      tm = 0;
+      void start();
+    }, delay);
+  };
+  const start = async () => {
+    if (!alive || running) return;
+    running = true;
+    lastStart = lastEvt = Date.now();
+    await withTimeout(Native.stop(), 600, undefined);
+    if (!alive) return;
+    Native.start({ language: speechLang(), maxResults: 5, partialResults: true, popup: false }).then(
+      (r) => {
+        if (r && 'matches' in r && r.matches?.length) latest = r.matches;
+      },
+      () => {
+        // "não ouvi nada" / ocupado: tenta de novo, cada vez esperando um pouco mais
+        backoff = Math.min(4000, backoff * 1.6);
+      },
+    );
+  };
+  void (async () => {
+    const add = async (p: Promise<PluginListenerHandle>) => {
+      const h = await withTimeout(p, 2000, null);
+      if (h) alive ? subs.push(h) : void h.remove();
+    };
+    await add(
+      Native.addListener('partialResults', (d) => {
+        if (!d.matches?.length) return;
+        lastEvt = Date.now();
+        backoff = 300;
+        if (d.matches[0] !== latest[0]) act.bump(0.8);
+        latest = d.matches;
+        hk.onPartial(d.matches[0]);
+      }),
+    );
+    await add(
+      Native.addListener('listeningState', (d) => {
+        lastEvt = Date.now();
+        if (d.status === 'started') act.bump(0.3);
+        else {
+          running = false;
+          flush();
+          hk.onRestart?.();
+          restart();
+        }
+      }),
+    );
+    void start();
+  })();
+  // vigia: preso sem eventos? para e recomeça
+  const dog = window.setInterval(() => {
+    if (!alive) return;
+    const now = Date.now();
+    if (running && now - lastStart > 12000 && now - lastEvt > 6000) {
+      running = false;
+      flush();
+      void withTimeout(Native.stop(), 800, undefined).then(() => restart(200));
+    } else if (!running && !tm) restart();
+  }, 1000);
+  return {
+    stop() {
+      alive = false;
+      clearTimeout(tm);
+      clearInterval(dog);
+      act.stop();
+      for (const h of subs) void h.remove().catch(() => {});
+      subs.length = 0;
+      void withTimeout(Native.stop(), 1500, undefined);
     },
   };
 }

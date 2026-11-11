@@ -18,6 +18,10 @@ export interface CavaSave {
   lastTheme: ThemeId;
   /** pedidos de voz bem-sucedidos (estatística) */
   spoken: number;
+  /** microfone: 'toggle' = toque liga/desliga (ouve sem parar) · 'hold' = segurar para falar */
+  micMode?: 'toggle' | 'hold';
+  /** dicas já mostradas (uma vez só) */
+  tips?: string[];
 }
 
 const KEY = 'bw-cavafala';

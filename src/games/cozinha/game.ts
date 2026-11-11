@@ -595,12 +595,12 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         <button class="cz-btn cz-ic" data-a="pause">${icon('pause', { size: 24 })}</button>
         <span class="cz-pill">${czIcon('hat', 20)}<span data-day></span></span>
         <span class="cz-pill" data-clock${tut ? ' style="display:none"' : ''}>${icon('clock', { size: 20 })}<span></span></span>
+        <button class="cz-skip" data-a="skip" style="display:none">${tut ? t('cozinha.skipTut', 'Pular treino') : t('cozinha.skip', 'Pular')} ›</button>
         <span class="cz-sp"></span>
         ${lv && !tut ? `<span class="cz-pill cz-goal" data-goal><span class="cz-ministars"></span><span></span></span>` : ''}
         <span class="cz-pill">${icon('coin', { size: 20 })}<span data-cash>0</span></span>
         <button class="cz-btn cz-ic" data-a="emote">${icon('smile', { size: 24 })}</button>
       </div>
-      <button class="cz-skip" data-a="skip" style="display:none">${t('cozinha.skip', 'Pular')}</button>
       <div class="cz-pets"></div>
       <div class="cz-acts">
         <button class="cz-act cz-pick" data-b="pick">${czIcon('hand', 34)}<small data-pl>${t('cozinha.pick', 'Pegar')}</small></button>
