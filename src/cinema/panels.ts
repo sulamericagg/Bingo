@@ -564,7 +564,7 @@ function shotPanel(c: PanelCtx): void {
 
 /* ---------------------------- CENÁRIO ---------------------------- */
 const bgThumbs = new Map<string, HTMLCanvasElement>();
-function bgThumb(id: string, light: string): HTMLCanvasElement {
+export function bgThumb(id: string, light: string): HTMLCanvasElement {
   const k = id + light;
   let cv = bgThumbs.get(k);
   if (cv) return cv;

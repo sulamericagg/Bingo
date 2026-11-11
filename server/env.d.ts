@@ -20,4 +20,6 @@ interface Env {
   FRIENDS: DurableObjectNamespace<import('./friends').FriendsHub>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
+  /** História Mágica (Bloop Cinema): chave da API da Anthropic — segredo, ver docs/IA.md. Sem ela, o app usa o gerador offline. */
+  ANTHROPIC_API_KEY?: string;
 }

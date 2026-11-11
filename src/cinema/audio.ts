@@ -402,6 +402,8 @@ export class Playback {
    */
   async start(p: Project, T: number, totalDur: number): Promise<number> {
     this.stop();
+    // até o relógio ser armado (músicas/vozes carregando), time() é NaN: o laço não avança
+    this.base = NaN;
     const c = this.m.c;
     this.m.setMix(p);
     let song: SongDef | undefined;

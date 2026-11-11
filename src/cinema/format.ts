@@ -11,6 +11,7 @@
  * ============================================================ */
 import type { AvatarData } from '../game/avatar';
 import { parseLook, type MakeupLook } from '../makeup/format';
+import { validateStory, type StorySpec } from '../../shared/story';
 
 export const FORMAT_ID = 'bloop-cinema';
 export const FORMAT_VERSION = 1;
@@ -194,6 +195,8 @@ export interface Project {
   watermark: boolean;
   /** modelo de origem (remix) */
   template?: string;
+  /** roteiro de origem ("Criar história" / História Mágica) — permite re-editar no modo simples */
+  story?: StorySpec;
 }
 
 /* ---------------------------- utilidades ---------------------------- */
@@ -302,6 +305,7 @@ export function parseProject(raw: unknown): Project | null {
   p.updated = num(o.updated, p.updated);
   p.watermark = o.watermark !== false;
   p.template = typeof o.template === 'string' ? o.template : undefined;
+  p.story = o.story ? (validateStory(o.story) ?? undefined) : undefined;
   const mix = (o.mix ?? {}) as Record<string, unknown>;
   p.mix = { music: num(mix.music, 0.7, 0, 1), voice: num(mix.voice, 1, 0, 1), sfx: num(mix.sfx, 0.8, 0, 1) };
   const m = o.music as Record<string, unknown> | null;
