@@ -6824,6 +6824,7 @@ export default {
   "settings.haptics": "振动",
   "settings.intro": "游戏开场动画",
   "settings.narration": "朗读（给还不识字的孩子）",
+  "settings.paperChar": "3D游戏中使用2D角色",
   "settings.lang": "语言",
   "settings.langTitle": "语言",
   "settings.music": "音乐",

@@ -6824,6 +6824,7 @@ export default {
   "settings.haptics": "Getaran",
   "settings.intro": "Animasi pembuka game",
   "settings.narration": "Bacakan keras (untuk yang belum bisa membaca)",
+  "settings.paperChar": "Karakter 2D di game 3D",
   "settings.lang": "Bahasa",
   "settings.langTitle": "BAHASA",
   "settings.music": "Musik",

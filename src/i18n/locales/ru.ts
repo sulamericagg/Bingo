@@ -6824,6 +6824,7 @@ export default {
   "settings.haptics": "Вибрация",
   "settings.intro": "Заставка при запуске игр",
   "settings.narration": "Читать вслух (для тех, кто не читает)",
+  "settings.paperChar": "2D-персонаж в 3D-играх",
   "settings.lang": "Язык",
   "settings.langTitle": "ЯЗЫК",
   "settings.music": "Музыка",

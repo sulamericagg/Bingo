@@ -11,6 +11,7 @@
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
 import { narrationOn, setNarration } from '../core/narration';
+import { paperPref, setPaperPref } from '../3d/paper/settings';
 import { ensureLandscape, restorePortrait, setPrefersPortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
@@ -327,6 +328,12 @@ export function initHub(o: HubOptions): void {
   if (narr) {
     narr.checked = narrationOn();
     narr.onchange = () => setNarration(narr.checked);
+  }
+  // PAPER: Bloop 2D de papel nos jogos 3D (padrão ligado)
+  const paper = document.getElementById('set-paper') as HTMLInputElement | null;
+  if (paper) {
+    paper.checked = paperPref();
+    paper.onchange = () => setPaperPref(paper.checked);
   }
   window.addEventListener('keydown', (e) => {
     if (!hubVisible() || document.querySelector('.modal-screen.on')) return;

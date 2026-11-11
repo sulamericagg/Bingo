@@ -6824,6 +6824,7 @@ export default {
   "settings.haptics": "Vibrazione",
   "settings.intro": "Animazione di apertura dei giochi",
   "settings.narration": "Leggi ad alta voce (per chi non legge)",
+  "settings.paperChar": "Personaggio 2D nei giochi 3D",
   "settings.lang": "Lingua",
   "settings.langTitle": "LINGUA",
   "settings.music": "Musica",
