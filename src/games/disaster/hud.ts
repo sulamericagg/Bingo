@@ -46,7 +46,7 @@ const CSS = `
 .dz-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
 .dz-big:disabled{opacity:.5}
-.dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + max(40px,env(safe-area-inset-top)));transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
+.dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + env(safe-area-inset-top,0px) + 40px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
 .dz-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
 .dz-warn .ico{width:54px;height:54px;animation:dzwob .5s ease-in-out infinite alternate}
 .dz-warn b{font-size:46px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
@@ -60,7 +60,7 @@ const CSS = `
 .dz-edge.t{left:50%;top:28%;margin-left:-66px}.dz-edge.t .ico{transform:rotate(180deg)}
 .dz-edge.b{left:50%;bottom:calc(var(--edge-b,14px) + 110px);margin-left:-66px}
 @keyframes dzpulse{from{transform:scale(.92)}to{transform:scale(1.1)}}
-@media (orientation:landscape) and (max-height:500px){.dz-warn{top:calc(var(--nt-top,56px) + 58px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
+@media (orientation:landscape) and (max-height:500px){.dz-warn{top:calc(var(--nt-top,56px) + 34px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -187,10 +187,12 @@ export class Hud {
     bigMoment(t('dz.round', 'Cenário {n}', { n: g.sc.n }), { sub: g.sc.map.name() + ' ' + '★'.repeat(g.sc.difficulty), ms: 1200 });
   }
 
+  /** antes de cada desastre o aviso é UM cartão só (ícone + contagem + seta: warnTick); o meteoro final
+   *  (sem fase de alerta) ainda ganha a faixa grande */
   disasterCard(d: DisasterId): void {
+    if (d !== 'meteoro') return;
     const info = DISASTERS[d];
     bigMoment(info.name() + '!', { icon: 'warning', color: 'linear-gradient(90deg,#ff5a3c,#c8193c)', ms: 1200 });
-    notify(info.hint(), { kind: 'warn', key: 'dz-hint', ms: 3000 });
   }
 
   resultCard(survived: boolean, coins: number, alive: number): void {
@@ -254,6 +256,8 @@ export class Hud {
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
+      // o chip de fase (com a outra contagem) some enquanto o cartão de alerta está na tela
+      this.phase.style.visibility = show ? 'hidden' : '';
       this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');
       if (show) {
         (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(d, 54);
