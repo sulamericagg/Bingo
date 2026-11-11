@@ -19,6 +19,7 @@
     "test:server": "node scripts/test-server.mjs",
     "test:ai": "node scripts/test-ai-pet.mjs",
     "test:cava": "node scripts/test-cava-make.mjs",
+    "qa": "node scripts/qa/run.mjs",
     "i18n:extract": "node scripts/i18n/extract.mjs",
     "i18n:check": "node scripts/i18n/extract.mjs --check",
     "i18n:apply": "node scripts/i18n/apply.mjs"
