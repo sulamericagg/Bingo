@@ -33,7 +33,7 @@ const waitFor = async (p, fn, ms = 20000, arg) => {
 };
 const START = { latitude: -23.5614, longitude: -46.6559, accuracy: 8 };
 const dev = pw.devices['Pixel 7'];
-const ctx = await b.newContext({ ...dev, geolocation: START, permissions: ['geolocation', 'camera'] });
+const ctx = await b.newContext({ ...dev, locale: 'pt-BR', geolocation: START, permissions: ['geolocation', 'camera'] });
 const p = await ctx.newPage();
 p.on('pageerror', (e) => fails.push('pageerror: ' + e));
 p.on('console', (m) => m.type() === 'error' && console.log('   [console]', m.text().slice(0, 200)));
@@ -48,7 +48,7 @@ async function openGame() {
   await waitFor(p, () => !!document.querySelector('.cc-root'));
 }
 const tapText = async (txt) => {
-  const el = p.locator('button', { hasText: txt }).first();
+  const el = p.locator('button:visible', { hasText: txt }).first();
   await el.waitFor({ timeout: 10000 });
   const bb = await el.boundingBox();
   await p.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);

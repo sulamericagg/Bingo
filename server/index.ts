@@ -34,6 +34,7 @@ import { sessionWho } from './auth';
 import { purchaseReport } from './purchases';
 import { tvFilm, tvNow, tvSubmit, tvVote, tvVoted, ugcBoard, ugcBrowse, ugcEarnings, ugcFav, ugcGet, ugcLike, ugcMine, ugcPublish, ugcReport, ugcScore, ugcThumb, ugcUnpublish, ugcUse } from './ugc';
 import { handleUgcAdmin } from './ugc-admin';
+import { cacaTile } from './caca-tiles';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -355,6 +356,18 @@ export default {
         return await partyJoin(req, env, pm[1]);
       } catch (e) {
         return errorResponse(e);
+      }
+    }
+
+    // Caça Bloop: tiles vetoriais do OpenStreetMap (proxy + cache) — /api/caca/tile/14/<x>/<y>
+    const ct = /^\/api\/caca\/tile\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})(?:\.pbf)?$/.exec(path);
+    if (ct) {
+      const cors = corsHeaders(req, url);
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+      try {
+        return await cacaTile(req, env, ctx, Number(ct[1]), Number(ct[2]), Number(ct[3]), cors);
+      } catch (e) {
+        return withHeaders(errorResponse(e), cors);
       }
     }
 
