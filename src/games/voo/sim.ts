@@ -1309,6 +1309,7 @@ export class Sim {
       }
     }
     for (const o of this.orders) {
+      if (o.t < -1e8) continue; // já entregue/fechado neste passo
       o.t -= dt;
       const q = this.pax[o.pax];
       if (q && o.t < o.tmax * 0.35) q.panic = Math.min(1, q.panic + dt * 0.004);

@@ -1072,7 +1072,7 @@ export class Hud {
     const y0 = py;
     const side = px > W / 2 ? -1 : 1;
     for (let it = 0; it < 8; it++) {
-      const hit = this.placed.find((q) => Math.abs(q.x - px) < R * 2 && Math.abs(q.y - py) < R * 2 + lab - 2);
+      const hit = this.placed.find((q) => Math.abs(q.x - px) < R * 2 + 6 && Math.abs(q.y - py) < R * 2 + lab - 2);
       if (!hit) break;
       py = hit.y + dir * (R * 2 + lab);
       // saiu da área segura ou caiu num controle: empilha para o outro lado / para o lado
@@ -1081,7 +1081,7 @@ export class Hud {
           dir = -dir;
           py = y0;
         } else {
-          px += side * (R * 2 + 6);
+          px += side * (R * 2 + 10);
           py = y0;
           dir = y0 > cy ? -1 : 1;
         }
