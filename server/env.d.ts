@@ -32,6 +32,8 @@ interface Env {
   UGC: DurableObjectNamespace<import('./ugc-hub').UgcHub>;
   /** TV Bloop: grade ao vivo + votos — instância única 'main'. */
   TV: DurableObjectNamespace<import('./tv').TvChannel>;
+  /** Garimpo Bruto online: salas de garimpo (relé anfitrião↔convidados) + caixas de convite. */
+  GARIMPO: DurableObjectNamespace<import('./garimpo').GarimpoRoom>;
   /** Horas mínimas de conta para gerar moedas a criadores (padrão 72; .dev.vars usa 0 no teste local). */
   UGC_MIN_AGE_H?: string;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */

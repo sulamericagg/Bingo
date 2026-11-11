@@ -49,6 +49,8 @@ export class World {
   tier: Tier = 2;
   private matTier = -1;
   rainK = 0;
+  /** rede (anfitrião): árvore queimando mudou */
+  onBurn: ((n: number, b: number) => void) | null = null;
 
   constructor() {
     this.camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.3, 260);
@@ -229,6 +231,7 @@ export class World {
   /** pinta uma planta conforme a queima (0 = verde, 1 = carvão) */
   burnTree(n: number, b: number): void {
     this.veg?.burn(n, b);
+    this.onBurn?.(n, b);
   }
 
   /** altura da água em (x,z) (ou -∞ fora do lago) */

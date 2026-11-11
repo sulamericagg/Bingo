@@ -22,6 +22,8 @@ export interface BotHost {
   hopperPos(out: THREE.Vector3): THREE.Vector3;
   /** ponto do pátio da mina onde o caminhão espera carregar */
   loadSpot(): { x: number; z: number; yaw: number };
+  /** máquina com gente dentro (o jogador ou um amigo online) */
+  busy(m: Machine): boolean;
 }
 
 type DState = 'toLoad' | 'wait' | 'toPlant' | 'approach' | 'align' | 'reverse' | 'dump' | 'leave';
@@ -44,7 +46,7 @@ export class Driver {
     if (this.truck && this.host.ms.includes(this.truck)) return;
     this.truck = null;
     for (const m of this.host.ms)
-      if (m instanceof Truck && m !== this.host.cur && !others.some((d) => d !== this && d.truck === m)) {
+      if (m instanceof Truck && !this.host.busy(m) && !others.some((d) => d !== this && d.truck === m)) {
         this.truck = m;
         this.go('toLoad');
         return;
@@ -163,7 +165,7 @@ export class Driver {
   update(dt: number): void {
     const tr = this.truck;
     if (!tr || !tr.veh) return;
-    if (tr === this.host.cur) return; // o jogador pegou o volante
+    if (this.host.busy(tr)) return; // o jogador (ou um amigo) pegou o volante
     const c = this.ctl;
     c.act2 = false;
     c.gas = c.brake = c.mx = 0;

@@ -33,6 +33,9 @@ export class Fire {
   private cx = 0;
   private cz = 0;
   active = false;
+  /** rede (anfitrião): começou / apagou / queimou o estoque */
+  onEvent: ((k: 'fire' | 'fireOut' | 'stockBurn', n?: number) => void) | null = null;
+  private ptsN = 0;
 
   constructor(
     private w: World,
@@ -76,6 +79,7 @@ export class Fire {
     for (const o of [1, -1, G]) if (this.fuel[best + o] > 0.3) this.heat[best + o] = 0.4;
     this.active = true;
     audio.siren(2.4);
+    this.onEvent?.('fire');
     this.host?.say(t('gb.fireStart', 'FOGO na mata! Pegue água no lago e apague!'), 'fire');
   }
   private host: Host | null = null;
@@ -150,6 +154,7 @@ export class Fire {
         }
       }
     this.burning = burning;
+    this.ptsN = n;
     this.w.flames.update(performance.now() / 1000, this.pts, n);
     // estoque pegando fogo
     const m = this.w.map;
@@ -159,6 +164,7 @@ export class Fire {
       this.stockHit = 10;
       const lost = s.stock * 0.2;
       s.stock -= lost;
+      this.onEvent?.('stockBurn', lost);
       notify(t('gb.stockBurn', 'O fogo chegou no estoque! Perdeu {n} g', { n: Math.round(lost) }), { icon: 'fire', kind: 'bad' });
       audio.siren(1.2);
     }
@@ -167,6 +173,7 @@ export class Fire {
       this.active = false;
       host.alert(null);
       this.w.flames.update(0, this.pts, 0);
+      this.onEvent?.('fireOut');
       const bonus = 250;
       s.money += bonus;
       host.say(t('gb.fireOut', 'Fogo apagado! Muito bem!'));
@@ -192,6 +199,12 @@ export class Fire {
     }
     if (best < 0) return null;
     return { x: ((best % G) + 0.5) * CS, z: (Math.floor(best / G) + 0.5) * CS };
+  }
+  /** rede: chamas como [x, z, tamanho, ...] */
+  netPts(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.ptsN; i++) out.push(Math.round(this.pts[i * 4] * 10) / 10, Math.round(this.pts[i * 4 + 2] * 10) / 10, Math.round(this.pts[i * 4 + 3] * 100) / 100);
+    return out;
   }
   get count(): number {
     return this.burning;

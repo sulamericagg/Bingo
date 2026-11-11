@@ -55,6 +55,19 @@ export interface BladeState {
 }
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+const qcm = (d: number) => Math.max(-32767, Math.min(32767, Math.round(d * 100)));
+function i16b64(out: number[]): string {
+  const u8 = new Uint8Array(new Int16Array(out).buffer);
+  let s = '';
+  for (let k = 0; k < u8.length; k += 8192) s += String.fromCharCode(...u8.subarray(k, k + 8192));
+  return btoa(s);
+}
+function b64i16(b64: string): Int16Array {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length & ~1);
+  for (let k = 0; k < u8.length; k++) u8[k] = bin.charCodeAt(k);
+  return new Int16Array(u8.buffer);
+}
 
 export class Terrain {
   readonly h = new Float32Array(V * V);
@@ -257,9 +270,114 @@ export class Terrain {
       }
   }
 
+  /* ---------------- rede (anfitrião): edições em delta ---------------- */
+  /** células candidatas a mudar desde o último retrato (só com startNet) */
+  private netMark: Uint8Array | null = null;
+  private netList: number[] = [];
+  /** último valor mandado (cm acima/abaixo do original) */
+  private netSent: Int16Array | null = null;
+  startNet(): void {
+    this.netMark = new Uint8Array(V * V);
+    this.netSent = new Int16Array(V * V);
+    for (let k = 0; k < V * V; k++) this.netSent[k] = qcm(this.h[k] - this.h0[k]);
+    this.netList = [];
+  }
+  stopNet(): void {
+    this.netMark = null;
+    this.netSent = null;
+    this.netList = [];
+  }
+  /** delta compacto (base64 de Int16: pulo, quantas, valores em cm) ou '' se nada mudou */
+  takeNetDelta(): string {
+    const mark = this.netMark;
+    const sent = this.netSent;
+    if (!mark || !sent || !this.netList.length) return '';
+    const ks: number[] = [];
+    for (const k of this.netList) {
+      mark[k] = 0;
+      const q = qcm(this.h[k] - this.h0[k]);
+      if (q !== sent[k]) {
+        sent[k] = q;
+        ks.push(k);
+      }
+    }
+    this.netList = [];
+    if (!ks.length) return '';
+    ks.sort((a, b) => a - b);
+    const out: number[] = [];
+    let prev = 0;
+    let i = 0;
+    while (i < ks.length) {
+      let skip = ks[i] - prev;
+      while (skip > 32767) {
+        out.push(32767, 0);
+        skip -= 32767;
+      }
+      let n = 1;
+      while (i + n < ks.length && ks[i + n] === ks[i] + n && n < 32000) n++;
+      out.push(skip, n);
+      for (let c = 0; c < n; c++) out.push(sent[ks[i + c]]);
+      prev = ks[i] + n;
+      i += n;
+    }
+    return i16b64(out);
+  }
+  /** convidado: aplica um delta do anfitrião (alturas absolutas em cm sobre o original) */
+  applyNetDelta(b64: string): void {
+    let a: Int16Array;
+    try {
+      a = b64i16(b64);
+    } catch {
+      return;
+    }
+    let p = 0;
+    let k = 0;
+    let i0 = V;
+    let j0 = V;
+    let i1 = -1;
+    let j1 = -1;
+    const n = V * V;
+    while (p + 1 < a.length) {
+      k += a[p++];
+      const cnt = a[p++];
+      for (let c = 0; c < cnt && k < n && p < a.length; c++, k++) {
+        this.h[k] = this.h0[k] + a[p++] / 100;
+        if (this.mat[k] === MAT_GRASS || this.mat[k] === MAT_SAND) this.mat[k] = MAT_DIRT;
+        const i = k % V;
+        const j = (k / V) | 0;
+        if (i < i0) i0 = i;
+        if (i > i1) i1 = i;
+        if (j < j0) j0 = j;
+        if (j > j1) j1 = j;
+      }
+      // blocos longe um do outro: marca cada um (não refaz o mapa inteiro)
+      if (i1 >= 0 && (i1 - i0 > 24 || j1 - j0 > 24)) {
+        this.markRect(i0, j0, i1, j1);
+        i0 = j0 = V;
+        i1 = j1 = -1;
+      }
+    }
+    if (i1 >= 0) this.markRect(i0, j0, i1, j1);
+  }
+
   /** marca vértices [i0..i1]×[j0..j1] como alterados */
   markRect(i0: number, j0: number, i1: number, j1: number): void {
     this.onEdit?.(i0 * CELL, j0 * CELL, i1 * CELL, j1 * CELL);
+    const nm = this.netMark;
+    if (nm) {
+      const a0 = clamp(i0, 0, N);
+      const a1 = clamp(i1, 0, N);
+      const b0 = clamp(j0, 0, N);
+      const b1 = clamp(j1, 0, N);
+      for (let j = b0; j <= b1; j++)
+        for (let i = a0; i <= a1; i++) {
+          const k = j * V + i;
+          if (!nm[k]) {
+            nm[k] = 1;
+            this.netList.push(k);
+          }
+        }
+    }
     i0 = clamp(i0 - 1, 0, N);
     j0 = clamp(j0 - 1, 0, N);
     i1 = clamp(i1 + 1, 0, N);

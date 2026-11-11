@@ -43,5 +43,9 @@ export const IC = {
   bolt: S('<path d="M13 2L5 14h6l-1 8 8-12h-6z" fill="#ffd23a" stroke="#fff"/>'),
   pick: S('<path d="M4 9c4-5 12-5 16 0"/><path d="M12 6v15"/>'),
   arrow: S('<path d="M12 3l7 16-7-4-7 4z" fill="currentColor"/>'),
+  friends: S('<circle cx="8.5" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.5"/><path d="M2.5 20c0-3.6 2.7-6.5 6-6.5s6 2.9 6 6.5"/><path d="M15 13.6c3.3-.6 6.5 1.8 6.5 5.4"/>'),
+  qr: S('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M14 21h7v-4"/>'),
+  share: S('<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>'),
+  check: S('<path d="M4 12.5l5 5L20 6.5"/>'),
 };
 export type IconKey = keyof typeof IC;

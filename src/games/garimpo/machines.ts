@@ -101,6 +101,34 @@ export abstract class Machine {
   dispose(): void {
     this.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }
+  /** rede: estado extra da máquina (articulações) — o anfitrião manda, o convidado aplica */
+  netExtra(): number[] {
+    return [];
+  }
+  /** rede (convidado): pose vinda do anfitrião, sem simular (sem cavar, sem física) */
+  netApply(x: number, y: number, z: number, q: THREE.Quaternion, speed: number, steer: number, ex: number[], dt: number): void {
+    void ex;
+    const v = this.veh;
+    if (!v) return;
+    v.pos.set(x, y, z);
+    v.q.copy(q);
+    v.vel.set(0, 0, 0);
+    v.speed = speed;
+    v.input.steer = steer;
+    v.asleep = true;
+    for (let i = 0; i < v.spin.length; i++) v.spin[i] += (speed * dt) / (v.spec.wheels[i]?.r || 0.5);
+    this.syncLoad();
+  }
+  /** suspensão (rodas) para o retrato */
+  netSusp(): number[] {
+    const v = this.veh;
+    return v && !v.spec.tracked ? Array.from(v.susp, (s) => Math.round(s * 100) / 100) : [];
+  }
+  netSetSusp(a: number[] | undefined): void {
+    const v = this.veh;
+    if (!v || !a) return;
+    for (let i = 0; i < a.length && i < v.susp.length; i++) v.susp[i] = a[i];
+  }
   /** carga em kg (física) */
   protected syncLoad(): void {
     this.veh?.setLoad(this.cargo.vol * SOIL_KG);
@@ -220,11 +248,18 @@ export class Pickup extends Wheeled {
   }
   update(_dt: number, ctl: Ctl | null): void {
     applyDrive(this.veh!, ctl);
+    this.pose();
+  }
+  private pose(): void {
     const f = this.fill;
     this.heap.visible = f > 0.01;
     this.heap.scale.set(1, Math.max(0.05, f * 0.5), 1);
     this.heap.position.y = 0.05 + f * 0.25;
     this.syncLoad();
+  }
+  netApply(x: number, y: number, z: number, q: THREE.Quaternion, speed: number, steer: number, ex: number[], dt: number): void {
+    super.netApply(x, y, z, q, speed, steer, ex, dt);
+    this.pose();
   }
   /** descarrega devagar num recebedor (moega) */
   unload(dt: number, r: Receiver): number {
@@ -297,10 +332,7 @@ export class Truck extends Wheeled {
     if (ctl) this.raise = ctl.act2 ? true : this.raise;
     const want = this.raise ? 0.85 : 0;
     this.tilt += Math.sign(want - this.tilt) * Math.min(Math.abs(want - this.tilt), dt * 0.45);
-    this.bed.rotation.x = -this.tilt;
-    this.bed.updateMatrix();
-    _v3.set(0, 0.05, 2.0).applyMatrix4(this.bed.matrix);
-    this.ram.set(0, 0.0, -1.6, _v3.x, _v3.y, _v3.z);
+    this.poseBed();
     // despejo pela traseira
     if (this.tilt > 0.4 && this.cargo.vol > 0) {
       const rate = (this.tilt - 0.35) * 3.2 * dt;
@@ -330,10 +362,28 @@ export class Truck extends Wheeled {
         void T;
       }
     }
+    this.poseHeap();
+    this.syncLoad();
+  }
+  private poseBed(): void {
+    this.bed.rotation.x = -this.tilt;
+    this.bed.updateMatrix();
+    _v3.set(0, 0.05, 2.0).applyMatrix4(this.bed.matrix);
+    this.ram.set(0, 0.0, -1.6, _v3.x, _v3.y, _v3.z);
+  }
+  private poseHeap(): void {
     const f = this.fill;
     this.heap.visible = f > 0.01;
     this.heap.scale.set(1, Math.max(0.05, f * 0.95), 1);
-    this.syncLoad();
+  }
+  netExtra(): number[] {
+    return [Math.round(this.tilt * 100) / 100];
+  }
+  netApply(x: number, y: number, z: number, q: THREE.Quaternion, speed: number, steer: number, ex: number[], dt: number): void {
+    super.netApply(x, y, z, q, speed, steer, ex, dt);
+    this.tilt = ex[0] ?? 0;
+    this.poseBed();
+    this.poseHeap();
   }
 }
 
@@ -394,14 +444,7 @@ export class Dozer extends Wheeled {
     } else {
       i.steer = i.gas = i.brake = 0;
     }
-    this.blade.position.y = this.lift - 0.42;
-    this.blade.rotation.x = -this.lift * 0.12;
-    this.blade.updateMatrix();
-    for (let i = 0; i < 2; i++) {
-      const sx = i ? -0.62 : 0.62;
-      _v3.set(sx, 0.25, -0.2).applyMatrix4(this.blade.matrix);
-      this.rams[i].set(sx, 0.62, 1.55, _v3.x, _v3.y, _v3.z);
-    }
+    this.poseBlade();
     // fio da lâmina no mundo
     this.group.updateMatrixWorld();
     _v.set(1.72, -0.66, 0.16).applyMatrix4(this.blade.matrixWorld);
@@ -425,6 +468,24 @@ export class Dozer extends Wheeled {
       }
     }
     if (!ctl) this.bst.carry *= 0.99;
+  }
+  private poseBlade(): void {
+    this.blade.position.y = this.lift - 0.42;
+    this.blade.rotation.x = -this.lift * 0.12;
+    this.blade.updateMatrix();
+    for (let i = 0; i < 2; i++) {
+      const sx = i ? -0.62 : 0.62;
+      _v3.set(sx, 0.25, -0.2).applyMatrix4(this.blade.matrix);
+      this.rams[i].set(sx, 0.62, 1.55, _v3.x, _v3.y, _v3.z);
+    }
+  }
+  netExtra(): number[] {
+    return [Math.round(this.lift * 100) / 100];
+  }
+  netApply(x: number, y: number, z: number, q: THREE.Quaternion, speed: number, steer: number, ex: number[], dt: number): void {
+    super.netApply(x, y, z, q, speed, steer, ex, dt);
+    this.lift = ex[0] ?? this.lift;
+    this.poseBlade();
   }
 }
 
@@ -492,6 +553,15 @@ export class Excavator extends Wheeled {
       else this.phase = 0;
       if (ctl.act2) this.bucketA -= dt * 2.6; // despejar
     }
+    this.cam.yawOff = this.swing + (ctl && !ctl.drive ? 0.38 : 0);
+    this.poseArm();
+    const p = this.p;
+    // cavar: ponta abaixo do chão enchendo a caçamba
+    this.dirt(dt, env, T);
+    void p;
+  }
+  /** articulações → malhas e pistões */
+  private poseArm(): void {
     this.boomA = Math.max(-0.55, Math.min(1.05, this.boomA));
     this.armA = Math.max(0.35, Math.min(2.55, this.armA));
     this.bucketA = Math.max(-0.75, Math.min(2.45, this.bucketA));
@@ -500,7 +570,6 @@ export class Excavator extends Wheeled {
     p.boom.rotation.x = -this.boomA;
     p.arm.rotation.x = this.armA;
     p.bucket.rotation.x = this.bucketA;
-    this.cam.yawOff = this.swing + (ctl && !ctl.drive ? 0.38 : 0);
     // pistões (entre pinos de peças diferentes)
     this.group.updateMatrixWorld(true);
     const pin = (cyl: Ram, par: THREE.Object3D, ax: number, ay: number, az: number, other: THREE.Object3D, bx: number, by: number, bz: number) => {
@@ -513,7 +582,23 @@ export class Excavator extends Wheeled {
     pin(p.cylArm, p.boom, 0, 0.82, EXC.boomL * 0.42, p.arm, 0, 0.42, -0.3);
     pin(p.cylBucket, p.arm, 0, 0.36, 0.5, p.bucket, 0, 0.3, 0.05);
     this.group.updateMatrixWorld(true);
-    // cavar: ponta abaixo do chão enchendo a caçamba
+    p.heap.visible = this.cargo.vol > 0.02;
+    p.heap.scale.setScalar(0.5 + this.fill * 0.6);
+  }
+  netExtra(): number[] {
+    const r = (v: number) => Math.round(v * 1000) / 1000;
+    return [r(this.swing), r(this.boomA), r(this.armA), r(this.bucketA)];
+  }
+  netApply(x: number, y: number, z: number, q: THREE.Quaternion, speed: number, steer: number, ex: number[], dt: number): void {
+    super.netApply(x, y, z, q, speed, steer, ex, dt);
+    if (ex.length >= 4) [this.swing, this.boomA, this.armA, this.bucketA] = ex;
+    this.group.position.copy(this.veh!.pos);
+    this.group.quaternion.copy(this.veh!.q);
+    this.poseArm();
+  }
+  /** ponta cavando / caçamba despejando (só o anfitrião) */
+  private dirt(dt: number, env: Env, T: import('./terrain').Terrain): void {
+    const p = this.p;
     this.tip(_v);
     const gy = T.heightAt(_v.x, _v.z);
     // boca da caçamba para baixo → derrama
@@ -595,9 +680,15 @@ export class Worker extends Machine {
   water = 0;
   speedNow = 0;
   digPow = 1;
-  constructor() {
+  /** convidado online: anda e anima aqui, mas cavar/despejar acontece no anfitrião */
+  ghost = false;
+  /** despejando o carrinho agora (anima no convidado) */
+  dumping = false;
+  /** anfitrião: velocidade de andar vinda do convidado (anima as pernas; -1 = usa a própria) */
+  extMove = -1;
+  constructor(shirt?: number) {
     super();
-    this.p = buildWorker();
+    this.p = buildWorker(shirt);
     this.group.add(this.p.root);
     this.cargo.cap = 0.12;
     this.cam = { dist: 5.8, height: 3.2, look: 0.9, yawOff: 0 };
@@ -667,6 +758,7 @@ export class Worker extends Machine {
     pos.x = Math.max(8, Math.min(184, pos.x));
     pos.z = Math.max(8, Math.min(184, pos.z));
     pos.y += (T.heightAt(pos.x, pos.z) - pos.y) * Math.min(1, dt * 20);
+    if (this.extMove >= 0) mv = this.extMove;
     this.speedNow = mv;
     // andar
     this.walk += mv * dt * 3.2;
@@ -699,7 +791,7 @@ export class Worker extends Machine {
       const k = this.dig;
       sh.rotation.x = k < 0.5 ? -0.2 + k * 2.2 : 0.9 - (k - 0.5) * 2.4;
       this.p.armR.rotation.x = -0.6 - Math.sin(k * Math.PI) * 0.9;
-      if (k >= 0.5 && k - dt / 0.6 < 0.5) {
+      if (k >= 0.5 && k - dt / 0.6 < 0.5 && !this.ghost) {
         // cava na frente (ao lado do carrinho)
         const fx = pos.x + Math.sin(g.rotation.y) * 1.0 - Math.cos(g.rotation.y) * 0.7;
         const fz = pos.z + Math.cos(g.rotation.y) * 1.0 + Math.sin(g.rotation.y) * 0.7;
@@ -721,7 +813,10 @@ export class Worker extends Machine {
       this.p.armL.rotation.x = -0.5;
     }
     // despejar o carrinho
-    if (ctl && ctl.act2 && this.cargo.vol > 0) {
+    this.dumping = !!(ctl && ctl.act2 && this.cargo.vol > 0);
+    if (this.dumping && this.ghost) {
+      this.p.barrow.rotation.x = -0.35;
+    } else if (ctl && ctl.act2 && this.cargo.vol > 0) {
       const fx = pos.x + Math.sin(g.rotation.y) * 1.6;
       const fz = pos.z + Math.cos(g.rotation.y) * 1.6;
       const rc = env.receiverAt(fx, T.heightAt(fx, fz) + 1.0, fz, this, 1.8);
@@ -738,6 +833,40 @@ export class Worker extends Machine {
     } else this.p.barrow.rotation.x *= 0.85;
     this.p.heap.visible = this.cargo.vol > 0.003;
     this.p.heap.scale.set(1, 0.4 + this.fill * 0.8, 1);
+    this.p.bucket.visible = this.water > 0;
+  }
+  /** retrato: [x,y,z,yaw, velocidade, fase da pá (-1 = parado), carga 0..1, água, despejando] */
+  netState(): number[] {
+    const g = this.group.position;
+    const r = (v: number) => Math.round(v * 100) / 100;
+    return [r(g.x), r(g.y), r(g.z), r(this.group.rotation.y), r(this.speedNow), r(this.dig), r(this.fill), this.water > 0 ? 1 : 0, this.dumping ? 1 : 0];
+  }
+  /** convidado: põe o boneco de outro jogador/bot na pose recebida (sem simular) */
+  netPose(a: number[], dt: number): void {
+    const g = this.group;
+    g.position.set(a[0], a[1], a[2]);
+    g.rotation.y = a[3];
+    const mv = a[4];
+    this.speedNow = mv;
+    this.walk += mv * dt * 3.2;
+    const sw = Math.sin(this.walk) * Math.min(1, mv) * 0.6;
+    this.p.legL.rotation.x = sw;
+    this.p.legR.rotation.x = -sw;
+    const k = a[5];
+    const sh = this.p.shovel;
+    if (k >= 0) {
+      sh.visible = true;
+      sh.rotation.x = k < 0.5 ? -0.2 + k * 2.2 : 0.9 - (k - 0.5) * 2.4;
+      this.p.armR.rotation.x = -0.6 - Math.sin(k * Math.PI) * 0.9;
+    } else {
+      sh.visible = false;
+      this.p.armR.rotation.x = this.p.armL.rotation.x = a[7] && a[8] ? -1.4 : -0.5;
+    }
+    this.cargo.vol = a[6] * this.cargo.cap;
+    this.water = a[7];
+    this.p.barrow.rotation.x = a[8] ? -0.35 : this.p.barrow.rotation.x * 0.85;
+    this.p.heap.visible = a[6] > 0.02;
+    this.p.heap.scale.set(1, 0.4 + a[6] * 0.8, 1);
     this.p.bucket.visible = this.water > 0;
   }
   sync(): void {}
@@ -875,6 +1004,44 @@ export class Heli extends Machine {
     this.h.bucket.rotation.y = g.rotation.y;
     this.h.water.visible = this.water > 0.02;
     this.h.water.position.y = -0.4 + this.water * 0.8;
+    const a = this.ropeAttr.array as Float32Array;
+    a[0] = hook.x;
+    a[1] = hook.y;
+    a[2] = hook.z;
+    a[3] = this.bp.x;
+    a[4] = this.bp.y + 0.55;
+    a[5] = this.bp.z;
+    this.ropeAttr.needsUpdate = true;
+  }
+  netExtra(): number[] {
+    const r = (v: number) => Math.round(v * 100) / 100;
+    return [r(this.bp.x), r(this.bp.y), r(this.bp.z), r(this.water), r(this.spinK), r(this.alt), r(this.group.rotation.x), r(this.group.rotation.y), r(this.group.rotation.z)];
+  }
+  netApply(x: number, y: number, z: number, _q: THREE.Quaternion, _speed: number, _steer: number, ex: number[], dt: number): void {
+    const g = this.group;
+    g.position.set(x, y, z);
+    if (ex.length < 9) return;
+    this.bp.set(ex[0], ex[1], ex[2]);
+    this.water = ex[3];
+    this.spinK = ex[4];
+    this.alt = ex[5];
+    g.rotation.set(ex[6], ex[7], ex[8]);
+    this.h.rotor.rotation.y += dt * 30 * this.spinK;
+    this.h.tail.rotation.x += dt * 45 * this.spinK;
+    for (const o of [this.h.rotor, this.h.tail])
+      for (const ch of o.children) {
+        if (ch.name === 'blur') {
+          ch.visible = this.spinK > 0.35;
+          ch.rotation.y = -o.rotation.y * 0.97;
+        } else ch.visible = this.spinK < 0.7;
+      }
+    this.h.bucket.position.copy(this.bp);
+    this.h.bucket.rotation.y = g.rotation.y;
+    this.h.water.visible = this.water > 0.02;
+    this.h.water.position.y = -0.4 + this.water * 0.8;
+    const hook = _v.set(0, -0.2, 0.3);
+    g.updateMatrixWorld();
+    g.localToWorld(hook);
     const a = this.ropeAttr.array as Float32Array;
     a[0] = hook.x;
     a[1] = hook.y;

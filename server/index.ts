@@ -22,6 +22,7 @@ import { partyJoin } from './party';
 import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
 import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
+import { garimpoInvite, garimpoInvites, garimpoJoin } from './garimpo';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
@@ -104,6 +105,9 @@ const PUBLIC: Record<string, PublicHandler> = {
   // Mundo Aberto online (servidores): convites entre amigos
   'POST /api/mundo/invite': mundoInvite,
   'GET /api/mundo/invites': mundoInvites,
+  // Garimpo Bruto online: convites entre amigos
+  'POST /api/garimpo/invite': garimpoInvite,
+  'GET /api/garimpo/invites': garimpoInvites,
   // Loja de Criações do Bloop Studio + TV Bloop (docs/LOJA-TV.md)
   'POST /api/ugc/publish': ugcPublish,
   'GET /api/ugc/browse': ugcBrowse,
@@ -227,6 +231,7 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
 }
 export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
+export { GarimpoRoom } from './garimpo';
 export { UgcHub } from './ugc-hub';
 export { TvChannel } from './tv';
 
@@ -280,6 +285,16 @@ export default {
     if (mm) {
       try {
         return await mundoJoin(req, env, mm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Garimpo Bruto online (WebSocket): /api/garimpo/room/<CÓDIGO>
+    const gm = /^\/api\/garimpo\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (gm) {
+      try {
+        return await garimpoJoin(req, env, gm[1]);
       } catch (e) {
         return errorResponse(e);
       }

@@ -2,7 +2,7 @@
  *  ESCANEAR / QR — módulo compartilhado.
  *   - openScanner(): abre a câmera traseira e lê um QR (BarcodeDetector nativo quando existe;
  *     senão jsQR). Tudo acontece no aparelho: nenhuma imagem é enviada. A câmera desliga ao sair.
- *   - parseBloopLink(texto): entende os links do Bloop World (?voo= ?grupo= ?amigo= e bloopworld://…)
+ *   - parseBloopLink(texto): entende os links do Bloop World (?voo= ?grupo= ?amigo= ?garimpo= e bloopworld://…)
  *   - bloopLink(tipo, código): monta o link que o app entende
  *   - drawBloopQr(canvas, texto): QR no estilo Bloop (módulos arredondados coloridos, correção H,
  *     logo do Bloop no meio)
@@ -12,10 +12,10 @@ import { ONLINE } from '../config';
 import { isNative } from '../core/platform';
 import { icon } from './icons';
 
-export type BloopLinkType = 'voo' | 'grupo' | 'amigo';
+export type BloopLinkType = 'voo' | 'grupo' | 'amigo' | 'garimpo';
 export interface BloopLink {
   type: BloopLinkType;
-  /** voo: código de 5 letras · grupo: "<id>.<código>" · amigo: @ sem o @ */
+  /** voo/garimpo: código de 5 letras · grupo: "<id>.<código>" · amigo: @ sem o @ */
   code: string;
 }
 
@@ -25,7 +25,7 @@ const AMIGO_RE = /^[a-z0-9_.]{3,16}$/;
 
 function valid(type: BloopLinkType, raw: string): BloopLink | null {
   const v = raw.trim();
-  if (type === 'voo') {
+  if (type === 'voo' || type === 'garimpo') {
     const c = v.toUpperCase();
     return VOO_RE.test(c) ? { type, code: c } : null;
   }
@@ -50,12 +50,12 @@ export function parseBloopLink(text: string): BloopLink | null {
     // bloopworld://voo/K7Q2M · bloopworld://grupo/<id>.<cod> · bloopworld://amigo/<@>
     const type = (u.host || u.pathname.replace(/^\/+/, '').split('/')[0]) as BloopLinkType;
     const rest = u.host ? u.pathname.replace(/^\/+/, '') : u.pathname.replace(/^\/+/, '').split('/').slice(1).join('/');
-    if (type === 'voo' || type === 'grupo' || type === 'amigo') return valid(type, decodeURIComponent(rest));
+    if (type === 'voo' || type === 'grupo' || type === 'amigo' || type === 'garimpo') return valid(type, decodeURIComponent(rest));
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
-  for (const type of ['voo', 'grupo', 'amigo'] as const) {
+  for (const type of ['voo', 'grupo', 'amigo', 'garimpo'] as const) {
     const v = u.searchParams.get(type) ?? hash.get(type);
     if (v) return valid(type, v);
   }
