@@ -527,7 +527,7 @@ export class WorldGame {
   /** sobrevivência: só aparecem os veículos montados (o quadriciclo é o carrinho inicial) */
   applyOwned(): void {
     for (const v of this.vehs) {
-      const on = !this.sb;
+      const on = !this.sb || this.save.veh.owned.includes(v.k);
       v.m.g.visible = on;
       v.box.off = !on;
       if (!on) this.phys.moveKin(v.kin, 0, -9999, 0, 0, 0, 0, 0);

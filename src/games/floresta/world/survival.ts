@@ -13,6 +13,7 @@ import { Bus, MODULES, type Entity, type GameMode, type MundoAPI, type MundoEven
 import { ITEM, ITEMS, RECIPES, TOOL_TIERS, itemName, type ItemDef, type Recipe } from './items';
 import { Inventory, HOTBAR, type Stack } from './inv';
 import { Hotbar, InvScreen } from './invui';
+import type { SBox } from './collide';
 import { Builds, CROPS, PDEFS, ghostMesh, type Piece } from './build';
 import { Spawner } from './mobs';
 import { iconURL } from './itemicons';
@@ -254,6 +255,7 @@ export class Sandbox implements MundoAPI {
     this.chase = new ChaseCam((this.vm as unknown as { host: ConstructorParameters<typeof ChaseCam>[0] }).host);
     g.physPts = (pts) => {
       for (const v of this.vm.list) if (!v.parked) pts.push(v.body.position.x, v.body.position.z);
+      this.syncSolidBodies();
     };
     g.prePhys = (dt) => {
       this.vm.focus.set(g.px, 0, g.pz);
@@ -521,6 +523,36 @@ export class Sandbox implements MundoAPI {
       },
     });
     void BLUEPRINTS;
+  }
+
+  /** caixas de colisão (acampamentos, construções) viram corpos estáticos perto dos veículos acordados */
+  private solidBodies = new Map<SBox, import('cannon-es').Body>();
+  private solidT = 0;
+  private syncSolidBodies(): void {
+    this.solidT -= 1 / 30;
+    if (this.solidT > 0) return;
+    this.solidT = 0.4;
+    const g = this.g;
+    const want = new Set<SBox>();
+    for (const v of this.vm.list) {
+      if (v.parked) continue;
+      g.world.solids.each(v.body.position.x, v.body.position.z, 24, (b) => {
+        if (b.tag >= 100 && b.tag < 200) return; // veículos antigos
+        if (!b.off) want.add(b);
+      });
+    }
+    for (const [b, body] of this.solidBodies)
+      if (!want.has(b)) {
+        g.phys.removeBody(body);
+        this.solidBodies.delete(b);
+      }
+    for (const b of want) {
+      if (this.solidBodies.has(b)) continue;
+      const hy = (b.y1 - b.y0) / 2;
+      const body = g.phys.staticBox(b.x, b.y0 + hy, b.z, b.hx, hy, b.hz, Math.atan2(b.s, b.c));
+      body.collisionFilterMask = -1;
+      this.solidBodies.set(b, body);
+    }
   }
 
   /** entra num veículo fabricável */
@@ -1359,8 +1391,29 @@ export class Sandbox implements MundoAPI {
   /** veículo inicial (depois da queda da nave) */
   starterVehicle(x: number, z: number, yaw: number): void {
     const bp = BLUEPRINT.get('kart') ?? BLUEPRINTS[0];
+    // longe de construções/acampamento (procura um lugar livre em espiral)
+    const S = this.g.world.solids;
+    for (let k = 0; k < 12; k++) {
+      let hit = false;
+      S.each(x, z, 3, (b) => {
+        if (b.off || (b.tag >= 100 && b.tag < 200)) return;
+        if (Math.abs(b.x - x) < b.hx + 2.5 && Math.abs(b.z - z) < b.hz + 2.5) hit = true;
+      });
+      if (!hit && !this.g.world.isWater(x, z)) break;
+      x += Math.cos(k * 1.3) * 4;
+      z += Math.sin(k * 1.3) * 4;
+    }
     const v = this.vm.spawn(bp.design, x, z, yaw);
     if (v) v.refuel('carvao', 3);
+    else {
+      // plano B: o quadriciclo antigo
+      const q = this.g.vehs[0];
+      q.x = x;
+      q.z = z;
+      q.y = this.g.world.floorAt(x, this.g.py + 4, z);
+      if (!this.g.save.veh.owned.includes(0)) this.g.save.veh.owned.push(0);
+      this.g.applyOwned();
+    }
   }
 
   /* ============================ mão ============================ */

@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { CH, RES, VN } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
-import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFluid, takeMesh, type MeshCtx } from './vox';
+import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFacetMesh, takeFluid, takeMesh, type MeshCtx } from './vox';
 import type { Phys } from './phys';
 
 export interface VoxHost {
@@ -342,9 +342,14 @@ export class VoxWorld {
     S.pos = null;
     S.idx = null;
     if (ni > 0) {
+      // abaixo da faixa da superfície (só rocha): facetado nítido; na superfície: suave (grama)
+      let gmin = 1e9;
+      for (let k = 0; k < v.hGen.length; k++) if (v.hGen[k] < gmin) gmin = v.hGen[k];
+      const deep = BED_Y + (S.s + 1) * SEC < gmin - 3;
+      const facet = deep ? takeFacetMesh(nv, ni) : null;
       const { g, pos, idx } = takeMesh(nv, ni);
-      const [s0] = this.band(v);
-      const m = new THREE.Mesh(g, S.s < s0 || BED_Y + (S.s + 1) * SEC < Math.min(...[c.minY]) - 1 ? this.caveMat : this.h.groundMat);
+      if (facet) g.dispose();
+      const m = new THREE.Mesh(facet ?? g, deep ? this.caveMat : this.h.groundMat);
       m.matrixAutoUpdate = false;
       m.receiveShadow = true;
       this.h.scene.add(m);
