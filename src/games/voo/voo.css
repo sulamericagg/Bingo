@@ -294,3 +294,34 @@
 .voo-ftut h3{margin:0;font-size:18px}
 .voo-ftut p{margin:0 0 4px;font-size:13px;font-weight:700;opacity:.85;line-height:1.3}
 @media (max-height:380px){.voo-ftut .ic svg{width:40px;height:40px}.voo-ftut p{font-size:12px}}
+.voo-sheet .stl.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.voo-sheet .sc{display:inline-flex;align-items:center;gap:2px;background:#f3ecff;border:2px solid #2a1a40;border-radius:999px;padding:0 7px 0 2px;font-size:13px;font-weight:900}
+.voo-bigres{display:flex;align-items:center;justify-content:center;gap:12px;margin:2px 0 6px}
+.voo-bigres .pts{display:flex;align-items:center;gap:3px;font-size:22px;font-weight:900;color:#b36b00}
+/* ---- ícones primeiro (crianças que ainda não leem) ---- */
+.voo-mk{width:52px;height:52px;margin:-26px 0 0 -26px}
+.voo-mk span{top:52px}
+.voo-mk .prog{position:absolute;inset:-7px;border-radius:50%;pointer-events:none;-webkit-mask:radial-gradient(circle,transparent 30px,#000 31px);mask:radial-gradient(circle,transparent 30px,#000 31px)}
+.voo-mk.drop{transform-origin:center;box-shadow:0 0 0 6px #5ef08a,0 0 24px #5ef08a!important}
+.voo-mk.go{background:#fff6c0;box-shadow:0 0 0 3px #5ef08a,0 4px 10px rgba(0,0,0,.35);animation:vooGo .5s ease-in-out infinite alternate}
+.voo-mk.go em:after{border-bottom-color:#5ef08a}
+@keyframes vooGo{from{margin-top:-26px}to{margin-top:-38px}}
+.voo-aim{position:absolute;left:0;top:0;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;border:4px solid #ffd34a;box-shadow:0 0 14px #ffd34a,inset 0 0 10px rgba(255,211,74,.6);display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);animation:vooAim .7s ease-in-out infinite alternate;pointer-events:none}
+@keyframes vooAim{from{scale:.9}to{scale:1.12}}
+.voo-calm{position:absolute;left:0;top:0;display:flex;align-items:center;gap:2px;translate:-50% -100%;pointer-events:none}
+.voo-calm b{display:block;width:38px;height:8px;border-radius:5px;background:rgba(0,0,0,.45);border:1.5px solid #fff;overflow:hidden}
+.voo-calm b i{display:block;height:100%;border-radius:4px;transition:width .2s}
+.voo-point{position:absolute;z-index:8;pointer-events:none;translate:-50% 0;animation:vooPoint .6s ease-in-out infinite alternate;filter:drop-shadow(0 3px 0 #2a0b5c)}
+.voo-point svg{transform:rotate(180deg)}
+.voo-point.up svg{transform:none}
+@keyframes vooPoint{from{margin-top:0}to{margin-top:10px}}
+.voo-ghost{position:fixed;z-index:99999;translate:-50% -50%;pointer-events:none;opacity:.9;scale:1.2}
+.voo-menu.big{width:min(340px,62vw);max-height:calc(100% - 156px - var(--edge-t,8px) - var(--edge-b,12px));padding:6px 8px 8px;top:calc(var(--edge-t,8px) + 150px)}
+.voo-hud.seated .voo-menu.big{top:calc(var(--edge-t,8px) + 104px);right:calc(var(--edge-r,12px) + 100px);max-height:calc(100% - 110px - var(--edge-t,8px))}
+.voo-menu.big h4{font-size:15px;margin:0 2px 6px}
+.voo-menu.big h4 .x{margin-left:auto;border:none;background:none;padding:0;width:32px;height:32px;justify-content:center}
+.voo-menu.big .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.voo-menu.big .grid button{position:relative;flex-direction:column;justify-content:center;gap:0;padding:6px 2px 4px;border-width:3px;border-radius:16px;min-height:78px;text-align:center}
+.voo-menu.big .grid button.em{background:#fff1f3;border-color:#c21d3c}
+.voo-menu.big .grid button small{font-size:9.5px;line-height:1.1;opacity:.75;padding:0;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.voo-menu.big .grid button .bd{position:absolute;right:2px;top:2px}

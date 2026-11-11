@@ -132,23 +132,27 @@ export function endReport(root: HTMLElement, r: Report): Promise<string> {
   const stars = `<div class="voo-stars">${[0, 1, 2].map((i) => vIcon(i < r.stars ? 'star' : 'starOff', 40)).join('')}</div>`;
   const cls = r.kind === 'crash' ? '' : r.kind === 'rough' ? 'amber' : 'green';
   const cover = `<div style="font-size:14px;font-weight:800;letter-spacing:3px">${esc(t('voo.d.report', 'RELATÓRIO DE VOO'))}</div><div class="ttl">${esc(r.flight)}</div>${stars}<div class="voo-stamp ${cls}" style="position:static;transform:rotate(-8deg)">${esc(stampText(r.kind))}</div>`;
+  const big = r.kind === 'crash' ? 'warn' : r.kind === 'perfect' ? 'trophy' : 'runway';
   const s1 = `<h3>${vIcon(r.kind === 'crash' ? 'warn' : 'runway', 26)}${esc(t('voo.d.result', 'Resultado'))}</h3>
-    ${stars}
+    <div class="voo-bigres">${vIcon(big, 56)}${stars}<span class="pts">${vIcon('coin', 26)}+${fmt(r.coins)}</span></div>
     <div class="ln"><b>${esc(t('voo.d.what', 'O que houve'))}</b>${esc(r.reason)}</div>
     <div class="ln"><b>${esc(t('voo.d.touch', 'Toque'))}</b>${esc(t('voo.d.touchV', '{v} m/s · {s} nós · {o} m do eixo', { v: r.vs.toFixed(1), s: Math.round(r.spd * 1.94), o: Math.round(r.off) }))}</div>
     <div class="ln"><b>${esc(t('voo.d.score', 'Pontos'))}</b>${fmt(r.score)}${r.newBest ? ' — ' + esc(t('voo.d.newBest', 'NOVO RECORDE!')) : ' · ' + esc(t('voo.d.best', 'recorde {b}', { b: fmt(r.best) }))}</div>
     <div class="voo-stamp big ${cls}">${esc(stampText(r.kind))}</div>`;
+  // ícones primeiro (para quem ainda não lê); o texto vai no title
   const statLine = (c: CrewLine) => {
     const s = c.stats;
     if (!s) return '';
+    const chip = (ico: string, n: string, tip: string) => `<span class="sc" title="${esc(tip)}">${vIcon(ico, 20)}${n}</span>`;
     const parts: string[] = [];
-    if (s.fires) parts.push(t('voo.d.sFires', '{n} fogo(s) apagado(s)', { n: s.fires }));
-    if (s.fixes - s.fires > 0) parts.push(t('voo.d.sFixes', '{n} conserto(s)', { n: s.fixes - s.fires }));
-    if (s.calmed) parts.push(t('voo.d.sCalm', '{n} passageiro(s) acalmado(s)', { n: s.calmed }));
-    if (s.pilotSec > 5) parts.push(t('voo.d.sPilot', '{m} min no manche', { m: (s.pilotSec / 60).toFixed(1) }));
-    if (s.falls) parts.push(t('voo.d.sFalls', '{n} tombo(s)', { n: s.falls }));
-    if (!parts.length) parts.push(t('voo.d.sNone', 'ficou de olho na paisagem'));
-    return `<div class="stl">${esc(parts.join(' · '))}</div>`;
+    if (s.fires) parts.push(chip('ext', String(s.fires), t('voo.d.sFires', '{n} fogo(s) apagado(s)', { n: s.fires })));
+    if (s.fixes - s.fires > 0) parts.push(chip('wrench', String(s.fixes - s.fires), t('voo.d.sFixes', '{n} conserto(s)', { n: s.fixes - s.fires })));
+    if (s.calmed) parts.push(chip('calm', String(s.calmed), t('voo.d.sCalm', '{n} passageiro(s) acalmado(s)', { n: s.calmed })));
+    if (s.stowed) parts.push(chip('bag', String(s.stowed), t('voo.d.sStow', '{n} mala(s) guardada(s)', { n: s.stowed })));
+    if (s.pilotSec > 5) parts.push(chip('yoke', (s.pilotSec / 60).toFixed(1) + "'", t('voo.d.sPilot', '{m} min no manche', { m: (s.pilotSec / 60).toFixed(1) })));
+    if (s.falls) parts.push(chip('turb', String(s.falls), t('voo.d.sFalls', '{n} tombo(s)', { n: s.falls })));
+    if (!parts.length) return `<div class="stl">${esc(t('voo.d.sNone', 'ficou de olho na paisagem'))}</div>`;
+    return `<div class="stl chips">${parts.join('')}</div>`;
   };
   const s2 = `<h3>${vIcon('crew', 26)}${esc(t('voo.d.crewRep', 'Ficha da tripulação'))}</h3><div class="crew">${r.crew
     .map((c) => `<div class="cm">${hatIcon(c.role, 34)}<div><div>${esc(c.name)}${c.me ? ' ★' : ''} <small style="display:inline">${esc(roleName(c.role))}</small></div>${statLine(c)}</div></div>`)

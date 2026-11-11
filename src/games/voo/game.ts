@@ -18,6 +18,7 @@ import { sfx } from '../../3d/common/sfx';
 import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS } from './data';
 import { bigMoment, notify } from '../../ui/notify';
 import { openHangar, type HangarHandle } from './hangar';
+import { hush, speak } from './voice';
 import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
 import type { FlightKind } from './hangar';
@@ -307,6 +308,9 @@ export class VooGame implements MiniGameHandle, HudHost {
         writeSave(this.sv);
         break;
     }
+    // mãozinha apontando para o controle certo (sem precisar ler)
+    const k = this.tut;
+    hud.tutPoint = k < 0 || k >= 7 ? '' : k === 1 ? 'stick' : k === 2 ? 'stand' : k === 6 ? 'mate' : s.lastCtx.kind ? 'act' : '';
   }
 
   private startCutscene(): void {
@@ -396,6 +400,8 @@ export class VooGame implements MiniGameHandle, HudHost {
       if (ev.k === 'toast') {
         this.hud?.toast(ev.msg, ev.ico, ev.tone);
         if (ev.tone === 'bad') tap('medium');
+        // emergência nova: fala o nome (crianças que ainda não leem)
+        if (ev.tone === 'bad' && ev.emer !== undefined) speak(ev.msg, { gap: 2500 });
       } else if (ev.k === 'say') this.hud?.say(ev.who, ev.msg);
       else if (ev.k === 'sfx') this.sfx(ev.s);
       else if (ev.k === 'touch') {
@@ -630,6 +636,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.hangar?.destroy();
     for (const f of this.offs) f();
     audio.engineStop();
+    hush();
     this.net.leave();
     this.view?.destroy();
     this.hud?.destroy();

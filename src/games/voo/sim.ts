@@ -49,6 +49,8 @@ export type CmdKind = 'fix' | 'pilot' | 'follow' | 'calm' | 'stay';
 export interface Cmd {
   kind: CmdKind;
   emer?: number;
+  /** quem mandou ("me seguir" segue essa pessoa) */
+  by?: number;
 }
 export interface Stats {
   fires: number;
@@ -57,6 +59,8 @@ export interface Stats {
   pilotSec: number;
   patched: number;
   falls: number;
+  /** malas guardadas de volta no bagageiro */
+  stowed?: number;
 }
 export interface Player {
   idx: number;
@@ -167,7 +171,7 @@ export type Ev =
   | { k: 'say'; who: number; msg: string };
 
 export interface Ctx {
-  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick';
+  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow';
   label: string;
   hold: boolean;
   target: number;
@@ -236,6 +240,9 @@ export class Sim {
   private warnT: Record<string, number> = {};
   private gearPlanned = false;
   private leakCount = 0;
+  /** pontos extras (malas guardadas) */
+  bonus = 0;
+  private bonked = new Set<number>();
 
   constructor(opts: SimOpts) {
     this.opts = opts;
@@ -553,7 +560,7 @@ export class Sim {
     const f = this.f;
     const avgPanic = this.panicSamples > 0 ? this.panicInt / this.panicSamples : 0;
     const land = { perfect: 5000, good: 3500, rough: 2000, crash: 0 }[kind];
-    let score = land + this.fixedCount * 200 + Math.round((1 - avgPanic) * 1500) + Math.round(this.hull * 15) + Math.round(f.fuel * 10);
+    let score = land + this.bonus + this.fixedCount * 200 + Math.round((1 - avgPanic) * 1500) + Math.round(this.hull * 15) + Math.round(f.fuel * 10);
     if (kind === 'crash') score = Math.round(score * 0.25);
     let stars = { perfect: 3, good: 2, rough: 1, crash: 0 }[kind];
     if (stars > 1 && (this.hull < 40 || avgPanic > 0.6)) stars--;
@@ -876,6 +883,8 @@ export class Sim {
       const jy = (r() * 2 - 1) * amt * 1.2;
       ay = jy * 4;
       this.ev.push({ k: 'jolt', amt });
+      // solavanco forte: um bagageiro abre e uma mala despenca
+      if (amt > 1.5 && this.flying && r() < 0.35) this.dropBags(1);
       for (const p of this.players) {
         if (p.seated) continue;
         p.vx += jx;
@@ -1072,7 +1081,7 @@ export class Sim {
       else if (e.kind === 'spark') consider('rewire', t('voo.a.rewire', 'Consertar'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
       else if (e.kind === 'pressure') consider('valve', t('voo.a.valve', 'Girar'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
       else if (e.kind === 'gear') consider('crank', t('voo.a.crank', 'Manivela'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
-      else if (e.kind === 'door') consider('door', t('voo.a.door', 'Segurar'), true, e.id, e.x, e.z, e.y, REACH, 0.8);
+      else if (e.kind === 'door') consider('door', t('voo.a.doorClose', 'Fechar porta'), true, e.id, e.x, e.z, e.y, REACH, 0.8);
     }
     for (let i = 0; i < this.pax.length; i++) {
       const q = this.pax[i];
@@ -1087,6 +1096,12 @@ export class Sim {
         if (!it.alive || it.held >= 0) continue;
         consider('pick', itemName(it.kind), false, it.id, it.x, it.z, it.y, REACH, it.kind === 'bag' ? -0.2 : 0.1);
       }
+    } else if (held.kind === 'bag' && p.z > 6 && p.z < 14.8) {
+      // guardar a mala de volta no bagageiro da fileira mais próxima
+      let bz = WIN_Z[0];
+      for (const z of WIN_Z) if (Math.abs(z - p.z) < Math.abs(bz - p.z)) bz = z;
+      const side = p.x < 0 ? -1 : 1;
+      consider('stow', t('voo.a.stow', 'Guardar mala'), false, held.id, side * 1.2, bz, 2.0, REACH + 0.6, 0.5);
     }
     return best;
   }
@@ -1134,9 +1149,24 @@ export class Sim {
       case 'pick': {
         const it = this.item(c.target);
         if (!it || it.held >= 0) return '';
+        this.bonked.delete(it.id);
         it.held = p.idx;
         p.hold = it.id;
         this.sfx('pick');
+        return '';
+      }
+      case 'stow': {
+        const it = this.item(p.hold);
+        if (!it) return '';
+        it.alive = false;
+        it.held = -1;
+        p.hold = -1;
+        p.stats.stowed = (p.stats.stowed ?? 0) + 1;
+        this.bonus += 120;
+        for (const q of this.pax) if (Math.hypot(q.sx - p.x, q.sz - p.z) < 2.6) q.panic = Math.max(0, q.panic - 0.15);
+        this.ev.push({ k: 'fx', t: 'calm', x: c.x, z: c.z, y: 1.9 });
+        this.toast(t('voo.t.stowed', 'Mala guardada! Bônus'), 'bag', 'good');
+        this.sfx('calm');
         return '';
       }
       case 'give': {
@@ -1301,6 +1331,18 @@ export class Sim {
       it.y += it.vy * dt;
       it.z += it.vz * dt;
       it.rot += it.spin * dt;
+      // mala caindo acerta passageiro sentado (bonk de desenho animado)
+      if (it.kind === 'bag' && it.vy < -0.8 && it.y < 1.3 && !this.bonked.has(it.id)) {
+        for (const q of this.pax) {
+          if (q.standing || Math.hypot(q.sx - it.x, q.sz - it.z) > 0.45) continue;
+          this.bonked.add(it.id);
+          q.panic = Math.min(1, q.panic + 0.22);
+          q.calmT = 0;
+          this.ev.push({ k: 'fx', t: 'stun', x: q.sx, z: q.sz });
+          this.sfx('thud');
+          break;
+        }
+      }
       const fy = 0.12;
       if (it.y < fy) {
         it.y = fy;
@@ -1411,7 +1453,7 @@ export class Sim {
     const cmd = p.cmd;
     if (!cmd || cmd.kind === 'stay') return;
     if (cmd.kind === 'follow') {
-      const me = this.players[this.me];
+      const me = this.players[cmd.by ?? this.me] ?? this.players[this.me];
       if (me.seated) {
         this.walkTo(p, 0.1, -1.6);
         return;
