@@ -12,10 +12,11 @@ import { emerHow, emerName, roleName, zoneName } from './data';
 import { hatIcon, vIcon } from './icons';
 import { drawNav, drawPFD } from './instruments';
 import { MiniGame } from './minigames';
+import { Galley } from './galley';
 import { FpsControls, bindButton, createJoystick, type BoundButton, type Joystick } from '../../ui/touch';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
 import type { IconName } from '../../ui/icons';
-import type { Cmd, Ctx, Sim } from './sim';
+import { seatLabel, type Cmd, type Ctx, type Sim } from './sim';
 import { SPOTS } from './data';
 import { speak } from './voice';
 
@@ -69,6 +70,7 @@ export class Hud {
   private hullI!: HTMLElement;
   private panI!: HTMLElement;
   miniGame: MiniGame | null = null;
+  galley: Galley | null = null;
   private pfdX: CanvasRenderingContext2D;
   private navX: CanvasRenderingContext2D;
   private instT = 0;
@@ -92,6 +94,7 @@ export class Hud {
   private joy2d: Joystick | null = null;
   private yoke!: Joystick;
   private ctlSig = -1;
+  private cartSig = '\u0000';
   private pr = { x: 0, y: 0, behind: false };
   private ctx: Ctx | null = null;
   private _hidden = false;
@@ -150,7 +153,8 @@ export class Hud {
           <button class="voo-btn ghost" data-gear>${vIcon('gear', 22)}<span></span></button>
         </div>
         <div class="voo-flytop">
-          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}</button>
+          <button class="voo-btn round ghost voo-ap" data-ap aria-label="${t('voo.f.ap', 'Piloto automático')}" title="${t('voo.f.ap', 'Piloto automático')}">${vIcon('ap', 30)}</button>
+          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}<i class="cm"></i></button>
           <button class="voo-btn round gold" data-stand aria-label="${t('voo.f.stand', 'Levantar')}" title="${t('voo.f.stand', 'Levantar')}">${vIcon('up', 24)}</button>
         </div>
         <div class="voo-chud"><div><small>${t('voo.ch.spd', 'VEL')}</small><b data-c="spd"></b></div><div><small>${t('voo.ch.alt', 'ALT')}</small><b data-c="alt"></b></div><div><small>${t('voo.ch.vs', 'V/S')}</small><b data-c="vs"></b></div><svg data-c="brg" viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="17" fill="rgba(0,0,0,.25)" stroke="#fff" stroke-width="2"/><path d="M20 5L28 24H12Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg></div>
@@ -167,6 +171,7 @@ export class Hud {
           <div class="voo-crew"></div>
         </div>
       </div>
+      <div class="voo-trays" style="display:none"></div>
       <div class="voo-banner"></div>
       <div class="voo-mks"></div>`;
     root.appendChild(this.el);
@@ -203,13 +208,14 @@ export class Hud {
     const h = this.host;
     const s = h.sim;
     this.el.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-mate],[data-cmd]') as HTMLElement | null;
+      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-ap],[data-mate],[data-cmd]') as HTMLElement | null;
       if (!b) return;
       if (b.dataset.exit !== undefined) h.onExit();
       else if (b.dataset.flaps !== undefined) s.setFlaps((s.f.flaps + 1) % 3);
       else if (b.dataset.gear !== undefined) this.toggleGear();
       else if (b.dataset.stand !== undefined) h.onStand();
       else if (b.dataset.cam !== undefined) h.onCam();
+      else if (b.dataset.ap !== undefined) h.onAP();
       else if (b.dataset.mate !== undefined) {
         if (performance.now() - this.dragged > 300) this.openMenu(+b.dataset.mate);
       }
@@ -232,6 +238,57 @@ export class Hud {
     // manche: joystick flutuante que volta ao centro (só aparece sentado)
     this.yoke = createJoystick(this.surface, { zoneTop: 0.25, zoneWidth: 0.42, expo: 0.55, smoothing: 22, hint: false }); // sem anel parado: não cobre as telas do painel
     this.yoke.setEnabled(false);
+    // câmera externa: arrastar (fora do manche e dos botões) gira em volta do avião; pinça aproxima
+    const ptrs = new Map<number, { x: number; y: number }>();
+    let pinch0 = 0;
+    const isView = (e: PointerEvent) => (e.target as HTMLElement)?.classList?.contains('voo-canvas');
+    const pd = (e: PointerEvent) => {
+      if (!h.camMode() || !isView(e)) return;
+      // a zona do manche (esquerda, abaixo de 25%) continua sendo o manche
+      const r = this.surface.getBoundingClientRect();
+      if (e.clientX - r.left < r.width * 0.42 && e.clientY - r.top > r.height * 0.25) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 2) {
+        const [a, b] = [...ptrs.values()];
+        pinch0 = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    };
+    const pm = (e: PointerEvent) => {
+      const p0 = ptrs.get(e.pointerId);
+      if (!p0) return;
+      if (ptrs.size >= 2) {
+        p0.x = e.clientX;
+        p0.y = e.clientY;
+        const [a, b] = [...ptrs.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch0 > 10 && d > 10) h.zoom(pinch0 / d);
+        pinch0 = d;
+        return;
+      }
+      h.orbit(e.clientX - p0.x, e.clientY - p0.y);
+      p0.x = e.clientX;
+      p0.y = e.clientY;
+    };
+    const pu = (e: PointerEvent) => {
+      ptrs.delete(e.pointerId);
+      pinch0 = 0;
+    };
+    const wheel = (e: WheelEvent) => {
+      if (!h.camMode()) return;
+      h.zoom(e.deltaY > 0 ? 1.1 : 0.9);
+    };
+    this.surface.addEventListener('pointerdown', pd);
+    window.addEventListener('pointermove', pm);
+    window.addEventListener('pointerup', pu);
+    window.addEventListener('pointercancel', pu);
+    this.surface.addEventListener('wheel', wheel, { passive: true });
+    this.offs.push(() => {
+      this.surface.removeEventListener('pointerdown', pd);
+      window.removeEventListener('pointermove', pm);
+      window.removeEventListener('pointerup', pu);
+      window.removeEventListener('pointercancel', pu);
+      this.surface.removeEventListener('wheel', wheel);
+    });
     // manete (fica onde soltar)
     const te = this.thrEl;
     let tid = -1;
@@ -260,6 +317,7 @@ export class Hud {
       else if (e.code === 'KeyF' && me.seated) s.setFlaps((s.f.flaps + 1) % 3);
       else if (e.code === 'KeyG' && me.seated) this.toggleGear();
       else if (e.code === 'KeyC') h.onCam();
+      else if (e.code === 'KeyP' && me.seated) h.onAP();
       else if (e.code === 'KeyX' && me.seated) h.onStand();
       else return;
       e.preventDefault();
@@ -299,7 +357,7 @@ export class Hud {
     const me = s.players[s.me];
     // só os controles do lugar onde você está
     const sit = me.seated && !this.hidden;
-    const walk = !me.seated && !this.hidden && me.busy < 0;
+    const walk = !me.seated && !this.hidden && me.busy < 0 && !me.prep;
     // só troca quando muda (setEnabled reposiciona o joystick)
     const sig = (sit ? 1 : 0) + (walk ? 2 : 0);
     if (sig !== this.ctlSig) {
@@ -558,7 +616,8 @@ export class Hud {
 
   toast(msg: string, ico: string, tone: string): void {
     // avisos compartilhados: pequenos, sem duplicados (contador ×2), fila
-    const icon: IconName = ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'info' ? 'sparkle' : 'warning';
+    const icon: IconName =
+      ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'serve' || ico === 'cart' ? 'food' : ico === 'yoke' ? 'planet' : ico === 'turb' ? 'warning' : ico === 'info' ? 'sparkle' : 'warning';
     notify(msg, { icon, kind: tone === 'bad' ? 'bad' : tone === 'good' ? 'good' : 'info', key: msg });
   }
   showBanner(txt: string, sub = '', sec = 2.4): void {
@@ -621,6 +680,41 @@ export class Hud {
         s.miniOpen = null;
         me.busy = -1;
       }
+    }
+    // copa (serviço de bordo) aberta pela sim
+    if (s.prepOpen && !this.galley) {
+      this.galley = new Galley(
+        this.el,
+        s,
+        (o, m, d, hot, full) => s.addTray(me, o.id, m, d, hot, full),
+        () => s.prepClose(me),
+      );
+    }
+    if (this.galley) {
+      if (!s.prepOpen || !s.flying) {
+        this.galley.destroy();
+        this.galley = null;
+        if (s.prepOpen) s.prepClose(me);
+      } else this.galley.update(dt);
+    }
+    // bandejas no carrinho (quem empurra vê para onde levar)
+    const cartSig = s.cart.by === me.idx ? s.cart.trays.map((tr) => tr.order).join(',') + '|' + s.orders.map((o) => o.id + ':' + o.tray).join(',') : '';
+    if (cartSig !== this.cartSig) {
+      this.cartSig = cartSig;
+      const el = this.q('.voo-trays') as HTMLElement;
+      el.innerHTML = cartSig
+        ? vIcon('cart', 22) +
+          (s.cart.trays.length
+            ? s.cart.trays
+                .map((tr) => {
+                  const o = s.orders.find((x) => x.id === tr.order);
+                  const q = o ? s.pax[o.pax] : null;
+                  return `<b>${q ? seatLabel(q.seat) : '?'}</b>`;
+                })
+                .join('')
+            : `<small>${t('voo.g.empty', 'Vazio: monte bandejas na copa')}</small>`)
+        : '';
+      el.style.display = cartSig ? '' : 'none';
     }
     // modo sentado x a pé
     if (me.seated !== this.seated) {
@@ -700,7 +794,16 @@ export class Hud {
       const th = this.thrEl.clientHeight || 170;
       ti.style.top = 4 + (1 - s.ctrl.thr) * (th - 48) + 'px';
       ti.textContent = String(Math.round(s.ctrl.thr * 100));
-      this.q('[data-cam]').classList.toggle('on', h.extCam());
+      const cm = h.camMode();
+      const camB = this.q('[data-cam]');
+      camB.classList.toggle('on', cm > 0);
+      if (camB.dataset.m !== String(cm)) {
+        camB.dataset.m = String(cm);
+        (camB.querySelector('.cm') as HTMLElement).textContent = cm === 0 ? '1' : cm === 1 ? '2' : '3';
+      }
+      const apB = this.q('[data-ap]');
+      apB.classList.toggle('on', !!f.ap);
+      this.el.classList.toggle('apon', !!f.ap);
     }
     // dica
     if (this.tutText !== this.lastTut) {
@@ -930,6 +1033,12 @@ export class Hud {
         return s.item(c.target)?.kind ?? 'hand';
       case 'stow':
         return 'bag';
+      case 'prep':
+        return 'tray';
+      case 'cart':
+        return 'cart';
+      case 'serve':
+        return 'serve';
     }
     return 'hand';
   }
@@ -1055,7 +1164,7 @@ export class Hud {
         d.style.display = 'none';
         continue;
       }
-      h.project(p.x, p.seated ? 1.6 : 1.55, p.seated ? -2.9 : p.z, this.pr);
+      h.project(p.x, p.seated ? 1.75 : 1.95, p.seated ? -2.9 : p.z, this.pr);
       d.style.display = this.pr.behind ? 'none' : '';
       d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px) translate(-50%,-100%)`;
     }
@@ -1068,6 +1177,7 @@ export class Hud {
     this.joy2d?.destroy();
     this.yoke.destroy();
     this.miniGame?.destroy();
+    this.galley?.destroy();
     objective(null);
     clearNotify();
     resetNotifyTop();

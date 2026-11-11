@@ -409,3 +409,54 @@
 .vr-more>summary{cursor:pointer;text-align:center;color:#ffe9b8;font-weight:700;font-size:15px;text-decoration:underline;padding:6px;list-style:none}
 .vr-more>summary::-webkit-details-marker{display:none}
 .vr-more[open] .vr-code b i{font-size:1.25em}
+
+/* ======================= COPA (serviço de bordo) ======================= */
+.voo-galley{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:12;pointer-events:auto;width:min(600px,calc(100% - var(--edge-l,12px) - var(--edge-r,12px) - 8px));max-height:calc(100% - var(--edge-t,8px) - var(--safe-bot,env(safe-area-inset-bottom,0px)) - 12px);overflow:hidden;background:linear-gradient(#fff9ec,#ffeccc);color:#2a0b5c;border:4px solid #2a0b5c;border-radius:22px;padding:6px 10px 8px;box-shadow:0 8px 0 rgba(42,11,92,.45);display:flex;flex-direction:column;gap:5px;touch-action:none}
+.voo-galley h3{margin:0;font-size:16px;display:flex;align-items:center;gap:6px}
+.voo-galley h3 .voo-btn{margin-left:auto;width:38px;height:38px}
+.vg-orders{display:flex;gap:6px;min-height:40px;align-items:stretch}
+.vg-orders button{position:relative;display:flex;align-items:center;gap:2px;border:3px solid #2a0b5c;border-radius:14px;background:#fff;padding:2px 8px 6px;font:inherit;font-weight:900;font-size:15px;color:#2a0b5c;cursor:pointer;overflow:hidden}
+.vg-orders button.sel{background:#fff1a8;box-shadow:0 0 0 3px #ffd34a}
+.vg-orders button b{margin-right:3px}
+.vg-orders button i{position:absolute;left:0;bottom:0;height:4px}
+.vg-orders .none{font-weight:800;opacity:.6;align-self:center}
+.vg-main{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto 1fr;gap:5px 10px;align-items:center}
+.vg-steps{grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.vg-steps span{position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:40px;border-radius:12px;background:#f1e8ff;border:2px dashed #b9a8d6}
+.vg-steps span em{position:absolute;left:-4px;top:-6px;width:17px;height:17px;border-radius:50%;background:#2a0b5c;color:#fff;font-size:11px;font-style:normal;font-weight:900;display:flex;align-items:center;justify-content:center}
+.vg-steps span.ok{background:#d6ffe2;border:2px solid #17994a}
+.vg-steps span.ok em{background:#17994a}
+.vg-steps span.next{border:2px solid #ff5cae;animation:vooPulse .5s ease-in-out infinite alternate}
+.vg-steps>i{font-style:normal;font-weight:900;opacity:.45}
+.vg-tray{position:relative;width:132px;height:84px;border-radius:14px;border:3px dashed #b9a8d6;display:flex;align-items:center;justify-content:center;gap:8px}
+.vg-tray.on{border:3px solid #2a0b5c;background:linear-gradient(#eef1f8,#c9cfe0)}
+.vg-plate{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.vg-tray.on .vg-plate{background:#fff;box-shadow:inset 0 0 0 2px #c9cfe0}
+.vg-plate .bad,.vg-cup .bad{filter:drop-shadow(0 0 0 #ff4d6a);outline:3px solid #ff4d6a;border-radius:50%}
+.vg-plate .hot{filter:drop-shadow(0 0 6px #ff8a2a)}
+.vg-cup{position:relative;width:30px;height:56px;border:3px solid #2a0b5c;border-top:none;border-radius:0 0 10px 10px;background:linear-gradient(transparent 0 5%,rgba(94,240,138,.35) 5% 28%,transparent 28%);overflow:visible}
+.vg-cup i{position:absolute;left:0;right:0;bottom:0;background:var(--liq,#ff9a3a);box-shadow:inset 0 -6px 0 rgba(0,0,0,.08);border-radius:0 0 7px 7px;transition:height .06s linear}
+.vg-cup b{position:absolute;left:50%;top:-24px;transform:translateX(-50%)}
+.vg-cup.full{box-shadow:0 0 0 3px #5ef08a}
+.vg-cup.spill{animation:vooShake .2s 3}
+.vg-shelf{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.vg-shelf button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;border:3px solid #2a0b5c;border-radius:14px;background:#fff;font:inherit;font-size:10.5px;font-weight:800;color:#2a0b5c;padding:2px 2px 3px;min-height:52px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.vg-shelf button small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.vg-shelf button:active,.vg-shelf button.pour{transform:translateY(2px);background:#fff1a8}
+.vg-shelf button.next{box-shadow:0 0 0 3px #ff5cae;animation:vooPulse .5s ease-in-out infinite alternate}
+.vg-shelf button em{position:absolute;inset:3px;border-radius:10px;opacity:.55;pointer-events:none}
+.vg-foot{display:flex;align-items:center;gap:8px}
+.vg-foot p{margin:0;flex:1;font-size:12.5px;font-weight:800;opacity:.85;line-height:1.2}
+.vg-foot p.shake{color:#c21d3c;animation:vooShake .25s 2}
+.vg-foot .voo-btn{min-height:42px;font-size:14px}
+.vg-foot .voo-btn.next{animation:vooPulse .5s ease-in-out infinite alternate}
+@keyframes vooShake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@media (max-height:400px){.voo-galley{padding:4px 8px 6px;gap:3px}.vg-shelf button{min-height:46px}.vg-shelf button .ico{width:28px;height:28px}.vg-tray{width:116px;height:72px}.vg-steps span{height:34px;width:40px}.vg-orders{min-height:36px}}
+/* bandejas do carrinho (quem empurra) */
+.voo-trays{position:absolute;right:calc(var(--edge-r,12px) + 104px);bottom:calc(var(--safe-bot,env(safe-area-inset-bottom,0px)) + 20px);display:flex;align-items:center;gap:4px;padding:3px 8px 3px 4px;border-radius:14px;background:rgba(42,11,92,.78);border:2px solid rgba(255,255,255,.35);font-weight:900;font-size:13px;pointer-events:none}
+.voo-trays b{background:#fff;color:#2a0b5c;border-radius:8px;padding:1px 6px}
+.voo-trays small{font-size:11px;font-weight:700;opacity:.85}
+/* piloto automático e câmera */
+.voo-ap.on{background:linear-gradient(#5ef08a,#17994a);box-shadow:0 0 0 3px #d6ffe2,0 0 14px #5ef08a}
+[data-cam]{position:relative}
+[data-cam] .cm{position:absolute;right:-3px;bottom:-3px;min-width:16px;height:16px;border-radius:8px;background:#ffd34a;color:#2a0b5c;font-size:11px;font-style:normal;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #2a0b5c}

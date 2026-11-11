@@ -62,6 +62,8 @@ export interface Stats {
   falls: number;
   /** malas guardadas de volta no bagageiro */
   stowed?: number;
+  /** lanches entregues certos */
+  served?: number;
 }
 export interface Player {
   idx: number;
@@ -85,6 +87,8 @@ export interface Player {
   actProg: number;
   /** pulverizando agora (efeito visual) */
   spraying: boolean;
+  /** montando bandeja na copa (não anda) */
+  prep?: boolean;
   walk: number;
   /** posição no passo anterior (interpolação da vista) */
   ox?: number;
@@ -109,7 +113,54 @@ export interface Pax {
   bob: number;
   happyT: number;
   doorT: number;
+  /** 0 sentado · 1 em pé no espaço da própria fileira (pânico) · 2 andando no corredor · 3 esperando no banheiro */
+  mode: number;
+  /** andando: 0 indo, 1 voltando */
+  leg: number;
+  wT: number;
+  hiT: number;
+  yaw: number;
+  /** pedido de comida em aberto (id) ou -1 */
+  want: number;
 }
+/** pedido do serviço de bordo: comida (0 nada, 1 sanduíche, 2 macarrão quente) + bebida (0 nada, 1 água, 2 suco, 3 leite) */
+export interface Order {
+  id: number;
+  pax: number;
+  main: number;
+  drink: number;
+  /** segundos restantes */
+  t: number;
+  tmax: number;
+  /** bandeja pronta para este pedido (id) ou -1 */
+  tray: number;
+  /** ajudante cuidando dele (índice) ou -1 */
+  bot: number;
+}
+export interface Tray {
+  id: number;
+  order: number;
+  main: number;
+  drink: number;
+  hot: number;
+  full: number;
+}
+export const MAINS = ['', 'sand', 'pasta'] as const;
+export const DRINKS = ['', 'water', 'juice', 'milk'] as const;
+/** poltrona → rótulo (fileira + letra), igual ao que aparece no balão e na bandeja */
+export function seatLabel(i: number): string {
+  if (i < 4) return `${1 + (i >> 1)}${i % 2 ? 'D' : 'A'}`;
+  const k = i - 4;
+  return `${3 + (k >> 2)}${'ABCD'[k % 4]}`;
+}
+/** ponto onde o passageiro em pé fica (o espaço das pernas da própria fileira, fora do corredor) */
+function legroom(q: Pax): [number, number] {
+  return [q.sx * (q.sz < 3 ? 0.9 : 0.95), q.sz - (q.sz < 3 ? 0.55 : 0.4)];
+}
+/** "banheiro" (fundo da cabine, fora do corredor) */
+const LAV: [number, number] = [1.0, 15.95];
+const GALLEY: [number, number] = [0.55, 4.9];
+export const CART_HOME: [number, number] = [0, 5.35];
 export interface Emer {
   id: number;
   kind: EmerKind;
@@ -196,10 +247,12 @@ export type Ev =
   | { k: 'touch'; out: Outcome }
   | { k: 'say'; who: number; msg: string }
   /** online: o anfitrião abriu um minijogo para o jogador `who` (convidado) */
-  | { k: 'mini'; who: number; kind: MiniKind; emer: number };
+  | { k: 'mini'; who: number; kind: MiniKind; emer: number }
+  /** online: o anfitrião abriu a copa para o jogador `who` */
+  | { k: 'prep'; who: number };
 
 export interface Ctx {
-  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow';
+  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow' | 'prep' | 'cart' | 'serve';
   label: string;
   hold: boolean;
   target: number;
@@ -230,7 +283,9 @@ export type NetAct =
   | ['miniClose']
   | ['throw', number]
   | ['stand']
-  | ['ap', number];
+  | ['ap', number]
+  | ['tray', number, number, number, number, number]
+  | ['prepClose'];
 
 export interface SimOpts {
   seed: number;
@@ -462,7 +517,7 @@ export class Sim {
     // passageiros: ~70% dos assentos
     SEATS.forEach(([x, z], i) => {
       if (r() < 0.3) return;
-      this.pax.push({ seat: i, sx: x, sz: z, x, z, panic: r() * 0.15, calmT: 0, standing: false, skin: Math.floor(r() * 8), bob: r() * 6, happyT: 0, doorT: 0 });
+      this.pax.push({ seat: i, sx: x, sz: z, x, z, panic: r() * 0.15, calmT: 0, standing: false, skin: Math.floor(r() * 8), bob: r() * 6, happyT: 0, doorT: 0, mode: 0, leg: 0, wT: 0, hiT: 0, yaw: Math.PI, want: -1 });
     });
   }
 
@@ -1084,9 +1139,14 @@ export class Sim {
     const act = this.active();
     let alarms = 0;
     for (const e of act) if (e.kind !== 'turb' && e.kind !== 'panic' && e.kind !== 'gear') alarms++;
-    const base = 0.002 + alarms * 0.003 + this.turb * 0.025 + (Math.abs(f.roll) > 0.5 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0);
-    let standing = 0;
-    for (const p of this.pax) {
+    const base = 0.002 + alarms * 0.003 + this.turb * 0.025 + (Math.abs(f.roll) > 0.6 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (f.stall ? 0.03 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0);
+    // cintos: aviso de turbulência ou turbulência = todo mundo sentado
+    const belt = !!f.belt || this.turb > 0;
+    let up = 0;
+    let walkers = 0;
+    for (const q of this.pax) if (q.mode >= 2) walkers++;
+    for (let i = 0; i < this.pax.length; i++) {
+      const p = this.pax[i];
       p.bob += dt;
       p.happyT = Math.max(0, p.happyT - dt);
       if (p.calmT > 0) {
@@ -1097,14 +1157,50 @@ export class Sim {
         for (const e of act) if (e.kind === 'fire' && Math.abs(e.z - p.sz) < 3) near += 0.01;
         p.panic = clamp(p.panic + dt * (base + near) * (0.6 + ((p.seat * 37) % 10) / 12), 0, 1);
       }
-      if (!p.standing && p.panic > 0.75) p.standing = true;
-      if (p.standing && p.panic < 0.45) p.standing = false;
-      const tx = p.standing ? Math.sign(p.sx) * (p.sz < 3 ? 0.42 : 0.34) : p.sx;
-      p.x += (tx - p.x) * Math.min(1, dt * 3);
-      p.z += (p.sz - p.z) * Math.min(1, dt * 3);
-      if (p.standing) standing++;
+      switch (p.mode) {
+        case 0: {
+          // sentado: fica sentado (pânico só muda o rosto/balanço); levanta só em evento
+          if (!belt && p.panic > 0.9) p.hiT += dt;
+          else p.hiT = 0;
+          if (p.hiT > 2.5) {
+            p.mode = 1;
+            p.hiT = 0;
+          } else if (!belt && (this.phase === 'cruise' || this.phase === 'descent') && walkers < 2 && p.panic < 0.4 && p.want < 0 && this.rnd() < dt / 260) {
+            p.mode = 2;
+            p.leg = 0;
+            p.wT = 0;
+            walkers++;
+          }
+          p.x += (p.sx - p.x) * Math.min(1, dt * 4);
+          p.z += (p.sz - p.z) * Math.min(1, dt * 4);
+          p.yaw = Math.PI;
+          break;
+        }
+        case 1: {
+          // em pé na própria fileira (não bloqueia o corredor); senta quando acalma ou com o cinto
+          const [lx, lz] = legroom(p);
+          p.x += (lx - p.x) * Math.min(1, dt * 3);
+          p.z += (lz - p.z) * Math.min(1, dt * 3);
+          p.yaw = Math.PI + Math.sin(p.bob * 1.3) * 0.6;
+          if (p.panic < 0.6 || belt) p.mode = 0;
+          break;
+        }
+        case 2:
+          this.paxWalk(p, dt, belt);
+          break;
+        case 3:
+          p.wT -= dt;
+          if (p.wT <= 0 || belt) {
+            p.mode = 2;
+            p.leg = 1;
+            p.wT = 0;
+          }
+          break;
+      }
+      p.standing = p.mode !== 0;
+      if (p.mode === 1) up++;
       // pânico extremo: puxa a alavanca da porta
-      if (p.panic > 0.97) {
+      if (p.panic > 0.97 && p.mode === 1) {
         p.doorT += dt;
         if (p.doorT > 14) {
           p.doorT = 0;
@@ -1115,7 +1211,237 @@ export class Sim {
         }
       } else p.doorT = 0;
     }
-    if (standing >= 3 && !act.some((e) => e.kind === 'panic')) this.startEmer('panic', 'pilot');
+    if (up >= 3 && !act.some((e) => e.kind === 'panic')) this.startEmer('panic', 'pilot');
+    this.stepOrders(dt);
+  }
+
+  /** passageiro andando pelo corredor até o banheiro e de volta: um atrás do outro, abre espaço para a tripulação */
+  private paxWalk(p: Pax, dt: number, belt: boolean): void {
+    if (belt && p.leg === 0) p.leg = 1;
+    const exitZ = p.sz - (p.sz < 3 ? 0.55 : 0.45);
+    // waypoints (ida): fileira → corredor → fundo → banheiro; volta ao contrário
+    const pts: [number, number][] = [
+      [p.sx * 0.55, exitZ],
+      [0, exitZ],
+      [0, 15.3],
+      LAV,
+    ];
+    if (p.leg === 1) pts.reverse().push([p.sx, p.sz]);
+    let wi = Math.min(pts.length - 1, Math.floor(p.wT));
+    let [tx, tz] = pts[wi];
+    let dx = tx - p.x;
+    let dz = tz - p.z;
+    let d = Math.hypot(dx, dz);
+    if (d < 0.08) {
+      p.wT = wi + 1;
+      if (p.wT >= pts.length) {
+        if (p.leg === 0) {
+          p.mode = 3;
+          p.wT = 5 + this.rnd() * 6;
+        } else {
+          p.mode = 0;
+          p.leg = 0;
+        }
+        return;
+      }
+      wi++;
+      [tx, tz] = pts[wi];
+      dx = tx - p.x;
+      dz = tz - p.z;
+      d = Math.hypot(dx, dz) || 1;
+    }
+    let sp = belt ? 1.6 : 1.05;
+    // fila: outro passageiro andando logo à frente → espera
+    for (const o of this.pax) {
+      if (o === p || o.mode < 2) continue;
+      const ox = o.x - p.x;
+      const oz = o.z - p.z;
+      const od = Math.hypot(ox, oz);
+      if (od < 0.6 && (ox * dx + oz * dz) / (d * Math.max(od, 1e-3)) > 0.5) sp = 0;
+    }
+    // tripulação perto: anda devagar e encosta de lado (o corredor fica livre)
+    let side = 0;
+    for (const pl of this.players) {
+      if (pl.seated) continue;
+      const od = Math.hypot(pl.x - p.x, pl.z - p.z);
+      if (od < 0.9) {
+        sp *= 0.35;
+        side = pl.x > p.x ? -1 : 1;
+      }
+    }
+    p.x += (dx / d) * sp * dt;
+    p.z += (dz / d) * sp * dt;
+    if (side && Math.abs(p.z - tz) > 0.2) p.x += (side * 0.34 - p.x) * Math.min(1, dt * 6);
+    if (sp > 0.05) p.yaw = Math.atan2(dx, dz);
+  }
+
+  /* ------------------------------ serviço de bordo ------------------------------ */
+
+  orders: Order[] = [];
+  cart = { x: CART_HOME[0], z: CART_HOME[1], yaw: 0, by: -1, trays: [] as Tray[] };
+  private nextOrderT = 35;
+  private oid = 1;
+  private tid = 1;
+  /** preparo aberto para o jogador local (a interface abre a copa) */
+  prepOpen = false;
+
+  private stepOrders(dt: number): void {
+    const f = this.f;
+    if (this.opts.mode !== 'training' && !f.belt && this.turb <= 0 && (this.phase === 'cruise' || this.phase === 'descent')) {
+      this.nextOrderT -= dt;
+      const cap = 2 + (this.players.length >= 3 ? 1 : 0);
+      if (this.nextOrderT <= 0) {
+        this.nextOrderT = 22 + this.rnd() * 18;
+        const free = this.pax.filter((q) => q.mode === 0 && q.want < 0 && q.panic < 0.7);
+        if (this.orders.length < cap && free.length) {
+          const q = free[Math.floor(this.rnd() * free.length)];
+          // quase sempre comida + bebida; às vezes só um dos dois
+          const r1 = this.rnd();
+          const main = r1 < 0.15 ? 0 : 1 + Math.floor(this.rnd() * 2);
+          const drink = main && this.rnd() < 0.15 ? 0 : 1 + Math.floor(this.rnd() * 3);
+          const o: Order = { id: this.oid++, pax: this.pax.indexOf(q), main, drink, t: 110, tmax: 110, tray: -1, bot: -1 };
+          q.want = o.id;
+          this.orders.push(o);
+          this.toast(t('voo.t.order', 'Poltrona {s} pediu um lanche!', { s: seatLabel(q.seat) }), 'serve', 'info');
+          this.sfx('ding');
+        }
+      }
+    }
+    for (const o of this.orders) {
+      o.t -= dt;
+      const q = this.pax[o.pax];
+      if (q && o.t < o.tmax * 0.35) q.panic = Math.min(1, q.panic + dt * 0.004);
+      if (o.t <= 0) this.closeOrder(o, 'late');
+    }
+    this.orders = this.orders.filter((o) => o.t > -1e8);
+    // carrinho segue quem empurra
+    const c = this.cart;
+    if (c.by >= 0) {
+      const p = this.players[c.by];
+      if (!p || p.seated || p.stun > 0 || p.busy >= 0 || p.prep) c.by = -1;
+      else this.cartFollow(p);
+    }
+  }
+  /** carrinho na frente de quem empurra; no corredor fica centralizado */
+  cartFollow(p: Player): void {
+    const c = this.cart;
+    const fx = Math.sin(p.yaw);
+    const fz = Math.cos(p.yaw);
+    const sgn = fz >= 0 ? 1 : -1;
+    const inAisle = p.z > 6 && p.z < 16.2;
+    const tx = inAisle ? 0 : p.x + fx * 0.75;
+    const tz = p.z + (inAisle ? sgn : fz) * 0.75;
+    c.x = clamp(tx, -1.0, 1.0);
+    c.z = clamp(tz, -0.9, 16.2);
+    c.yaw = inAisle ? (sgn > 0 ? 0 : Math.PI) : Math.atan2(fx, fz);
+  }
+
+  private closeOrder(o: Order, why: 'ok' | 'wrong' | 'late', by?: Player): void {
+    const q = this.pax[o.pax];
+    if (q) q.want = -1;
+    o.t = -1e9;
+    const lbl = q ? seatLabel(q.seat) : '';
+    // bandeja que sobrou para este pedido sai do carrinho
+    this.cart.trays = this.cart.trays.filter((tr) => tr.order !== o.id || why === 'wrong');
+    if (why === 'ok') {
+      if (q) {
+        q.panic = Math.max(0, q.panic - 0.5);
+        q.calmT = 25;
+        q.happyT = 3;
+        this.ev.push({ k: 'fx', t: 'calm', x: q.sx, z: q.sz, y: 1.1 });
+      }
+      this.bonus += 150;
+      if (by) by.stats.served = (by.stats.served ?? 0) + 1;
+      this.toast(t('voo.t.served', 'Pedido certo! {s} adorou', { s: lbl }), 'check', 'good');
+      this.sfx('calm');
+    } else {
+      if (q) {
+        q.panic = Math.min(1, q.panic + 0.28);
+        q.calmT = 0;
+      }
+      this.toast(why === 'late' ? t('voo.t.late', 'Poltrona {s} reclamou: o lanche demorou!', { s: lbl }) : t('voo.t.wrong', 'Poltrona {s} reclamou: pedido errado!', { s: lbl }), 'panic', 'bad');
+      this.sfx('thud');
+    }
+  }
+
+  /** copa: bandeja pronta vai para o carrinho (o anfitrião confere) */
+  addTray(p: Player, orderId: number, main: number, drink: number, hot: number, full: number): void {
+    p.prep = false;
+    if (p.idx === this.me) this.prepOpen = false;
+    if (this.proxy) return this.proxy(['tray', orderId, main, drink, hot, full]);
+    const o = this.orders.find((x) => x.id === orderId);
+    if (!o || o.tray >= 0 || this.cart.trays.length >= 4) return;
+    const tr: Tray = { id: this.tid++, order: o.id, main: clamp(main | 0, 0, 2), drink: clamp(drink | 0, 0, 3), hot: hot ? 1 : 0, full: full ? 1 : 0 };
+    o.tray = tr.id;
+    this.cart.trays.push(tr);
+    const q = this.pax[o.pax];
+    this.toast(t('voo.t.trayOk', 'Bandeja da {s} no carrinho: empurre até lá!', { s: q ? seatLabel(q.seat) : '' }), 'cart', 'good');
+    this.sfx('pick');
+  }
+  prepClose(p: Player): void {
+    p.prep = false;
+    if (p.idx === this.me) this.prepOpen = false;
+    if (this.proxy && p.idx === this.me) this.proxy(['prepClose']);
+  }
+  /** a bandeja bate com o pedido? */
+  static trayOk(tr: { main: number; drink: number; hot: number; full: number }, o: { main: number; drink: number }): boolean {
+    return tr.main === o.main && tr.drink === o.drink && (o.main !== 2 || !!tr.hot) && (o.drink === 0 || !!tr.full);
+  }
+  /** entrega: a bandeja deste pedido (ou a primeira, se não tiver — aí é a poltrona errada) */
+  private serve(p: Player, paxIdx: number): void {
+    const q = this.pax[paxIdx];
+    const o = q ? this.orders.find((x) => x.id === q.want) : undefined;
+    if (!q || !o) return;
+    const c = this.cart;
+    let tr = c.trays.find((x) => x.order === o.id);
+    let wrongSeat = false;
+    if (!tr) {
+      tr = c.trays[0];
+      wrongSeat = true;
+    }
+    if (!tr) return;
+    c.trays = c.trays.filter((x) => x !== tr);
+    if (wrongSeat) {
+      const other = this.orders.find((x) => x.id === tr!.order);
+      if (other) other.tray = -1; // a bandeja do outro foi embora: refazer
+    }
+    this.closeOrder(o, !wrongSeat && Sim.trayOk(tr, o) ? 'ok' : 'wrong', p);
+  }
+
+  /** ajudante comissário: pega pedidos esquecidos (prepara na copa e leva na mão) */
+  private botServe(p: Player, dt: number): boolean {
+    if (p.role < 2 || p.cmd || p.seated) return false;
+    let o = this.orders.find((x) => x.bot === p.idx);
+    if (!o) {
+      o = this.orders.find((x) => x.bot < 0 && x.tray < 0 && x.tmax - x.t > 18);
+      if (!o) return false;
+      o.bot = p.idx;
+      p.actProg = 0;
+    }
+    const q = this.pax[o.pax];
+    const held = this.item(p.hold);
+    if (!held || held.kind !== 'tray') {
+      if (held) this.drop(p, false);
+      if (this.walkTo(p, GALLEY[0], GALLEY[1]) || Math.hypot(p.x - GALLEY[0], p.z - GALLEY[1]) < 0.4) {
+        p.yaw = Math.PI / 2;
+        p.actProg += dt / 6;
+        if (p.actProg >= 1) {
+          p.actProg = 0;
+          const it = this.spawnItem('tray', p.x, 0.95, p.z);
+          it.held = p.idx;
+          p.hold = it.id;
+          this.sfx('pick');
+        }
+      }
+      return true;
+    }
+    const [ax, az] = [0, q.sz - (q.sz < 3 ? 0.6 : 0.45)];
+    if (this.walkTo(p, ax, az) || Math.hypot(q.sx - p.x, q.sz - p.z) < REACH - 0.3) {
+      held.alive = false;
+      p.hold = -1;
+      this.closeOrder(o, 'ok', p);
+    }
+    return true;
   }
 
   /* ------------------------------ forças na cabine ------------------------------ */
@@ -1212,8 +1538,8 @@ export class Sim {
       mz = this.botMove.z;
       this.botMove.x = this.botMove.z = 0;
     }
-    if (p.busy >= 0 || p.stun > 0) mx = mz = 0;
-    const sp = (p.bot ? BOT_SPEED : HUMAN_SPEED) * (p.hold >= 0 && this.item(p.hold)?.kind === 'bag' ? 0.7 : 1) * (1 - this.dizzy * 0.4);
+    if (p.busy >= 0 || p.stun > 0 || p.prep) mx = mz = 0;
+    const sp = (p.bot ? BOT_SPEED : HUMAN_SPEED) * (p.hold >= 0 && this.item(p.hold)?.kind === 'bag' ? 0.7 : 1) * (this.cart.by === p.idx ? 0.65 : 1) * (1 - this.dizzy * 0.4);
     const ml = Math.hypot(mx, mz);
     if (ml > 1) (mx /= ml), (mz /= ml);
     // aceleração rumo à velocidade desejada + forças da cabine
@@ -1234,9 +1560,9 @@ export class Sim {
     p.z += p.vz * dt;
     p.walk += Math.hypot(p.vx, p.vz) * dt;
     this.collide(p);
-    // passageiros de pé empurram
+    // passageiros andando no corredor empurram de leve (dá para se espremer e passar)
     for (const q of this.pax) {
-      if (!q.standing) continue;
+      if (q.mode < 2) continue;
       const dx = p.x - q.x;
       const dz = p.z - q.z;
       const d = Math.hypot(dx, dz);
@@ -1364,6 +1690,12 @@ export class Sim {
       case 'ap':
         if (p.seated) this.setAP(!!a[1], '');
         break;
+      case 'tray':
+        if (p.prep) this.addTray(p, +a[1] | 0, +a[2] | 0, +a[3] | 0, +a[4] | 0, +a[5] | 0);
+        break;
+      case 'prepClose':
+        this.prepClose(p);
+        break;
     }
   }
 
@@ -1458,6 +1790,21 @@ export class Sim {
       const side = p.x < 0 ? -1 : 1;
       consider('stow', t('voo.a.stow', 'Guardar mala'), false, held.id, side * 1.2, bz, 2.0, REACH + 0.6, 0.5);
     }
+    // serviço de bordo: copa (montar bandeja), carrinho (empurrar/soltar), servir na poltrona
+    const c = this.cart;
+    const pushing = c.by === p.idx;
+    if (!held && !pushing && this.orders.some((o) => o.tray < 0 && o.bot < 0) && c.trays.length < 4)
+      for (const sd of [-1, 1]) consider('prep', t('voo.a.prep', 'Montar bandeja'), false, -1, sd * 1.3, 4.9, 1.0, REACH, 0.25);
+    if (!held && c.by < 0) consider('cart', t('voo.a.cart', 'Empurrar carrinho'), false, -1, c.x, c.z, 0.8, 1.4, 0.1);
+    if (pushing) {
+      consider('cart', t('voo.a.cartOff', 'Soltar carrinho'), false, -1, c.x, c.z, 0.8, 2.0, -0.6);
+      if (c.trays.length)
+        for (let i = 0; i < this.pax.length; i++) {
+          const q = this.pax[i];
+          if (q.want < 0) continue;
+          consider('serve', t('voo.a.serve', 'Servir {s}', { s: seatLabel(q.seat) }), false, i, q.sx, q.sz, 1.0, REACH + 0.4, 1.0);
+        }
+    }
     return best;
   }
 
@@ -1523,6 +1870,25 @@ export class Sim {
         this.sfx('calm');
         return '';
       }
+      case 'prep':
+        if (this.cart.by === p.idx) this.cart.by = -1;
+        p.prep = true;
+        if (p.idx === this.me) this.prepOpen = true;
+        else this.ev.push({ k: 'prep', who: p.idx });
+        this.sfx('pick');
+        return '';
+      case 'cart':
+        this.cart.by = this.cart.by === p.idx ? -1 : this.cart.by < 0 ? p.idx : this.cart.by;
+        if (this.cart.by === p.idx) {
+          // vira para o lado do carrinho
+          p.yaw = Math.atan2(this.cart.x - p.x, this.cart.z - p.z);
+          this.cartFollow(p);
+        }
+        this.sfx('pick');
+        return '';
+      case 'serve':
+        this.serve(p, c.target);
+        return '';
       case 'give': {
         const q = this.pax[c.target];
         const it = this.item(p.hold);
@@ -1811,6 +2177,7 @@ export class Sim {
       return;
     }
     const cmd = p.cmd;
+    if (!cmd && this.botServe(p, dt)) return;
     if (!cmd || cmd.kind === 'stay') return;
     if (cmd.kind === 'follow') {
       const me = this.players[cmd.by ?? this.me] ?? this.players[this.me];

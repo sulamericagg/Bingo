@@ -226,10 +226,11 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // ---------- copa ----------
   for (const side of [-1, 1]) {
     const x = side * 1.45;
-    b.box(0.62, 1.0, 2.0, x, 0, 4.9, '#e3dcef');
-    for (let z = 4.0; z < 5.9; z += 0.5) b.sharp(0.02, 0.85, 0.02, x - side * 0.31, 0.08, z, '#b5a8d0');
-    b.box(0.64, 0.05, 2.02, x, 1.0, 4.9, '#c7bde0');
-    b.box(0.45, 0.55, 2.0, side * 1.53, 1.7, 4.9, '#efe8f8');
+    // balcão na altura da cintura (0,9 m) para quem tem os olhos a 1,45 m
+    b.box(0.62, 0.88, 2.0, x, 0, 4.9, '#e3dcef');
+    for (let z = 4.0; z < 5.9; z += 0.5) b.sharp(0.02, 0.74, 0.02, x - side * 0.31, 0.08, z, '#b5a8d0');
+    b.box(0.64, 0.05, 2.02, x, 0.88, 4.9, '#c7bde0');
+    b.box(0.45, 0.5, 2.0, side * 1.53, 1.78, 4.9, '#efe8f8');
   }
   // bebedouro e cesta de lanches
   b.lathe(
@@ -243,15 +244,15 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
       [0, 0.46],
     ],
     SPOTS.water.x,
-    1.05,
+    0.93,
     SPOTS.water.z,
     '#7ad8ff',
     14,
   );
-  b.box(0.36, 0.2, 0.44, SPOTS.snack.x, 1.05, SPOTS.snack.z, '#ffb02e');
-  for (let i = 0; i < 5; i++) b.box(0.1, 0.12, 0.08, SPOTS.snack.x - 0.1 + (i % 3) * 0.1, 1.2, SPOTS.snack.z - 0.12 + i * 0.06, ['#ff5c7a', '#3fe06c', '#ffd34a', '#46d9e6', '#a78bff'][i]);
+  b.box(0.36, 0.2, 0.44, SPOTS.snack.x, 0.93, SPOTS.snack.z, '#ffb02e');
+  for (let i = 0; i < 5; i++) b.box(0.1, 0.12, 0.08, SPOTS.snack.x - 0.1 + (i % 3) * 0.1, 1.08, SPOTS.snack.z - 0.12 + i * 0.06, ['#ff5c7a', '#3fe06c', '#ffd34a', '#46d9e6', '#a78bff'][i]);
   // forno
-  b.box(0.5, 0.5, 0.6, 1.5, 1.05, SPOTS.oven.z, '#9aa0b8');
+  b.box(0.5, 0.5, 0.6, 1.5, 0.93, SPOTS.oven.z, '#9aa0b8');
   // suporte do extintor
   metal.box(0.08, 0.5, 0.2, 1.74, 0.8, 4.25, '#9aa0b8');
   metal.box(0.08, 0.5, 0.2, -1.74, 0.8, 18.3, '#9aa0b8');
@@ -492,7 +493,7 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   );
   group.add(pump);
   const ovenGlow = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.26), new THREE.MeshBasicMaterial({ color: '#3a2a3a', toneMapped: false }));
-  ovenGlow.position.set(1.24, 1.3, SPOTS.oven.z);
+  ovenGlow.position.set(1.24, 1.18, SPOTS.oven.z);
   ovenGlow.rotation.y = -Math.PI / 2;
   group.add(ovenGlow);
   // portas dos bagageiros (abrem na turbulência)
@@ -674,6 +675,8 @@ export function itemGeo(k: ItemKind, variant = 0): THREE.BufferGeometry {
   } else if (k === 'snack') {
     g.box(0.16, 0.2, 0.06, 0, -0.1, 0, ['#ffb02e', '#ff5cae', '#3fe06c'][variant % 3]);
     g.sph(0.04, 0, 0.0, -0.035, '#ffd34a', 1, 1, 0.4, 8);
+  } else if (k === 'tray') {
+    trayGeo(g, 0, 0, 0);
   } else {
     const cols = ['#8a5cff', '#2fb6ff', '#ff7a3a', '#3fe06c', '#ff5cae'];
     g.box(0.5, 0.36, 0.22, 0, -0.18, 0, cols[variant % cols.length]);
@@ -681,6 +684,36 @@ export function itemGeo(k: ItemKind, variant = 0): THREE.BufferGeometry {
     g.box(0.52, 0.04, 0.24, 0, -0.02, 0, shade(cols[variant % cols.length], -0.25));
   }
   return g.build();
+}
+
+/** bandeja do serviço de bordo (prato, copo, guardanapo) — também vai no carrinho */
+export function trayGeo(g: GeoBuilder, x: number, y: number, z: number, main = 1, drink = 2): void {
+  g.box(0.36, 0.025, 0.26, x, y - 0.02, z, '#c9cfe0');
+  g.box(0.33, 0.012, 0.23, x, y + 0.005, z, '#eef1f8');
+  if (main) {
+    g.cyl(0.075, 0.07, 0.02, x - 0.06, y + 0.015, z, '#ffffff', 12);
+    if (main === 1) g.box(0.1, 0.035, 0.07, x - 0.06, y + 0.03, z, '#ffcc66');
+    else g.sph(0.05, x - 0.06, y + 0.04, z, '#ffd34a', 1, 0.45, 1, 8);
+  }
+  if (drink) {
+    const dc = ['#7ad8ff', '#7ad8ff', '#ff9a3a', '#ffffff'][drink];
+    g.cyl(0.032, 0.026, 0.09, x + 0.1, y + 0.015, z - 0.03, dc, 10);
+  }
+  g.box(0.06, 0.006, 0.08, x + 0.1, y + 0.012, z + 0.07, '#ff9ac8');
+}
+
+/** carrinho do serviço de bordo (alto e estreito, cabe no corredor) */
+export function cartGeo(standard: boolean): THREE.Mesh {
+  const g = new GeoBuilder();
+  g.bevel = 1;
+  g.ao = false;
+  g.box(0.42, 0.9, 0.7, 0, 0.08, 0, '#b9b2d6');
+  g.box(0.44, 0.06, 0.72, 0, 0.98, 0, '#8a7fc0');
+  for (let i = 0; i < 4; i++) g.sharp(0.43, 0.012, 0.66, 0, 0.25 + i * 0.18, 0.01, '#7f75b2');
+  g.box(0.36, 0.03, 0.05, 0, 0.92, -0.37, '#5b5e74');
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.cyl(0.04, 0.04, 0.04, sx * 0.15, 0.02, sz * 0.27, '#2a2d40', 8, 0, Math.PI / 2);
+  g.sph(0.06, 0, 0.6, 0.36, '#ff5cae', 1, 1, 0.4, 8);
+  return new THREE.Mesh(g.build(), mat(standard, { rough: 0.5, metal: 0.15 }));
 }
 
 /* ============================== AVIÃO POR FORA ============================== */

@@ -14,15 +14,19 @@ import { canvas, INK } from '../../3d/common/tex';
 import type { Tier } from '../../core/quality';
 import { BOXES, SPOTS, type Cabin, type Livery } from './data';
 import {
-  CG_Z, FUSE_Y, WHEEL_Y, airportGeo, bloopGeo, buildCabin, buildExterior, groundTexture, houseGeo, itemGeo, mat, mountainGeo,
+  CG_Z, FUSE_Y, WHEEL_Y, airportGeo, bloopGeo, buildCabin, buildExterior, cartGeo, groundTexture, trayGeo, houseGeo, itemGeo, mat, mountainGeo,
   runwayTexture, skyDome, tapeX, treeGeo, type CabinRefs, type ExtRefs,
 } from './models';
-import { GS, RWY_HALF, RWY_LEN, type Ev, type Sim } from './sim';
+import { DRINKS, GS, MAINS, RWY_HALF, RWY_LEN, seatLabel, type Ev, type Order, type Sim } from './sim';
+import { GeoBuilder } from '../../3d/common/geo';
+import { vIconImg } from './icons';
 import { CloudField } from './clouds';
 
 const TAU = Math.PI * 2;
 /** altura dos olhos a pé (balcões da copa ~0,9 m ficam na cintura) */
 const EYE = 1.45;
+/** tripulação (outros jogadores/ajudantes) do tamanho de quem tem os olhos a 1,45 m */
+const CREW_S = 1.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const STREAKS = 44;
 const _v = new THREE.Vector3();
@@ -303,6 +307,10 @@ export class View3D {
   private pfdTex: THREE.CanvasTexture;
   private navTex: THREE.CanvasTexture;
   private puddle: THREE.Mesh;
+  private cartM: THREE.Mesh;
+  private trayMs: THREE.Mesh[] = [];
+  private trayGeos = new Map<number, THREE.BufferGeometry>();
+  private bubbles = new Map<number, { sp: THREE.Sprite; cv: HTMLCanvasElement; tex: THREE.CanvasTexture; sig: string }>();
   private patched = new Set<string>();
   private dispose: { dispose(): void }[] = [];
   yaw = Math.PI;
@@ -557,6 +565,16 @@ export class View3D {
       s.visible = false;
       this.fireGlows.push(s);
       this.cabin.add(s);
+    }
+    // carrinho do serviço de bordo + bandejas
+    this.cartM = cartGeo(q.standard);
+    this.cartM.castShadow = q.shadows;
+    this.cabin.add(this.cartM);
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(this.trayGeoFor(1, 2), this.itemMat);
+      m.visible = false;
+      this.cartM.add(m);
+      this.trayMs.push(m);
     }
     this.puddle = new THREE.Mesh(new THREE.CircleGeometry(0.5, 18), new THREE.MeshStandardMaterial({ color: '#b07aff', roughness: 0.1, transparent: true, opacity: 0.75 }));
     this.puddle.rotation.x = -Math.PI / 2;
@@ -1168,16 +1186,16 @@ export class View3D {
       if (p.seated) {
         m.position.set(SPOTS.pilot.x, 0.42, SPOTS.pilot.z + 0.02);
         m.rotation.set(0, 0, Math.sin(this.t * 0.8) * 0.03);
-        m.scale.setScalar(1);
+        m.scale.setScalar(CREW_S);
       } else {
         const sp = Math.hypot(p.vx, p.vz);
         const hop = Math.abs(Math.sin(p.walk * 3.2)) * 0.07 * Math.min(1, sp);
         m.position.set(p.x, hop, p.z);
         m.rotation.set(p.stun > 0 ? -1.2 : sp * 0.04, p.yaw + Math.PI, p.stun > 0 ? 0.4 : Math.sin(p.walk * 3.2) * 0.08 * Math.min(1, sp));
         const sq = p.actProg > 0 ? Math.sin(this.t * 14) * 0.04 : 0;
-        m.scale.set(1 + sq, 1 - sq, 1 + sq);
+        m.scale.set(CREW_S * (1 + sq), CREW_S * (1 - sq), CREW_S * (1 + sq));
       }
-      this.updateStars(v.stars, p.stun > 0, m.position.x, 1.25, m.position.z, 1);
+      this.updateStars(v.stars, p.stun > 0, m.position.x, 1.6, m.position.z, 1.2);
       if (p.spraying) this.spray(p.x + Math.sin(p.yaw) * 0.45, 0.85, p.z + Math.cos(p.yaw) * 0.45, Math.sin(p.yaw), Math.cos(p.yaw));
     }
     for (const [idx, v] of this.crew)
@@ -1204,15 +1222,23 @@ export class View3D {
       this.paxWorried[k] = w;
       const im = this.paxMeshes[p.skin * 2 + w];
       const i = cnt[p.skin * 2 + w]++;
-      if (!p.standing) {
-        // sentado: preso à poltrona (sem física). Pânico = balanço lento e legível; solavanco só na turbulência
+      const ph = k * 1.37;
+      if (p.mode === 0) {
+        // sentado: preso à poltrona, com vida: respira, olha em volta, balança aflito, pula de alegria
         const sway = w ? Math.sin(p.bob * 3.2) * 0.1 * p.panic : 0;
         const happy = p.happyT > 0 ? Math.abs(Math.sin(p.bob * 5)) * 0.05 : 0;
-        _m.compose(_v.set(p.sx, 0.36 + happy + bump * (0.6 + (k % 3) * 0.2), p.sz - 0.05), _q.setFromEuler(_e.set(0, 0, sway)), _v2.setScalar(1));
-      } else {
-        // de pé no corredor: pulinho lento de aflição
+        const breathe = 1 + Math.sin(p.bob * 1.9 + ph) * 0.018;
+        const look = Math.sin(p.bob * 0.37 + ph) * 0.28 * Math.max(0, Math.sin(p.bob * 0.11 + ph * 3));
+        _m.compose(_v.set(p.sx, 0.36 + happy + bump * (0.6 + (k % 3) * 0.2), p.sz - 0.05), _q.setFromEuler(_e.set(0, look, sway)), _v2.set(1, breathe, 1));
+      } else if (p.mode === 1) {
+        // em pé no espaço da própria fileira: pulinho de aflição, braços para cima (não bloqueia o corredor)
         const hop = Math.abs(Math.sin(p.bob * 3.4)) * 0.07;
-        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(0, Math.PI * 0.5 * Math.sign(p.sx) + Math.sin(p.bob * 1.6) * 0.25, 0)), _v2.setScalar(1));
+        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(0, p.yaw + Math.PI, Math.sin(p.bob * 5) * 0.08)), _v2.setScalar(1.05));
+      } else {
+        // andando no corredor (ou esperando no banheiro)
+        const walking = p.mode === 2;
+        const hop = walking ? Math.abs(Math.sin(p.bob * 6)) * 0.035 : 0;
+        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(walking ? 0.06 : 0, p.yaw + Math.PI, walking ? Math.sin(p.bob * 6) * 0.05 : 0)), _v2.setScalar(1.05));
       }
       im.setMatrixAt(i, _m);
       if (p.panic > 0.7) bangList.push({ x: p.x, z: p.z, p: p.panic });
@@ -1229,6 +1255,7 @@ export class View3D {
     });
     // objetos
     this.updateItems(dt);
+    this.updateService();
     // emergências
     this.updateEmers(dt, act, intro);
     // máscaras de oxigênio
@@ -1255,6 +1282,107 @@ export class View3D {
       const sd = d.userData.side as number;
       d.rotation.z = sd * (this.binOpen * (1.1 + Math.sin(this.t * 9 + i) * 0.15));
     });
+  }
+
+  private trayGeoFor(main: number, drink: number): THREE.BufferGeometry {
+    const key = main * 10 + drink;
+    let g = this.trayGeos.get(key);
+    if (!g) {
+      const gb = new GeoBuilder();
+      gb.bevel = 1;
+      gb.ao = false;
+      trayGeo(gb, 0, 0, 0, main, drink);
+      g = gb.build();
+      this.trayGeos.set(key, g);
+    }
+    return g;
+  }
+
+  /** carrinho (posição, bandejas) e balões de pedido em cima das poltronas */
+  private updateService(): void {
+    const s = this.sim;
+    const c = s.cart;
+    this.cartM.position.set(c.x, 0, c.z);
+    this.cartM.rotation.y = c.yaw;
+    this.trayMs.forEach((m, i) => {
+      const tr = c.trays[i];
+      m.visible = !!tr;
+      if (!tr) return;
+      m.geometry = this.trayGeoFor(tr.main, tr.drink);
+      m.position.set(0, 1.03 + (i >> 1) * 0.11, (i % 2 ? 0.17 : -0.17));
+    });
+    const seen = new Set<number>();
+    for (const o of s.orders) {
+      const q = s.pax[o.pax];
+      if (!q) continue;
+      seen.add(o.id);
+      let b = this.bubbles.get(o.id);
+      if (!b) {
+        const [cv] = canvas(192, 96);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+        sp.scale.set(0.5, 0.25, 1);
+        sp.renderOrder = 5;
+        this.cabin.add(sp);
+        b = { sp, cv, tex, sig: '' };
+        this.bubbles.set(o.id, b);
+      }
+      const sig = this.drawBubble(b.cv, o, seatLabel(q.seat), b.sig);
+      if (sig !== b.sig) {
+        b.sig = sig;
+        b.tex.needsUpdate = true;
+      }
+      b.sp.position.set(q.sx, 1.62 + Math.sin(this.t * 2 + o.id) * 0.03, q.sz);
+      // tamanho quase constante na tela (legível do fundo do corredor, sem tapar de perto)
+      const dd = b.sp.position.distanceTo(this.cam.position);
+      const sc = clamp(dd * 0.11, 0.42, 1.2);
+      b.sp.scale.set(sc, sc * 0.5, 1);
+      b.sp.visible = !s.players[s.me].seated || this.extCam;
+    }
+    for (const [id, b] of this.bubbles)
+      if (!seen.has(id)) {
+        b.sp.removeFromParent();
+        b.sp.material.dispose();
+        b.tex.dispose();
+        this.bubbles.delete(id);
+      }
+  }
+  /** balão: poltrona + ícones do pedido + tempo; devolve uma assinatura (só redesenha quando muda) */
+  private drawBubble(cv: HTMLCanvasElement, o: Order, label: string, prev: string): string {
+    const k = Math.max(0, Math.min(1, o.t / o.tmax));
+    const ims = [o.main ? vIconImg(MAINS[o.main]) : null, o.drink ? vIconImg(DRINKS[o.drink]) : null].filter((x): x is HTMLImageElement => !!x);
+    const ready = ims.every((im) => im.complete && im.naturalWidth > 0);
+    const sig = `${Math.ceil(k * 12)}|${ready}|${o.tray >= 0}`;
+    if (sig === prev) return sig;
+    const x = cv.getContext('2d')!;
+    x.clearRect(0, 0, 192, 96);
+    x.lineWidth = 6;
+    x.strokeStyle = INK;
+    x.fillStyle = o.tray >= 0 ? '#e8fff0' : '#ffffff';
+    x.beginPath();
+    x.roundRect(6, 6, 180, 66, 20);
+    x.moveTo(84, 72);
+    x.lineTo(96, 90);
+    x.lineTo(108, 72);
+    x.fill();
+    x.stroke();
+    x.fillStyle = '#ffffff';
+    x.fillRect(86, 66, 20, 8);
+    x.fillStyle = INK;
+    x.font = '900 28px Fredoka, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(label, 40, 37);
+    ims.forEach((im, i) => {
+      if (im.complete && im.naturalWidth) x.drawImage(im, 74 + i * 52, 13, 48, 48);
+    });
+    // tempo
+    x.fillStyle = 'rgba(42,11,92,.18)';
+    x.fillRect(22, 60, 148, 6);
+    x.fillStyle = k < 0.35 ? '#ff4d6a' : '#3fe06c';
+    x.fillRect(22, 60, 148 * k, 6);
+    return sig;
   }
 
   private spray(x: number, y: number, z: number, fx: number, fz: number): void {

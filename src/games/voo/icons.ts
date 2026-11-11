@@ -1,5 +1,5 @@
 /* Ícones SVG do "Pouso Forçado" — mesmo estilo de src/ui/icons.ts (tinta + gradientes bo-*). */
-import { ensureIconDefs } from '../../ui/icons';
+import { defsMarkup, ensureIconDefs } from '../../ui/icons';
 import { HAT_COLS } from './data';
 
 const INK = '#2a0b5c';
@@ -14,7 +14,8 @@ const stroke = (d: string, color: string, w = 4): string =>
 export type VIcon =
   | 'fire' | 'leak' | 'fuel' | 'spark' | 'pressure' | 'door' | 'turb' | 'panic' | 'bird' | 'gear' | 'check' | 'info' | 'warn' | 'yoke'
   | 'down' | 'runway' | 'ext' | 'tape' | 'water' | 'snack' | 'bag' | 'close' | 'hand' | 'throw' | 'drop' | 'cube' | 'square' | 'star'
-  | 'starOff' | 'wrench' | 'crew' | 'follow' | 'stay' | 'calm' | 'cam' | 'flaps' | 'plane' | 'up' | 'clock' | 'calendar' | 'school' | 'trophy' | 'coin';
+  | 'starOff' | 'wrench' | 'crew' | 'follow' | 'stay' | 'calm' | 'cam' | 'flaps' | 'plane' | 'up' | 'clock' | 'calendar' | 'school' | 'trophy' | 'coin'
+  | 'tray' | 'sand' | 'pasta' | 'juice' | 'milk' | 'oven' | 'cart' | 'ap' | 'serve' | 'trash' | 'orbit';
 
 const ICONS: Record<VIcon, string> = {
   fire:
@@ -73,6 +74,17 @@ const ICONS: Record<VIcon, string> = {
   school: sil('<path d="M4 18L24 8L44 18L24 28Z"/>', 'violet') + sil('<path d="M12 23V33C16 38 32 38 36 33V23L24 29Z"/>', 'cyan', 2) + stroke('M40 20V34', '#ffd34a', 3),
   trophy: sil('<path d="M14 6H34V16C34 24 30 28 24 28C18 28 14 24 14 16Z"/>', 'gold') + sil('<rect x="18" y="36" width="12" height="8" rx="2"/>', 'gold', 2) + sil('<rect x="22" y="28" width="4" height="9"/>', 'gold', 1.5),
   wrench: sil('<path d="M30 6C24 6 20 11 21 17L7 31C5 33 5 37 7 39L9 41C11 43 15 43 17 41L31 27C37 28 42 24 42 18L36 22L30 20L28 14L32 8C31 7 31 6 30 6Z"/>', 'silver') + hl('<circle cx="12" cy="36" r="2.5"/>', 0.8),
+  tray: sil('<path d="M4 26H44L40 36H8Z"/>', 'silver') + hl('<rect x="9" y="28" width="30" height="2.5" rx="1.2"/>', 0.7),
+  sand: sil('<path d="M6 30L24 10L42 30Z"/>', 'gold') + sil('<path d="M8 30C14 26 34 26 40 30C40 34 8 34 8 30Z"/>', 'green', 1.5) + sil('<path d="M7 33H41L38 39H10Z"/>', 'gold', 2),
+  pasta: sil('<path d="M6 24H42C42 34 34 40 24 40C14 40 6 34 6 24Z"/>', 'white') + stroke('M12 22C16 14 20 26 24 18S32 24 36 18', '#ffd34a', 3) + sil('<circle cx="24" cy="22" r="4"/>', 'red', 1.5),
+  juice: sil('<path d="M14 12H34L31 42H17Z"/>', 'orange') + stroke('M28 12L34 4', '#ff5cae', 3) + hl('<rect x="18" y="16" width="3" height="20" rx="1.5"/>', 0.6),
+  milk: sil('<path d="M16 16L20 8H28L32 16V42H16Z"/>', 'white') + sil('<rect x="16" y="24" width="16" height="9"/>', 'cyan', 1.5) + ink('<circle cx="24" cy="28.5" r="2"/>'),
+  oven: sil('<rect x="6" y="8" width="36" height="32" rx="5"/>', 'silver') + sil('<rect x="11" y="14" width="22" height="20" rx="3"/>', 'orange', 1.5) + ink('<circle cx="38" cy="16" r="2"/><circle cx="38" cy="24" r="2"/>') + stroke('M16 28C17 24 19 24 20 20M24 28C25 24 27 24 28 20', '#fff3a0', 2),
+  cart: sil('<rect x="8" y="8" width="30" height="28" rx="4"/>', 'violet') + stroke('M8 18H38M8 27H38', '#c9b8ff', 2.5) + stroke('M38 12H44', '#c9c9d9', 3) + ink('<circle cx="14" cy="41" r="3.5"/><circle cx="32" cy="41" r="3.5"/>'),
+  ap: sil('<rect x="4" y="10" width="40" height="28" rx="8"/>', 'green') + `<text x="24" y="31" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="17" fill="#fff" stroke="${INK}" stroke-width="1.2">AP</text>`,
+  serve: sil('<path d="M6 34H42C42 22 34 14 24 14C14 14 6 22 6 34Z"/>', 'silver') + sil('<circle cx="24" cy="12" r="3.5"/>', 'gold', 1.5) + sil('<rect x="4" y="34" width="40" height="5" rx="2.5"/>', 'rock', 1.5),
+  trash: sil('<path d="M12 14H36L33 43H15Z"/>', 'rock') + sil('<rect x="9" y="9" width="30" height="6" rx="3"/>', 'silver', 1.5) + stroke('M20 20V37M28 20V37', '#c9c9d9', 2),
+  orbit: sil('<path d="M18 28L30 22V30Z"/>', 'white') + stroke('M8 24C8 15 15 10 24 10C33 10 40 15 40 24', '#7ad8ff', 3) + stroke('M40 24C40 33 33 38 24 38C15 38 8 33 8 24', '#ffd34a', 3) + stroke('M36 18L40 24L44 18', '#7ad8ff', 2.5),
   coin: sil('<circle cx="24" cy="24" r="18"/>', 'gold') + stroke('M24 14V34', '#b36b00', 3) + hl('<circle cx="17" cy="16" r="4"/>', 0.6),
 };
 
@@ -80,6 +92,19 @@ export function vIcon(name: string, size = 32): string {
   ensureIconDefs();
   const body = ICONS[name as VIcon] ?? ICONS.info;
   return `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">${body}</svg>`;
+}
+
+/** ícone como imagem (SVG autônomo com os gradientes) — para desenhar em canvas/texturas 3D */
+const imgCache = new Map<string, HTMLImageElement>();
+export function vIconImg(name: string): HTMLImageElement {
+  let im = imgCache.get(name);
+  if (!im) {
+    im = new Image();
+    const body = ICONS[name as VIcon] ?? ICONS.info;
+    im.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="96" height="96"><defs>${defsMarkup()}</defs>${body}</svg>`)}`;
+    imgCache.set(name, im);
+  }
+  return im;
 }
 
 /** chapéu de cada papel (SVG original): quepes, boina e chapeuzinho */
