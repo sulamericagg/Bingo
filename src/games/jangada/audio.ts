@@ -19,16 +19,8 @@
  *  Sons do mundo em 3D (PannerNode) e abafados debaixo d'água.
  *  A música "abaixa" (ducking) nos sons importantes.
  * ============================================================ */
-import { audio } from '../../core/audio';
 import { save } from '../../core/storage';
-
-interface Core {
-  ctx: AudioContext | null;
-  master: GainNode;
-  sfxBus: GainNode;
-  musicBus: GainNode;
-}
-const A = audio as unknown as Core;
+import { definePack, engine, sfx, type PlayOpts, type SoundDef } from '../../audio';
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
@@ -83,16 +75,22 @@ const STORM = [
 ];
 const BPM: Record<Exclude<Song, 'off'>, number> = { day: 96, night: 70, storm: 108 };
 
-export class JAudio {
+/** sintetizador da Jangada: ao vivo (música + ambiente) ou offline (receitas do pacote 'jangada') */
+class JSynth {
   private ctx: AudioContext | null = null;
+  private offline = false;
+  private t0 = 0;
+  get out(): AudioNode {
+    return this.world!;
+  }
+  get at0(): number {
+    return this.t0;
+  }
   private mus: GainNode | null = null;
-  private duckG: GainNode | null = null;
   private songG: Record<string, GainNode> = {};
-  private fx: GainNode | null = null;
   private world: GainNode | null = null;
   private uw: BiquadFilterNode | null = null;
   private ui: GainNode | null = null;
-  private rev: ConvolverNode | null = null;
   private revIn: GainNode | null = null;
   private delay: DelayNode | null = null;
   private noise: AudioBuffer | null = null;
@@ -126,38 +124,46 @@ export class JAudio {
   /** HRTF em aparelhos bons; 'equalpower' nos fracos */
   hq = true;
 
+  /** instância offline: desenha um efeito em `out` a partir de t (cache do pacote) */
+  static offline(c: BaseAudioContext, out: AudioNode, t: number): JSynth {
+    const s = new JSynth();
+    const ctx = c as AudioContext;
+    s.ctx = ctx;
+    s.offline = true;
+    s.t0 = t;
+    const g = ctx.createGain();
+    g.connect(out);
+    s.ui = s.world = g;
+    s.revIn = ctx.createGain();
+    s.revIn.gain.value = 0.18;
+    s.revIn.connect(out);
+    s.delay = ctx.createDelay(1);
+    s.delay.delayTime.value = 0.28;
+    const fb = ctx.createGain();
+    fb.gain.value = 0.25;
+    s.delay.connect(fb).connect(s.delay);
+    fb.connect(out);
+    s.buffers();
+    return s;
+  }
   start(): void {
     if (this.ctx) return;
-    if (!A.ctx) audio.unlock();
-    const ctx = A.ctx;
+    const ctx = engine.ensure();
     if (!ctx) return;
+    engine.unlock();
     this.ctx = ctx;
-    // barramentos
+    // barramentos do motor de áudio do app (volumes, ducking, reverb)
     this.mus = ctx.createGain();
-    this.mus.gain.value = 0;
-    this.duckG = ctx.createGain();
-    this.mus.connect(this.duckG).connect(A.master);
-    this.fx = ctx.createGain();
-    this.fx.connect(A.sfxBus);
+    this.mus.connect(engine.musicIn);
     this.uw = ctx.createBiquadFilter();
     this.uw.type = 'lowpass';
     this.uw.frequency.value = 18000;
     this.uw.Q.value = 0.5;
     this.world = ctx.createGain();
-    this.world.connect(this.uw).connect(this.fx);
-    this.ui = ctx.createGain();
-    this.ui.connect(this.fx);
-    // reverb próprio curto (madeira/mar aberto) — música e mundo
-    this.rev = ctx.createConvolver();
-    this.rev.buffer = this.impulse(1.8, 3.2);
+    this.world.connect(this.uw).connect(engine.ambIn);
+    this.ui = engine.uiIn as GainNode;
     this.revIn = ctx.createGain();
-    this.revIn.gain.value = 1;
-    const wet = ctx.createGain();
-    wet.gain.value = 0.32;
-    this.revIn.connect(this.rev).connect(wet).connect(this.duckG);
-    const wetFx = ctx.createGain();
-    wetFx.gain.value = 0.22;
-    this.rev.connect(wetFx).connect(this.world);
+    this.revIn.connect(engine.musicRev);
     // eco das melodias
     this.delay = ctx.createDelay(1.5);
     this.delay.delayTime.value = (60 / 96) * 0.75;
@@ -170,12 +176,19 @@ export class JAudio {
     dw.gain.value = 0.28;
     this.delay.connect(dl).connect(fb).connect(this.delay);
     dl.connect(dw).connect(this.mus);
-    for (const s of ['day', 'night', 'storm']) {
+    for (const k of ['day', 'night', 'storm']) {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(this.mus);
-      this.songG[s] = g;
+      this.songG[k] = g;
     }
+    this.buffers();
+    this.startAmbience();
+    this.next = ctx.currentTime + 0.15;
+    this.timer = window.setInterval(() => this.tick(), 50);
+  }
+  private buffers(): void {
+    const ctx = this.ctx!;
     // ruído estéreo descorrelacionado (2 s)
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -201,19 +214,6 @@ export class JAudio {
       pw([1, 0.2, 0.06]), // 2 baixo redondo
       pw([1, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14, 0.12]), // 3 "corda" (pad)
     ];
-    this.apply();
-    this.startAmbience();
-    this.next = ctx.currentTime + 0.15;
-    this.timer = window.setInterval(() => this.tick(), 50);
-  }
-
-  /** volumes: ajustes globais + abaixa a música geral do app */
-  apply(): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.mus) return;
-    const t = ctx.currentTime;
-    A.musicBus.gain.setTargetAtTime(0, t, 0.25);
-    this.mus.gain.setTargetAtTime(save.music ? 0.5 : 0, t, 0.4);
   }
 
   stop(): void {
@@ -223,31 +223,19 @@ export class JAudio {
     if (!ctx) return;
     const t = ctx.currentTime;
     this.mus?.gain.setTargetAtTime(0, t, 0.15);
-    this.fx?.gain.setTargetAtTime(0, t, 0.1);
-    const nodes = [this.mus, this.fx, this.duckG];
+    this.world?.gain.setTargetAtTime(0, t, 0.1);
+    const nodes = [this.mus, this.world, this.uw, this.revIn];
     const srcs = this.amb?.srcs ?? [];
     window.setTimeout(() => {
-      for (const s of srcs)
+      for (const x of srcs)
         try {
-          s.stop();
+          x.stop();
         } catch {
           /* */
         }
       for (const n of nodes) n?.disconnect();
     }, 700);
     this.ctx = null;
-    audio.applySettings();
-  }
-
-  private impulse(sec: number, decay: number): AudioBuffer {
-    const ctx = this.ctx!;
-    const len = Math.floor(ctx.sampleRate * sec);
-    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let c = 0; c < 2; c++) {
-      const d = buf.getChannelData(c);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay) * (i < 40 ? i / 40 : 1);
-    }
-    return buf;
   }
 
   /* =========================== música =========================== */
@@ -549,21 +537,17 @@ export class JAudio {
 
   /* ------------------------------ ducking ------------------------------ */
   duck(amount = 0.55, hold = 0.6): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.duckG) return;
-    const t = ctx.currentTime;
-    const g = this.duckG.gain;
-    g.cancelScheduledValues(t);
-    g.setTargetAtTime(1 - amount, t, 0.05);
-    g.setTargetAtTime(1, t + hold, 0.5);
+    if (this.offline || !this.ctx) return;
+    engine.duck(amount, hold);
   }
 
   /* ============================== vinhetas ============================== */
   private now(): number {
+    if (this.offline) return this.t0;
     return this.ctx ? this.ctx.currentTime + 0.02 : 0;
   }
   private get okFx(): boolean {
-    return !!this.ctx && !this.dead && save.sound;
+    return !!this.ctx && !this.dead && (this.offline || save.sound);
   }
   /** ilha à vista: marimba + steel subindo e brilho */
   jingleIsland(): void {
@@ -646,32 +630,14 @@ export class JAudio {
   /* ============================== efeitos 3D ============================== */
   private listenerPos = { x: 0, y: 0, z: 0 };
   /** posiciona o ouvinte (câmera) */
-  listener(p: V3, fwd: V3): void {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    const L = ctx.listener;
+  listener(p: V3): void {
     this.listenerPos = { x: p.x, y: p.y, z: p.z };
-    if (L.positionX) {
-      const t = ctx.currentTime;
-      L.positionX.setTargetAtTime(p.x, t, 0.03);
-      L.positionY.setTargetAtTime(p.y, t, 0.03);
-      L.positionZ.setTargetAtTime(p.z, t, 0.03);
-      L.forwardX.setTargetAtTime(fwd.x, t, 0.03);
-      L.forwardY.setTargetAtTime(fwd.y, t, 0.03);
-      L.forwardZ.setTargetAtTime(fwd.z, t, 0.03);
-      L.upX.value = 0;
-      L.upY.value = 1;
-      L.upZ.value = 0;
-    } else {
-      (L as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(p.x, p.y, p.z);
-      (L as unknown as { setOrientation(a: number, b: number, c: number, d: number, e: number, f: number): void }).setOrientation(fwd.x, fwd.y, fwd.z, 0, 1, 0);
-    }
   }
   /** saída posicional (null = som "na cabeça") */
   private at(p: V3 | null, ref = 3, max = 70): AudioNode | null {
     const ctx = this.ctx;
     if (!ctx || !this.world) return null;
-    if (!p) return this.world;
+    if (!p || this.offline) return this.world;
     const lp = this.listenerPos;
     if (Math.hypot(p.x - lp.x, p.y - lp.y, p.z - lp.z) > max) return null;
     const pn = ctx.createPanner();
@@ -691,6 +657,7 @@ export class JAudio {
   }
   /** evita metralhar o mesmo som (ms) */
   private gate(k: string, ms: number): boolean {
+    if (this.offline) return true;
     const n = performance.now();
     if (n - (this.lastHit.get(k) ?? 0) < ms) return false;
     this.lastHit.set(k, n);
@@ -785,7 +752,7 @@ export class JAudio {
     this.noiseHit(out, t, 0.12, 0.15, 'lowpass', 1200, 300);
     this.creak(out, t + 0.12, 0.035);
   }
-  private creak(out: AudioNode, t: number, vol: number): void {
+  creak(out: AudioNode, t: number, vol: number): void {
     const g = this.ctx!.createGain();
     this.env(g, t, vol, 0.04, 0.35);
     const bp = this.ctx!.createBiquadFilter();
@@ -1328,5 +1295,259 @@ export class JAudio {
   /** fogueiras acesas (posição + nível) — chamar quando mudam */
   setFires(list: { p: V3; lv: number }[]): void {
     this.fires = list.map((f, i) => ({ p: f.p, lv: f.lv, pan: null, g: null, t: i * 0.1 }));
+  }
+}
+
+/* ============================== pacote 'jangada' ==============================
+ * Cada efeito acima vira um som do pacote (renderizado offline em variantes,
+ * normalizado e tocado pelo motor de áudio do app: sliders, ducking, 3D, limite de vozes). */
+type Draw = (s: JSynth) => void;
+const D = (draw: Draw, dur: number, o: Partial<SoundDef> = {}): SoundDef => ({ r: (v) => draw(JSynth.offline(v.c, v.out, v.t)), dur, ...o });
+const P0 = { x: 0, y: 0, z: 0 };
+const JINGLE: Partial<SoundDef> = { bus: 'ui', variants: 1, pitch: 0, gj: 0 };
+definePack({
+  id: 'jangada',
+  name: 'Jangada',
+  /** trilha própria (Maré Mansa / Lua na Jangada / Tormenta) */
+  theme: null,
+  sounds: {
+    click: D((s) => s.ui1(), 0.12, { bus: 'ui', db: -2 }),
+    throw: D((s) => s.throwHook(0.6), 0.9, { db: -2 }),
+    splashS: D((s) => s.splash(null, 0.3), 0.8, { db: -3, max: 6 }),
+    splashL: D((s) => s.splash(null, 0.85), 1.4, { max: 4 }),
+    reel: D((s) => s.reel(1), 0.06, { bus: 'ui', db: -9, pitch: 60, max: 3 }),
+    pop: D((s) => s.pop(0), 0.35, { bus: 'ui', db: 1, max: 6, cool: 0.05 }),
+    hammer2: D((s) => s.hammer(null, 2), 0.6, { pitch: 60 }),
+    hammer3: D((s) => s.hammer(null, 3), 0.8, { pitch: 60 }),
+    place: D((s) => s.place(null), 0.8),
+    creak: D((s) => s.creak(s.out, s.at0, 0.04), 0.6, { db: -8, cool: 2.5 }),
+    crack: D((s) => s.crack(null), 1.4, { duck: 0.4 }),
+    stepWood: D((s) => s.step('wood'), 0.16, { db: -9, pitch: 80, cool: 0.15 }),
+    stepSand: D((s) => s.step('sand'), 0.16, { db: -10, pitch: 80, cool: 0.15 }),
+    stepWater: D((s) => s.step('water'), 0.35, { db: -8, cool: 0.15 }),
+    jump: D((s) => s.jump(), 0.2, { db: -6 }),
+    land: D((s) => s.land(0.6), 0.25, { db: -4 }),
+    plunge: D((s) => s.plunge(), 1.4),
+    bubbles: D((s) => s.bubbles(4), 0.8, { bus: 'ui', db: -8 }),
+    stroke: D((s) => s.stroke(), 0.35, { db: -8 }),
+    swing: D((s) => s.swing(), 0.25, { bus: 'ui', db: -3 }),
+    chop: D((s) => s.chop(null, false), 0.35, { pitch: 60 }),
+    chopStone: D((s) => s.chop(null, true), 0.4, { pitch: 60 }),
+    timber: D((s) => s.timber(null), 1.6, { variants: 2 }),
+    eat: D((s) => s.eat(), 1.0, { bus: 'ui' }),
+    drink: D((s) => s.drink(), 1.0, { bus: 'ui' }),
+    ahh: D((s) => s.ahh(), 1.6, { bus: 'ui', db: -4 }),
+    sizzle: D((s) => s.sizzle(null, 1.5), 0.5, { db: -6, cool: 0.3 }),
+    boil: D((s) => s.boil(null), 0.5, { db: -6, cool: 0.4 }),
+    whoosh: D((s) => s.whoosh(null), 0.7),
+    flap: D((s) => s.flap(null), 0.6),
+    chainDown: D((s) => s.chain(null, true), 1.6, { variants: 2 }),
+    chainUp: D((s) => s.chain(null, false), 1.0, { variants: 2 }),
+    fin: D((s) => s.fin(P0), 1.0, { db: -6, cool: 1.3 }),
+    bite: D((s) => s.bite(P0), 1.3, { duck: 0.5 }),
+    chomp: D((s) => s.chomp(), 0.3, { bus: 'ui', duck: 0.6 }),
+    sharkHurt: D((s) => s.sharkHurt(P0), 1.0),
+    boo: D((s) => s.boo(null), 1.5, { cool: 1.5, rev: 0.4 }),
+    giggle: D((s) => s.giggle(null), 0.7, { cool: 1.2 }),
+    ghostScared: D((s) => s.ghostScared(null), 1.0),
+    gull: D((s) => s.gull(P0), 1.3, { db: -8, cool: 3 }),
+    thunder: D((s) => s.thunder(0), 3.5, { variants: 2, duck: 0.4 }),
+    bobber: D((s) => s.bobber(), 0.4, { bus: 'ui' }),
+    goodTap: D((s) => s.goodTap(), 1.2, { ...JINGLE }),
+    miss: D((s) => s.miss(), 0.4, { bus: 'ui' }),
+    nope: D((s) => s.nope(), 0.3, { bus: 'ui', cool: 0.25 }),
+    hurt: D((s) => s.hurt(), 0.35, { bus: 'ui', cool: 0.4 }),
+    warn: D((s) => s.warn(), 1.5, { ...JINGLE }),
+    sparkle: D((s) => s.sparkle(), 1.6, { ...JINGLE }),
+    lullaby: D((s) => s.lullaby(), 3.2, { ...JINGLE, duck: 0.9 }),
+    chime: D((s) => s.chime(), 1.6, { ...JINGLE, variants: 3, duck: 0.3 }),
+    mission: D((s) => s.mission(), 2.0, { ...JINGLE, duck: 0.5 }),
+    fanfare: D((s) => s.fanfare(), 2.4, { ...JINGLE, duck: 0.8 }),
+    island: D((s) => s.jingleIsland(), 2.7, { ...JINGLE, duck: 0.75 }),
+    dawn: D((s) => s.dawn(), 1.6, { ...JINGLE, duck: 0.6 }),
+    dusk: D((s) => s.dusk(), 1.4, { ...JINGLE, duck: 0.5 }),
+    sharkWarn: D((s) => s.sharkWarn(), 1.9, { ...JINGLE, duck: 0.6 }),
+  },
+});
+
+/** áudio do jogo: música e ambiente ao vivo (JSynth) + efeitos do pacote 'jangada' */
+export class JAudio {
+  private s = new JSynth();
+  hq = true;
+  start(): void {
+    this.s.start();
+  }
+  stop(): void {
+    this.s.stop();
+  }
+  setSong(x: Song): void {
+    this.s.setSong(x);
+  }
+  set storm(v: number) {
+    this.s.storm = v;
+  }
+  set night(v: number) {
+    this.s.night = v;
+  }
+  set underwater(v: boolean) {
+    this.s.underwater = v;
+  }
+  listener(p: V3, f: V3): void {
+    engine.setListener(p.x, p.y, p.z, f.x, f.y, f.z);
+    this.s.listener(p);
+  }
+  setFires(l: { p: V3; lv: number }[]): void {
+    this.s.setFires(l);
+  }
+  private play(name: string, p: V3 | null = null, o: PlayOpts = {}): void {
+    if (p) sfx.at('jangada.' + name, p.x, p.y, p.z, o);
+    else sfx.play('jangada.' + name, o);
+  }
+  throwHook(power: number): void {
+    this.play('throw', null, { rate: 0.85 + power * 0.3, db: -3 + power * 4 });
+  }
+  splash(p: V3 | null, size = 0.5): void {
+    this.play(size > 0.55 ? 'splashL' : 'splashS', p, { db: (size - 0.5) * 6 });
+  }
+  reel(): void {
+    this.play('reel');
+  }
+  pop(kind = 0): void {
+    this.play('pop', null, { rate: [1, 1.19, 1.42, 0.81, 1.69][((kind % 5) + 5) % 5] });
+  }
+  hammer(p: V3 | null, n = 2): void {
+    this.play(n >= 3 ? 'hammer3' : 'hammer2', p);
+  }
+  place(p: V3 | null): void {
+    this.play('place', p);
+  }
+  raftCreak(p: V3): void {
+    this.play('creak', p, { db: this.s.storm * 6 });
+  }
+  crack(p: V3 | null): void {
+    this.play('crack', p);
+  }
+  step(surface: 'wood' | 'sand' | 'water', vol = 1): void {
+    this.play(surface === 'wood' ? 'stepWood' : surface === 'sand' ? 'stepSand' : 'stepWater', null, { db: 20 * Math.log10(Math.max(0.2, vol)) });
+  }
+  jump(): void {
+    this.play('jump');
+  }
+  land(hard: number): void {
+    this.play('land', null, { db: -4 + hard * 6 });
+  }
+  plunge(): void {
+    this.play('plunge');
+  }
+  bubbles(n = 4): void {
+    this.play('bubbles', null, { db: n > 4 ? 2 : -3 });
+  }
+  stroke(): void {
+    this.play('stroke');
+  }
+  swing(): void {
+    this.play('swing');
+  }
+  chop(p: V3 | null, stone = false): void {
+    this.play(stone ? 'chopStone' : 'chop', p);
+  }
+  timber(p: V3 | null): void {
+    this.play('timber', p);
+  }
+  eat(): void {
+    this.play('eat');
+  }
+  drink(): void {
+    this.play('drink');
+  }
+  ahh(): void {
+    this.play('ahh', null, { delay: 0.9 });
+  }
+  sizzle(p: V3 | null, vol = 1): void {
+    this.play('sizzle', p, { db: 20 * Math.log10(Math.max(0.3, vol)) });
+  }
+  boil(p: V3 | null): void {
+    this.play('boil', p);
+  }
+  whoosh(p: V3 | null): void {
+    this.play('whoosh', p);
+  }
+  flap(p: V3 | null): void {
+    this.play('flap', p);
+  }
+  chain(p: V3 | null, down: boolean): void {
+    this.play(down ? 'chainDown' : 'chainUp', p);
+  }
+  fin(p: V3): void {
+    this.play('fin', p);
+  }
+  bite(p: V3): void {
+    this.play('bite', p);
+  }
+  chomp(): void {
+    this.play('chomp');
+  }
+  sharkHurt(p: V3): void {
+    this.play('sharkHurt', p);
+  }
+  boo(p: V3 | null): void {
+    this.play('boo', p);
+  }
+  giggle(p: V3 | null): void {
+    this.play('giggle', p);
+  }
+  ghostScared(p: V3 | null): void {
+    this.play('ghostScared', p);
+  }
+  thunder(dist: number): void {
+    this.play('thunder', null, { delay: Math.min(2.5, dist * 0.003), db: -dist * 0.004 });
+  }
+  bobber(): void {
+    this.play('bobber');
+  }
+  goodTap(): void {
+    this.play('goodTap');
+  }
+  miss(): void {
+    this.play('miss');
+  }
+  ui1(): void {
+    this.play('click');
+  }
+  nope(): void {
+    this.play('nope');
+  }
+  hurt(): void {
+    this.play('hurt');
+  }
+  warn(): void {
+    this.play('warn');
+  }
+  sparkle(): void {
+    this.play('sparkle');
+  }
+  lullaby(): void {
+    this.play('lullaby');
+  }
+  chime(): void {
+    this.play('chime');
+  }
+  mission(): void {
+    this.play('mission');
+  }
+  fanfare(): void {
+    this.play('fanfare');
+  }
+  jingleIsland(): void {
+    this.play('island');
+  }
+  dawn(): void {
+    this.play('dawn');
+  }
+  dusk(): void {
+    this.play('dusk');
+  }
+  sharkWarn(): void {
+    this.play('sharkWarn');
   }
 }

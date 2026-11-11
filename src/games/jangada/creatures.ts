@@ -109,7 +109,7 @@ export class Shark {
       }
       case 'approach': {
         const t = this.target!;
-        const d = sp(t[1] + t[3] * 1.6, t[2] + t[4] * 1.6, 4);
+        const d = sp(t[1] + t[3] * 2.7, t[2] + t[4] * 2.7, 4);
         this.y = c.waterH(this.x, this.z) - 0.42;
         if (d < 0.6 || this.timer <= 0) {
           this.st = 'bite';
@@ -122,9 +122,9 @@ export class Shark {
         const t = this.target!;
         const a = Math.atan2(-t[3], -t[4]);
         this.yaw += angTo(this.yaw, a) * Math.min(1, dt * 5);
-        this.x += (t[1] + t[3] * 1.35 - this.x) * Math.min(1, dt * 3);
-        this.z += (t[2] + t[4] * 1.35 - this.z) * Math.min(1, dt * 3);
-        this.y = c.waterH(this.x, this.z) - 0.12 + Math.sin(this.sw * 9) * 0.05;
+        this.x += (t[1] + t[3] * 2.1 - this.x) * Math.min(1, dt * 3);
+        this.z += (t[2] + t[4] * 2.1 - this.z) * Math.min(1, dt * 3);
+        this.y = c.waterH(this.x, this.z) - 0.02 + Math.sin(this.sw * 9) * 0.05;
         this.biteT -= dt;
         if (this.biteT <= 0) {
           this.biteT = 1.7;
@@ -204,7 +204,7 @@ export class Shark {
     this.root.visible = this.st !== 'away';
     this.root.position.set(this.x, this.y, this.z);
     const hurt = this.hurtT > 0 ? Math.sin(this.hurtT * 40) * 0.25 : 0;
-    this.root.rotation.set(this.st === 'bite' ? -0.25 : 0, this.yaw + hurt, Math.sin(this.sw * 2.2) * 0.06);
+    this.root.rotation.set(this.st === 'bite' ? -0.32 - Math.sin(Math.min(1, this.chomp) * Math.PI) * 0.15 : 0, this.yaw + hurt, Math.sin(this.sw * 2.2) * 0.06);
     this.tail.rotation.y = Math.sin(this.sw * (this.st === 'flee' ? 14 : 7)) * 0.45;
     this.jaw.rotation.x = Math.sin(Math.min(1, this.chomp) * Math.PI) * 0.6 + (this.st === 'bite' || this.st === 'hunt' ? 0.12 : 0);
   }

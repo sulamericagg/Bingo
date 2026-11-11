@@ -16,6 +16,7 @@ import { t } from '../../i18n';
 import { notify } from '../../ui/notify';
 import { FpsControls } from '../../ui/touch';
 import { Particles } from '../../3d/common/particles';
+import { FpCamera, FpController, fpTuning } from '../../3d/fpkit';
 import { PaperChar, mySpec, specOf, type PaperTool } from '../../3d/paper';
 import { JAudio } from './audio';
 import { Ghost, Shark } from './creatures';
@@ -480,6 +481,14 @@ export class World {
     this.updateFish(dt);
     this.survival(dt);
     this.updateAim();
+    // lanterna acesa mirando o Capitão Bu: ele não aguenta a luz
+    if (this.sel === 'lantern' && this.lanternOn && this.ghost.active && this.aim?.k === 'ghost') {
+      this.ghost.lit += dt;
+      if (this.ghost.lit > 1.1) {
+        this.ghost.lit = 0;
+        this.act({ o: 'ghost' });
+      }
+    }
     this.updateRemotes(dt);
     this.shark.view(dt);
     this.ghost.view(dt, (x, z) => this.waterAt(x, z));
@@ -978,34 +987,37 @@ export class World {
   }
   private controlMe(dt: number): void {
     const m = this.me;
+    // olhar e andar: kit de 1ª pessoa compartilhado (mesmo "feel" da Cozinha)
     const [lx, ly] = this.ctl.consumeLook(dt);
-    m.yaw -= lx;
-    m.pitch = Math.max(-1.35, Math.min(1.3, m.pitch - ly));
+    const fpc = this.fpc;
+    fpc.yaw = m.yaw;
+    fpc.pitch = m.pitch;
+    fpc.look(lx, ly);
+    m.yaw = fpc.yaw;
+    m.pitch = fpc.pitch;
     let [mx, my] = this.ctl.dir();
     if (this.hud.overlay) mx = my = 0;
     if (this.camMode === 2) {
       // de frente: o direcional continua relativo ao Bloop
     }
-    const fx = -Math.sin(m.yaw);
-    const fz = -Math.cos(m.yaw);
-    const rx = Math.cos(m.yaw);
-    const rz = -Math.sin(m.yaw);
     const starving = (m.food <= 0 || m.water <= 0) && DIFFS[this.diff].starve === 0;
     const sp = (m.swim ? SWIM_SPEED : SPEED) * (starving ? 0.6 : 1) * (this.fish.st !== 'idle' ? 0.5 : 1);
-    const tvx = (fx * my + rx * mx) * sp;
-    const tvz = (fz * my + rz * mx) * sp;
+    const fp = this.fp;
+    fp.tune.speed = sp;
+    fp.x = m.x;
+    fp.z = m.z;
+    fp.vx = m.vx;
+    fp.vz = m.vz;
     let k = mx || my ? ACCEL : DECEL;
     if (!m.grounded && !m.swim) k *= 0.35;
     if (m.swim) k *= 0.45;
-    m.vx += (tvx - m.vx) * Math.min(1, dt * k);
-    m.vz += (tvz - m.vz) * Math.min(1, dt * k);
-    // desliza eixo a eixo (como a Cozinha)
-    const nx = m.x + m.vx * dt;
-    if (!this.collides(nx, m.z, m.y)) m.x = nx;
-    else m.vx = 0;
-    const nz = m.z + m.vz * dt;
-    if (!this.collides(m.x, nz, m.y)) m.z = nz;
-    else m.vz = 0;
+    fp.accelOverride = m.grounded && !m.swim ? null : k;
+    fp.steer(dt, mx, my, m.yaw);
+    fp.move(dt);
+    m.x = fp.x;
+    m.z = fp.z;
+    m.vx = fp.vx;
+    m.vz = fp.vz;
     m.speedK = Math.min(1, Math.hypot(m.vx, m.vz) / SPEED);
     const water = this.waterAt(m.x, m.z);
     if (!m.swim) {
@@ -1096,7 +1108,7 @@ export class World {
       if (m.speedK > 0.3 && Math.random() < dt * 1.6) this.au.stroke();
       if (Math.random() < dt * m.speedK * 3 * this.fx.budget && m.y > float - 0.4) this.fx.emit(m.x + (Math.random() - 0.5) * 0.6, water, m.z + (Math.random() - 0.5) * 0.6, 0, 0.3, 0, { life: 0.6, size: 0.07, grow: 0.1 });
     }
-    m.bob += dt * 9 * m.speedK;
+    m.bob = this.fpc.bob;
     if (m.invT > 0) m.invT -= dt;
     // longe demais da jangada nadando: a correnteza devolve (crianças não se perdem)
     const [cx, cz] = this.raft.center();
@@ -1186,6 +1198,9 @@ export class World {
     }
   }
   private camShake = 0;
+  /** kit de 1ª pessoa: corpo (aceleração/frenagem da Cozinha, deslizar nas paredes) e câmera (balanço, tremor) */
+  private fp = new FpController(fpTuning('cozinha', { radius: RAD }), { isFree: (x, z) => !this.collides(x, z, this.me.y) });
+  private fpc = new FpCamera(fpTuning('cozinha', { eye: EYE, pitchMin: -1.35, pitchMax: 1.3 }));
   private faint(): void {
     const m = this.me;
     this.hud.fade(true);
@@ -1557,7 +1572,7 @@ export class World {
         h.tick -= dt;
         if (h.tick <= 0) {
           h.tick = 0.055;
-          this.au.reel(1);
+          this.au.reel();
         }
         if (Math.random() < dt * 8 * this.fx.budget) this.fx.emit(h.p.x, h.p.y, h.p.z, (Math.random() - 0.5) * 0.4, 0.4, (Math.random() - 0.5) * 0.4, { life: 0.5, size: 0.06, grow: 0.1 });
       }
@@ -2453,24 +2468,23 @@ export class World {
   private placeCamera(dt: number): void {
     const m = this.me;
     const cam = this.cam;
-    const bobY = Math.sin(m.bob * 2) * 0.025 * m.speedK * (m.swim ? 0.3 : 1);
-    let roll = Math.cos(m.bob) * 0.008 * m.speedK;
+    const fpc = this.fpc;
     const onRaft = !m.swim && !m.onIsl;
+    let roll = 0;
     if (onRaft) roll += this.tiltZ * 0.6;
     if (m.swim) roll += Math.sin(this.time * 1.4) * 0.03;
-    let sx = 0;
-    let sy = 0;
     if (this.camShake > 0) {
-      this.camShake = Math.max(0, this.camShake - dt * 1.6);
-      sx = (Math.random() - 0.5) * this.camShake * 0.12;
-      sy = (Math.random() - 0.5) * this.camShake * 0.12;
+      fpc.addShake(this.camShake);
+      this.camShake = 0;
     }
-    cam.rotation.order = 'YXZ';
-    const eye = new THREE.Vector3(m.x, m.y + EYE + bobY + sy, m.z);
+    fpc.yaw = m.yaw;
+    fpc.pitch = m.pitch;
+    fpc.extraRoll = roll;
+    fpc.extraPitch = onRaft ? this.tiltX * 0.4 : 0;
+    // o kit cuida do balanço (cabeça/rolagem), tremor e tranco
+    fpc.apply(cam, dt, { x: m.x, z: m.z, y: m.y, speedK: m.speedK * (m.swim ? 0.3 : 1), grounded: m.grounded || m.swim });
     if (this.camMode === 0) {
-      cam.position.copy(eye);
-      cam.position.x += sx;
-      cam.rotation.set(m.pitch + sy * 0.5 + (onRaft ? this.tiltX * 0.4 : 0), m.yaw + sx * 0.5, roll);
+      /* pronto */
     } else {
       const back = this.camMode === 1;
       const dist = back ? 3.4 : 2.7;
@@ -2493,6 +2507,7 @@ export class World {
       cam.position.y += 0.35;
       cam.lookAt(tgt.x, tgt.y + 0.2, tgt.z);
       cam.rotation.z += roll * 0.5;
+
     }
     cam.updateMatrixWorld();
   }
@@ -2569,13 +2584,7 @@ export class World {
       const on = this.sel === 'lantern' && this.lanternOn;
       this.lanternLight.intensity = on ? 1.4 + c.night * 1.6 : 0;
       this.lanternLight.position.set(m.x - Math.sin(m.yaw) * 0.8, m.y + 1.4, m.z - Math.cos(m.yaw) * 0.8);
-      if (on && this.ghost.active && this.aim?.k === 'ghost') {
-        this.ghost.lit += 1 / 60;
-        if (this.ghost.lit > 1.1) {
-          this.ghost.lit = 0;
-          this.act({ o: 'ghost' });
-        }
-      }
+
     }
     this.renderer.render(this.scene, this.cam);
     this.updateLabels();
@@ -3031,6 +3040,10 @@ export class World {
         this.me.pitch = pitch;
       },
       setTod: (v: number) => (this.tod = v),
+      /** avança o tempo do jogo sem desenhar (testes) */
+      ff: (sec: number) => {
+        for (let t = 0; t < sec; t += 0.05) this.step(0.05);
+      },
       setStorm: (on: boolean) => {
         this.stormOn = on;
         this.storm = on ? 1 : 0;
@@ -3046,8 +3059,8 @@ export class World {
         if (!e) return;
         this.shark.target = e;
         this.shark.st = 'bite';
-        this.shark.x = e[1] + e[3] * 1.35;
-        this.shark.z = e[2] + e[4] * 1.35;
+        this.shark.x = e[1] + e[3] * 2.1;
+        this.shark.z = e[2] + e[4] * 2.1;
         this.shark.yaw = Math.atan2(-e[3], -e[4]);
         this.shark.timer = 30;
         return e;

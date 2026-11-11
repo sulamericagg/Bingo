@@ -22,6 +22,8 @@ import { fillRoom, fillStart, type RoomHandle } from './lobby';
 import { CODE_ALPHA, MAX_PLAYERS, codeFromRoom, createNet, newCode, type JNet, type Me } from './net';
 import { jgSave, persist } from './save';
 import { injectCss } from './style';
+import { enterGame } from '../../audio';
+import './audio';
 import { World } from './world';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -38,6 +40,8 @@ function webglOk(): boolean {
 
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   injectCss();
+  // pacote de sons 'jangada' (definido em ./audio): liga já, mesmo se o hub avisou antes do chunk carregar
+  enterGame('jangada');
   const el = document.createElement('div');
   el.className = 'jg-root';
   root.appendChild(el);

@@ -17,7 +17,7 @@ const CSS = `
 .jg-day small{font-weight:600;opacity:.8;font-size:12px}
 .jg-cam{margin-left:auto;display:flex;align-items:center;gap:4px;padding:0 10px 0 6px;width:auto;font:700 13px/1 inherit;color:#fff}
 /* objetivos */
-.jg-obj{position:absolute;top:calc(var(--st) + 52px);left:var(--sl);max-width:min(300px,42vw);background:rgba(255,250,235,.94);color:var(--ink);border-radius:14px;padding:7px 9px;box-shadow:0 3px 10px rgba(0,0,0,.25);font:600 13px/1.2 inherit;transition:transform .25s, opacity .25s;transform-origin:top left;cursor:pointer}
+.jg-obj{position:absolute;top:calc(var(--st) + 52px);right:var(--sr);max-width:min(300px,42vw);background:rgba(255,250,235,.94);color:var(--ink);border-radius:14px;padding:7px 9px;box-shadow:0 3px 10px rgba(0,0,0,.25);font:600 13px/1.2 inherit;transition:transform .25s, opacity .25s;transform-origin:top right;cursor:pointer}
 .jg-obj .r{display:flex;align-items:center;gap:7px;padding:2px 0}
 .jg-obj .r b{flex:1;min-width:0}
 .jg-obj .r em{font-style:normal;font-weight:800;color:#2a8a4a;white-space:nowrap}
