@@ -103,15 +103,16 @@ export class History {
   undo(d: Creation): string | null {
     const c = this.undoStack.pop();
     if (!c) return null;
-    this.apply(d, c, false);
+    // empilha antes de aplicar: quem ouve a mudança já vê Refazer habilitado
     this.redoStack.push(c);
+    this.apply(d, c, false);
     return c.label;
   }
   redo(d: Creation): string | null {
     const c = this.redoStack.pop();
     if (!c) return null;
-    this.apply(d, c, true);
     this.undoStack.push(c);
+    this.apply(d, c, true);
     return c.label;
   }
 
