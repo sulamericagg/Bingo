@@ -74,6 +74,17 @@ export interface MapBuild {
   /** atualização opcional de animações do cenário (ventilador, TV) */
   update?(dt: number): void;
   dispose(): void;
+  /**
+   * OPCIONAL — clima do mapa: cor de fundo e neblina linear que o núcleo aplica na cena
+   * (scene.background / scene.fog). Sem isto, o núcleo usa o seu padrão.
+   */
+  atmosphere?: { background: string; fog?: { color: string; near: number; far: number } };
+  /**
+   * OPCIONAL — corte por sala (desempenho): o núcleo chama antes de renderizar uma vista
+   * (jogador ou câmera de segurança) com a posição da câmera; o mapa esconde as salas que
+   * não se veem dali. Sem chamar, tudo fica visível (correto, só mais caro).
+   */
+  visibleFrom?(pos: Vec3): void;
 }
 
 export interface MapDef {
