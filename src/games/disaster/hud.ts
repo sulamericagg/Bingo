@@ -28,7 +28,7 @@ const CSS = `
 .dz-phase b{font-size:18px;min-width:2.2em;text-align:right}
 .dz-alive{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .dz-chip{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 8px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:4px}
-.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) var(--edge-b,14px) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
+.dz-ctrl{position:absolute;left:0;right:0;bottom:0;padding:0 var(--edge-r,14px) max(var(--edge-b,14px),calc(var(--safe-bot,0px) + 10px)) var(--edge-l,14px);display:flex;justify-content:flex-end;align-items:flex-end;pointer-events:none}
 .dz-ctrl.lefty{justify-content:flex-start}
 .dz-solo{display:flex;justify-content:center;margin:4px 0 2px}
 .dz-pad{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(30,15,70,.5);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;touch-action:none}
@@ -63,6 +63,10 @@ export class Hud {
   joy: Joystick;
   private offCtl: () => void;
   private lastNum = -1;
+  /** dedos no botão pular */
+  private jumpIds = new Set<number>();
+  private syncJump: () => void = () => {};
+  private offWin: () => void = () => {};
   private lastAlive = '';
 
   constructor(g: DisasterGame) {
@@ -109,56 +113,45 @@ export class Hud {
       audio.click();
       g.requestExit();
     });
-    // Botões de toque com multitoque: cada botão guarda os dedos (pointerId) que o seguram.
-    // Andar + pular ao mesmo tempo funciona; arrastar o dedo da seta esquerda para a direita
-    // troca de direção; dedo que sai para longe do botão, é cancelado ou perde a captura solta.
-    const pads: { el: HTMLElement; k: 'l' | 'r' | 'j'; ids: Set<number> }[] = [];
-    const set = (pd: (typeof pads)[number]) => {
-      g.touch[pd.k] = pd.ids.size > 0;
-      pd.el.classList.toggle('on', pd.ids.size > 0);
+    // Botão PULAR (multitoque com o joystick). Cada dedo que encosta é um pulo novo (borda), mesmo
+    // que o "soltar" de um dedo anterior tenha se perdido; o estado "segurando" (pulo mais alto,
+    // subir escada) vem do conjunto de dedos e é limpo por qualquer pointerup/cancel na janela,
+    // por pausa, perda de foco e app em segundo plano — nada de pulo preso.
+    const jp = el.querySelector('.dz-pad.jump') as HTMLElement;
+    jp.dataset.dzJump = '';
+    const ids = this.jumpIds;
+    const sync = () => {
+      g.touch.j = ids.size > 0;
+      jp.classList.toggle('on', ids.size > 0);
     };
-    const near = (el: HTMLElement, x: number, y: number, m: number) => {
-      const r = el.getBoundingClientRect();
-      return x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m;
+    this.syncJump = sync;
+    const down = (e: PointerEvent) => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      audio.unlock();
+      ids.add(e.pointerId);
+      g.jumpTap = true;
+      try {
+        jp.setPointerCapture(e.pointerId);
+      } catch {
+        /* dedo já saiu */
+      }
+      sync();
     };
-    const pad = (sel: string, k: 'l' | 'r' | 'j') => {
-      const p = el.querySelector(sel) as HTMLElement;
-      const pd = { el: p, k, ids: new Set<number>() };
-      pads.push(pd);
-      p.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        audio.unlock();
-        pd.ids.add(e.pointerId);
-        if (k === 'j') g.jumpTap = true;
-        try {
-          p.setPointerCapture(e.pointerId);
-        } catch {
-          /* */
-        }
-        set(pd);
-      });
-      p.addEventListener('pointermove', (e) => {
-        if (!pd.ids.has(e.pointerId) || k === 'j') return;
-        if (near(p, e.clientX, e.clientY, 28)) return;
-        // deslizou para a outra seta?
-        pd.ids.delete(e.pointerId);
-        set(pd);
-        for (const o of pads) {
-          if (o === pd || o.k === 'j' || !near(o.el, e.clientX, e.clientY, 10)) continue;
-          o.ids.add(e.pointerId);
-          set(o);
-        }
-      });
-      const up = (e: PointerEvent) => {
-        for (const o of pads) {
-          if (o.ids.delete(e.pointerId)) set(o);
-        }
-      };
-      p.addEventListener('pointerup', up);
-      p.addEventListener('pointercancel', up);
-      p.addEventListener('lostpointercapture', up);
+    const up = (e: PointerEvent) => {
+      if (ids.delete(e.pointerId)) sync();
     };
-    pad('.dz-pad.jump', 'j');
+    jp.addEventListener('pointerdown', down);
+    jp.addEventListener('contextmenu', (e) => e.preventDefault());
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) jp.addEventListener(ev, up);
+    // o soltar pode chegar em outro elemento (captura perdida): ouve na janela também
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    this.offWin = () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+    };
   }
 
   roundCard(): void {
@@ -244,6 +237,7 @@ export class Hud {
 
   summary(): void {
     const g = this.g;
+    if (this.modalOpen()) return;
     const m = document.createElement('div');
     m.className = 'dz-modal';
     const canDouble = g.sessionCoins > 0 && rewardedAvailable();
@@ -288,7 +282,19 @@ export class Hud {
     });
   }
 
+  /** resumo da sessão aberto (o jogo fica pausado embaixo) */
+  modalOpen(): boolean {
+    return !!this.el.querySelector('.dz-modal');
+  }
+
+  /** solta o botão pular (pausa, foco perdido, toque cancelado) */
+  releaseJump(): void {
+    this.jumpIds.clear();
+    this.syncJump();
+  }
+
   destroy(): void {
+    this.offWin();
     this.joy.destroy();
     this.offCtl();
     clearNotify();
