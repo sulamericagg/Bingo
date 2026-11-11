@@ -14,6 +14,10 @@
   },
   // Hash PBKDF2 da senha do painel admin (seguro em público). O segredo ADMIN_PASSWORD, se existir, tem prioridade.
   "vars": { "ADMIN_PASSWORD_HASH": "pbkdf2:100000:bc2d3d18e294745b5ddf0c25cae18ddf:711891b6519b683eef6ccfbf4d9ad2a1ef77e91ebf8cdf98b132a1e16050f4c1" },
+  // Workers AI: o Whisper transcreve as vozes dos filmes enviados para a TV Bloop antes da moderação
+  // (server/voice-mod.ts, docs/LOJA-TV.md). No `wrangler dev` o binding chama a nuvem (precisa de login);
+  // o teste local usa AI_STT_MOCK=device no .dev.vars.
+  "ai": { "binding": "AI" },
   "kv_namespaces": [
     // sem "id": o banco KV é criado automaticamente na conta no primeiro deploy
     { "binding": "DATA" }

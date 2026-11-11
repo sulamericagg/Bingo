@@ -205,3 +205,111 @@ export function maskLongText(input: unknown, max = 1000, extra: Extra = EMPTY): 
   }
   return { text: text.trim(), filtered, pii };
 }
+
+/* ---------------- varredura com gravidade (TV Bloop: falas, balões e transcrições de voz) ---------------- */
+
+/**
+ * Palavras que dependem do contexto ("que feio!", "burro de carga", "dumb robot"): não recusam sozinhas —
+ * vão para o moderador humano (e para a IA, se ligada) com o destaque. Tudo o mais da lista é grave.
+ */
+const MILD = new Set(
+  'idiota idiotas imbecil babaca burro burra otario otaria trouxa feio feia lixo nojento nojenta bunda bundao dumb stupid idiot idiots moron estupido estupida'
+    .split(/\s+/)
+    .map(normWord),
+);
+
+const NUM_WORDS: Record<string, number> = {
+  zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, meia: 6, sete: 7, oito: 8, nove: 9,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  cero: 0, uno: 1, dos: 2, cuatro: 4, siete: 7, ocho: 8, nueve: 9,
+};
+
+/** Número de telefone falado por extenso ("nove nove oito sete...") — contar 1, 2, 3... em ordem não conta. */
+function spelledNumber(low: string): string | null {
+  const toks = low.split(/[^a-z0-9]+/).filter(Boolean);
+  let run: { v: number; w: string }[] = [];
+  const check = (): string | null => {
+    const digits = run.reduce((n, x) => n + (x.v >= 10 ? String(x.v).length : 1), 0);
+    if (digits < 7) return null;
+    const vals = run.filter((x) => x.v < 10).map((x) => x.v);
+    const counting = vals.length >= 3 && vals.every((v, i) => i === 0 || v === vals[i - 1] + 1);
+    return counting ? null : run.map((x) => x.w).join(' ');
+  };
+  for (const t of [...toks, '']) {
+    const v = /^\d+$/.test(t) ? Number(t) : NUM_WORDS[t];
+    if (v !== undefined && t) run.push({ v, w: t });
+    else {
+      const hit = check();
+      if (hit) return hit;
+      run = [];
+    }
+  }
+  return null;
+}
+
+const SCHOOL_LOW = /\b(escola|colegio|school|instituto|creche)\s+(estadual|municipal|particular|publica|emef|emei|e\.?\s?e\.?)\b/;
+const SCHOOL_CAP = /\b(?:[Ee]scola|[Cc]ol[ée]gio|[Ss]chool|[Ii]nstituto)\s+(?:(?:d[aoe]s?|of)\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]+/;
+
+export type ScanLevel = 'ok' | 'mild' | 'bad' | 'pii';
+export interface ScanResult {
+  level: ScanLevel;
+  /** trechos encontrados (para destacar no painel) */
+  hits: string[];
+}
+
+/**
+ * Varredura de um texto qualquer (fala, balão, transcrição de voz) SEM mascarar: diz a gravidade e o que achou.
+ *  pii  = dado pessoal (telefone, e-mail, link, @perfil, endereço, escola, "meu zap"...)
+ *  bad  = palavrão/ofensa/termo sexual (inclui disfarces)
+ *  mild = insulto que depende do contexto (vai para revisão humana com destaque)
+ */
+export function scanText(input: unknown, extra: Extra = EMPTY): ScanResult {
+  const raw = String(input ?? '')
+    .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028-\u202f\ufeff<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 4000);
+  if (!raw) return { level: 'ok', hits: [] };
+  const low = stripAccents(raw.toLowerCase());
+  const hits: string[] = [];
+  let level: ScanLevel = 'ok';
+  const rank: Record<ScanLevel, number> = { ok: 0, mild: 1, bad: 2, pii: 3 };
+  const up = (l: ScanLevel, h: string) => {
+    if (rank[l] > rank[level]) level = l;
+    if (h && !hits.includes(h)) hits.push(h.slice(0, 60));
+  };
+  // dados pessoais
+  for (const r of PII) {
+    const m = r.exec(low);
+    if (m) up('pii', m[0].trim());
+  }
+  const sp = spelledNumber(low);
+  if (sp) up('pii', sp);
+  const sl = SCHOOL_LOW.exec(low) ?? SCHOOL_CAP.exec(raw);
+  if (sl) up('pii', sl[0]);
+  for (const tok of low.split(/[^a-z0-9@$!|+]+/).filter(Boolean)) if (CONTACT_WORDS.has(normWord(tok))) up('pii', tok);
+  const compact = collapse(leet(low).replace(/[^a-z]/g, ''));
+  for (const s of CONTACT_STEMS) if (compact.includes(s)) up('pii', s);
+  // palavras inteiras
+  for (const p of raw.split(/\s+/)) {
+    const pieces = [p, ...p.split(/[.,;:?¿¡!"'()[\]{}\-_/\\*~^]+/).filter(Boolean)];
+    for (const x of pieces) {
+      const n = normWord(x);
+      if (!isBad(n, extra)) continue;
+      const base = MILD.has(n) || (n.endsWith('s') && MILD.has(n.slice(0, -1)));
+      up(base && !extra.words.has(n) ? 'mild' : 'bad', x.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, ''));
+      break;
+    }
+  }
+  // letras separadas ("p u t a") e raízes grudadas ("c4r4lh0")
+  let run = '';
+  for (const tok of [...low.split(/[^a-z0-9@$!|+]+/).filter(Boolean), '']) {
+    if (tok.length === 1) run += tok;
+    else {
+      if (run.length >= 2 && isBad(normWord(run), extra)) up('bad', run);
+      run = '';
+    }
+  }
+  for (const s of [...baseStems, ...extra.stems]) if (compact.includes(s)) up('bad', s);
+  return { level, hits };
+}

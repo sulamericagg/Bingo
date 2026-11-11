@@ -76,7 +76,29 @@ export interface TvClip {
   mime: string;
   b64: string;
   dur: number;
+  /** transcrição feita no aparelho durante a gravação (melhor esforço; o servidor transcreve de novo com a IA) */
+  tx?: string;
 }
+
+/* ---------------- moderação por IA das vozes e balões (antes da fila humana) ---------------- */
+
+/** Uma fala apontada pela IA (n = número da fala no filme, 1..). */
+export interface TvAiLine {
+  id: string;
+  n: number;
+  text: string;
+}
+/**
+ * Motivo da recusa automática: palavra proibida / dado pessoal na VOZ gravada ou no BALÃO,
+ * ou a IA de texto (Claude) achou bullying/conteúdo sexual/etc.
+ */
+export type TvAiWhy = 'voice-bad' | 'voice-pii' | 'text-bad' | 'text-pii' | 'ai';
+export interface TvAiReject {
+  why: TvAiWhy;
+  lines: TvAiLine[];
+}
+/** De onde veio a transcrição das vozes: IA da Cloudflare, aparelho, simulação (teste local) ou nenhuma. */
+export type TvSttSrc = 'whisper' | 'device' | 'mock' | 'none';
 export interface TvPayload {
   project: unknown;
   clips: Record<string, TvClip>;
