@@ -1018,7 +1018,11 @@ export class NetSession {
     const g = this.g;
     if (!g || document.hidden) return false;
     try {
+      // foto sem a mão/ferramenta da 1ª pessoa (tudo que anda presa na câmera)
+      const kids = g.camera.children.filter((c) => c.visible);
+      for (const c of kids) c.visible = false;
       g.renderer.render(g.scene, g.camera);
+      for (const c of kids) c.visible = true;
       const src = g.renderer.domElement;
       const W = 320;
       const H = 180;
