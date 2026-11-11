@@ -1,16 +1,29 @@
-// node scripts/dev/shoot-fell.mjs <outDir> [tier] — sequência de quadros de uma árvore sendo derrubada (mundo aberto)
+// node scripts/dev/shoot-fell.mjs <outDir> [tier] [world|fl3d] — sequência de quadros de uma árvore sendo derrubada
 // (requer: npx vite --port 4317)
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const out = process.argv[2] ?? '.';
 const tier = process.argv[3] ?? '2';
+const mode = process.argv[4] ?? 'world';
 const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.error('PAGEERROR', e.message));
-await page.goto(`http://localhost:4317/scripts/dev/nature.html?g=world&tier=${tier}&biome=0&hud=0&hand=0&up=1.8&pitch=-0.14`);
+await page.goto(mode === 'fl3d' ? `http://localhost:4317/scripts/dev/nature.html?g=fl3d&tier=${tier}&x=58` : `http://localhost:4317/scripts/dev/nature.html?g=world&tier=${tier}&biome=0&hud=0&hand=0&up=1.8&pitch=-0.14`);
 await page.waitForFunction(() => document.title === 'ready', null, { timeout: 60000 });
 await page.waitForTimeout(4000);
-await page.evaluate(() => {
+if (mode === 'fl3d')
+  await page.evaluate(() => {
+    const s = window.game.sim;
+    let best = null;
+    for (const tr of s.trees) if (tr.state === 0 && tr.x > s.me.x + 4 && (!best || Math.abs(tr.x - s.me.x - 9) < Math.abs(best.x - s.me.x - 9))) best = tr;
+    s.me.target = best.id;
+    s.hitTree(best, 1e6, s.me.x, best.z + 1.5 * Math.sign(best.z || 1), 0);
+    // olha para a árvore (um pouco à esquerda dela)
+    const v = window.game.view;
+    v.yaw = Math.atan2(best.x - s.me.x, best.z - s.me.z) - 0.35;
+    v.pitch = -0.05;
+  });
+else await page.evaluate(() => {
   const g = window.game;
   const tr = g.world.treeNear(g.px, g.pz, 40);
   const p = g.world.treePos(tr, { set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } });
