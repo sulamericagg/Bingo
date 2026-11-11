@@ -12,7 +12,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
-import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
+import { BlobShadows, GrassField, LeafBurst, hitTreeShake, natureTick, windTime, NL, TL, lerpSplat, setSplat, splatAttributes, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
   PB,
@@ -98,6 +98,10 @@ interface Fall {
   t: number;
   dx: number;
   dz: number;
+  /** já bateu no chão */
+  hit: boolean;
+  h: number;
+  col: string;
 }
 
 const _m = new THREE.Matrix4();
@@ -111,16 +115,29 @@ const UP = new THREE.Vector3(0, 1, 0);
 const lerpC = (a: string, b: string, k: number) => _c.set(a).lerp(_c2.set(b), k);
 const smooth = (x: number) => x * x * (3 - 2 * x);
 const _gc = new THREE.Color();
+const _gw = new Float32Array(NL);
+/** cor das folhas por tipo de árvore (chuva de folhas) */
+const TREE_LEAF = ['#56b85a', '#3a8a5c', '#5a6aa0', '#b4e070'];
 const _gc2 = new THREE.Color();
 const TRAILS = [0.4, 2.5, 4.6];
 /** cor do chão em (x,z) e quanto cabe de grama (0 nas trilhas e no acampamento) */
-function groundColor(x: number, z: number, c: THREE.Color): number {
+function groundColor(x: number, z: number, c: THREE.Color, w: Float32Array | null = null): number {
   const d = Math.hypot(x, z);
+  if (w) {
+    w.fill(0);
+    w[TL.grass] = 1;
+    // chão de folhas em manchas e na mata funda
+    const ff = Math.sin(x * 0.09 + 0.7) * Math.sin(z * 0.08 - 1.1);
+    lerpSplat(w, TL.forestFloor, Math.max(0, ff - 0.2) * 1.2 + (d > 55 ? Math.min(0.8, (d - 55) / 40) : 0));
+  }
   const n = Math.sin(x * 0.13) * Math.sin(z * 0.11) * 0.5 + Math.sin(x * 0.37 + z * 0.29) * 0.25;
   c.set('#5aa64a').lerp(_gc2.set('#3f8a40'), 0.5 + n * 0.5);
   // manchas de capim mais claro/seco
   const dry = Math.sin(x * 0.071 + 1.3) * Math.sin(z * 0.063 - 0.4);
-  if (dry > 0.45) c.lerp(_gc2.set('#9ab44a'), (dry - 0.45) * 0.9);
+  if (dry > 0.45) {
+    c.lerp(_gc2.set('#9ab44a'), (dry - 0.45) * 0.9);
+    if (w) lerpSplat(w, TL.dryGrass, (dry - 0.45) * 1.2);
+  }
   let k = 1;
   const ang = Math.atan2(z, x);
   let trail = 1e9;
@@ -128,8 +145,16 @@ function groundColor(x: number, z: number, c: THREE.Color): number {
   if (trail < 2.2 && d > CAMP_R - 2) {
     c.lerp(_gc2.set('#a88a5a'), 0.55 * (1 - trail / 2.2));
     k = Math.min(k, Math.max(0, (trail - 1.1) / 1.1));
+    if (w) lerpSplat(w, TL.dirt, 0.9 * (1 - trail / 2.2));
   }
-  if (d < CAMP_R - 1) c.lerp(_gc2.set('#b8946a'), smooth(Math.min(1, (CAMP_R - 1 - d) / 4)) * 0.75);
+  if (d < CAMP_R - 1) {
+    const s = smooth(Math.min(1, (CAMP_R - 1 - d) / 4));
+    c.lerp(_gc2.set('#b8946a'), s * 0.75);
+    if (w) {
+      lerpSplat(w, TL.dirt, s);
+      if (d < 3.2) lerpSplat(w, TL.gravel, Math.min(1, (3.2 - d) / 1.2) * 0.8);
+    }
+  }
   if (d < CAMP_R + 1.5) k = Math.min(k, Math.max(0, (d - CAMP_R + 1) / 2.5) * 0.7);
   if (d > 60) c.lerp(_gc2.set('#2f5a48'), Math.min(1, (d - 60) / 50) * 0.6);
   if (d > WORLD_R) c.lerp(_gc2.set('#14222a'), 0.8);
@@ -159,6 +184,7 @@ export class View {
   private treeIdx: number[][] = [];
   private farTrees: THREE.InstancedMesh[] = [];
   private cards: THREE.InstancedMesh[] = [];
+  private leafFx: LeafBurst;
   private cardMat = leafCardMat({ amp: 0.004, y0: 1, rustle: 0.03, wrap: 0.45 });
   private stumps: THREE.InstancedMesh;
   private nodes: THREE.InstancedMesh[] = [];
@@ -291,7 +317,7 @@ export class View {
       this.trees.push(im);
       this.treeIdx.push([]);
       // cartões de folhas na borda das copas (Médio/Alto)
-      const cg = tier >= 2 ? natureLeafCards(im.geometry, 10, k + 3) : null;
+      const cg = tier >= 2 ? natureLeafCards(im.geometry, 5, k + 3) : null;
       const cm = new THREE.InstancedMesh(cg ?? new THREE.BufferGeometry(), this.cardMat, Math.max(1, n));
       cm.count = 0;
       cm.frustumCulled = false;
@@ -327,6 +353,8 @@ export class View {
     const nq = natureQ(tier);
     this.grass = new GrassField(sc, this.grassSrc, nq.grass, { width: 1.7, height: 1.1 });
     this.blobs = new BlobShadows(sc, 256, nq.blobAlpha);
+    this.leafFx = new LeafBurst(sc, 160);
+    this.leafFx.ground = (x, z) => this.sim.w.height(x, z);
 
     // fogueira
     this.fireBase = new THREE.Mesh(fireBaseGeo(false, false), vcMat());
@@ -424,19 +452,20 @@ export class View {
     const g = new THREE.PlaneGeometry(S, S, N, N).rotateX(-Math.PI / 2);
     const pa = g.getAttribute('position');
     const col: number[] = [];
+    const SP = splatAttributes(g, pa.count);
     const c = new THREE.Color();
     for (let i = 0; i < pa.count; i++) {
       const x = pa.getX(i);
       const z = pa.getZ(i);
       const d = Math.hypot(x, z);
-      groundColor(x, z, c);
+      groundColor(x, z, c, _gw);
       col.push(c.r, c.g, c.b);
+      setSplat(SP, i, _gw);
       pa.setY(i, d > WORLD_R + 2 ? (d - WORLD_R - 2) * 0.25 : this.sim.w.height(x, z));
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
-    const gm = new THREE.MeshLambertMaterial({ vertexColors: true });
-    groundDetail(gm, { amount: 0.42, scale: 0.55, macro: this.tierNow >= 1 });
+    const gm = terrainMaterial({ tier: this.tierNow });
     return new THREE.Mesh(g, gm);
   }
 
@@ -769,17 +798,21 @@ export class View {
         this.parts.burst(x, 1, z, 8, 'chunk', '#c08a52', 2.5);
         this.parts.burst(x, 2.6, z, 5, 'chunk', '#4fb05a', 1.5);
         if (e.n !== undefined) this.shake.set(e.n, 0.3);
+        hitTreeShake(x, z, 1);
         break;
       case 'fell': {
         const t = this.sim.w.trees[e.n ?? -1];
         if (!t) break;
         const m = new THREE.Mesh(this.trees[t.k].geometry, this.trees[t.k].material as THREE.Material);
-        m.position.set(t.x, this.sim.w.height(t.x, t.z) - 0.15, t.z);
+        if (this.cards[t.k].visible) m.add(new THREE.Mesh(this.cards[t.k].geometry, this.cardMat));
+        // cai a partir do corte (o toco fica)
+        m.position.set(t.x, this.sim.w.height(t.x, t.z) + 0.3 * t.s, t.z);
         m.scale.setScalar(t.s);
         this.scene.add(m);
         const p = this.sim.players.find((q) => q.id === e.p);
         const a = p ? Math.atan2(t.x - p.x, t.z - p.z) : 0;
-        this.falls.push({ m, t: 0, dx: Math.sin(a), dz: Math.cos(a) });
+        this.falls.push({ m, t: 0, dx: Math.sin(a), dz: Math.cos(a), hit: false, h: 4.6 * t.s, col: TREE_LEAF[t.k] });
+        this.parts.burst(x, 0.5, z, 10, 'chunk', '#ffe2b0', 3);
         this.parts.burst(x, 0.5, z, 14, 'poof', '#e8dcc0', 2);
         this.lastBuild.ver = -1;
         break;
@@ -871,15 +904,28 @@ export class View {
     }
     for (const f of this.falls) {
       f.t += dt;
-      const a = Math.min(Math.PI / 2, f.t * f.t * 2.4);
+      // range (0,3 s) → queda acelerando → quique ao bater → some em folhas
+      const tt = Math.max(0, f.t - 0.3);
+      let a = f.t < 0.3 ? f.t * 0.3 + Math.sin(f.t * 40) * 0.02 : Math.min(Math.PI / 2, 0.09 + tt * tt * 3);
+      if (a >= Math.PI / 2 && !f.hit) {
+        f.hit = true;
+        const cx = f.m.position.x + f.dx * f.h * 0.65;
+        const cz = f.m.position.z + f.dz * f.h * 0.65;
+        this.leafFx.emit(this.q.particles >= 0.8 ? 50 : 26, cx, this.sim.w.height(cx, cz) + 0.7, cz, f.h * 0.25, f.col, 3);
+        this.parts.burst(cx, 0.4, cz, 12, 'poof', '#e8dcc0', 2);
+      }
+      if (f.hit) a -= Math.abs(Math.sin((f.t - 0.3 - Math.sqrt((Math.PI / 2 - 0.09) / 3)) * 14)) * 0.08 * Math.max(0, 1 - (f.t - 0.95) * 3);
       f.m.quaternion.setFromAxisAngle(_v.set(f.dz, 0, -f.dx), a);
-      if (f.t > 1.3) f.m.scale.multiplyScalar(1 - dt * 4);
+      if (f.t > 1.4) f.m.scale.multiplyScalar(1 - dt * 4);
     }
     if (this.falls.some((f) => f.t > 1.9)) {
       for (const f of this.falls) if (f.t > 1.9) this.scene.remove(f.m);
       this.falls = this.falls.filter((f) => f.t <= 1.9);
     }
 
+    this.leafFx.update(dt);
+    natureTick(dt);
+    windTime.value = this.time;
     this.updLighting(dt, me);
     this.updPlayers(dt, me?.id ?? '');
     this.updCreatures(dt);
@@ -1122,6 +1168,7 @@ export class View {
   destroy(): void {
     this.grass.dispose();
     this.blobs.dispose();
+    this.leafFx.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose?.();

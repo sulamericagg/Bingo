@@ -13,7 +13,7 @@ import type { WorldSave } from './wsave';
 import { wTreeGeometry } from './wmodels';
 import { stumpGeometry } from '../fps/models';
 import type { Tier } from '../../../core/quality';
-import { BlobShadows, GrassField, groundDetail, hash2, natureBush, natureFern, natureFlowers, leafCardMat, natureLeafCards, natureMat, natureQ, natureRock, type GrassSource, type NatureQ } from '../../../3d/nature';
+import { BlobShadows, GrassField, hash2, terrainMaterial, natureBush, natureFern, natureFlowers, leafCardMat, natureLeafCards, natureMat, natureQ, natureRock, type GrassSource, type NatureQ } from '../../../3d/nature';
 import { Solids, type SBox } from './collide';
 import { VoxWorld } from './voxworld';
 
@@ -120,6 +120,7 @@ export class World {
   readonly gen: WorldGen;
   readonly chunks = new Map<string, Chunk>();
   readonly groundMat: THREE.MeshLambertMaterial;
+  readonly terrainMat: THREE.MeshLambertMaterial;
   private treeMat = natureMat({ amp: 0.0022, y0: 1, rustle: 0.035, wrap: 0.45 });
   private cardMat = leafCardMat({ amp: 0.0022, y0: 1, rustle: 0.035, wrap: 0.45 });
   private decoMat = natureMat({ amp: 0.05, y0: 0.1, rustle: 0, tintGray: true, wrap: 0.35 });
@@ -171,14 +172,15 @@ export class World {
   ) {
     this.gen = new WorldGen(save.seed, save.gen);
     this.nq = natureQ(tier);
-    this.groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    groundDetail(this.groundMat, { amount: 0.42, scale: 0.55, macro: this.nq.macro });
+    // chão com texturas misturadas por vértice (grama, terra, pedra, areia...), também nas malhas de volume (cavernas abertas)
+    this.terrainMat = terrainMaterial({ tier });
+    this.groundMat = this.terrainMat;
     this.vox = new VoxWorld(this);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {
       const tg = wTreeGeometry(s, 0, q.lite);
       this.nearT.push(new Inst(tg, this.treeMat, scene, cap, true));
-      const cg = natureLeafCards(tg, 10, s + 1);
+      const cg = natureLeafCards(tg, 5, s + 1);
       this.nearC.push(cg ? new Inst(cg, this.cardMat, scene, cap, false) : null);
       this.farT.push(new Inst(wTreeGeometry(s, 1, true), this.treeMat, scene, cap * 2, false));
     }
@@ -344,7 +346,7 @@ export class World {
         lodStep = step;
       }
     }
-    if (lodC && (this.loadedNow === 0 || lodD <= 1)) lodC.buildMesh(lodStep, this.groundMat);
+    if (lodC && (this.loadedNow === 0 || lodD <= 1)) lodC.buildMesh(lodStep, this.terrainMat);
     // crescimento das mudas
     for (const c of this.chunks.values()) {
       for (let i = 0; i < c.nt; i++) {
@@ -418,7 +420,7 @@ export class World {
         }
     }
     const d = Math.max(Math.abs(cx - this.pcx), Math.abs(cz - this.pcz));
-    const m = c.buildMesh(d <= 1 ? 1 : d <= 2 ? 2 : 4, this.groundMat);
+    const m = c.buildMesh(d <= 1 ? 1 : d <= 2 ? 2 : 4, this.terrainMat);
     this.scene.add(m);
     this.chunks.set(c.key(), c);
     const wm = this.buildWater(c);
@@ -670,6 +672,13 @@ export class World {
   }
   get treeMaterial(): THREE.Material {
     return this.treeMat;
+  }
+  /** tufos de folhas da espécie (null = sem) e o material deles — para a árvore caindo */
+  treeCards(sp: number): THREE.BufferGeometry | null {
+    return this.nq.cards ? (this.nearC[sp]?.mesh.geometry ?? null) : null;
+  }
+  get cardMaterial(): THREE.Material {
+    return this.cardMat;
   }
 
   /** colisão simples com troncos: empurra (x,z) para fora; devolve true se encostou */

@@ -4,6 +4,7 @@
  *  da cor da instância.
  * ============================================================ */
 import * as THREE from 'three';
+import { natureHit } from './fx';
 
 /** tempo do vento (s) — um só objeto para todos os materiais; o jogo escreve .value por quadro */
 export const windTime = { value: 0 };
@@ -45,7 +46,8 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
       );
     if (noFlip) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''));
     sh.uniforms.uWindT = windTime;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWindT;');
+    sh.uniforms.uHit = natureHit;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWindT;\nuniform vec4 uHit;');
     if (tint)
       sh.vertexShader = sh.vertexShader.replace(
         '#include <color_vertex>',
@@ -77,6 +79,10 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
   float g = sin(uWindT * 1.7 + ph) + 0.35 * sin(uWindT * 4.3 + ph * 2.1);
   transformed.x += g * w;
   transformed.z += cos(uWindT * 1.3 + ph) * w * 0.6;
+  // golpe de machado: a copa da árvore atingida chacoalha
+  float hk = uHit.z * (1.0 - smoothstep(0.4, 1.2, length(ip.xz - uHit.xy)));
+  transformed.x += sin(uWindT * 47.0) * hk * h * 0.045;
+  transformed.z += cos(uWindT * 39.0) * hk * h * 0.035;
   float r = ${rus.toFixed(4)} * smoothstep(${(y0 + 1).toFixed(2)}, ${(y0 + 3).toFixed(2)}, transformed.y);
   transformed += r * vec3(sin(uWindT * 5.3 + dot(position, vec3(3.1, 1.7, 2.3)) + ph),
                           0.5 * sin(uWindT * 4.1 + dot(position, vec3(1.3, 2.9, 1.1))),
@@ -84,7 +90,7 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
 }`,
     );
   };
-  mat.customProgramCacheKey = () => `nwind${amp}_${y0}_${rus}_${tint ? 1 : 0}_${wrap}_${noFlip ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `nwindH${amp}_${y0}_${rus}_${tint ? 1 : 0}_${wrap}_${noFlip ? 1 : 0}`;
   return mat;
 }
 

@@ -24,7 +24,7 @@ import type { View } from './game';
 import { createLook, type LookDrag } from '../../ui/touch';
 import { guideStep } from './guide';
 import { WORLD_X1, buildGroundBody, buildGroundMeshes, groundColorAt, groundH } from './fps/terrain';
-import { BlobShadows, GrassField, groundDetail, leafCardMat, natureAnisotropy, natureLeafCards, natureQ } from '../../3d/nature';
+import { BlobShadows, GrassField, LeafBurst, hitTreeShake, natureTick, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureQ } from '../../3d/nature';
 
 const _gc = new THREE.Color();
 import {
@@ -205,6 +205,7 @@ class View3D implements View {
   private treeCards = new Map<number, THREE.InstancedMesh>();
   private tier: Tier;
   private cardMat!: THREE.Material;
+  private leafFx!: LeafBurst;
   private treeMat: THREE.MeshLambertMaterial;
   private glowMat: THREE.MeshLambertMaterial;
   private stumps!: THREE.InstancedMesh;
@@ -387,8 +388,8 @@ class View3D implements View {
 
     this.buildSky();
     this.buildLights();
-    const gm = this.track(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    groundDetail(gm, { amount: 0.4, scale: 0.6, macro: tier >= 1 });
+    // chão com texturas misturadas por vértice (grama, folhas, terra do caminho, pedra nos barrancos)
+    const gm = this.track(terrainMaterial({ tier }));
     buildGroundMeshes(this.scene, gm);
     // grama de lâminas na GPU (Mínimo: só o chão texturizado) + sombras de contato sob as árvores
     const nq = natureQ(tier);
@@ -401,6 +402,8 @@ class View3D implements View {
       return k;
     } }, nq.grass, { width: 1.5, height: 1.35, contrast: 1.6 });
     this.blobs = new BlobShadows(this.scene, 128, nq.blobAlpha);
+    this.leafFx = new LeafBurst(this.scene, 200);
+    this.leafFx.ground = groundH;
     this.buildTrees();
     this.buildDeco();
     this.buildLogs();
@@ -627,7 +630,7 @@ class View3D implements View {
       const glow = sp === 4 || sp === 5 || rare >= 2;
       m = new THREE.InstancedMesh(this.geoFor(sp, rare), glow ? this.glowMat : this.treeMat, Math.max(1, cap));
       // cartões de folhas na borda da copa (Médio/Alto)
-      const cg = this.tier >= 2 ? natureLeafCards(this.geoFor(sp, rare), 10, sp * 4 + rare + 1) : null;
+      const cg = this.tier >= 2 ? natureLeafCards(this.geoFor(sp, rare), 5, sp * 4 + rare + 1) : null;
       if (cg) {
         const cm = new THREE.InstancedMesh(this.trackG(cg), this.cardMat, Math.max(1, cap));
         cm.count = 0;
@@ -2149,6 +2152,12 @@ class View3D implements View {
     const sim = this.sim;
     switch (e.type) {
       case 'chip': {
+        // a copa da árvore golpeada chacoalha (shader) e solta folhinhas
+        hitTreeShake(e.x, e.z, 1);
+        {
+          const ct = sim.trees.find((q) => Math.abs(q.x - e.x) < 0.01 && Math.abs(q.z - e.z) < 0.01);
+          if (ct) this.leafFx.emit(3, e.x, groundH(e.x, e.z) + SPECIES[ct.sp].h * 0.7, e.z, SPECIES[ct.sp].h * 0.2, SPECIES[ct.sp].leaf, 1);
+        }
         const tr = sim.trees[sim.me.target];
         const mine = tr && Math.abs(tr.x - e.x) < 0.01 && Math.abs(tr.z - e.z) < 0.01;
         if (mine) {
@@ -2237,6 +2246,15 @@ class View3D implements View {
     const mesh = this.fallPool.find((m) => !m.visible) ?? this.fallPool[0];
     mesh.geometry = this.geoFor(tr.sp, tr.rare);
     mesh.material = tr.sp === 4 || tr.sp === 5 || tr.rare >= 2 ? this.glowMat : this.treeMat;
+    // tufos de folhas acompanham a árvore caindo
+    const cm = this.treeCards.get(tr.sp * 4 + tr.rare);
+    const child = mesh.children[0] as THREE.Mesh | undefined;
+    if (cm) {
+      if (child) {
+        child.geometry = cm.geometry;
+        child.visible = true;
+      } else mesh.add(new THREE.Mesh(cm.geometry, this.cardMat));
+    } else if (child) child.visible = false;
     mesh.visible = true;
     mesh.scale.setScalar(0.85);
     v.mesh = mesh;
@@ -2320,6 +2338,9 @@ class View3D implements View {
     audio.land(2);
     const gy = groundH(x, z);
     this.burst(26, x, gy + 0.5, z, 9, '#e6d2aa', 1, 3);
+    // folhas de verdade (instanciadas) explodindo da copa
+    this.leafFx.emit(this.q.particles >= 0.8 ? 70 : 36, x, gy + 0.8, z, sp.h * 0.25, sp.leaf, 3.2);
+    this.leafFx.emit(this.q.particles >= 0.8 ? 30 : 14, x, gy + 1.2, z, sp.h * 0.28, sp.leaf2, 2.2);
     _c.set(sp.leaf);
     for (let k = 0; k < 30; k++) this.emitP(x + (Math.random() - 0.5) * 4, gy + 1 + Math.random() * 2, z + (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 8, 2 + Math.random() * 6, (Math.random() - 0.5) * 8, 2.5, 0.12);
     _c.set(sp.leaf2);
@@ -2605,6 +2626,8 @@ class View3D implements View {
     const sim = this.sim;
     sim.held3d = this.held.length;
     windTime.value = this.time;
+    natureTick(dt);
+    this.leafFx.update(dt);
     this.stepGuide(dt);
     if (this.look) {
       const [dx, dy] = this.look.consume(dt);
@@ -3109,6 +3132,7 @@ class View3D implements View {
     if (this.warm) clearTimeout(this.warm);
     this.grass.dispose();
     this.blobs.dispose();
+    this.leafFx.dispose();
     for (const f of this.offs) f();
     this.sim.groundY = null;
     this.ui.remove();

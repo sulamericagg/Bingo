@@ -4,6 +4,7 @@
  *  consistentes nas bordas, consultas de densidade/chão/raio, save.
  * ============================================================ */
 import * as THREE from 'three';
+import { NL, TL, setSplat, splatAttributes } from '../../../3d/nature/textures';
 import { CH, RES, VN } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFacetMesh, takeFluid, takeMesh, type MeshCtx } from './vox';
@@ -20,6 +21,7 @@ export interface VoxHost {
 const _pt = { d: 0, m: 0 };
 const _col = new Float32Array(3);
 const _g4 = new Float32Array(4);
+const _sw = new Float32Array(NL);
 const key = (cx: number, cz: number) => cx + ',' + cz;
 
 interface Job {
@@ -349,6 +351,7 @@ export class VoxWorld {
       const facet = deep ? takeFacetMesh(nv, ni) : null;
       const { g, pos, idx } = takeMesh(nv, ni);
       if (facet) g.dispose();
+      if (!facet) this.splatVox(c, g, nv);
       const m = new THREE.Mesh(facet ?? g, deep ? this.caveMat : this.h.groundMat);
       m.matrixAutoUpdate = false;
       m.receiveShadow = true;
@@ -389,6 +392,28 @@ export class VoxWorld {
         if (c.mesh) c.mesh.visible = false;
         if (c.natVol) this.fixSurface(v);
       }
+    }
+  }
+
+  /** pesos das texturas nas malhas de volume da superfície: topo = mesmas camadas do relevo; paredes = pedra/terra */
+  private splatVox(c: Chunk, g: THREE.BufferGeometry, nv: number): void {
+    const P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    const N = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
+    const SP = splatAttributes(g, nv);
+    for (let v = 0; v < nv; v++) {
+      const x = P[v * 3];
+      const y = P[v * 3 + 1];
+      const z = P[v * 3 + 2];
+      const lx = Math.max(0, Math.min(RES, Math.round(x - c.x0)));
+      const lz = Math.max(0, Math.min(RES, Math.round(z - c.z0)));
+      c.splatAt(lx, lz, _sw);
+      const ny = N[v * 3 + 1];
+      let up = Math.min(1, Math.max(0, (ny - 0.5) / 0.3));
+      if (y < c.h[lz * VN + lx] - 1.2) up *= 0.2;
+      for (let l = 0; l < NL; l++) _sw[l] *= up;
+      _sw[TL.stone] += (1 - up) * 0.65;
+      _sw[TL.dirt] += (1 - up) * 0.35;
+      setSplat(SP, v, _sw);
     }
   }
 

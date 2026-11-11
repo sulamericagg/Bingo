@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { CH, RES, VN, WATER_Y, RAIL_Z, type Camp, type WorldGen } from './gen';
 import { hash2, vnoise } from './noise';
+import { NL, TL, copySplat, lerpSplat, markSplat, setSplat, splatAttributes } from '../../../3d/nature/textures';
 import { NB, WBIOMES, WSPECIES } from './biomes';
 
 export const TREE_STRIDE = 8; // x, y, z, rotY, escala, espécie, rara, bioma
@@ -47,6 +48,13 @@ const BGRASS: Record<string, [number, number]> = {
   montanha: [0.45, 0.7],
   bambu: [0.95, 1.1],
 };
+/** camadas de textura por bioma: cobertura (onde tem grama) e terra (clareiras, escavação) */
+const BCOVER: Record<string, number> = { bosque: TL.grass, nevado: TL.snow, tropical: TL.grass, cerejeiras: TL.grass, cogumelos: TL.grass, cristal: TL.snow, savana: TL.dryGrass, pantano: TL.grass, deserto: TL.sand, outono: TL.forestFloor, montanha: TL.dryGrass, bambu: TL.grass };
+const BDIRT: Record<string, number> = { bosque: TL.dirt, nevado: TL.gravel, tropical: TL.redDirt, cerejeiras: TL.dirt, cogumelos: TL.mud, cristal: TL.gravel, savana: TL.redDirt, pantano: TL.mud, deserto: TL.redDirt, outono: TL.dirt, montanha: TL.gravel, bambu: TL.dirt };
+const BCV = WBIOMES.map((b) => BCOVER[b.id] ?? TL.grass);
+const BDT = WBIOMES.map((b) => BDIRT[b.id] ?? TL.dirt);
+const _w = new Float32Array(NL);
+const _sh2 = new Float32Array(4);
 const BGK = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[0]);
 const BGH = WBIOMES.map((b) => (BGRASS[b.id] ?? [0.8, 1])[1]);
 const _sh = new Float32Array(4);
@@ -107,6 +115,9 @@ export class Chunk {
   col = new Float32Array(VN * VN * 13);
   /** natureza por vértice: densidade da grama do bioma, altura da grama, mancha seca (0..1), clareira de terra (0..1) */
   nat = new Float32Array(VN * VN * 4);
+  /** textura: distribuição da cobertura por camada (NL por vértice) e camada de terra dominante */
+  cov = new Float32Array(VN * VN * NL);
+  dirtL = new Uint8Array(VN * VN);
   trees: Float32Array;
   nt = 0;
   tstate: Uint8Array;
@@ -215,10 +226,19 @@ export class Chunk {
         c[o + 12] = gen.tint(x, z);
         let gk = 0;
         let gh = 0;
+        let bw = 0;
+        let bd = 0;
+        const co = k * NL;
         for (let b = 0; b < NB; b++) {
           gk += BGK[b] * W[b];
           gh += BGH[b] * W[b];
+          this.cov[co + BCV[b]] += W[b];
+          if (W[b] > bw) {
+            bw = W[b];
+            bd = BDT[b];
+          }
         }
+        this.dirtL[k] = bd;
         const n = k * 4;
         const s = gen.seed;
         this.nat[n] = gk;
@@ -391,6 +411,7 @@ export class Chunk {
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
       g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
       g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
+      splatAttributes(g, nv);
       g.setIndex(indexFor(step));
       if (!m) {
         m = new THREE.Mesh(g, mat);
@@ -409,8 +430,10 @@ export class Chunk {
    * clareiras, rocha nas encostas, areia/lama na beira d'água, neve no alto, terra onde cavou,
    * cascalho no trilho. out = [r, g, b, grama 0..1] (grama = quanto cabe de lâminas aqui).
    */
-  shadeAt(i: number, j: number, dx: number, dz: number, out: Float32Array): Float32Array {
+  shadeAt(i: number, j: number, dx: number, dz: number, out: Float32Array, w: Float32Array | null = null): Float32Array {
     const k = j * VN + i;
+    if (w) for (let l = 0; l < NL; l++) w[l] = this.cov[k * NL + l];
+    const dl = this.dirtL[k];
     const col = this.col;
     const o = k * 13;
     const y = this.h[k];
@@ -427,6 +450,7 @@ export class Chunk {
       r += (DRY[0] * L - r) * dry;
       gg += (DRY[1] * L - gg) * dry;
       b += (DRY[2] * L - b) * dry;
+      if (w && w[TL.grass] > 0.3) lerpSplat(w, TL.dryGrass, dry * 1.4);
     }
     // clareira de terra batida (pouca grama)
     const dt = this.nat[na + 3];
@@ -436,6 +460,7 @@ export class Chunk {
       gg += (col[o + 7] * 1.05 - gg) * s;
       b += (col[o + 8] * 1.05 - b) * s;
       grass *= 1 - dt * 0.85;
+      if (w) lerpSplat(w, dl, s);
     }
     const sl = Math.sqrt(dx * dx + dz * dz);
     const rk = sl > 0.75 ? Math.min(1, (sl - 0.75) * 2.5) : 0;
@@ -444,6 +469,7 @@ export class Chunk {
       gg += (col[o + 10] - gg) * rk;
       b += (col[o + 11] - b) * rk;
       grass *= 1 - rk;
+      if (w) lerpSplat(w, TL.stone, rk);
     }
     if (sl > 0.55) grass *= Math.max(0, 1 - (sl - 0.55) * 3);
     if (y > 34) {
@@ -452,6 +478,7 @@ export class Chunk {
       gg += (SNOW[1] - gg) * s;
       b += (SNOW[2] - b) * s;
       grass *= 1 - s;
+      if (w) lerpSplat(w, TL.snow, s);
     }
     const by = this.base[k];
     if (by < WATER_Y + 1.1 && y > by - 1) {
@@ -461,6 +488,7 @@ export class Chunk {
       gg += (sand[1] - gg) * s;
       b += (sand[2] - b) * s;
       grass *= 1 - s;
+      if (w) lerpSplat(w, sand === MUD ? TL.mud : TL.sand, s);
     }
     if (y < WATER_Y + 0.15) grass = 0;
     const ed = this.edit;
@@ -472,6 +500,7 @@ export class Chunk {
       gg += (tgt[1] - gg) * s;
       b += (tgt[2] - b) * s;
       grass *= 1 - Math.min(1, s * 2);
+      if (w) lerpSplat(w, e < -1.4 ? TL.stone : dl === TL.gravel ? TL.dirt : dl, s);
     }
     if (this.railK !== null) {
       const d = Math.abs(this.z0 + j - this.railK * RAIL_Z);
@@ -481,10 +510,18 @@ export class Chunk {
         gg += (RAIL_GRAVEL[1] - gg) * s;
         b += (RAIL_GRAVEL[2] - b) * s;
         grass *= 1 - s;
+        if (w) lerpSplat(w, TL.gravel, s);
       }
     }
-    // variação suave (sem o padrão listrado)
-    const sh = 0.95 + hash2(this.x0 + i, this.z0 + j, 7) * 0.07;
+    // variação suave (sem o padrão listrado) + oclusão "assada" nos vales/buracos (como o AO por vértice do Minecraft)
+    const H = this.h;
+    const i0 = i > 1 ? i - 2 : 0;
+    const i1 = i < RES - 1 ? i + 2 : RES;
+    const j0 = j > 1 ? j - 2 : 0;
+    const j1 = j < RES - 1 ? j + 2 : RES;
+    const lap = (H[j * VN + i0] + H[j * VN + i1] + H[j0 * VN + i] + H[j1 * VN + i]) * 0.25 - y;
+    const ao = lap > 0 ? 1 - Math.min(0.28, lap * 0.3) : 1 + Math.min(0.05, -lap * 0.05);
+    const sh = (0.95 + hash2(this.x0 + i, this.z0 + j, 7) * 0.07) * ao;
     out[0] = r * sh;
     out[1] = gg * sh;
     out[2] = b * sh;
@@ -502,6 +539,16 @@ export class Chunk {
     const dz = (hu - hd) / (j > 0 && j < RES ? 2 : 1);
     return this.shadeAt(i, j, dx, dz, out)[3];
   }
+  /** pesos das texturas do chão no vértice (i,j) em w (NL) */
+  splatAt(i: number, j: number, w: Float32Array): Float32Array {
+    const h = this.h;
+    const hl = h[j * VN + Math.max(0, i - 1)];
+    const hr = h[j * VN + Math.min(RES, i + 1)];
+    const hd = h[Math.max(0, j - 1) * VN + i];
+    const hu = h[Math.min(RES, j + 1) * VN + i];
+    this.shadeAt(i, j, (hr - hl) / (i > 0 && i < RES ? 2 : 1), (hu - hd) / (j > 0 && j < RES ? 2 : 1), _sh2, w);
+    return w;
+  }
   /** altura da grama de lâminas no vértice (multiplicador do bioma; mais baixa nas manchas secas) */
   grassH(i: number, j: number): number {
     const na = (j * VN + i) * 4;
@@ -518,6 +565,7 @@ export class Chunk {
     const N = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
     const C = (g.getAttribute('color') as THREE.BufferAttribute).array as Float32Array;
     const h = this.h;
+    const SP = splatAttributes(g, (g.getAttribute('position') as THREE.BufferAttribute).count);
     for (let jj = 0; jj < n; jj++)
       for (let ii = 0; ii < n; ii++) {
         const i = ii * step;
@@ -538,7 +586,8 @@ export class Chunk {
         N[v * 3] = -dx * il;
         N[v * 3 + 1] = il;
         N[v * 3 + 2] = -dz * il;
-        this.shadeAt(i, j, dx, dz, _sh);
+        this.shadeAt(i, j, dx, dz, _sh, _w);
+        setSplat(SP, v, _w);
         C[v * 3] = _sh[0];
         C[v * 3 + 1] = _sh[1];
         C[v * 3 + 2] = _sh[2];
@@ -554,6 +603,7 @@ export class Chunk {
       N[d * 3] = N[s * 3];
       N[d * 3 + 1] = N[s * 3 + 1];
       N[d * 3 + 2] = N[s * 3 + 2];
+      copySplat(SP, s, d);
       C[d * 3] = C[s * 3] * 0.8;
       C[d * 3 + 1] = C[s * 3 + 1] * 0.8;
       C[d * 3 + 2] = C[s * 3 + 2] * 0.8;
@@ -561,6 +611,7 @@ export class Chunk {
     (g.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (g.getAttribute('normal') as THREE.BufferAttribute).needsUpdate = true;
     (g.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    markSplat(g);
     if (!g.boundingSphere) g.boundingSphere = new THREE.Sphere();
     const cy = (this.minY + this.maxY) / 2;
     g.boundingSphere.center.set(this.x0 + CH / 2, cy, this.z0 + CH / 2);

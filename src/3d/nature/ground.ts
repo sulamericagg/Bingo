@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { hash2, vnoise2 } from './noise';
 import { leafAtlas } from './leaves';
+import { natureTextureArray } from './textures';
 
 let detailTex: THREE.DataTexture | null = null;
 /** textura 128² cinza (média 0,5): manchas + tracinhos de grama, repete sem emenda */
@@ -77,7 +78,7 @@ export function groundDetailTexture(): THREE.DataTexture {
 /** filtro anisotrópico (até 4×) nas texturas da natureza: chão sem borrão listrado em ângulo rasante */
 export function natureAnisotropy(r: THREE.WebGLRenderer): void {
   const a = Math.min(4, r.capabilities.getMaxAnisotropy());
-  for (const t of [groundDetailTexture(), leafAtlas()]) {
+  for (const t of [groundDetailTexture(), leafAtlas(), natureTextureArray()] as THREE.Texture[]) {
     if (t.anisotropy !== a) {
       t.anisotropy = a;
       t.needsUpdate = true;
