@@ -91,6 +91,17 @@ export const sfx = {
   swish: () => [784, 988, 1175].forEach((f, i) => tone(f, 0.12, 'triangle', 0.1, 1.1, i * 0.05)),
   fire: () => noise(0.5, 0.18, 300, 0.5, 2),
   bump: () => (tone(70, 0.25, 'sine', 0.3, 0.6), noise(0.2, 0.25, 200)),
+  /* kit de interação (src/3d/common/interact) */
+  ding: () => (tone(1568, 0.5, 'sine', 0.16, 1), tone(2093, 0.4, 'sine', 0.08, 1, 0.01)),
+  knob: () => (tone(1200, 0.025, 'square', 0.06, 0.6), tone(900, 0.025, 'square', 0.05, 0.6, 0.05)),
+  ignite: () => (tone(2200, 0.03, 'square', 0.05, 0.5), noise(0.35, 0.22, 500, 0.7, 2.2)),
+  door: () => noise(0.12, 0.12, 900, 1, 0.6),
+  thunk: () => (tone(140, 0.12, 'sine', 0.25, 0.6), noise(0.06, 0.2, 400)),
+  print: () => [0, 0.07, 0.14, 0.21, 0.28].forEach((d) => tone(380, 0.05, 'square', 0.04, 1.1, d)),
+  splash: () => (noise(0.35, 0.3, 1200, 0.7, 0.5), tone(500, 0.1, 'sine', 0.08, 1.8)),
+  water: () => noise(0.25, 0.07, 2600, 0.6, 1),
+  press: () => (tone(300, 0.04, 'square', 0.08, 0.8), tone(1300, 0.03, 'triangle', 0.06, 1)),
+  yay: () => [784, 988, 1319].forEach((f, i) => tone(f, 0.14, 'triangle', 0.11, 1.05, i * 0.07)),
 };
 export function disposeSfx(): void {
   try {
