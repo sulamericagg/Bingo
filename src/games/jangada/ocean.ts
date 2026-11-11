@@ -162,7 +162,7 @@ function tileNoise(N: number, cells: number[], seed: number, weights: number[]):
   return out;
 }
 /** normal map do mar (RGB) + ruído de espuma (A), periódicos */
-function waterTex(N: number): THREE.DataTexture {
+export function waterTex(N: number): THREE.DataTexture {
   const r = rng(77);
   // campo de alturas = soma de senos com frequências inteiras (periódico)
   const comps: { kx: number; ky: number; a: number; ph: number }[] = [];
@@ -219,7 +219,7 @@ function waterTex(N: number): THREE.DataTexture {
   return t;
 }
 /** ruído para as nuvens (R) */
-function cloudNoiseTex(N: number): THREE.DataTexture {
+export function cloudNoiseTex(N: number): THREE.DataTexture {
   const n = tileNoise(N, [4, 8, 16, 32], 4242, [0.5, 0.27, 0.15, 0.08]);
   const d = new Uint8Array(N * N * 4);
   for (let i = 0; i < N * N; i++) {

@@ -534,6 +534,7 @@ export class DisasterGame implements MiniGameHandle {
     // Grupo: todos no mesmo (sequência da sala). Dev/banco: forced.
     let entry: DzEntry;
     let base: Scenario;
+    const forcedNow = !!this.forced;
     if (this.forced) {
       base = this.forced;
       this.forced = null;
@@ -618,7 +619,7 @@ export class DisasterGame implements MiniGameHandle {
     this.ex.reset();
     this.draw.onRound();
     // roleta "Próximo desastre: ?" (fora do banco de testes)
-    const quiet = this.benchStreak >= 0 || this.autoMe;
+    const quiet = this.benchStreak >= 0 || this.autoMe || (forcedNow && /[?&]s=/.test(location.search));
     this.setPhase('intro', quiet ? 2.6 : 4.6);
     this.rouletteClose?.();
     this.rouletteClose = quiet ? null : showRoulette(this.root, entry, { isNew: this.isNew, tele: HAZARDS[entry.hz[0]].tele() });

@@ -357,8 +357,8 @@ export class Extra3D {
       this.stomps.push({ on: false, x: 0, z: 0, r: 3, t: 0, T: 1, ring: -1, max: 12, after: 0, tgt: -1, foot, shadow, wave });
     }
     // ---- incêndio: chamas instanciadas + chão queimado ----
-    const fm = new THREE.MeshBasicMaterial({ map: flameSprite(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    this.fireG = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.6, 3.2), fm, 90);
+    const fm = new THREE.MeshBasicMaterial({ map: flameSprite(), transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.92 });
+    this.fireG = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.2, 2.4), fm, 110);
     this.fireG.visible = false;
     this.fireG.frustumCulled = false;
     this.root.add(this.fireG);
@@ -1563,8 +1563,8 @@ export class Extra3D {
         const along = ((i * 0.377) % 1) * F.band;
         const x = fx + back * along;
         const lead = 1 - along / F.band;
-        const s = (0.6 + lead * 1.0) * (0.85 + 0.15 * Math.sin(g.time * 9 + i));
-        this.dummy.position.set(x, s * 1.4, z);
+        const s = (0.5 + lead * 0.8) * (0.85 + 0.15 * Math.sin(g.time * 9 + i));
+        this.dummy.position.set(x, s * 1.15, z);
         this.dummy.rotation.set(0, Math.atan2(cam.position.x - x, cam.position.z - z), 0);
         this.dummy.scale.set(s, s, s);
         this.dummy.updateMatrix();

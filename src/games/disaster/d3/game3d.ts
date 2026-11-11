@@ -28,7 +28,8 @@ import { icon } from '../../../ui/icons';
 import { DISASTERS, mulberry, type DisasterId, type Scenario } from '../scenarios';
 import { buildScenario, drawNext, entries, entryByKey, HAZARDS, loadPedia, markSeen, starsFor, type DzEntry, type Tune } from '../catalog';
 import { showRoulette, openPedia } from '../roulette';
-import { Extra3D } from './extra3d';
+import { Extra3D, softSprite, flameSprite } from './extra3d';
+import { Env3D, boxUV } from './env3d';
 import { dzIcon, type DzIcon } from '../icons';
 import { CamView } from '../../../3d/camview';
 import { FpCamera, FpController, fpTuning } from '../../../3d/fpkit';
@@ -255,7 +256,8 @@ export class Disaster3D implements MiniGameHandle {
   exitCb: () => void;
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(62, 1, 0.1, 400);
+  camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1400);
+  env!: Env3D;
   sun: THREE.DirectionalLight;
   world = new CANNON.World({ gravity: new CANNON.Vec3(0, -GRAV, 0) });
   gov: QualityGovernor;
@@ -428,7 +430,9 @@ export class Disaster3D implements MiniGameHandle {
     this.renderer = new THREE.WebGLRenderer({ antialias: this.tier >= 2, powerPreference: 'high-performance' });
     this.renderer.domElement.className = 'd3-cv';
     this.renderer.shadowMap.enabled = this.tier >= 2;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = this.tier >= 3 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     root.appendChild(this.renderer.domElement);
     const lost = (e: Event) => e.preventDefault();
     this.renderer.domElement.addEventListener('webglcontextlost', lost);
@@ -441,15 +445,20 @@ export class Disaster3D implements MiniGameHandle {
     skyG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(skyG.getAttribute('position').count * 3), 3));
     this.sky = new THREE.Mesh(skyG, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
     this.sky.renderOrder = -1;
+    this.sky.visible = false;
     this.scene.add(this.sky);
+    this.scene.fog = new THREE.FogExp2(0xcfe8ff, 0.006);
+    this.env = new Env3D(this.scene, this.renderer, this.tier);
     this.sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
     this.sun.position.set(20, 40, 14);
     this.sun.castShadow = this.tier >= 2;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    this.sun.shadow.mapSize.set(this.tier >= 3 ? 2048 : 1024, this.tier >= 3 ? 2048 : 1024);
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.04;
     const sc = this.sun.shadow.camera;
-    sc.left = sc.bottom = -40;
-    sc.right = sc.top = 40;
-    sc.far = 120;
+    sc.left = sc.bottom = -28;
+    sc.right = sc.top = 28;
+    sc.far = 160;
     this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.level);
 
@@ -465,18 +474,21 @@ export class Disaster3D implements MiniGameHandle {
     const ftG = new THREE.PlaneGeometry(1, 1, this.fluidSeg, this.fluidSeg);
     ftG.rotateX(-Math.PI / 2);
     ftG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ftG.getAttribute('position').count * 3), 3));
-    this.fluidTop = new THREE.Mesh(ftG, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.25, metalness: 0.05, transparent: true, opacity: 0.9 }));
+    this.fluidTop = new THREE.Mesh(ftG, this.env.fluidMat);
+    this.fluidTop.renderOrder = 2;
     this.fluidTop.visible = false;
     this.scene.add(this.fluidTop);
     this.sea = new THREE.Mesh(new THREE.CircleGeometry(320, 40), new THREE.MeshStandardMaterial({ color: 0x1f6fb8, roughness: 0.5 }));
     this.sea.rotation.x = -Math.PI / 2;
     this.sea.position.y = -0.9;
+    this.sea.visible = false;
     this.scene.add(this.sea);
     // faixa de mar perto da ilha com ondas (malha baixa, facetada)
     const sg = new THREE.PlaneGeometry(130, 130, 26, 26);
     sg.rotateX(-Math.PI / 2);
     this.sea2 = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x2a8ad8, flatShading: true, roughness: 0.3, transparent: true, opacity: 0.92 }));
     this.sea2.position.y = -0.55;
+    this.sea2.visible = false;
     this.scene.add(this.sea2);
     // vulcão (visual)
     this.volcano = new THREE.Mesh(new THREE.ConeGeometry(9, 14, 9, 1, true), new THREE.MeshStandardMaterial({ color: 0x6b5a5a, flatShading: true, side: THREE.DoubleSide }));
@@ -484,9 +496,46 @@ export class Disaster3D implements MiniGameHandle {
     this.scene.add(this.volcano);
     // tornado
     this.tornadoMesh = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.CylinderGeometry(6, 0.7, 17, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x8a90a8, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
-    shell.position.y = 8.5;
-    this.tornadoMesh.add(shell);
+    // funil: 3 cascas com listras de vento (textura gerada) girando em velocidades diferentes
+    {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 128;
+      const x = c.getContext('2d')!;
+      for (let i = 0; i < 90; i++) {
+        const y = Math.random() * 128;
+        const a = 0.15 + Math.random() * 0.45;
+        x.strokeStyle = Math.random() < 0.5 ? `rgba(120,110,105,${a})` : `rgba(210,205,200,${a})`;
+        x.lineWidth = 2 + Math.random() * 7;
+        x.beginPath();
+        x.moveTo(0, y);
+        x.bezierCurveTo(80, y + (Math.random() - 0.5) * 14, 170, y + (Math.random() - 0.5) * 14, 256, y);
+        x.stroke();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      const prof: THREE.Vector2[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const t2 = i / 12;
+        prof.push(new THREE.Vector2(0.55 + Math.pow(t2, 1.8) * 6.2, t2 * 18));
+      }
+      for (let k = 0; k < 3; k++) {
+        const m2 = new THREE.MeshBasicMaterial({ map: tex.clone(), color: k === 0 ? 0x6a6470 : k === 1 ? 0x9a94a0 : 0xc8c4cc, transparent: true, opacity: 0.55 - k * 0.12, side: THREE.DoubleSide, depthWrite: false });
+        (m2.map as THREE.Texture).repeat.set(2 + k, 1);
+        const sh = new THREE.Mesh(new THREE.LatheGeometry(prof, 24), m2);
+        sh.scale.setScalar(1 - k * 0.12 + 0.12);
+        sh.userData.spin = 2.2 + k * 1.3;
+        sh.name = 'shell';
+        this.tornadoMesh.add(sh);
+      }
+      // poeira girando no pé
+      const dust = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.9, 6, 20), new THREE.MeshBasicMaterial({ color: 0xb8a890, transparent: true, opacity: 0.35, depthWrite: false }));
+      dust.rotation.x = Math.PI / 2;
+      dust.position.y = 0.6;
+      dust.name = 'shell';
+      dust.userData.spin = 3;
+      this.tornadoMesh.add(dust);
+    }
     const nP = [180, 300, 480, 700][this.tier];
     this.tnH = new Float32Array(nP);
     this.tnA = new Float32Array(nP);
@@ -514,7 +563,7 @@ export class Disaster3D implements MiniGameHandle {
     dx.fillStyle = grd;
     dx.fillRect(0, 0, 32, 32);
     const dotTex = new THREE.CanvasTexture(dot);
-    this.tnPts = new THREE.Points(tg, new THREE.PointsMaterial({ size: 0.9, map: dotTex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false }));
+    this.tnPts = new THREE.Points(tg, new THREE.PointsMaterial({ size: 1.5, map: dotTex, vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false }));
     this.tnPts.frustumCulled = false;
     this.tornadoMesh.add(this.tnPts);
     const dm = new THREE.MeshStandardMaterial({ color: 0x8a5a33, flatShading: true });
@@ -560,9 +609,20 @@ export class Disaster3D implements MiniGameHandle {
       this.scene.add(m);
       this.holes.push({ on: false, x: 0, z: 0, r: 1, warn: 0, grow: 0, life: 0, mesh: m });
     }
-    const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8a1e, transparent: true, opacity: 0.85, depthWrite: false });
     for (let i = 0; i < 10; i++) {
-      const m = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 7, 1, true), fireMat);
+      // fogo: chamas em sprite (aditivas) + brilho no chão
+      const m = new THREE.Group() as unknown as THREE.Mesh;
+      for (let k = 0; k < 5; k++) {
+        const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameSprite(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        const a = (k / 5) * Math.PI * 2;
+        f.position.set(k ? Math.cos(a) * 0.55 : 0, 0.6, k ? Math.sin(a) * 0.55 : 0);
+        f.scale.set(0.9, 1.6, 1);
+        m.add(f);
+      }
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softSprite(), color: 0xff7a2a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6 }));
+      glow.scale.set(3.2, 2, 1);
+      glow.position.y = 0.4;
+      m.add(glow);
       m.visible = false;
       this.scene.add(m);
       this.fires.push({ on: false, x: 0, y: 0, z: 0, r: 1, t: 0, mesh: m });
@@ -575,9 +635,8 @@ export class Disaster3D implements MiniGameHandle {
       this.scene.add(m);
       this.coins.push({ on: false, x: 0, y: 0, z: 0, t: 0, mesh: m });
     }
-    const pm = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, flatShading: true, transparent: true, opacity: 0.85 });
-    for (let i = 0; i < 40; i++) {
-      const m = new THREE.Mesh(this.sharedGeo.puff, pm);
+    for (let i = 0; i < 60; i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: softSprite(), color: 0xe8e0d0, transparent: true, opacity: 0.8, depthWrite: false })) as unknown as THREE.Mesh;
       m.visible = false;
       this.scene.add(m);
       this.puffs.push({ m, v: new THREE.Vector3(), life: 0 });
@@ -714,7 +773,7 @@ export class Disaster3D implements MiniGameHandle {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       if (m.geometry !== this.sharedGeo.box && m.geometry !== this.sharedGeo.sphere) m.geometry.dispose();
-      (m.material as THREE.Material).dispose();
+      if (m.material !== this.env.wallMat && m.material !== this.env.glassMat && m.material !== this.env.stoneMat && m.material !== this.env.grassMat) (m.material as THREE.Material).dispose();
     });
     this.level.clear();
     this.statics = [];
@@ -764,7 +823,43 @@ export class Disaster3D implements MiniGameHandle {
     g.computeVertexNormals();
     this.batch.push(g);
   }
+  /** paredes texturizadas (fachada do mapa) e vidros (acendem de noite) */
+  wallBatch: THREE.BufferGeometry[] = [];
+  stoneBatch: THREE.BufferGeometry[] = [];
+  glassBatch: THREE.BufferGeometry[] = [];
+  glassBox(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number): void {
+    const g = new THREE.BoxGeometry(sx, sy, sz).toNonIndexed();
+    g.translate(cx, cy, cz);
+    g.deleteAttribute('uv');
+    this.glassBatch.push(g);
+  }
   flushBatch(): void {
+    if (this.wallBatch.length) {
+      const mg = mergeGeometries(this.wallBatch, false);
+      for (const g of this.wallBatch) g.dispose();
+      this.wallBatch = [];
+      if (mg) {
+        const wm = new THREE.Mesh(mg, this.env.wallMat);
+        wm.castShadow = wm.receiveShadow = true;
+        this.level.add(wm);
+      }
+    }
+    if (this.stoneBatch.length) {
+      const mg = mergeGeometries(this.stoneBatch, false);
+      for (const g of this.stoneBatch) g.dispose();
+      this.stoneBatch = [];
+      if (mg) {
+        const sm = new THREE.Mesh(mg, this.env.stoneMat);
+        sm.castShadow = sm.receiveShadow = true;
+        this.level.add(sm);
+      }
+    }
+    if (this.glassBatch.length) {
+      const mg = mergeGeometries(this.glassBatch, false);
+      for (const g of this.glassBatch) g.dispose();
+      this.glassBatch = [];
+      if (mg) this.level.add(new THREE.Mesh(mg, this.env.glassMat));
+    }
     if (!this.batch.length) return;
     const merged = mergeGeometries(this.batch, false);
     for (const g of this.batch) g.dispose();
@@ -780,9 +875,11 @@ export class Disaster3D implements MiniGameHandle {
   }
 
   /** caixa estática: visual + colisão do Bloop + corpo estático do cannon */
-  solid(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string | number, oneWay = false, visible = true): void {
+  solid(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string | number, oneWay = false, visible = true, style: '' | 'wall' | 'stone' = ''): void {
     this.statics.push({ x0, y0, z0, x1, y1, z1, oneWay });
-    if (visible) this.batchBox((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, color);
+    if (visible && style === 'wall') this.wallBatch.push(boxUV((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, new THREE.Color(color), 2));
+    else if (visible && style === 'stone') this.stoneBatch.push(boxUV((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, new THREE.Color(color), 2.5));
+    else if (visible) this.batchBox((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, color);
     if (!oneWay) {
       const b = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3((x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2)) });
       b.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
@@ -816,10 +913,9 @@ export class Disaster3D implements MiniGameHandle {
     const sc = this.sc;
     const m = sc.map;
     const r = mulberry(sc.seed * 7 + 3);
-    this.scene.background = new THREE.Color(m.sky[1]);
+    this.scene.background = null;
     this.fogCalm.set(m.sky[2]);
-    this.scene.fog = new THREE.Fog(this.fogCalm.getHex(), 45, 170);
-    {
+    if (false) {
       const top = new THREE.Color(m.sky[0]);
       const mid = new THREE.Color(m.sky[1]);
       const hor = new THREE.Color(m.sky[2]);
@@ -836,14 +932,7 @@ export class Disaster3D implements MiniGameHandle {
     }
     // chão da ilha (colisão: caixa grande; visual: cilindro de areia + disco de grama)
     const sandCol = m.id === 'polo' ? '#e8f1ff' : m.id === 'estacao' ? '#7b86b0' : '#e9d29a';
-    const ground = new THREE.Mesh(new THREE.CylinderGeometry(ISLAND_R + 1.5, ISLAND_R + 4, 3, 40), this.mat(sandCol));
-    const grass = new THREE.Mesh(new THREE.CylinderGeometry(ISLAND_R - 1.5, ISLAND_R - 0.5, 0.2, 40), this.mat(m.groundTop));
-    grass.position.y = -0.08;
-    grass.receiveShadow = true;
-    this.level.add(grass);
-    ground.position.y = -1.5;
-    ground.receiveShadow = true;
-    this.level.add(ground);
+    void sandCol;
     this.statics.push({ x0: -ISLAND_R, y0: -6, z0: -ISLAND_R, x1: ISLAND_R, y1: 0, z1: ISLAND_R, ground: true });
     const gp = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     gp.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
@@ -865,14 +954,14 @@ export class Disaster3D implements MiniGameHandle {
       const z0 = z - d / 2;
       const z1 = z + d / 2;
       const th = 0.35;
-      // paredes (porta larga no lado -z ... sempre virada para o centro? simples: porta no z0)
-      this.solid(x0, 0, z1 - th, x1, h, z1, wall); // fundo
-      this.solid(x0, 0, z0, x0 + th, h, z1, wall);
-      this.solid(x1 - th, 0, z0, x1, h, z1, wall);
+      // paredes texturizadas (porta larga no lado -z)
+      this.solid(x0, 0, z1 - th, x1, h, z1, wall, false, true, 'wall'); // fundo
+      this.solid(x0, 0, z0, x0 + th, h, z1, wall, false, true, 'wall');
+      this.solid(x1 - th, 0, z0, x1, h, z1, wall, false, true, 'wall');
       const door = 1.8;
-      this.solid(x0, 0, z0, x - door / 2, h, z0 + th, wall);
-      this.solid(x + door / 2, 0, z0, x1, h, z0 + th, wall);
-      this.solid(x - door / 2, 2.2, z0, x + door / 2, h, z0 + th, wall);
+      this.solid(x0, 0, z0, x - door / 2, h, z0 + th, wall, false, true, 'wall');
+      this.solid(x + door / 2, 0, z0, x1, h, z0 + th, wall, false, true, 'wall');
+      this.solid(x - door / 2, 2.2, z0, x + door / 2, h, z0 + th, wall, false, true, 'wall');
       // telhado plano com mureta (lugar alto, mas o tornado arranca): malha e caixas próprias
       const mainBatch = this.batch;
       this.batch = [];
@@ -881,13 +970,15 @@ export class Disaster3D implements MiniGameHandle {
       // escada do lado
       const side = r() < 0.5 ? -1 : 1;
       // acabamento (só visual): base, janelas com moldura, batente da porta, mureta e chaminé
-      const glass = '#5aa7e0';
       const frame = '#fff7ea';
       const trim = new THREE.Color(roof).offsetHSL(0, 0, -0.12).getStyle();
       this.batchBox(x, 0.09, z, w + 0.3, 0.18, d + 0.3, '#8d8a93');
       const win = (cx: number, cy: number, cz: number, alongX: boolean) => {
         this.batchBox(cx, cy, cz, alongX ? 1.0 : 0.07, 0.9, alongX ? 0.07 : 1.0, frame);
-        this.batchBox(cx, cy, cz, alongX ? 0.78 : 0.09, 0.68, alongX ? 0.09 : 0.78, glass);
+        this.glassBox(cx, cy, cz, alongX ? 0.78 : 0.09, 0.68, alongX ? 0.09 : 0.78);
+        // floreira embaixo da janela
+        this.batchBox(cx + (alongX ? 0 : Math.sign(cx - x) * 0.12), cy - 0.52, cz + (alongX ? Math.sign(cz - z) * 0.12 : 0), alongX ? 0.9 : 0.22, 0.16, alongX ? 0.22 : 0.9, '#8a5a3a');
+        this.batchBox(cx + (alongX ? 0 : Math.sign(cx - x) * 0.12), cy - 0.4, cz + (alongX ? Math.sign(cz - z) * 0.12 : 0), alongX ? 0.8 : 0.18, 0.12, alongX ? 0.18 : 0.8, ['#ff7ac8', '#ffe14d', '#ff5a5a'][Math.floor(r() * 3)]);
         this.batchBox(cx, cy, cz, alongX ? 0.08 : 0.1, 0.68, alongX ? 0.1 : 0.08, frame);
       };
       const wy = Math.min(1.7, h - 1.1);
@@ -903,6 +994,9 @@ export class Disaster3D implements MiniGameHandle {
       this.batchBox(x + door / 2 + 0.07, 1.15, z0 - 0.03, 0.14, 2.3, 0.1, trim);
       this.batchBox(x, 2.27, z0 - 0.03, door + 0.28, 0.14, 0.1, trim);
       this.batchBox(x, 0.02, z0 - 0.6, door + 0.4, 0.04, 1.0, '#b9a58a');
+      // toldo listrado em cima da porta + luminária
+      for (let k = 0; k < 5; k++) this.batchBox(x - door / 2 - 0.2 + (k + 0.5) * ((door + 0.4) / 5), 2.62, z0 - 0.38, (door + 0.4) / 5, 0.08, 0.8, k % 2 ? '#ffffff' : roof, 0);
+      this.glassBox(x + door / 2 + 0.35, 2.35, z0 - 0.08, 0.16, 0.22, 0.12);
       const rt = h + 0.35;
       this.batchBox(x, rt + 0.12, z0 - 0.15, w + 0.4, 0.24, 0.12, trim);
       this.batchBox(x, rt + 0.12, z1 + 0.15, w + 0.4, 0.24, 0.12, trim);
@@ -939,14 +1033,15 @@ export class Disaster3D implements MiniGameHandle {
     const steps = [0.9, 1.8, 2.7];
     steps.forEach((y, i) => {
       const s = 4.5 - i * 1.2;
-      this.solid(hx - s, 0, hz - s, hx + s, y, hz + s, i === 2 ? m.groundTop : m.ground);
+      // morro de pedra em degraus (o último com tufo de grama por cima)
+      this.solid(hx - s, 0, hz - s, hx + s, y, hz + s, m.id === 'doces' ? '#ffb4dc' : m.id === 'polo' ? '#f4f8ff' : m.id === 'deserto' ? '#f0c27a' : '#9ad35a', false, true, 'stone');
     });
     this.highSpots.push({ x: hx, z: hz, y: 2.7, house: -1 });
     // rampa até o 1º degrau (encosta)
     const ramp: Ramp = { x0: hx + 4.5, x1: hx + 8, z0: hz - 1.2, z1: hz + 1.2, h0: 0.9, h1: 0 };
     this.ramps.push(ramp);
     const len = Math.hypot(ramp.x1 - ramp.x0, ramp.h0);
-    this.batchBox((ramp.x0 + ramp.x1) / 2, ramp.h0 / 2 - 0.1, hz, len, 0.2, 2.4, m.ground, -Math.atan2(ramp.h0, ramp.x1 - ramp.x0));
+    this.batchBox((ramp.x0 + ramp.x1) / 2, ramp.h0 / 2 - 0.1, hz, len, 0.2, 2.4, '#a08a6a', -Math.atan2(ramp.h0, ramp.x1 - ramp.x0));
     // plataforma de mão única por cima do morro
     this.solid(hx - 1.5, 4.0, hz + 5.2, hx + 1.5, 4.2, hz + 6.4, '#b8864f', true);
     this.solid(hx - 0.2, 0, hz + 5.6, hx + 0.2, 4.0, hz + 6.0, '#8a5a2a', false, true);
@@ -961,8 +1056,8 @@ export class Disaster3D implements MiniGameHandle {
       const col = m.wall[i % m.wall.length];
       for (let k = 0; k < 4; k++) this.addDyn(x, 0.6 + k * 1.2, z, 0.75, 0.6, 0.75, k % 2 ? col : '#d9dde8', true);
     }
-    // árvores (tronco estático)
-    for (let i = 0; i < Math.min(9, 2 + m.trees); i++) {
+    // árvores: agora no ambiente (env3d: natureza instanciada com tronco que colide)
+    for (let i = 0; i < 0; i++) {
       const a = r() * Math.PI * 2;
       const rad = 6 + r() * 25;
       const x = Math.cos(a) * rad;
@@ -988,7 +1083,7 @@ export class Disaster3D implements MiniGameHandle {
     const tuft = new THREE.ConeGeometry(0.13, 0.4, 3);
     const rock = new THREE.IcosahedronGeometry(0.3, 0);
     const leaf = new THREE.Color(m.leaf);
-    const nd = [40, 70, 110, 150][this.tier];
+    const nd = 0;
     for (let i = 0; i < nd; i++) {
       const a = r() * Math.PI * 2;
       const rad = Math.sqrt(r()) * (ISLAND_R - 2.5);
@@ -1007,6 +1102,7 @@ export class Disaster3D implements MiniGameHandle {
     tuft.dispose();
     rock.dispose();
     this.flushBatch();
+    this.env.build(sc, r, this, ISLAND_R);
     this.volcano.visible = m.id === 'ilha' || sc.disasters.includes('vulcao');
   }
 
@@ -1115,6 +1211,7 @@ export class Disaster3D implements MiniGameHandle {
 
   startRound(): void {
     let base: Scenario;
+    const forcedNow = !!this.forced;
     if (this.forced) {
       base = this.forced;
       this.forced = null;
@@ -1183,7 +1280,7 @@ export class Disaster3D implements MiniGameHandle {
     this.spawnPlayers();
     this.ex.reset();
     (this.hud.querySelector('.d3-scn') as HTMLElement).textContent = (this.training ? t('dz.train', 'Treino') + ' · ' : '') + `#${this.sc.n} · ${this.entry.name()} · ${this.sc.map.name()} ` + '★'.repeat(this.sc.difficulty);
-    const quiet = this.paused && this.bench;
+    const quiet = this.bench || forcedNow;
     this.rouletteClose?.();
     this.rouletteClose = quiet ? null : showRoulette(this.root, this.entry, { isNew: this.isNew, tele: HAZARDS[this.entry.hz[0]].tele() });
     this.setPhase('intro', quiet ? 2 : 4.4);
@@ -1310,6 +1407,7 @@ export class Disaster3D implements MiniGameHandle {
       this.fluidMat.emissiveIntensity = kind === 'lava' ? 0.6 : 0;
       this.fluidMat.opacity = kind === 'snow' || kind === 'lava' ? 1 : 0.78;
       this.fluidMesh.visible = true;
+      this.env.setFluid(fs ?? kind);
     };
     switch (d) {
       case 'enchente':
@@ -1554,6 +1652,8 @@ export class Disaster3D implements MiniGameHandle {
   }
 
   setSnow(on: boolean): void {
+    // a neve agora é do clima do ambiente (env3d); aqui só a velha nuvem de pontos fica desligada
+    if (on || !on) return;
     if (!on) {
       if (this.snow) this.snow.visible = false;
       return;
@@ -1716,8 +1816,9 @@ export class Disaster3D implements MiniGameHandle {
         this.shake = Math.max(this.shake, s.kind === 'drop' ? 0.1 : 0.35);
         this.fpcam.addShake(s.kind === 'drop' ? 0.15 : 0.5);
       }
-      // meteoros e bombas deixam fogo no chão (seco) por alguns segundos
-      if ((s.kind === 'meteor' || s.kind === 'bomb') && s.y < 0.3 && !(this.fluid && this.fluid.level > 0.1)) {
+      // meteoros e bombas deixam fogo no chão (seco) por alguns segundos (granizo/doces/pianos não)
+      const skin = s.kind === 'meteor' ? this.tn.strike : undefined;
+      if (((s.kind === 'meteor' && (!skin || skin === 'meteor')) || s.kind === 'bomb') && s.y < 0.3 && !(this.fluid && this.fluid.level > 0.1)) {
         const fi = this.fires.find((o) => !o.on) ?? this.fires[0];
         fi.on = true;
         fi.x = s.x;
@@ -1756,15 +1857,18 @@ export class Disaster3D implements MiniGameHandle {
     }
   }
 
+  /** cor da poeira (areia, neve, fumaça) */
+  puffCol = 0xe8e0d0;
   puff(at: THREE.Vector3, n: number, sp: number): void {
     n = Math.max(1, Math.round(n * this.q.particleBudget));
     for (let i = 0; i < n; i++) {
       const p = this.puffs[this.puffHead++ % this.puffs.length];
       p.m.visible = true;
       p.m.position.copy(at);
-      p.m.scale.setScalar(0.25 + Math.random() * 0.25);
+      p.m.scale.setScalar(0.7 + Math.random() * 0.6);
       p.v.set((Math.random() - 0.5) * sp, Math.random() * sp * 0.8, (Math.random() - 0.5) * sp);
       p.life = 0.6 + Math.random() * 0.4;
+      ((p.m.material as unknown) as THREE.SpriteMaterial).color.setHex(this.puffCol);
     }
   }
 
@@ -2021,8 +2125,8 @@ export class Disaster3D implements MiniGameHandle {
         continue;
       }
       const fl2 = 0.6 + 0.4 * Math.sin(this.time * 17 + fi.x);
-      fi.mesh.scale.set(fi.r, (0.5 + 0.4 * fl2) * Math.min(1, fi.t), fi.r);
-      fi.mesh.position.set(fi.x, fi.y + 0.25, fi.z);
+      fi.mesh.scale.set(fi.r, (0.75 + 0.35 * fl2) * Math.min(1, fi.t), fi.r);
+      fi.mesh.position.set(fi.x, fi.y, fi.z);
     }
     for (const c of this.coins) {
       if (!c.on) continue;
@@ -2910,7 +3014,8 @@ export class Disaster3D implements MiniGameHandle {
       p.life -= dt;
       p.v.y -= 6 * dt;
       p.m.position.addScaledVector(p.v, dt);
-      p.m.scale.multiplyScalar(1 - dt * 0.8);
+      p.m.scale.multiplyScalar(1 + dt * 0.9);
+      ((p.m.material as unknown) as THREE.SpriteMaterial).opacity = Math.min(0.85, p.life * 1.4);
       if (p.life <= 0) p.m.visible = false;
     }
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 1.5);
@@ -2988,7 +3093,6 @@ export class Disaster3D implements MiniGameHandle {
       a.needsUpdate = true;
     }
     this.fx(dt);
-    this.sky.position.copy(cam.position);
     this.renderer.render(this.scene, cam);
   }
 
@@ -3026,28 +3130,18 @@ export class Disaster3D implements MiniGameHandle {
           }
         }
         pa[i * 3 + 1] = y;
-        const r = base.r;
-        let gg = base.g;
-        let b = base.b;
-        if (kind === 'lava') {
-          const hot = 0.5 + 0.5 * Math.sin(wx * 0.7 + t * 1.3) * Math.sin(wz * 0.6 - t);
-          gg += hot * 0.35;
-          b += hot * 0.05;
-        }
-        foam = Math.min(1, foam);
-        ca[i * 3] = r + (1 - r) * foam;
-        ca[i * 3 + 1] = gg + (1 - gg) * foam;
-        ca[i * 3 + 2] = b + (1 - b) * foam;
+        // espuma no canal vermelho (o shader do fluido mistura a cor da pele)
+        ca[i * 3] = Math.min(1, foam);
+        ca[i * 3 + 1] = 0;
+        ca[i * 3 + 2] = 0;
       }
+      void base;
       pos.needsUpdate = true;
       col.needsUpdate = true;
-      const fm = this.fluidTop.material as THREE.MeshStandardMaterial;
-      fm.emissive.setHex(kind === 'lava' ? 0xff3a00 : 0x000000);
-      fm.emissiveIntensity = kind === 'lava' ? 0.7 : 0;
-      fm.opacity = kind === 'water' ? 0.88 : 1;
+      g.computeVertexNormals();
     }
-    // mar perto da ilha
-    {
+    // mar perto da ilha (antigo: agora o mar da Jangada)
+    if (this.sea2.visible) {
       const pos = this.sea2.geometry.getAttribute('position') as THREE.BufferAttribute;
       const pa = pos.array as Float32Array;
       for (let i = 0, n = pos.count; i < n; i++) {
@@ -3057,7 +3151,16 @@ export class Disaster3D implements MiniGameHandle {
       }
       pos.needsUpdate = true;
     }
-    // tornado: partículas sobem girando num funil + escombros orbitando
+    // tornado: cascas girando + partículas sobem num funil + escombros orbitando
+    for (const tm of [this.tornadoMesh, this.tornado2Mesh]) {
+      if (!tm || !tm.visible) continue;
+      for (const ch of tm.children) {
+        if (ch.name !== 'shell') continue;
+        ch.rotation.y += dt * (ch.userData.spin as number);
+        const mp = ((ch as THREE.Mesh).material as THREE.MeshBasicMaterial).map;
+        if (mp) mp.offset.y = (mp.offset.y + dt * 0.25) % 1;
+      }
+    }
     if (this.tornadoMesh.visible) {
       const pos = this.tnPts.geometry.getAttribute('position') as THREE.BufferAttribute;
       const pa = pos.array as Float32Array;
@@ -3087,17 +3190,37 @@ export class Disaster3D implements MiniGameHandle {
     // luz de tempestade: escurece no alerta/desastre; nevasca fecha a neblina; raio clareia
     const target = this.phase === 'warn' || this.phase === 'disaster' ? 1 : 0;
     this.storm += (target - this.storm) * Math.min(1, dt * 0.8);
-    const fog = this.scene.fog as THREE.Fog | null;
-    if (fog) {
-      fog.color.copy(this.fogCalm).lerp(this.fogStorm, this.storm * (this.active.has('avalanche') ? 0.25 : 0.55));
-      const bl = this.active.has('avalanche') ? 1 : 0;
-      fog.near = 45 - bl * 33;
-      fog.far = 170 - bl * 105;
-    }
-    const flash = this.boltT > 0 ? 1.2 : 0;
-    this.hemi.intensity = 1.15 - this.storm * 0.35 + flash;
-    this.sun.intensity = 1.6 - this.storm * 0.75;
-    (this.sky.material as THREE.MeshBasicMaterial).color.setScalar(1 - this.storm * 0.45 + flash * 0.3);
+    const flash = this.boltT > 0 ? 1 : 0;
+    const A = this.active;
+    const tn = this.sc.tune;
+    const dis = this.phase === 'disaster' || this.phase === 'warn';
+    // tempestade "de verdade" só nos desastres de clima; calor/espaço ficam com céu limpo
+    const stormy = A.has('raios') || A.has('enchente') || A.has('tornado') || A.has('acido') || A.has('vulcao') || A.has('areia') || A.has('avalanche') || A.has('nevasca') || A.has('meteoros') || A.has('tsunami') || A.has('fantasma');
+    const me = this.me;
+    this.env.update(
+      dt,
+      this.time,
+      this.camera,
+      {
+        storm: this.storm * (stormy ? (A.has('meteoros') && !A.has('raios') ? 0.45 : 0.9) : 0.15),
+        flash,
+        wind: this.wind + (A.has('tornado') ? 2 : 0),
+        rain: dis && (A.has('raios') || A.has('enchente') || (A.has('tornado') && !!tn?.hurricane) || !!tn?.rain) ? 1 : 0,
+        snow: dis && (A.has('avalanche') || A.has('nevasca')) ? 1 : this.sc.map.id === 'polo' ? 0.3 : 0,
+        embers: dis && (A.has('vulcao') || A.has('incendio')) ? 1 : 0,
+        heat: A.has('calor') ? this.ex.sun.k : 0,
+        fog: tn?.fog || A.has('fantasma') ? 1 : A.has('areia') ? (this.gust.t > 0 ? 0.8 : 0.3) : 0,
+        pushX: me.pos.x,
+        pushZ: me.pos.z,
+      },
+      this.sun,
+      this.hemi,
+      this.scene.fog as THREE.FogExp2,
+    );
+    this.sunDir.copy(this.sun.position).sub(this.camera.position).normalize();
+    this.puffCol = A.has('avalanche') || A.has('nevasca') || this.sc.map.id === 'polo' ? 0xf4f8ff : A.has('areia') || this.sc.map.id === 'deserto' ? 0xe8c890 : A.has('vulcao') || A.has('incendio') ? 0x6a6060 : 0xe8e0d0;
+    // maré: o mar recua antes de cada onda do tsunami
+    this.env.seaLift = A.has('tsunami') && this.fluid ? -0.6 * Math.min(1, this.alertT) : 0;
   }
 
   /* ------------------------------ HUD ------------------------------ */

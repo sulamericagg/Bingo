@@ -46,6 +46,7 @@ await ctx.addInitScript(
       const o = JSON.parse(localStorage.getItem(k) || '{}');
       localStorage.setItem(k, JSON.stringify({ ...o, ...save }));
       localStorage.setItem('bo-quality-detect', JSON.stringify({ v: 'x', tier, score: 0, cap: 3 }));
+      localStorage.setItem('bo-quality', String(tier));
       localStorage.setItem('bo-disaster', JSON.stringify({ next: 1, best: 0, survived: 0, played: 99 }));
       localStorage.setItem('bo-disaster3d', JSON.stringify({ next: 1, best: 0, played: 99 }));
       localStorage.setItem('bo-disaster-diff', 'normal');
@@ -174,6 +175,7 @@ if (!process.argv.includes('--no3d')) {
           g.yaw = view === 'fp' ? a + 1.9 : a;
           g.pitch = view === 'fp' ? 0.25 : 0.32;
           g.knockOut = ko;
+          g.storm = 1;
           for (let i = 0; i < 4; i++) {
             me.alive = true;
             g.update(1 / 60);
