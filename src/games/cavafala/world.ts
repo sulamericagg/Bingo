@@ -24,7 +24,7 @@ import { parseBest, type Parsed } from './parser';
 import { cavaSave, discover, persist } from './save';
 import type { Terrain } from './terrain';
 import type { Town } from './town';
-import { askMicPermission, listen, openAppSettings, voiceKind, withTimeout, type VoiceFail, type VoiceSession } from './voice';
+import { askMicPermission, listen, listenContinuous, openAppSettings, voiceKind, withTimeout, type ContSession, type VoiceFail, type VoiceSession } from './voice';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const TAU = Math.PI * 2;
@@ -407,7 +407,7 @@ export class World {
         this.jumpHeld = d;
         if (d) this.jumpQ = true;
       },
-      mic: (d) => (d ? void this.micDown() : void this.micUp()),
+      mic: (d) => this.micBtn(d),
       type: () => this.openType(),
       book: () => this.openRing(),
       select: (i) => this.select(this.me, i),
@@ -688,7 +688,7 @@ export class World {
         this.digHeld = down;
         break;
       case 'KeyV':
-        if (!e.repeat) void (down ? this.micDown() : this.micUp());
+        if (!e.repeat) this.micBtn(down);
         break;
       case 'KeyT':
       case 'Enter':
@@ -1152,6 +1152,182 @@ export class World {
   }
 
   /* ---------------------------- voz / texto / círculo ---------------------------- */
+  /* ---------- microfone LIGA/DESLIGA (contínuo) ---------- */
+  private cont: ContSession | null = null;
+  private contStarting = false;
+  private lastSpeech = 0;
+  private silenceT = 0;
+  private visH = () => document.hidden && this.micOff(true);
+  /** 'toggle' (padrão): toque liga/desliga · 'hold': segurar para falar */
+  micMode(): 'toggle' | 'hold' {
+    return cavaSave().micMode ?? 'toggle';
+  }
+  get micOn(): boolean {
+    return !!this.cont || this.contStarting;
+  }
+  private micBtn(down: boolean): void {
+    if (this.micMode() === 'hold') {
+      void (down ? this.micDown() : this.micUp());
+      return;
+    }
+    if (!down) return;
+    if (this.micOn) this.micOff();
+    else void this.micStart();
+  }
+  /** liga: ouve sem parar até desligar (o reconhecedor reinicia sozinho depois de cada frase) */
+  async micStart(): Promise<void> {
+    if (this.micOn || this.dead) return;
+    audio.unlock();
+    sfx.pick();
+    if (voiceKind() === 'none') {
+      this.noVoiceCard();
+      return;
+    }
+    this.contStarting = true;
+    this.hud.micState('starting');
+    let why: VoiceFail | null = null;
+    const s = await withTimeout(
+      listenContinuous({
+        onPartial: (txt) => {
+          this.lastSpeech = performance.now();
+          if (txt.trim()) this.hud.subtitle(txt, 'live');
+        },
+        onFinal: (alts) => this.contFinal(alts),
+        onLevel: (lv) => this.hud.level(lv),
+        onAskPerm: () => {
+          this.hud.micState('off', true);
+          this.permCard('ask');
+        },
+        onError: (w) => {
+          why = w;
+          if (w === 'perm' && this.cont) {
+            this.micOff(true);
+            this.permCard('denied');
+          }
+        },
+      }),
+      35000,
+      null,
+    );
+    if ((this.hud.overlay as HTMLDivElement | null)?.dataset.perm === 'ask') this.closePanelGo();
+    this.contStarting = false;
+    if (!s || this.dead || this.paused) {
+      s?.stop();
+      this.hud.micState('off', true);
+      if (this.dead || this.paused) return;
+      if (why === 'perm') this.permCard('denied');
+      else this.noVoiceCard(why === 'unavailable' ? 'none' : why ? 'err' : 'slow');
+      return;
+    }
+    this.cont = s;
+    this.lastSpeech = performance.now();
+    this.hud.micState('on');
+    document.addEventListener('visibilitychange', this.visH);
+    // silêncio comprido: dica (a criança falou e nada apareceu → chegue mais perto)
+    clearInterval(this.silenceT);
+    this.silenceT = window.setInterval(() => {
+      if (!this.cont) return;
+      if (performance.now() - this.lastSpeech > 7000) {
+        this.hud.subtitle(t('cavafala.mic.louder', 'Fala mais alto ou chega mais perto 🎤'), 'hint');
+        this.lastSpeech = performance.now() - 3000; // repete a cada ~4 s, sem piscar
+      }
+    }, 500);
+  }
+  /** desliga (botão, pausa, app no fundo, sair) — sempre funciona */
+  micOff(silent = false): void {
+    clearInterval(this.silenceT);
+    document.removeEventListener('visibilitychange', this.visH);
+    const was = this.micOn;
+    this.cont?.stop();
+    this.cont = null;
+    this.contStarting = false;
+    if (was) {
+      this.hud.micState('off', silent);
+      if (!silent) sfx.drop();
+    }
+  }
+  /** frase completa no modo contínuo: destaca o comando e monta; senão sugere (sem parar de ouvir) */
+  private contFinal(alts: string[]): void {
+    this.lastSpeech = performance.now();
+    const heard = alts[0]?.trim() ?? '';
+    if (!heard || this.dead) return;
+    if (this.hud.overlay) return;
+    const p = parseBest(alts);
+    this.lastParsed = p;
+    this.net?.voice(this.me, p.heard || heard);
+    if (p.g && (p.sure || p.score >= 0.78)) {
+      this.hud.subtitle(p.heard || heard, 'ok', fullName(p.g, p.mods));
+      const ok = this.create(this.me, p.g, p.mods, 'voice');
+      if (ok) {
+        cavaSave().spoken++;
+        persist();
+      }
+      return;
+    }
+    this.logMiss(p);
+    const opts = [...(p.g ? [p.g] : []), ...p.suggest].filter((g, i, a) => a.indexOf(g) === i).slice(0, 3);
+    this.hud.subtitle(
+      p.heard || heard,
+      'no',
+      '',
+      opts.map((g) => ({ label: g.name(), go: () => this.create(this.me, g, g === p.g ? p.mods : noMods(), 'radial') })),
+    );
+  }
+
+  /** teste do microfone (pausa): barras do nível + o que ouviu, para ver se o aparelho escuta */
+  micTest(onClose: () => void): void {
+    this.micOff(true);
+    const d = this.hud.panel(
+      `<div class="cf-card cf-mt"><h2>${esc(t('cavafala.mt.title', 'Testar microfone'))}</h2>
+        <p data-st>${esc(t('cavafala.mic.starting', 'Ligando o microfone…'))}</p>
+        <div class="cf-mtbars">${'<i></i>'.repeat(20)}</div>
+        <div class="cf-mtlog"><i>${esc(t('cavafala.mt.say', 'Fale alguma coisa, tipo “trampolim”…'))}</i></div>
+        <div class="cf-row"><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div></div>`,
+    );
+    d.dataset.mictest = '1';
+    const bars = [...d.querySelectorAll<HTMLElement>('.cf-mtbars i')];
+    const hist = new Array(bars.length).fill(0);
+    const log = d.querySelector('.cf-mtlog') as HTMLElement;
+    const st = d.querySelector('[data-st]') as HTMLElement;
+    let lines: string[] = [];
+    let live = '';
+    const draw = () => (log.innerHTML = [...lines.slice(-3).map((l) => `<div>${esc(l)}</div>`), live ? `<div><i>${esc(live)}…</i></div>` : ''].join('') || `<i>${esc(t('cavafala.mt.say', 'Fale alguma coisa, tipo “trampolim”…'))}</i>`);
+    let sess: ContSession | null = null;
+    let closed = false;
+    const close = () => {
+      closed = true;
+      sess?.stop();
+      this.hud.closePanel();
+      onClose();
+    };
+    d.querySelector('[data-a=x]')!.addEventListener('click', close);
+    void listenContinuous({
+      onPartial: (s) => {
+        live = s;
+        draw();
+      },
+      onFinal: (alts) => {
+        live = '';
+        const p = parseBest(alts);
+        lines.push(`“${alts[0]}”` + (p.g ? ` → ${fullName(p.g, p.mods)}` : ''));
+        lines = lines.slice(-6);
+        draw();
+      },
+      onLevel: (v) => {
+        hist.push(v);
+        hist.shift();
+        bars.forEach((b, i) => (b.style.height = Math.round(4 + hist[i] * 62) + 'px'));
+      },
+      onError: (w) => {
+        st.textContent = w === 'perm' ? t('cavafala.perm.deniedT', 'O microfone está desligado') : t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.');
+      },
+    }).then((s) => {
+      if (closed) return s?.stop();
+      sess = s;
+      if (s) st.textContent = t('cavafala.mic.on', 'Ouvindo… é só falar!');
+    });
+  }
+
   private micCancel = false;
   private lastPartial = '';
   private misses: string[] = [];
@@ -2457,6 +2633,7 @@ export class World {
     this.digHeld = this.useHeld = this.jumpHeld = false;
     this.ctl.show(!p);
     if (p) {
+      this.micOff(true);
       this.voice?.cancel();
       this.voice = null;
       this.voiceBusy = false;
@@ -2466,6 +2643,7 @@ export class World {
 
   dispose(): void {
     this.dead = true;
+    this.micOff(true);
     this.flushMisses();
     cancelAnimationFrame(this.raf);
     this.voice?.cancel();

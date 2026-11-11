@@ -84,6 +84,7 @@ export class Hud {
       <div class="cf-arrow">${SVG.arrow}</div>
       <div class="cf-listen"><div class="cf-wave">${'<i></i>'.repeat(9)}</div><span></span></div>
       <div class="cf-heard"></div>
+      <div class="cf-subt"><span></span><div class="cf-subt-sug"></div></div>
       <div class="cf-hot"></div>
       <button class="cf-b cf-mic" data-k="mic">${SVG.mic}<small>${esc(t('cavafala.btn.talk', 'FALAR'))}</small></button>
       <button class="cf-b cf-dig" data-k="dig">${SVG.dig}<small>${esc(t('cavafala.btn.dig', 'CAVAR'))}</small></button>
@@ -122,6 +123,62 @@ export class Hud {
     b('.cf-bag', (d) => d && this.mats.classList.toggle('open'));
     this.waveBars = [...el.querySelectorAll<HTMLElement>('.cf-wave i')];
     this.heardEl = el.querySelector('.cf-heard')!;
+    this.subEl = el.querySelector('.cf-subt')!;
+  }
+  private subEl: HTMLDivElement;
+  private subT = 0;
+  private micOffT = 0;
+  /** microfone ligado (modo liga/desliga): anel brilhando + "Ouvindo…"; desligado: aviso curto */
+  micState(st: 'on' | 'starting' | 'off', silent = false): void {
+    const on = st !== 'off';
+    this.micBtn.classList.toggle('live', on);
+    this.micBtn.classList.toggle('wait', st === 'starting');
+    const lab = this.micBtn.querySelector('small')!;
+    lab.textContent = on ? t('cavafala.btn.listening', 'OUVINDO') : t('cavafala.btn.talk', 'FALAR');
+    this.listenEl.classList.toggle('on', on);
+    this.listenEl.classList.remove('off');
+    const s = this.listenEl.querySelector('span')!;
+    clearTimeout(this.micOffT);
+    if (on) s.textContent = st === 'starting' ? t('cavafala.mic.starting', 'Ligando o microfone…') : t('cavafala.mic.on', 'Ouvindo… é só falar!');
+    else {
+      this.level(0);
+      this.subtitle(null);
+      if (!silent) {
+        s.textContent = t('cavafala.mic.off', 'Microfone desligado');
+        this.listenEl.classList.add('on', 'off');
+        this.micOffT = window.setTimeout(() => this.listenEl.classList.remove('on', 'off'), 1600);
+      }
+    }
+  }
+  /**
+   * legenda "Você: …" (palavra por palavra). kind: 'live' parcial · 'ok' comando entendido (destaca `hit`)
+   * · 'no' não entendeu (com sugestões para tocar) · 'hint' dica (ex.: fala mais alto) · null esconde
+   */
+  subtitle(text: string | null, kind: 'live' | 'ok' | 'no' | 'hint' = 'live', hit = '', sugs: { label: string; go: () => void }[] = []): void {
+    clearTimeout(this.subT);
+    const el = this.subEl;
+    if (text == null) {
+      el.classList.remove('on');
+      return;
+    }
+    el.className = 'cf-subt on ' + kind;
+    const sp = el.querySelector('span')!;
+    const you = kind === 'hint' ? '' : `<b>${esc(t('cavafala.sub.you', 'Você:'))}</b> `;
+    sp.innerHTML = you + esc(text) + (kind === 'ok' && hit ? ` <em>→ ${esc(hit)}</em>` : '') + (kind === 'no' ? ` <em>${esc(t('cavafala.sub.no', 'não entendi'))}</em>` : '');
+    const sg = el.querySelector('.cf-subt-sug') as HTMLElement;
+    sg.innerHTML = '';
+    for (const s of sugs) {
+      const b = document.createElement('button');
+      b.textContent = s.label;
+      b.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        s.go();
+        this.subtitle(null);
+      });
+      sg.appendChild(b);
+    }
+    if (kind === 'ok') this.subT = window.setTimeout(() => el.classList.remove('on'), 2600);
+    if (kind === 'no') this.subT = window.setTimeout(() => el.classList.remove('on'), 5000);
   }
   private bag: HTMLButtonElement;
   private waveBars: HTMLElement[] = [];

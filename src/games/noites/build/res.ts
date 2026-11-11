@@ -1,17 +1,19 @@
 /* ============================================================
  *  NOITES · CONSTRUÇÃO — ADAPTADOR DE RECURSOS (arquivo único).
  *  Toda leitura/gasto/devolução de recursos da construção passa
- *  por aqui. Hoje: saco do jogador (p.bag) + estoque do acampamento
- *  (sim.stash). Quem migrar o inventário só precisa trocar ESTE
+ *  por aqui. Hoje: espaços do jogador (p.slots, inventário em espaços)
+ *  + estoque do acampamento (sim.stash). Quem migrar o inventário só precisa trocar ESTE
  *  arquivo (as funções recebem o Sim e o jogador).
  * ============================================================ */
 import type { Res } from '../data';
 import type { Player, Sim } from '../sim';
 import type { Cost } from './pieces';
+import { countOf, takeFrom } from '../items';
+import { HOT } from '../data';
 
 /** quanto o jogador tem de cada recurso para construir (saco + estoque do acampamento) */
 export function have(s: Sim, p: Player | undefined, r: Res): number {
-  return (p?.bag[r] ?? 0) + (s.stash[r] ?? 0);
+  return (p ? countOf(p.slots, r) : 0) + (s.stash[r] ?? 0);
 }
 /** dá para pagar? (`mul` = quantas vezes o custo) */
 export function canAfford(s: Sim, p: Player | undefined, c: Cost, mul = 1): boolean {
@@ -37,12 +39,7 @@ export function pay(s: Sim, p: Player, c: Cost): void {
   for (const k in c) {
     const r = k as Res;
     let n = c[r] ?? 0;
-    const fromBag = Math.min(n, p.bag[r] ?? 0);
-    if (fromBag) {
-      p.bag[r] = (p.bag[r] ?? 0) - fromBag;
-      if (!p.bag[r]) delete p.bag[r];
-      n -= fromBag;
-    }
+    n -= takeFrom(p.slots, r, n);
     if (n > 0) s.stash[r] = Math.max(0, (s.stash[r] ?? 0) - n);
   }
 }
@@ -53,17 +50,16 @@ export function give(s: Sim, _p: Player | undefined, c: Cost): void {
     if (n > 0) s.stash[k as Res] = (s.stash[k as Res] ?? 0) + n;
   }
 }
-/** baú construído: esvazia o saco no estoque (mesma regra do depósito automático da fogueira) */
+/** esvazia a mochila (fora da barra da mão) no estoque */
 export function depositBag(s: Sim, p: Player): number {
   let n = 0;
-  for (const k in p.bag) {
-    const v = p.bag[k as Res] ?? 0;
-    if (v > 0) {
-      s.stash[k as Res] = (s.stash[k as Res] ?? 0) + v;
-      n += v;
-    }
+  for (let i = HOT; i < p.slots.length; i++) {
+    const st = p.slots[i];
+    if (!st) continue;
+    s.stash[st.id] = (s.stash[st.id] ?? 0) + st.n;
+    n += st.n;
+    p.slots[i] = null;
   }
-  p.bag = {};
   return n;
 }
 /** nível da bancada do acampamento (trava peças avançadas) */
