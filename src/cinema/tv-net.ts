@@ -4,7 +4,8 @@
  * ============================================================ */
 import { ONLINE } from '../config';
 import { apiBase, ensurePlayer } from '../services/leaderboard';
-import { TV, type TvNow, type TvPayload } from '../../shared/ugc';
+import { TV, type TvAiReject, type TvNow, type TvPayload } from '../../shared/ugc';
+import { getLang } from '../i18n';
 import type { Project } from './format';
 import { getClip } from './store';
 
@@ -95,10 +96,13 @@ function blobB64(b: Blob): Promise<string> {
   });
 }
 
-export type SubmitError = 'offline' | 'too-big' | 'too-long' | 'name' | 'empty' | 'daily-limit' | 'banned' | 'invalid' | 'rate';
+export type SubmitError = 'offline' | 'too-big' | 'too-long' | 'name' | 'empty' | 'daily-limit' | 'banned' | 'invalid' | 'rate' | 'ai';
 
-/** Monta o envio (projeto + vozes em base64 + 3 fotos) e manda para a fila de revisão. */
-export async function submitFilm(p: Project, thumbs: string[], onProgress?: (k: number) => void): Promise<{ ok: true } | { ok: false; error: SubmitError }> {
+/**
+ * Monta o envio (projeto + vozes em base64 + o que o aparelho entendeu de cada voz + 3 fotos) e manda.
+ * O servidor transcreve as vozes com a IA e pode recusar na hora (`error: 'ai'`, com as falas a corrigir).
+ */
+export async function submitFilm(p: Project, thumbs: string[], onProgress?: (k: number) => void): Promise<{ ok: true } | { ok: false; error: SubmitError; ai?: TvAiReject }> {
   const pid = await myId();
   if (!pid) return { ok: false, error: 'offline' };
   const clips: TvPayload['clips'] = {};
@@ -114,11 +118,12 @@ export async function submitFilm(p: Project, thumbs: string[], onProgress?: (k: 
     size += b64.length;
     if (size > TV.maxBytes) return { ok: false, error: 'too-big' };
     clips[id] = { mime: (row.blob.type || 'audio/webm').slice(0, 60), b64, dur: row.dur };
+    if (typeof row.tx === 'string') clips[id].tx = row.tx.slice(0, 500);
   }
   try {
-    const r = await call<{ ok: boolean; error?: SubmitError }>('POST', '/tv/submit', { id: pid, title: p.title, project: p, clips, thumbs }, 60_000);
+    const r = await call<{ ok: boolean; error?: SubmitError; ai?: TvAiReject }>('POST', '/tv/submit', { id: pid, title: p.title, project: p, clips, thumbs, lang: getLang() }, 90_000);
     onProgress?.(1);
-    return r.ok ? { ok: true } : { ok: false, error: r.error ?? 'invalid' };
+    return r.ok ? { ok: true } : { ok: false, error: r.error ?? 'invalid', ai: r.ai };
   } catch (e) {
     const err = e as TvError;
     return { ok: false, error: err.status === 413 ? 'too-big' : err.status === 429 ? 'rate' : err.status === 403 ? 'banned' : 'offline' };

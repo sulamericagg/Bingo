@@ -197,6 +197,46 @@ export interface Project {
   template?: string;
   /** roteiro de origem ("Criar história" / História Mágica) — permite re-editar no modo simples */
   story?: StorySpec;
+  /** Modo fácil (quadro de cenas): fonte da verdade das cenas — `scenes` é gerado dele (board.ts) */
+  board?: Board;
+}
+
+/* ---------------------------- modo fácil: quadro de cenas ---------------------------- */
+export const BOARD_MAX_SCENES = 12;
+export const BOARD_MAX_LINES = 3;
+export const BOARD_MAX_CHARS = 4;
+
+/** Personagem parado na cena (arrastar = x; perto/longe = z). */
+export interface BoardChar {
+  cast: string;
+  x: number;
+  z: number;
+  face: -1 | 0 | 1;
+  pose: PoseId;
+  expr: ExprId;
+}
+/** Fala da cena (até 3). Texto vazio = improviso na dublagem (a duração segue a gravação). */
+export interface BoardLine {
+  id: string;
+  /** quem fala (id do elenco); vazio = narrador */
+  cast?: string;
+  text: string;
+  audio?: string;
+  /** corte [início, fim] da gravação (s) */
+  cut?: [number, number];
+}
+export interface BoardScene {
+  id: string;
+  bg: string;
+  light: 'day' | 'dusk' | 'night';
+  chars: BoardChar[];
+  lines: BoardLine[];
+}
+export interface Board {
+  v: 1;
+  scenes: BoardScene[];
+  /** assinatura de `scenes` gerado (detecta mudanças feitas no modo avançado) */
+  sig?: string;
 }
 
 /* ---------------------------- utilidades ---------------------------- */
@@ -306,6 +346,7 @@ export function parseProject(raw: unknown): Project | null {
   p.watermark = o.watermark !== false;
   p.template = typeof o.template === 'string' ? o.template : undefined;
   p.story = o.story ? (validateStory(o.story) ?? undefined) : undefined;
+  p.board = parseBoard(o.board);
   const mix = (o.mix ?? {}) as Record<string, unknown>;
   p.mix = { music: num(mix.music, 0.7, 0, 1), voice: num(mix.voice, 1, 0, 1), sfx: num(mix.sfx, 0.8, 0, 1) };
   const m = o.music as Record<string, unknown> | null;
@@ -370,4 +411,41 @@ export function parseFaceTake(raw: unknown): FaceTake | undefined {
   const n = Math.min(maxN, Math.floor(num(o.n, 0, 0, maxN)), Math.floor((q.length * 3) / 4 / FACE_CH.length));
   if (n < 2) return undefined;
   return { hz, n, q, only: o.only === 'mouth' ? 'mouth' : undefined };
+}
+
+const POSE_IDS = new Set(['stand', 'walk', 'run', 'wave', 'point', 'sit', 'jump', 'dance', 'lie', 'hug', 'facepalm', 'think', 'cheer', 'shrug', 'bow', 'clap', 'scared', 'spin', 'flex', 'sneak']);
+const EXPR_IDS = new Set(['neutral', 'happy', 'sad', 'angry', 'surprised', 'sleepy', 'love', 'laughing', 'crying', 'thinking', 'scared', 'smug', 'wink', 'dizzy', 'shy', 'confused']);
+
+export function parseBoard(raw: unknown): Board | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const scenes = arr<Record<string, unknown>>(o.scenes)
+    .slice(0, BOARD_MAX_SCENES)
+    .map((s) => ({
+      id: str(s.id, uid('sc'), 40) || uid('sc'),
+      bg: str(s.bg, 'park', 40) || 'park',
+      light: (s.light === 'night' || s.light === 'dusk' ? s.light : 'day') as BoardScene['light'],
+      chars: arr<Record<string, unknown>>(s.chars)
+        .slice(0, BOARD_MAX_CHARS)
+        .map((c) => ({
+          cast: str(c.cast, '', 40),
+          x: num(c.x, 8, -1, 17),
+          z: num(c.z, 0, -3, 3),
+          face: (c.face === 1 || c.face === -1 ? c.face : 0) as -1 | 0 | 1,
+          pose: (POSE_IDS.has(c.pose as string) ? c.pose : 'stand') as PoseId,
+          expr: (EXPR_IDS.has(c.expr as string) ? c.expr : 'happy') as ExprId,
+        }))
+        .filter((c) => c.cast),
+      lines: arr<Record<string, unknown>>(s.lines)
+        .slice(0, BOARD_MAX_LINES)
+        .map((l) => ({
+          id: str(l.id, uid('ln'), 40) || uid('ln'),
+          cast: typeof l.cast === 'string' && l.cast ? l.cast.slice(0, 40) : undefined,
+          text: str(l.text, '', 140),
+          audio: typeof l.audio === 'string' && l.audio ? l.audio.slice(0, 40) : undefined,
+          cut: Array.isArray(l.cut) && l.cut.length === 2 ? ([num(l.cut[0], 0, 0, 60), num(l.cut[1], 60, 0, 60)] as [number, number]) : undefined,
+        })),
+    }));
+  if (!scenes.length) return undefined;
+  return { v: 1, scenes, sig: typeof o.sig === 'string' ? o.sig.slice(0, 40) : undefined };
 }

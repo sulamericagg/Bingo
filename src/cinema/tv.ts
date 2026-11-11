@@ -14,7 +14,7 @@ import { pushBack } from '../core/back';
 import { t } from '../i18n';
 import { esc } from '../ui/dom';
 import { notify } from '../ui/notify';
-import { TV, type TvNow, type TvSlot } from '../../shared/ugc';
+import { TV, type TvAiReject, type TvNow, type TvSlot } from '../../shared/ugc';
 import { actx, envelopeOf, Mixer, Playback, rememberClip } from './audio';
 import { Renderer } from './engine';
 import { parseProject, projectDuration, type Project } from './format';
@@ -430,10 +430,28 @@ const ERR: Record<SubmitError, () => string> = {
   banned: () => t('tv.err.banned', 'Sua conta não pode enviar filmes.'),
   invalid: () => t('tv.err.invalid', 'Não deu para enviar este filme.'),
   rate: () => t('tv.err.rate', 'Calma! Espere um pouco antes de enviar de novo.'),
+  ai: () => t('tv.err.ai', 'A IA achou algo que não pode na TV.'),
 };
 
+/** Motivo gentil da recusa automática (IA), apontando a fala. */
+function aiWhy(a: TvAiReject): string {
+  const n = a.lines.map((l) => l.n).join(', ') || '?';
+  switch (a.why) {
+    case 'voice-bad':
+      return t('tv.ai.voiceBad', 'Tem uma palavra que não pode na TV na fala {n}. Regrave essa fala!', { n });
+    case 'voice-pii':
+      return t('tv.ai.voicePii', 'Na fala {n} parece ter um dado pessoal (telefone, endereço, escola ou rede social). Regrave sem isso!', { n });
+    case 'text-bad':
+      return t('tv.ai.textBad', 'Tem uma palavra que não pode na TV no balão da fala {n}. Troque o texto!', { n });
+    case 'text-pii':
+      return t('tv.ai.textPii', 'O balão da fala {n} parece ter um dado pessoal. Troque o texto!', { n });
+    default:
+      return t('tv.ai.other', 'A IA achou algo que não pode na TV na fala {n}. Regrave ou troque essa fala!', { n });
+  }
+}
+
 /** "Enviar para a TV": regras claras → fotos → envio. Chamado pelo Exportar do Cinema. */
-export function sendToTvSheet(p: Project, r: Renderer): void {
+export function sendToTvSheet(p: Project, r: Renderer, o: { onFix?: (lineId: string) => void } = {}): void {
   const dur = projectDuration(p);
   const s = sheet(
     `<h3>📺 ${t('tv.send', 'Enviar para a TV Bloop')}</h3>
@@ -441,15 +459,20 @@ export function sendToTvSheet(p: Project, r: Renderer): void {
      <div class="tv-rules"><b>${t('tv.rules', 'Regras da TV')}</b><ul>
        <li>${t('tv.rule1', 'Nada de palavrões, ofensas, sustos pesados ou conteúdo impróprio.')}</li>
        <li>${t('tv.rule2', 'Nada de dados pessoais: nome completo, telefone, endereço, escola, redes sociais.')}</li>
-       <li>${t('tv.rule3', 'Suas gravações de voz vão junto e são ouvidas pela equipe antes de aprovar.')}</li>
+       <li>${t('tv.rule3ai', 'Suas vozes vão junto: uma IA confere as palavras e depois a equipe ouve antes de aprovar.')}</li>
        <li>${t('tv.rule4', 'Até {m} min e 3 MB; até {n} filmes por dia. Votos falsos não contam.', { m: TV.maxDurSec / 60, n: TV.maxFilmsPerDay })}</li>
        <li>${t('tv.rule5', 'Filmes denunciados saem do ar até nova revisão. Quem quebrar as regras perde o acesso.')}</li>
      </ul></div>
      <label class="tv-agree"><input type="checkbox" data-r="agree"> ${t('tv.agree', 'Li as regras e o filme é meu')}</label>
      <div class="cin-progress" hidden><i></i></div>
      <div class="cin-menu" style="margin-top:12px"><button class="cin-btn pri" data-a="go" disabled>📺 ${t('tv.sendBtn', 'Enviar para revisão')}</button><button class="cin-btn ghost" data-a="x">${t('cin.cancel', 'Cancelar')}</button></div>`,
-    async (a, _el, close) => {
+    async (a, el, close) => {
       if (a === 'x') return close();
+      if (a === 'fix') {
+        close();
+        o.onFix?.(el.dataset.v!);
+        return;
+      }
       if (a !== 'go') return;
       const go = s.el.querySelector<HTMLButtonElement>('[data-a="go"]')!;
       go.disabled = true;
@@ -472,6 +495,15 @@ export function sendToTvSheet(p: Project, r: Renderer): void {
       if (res.ok) {
         close();
         notify(t('tv.sent', 'Enviado! Seu filme está “Em análise”. Acompanhe em TV Bloop → Meus envios.'), { kind: 'good', icon: 'check' });
+      } else if (res.error === 'ai' && res.ai) {
+        // recusa automática: mostra o motivo e a fala, com o atalho para regravar
+        const ai = res.ai;
+        s.el.innerHTML = `<div class="tv-ai"><div class="tv-ai-ico">🙊</div>
+          <h3>${t('tv.ai.title', 'Quase lá!')}</h3>
+          <p>${esc(aiWhy(ai))}</p>
+          <ul class="tv-ai-lines">${ai.lines.map((l) => `<li><b>${t('tv.ai.line', 'Fala {n}', { n: l.n })}</b> ${l.text ? '“' + esc(l.text) + '”' : '🎙️'}</li>`).join('')}</ul>
+          <p class="cin-hint">${t('tv.ai.how', 'Uma IA ouve as vozes antes da TV para manter tudo legal para todo mundo. Corrija e envie de novo — não gasta seus envios do dia.')}</p>
+          <div class="cin-menu">${o.onFix && ai.lines[0] ? `<button class="cin-btn pri" data-a="fix" data-v="${esc(ai.lines[0].id)}">${ai.why.startsWith('text') ? '✏️ ' + t('tv.ai.fixText', 'Trocar a fala {n}', { n: ai.lines[0].n }) : '🎙️ ' + t('tv.ai.fixVoice', 'Regravar a fala {n}', { n: ai.lines[0].n })}</button>` : ''}<button class="cin-btn ghost" data-a="x">${t('cin.ok', 'OK')}</button></div></div>`;
       } else {
         go.disabled = false;
         bar.hidden = true;

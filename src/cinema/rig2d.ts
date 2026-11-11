@@ -1138,3 +1138,15 @@ export function drawBackTex(x: CanvasRenderingContext2D, avd: AvatarData, R: num
   fn(d, 0);
   return true;
 }
+
+/** Cópia da miniatura (a do cache é um único elemento: anexar em dois lugares a "move"). */
+export function actorThumbCopy(cast: CastMember, px: number, pose: PoseId, expr: ExprId, t = 0.35, key = ''): HTMLCanvasElement {
+  const src = actorThumb(cast, px, pose, expr, t, key);
+  const cv = document.createElement('canvas');
+  cv.width = src.width;
+  cv.height = src.height;
+  cv.style.width = src.style.width;
+  cv.style.height = src.style.height;
+  cv.getContext('2d')!.drawImage(src, 0, 0);
+  return cv;
+}

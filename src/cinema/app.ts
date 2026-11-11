@@ -25,6 +25,10 @@ import { copyClips, deleteProject, listProjects, loadProject, saveProject, type 
 import { TEMPLATES } from './templates';
 import { startTutorial, stopTutorial, tutEvent } from './tutorial';
 import { presetById } from './data';
+import { boardDetached } from './board';
+import type { EasyBoard } from './easy';
+
+const FIRST_KEY = 'bw-cin-easy-first';
 
 const fmtT = (s: number) => {
   const m = Math.floor(s / 60);
@@ -54,6 +58,7 @@ class CinemaApp {
   private thumbs = new Map<string, { key: string; cv: HTMLCanvasElement }>();
   private thumb3d = new Map<string, HTMLCanvasElement>();
   lastExport: ExportResult | null = null;
+  private easy: EasyBoard | null = null;
 
   constructor(
     root: HTMLElement,
@@ -81,6 +86,12 @@ class CinemaApp {
   async home(): Promise<void> {
     this.closeEditor();
     this.el.classList.remove('cin-simple');
+    let first = false;
+    try {
+      first = !localStorage.getItem(FIRST_KEY);
+    } catch {
+      /* */
+    }
     const list = await listProjects();
     if (!this.alive) return;
     const pro = isPro();
@@ -93,7 +104,7 @@ class CinemaApp {
       </div>
       <div class="cin-home">
         <div class="cin-hero">
-          <button class="cin-herobtn story" data-a="story"><b>✨</b><span>${t('cin.home.story', 'Criar história')}<small>${t('cin.home.storySub', 'Escolha, fale e pronto: vira filme!')}</small></span></button>
+          <button class="cin-herobtn story" data-a="easy"><b>🎬</b><span>${t('cin.home.easy', 'Criar filme')}<small>${t('cin.home.easySub', 'Cena por cena, com a sua voz!')}</small></span></button>
           <button class="cin-herobtn magic" data-a="magic"><b>🪄</b><span>${t('cin.home.magic', 'História Mágica')}<small>${t('cin.home.magicSub', 'Conte uma ideia e a mágica faz o filme')}</small></span></button>
         </div>
         <button class="cin-tvbtn" data-a="tv"><b>📺</b><span>${t('tv.name', 'TV Bloop')}<small>${t('tv.homeSub', 'Assista ao vivo os filmes da galera — e envie o seu!')}</small></span></button>
@@ -110,7 +121,7 @@ class CinemaApp {
             <button class="cin-newbtn d2" data-a="new2d"><b>✏️</b>${t('cin.home.new2d', 'Novo filme 2D')}</button>
             <button class="cin-newbtn d3" data-a="new3d"><b>🧊</b>${t('cin.home.new3d', 'Novo filme 3D')}${free ? ' <span class="cin-pro">PRO</span>' : ''}</button>
           </div>
-          <div class="cin-row c" style="margin-top:12px"><button class="cin-btn sm ghost" data-a="import">📂 ${t('cin.home.import', 'Importar projeto (.json)')}</button></div>
+          <div class="cin-row c" style="margin-top:12px"><button class="cin-btn sm" data-a="story">✨ ${t('cin.home.story', 'Criar história')}</button><button class="cin-btn sm ghost" data-a="import">📂 ${t('cin.home.import', 'Importar projeto (.json)')}</button></div>
         </details>
         <p class="cin-foot">🔒 ${t('cin.home.local2', 'Seus filmes ficam salvos só neste aparelho — só vão para a TV Bloop se você enviar.')}</p>
       </div>`;
@@ -136,6 +147,7 @@ class CinemaApp {
       if (a === 'pro') paywall('item');
       else if (a === 'tv') void import('./tv').then((m) => m.openTv());
       else if (a === 'story') void this.createStory(list.length);
+      else if (a === 'easy') void this.createEasy(list.length);
       else if (a === 'magic') void this.magicStory(list.length);
       else if (a === 'new2d' || a === 'new3d') {
         if (a === 'new3d' && !isPro()) return paywall('3d');
@@ -159,10 +171,63 @@ class CinemaApp {
         this.openEditor(p);
       } else if (a === 'open') {
         const p = await loadProject(v);
-        if (p) this.openEditor(p, !!p.story);
+        if (p) this.openAny(p);
       } else if (a === 'more') await this.projectMenu(v, list.length);
       else if (a === 'import') this.importProject(list.length);
     };
+    // 1º uso: já abre a escolha do começo (história de 2 cenas em 2 toques)
+    if (first && !list.length) void this.createEasy(0, true);
+  }
+
+  /* ---------------------------- modo fácil (quadro de cenas) ---------------------------- */
+  private async createEasy(n: number, firstRun = false): Promise<void> {
+    if (!(await this.roomForProject(n))) return;
+    const { pickStarter } = await import('./easy');
+    const p = await pickStarter();
+    if (!p || !this.alive) return;
+    try {
+      localStorage.setItem(FIRST_KEY, '1');
+    } catch {
+      /* */
+    }
+    p.title = p.title.slice(0, 60);
+    await saveProject(p);
+    await this.openBoard(p, firstRun || n === 0);
+  }
+
+  /** Abre um projeto no lugar certo: quadro (fácil), editor simples (história) ou avançado. */
+  private openAny(p: Project): void {
+    if (p.board && !boardDetached(p)) void this.openBoard(p);
+    else void this.openEditor(p, !!p.story && !p.board);
+  }
+
+  private async openBoard(p: Project, firstRun = false): Promise<void> {
+    this.closeEditor();
+    this.el.classList.remove('cin-simple');
+    this.ensureAudio();
+    const { EasyBoard } = await import('./easy');
+    if (!this.alive) return;
+    this.easy = new EasyBoard(this.el, p, {
+      firstRun,
+      exit: () => {
+        this.easy = null;
+        void this.home();
+      },
+      advanced: (pp) => {
+        this.easy = null;
+        void this.openEditor(pp);
+      },
+    });
+  }
+
+  /** Estúdio de dublagem sobre o projeto aberto no editor. */
+  private async openDubEditor(line?: string): Promise<void> {
+    if (S.playing) this.stopPlay();
+    await flushSave();
+    const { openDub } = await import('./dub');
+    await openDub(this.el, { project: () => S.p, edit: (fn) => mutate(fn) }, { line });
+    void preloadProjectClips(S.p).then(() => (S.dirty = true));
+    S.uiDirty = true;
   }
 
   /* ---------------------------- Criar história (modo simples) ---------------------------- */
@@ -303,6 +368,8 @@ class CinemaApp {
         <input class="cin-title" maxlength="60" value="${esc(p.title)}" aria-label="${t('cin.ed.titleL', 'Título do filme')}">
         <button class="cin-btn cin-ico" data-b="undo" aria-label="${t('cin.ed.undo', 'Desfazer')}">↶</button>
         <button class="cin-btn cin-ico" data-b="redo" aria-label="${t('cin.ed.redo', 'Refazer')}">↷</button>
+        ${p.board ? `<button class="cin-btn cin-ico" data-b="easy" aria-label="${t('cin.easy.backBtn', 'Modo fácil')}">🧸</button>` : ''}
+        <button class="cin-btn cin-ico" data-b="dub" aria-label="${t('cin.easy.dub', 'Dublar')}">🎙️</button>
         <button class="cin-btn pri" data-b="export" aria-label="${t('cin.ed.export', 'Exportar')}">⬇ <span class="cin-exl">${t('cin.ed.export', 'Exportar')}</span></button>
       </div>
       <div class="cin-ed">
@@ -340,6 +407,16 @@ class CinemaApp {
     B('redo', () => redo());
     B('export', () => void this.exportSheet());
     B('play', () => void this.togglePlay());
+    B('dub', () => void this.openDubEditor());
+    if (p.board)
+      B('easy', async () => {
+        const { backToEasy } = await import('./easy');
+        if (S.playing) this.stopPlay();
+        await flushSave();
+        if (!(await backToEasy(S.p))) return;
+        await saveProject(S.p);
+        void this.openBoard(S.p);
+      });
     this.el.classList.toggle('cin-simple', simple);
     this.el.querySelector<HTMLElement>('.cin-kidbar')!.onclick = (ev) => {
       const k = (ev.target as HTMLElement).closest<HTMLElement>('[data-k]')?.dataset.k;
@@ -862,7 +939,7 @@ class CinemaApp {
           close();
           await flushSave();
           const m = await import('./tv');
-          m.sendToTvSheet(S.p, S.r);
+          m.sendToTvSheet(S.p, S.r, { onFix: (id) => void this.openDubEditor(id) });
         }
       },
     );
@@ -982,6 +1059,8 @@ class CinemaApp {
   }
 
   private closeEditor(): void {
+    this.easy?.close();
+    this.easy = null;
     cancelAnimationFrame(this.raf);
     this.stopPlay();
     stopPanelAudio();
@@ -1001,12 +1080,14 @@ class CinemaApp {
   pause(): void {
     this.stopPlay();
     void flushSave();
+    void this.easy?.flush();
   }
 
   destroy(): void {
     this.alive = false;
     void cleanupShared();
     if (this.cv) void flushSave();
+    void this.easy?.flush();
     this.closeEditor();
     this.mixer?.dispose();
     this.mixer = null;

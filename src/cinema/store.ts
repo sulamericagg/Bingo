@@ -2,7 +2,7 @@
  *  BLOOP CINEMA — projetos e gravações SÓ no aparelho (IndexedDB).
  *  Nada é enviado para servidor. Stores:
  *   - projects: { id, title, mode, updated, dur, thumb (dataURL), json }
- *   - clips:    { id, pid, blob, dur, env (Float32Array 50 Hz) }
+ *   - clips:    { id, pid, blob, dur, env (Float32Array 50 Hz), tx? (transcrição do aparelho) }
  *  Fallback (IndexedDB indisponível): memória da sessão.
  * ============================================================ */
 import { parseProject, projectDuration, type Project } from './format';
@@ -24,6 +24,8 @@ export interface ClipRow {
   blob: Blob;
   dur: number;
   env: Float32Array;
+  /** o que o aparelho entendeu da fala (melhor esforço, para a moderação da TV) */
+  tx?: string;
 }
 
 const DB = 'bloop-cinema';
