@@ -4,7 +4,7 @@
  *  Toda terra carrega ouro (g): cargas são {vol m³, gold g}.
  * ============================================================ */
 import * as THREE from 'three';
-import { buildDozer, buildExcavator, buildHeli, buildPickup, buildTruck, buildWorker, EXC, stretch, wheelMesh, type ExcavatorParts, type WorkerParts } from './models';
+import { buildDozer, buildExcavator, buildHeli, buildPickup, buildTruck, buildWorker, EXC, wheelMesh, type ExcavatorParts, type Ram, type WorkerParts } from './models';
 import { CELL, type BladeState } from './terrain';
 import { Vehicle, type VehSpec, type WheelDef } from './vehicle';
 import type { World } from './world';
@@ -109,7 +109,7 @@ export abstract class Machine {
 
 /* ============================== veículo com rodas ============================== */
 abstract class Wheeled extends Machine {
-  protected wheels: THREE.Mesh[] = [];
+  protected wheels: THREE.Object3D[] = [];
   protected body!: THREE.Object3D;
   protected setup(spec: VehSpec, body: THREE.Object3D, rim?: number): void {
     this.veh = new Vehicle(spec);
@@ -244,6 +244,7 @@ export class Truck extends Wheeled {
   readonly kind = 'truck';
   private bed: THREE.Group;
   private heap: THREE.Mesh;
+  private ram: Ram;
   tilt = 0;
   /** caçamba subindo (botão alterna) */
   raise = false;
@@ -281,6 +282,7 @@ export class Truck extends Wheeled {
     );
     this.bed = t.bed;
     this.heap = t.heap;
+    this.ram = t.ram;
     this.cargo.cap = 8;
     this.cam = { dist: 13, height: 5, look: 1.8, yawOff: 0 };
     this.door.set(1.8, 0, 2.6);
@@ -296,6 +298,9 @@ export class Truck extends Wheeled {
     const want = this.raise ? 0.85 : 0;
     this.tilt += Math.sign(want - this.tilt) * Math.min(Math.abs(want - this.tilt), dt * 0.45);
     this.bed.rotation.x = -this.tilt;
+    this.bed.updateMatrix();
+    _v3.set(0, 0.05, 2.0).applyMatrix4(this.bed.matrix);
+    this.ram.set(0, 0.0, -1.6, _v3.x, _v3.y, _v3.z);
     // despejo pela traseira
     if (this.tilt > 0.4 && this.cargo.vol > 0) {
       const rate = (this.tilt - 0.35) * 3.2 * dt;
@@ -344,6 +349,7 @@ function trackWheels(gauge: number, y: number, len: number, r: number): WheelDef
 export class Dozer extends Wheeled {
   readonly kind = 'dozer';
   private blade: THREE.Group;
+  private rams: Ram[];
   lift = 0.2;
   private bst: BladeState = { carry: 0, gold: 0 };
   constructor() {
@@ -371,6 +377,7 @@ export class Dozer extends Wheeled {
       d.body,
     );
     this.blade = d.blade;
+    this.rams = d.rams;
     this.cam = { dist: 10, height: 4.5, look: 1.0, yawOff: 0 };
     this.door.set(1.9, 0, -0.9);
   }
@@ -389,6 +396,12 @@ export class Dozer extends Wheeled {
     }
     this.blade.position.y = this.lift - 0.42;
     this.blade.rotation.x = -this.lift * 0.12;
+    this.blade.updateMatrix();
+    for (let i = 0; i < 2; i++) {
+      const sx = i ? -0.62 : 0.62;
+      _v3.set(sx, 0.25, -0.2).applyMatrix4(this.blade.matrix);
+      this.rams[i].set(sx, 0.62, 1.55, _v3.x, _v3.y, _v3.z);
+    }
     // fio da lâmina no mundo
     this.group.updateMatrixWorld();
     _v.set(1.72, -0.66, 0.16).applyMatrix4(this.blade.matrixWorld);
@@ -490,11 +503,11 @@ export class Excavator extends Wheeled {
     this.cam.yawOff = this.swing + (ctl && !ctl.drive ? 0.38 : 0);
     // pistões (entre pinos de peças diferentes)
     this.group.updateMatrixWorld(true);
-    const pin = (cyl: THREE.Object3D, par: THREE.Object3D, ax: number, ay: number, az: number, other: THREE.Object3D, bx: number, by: number, bz: number) => {
+    const pin = (cyl: Ram, par: THREE.Object3D, ax: number, ay: number, az: number, other: THREE.Object3D, bx: number, by: number, bz: number) => {
       _v3.set(bx, by, bz);
       other.localToWorld(_v3);
       par.worldToLocal(_v3);
-      stretch(cyl, ax, ay, az, _v3.x, _v3.y, _v3.z);
+      cyl.set(ax, ay, az, _v3.x, _v3.y, _v3.z);
     };
     pin(p.cylBoom, p.house, 0, 0.45, 1.75, p.boom, 0, 0.62, 1.7);
     pin(p.cylArm, p.boom, 0, 0.82, EXC.boomL * 0.42, p.arm, 0, 0.42, -0.3);
@@ -587,7 +600,7 @@ export class Worker extends Machine {
     this.p = buildWorker();
     this.group.add(this.p.root);
     this.cargo.cap = 0.12;
-    this.cam = { dist: 6, height: 3.3, look: 1.1, yawOff: 0 };
+    this.cam = { dist: 5.8, height: 3.2, look: 0.9, yawOff: 0 };
     this.rad = 0.5;
     this.circles = [0.4];
   }
@@ -743,6 +756,7 @@ export class Heli extends Machine {
   alt = 0;
   private pitch = 0;
   private roll = 0;
+  private spinK = 0;
   constructor() {
     super();
     this.group.add(this.h.body);
@@ -810,8 +824,18 @@ export class Heli extends Machine {
     this.roll += (-side * 0.03 - this.roll) * Math.min(1, dt * 3);
     g.rotation.x = this.pitch;
     g.rotation.z = this.roll;
-    this.h.rotor.rotation.y += dt * (this.alt > 0.2 || ctl ? 28 : 2);
-    this.h.tail.rotation.x += dt * 40;
+    const spin = this.alt > 0.2 || ctl ? 1 : 0;
+    this.spinK += (spin - this.spinK) * Math.min(1, dt * 0.8);
+    this.h.rotor.rotation.y += dt * 30 * this.spinK;
+    this.h.tail.rotation.x += dt * 45 * this.spinK;
+    // pás nítidas devagar, disco borrado rápido
+    for (const o of [this.h.rotor, this.h.tail])
+      for (const ch of o.children) {
+        if (ch.name === 'blur') {
+          ch.visible = this.spinK > 0.35;
+          ch.rotation.y = -o.rotation.y * 0.97;
+        } else ch.visible = this.spinK < 0.7;
+      }
     // pêndulo do balde (corda 7 m)
     const hook = _v.set(0, -0.2, 0.3);
     g.localToWorld(hook);

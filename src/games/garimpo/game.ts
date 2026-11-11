@@ -22,6 +22,8 @@ import { Hud } from './hud';
 import { IC, type IconKey } from './icons';
 import { collide, Excavator, Heli, makeMachine, Pickup, Truck, Worker, type Ctl, type Env, type Kind, type Machine, type Receiver } from './machines';
 import { buildExportTruck } from './models';
+import { setLod } from './kit';
+import { natureAnisotropy } from '../../3d/nature';
 import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, freshSlot, GOLD_PRICE, loadMeta, loadSlot, writeSlot, type Diff, type SlotSave } from './save';
 import { World } from './world';
 
@@ -260,6 +262,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const r = new THREE.WebGLRenderer({ canvas: cv, antialias: tier >= 2, powerPreference: 'high-performance', stencil: false });
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
+    natureAnisotropy(r);
     this.r = r;
     const w = new World();
     this.w = w;
@@ -282,6 +285,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       mc.cargo.vol = ms.vol;
       mc.cargo.gold = ms.gold;
     }
+    setLod(tier <= 1 ? 1 : 0);
     const wk = new Worker();
     this.worker = wk;
     wk.cargo.cap = BARROW[s.upg.barrow];
@@ -348,6 +352,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
 
   private addMachine(kind: Kind, x: number, z: number, yaw: number): Machine {
     const w = this.w!;
+    setLod(this.gov.tier <= 1 ? 1 : 0);
     const mc = makeMachine(kind);
     if (mc instanceof Heli) {
       mc.place(x, z, yaw, w);
@@ -702,6 +707,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       }
     } else this.plantSpin = Math.max(0, this.plantSpin - dt);
     pl.trommel.rotation.x += dt * 2.2 * this.plantSpin;
+    const wm = pl.water.material as THREE.MeshPhongMaterial;
+    if (wm.map) wm.map.offset.y -= dt * (0.4 + this.plantSpin * 1.6);
     // rejeito sai pela esteira e forma um monte atrás
     if (this.tail > 0.15) {
       _v.set(0, 0, -10.2);
@@ -834,6 +841,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     // o garimpeiro e o helicóptero: câmera só segue devagar (andam relativos à tela)
     const free = c instanceof Worker || c instanceof Heli;
     let want = c.yaw() + c.cam.yawOff;
+    // dando ré até a moega: câmera de lado mostra caminhão e moega juntos
+    if (c instanceof Truck && c.veh && (c.veh.gear < 0 || c.tilt > 0.1) && c.pos.distanceTo(this.hopperPos(_v2)) < 22) want += 1.15;
     if (free) {
       if (!moving) want = this.camYaw - this.lookYaw;
       else want = this.camYaw - this.lookYaw + Math.atan2(Math.sin(want - this.camYaw), Math.cos(want - this.camYaw)) * 0.5;
@@ -851,9 +860,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const dist = c.cam.dist * mul;
     const hgt = c.cam.height * mul * (1 + this.lookPitch * 1.4);
     const p = c.pos;
-    const tx = p.x;
+    // a pé: mira um pouco à frente (o carrinho de mão aparece na tela)
+    const fwd = c instanceof Worker ? 1.3 : 0;
+    const tx = p.x + Math.sin(c.yaw()) * fwd;
     const ty = p.y + c.cam.look;
-    const tz = p.z;
+    const tz = p.z + Math.cos(c.yaw()) * fwd;
     let cx = tx - Math.sin(yaw) * dist;
     let cz = tz - Math.cos(yaw) * dist;
     let cy = ty + hgt;
@@ -912,6 +923,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       cam.lookAt(o[3], o[4], o[5]);
     }
     w.follow(tx, tz);
+    // árvores entre a câmera e o jogador somem (nunca tapam a vista)
+    w.veg?.occlude(cam.position.x, cam.position.z, tx, tz);
   }
   camOverride: number[] | null = null;
   /** testes: passos de simulação por quadro */

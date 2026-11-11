@@ -264,6 +264,19 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
       wet[k] = Math.min(1, w);
       T.tint[k] = (nB(x / 2.3, z / 2.3) + nA(x / 0.9, z / 0.9) * 0.5) * 0.06;
     }
+  // pátio de cascalho na frente da moega da lavadora
+  {
+    const ca = Math.cos(plant.rot);
+    const sa = Math.sin(plant.rot);
+    for (let j = 0; j < V; j++)
+      for (let i = 0; i < V; i++) {
+        const dx = i * CELL - plant.x;
+        const dz = j * CELL - plant.z;
+        const lx = dx * ca - dz * sa;
+        const lz = dx * sa + dz * ca;
+        if (Math.abs(lx) < 4 && lz > 7 && lz < 18) mat[j * V + i] = MAT_ROAD;
+      }
+  }
   // baixadas (poças na chuva)
   {
     const R = 6;

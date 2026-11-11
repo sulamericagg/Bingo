@@ -8,6 +8,7 @@ import { Flames, makeClods, makeDrops, Particles, Rain } from './fx';
 import { generate, type MapInfo } from './gen';
 import { buildFlag, buildGarage, buildHouse, buildPlant, buildStock, C } from './models';
 import { Vegetation } from './veg';
+import { setLod } from './kit';
 import { SIZE, Terrain } from './terrain';
 
 export interface Circle {
@@ -43,6 +44,7 @@ export class World {
   stock!: ReturnType<typeof buildStock>;
   private statics: THREE.Object3D[] = [];
   tier: Tier = 2;
+  private matTier = -1;
   rainK = 0;
 
   constructor() {
@@ -96,6 +98,7 @@ export class World {
   /** gera o mapa da semente e monta a cena estática */
   build(seed: number, tier: Tier): void {
     this.map = generate(this.T, seed, 1);
+    this.T.setTier(tier);
     this.T.build(tier <= 1 ? 2 : 1);
     this.tier = tier;
     for (const o of this.statics) this.scene.remove(o);
@@ -110,6 +113,7 @@ export class World {
     this.water.position.set(m.lake.x, m.lake.level, m.lake.z);
     this.addStatic(this.water);
     // prédios
+    setLod(tier <= 1 ? 1 : 0);
     const plant = buildPlant();
     plant.root.position.set(m.plant.x, this.T.heightAt(m.plant.x, m.plant.z), m.plant.z);
     plant.root.rotation.y = m.plant.rot;
@@ -205,6 +209,8 @@ export class World {
     const changed = (t <= 1) !== (this.tier <= 1);
     this.tier = t;
     if (changed) this.T.build(t <= 1 ? 2 : 1);
+    if ((t === 0) !== (this.matTier === 0)) this.T.setTier(t);
+    this.matTier = t;
     const far = FAR[t];
     this.camera.far = far + 40;
     this.sky.scale.setScalar(far + 30);
