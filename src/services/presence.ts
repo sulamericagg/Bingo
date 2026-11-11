@@ -19,6 +19,7 @@
 import type { JoinPresence, PeerState, PresenceSession } from './presence-api';
 import { SKINS } from '../game/skins';
 import { me, wsUrl } from '../social/net';
+import { partyRoomFor } from '../party/contract';
 
 const EMOTE_MS = 3000;
 const BOT_DELAY_MS = 3000;
@@ -74,7 +75,8 @@ class Session implements PresenceSession {
       await new Promise<void>((resolve) => {
         let ws: WebSocket;
         try {
-          ws = new WebSocket(wsUrl('/presence/' + this.gameId));
+          const pr = partyRoomFor(this.gameId); // grupo jogando junto (docs/PARTY.md)
+          ws = new WebSocket(wsUrl('/presence/' + this.gameId + (pr ? '?party=' + encodeURIComponent(pr) : '')));
         } catch {
           return resolve();
         }

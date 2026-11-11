@@ -14,7 +14,8 @@
  * pelo índice, e o próximo GET /api/handle/check do perdedor mostra o nome como "taken".
  * Para um jogo infantil com nomes pouco disputados, o risco é aceitável (veja docs/CASA-AMIGOS.md).
  */
-import { hub, friendInfos, requireId } from './friends';
+import { hub, friendInfos, requireId, resolveHandle, type SearchHit } from './friends';
+import { searchNorm } from '../shared/handle-search';
 import { buildExtra, loadExtraWords } from './moderation';
 import { HANDLE_RE, handleRuleProblem, normalizeHandle } from '../shared/handle-rules';
 import { json, readJson } from './util';
@@ -112,11 +113,44 @@ export async function handleMine(req: Request, env: Env): Promise<Response> {
   return json(valid ? { handle: cur.h, at: cur.at } : { handle: null });
 }
 
-/** GET /api/player/by-handle?h= → FriendInfo (sem status online: é um desconhecido) */
+/** GET /api/player/by-handle?h= → FriendInfo SEM o id (o id do jogador funciona como chave dele; nunca expor a estranhos) */
 export async function playerByHandle(req: Request, env: Env): Promise<Response> {
   const h = normalizeHandle(new URL(req.url).searchParams.get('h') ?? '');
-  const id = HANDLE_RE.test(h) ? await getHandleOwner(env, h) : null;
+  const id = HANDLE_RE.test(h) ? await resolveHandle(env, h) : null;
   if (!id) return json({ error: 'not_found', message: 'Ninguém com esse @nome.' }, 404);
   const [info] = await friendInfos(env, [id], false);
-  return json({ ...info, handle: h });
+  return json({ ...info, id: '', handle: h });
+}
+
+/**
+ * GET /api/handles/search?q=&id= → { items: [{ handle, name, skin, avatar?, creature?, online, rel }] } (máx. 10)
+ * Prefixo + parecidos (acentos/maiúsculas normalizados). Limitado por jogador e IP (429).
+ * Nunca devolve id, e esconde bloqueados, banidos e quem desligou "aparecer na busca".
+ */
+export async function handlesSearch(req: Request, env: Env): Promise<Response> {
+  const u = new URL(req.url).searchParams;
+  const id = requireId(u.get('id'));
+  const q = searchNorm(u.get('q') ?? '');
+  if (q.length < 2) return json({ items: [] });
+  const ip = req.headers.get('cf-connecting-ip') ?? 'local';
+  const r = await hub(env).search(id, q, ip);
+  if ('rate' in r) return json({ error: 'rate_limited', message: 'Calma! Muitas buscas seguidas. Espere um pouquinho.' }, 429);
+  // perfis que ainda não estão no cache do FriendsHub: completa pelo KV (uma vez por jogador)
+  const missing = r.items.filter((x) => !x._prof).map((x) => x._id);
+  const extra = missing.length ? await friendInfos(env, missing, false) : [];
+  const byId = new Map(extra.map((f) => [f.id as string, f]));
+  const items = r.items.map((x: SearchHit) => {
+    const f = byId.get(x._id) as { name?: string; skin?: string; avatar?: unknown; creature?: string } | undefined;
+    const p: { name?: string; skin?: string; avatar?: unknown; creature?: string } = f ?? (x.p ? JSON.parse(x.p) : {});
+    return {
+      handle: x.handle,
+      name: p.name || 'Bloop',
+      skin: p.skin || 'bloop',
+      ...(p.avatar ? { avatar: p.avatar } : {}),
+      ...(p.creature ? { creature: p.creature } : {}),
+      online: x.online,
+      rel: x.rel,
+    };
+  });
+  return json({ items }, 200, { 'cache-control': 'no-store' });
 }

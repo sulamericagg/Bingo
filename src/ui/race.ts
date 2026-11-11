@@ -185,6 +185,7 @@ class RaceUI {
 
   open(): void {
     if (this.phase !== 'off') return;
+    bus.emit('game-launch', 'race'); // grupo: o líder leva todo mundo junto (src/party)
     audio.unlock();
     this.closeRanking();
     document.getElementById('menu')?.classList.remove('on');

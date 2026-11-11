@@ -169,7 +169,7 @@ export async function checkHandleOnline(raw: string): Promise<HandleState> {
  * Tenta reservar o @ agora. 'ok' = reservado; 'pending' = sem rede (fica para depois);
  * 'taken'/'invalid'/'blocked' = precisa escolher outro.
  */
-export async function claimHandle(raw: string): Promise<'ok' | 'pending' | 'taken' | 'invalid' | 'blocked'> {
+export async function claimHandle(raw: string): Promise<'ok' | 'pending' | 'taken' | 'invalid' | 'blocked' | 'locked'> {
   const h = cleanHandleInput(raw);
   const local = handleRuleProblem(h);
   if (local) return local;
@@ -180,6 +180,14 @@ export async function claimHandle(raw: string): Promise<'ok' | 'pending' | 'take
       const r = await Promise.race([api.claimHandle(h), new Promise<HandleCheck>((res) => setTimeout(() => res({ ok: false, reason: 'network' }), 6000))]);
       if (!r || typeof r !== 'object') res = 'pending';
       else if (r.ok) res = 'ok';
+      else if (r.until && (r as HandleCheck & { handle?: string }).handle) {
+        // troca bloqueada (1x a cada 30 dias): o @ de verdade continua o do servidor. Antes isso virava
+        // "pendente" e o app mostrava um @ que NINGUÉM conseguia achar (amigos não se encontravam).
+        profile.handle = (r as HandleCheck & { handle: string }).handle;
+        profile.handleStatus = 'ok';
+        saveProfile();
+        return 'locked';
+      }
       else if (r.reason === 'taken' || r.reason === 'blocked') res = r.reason;
       // 'network', troca bloqueada por 30 dias (until) ou servidor ainda não publicado (404 → 'invalid'): tenta depois
       else res = 'pending';
@@ -203,6 +211,7 @@ export async function syncPendingHandle(): Promise<void> {
   try {
     const r = await claimHandle(profile.handle);
     if (r === 'ok') bus.emit('toast', t('ob.handleConfirmed', '@{h} confirmado!', { h: profile.handle }));
+    else if (r === 'locked') bus.emit('toast', t('ob.handleLocked', 'Seu @ continua @{h} (dá para trocar 1x a cada 30 dias).', { h: profile.handle }));
     else if (r !== 'pending') bus.emit('toast', t('ob.handleConflict', 'Ops! @{h} já tem dono. Escolha outro em Ajustes.', { h: profile.handle }));
   } finally {
     syncing = false;

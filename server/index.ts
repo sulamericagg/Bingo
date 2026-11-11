@@ -13,8 +13,9 @@ import { champClaim, champGet, champList, champScore, champSignup } from './cham
 import { chatJoin } from './chat';
 import { presenceJoin } from './presence';
 import { chatReport, handleSocialAdmin, profileGet, profilePut } from './social';
-import { friendsBlock, friendsGet, friendsRemove, friendsRequest, friendsRespond } from './friends';
-import { handleCheck, handleClaim, handleMine, playerByHandle } from './handles';
+import { friendsBlock, friendsGet, friendsInvite, friendsInviteClear, friendsRemove, friendsRequest, friendsRespond, friendsVisibility, friendsLive } from './friends';
+import { squadCreate, squadInvite, squadJoin } from './squad';
+import { handleCheck, handleClaim, handleMine, handlesSearch, playerByHandle } from './handles';
 import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
@@ -69,11 +70,19 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/handle/claim': handleClaim,
   'GET /api/handle/mine': handleMine,
   'GET /api/player/by-handle': playerByHandle,
+  'GET /api/handles/search': handlesSearch,
   'GET /api/friends': friendsGet,
   'POST /api/friends/request': friendsRequest,
   'POST /api/friends/respond': friendsRespond,
   'POST /api/friends/remove': friendsRemove,
   'POST /api/friends/block': friendsBlock,
+  'POST /api/friends/invite': friendsInvite,
+  'POST /api/friends/invite/clear': friendsInviteClear,
+  'POST /api/friends/visibility': friendsVisibility,
+  'POST /api/friends/prefs': friendsVisibility,
+  // grupo (party de até 4) — docs/PARTY.md
+  'POST /api/squad/create': squadCreate,
+  'POST /api/squad/invite': squadInvite,
   'PUT /api/home/design': homePutDesign,
   'PUT /api/home/mess': homePutMess,
   // POST também (alguns proxies/webviews antigos não mandam PUT)
@@ -113,6 +122,7 @@ export { ChatRoom } from './chat';
 export { Championship } from './champ';
 export { PartyRoom } from './party';
 export { FriendsHub } from './friends';
+export { SquadRoom } from './squad';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -166,6 +176,25 @@ export default {
     if (ws && !PUBLIC[`${req.method} ${path}`]) {
       try {
         return ws[1] === 'presence' ? await presenceJoin(req, env, ws[2]) : await chatJoin(req, env, ws[2]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // tempo real de amigos (WebSocket): pedidos/convites chegam na hora
+    if (path === '/api/friends/live') {
+      try {
+        return await friendsLive(req, env);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Grupo (WebSocket): /api/squad/<id>
+    const sq = /^\/api\/squad\/([a-z0-9]{8,16})$/.exec(path);
+    if (sq) {
+      try {
+        return await squadJoin(req, env, sq[1]);
       } catch (e) {
         return errorResponse(e);
       }

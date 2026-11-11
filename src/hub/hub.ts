@@ -148,6 +148,7 @@ export function playSelected(): void {
 /** Abre um minigame em tela cheia. */
 export async function launchGame(def: MiniGameDef): Promise<void> {
   if (launching || hostActive) return;
+  bus.emit('game-launch', def.id); // grupo: o líder leva todo mundo junto (src/party)
   audio.unlock();
   haptics.tap('medium');
   remember(def.id);

@@ -96,11 +96,13 @@ export class PresenceRoom extends DurableObject<Env> {
   }
 
   private async reportCount(): Promise<void> {
+    if (this.shard < 0 && this.gameId) return; // sala de grupo: fora do lobby
     if (!this.gameId) {
       const meta = await this.ctx.storage.get<{ game: string; shard: number }>('meta');
       if (!meta) return;
       this.gameId = meta.game;
       this.shard = meta.shard;
+      if (this.shard < 0) return;
     }
     const lobby = this.env.PRESENCE.get(this.env.PRESENCE.idFromName('lobby:' + this.gameId));
     await lobby.report(this.shard, this.members().length).catch(() => {});
@@ -190,9 +192,16 @@ export class PresenceRoom extends DurableObject<Env> {
 export async function presenceJoin(req: Request, env: Env, gameId: string): Promise<Response> {
   if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'expected_websocket', message: 'Use WebSocket' }, 426);
   if (!GAME_RE.test(gameId)) return json({ error: 'bad_game' }, 400);
+  const url = new URL(req.url);
+  // grupo jogando junto (docs/PARTY.md): sala própria do grupo, sem passar pelo lobby
+  const party = url.searchParams.get('party') ?? '';
+  if (/^[a-z0-9-]{4,48}$/.test(party)) {
+    url.searchParams.set('game', gameId);
+    url.searchParams.set('shard', '-1');
+    return env.PRESENCE.get(env.PRESENCE.idFromName(`${gameId}:party:${party}`)).fetch(new Request(url.toString(), req));
+  }
   const lobby = env.PRESENCE.get(env.PRESENCE.idFromName('lobby:' + gameId));
   const shard = await lobby.assign();
-  const url = new URL(req.url);
   url.searchParams.set('game', gameId);
   url.searchParams.set('shard', String(shard));
   return env.PRESENCE.get(env.PRESENCE.idFromName(`${gameId}:${shard}`)).fetch(new Request(url.toString(), req));

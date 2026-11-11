@@ -8,6 +8,7 @@
  *
  * Sem interface: src/ui/race.ts usa os callbacks abaixo.
  */
+import { partyRoomFor } from '../party/contract';
 import { SKINS } from '../game/skins';
 import {
   botName,
@@ -60,7 +61,8 @@ const CONNECT_TIMEOUT_MS = 4000;
 
 function wsUrl(): string {
   const base = apiBase() || location.origin;
-  return base.replace(/^http/, 'ws') + '/api/race/join';
+  const pr = partyRoomFor('race'); // grupo: todos na mesma sala (docs/PARTY.md)
+  return base.replace(/^http/, 'ws') + '/api/race/join' + (pr ? '?party=' + encodeURIComponent(pr) : '');
 }
 
 export class RaceSession {
