@@ -162,18 +162,19 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // Olho do piloto ≈ (-0.55, 1.5, -2.92). Painel inclinado para trás com as telas dentro de molduras
   // (montado em buildPanel, abaixo); aqui só a casca: parede, para-brisa, laterais, assentos, pedestal e teto.
   const CK = '#8f96c4';
-  const CKD = '#7d86b8';
+  const CKD = '#99a2d4';
   b.sharp(3.56, 1.08, 0.12, 0, 0, -4.04, CK); // parede frontal baixa (atrás do painel)
   // corpo do painel (embaixo da face inclinada) até o piso
-  b.box(2.84, 0.66, 0.3, 0, 0, -3.86, CKD);
+  b.box(2.84, 0.7, 0.3, 0, 0, -3.86, CKD);
   // glare shield: aba arredondada que não passa da frente das telas
-  b.box(2.96, 0.08, 0.32, 0, 0.985, -3.88, '#7a84bd');
+  b.box(2.96, 0.08, 0.18, 0, 1.03, -3.95, '#9aa3d6'); // aba rasa: a borda não esconde o topo das telas
   // para-brisa: colunas redondas, peitoril e travessa de cima
-  for (const x of [-1.5, -0.74, 0, 0.74, 1.5]) b.cyl(0.045, 0.05, 0.84, x, 1.04, -3.97, CK, 12);
+  // colunas nas bordas da vista de cada piloto: vidro do piloto entre -1.05 e 0 (centro em -0.525)
+  for (const x of [-1.56, -1.05, 0, 1.05, 1.56]) b.cyl(0.045, 0.05, 0.84, x, 1.04, -3.97, CK, 12);
   b.box(3.4, 0.06, 0.16, 0, 1.03, -3.97, CK);
-  b.sharp(3.4, 0.44, 0.12, 0, 1.88, -3.98, CK);
-  b.cyl(0.05, 0.05, 3.3, 1.65, 1.88, -3.93, CK, 12, 0, Math.PI / 2);
-  b.sharp(3.4, 0.06, 2.9, 0, 2.18, -2.6, '#b8bde0');
+  b.sharp(3.4, 0.36, 0.12, 0, 1.9, -3.98, '#a9b0de');
+  b.cyl(0.05, 0.05, 3.3, 1.65, 1.9, -3.93, '#a9b0de', 12, 0, Math.PI / 2);
+  b.sharp(3.4, 0.06, 2.9, 0, 2.18, -2.6, '#d4d8f2');
   for (const side of [-1, 1]) {
     const X = side * 1.7;
     // laterais com janela (abertura entre z -3.5 e -2.5)
@@ -195,9 +196,7 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
     b.cyl(0.05, 0.05, 0.42, sx, 0, -2.85, '#888ba3', 8);
     b.box(0.08, 0.06, 0.4, sx - 0.32, 0.72, -2.85, '#2a2d40');
     b.box(0.08, 0.06, 0.4, sx + 0.32, 0.72, -2.85, '#2a2d40');
-    // coluna do manche (sai do piso, encosta no painel)
-    b.box(0.09, 0.72, 0.09, sx, 0, -3.6, '#2a2d40');
-    b.box(0.1, 0.06, 0.2, sx, 0.0, -3.6, '#2a2d40');
+    b.box(0.1, 0.06, 0.2, sx, 0.0, -3.6, '#2a2d40'); // pé da coluna do manche (a coluna vai junto com o manche)
   }
   // parede de trás com porta aberta
   b.sharp(1.3, 2.4, 0.12, -1.1, 0, -1.2, '#d8cfe8');
@@ -340,19 +339,20 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // ---------- painel de instrumentos ----------
   // grupo inclinado: origem na base da face, z local 0 = superfície da face (z+ = para o piloto)
   const panelG = new THREE.Group();
-  panelG.position.set(0, 0.62, -3.72);
+  panelG.position.set(0, 0.66, -3.72);
   panelG.rotation.x = -0.35;
   group.add(panelG);
-  const FACE_H = 0.42;
+  const FACE_H = 0.38; // topo da face fica abaixo da aba (sem atravessar)
   panelG.add(
     mk((g) => {
       g.box(2.8, FACE_H, 0.1, 0, 0, -0.05, '#8d97cc');
       g.box(2.8, 0.03, 0.11, 0, FACE_H - 0.03, -0.05, '#b4bce6'); // friso de cima
-      // anunciadores (alertas) entre as telas, presos NA face
+      // anunciadores (alertas) presos NA face
       const ann = ['#ff5c7a', '#ffd34a', '#3fe06c', '#46d9e6', '#ffffff', '#ffb02e'];
-      for (let i = 0; i < 6; i++) g.box(0.07, 0.04, 0.012, -0.08 + (i % 2) * 0.16, 0.12 + Math.floor(i / 2) * 0.09, 0.006, ann[i]);
+      // à esquerda da tela do piloto (a mão fica embaixo à direita e não cobre)
+      for (let i = 0; i < 6; i++) g.box(0.07, 0.04, 0.012, -1.02 + (i % 2) * 0.12, 0.1 + Math.floor(i / 2) * 0.09, 0.006, ann[i]);
       // parafusos/botões discretos nas pontas
-      for (const x of [-1.25, -1.13, 1.13, 1.25]) g.cyl(0.018, 0.018, 0.012, x, 0.16, 0.006, '#c9c9d9', 10, Math.PI / 2);
+      for (const x of [-1.3, 1.13, 1.25]) g.cyl(0.018, 0.018, 0.012, x, 0.16, 0.006, '#c9c9d9', 10, Math.PI / 2);
     }, (() => {
       // face levemente iluminada por dentro (luz de painel): não vira um bloco escuro contra o céu
       const m = mat(standard, { rough: 0.6 }) as THREE.MeshLambertMaterial;
@@ -372,19 +372,19 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   const bezelMat = standard ? new THREE.MeshStandardMaterial({ color: '#2a2f4a', roughness: 0.5 }) : new THREE.MeshLambertMaterial({ color: '#2a2f4a' });
   const screen = (tex: THREE.Texture, x: number): THREE.Mesh => {
     const fr = new THREE.Mesh(bezel, bezelMat);
-    fr.position.set(x, 0.235, 0);
+    fr.position.set(x, 0.2, 0);
     panelG.add(fr);
     // fundo preto da tela (sem vão para a face aparecer)
     const back = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ color: '#0d0f1c' }));
-    back.position.set(x, 0.235, 0.004);
+    back.position.set(x, 0.2, 0.004);
     panelG.add(back);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    m.position.set(x, 0.235, 0.012);
+    m.position.set(x, 0.2, 0.012);
     panelG.add(m);
     return m;
   };
   const pfd = screen(pfdTex, -0.55);
-  const nav = screen(navTex, 0.55);
+  const nav = screen(navTex, 0.28); // um pouco para dentro: não fica sob a manete da tela
 
   // manches (o "W" do Bloop Air), na frente de cada piloto; as alças aparecem embaixo da tela
   const yoke = (side: number) => {
@@ -394,6 +394,7 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
     g.add(
       mk((y) => {
         y.box(0.07, 0.07, 0.12, 0, -0.04, -0.06, '#6a7099');
+        y.box(0.07, 0.7, 0.07, 0, -0.74, -0.16, '#7a80a8'); // coluna até o piso
         y.box(0.36, 0.08, 0.06, 0, 0, 0, '#5a6080');
         y.box(0.07, 0.17, 0.07, -0.19, -0.09, 0, '#5a6080');
         y.box(0.07, 0.17, 0.07, 0.19, -0.09, 0, '#5a6080');

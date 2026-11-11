@@ -224,6 +224,7 @@ export class View3D {
   private t = 0;
   private lookD = { x: 0, y: 0 };
   private wasSeated = false;
+  private wasPortrait = false;
   private extOrbit = 0;
   private lastMaskDrop = 0;
   private binOpen = 0;
@@ -814,11 +815,14 @@ export class View3D {
     }
     this.hand.visible = true;
     const seated = me.seated;
-    if (seated !== this.wasSeated) {
+    const portrait = this.ch > this.cw;
+    if (seated !== this.wasSeated || (seated && portrait !== this.wasPortrait)) {
       this.wasSeated = seated;
+      this.wasPortrait = portrait;
       this.yaw = Math.PI;
       // sentado: horizonte a ~40% do topo, pista visível na final e o painel embaixo
-      this.pitch = seated ? -0.15 : -0.05;
+      // em pé (retrato) olha mais para baixo: painel no meio da tela, longe dos controles de baixo
+      this.pitch = seated ? (portrait ? -0.33 : -0.15) : -0.05;
     }
     this.yaw -= look.x;
     this.pitch = clamp(this.pitch - look.y, -1.2, 1.1);
@@ -854,8 +858,12 @@ export class View3D {
     this.hand.setPose(held || seated ? 'grab' : 'open');
     this.hand.scrub = me.actKind === 'hug' || me.actKind === 'door' || me.actKind === 'patch' ? 1 : 0;
     this.hand.update(dt, Math.min(1, walk / 3.3), lx, ly);
-    this.hand.visible = true; // sentado: a mão fica na manete (canto de baixo), menor para não tapar as telas
-    this.hand.sizeMul = seated ? 0.72 : 1;
+    this.hand.visible = true; // sentado: a mão fica na manete (canto de baixo), menor e mais para o canto
+    this.hand.sizeMul = seated ? 0.68 : 1;
+    this.hand.offX = seated ? 0.3 : 0;
+    this.hand.offY = seated ? -0.42 : 0;
+    // retrato: o manche 3D ficaria no meio, embaixo da tela (o manche de toque já faz esse papel)
+    this.cab.yokeL.visible = !(seated && portrait);
   }
 
   private syncWorldCam(cam: THREE.Camera, near: number): void {
@@ -951,8 +959,9 @@ export class View3D {
       cab.yokeR.rotation.z = Math.sin(k * 1.3) * 0.08 * (1 - faint) + faint * 0.3;
     } else {
       cap.geometry = this.capGeo[1];
-      cap.position.set(0.55, 0.32, -3.0);
-      cap.rotation.set(-0.72, 0, -0.35 + Math.sin(this.t * 0.9) * 0.03);
+      // desmaiado recostado na poltrona e caído para a janela (fora da vista do piloto)
+      cap.position.set(0.62, 0.4, -2.68);
+      cap.rotation.set(0.3, 0, -0.55 + Math.sin(this.t * 0.9) * 0.03);
       cap.scale.set(1 + Math.sin(this.t * 1.6) * 0.02, 1 - Math.sin(this.t * 1.6) * 0.02, 1);
       cab.yokeR.rotation.z = 0.3 + sx * 0.2;
     }
