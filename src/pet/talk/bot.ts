@@ -443,6 +443,33 @@ const PT: Record<Exclude<Intent, 'pii'>, Pack> = {
   },
 };
 
+
+/* ------------------------------ mais frases (variedade) ------------------------------ */
+const MORE: Partial<Record<keyof typeof PT, string[]>> = {
+  greet: ['Oi! Você chegou na hora certinha!', 'Olá! Tô fazendo bolinhas de alegria!', 'Oi! Vem cá me dar um abraço!', 'Ei, você! Senti saudade de você!', 'Oi! Hoje eu acordei super fofinho!', 'Ooi! Bora conversar um montão?', 'Oi! Eu tava contando as nuvens!', 'Olá, olá, olá! Três olás pra você!'],
+  bye: ['Tchau! Vou ficar aqui te esperando!', 'Até mais! Não esquece de mim!', 'Tchau! Volta pra brincar amanhã?', 'Fui! Quer dizer... você foi! Hihi, tchau!', 'Até logo! Um abraço de bolinha!'],
+  howareyou: ['Tô feliz que você perguntou!', 'Tô fofinho como sempre!', 'Tô bem! Meu coração tá quentinho.', 'Melhor agora que você chegou!'],
+  food: ['Pipoca! Ploc, ploc, ploc!', 'Eu comeria uma montanha de panquecas!', 'Melancia é água que dá pra mastigar!', 'Uva é tipo bolinha de gude docinha!', 'Banana é minha fruta de super-herói!', 'Quando eu como cenoura, fico com orelhas de coelho! Brincadeira, hihi!', 'Pão de queijo quentinho... hmmm!', 'Sopa de letrinhas! Dá pra comer palavras!', 'Gelatina treme igual eu quando danço!', 'Morango com chocolate é a dupla perfeita!'],
+  sleep: ['Eu ronco bem baixinho: zzz... zzz...', 'Meu sonho favorito é com um rio de chocolate!', 'Você me conta uma historinha pra dormir?', 'Quando a lua aparece, eu fico com soninho.', 'Travesseiro fofinho, cobertor quentinho!'],
+  play: ['Vamos brincar de estátua! Congelei!', 'Que tal uma corrida até a cozinha?', 'Eu sou ótimo goleiro! Chuta a bola!', 'Bora jogar um minigame e ganhar moedinhas?', 'Brincar de esconde-esconde: um, dois, três... achei!', 'Vamos inventar uma brincadeira nova?', 'Pula-pula, roda-roda, gira-gira!', 'Eu adoro quando você joga comigo!'],
+  joke: ['O que o pente disse pra escova? Vamos sair por aí desembaraçados! Hihi', 'Qual é o peixe que caiu do décimo andar? Aaaaaatum! Kkkk', 'Por que a galinha atravessou a rua? Pra chegar do outro lado! Hahaha!', 'O que é, o que é: cai em pé e corre deitado? A chuva! Hihi', 'Qual é o rei dos queijos? O reiqueijão! Hahaha!', 'Por que o elefante não usa computador? Porque tem medo do mouse! Hihi', 'O que o caracol disse na montanha-russa? Uhuuul, que rápido! Kkk', 'Qual é a cidade mais doce? Doce de Leite do Sul! Hihi, inventei!'],
+  dance: ['Dancinha do bolinho: balança, balança!', 'Olha meu rodopio de bailarina!', 'Tchan tchan tchan! Agora você!', 'Danço até a geladeira dançar junto!'],
+  jump: ['Pulo de sapo: croac, hop!', 'Mais alto, mais alto! Boing!', 'Eu sou uma mola fofinha!'],
+  sing: ['Parabéns pra você... ah, não é aniversário? Canto mesmo assim!', 'Uma música sobre bolo: bolo, bolo, bolinho!', 'Eu canto no chuveiro e as bolhas fazem coro!'],
+  bath: ['Bolhinha, bolhinha, voa pro céu!', 'Banho quentinho é igual abraço!', 'Esfrega as costas? Faz cócegas! Hihi', 'Depois do banho eu fico brilhando!'],
+  love: ['Você é o melhor cuidador do universo!', 'Quero ser seu amigo pra sempre!', 'Meu coração pula quando você fala isso!', 'Um abraço de bolinha pra você: squish!'],
+  compliment: ['Você vai me deixar convencido! Hihi!', 'Ai que vergonha boa!', 'Assim eu fico rosinha!', 'Você é muito gentil!'],
+  thanks: ['Você é muito educado!', 'De nada, de nadinha!'],
+  insult: ['Mesmo assim eu gosto de você. Vamos fazer as pazes?', 'Snif... um carinho resolve?'],
+  sad: ['Que tal desenhar algo bonito? Ajuda a ficar melhor!', 'Pode contar comigo pra te fazer sorrir!', 'Respira fundo... Eu tô aqui!'],
+  happy: ['Sua alegria brilha mais que o sol!', 'Bora fazer uma festa de felicidade!'],
+  likes: ['Gosto de dias de sol e de banho de espuma!', 'Gosto de você, isso eu sei!', 'Gosto de cheirinho de bolo saindo do forno!'],
+  where: ['Moro num lugar cheio de cores e brincadeiras!'],
+  question: ['Hmm... vou perguntar pro meu travesseiro e te conto!', 'Essa é difícil! Que tal a gente imaginar a resposta juntos?', 'Boa! Eu acho que a resposta é: bolinhas de sabão!', 'Hmm, pergunta pra um adulto, eles sabem muita coisa!'],
+  other: ['Hihi, você é engraçado!', 'Adoro nossas conversas!', 'Isso me deu vontade de dançar!', 'Hmm, me conta como foi seu dia?', 'Você sabia que eu tenho cócegas na barriga?', 'Que tal a gente brincar daqui a pouco?', 'Uau, você sabe muita coisa!', 'Eu gosto quando você fala comigo!', 'Hmm... e qual seu bicho favorito?', 'Me conta uma coisa legal que aconteceu hoje!', 'Olha, uma borboleta! Ah, era só uma ideia, hihi.', 'Que demais! Bate aqui!'],
+};
+for (const k in MORE) PT[k as keyof typeof PT].lines.push(...MORE[k as keyof typeof MORE]!);
+
 const NEED_PT: Record<'food' | 'energy' | 'fun' | 'clean', string[]> = {
   food: ['Minha barriguinha tá roncando...', 'Ah, e eu tô com fominha!', 'Será que tem bolo na cozinha?', 'Ronc ronc! Isso foi minha barriga, hihi.'],
   energy: ['*bocejo* Tô com soninho...', 'Acho que preciso de uma soneca...', 'Meus olhinhos tão pesados...'],
@@ -535,7 +562,7 @@ export function localReply(text: string, snap: PetSnapshot, lang: string, _histo
   const pack = PT[intent];
   let reply = choose(pack.lines, snap);
   const op = pick(OPEN);
-  if (op && !/^[A-ZÁÉÍÓÚ]?[a-z]*[!?]/.test(reply) && reply.length < 70)
+  if (op && !/^[A-ZÁÉÍÓÚ]?[a-z]*[!?]/.test(reply) && !/^(hmm|ah|aah|oi|ol|uau|eba|oba|hihi|hehe|kkk|awww|ai|psiu|shhh|snif|opa|boing|nhami|tchau|uhul|sim|isso)/i.test(reply) && reply.length < 70)
     reply = /[,.] $/.test(op) && !reply.startsWith(snap.name) ? op + reply.charAt(0).toLowerCase() + reply.slice(1) : op + reply;
   let emotion = pack.emotion;
   if (snap.worst && Math.random() < (pack.needChance ?? 0)) {
