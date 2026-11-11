@@ -37,9 +37,30 @@ export interface Camp {
   seed: number;
 }
 
+/** opções de criação do mundo */
+export interface GenOpts {
+  /** normal | plano | ilhas (arquipélago) | flutuantes (ilhas no céu sobre o mar) */
+  type: 'normal' | 'plano' | 'ilhas' | 'flutuantes';
+  /** multiplica o relevo (0.4 … 1.8) */
+  h: number;
+  /** biomas desligados (índices) */
+  off: number[];
+}
+export const DEFAULT_GEN: GenOpts = { type: 'normal', h: 1, off: [] };
+
 export class WorldGen {
   private w = new Float32Array(NB);
-  constructor(readonly seed: number) {}
+  readonly o: GenOpts;
+  private off: Uint8Array;
+  constructor(
+    readonly seed: number,
+    o?: Partial<GenOpts>,
+  ) {
+    this.o = { ...DEFAULT_GEN, ...(o ?? {}) };
+    this.off = new Uint8Array(NB);
+    for (const b of this.o.off) if (b >= 0 && b < NB) this.off[b] = 1;
+    if (this.off.every((x) => x)) this.off[0] = 0;
+  }
 
   /** clima em (x,z): T, H, M em 0..1 */
   climate(x: number, z: number, out: Float32Array): void {
@@ -68,7 +89,8 @@ export class WorldGen {
       const dH = c[1] - b.H;
       const dM = (c[2] - b.M) * 1.4;
       let w = Math.exp(-(dT * dT + dH * dH + dM * dM) / 0.012);
-      if (i === B_BOSQUE) w += spawn * 4;
+      if (this.off[i]) w = 0;
+      else if (i === B_BOSQUE || (this.off[B_BOSQUE] && i === this.firstOn())) w += spawn * 4;
       else w *= 1 - spawn;
       out[i] = w;
       sum += w;
@@ -120,8 +142,43 @@ export class WorldGen {
     return best;
   }
 
-  /** altura natural do terreno (sem escavações) */
+  private fo = -1;
+  private firstOn(): number {
+    if (this.fo < 0) this.fo = Math.max(0, this.off.findIndex((x) => !x));
+    return this.fo;
+  }
+
+  /** altura natural do terreno (sem escavações), com as opções do mundo */
   height(x: number, z: number): number {
+    const o = this.o;
+    if (o.type === 'plano') {
+      this.weights(x, z, this.w);
+      return 4;
+    }
+    const r = Math.hypot(x, z - CAMP_OFF);
+    if (o.type === 'flutuantes') {
+      this.weights(x, z, this.w);
+      // mar fundo; só a ilha do começo fica no nível do chão
+      const k = smoothstep(70, 40, r);
+      return -26 + (3 - -26) * k;
+    }
+    let h = this.height0(x, z);
+    if (o.h !== 1) h = 1.5 + (h - 1.5) * o.h;
+    if (o.type === 'ilhas') {
+      const isl = smoothstep(0.47, 0.6, fbm(x / 240 + 9, z / 240 - 4, this.seed + 90, 3));
+      const k = Math.max(isl, smoothstep(140, 80, r));
+      h = h * k + -14 * (1 - k);
+    }
+    return h;
+  }
+  /** ilhas no céu (tipo flutuantes): máscara 0..1 e altura do centro */
+  skyIsland(x: number, z: number, out: Float32Array): void {
+    const m = fbm(x / 70, z / 70, this.seed + 95, 3);
+    out[0] = m > 0.6 ? (m - 0.6) / 0.4 : 0;
+    out[1] = 34 + fbm(x / 400, z / 400, this.seed + 96, 2) * 40;
+  }
+
+  private height0(x: number, z: number): number {
     const s = this.seed;
     const w = this.w;
     this.weights(x, z, w);

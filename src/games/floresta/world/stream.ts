@@ -12,6 +12,8 @@ import { WBIOMES, WSPECIES, NB } from './biomes';
 import type { WorldSave } from './wsave';
 import { rockGeometry, wTreeGeometry } from './wmodels';
 import { addWind, bushGeometry, lambert, stumpGeometry } from '../fps/models';
+import { Solids, type SBox } from './collide';
+import { VoxWorld } from './voxworld';
 
 /** cores dos dados (strings) convertidas uma vez só: Color.set(string) por instância custa */
 const COLS = new Map<string, THREE.Color>();
@@ -130,14 +132,23 @@ export class World {
   hidden = new Set<string>();
   /** pedaços (re)carregados este quadro: útil para "assentar" objetos */
   loadedNow = 0;
+  /** caixas de colisão (construções, acampamentos, veículos) */
+  readonly solids = new Solids();
+  /** água só onde o terreno NATURAL fica abaixo do nível (rios, lagos, mar) */
+  readonly waterMat = new THREE.MeshLambertMaterial({ color: 0x3ab0e0, transparent: true, opacity: 0.78, depthWrite: false });
+  private waterMesh = new Map<Chunk, THREE.Mesh>();
+  onUnload: ((c: Chunk) => void) | null = null;
+  readonly vox: VoxWorld;
+  onLoad: ((c: Chunk) => void) | null = null;
 
   constructor(
     readonly scene: THREE.Scene,
     readonly save: WorldSave,
     public q: StreamQ,
   ) {
-    this.gen = new WorldGen(save.seed);
+    this.gen = new WorldGen(save.seed, save.gen);
     this.groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.vox = new VoxWorld(this);
     addWind(this.treeMat);
     const cap = 64;
     for (let s = 0; s < WSPECIES.length; s++) {
@@ -167,6 +178,40 @@ export class World {
   heightAt(x: number, z: number): number {
     const c = this.chunkAt(x, z);
     if (!c) return this.gen.height(x, z);
+    return c.hAt(x - c.x0, z - c.z0);
+  }
+  /** altura natural (sem escavações) */
+  baseAt(x: number, z: number): number {
+    const c = this.chunkAt(x, z);
+    if (!c) return this.gen.height(x, z);
+    return c.bAt(x - c.x0, z - c.z0);
+  }
+  /** água natural aqui? (buracos cavados ficam secos) */
+  isWater(x: number, z: number): boolean {
+    return this.baseAt(x, z) < WATER_Y - 0.02;
+  }
+  /** nível da água em (x,z) ou -Infinity */
+  waterLevel(x: number, z: number): number {
+    return this.baseAt(x, z) < WATER_Y - 0.02 ? WATER_Y : -Infinity;
+  }
+  /**
+   * Chão andável debaixo de (x, y, z): terreno (ou caverna) + topo de construções.
+   * `y` é a altura de onde se procura (pé + degrau).
+   */
+  floorAt(x: number, y: number, z: number): number {
+    const t = this.terrainFloor(x, y, z);
+    const b = this.solids.groundAt(x, z, y);
+    const e = this.extraFloor ? this.extraFloor(x, y, z) : -Infinity;
+    return Math.max(t, b, e);
+  }
+  /** blocos de construção (módulo de blocos): topo sólido sob y e teste de célula sólida */
+  extraFloor: ((x: number, y: number, z: number) => number) | null = null;
+  extraSolid: ((x: number, y: number, z: number) => boolean) | null = null;
+  /** só o terreno (com volume escavado, se houver) */
+  terrainFloor(x: number, y: number, z: number): number {
+    const c = this.chunkAt(x, z);
+    if (!c) return this.gen.height(x, z);
+    if (c.vol) return c.vol.floor(x, y, z);
     return c.hAt(x - c.x0, z - c.z0);
   }
   normalAt(x: number, z: number, out: THREE.Vector3): THREE.Vector3 {
@@ -222,7 +267,7 @@ export class World {
     for (const c of this.chunks.values()) {
       const d = Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz));
       const step = d <= 1 ? 1 : d <= 2 ? 2 : 4;
-      if (c.lod !== step && d < lodD) {
+      if (c.lod !== step && !c.volReady && d < lodD) {
         lodD = d;
         lodC = c;
         lodStep = step;
@@ -287,9 +332,11 @@ export class World {
   private finishLoad(c: Chunk): void {
     const cx = c.cx;
     const cz = c.cz;
+    c.natVol = this.vox.natural(c);
     const rec = this.save.chunks[c.key()];
     if (rec) {
       if (rec.e) c.decodeEdit(rec.e);
+      if (rec.v) this.vox.decode(c, rec.v);
       if (rec.t)
         for (let k = 0; k + 2 < rec.t.length; k += 3) {
           const i = rec.t[k];
@@ -302,6 +349,12 @@ export class World {
     const m = c.buildMesh(d <= 1 ? 1 : d <= 2 ? 2 : 4, this.groundMat);
     this.scene.add(m);
     this.chunks.set(c.key(), c);
+    const wm = this.buildWater(c);
+    if (wm) {
+      this.scene.add(wm);
+      this.waterMesh.set(c, wm);
+    }
+    this.onLoad?.(c);
     if (c.camp && this.onCampLoad) {
       const o = this.onCampLoad(c.camp, c);
       this.campObjs.set(c.key(), o);
@@ -311,7 +364,41 @@ export class World {
     this.loadedNow++;
   }
 
+  private buildWater(c: Chunk): THREE.Mesh | null {
+    if (c.minBase >= WATER_Y - 0.02) return null;
+    const pos: number[] = [];
+    const b = c.base;
+    const y = WATER_Y - 0.05;
+    for (let j = 0; j < RES; j++)
+      for (let i = 0; i < RES; i++) {
+        const k = j * VN + i;
+        if (Math.min(b[k], b[k + 1], b[k + VN], b[k + VN + 1]) >= WATER_Y + 0.05) continue;
+        const x = c.x0 + i;
+        const z = c.z0 + j;
+        pos.push(x, y, z, x, y, z + 1, x + 1, y, z, x + 1, y, z, x, y, z + 1, x + 1, y, z + 1);
+      }
+    if (!pos.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const n = new Float32Array(pos.length);
+    for (let i = 1; i < n.length; i += 3) n[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, this.waterMat);
+    m.matrixAutoUpdate = false;
+    m.renderOrder = 2;
+    return m;
+  }
+
   private unload(k: string, c: Chunk): void {
+    this.onUnload?.(c);
+    this.vox.forget(c);
+    const wm = this.waterMesh.get(c);
+    if (wm) {
+      this.scene.remove(wm);
+      wm.geometry.dispose();
+      this.waterMesh.delete(c);
+    }
     this.store(c);
     if (c.mesh) {
       this.scene.remove(c.mesh);
@@ -320,6 +407,7 @@ export class World {
     const o = this.campObjs.get(k);
     if (o) {
       this.scene.remove(o);
+      for (const b of (o.userData.boxes as SBox[] | undefined) ?? []) this.solids.remove(b);
       this.campObjs.delete(k);
     }
     this.chunks.delete(k);
@@ -329,13 +417,15 @@ export class World {
   /** guarda escavação e árvores alteradas no save */
   store(c: Chunk): void {
     if (!c.modified) return;
-    const rec: { e?: string; t?: number[] } = {};
+    const rec: { e?: string; t?: number[]; v?: Record<string, string> } = {};
     const e = c.encodeEdit();
     if (e) rec.e = e;
+    const v = this.vox.encode(c);
+    if (v) rec.v = v;
     const t: number[] = [];
     for (let i = 0; i < c.nt; i++) if (c.tstate[i] !== TState.Grown) t.push(i, c.tstate[i], Math.round(c.tgrow[i] * 100));
     if (t.length) rec.t = t;
-    if (rec.e || rec.t) this.save.chunks[c.key()] = rec;
+    if (rec.e || rec.t || rec.v) this.save.chunks[c.key()] = rec;
     else delete this.save.chunks[c.key()];
   }
   storeAll(): void {
@@ -481,7 +571,7 @@ export class World {
   }
 
   /** colisão simples com troncos: empurra (x,z) para fora; devolve true se encostou */
-  pushOutTrees(p: { x: number; z: number }, rad: number): boolean {
+  pushOutTrees(p: { x: number; z: number }, rad: number, y = -1e9): boolean {
     let hit = false;
     const c0x = Math.floor(p.x / CH);
     const c0z = Math.floor(p.z / CH);
@@ -493,7 +583,7 @@ export class World {
           const st = c.tstate[i];
           if (st !== TState.Grown) continue;
           const o = i * TREE_STRIDE;
-          const tr = 0.35 * c.trees[o + 4];
+          const tr = 0.42 * c.trees[o + 4];
           const dx = p.x - c.trees[o];
           const dz = p.z - c.trees[o + 2];
           const min = rad + tr;
@@ -507,6 +597,8 @@ export class World {
         }
         for (let i = 0; i < c.nr; i++) {
           const o = i * 5;
+          // em cima da pedra: não empurra
+          if (y > c.hAt(c.rocks[o] - c.x0, c.rocks[o + 2] - c.z0) + c.rocks[o + 3] * 0.55) continue;
           const dx = p.x - c.rocks[o];
           const dz = p.z - c.rocks[o + 2];
           const min = rad + c.rocks[o + 3] * 1.0;
@@ -670,12 +762,19 @@ export class World {
     this.rocks.dispose();
     this.bushes.dispose();
     this.flowers.dispose();
+    this.vox.dispose();
     for (const c of this.chunks.values()) {
       if (c.mesh) {
         this.scene.remove(c.mesh);
         c.mesh.geometry.dispose();
       }
     }
+    for (const m of this.waterMesh.values()) {
+      this.scene.remove(m);
+      m.geometry.dispose();
+    }
+    this.waterMesh.clear();
+    this.solids.clear();
     this.chunks.clear();
   }
 }

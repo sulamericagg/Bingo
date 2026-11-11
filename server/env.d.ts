@@ -26,6 +26,8 @@ interface Env {
   ADMIN: DurableObjectNamespace<import('./admin-hub').AdminHub>;
   /** Noites do Acampamento: sala co-op por código (relé anfitrião↔convidados). */
   NIGHTS: DurableObjectNamespace<import('./nights').NightsRoom>;
+  /** Mundo Aberto online: mundos de até 8 (edições guardadas) + caixas de convite. */
+  MUNDO: DurableObjectNamespace<import('./mundo').WorldRoom>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
   /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */

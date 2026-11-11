@@ -110,6 +110,17 @@ export class Chunk {
   treesDirty = true;
   minY = 0;
   maxY = 0;
+  /** menor altura natural (água) */
+  minBase = 0;
+  /** volume escavado (cavernas, túneis) — null = só heightfield */
+  vol: import('./vox').VolChunk | null = null;
+  /** malhas do volume cobrem a superfície (heightfield escondido) */
+  volReady = false;
+  /** tem boca de caverna/ravina natural */
+  natVol = false;
+  /** ilhas no céu sobre este pedaço (faixa de altura) */
+  skyTop = -1e9;
+  skyBot = 1e9;
 
   constructor(
     readonly cx: number,
@@ -191,6 +202,7 @@ export class Chunk {
     const mx = this.gMx;
     this.minY = mn;
     this.maxY = mx;
+    this.minBase = mn;
     this.biome = gen.weights(this.x0 + CH / 2, this.z0 + CH / 2, W);
     // trilho que cruza este pedaço
     const k = Math.round((this.z0 + CH / 2) / RAIL_Z);
@@ -287,8 +299,15 @@ export class Chunk {
     }
   }
 
+  /** altura natural (sem escavação) bilinear */
+  bAt(lx: number, lz: number): number {
+    return this.interp(this.base, lx, lz);
+  }
   /** altura bilinear em coordenadas locais (0..CH) */
   hAt(lx: number, lz: number): number {
+    return this.interp(this.h, lx, lz);
+  }
+  private interp(h: Float32Array, lx: number, lz: number): number {
     if (lx < 0) lx = 0;
     else if (lx > RES - 1e-4) lx = RES - 1e-4;
     if (lz < 0) lz = 0;
@@ -298,7 +317,6 @@ export class Chunk {
     const fx = lx - i;
     const fz = lz - j;
     const k = j * VN + i;
-    const h = this.h;
     const a = h[k];
     const b = h[k + 1];
     const c = h[k + VN];
@@ -402,8 +420,9 @@ export class Chunk {
           gg += (SNOW[1] - gg) * s;
           b += (SNOW[2] - b) * s;
         }
-        if (y < WATER_Y + 1.1) {
-          const s = Math.min(1, (WATER_Y + 1.1 - y) / 0.8);
+        const by = this.base[k];
+        if (by < WATER_Y + 1.1 && y > by - 1) {
+          const s = Math.min(1, (WATER_Y + 1.1 - by) / 0.8);
           const sand = col[o + 1] > col[o] * 1.4 && col[o + 2] < 0.3 ? MUD : SAND;
           r += (sand[0] - r) * s;
           gg += (sand[1] - gg) * s;

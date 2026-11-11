@@ -155,6 +155,11 @@
 .fw-tool{position:absolute;right:104px;bottom:4px;width:52px!important;height:52px!important}
 .fw-up{position:absolute;right:104px;bottom:62px;width:52px!important;height:52px!important}
 .fw-down{position:absolute;right:104px;bottom:2px;width:52px!important;height:52px!important}
+.fw-grab{position:absolute;right:104px;bottom:122px;width:52px!important;height:52px!important;flex-direction:column;gap:0}
+.fw-grab b{font-size:9px;line-height:1}
+.fw-jump{position:absolute;right:164px;bottom:4px;width:52px!important;height:52px!important}
+.fw-hud.lefty .fw-grab{right:auto;left:104px}
+.fw-hud.lefty .fw-jump{right:auto;left:164px}
 .fw-veh{position:absolute;right:0;bottom:104px;font-size:12px;min-height:38px;padding:4px 10px;white-space:nowrap}
 .fw-sell{position:absolute;right:0;bottom:150px;font-size:13px;min-height:38px;padding:4px 12px}
 @media (orientation:portrait){
