@@ -46,6 +46,25 @@ export const ADMOB = {
 };
 
 /**
+ * iPhone (iOS): o AdMob exige um APP e blocos SEPARADOS para iOS. IDs de teste oficiais do Google para iOS.
+ * TODO(dono): ao criar o app iOS no AdMob, cole os IDs em ADMOB_REAL_IOS; o ID do APP (com "~") vai também
+ * em ios/App/App/Info.plist (chave GADApplicationIdentifier) — é lá que o SDK do iPhone o lê. Ver docs/IOS.md.
+ */
+const ADMOB_TEST_IOS = {
+  appId: 'ca-app-pub-3940256099942544~1458002511',
+  banner: 'ca-app-pub-3940256099942544/2934735716',
+  interstitial: 'ca-app-pub-3940256099942544/4411468910',
+  rewarded: 'ca-app-pub-3940256099942544/1712485313',
+};
+export const ADMOB_REAL_IOS = { appId: '', banner: '', interstitial: '', rewarded: '' };
+export const ADMOB_IOS = {
+  appId: (!ADS_TEST_MODE && ADMOB_REAL_IOS.appId) || ADMOB_TEST_IOS.appId,
+  banner: (!ADS_TEST_MODE && ADMOB_REAL_IOS.banner) || ADMOB_TEST_IOS.banner,
+  interstitial: (!ADS_TEST_MODE && ADMOB_REAL_IOS.interstitial) || ADMOB_TEST_IOS.interstitial,
+  rewarded: (!ADS_TEST_MODE && ADMOB_REAL_IOS.rewarded) || ADMOB_TEST_IOS.rewarded,
+};
+
+/**
  * PAUSAS PARA INTERSTICIAL em TODOS os jogos (src/services/adbreaks.ts + maybeInterstitial).
  * Limites globais (valem para o Orbit e para os jogos do hub juntos). Podem ser ajustados
  * remotamente pelo servidor (campo `ads` de GET /api/challenges — docs/ANUNCIOS.md).
