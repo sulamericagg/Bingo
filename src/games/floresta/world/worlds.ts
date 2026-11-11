@@ -5,6 +5,7 @@
  *  Cada mundo fica numa chave própria do localStorage; só pedaços
  *  modificados (diffs) entram no save.
  * ============================================================ */
+import { coverFor } from './covers';
 import { t } from '../../../i18n';
 import { WBIOMES } from './biomes';
 import type { GenOpts } from './gen';
@@ -109,6 +110,9 @@ const TYPES: [GenOpts['type'], () => string][] = [
 export const modeName = (m: GameMode) => MODES.find((x) => x[0] === m)?.[1]() ?? m;
 
 const CSS = `
+.mw-online{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-height:78px;border:4px solid #2a0b5c;border-radius:18px;padding:8px 14px;color:#fff;font:inherit;text-align:left;cursor:pointer;background-size:cover;background-position:center;box-shadow:0 4px 0 #2a0b5c}
+.mw-online b{font-size:20px;font-weight:900;text-shadow:0 2px 0 #2a0b5c}
+.mw-online small{font-size:12px;font-weight:800;opacity:.92;max-width:62%}
 .mw-list{display:flex;flex-direction:column;gap:6px;padding:4px 14px 12px;overflow-y:auto}
 .mw-row{display:flex;align-items:center;gap:8px;background:#fff;border:3px solid #2a0b5c;border-radius:14px;padding:6px 8px}
 .mw-row b{font-size:15px}
@@ -159,7 +163,8 @@ export function pickWorld(root: HTMLElement, opts: { servers?: boolean } = {}): 
         .join('');
       m.innerHTML = `<div class="fl-card"><h2><span>${t('mundo.worlds', 'Meus Mundos')}</span><button class="fl-btn round red" data-x="1">✕</button></h2>
         <div class="mw-list">
-          <div class="mw-row2"><button class="fl-btn gold" data-new="1" style="flex:1">+ ${t('mundo.newWorld', 'Novo mundo')}</button>${opts.servers ? `<button class="fl-btn" data-srv="1" style="flex:1">🌐 ${t('mundo.servers', 'Servidores')}</button>` : ''}</div>
+          ${opts.servers ? `<button class="mw-online" data-srv="1" style="background-image:linear-gradient(90deg,rgba(42,11,92,.92) 30%,rgba(42,11,92,.15)),url('${coverFor('pvp')}')"><b>🌐 ${t('mundo.playOnline', 'Jogar online')}</b><small>${t('mundo.playOnlineD', 'Servidores com amigos, PvP e minigames — toque e entre!')}</small></button>` : ''}
+          <div class="mw-row2"><button class="fl-btn gold" data-new="1" style="flex:1">+ ${t('mundo.newWorld', 'Novo mundo')}</button></div>
           ${rows || `<div style="font-weight:700;opacity:.7;padding:6px">${t('mundo.noWorlds', 'Nenhum mundo ainda — crie o primeiro!')}</div>`}
           <button class="fl-btn wood" data-classic="1">${t('mundo.classic', 'Mundo dos Lenhadores (clássico)')}</button>
         </div></div>`;

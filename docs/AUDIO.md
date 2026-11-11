@@ -168,7 +168,7 @@ Arquivos compartilhados reescritos (API idêntica): `src/core/audio.ts`, `src/3d
 
 ## 6. Pendências / ideias
 
-- **TV Bloop** é painel (não dispara `game-launch`): a música do hub continua por baixo dos vídeos. Sugestão: `music.pause()` ao abrir e `music.resume()` ao fechar em `src/cinema/tv.ts`.
+- **TV Bloop** é painel (não dispara `game-launch`): feito — `music.pause()` ao abrir e `music.resume()` ao fechar (`src/cinema/tv.ts`).
 - **Banda** e prévias do **Passe** usam AudioContext próprio: o slider de Volume não as afeta (respeitam os interruptores).
 - Sons 3D posicionais: a API existe (`sfx.at` + `sfx.listener`), mas nenhum jogo atualiza o ouvinte ainda (Noites/Mundo/Garimpo seriam os primeiros).
 - Mundo: passos por superfície (`sfx.material('step', …)`) e gotas de caverna (`floresta.drip` / `caveBed`) prontos, faltam ganchos no movimento/caverna.

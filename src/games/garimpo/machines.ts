@@ -4,12 +4,15 @@
  *  Toda terra carrega ouro (g): cargas são {vol m³, gold g}.
  * ============================================================ */
 import * as THREE from 'three';
-import { buildDozer, buildExcavator, buildHeli, buildPickup, buildTruck, buildWorker, EXC, wheelMesh, type ExcavatorParts, type Ram, type WorkerParts } from './models';
+import { buildDozer, buildExcavator, buildHeli, buildPickup, buildTruck, buildWorker, BW, C, EXC, wheelMesh, type ExcavatorParts, type Ram, type WorkerParts } from './models';
 import { CELL, type BladeState } from './terrain';
 import { Vehicle, type VehSpec, type WheelDef } from './vehicle';
 import type { World } from './world';
 // PAPER: garimpeiro = Bloop 2D de papel (src/3d/paper; chave PAPER_GAMES.garimpo)
 import { mySpec, npcSpec, PaperChar, paperOn, type PaperSpec } from '../../3d/paper';
+import { paperBodyColor } from '../../3d/paper/paperAvatar';
+// FPKIT: andar compartilhado (aceleração da Cozinha + chão por altura sem tremor)
+import { FpController, fpTuning, HeightGround, type SweepResult } from '../../3d/fpkit';
 
 export type Kind = 'worker' | 'pickup' | 'truck' | 'excavator' | 'dozer' | 'heli';
 
@@ -677,6 +680,15 @@ export class Excavator extends Wheeled {
 }
 
 /* ============================== GARIMPEIRO ============================== */
+type Terrain = import('./terrain').Terrain;
+/** pegadores: na frente do corpo do Bloop (m) e altura das mãos acima dos pés */
+const GRIP_Z = 0.42;
+const GRIP_H = 0.62;
+const _bq = new THREE.Quaternion();
+const _be = new THREE.Euler(0, 0, 0, 'YXZ');
+const _bo = new THREE.Vector3();
+const clampN = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+
 export class Worker extends Machine {
   readonly kind = 'worker';
   private p: WorkerParts;
@@ -692,6 +704,32 @@ export class Worker extends Machine {
   dumping = false;
   /** anfitrião: velocidade de andar vinda do convidado (anima as pernas; -1 = usa a própria) */
   extMove = -1;
+  /** controle "tanque" (1ª pessoa / de frente): x gira, y anda para frente/trás */
+  tank = false;
+  /** 1ª pessoa: o Bloop de papel some (a câmera está nos olhos dele) */
+  fp = false;
+  /** CARRINHO: empurrando (true) ou largado no chão (false) */
+  held = true;
+  /** carrinho largado: onde a roda toca o chão e para onde aponta */
+  bx = 0;
+  bz = 0;
+  by = 0;
+  /** boca da caçamba no mundo (despejo) */
+  readonly lipW = new THREE.Vector3();
+  /** inclinação do chão na direção do passo (+ subindo) */
+  grade = 0;
+  private bp = 0;
+  private br = 0;
+  private lift = 0;
+  private wheelX = 0;
+  private wheelZ = 0;
+  private snapB = true;
+  private hands: THREE.Mesh[] = [];
+  /** FPKIT: corpo (aceleração/frenagem, chão por altura sem tremor); colisão = empurra para fora */
+  readonly body = new FpController(fpTuning('survival', { sprintMul: 1.3, jumpV: 0, radius: 0.35 }), null, null);
+  private env: Env | null = null;
+  /** terreno (para quem só recebe pose da rede) */
+  static terrain: Terrain | null = null;
   /** PAPER: personagem 2D (null = boneco 3D clássico) */
   private paper: PaperChar | null = null;
   /** PAPER: câmera para virar os billboards (atualizada pelo update de qualquer garimpeiro) */
@@ -701,82 +739,359 @@ export class Worker extends Machine {
     super();
     this.p = buildWorker(shirt);
     this.group.add(this.p.root);
-    if (paperOn('garimpo')) {
+    let hand = '#' + C.skin.toString(16).padStart(6, '0');
+    // jogadores (o meu Bloop / o de cada amigo) são SEMPRE o Bloop de papel — o boneco 3D clássico é um
+    // moço de bigode que "não tem nada a ver com o meu boneco"; a opção 2D/3D vale só para ajudantes
+    if (spec !== undefined || paperOn('garimpo')) {
       const sp = spec === 'me' ? mySpec() : (spec ?? (shirt !== undefined ? npcSpec('#' + shirt.toString(16).padStart(6, '0'), '#ffd34a', { head: 'h_cap' }) : npcSpec('#ffd34a', '#c87a2a', { head: 'h_cap', eyes: 'e_big' })));
-      this.paper = new PaperChar(sp, { radius: 0.6, cell: spec === 'me' ? 128 : 96, shadow: true });
+      this.paper = new PaperChar(sp, { radius: 0.52, cell: spec === 'me' ? 128 : 96, shadow: true });
+      hand = paperBodyColor(sp);
       // esconde o corpo 3D (o carrinho, o balde e o monte de terra continuam 3D)
-      const keep = new Set<THREE.Object3D>([this.p.barrow, this.p.bucket]);
+      const keep = new Set<THREE.Object3D>([this.p.bucket, this.p.shovel]);
       for (const c of this.p.root.children) if (!keep.has(c)) c.visible = false;
       this.p.root.add(this.paper.root);
     }
+    // mãos (bolinhas da cor do Bloop) segurando os pegadores
+    const hm = new THREE.MeshLambertMaterial({ color: hand });
+    for (const sx of [1, -1]) {
+      const h = new THREE.Mesh(HAND_GEO, hm);
+      h.position.set(sx * BW.gripX, BW.grip.y + 0.035, BW.grip.z + 0.03);
+      h.castShadow = true;
+      this.p.barrow.add(h);
+      this.hands.push(h);
+    }
+    this.group.add(this.p.barrow);
+    this.p.barrow.traverse((o) => (o.castShadow = true));
     this.cargo.cap = 0.12;
-    this.cam = { dist: 5.8, height: 3.2, look: 0.9, yawOff: 0 };
+    this.cam = { dist: 5.2, height: 6.4, look: 0.6, yawOff: 0 };
     this.rad = 0.5;
     this.circles = [0.4];
+    this.body.collider = { sweep: (fx, fz, tx, tz, r, o) => this.sweep(fx, fz, tx, tz, r, o) };
+  }
+  /** colisão do passo: prédios/árvores/máquinas/carrinho largado empurram para fora (desliza em volta);
+   *  lago fundo e borda do mapa bloqueiam (por eixo) */
+  private sweep(fx: number, fz: number, tx: number, tz: number, r: number, o: SweepResult): void {
+    const env = this.env;
+    let x = tx;
+    let z = tz;
+    if (env) {
+      const rr = r;
+      env.world.near(x, z, (c) => {
+        const dx = x - c.x;
+        const dz = z - c.z;
+        const d = Math.hypot(dx, dz);
+        const R = c.r + rr;
+        if (d < R && d > 1e-4) {
+          x = c.x + (dx / d) * R;
+          z = c.z + (dz / d) * R;
+        }
+      });
+      for (const m of env.others) {
+        if (m === this || !m.veh) continue;
+        const yaw = m.yaw();
+        for (const cz of m.circles) {
+          const cx = m.pos.x + Math.sin(yaw) * cz;
+          const czz = m.pos.z + Math.cos(yaw) * cz;
+          const dx = x - cx;
+          const dz = z - czz;
+          const d = Math.hypot(dx, dz);
+          const R = m.rad + rr;
+          if (d < R && d > 1e-4) {
+            x = cx + (dx / d) * R;
+            z = czz + (dz / d) * R;
+          }
+        }
+      }
+      // o próprio carrinho largado é um obstáculo
+      if (!this.held) {
+        const bx = this.bx + Math.sin(this.by) * (BW.tray.z + 0.1);
+        const bz = this.bz + Math.cos(this.by) * (BW.tray.z + 0.1);
+        const dx = x - bx;
+        const dz = z - bz;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.95 && d > 1e-4) {
+          x = bx + (dx / d) * 0.95;
+          z = bz + (dz / d) * 0.95;
+        }
+      }
+      // lago fundo: não entra (desliza pela margem)
+      const deep = (a: number, b: number) => env.world.waterY(a, b) - env.world.T.heightAt(a, b) > 0.9;
+      if (deep(x, z)) {
+        if (!deep(x, fz)) z = fz;
+        else if (!deep(fx, z)) x = fx;
+        else {
+          x = fx;
+          z = fz;
+        }
+      }
+    }
+    const cx = Math.max(8, Math.min(184, x));
+    const cz = Math.max(8, Math.min(184, z));
+    o.x = cx;
+    o.z = cz;
+    // só borda/lago param a velocidade; o empurrão das árvores deixa deslizar
+    o.hitX = Math.abs(cx - x) > 1e-4 || (x === fx && tx !== fx);
+    o.hitZ = Math.abs(cz - z) > 1e-4 || (z === fz && tz !== fz);
+  }
+  /** fase da pá (−1 = parado; 0..1 cavando) — viewmodel de 1ª pessoa */
+  get digK(): number {
+    return this.dig;
+  }
+  /** cor das mãos (Bloop do jogador) */
+  get handColor(): THREE.Color {
+    return (this.hands[0].material as THREE.MeshLambertMaterial).color;
+  }
+  /** spec do Bloop de papel (online: o avatar do amigo chega depois) */
+  setSpec(sp: PaperSpec): void {
+    if (!this.paper) return;
+    this.paper.setSpec(sp);
+    (this.hands[0].material as THREE.MeshLambertMaterial).color.set(paperBodyColor(sp));
   }
   place(x: number, z: number, yaw: number, env: World): void {
     this.group.position.set(x, env.T.heightAt(x, z), z);
     this.group.rotation.y = yaw;
+    Worker.terrain = env.T;
+    this.snapB = true;
+    if (this.held) this.holdPose(env.T, 0);
   }
+
+  /* ------------------------------ CARRINHO ------------------------------ */
+  /** empurrando: roda no chão na frente, pegadores nas mãos; inclina com a rampa (passo e lado),
+   *  levanta os pegadores para a caçamba não raspar no morro; ao despejar, ergue e vira para a frente */
+  private holdPose(T: Terrain, dt: number): void {
+    const g = this.group;
+    const yaw = g.rotation.y;
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const R = BW.wheelR;
+    const gy = BW.grip.y - R;
+    const L = Math.hypot(gy, BW.grip.z);
+    const a0 = Math.atan2(gy, -BW.grip.z);
+    const lt = this.dumping ? 0.6 : 0;
+    this.lift += (lt - this.lift) * (dt > 0 ? Math.min(1, dt * 5) : 1);
+    const gx = g.position.x + fx * GRIP_Z;
+    const gz = g.position.z + fz * GRIP_Z;
+    const Hg = g.position.y + GRIP_H + this.lift;
+    let D = L * Math.cos(a0);
+    let dy = 0;
+    let hA = 0;
+    let wx = gx;
+    let wz = gz;
+    for (let i = 0; i < 3; i++) {
+      wx = gx + fx * D;
+      wz = gz + fz * D;
+      hA = T.heightAt(wx, wz) + R;
+      dy = clampN(Hg - hA, -0.7 * L, 0.7 * L);
+      D = Math.sqrt(L * L - dy * dy);
+    }
+    let pitch = Math.atan2(dy, D) - a0;
+    // nada da caçamba/pés abaixo do chão (crista do morro): ergue os pegadores
+    const clear = (ly: number, lz: number) => {
+      const y = ly - R;
+      const c = Math.cos(pitch);
+      const sn = Math.sin(pitch);
+      const yy = y * c - lz * sn;
+      const zz = y * sn + lz * c;
+      const need = T.heightAt(wx + fx * zz, wz + fz * zz) + 0.05 - (hA + yy);
+      if (need > 0) pitch += need / Math.max(0.3, Math.hypot(y, lz));
+    };
+    clear(BW.leg.y, BW.leg.z);
+    clear(BW.tray.y, BW.tray.z - 0.35);
+    clear(BW.tray.y, BW.tray.z);
+    clear(BW.tray.y, BW.tray.z + 0.35);
+    clear(BW.leg.y, BW.leg.z);
+    // de lado: segue o chão embaixo da caçamba (a pessoa segura um pouco)
+    const rx = Math.cos(yaw);
+    const rz = -Math.sin(yaw);
+    const cx = wx + fx * BW.tray.z;
+    const cz = wz + fz * BW.tray.z;
+    const roll = clampN(Math.atan2(T.heightAt(cx + rx * 0.45, cz + rz * 0.45) - T.heightAt(cx - rx * 0.45, cz - rz * 0.45), 0.9) * 0.7, -0.35, 0.35);
+    const k = this.snapB || dt <= 0 ? 1 : Math.min(1, dt * 12);
+    this.snapB = false;
+    this.bp += (pitch - this.bp) * k;
+    this.br += (roll - this.br) * k;
+    this.wheelX = wx;
+    this.wheelZ = wz;
+    // origem do carrinho = eixo − raio da roda (girado)
+    _bq.setFromEuler(_be.set(this.bp, yaw, this.br, 'YXZ'));
+    _bo.set(0, R, 0).applyQuaternion(_bq);
+    const ox = wx - _bo.x;
+    const oy = hA - _bo.y;
+    const oz = wz - _bo.z;
+    // no grupo do garimpeiro (só guinada): local = Ry(−yaw)·(mundo − pos)
+    const dx = ox - g.position.x;
+    const dz = oz - g.position.z;
+    const b = this.p.barrow;
+    b.position.set(dx * Math.cos(yaw) - dz * Math.sin(yaw), oy - g.position.y, dx * Math.sin(yaw) + dz * Math.cos(yaw));
+    b.rotation.set(this.bp, 0, this.br, 'YXZ');
+    this.lipW.copy(BW.lip).applyQuaternion(_bq).add(_bo.set(ox, oy, oz));
+  }
+  /** largado: roda e pés apoiados no chão (segue o terreno se cavarem embaixo) */
+  private restPose(T: Terrain): void {
+    const fx = Math.sin(this.by);
+    const fz = Math.cos(this.by);
+    const lz = -BW.leg.z;
+    const hW = T.heightAt(this.bx, this.bz);
+    const lx = this.bx - fx * lz;
+    const lzz = this.bz - fz * lz;
+    const hL = T.heightAt(lx, lzz);
+    const rx = Math.cos(this.by) * 0.27;
+    const rz = -Math.sin(this.by) * 0.27;
+    const pitch = clampN(Math.atan2(hL - hW, lz), -0.6, 0.6);
+    const roll = clampN(Math.atan2(T.heightAt(lx + rx, lzz + rz) - T.heightAt(lx - rx, lzz - rz), 0.54) * 0.8, -0.4, 0.4);
+    const b = this.p.barrow;
+    b.position.set(this.bx, hW, this.bz);
+    b.rotation.set(pitch, this.by, roll, 'YXZ');
+    this.lipW.copy(BW.lip).applyEuler(b.rotation).add(b.position);
+  }
+  /** larga o carrinho onde está (fica no chão como objeto; a carga fica nele) */
+  dropBarrow(): boolean {
+    const sc = this.group.parent;
+    if (!this.held || !sc) return false;
+    this.held = false;
+    this.dumping = false;
+    this.lift = 0;
+    this.bx = this.wheelX;
+    this.bz = this.wheelZ;
+    this.by = this.group.rotation.y;
+    sc.add(this.p.barrow);
+    for (const h of this.hands) h.visible = false;
+    if (Worker.terrain) this.restPose(Worker.terrain);
+    return true;
+  }
+  /** larga num lugar dado (save / rede) */
+  dropAt(x: number, z: number, yaw: number): void {
+    if (this.held) this.dropBarrow();
+    if (this.held) return;
+    this.bx = x;
+    this.bz = z;
+    this.by = yaw;
+    if (Worker.terrain) this.restPose(Worker.terrain);
+  }
+  /** distância até os pegadores do carrinho largado (0 = segurando) */
+  barrowDist(): number {
+    if (this.held) return 0;
+    const L = -BW.grip.z;
+    const gx = this.bx - Math.sin(this.by) * L;
+    const gz = this.bz - Math.cos(this.by) * L;
+    const p = this.group.position;
+    // perto dos pegadores ou da caçamba vale
+    const tx = this.bx + Math.sin(this.by) * BW.tray.z;
+    const tz = this.bz + Math.cos(this.by) * BW.tray.z;
+    return Math.min(Math.hypot(p.x - gx, p.z - gz), Math.hypot(p.x - tx, p.z - tz) - 0.4);
+  }
+  canGrab(): boolean {
+    return !this.held && this.barrowDist() < 2.4;
+  }
+  /** pega o carrinho: o garimpeiro vai para trás dos pegadores */
+  grabBarrow(env: World | null = null): boolean {
+    if (this.held || !this.group.parent) return false;
+    const T = env?.T ?? Worker.terrain;
+    const f = -BW.grip.z + GRIP_Z;
+    const x = this.bx - Math.sin(this.by) * f;
+    const z = this.bz - Math.cos(this.by) * f;
+    this.held = true;
+    this.group.add(this.p.barrow);
+    for (const h of this.hands) h.visible = true;
+    this.group.position.x = x;
+    this.group.position.z = z;
+    if (T) this.group.position.y = T.heightAt(x, z);
+    this.group.rotation.y = this.by;
+    this.snapB = true;
+    if (T) this.holdPose(T, 0);
+    return true;
+  }
+  /** carrinho largado perto deste ponto (a pá enche ele) */
+  barrowAt(x: number, z: number, r: number): boolean {
+    if (this.held) return false;
+    const tx = this.bx + Math.sin(this.by) * BW.tray.z;
+    const tz = this.bz + Math.cos(this.by) * BW.tray.z;
+    return Math.hypot(x - tx, z - tz) < r;
+  }
+  /** rede: [segurando 1/0, x, z, guinada do carrinho largado] */
+  netBarrow(): number[] {
+    const r = (v: number) => Math.round(v * 100) / 100;
+    return this.held ? [1, 0, 0, 0] : [0, r(this.bx), r(this.bz), r(this.by)];
+  }
+  netBarrowApply(a: number[] | undefined): void {
+    if (!a || a.length < 4) return;
+    if (a[0]) {
+      if (!this.held) {
+        this.held = true;
+        this.group.add(this.p.barrow);
+        for (const h of this.hands) h.visible = true;
+        this.snapB = true;
+      }
+    } else if (this.held || Math.abs(a[1] - this.bx) + Math.abs(a[2] - this.bz) + Math.abs(a[3] - this.by) > 0.02) this.dropAt(a[1], a[2], a[3]);
+  }
+
   update(dt: number, ctl: Ctl | null, env: Env): void {
     const T = env.world.T;
+    Worker.terrain = T;
     const g = this.group;
-    let mv = 0;
-    if (ctl && this.dig < 0) {
-      const mx = ctl.mx;
-      const my = ctl.my;
-      const mag = Math.min(1, Math.hypot(mx, my));
-      if (mag > 0.08) {
-        // relativo à câmera: para cima = para onde a câmera olha
-        const a = env.camYaw + Math.atan2(-mx, -my);
-        let d = a - g.rotation.y;
-        d = Math.atan2(Math.sin(d), Math.cos(d));
-        g.rotation.y += d * Math.min(1, dt * 10);
-        const wet = T.wetAt(g.position.x, g.position.z);
-        const sp = mag * (3.4 - this.fill * 1.0) * (1 - wet * 0.45);
-        mv = sp;
-        g.position.x += Math.sin(g.rotation.y) * sp * dt;
-        g.position.z += Math.cos(g.rotation.y) * sp * dt;
-      }
-    }
-    // colisão com prédios/árvores/máquinas e o lago fundo
     const pos = g.position;
-    env.world.near(pos.x, pos.z, (c) => {
-      const dx = pos.x - c.x;
-      const dz = pos.z - c.z;
-      const d = Math.hypot(dx, dz);
-      const r = c.r + 0.35;
-      if (d < r && d > 1e-4) {
-        pos.x = c.x + (dx / d) * r;
-        pos.z = c.z + (dz / d) * r;
-      }
-    });
-    for (const o of env.others) {
-      if (o === this || !o.veh) continue;
-      const yaw = o.yaw();
-      for (const cz of o.circles) {
-        const cx = o.pos.x + Math.sin(yaw) * cz;
-        const czz = o.pos.z + Math.cos(yaw) * cz;
-        const dx = pos.x - cx;
-        const dz = pos.z - czz;
-        const d = Math.hypot(dx, dz);
-        const r = o.rad + 0.35;
-        if (d < r && d > 1e-4) {
-          pos.x = cx + (dx / d) * r;
-          pos.z = czz + (dz / d) * r;
+    this.env = env;
+    // FPKIT: o corpo anda com o FpController (aceleração/frenagem da Cozinha) + chão por altura
+    // (gruda no terreno sem tremer em rampa); posição de fora (rede, teleporte) vale sempre
+    const fp = this.body;
+    if (!fp.ground) fp.ground = new HeightGround((x, z) => T.heightAt(x, z), { stepUp: 0.3, stepDown: 0.5, maxSlope: 1.0, probe: 0.35 });
+    if (Math.abs(fp.x - pos.x) + Math.abs(fp.z - pos.z) > 0.6) fp.place(pos.x, pos.z, pos.y);
+    fp.x = pos.x;
+    fp.z = pos.z;
+    if (Math.abs(fp.y - pos.y) > 0.6) fp.y = pos.y;
+    let fwd = 0;
+    let side = 0;
+    if (ctl && this.dig < 0) {
+      const mx = Math.abs(ctl.mx) > 0.08 ? ctl.mx : 0;
+      const my = Math.abs(ctl.my) > 0.08 ? ctl.my : 0;
+      if (this.fp) {
+        // 1ª pessoa: o corpo olha para onde a câmera olha (o jogo gira); direcional = frente/lado
+        fwd = -my;
+        side = mx * (this.held ? 0.55 : 1);
+        if (fwd < 0) fwd *= this.held ? 0.5 : 0.75;
+      } else if (this.tank) {
+        // de frente: x gira o corpo, y anda (para trás devagar)
+        if (mx) g.rotation.y -= mx * Math.abs(mx) * dt * 2.4;
+        fwd = -my;
+        if (fwd < 0) fwd *= 0.5;
+      } else {
+        const mag = Math.min(1, Math.hypot(mx, my));
+        if (mag > 0) {
+          // relativo à câmera: para cima = para onde a câmera olha; o corpo vira e anda para a frente
+          const a = env.camYaw + Math.atan2(-mx, -my);
+          let d = a - g.rotation.y;
+          d = Math.atan2(Math.sin(d), Math.cos(d));
+          g.rotation.y += d * Math.min(1, dt * (this.held ? 7 : 10));
+          // virando muito (carrinho na mão): anda menos até alinhar
+          fwd = mag * Math.max(0.25, Math.cos(d));
         }
       }
     }
-    const wl = env.world.waterY(pos.x, pos.z);
-    const gy = T.heightAt(pos.x, pos.z);
-    if (wl - gy > 0.9) {
-      // fundo demais: volta
-      pos.x -= Math.sin(g.rotation.y) * mv * dt * 1.5;
-      pos.z -= Math.cos(g.rotation.y) * mv * dt * 1.5;
-    }
-    pos.x = Math.max(8, Math.min(184, pos.x));
-    pos.z = Math.max(8, Math.min(184, pos.z));
-    pos.y += (T.heightAt(pos.x, pos.z) - pos.y) * Math.min(1, dt * 20);
+    // rampa na direção do passo: subir cansa (mais com o carrinho cheio), descer solta um pouco
+    const yaw = g.rotation.y;
+    const vm = Math.hypot(fp.vx, fp.vz);
+    const dir = vm > 0.3 ? Math.atan2(fp.vx, fp.vz) : fwd < 0 ? yaw + Math.PI : yaw;
+    const sx = Math.sin(dir);
+    const sz = Math.cos(dir);
+    const gr = (T.heightAt(pos.x + sx * 0.7, pos.z + sz * 0.7) - T.heightAt(pos.x - sx * 0.7, pos.z - sz * 0.7)) / 1.4;
+    // suavizado (sem tremer na passada)
+    this.grade += (gr - this.grade) * Math.min(1, dt * 8);
+    const wet = T.wetAt(pos.x, pos.z);
+    const load = this.held ? 0.55 + this.fill * 0.4 : 0.45;
+    const gG = this.grade;
+    const slope = gG > 0 ? Math.max(0.3, 1 - gG * load * 1.25) : 1 + Math.min(0.5, -gG) * (this.held ? 0.1 : 0.25);
+    // a pé sem o carrinho anda livre e mais rápido
+    const base = this.held ? 3.3 - this.fill * 0.9 : 4.4;
+    fp.tune.speed = base * (1 - wet * 0.45) * slope;
+    // empurrando o carrinho: mais massa (acelera e freia mais devagar)
+    fp.tune.accel = this.held ? 5 : 7;
+    fp.tune.decel = this.held ? 7 : 9;
+    // FpController: frente = (−sin, −cos) da guinada → guinada da câmera = guinada do corpo + π
+    fp.steer(dt, side, fwd, yaw + Math.PI);
+    fp.move(dt);
+    pos.set(fp.x, fp.y, fp.z);
+    let mv = Math.hypot(fp.vx, fp.vz);
+    if (mv < 0.05) mv = 0;
     if (this.extMove >= 0) mv = this.extMove;
     this.speedNow = mv;
     // andar
@@ -799,26 +1114,39 @@ export class Worker extends Machine {
       if (this.water <= 0) env.sfx('splash');
       this.water = 1;
     } else if (ctl && ctl.act && this.dig < 0) {
-      if (this.cargo.vol >= this.cargo.cap - 1e-3) env.sfx('full');
+      // carrinho cheio (na mão ou largado ao lado): avisa; sem carrinho perto, a pá joga a terra de lado
+      const into = this.held || this.barrowAt(pos.x + Math.sin(g.rotation.y) * 1.1, pos.z + Math.cos(g.rotation.y) * 1.1, 2.4);
+      if (into && this.cargo.vol >= this.cargo.cap - 1e-3) env.sfx('full');
       else this.dig = 0;
     }
     const sh = this.p.shovel;
     if (this.dig >= 0) {
       this.dig += dt / 0.6;
       sh.visible = true;
-      this.p.barrow.visible = true;
       const k = this.dig;
       sh.rotation.x = k < 0.5 ? -0.2 + k * 2.2 : 0.9 - (k - 0.5) * 2.4;
       this.p.armR.rotation.x = -0.6 - Math.sin(k * Math.PI) * 0.9;
       if (k >= 0.5 && k - dt / 0.6 < 0.5 && !this.ghost) {
-        // cava na frente (ao lado do carrinho)
-        const fx = pos.x + Math.sin(g.rotation.y) * 1.0 - Math.cos(g.rotation.y) * 0.7;
-        const fz = pos.z + Math.cos(g.rotation.y) * 1.0 + Math.sin(g.rotation.y) * 0.7;
+        const yaw = g.rotation.y;
+        // empurrando: cava do lado do carrinho; sem carrinho: bem na frente
+        const fw = this.held ? 0.9 : 1.1;
+        const sd = this.held ? 1.0 : 0;
+        const fx = pos.x + Math.sin(yaw) * fw - Math.cos(yaw) * sd;
+        const fz = pos.z + Math.cos(yaw) * fw + Math.sin(yaw) * sd;
         const y = T.heightAt(fx, fz);
-        const got = T.dig(fx, y - 0.2 * this.digPow, fz, 0.55, Math.min(0.03 * this.digPow, this.cargo.cap - this.cargo.vol), 0.12);
+        const into = this.held || this.barrowAt(fx, fz, 2.4);
+        const want = 0.03 * this.digPow;
+        const got = T.dig(fx, y - 0.2 * this.digPow, fz, 0.55, into ? Math.min(want, this.cargo.cap - this.cargo.vol) : want, 0.12);
         if (got > 0) {
-          this.cargo.vol += got;
-          this.cargo.gold += T.goldOut;
+          if (into) {
+            this.cargo.vol += got;
+            this.cargo.gold += T.goldOut;
+          } else {
+            // sem carrinho: a terra vai para o lado (o ouro continua nela)
+            const ox = pos.x + Math.sin(yaw) * 0.6 + Math.cos(yaw) * 1.3;
+            const oz = pos.z + Math.cos(yaw) * 0.6 - Math.sin(yaw) * 1.3;
+            T.deposit(ox, oz, got, 0.7, T.goldOut / got);
+          }
           env.sfx('dig');
           for (let i = 0; i < 4; i++) env.world.clods.spawn(fx, y + 0.1, fz, (Math.random() - 0.5) * 1.2, 1.5 + Math.random(), (Math.random() - 0.5) * 1.2, 0.05 + Math.random() * 0.06, 0.62, 0.3, 0.14);
         } else env.sfx('clank');
@@ -831,14 +1159,12 @@ export class Worker extends Machine {
       this.p.armR.rotation.x = -0.5;
       this.p.armL.rotation.x = -0.5;
     }
-    // despejar o carrinho
-    this.dumping = !!(ctl && ctl.act2 && this.cargo.vol > 0);
-    if (this.dumping && this.ghost) {
-      this.p.barrow.rotation.x = -0.35;
-    } else if (ctl && ctl.act2 && this.cargo.vol > 0) {
-      const fx = pos.x + Math.sin(g.rotation.y) * 1.6;
-      const fz = pos.z + Math.cos(g.rotation.y) * 1.6;
-      const rc = env.receiverAt(fx, T.heightAt(fx, fz) + 1.0, fz, this, 1.8);
+    // despejar o carrinho (só empurrando): ergue os pegadores e a terra cai pela frente
+    this.dumping = !!(ctl && ctl.act2 && this.cargo.vol > 0 && this.held);
+    if (this.dumping && !this.ghost && this.lift > 0.3) {
+      const fx = this.lipW.x;
+      const fz = this.lipW.z;
+      const rc = env.receiverAt(fx, Math.max(this.lipW.y, T.heightAt(fx, fz) + 1.0), fz, this, 1.8);
       const v = Math.min(this.cargo.vol, dt * 0.35);
       const gg = (this.cargo.gold * v) / this.cargo.vol;
       let took = 0;
@@ -847,23 +1173,35 @@ export class Worker extends Machine {
       this.cargo.vol -= v;
       this.cargo.gold -= gg;
       if (this.cargo.vol < 1e-4) this.cargo.vol = this.cargo.gold = 0;
-      this.p.barrow.rotation.x = -0.35;
-      if (Math.random() < 0.5) env.world.clods.spawn(fx, T.heightAt(fx, fz) + 0.8, fz, 0, -0.5, 0, 0.06, 0.6, 0.3, 0.14);
-    } else this.p.barrow.rotation.x *= 0.85;
-    this.p.heap.visible = this.cargo.vol > 0.003;
-    this.p.heap.scale.set(1, 0.4 + this.fill * 0.8, 1);
-    this.p.bucket.visible = this.water > 0;
+      if (Math.random() < 0.5) env.world.clods.spawn(fx, this.lipW.y, fz, Math.sin(g.rotation.y) * 0.6, -0.5, Math.cos(g.rotation.y) * 0.6, 0.06, 0.6, 0.3, 0.14);
+    }
+    if (this.held) this.holdPose(T, dt);
+    else this.restPose(T);
+    this.heapVis(this.fill);
+    this.p.bucket.visible = this.water > 0 && !this.paper;
     // PAPER
     Worker.paperCam = env.world.camera;
     this.paperTick(dt, mv);
   }
-  /** PAPER: anima o Bloop de papel (pá aparece só cavando) */
+  private heapVis(f: number): void {
+    this.p.heap.visible = f > 0.025;
+    // o monte sobe dentro da caçamba (cheio: aparece acima da borda; nunca sai pelos lados)
+    const k = Math.min(1, f);
+    this.p.heap.scale.set(0.72 + k * 0.26, 0.4 + k * 0.75, 0.72 + k * 0.26);
+    this.p.heap.position.y = 0.5 + k * 0.28;
+  }
+  /** PAPER: anima o Bloop de papel (pá aparece só cavando; balde com água) */
   private paperTick(dt: number, mv: number): void {
+    // 1ª pessoa: o corpo some (a câmera está nos olhos; a pá vira item na mão da câmera)
+    this.p.root.visible = !this.fp;
     const pc = this.paper;
     if (!pc || !Worker.paperCam) return;
     this.p.shovel.visible = false;
-    pc.setTool(this.dig >= 0 ? 'shovel' : null, '#b8c4d8');
-    pc.update(dt, Worker.paperCam, { yaw: this.group.rotation.y, speed: mv, act: this.dig, happy: this.dumping });
+    if (this.fp) return;
+    pc.setTool(this.dig >= 0 ? 'shovel' : this.water > 0 ? 'bucket' : null, this.dig >= 0 ? '#b8c4d8' : '#c8d0e0');
+    // empurrando: inclina para a frente (mais subindo, para trás descendo)
+    const lean = this.held && mv > 0.3 ? clampN(0.1 + this.grade * 0.35, -0.12, 0.3) : this.dumping ? 0.12 : 0;
+    pc.update(dt, Worker.paperCam, { yaw: this.group.rotation.y, speed: mv, act: this.dig, happy: this.dumping && this.cargo.vol <= 0.002, lean });
   }
   /** retrato: [x,y,z,yaw, velocidade, fase da pá (-1 = parado), carga 0..1, água, despejando] */
   netState(): number[] {
@@ -874,6 +1212,12 @@ export class Worker extends Machine {
   /** convidado: põe o boneco de outro jogador/bot na pose recebida (sem simular) */
   netPose(a: number[], dt: number): void {
     const g = this.group;
+    const T = Worker.terrain;
+    if (T) {
+      const sx = Math.sin(a[3]);
+      const sz = Math.cos(a[3]);
+      this.grade = a[4] > 0.3 ? (T.heightAt(a[0] + sx * 0.7, a[2] + sz * 0.7) - T.heightAt(a[0] - sx * 0.7, a[2] - sz * 0.7)) / 1.4 : 0;
+    }
     g.position.set(a[0], a[1], a[2]);
     g.rotation.y = a[3];
     const mv = a[4];
@@ -883,9 +1227,10 @@ export class Worker extends Machine {
     this.p.legL.rotation.x = sw;
     this.p.legR.rotation.x = -sw;
     const k = a[5];
+    this.dig = k;
     const sh = this.p.shovel;
     if (k >= 0) {
-      sh.visible = true;
+      sh.visible = !this.paper;
       sh.rotation.x = k < 0.5 ? -0.2 + k * 2.2 : 0.9 - (k - 0.5) * 2.4;
       this.p.armR.rotation.x = -0.6 - Math.sin(k * Math.PI) * 0.9;
     } else {
@@ -894,18 +1239,24 @@ export class Worker extends Machine {
     }
     this.cargo.vol = a[6] * this.cargo.cap;
     this.water = a[7];
-    this.p.barrow.rotation.x = a[8] ? -0.35 : this.p.barrow.rotation.x * 0.85;
-    this.p.heap.visible = a[6] > 0.02;
-    this.p.heap.scale.set(1, 0.4 + a[6] * 0.8, 1);
-    this.p.bucket.visible = this.water > 0;
+    this.dumping = !!a[8] && this.held;
+    if (T) {
+      if (this.held) this.holdPose(T, dt);
+      else this.restPose(T);
+    }
+    this.heapVis(a[6]);
+    this.p.bucket.visible = this.water > 0 && !this.paper;
     this.paperTick(dt, mv); // PAPER
   }
   dispose(): void {
     this.paper?.dispose(); // PAPER
+    this.p.barrow.removeFromParent();
+    this.p.barrow.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     super.dispose();
   }
   sync(): void {}
 }
+const HAND_GEO = new THREE.SphereGeometry(0.075, 10, 8);
 
 /* ============================== HELICÓPTERO ============================== */
 export class Heli extends Machine {

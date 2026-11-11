@@ -6,6 +6,11 @@
  *  o filme localmente com o player do Cinema, pulando para o mesmo
  *  segundo — todo mundo vê a mesma cena ao mesmo tempo. Sem vídeo.
  *
+ *  Filmes oficiais do Estúdio Bloop (tv-official.ts) vêm do catálogo
+ *  embutido (nada é baixado), passam intercalados com os das crianças e
+ *  têm "Remixar" (abre uma cópia no Cinema). Sem internet a TV segue
+ *  com uma grade local só dos oficiais. A música do hub pausa aqui.
+ *
  *  Também: "Gostei" (1 por conta), denunciar, "A seguir" e o envio
  *  ("Enviar para a TV", com as regras) chamado pelo exportar do Cinema.
  * ============================================================ */
@@ -19,6 +24,9 @@ import { actx, envelopeOf, Mixer, Playback, rememberClip } from './audio';
 import { Renderer } from './engine';
 import { parseProject, projectDuration, type Project } from './format';
 import { menu, sheet } from './sheets';
+import { music } from '../audio';
+import { GENRE_UI, isOfficialId, loadOfficial, localSlot, OFFICIAL_AUTHOR, officialProject, requestRemix, thumbUrl, type OfficialEntry } from './tv-official';
+import { kidThumbUrl } from './tv-net';
 import { fetchFilm, fetchNow, myFilms, report, submitFilm, vote, voted, type SubmitError } from './tv-net';
 
 const fmtClock = (s: number) => {
@@ -68,18 +76,20 @@ class TvPlayer {
       <div class="tv-top">
         <button class="cin-btn cin-ico" data-a="close" aria-label="${t('cin.back', 'Voltar')}">←</button>
         <div class="tv-brand">📺 ${t('tv.name', 'TV Bloop')} <span class="tv-live">● ${t('tv.live', 'AO VIVO')}</span></div>
+        <button class="cin-btn sm" data-a="all">🎞️ ${t('tv.all', 'Todos')}</button>
         <button class="cin-btn sm" data-a="mine">${t('tv.myFilms', 'Meus envios')}</button>
       </div>
       <div class="tv-stage"><canvas></canvas><div class="tv-over" hidden></div><button class="tv-sound" data-a="sound" hidden>🔊 ${t('tv.sound', 'Tocar com som')}</button></div>
       <div class="tv-info">
         <div class="tv-now"><small>${t('tv.nowPlaying', 'Agora passando')}</small><b data-r="title">—</b><span data-r="by"></span></div>
         <div class="tv-acts">
+          <button class="cin-btn ok" data-a="remix" hidden>🎨 ${t('tv.remix', 'Remixar')}</button>
           <button class="cin-btn pri" data-a="vote">👍 <span data-r="vote">${t('tv.like', 'Gostei')}</span></button>
           <button class="cin-btn ghost sm" data-a="report">🚩 ${t('tv.report', 'Denunciar')}</button>
         </div>
       </div>
       <div class="tv-next"><h4>${t('tv.upNext', 'A seguir')}</h4><div data-r="next"></div></div>
-      <p class="tv-foot">${t('tv.foot', 'Filmes feitos por jogadores no Bloop Cinema e revisados pela equipe. Todo mundo assiste junto, ao mesmo tempo.')}</p>`;
+      <p class="tv-foot">${t('tv.foot2', 'Filmes do Estúdio Bloop e dos jogadores (revisados pela equipe). Todo mundo assiste junto, ao mesmo tempo.')}</p>`;
     document.body.appendChild(this.el);
     this.cv = this.el.querySelector('canvas')!;
     this.ctx = this.cv.getContext('2d', { alpha: false })!;
@@ -91,12 +101,73 @@ class TvPlayer {
       else if (a === 'vote') void this.doVote();
       else if (a === 'report') void this.doReport();
       else if (a === 'mine') void showMyFilms();
+      else if (a === 'remix') void this.remix(this.grid?.cur?.id);
+      else if (a === 'all') void this.catalog();
     });
     window.addEventListener('resize', this.resize);
     this.resize();
     void this.poll();
     this.loop();
     (window as unknown as { __tv?: TvPlayer }).__tv = this;
+    music.pause();
+  }
+
+  /** Remixar: fecha a TV e abre uma cópia do filme oficial no Cinema. */
+  private async remix(id?: string): Promise<void> {
+    if (!id || !isOfficialId(id)) return;
+    this.close();
+    await requestRemix(id);
+  }
+
+  /** Catálogo do Estúdio Bloop: todos os filmes oficiais (miniatura, gênero, duração) → Remixar. */
+  private async catalog(): Promise<void> {
+    let films: OfficialEntry[];
+    try {
+      films = await loadOfficial();
+    } catch {
+      return;
+    }
+    const genres = [...new Set(films.map((f) => f.genre))];
+    const card = (f: OfficialEntry) =>
+      `<button class="tv-cat-it" data-a="pick" data-v="${f.id}" data-g="${f.genre}"><img loading="lazy" src="${thumbUrl(f.id)}" alt=""><b>${esc(f.title)}</b><small>${GENRE_UI[f.genre][0]} ${f.mode === '3d' ? '3D · ' : ''}${fmtClock(f.dur)}</small></button>`;
+    const s = sheet(
+      `<h3>🎞️ ${t('tv.studio', 'Estúdio Bloop')}</h3>
+       <p class="cin-hint">${t('tv.studioSub', 'Filmes oficiais que passam na TV. Toque em um para remixar no seu Cinema!')}</p>
+       <div class="tv-cat-gs"><button class="cin-chip on" data-a="g" data-v="">${t('tv.g.all', 'Todos')}</button>${genres.map((g) => `<button class="cin-chip" data-a="g" data-v="${g}">${GENRE_UI[g][0]} ${GENRE_UI[g][1]()}</button>`).join('')}</div>
+       <div class="tv-cat">${films.map(card).join('')}</div>
+       <button class="cin-btn ghost" data-a="x" style="width:100%;margin-top:10px">${t('cin.close', 'Fechar')}</button>`,
+      async (a, el, close) => {
+        if (a === 'x') return close();
+        if (a === 'g') {
+          s.el.querySelectorAll<HTMLElement>('[data-a="g"]').forEach((b) => b.classList.toggle('on', b === el));
+          s.el.querySelectorAll<HTMLElement>('.tv-cat-it').forEach((b) => (b.hidden = !!el.dataset.v && b.dataset.g !== el.dataset.v));
+          return;
+        }
+        if (a === 'pick') {
+          const f = films.find((x) => x.id === el.dataset.v);
+          if (!f) return;
+          const r = await menu(f.title, [['remix', '🎨 ' + t('tv.remix', 'Remixar'), 'pri']]);
+          if (r === 'remix') {
+            close();
+            void this.remix(f.id);
+          }
+        }
+      },
+    );
+    s.el.classList.add('tv-cat-sheet');
+  }
+
+  /** Grade local (sem internet): só os filmes oficiais, mesma sequência em todos os aparelhos. */
+  private async offlineGrid(): Promise<TvNow | null> {
+    try {
+      const films = await loadOfficial();
+      const sl = localSlot(films, Date.now());
+      if (!sl) return null;
+      const slot = (x: { id: string; title: string; start: number; dur: number }): TvSlot => ({ ...x, author: OFFICIAL_AUTHOR, votes: 0, official: true });
+      return { now: Date.now(), cur: slot(sl), next: sl.next.map(slot), films: films.length };
+    } catch {
+      return null;
+    }
   }
 
   private resize = (): void => {
@@ -136,6 +207,16 @@ class TvPlayer {
     } catch {
       this.offline = true;
       wait = 8000;
+      // sem internet: a TV continua com os filmes do Estúdio Bloop (grade local)
+      const g = await this.offlineGrid();
+      if (g && this.alive) {
+        this.offset = 0;
+        this.grid = g;
+        if (g.cur) {
+          void this.load(g.cur.id);
+          wait = Math.max(1500, Math.min(20_000, g.cur.start + g.cur.dur - Date.now() + 600));
+        }
+      }
     }
     this.renderInfo(true);
     if (this.alive) this.polling = setTimeout(() => void this.poll(), wait);
@@ -147,6 +228,21 @@ class TvPlayer {
     if (pr) return pr;
     pr = (async () => {
       try {
+        if (isOfficialId(id)) {
+          // Estúdio Bloop: do catálogo embutido (sem rede, sem vozes gravadas)
+          const p = parseProject(officialProject(await loadOfficial(), id));
+          if (!p) return null;
+          const r = new Renderer(p);
+          if (p.mode === '3d') {
+            try {
+              const m = await import('./scene3d');
+              r.r3d = new m.Scene3D(1);
+            } catch {
+              p.mode = '2d';
+            }
+          }
+          return { id, p, r };
+        }
         const f = await fetchFilm(id);
         const p = parseProject(f.payload.project);
         if (!p) return null;
@@ -321,16 +417,18 @@ class TvPlayer {
     this.infoKey = key;
     const $ = (r: string) => this.el.querySelector<HTMLElement>(`[data-r="${r}"]`)!;
     $('title').textContent = cur ? cur.title : '—';
-    $('by').textContent = cur ? t('tv.by', 'por {a}', { a: cur.author }) : '';
+    $('by').textContent = cur ? (cur.official ? '⭐ ' : '') + t('tv.by', 'por {a}', { a: cur.author }) : '';
+    this.el.querySelector<HTMLElement>('[data-a="remix"]')!.hidden = !cur?.official;
+    this.el.querySelector<HTMLElement>('[data-a="report"]')!.hidden = !!cur?.official;
     const mine = cur ? this.myVote.get(cur.id) : false;
     $('vote').textContent = `${mine ? t('tv.liked', 'Você gostou') : t('tv.like', 'Gostei')}${cur ? ' · ' + cur.votes : ''}`;
     this.el.querySelector<HTMLButtonElement>('[data-a="vote"]')!.disabled = !cur || !!mine;
     this.el.querySelector<HTMLButtonElement>('[data-a="report"]')!.disabled = !cur;
     const now = this.sNow();
     $('next').innerHTML = g?.next.length
-      ? g.next.map((n) => `<div class="tv-nx"><b>${esc(n.title)}</b><small>${esc(n.author)} · ${t('tv.in', 'em {t}', { t: fmtClock((n.start - now) / 1000) })} · ${fmtClock(n.dur / 1000)}</small></div>`).join('')
+      ? g.next.map((n) => `<div class="tv-nx">${n.official ? `<img class="tv-nx-th" loading="lazy" src="${thumbUrl(n.id)}" alt="">` : `<img class="tv-nx-th" loading="lazy" src="${kidThumbUrl(n.id)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'tv-nx-th kid',textContent:'🎬'}))">`}<div><b>${esc(n.title)}</b><small>${esc(n.author)} · ${t('tv.in', 'em {t}', { t: fmtClock((n.start - now) / 1000) })} · ${fmtClock(n.dur / 1000)}</small></div></div>`).join('')
       : `<p class="cin-hint">${t('tv.noNext', 'A grade aparece aqui quando houver mais filmes.')}</p>`;
-    if (cur && !this.myVote.has(cur.id)) {
+    if (cur && !this.myVote.has(cur.id) && !this.offline) {
       this.myVote.set(cur.id, false);
       void voted(cur.id)
         .then((v) => {
@@ -386,6 +484,7 @@ class TvPlayer {
     this.mixer?.dispose();
     for (const p of this.films.values()) void p.then((l) => l?.r.dispose());
     this.el.remove();
+    music.resume();
     delete (window as unknown as { __tv?: TvPlayer }).__tv;
     this.onClose?.();
   }

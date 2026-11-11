@@ -40,6 +40,8 @@ interface Env {
   RAFT: DurableObjectNamespace<import('./raft').RaftRoom>;
   /** Duelo: mesmo desafio para todos ao mesmo tempo (jogos solo jogados em grupo) — uma instância por jogo+código. */
   DUEL: DurableObjectNamespace<import('./duel').DuelRoom>;
+  /** Navegador de servidores do Mundo (oficiais, de amigos, do Bloop Studio) — instância única 'hub' (server/servers.ts). */
+  SERVERS: DurableObjectNamespace<import('./servers').ServerDir>;
   /** Horas mínimas de conta para gerar moedas a criadores (padrão 72; .dev.vars usa 0 no teste local). */
   UGC_MIN_AGE_H?: string;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */

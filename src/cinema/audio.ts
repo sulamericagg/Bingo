@@ -35,6 +35,13 @@ export async function songList(): Promise<SongDef[]> {
   return m.freeSongs();
 }
 
+type BeatMod = typeof import('./beat');
+let beatP: Promise<BeatMod> | null = null;
+export function loadBeat(): Promise<BeatMod> {
+  if (!beatP) beatP = import('./beat');
+  return beatP;
+}
+
 /* ---------------------------- mixer ---------------------------- */
 export class Mixer {
   readonly c: AudioContext;
@@ -408,7 +415,9 @@ export class Playback {
     this.m.setMix(p);
     let song: SongDef | undefined;
     let mod: SongsMod | null = null;
-    if (p.music) {
+    let beatMod: BeatMod | null = null;
+    if (p.music?.beat) beatMod = await loadBeat();
+    else if (p.music) {
       mod = await loadSongs();
       song = mod.songById(p.music.song);
     }
@@ -420,7 +429,14 @@ export class Playback {
     const duck = this.m.duck.gain;
     duck.cancelScheduledValues(0);
     duck.setValueAtTime(1, c.currentTime);
-    if (song && mod && p.music) {
+    if (beatMod && p.music?.beat) {
+      const pl = beatMod.createBeatPlayer(p.music.beat, c, this.m.music);
+      pl.start(p.music.offset + T);
+      this.player = pl;
+      const endAt = base + totalDur;
+      duck.setValueAtTime(1, Math.max(now, endAt - 1.2));
+      duck.linearRampToValueAtTime(0.0001, Math.max(now + 0.01, endAt));
+    } else if (song && mod && p.music) {
       const offset = p.music.offset + T;
       const len = song.durationSec;
       const pl = mod.createPlayer(song, c, this.m.music);
@@ -457,7 +473,7 @@ export class Playback {
         this.srcs.push(s);
         this.nodes.push(s);
         // abaixa a música enquanto alguém fala
-        if (song) {
+        if (song || beatMod) {
           const a = Math.max(now, when);
           const b = Math.max(a + 0.05, when + len);
           duck.setTargetAtTime(0.35, a, 0.06);

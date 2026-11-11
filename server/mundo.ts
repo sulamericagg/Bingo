@@ -20,6 +20,10 @@
  *              {t:'join', p} {t:'leave', id} {t:'host', id} {t:'s', id, p, v?, h?}
  *              {t:'op', id, op} {t:'ent', l} {t:'hit', from, d} {t:'pvp', on} {t:'mg', ...} {t:'ev', ...}
  *              {t:'reject', reason}   bad_code | bad_id | no_world | full | kicked
+ *   {t:'thumb', d}  (anfitrião) foto JPEG ≤ 30 KB para o cartão do navegador de servidores (server/servers.ts)
+ *   {t:'hit'} do servidor leva x,z do atacante (empurrão/knockback calculado no alvo)
+ * Servidores OFICIAIS (código <PRE>X<nn>, ver SLOTS em servers.ts) nascem sozinhos, sem dono; servidores do
+ * Bloop Studio nascem por setup() (modo 'studio', item da Loja em meta.ugc).
  *
  * Veículos (autoridade do DONO: quem dirige — ou dirigiu por último — simula e transmite):
  *   cliente → {t:'va', n, d, s, f?, hp?}   criou (n = id na sala, d = projeto codificado, s = [x,y,z,qx,qy,qz,qw])
@@ -35,6 +39,8 @@ import { DurableObject } from 'cloudflare:workers';
 import { hub } from './friends';
 import { safeName } from './moderation';
 import { cleanName, HttpError, json, PLAYER_ID_RE, readJson } from './util';
+import { officialSlot, serverDir, SLOTS, THUMB_MAX, type Beat } from './servers';
+import { ugcHub } from './ugc-hub';
 
 export const MUNDO_MAX = 8;
 export const MCODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
@@ -67,6 +73,16 @@ const VN_RE = /^[a-zA-Z0-9:_-]{1,40}$/;
 const finite = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((v) => typeof v === 'number' && Number.isFinite(v));
 interface Meta {
   owner: string;
+  /** nome do dono (cartão do navegador de servidores) */
+  oname?: string;
+  /** vaga oficial (servidores sempre no ar; sem dono) */
+  slot?: string;
+  /** servidor publicado pelo Bloop Studio: id do item da Loja */
+  ugc?: string;
+  /** máx. de jogadores (padrão MUNDO_MAX) */
+  max?: number;
+  /** objetivo do servidor do Studio ('coop'|'race'|'pvp'|'collect'|'survive') */
+  goal?: string;
   name: string;
   seed: number;
   gen: unknown;
@@ -96,6 +112,7 @@ export class WorldRoom extends DurableObject<Env> {
   private vehDirty = false;
   private vehSaveAt = 0;
   private lastV = new Map<string, number>();
+  private lastHit = new Map<string, number>();
 
   private async getVehs(): Promise<Map<string, VRec>> {
     if (!this.vehs) {
@@ -138,7 +155,14 @@ export class WorldRoom extends DurableObject<Env> {
     const a: Att = { id, name: safeName(cleanName(u.searchParams.get('name') ?? '')) || 'Bloop', skin: SKIN_RE.test(skin) ? skin : 'bloop' };
     let meta = await this.getMeta();
     const create = u.searchParams.get('create');
-    if (create) {
+    const slot = officialSlot(code);
+    if (slot && !meta) {
+      // servidor oficial: nasce sozinho na primeira entrada (sem dono; o anfitrião é quem estiver)
+      const S = SLOTS[slot];
+      meta = { owner: '', slot, name: S.name, seed: S.seed, gen: S.gen, mode: S.mode, mini: S.mini, pvp: S.pvp, max: S.max, nOps: 0, created: Date.now() };
+      await this.ctx.storage.put('meta', meta);
+      this.meta = meta;
+    } else if (create && !slot) {
       // criar (ou reabrir) o mundo: só o dono, ou código livre
       let opts: Record<string, unknown> = {};
       try {
@@ -154,8 +178,9 @@ export class WorldRoom extends DurableObject<Env> {
           seed: Number.isFinite(+opts.seed!) ? Math.floor(+opts.seed!) : 1,
           gen: typeof opts.gen === 'object' ? opts.gen : null,
           mode: ['sobrevivencia', 'criativo', 'pacifico'].includes(String(opts.mode)) ? String(opts.mode) : 'sobrevivencia',
-          mini: ['', 'ceu', 'corrida', 'esconde'].includes(String(opts.mini ?? '')) ? String(opts.mini ?? '') : '',
+          mini: ['', 'ceu', 'corrida', 'esconde', 'pvp', 'spleef', 'obby'].includes(String(opts.mini ?? '')) ? String(opts.mini ?? '') : '',
           pvp: !!opts.pvp,
+          oname: a.name,
           nOps: 0,
           created: Date.now(),
         };
@@ -163,9 +188,17 @@ export class WorldRoom extends DurableObject<Env> {
         this.meta = meta;
       }
     } else if (!meta) return fail('no_world');
+    // servidor do Bloop Studio: só o dono entra antes da moderação aprovar; "só amigos" = amigos do dono
+    if (meta.ugc && id !== meta.owner) {
+      const acc = await ugcHub(this.env).access(meta.ugc);
+      if (!acc || acc.status !== 'approved') return fail('no_world');
+      const pub = await serverDir(this.env).pub(code);
+      if (!pub) return fail('no_world');
+      if (pub.friendsOnly && !(await hub(this.env).areFriends(meta.owner, id))) return fail('friends_only');
+    }
     const others = this.members().filter((m) => m.ws !== ws);
     for (const m of others) if (m.a.id === id) this.close(m.ws, 'replaced');
-    if (this.members().filter((m) => m.ws !== ws && m.a.id !== id).length >= MUNDO_MAX) return fail('full');
+    if (this.members().filter((m) => m.ws !== ws && m.a.id !== id).length >= (meta.max ?? MUNDO_MAX)) return fail('full');
     ws.serializeAttachment(a);
     // anfitrião: o dono quando está; senão o primeiro que chegou
     const ms = this.members();
@@ -177,10 +210,43 @@ export class WorldRoom extends DurableObject<Env> {
     const peers = ms.filter((m) => m.ws !== ws).map((m) => ({ ...m.a, p: this.pos.get(m.a.id) ?? null }));
     const live = new Set(ms.map((m) => m.a.id));
     const vehs = [...(await this.getVehs()).values()].map((r) => (live.has(r.o) ? r : { ...r, o: '', drv: false }));
-    ws.send(JSON.stringify({ t: 'welcome', you: id, host: this.host, pvp: meta.pvp, meta: { name: meta.name, seed: meta.seed, gen: meta.gen, mode: meta.mode, mini: meta.mini, owner: meta.owner }, ops, peers, vehs }));
+    ws.send(JSON.stringify({ t: 'welcome', you: id, host: this.host, pvp: meta.pvp, meta: { name: meta.name, seed: meta.seed, gen: meta.gen, mode: meta.mode, mini: meta.mini, owner: meta.owner, slot: meta.slot ?? '', ugc: meta.ugc ?? '', max: meta.max ?? MUNDO_MAX, goal: meta.goal ?? '' }, ops, peers, vehs }));
     this.broadcast({ t: 'join', p: a }, ws);
     if (prevHost !== this.host) this.broadcast({ t: 'host', id: this.host });
+    this.code = code;
+    this.ctx.waitUntil(this.beat());
     return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  /* ---------------- navegador de servidores (server/servers.ts) ---------------- */
+  private code = '';
+  private thumbAt = 0;
+  /** conta ao diretório quem está aqui (entrada/saída e a cada minuto pelo alarme) */
+  private async beat(): Promise<void> {
+    const meta = await this.getMeta();
+    if (!meta) return;
+    if (!this.code) this.code = (await this.ctx.storage.get<string>('code')) ?? '';
+    else if ((await this.ctx.storage.get<string>('code')) !== this.code) await this.ctx.storage.put('code', this.code);
+    if (!this.code) return;
+    const players = this.members().map((m) => ({ id: m.a.id, name: m.a.name, skin: m.a.skin }));
+    const b: Beat = { code: this.code, name: meta.name, mode: meta.mode, mini: meta.mini, max: meta.max ?? MUNDO_MAX, pvp: meta.pvp, owner: meta.owner, oname: meta.oname ?? '', ugc: meta.ugc ?? '', players };
+    try {
+      await serverDir(this.env).beat(b);
+    } catch (e) {
+      console.warn('mundo: beat', e);
+    }
+    if (players.length && !(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 60_000);
+  }
+  async alarm(): Promise<void> {
+    await this.beat();
+  }
+  /** servidor publicado pelo Bloop Studio (server/servers.ts → publish) */
+  async setup(o: { owner: string; oname: string; name: string; ugc: string; max: number; pvp: boolean; goal: string }): Promise<void> {
+    const prev = await this.getMeta();
+    const meta: Meta = { owner: o.owner, oname: o.oname, name: o.name, seed: prev?.seed ?? 1, gen: null, mode: 'studio', mini: '', ugc: o.ugc, max: o.max, goal: o.goal, pvp: o.pvp, nOps: prev?.nOps ?? 0, created: prev?.created ?? Date.now() };
+    await this.ctx.storage.put('meta', meta);
+    this.meta = meta;
+    this.broadcast({ t: 'pvp', on: meta.pvp });
   }
 
   private async allOps(): Promise<unknown[]> {
@@ -366,17 +432,33 @@ export class WorldRoom extends DurableObject<Env> {
       case 'hit': {
         if (!meta.pvp || typeof msg.to !== 'string') return;
         const d = Math.max(0, Math.min(12, +msg.d || 0));
-        for (const m of this.members()) if (m.a.id === msg.to) this.send(m.ws, { t: 'hit', from: a.id, d });
+        // empurrão: direção a partir das posições que o servidor conhece (ninguém empurra de longe)
+        const pa = this.pos.get(a.id) as number[] | undefined;
+        const pb = this.pos.get(msg.to) as number[] | undefined;
+        if (pa && pb && Math.hypot(pa[0] - pb[0], pa[2] - pb[2]) > 7) return;
+        const last = this.lastHit.get(a.id) ?? 0;
+        if (now - last < 250) return;
+        this.lastHit.set(a.id, now);
+        for (const m of this.members()) if (m.a.id === msg.to) this.send(m.ws, { t: 'hit', from: a.id, d, ...(pa ? { x: pa[0], z: pa[2] } : {}) });
+        return;
+      }
+      case 'thumb': {
+        // foto do mundo para o cartão do navegador (anfitrião; ≤ 1 a cada 20 s)
+        if (!isHost || typeof msg.d !== 'string' || msg.d.length > THUMB_MAX || now - this.thumbAt < 20_000) return;
+        this.thumbAt = now;
+        if (!this.code) this.code = (await this.ctx.storage.get<string>('code')) ?? '';
+        if (this.code) await serverDir(this.env).thumb(this.code, msg.d);
         return;
       }
       case 'pvp':
-        if (!isHost) return;
+        // oficiais têm regra fixa; no servidor do Studio só o dono muda
+        if (!isHost || meta.slot || (meta.ugc && a.id !== meta.owner)) return;
         meta.pvp = !!msg.on;
         await this.ctx.storage.put('meta', meta);
         this.broadcast({ t: 'pvp', on: meta.pvp });
         return;
       case 'kick':
-        if (!isHost || typeof msg.id !== 'string' || msg.id === a.id) return;
+        if (!isHost || meta.slot || (meta.ugc && a.id !== meta.owner) || typeof msg.id !== 'string' || msg.id === a.id) return;
         this.kicked.add(msg.id);
         for (const m of this.members())
           if (m.a.id === msg.id) {
@@ -396,8 +478,9 @@ export class WorldRoom extends DurableObject<Env> {
         return;
       case 'reset':
         // anfitrião dono pode recomeçar a partida de minigame (apaga as edições)
-        if (!isHost || a.id !== meta.owner) return;
+        if (!isHost || (meta.owner ? a.id !== meta.owner : !meta.slot)) return;
         await this.ctx.storage.deleteAll();
+        if (this.code) await this.ctx.storage.put('code', this.code);
         meta.nOps = 0;
         this.tail = null;
         this.vehs = new Map();
@@ -425,6 +508,7 @@ export class WorldRoom extends DurableObject<Env> {
       await this.saveVehs(true);
     }
     if (a.id === this.host) this.hostId();
+    await this.beat();
   }
   async webSocketError(ws: WebSocket): Promise<void> {
     await this.webSocketClose(ws);

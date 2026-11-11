@@ -60,6 +60,8 @@ export interface TvSlot {
   /** duração em ms */
   dur: number;
   votes: number;
+  /** filme oficial do Estúdio Bloop (o app desenha do catálogo embutido; dá para Remixar) */
+  official?: boolean;
 }
 
 export interface TvNow {
