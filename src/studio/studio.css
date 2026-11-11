@@ -155,6 +155,7 @@
 .bs-by,.bs-stats{margin:0;font-size:12.5px;color:#6a5a90}
 .bs-ugc{display:flex;justify-content:space-between;gap:8px;margin-top:4px;padding-top:6px;border-top:1.5px dashed #e2d8ff}
 .bs-link{background:none;color:#8a78b8 !important;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:4px;padding:6px 2px;min-height:36px}
+.bs-rev{display:inline-block;font-style:normal;font-weight:700;font-size:10px;padding:1px 7px;border-radius:99px;margin-right:4px}.bs-rev.ok{background:#d6f7e3;color:#167a44}.bs-rev.wait{background:#fff0c2;color:#8a5a00}.bs-rev.bad{background:#ffe0e6;color:#b0213f}
 .bs-earn{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:14px;background:linear-gradient(120deg,#fff6c8,#ffe3f4);font-size:12px}
 .bs-pubf{display:flex;flex-direction:column;gap:8px}
 .bs-pubf label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:800;color:#6a4ab0}

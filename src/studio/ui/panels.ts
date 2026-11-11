@@ -12,7 +12,8 @@ import { FINISHES, PRIMS, SOUNDS, deserialize, hashCreation, jsonBytes, serializ
 import { deleteMine, listMine, loadMine, markPublished, remember, type LibEntry } from '../library';
 import { isPro, jointLimit, publishLimit, type ProFeature, FREE } from '../pro';
 import { STORE_CATEGORIES, type StoreCategory, type StoreListing, type StoreSort } from '../store-api';
-import { store, localAuthor } from '../store-mock';
+import { localAuthor } from '../store-mock';
+import { store } from '../store-server';
 import { starterName } from '../starters';
 import type { Studio } from '../studio';
 import { esc } from '../studio';
@@ -1025,8 +1026,13 @@ export class Panels {
     const back = this.h(`<button class="bs-btn">${sicon('back', 16)}${t('studio.back', 'Voltar')}</button>`);
     back.addEventListener('click', () => this.render());
     const [mine, earn, hidden] = await Promise.all([store().mine(), store().earnings(), store().hiddenAuthors()]);
-    this.h(`<div class="bs-earn"><b>${t('studio.earnTitle', 'Moedas de criador')}</b><span>${t('studio.earnText', 'Quando outras pessoas usam ou jogam suas criações, você ganha moedas do jogo (nunca dinheiro). A receber: {n}', { n: earn.pending })}</span></div>`);
-    const list = this.h(`<div class="bs-cards">${mine.map((l) => `<div class="bs-lib" data-id="${l.id}"><div class="bs-thumb" style="${l.thumb ? `background-image:url(${l.thumb})` : ''}"></div><div class="bs-meta"><b>${esc(l.name)}</b><small>♥ ${l.likes} · ${t('studio.uses', '{n} usos', { n: l.uses })}</small></div><div class="bs-acts"><button class="bs-mini" data-un>${t('studio.unpublish', 'Tirar da loja')}</button></div></div>`).join('') || `<p class="bs-hint">${t('studio.noPubs', 'Você ainda não publicou nada.')}</p>`}</div>`);
+    this.h(`<div class="bs-earn"><b>${t('studio.earnTitle', 'Moedas de criador')}</b><span>${t('studio.earnMail', 'Quando outras pessoas curtem, usam ou jogam suas criações, você ganha moedas do jogo (nunca dinheiro). Elas chegam no Correio. Acumulando: {n} · Já recebidas: {m}', { n: earn.pending, m: earn.total })}</span></div>`);
+    const status = (l: StoreListing): string => {
+      if (!l.review || l.review === 'approved') return `<i class="bs-rev ok">${t('studio.rev.ok', 'Na loja')}</i>`;
+      if (l.review === 'rejected' || l.review === 'needs-changes') return `<i class="bs-rev bad">${t('studio.rev.bad', 'Recusada')}${l.reviewReason ? ': ' + esc(l.reviewReason) : ''}</i>`;
+      return `<i class="bs-rev wait">${t('studio.rev.wait', 'Em análise')}</i>`;
+    };
+    const list = this.h(`<div class="bs-cards">${mine.map((l) => `<div class="bs-lib" data-id="${l.id}"><div class="bs-thumb" style="${l.thumb ? `background-image:url(${l.thumb})` : ''}"></div><div class="bs-meta"><b>${esc(l.game?.title ?? l.name)}</b><small>${status(l)} ♥ ${l.likes} · ${t('studio.uses', '{n} usos', { n: l.uses })}</small></div><div class="bs-acts"><button class="bs-mini" data-un>${t('studio.unpublish', 'Tirar da loja')}</button></div></div>`).join('') || `<p class="bs-hint">${t('studio.noPubs', 'Você ainda não publicou nada.')}</p>`}</div>`);
     this.on(list, '[data-un]', async (b) => {
       await store().unpublish(b.closest<HTMLElement>('[data-id]')!.dataset.id!);
       void this.renderMine();
@@ -1062,7 +1068,7 @@ export class Panels {
         <div class="bs-shots small">${this.s.thumbs3().map((u) => `<div class="bs-thumb" style="background-image:url(${u})"></div>`).join('')}</div>
         <p class="bs-hint">${t('studio.reviewHint', 'As 3 fotos são tiradas do seu mapa. Jogos passam por uma revisão de segurança antes de aparecer para todos.')}</p>
       </div>` : ''}
-      <p class="bs-hint">${t('studio.pubRules', 'Grátis. Todo mundo poderá ver, jogar e usar no mapa deles — e você ganha moedas quando usarem. Nada de dados pessoais no nome. Hoje: {a}/{b}', { a: today, b: lim })}</p>
+      <p class="bs-hint">${t('studio.pubRules2', 'Grátis. Antes de aparecer para todos, a equipe revisa (fica "Em análise"). Depois, todo mundo poderá ver, jogar e usar no mapa deles — e você ganha moedas no Correio. Nada de dados pessoais. Hoje: {a}/{b}', { a: today, b: lim })}</p>
       <button class="bs-btn bs-accent bs-wide" data-go>${sicon('upload', 18)}${t('studio.publishNow', 'Publicar na Loja')}</button></div>`);
     this.on(f, '[data-cat]', (b) => {
       chosen = b.dataset.cat as StoreCategory;
@@ -1109,12 +1115,18 @@ export class Panels {
         this.open('store');
         return;
       }
-      const r = await store().publish(full, chosen, lim);
+      const r = await store().publish(full, chosen, lim, this.s.thumbs3());
       if (!r.ok) {
         if (r.error === 'daily-limit') return isPro() ? notify(t('studio.dailyLimit', 'Limite de publicações de hoje'), { icon: 'clock', kind: 'warn' }) : this.paywall('publish');
         return notify(r.error === 'name' ? t('studio.badName', 'Escolha outro nome') : r.error === 'empty' ? t('studio.emptyPub', 'Coloque algumas peças antes') : t('studio.pubFail', 'Não deu para publicar'), { icon: 'warning', kind: 'warn' });
       }
       await markPublished(doc.id, r.listing.id);
+      if (r.listing.review && r.listing.review !== 'approved') {
+        notify(t('studio.pubPending', 'Enviado! Fica "Em análise" até a equipe aprovar — veja em Minhas publicações'), { icon: 'clock', kind: 'good' });
+        this.storeQ = { sort: 'new', section: 'creations' };
+        this.open('store');
+        return;
+      }
       notify(t('studio.published', 'Publicado na Loja de Criações!'), { icon: 'party', kind: 'good' });
       this.storeQ = { sort: 'new', section: 'creations' };
       this.open('store');

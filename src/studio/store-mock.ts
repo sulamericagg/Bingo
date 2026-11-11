@@ -2,7 +2,8 @@
  *  BLOOP STUDIO — Loja de Criações MOCK (sem servidor).
  *  Fonte: 20+ criações iniciais da Equipe Bloop + o que ESTE aparelho
  *  publicou. Curtidas/denúncias/autores ocultos ficam no aparelho.
- *  Mesma interface que o servidor vai ter (store-api.ts).
+ *  Mesma interface do servidor (store-api.ts). Em uso só como reserva sem
+ *  internet e para as criações iniciais: a loja de verdade é store-server.ts.
  * ============================================================ */
 import { filterMessage } from '../../shared/moderation';
 import { dayNumber } from '../core/storage';
@@ -264,13 +265,12 @@ export class MockStore implements StudioStoreApi {
   async leaderboard(id: string): Promise<ScoreEntry[]> {
     return [...(this.s.scores[id] ?? [])];
   }
+  /** Autores ocultos e itens denunciados NESTE aparelho (a loja do servidor também filtra por eles). */
+  localFilter(): { authors: Set<string>; reported: Set<string> } {
+    return { authors: new Set(this.s.hidden), reported: new Set(this.s.reported.map((r) => r.id)) };
+  }
   async publishedToday(): Promise<number> {
     return this.s.pubDay === dayNumber() ? this.s.pubCount : 0;
   }
 }
 
-let inst: StudioStoreApi | null = null;
-/** A loja em uso (mock hoje; o servidor troca aqui). */
-export function store(): StudioStoreApi {
-  return (inst ??= new MockStore());
-}

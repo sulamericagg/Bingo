@@ -1,11 +1,12 @@
 /* ============================================================
  *  BLOOP STUDIO — LOJA DE CRIAÇÕES: interface do cliente.
- *  Hoje: mock local (store-mock.ts). Depois: servidor (Worker) com a MESMA
- *  interface. Sem dinheiro real: publicar é grátis; criadores ganham MOEDAS
+ *  Servidor (store-server.ts → Worker /api/ugc/*, docs/LOJA-TV.md) com o
+ *  mock local (store-mock.ts) como reserva sem internet. MESMA interface. Sem dinheiro real: publicar é grátis; criadores ganham MOEDAS
  *  do jogo quando outras pessoas usam/jogam suas criações (regra abaixo,
  *  aplicada de verdade no servidor).
  * ============================================================ */
 import type { Creation, CreationKind } from './format';
+import { UGC } from '../../shared/ugc';
 
 export type StoreCategory = 'vehicles' | 'buildings' | 'nature' | 'gadgets' | 'furniture' | 'maps' | 'art';
 export const STORE_CATEGORIES: StoreCategory[] = ['vehicles', 'buildings', 'nature', 'gadgets', 'furniture', 'maps', 'art'];
@@ -31,7 +32,7 @@ export interface GameListing {
 }
 
 /** Moderação no servidor: classificador de imagem nas miniaturas + denúncias + fila do admin. */
-export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'needs-changes';
+export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'needs-changes' | 'hidden';
 export interface ReviewTicket {
   /** id da listagem */
   id: string;
@@ -77,6 +78,10 @@ export interface StoreListing {
   fav?: boolean;
   /** estado da revisão (só aparece para o autor) */
   review?: ReviewStatus;
+  /** motivo da recusa (só para o autor) */
+  reviewReason?: string;
+  /** é minha (servidor) */
+  own?: boolean;
 }
 
 export interface BrowseQuery {
@@ -124,23 +129,19 @@ export interface Earnings {
  *  - cada pessoa diferente que JOGA um mapa publicado = `perPlay` moedas;
  *  - autouso não conta; cada pessoa conta 1× por criação (uso) e 1× por dia (jogar);
  *  - teto por criação por dia (`dailyCapPerCreation`) e por autor por dia (`dailyCapPerAuthor`);
- *  - contas novas (< `minAccountAgeDays`) e criações denunciadas/ocultas não geram moedas;
- *  - moedas ficam "a receber" e o criador resgata (claimEarnings) — nunca dinheiro real.
+ *  - cada pessoa diferente que CURTE = `perLike` (só a 1ª curtida dela conta, para sempre); autocurtida não conta;
+ *  - contas novas (< `minAccountAgeH`) e criações denunciadas/ocultas não geram moedas;
+ *  - o acumulado vira um presente no CORREIO quando chega a `payoutMin` — nunca dinheiro real.
+ *  Valores em shared/ugc.ts (UGC.reward).
  */
-export const CREATOR_REWARD = {
-  perUse: 5,
-  perPlay: 2,
-  dailyCapPerCreation: 150,
-  dailyCapPerAuthor: 400,
-  minAccountAgeDays: 3,
-} as const;
+export const CREATOR_REWARD = UGC.reward;
 
 export interface StudioStoreApi {
   browse(q: BrowseQuery): Promise<StorePage>;
   /** baixa a criação completa (validada) */
   get(id: string): Promise<{ listing: StoreListing; creation: Creation } | null>;
   /** publicar é grátis (limite diário: pro.ts publishLimit) */
-  publish(c: Creation, category: StoreCategory, dailyLimit: number): Promise<PublishResult>;
+  publish(c: Creation, category: StoreCategory, dailyLimit: number, thumbs?: string[]): Promise<PublishResult>;
   like(id: string, on: boolean): Promise<number>;
   report(id: string, reason: ReportReason, note?: string): Promise<void>;
   /** "Ocultar autor": some da loja deste jogador (listagens e mapas) */
