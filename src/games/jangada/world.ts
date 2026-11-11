@@ -350,7 +350,7 @@ export class World {
       this.waitingInit = true;
       this.net.send({ t: 'hello' });
     }
-    if (!d && !this.net) this.spawnStartDebris();
+    if (!d && this.isHost) this.spawnStartDebris();
     this.updateHot();
   }
 
@@ -2721,7 +2721,7 @@ export class World {
     } else if (id === 'rod') act = ['rod', this.fish.st === 'idle' ? t('jangada.a.cast', 'Lançar') : this.fish.st === 'game' || this.fish.st === 'bite' ? t('jangada.a.tap', 'Puxa!') : t('jangada.a.reelIn', 'Recolher'), false];
     else if (id === 'lantern') act = ['lantern', this.lanternOn ? t('jangada.u.off', 'Apagar') : t('jangada.u.on', 'Acender'), false];
     else if (ITEM[id]?.kind === 'food') act = [id === 'water' ? 'drop' : 'eat', id === 'water' || id === 'coco' ? t('jangada.a.drink', 'Beber') : t('jangada.a.eat', 'Comer'), false];
-    else if (id === 'axe') act = ['axe', this.aim?.k === 'node' ? t('jangada.a.chop', 'Cortar') : '', false];
+    else if (id === 'axe') act = ['axe', this.aim?.k === 'node' && (this.aim.n.k === 'palm' || this.aim.n.k === 'rock') ? t('jangada.a.chop', 'Cortar') : '', false];
     else if (id.startsWith('spear')) act = [id, this.aim?.k === 'shark' || this.aim?.k === 'ghost' ? t('jangada.a.poke', 'Cutucar!') : '', false];
     this.hud.setAction(act[0], act[1], act[2]);
     const u = this.useWhat();
