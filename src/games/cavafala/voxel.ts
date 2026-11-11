@@ -99,8 +99,9 @@ const hex = (c: string) => parseInt(c.slice(1), 16);
 const MAX_CELLS = 9000;
 
 /** escolhe o tamanho do bloco pelo tamanho do objeto */
-export function voxelSize(ext: number): number {
-  return Math.max(0.09, Math.min(0.4, ext / 24));
+export function voxelSize(ext: number, bvol = ext ** 3): number {
+  // objetos compridos/finos (girafa, foguete) ganham bloco menor para não "quebrar"
+  return Math.max(0.09, Math.min(0.4, ext / 24, Math.cbrt(bvol) / 16));
 }
 
 export function voxelize(spec: ObjSpec, vForce?: number): Voxels {
@@ -119,7 +120,8 @@ export function voxelize(spec: ObjSpec, vForce?: number): Voxels {
     }
   });
   const ext = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 0.3);
-  let v = vForce ?? voxelSize(ext);
+  const bvol = Math.max(0.05, (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]));
+  let v = vForce ?? voxelSize(ext, bvol);
   // muitos blocos? aumenta o bloco
   for (let tries = 0; tries < 6; tries++) {
     const est = spec.parts.reduce((n, p) => n + Math.max(1, (Math.max(p.size[0], v) * Math.max(p.size[1], v) * Math.max(p.size[2], v)) / v ** 3), 0);
@@ -136,7 +138,7 @@ export function voxelize(spec: ObjSpec, vForce?: number): Voxels {
       groups.push(g);
     }
     // tamanho efetivo: no mínimo 1 bloco de espessura (peça fina não some)
-    const es: V3 = [Math.max(p.size[0], v * 1.01), Math.max(p.size[1], v * 1.01), Math.max(p.size[2], v * 1.01)];
+    const es: V3 = [Math.max(p.size[0], v * 1.6), Math.max(p.size[1], v * 1.6), Math.max(p.size[2], v * 1.6)];
     const hs: V3 = [es[0] / 2, es[1] / 2, es[2] / 2];
     // caixa da peça no mundo do objeto
     const pl: V3 = [Infinity, Infinity, Infinity],
