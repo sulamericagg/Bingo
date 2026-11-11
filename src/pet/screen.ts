@@ -620,6 +620,12 @@ function startChew(): void {
   refreshShelf();
 }
 
+/** Comidas favoritas do bichinho (o balão de fome pensa nelas). */
+function favShape(i: number): FoodDef['shape'] {
+  const favs = FOODS.filter((f) => taste(f.id) === 'fav');
+  return favs.length ? favs[i % favs.length].shape : i % 2 ? 'cake' : 'apple';
+}
+
 /** Expressão por alguns segundos. */
 function face(e: Expr, dur: number): void {
   v.expr = e;
@@ -2085,7 +2091,7 @@ function update(dt: number): void {
   pose.mood = m;
   pose.blink = blink;
   v.drool = v.m.hungry || foodNear ? Math.min(1, v.drool + dt * 2) : Math.max(0, v.drool - dt * 3);
-  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping && !v.expr && !pr.toy && hideT <= 0 ? (Math.floor(v.t / 4) % 2 ? 'cake' : 'apple') : null;
+  v.thinkFood = v.m.hungry && !drag.on && chewT <= 0 && !v.sleeping && !v.expr && !pr.toy && hideT <= 0 ? favShape(Math.floor(v.t / 4)) : null;
 
   // pulinhos quando feliz
   if (v.m.happy && !v.sleeping) {
