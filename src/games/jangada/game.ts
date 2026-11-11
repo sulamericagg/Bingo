@@ -23,6 +23,7 @@ import { CODE_ALPHA, MAX_PLAYERS, codeFromRoom, createNet, newCode, type JNet, t
 import { jgSave, persist } from './save';
 import { injectCss } from './style';
 import { enterGame } from '../../audio';
+import { introGate } from '../../3d/cine/gate';
 import './audio';
 import { World } from './world';
 
@@ -179,6 +180,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       notify(t('jangada.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
+    // abertura (docs/INTROS.md): só na primeira jangada nova, sozinho
+    if (fresh && !net) await introGate('jangada', () => import('./intro/cinematic').then((m) => m.playIntro(el)));
+    if (dead) return;
     endWorld();
     menuEl?.remove();
     menuEl = null;
