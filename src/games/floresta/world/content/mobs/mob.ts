@@ -85,6 +85,8 @@ export class Mob {
   boss: BossCtl | null = null;
   /** índice da parte no chefe (cabeças da hidra etc.) */
   part = 0;
+  /** online: id do jogador que domou ('' = o anfitrião/local) */
+  owner = '';
   /** não some por distância */
   persistent = false;
   /** livre para a mecânica */

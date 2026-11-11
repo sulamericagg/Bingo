@@ -30,6 +30,9 @@ export class VehicleManager {
   private host: VehicleHost;
   private scene: THREE.Object3D;
   private lampLight: THREE.SpotLight | null = null;
+  /** rede: avisos de criar/remover (o motor online usa) */
+  onSpawn: ((v: Vehicle) => void) | null = null;
+  onRemove: ((v: Vehicle) => void) | null = null;
 
   constructor(host: VehicleHost, scene: THREE.Object3D, tier: VTier = 2) {
     this.host = host;
@@ -49,12 +52,14 @@ export class VehicleManager {
     const v = new Vehicle(this.host, d, { x: state?.x ?? x, y: state?.y ?? gy, z: state?.z ?? z }, yaw, state);
     this.list.push(v);
     this.scene.add(v.model.root);
+    this.onSpawn?.(v);
     return v;
   }
   remove(v: Vehicle): void {
     const i = this.list.indexOf(v);
     if (i < 0) return;
     if (this.driving === v) this.exit();
+    this.onRemove?.(v);
     for (const o of this.list) if (o.hitch?.other === v) o.unhitch();
     v.dispose();
     this.list.splice(i, 1);
@@ -69,7 +74,7 @@ export class VehicleManager {
     let bd = r * r;
     const p = new CANNON.Vec3(x, y, z);
     for (const v of this.list) {
-      if (!v.lay.seat) continue;
+      if (!v.lay.seat || v.netBusy) continue;
       const d = v.seatWorld().distanceSquared(p);
       if (d < bd) {
         bd = d;
@@ -111,14 +116,14 @@ export class VehicleManager {
     const c = this.caps;
     const f = this.focus;
     // quem está acordado e longe dorme primeiro
-    const awake = this.list.filter((v) => !v.parked && v !== this.driving && !v.towedBy);
+    const awake = this.list.filter((v) => !v.parked && v !== this.driving && !v.towedBy && !v.remote);
     if (awake.length > c.awake - (this.driving ? 1 : 0)) {
       awake.sort((a, b) => dist2(b, f) - dist2(a, f));
       const extra = awake.length - Math.max(0, c.awake - (this.driving ? 1 : 0));
       for (let i = 0; i < extra; i++) if (!awake[i].grabbed && !awake[i].hitch) awake[i].park();
     }
     for (const v of this.list) {
-      if (v !== this.driving && !v.parked && dist2(v, f) > c.sim * c.sim && !v.towedBy) v.park();
+      if (v !== this.driving && !v.parked && !v.remote && dist2(v, f) > c.sim * c.sim && !v.towedBy) v.park();
       v.preStep(dt);
     }
   }
@@ -129,7 +134,7 @@ export class VehicleManager {
     for (const v of this.list) {
       const vis = dist2(v, f) < c.view * c.view;
       v.model.root.visible = vis;
-      if (vis && (!v.parked || v === this.driving)) v.syncModel(dt);
+      if (vis && (!v.parked || v === this.driving || v.remote)) v.syncModel(dt);
     }
     this.updateLamp();
   }

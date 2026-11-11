@@ -2,7 +2,14 @@
  *  BICHOS — barra de vida do chefe (DOM leve, topo da tela).
  * ============================================================ */
 import { t } from '../../../../../i18n';
-import type { BossCtl } from './boss';
+/** o que a barra precisa (um BossCtl, ou o retrato do anfitrião nos convidados) */
+export interface BossView {
+  readonly name: string;
+  readonly hpFrac: number;
+  readonly phase: number;
+  readonly phases: number;
+  readonly hint: string;
+}
 
 export class BossBar {
   private el: HTMLDivElement;
@@ -36,7 +43,7 @@ export class BossBar {
     this.el = el;
   }
 
-  update(b: BossCtl | null): void {
+  update(b: BossView | null): void {
     const show = !!b;
     if (show !== this.shown) {
       this.shown = show;

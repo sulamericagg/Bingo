@@ -230,6 +230,8 @@ export class WorldGame {
 
   vehs: Veh[] = [];
   logs: Log[] = [];
+  /** toras só de desenho (caçamba de veículo simulado em outro aparelho) */
+  ghostLogs: { x: number; y: number; z: number; q: THREE.Quaternion; sp: number }[] = [];
   private logMesh: THREE.InstancedMesh;
   private cargoMesh: THREE.InstancedMesh;
   private falls: Fall[] = [];
@@ -1254,6 +1256,13 @@ export class WorldGame {
       _m.compose(_v.set(p.x, p.y + 1.05, p.z), _q.setFromEuler(_e.set(0, p.yaw + Math.PI / 2, 0)), _s.set(0.7, 0.7, 0.7));
       this.logMesh.setMatrixAt(n, _m);
       this.logMesh.setColorAt(n, _c.set(WSPECIES[p.carrying.sp].trunk));
+      n++;
+    }
+    for (const l of this.ghostLogs) {
+      if (n >= MAX_LOGS) break;
+      _m.compose(_v.set(l.x, l.y, l.z), l.q, _s.set(1, 1, 1));
+      this.logMesh.setMatrixAt(n, _m);
+      this.logMesh.setColorAt(n, _c.set(WSPECIES[l.sp]?.trunk ?? '#8a5a3a'));
       n++;
     }
     this.logMesh.count = n;

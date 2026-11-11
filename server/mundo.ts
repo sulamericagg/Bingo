@@ -20,6 +20,16 @@
  *              {t:'join', p} {t:'leave', id} {t:'host', id} {t:'s', id, p, v?, h?}
  *              {t:'op', id, op} {t:'ent', l} {t:'hit', from, d} {t:'pvp', on} {t:'mg', ...} {t:'ev', ...}
  *              {t:'reject', reason}   bad_code | bad_id | no_world | full | kicked
+ *
+ * Veículos (autoridade do DONO: quem dirige — ou dirigiu por último — simula e transmite):
+ *   cliente → {t:'va', n, d, s, f?, hp?}   criou (n = id na sala, d = projeto codificado, s = [x,y,z,qx,qy,qz,qw])
+ *             {t:'vd', n}                  removeu
+ *             {t:'vs', l:[[n, x,y,z, qx,qy,qz,qw, vx,vy,vz, esterço, bits, toras], …]}  estado (só do dono; ~10/s)
+ *             {t:'vf', n, f, hp, it, cs}   ficha (combustível, vida, itens, espécies das toras) — guardada
+ *             {t:'vo', n, take?, drv}      pedir/soltar o volante (take = quero ser dono; drv = dirigindo)
+ *             {t:'vc', n, to, c}           toras da caçamba passadas ao novo dono (repassado)
+ *   servidor → as mesmas (com o dono em `o`); welcome traz `vehs`.
+ * Mensagens de minigame/bichos do anfitrião com `to` vão só para aquele jogador.
  */
 import { DurableObject } from 'cloudflare:workers';
 import { hub } from './friends';
@@ -41,6 +51,20 @@ interface Att {
   name: string;
   skin: string;
 }
+interface VRec {
+  n: string;
+  d: string;
+  s: number[];
+  f: number;
+  hp: number;
+  it: unknown;
+  cs: unknown;
+  o: string;
+  drv: boolean;
+}
+const VEH_MAX = 64;
+const VN_RE = /^[a-zA-Z0-9:_-]{1,40}$/;
+const finite = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((v) => typeof v === 'number' && Number.isFinite(v));
 interface Meta {
   owner: string;
   name: string;
@@ -68,6 +92,26 @@ export class WorldRoom extends DurableObject<Env> {
   private rate = new Map<string, { n: number; at: number }>();
   private tail: unknown[] | null = null;
   private kicked = new Set<string>();
+  private vehs: Map<string, VRec> | null = null;
+  private vehDirty = false;
+  private vehSaveAt = 0;
+  private lastV = new Map<string, number>();
+
+  private async getVehs(): Promise<Map<string, VRec>> {
+    if (!this.vehs) {
+      const a = (await this.ctx.storage.get<VRec[]>('vehs')) ?? [];
+      this.vehs = new Map(a.map((r) => [r.n, r]));
+    }
+    return this.vehs;
+  }
+  private async saveVehs(force = false): Promise<void> {
+    if (!this.vehs || (!force && !this.vehDirty)) return;
+    const now = Date.now();
+    if (!force && now - this.vehSaveAt < 4000) return;
+    this.vehSaveAt = now;
+    this.vehDirty = false;
+    await this.ctx.storage.put('vehs', [...this.vehs.values()]);
+  }
 
   private async getMeta(): Promise<Meta | null> {
     if (!this.meta) this.meta = (await this.ctx.storage.get<Meta>('meta')) ?? null;
@@ -131,7 +175,9 @@ export class WorldRoom extends DurableObject<Env> {
     else if (!ms.some((m) => m.a.id === this.host)) this.host = ms[0]?.a.id ?? id;
     const ops = await this.allOps();
     const peers = ms.filter((m) => m.ws !== ws).map((m) => ({ ...m.a, p: this.pos.get(m.a.id) ?? null }));
-    ws.send(JSON.stringify({ t: 'welcome', you: id, host: this.host, pvp: meta.pvp, meta: { name: meta.name, seed: meta.seed, gen: meta.gen, mode: meta.mode, mini: meta.mini, owner: meta.owner }, ops, peers }));
+    const live = new Set(ms.map((m) => m.a.id));
+    const vehs = [...(await this.getVehs()).values()].map((r) => (live.has(r.o) ? r : { ...r, o: '', drv: false }));
+    ws.send(JSON.stringify({ t: 'welcome', you: id, host: this.host, pvp: meta.pvp, meta: { name: meta.name, seed: meta.seed, gen: meta.gen, mode: meta.mode, mini: meta.mini, owner: meta.owner }, ops, peers, vehs }));
     this.broadcast({ t: 'join', p: a }, ws);
     if (prevHost !== this.host) this.broadcast({ t: 'host', id: this.host });
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -237,8 +283,83 @@ export class WorldRoom extends DurableObject<Env> {
         return;
       }
       case 'ent':
-        if (isHost) this.broadcast({ t: 'ent', l: msg.l }, ws);
+        if (isHost) this.broadcast({ t: 'ent', l: msg.l, b: msg.b }, ws);
         return;
+      /* ---------------- veículos ---------------- */
+      case 'va': {
+        const V = await this.getVehs();
+        if (typeof msg.n !== 'string' || !VN_RE.test(msg.n) || typeof msg.d !== 'string' || msg.d.length > 8000 || !finite(msg.s, 7)) return;
+        if (!V.has(msg.n) && V.size >= VEH_MAX) return;
+        const r: VRec = { n: msg.n, d: msg.d, s: msg.s, f: +msg.f || 0, hp: +msg.hp || 0, it: Array.isArray(msg.it) ? msg.it : [], cs: [], o: a.id, drv: false };
+        V.set(r.n, r);
+        this.vehDirty = true;
+        await this.saveVehs(true);
+        this.broadcast({ t: 'va', ...r }, ws);
+        return;
+      }
+      case 'vd': {
+        const V = await this.getVehs();
+        const r = V.get(String(msg.n));
+        if (!r || (r.o && r.o !== a.id && r.drv)) return;
+        V.delete(r.n);
+        await this.saveVehs(true);
+        this.broadcast({ t: 'vd', n: r.n }, ws);
+        return;
+      }
+      case 'vs': {
+        const last = this.lastV.get(a.id) ?? 0;
+        if (now - last < 60 || !Array.isArray(msg.l) || msg.l.length > 24) return;
+        this.lastV.set(a.id, now);
+        const V = await this.getVehs();
+        const out: unknown[] = [];
+        for (const e of msg.l) {
+          if (!Array.isArray(e) || e.length !== 15 || typeof e[0] !== 'string') continue;
+          const r = V.get(e[0]);
+          if (!r || r.o !== a.id) continue;
+          if (!e.slice(1).every((v: unknown) => typeof v === 'number' && Number.isFinite(v))) continue;
+          r.s = e.slice(1, 8);
+          this.vehDirty = true;
+          out.push(e);
+        }
+        if (out.length) this.broadcast({ t: 'vs', id: a.id, l: out }, ws);
+        await this.saveVehs();
+        return;
+      }
+      case 'vf': {
+        const V = await this.getVehs();
+        const r = V.get(String(msg.n));
+        if (!r || r.o !== a.id) return;
+        r.f = +msg.f || 0;
+        r.hp = +msg.hp || 0;
+        if (Array.isArray(msg.it) && JSON.stringify(msg.it).length < 2000) r.it = msg.it;
+        if (Array.isArray(msg.cs) && msg.cs.length <= 40) r.cs = msg.cs;
+        this.vehDirty = true;
+        this.broadcast({ t: 'vf', n: r.n, f: r.f, hp: r.hp, it: r.it, cs: r.cs }, ws);
+        await this.saveVehs();
+        return;
+      }
+      case 'vo': {
+        const V = await this.getVehs();
+        const r = V.get(String(msg.n));
+        if (!r) return;
+        const live = this.members().some((m) => m.a.id === r.o);
+        if (msg.take) {
+          // pega o volante: livre, do próprio, ou o dono não está dirigindo / saiu
+          if (r.o === a.id || !r.o || !live || !r.drv) {
+            r.o = a.id;
+            r.drv = !!msg.drv;
+          }
+        } else if (r.o === a.id) r.drv = !!msg.drv;
+        this.vehDirty = true;
+        await this.saveVehs(true);
+        this.broadcast({ t: 'vo', n: r.n, o: r.o, drv: r.drv, by: a.id });
+        return;
+      }
+      case 'vc': {
+        if (typeof msg.to !== 'string' || !Array.isArray(msg.c) || msg.c.length > 40) return;
+        for (const m of this.members()) if (m.a.id === msg.to) this.send(m.ws, { t: 'vc', n: msg.n, c: msg.c, from: a.id });
+        return;
+      }
       case 'ev':
         this.broadcast({ ...msg, from: a.id }, ws);
         return;
@@ -265,7 +386,9 @@ export class WorldRoom extends DurableObject<Env> {
         return;
       case 'mg':
         // minigame: só o anfitrião manda regras; jogadores mandam votos/eventos ao anfitrião
-        if (isHost) this.broadcast({ ...msg, from: a.id }, ws);
+        if (isHost && typeof msg.to === 'string') {
+          for (const m of this.members()) if (m.a.id === msg.to) this.send(m.ws, { ...msg, from: a.id });
+        } else if (isHost) this.broadcast({ ...msg, from: a.id }, ws);
         else {
           const h = this.members().find((m) => m.a.id === this.host);
           if (h) this.send(h.ws, { ...msg, from: a.id });
@@ -277,6 +400,7 @@ export class WorldRoom extends DurableObject<Env> {
         await this.ctx.storage.deleteAll();
         meta.nOps = 0;
         this.tail = null;
+        this.vehs = new Map();
         await this.ctx.storage.put('meta', meta);
         this.broadcast({ t: 'reset' });
         return;
@@ -289,6 +413,17 @@ export class WorldRoom extends DurableObject<Env> {
     ws.serializeAttachment(null);
     this.pos.delete(a.id);
     this.broadcast({ t: 'leave', id: a.id });
+    // veículos dele ficam livres (parados onde estavam)
+    if (this.vehs) {
+      for (const r of this.vehs.values())
+        if (r.o === a.id) {
+          r.o = '';
+          r.drv = false;
+          this.vehDirty = true;
+          this.broadcast({ t: 'vo', n: r.n, o: '', drv: false, by: a.id });
+        }
+      await this.saveVehs(true);
+    }
     if (a.id === this.host) this.hostId();
   }
   async webSocketError(ws: WebSocket): Promise<void> {

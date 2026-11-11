@@ -21,3 +21,4 @@ export { MobRenderer, mobTime } from './render';
 export { MobFx } from './fx';
 export { findPath } from './path';
 export * from './types';
+export type { BossView } from './bossbar';
