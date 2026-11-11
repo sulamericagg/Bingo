@@ -7,11 +7,11 @@ import {
   InterstitialAdPluginEvents,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
-import { ADMOB, AD_FREE, ADS_TEST_MODE, WEB_ADS } from '../config';
+import { ADMOB as ADMOB_ANDROID, ADMOB_IOS, AD_FREE, ADS_TEST_MODE, WEB_ADS } from '../config';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import { icon } from '../ui/icons';
-import { isNative } from '../core/platform';
+import { isIOS, isNative } from '../core/platform';
 import { pushBack } from '../core/back';
 import { persist, save } from '../core/storage';
 import {
@@ -27,6 +27,9 @@ import {
   resultWindowOpen,
   type BreakCtx,
 } from './adpolicy';
+
+/** IDs dos blocos do AdMob da plataforma atual (iOS tem app/blocos próprios). */
+const ADMOB = isIOS ? ADMOB_IOS : ADMOB_ANDROID;
 
 export { adStats, setHostProbe } from './adpolicy';
 

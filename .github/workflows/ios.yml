@@ -1,0 +1,363 @@
+name: iOS (simulador + IPA + TestFlight)
+
+# Compila o app NATIVO de iPhone (Capacitor + Xcode) num Mac da nuvem do GitHub.
+# Sempre: build para o Simulador (teste de fumaça) + .ipa SEM assinatura (Sideloadly/AltStore).
+# Se os Secrets de assinatura existirem: .ipa assinado (App Store/TestFlight ou ad-hoc) e,
+# com a chave da API do App Store Connect, envio automático para o TestFlight.
+# Passo a passo para o dono: docs/IOS.md
+
+on:
+  push:
+    branches: ['claude/viral-game-apk-web-echogw']
+    paths-ignore: ['docs/**', '**/*.md', 'site/**', 'store/**', 'server/**', 'android/**']
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'Enviar para o TestFlight (se os Secrets da API existirem)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    env:
+      PROJECT: ios/App/App.xcodeproj
+      SCHEME: App
+      BUNDLE_ID: com.sulamericagg.blooporbit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+
+      - name: Xcode 16+
+        uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: latest-stable }
+
+      - name: Conferir Xcode
+        run: |
+          xcodebuild -version
+          MAJOR=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)
+          if [ "$MAJOR" -lt 16 ]; then echo "::error::Precisa do Xcode 16 ou mais novo (achou $MAJOR)."; exit 1; fi
+
+      - run: npm ci
+      - run: npm run build
+      - name: Capacitor sync (copia o jogo para ios/App/App/public e gera o Package.swift)
+        run: npx cap sync ios
+
+      - name: Versão (igual à do jogo; build = número desta execução)
+        id: ver
+        run: |
+          VERSION_NAME=$(node -p "require('./package.json').version")
+          BUILD_NUMBER=${{ github.run_number }}
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Versão $VERSION_NAME (build $BUILD_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Baixar pacotes Swift (SPM)
+        run: xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME"
+
+      # ---------------------------------------------------------------- a) Simulador (sem assinatura)
+      - name: Build para o Simulador (teste de fumaça)
+        run: |
+          set -o pipefail
+          xcodebuild build -quiet \
+            -project "$PROJECT" -scheme "$SCHEME" -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd-sim" \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION=${{ steps.ver.outputs.name }} CURRENT_PROJECT_VERSION=${{ steps.ver.outputs.code }} \
+            || { echo "::error::Falhou a compilação para o Simulador (veja o log acima: erros de Swift/plugins)."; exit 1; }
+          APP="$RUNNER_TEMP/dd-sim/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$APP" || { echo "::error::App.app do Simulador não encontrado"; exit 1; }
+          mkdir -p out
+          ditto -c -k --keepParent "$APP" "out/BloopWorld-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-simulator.app.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bloop-world-ios-simulator
+          path: out/*-simulator.app.zip
+          if-no-files-found: error
+
+      # ---------------------------------------------------------------- c) .ipa SEM assinatura (Sideloadly/AltStore)
+      - name: Build para iPhone sem assinatura (.ipa para Sideloadly/AltStore)
+        run: |
+          set -o pipefail
+          xcodebuild build -quiet \
+            -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd-dev" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=${{ steps.ver.outputs.name }} CURRENT_PROJECT_VERSION=${{ steps.ver.outputs.code }} \
+            || { echo "::error::Falhou a compilação para iPhone (sem assinatura)."; exit 1; }
+          APP="$RUNNER_TEMP/dd-dev/Build/Products/Release-iphoneos/App.app"
+          test -d "$APP" || { echo "::error::App.app (iphoneos) não encontrado"; exit 1; }
+          rm -rf "$RUNNER_TEMP/Payload" && mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+          (cd "$RUNNER_TEMP" && zip -qry "$GITHUB_WORKSPACE/out/BloopWorld-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned.ipa" Payload)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bloop-world-ios-unsigned-ipa
+          path: out/*-unsigned.ipa
+          if-no-files-found: error
+
+      # ---------------------------------------------------------------- b) .ipa assinado + TestFlight
+      # Dois jeitos de assinar (o primeiro que tiver todos os Secrets ganha):
+      #   MANUAL: IOS_CERT_P12_BASE64 + IOS_CERT_PASSWORD + IOS_PROVISION_PROFILE_BASE64 + IOS_TEAM_ID
+      #   AUTOMÁTICO (sem Mac): IOS_TEAM_ID + APP_STORE_CONNECT_API_KEY_ID/_ISSUER_ID/_KEY_BASE64 (chave "Admin");
+      #     o Xcode cria certificado/perfil sozinho com a chave da API (-allowProvisioningUpdates).
+      - name: Conferir Secrets de assinatura
+        id: secrets
+        env:
+          P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          P12_PASS: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          TEAM: ${{ secrets.IOS_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          api=false
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER" ] && [ -n "$ASC_KEY" ]; then api=true; fi
+          if [ -n "$P12" ] && [ -n "$P12_PASS" ] && [ -n "$PROFILE" ] && [ -n "$TEAM" ]; then
+            mode=manual
+          elif [ -n "$TEAM" ] && [ "$api" = true ]; then
+            mode=auto
+          else
+            mode=none
+            echo "Assinatura pulada: faltam Secrets (veja docs/IOS.md). Saíram só o build do Simulador e o .ipa sem assinatura." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Assinatura: $mode · chave da API: $api"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+
+      - name: Keychain temporário
+        id: kc
+        if: steps.secrets.outputs.mode != 'none'
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/bloop-signing.keychain-db"
+          KC_PASS=$(openssl rand -hex 24)
+          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN"
+          printf '%s' "$KC_PASS" > "$RUNNER_TEMP/kc.pass" && chmod 600 "$RUNNER_TEMP/kc.pass"
+          echo "keychain=$KEYCHAIN" >> "$GITHUB_OUTPUT"
+
+      - name: Chave da API do App Store Connect
+        id: asc
+        if: steps.secrets.outputs.api == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYDIR="$HOME/.appstoreconnect/private_keys"   # onde o altool procura
+          mkdir -p "$KEYDIR"
+          KEYFILE="$KEYDIR/AuthKey_${ASC_KEY_ID}.p8"
+          # aceita o .p8 em base64 (recomendado) ou o texto do arquivo colado direto
+          if printf '%s' "$ASC_KEY" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$ASC_KEY" > "$KEYFILE"
+          else
+            printf '%s' "$ASC_KEY" | base64 --decode > "$KEYFILE" 2>/dev/null || true
+          fi
+          grep -q 'BEGIN PRIVATE KEY' "$KEYFILE" \
+            || { echo "::error::APP_STORE_CONNECT_API_KEY_BASE64 não contém a chave .p8 (base64 do arquivo AuthKey_XXXX.p8)."; exit 1; }
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+          echo "xcauth=-allowProvisioningUpdates -authenticationKeyPath $KEYFILE -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER" >> "$GITHUB_OUTPUT"
+
+      - name: Assinatura MANUAL (certificado .p12 + perfil)
+        id: manual
+        if: steps.secrets.outputs.mode == 'manual'
+        env:
+          P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          P12_PASS: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          TEAM: ${{ secrets.IOS_TEAM_ID }}
+          FORCE_METHOD: ${{ vars.IOS_EXPORT_METHOD }}
+          KEYCHAIN: ${{ steps.kc.outputs.keychain }}
+        run: |
+          set -euo pipefail
+          KC_PASS=$(cat "$RUNNER_TEMP/kc.pass")
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12" 2>/dev/null \
+            || { echo "::error::IOS_CERT_P12_BASE64 não é um base64 válido."; exit 1; }
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision" 2>/dev/null \
+            || { echo "::error::IOS_PROVISION_PROFILE_BASE64 não é um base64 válido."; exit 1; }
+
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASS" -A -t cert -f pkcs12 -k "$KEYCHAIN" \
+            || { echo "::error::Não consegui importar o .p12 — a senha (IOS_CERT_PASSWORD) está certa?"; exit 1; }
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" "$KEYCHAIN" >/dev/null
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -E '"(Apple|iPhone) (Distribution|Development)' | head -1 | sed -E 's/^[^"]*"(.*)"$/\1/' || true)
+          [ -n "$IDENTITY" ] || { echo "::error::O .p12 não tem um certificado de assinatura válido (Apple Distribution)."; security find-identity -v -p codesigning "$KEYCHAIN"; exit 1; }
+          echo "Certificado: $IDENTITY"
+
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist" \
+            || { echo "::error::O perfil (.mobileprovision) está corrompido."; exit 1; }
+          PB=/usr/libexec/PlistBuddy
+          UUID=$($PB -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          PNAME=$($PB -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          APPID=$($PB -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          PTEAM=$($PB -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
+          EXP=$($PB -c 'Print ExpirationDate' "$RUNNER_TEMP/profile.plist")
+          echo "Perfil: $PNAME ($UUID) app=$APPID time=$PTEAM expira=$EXP"
+          [ "$PTEAM" = "$TEAM" ] || { echo "::error::O perfil é do time $PTEAM, mas IOS_TEAM_ID é $TEAM."; exit 1; }
+          case "$APPID" in
+            "$TEAM.$BUNDLE_ID"|"$TEAM.*") ;;
+            *) echo "::error::O perfil é para '$APPID'; precisa ser '$TEAM.$BUNDLE_ID' (crie o perfil para o Bundle ID $BUNDLE_ID)."; exit 1 ;;
+          esac
+
+          # tipo do perfil → método de exportação (pode forçar com a variável de repositório IOS_EXPORT_METHOD)
+          if $PB -c 'Print ProvisionedDevices' "$RUNNER_TEMP/profile.plist" >/dev/null 2>&1; then
+            if [ "$($PB -c 'Print Entitlements:get-task-allow' "$RUNNER_TEMP/profile.plist" 2>/dev/null)" = "true" ]; then METHOD=debugging; else METHOD=release-testing; fi
+          else
+            METHOD=app-store-connect
+          fi
+          [ -z "${FORCE_METHOD:-}" ] || METHOD="$FORCE_METHOD"
+          echo "Método de exportação: $METHOD"
+
+          for d in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$d" && cp "$RUNNER_TEMP/profile.mobileprovision" "$d/$UUID.mobileprovision"
+          done
+
+          case "$IDENTITY" in
+            "Apple Distribution"*) CERT_KIND="Apple Distribution" ;;
+            "iPhone Distribution"*) CERT_KIND="iPhone Distribution" ;;
+            "Apple Development"*) CERT_KIND="Apple Development" ;;
+            *) CERT_KIND="iPhone Developer" ;;
+          esac
+
+          # Assinatura manual SÓ no alvo App (ios/release.xcconfig inclui este arquivo)
+          cat > ios/signing.local.xcconfig <<XC
+          CODE_SIGN_STYLE = Manual
+          DEVELOPMENT_TEAM = $TEAM
+          CODE_SIGN_IDENTITY = $IDENTITY
+          PROVISIONING_PROFILE_SPECIFIER = $UUID
+          OTHER_CODE_SIGN_FLAGS = --keychain $KEYCHAIN
+          XC
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>$METHOD</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>$CERT_KIND</string>
+            <key>provisioningProfiles</key><dict><key>$BUNDLE_ID</key><string>$UUID</string></dict>
+            <key>destination</key><string>export</string>
+            <key>uploadSymbols</key><true/>
+            <key>stripSwiftSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PL
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          echo "method=$METHOD" >> "$GITHUB_OUTPUT"
+
+      - name: Assinatura AUTOMÁTICA (chave da API, sem Mac)
+        id: auto
+        if: steps.secrets.outputs.mode == 'auto'
+        env:
+          TEAM: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > ios/signing.local.xcconfig <<XC
+          CODE_SIGN_STYLE = Automatic
+          DEVELOPMENT_TEAM = $TEAM
+          XC
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>destination</key><string>export</string>
+            <key>uploadSymbols</key><true/>
+            <key>stripSwiftSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PL
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          echo "method=app-store-connect" >> "$GITHUB_OUTPUT"
+
+      - name: Archive (Release assinado)
+        id: archive
+        if: steps.secrets.outputs.mode != 'none'
+        env:
+          # no modo automático o Xcode usa a chave da API para criar/baixar certificado e perfil
+          XCAUTH: ${{ steps.secrets.outputs.mode == 'auto' && steps.asc.outputs.xcauth || '' }}
+        run: |
+          set -o pipefail
+          xcodebuild archive -quiet \
+            -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/dd-arch" \
+            $XCAUTH \
+            MARKETING_VERSION=${{ steps.ver.outputs.name }} CURRENT_PROJECT_VERSION=${{ steps.ver.outputs.code }} \
+            || { echo "::error::Falhou o archive assinado (modo ${{ steps.secrets.outputs.mode }}). Manual: perfil e certificado precisam ser do mesmo tipo e do Bundle ID $BUNDLE_ID. Automático: a chave da API precisa do papel Admin e o Bundle ID precisa estar registrado."; exit 1; }
+          METHOD="${{ steps.manual.outputs.method }}${{ steps.auto.outputs.method }}"
+          echo "method=$METHOD" >> "$GITHUB_OUTPUT"
+
+      - name: Exportar .ipa
+        if: steps.secrets.outputs.mode != 'none'
+        env:
+          XCAUTH: ${{ steps.secrets.outputs.mode == 'auto' && steps.asc.outputs.xcauth || '' }}
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            $XCAUTH \
+            || { echo "::error::Falhou a exportação do .ipa (método ${{ steps.archive.outputs.method }})."; exit 1; }
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)
+          test -f "$IPA" || { echo "::error::.ipa não gerado"; exit 1; }
+          cp "$IPA" "out/BloopWorld-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-${{ steps.archive.outputs.method }}.ipa"
+          echo ".ipa assinado (${{ steps.archive.outputs.method }}) gerado." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.secrets.outputs.mode != 'none'
+        with:
+          name: bloop-world-ios-signed-ipa
+          path: |
+            out/*.ipa
+            !out/*-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Enviar para o TestFlight
+        if: >-
+          steps.secrets.outputs.mode != 'none' &&
+          steps.secrets.outputs.api == 'true' &&
+          steps.archive.outputs.method == 'app-store-connect' &&
+          (github.event_name != 'workflow_dispatch' || inputs.testflight)
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)
+          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER" --output-format normal \
+            || { echo "::error::O envio ao TestFlight falhou. Causas comuns: o app ainda não foi criado no App Store Connect com o Bundle ID $BUNDLE_ID; o build ${{ steps.ver.outputs.code }} já foi enviado; a chave da API não tem papel App Manager/Admin."; exit 1; }
+          echo "Enviado ao TestFlight: ${{ steps.ver.outputs.name }} (${{ steps.ver.outputs.code }}). A Apple processa em ~10–30 min." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Limpar keychain, perfis e chave
+        if: always()
+        run: |
+          [ -n "${{ steps.kc.outputs.keychain }}" ] && security delete-keychain "${{ steps.kc.outputs.keychain }}" 2>/dev/null || true
+          rm -f ios/signing.local.xcconfig "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/kc.pass"
+          rm -rf "$HOME/.appstoreconnect/private_keys"

@@ -1,0 +1,8 @@
+// Configuração Release do alvo App.
+// Padrão: assinatura automática (para quem abrir no Xcode de um Mac).
+// No GitHub Actions (.github/workflows/ios.yml) o passo de assinatura cria
+// signing.local.xcconfig (NÃO versionado) com CODE_SIGN_STYLE = Manual, DEVELOPMENT_TEAM,
+// CODE_SIGN_IDENTITY e PROVISIONING_PROFILE_SPECIFIER valendo SÓ para o alvo App —
+// passar isso na linha de comando do xcodebuild quebraria os pacotes Swift (SPM).
+CODE_SIGN_STYLE = Automatic
+#include? "signing.local.xcconfig"

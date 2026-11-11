@@ -13,7 +13,7 @@
 import { CLUB, ONLINE } from '../config';
 import { addCoins, addGems, unlockSkin, unlockTrail } from '../core/economy';
 import { bus } from '../core/events';
-import { isAndroid, isNative } from '../core/platform';
+import { isAndroid, isIOS, isNative } from '../core/platform';
 import { persistNow, save } from '../core/storage';
 import { seasonIndexAt } from '../../shared/season-calendar';
 import type { Gift, PublicChallenge, RedeemResult, RewardPack } from '../../shared/reward';
@@ -92,7 +92,7 @@ function apiUrl(path: string): string {
   return `${base}/api${path}`;
 }
 
-const platform = (): string => (isAndroid ? 'android' : isNative ? 'native' : 'web');
+const platform = (): string => (isAndroid ? 'android' : isIOS ? 'ios' : isNative ? 'native' : 'web');
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const ctrl = new AbortController();
