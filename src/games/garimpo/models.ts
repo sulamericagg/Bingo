@@ -5,6 +5,43 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { Kit, lod, MAT, stretch } from './kit';
+import { natureTexture, type TerrainLayer } from '../../3d/nature';
+
+const SLAB_MAT = new Map<string, THREE.MeshLambertMaterial>();
+/** laje/piso com textura da biblioteca (UV em metros: não estica), cantos escurecidos (AO) */
+export function texSlab(w: number, h: number, d: number, layer: TerrainLayer, tint: number, tile = 2.6): THREE.Mesh {
+  const key = layer + tint;
+  let m = SLAB_MAT.get(key);
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ map: natureTexture(layer), color: tint, vertexColors: true });
+    SLAB_MAT.set(key, m);
+  }
+  const g = new THREE.BoxGeometry(w, h, d, Math.max(1, Math.round(w / 1.5)), 1, Math.max(1, Math.round(d / 1.5)));
+  const pos = g.attributes.position;
+  const nrm = g.attributes.normal;
+  const uv = g.attributes.uv;
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const ny = Math.abs(nrm.getY(i));
+    const nx = Math.abs(nrm.getX(i));
+    // UV planar em metros pela face
+    if (ny > 0.5) uv.setXY(i, x / tile, z / tile);
+    else if (nx > 0.5) uv.setXY(i, z / tile, y / tile);
+    else uv.setXY(i, x / tile, y / tile);
+    // AO: bordas da laje e faces laterais um pouco mais escuras (assenta no chão)
+    const e = Math.min(w / 2 - Math.abs(x), d / 2 - Math.abs(z));
+    let k = ny > 0.5 && y > 0 ? 0.78 + 0.22 * Math.min(1, e / 1.2) : 0.62;
+    k = Math.max(0.5, k);
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(g, m);
+  mesh.receiveShadow = true;
+  return mesh;
+}
 
 export { stretch };
 
@@ -800,7 +837,12 @@ export function buildHouse(color: number): THREE.Group {
 export function buildStock(): { root: THREE.Group; bars: THREE.InstancedMesh } {
   const root = new THREE.Group();
   const k = new Kit();
-  k.rbox(9, 0.3, 7, 0.05, 0x9a9a92, 0, 0.15, 0);
+  // piso de cascalho batido com meio-fio de concreto
+  const floor = texSlab(8.6, 0.3, 6.6, 'gravel', 0xd8d0c0);
+  floor.position.y = 0.15;
+  root.add(floor);
+  for (const sz of [1, -1]) k.rbox(9, 0.36, 0.22, 0.04, C.concrete, 0, 0.16, sz * 3.4);
+  for (const sx of [1, -1]) k.rbox(0.22, 0.36, 7, 0.04, C.concrete, sx * 4.4, 0.16, 0);
   for (const [x, z] of [
     [4.3, 3.3],
     [-4.3, 3.3],
@@ -827,7 +869,8 @@ export function buildStock(): { root: THREE.Group; bars: THREE.InstancedMesh } {
 
 export function buildGarage(): THREE.Group {
   const k = new Kit();
-  k.rbox(12, 0.2, 9, 0.04, C.concrete, 0, 0.1, 0);
+  for (const sz of [1, -1]) k.rbox(12.2, 0.26, 0.24, 0.04, C.concrete, 0, 0.12, sz * 4.5);
+  for (const sx of [1, -1]) k.rbox(0.24, 0.26, 9.2, 0.04, C.concrete, sx * 6, 0.12, 0);
   for (const [x, z] of [
     [5.8, 4.3],
     [-5.8, 4.3],
@@ -846,7 +889,12 @@ export function buildGarage(): THREE.Group {
   k.cyl(0.35, 0.35, 0.9, C.red, 4.8, 0.55, -2.2, 12);
   k.cyl(0.35, 0.35, 0.9, C.teal, 4.8, 0.55, -1.4, 12);
   k.decal('hazard', 11.6, 0.3, 0, 0.35, -4.2);
-  return k.build();
+  const g = k.build();
+  // piso da garagem: cascalho compactado com textura (antes era um retângulo cinza liso)
+  const floor = texSlab(11.8, 0.2, 8.8, 'gravel', 0xc9c3b6);
+  floor.position.y = 0.1;
+  g.add(floor);
+  return g;
 }
 
 /** caminhão-forte de exportação */

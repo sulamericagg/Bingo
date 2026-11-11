@@ -56,7 +56,8 @@ export interface Env {
   world: World;
   /** câmera: guinada (para o garimpeiro andar relativo à tela) */
   camYaw: number;
-  receiverAt(x: number, y: number, z: number, self: Machine | null, slack?: number): Receiver | null;
+  /** drop: a terra cai de cima (caçamba da escavadeira) — vale a caçamba de caminhão embaixo, em qualquer altura */
+  receiverAt(x: number, y: number, z: number, self: Machine | null, slack?: number, drop?: boolean): Receiver | null;
   /** som curto */
   sfx(name: 'dig' | 'dump' | 'splash' | 'full' | 'clank'): void;
   others: Machine[];
@@ -371,10 +372,12 @@ export class Truck extends Wheeled {
     _v3.set(0, 0.05, 2.0).applyMatrix4(this.bed.matrix);
     this.ram.set(0, 0.0, -1.6, _v3.x, _v3.y, _v3.z);
   }
+  /** monte na caçamba: já aparece com uma caçambada (cresce em raiz: 1 de 9 já se vê) */
   private poseHeap(): void {
-    const f = this.fill;
-    this.heap.visible = f > 0.01;
-    this.heap.scale.set(1, Math.max(0.05, f * 0.95), 1);
+    const f = Math.min(1.08, this.fill);
+    this.heap.visible = f > 0.004;
+    const k = Math.sqrt(f);
+    this.heap.scale.set(0.55 + 0.45 * k, 0.4 + 0.72 * k, 0.45 + 0.55 * k);
   }
   netExtra(): number[] {
     return [Math.round(this.tilt * 100) / 100];
@@ -623,7 +626,8 @@ export class Excavator extends Wheeled {
       const amt = Math.min(this.cargo.vol, dt * 1.4);
       const g = (this.cargo.gold * amt) / this.cargo.vol;
       p.heap.getWorldPosition(_v3);
-      const rc = env.receiverAt(_v3.x, _v3.y, _v3.z, this, 0.6);
+      // caçamba de caminhão embaixo (em qualquer altura, com folga): a terra cai dentro dela
+      const rc = env.receiverAt(_v3.x, _v3.y, _v3.z, this, 1.4, true);
       let took = 0;
       if (rc) took = rc.take(amt, g);
       if (took < amt) {

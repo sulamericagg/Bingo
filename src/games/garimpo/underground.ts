@@ -1,9 +1,11 @@
 /* ============================================================
  *  GARIMPO BRUTO — mina subterrânea (fim de jogo, cara).
  *  Escolha: o terreno de superfície é um campo de alturas (não faz túnel), então a mina
- *  é um NÍVEL À PARTE: grade de células de rocha (3 m) vista em corte de cima, entrada
- *  pelo portal na encosta da montanha. Robusto e barato: paredes = 1 InstancedMesh,
- *  piso = 1 plano, refeito só quando uma célula abre.
+ *  é um NÍVEL À PARTE: grade de células de rocha (3 m), entrada pelo portal na encosta.
+ *  Vista em 3ª pessoa DENTRO dos túneis: paredes de rocha com textura de pedra e AO
+ *  (1 InstancedMesh com relevo), teto, escoras de madeira nos corredores, poças de luz
+ *  das lâmpadas, veios de ouro brilhando na rocha. A rocha entre a câmera e o jogador
+ *  some em pontilhado (nunca tapa a vista); a câmera não atravessa a rocha (braço-mola).
  *  - Picareta abre células (veios de ouro mais ricos mais fundo).
  *  - Trilhos (grade, toque para pôr), vagonetas que levam a carga até a moega da entrada.
  *  - Gerador + cabos acendem lâmpadas; mineiros-robô só trabalham com luz.
@@ -18,6 +20,8 @@ import { rng } from './gen';
 
 export const UG = 24;
 export const CS = 3;
+/** altura do túnel (teto) */
+export const WALL_H = 3.2;
 /** célula: 0 rocha, 1 aberta */
 export interface UgSave {
   cells: string;
@@ -51,6 +55,79 @@ interface Bot {
   p: WorkerParts;
   cell: number;
   t: number;
+  /** caminho (células abertas) até a vaga de trabalho */
+  path: number[];
+  pi: number;
+}
+
+/** material que some em pontilhado perto do segmento câmera→jogador (rocha não tapa a vista) */
+function fadeMat<M extends THREE.Material>(m: M, u: { uCam: { value: THREE.Vector3 }; uTgt: { value: THREE.Vector3 } }): M {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uCam = u.uCam;
+    sh.uniforms.uTgt = u.uTgt;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFadeWp;')
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 fwp = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+        fwp = instanceMatrix * fwp;
+        #endif
+        vFadeWp = (modelMatrix * fwp).xyz;`,
+      );
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uCam;\nuniform vec3 uTgt;\nvarying vec3 vFadeWp;').replace(
+      '#include <clipping_planes_fragment>',
+      `#include <clipping_planes_fragment>
+      {
+        vec3 ab = uTgt - uCam;
+        float tt = clamp(dot(vFadeWp - uCam, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+        float dd = length(vFadeWp - (uCam + ab * tt));
+        float fd = (1.0 - smoothstep(0.7, 1.6, dd)) * smoothstep(0.0, 0.08, tt) * (1.0 - smoothstep(0.86, 0.97, tt));
+        float nz = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
+        if (fd > 0.0 && nz < fd * 0.9) discard;
+      }`,
+    );
+  };
+  m.customProgramCacheKey = () => 'gb-ug-fade';
+  return m;
+}
+
+/** bloco de rocha com relevo nas faces (bordas fixas: blocos vizinhos fecham sem fresta), UV em metros e AO no pé e no teto */
+function rockGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(CS, WALL_H, CS, 8, 6, 8);
+  const pos = g.attributes.position;
+  const nrm = g.attributes.normal;
+  const uv = g.attributes.uv;
+  const col = new Float32Array(pos.count * 3);
+  const h2 = WALL_H / 2;
+  const c2 = CS / 2;
+  const n3 = (x: number, y: number, z: number) => Math.sin(x * 2.1 + Math.sin(z * 1.7)) * Math.cos(y * 2.6 + x * 0.6) + 0.5 * Math.sin(z * 3.3 + y * 1.9) * Math.sin(x * 3.7);
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i);
+    const y = pos.getY(i);
+    let z = pos.getZ(i);
+    const nx = nrm.getX(i);
+    const ny = nrm.getY(i);
+    const nz = nrm.getZ(i);
+    if (Math.abs(ny) < 0.5) {
+      // face lateral: relevo para fora/dentro, zero nas bordas da face
+      const along = Math.abs(nx) > 0.5 ? z : x;
+      const e = Math.min(1, (c2 - Math.abs(along)) / 0.7) * Math.min(1, (h2 - Math.abs(y)) / 0.6);
+      const d = n3(x + z, y, along) * 0.2 * e;
+      x += nx * d;
+      z += nz * d;
+      pos.setXYZ(i, x, y, z);
+      uv.setXY(i, (along + c2) / 1.6, (y + h2) / 1.6);
+    } else uv.setXY(i, (x + c2) / 1.6, (z + c2) / 1.6);
+    // AO: escurece perto do chão e do teto
+    const yy = y + h2;
+    const k = Math.min(1, 0.45 + yy * 0.55) * Math.min(1, 0.55 + (WALL_H - yy) * 0.6);
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
 }
 
 export class Underground {
@@ -68,6 +145,14 @@ export class Underground {
   readonly entrance = (UG >> 1) + 0 * UG;
   private walls: THREE.InstancedMesh;
   private floor: THREE.Mesh;
+  private ceil: THREE.Mesh;
+  private beams: THREE.InstancedMesh;
+  private nuggets: THREE.InstancedMesh;
+  private pools: THREE.InstancedMesh;
+  private lampLights: THREE.PointLight[] = [];
+  /** câmera e alvo (para a rocha entre os dois sumir) */
+  readonly fadeU = { uCam: { value: new THREE.Vector3() }, uTgt: { value: new THREE.Vector3() } };
+  private time = 0;
   private railMesh: THREE.InstancedMesh;
   private lampMesh: THREE.InstancedMesh;
   private genMesh: THREE.Group;
@@ -81,6 +166,8 @@ export class Underground {
   private walk = 0;
   private swing = -1;
   cargo = { vol: 0, gold: 0, cap: 0.2 };
+  /** andando agora (a câmera volta para trás) */
+  moving = false;
   /** recebido pela moega (sobe para a baia da superfície) */
   onHopper: ((vol: number, gold: number) => void) | null = null;
   tool: Tool = 'none';
@@ -105,16 +192,62 @@ export class Underground {
     this.cells[1 * UG + (UG >> 1) + 1] = 1;
     const stone = natureTexture('stone');
     const gravel = natureTexture('gravel');
-    this.walls = new THREE.InstancedMesh(boxUV(CS, 2.2, CS), new THREE.MeshLambertMaterial({ map: stone }), UG * UG);
+    this.walls = new THREE.InstancedMesh(rockGeometry(), fadeMat(new THREE.MeshLambertMaterial({ map: stone, vertexColors: true }), this.fadeU), UG * UG);
     this.walls.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(UG * UG * 3), 3);
     this.walls.frustumCulled = false;
     this.scene.add(this.walls);
-    const fg = new THREE.PlaneGeometry(UG * CS, UG * CS).rotateX(-Math.PI / 2);
+    // piso com AO (escuro junto da rocha), refeito no rebuild
+    const FS = UG * 4;
+    const fg = new THREE.PlaneGeometry(UG * CS, UG * CS, FS, FS).rotateX(-Math.PI / 2);
     const uv = fg.attributes.uv.array as Float32Array;
-    for (let i = 0; i < uv.length; i++) uv[i] *= UG * 0.9;
-    this.floor = new THREE.Mesh(fg, new THREE.MeshLambertMaterial({ map: gravel, color: 0xc0a890 }));
+    for (let i = 0; i < uv.length; i++) uv[i] *= UG * 1.4;
+    fg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(fg.attributes.position.count * 3).fill(1), 3));
+    this.floor = new THREE.Mesh(fg, new THREE.MeshLambertMaterial({ map: gravel, color: 0xb8a088, vertexColors: true }));
     this.floor.position.set((UG * CS) / 2 - CS / 2, 0, (UG * CS) / 2 - CS / 2);
     this.scene.add(this.floor);
+    // teto (rocha escura, virado para baixo)
+    const cg = new THREE.PlaneGeometry(UG * CS, UG * CS).rotateX(Math.PI / 2);
+    const cuv = cg.attributes.uv.array as Float32Array;
+    for (let i = 0; i < cuv.length; i++) cuv[i] *= UG * 1.8;
+    this.ceil = new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ map: stone, color: 0x6a5c50 }));
+    this.ceil.position.set((UG * CS) / 2 - CS / 2, WALL_H, (UG * CS) / 2 - CS / 2);
+    this.scene.add(this.ceil);
+    // escoras de madeira (pórtico: 2 esteios + chapéu) nos trechos retos de corredor
+    const bk = new Kit({ y: 0.4, k: 0.35 });
+    for (const sx of [1, -1]) bk.rbox(0.26, WALL_H - 0.05, 0.26, 0.04, C.wood, sx * 1.28, (WALL_H - 0.05) / 2, 0);
+    bk.rbox(3.0, 0.3, 0.32, 0.05, C.woodL, 0, WALL_H - 0.2, 0);
+    for (const sx of [1, -1]) bk.box(0.5, 0.12, 0.2, C.wood, sx * 1.0, WALL_H - 0.42, 0, 0, 0, sx * 0.7);
+    this.beams = new THREE.InstancedMesh(bk.geometry(), fadeMat(new THREE.MeshLambertMaterial({ vertexColors: true }), this.fadeU), UG * UG);
+    this.beams.count = 0;
+    this.beams.frustumCulled = false;
+    this.scene.add(this.beams);
+    // pepitas brilhando nas faces de rocha rica
+    this.nuggets = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.11, 0), new THREE.MeshBasicMaterial({ color: 0xffd347 }), 900);
+    this.nuggets.count = 0;
+    this.nuggets.frustumCulled = false;
+    this.scene.add(this.nuggets);
+    // poças de luz no chão embaixo das lâmpadas
+    const pc = document.createElement('canvas');
+    pc.width = pc.height = 64;
+    const px = pc.getContext('2d')!;
+    const gr = px.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,214,140,0.85)');
+    gr.addColorStop(0.45, 'rgba(255,190,110,0.32)');
+    gr.addColorStop(1, 'rgba(255,170,90,0)');
+    px.fillStyle = gr;
+    px.fillRect(0, 0, 64, 64);
+    const ptex = new THREE.CanvasTexture(pc);
+    ptex.colorSpace = THREE.SRGBColorSpace;
+    this.pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 64);
+    this.pools.count = 0;
+    this.pools.frustumCulled = false;
+    this.pools.renderOrder = 2;
+    this.scene.add(this.pools);
+    for (let i = 0; i < 4; i++) {
+      const l = new THREE.PointLight(0xffc98a, 0, 11, 1.7);
+      this.lampLights.push(l);
+      this.scene.add(l);
+    }
     // trilho: dormentes + 2 barras (uma peça por célula; reto ao longo de z ou x pelo vizinho)
     const rk = new Kit();
     for (let i = 0; i < 4; i++) rk.box(1.3, 0.1, 0.22, C.wood, 0, 0.05, -1.1 + i * 0.75);
@@ -198,18 +331,22 @@ export class Underground {
       const j = (k / UG) | 0;
       void i;
       void j;
-      _m.compose(_v.set(this.cx(k), 1.1, this.cz(k)), _q.identity(), _s.set(1, 1, 1));
+      // giro de 90° por célula: o relevo não se repete igual em toda parede
+      _q.setFromAxisAngle(_v.set(0, 1, 0), ((k * 7 + (k >> 3)) % 4) * (Math.PI / 2));
+      _m.compose(_v.set(this.cx(k), WALL_H / 2, this.cz(k)), _q, _s.set(1, 1, 1));
       this.walls.setMatrixAt(n, _m);
-      // veio rico: rocha com brilho dourado
+      // veio rico: rocha puxando para o dourado; variação leve célula a célula
       const g = this.grade[k];
       const f = Math.min(1, Math.max(0, (g - 25) / 90));
-      _c.setRGB(0.62 + f * 0.6, 0.55 + f * 0.42, 0.5 - f * 0.18);
+      const vr = 0.9 + ((k * 2654435761) % 1000) / 1000 * 0.2;
+      _c.setRGB((0.5 + f * 0.5) * vr, (0.42 + f * 0.34) * vr, (0.36 - f * 0.12) * vr);
       this.walls.setColorAt(n, _c);
       n++;
     }
     this.walls.count = n;
     this.walls.instanceMatrix.needsUpdate = true;
     this.walls.instanceColor!.needsUpdate = true;
+    this.rebuildCave();
     let r = 0;
     for (let k = 0; k < UG * UG; k++) {
       if (!this.rail[k]) continue;
@@ -230,12 +367,132 @@ export class Underground {
     (this.lampMesh.material as THREE.MeshBasicMaterial).color.setScalar(this.powered ? 1 : 0.25);
     this.genMesh.visible = this.gen >= 0;
     if (this.gen >= 0) this.genMesh.position.set(this.cx(this.gen), 0, this.cz(this.gen));
-    // cabos: do gerador até cada lâmpada (pendurados no teto)
+    // cabos: do gerador até cada lâmpada, presos no teto e seguindo os túneis (nunca atravessam a rocha)
     const pts: number[] = [];
-    if (this.gen >= 0)
-      for (const k of this.lamps) pts.push(this.cx(this.gen), 1.3, this.cz(this.gen), this.cx(k) - CS * 0.4 + 0.3, 1.95, this.cz(k) - CS * 0.4);
+    if (this.gen >= 0) {
+      const cy = WALL_H - 0.1;
+      const seg = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => pts.push(x0, y0, z0, x1, y1, z1);
+      const gx = this.cx(this.gen) - 0.6;
+      const gz = this.cz(this.gen) - 0.3;
+      seg(gx, 1.35, gz, gx, cy, gz);
+      for (const k of this.lamps) {
+        const path = this.openPath(this.gen, k);
+        if (!path) continue;
+        let px = gx;
+        let pz = gz;
+        for (let q = 1; q < path.length; q++) {
+          const x = this.cx(path[q]) - 0.6;
+          const z = this.cz(path[q]) - 0.3;
+          seg(px, cy, pz, x, cy, z);
+          px = x;
+          pz = z;
+        }
+        const lx = this.cx(k) - CS * 0.4 + 0.6;
+        const lz = this.cz(k) - CS * 0.4;
+        seg(px, cy, pz, lx, cy, lz);
+        seg(lx, cy, lz, lx, 1.95, lz);
+      }
+    }
     this.cables.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.amb.intensity = this.powered ? 2.0 + Math.min(1.2, this.lamps.length / 6) : 0.9;
+    this.amb.intensity = this.powered ? 1.1 + Math.min(0.8, this.lamps.length / 8) : 0.55;
+    // poças de luz (só com gerador)
+    this.lamps.forEach((k, i) => {
+      _m.makeTranslation(this.cx(k) - CS * 0.15, 0.03, this.cz(k) - CS * 0.15);
+      this.pools.setMatrixAt(i, _m);
+    });
+    this.pools.count = this.powered ? this.lamps.length : 0;
+    this.pools.instanceMatrix.needsUpdate = true;
+  }
+
+  /** escoras, pepitas e AO do piso (depende só das células abertas) */
+  private rebuildCave(): void {
+    const rock = (i: number, j: number) => i < 0 || j < 0 || i >= UG || j >= UG || !this.cells[j * UG + i];
+    // escoras: corredor reto (aberto à frente/atrás, rocha dos dois lados), uma sim outra não
+    let b = 0;
+    for (let k = 0; k < UG * UG; k++) {
+      if (!this.cells[k]) continue;
+      const i = k % UG;
+      const j = (k / UG) | 0;
+      const alongZ = rock(i - 1, j) && rock(i + 1, j);
+      const alongX = rock(i, j - 1) && rock(i, j + 1);
+      if (!alongZ && !alongX) continue;
+      if ((alongZ ? j : i) % 2) continue;
+      _q.setFromAxisAngle(_v.set(0, 1, 0), alongZ ? 0 : Math.PI / 2);
+      _m.compose(_v.set(this.cx(k), 0, this.cz(k)), _q, _s.set(1, 1, 1));
+      this.beams.setMatrixAt(b++, _m);
+    }
+    this.beams.count = b;
+    this.beams.instanceMatrix.needsUpdate = true;
+    // pepitas: nas faces de rocha rica voltadas para um espaço aberto
+    let n = 0;
+    const r = rng(77);
+    for (let k = 0; k < UG * UG && n < 900; k++) {
+      if (this.cells[k] || this.grade[k] < 40) continue;
+      const i = k % UG;
+      const j = (k / UG) | 0;
+      const many = Math.min(6, Math.floor((this.grade[k] - 30) / 16));
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (rock(i + di, j + dj)) continue;
+        for (let q = 0; q < many && n < 900; q++) {
+          const a = (r() - 0.5) * CS * 0.8;
+          const y = 0.4 + r() * (WALL_H - 0.9);
+          const x = this.cx(k) + di * (CS / 2 + 0.02) + (dj ? a : 0);
+          const z = this.cz(k) + dj * (CS / 2 + 0.02) + (di ? a : 0);
+          _q.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
+          const sc = 0.6 + r() * 0.9;
+          _m.compose(_v.set(x, y, z), _q, _s.set(sc, sc * 0.8, sc));
+          this.nuggets.setMatrixAt(n++, _m);
+        }
+      }
+    }
+    this.nuggets.count = n;
+    this.nuggets.instanceMatrix.needsUpdate = true;
+    // AO do piso: escurece perto da rocha (cantos mais ainda)
+    const fg = this.floor.geometry;
+    const fp = fg.attributes.position;
+    const fc = fg.attributes.color as THREE.BufferAttribute;
+    const ox = this.floor.position.x;
+    const oz = this.floor.position.z;
+    for (let v = 0; v < fp.count; v++) {
+      const x = fp.getX(v) + ox;
+      const z = fp.getZ(v) + oz;
+      let near = 9;
+      const ci = Math.round(x / CS);
+      const cj = Math.round(z / CS);
+      for (let dj = -1; dj <= 1; dj++)
+        for (let di = -1; di <= 1; di++) {
+          const ii = ci + di;
+          const jj = cj + dj;
+          if (!rock(ii, jj)) continue;
+          // distância até a caixa da célula de rocha
+          const dx = Math.max(0, Math.abs(x - ii * CS) - CS / 2);
+          const dz = Math.max(0, Math.abs(z - jj * CS) - CS / 2);
+          near = Math.min(near, Math.hypot(dx, dz));
+        }
+      const k = 0.42 + 0.58 * Math.min(1, near / 1.3);
+      fc.setXYZ(v, k, k, k * 0.96);
+    }
+    fc.needsUpdate = true;
+  }
+
+  /** câmera e jogador (a rocha entre os dois some) */
+  setView(cam: THREE.Vector3, tgt: THREE.Vector3): void {
+    this.fadeU.uCam.value.copy(cam);
+    this.fadeU.uTgt.value.copy(tgt);
+  }
+  /** a câmera não entra na rocha: encurta o braço até o último ponto livre */
+  armClamp(fx: number, fz: number, tx: number, tz: number): number {
+    const L = Math.hypot(tx - fx, tz - fz);
+    const n = Math.max(1, Math.ceil(L / 0.15));
+    const pad = 0.45;
+    for (let s = 1; s <= n; s++) {
+      const t = s / n;
+      const x = fx + (tx - fx) * t;
+      const z = fz + (tz - fz) * t;
+      const ok = this.open(this.cellAt(x + pad, z)) && this.open(this.cellAt(x - pad, z)) && this.open(this.cellAt(x, z + pad)) && this.open(this.cellAt(x, z - pad));
+      if (!ok) return Math.max(0, (s - 1) / n);
+    }
+    return 1;
   }
 
   /** caminho em trilho (BFS) da célula a até a entrada */
@@ -328,8 +585,9 @@ export class Underground {
     const p = buildWorker(0x3f7a3f);
     p.barrow.visible = false;
     p.shovel.visible = true;
+    p.root.position.set(this.cx(this.entrance) + 1, 0, this.cz(this.entrance) + 1.5);
     this.scene.add(p.root);
-    this.bots.push({ p, cell: -1, t: Math.random() });
+    this.bots.push({ p, cell: -1, t: Math.random(), path: [], pi: 0 });
   }
 
   /** golpe de picareta na célula k: depois de 3 golpes ela abre e dá minério */
@@ -346,15 +604,18 @@ export class Underground {
   }
 
   enterAt(): void {
-    this.pos.set(this.cx(this.entrance), 0, this.cz(this.entrance) + CS);
+    // dois passos para dentro: a câmera (atrás) fica entre a moega e o mineiro
+    this.pos.set(this.cx(this.entrance), 0, this.cz(this.entrance) + CS * 2);
     this.yaw = 0;
   }
 
   /** um quadro: jogador (ctl), vagonetas e robôs */
   step(dt: number, ctl: Ctl | null, camYaw: number, say: (s: string) => void): void {
     const w = this.worker;
+    this.moving = false;
     if (ctl && this.swing < 0) {
       const mag = Math.min(1, Math.hypot(ctl.mx, ctl.my));
+      this.moving = mag > 0.08;
       if (mag > 0.08) {
         const a = camYaw + Math.atan2(-ctl.mx, -ctl.my);
         let d = a - this.yaw;
@@ -420,8 +681,24 @@ export class Underground {
         }
       }
     }
-    this.plight.position.set(this.pos.x, 2.6, this.pos.z);
-    this.plight.intensity = this.powered ? 18 : 30;
+    // lanterna do capacete + as 4 lâmpadas mais perto (com gerador)
+    this.time += dt;
+    this.plight.position.set(this.pos.x + Math.sin(this.yaw) * 0.8, 2.3, this.pos.z + Math.cos(this.yaw) * 0.8);
+    this.plight.intensity = this.powered ? 14 : 22;
+    const near = this.powered ? [...this.lamps].sort((a, b) => Math.hypot(this.cx(a) - this.pos.x, this.cz(a) - this.pos.z) - Math.hypot(this.cx(b) - this.pos.x, this.cz(b) - this.pos.z)) : [];
+    this.lampLights.forEach((l, i) => {
+      const k = near[i];
+      if (k === undefined) {
+        l.intensity = 0;
+        return;
+      }
+      l.position.set(this.cx(k) - CS * 0.4 + 0.6, 1.7, this.cz(k) - CS * 0.4);
+      l.intensity = 16 * (0.95 + Math.sin(this.time * 7 + k) * 0.05);
+    });
+    // veios brilham devagar
+    const nm = this.nuggets.material as THREE.MeshBasicMaterial;
+    const gl = 0.85 + Math.sin(this.time * 2.2) * 0.15;
+    nm.color.setRGB(1 * gl, 0.82 * gl, 0.3 * gl);
     this.stepCarts(dt);
     this.stepBots(dt);
   }
@@ -512,20 +789,41 @@ export class Underground {
         b.cell = best;
       }
       if (b.cell < 0) return;
-      const nb = [b.cell - 1, b.cell + 1, b.cell - UG, b.cell + UG].find((n) => this.open(n)) ?? this.entrance;
-      const sx = (this.cx(nb) + this.cx(b.cell)) / 2;
-      const sz = (this.cz(nb) + this.cz(b.cell)) / 2;
+      const nb = [b.cell - 1, b.cell + 1, b.cell - UG, b.cell + UG].find((n) => this.open(n) && Math.abs((n % UG) - (b.cell % UG)) <= 1) ?? this.entrance;
       const root = p.root;
+      // caminho pela grade de células ABERTAS (nunca atravessa rocha)
+      if (!b.path.length || b.path[b.path.length - 1] !== nb) {
+        const from = this.nearestOpen(root.position.x, root.position.z);
+        b.path = this.openPath(from, nb) ?? [];
+        b.pi = 0;
+        if (!b.path.length) {
+          b.cell = -1;
+          return;
+        }
+      }
+      // ponto de trabalho: dentro da célula aberta, encostado na face da rocha
+      const last = b.pi >= b.path.length - 1;
+      const tgt = b.path[Math.min(b.pi, b.path.length - 1)];
+      const sx = last ? this.cx(nb) + (this.cx(b.cell) - this.cx(nb)) * 0.3 : this.cx(tgt);
+      const sz = last ? this.cz(nb) + (this.cz(b.cell) - this.cz(nb)) * 0.3 : this.cz(tgt);
       const dx = sx - root.position.x;
       const dz = sz - root.position.z;
       const d = Math.hypot(dx, dz);
-      if (d > 0.3) {
-        // anda (sem colisão: caminha pelos espaços abertos já ligados)
+      if (d > (last ? 0.12 : 0.35)) {
         root.position.x += (dx / d) * Math.min(d, 2.5 * dt);
         root.position.z += (dz / d) * Math.min(d, 2.5 * dt);
         root.rotation.y = Math.atan2(dx, dz);
+        b.t += dt;
+        const sw = Math.sin(b.t * 9) * 0.5;
+        p.legL.rotation.x = sw;
+        p.legR.rotation.x = -sw;
         return;
       }
+      if (!last) {
+        b.pi++;
+        return;
+      }
+      p.legL.rotation.x = p.legR.rotation.x = 0;
       root.rotation.y = Math.atan2(this.cx(b.cell) - root.position.x, this.cz(b.cell) - root.position.z);
       b.t += dt;
       p.shovel.rotation.x = -1.2 + Math.max(0, Math.sin(b.t * 5)) * 1.5;
@@ -543,6 +841,45 @@ export class Underground {
         }
       }
     });
+  }
+
+  /** célula aberta mais perto de (x,z) */
+  nearestOpen(x: number, z: number): number {
+    const k = this.cellAt(x, z);
+    if (this.open(k)) return k;
+    let best = this.entrance;
+    let bd = 1e9;
+    for (let q = 0; q < UG * UG; q++) {
+      if (!this.cells[q]) continue;
+      const d = Math.hypot(this.cx(q) - x, this.cz(q) - z);
+      if (d < bd) {
+        bd = d;
+        best = q;
+      }
+    }
+    return best;
+  }
+  /** BFS em células abertas (4 vizinhos) de a até b */
+  openPath(a: number, b: number): number[] | null {
+    if (!this.open(a) || !this.open(b)) return null;
+    const prev = new Int32Array(UG * UG).fill(-2);
+    const q = [a];
+    prev[a] = -1;
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h];
+      if (k === b) {
+        const out: number[] = [];
+        for (let c = k; c !== -1; c = prev[c]) out.unshift(c);
+        return out;
+      }
+      const i = k % UG;
+      for (const n of [i < UG - 1 ? k + 1 : -1, i > 0 ? k - 1 : -1, k + UG, k - UG]) {
+        if (n < 0 || n >= UG * UG || prev[n] !== -2 || !this.cells[n]) continue;
+        prev[n] = k;
+        q.push(n);
+      }
+    }
+    return null;
   }
 
   save(): UgSave {
@@ -574,14 +911,4 @@ function unb64(s: string, out: Uint8Array): void {
   } catch {
     /* save velho */
   }
-}
-/** caixa com UV em metros (textura de pedra repete sem esticar) */
-function boxUV(w: number, h: number, d: number): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(w, h, d);
-  const uv = g.attributes.uv.array as Float32Array;
-  for (let i = 0; i < uv.length; i += 2) {
-    uv[i] *= w * 0.3;
-    uv[i + 1] *= h * 0.3;
-  }
-  return g;
 }

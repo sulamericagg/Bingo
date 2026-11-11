@@ -9,7 +9,7 @@ import { generate, type MapInfo } from './gen';
 import { buildFlag, buildGarage, buildHouse, buildPlant, buildStock, C } from './models';
 import { Vegetation } from './veg';
 import { Kit, setLod } from './kit';
-import { SIZE, Terrain } from './terrain';
+import { CELL, MAT_DIRT, N, SIZE, Terrain, V } from './terrain';
 
 export interface Circle {
   x: number;
@@ -103,6 +103,7 @@ export class World {
   /** gera o mapa da semente e monta a cena estática */
   build(seed: number, tier: Tier): void {
     this.map = generate(this.T, seed, 1);
+    this.portalCut();
     this.T.setTier(tier);
     this.T.build(tier <= 1 ? 2 : 1);
     this.tier = tier;
@@ -146,12 +147,11 @@ export class World {
       this.addCircle({ x: h.x, z: h.z, r: 3.1 });
       this.blockers.push({ x: h.x, z: h.z, r: 3.6, y: hm.position.y + 4.5 });
     }
-    // portal da mina subterrânea na parede do pátio (lado da montanha) + baia da esteira
+    // portal da mina subterrânea encostado na encosta (lado da montanha) + baia da esteira
     {
-      const mt = m.mountain;
-      const a = Math.atan2(mt.x - m.mine.x, mt.z - m.mine.z);
-      const px = m.mine.x + Math.sin(a) * 12.5;
-      const pz = m.mine.z + Math.cos(a) * 12.5;
+      const { a, r: pr } = this.portalAt;
+      const px = m.mine.x + Math.sin(a) * pr;
+      const pz = m.mine.z + Math.cos(a) * pr;
       const py = this.T.heightAt(m.mine.x, m.mine.z);
       const pk = new Kit({ y: 0.5, k: 0.5 });
       for (const sx of [1.8, -1.8]) pk.rbox(0.45, 3.6, 0.45, 0.06, C.wood, sx, 1.8, 0);
@@ -163,8 +163,27 @@ export class World {
       for (let i = 0; i < 4; i++) pk.box(1.3, 0.1, 0.22, C.wood, 0, 0.05, 0.6 + i * 0.75);
       pk.use('shiny').box(0.08, 0.1, 3.2, C.steel, 0.42, 0.14, 1.7).box(0.08, 0.1, 3.2, C.steel, -0.42, 0.14, 1.7).use('paint');
       // esteira saindo do portal até a baia (o caminhão para embaixo)
-      pk.rbox(1.0, 0.15, 7.5, 0.04, C.black, 4.6, 2.6, 2.4, 0.25, 0.45);
-      for (let i = 0; i < 3; i++) pk.box(0.14, 1.6 + i * 0.6, 0.14, C.yellowD, 3.6 + i * 1.0, 0.8 + i * 0.3, 0.6 + i * 1.6);
+      {
+        // correia subindo da boca do portal até a cabeça sobre a baia (o minério cai na caçamba)
+        const A = new THREE.Vector3(1.5, 0.55, 0.7);
+        const B = new THREE.Vector3(6.1, 3.25, 5.6);
+        const d = B.clone().sub(A);
+        const hl = Math.hypot(d.x, d.z);
+        const L = d.length();
+        const belt = new THREE.BoxGeometry(1.0, 0.16, L).rotateX(-Math.atan2(d.y, hl)).rotateY(Math.atan2(d.x, d.z));
+        const mid = A.clone().add(B).multiplyScalar(0.5);
+        pk.add(belt, C.black, mid.x, mid.y, mid.z);
+        const rail = () => new THREE.BoxGeometry(0.08, 0.22, L).rotateX(-Math.atan2(d.y, hl)).rotateY(Math.atan2(d.x, d.z));
+        for (const sd of [1, -1]) {
+          const ox = (Math.cos(Math.atan2(d.x, d.z)) * 0.54) * sd;
+          const oz = (-Math.sin(Math.atan2(d.x, d.z)) * 0.54) * sd;
+          pk.add(rail(), C.yellowD, mid.x + ox, mid.y + 0.08, mid.z + oz);
+        }
+        for (const f of [0.3, 0.62, 0.92]) {
+          const q = A.clone().lerp(B, f);
+          pk.box(0.14, q.y, 0.14, C.yellowD, q.x, q.y / 2, q.z);
+        }
+      }
       pk.rbox(1.6, 0.8, 1.6, 0.06, C.yellowD, 6.1, 3.6, 5.6);
       const portal = pk.build();
       portal.position.set(px, py, pz);
@@ -181,6 +200,83 @@ export class World {
     this.addStatic(fl);
     this.buildTrees();
     this.setTier(tier);
+  }
+
+  /** onde fica o portal: direção da montanha e distância do centro do pátio (a encosta) */
+  private portalAt = { a: 0, r: 12.5 };
+  /**
+   * Portal da mina em toda semente: anda do pátio para a montanha até a encosta subir ~2,5 m e
+   * encosta o portal ali; recorta um nicho plano na frente (soleira + trilhos), garante morro
+   * atrás do batente (a entrada some na rocha) e aplaina a baia da esteira e a faixa de ré do
+   * caminhão. Mexe em h e h0 juntos (é o terreno "gerado"; o save guarda só o que se cavou).
+   */
+  private portalCut(): void {
+    const T = this.T;
+    const m = this.map;
+    const mt = m.mountain;
+    const a = Math.atan2(mt.x - m.mine.x, mt.z - m.mine.z);
+    const sa = Math.sin(a);
+    const ca = Math.cos(a);
+    const py = T.heightAt(m.mine.x, m.mine.z);
+    let r = 12.5;
+    for (let q = 12.5; q < 26; q += 0.25) {
+      if (T.heightAt(m.mine.x + sa * q, m.mine.z + ca * q) > py + 2.5) {
+        r = q - 0.4;
+        break;
+      }
+      r = q;
+    }
+    r = Math.max(12.5, Math.min(24, r));
+    this.portalAt = { a, r };
+    const px = m.mine.x + sa * r;
+    const pz = m.mine.z + ca * r;
+    // eixos locais do portal (gira a+π): +z local = para o pátio, +x local = lado
+    const fz = [-sa, -ca];
+    const fx = [-ca, sa];
+    const sst = (e0: number, e1: number, x: number) => {
+      const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+      return t * t * (3 - 2 * t);
+    };
+    const R = 26;
+    const i0 = Math.max(0, Math.floor((px - R) / CELL));
+    const i1 = Math.min(N, Math.ceil((px + R) / CELL));
+    const j0 = Math.max(0, Math.floor((pz - R) / CELL));
+    const j1 = Math.min(N, Math.ceil((pz + R) / CELL));
+    const bay = { x: 6.1, z: 5.6 };
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const dx = i * CELL - px;
+        const dz = j * CELL - pz;
+        const lx = dx * fx[0] + dz * fx[1];
+        const lz = dx * fz[0] + dz * fz[1];
+        const k = j * V + i;
+        let h = T.h[k];
+        // morro atrás do batente: no mínimo 3,8 m acima do pátio (a boca entra na rocha)
+        const wb = (1 - sst(2.6, 4.6, Math.abs(lx))) * sst(-0.2, 0.6, -lz) * (1 - sst(5, 9, -lz));
+        if (wb > 0) h = Math.max(h, h + (py + 3.8 - h) * wb);
+        // nicho plano na frente do portal (soleira, trilhos, quem entra)
+        const wn = (1 - sst(2.8, 4.2, Math.abs(lx))) * sst(-0.9, -0.1, lz) * (1 - sst(9, 12, lz));
+        // baia e faixa de ré (12 m de frente da baia)
+        const bx = lx - bay.x;
+        const wbay = (1 - sst(4.4, 6.4, Math.abs(bx))) * sst(bay.z - 6.8, bay.z - 4.8, lz) * (1 - sst(bay.z + 13, bay.z + 16, lz));
+        const w = Math.max(wn, wbay);
+        if (w > 0) h += (py - h) * w;
+        if (h !== T.h[k]) {
+          T.h[k] = h;
+          T.h0[k] = h;
+          if (w > 0.5) T.mat[k] = MAT_DIRT;
+        }
+      }
+    // nada de árvore no nicho, na baia ou em cima da boca
+    m.trees = m.trees.filter((t) => {
+      const dx = t.x - px;
+      const dz = t.z - pz;
+      const lx = dx * fx[0] + dz * fx[1];
+      const lz = dx * fz[0] + dz * fz[1];
+      if (Math.abs(lx) < 5.5 && lz > -6 && lz < 13) return false;
+      if (Math.abs(lx - bay.x) < 6 && lz > bay.z - 6 && lz < bay.z + 16) return false;
+      return true;
+    });
   }
 
   private addStatic(o: THREE.Object3D): void {
