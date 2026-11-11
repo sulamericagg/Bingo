@@ -28,7 +28,9 @@ import { natureAnisotropy } from '../../3d/nature';
 import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, freshSlot, GOLD_PRICE, loadMeta, loadSlot, writeSlot, type Diff, type SlotSave } from './save';
 import { World } from './world';
 import { WaterSystem } from './water/system';
+import { ProcSystem } from './proc/system';
 import { RpLayer } from './rp'; // RP: vida de garimpeiro (clima, necessidades, diesel, eventos, estrada)
+import { Repairs } from './repair'; // CONSERTOS: quebras raras + minijogos de oficina
 import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
@@ -109,6 +111,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   fire: Fire | null = null;
   /** água: represa, enchente, bombas (water/) */
   water: WaterSystem | null = null;
+  /** beneficiamento: bateia, calhas, melhorias da lavadora, rejeitos (proc/) */
+  proc: ProcSystem | null = null;
   drivers: Driver[] = [];
   ug: Underground | null = null;
   inMine = false;
@@ -163,6 +167,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   mp: MpHost | MpGuest | null = null;
   /** RP: camada da vida de garimpeiro (rp/index.ts) */
   rp: RpLayer | null = null;
+  /** CONSERTOS: quebras, desgaste, peças e minijogos (repair/index.ts) */
+  repairs: Repairs | null = null;
   private lobby: LobbyHandle | null = null;
   private netChip: HTMLDivElement | null = null;
   /** convidado: carrinhos/mineiros da mina do anfitrião (só para a loja) */
@@ -575,7 +581,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   itemName(id: string): string {
     const it = [...MACHINES, ...HELPERS, ...UPGRADES, ...MINE].find((x) => x.id === id);
-    return it ? it.name() : '';
+    return it ? it.name() : this.proc?.itemName(id) ?? '';
   }
   /** máquina com alguém dentro (eu ou um amigo online) */
   busy(m: Machine): boolean {
@@ -647,6 +653,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (s.driving >= 0 && this.ms[s.driving] && !guest) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
     this.water = new WaterSystem(this, s);
+    this.proc = new ProcSystem(this, s);
+    this.repairs = new Repairs(this, s); // CONSERTOS
     if (!guest) {
       // convidado: mina, ajudantes e fogo rodam no anfitrião
       if (s.mineOpen) this.openMine();
@@ -921,6 +929,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   receiverAt(x: number, y: number, z: number, self: Machine | null, slack: number, drop = false): Receiver | null {
     const hp = this.hopperPos(_v2);
     if (Math.hypot(x - hp.x, z - hp.z) < 2.4 + slack && y > hp.y - 2 && y < hp.y + 7) return this.hopper;
+    const pr = this.proc?.receiverAt(x, y, z, slack);
+    if (pr) return pr;
     for (const m of this.ms) {
       if (m === self) continue;
       // drop: a terra cai — conta a altura da caçamba (acima ou um pouco abaixo da boca da caçamba da escavadeira)
@@ -1090,7 +1100,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       const drv = m === cur || seat ? null : this.drivers.find((d) => d.truck === m);
       // amigo dirigindo: a câmera dele vale (garimpeiro/helicóptero andam relativos à tela)
       if (seat) this.env.camYaw = seat.cy;
-      m.update(dt, m === cur ? ctl : seat ? seat.ctl : drv ? drv.ctl : null, this.env);
+      const mc = m === cur ? ctl : seat ? seat.ctl : drv ? drv.ctl : null;
+      m.update(dt, this.repairs ? this.repairs.ctl(m, mc) : mc, this.env); // CONSERTOS: efeitos da quebra no controle
       this.env.camYaw = this.camYaw;
     }
     // física em passos fixos de 1/120 s
@@ -1107,6 +1118,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.prof.phys += (performance.now() - p0 - this.prof.phys) * 0.05;
     collide(this.ms, w);
     for (const m of this.ms) m.sync(dt);
+    this.repairs?.step(dt); // CONSERTOS: desgaste, quebras, emergência do freio, HUD
     // fuga: virou? desvira sozinho depois de 2 s
     if (cur.veh && cur.veh.flipped() && Math.abs(cur.veh.speed) < 1) {
       this.hintT += dt;
@@ -1130,6 +1142,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       }
     }
     this.plantStep(dt);
+    this.proc?.step(dt);
     this.exportStep(dt);
     this.fire!.step(dt, this);
     this.rainStep(dt);
@@ -1172,6 +1185,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     mp.frame(dt);
+    this.repairs?.stepGuest(dt); // CONSERTOS
     if (cur === this.worker) this.worker.update(dt, ctl, this.env);
     else if (cur instanceof Excavator) cur.cam.yawOff = cur.swing + (ctl.drive ? 0 : 0.38);
     mp.sendInput(ctl, dt);
@@ -1182,6 +1196,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.camera(dt);
     this.plantSpin = mp.plantSpin;
     this.plantVisual(dt);
+    this.proc?.step(dt);
     // a mina subterrânea é só do anfitrião nesta versão
     this.mineNoteT -= dt;
     if (s.mineOpen && cur === this.worker && this.nearPortalPos() && this.mineNoteT <= 0) {
@@ -1291,14 +1306,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const w = this.w!;
     const pl = w.plant;
     if (s.plantVol > 1e-4) {
-      const v0 = Math.min(s.plantVol, PLANT_RATE[s.upg.plant] * dt);
+      const v0 = Math.min(s.plantVol, PLANT_RATE[s.upg.plant] * (this.proc ? this.proc.rateMul() : 1) * dt);
       const v = this.water ? this.water.wash(v0) : v0;
       const g = (s.plantGold * v) / s.plantVol;
       s.plantVol -= v;
       s.plantGold -= g;
       if (s.plantVol < 1e-4) s.plantVol = s.plantGold = 0;
-      s.stock += g;
-      this.goldToast += g;
+      // beneficiamento: só a parte recuperada vira ouro (o resto sai no rejeito)
+      const got = this.proc ? this.proc.plantFeed(v, g) : g;
+      s.stock += got;
+      this.goldToast += got;
       this.tail += v;
       this.plantSpin = Math.min(1, this.plantSpin + dt * 2);
       // água na calha
@@ -1312,7 +1329,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (this.tail > 0.15) {
       _v.set(0, 0, -10.2);
       pl.root.localToWorld(_v);
-      w.T.deposit(_v.x, _v.z, this.tail, 1.8, 0.05);
+      w.T.deposit(_v.x, _v.z, this.tail, 1.8, this.proc ? this.proc.tailGrade(this.tail, _v.x, _v.z) : 0.05);
       w.T.relax(_v.x, _v.z, 3);
       this.tail = 0;
     }
@@ -1684,7 +1701,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}</div>`,
+      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}${this.proc ? this.proc.shopHtml(s.money) : ''}${this.repairs ? this.repairs.shopHtml(s.money) : ''}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -1712,6 +1729,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       return true;
     }
     if (this.water?.isItem(id)) return this.water.buy(id) && (this.persist(), true);
+    if (this.proc?.isItem(id)) return this.proc.buy(id) && (this.persist(), true);
+    if (this.repairs?.isItem(id)) return this.repairs.buy(id) && (this.persist(), true); // CONSERTOS
     const mi = MACHINES.find((m) => m.id === id);
     if (mi) {
       const n = this.ms.filter((m) => m.kind === mi.kind).length;
@@ -1793,6 +1812,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     s.terrain = encodeTerrain(w.T);
     if (this.water) s.water = this.water.save();
+    if (this.proc) s.proc = this.proc.save();
+    if (this.repairs) s.repair = this.repairs.save(); // CONSERTOS
     this.fire?.save(s);
     if (this.ug) s.ug = this.ug.save();
     this.rp?.save(s); // RP
@@ -1853,6 +1874,10 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.fire = null;
     this.water?.dispose();
     this.water = null;
+    this.proc?.dispose();
+    this.proc = null;
+    this.repairs?.dispose(); // CONSERTOS
+    this.repairs = null;
     this.w?.dispose();
     this.w = null;
     this.r?.dispose();

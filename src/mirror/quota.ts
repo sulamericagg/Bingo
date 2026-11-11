@@ -22,6 +22,8 @@ export interface MirrorSave {
   voice: string;
   scene: string;
   sticker: string;
+  /** o jogador ligou o microfone pelo botão (religa sozinho na próxima vez) */
+  mic: boolean;
 }
 
 const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
@@ -42,6 +44,7 @@ export function mirrorSave(): MirrorSave {
   m.voice ??= 'normal';
   m.scene ??= 'quarto';
   m.sticker ??= 'none';
+  m.mic ??= false;
   const d = dayNumber();
   if (m.day !== d) {
     m.day = d;
@@ -93,7 +96,7 @@ export function grantAdBonus(): void {
   persistNow();
 }
 
-export function setMirrorPref<K extends 'voice' | 'scene' | 'sticker' | 'consent'>(k: K, v: MirrorSave[K]): void {
+export function setMirrorPref<K extends 'voice' | 'scene' | 'sticker' | 'consent' | 'mic'>(k: K, v: MirrorSave[K]): void {
   mirrorSave()[k] = v;
   persist();
 }

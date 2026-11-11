@@ -212,4 +212,48 @@ export class OnlineUI {
 /** Liga ouvintes globais (badge do correio etc.). */
 export function bindOnlineBadges(update: (n: number) => void): void {
   bus.on('inbox', (list: Gift[]) => update(list.length));
+  bindAutoGifts();
+}
+
+/*
+ * Presentes chegam SOZINHOS: quando há algo no Correio e o hub está livre (sem jogo/painel aberto),
+ * resgata e mostra a festa na hora — a criança não precisa achar o botão do Correio.
+ * Também consulta o servidor a cada 60 s enquanto o hub está aberto (antes: só ao abrir o app).
+ */
+let autoBusy = false;
+let autoTimer = 0;
+function bindAutoGifts(): void {
+  const tryNow = async (): Promise<void> => {
+    if (autoBusy || !getInbox().length) return;
+    const { hubIdle } = await import('../hub/hub');
+    if (!hubIdle()) return;
+    autoBusy = true;
+    try {
+      const list = getInbox();
+      const rewards = await claimGifts(list.map((g) => g.id));
+      if (rewards.length) {
+        const titled = rewards.length === 1 ? rewards[0].title || list[0]?.title : undefined;
+        await celebrate(mergePacks(rewards), {
+          title: t('inbox.giftsTitle', 'PRESENTES!'),
+          subtitle: titled || t('inbox.giftsN', '{n} presentes recebidos', { n: rewards.length }),
+        });
+      }
+    } finally {
+      autoBusy = false;
+    }
+  };
+  bus.on('inbox', () => void tryNow());
+  if (!autoTimer && typeof window !== 'undefined') {
+    let ticks = 0;
+    autoTimer = window.setInterval(() => {
+      ticks++;
+      if (document.visibilityState !== 'visible') return;
+      void tryNow(); // presente que chegou durante um jogo: entrega ao voltar para o hub
+      if (ticks % 20 === 0) {
+        void import('../hub/hub').then(({ hubVisible }) => {
+          if (hubVisible()) syncNow().catch(() => {});
+        });
+      }
+    }, 3000);
+  }
 }
