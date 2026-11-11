@@ -106,8 +106,9 @@ const CSS = `
 /* objetivo: abre por alguns segundos e vira um ícone (toque para ver de novo) */
 .fw-obj{pointer-events:auto;display:flex;align-items:center;gap:5px;height:30px;border-radius:999px;background:rgba(20,8,48,.62);border:2px solid rgba(255,211,74,.75);color:#fff;font:700 12px/1.15 inherit;padding:0 10px 0 4px;max-width:min(52vw,360px);transition:max-width .3s,padding .3s;overflow:hidden;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .fw-obj span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s}
-.fw-obj.mini{max-width:30px;padding:0 0 0 2px}
-.fw-obj.mini span{opacity:0}
+.fw-obj svg{flex:none}
+.fw-obj.mini{max-width:30px;width:30px;padding:0;justify-content:center}
+.fw-obj.mini span{display:none}
 .fw-obj.new{animation:fwPulse .9s 2}
 @keyframes fwPulse{50%{box-shadow:0 0 0 4px rgba(255,211,74,.55)}}
 /* banner de minijogo do servidor: mesmo comportamento */
