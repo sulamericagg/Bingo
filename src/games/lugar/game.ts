@@ -1079,7 +1079,8 @@ class LugarGame implements MiniGameHandle {
     };
     this.bind(ov, '[data-a=next]', () =>
       go(() => {
-        void maybeInterstitial();
+        // sem intersticial nas primeiras fases (deixa a pessoa pegar o gosto)
+        if (this.idx >= 4) void maybeInterstitial();
         this.startLevel(this.idx + 1);
       }),
     );
@@ -1087,7 +1088,7 @@ class LugarGame implements MiniGameHandle {
     this.bind(ov, '[data-a=again]', () => go(() => this.begin(p, this.key)));
     this.bind(ov, '[data-a=out]', () =>
       go(() => {
-        void maybeInterstitial();
+        if (this.mode !== 'level' || this.idx >= 4) void maybeInterstitial();
         this.leave();
       }),
     );
