@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Economy",
   "voo.z.first": "First Class",
-  "voo.z.galley": "Bordküche"
+  "voo.z.galley": "Bordküche",
+  "ads.capReached": "Video-Limit für heute erreicht",
+  "ads.dbl.title": "Belohnung verdoppeln",
+  "ads.dbl.sub": "+{n} Münzen für ein kurzes Video",
+  "ads.dbl.watch": "Ansehen",
+  "ads.dbl.no": "Jetzt nicht",
+  "ads.dbl.done": "+{n} Münzen! Belohnung verdoppelt"
 } as Record<string, string>;

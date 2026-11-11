@@ -980,6 +980,8 @@ body.hub-lowfx .hub-card.active {
 .gh-root {
   z-index: 0;
   isolation: isolate;
+  /* banner (só em menu/resultado dos minigames): o jogo encolhe para cima dele, nunca fica embaixo */
+  bottom: var(--ad-bottom, 0px);
 }
 .gh-confirm {
   position: absolute;

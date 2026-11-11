@@ -18,7 +18,7 @@ import * as haptics from '../core/haptics';
 import { save } from '../core/storage';
 import { t } from '../i18n';
 import { applyI18n } from '../i18n/langs';
-import { hideBanner, showBanner } from '../services/ads';
+import { hideBanner, setHostProbe, showBanner } from '../services/ads';
 import { displayName } from '../services/leaderboard';
 import { renderSkinPreview } from '../game/preview';
 import { skinById } from '../game/skins';
@@ -62,6 +62,9 @@ let hostActive = false;
 let hostDef: MiniGameDef | null = null;
 let handle: MiniGameHandle | null = null;
 let launching = false;
+/** anúncios: quando o minigame abriu e quantas partidas terminou nesta visita (pausa na saída) */
+let hostOpenAt = 0;
+let hostRuns = 0;
 
 let profileRenderer: ProfileRenderer = defaultProfile;
 let profileClick: () => void = () => (document.querySelector('#menu [data-open="settings"]') as HTMLElement | null)?.click();
@@ -166,6 +169,9 @@ export async function launchGame(def: MiniGameDef): Promise<void> {
   launching = true;
   hostActive = true;
   hostDef = def;
+  hostOpenAt = Date.now();
+  hostRuns = 0;
+  bus.emit('host-open', def.id);
   hideBanner();
   menu.classList.remove('on');
   host.classList.add('on');
@@ -231,6 +237,7 @@ export function closeHost(): void {
   if (!hostActive) return;
   hideConfirm();
   const h = handle;
+  const closed = { game: hostDef?.id ?? '', playedSec: Math.round((Date.now() - hostOpenAt) / 1000), runs: hostRuns };
   handle = null;
   hostActive = false;
   hostDef = null;
@@ -247,6 +254,7 @@ export function closeHost(): void {
   showBanner();
   onShow();
   kickFrame();
+  bus.emit('host-close', closed); // pausa natural para anúncio (src/services/adbreaks.ts)
 }
 
 /**
@@ -343,7 +351,27 @@ export function initHub(o: HubOptions): void {
   bus.on('hub-show', onShow);
   bus.on('quality', () => setTimeout(syncFxClass, 0));
   syncFxClass();
-  bus.on('run-end', () => setTimeout(refreshBests, 0));
+  bus.on('run-end', () => {
+    if (hostActive) hostRuns++;
+    setTimeout(refreshBests, 0);
+  });
+  // anúncios: estado do minigame aberto (banner só fora da partida e fora do 3D; ver services/ads.ts)
+  setHostProbe(() => {
+    let inMatch: boolean | undefined;
+    try {
+      inMatch = handle?.inMatch ? !!handle.inMatch() : undefined;
+    } catch {
+      inMatch = true;
+    }
+    return {
+      active: hostActive,
+      game: hostDef?.id ?? null,
+      inMatch: handle ? inMatch : true,
+      is3d: hostActive && (o3dState === 'landscape' || find3d(hostRoot)),
+      confirm: hostConfirm?.classList.contains('on') ?? false,
+      openMs: hostActive ? Date.now() - hostOpenAt : 0,
+    };
+  });
   bus.on('player', refreshProfile);
   bus.on('profile', refreshProfile);
   bus.on('cosmetics', refreshProfile);
@@ -899,6 +927,8 @@ function buildHost(): void {
     </div>`;
   document.body.appendChild(host);
   hostRoot = host.querySelector('.gh-root')!;
+  // anúncios: qualquer toque no jogo fecha a "janela de resultado" (o banner some antes da próxima partida)
+  host.addEventListener('pointerdown', () => bus.emit('host-input'), true);
   hostConfirm = host.querySelector('.gh-confirm')!;
   host.querySelector<HTMLElement>('[data-gh="resume"]')!.onclick = () => {
     audio.click();

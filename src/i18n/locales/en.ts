@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Economy class",
   "voo.z.first": "First class",
-  "voo.z.galley": "Galley"
+  "voo.z.galley": "Galley",
+  "ads.capReached": "Today's video limit reached",
+  "ads.dbl.title": "Double reward",
+  "ads.dbl.sub": "+{n} coins for a short video",
+  "ads.dbl.watch": "Watch",
+  "ads.dbl.no": "Not now",
+  "ads.dbl.done": "+{n} coins! Reward doubled"
 } as Record<string, string>;

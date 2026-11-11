@@ -7,13 +7,28 @@ import {
   InterstitialAdPluginEvents,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
-import { ADMOB, AD_FREE, AD_RULES, ADS_TEST_MODE, WEB_ADS } from '../config';
+import { ADMOB, AD_FREE, ADS_TEST_MODE, WEB_ADS } from '../config';
 import { audio } from '../core/audio';
 import { bus } from '../core/events';
 import { icon } from '../ui/icons';
 import { isNative } from '../core/platform';
 import { pushBack } from '../core/back';
 import { persist, save } from '../core/storage';
+import {
+  adGame,
+  adLog,
+  bump,
+  canInterstitial,
+  hostProbe,
+  noteInterstitial,
+  notePurchaseAt,
+  noteRewarded,
+  resultWindowAge,
+  resultWindowOpen,
+  type BreakCtx,
+} from './adpolicy';
+
+export { adStats, setHostProbe } from './adpolicy';
 
 declare global {
   interface Window {
@@ -31,14 +46,9 @@ let bannerCreated = false;
 let bannerShown = false;
 let busy = false;
 let webReady = false;
-/** momento da última compra com dinheiro real (sessão atual) */
-let lastPurchaseAt = 0;
-/** pausa de intersticiais depois de uma compra */
-const AFTER_PURCHASE_MS = 15 * 60 * 1000;
-
-/** Chamado pelo billing: nada de intersticial logo depois de alguém pagar. */
+/** Chamado pelo billing: nada de intersticial logo depois de alguém pagar (AD_BREAKS.afterPurchaseMin). */
 export function notePurchase(): void {
-  lastPurchaseAt = Date.now();
+  notePurchaseAt();
 }
 
 /* ---------------- tempo sem anúncios / isenções ---------------- */
@@ -183,70 +193,89 @@ export function rewardedAvailable(): boolean {
   return webReady || ADS_TEST_MODE;
 }
 
-/** Vídeo premiado. Resolve true somente se o jogador assistiu até o fim. */
-export async function showRewarded(): Promise<boolean> {
+/**
+ * Vídeo premiado. Resolve true somente se o jogador assistiu até o fim.
+ * `kind` só serve para as estatísticas (tetos diários ficam em offerRewarded, src/services/adbreaks.ts).
+ */
+export async function showRewarded(kind = 'other'): Promise<boolean> {
   if (busy) return false;
   busy = true;
+  const game = adGame();
+  adLog(`PREMIADO abre (${game}, ${kind})`, 'fire');
+  bus.emit('rewarded-start', { game, kind });
   audio.suspend();
   bus.emit('ad-open');
+  let result = false;
   try {
-    if (isNative) {
-      if (!rewardedReady) await loadRewarded();
-      if (!rewardedReady) return false;
-      let rewarded = false;
-      const h = await AdMob.addListener(RewardAdPluginEvents.Rewarded, () => (rewarded = true));
-      const done = new Promise<void>((res) => {
-        const h2 = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-          h2.then((x) => x.remove());
-          res();
-        });
-        const h3 = AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => {
-          h3.then((x) => x.remove());
-          res();
-        });
-      });
-      try {
-        const item = await AdMob.showRewardVideoAd();
-        if (item) rewarded = true;
-      } catch {
-        /* falhou ao exibir */
-      }
-      await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]);
-      h.remove();
-      return rewarded;
-    }
-    if (WEB_ADS.adsenseClient && window.adBreak) {
-      return await new Promise<boolean>((resolve) => {
-        let ok = false;
-        window.adBreak!({
-          type: 'reward',
-          name: 'reward',
-          beforeReward: (show: () => void) => show(),
-          adViewed: () => (ok = true),
-          adDismissed: () => (ok = false),
-          adBreakDone: () => resolve(ok),
-        });
-      });
-    }
-    if (ADS_TEST_MODE) return await fakeAd(true);
-    return false;
+    result = await showRewardedInner();
+    return result;
   } finally {
     busy = false;
+    noteRewarded(game, kind, result);
+    adLog(result ? `PREMIADO concluído (${game}, ${kind})` : `premiado não concluído (${game})`, result ? 'reward' : 'skip');
     audio.resume();
     bus.emit('ad-close');
   }
 }
 
-/** Intersticial com limite de frequência — nunca para quem comprou "Sem Anúncios". */
-export async function maybeInterstitial(): Promise<void> {
-  if (adsSuppressed() || busy) return;
-  if (lastPurchaseAt && Date.now() - lastPurchaseAt < AFTER_PURCHASE_MS) return;
-  save.runsSinceAd++;
-  persist();
-  const now = Date.now();
-  if (save.runs <= AD_RULES.freeRunsBeforeFirstInterstitial) return;
-  if (save.runsSinceAd < AD_RULES.interstitialEveryNRuns) return;
-  if (now - save.lastInterstitial < AD_RULES.interstitialMinSeconds * 1000) return;
+async function showRewardedInner(): Promise<boolean> {
+  if (isNative) {
+    if (!rewardedReady) await loadRewarded();
+    if (!rewardedReady) return false;
+    let rewarded = false;
+    const h = await AdMob.addListener(RewardAdPluginEvents.Rewarded, () => (rewarded = true));
+    const done = new Promise<void>((res) => {
+      const h2 = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        h2.then((x) => x.remove());
+        res();
+      });
+      const h3 = AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => {
+        h3.then((x) => x.remove());
+        res();
+      });
+    });
+    try {
+      const item = await AdMob.showRewardVideoAd();
+      if (item) rewarded = true;
+    } catch {
+      /* falhou ao exibir */
+    }
+    await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]);
+    h.remove();
+    return rewarded;
+  }
+  if (WEB_ADS.adsenseClient && window.adBreak) {
+    return await new Promise<boolean>((resolve) => {
+      let ok = false;
+      window.adBreak!({
+        type: 'reward',
+        name: 'reward',
+        beforeReward: (show: () => void) => show(),
+        adViewed: () => (ok = true),
+        adDismissed: () => (ok = false),
+        adBreakDone: () => resolve(ok),
+      });
+    });
+  }
+  if (ADS_TEST_MODE) return await fakeAd(true);
+  return false;
+}
+
+/**
+ * Intersticial numa pausa natural, com os limites GLOBAIS de src/services/adpolicy.ts (AD_BREAKS):
+ * intervalo mínimo, teto por sessão/hora, início de sessão, jogador novo, logo após compra/vídeo,
+ * primeiras partidas de cada jogo — e nunca para quem tem Sem Anúncios/Clube/passe/tempo livre.
+ * Resolve true se o anúncio apareceu. Sem argumento = chamada antiga (Orbit / jogos entre partidas).
+ */
+export async function maybeInterstitial(ctx: BreakCtx = {}): Promise<boolean> {
+  if (busy) return false;
+  const game = ctx.game ?? adGame();
+  const gate = canInterstitial({ reason: 'game', ...ctx, game }, adsSuppressed());
+  if (!gate.ok) {
+    adLog(`intersticial bloqueado (${game}, ${ctx.reason ?? 'game'}): ${gate.why}`, 'skip');
+    return false;
+  }
+  adLog(`INTERSTICIAL dispara (${game}, ${ctx.reason ?? 'game'})`, 'fire');
   busy = true;
   audio.suspend();
   bus.emit('ad-open');
@@ -264,7 +293,9 @@ export async function maybeInterstitial(): Promise<void> {
       save.runsSinceAd = 0;
       save.lastInterstitial = Date.now();
       persist();
-    }
+      noteInterstitial(game);
+    } else adLog(`intersticial sem anúncio carregado (${game})`, 'skip');
+    return shown;
   } finally {
     busy = false;
     audio.resume();
@@ -329,10 +360,37 @@ function setAdBottom(px: number): void {
   document.body?.classList.toggle('has-banner', v > 0);
 }
 
+/** Sempre escondem o banner, até dentro de um minigame (anúncio, celebração, onboarding...). */
+const BLOCK_ALWAYS = '.ob-root, .beta-sheet-bg, .celebrate, .fake-ad';
+/** banner num minigame só depois do contexto ficar estável por este tempo (evita piscar) */
+const HOST_SETTLE_MS = 1500;
+let hostOkSince = 0;
+
+/**
+ * Minigame do hub aberto: banner SÓ no menu/lobby/resultado do jogo, nunca jogando.
+ *  - jogo com inMatch(): banner quando inMatch() === false (menu, garagem, resultado)
+ *  - jogo sem inMatch(): só na tela de resultado (depois do 'run-end' até o próximo toque)
+ *  - nunca em cena 3D (paisagem/tela cheia), nem com "Sair do jogo?" aberto
+ */
+function hostBannerOk(): boolean {
+  const p = hostProbe();
+  if (!p?.active) return false;
+  let ok = !p.is3d && !p.confirm && p.openMs > 2500;
+  if (ok) ok = p.inMatch === false || (p.inMatch === undefined && resultWindowOpen() && resultWindowAge() > 600);
+  if (!ok) {
+    hostOkSince = 0;
+    return false;
+  }
+  if (!hostOkSince) hostOkSince = Date.now();
+  return Date.now() - hostOkSince >= HOST_SETTLE_MS;
+}
+
 /** O contexto atual permite banner? (sem olhar compras) */
 export function bannerContextOk(): boolean {
   if (Date.now() < holdUntil || busy) return false;
   if (document.hidden) return false;
+  if (document.querySelector('#game-host.on')) return !document.querySelector(BLOCK_ALWAYS) && hostBannerOk();
+  hostOkSince = 0;
   const hud = document.getElementById('hud');
   const over = document.getElementById('over');
   if (hud?.classList.contains('on') && !over?.classList.contains('on')) return false; // jogando / pausa
@@ -354,6 +412,7 @@ async function applyBanner(): Promise<void> {
     if (want && !bannerShown) {
       if (Date.now() - bannerFailAt < 30000) return; // falhou há pouco: não insiste
       bannerShown = true;
+      noteBanner();
       if (bannerCreated) await AdMob.resumeBanner();
       else {
         await AdMob.showBanner({
@@ -387,6 +446,7 @@ function applyFake(want: boolean): void {
     fakeEl.textContent = `AD BANNER (teste ${fakeH}px)`;
     document.body.appendChild(fakeEl);
     bannerShown = true;
+    noteBanner();
     setAdBottom(fakeH);
   } else if (!want && fakeEl) {
     fakeEl.remove();
@@ -394,6 +454,13 @@ function applyFake(want: boolean): void {
     bannerShown = false;
     setAdBottom(0);
   }
+}
+
+/** Cada vez que o banner aparece conta como 1 exibição para o jogo/tela atual. */
+function noteBanner(): void {
+  const g = adGame();
+  bump(g, 'banner');
+  adLog(`banner aparece (${g})`, 'info');
 }
 
 /** Reavalia o banner no próximo tick (depois que a tela terminou de trocar). */
@@ -408,7 +475,7 @@ function startBannerManager(): void {
   fakeH = fakeBannerHeight();
   setAdBottom(0);
   if (!isNative && !fakeH) return; // web sem banner: nada a gerenciar
-  for (const ev of ['hub-show', 'host-open', 'host-close', 'race-exit', 'purchase', 'club', 'ad-free', 'panel-open', 'panel-close', 'pet-closed', 'onboarding-done'])
+  for (const ev of ['hub-show', 'host-open', 'host-close', 'race-exit', 'purchase', 'club', 'ad-free', 'panel-open', 'panel-close', 'pet-closed', 'onboarding-done', 'run-end'])
     bus.on(ev, scheduleBanner);
   bus.on('ad-open', () => {
     holdUntil = Date.now() + 500;
@@ -449,7 +516,7 @@ function fakeAd(reward: boolean): Promise<boolean> {
     const el = document.createElement('div');
     el.className = 'fake-ad';
     let left = reward ? 5 : 3;
-    el.innerHTML = `<div class="fake-ad-box"><div class="fake-ad-art">${icon('video', { size: 56 })}</div><div class="fake-ad-tag">ANÚNCIO DE TESTE</div><div class="fake-ad-title">Seu anúncio aparece aqui</div><div class="fake-ad-sub">Configure o AdMob/AdSense em <b>src/config.ts</b></div><div class="fake-ad-count">${left}</div><button class="fake-ad-close">Fechar</button></div>`;
+    el.innerHTML = `<div class="fake-ad-box"><div class="fake-ad-art">${icon('video', { size: 56 })}</div><div class="fake-ad-tag">ANÚNCIO DE TESTE · ${reward ? 'PREMIADO' : 'INTERSTICIAL'}</div><div class="fake-ad-title">Seu anúncio aparece aqui</div><div class="fake-ad-sub">Configure o AdMob/AdSense em <b>src/config.ts</b></div><div class="fake-ad-count">${left}</div><button class="fake-ad-close">Fechar</button></div>`;
     document.body.appendChild(el);
     const count = el.querySelector('.fake-ad-count')!;
     const close = el.querySelector<HTMLButtonElement>('.fake-ad-close')!;

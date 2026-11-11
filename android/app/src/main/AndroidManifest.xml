@@ -8,7 +8,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true">
-        <!-- ID do APP no AdMob (troque pelo seu: ca-app-pub-XXXXXXXX~YYYYYYYY) -->
+        <!-- TODO(dono): ID do APP no AdMob (troque pelo seu: ca-app-pub-XXXXXXXX~YYYYYYYY) — o mesmo de ADMOB_REAL.appId em src/config.ts. Passo a passo: docs/ANUNCIOS.md -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713"

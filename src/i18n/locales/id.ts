@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Kokpit",
   "voo.z.eco": "Kelas ekonomi",
   "voo.z.first": "Kelas satu",
-  "voo.z.galley": "Dapur"
+  "voo.z.galley": "Dapur",
+  "ads.capReached": "Batas video hari ini tercapai",
+  "ads.dbl.title": "Gandakan hadiah",
+  "ads.dbl.sub": "+{n} koin dengan video singkat",
+  "ads.dbl.watch": "Tonton",
+  "ads.dbl.no": "Nanti saja",
+  "ads.dbl.done": "+{n} koin! Hadiah digandakan"
 } as Record<string, string>;

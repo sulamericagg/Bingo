@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Cockpit",
   "voo.z.eco": "Classe éco",
   "voo.z.first": "Première classe",
-  "voo.z.galley": "Office"
+  "voo.z.galley": "Office",
+  "ads.capReached": "Limite de vidéos atteinte aujourd'hui",
+  "ads.dbl.title": "Doubler la récompense",
+  "ads.dbl.sub": "+{n} pièces avec une courte vidéo",
+  "ads.dbl.watch": "Regarder",
+  "ads.dbl.no": "Pas maintenant",
+  "ads.dbl.done": "+{n} pièces ! Récompense doublée"
 } as Record<string, string>;

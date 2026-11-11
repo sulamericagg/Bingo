@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Кабина пилотов",
   "voo.z.eco": "Эконом-класс",
   "voo.z.first": "Первый класс",
-  "voo.z.galley": "Кухня"
+  "voo.z.galley": "Кухня",
+  "ads.capReached": "Лимит видео на сегодня исчерпан",
+  "ads.dbl.title": "Удвоить награду",
+  "ads.dbl.sub": "+{n} монет за короткое видео",
+  "ads.dbl.watch": "Смотреть",
+  "ads.dbl.no": "Не сейчас",
+  "ads.dbl.done": "+{n} монет! Награда удвоена"
 } as Record<string, string>;

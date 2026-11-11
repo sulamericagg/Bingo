@@ -5976,5 +5976,11 @@ export default {
   "voo.z.cockpit": "Cabina de mando",
   "voo.z.eco": "Clase turista",
   "voo.z.first": "Primera clase",
-  "voo.z.galley": "Cocina"
+  "voo.z.galley": "Cocina",
+  "ads.capReached": "Límite de videos de hoy alcanzado",
+  "ads.dbl.title": "Duplicar recompensa",
+  "ads.dbl.sub": "+{n} monedas con un video cortito",
+  "ads.dbl.watch": "Ver",
+  "ads.dbl.no": "Ahora no",
+  "ads.dbl.done": "¡+{n} monedas! Recompensa duplicada"
 } as Record<string, string>;
