@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Долби скалу киркой. Ставь рельсы, вагонетки, генератор и лампы!",
+  "gb.noMoney": "Не хватает денег",
+  "gb.needMine": "Сначала открой шахту",
+  "gb.mineOpen": "Шахта открыта! Вход на площадке у горы.",
+  "gb.mine.open": "Открыть подземную шахту",
+  "gb.mine.cart": "Вагонетка",
+  "gb.mine.bot": "Шахтёр (шахта)",
   "best.garimpo": "Продано золота: {n} г",
   "gb.back": "Назад",
   "gb.bed": "Кузов",

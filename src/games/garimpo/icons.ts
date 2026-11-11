@@ -39,6 +39,9 @@ export const IC = {
   close: S('<path d="M6 6l12 12M18 6L6 18"/>'),
   bucket: S('<path d="M5 8h14l-2 12H7z"/><path d="M5 8a7 5 0 0 1 14 0"/>'),
   plant: S('<path d="M3 20h18M5 20V10l5 3V10l5 3V6h4v14"/>'),
+  user: S('<circle cx="12" cy="7" r="3.5"/><path d="M5 21c0-4 3-7 7-7s7 3 7 7"/><path d="M8 4l4-2 4 2"/>'),
+  bolt: S('<path d="M13 2L5 14h6l-1 8 8-12h-6z" fill="#ffd23a" stroke="#fff"/>'),
+  pick: S('<path d="M4 9c4-5 12-5 16 0"/><path d="M12 6v15"/>'),
   arrow: S('<path d="M12 3l7 16-7-4-7 4z" fill="currentColor"/>'),
 };
 export type IconKey = keyof typeof IC;

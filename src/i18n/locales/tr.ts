@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "Kayayı kazmayla kaz. Ray, vagon, jeneratör ve lamba koy!",
+  "gb.noMoney": "Para yetmiyor",
+  "gb.needMine": "Önce madeni aç",
+  "gb.mineOpen": "Maden açıldı! Giriş dağdaki maden sahasında.",
+  "gb.mine.open": "Yeraltı madenini aç",
+  "gb.mine.cart": "Maden vagonu",
+  "gb.mine.bot": "Madenci (maden)",
   "best.garimpo": "Satılan altın: {n} g",
   "gb.back": "Geri",
   "gb.bed": "Damper",

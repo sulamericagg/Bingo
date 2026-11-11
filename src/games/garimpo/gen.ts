@@ -295,7 +295,7 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
   const deposits: Deposit[] = [];
   // 1) jazida rasa perto do acampamento (para os primeiros carrinhos de mão)
   const a0 = toC + Math.PI + (r() - 0.5) * 0.8;
-  deposits.push({ x: camp.x + Math.cos(a0) * -34 + J(4), z: camp.z + Math.sin(a0) * -34 + J(4), r: 7, g: 34, d: 0.6 });
+  deposits.push({ x: camp.x + Math.cos(a0) * -34 + J(4), z: camp.z + Math.sin(a0) * -34 + J(4), r: 7, g: 55, d: 0.6 });
   // 2) cascalho de riacho em volta do lago (rasos, médios)
   for (let i = 0; i < 3; i++) {
     const a = r() * Math.PI * 2;

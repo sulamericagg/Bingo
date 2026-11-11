@@ -8,7 +8,7 @@ import { Flames, makeClods, makeDrops, Particles, Rain } from './fx';
 import { generate, type MapInfo } from './gen';
 import { buildFlag, buildGarage, buildHouse, buildPlant, buildStock, C } from './models';
 import { Vegetation } from './veg';
-import { setLod } from './kit';
+import { Kit, setLod } from './kit';
 import { SIZE, Terrain } from './terrain';
 
 export interface Circle {
@@ -41,6 +41,9 @@ export class World {
   /** volumes de prédios (a câmera não entra): centro, raio, altura do topo */
   blockers: { x: number; z: number; r: number; y: number }[] = [];
   plant!: ReturnType<typeof buildPlant>;
+  /** portal da mina subterrânea e baia onde a esteira despeja */
+  portal = { x: 0, z: 0, yaw: 0, obj: null as THREE.Object3D | null };
+  bay = { x: 0, z: 0 };
   stock!: ReturnType<typeof buildStock>;
   private statics: THREE.Object3D[] = [];
   tier: Tier = 2;
@@ -140,6 +143,35 @@ export class World {
       this.addStatic(hm);
       this.addCircle({ x: h.x, z: h.z, r: 3.1 });
       this.blockers.push({ x: h.x, z: h.z, r: 3.6, y: hm.position.y + 4.5 });
+    }
+    // portal da mina subterrânea na parede do pátio (lado da montanha) + baia da esteira
+    {
+      const mt = m.mountain;
+      const a = Math.atan2(mt.x - m.mine.x, mt.z - m.mine.z);
+      const px = m.mine.x + Math.sin(a) * 12.5;
+      const pz = m.mine.z + Math.cos(a) * 12.5;
+      const py = this.T.heightAt(m.mine.x, m.mine.z);
+      const pk = new Kit({ y: 0.5, k: 0.5 });
+      for (const sx of [1.8, -1.8]) pk.rbox(0.45, 3.6, 0.45, 0.06, C.wood, sx, 1.8, 0);
+      pk.rbox(4.4, 0.5, 0.5, 0.06, C.wood, 0, 3.7, 0);
+      pk.box(3.2, 3.4, 0.2, 0x0b0705, 0, 1.7, -0.25);
+      pk.rbox(4.6, 0.6, 1.6, 0.1, 0x6e5a48, 0, 4.2, -0.6);
+      pk.decal('warn', 0.7, 0.7, 0, 4.2, 0.22);
+      pk.decal('logoDark', 2.0, 1.0, 0, 5.0, -0.3);
+      for (let i = 0; i < 4; i++) pk.box(1.3, 0.1, 0.22, C.wood, 0, 0.05, 0.6 + i * 0.75);
+      pk.use('shiny').box(0.08, 0.1, 3.2, C.steel, 0.42, 0.14, 1.7).box(0.08, 0.1, 3.2, C.steel, -0.42, 0.14, 1.7).use('paint');
+      // esteira saindo do portal até a baia (o caminhão para embaixo)
+      pk.rbox(1.0, 0.15, 7.5, 0.04, C.black, 4.6, 2.6, 2.4, 0.25, 0.45);
+      for (let i = 0; i < 3; i++) pk.box(0.14, 1.6 + i * 0.6, 0.14, C.yellowD, 3.6 + i * 1.0, 0.8 + i * 0.3, 0.6 + i * 1.6);
+      pk.rbox(1.6, 0.8, 1.6, 0.06, C.yellowD, 6.1, 3.6, 5.6);
+      const portal = pk.build();
+      portal.position.set(px, py, pz);
+      portal.rotation.y = a + Math.PI;
+      this.addStatic(portal);
+      this.portal = { x: px, z: pz, yaw: a + Math.PI, obj: portal };
+      const bay = new THREE.Vector3(6.1, 0, 5.6);
+      portal.localToWorld(bay);
+      this.bay = { x: bay.x, z: bay.z };
     }
     // bandeira no pátio da mina
     const fl = buildFlag(C.yellow);

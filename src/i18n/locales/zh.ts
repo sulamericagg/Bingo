@@ -1,5 +1,12 @@
 // Gerado/mesclado por scripts/i18n/apply.mjs — edite à vontade, mas mantenha JSON válido entre as chaves.
 export default {
+  "gb.tip.mine": "用镐挖岩石。铺铁轨、放矿车、发电机和灯！",
+  "gb.noMoney": "钱不够",
+  "gb.needMine": "先开矿",
+  "gb.mineOpen": "矿井开了！入口在山上的矿场。",
+  "gb.mine.open": "开启地下矿井",
+  "gb.mine.cart": "矿车",
+  "gb.mine.bot": "矿工（矿井）",
   "best.garimpo": "已卖金子：{n} 克",
   "gb.back": "返回",
   "gb.bed": "车斗",

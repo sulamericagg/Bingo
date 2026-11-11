@@ -36,6 +36,7 @@ export class Driver {
   private backT = 0;
   private waitT = 0;
   private tries = 0;
+  private prog = { x: 0, z: 0, t: 0 };
   constructor(private host: BotHost) {}
 
   /** caminhão livre (nem do jogador, nem de outro motorista) */
@@ -166,6 +167,21 @@ export class Driver {
     const c = this.ctl;
     c.act2 = false;
     c.gas = c.brake = c.mx = 0;
+    // sem sair do lugar por 25 s rodando: o motorista "dá um jeito" (reposiciona no próximo ponto)
+    const moving = this.st !== 'wait' && this.st !== 'dump' && this.st !== 'align';
+    if (moving) {
+      this.prog.t += dt;
+      if (Math.hypot(tr.pos.x - this.prog.x, tr.pos.z - this.prog.z) > 4) {
+        this.prog.x = tr.pos.x;
+        this.prog.z = tr.pos.z;
+        this.prog.t = 0;
+      } else if (this.prog.t > 25) {
+        this.prog.t = 0;
+        const p = this.path[Math.min(this.pi, this.path.length - 1)];
+        const nx = this.path[Math.min(this.pi + 1, this.path.length - 1)];
+        if (p) tr.veh.place(p.x, p.z, Math.atan2(nx.x - p.x, nx.z - p.z) || tr.veh.yaw(), this.host.w!.T);
+      }
+    } else this.prog.t = 0;
     switch (this.st) {
       case 'toLoad':
         if (this.follow(dt, 7)) {
