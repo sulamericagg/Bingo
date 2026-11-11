@@ -231,7 +231,7 @@ function flatWorld(tier: number): WorldView {
 const PAD_R = 7;
 function voidWorld(): WorldView {
   const group = new THREE.Group();
-  const top = new THREE.MeshStandardMaterial({ color: '#f4efff', roughness: 0.5 });
+  const top = new THREE.MeshStandardMaterial({ color: '#7d68c4', roughness: 0.6 });
   const side = new THREE.MeshStandardMaterial({ color: '#8a5cff', roughness: 0.4, metalness: 0.2 });
   const g = new THREE.CylinderGeometry(PAD_R, PAD_R * 0.86, 0.8, 48);
   g.translate(0, -0.4, 0);

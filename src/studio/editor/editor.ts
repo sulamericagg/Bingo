@@ -98,7 +98,7 @@ export class Editor {
   private pinch: { d: number; cx: number; cy: number } | null = null;
   private pen: { pts: THREE.Vector3[]; plane: THREE.Plane; line: THREE.Line; tx: ReturnType<History['begin']> } | null = null;
   private outlines = new Map<number, THREE.Object3D>();
-  private gridHelper: THREE.GridHelper;
+  private gridHelper: THREE.Mesh;
   private jointMarks = new THREE.Group();
   private badges = new THREE.Group();
   measure: { a: THREE.Vector3 | null; b: THREE.Vector3 | null; line: THREE.Line } ;
@@ -113,12 +113,7 @@ export class Editor {
     this.hist = new History((cmd, ids) => this.onHistory(cmd, ids));
     host.scene.add(this.group, this.helpers);
     this.helpers.add(this.gizmo.root, this.jointMarks, this.badges);
-    this.gridHelper = new THREE.GridHelper(60, 120, 0xffffff, 0xffffff);
-    const gm = this.gridHelper.material as THREE.LineBasicMaterial;
-    gm.transparent = true;
-    gm.opacity = 0.18;
-    gm.depthWrite = false;
-    this.gridHelper.position.y = 0.012;
+    this.gridHelper = makeGrid(60);
     this.helpers.add(this.gridHelper);
     const lg = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     const ml = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: 0xffd34a, dashSize: 0.2, gapSize: 0.1, depthTest: false }));
@@ -777,12 +772,7 @@ export class Editor {
     this.helpers.remove(this.gridHelper);
     this.gridHelper.geometry.dispose();
     (this.gridHelper.material as THREE.Material).dispose();
-    this.gridHelper = new THREE.GridHelper(size, Math.round(size * 2), 0xffffff, 0xffffff);
-    const gm = this.gridHelper.material as THREE.LineBasicMaterial;
-    gm.transparent = true;
-    gm.opacity = 0.2;
-    gm.depthWrite = false;
-    this.gridHelper.position.y = 0.012;
+    this.gridHelper = makeGrid(size);
     this.helpers.add(this.gridHelper);
   }
 
@@ -1221,4 +1211,27 @@ function smoothPts(p: THREE.Vector3[]): THREE.Vector3[] {
   for (let i = 1; i < p.length - 1; i++) out.push(p[i - 1].clone().add(p[i].clone().multiplyScalar(2)).add(p[i + 1]).multiplyScalar(0.25));
   out.push(p[p.length - 1]);
   return out;
+}
+
+/** grade do construtor: linhas de 0,5 m e 1 m desenhadas no shader (sem serrilhado/moiré
+ *  ao longe: some onde as linhas ficariam mais finas que um pixel) e esmaece na borda */
+function makeGrid(size: number): THREE.Mesh {
+  const g = new THREE.PlaneGeometry(size, size);
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { uHalf: { value: size / 2 } },
+    vertexShader: `varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform float uHalf; varying vec2 vP;
+      float line(vec2 p, float step){ vec2 c = p / step; vec2 w = fwidth(c); vec2 gr = abs(fract(c - 0.5) - 0.5) / max(w, vec2(1e-4));
+        float l = 1.0 - min(min(gr.x, gr.y), 1.0); float fade = 1.0 - smoothstep(0.25, 0.6, max(w.x, w.y)); return l * fade; }
+      void main(){ float a = max(line(vP, 0.5) * 0.10, line(vP, 1.0) * 0.26); a = max(a, line(vP, 5.0) * 0.38);
+        float r = length(vP) / uHalf; a *= 1.0 - smoothstep(0.7, 1.0, r); if (a < 0.004) discard; gl_FragColor = vec4(1.0, 1.0, 1.0, a); }`,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.y = 0.012;
+  mesh.renderOrder = 1;
+  mesh.raycast = () => undefined;
+  return mesh;
 }
