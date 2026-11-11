@@ -72,28 +72,7 @@ function styleFor(x: CanvasRenderingContext2D, s: Stroke): void {
   x.fillStyle = col;
 }
 
-/** balde: preenche a região conectada de cor parecida (tolerante), sem halo nas bordas */
-export function floodFill(x: CanvasRenderingContext2D, px: number, py: number, hex: string): void {
-  const W = x.canvas.width;
-  const H = x.canvas.height;
-  const sx = Math.floor(px);
-  const sy = Math.floor(py);
-  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return;
-  const img = x.getImageData(0, 0, W, H);
-  const d = img.data;
-  const si = (sy * W + sx) * 4;
-  const r0 = d[si],
-    g0 = d[si + 1],
-    b0 = d[si + 2],
-    a0 = d[si + 3];
-  const [fr, fg, fb] = hexRgb(hex);
-  if (a0 > 200 && Math.abs(r0 - fr) + Math.abs(g0 - fg) + Math.abs(b0 - fb) < 12) return;
-  const TOL = 64;
-  const like = (i: number): boolean => {
-    const a = d[i + 3];
-    if (a0 < 40) return a < 48; // região vazia: qualquer tinta (mesmo a borda suave de um traço fino) é parede
-    return a > 110 && Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) + Math.abs(a - a0) < TOL * 2;
-  };
+function scanFill(W: number, H: number, sx: number, sy: number, like: (i: number) => boolean): Uint8Array {
   const mark = new Uint8Array(W * H);
   const stack: number[] = [sx, sy];
   while (stack.length) {
@@ -124,6 +103,80 @@ export function floodFill(x: CanvasRenderingContext2D, px: number, py: number, h
       }
       xx++;
       i++;
+    }
+  }
+  return mark;
+}
+
+function touchesBorder(m: Uint8Array, W: number, H: number): boolean {
+  for (let x = 0; x < W; x++) if (m[x] || m[(H - 1) * W + x]) return true;
+  for (let y = 0; y < H; y++) if (m[y * W] || m[y * W + W - 1]) return true;
+  return false;
+}
+
+/** dilatação quadrada (raio R) separável: O(W·H) */
+function dilate(src: Uint8Array, W: number, H: number, R: number): Uint8Array {
+  const tmp = new Uint8Array(W * H);
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    let c = 0;
+    const o = y * W;
+    for (let x = 0; x < Math.min(R, W); x++) c += src[o + x] ? 1 : 0;
+    for (let x = 0; x < W; x++) {
+      if (x + R < W && src[o + x + R]) c++;
+      if (x - R - 1 >= 0 && src[o + x - R - 1]) c--;
+      tmp[o + x] = c > 0 ? 1 : 0;
+    }
+  }
+  for (let x = 0; x < W; x++) {
+    let c = 0;
+    for (let y = 0; y < Math.min(R, H); y++) c += tmp[y * W + x];
+    for (let y = 0; y < H; y++) {
+      if (y + R < H) c += tmp[(y + R) * W + x];
+      if (y - R - 1 >= 0) c -= tmp[(y - R - 1) * W + x];
+      out[y * W + x] = c > 0 ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+/** balde: preenche a região conectada de cor parecida (tolerante), sem halo nas bordas */
+export function floodFill(x: CanvasRenderingContext2D, px: number, py: number, hex: string): void {
+  const W = x.canvas.width;
+  const H = x.canvas.height;
+  const sx = Math.floor(px);
+  const sy = Math.floor(py);
+  if (sx < 0 || sy < 0 || sx >= W || sy >= H) return;
+  const img = x.getImageData(0, 0, W, H);
+  const d = img.data;
+  const si = (sy * W + sx) * 4;
+  const r0 = d[si],
+    g0 = d[si + 1],
+    b0 = d[si + 2],
+    a0 = d[si + 3];
+  const [fr, fg, fb] = hexRgb(hex);
+  if (a0 > 200 && Math.abs(r0 - fr) + Math.abs(g0 - fg) + Math.abs(b0 - fb) < 12) return;
+  const TOL = 64;
+  const like = (i: number): boolean => {
+    const a = d[i + 3];
+    if (a0 < 40) return a < 48; // região vazia: qualquer tinta (mesmo a borda suave de um traço fino) é parede
+    return a > 110 && Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) + Math.abs(a - a0) < TOL * 2;
+  };
+  let mark = scanFill(W, H, sx, sy, like);
+  // criança quase fechou o desenho? Fecha frestas pequenas: tinta engrossada vira parede,
+  // pinta por dentro e devolve a borda. Só vale se a região "fechada" não encostar na borda do papel.
+  if (a0 < 40 && touchesBorder(mark, W, H)) {
+    const R = Math.max(3, Math.round(Math.min(W, H) * 0.035));
+    const wall = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) wall[i] = like(i * 4) ? 0 : 1;
+    const thick = dilate(wall, W, H, R);
+    if (!thick[sy * W + sx]) {
+      const inner = scanFill(W, H, sx, sy, (j) => !thick[j >> 2]);
+      if (!touchesBorder(inner, W, H)) {
+        const grown = dilate(inner, W, H, R + 1);
+        for (let i = 0; i < W * H; i++) grown[i] = grown[i] && !wall[i] ? 1 : 0;
+        mark = grown;
+      }
     }
   }
   // franja de 2 px: a tinta antialiasada fica POR CIMA da cor nova (sem halo branco)
@@ -425,6 +478,16 @@ export class Paper {
 
   private up = (e: PointerEvent): void => {
     if (e.pointerId !== this.pid) return;
+    // o estabilizador deixa o pincel atrás do dedo: no fim, alcança o dedo (fecha o contorno)
+    const s = this.cur;
+    if (s && s.t !== 'fill') {
+      const [rx, ry] = this.toLogic(e);
+      if (Number.isFinite(rx) && Math.hypot(rx - this.lx, ry - this.ly) > 1.2 && (e.clientX || e.clientY)) {
+        s.p.push(rx, ry, Math.round(this.vw * 255));
+        this.lx = rx;
+        this.ly = ry;
+      }
+    }
     this.finish();
   };
 

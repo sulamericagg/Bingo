@@ -6,6 +6,7 @@
  * ============================================================ */
 import { tap } from '../../core/haptics';
 import { t } from '../../i18n';
+import { bindButton, type BoundButton } from '../../ui/touch/button';
 import { analyze, type Analysis } from './analyze';
 import { dvIcon } from './icons';
 import { Paper } from './paper';
@@ -42,6 +43,7 @@ export interface DrawUIOpts {
 export class DrawUI {
   readonly el: HTMLDivElement;
   readonly paper: Paper;
+  private bumBtn: BoundButton | null = null;
   mat: Material = 'inflate';
   manual = false;
   an: Analysis | null = null;
@@ -106,6 +108,11 @@ export class DrawUI {
       tap('medium');
     };
     this.el.addEventListener('click', this.click);
+    this.el.addEventListener('pointerdown', this.pdown);
+    this.el.addEventListener('pointerup', this.pup);
+    // BUM no toque (pointerdown): o click sintético às vezes some depois de um traço longo
+    const bum = this.q<HTMLButtonElement>('.dv-bum');
+    this.bumBtn = bindButton(bum, { onPress: () => !bum.disabled && this.onBum(), haptic: 'medium' });
     if (o.inkMax !== undefined && o.inkMax < Infinity) this.q<HTMLDivElement>('.dv-ink').hidden = false;
     this.layout();
     this.changed();
@@ -120,9 +127,28 @@ export class DrawUI {
     this.paper.el.style.width = this.paper.el.style.height = Math.max(180, Math.floor(side)) + 'px';
   }
 
+  // botões respondem ao soltar o dedo (pointerup): o click sintético do toque às vezes some
+  // logo depois de um traço longo no papel; o click que vier depois é ignorado
+  private downBtn: HTMLButtonElement | null = null;
+  private lastUp = 0;
+  private pdown = (e: PointerEvent): void => {
+    this.downBtn = (e.target as HTMLElement).closest('button');
+  };
+  private pup = (e: PointerEvent): void => {
+    const b = (e.target as HTMLElement).closest('button');
+    const d = this.downBtn;
+    this.downBtn = null;
+    if (!b || b !== d || b.disabled || b.classList.contains('dv-bum')) return;
+    this.lastUp = performance.now();
+    this.press(b);
+  };
   private click = (e: MouseEvent): void => {
     const b = (e.target as HTMLElement).closest('button');
-    if (!b) return;
+    if (!b || b.classList.contains('dv-bum')) return;
+    if (performance.now() - this.lastUp < 700) return;
+    this.press(b);
+  };
+  private press(b: HTMLButtonElement): void {
     tap('light');
     if (b.dataset.t) {
       const id = b.dataset.t;
@@ -160,8 +186,7 @@ export class DrawUI {
       this.fly = !this.fly;
       if (this.fly) this.vehicle = false;
       this.renderMats();
-    } else if (b.classList.contains('dv-bum')) this.onBum();
-    else if (b.classList.contains('dv-x')) this.onClose();
+    } else if (b.classList.contains('dv-x')) this.onClose();
   };
 
   selectTool(id: Tool): void {
@@ -255,6 +280,7 @@ export class DrawUI {
   }
 
   destroy(): void {
+    this.bumBtn?.destroy();
     clearTimeout(this.timer);
     this.el.remove();
   }
