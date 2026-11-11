@@ -200,6 +200,7 @@ const CSS = `
 .d3-phase .ico{width:22px;height:22px}
 .d3-phase b{font-size:18px;min-width:1.6em;text-align:right}
 .d3-right{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.d3-chip[hidden]{display:none}
 .d3-chip{background:rgba(30,15,70,.72);border-radius:12px;padding:3px 8px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:4px}
 .d3-jump{position:absolute;right:calc(var(--edge-r,14px) + 6px);bottom:calc(max(var(--edge-b,14px),var(--safe-bot,0px)) + 14px);width:86px;height:86px;border-radius:50%;background:rgba(30,15,70,.5);border:3px solid rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none}
 .d3-jump.tc-pressed{background:rgba(255,176,58,.6);transform:scale(.94)}
@@ -222,11 +223,12 @@ const CSS = `
 .d3-air.low i{background:#ff3355;animation:d3blink .3s steps(2) infinite}
 @keyframes d3blink{50%{opacity:.4}}
 .d3-edge{position:absolute;left:0;top:0;width:56px;height:56px;margin:-28px 0 0 -28px;display:none;pointer-events:none;filter:drop-shadow(0 3px 0 #2a0b5c)}
-.d3-edge.on{display:block;animation:d3pulse .4s ease-in-out infinite alternate}
-.d3-edge .ar{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,#ff3355 0 38%,transparent 39%);clip-path:polygon(50% 0,100% 55%,72% 55%,72% 100%,28% 100%,28% 55%,0 55%)}
-.d3-edge .ic{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px}
-.d3-edge .ic .ico{width:34px;height:34px}
-@keyframes d3pulse{from{scale:.9}to{scale:1.12}}
+.d3-edge.on{display:block}
+.d3-edge .ar{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.d3-edge .ic{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(160,20,40,.85);border:3px solid #fff;display:flex;align-items:center;justify-content:center}
+.d3-edge .ic .ico{width:30px;height:30px}
+
+
 .d3-modal{position:absolute;inset:0;background:rgba(10,8,30,.6);display:flex;align-items:center;justify-content:center;pointer-events:auto}
 .d3-panel{background:linear-gradient(180deg,#2c3f7a,#1a2350);border:3px solid #2a0b5c;border-radius:22px;box-shadow:0 6px 0 #2a0b5c;padding:16px;width:min(88vw,340px);text-align:center;display:flex;flex-direction:column;gap:8px}
 .d3-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -275,6 +277,7 @@ export class Disaster3D implements MiniGameHandle {
   private fluid: { kind: FluidKind; level: number; target: number; rate: number; front: number; dir: number; speed: number; base: number } | null = null;
   private fluidMesh: THREE.Mesh;
   private fluidMat: THREE.MeshStandardMaterial;
+  private baseMesh: THREE.Mesh;
   private sea: THREE.Mesh;
   private quake = 0;
   private wind = 0;
@@ -433,6 +436,9 @@ export class Disaster3D implements MiniGameHandle {
     this.fluidMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fluidMat);
     this.fluidMesh.visible = false;
     this.scene.add(this.fluidMesh);
+    this.baseMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fluidMat);
+    this.baseMesh.visible = false;
+    this.scene.add(this.baseMesh);
     this.fluidSeg = [20, 28, 36, 44][this.tier];
     const ftG = new THREE.PlaneGeometry(1, 1, this.fluidSeg, this.fluidSeg);
     ftG.rotateX(-Math.PI / 2);
@@ -573,7 +579,7 @@ export class Disaster3D implements MiniGameHandle {
       <div class="d3-warn" aria-hidden="true"><span class="di"></span><b></b><span class="d3-dir"><span class="ar">${icon('arrow-up')}</span></span><span class="safe"></span></div>
       <div class="d3-out" aria-hidden="true">${dzIcon('ghost', 54)}</div>
       <div class="d3-air" aria-hidden="true"><i></i></div>
-      ${'<div class="d3-edge" aria-hidden="true"><span class="ar"></span><span class="ic"></span></div>'.repeat(4)}
+      ${'<div class="d3-edge" aria-hidden="true"><span class="ar"><svg viewBox="0 0 56 56" width="56" height="56"><path d="M28 0L44 18H12Z" fill="#ff3355" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg></span><span class="ic"></span></div>'.repeat(4)}
       <div class="d3-jump" data-touch-ignore>${icon('arrow-up')}</div>`;
     root.appendChild(this.hud);
     this.phaseEl = this.hud.querySelector('.d3-phase')!;
@@ -1102,6 +1108,7 @@ export class Disaster3D implements MiniGameHandle {
     this.active.clear();
     this.fluid = null;
     this.fluidMesh.visible = false;
+    this.baseMesh.visible = false;
     this.quake = 0;
     this.wind = 0;
     this.tornado.on = false;
@@ -1280,7 +1287,7 @@ export class Disaster3D implements MiniGameHandle {
         break;
       case 'tsunami':
         // várias ondas, cada uma maior; a água que fica sobe a cada onda
-        fl('water', 0, 0.9, 1, 4.6 + 1.1 * I);
+        fl('water', 0, 0.9, 1, 7.5 + 2 * I);
         this.wave.n = Math.max(2, Math.min(4, Math.round(1.5 + 1.2 * I)));
         this.wave.k = 0;
         this.wave.next = (dur - 4) / this.wave.n;
@@ -1346,10 +1353,10 @@ export class Disaster3D implements MiniGameHandle {
   /** nível final de cada fluido no 3D (m) */
   private peak3(d: DisasterId): number {
     const I = this.I;
-    if (d === 'enchente') return 2.0 + 1.3 * I;
-    if (d === 'acido') return 1.2 + 0.8 * I;
+    if (d === 'enchente') return 1.8 + 1.2 * I;
+    if (d === 'acido') return 1.0 + 0.6 * I;
     if (d === 'vulcao') return 0.9 + 0.5 * I;
-    if (d === 'avalanche') return 1.4 + 0.9 * I;
+    if (d === 'avalanche') return 1.2 + 0.8 * I;
     return 0;
   }
 
@@ -1359,7 +1366,7 @@ export class Disaster3D implements MiniGameHandle {
     const k = this.wave.k;
     f.front = -ISLAND_R - 10;
     f.level = Math.max(f.base, 0.05);
-    f.target = (1.5 + 0.7 * this.I) * (0.7 + 0.3 * k) * (this.sc.disasters.length > 1 ? 0.85 : 1);
+    f.target = (2.6 + 1.2 * this.I) * (0.75 + 0.3 * k) * (this.sc.disasters.length > 1 ? 0.85 : 1);
     this.wave.warned = false;
     this.shake = Math.max(this.shake, 0.3);
   }
@@ -1484,7 +1491,7 @@ export class Disaster3D implements MiniGameHandle {
     let x: number;
     let z: number;
     let T = 1.5 * this.tele;
-    let r = 1.9 + 0.3 * I;
+    let r = 2.3 + 0.3 * I;
     // mira onde o jogador VAI estar (posição + velocidade)
     const aimAt = (p: P3, lead: number) => {
       x = p.pos.x + p.vel.x * T * lead + (this.rng() - 0.5) * 1.6;
@@ -1497,7 +1504,7 @@ export class Disaster3D implements MiniGameHandle {
     if (kind === 'bolt') {
       // raio prefere o mais ALTO (lição: o alto atrai raio)
       T = 1.3 * this.tele;
-      r = 1.5;
+      r = 2.1;
       let hi: P3 | null = null;
       for (const p of this.players) if (p.alive && p.pos.y > 1.2 && (!hi || p.pos.y > hi.pos.y)) hi = p;
       if (hi && (onlyHigh || this.rng() < 0.45)) aimAt(hi, 0.5);
@@ -1509,7 +1516,7 @@ export class Disaster3D implements MiniGameHandle {
     } else if (kind === 'debris') {
       // destroço arremessado (tornado / rajada de areia) até quem está perto; pule ou abrigue-se
       T = 1.25 * this.tele;
-      r = 1.1;
+      r = 2.0;
       const p = this.pickTarget();
       if (!p) return;
       aimAt(p, 0.6);
@@ -1522,7 +1529,7 @@ export class Disaster3D implements MiniGameHandle {
         r = 1.8;
       } else if (kind === 'rock') {
         T = 1.4 * this.tele;
-        r = 1.3;
+        r = 1.8;
       }
       const p = this.rng() < (kind === 'meteor' ? 0.45 : 0.55) ? this.pickTarget() : null;
       if (p) aimAt(p, 0.75);
@@ -1621,7 +1628,9 @@ export class Disaster3D implements MiniGameHandle {
     for (const pl of this.players) {
       if (!pl.alive) continue;
       const d = Math.hypot(pl.pos.x - s.x, pl.pos.z - s.z);
-      if (d < s.r * 0.7 && Math.abs(pl.pos.y - s.y) < 2.2 && !this.insideHouse(pl)) this.knockOut(pl);
+      // areia: a casa só protege se a porta não estiver virada para o vento (a porta fica no lado −z)
+      const sheltered = this.insideHouse(pl) && !(s.kind === 'debris' && this.active.has('areia') && Math.sin(this.gust.a) > 0.2);
+      if (d < s.r * 0.7 && Math.abs(pl.pos.y - s.y) < 2.2 && !sheltered) this.knockOut(pl);
       // raio na água: quem está nadando perto leva choque
       else if (s.kind === 'bolt' && pl.swim && d < 4) this.knockOut(pl);
       else if (d < s.r * 1.6) {
@@ -1665,7 +1674,7 @@ export class Disaster3D implements MiniGameHandle {
         const past = f.dir > 0 ? f.front > ISLAND_R + 10 : f.front < -ISLAND_R - 10;
         if (past && this.wave.n > 0) {
           // a onda passou: recua até o que FICA (sobe a cada onda)
-          const keep = f.target * (this.wave.k + 1 >= this.wave.n ? 0.78 : 0.55);
+          const keep = f.target * (this.wave.k + 1 >= this.wave.n ? 0.9 : 0.7);
           if (f.base < keep) f.base = Math.min(keep, f.base + dt * 0.4);
           f.level = Math.max(f.base, f.level - dt * 0.35);
         }
@@ -1673,6 +1682,13 @@ export class Disaster3D implements MiniGameHandle {
       } else f.level += Math.max(-0.4 * dt, Math.min(f.rate * dt, f.target - f.level));
       if (!Number.isFinite(f.level)) f.level = 0;
       const lv = Math.max(0.02, f.level);
+      // água que ficou das ondas anteriores: lâmina na ilha toda
+      const bm = this.baseMesh;
+      if (f.dir && f.base > 0.05) {
+        bm.visible = true;
+        bm.scale.set(ISLAND_R * 2 + 6, f.base + 0.45, ISLAND_R * 2 + 6);
+        bm.position.set(0, (f.base - 0.6) / 2, 0);
+      } else bm.visible = false;
       if (f.dir) {
         // região coberta: atrás da frente (tsunami vem de −x; lava vem de +x) + o nível que ficou no resto
         const x0 = f.dir > 0 ? -ISLAND_R - 40 : f.front;
@@ -1697,7 +1713,7 @@ export class Disaster3D implements MiniGameHandle {
             const u = (f.front - p.pos.x) * f.dir;
             if (u < 0 || u > 1.6 || p.pos.y > lv - 0.2) continue;
             p.hit = 1.2;
-            p.air -= 0.45 * I;
+            p.air -= 0.6 * I;
             p.vel.x += f.dir * 6;
             p.vel.y = Math.max(p.vel.y, 3);
             if (p.self) {
@@ -1714,6 +1730,7 @@ export class Disaster3D implements MiniGameHandle {
       if (f.level <= 0.01 && f.target <= 0 && f.base <= 0 && !this.wave.n) {
         this.fluid = null;
         this.fluidMesh.visible = false;
+        this.baseMesh.visible = false;
       }
     }
     if (dis) {
@@ -1770,7 +1787,7 @@ export class Disaster3D implements MiniGameHandle {
             const p = this.rng() < 0.6 ? this.pickTarget() : null;
             const a = this.rng() * Math.PI * 2;
             const rr = Math.sqrt(this.rng()) * (ISLAND_R - 4);
-            this.holeAt(p ? p.pos.x + (this.rng() - 0.5) * 2 : Math.cos(a) * rr, p ? p.pos.z + (this.rng() - 0.5) * 2 : Math.sin(a) * rr, 1.2 + this.rng() * 0.6 * I, 1.7 * this.tele, 4.5 + 2 * I, 0);
+            this.holeAt(p ? p.pos.x + (this.rng() - 0.5) * 2 : Math.cos(a) * rr, p ? p.pos.z + (this.rng() - 0.5) * 2 : Math.sin(a) * rr, 1.5 + this.rng() * 0.8 * I, 1.7 * this.tele, 4.5 + 2 * I, 0);
           }
         }
         if (!inP && kk < 2 && P.t - kk * period > period - 1.8 * this.tele && !P.warned) {
@@ -1791,7 +1808,7 @@ export class Disaster3D implements MiniGameHandle {
             }
           }
           // pedaços caem dos telhados, mirados em quem está perto das casas
-          this.tick('terremoto', dt * k, () => this.spawnStrike('rock'), 1.6);
+          this.tick('terremoto', dt * k, () => this.spawnStrike('rock'), 0.5);
         }
       }
       if (this.active.has('sumidouro')) {
@@ -1805,16 +1822,16 @@ export class Disaster3D implements MiniGameHandle {
             const p = this.pickTarget();
             const a = this.rng() * Math.PI * 2;
             const rr = Math.sqrt(this.rng()) * (ISLAND_R - 5);
-            this.holeAt(p ? p.pos.x : Math.cos(a) * rr, p ? p.pos.z : Math.sin(a) * rr, 1.1, 2 * this.tele, 0, 0.12 + 0.1 * I);
+            this.holeAt(p ? p.pos.x : Math.cos(a) * rr, p ? p.pos.z : Math.sin(a) * rr, 1.1, 2.8 * this.tele, 0, 0.08 + 0.06 * I);
           },
-          4 - this.heat,
+          8 - 2 * this.heat,
         );
       }
       if (this.active.has('areia')) {
         const g = this.gust;
         if (g.t > 0) {
           g.t -= dt;
-          this.tick('areia', dt * k, () => this.spawnStrike('debris'), 0.75 - 0.2 * this.heat);
+          this.tick('areia', dt * k, () => this.spawnStrike('debris'), 0.32 - 0.08 * this.heat);
           if (g.t <= 0) {
             g.a += Math.PI * (0.6 + this.rng() * 0.8);
             g.next = Math.max(3, 7 - 1.4 * I) + this.rng() * 2;
@@ -1828,15 +1845,22 @@ export class Disaster3D implements MiniGameHandle {
             this.alertT = 1.8 * this.tele;
             this.alert3('areia', t('dz.al.gust', 'Rajada!'));
           }
-          if (g.next <= 0) g.t = 3 + 1.2 * I;
+          if (g.next <= 0) {
+            g.t = 3 + 1.2 * I;
+            // a rajada forte arranca um telhado (abrigo também é temporário)
+            if (this.rng() < 0.45 + 0.15 * I) {
+              const ok = this.houses.map((h, i) => (h.ripped ? -1 : i)).filter((i) => i >= 0);
+              if (ok.length) this.ripRoof(ok[Math.floor(this.rng() * ok.length)]);
+            }
+          }
         }
       }
-      if (this.active.has('meteoros') || this.active.has('meteoro')) this.tick('meteoros', dt * k, () => this.spawnStrike('meteor'), 1.25 - 0.35 * this.heat);
-      if (this.active.has('raios')) this.tick('raios', dt * k, () => this.spawnStrike('bolt'), 1.05 - 0.25 * this.heat);
-      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnStrike('bolt', true), 4.6 - 1.2 * this.heat);
-      if (this.active.has('vulcao')) this.tick('vulcao', dt * k, () => this.spawnStrike('bomb'), 2.2 - 0.6 * this.heat);
-      if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnStrike('drop'), 1.8 - 0.5 * this.heat);
-      if (this.active.has('avalanche')) this.tick('avalanche', dt * k, () => this.spawnStrike('rock'), 2.6 - 0.8 * this.heat);
+      if (this.active.has('meteoros') || this.active.has('meteoro')) this.tick('meteoros', dt * k, () => this.spawnStrike('meteor'), 1.15 - 0.3 * this.heat);
+      if (this.active.has('raios')) this.tick('raios', dt * k, () => this.spawnStrike('bolt'), 1.5 - 0.35 * this.heat);
+      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnStrike('bolt', true), 9 - 2 * this.heat);
+      if (this.active.has('vulcao')) this.tick('vulcao', dt * k, () => this.spawnStrike('bomb'), 3.6 - 0.9 * this.heat);
+      if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnStrike('drop'), 3.2 - 0.8 * this.heat);
+      if (this.active.has('avalanche')) this.tick('avalanche', dt * k, () => this.spawnStrike('rock'), 4.6 - 1.2 * this.heat);
       if (this.active.has('avalanche')) this.wind = Math.sin(this.time * 0.7) > 0.3 ? this.windDir * (1.6 + 0.3 * I) : 0;
       // moedas no meio do desastre
       this.tick('coin', dt, () => this.spawnCoin(), 3.2);
@@ -1859,7 +1883,7 @@ export class Disaster3D implements MiniGameHandle {
       } else {
         m.color.setHex(0x140c1c);
         m.opacity = 1;
-        if (h.grow > 0 && h.r < 4.5) h.r += h.grow * dt;
+        if (h.grow > 0 && h.r < 3.5) h.r += h.grow * dt;
         h.life -= h.life > 0 ? dt : 0;
         if (h.life < 0) {
           h.on = false;
@@ -1960,7 +1984,7 @@ export class Disaster3D implements MiniGameHandle {
       this.tgt1T = tT;
     }
     const tp = tgt >= 0 ? this.players[tgt] : null;
-    const max = (1.6 + 1.0 * I) * (1 + 0.25 * this.heat) * (this.training ? 0.75 : 1);
+    const max = (1.9 + 1.1 * I) * (1 + 0.25 * this.heat) * (this.training ? 0.75 : 1);
     const dx = (tp ? tp.pos.x : 0) - tn.x;
     const dz = (tp ? tp.pos.z : 0) - tn.z;
     const d = Math.hypot(dx, dz) || 1;
@@ -2516,7 +2540,10 @@ export class Disaster3D implements MiniGameHandle {
       const dx = p.pos.x - s.x;
       const dz = p.pos.z - s.z;
       const d = Math.hypot(dx, dz);
-      if (d < s.r + 1.2 && Math.random() < b.skill + 0.3) {
+      // reage com atraso (menos habilidade = mais tarde)
+      // e às vezes nem vê (decidido uma vez por golpe: criança distraída)
+      const seen = Math.abs(Math.sin(s.x * 12.9898 + s.z * 78.233 + b.lazy * 37.7) * 43758.5453) % 1 < 0.75 + 0.2 * b.skill;
+      if (seen && d < s.r + 1.2 && s.T - s.t > (1 - b.skill) * s.T * 0.85) {
         tx = p.pos.x + (dx / (d || 1)) * 4;
         tz = p.pos.z + (dz / (d || 1)) * 4;
       }
@@ -2569,6 +2596,12 @@ export class Disaster3D implements MiniGameHandle {
       const sp = Math.min(1, d / 1.5) * (0.75 + b.skill * 0.25);
       c.mx = (dx / d) * sp;
       c.mz = (dz / d) * sp;
+      // buraco no caminho: contorna (gira 90°)
+      if (this.inHole(p.pos.x + c.mx * 1.4, p.pos.z + c.mz * 1.4, -0.7)) {
+        const mx0 = c.mx;
+        c.mx = -c.mz;
+        c.mz = mx0;
+      }
     }
     // obstáculo à frente (degrau alto/caixa): pula
     if (p.onGround && d > 0.6) {
@@ -3000,12 +3033,14 @@ export class Disaster3D implements MiniGameHandle {
       const key = ic + (urg > 0.66 ? '!' : '');
       if (this.edgeKey[n] !== key) {
         this.edgeKey[n] = key;
-        (el.lastElementChild as HTMLElement).innerHTML = dzIcon(ic, 34);
+        (el.lastElementChild as HTMLElement).innerHTML = dzIcon(ic, 30);
       }
       el.classList.add('on');
-      el.style.transform = `translate(${px.toFixed(0)}px,${py.toFixed(0)}px)`;
-      (el.firstElementChild as HTMLElement).style.transform = `rotate(${(a + Math.PI / 2).toFixed(3)}rad) translateY(-14px)`;
-      el.style.opacity = String(0.55 + 0.45 * urg);
+      // pulsa mais rápido quanto mais perto do impacto (sem animação CSS: barato e confiável)
+      const pulse = 1 + (0.08 + 0.12 * urg) * Math.sin(this.time * (8 + 10 * urg));
+      el.style.transform = `translate(${px.toFixed(0)}px,${py.toFixed(0)}px) scale(${pulse.toFixed(3)})`;
+      (el.firstElementChild as HTMLElement).style.transform = `rotate(${(a + Math.PI / 2).toFixed(3)}rad) translateY(-12px)`;
+      el.style.opacity = String(0.8 + 0.2 * urg);
       n++;
     };
     if (me.alive && (this.phase === 'disaster' || this.phase === 'warn')) {

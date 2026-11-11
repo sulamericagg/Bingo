@@ -23,6 +23,12 @@ if (qs.get('showcase')) {
   };
   loop();
   document.title = 'ready';
+} else if (qs.get('d3')) {
+  // 3D direto (screenshots/testes): window.dz3
+  const { Disaster3D } = await import('../../src/games/disaster/d3/game3d');
+  const g = new Disaster3D(app, () => (location.href = location.pathname));
+  (window as any).dz3 = g;
+  document.title = 'ready';
 } else {
   const { DisasterGame } = await import('../../src/games/disaster/game');
   const g = new DisasterGame(app, () => (location.href = location.pathname), { scenario: Number(qs.get('s')) || undefined });

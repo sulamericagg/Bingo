@@ -214,8 +214,8 @@ export class Hud {
   }
 
   /** aviso compacto no topo (src/ui/notify) */
-  toast(msg: string): void {
-    notify(msg, { key: 'dz-hint', ms: 3000 });
+  toast(msg: string, key = 'dz-hint'): void {
+    notify(msg, { key, ms: 3000 });
   }
 
   onPhase(): void {

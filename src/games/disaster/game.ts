@@ -571,6 +571,7 @@ export class DisasterGame implements MiniGameHandle {
     this.helpSeen.clear();
     this.timers = {};
     this.stageWarn = false;
+    this.swimTold = false;
     this.soak = new Float32Array(0);
     this.meteor.t = -1;
     this.meteor.ring = -1;
@@ -708,7 +709,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'intro':
         // final do meteoro: tempo curto o bastante para precisar correr (antes 18+df: quase todos chegavam andando)
         // final: tempo que exige correr sem parar (menos com intensidade alta)
-        this.setPhase('prepare', (this.finale ? (11.6 + this.sc.difficulty * 0.8) / Math.sqrt(this.I) : 15) + (this.training ? 8 : 0));
+        this.setPhase('prepare', (this.finale ? (12.4 + this.sc.difficulty * 0.8) / Math.sqrt(this.I) : 15) + (this.training ? 8 : 0));
         if (this.finale) audio.siren(3);
         break;
       case 'prepare':
@@ -808,7 +809,7 @@ export class DisasterGame implements MiniGameHandle {
     this.alertT = secs;
     audio.siren(Math.min(2, secs));
     tap('medium');
-    this.hud.toast(say);
+    this.hud.toast(say, 'dz-alert');
     this.say(say);
   }
 
@@ -846,7 +847,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'enchente':
         return (140 + 100 * I) * duo;
       case 'acido':
-        return (50 + 45 * I) * duo;
+        return (42 + 40 * I) * duo;
       case 'vulcao':
         return (45 + 28 * I) * duo;
       case 'raios':
@@ -1258,7 +1259,7 @@ export class DisasterGame implements MiniGameHandle {
         this.points += 40;
         audio.coin(3);
         tap('medium');
-        this.hud.toast(t('dz.saved', 'Você salvou {name}!', { name: p.name }));
+        this.hud.toast(t('dz.saved', 'Você salvou {name}!', { name: p.name }), 'dz-saved');
       }
     }
     if (me.alive)
@@ -1510,10 +1511,10 @@ export class DisasterGame implements MiniGameHandle {
       if (this.active.has('avalanche')) {
         this.tick('avalanche', dt * k, () => this.spawnBall(), 3.1 - 1.1 * this.heat);
         // blocos de gelo caindo da montanha (miram quem fica parado, inclusive lá no alto)
-        this.tick('ice', dt * k, () => this.spawnAimed('rock', 1.4 * this.tele, 22, 0.75), 3.2 - 0.8 * this.heat);
+        this.tick('ice', dt * k, () => this.spawnAimed('rock', 1.5 * this.tele, 22, 0.7), 4.6 - 1.2 * this.heat);
       }
       // enchente: a tempestade solta raios no ponto mais alto de vez em quando
-      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnBolt(true), 7 - 2 * this.heat);
+      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnBolt(true), 10 - 3 * this.heat);
       if (this.active.has('areia')) this.sandstorm(dt, k);
       // enchente: destroços boiando na correnteza (tiram fôlego de quem nada; derrubam quem está na beira)
       if (this.active.has('enchente') && f && f.level > 30)
@@ -1614,6 +1615,7 @@ export class DisasterGame implements MiniGameHandle {
   }
 
   private stageWarn = false;
+  private swimTold = false;
 
   /** relógio de golpes por desastre: chama fn quando zera e recarrega com base·(0,7..1,3) */
   private tick(d: string, dt: number, fn: () => void, base: number): void {
@@ -1729,7 +1731,7 @@ export class DisasterGame implements MiniGameHandle {
     s.flash = s.kind === 'bolt' ? 0.22 : 0.3;
     if (s.kind !== 'drop')
       for (const b of w.bodies) {
-        if (!b.alive) continue;
+        if (!b.alive || (s.kind === 'rock' && b.heavy)) continue;
         const dx = b.x + b.w * 0.5 - s.x;
         if (Math.abs(dx) < s.r + b.w * 0.5 + 10 && b.y < s.ty + 60) w.push(b, Math.sign(dx || 1) * (b.heavy ? 90 : 180), b.heavy ? -60 : -260);
       }
@@ -2078,7 +2080,10 @@ export class DisasterGame implements MiniGameHandle {
     const depth = p.y - wf;
     if (!p.swim && depth > 18 && !p.climbing) {
       p.swim = true;
-      if (p.self) this.hud.toast(t('dz.swim', 'Nade! Pule para sair da água.'));
+      if (p.self && !this.swimTold) {
+        this.swimTold = true;
+        this.hud.toast(t('dz.swim', 'Nade! Pule para sair da água.'), 'dz-swim');
+      }
     } else if (p.swim && (depth < 4 || p.climbing)) p.swim = false;
     if (p.swim) {
       const cap = RUN * 0.6;
@@ -2538,7 +2543,7 @@ export class DisasterGame implements MiniGameHandle {
     // nadando: tenta sair pulando quando há algo alcançável
     if (p.swim && this.rng() < 0.2 + b.skill * 0.5) jump = true;
     // lê a superfície de verdade (ondas/respingos): água encostando no pé = pulinho para cima
-    if (this.fluid && this.fluid.kind === 'water' && p.onGround && !jump) {
+    if (this.fluid && (this.fluid.kind === 'water' || this.fluid.kind === 'snow') && p.onGround && !jump) {
       const s = this.surfaceAt(p.x);
       if (s < 5000 && s - p.y < 16 && this.rng() < 0.3 + b.skill) jump = true;
     }
@@ -2718,11 +2723,33 @@ export class DisasterGame implements MiniGameHandle {
 
   /* ------------------------------ câmera ------------------------------ */
 
+  private ghostIdle = 0;
   private updateCamera(dt: number): void {
     const m = this.me;
     const c = this.cam;
-    const fx = m.ghost ? m.gx : m.x;
-    const fy = m.ghost ? m.gy : m.y;
+    let fx = m.ghost ? m.gx : m.x;
+    let fy = m.ghost ? m.gy : m.y;
+    // assistir: fantasminha parado → a câmera segue um amigo online vivo (ou um bot) até você mexer
+    if (m.ghost) {
+      const i = m.input;
+      this.ghostIdle = i.l || i.r || i.j ? 0 : this.ghostIdle + dt;
+      if (this.ghostIdle > 1.5) {
+        let best = 1e9;
+        for (const pr of this.peers)
+          if (!pr.s.g && Math.abs((pr.s.x ?? 1e9) - m.gx) < best) {
+            best = Math.abs((pr.s.x ?? 0) - m.gx) - 1e6;
+            fx = pr.s.x ?? fx;
+            fy = pr.s.y ?? fy;
+          }
+        if (best > 0)
+          for (const p of this.players)
+            if (p.alive && Math.abs(p.x - m.gx) < best) {
+              best = Math.abs(p.x - m.gx);
+              fx = p.x;
+              fy = p.y;
+            }
+      }
+    } else this.ghostIdle = 0;
     let tx = fx + m.vx * 0.25;
     let ty = fy - c.vh * 0.08;
     const mt = this.meteor;
