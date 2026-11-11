@@ -13,6 +13,8 @@ export interface VooSave {
   livery: string;
   cabin: string;
   bots: number;
+  /** último papel escolhido (0..3) */
+  role: number;
   mode: '' | '2d' | '3d';
   daily: { day: number; best: number; stars: number };
   seenIntro: boolean;
@@ -21,7 +23,7 @@ export interface VooSave {
 const KEY = 'bw-voo';
 
 export function freshSave(): VooSave {
-  return { v: 1, best: 0, stars: 0, flights: 0, landings: 0, perfects: 0, crashes: 0, livery: 'classic', cabin: 'classic', bots: 3, mode: '', daily: { day: 0, best: 0, stars: 0 }, seenIntro: false, tutDone: false };
+  return { v: 1, best: 0, stars: 0, flights: 0, landings: 0, perfects: 0, crashes: 0, livery: 'classic', cabin: 'classic', bots: 3, role: 0, mode: '', daily: { day: 0, best: 0, stars: 0 }, seenIntro: false, tutDone: false };
 }
 export function loadSave(): VooSave {
   try {

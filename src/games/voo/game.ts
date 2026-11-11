@@ -15,11 +15,13 @@ import { save as globalSave } from '../../core/storage';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { displayName } from '../../services/leaderboard';
 import { sfx } from '../../3d/common/sfx';
-import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS, roleName } from './data';
-import { bigMoment } from '../../ui/notify';
+import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS } from './data';
+import { bigMoment, notify } from '../../ui/notify';
+import { openHangar, type HangarHandle } from './hangar';
 import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
-import { hatIcon, vIcon } from './icons';
+import type { FlightKind } from './hangar';
+import { vIcon } from './icons';
 import { LocalNet, type VooNet } from './net';
 import { cabinOf, dayIndex, liveryOf, loadSave, writeSave, type VooSave } from './save';
 import { Sim, mulberry } from './sim';
@@ -54,7 +56,6 @@ export async function launch(root: HTMLElement, exit: () => void, opts: LaunchOp
   return g;
 }
 
-type FlightKind = 'normal' | 'daily' | 'training';
 
 export class VooGame implements MiniGameHandle, HudHost {
   sim!: Sim;
@@ -95,7 +96,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.sv = loadSave();
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier) => this.view && 'setTier' in this.view && (this.view as View3D).setTier(tier), onResScale: (k) => this.view && 'setResScale' in this.view && (this.view as View3D).setResScale(k) });
     this.bots = opts.bots ?? this.sv.bots;
-    this.role = opts.role ?? 0;
+    this.role = opts.role ?? this.sv.role ?? 0;
     if (location.search.includes('debug')) (window as unknown as { __voo: VooGame }).__voo = this;
   }
 
@@ -110,67 +111,29 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   /* ============================== hangar (lobby) ============================== */
 
+  private hangar: HangarHandle | null = null;
   private lobby(): void {
-    this.setBack(() => this.finish());
     const sv = this.sv;
-    const gl = webglOk();
-    const tier = detectInitialTier();
-    let mode: '2d' | '3d' = sv.mode === '2d' || !gl ? '2d' : '3d';
-    const d = document.createElement('div');
-    d.className = 'voo-scr voo-lobby';
-    const today = dayIndex();
-    const dailyDone = sv.daily.day === today;
-    const render = () => {
-      d.innerHTML = `<div class="voo-lcard">
-        <h2>${vIcon('plane', 36)}${esc(t('voo.name', 'Pouso Forçado'))}<small>${esc(t('voo.lobby.sub', 'O comandante desmaiou. Pousem esse avião!'))}</small><button class="voo-btn round red" data-x>${vIcon('close', 26)}</button></h2>
-        <div class="voo-sec"><b>${vIcon('cube', 20)}${esc(t('voo.lobby.view', 'Visão'))}</b><div class="voo-row">
-          <button class="voo-opt ${mode === '3d' ? 'sel' : ''}" data-m="3d" ${gl ? '' : 'disabled'}>${vIcon('cube', 22)}<span>3D<small>${esc(gl ? (tier <= 1 ? t('voo.lobby.3dWeak', 'Primeira pessoa (pode pesar aqui)') : t('voo.lobby.3d', 'Primeira pessoa, dentro do avião')) : t('voo.lobby.no3d', 'Indisponível neste aparelho'))}</small></span></button>
-          <button class="voo-opt ${mode === '2d' ? 'sel' : ''}" data-m="2d">${vIcon('square', 22)}<span>2D<small>${esc(t('voo.lobby.2d', 'Vista de cima, leve'))}</small></span></button>
-        </div></div>
-        <div class="voo-sec"><b>${vIcon('calendar', 20)}${esc(t('voo.lobby.flight', 'Voo'))}</b><div class="voo-row">
-          <button class="voo-opt ${this.flightKind === 'normal' ? 'sel' : ''}" data-f="normal">${vIcon('plane', 22)}<span>${esc(t('voo.mode.normal', 'Voo normal'))}<small>${esc(t('voo.lobby.normal', 'Emergências aleatórias'))}</small></span></button>
-          <button class="voo-opt ${this.flightKind === 'daily' ? 'sel' : ''}" data-f="daily">${vIcon('calendar', 22)}<span>${esc(t('voo.mode.daily', 'Voo do dia'))}<small>${esc(dailyDone ? t('voo.lobby.dailyDone', 'Feito hoje: {s} estrela(s)', { s: sv.daily.stars }) : t('voo.lobby.daily', 'Igual para todos hoje · bônus'))}</small></span></button>
-          <button class="voo-opt ${this.flightKind === 'training' ? 'sel' : ''}" data-f="training">${vIcon('school', 22)}<span>${esc(t('voo.mode.training', 'Treino de pouso'))}<small>${esc(t('voo.lobby.training', 'Só a final, sem emergências'))}</small></span></button>
-        </div></div>
-        <div class="voo-sec"><b>${hatIcon(this.role, 20)}${esc(t('voo.lobby.role', 'Seu papel'))}</b><div class="voo-row">
-          ${[0, 1, 2, 3].map((r) => `<button class="voo-opt ${this.role === r ? 'sel' : ''}" data-r="${r}">${hatIcon(r, 26)}<span>${esc(roleName(r))}</span></button>`).join('')}
-        </div><div class="voo-note">${esc(t('voo.lobby.roleNote', 'Todo mundo pode fazer tudo — o papel muda o chapéu e onde você começa.'))}</div></div>
-        <div class="voo-sec"><b>${vIcon('crew', 20)}${esc(t('voo.lobby.helpers', 'Ajudantes Bloop'))}</b><div class="voo-row">
-          ${[0, 1, 2, 3].map((n) => `<button class="voo-opt ${this.bots === n ? 'sel' : ''}" data-b="${n}">${n === 0 ? esc(t('voo.lobby.solo', 'Sozinho')) : n}</button>`).join('')}
-        </div><div class="voo-note">${esc(t('voo.lobby.botsNote', 'Eles só agem quando você manda, e demoram um pouco. Pilotar e pousar é com você!'))}</div></div>
-        <div class="voo-sec"><b>${vIcon('star', 20)}${esc(t('voo.lobby.livery', 'Pintura do avião'))}</b><div class="voo-row">
-          ${LIVERIES.map((l) => `<button class="voo-opt ${liveryOf(sv).id === l.id ? 'sel' : ''}" data-l="${l.id}" ${sv.stars >= l.stars ? '' : 'disabled'}><span class="sw" style="background:linear-gradient(135deg,${l.body} 40%,${l.stripe} 40% 60%,${l.tail} 60%)"></span>${esc(l.name())}${sv.stars >= l.stars ? '' : ` <small>${vIcon('star', 12)}${l.stars}</small>`}</button>`).join('')}
-        </div></div>
-        <div class="voo-sec"><b>${vIcon('calm', 20)}${esc(t('voo.lobby.cabin', 'Cabine'))}</b><div class="voo-row">
-          ${CABINS.map((c) => `<button class="voo-opt ${cabinOf(sv).id === c.id ? 'sel' : ''}" data-c="${c.id}" ${sv.perfects >= c.perfect ? '' : 'disabled'}><span class="sw" style="background:linear-gradient(135deg,${c.seat} 50%,${c.seat2} 50%)"></span>${esc(c.name())}${sv.perfects >= c.perfect ? '' : ` <small>${esc(t('voo.lobby.perfects', '{n} pousos perfeitos', { n: c.perfect }))}</small>`}</button>`).join('')}
-        </div></div>
-        <div class="voo-stats"><span>${vIcon('trophy', 18)}${esc(t('voo.lobby.best', 'Recorde {n}', { n: sv.best }))}</span><span>${vIcon('star', 18)}${sv.stars}</span><span>${vIcon('runway', 18)}${esc(t('voo.lobby.landings', '{n} pousos', { n: sv.landings }))}</span><span>${vIcon('check', 18)}${esc(t('voo.lobby.perfectN', '{n} perfeitos', { n: sv.perfects }))}</span></div>
-        <div class="voo-go"><button class="voo-btn green" data-go>${vIcon('plane', 26)}${esc(t('voo.lobby.go', 'Abrir o dossiê'))}</button></div>
-      </div>`;
-    };
-    render();
-    this.wrap.appendChild(d);
-    d.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (!b || b.disabled) return;
-      audio.click();
-      if (b.dataset.x !== undefined) return this.finish();
-      if (b.dataset.m) mode = b.dataset.m as '2d' | '3d';
-      if (b.dataset.f) this.flightKind = b.dataset.f as FlightKind;
-      if (b.dataset.r) this.role = +b.dataset.r;
-      if (b.dataset.b) this.bots = +b.dataset.b;
-      if (b.dataset.l) sv.livery = b.dataset.l;
-      if (b.dataset.c) sv.cabin = b.dataset.c;
-      if (b.dataset.go !== undefined) {
-        sv.mode = mode;
-        sv.bots = this.bots;
-        writeSave(sv);
-        d.remove();
-        void this.brief(mode);
-        return;
-      }
-      render();
+    const h = openHangar(this.wrap, { sv, gl: webglOk(), weak: detectInitialTier() <= 1, dailyBonus: 25 });
+    this.hangar = h;
+    this.setBack(() => h.back());
+    void h.done.then((pick) => {
+      this.hangar = null;
+      if (this.destroyed) return;
+      if (pick.kind === 'exit') return this.finish();
+      this.role = sv.role;
+      this.bots = sv.bots;
+      if (pick.kind === 'friends') return this.friends(pick.mode);
+      this.flightKind = pick.flight;
+      void this.brief(pick.mode);
     });
+  }
+
+  /** "Voar com amigos" (co-op online) */
+  private friends(mode: '2d' | '3d'): void {
+    void mode;
+    notify(t('voo.hg.soon', 'Em breve!'));
+    this.lobby();
   }
 
   private crewLines(): CrewLine[] {
@@ -658,6 +621,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.popBack?.();
+    this.hangar?.destroy();
     for (const f of this.offs) f();
     audio.engineStop();
     this.net.leave();
