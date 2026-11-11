@@ -17,6 +17,7 @@ export const PAPER_GAMES: Record<string, boolean> = {
   noites: true,
   garimpo: true,
   floresta: true,
+  disaster: true,
 };
 
 /** Opção global "Personagem 2D" (true = 2D, o padrão). */

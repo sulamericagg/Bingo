@@ -19,7 +19,9 @@ import { audio } from '../../../core/audio';
 import { tap, success } from '../../../core/haptics';
 import { QualityGovernor, type QualitySettings, type Tier } from '../../../core/quality';
 import { reportRun, type MiniGameHandle } from '../../../hub/registry';
-import { SKINS } from '../../../game/skins';
+import { SKINS, type Skin } from '../../../game/skins';
+// PAPER: Bloops 2D de papel (src/3d/paper; chave PAPER_GAMES.disaster)
+import { mySpec, PaperChar, paperOn, specOf } from '../../../3d/paper';
 import { bindButton, createJoystick, createLook, isSolo, type BoundButton, type Joystick, type LookDrag } from '../../../ui/touch';
 import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../../ui/notify';
 import { icon } from '../../../ui/icons';
@@ -122,6 +124,8 @@ interface P3 {
   mesh: THREE.Group;
   bodyMesh: THREE.Mesh;
   bonk: number;
+  /** PAPER: personagem 2D (null = esfera 3D) */
+  paper: PaperChar | null;
 }
 interface Strike {
   on: boolean;
@@ -865,7 +869,8 @@ export class Disaster3D implements MiniGameHandle {
 
   /* ------------------------------ jogadores ------------------------------ */
 
-  private makeBloop(color: string, self: boolean): { g: THREE.Group; body: THREE.Mesh } {
+  private makeBloop(skin: Skin, self: boolean): { g: THREE.Group; body: THREE.Mesh; paper: PaperChar | null } {
+    const color = skin.light;
     const g = new THREE.Group();
     const body = new THREE.Mesh(this.sharedGeo.sphere, new THREE.MeshStandardMaterial({ color, roughness: 0.5, transparent: true }));
     body.scale.set(0.5, 0.55, 0.5);
@@ -885,12 +890,22 @@ export class Disaster3D implements MiniGameHandle {
       mark.position.y = 1.55;
       g.add(mark);
     }
+    // PAPER: billboard 2D no lugar da esfera (a esfera fica só para o código antigo, invisível)
+    let paper: PaperChar | null = null;
+    if (paperOn('disaster')) {
+      paper = new PaperChar(self ? mySpec() : specOf(skin.id), { radius: 0.5, cell: self ? 128 : 80, shadow: true });
+      body.visible = false;
+      g.add(paper.root);
+    }
     this.scene.add(g);
-    return { g, body };
+    return { g, body, paper };
   }
 
   private spawnPlayers(): void {
-    for (const p of this.players) this.scene.remove(p.mesh);
+    for (const p of this.players) {
+      this.scene.remove(p.mesh);
+      p.paper?.dispose(); // PAPER
+    }
     this.players = [];
     const n = isSolo('disaster') ? 1 : 6;
     const meSkin = SKINS.find((s) => s.id === save.skin) ?? SKINS[0];
@@ -913,7 +928,7 @@ export class Disaster3D implements MiniGameHandle {
     for (let i = 0; i < n; i++) {
       const self = i === 0;
       const skin = self ? meSkin : SKINS[(i * 5 + this.sessionRounds) % SKINS.length];
-      const { g, body } = this.makeBloop(skin.light, self);
+      const { g, body, paper } = this.makeBloop(skin, self);
       const a = (i / n) * Math.PI * 2;
       const pos = new THREE.Vector3(sp.x + Math.cos(a) * 2.2, 0, sp.z + Math.sin(a) * 2.2);
       const p: P3 = {
@@ -937,6 +952,7 @@ export class Disaster3D implements MiniGameHandle {
         mesh: g,
         bodyMesh: body,
         bonk: 0,
+        paper,
       };
       this.players.push(p);
     }
@@ -1976,6 +1992,8 @@ export class Disaster3D implements MiniGameHandle {
       p.bodyMesh.scale.set(0.5 * (1 + s * 0.5), 0.55 * (1 - s * 0.5), 0.5 * (1 + s * 0.5));
       if (!p.alive) p.mesh.position.y += Math.sin(this.time * 3) * 0.15;
       p.mesh.visible = !(p.self && this.fp && p.alive);
+      // PAPER
+      if (p.paper && p.mesh.visible) p.paper.update(dt, this.camera, { yaw: p.mesh.rotation.y, speed: p.onGround ? Math.hypot(p.vel.x, p.vel.z) : 0, act: -1, hurt: !p.alive || p.sq > 0.5, happy: !p.onGround && p.alive });
     }
     // câmera: 3ª pessoa suave (padrão) ou 1ª pessoa
     const m = this.me;

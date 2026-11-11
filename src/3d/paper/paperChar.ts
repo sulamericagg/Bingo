@@ -38,6 +38,8 @@ function atlasFor(spec: PaperSpec, C: number): PaperAtlas & AtlasGL {
     emissive: new THREE.Color('#ffffff'),
     emissiveMap: tex,
     emissiveIntensity: 0.08,
+    // cores do desenho do hub (sem o tone mapping "filme" de alguns jogos)
+    toneMapped: false,
   });
   a = Object.assign(base, { tex, mat });
   ATLAS.set(key, a);
@@ -70,7 +72,7 @@ function toolMat(kind: PaperTool, col: string, hand: string): THREE.MeshLambertM
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
     const glow = kind === 'lamp' || kind === 'torch';
-    const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: glow ? 0.8 : 0.16 });
+    const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, toneMapped: false, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: glow ? 0.8 : 0.16 });
     t = { tex, mat };
     TOOLS.set(k, t);
   }

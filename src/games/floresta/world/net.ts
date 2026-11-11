@@ -11,6 +11,9 @@ import { t } from '../../../i18n';
 import { notify } from '../../../ui/notify';
 import { api, me, wsUrl } from '../../../social/net';
 import { skinById } from '../../../game/skins';
+// PAPER: outros jogadores como Bloop 2D de papel (chave PAPER_GAMES.floresta)
+import { PaperChar, paperOn, specOf, type PaperTool } from '../../../3d/paper';
+import { squad } from '../../../party/squad';
 import { mergeParts, mat4 } from '../fps/models';
 import type { WorldGame, WorldOpts } from './worldgame';
 import { freshWorld } from './wsave';
@@ -108,6 +111,9 @@ export class Avatar implements Entity {
   held = '';
   veh = -1;
   private tag: THREE.Sprite;
+  /** PAPER */
+  private paper: PaperChar | null = null;
+  private mv = 0;
   get face(): number {
     return this.yaw;
   }
@@ -119,11 +125,26 @@ export class Avatar implements Entity {
     skin: string,
     private sess: NetSession,
   ) {
+    this.tag = nameSprite(name);
+    if (paperOn('floresta')) {
+      // PAPER: o avatar do grupo (se o amigo está no grupo), senão a skin
+      this.paper = new PaperChar(specOf(skin, squad()?.members.find((m) => m.id === pid)?.avatar), { radius: 0.55, cell: 96 });
+      this.g.add(this.paper.root, this.tag);
+      return;
+    }
     AV_MAT ??= new THREE.MeshLambertMaterial({ vertexColors: true });
     const body = new THREE.Mesh(avatarGeo(skin), AV_MAT);
     body.castShadow = true;
-    this.tag = nameSprite(name);
     this.g.add(body, this.tag);
+  }
+  /** PAPER: vira o billboard para a câmera e anima (andar, ferramenta) */
+  private paperTick(dt: number, api: MundoAPI | undefined, mv: number): void {
+    if (!this.paper || !api) return;
+    this.mv += (mv / Math.max(dt, 1e-3) - this.mv) * Math.min(1, dt * 8);
+    const h = this.held;
+    const tool: PaperTool | null = /axe|machado/.test(h) ? 'axe' : /pick|picareta/.test(h) ? 'pick' : /shovel|pa_|spade/.test(h) ? 'shovel' : /torch|tocha/.test(h) ? 'torch' : null;
+    this.paper.setTool(tool, '#c8d0e0');
+    this.paper.update(dt, api.camera, { yaw: this.g.rotation.y + Math.PI, speed: this.vn ? 0 : this.mv, act: -1 });
   }
   set(p: number[]): void {
     this.tx = p[0];
@@ -136,7 +157,7 @@ export class Avatar implements Entity {
       this.z = this.tz;
     }
   }
-  update(dt: number): boolean {
+  update(dt: number, api?: MundoAPI): boolean {
     const v = this.vn ? this.sess.veh?.byNid.get(this.vn) : undefined;
     if (v) {
       const s = v.seatWorld();
@@ -148,6 +169,7 @@ export class Avatar implements Entity {
       this.g.rotation.y = this.yaw;
       this.g.visible = this.sess.visible(this);
       this.tag.visible = this.sess.tagVisible(this);
+      this.paperTick(dt, api, 0); // PAPER
       return true;
     }
     const k = Math.min(1, dt * 10);
@@ -164,10 +186,11 @@ export class Avatar implements Entity {
     while (d < -Math.PI) d += Math.PI * 2;
     this.yaw += d * k;
     this.bob += Math.min(mv * 8, 12) * dt;
-    this.g.position.set(this.x, this.y + Math.abs(Math.sin(this.bob)) * 0.08, this.z);
+    this.g.position.set(this.x, this.y + (this.paper ? 0 : Math.abs(Math.sin(this.bob)) * 0.08), this.z);
     this.g.rotation.y = this.yaw + Math.PI;
     this.g.visible = this.sess.visible(this);
     this.tag.visible = this.sess.tagVisible(this);
+    this.paperTick(dt, api, mv * k); // PAPER
     return true;
   }
   hit(dmg: number, from: string): void {
@@ -175,6 +198,7 @@ export class Avatar implements Entity {
   }
   dispose(api: MundoAPI): void {
     api.scene.remove(this.g);
+    this.paper?.dispose(); // PAPER
   }
 }
 
