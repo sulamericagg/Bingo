@@ -6,7 +6,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { gameFont } from '../../i18n/font';
-import { GS, RWY_HALF, RWY_LEN, type Sim } from './sim';
+import { GS, stallSpeed, RWY_HALF, RWY_LEN, type Sim } from './sim';
 
 const TAU = Math.PI * 2;
 const SKY = '#3f8fe0';
@@ -164,8 +164,8 @@ export function drawPFD(x: CanvasRenderingContext2D, W: number, H: number, s: Si
     x.fillStyle = '#c8d0ff';
     x.fillText(label, tx + tw / 2, cy - R - 4);
   };
-  const vRef = 110 - f.flaps * 18;
-  tape(true, f.spd * 1.94, 10, t('voo.i.kt', 'VEL nós'), vRef * 0.6 * 1.94);
+  // faixa vermelha = velocidade de estol de verdade (muda com os flapes)
+  tape(true, f.spd * 1.94, 10, t('voo.i.kt', 'VEL nós'), stallSpeed(f.flapPos) * 1.94);
   tape(false, f.alt, 100, t('voo.i.alt', 'ALT m'), s.phase === 'final' ? -1 : 300, f.talt);
   // razão de subida
   const vsx = W - 8 - W * 0.15 - 14;
@@ -276,6 +276,19 @@ export function drawPFD(x: CanvasRenderingContext2D, W: number, H: number, s: Si
   x.fillText(t('voo.i.fuel', 'COMB {n}%', { n: Math.round(f.fuel) }), W - 12, H - 30);
   x.fillStyle = LINE;
   x.fillText(t('voo.i.thr', 'POT {n}%', { n: Math.round(f.thr * 100) }), W - 12, H - 16);
+  // piloto automático e aviso de cintos (indicadores claros)
+  x.font = gameFont(700, 12);
+  x.textAlign = 'center';
+  if (f.ap) {
+    x.fillStyle = 'rgba(20,80,40,.85)';
+    x.fillRect(cx - 24, 44, 48, 18);
+    x.fillStyle = GRN;
+    x.fillText(t('voo.i.ap', 'AP'), cx, 57);
+  }
+  if (f.belt) {
+    x.fillStyle = Math.floor(s.time * 2) % 2 ? AMB : '#ffffff';
+    x.fillText(t('voo.i.belt', 'CINTOS'), cx, H - 22);
+  }
   if (f.stall && Math.floor(s.time * 4) % 2 === 0) {
     x.fillStyle = '#ff5c7a';
     x.font = gameFont(700, 20);

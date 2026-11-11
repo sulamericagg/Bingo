@@ -5,9 +5,10 @@
  * Quarteirão = 64 px (~75 m). Ruas nas bordas dos quarteirões; avenidas a cada 256 px (borda do tile).
  * O MESMO ruído decide o desenho do mapa e o bioma das aparições (água no mapa = bichos de água ali).
  *
- * `TileProvider` é a interface plugável: o padrão é o ProceduralTileProvider (offline);
- * UrlTileProvider existe para quando o dono configurar um serviço comercial com a própria chave
- * (com limite de requisições simultâneas e cache) — nunca use servidores comunitários gratuitos aqui.
+ * Uso hoje: modo casa (sem GPS) e reserva quando o mapa real (OSM, ver osmdata.ts/osmtiles.ts/mapview.ts)
+ * não carregou (offline e sem cache) — o MapRenderer desenha estes tiles como "pedaços" de 256 px.
+ * `TileProvider`/`UrlTileProvider` ficam para um eventual serviço raster próprio; o mapa real NÃO usa
+ * servidores de tiles diretamente do aparelho: passa pelo proxy com cache do nosso Worker (server/caca-tiles.ts).
  */
 import { hashN } from './rng';
 
@@ -84,22 +85,42 @@ export interface MapTheme {
   roof: number; // clarear telhado
   window: string;
   ink: string;
+  /* mapa real (OSM) */
+  grass: string;
+  wood: string;
+  sand: string;
+  pitch: string;
+  resid: string;
+  commerce: string;
+  industry: string;
+  nospawn: string;
+  casing: string;
+  path: string;
+  rail: string;
+  river: string;
+  sky: [string, string];
 }
 export const THEMES: Record<MapTheme['id'], MapTheme> = {
   dia: {
     id: 'dia', ground: '#cfe9c4', sidewalk: '#ece6f7', road: '#b9b0d8', roadMain: '#a59bd0', roadLine: '#fff6d2',
     park: '#8fdc8a', park2: '#7fcf7c', tree: '#4fb85f', tree2: '#3a9a4a', water: '#6cc4ff', water2: '#a8e0ff',
     plaza: '#f6e3c8', plaza2: '#ead2b0', bld: ['#ffd9e6', '#fff0c2', '#d9ecff', '#e6dcff', '#d7f5e4', '#ffe1cc'], roof: 0.25, window: '#9fc6ff', ink: '#5b4a8a',
+    grass: '#a6e39a', wood: '#6cc777', sand: '#f6e7b4', pitch: '#9fe0a0', resid: '#d6edc9', commerce: '#ebe0f2', industry: '#ddd8e8', nospawn: '#e4dcef',
+    casing: '#fbf7ff', path: '#fff3d6', rail: '#9a8fbf', river: '#7cc8ff', sky: ['#a9d8ff', '#e3f3ff'],
   },
   tarde: {
     id: 'tarde', ground: '#e9c9b8', sidewalk: '#f3dfe3', road: '#b79ac0', roadMain: '#a483b3', roadLine: '#ffe7b0',
     park: '#b9cf7a', park2: '#a9c06c', tree: '#7aa64f', tree2: '#5d8a3d', water: '#7fa8e8', water2: '#bcd0f4',
     plaza: '#f6d2b0', plaza2: '#e8bf98', bld: ['#ffc7c7', '#ffe0a8', '#e4c9f0', '#ffd0b0', '#d6c8f4', '#f4e1c0'], roof: 0.2, window: '#ffd27a', ink: '#6a3a6a',
+    grass: '#c6d68a', wood: '#8fae5c', sand: '#f8dcae', pitch: '#bcd98c', resid: '#ecd4c4', commerce: '#f0d6dc', industry: '#e2cfd0', nospawn: '#ead2d8',
+    casing: '#fff0ea', path: '#ffe6c4', rail: '#a785a8', river: '#8aaee8', sky: ['#ffb58a', '#ffe1c2'],
   },
   noite: {
     id: 'noite', ground: '#2a2a5a', sidewalk: '#3a3672', road: '#22204a', roadMain: '#1b1940', roadLine: '#ffe48a',
     park: '#24584e', park2: '#1f4c44', tree: '#2f7a5a', tree2: '#1f5a44', water: '#1d3f8a', water2: '#3a64b8',
     plaza: '#4a4282', plaza2: '#3d3672', bld: ['#4a3f8a', '#3f4a8f', '#55407f', '#3c3a78', '#4d3b7a', '#3a4680'], roof: 0.12, window: '#ffe48a', ink: '#120a30',
+    grass: '#2c6152', wood: '#235546', sand: '#5a5276', pitch: '#2f6a58', resid: '#2e2e62', commerce: '#352f68', industry: '#2f2c5c', nospawn: '#332c64',
+    casing: '#4a4486', path: '#5d5598', rail: '#6a64a8', river: '#2a4f9e', sky: ['#0d0a2e', '#2a2466'],
   },
 };
 export function themeForHour(h: number): MapTheme {
@@ -206,18 +227,18 @@ export class UrlTileProvider implements TileProvider {
 function rr(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   c.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
 }
-function lighten(hex: string, k: number): string {
+export function lighten(hex: string, k: number): string {
   const n = parseInt(hex.slice(1), 16);
   const f = (v: number) => Math.round(v + (255 - v) * k);
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
-function darken(hex: string, k: number): string {
+export function darken(hex: string, k: number): string {
   const n = parseInt(hex.slice(1), 16);
   const f = (v: number) => Math.round(v * (1 - k));
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-function drawProceduralTile(c: CanvasRenderingContext2D, tx: number, ty: number, th: MapTheme): void {
+export function drawProceduralTile(c: CanvasRenderingContext2D, tx: number, ty: number, th: MapTheme): void {
   c.fillStyle = th.sidewalk;
   c.fillRect(0, 0, 256, 256);
   const bx0 = tx * 4;

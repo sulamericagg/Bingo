@@ -339,6 +339,30 @@ export function structModel(id: string): StructModel {
       g.add(G.sph, '#ffe39a', 0, 2.1, 1.3, 0.2, 0.15, 0.2);
       ly = 2;
       break;
+    case 'rack':
+      // estante: postes + travessas; as toras aparecem conforme o baú enche
+      for (const x of [-0.75, 0.75]) for (const z of [-0.3, 0.3]) b.add(G.cyl, '#6a3f22', x, 0.75, z, 0.12, 1.5, 0.12);
+      b.add(G.box, '#7a4a2a', 0, 0.08, 0, 1.7, 0.1, 0.75).add(G.box, '#7a4a2a', 0, 1.48, 0.3, 1.7, 0.08, 0.08).add(G.box, '#7a4a2a', 0, 1.48, -0.3, 1.7, 0.08, 0.08);
+      break;
+    case 'crate':
+      b.add(G.box, '#c08a52', 0, 0.4, 0, 1, 0.8, 0.8).add(G.box, '#8a5a32', 0, 0.4, 0.41, 1.02, 0.12, 0.02).add(G.box, '#8a5a32', 0, 0.12, 0.41, 1.02, 0.1, 0.02).add(G.box, '#8a5a32', 0, 0.72, 0.41, 1.02, 0.1, 0.02);
+      break;
+    case 'bin':
+      b.add(G.cyl12, '#8a94a8', 0, 0.42, 0, 0.9, 0.84, 0.9).add(G.torus, '#5a6478', 0, 0.84, 0, 0.92, 0.92, 0.5, Math.PI / 2).add(G.torus, '#5a6478', 0, 0.3, 0, 0.92, 0.92, 0.4, Math.PI / 2);
+      break;
+    case 'cart':
+      // carrinho de mão: caçamba, roda na frente, cabos para trás (lado do jogador = -z)
+      b.add(G.box, '#c08a52', 0, 0.55, 0.1, 0.9, 0.12, 1.1).add(G.box, '#a8743c', 0.45, 0.72, 0.1, 0.06, 0.35, 1.1).add(G.box, '#a8743c', -0.45, 0.72, 0.1, 0.06, 0.35, 1.1).add(G.box, '#a8743c', 0, 0.72, 0.66, 0.9, 0.35, 0.06).add(G.box, '#a8743c', 0, 0.72, -0.46, 0.9, 0.35, 0.06);
+      b.add(G.cyl12, '#3a3a48', 0, 0.28, 0.62, 0.56, 0.16, 0.56, 0, 0, Math.PI / 2).add(G.cyl, '#c8d0e0', 0, 0.28, 0.62, 0.06, 0.2, 0.06, 0, 0, Math.PI / 2);
+      for (const x of [-0.32, 0.32]) b.add(G.cyl, '#7a4a2a', x, 0.62, -0.75, 0.06, 0.8, 0.06, Math.PI / 2 + 0.25, 0, 0).add(G.cyl, '#7a4a2a', x, 0.25, -0.2, 0.06, 0.55, 0.06);
+      ly = 0.8;
+      break;
+    case 'sled':
+      b.add(G.box, '#7ad0ff', 0, 0.32, 0, 0.9, 0.1, 1.5).add(G.box, '#5aa0d0', 0.45, 0.45, 0, 0.05, 0.2, 1.5).add(G.box, '#5aa0d0', -0.45, 0.45, 0, 0.05, 0.2, 1.5);
+      for (const x of [-0.38, 0.38]) b.add(G.box, '#c8d0e0', x, 0.06, 0, 0.06, 0.06, 1.6).add(G.cyl, '#c8d0e0', x, 0.16, 0.8, 0.05, 0.25, 0.05, 0.6);
+      b.add(G.cyl, '#7a4a2a', 0, 0.36, 0.95, 0.04, 0.9, 0.04, 0, 0, Math.PI / 2);
+      ly = 0.6;
+      break;
     default:
       b.add(G.box, '#ffffff', 0, 0.3, 0, 0.6, 0.6, 0.6);
   }
@@ -545,4 +569,82 @@ export function iconSprite(svg: string, bg = '#ffffff'): THREE.Sprite {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, depthTest: true }));
   s.scale.setScalar(0.9);
   return s;
+}
+
+/* ------------------------------ coisas soltas / na mão ------------------------------ */
+const IG = new Map<string, THREE.BufferGeometry>();
+/** tora (cilindro deitado no eixo X, ~0.8 m) */
+export function logGeo(): THREE.BufferGeometry {
+  let g = IG.get('#log');
+  if (!g) {
+    g = new PB().add(G.cyl, '#8a5228', 0, 0, 0, 0.26, 0.8, 0.26, 0, 0, Math.PI / 2, 0.35).add(G.cyl, '#f3d9a8', 0.41, 0, 0, 0.22, 0.02, 0.22, 0, 0, Math.PI / 2).add(G.cyl, '#f3d9a8', -0.41, 0, 0, 0.22, 0.02, 0.22, 0, 0, Math.PI / 2).add(G.cyl, '#c89a6a', 0.42, 0, 0, 0.09, 0.02, 0.09, 0, 0, Math.PI / 2).geo();
+    IG.set('#log', g);
+  }
+  return g;
+}
+/** modelinho 3D de um recurso/item (no chão e na mão). Centro perto do chão (y≈0 é a base). */
+export function itemGeo(id: string): THREE.BufferGeometry {
+  let g = IG.get(id);
+  if (g) return g;
+  const b = new PB();
+  switch (id) {
+    case 'wood':
+      b.addGeo(logGeo(), 0, 0.13, 0);
+      break;
+    case 'twig':
+      b.add(G.cyl, '#8a5a2a', 0, 0.05, 0, 0.06, 0.75, 0.06, 0, 0, Math.PI / 2).add(G.cyl, '#8a5a2a', 0.15, 0.08, 0.1, 0.04, 0.35, 0.04, 0, 0.8, Math.PI / 2).add(G.cyl, '#8a5a2a', -0.12, 0.06, -0.08, 0.04, 0.3, 0.04, 0, -0.6, Math.PI / 2).add(G.sph, '#6ac04a', 0.3, 0.1, 0.18, 0.12, 0.06, 0.08);
+      break;
+    case 'stone':
+      b.add(G.dodec, '#a4a4b8', 0, 0.14, 0, 0.36, 0.28, 0.32).add(G.dodec, '#8a8aa0', 0.12, 0.1, 0.1, 0.18, 0.14, 0.18);
+      break;
+    case 'scrap':
+      b.add(G.torus, '#b8c4d8', 0, 0.06, 0, 0.36, 0.36, 0.5, Math.PI / 2).add(G.box, '#8a94a8', 0.12, 0.08, 0.05, 0.3, 0.05, 0.12, 0, 0.6, 0);
+      break;
+    case 'fiber':
+      for (let i = 0; i < 5; i++) b.add(G.cyl, i % 2 ? '#6aaa3a' : '#8ac04a', (i - 2) * 0.05, 0.04, 0, 0.03, 0.6, 0.03, 0, 0.3 * (i - 2), Math.PI / 2);
+      break;
+    case 'spark':
+      b.add(G.ico0, '#ffe45c', 0, 0.2, 0, 0.3, 0.3, 0.3);
+      break;
+    case 'berry':
+      b.add(G.sph, '#ff3a6a', 0, 0.09, 0, 0.18, 0.18, 0.18).add(G.sph, '#ff3a6a', 0.13, 0.09, 0.04, 0.18, 0.18, 0.18).add(G.sph, '#e02a5a', 0.06, 0.2, 0.02, 0.18, 0.18, 0.18).add(G.sph, '#3ec05a', 0.06, 0.3, 0.02, 0.12, 0.04, 0.06);
+      break;
+    case 'mush':
+      b.add(G.cyl, '#f6eedc', 0, 0.1, 0, 0.1, 0.2, 0.1).add(G.sph, '#e83a4a', 0, 0.22, 0, 0.32, 0.16, 0.32).add(G.sph, '#ffffff', 0.06, 0.27, 0.05, 0.06, 0.04, 0.06);
+      break;
+    case 'apple':
+      b.add(G.sph, '#ff3a3a', 0, 0.15, 0, 0.3, 0.28, 0.3).add(G.cyl, '#5a3a20', 0, 0.31, 0, 0.03, 0.08, 0.03).add(G.sph, '#3ec05a', 0.05, 0.32, 0, 0.1, 0.03, 0.06);
+      break;
+    case 'carrot':
+      b.add(G.cone, '#ff8a2a', 0, 0.08, 0, 0.14, 0.45, 0.14, 0, 0, Math.PI / 2).add(G.cone5, '#3ec05a', -0.27, 0.1, 0, 0.12, 0.2, 0.12, 0, 0, Math.PI / 2);
+      break;
+    case 'pumpkin':
+      b.add(G.sph, '#ff8a1a', 0, 0.22, 0, 0.55, 0.42, 0.55, 0, 0, 0, 0.3).add(G.cyl, '#5a7a2a', 0, 0.46, 0, 0.05, 0.12, 0.05);
+      break;
+    case 'coal':
+      b.add(G.dodec, '#3a3a48', 0, 0.12, 0, 0.3, 0.24, 0.28).add(G.dodec, '#2a2a34', 0.1, 0.08, 0.08, 0.16, 0.14, 0.16);
+      break;
+    case 'fuel':
+      b.add(G.box, '#3ec05a', 0, 0.2, 0, 0.3, 0.4, 0.18).add(G.cyl, '#ffffff', 0.08, 0.43, 0, 0.06, 0.08, 0.06);
+      break;
+    case 'battery':
+      b.add(G.box, '#7aff8a', 0, 0.12, 0, 0.36, 0.24, 0.22).add(G.box, '#3a4250', 0.2, 0.12, 0, 0.05, 0.1, 0.1);
+      break;
+    case 'sap':
+      b.add(G.sph, '#ffb02e', 0, 0.12, 0, 0.24, 0.26, 0.24).add(G.cone, '#ffb02e', 0, 0.3, 0, 0.12, 0.14, 0.12);
+      break;
+    case 'seed':
+      b.add(G.sph, '#c89a5a', 0, 0.08, 0, 0.16, 0.2, 0.16).add(G.sph, '#c89a5a', 0.1, 0.07, 0.06, 0.14, 0.16, 0.14).add(G.sph, '#6ac04a', 0.03, 0.2, 0, 0.1, 0.03, 0.06);
+      break;
+    default: {
+      const d = ITEM[id];
+      if (d?.axe || d?.bonk || d?.lamp) b.addGeo((toolMesh(d.axe ? 'axe' : d.lamp ? 'lamp' : 'hammer', d.col) as THREE.Mesh).geometry, 0, 0.05, 0);
+      else if (d?.wear?.slots) b.add(G.sph, d.col, 0, 0.22, 0, 0.55, 0.45, 0.45, 0, 0, 0, 0.3).add(G.cyl, '#5a3a20', 0, 0.46, 0, 0.18, 0.06, 0.18);
+      else if (d?.place?.kind === 'torch') b.add(G.cyl, '#7a4a2a', 0, 0.06, 0, 0.07, 0.7, 0.07, 0, 0, Math.PI / 2).add(G.cyl, '#5a3a20', 0.36, 0.06, 0, 0.11, 0.1, 0.11, 0, 0, Math.PI / 2);
+      else b.add(G.box, d?.col ?? '#ffffff', 0, 0.14, 0, 0.3, 0.28, 0.3).add(G.box, '#ffffff', 0, 0.29, 0, 0.32, 0.03, 0.06);
+    }
+  }
+  g = b.geo();
+  IG.set(id, g);
+  return g;
 }

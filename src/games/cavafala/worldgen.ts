@@ -18,6 +18,10 @@ export function townSize(vs: number): { n: number; ny: number } {
   return { n, ny };
 }
 
+/** raio da ilha da vila (o jogador não passa de TOWN_WALK_R) */
+export const ISLAND_R = 31;
+export const TOWN_WALK_R = 30.2;
+
 export function genTown(th: Theme, vs: number, detail: boolean, variant: number): { T: Terrain; L: TownLayout } {
   const { n, ny } = townSize(vs);
   const size = n * vs;
@@ -41,6 +45,9 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
       const hill = smooth(29.5, 20, rr);
       const nz = fbm2(x * 0.06, z * 0.06, seed, 4);
       let H = edgeH + (plateau - edgeH) * hill + (nz - 0.5) * 2.6 * (0.4 + hill * 0.6);
+      // borda redonda: o mapa vira uma ilha (sem o "quadrado" de terra nas pontas)
+      const rEdge = Math.hypot(x, z);
+      if (rEdge > 27) H -= Math.min(1, (rEdge - 27) / 6) ** 2 * (th.sea ? 3.5 : 5);
       // ondinhas de dunas no deserto
       if (th.id === 'deserto') H += Math.sin(x * 0.35 + z * 0.12) * 0.35 * hill;
       const cH = ceil - fbm2(x * 0.09, z * 0.09, seed + 5, 3) * 3;
@@ -82,17 +89,46 @@ export function genTown(th: Theme, vs: number, detail: boolean, variant: number)
             if (th.id === 'deserto' && depth < 2.5) m = M.Areia;
           }
         }
-        D[q] = d;
+        // ilha redonda: corta o "quadrado" das pontas
+        D[q] = Math.min(d, Math.max(-3, Math.min(3, (ISLAND_R - rEdge) * 1.5)));
         Mm[q] = m;
       }
     }
   T.recount();
   T.markAllDirty();
-  // nasce do lado de cá da ravina, no alto do morro, olhando a vila
-  const sz = -21;
-  const sy = T.groundY(0, sz, th.cave ? 25 : 30) + 0.2;
-  const L: TownLayout = { cx, cz, floorY, ravZ, ravHalf, spawn: new THREE.Vector3(0, sy, sz) };
+  // nasce do lado de cá da ravina, NO ALTO do morro (chão firme e plano, longe da água), olhando a vila
+  const L: TownLayout = { cx, cz, floorY, ravZ, ravHalf, spawn: findSpawn(T, th.cave ? 25 : 30, plateau, th.sea ? 7 : -100) };
   return { T, L };
+}
+
+/** procura um lugar firme e plano no alto do morro (nunca na água, no vazio ou dentro da terra) */
+function findSpawn(T: Terrain, top: number, plateau: number, waterY: number): THREE.Vector3 {
+  let best: THREE.Vector3 | null = null;
+  let bestScore = -Infinity;
+  for (let z = -22; z <= -8; z += 0.5)
+    for (const x of [0, -2, 2, -4, 4, -6, 6]) {
+      const y = T.groundY(x, z, top);
+      if (y === -Infinity || y < waterY + 2.5) continue;
+      // plano: vizinhos a 1,2 m quase na mesma altura
+      let flat = 0;
+      for (const [dx, dz] of [
+        [1.2, 0],
+        [-1.2, 0],
+        [0, 1.2],
+        [0, -1.2],
+      ])
+        flat = Math.max(flat, Math.abs(T.groundY(x + dx, z + dz, top) - y));
+      if (flat > 0.7) continue;
+      // espaço livre para a cabeça
+      if (T.sample(x, y + 1, z) > 0 || T.sample(x, y + 1.9, z) > 0) continue;
+      // no alto (vê a vila), o mais perto da borda de cá, no meio
+      const score = -Math.max(0, plateau - 1.2 - y) * 6 - z * 0.4 - Math.abs(x) * 0.3 - flat * 2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = new THREE.Vector3(x, y + 0.25, z);
+      }
+    }
+  return best ?? new THREE.Vector3(0, T.groundY(0, -14, top) + 0.25, -14);
 }
 
 /** ilha flutuante da arena */
