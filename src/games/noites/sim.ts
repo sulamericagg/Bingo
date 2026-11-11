@@ -2085,6 +2085,7 @@ export class Sim {
       lt: this.loot.filter((l) => l.d <= 0).map((l) => [l.k, l.n, Math.round(l.x * 10) / 10, Math.round(l.z * 10) / 10]),
       me: me ? { slots: packSlots(me.slots), sel: me.sel, wear: { ...me.wear }, hearts: me.hearts, hunger: Math.round(me.hunger), warmth: Math.round(me.warmth), x: me.x, z: me.z } : null,
       nextId: this.nextId,
+      bd: this.build.serialize(), // BUILD: peças construídas
     };
   }
   loadSave(o: RunSave, myId: string): void {
@@ -2128,6 +2129,7 @@ export class Sim {
       me.warmth = o.me.warmth;
       [me.x, me.z] = this.collide(o.me.x, o.me.z, 0.4);
     }
+    if (o.bd) this.build.load(o.bd); // BUILD
     this.verTrees++;
     this.verStruct++;
     this.verChest++;
@@ -2164,4 +2166,5 @@ export interface RunSave {
   lt: [string, number, number, number][];
   me: { slots: (0 | [string, number])[]; sel: number; wear: Partial<Record<Slot, string>>; hearts: number; hunger: number; warmth: number; x: number; z: number } | null;
   nextId: number;
+  bd?: unknown;
 }

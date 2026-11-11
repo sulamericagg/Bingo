@@ -118,8 +118,8 @@
 @media (max-height:380px){.nc-vside{width:220px}.nc-vprev{width:210px;height:96px}.nc-vopt{width:44px;height:36px}}
 
 /* ---------- noites2: mão, mira, barra, mochila, bancada ---------- */
-.nc-act{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--nb) + 4px);display:flex;flex-direction:row;align-items:flex-end;gap:8px}
-.nc-throw{width:58px!important;height:58px!important;margin-bottom:4px}
+.nc-act{position:absolute;right:calc(var(--edge-r,12px) + 6px);bottom:calc(var(--nb) + 4px);display:flex;align-items:flex-end}
+.nc-throw{position:absolute;right:104px;bottom:96px;width:58px!important;height:58px!important}
 .nc-hotwrap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--nb) + 2px);display:flex;flex-direction:column;align-items:center;gap:4px}
 .nc-hotrow{display:flex;gap:8px;align-items:flex-end}
 .nc-hot{display:flex;gap:4px;padding:4px;background:rgba(20,10,50,.55);border-radius:16px}
@@ -186,7 +186,7 @@
 .nc-scroll.less:not(.more){-webkit-mask-image:linear-gradient(transparent,#000 12%);mask-image:linear-gradient(transparent,#000 12%)}
 .nc-rail{display:flex;flex-direction:column;gap:6px;padding:4px 2px 12px}
 .nc-tab{width:70px;min-height:58px;flex-direction:column;gap:1px;padding:3px 2px;border-radius:14px;flex:none}
-.nc-tab span{font-size:9.5px;line-height:1.05;font-weight:800;max-width:66px;text-align:center;overflow-wrap:anywhere}
+.nc-tab span{font-size:9px;line-height:1.05;font-weight:800;max-width:68px;text-align:center;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:clip}
 .nc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));grid-auto-rows:max-content;gap:8px;padding:4px 4px 16px;align-content:start}
 .nc-card{position:relative;background:#fff;color:#1c0640;border-radius:16px;padding:6px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:3px;border:3px solid #d8ccf4;cursor:pointer;min-height:118px;box-shadow:0 3px 0 rgba(0,0,0,.35)}
 .nc-card .ci svg{filter:drop-shadow(0 1px 0 rgba(42,11,92,.4))}
