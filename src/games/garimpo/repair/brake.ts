@@ -9,6 +9,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { t } from '../../../i18n';
+import { gameFont } from '../../../i18n/font';
 import { tap as haptic } from '../../../core/haptics';
 import { speak } from '../../voo/voice';
 import type { Terrain } from '../terrain';
@@ -62,7 +63,7 @@ export class BrakeEmergency {
     el.hidden = true;
     el.innerHTML = `<div class="gbr-red"></div>
       <div class="gbr-warn">${RIC.brake}<span></span></div>
-      <div class="gbr-gauge"><span class="gbr-ar">${RIC.ramp}</span><b class="gbr-dist"></b><i><u></u></i><b class="gbr-kmh"></b></div>
+      <div class="gbr-gauge"><span class="gbr-ar"><svg viewBox="0 0 24 24"><path d="M12 2l7 17-7-4-7 4z" fill="#ffcf2e" stroke="#7a5000" stroke-width="1.5" stroke-linejoin="round"/></svg></span>${RIC.ramp}<b class="gbr-dist"></b><i><u></u></i><b class="gbr-kmh"></b></div>
       <div class="gbr-emg-btns">
         <button class="gbr-ebtn down" data-touch-ignore>${RIC.gearDown}<b>5</b></button>
         <button class="gbr-ebtn jake" data-touch-ignore>${RIC.jake}</button>
@@ -121,7 +122,7 @@ export class BrakeEmergency {
   }
 
   /** um quadro: calcula a desaceleração e cuida da tela */
-  step(dt: number, visible: boolean): void {
+  step(dt: number, visible: boolean, road = false): void {
     const tg = this.tgt;
     if (!this.active || !tg) return;
     this.time += dt;
@@ -159,6 +160,7 @@ export class BrakeEmergency {
       }
     } else this.stopT = 0;
     this.el.hidden = !visible;
+    this.el.classList.toggle('road', road);
     // tela (só quando muda)
     const r = tg.ramp();
     const kmh = Math.round(v * 3.6);
@@ -190,7 +192,7 @@ export class BrakeEmergency {
 
 /* ============================== leito de cascalho (garimpo) ============================== */
 let gravelTex: THREE.CanvasTexture | null = null;
-function gravel(): THREE.CanvasTexture {
+export function gravel(): THREE.CanvasTexture {
   if (gravelTex) return gravelTex;
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -244,7 +246,7 @@ export function rampSign(): THREE.Mesh {
   x.lineTo(140, 80);
   x.stroke();
   x.fillStyle = '#fff';
-  x.font = '800 22px sans-serif';
+  x.font = gameFont(800, 22);
   x.textAlign = 'center';
   x.fillText(t('gb.rep.rampSign', 'RAMPA DE ESCAPE'), 128, 145);
   const tx = new THREE.CanvasTexture(c);
@@ -324,9 +326,10 @@ export class EscapeBed {
     }
     // placa na entrada
     const sg = rampSign();
-    const sx = x + c * (this.wid / 2 + 1.6) - s * 2;
-    const sz = z - s * (this.wid / 2 + 1.6) - c * 2;
-    sg.position.set(sx, T.heightAt(sx, sz) + 2.6, sz);
+    const sx = x + c * (this.wid / 2 + 3.2) - s * 1;
+    const sz = z - s * (this.wid / 2 + 3.2) - c * 1;
+    sg.scale.setScalar(0.8);
+    sg.position.set(sx, T.heightAt(sx, sz) + 2.4, sz);
     sg.rotation.y = yaw + Math.PI;
     this.group.add(sg);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6), new THREE.MeshLambertMaterial({ color: 0x8b9096 }));

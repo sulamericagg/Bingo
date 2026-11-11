@@ -382,7 +382,7 @@ export class Overlay {
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
     window.setTimeout(() => g.say(), 250);
-    el.classList.add('in');
+    requestAnimationFrame(() => el.classList.add('in'));
   }
 
   private resize(): void {
@@ -539,8 +539,9 @@ export class Overlay {
   }
 
   private toLocal(e: PointerEvent): [number, number] {
+    // usa o tamanho na tela (a entrada anima com scale): toque cai no lugar certo sempre
     const r = this.cv.getBoundingClientRect();
-    return [(e.clientX - r.left) / this.s, (e.clientY - r.top) / this.s];
+    return [((e.clientX - r.left) / Math.max(1, r.width)) * this.g.W, ((e.clientY - r.top) / Math.max(1, r.height)) * this.g.H];
   }
   private pd = (e: PointerEvent) => {
     if (this.winT >= 0) return;

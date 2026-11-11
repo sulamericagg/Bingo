@@ -11,6 +11,7 @@ const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, de
 const page = await ctx.newPage();
 page.on('pageerror', (e) => console.error('PAGEERROR', e.message));
 page.on('console', (m) => m.type() === 'error' && console.log('CONSOLE', m.text()));
+
 const cdp = await ctx.newCDPSession(page);
 const S = 390 / 390;
 const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: x * S, y: y * S, id: 1, radiusX: 6, radiusY: 6 }] });
@@ -36,7 +37,11 @@ const drag = async (x0, y0, x1, y1, steps = 14, hold = 0) => {
 const twist = async (cx, cy, turns, r = 34, shotAt = -1, name = '') => {
   const n = Math.ceil(Math.abs(turns) * 22);
   const dir = Math.sign(turns);
-  await touch('touchStart', cx + r, cy);
+  // como a criança: põe o dedo na porca e sai girando em volta
+  await touch('touchStart', cx, cy);
+  await wait(16);
+  await touch('touchMove', cx + r * 0.5, cy);
+  await wait(16);
   for (let i = 1; i <= n; i++) {
     const a = (dir * i * Math.PI * 2) / 22;
     await touch('touchMove', cx + Math.cos(a) * r, cy + Math.sin(a) * r);
@@ -55,6 +60,15 @@ const G = () => ev(() => window.__mg && { step: window.__mg.step, won: window.__
 const open = async (q) => {
   await page.goto(`http://127.0.0.1:${port}/scripts/dev/garimpo-repair.html?${q}`);
   await page.waitForFunction(() => window.__mg, null, { timeout: 30000 });
+  if (process.env.DBG)
+    await ev(() => {
+      const g = window.__mg;
+      const od = g.down.bind(g);
+      g.down = (a, b) => {
+        console.error('down', g.step, a.toFixed(1), b.toFixed(1));
+        od(a, b);
+      };
+    });
   await wait(400);
 };
 const done = async (name) => {
@@ -130,10 +144,12 @@ async function tyre(heavy, tag) {
       return { x: g.cx + Math.cos(t) * bc, y: g.hy + Math.sin(t) * bc };
     }, nx);
     await tap(p.x, p.y);
+    if (process.env.DBG) console.log('tap', nx, JSON.stringify(p), JSON.stringify(await ev(() => ({ act: window.__mg.act, st: Array.from(window.__mg.st), spA: window.__mg.spA }))));
     await wait(500);
     if (k === 1) await shot(`${tag}-9-nut-loose`);
     await twist(p.x, p.y, 0.95, 30, k === 1 ? 10 : -1, `${tag}-10-tighten`);
     await wait(150);
+    if (process.env.DBG) console.log('nut', nx, JSON.stringify(await ev(() => ({ st: Array.from(window.__mg.st), first: window.__mg.first, ok: window.__mg.starOk, tight: window.__mg.tight }))));
   }
   await wait(600);
   await shot(`${tag}-11-tight`);

@@ -311,21 +311,28 @@ export class TyreGame extends MiniGame {
           best = i;
         }
       }
-      // porca solta tem preferência (continua girando)
-      for (let i = 0; i < this.n; i++) if (this.st[i] === 3) {
-        lugPos(this.sp, this.cx, this.hy, this.spA, this.n, i, p);
-        if (Math.hypot(x - p.x, y - p.y) < 70) best = i;
-      }
+      // porca solta (ou ainda voando) tem preferência: o giro continua nela
+      let loose = false;
+      for (let i = 0; i < this.n; i++)
+        if (this.st[i] === 3 || this.st[i] === 1) {
+          lugPos(this.sp, this.cx, this.hy, this.spA, this.n, i, p);
+          if (Math.hypot(x - p.x, y - p.y) < 70) {
+            best = i;
+            bd = 0;
+          }
+          loose = true;
+        }
       if (best < 0) return;
       if (this.st[best] === 2) {
-        // ainda não tem porca: voa uma da bandeja
-        if (this.inTray <= 0) return;
-        for (let i = 0; i < this.n; i++) if (this.st[i] === 3 && i !== best) return; // uma de cada vez
+        // ainda não tem porca: voa uma da bandeja (só com toque bem em cima, uma de cada vez)
+        if (this.inTray <= 0 || loose || bd > 30) return;
         this.inTray--;
         this.trayPos(this.inTray, p);
+        const tx = p.x;
+        const ty = p.y;
         const f = this.fly();
         lugPos(this.sp, this.cx, this.hy, this.spA, this.n, best, this.pt);
-        Object.assign(f, { on: true, t: 0, dur: 0.42, x0: p.x, y0: p.y, x1: this.pt.x, y1: this.pt.y, a: 0, i: best, toTray: false });
+        Object.assign(f, { on: true, t: 0, dur: 0.42, x0: tx, y0: ty, x1: this.pt.x, y1: this.pt.y, a: 0, i: best, toTray: false });
         this.st[best] = 1;
         this.prog[best] = 0;
         rs.pop();

@@ -6,12 +6,12 @@
 .gbr-x{position:absolute;left:calc(var(--edge-l,10px) + 2px);top:calc(var(--edge-t,8px) + 4px);width:44px;height:44px;border-radius:14px;border:2px solid rgba(255,255,255,.6);background:rgba(36,20,10,.6);color:#fff;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
 .gbr-x svg{width:22px;height:22px}
 /* botão de conserto no HUD (máquina quebrada) */
-.gbr-fix{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 96px);transform:translateX(-50%);z-index:23;display:flex;align-items:center;gap:8px;height:58px;padding:0 18px 0 8px;border-radius:29px;border:3px solid #fff;background:linear-gradient(#ff7a3a,#c8321f);color:#fff;font:800 16px var(--font,'Fredoka',sans-serif);box-shadow:0 4px 0 #6a160c,0 0 0 0 rgba(255,140,60,.6);animation:gbrPulse 1.1s ease-in-out infinite;cursor:pointer}
+.gbr-fix{position:absolute;right:calc(var(--edge-r,12px) + 4px);bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 150px);transform-origin:100% 50%;z-index:23;display:flex;align-items:center;gap:8px;height:58px;padding:0 18px 0 8px;border-radius:29px;border:3px solid #fff;background:linear-gradient(#ff7a3a,#c8321f);color:#fff;font:800 16px var(--font,'Fredoka',sans-serif);box-shadow:0 4px 0 #6a160c,0 0 0 0 rgba(255,140,60,.6);animation:gbrPulse 1.1s ease-in-out infinite;cursor:pointer}
 .gbr-fix[hidden]{display:none}
 .gbr-fix i{display:flex;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.25);align-items:center;justify-content:center}
 .gbr-fix svg{width:30px;height:30px}
 .gbr-fix .gbr-k{width:34px;height:34px;opacity:.95}
-@keyframes gbrPulse{50%{box-shadow:0 4px 0 #6a160c,0 0 0 10px rgba(255,140,60,0);transform:translateX(-50%) scale(1.05)}}
+@keyframes gbrPulse{50%{box-shadow:0 4px 0 #6a160c,0 0 0 10px rgba(255,140,60,0);transform:scale(1.06)}}
 /* luz-espia (painel) da máquina quebrada */
 .gbr-lamp{position:absolute;left:50%;top:calc(var(--edge-t,8px) + 52px);transform:translateX(-50%);z-index:21;display:flex;gap:6px;pointer-events:none}
 .gbr-lamp[hidden]{display:none}
@@ -30,7 +30,10 @@
 .gbr-gauge i{display:block;width:120px;height:12px;border-radius:6px;background:linear-gradient(90deg,#3cbf5a,#ffcf2e 55%,#ff3a2a);position:relative}
 .gbr-gauge i u{position:absolute;top:-5px;width:6px;height:22px;border-radius:3px;background:#fff;box-shadow:0 0 0 2px #000;left:0}
 .gbr-gauge svg{width:26px;height:26px}
-.gbr-emg-btns{position:absolute;left:calc(var(--edge-l,12px) + 6px);bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 150px);display:flex;flex-direction:column;gap:10px;pointer-events:auto}
+.gbr-ar{display:flex;width:30px;height:30px;transition:transform .15s}
+.gbr-ar svg{width:30px;height:30px;filter:drop-shadow(0 1px 2px #000)}
+.gbr-emg-btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 8px);display:flex;gap:12px;pointer-events:auto}
+.gbr-emg.road .gbr-emg-btns{bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 112px)}
 .gbr-ebtn{display:flex;align-items:center;justify-content:center;gap:6px;width:auto;min-width:88px;height:62px;padding:0 14px;border-radius:18px;border:3px solid #fff;color:#fff;font:800 15px var(--font,'Fredoka',sans-serif);cursor:pointer;touch-action:none}
 .gbr-ebtn svg{width:34px;height:34px}
 .gbr-ebtn.down{background:linear-gradient(#3a9be6,#1d5fa8);box-shadow:0 4px 0 #0d3768}

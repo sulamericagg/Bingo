@@ -24,6 +24,7 @@ import { tap as haptic } from '../../../core/haptics';
 import { notify } from '../../../ui/notify';
 import { speak } from '../../voo/voice';
 import type { Garimpo } from '../game';
+import { IC } from '../icons';
 import { Excavator, Heli, newCtl, Truck, type Ctl, type Kind, type Machine } from '../machines';
 import type { SlotSave } from '../save';
 import { SIZE } from '../terrain';
@@ -95,7 +96,8 @@ export class Repairs {
     b.className = 'gbr-fix';
     b.hidden = true;
     b.setAttribute('data-touch-ignore', '');
-    b.addEventListener('pointerdown', (e) => {
+    b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    b.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.fixTap();
@@ -240,6 +242,14 @@ export class Repairs {
   get hwDecel(): number {
     return this.emg.active && this.emgRig ? this.emg.decel : 0;
   }
+  /** estrada: emergência + HUD (chamado de hwRepair.post) */
+  hwFrame(dt: number, camYaw: number): void {
+    if (this.emg.active) {
+      this.emg.camYaw = camYaw;
+      this.emg.step(dt, true, true);
+    }
+    this.hudStep();
+  }
   /** chance de o freio da carreta falhar antes de uma rampa (0 = não pode agora) */
   hwChance(): number {
     const s = this.g.sv;
@@ -321,7 +331,7 @@ export class Repairs {
     d.className = 'gb-scr gbr-choose';
     d.style.zIndex = '52';
     const opt = (k: string, icon: string, sub: string, can: boolean, cls = '') => `<button class="gbr-opt ${cls}" data-o="${k}" ${can ? '' : 'disabled'}><span class="gbr-big">${icon}</span><small>${sub}</small></button>`;
-    d.innerHTML = `<button class="gb-b gb-x" data-x style="position:absolute;left:12px;top:10px">${RIC.wrench}</button>
+    d.innerHTML = `<button class="gb-b gb-x" data-x style="position:absolute;left:12px;top:10px">${IC.close}</button>
       <div class="gbr-head">${RIC[BREAK_ICON[kind]]}<span style="font:800 20px var(--font,'Fredoka',sans-serif)">${esc(breakName(kind))}</span>${RIC[PART_ICON[part]]}</div>
       <div class="gbr-pick">
         ${opt('buy', RIC.cart.replace('stroke="#fff"', 'stroke="#fff"') + '', `${RIC[PART_ICON[part]].replace('<svg', '<svg style="width:22px;height:22px"')}${COIN}${price}`, s.money >= price, 'go')}
@@ -337,7 +347,10 @@ export class Repairs {
       g.hud?.setVisible(true);
       g.resume();
     };
+    const t0 = performance.now();
     d.addEventListener('click', (e) => {
+      // o mesmo toque que abriu esta tela não escolhe nada
+      if (performance.now() - t0 < 400) return;
       const el = e.target as HTMLElement;
       if (el.closest('[data-x]')) return close();
       const b = el.closest<HTMLButtonElement>('[data-o]');
@@ -564,7 +577,7 @@ export class Repairs {
     this.emg.camYaw = g.camYawNow;
     // saiu da máquina no meio: o freio de mão do estacionamento segura
     if (this.emgM && this.emgM !== g.cur && this.emgM.veh) this.emgM.veh.toolDrag = 3 * this.emgM.veh.mass;
-    this.emg.step(dt, !!g.hud && !g.hud.el.hidden || !!this.emgRig);
+    this.emg.step(dt, (!!g.hud && !g.hud.el.hidden) || !!this.emgRig, false);
   }
   private visual(m: Machine, st: MachState): void {
     if (st.broken === 'tyre') this.flat(m, st.wheel);

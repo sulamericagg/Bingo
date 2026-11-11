@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import type { Highway } from '../haul/level';
 import { HALF, RAMP_LEN, RAMP_RISE, RAMP_W, type Road } from '../haul/road';
 import type { Rig } from '../haul/rig';
-import { rampSign } from './brake';
+import { gravel, rampSign } from './brake';
 
 interface RepLike {
   readonly emg: { active: boolean; decel: number };
@@ -21,6 +21,7 @@ interface RepLike {
   hwDecel: number;
   brakeFailure(t: Rig): boolean;
   hwChance(): number;
+  hwFrame(dt: number, camYaw: number): void;
 }
 const P = [0, 0, 0, 0, 0];
 const rolled = new WeakMap<Road, Set<number>>();
@@ -48,6 +49,8 @@ export const hwRepair = {
     if (!r) return;
     const rig = hw.rig;
     road = hw.road;
+    // a emergência e o botão de conserto rodam aqui (na estrada o passo do garimpo não roda)
+    r.hwFrame(dt, rig.tr.yaw);
     if (r.emg.active) {
       // freio-motor + escape + cascalho; na subida da rampa a gravidade ajuda
       let a = r.hwDecel;
@@ -93,6 +96,39 @@ export const hwRepair = {
         return P[3];
       };
       const v = new THREE.Vector3();
+      // faixa de cascalho (fita com textura seguindo o chão da rampa)
+      const a0 = Math.max(s0, r.s - 40);
+      const a1 = Math.min(s1, r.s + RAMP_LEN);
+      if (a1 > a0) {
+        const rows = Math.max(2, Math.ceil((a1 - a0) / 4) + 1);
+        const P3 = new Float32Array(rows * 3 * 3);
+        const UV = new Float32Array(rows * 3 * 2);
+        const idx: number[] = [];
+        for (let i = 0; i < rows; i++) {
+          const s = Math.min(a1, a0 + i * 4);
+          const w = RAMP_W * Math.min(1, Math.max(0, (s - (r.s - 40)) / 40));
+          for (let k = 0; k < 3; k++) {
+            const l = r.side * (HALF + 0.45 + (w + 0.1) * (k / 2));
+            pos(s, l, v);
+            const j = i * 3 + k;
+            P3[j * 3] = v.x;
+            P3[j * 3 + 1] = v.y + 0.06;
+            P3[j * 3 + 2] = v.z;
+            UV[j * 2] = (k / 2) * (w / 3);
+            UV[j * 2 + 1] = s / 3;
+            if (i < rows - 1 && k < 2) {
+              if (r.side > 0) idx.push(j, j + 3, j + 1, j + 1, j + 3, j + 4);
+              else idx.push(j, j + 1, j + 3, j + 1, j + 4, j + 3);
+            }
+          }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(P3, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        grp.add(new THREE.Mesh(geo, gravelMat()));
+      }
       // placa 260 m antes e outra na entrada
       for (const ps of [r.s - 260, r.s - 45]) {
         if (ps < s0 || ps >= s1) continue;
@@ -149,3 +185,4 @@ const stripeMat = (i: number) => lamb('st' + i, i ? 0xff7a1a : 0xffffff);
 const tyreMat = () => lamb('ty', 0x1c1c1f);
 const sandMat = () => lamb('sd', 0xd8c08a);
 const poleMat = () => lamb('pl', 0x8b9096);
+const gravelMat = () => (_mats.gv ??= new THREE.MeshLambertMaterial({ map: gravel(), side: THREE.DoubleSide }));
