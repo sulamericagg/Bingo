@@ -45,6 +45,13 @@
         </provider>
     </application>
 
+    <!-- Cava & Fala: reconhecimento de voz nativo (Android 11+ precisa enxergar o serviço) -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
