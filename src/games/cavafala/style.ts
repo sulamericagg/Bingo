@@ -9,7 +9,7 @@ const CSS = `
 .cf-ib{width:40px;height:40px;min-width:40px!important;min-height:40px!important;border-radius:12px;border:0;background:rgba(20,8,48,.55);display:grid;place-items:center;padding:0}
 .cf-ib svg{width:24px;height:24px}
 .cf-mats{display:flex;gap:3px 4px;flex-wrap:wrap}
-.cf-mat{display:flex;align-items:center;gap:3px;padding:3px 7px 3px 4px;border-radius:999px;background:rgba(20,8,48,.55);font:700 12.5px/1 inherit;min-width:34px;transition:opacity .2s}
+.cf-mat{display:flex;align-items:center;gap:2px;padding:3px 6px 3px 3px;border-radius:999px;background:rgba(20,8,48,.55);font:700 12px/1 inherit;min-width:32px;transition:opacity .2s}
 .cf-mat i{width:13px;height:13px;border-radius:4px;background:var(--c);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25),0 0 0 1.5px rgba(255,255,255,.5);transform:rotate(45deg) scale(.85)}
 .cf-mat.z{opacity:.45}
 .cf-mat.pop{animation:cfpop .35s ease-out}

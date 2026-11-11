@@ -8,7 +8,7 @@
  *  Nada de IA generativa: só tabelas e regras.
  * ============================================================ */
 import * as THREE from 'three';
-import { t } from '../../i18n';
+import { getLang, t } from '../../i18n';
 import { M, type Inv } from './data';
 import { lam } from './bloop';
 
@@ -482,11 +482,15 @@ export function pay(inv: Inv, c: Inv): void {
 }
 
 /** nome completo com modificadores (para avisos) */
+const SIZE_FIRST = new Set(['en', 'ja', 'ko', 'zh', 'ru', 'tr']);
 export function fullName(g: GDef, m: Mods): string {
   const bits: string[] = [g.name()];
-  if (m.size === 'grande') bits.push(t('cavafala.mod.grande', 'grande'));
-  if (m.size === 'pequeno') bits.push(t('cavafala.mod.mini', 'mini'));
-  if (m.size === 'gigante') bits.push(t('cavafala.mod.gigante', 'gigante'));
+  const size = m.size === 'grande' ? t('cavafala.mod.grande', 'grande') : m.size === 'pequeno' ? t('cavafala.mod.mini', 'mini') : m.size === 'gigante' ? t('cavafala.mod.gigante', 'gigante') : '';
+  // idiomas em que o adjetivo vem antes do nome ("Big Bridge", "Große Brücke"...)
+  if (size) {
+    if (SIZE_FIRST.has(getLang())) bits.unshift(size);
+    else bits.push(size);
+  }
   if (m.mat) bits.push(t('cavafala.mod.de', 'de {m}', { m: matWord(m.mat) }));
   if (m.fast) bits.push(t('cavafala.mod.turbo', 'turbo'));
   if (m.double) bits.push('×2');
