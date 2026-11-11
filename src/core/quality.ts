@@ -6,6 +6,7 @@
  *  Integração com o jogo: ver docs/QUALIDADE.md
  * ============================================================ */
 import { bus } from './events';
+import { natureQ } from '../3d/nature/quality';
 
 /** 0 = Mínimo ("batata"), 1 = Baixo, 2 = Médio, 3 = Alto */
 export type Tier = 0 | 1 | 2 | 3;
@@ -43,20 +44,57 @@ export interface QualitySettings {
   ambientParticles: boolean;
   /** gradação de cor / raios de luz / reflexos especulares extras */
   grade: boolean;
+
+  /* ---- modos 3D (three.js) — mesma régua de src/3d/common/quality.ts (q3For) e src/3d/nature/quality.ts ---- */
+  /** teto do pixel ratio do WebGLRenderer (q3For.pr = min(dpr, pr3d)) */
+  pr3d: number;
+  /** sombras em tempo real (shadow map) */
+  shadows: boolean;
+  /** lado do shadow map (0 = sem sombras) */
+  shadowMapSize: 0 | 512 | 1024 | 2048;
+  /** grama de lâminas: lâminas/m² perto da câmera (0 = só a textura do chão) — igual a natureQ(tier) */
+  grassDensity: number;
+  /** grama de lâminas: distância (m) onde termina — igual a natureQ(tier) */
+  grassDist: number;
+  /** multiplicador da distância de visão / neblina / LOD (1 = cheia) */
+  viewDist: number;
+  /** MSAA no contexto WebGL (só vale ao criar o renderer) */
+  antialias: boolean;
+  /** pós-processo 3D (bloom, gradação de cor) */
+  post: boolean;
 }
 
 export const TIER_LABELS: Record<Tier, string> = { 0: 'Mínimo', 1: 'Baixo', 2: 'Médio', 3: 'Alto' };
 export const MAX_TIER: Tier = 3;
 
-const SETTINGS: Record<Tier, QualitySettings> = {
+type Settings2D = Omit<QualitySettings, 'pr3d' | 'shadows' | 'shadowMapSize' | 'grassDensity' | 'grassDist' | 'viewDist' | 'antialias' | 'post'>;
+const SETTINGS_2D: Record<Tier, Settings2D> = {
   0: { dprCap: 1, particleBudget: 0.3, nebula: false, farPlanet: false, starLayers: 1, glows: false, atmospheres: false, vignette: false, shake: false, fpsCap: 30, trailDensity: 0.35, heroCache: 2, bloom: false, dynLights: false, softShadows: false, ambientParticles: false, grade: false },
   1: { dprCap: 1.25, particleBudget: 0.5, nebula: false, farPlanet: true, starLayers: 2, glows: true, atmospheres: false, vignette: false, shake: true, fpsCap: 60, trailDensity: 0.6, heroCache: 2, bloom: false, dynLights: false, softShadows: true, ambientParticles: false, grade: false },
   2: { dprCap: 1.6, particleBudget: 0.8, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 0.85, heroCache: 2, bloom: false, dynLights: true, softShadows: true, ambientParticles: true, grade: true },
   3: { dprCap: 2, particleBudget: 1, nebula: true, farPlanet: true, starLayers: 3, glows: true, atmospheres: true, vignette: true, shake: true, fpsCap: 60, trailDensity: 1, heroCache: 0, bloom: true, dynLights: true, softShadows: true, ambientParticles: true, grade: true },
 };
+/** parte 3D: pr3d/shadows iguais ao q3For de sempre; grama vem de natureQ (fonte única) */
+const SETTINGS_3D: Record<Tier, Pick<QualitySettings, 'pr3d' | 'shadows' | 'shadowMapSize' | 'viewDist' | 'antialias' | 'post'>> = {
+  0: { pr3d: 0.6, shadows: false, shadowMapSize: 0, viewDist: 0.6, antialias: false, post: false },
+  1: { pr3d: 0.8, shadows: false, shadowMapSize: 0, viewDist: 0.75, antialias: false, post: false },
+  2: { pr3d: 1.0, shadows: false, shadowMapSize: 0, viewDist: 0.9, antialias: true, post: false },
+  3: { pr3d: 1.5, shadows: true, shadowMapSize: 1024, viewDist: 1, antialias: true, post: true },
+};
+const SETTINGS = {} as Record<Tier, QualitySettings>;
+for (const t of [0, 1, 2, 3] as Tier[]) {
+  const g = natureQ(t).grass;
+  SETTINGS[t] = { ...SETTINGS_2D[t], ...SETTINGS_3D[t], grassDensity: g ? g.density : 0, grassDist: g ? g.dist : 0 };
+}
 
+/**
+ * Ajustes do nível. Com a "Economia de bateria" ligada, todo nível fica em 30 fps
+ * (os governors dobram os limites de tempo de quadro com fpsCap 30, então não descem à toa).
+ */
 export function settingsFor(tier: Tier): QualitySettings {
-  return { ...SETTINGS[clampTier(tier)] };
+  const s = { ...SETTINGS[clampTier(tier)] };
+  if (batterySaver()) s.fpsCap = 30;
+  return s;
 }
 
 export function clampTier(n: number): Tier {
@@ -107,13 +145,62 @@ export function migrateLowFx(lowFx: boolean): void {
   if (lowFx && lsGet(MODE_KEY) === null) saveMode(1);
 }
 
-interface DetectCache {
+/* ---- economia de bateria (30 fps em tudo) ---- */
+const BATTERY_KEY = 'bo-battery';
+let battery: boolean | null = null;
+export function batterySaver(): boolean {
+  if (battery === null) battery = lsGet(BATTERY_KEY) === '1';
+  return battery;
+}
+/** Liga/desliga a economia de bateria; avisa por bus 'battery' (src/core/framecap.ts limita o rAF). */
+export function setBatterySaver(on: boolean): void {
+  battery = on;
+  lsSet(BATTERY_KEY, on ? '1' : '0');
+  fpsLimiter.cap = on ? 30 : 60;
+  bus.emit('battery', on);
+}
+
+export interface DetectCache {
   v: string;
   tier: Tier;
   /** último nível estável do modo automático (aprendido pelo governor) */
   learned?: Tier;
+  /** score do benchmark de canvas 2D (ops/ms) */
   score?: number;
+  /** teto do aparelho (hardware + tabela de GPU + RAM): o automático nunca passa dele */
   cap?: Tier;
+  /** hash do perfil do aparelho (syncProfileKey) — mudou o aparelho/WebView, refaz */
+  ph?: string;
+  /** como foi decidido: 'gpu' = teste 3D completo; 'canvas' = só o 2D (fallback); 'safe' = teste anterior travou */
+  method?: 'gpu' | 'canvas' | 'safe';
+  /** score do teste 3D (quadros/s equivalentes no cenário de referência) */
+  gpuScore?: number;
+  /** nome amigável do aparelho e da GPU (Ajustes) */
+  dev?: string;
+  gpu?: string;
+  /** quando foi medido (ms epoch) */
+  at?: number;
+  /** ms gastos no teste */
+  ms?: number;
+}
+
+/**
+ * Chave barata e síncrona do aparelho (UA sem números de versão do navegador, núcleos,
+ * memória, tela). Atualização do WebView não muda; trocar de aparelho / restaurar backup muda.
+ */
+export function syncProfileKey(): string {
+  try {
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const ua = (nav.userAgent || '').replace(/(Chrome|Version|Safari|AppleWebKit|Firefox|Edg|OPR|SamsungBrowser)\/[\d.]+/g, '$1');
+    const sw = typeof screen !== 'undefined' ? Math.max(screen.width, screen.height) + 'x' + Math.min(screen.width, screen.height) : '';
+    const dpr = typeof window !== 'undefined' ? Math.round((window.devicePixelRatio || 1) * 100) : 0;
+    const raw = [ua, nav.hardwareConcurrency || 0, nav.deviceMemory || 0, sw, dpr].join('|');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < raw.length; i++) h = Math.imul(h ^ raw.charCodeAt(i), 16777619) >>> 0;
+    return h.toString(36);
+  } catch {
+    return '';
+  }
 }
 
 function readCache(): DetectCache | null {
@@ -121,13 +208,39 @@ function readCache(): DetectCache | null {
     const raw = lsGet(DETECT_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw) as DetectCache;
-    return o && o.v === appVersion() && typeof o.tier === 'number' ? o : null;
+    if (!o || o.v !== appVersion() || typeof o.tier !== 'number') return null;
+    if (o.ph && o.ph !== syncProfileKey()) return null;
+    return o;
   } catch {
     return null;
   }
 }
 function writeCache(c: DetectCache): void {
   lsSet(DETECT_KEY, JSON.stringify(c));
+}
+
+/**
+ * Precisa do teste do aparelho (tela "Ajustando os gráficos…")? Sim na 1ª abertura, quando a
+ * versão do app muda e quando o perfil do aparelho muda. Cache antigo sem `method` = versão velha.
+ */
+export function needsDeviceCheck(): boolean {
+  const c = readCache();
+  return !c || !c.method;
+}
+
+/** Grava o resultado do teste do aparelho (src/core/devicecheck.ts) e zera o nível aprendido. */
+export function storeDetection(c: Omit<DetectCache, 'v' | 'ph' | 'at'>): DetectCache {
+  const full: DetectCache = { ...c, v: appVersion(), ph: syncProfileKey(), at: Date.now() };
+  delete full.learned;
+  writeCache(full);
+  detected = clampTier(full.tier);
+  return full;
+}
+
+/** Teto do automático para este aparelho (padrão do QualityGovernor.maxTier). */
+export function deviceCeiling(): Tier {
+  const c = readCache();
+  return c && typeof c.cap === 'number' ? clampTier(Math.max(c.cap, c.tier)) : MAX_TIER;
 }
 
 /* ----------------------------- detecção ----------------------------- */
@@ -252,7 +365,7 @@ export function detectInitialTier(opts: { force?: boolean } = {}): Tier {
   const score = cap === 0 ? -1 : canvasBenchmark();
   const bench = cap === 0 ? 0 : tierFromScore(score);
   const tier = Math.min(cap, bench) as Tier;
-  writeCache({ v: appVersion(), tier, score: Math.round(score * 10) / 10, cap });
+  writeCache({ v: appVersion(), tier, score: Math.round(score * 10) / 10, cap, ph: syncProfileKey(), at: Date.now() });
   detected = tier;
   return tier;
 }
@@ -337,8 +450,10 @@ export class QualityGovernor {
 
   constructor(opts: GovernorOptions = {}) {
     this.opts = opts;
-    this.maxTier = opts.maxTier ?? MAX_TIER;
-    this._mode = opts.mode ?? (opts.persist === false ? 'auto' : loadMode());
+    // teto do automático: o que o teste do aparelho liberou (nunca sobe além disso sozinho)
+    this.maxTier = opts.maxTier ?? deviceCeiling();
+    // o modo manual (Ajustes) vale para TODOS os jogos, inclusive os que não persistem nada
+    this._mode = opts.mode ?? loadMode();
     this.autoTier = clampTier(Math.min(opts.initial ?? detectInitialTier(), this.maxTier));
     this._tier = this._mode === 'auto' ? this.autoTier : this._mode;
     this._settings = settingsFor(this._tier);
@@ -366,6 +481,28 @@ export class QualityGovernor {
     this.upCooldown = 20000;
     this.setRes(1);
     this.apply(m === 'auto' ? this.autoTier : m, 'manual');
+  }
+
+  /**
+   * Recomeça o automático num nível novo (depois de "Testar meu aparelho de novo").
+   * Também reaplica os ajustes (ex.: economia de bateria mudou o fpsCap) mesmo sem trocar de nível.
+   */
+  rebase(initial: Tier, maxTier: Tier = deviceCeiling()): void {
+    this.maxTier = maxTier;
+    this.autoTier = clampTier(Math.min(initial, maxTier));
+    this.upCooldown = 20000;
+    this.lastUpFrom = null;
+    this.resetWindow();
+    this.setRes(1);
+    this.refresh(this._mode === 'auto' ? this.autoTier : this._mode, 'rebase');
+  }
+
+  /** Reaplica settingsFor(tier) e avisa mesmo se o nível não mudou (economia de bateria). */
+  refresh(t: Tier = this._tier, reason = 'refresh'): void {
+    this._tier = t;
+    this._settings = settingsFor(t);
+    this.opts.onChange?.(t, this._settings, reason);
+    if (this.opts.emit !== false) bus.emit('quality', t, this._settings);
   }
 
   /**
@@ -557,4 +694,4 @@ export class FpsLimiter {
   }
 }
 
-export const fpsLimiter = new FpsLimiter(60);
+export const fpsLimiter = new FpsLimiter(batterySaver() ? 30 : 60);

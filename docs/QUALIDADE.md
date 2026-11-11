@@ -218,3 +218,23 @@ CSS sugerido (`styles.css`):
 `playIntro(opts?: { short?: boolean }): Promise<void>` — já ligada em `main.ts` (3 linhas: import,
 `const intro = playIntro()` antes de `new Game`, `await intro` antes de `initAds()`).
 Usa `detectInitialTier()` para reduzir partículas/estrelas/DPR. `?nointro` pula; `?intro=full|short` força a versão.
+
+## Teste do aparelho (instalou / atualizou)
+
+`src/core/devicecheck.ts`, chamado no boot (`src/main.ts`) quando `needsDeviceCheck()` — 1ª abertura,
+versão do app mudou (`__APP_VERSION__`) ou o perfil do aparelho mudou (`syncProfileKey()`) — e pelo
+Ajustes ("Testar meu aparelho de novo"). Tela: `src/ui/gfxcheck.ts` ("Ajustando os gráficos pro seu aparelho…").
+
+- Perfil (`src/core/device.ts`): GPU (WEBGL_debug_renderer_info), WebGL2, textura máx., float, instancing,
+  núcleos, deviceMemory, tela × DPR; no Android o plugin nativo `BloopDevice` (modelo, fabricante, RAM total,
+  isLowRamDevice, SDK, GLES, SoC). Tabela `classifyGpu()` → teto por família de GPU.
+- Teste 2D: `canvasBenchmark(200)` (antes do 3D). Teste 3D (`src/core/gpubench.ts`): cena fora da tela
+  540×960 com chão, grama de lâminas com vento (`GrassField`), árvores instanciadas, pedras soltas e sombras,
+  em 3 cargas (orçamento de `natureQ(1..3)`); mediana do quadro com `readPixels` de 1 px; passa se
+  ≤ 28 / 17 / 12,5 ms. Prazo duro ~2,4 s (+1,5 s de folga), contexto WebGL liberado no fim.
+- Nível = `min(teto, nível 3D, nível 2D + 1)`; teto = `min(hardwareCap(), GPU, RAM/SDK)`. Gravado no cache
+  com `method`, `gpuScore`, `dev`, `gpu`. Todo `QualityGovernor` começa no nível medido e usa o teto como
+  `maxTier` padrão (o automático nunca passa dele; o modo manual pode).
+- Se o app cair no meio do teste 3D, a marca `bo-bench-running` faz a próxima abertura pular o 3D (`method: 'safe'`).
+- Economia de bateria (`setBatterySaver`): `settingsFor()` devolve `fpsCap: 30` em todo nível e
+  `src/core/framecap.ts` limita o `requestAnimationFrame` do app inteiro a 30 fps (jogos que não leem fpsCap também).
