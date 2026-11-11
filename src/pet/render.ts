@@ -2348,9 +2348,10 @@ export function drawBlanket(c: CanvasRenderingContext2D, L: Layout, k: number, t
 
 /** Retângulo (em px) do espelho na parede do quarto. */
 export function mirrorRect(L: Layout): { x: number; y: number; w: number; h: number } {
-  const w = Math.round(Math.min(L.W * 0.17, L.H * 0.1));
+  const w = Math.round(Math.min(L.W * 0.19, L.H * 0.1));
   const h = Math.round(w * 1.4);
-  return { x: Math.round(L.W * 0.44 - w / 2), y: Math.round(L.H * 0.14), w, h };
+  // abaixo da barra de status (que vai até ~150px + área segura)
+  return { x: Math.round(L.W * 0.44 - w / 2), y: Math.round(Math.max(L.H * 0.2, 172)), w, h };
 }
 
 /** Brilho que passa no espelho do quarto (por frame, leve). */
