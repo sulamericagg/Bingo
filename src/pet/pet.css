@@ -928,30 +928,6 @@
   color: var(--ink);
   border: 3px solid var(--ink) !important;
   box-shadow: 0 4px 0 var(--ink);
-/* ---------- travessuras (sala) ---------- */
-.pet-toys {
-  display: flex;
-  gap: 6px;
-  width: 100%;
-  overflow-x: auto;
-  padding: 2px 2px 4px;
-  scrollbar-width: none;
-}
-.pet-toys::-webkit-scrollbar {
-  display: none;
-}
-.pet-toy {
-  flex: 0 0 auto;
-  width: 64px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 3px 2px 4px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 2.5px solid var(--ink) !important;
-  box-shadow: 0 3px 0 var(--ink);
-  color: var(--ink);
   font-size: 10.5px;
   font-weight: 700;
   line-height: 1.05;
@@ -1103,6 +1079,37 @@
     right: 10px;
     width: min(46vw, 440px);
     bottom: calc(64px + var(--sb));
+  }
+}
+
+/* ---------- travessuras (sala) ---------- */
+.pet-toys {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+.pet-toys::-webkit-scrollbar {
+  display: none;
+}
+.pet-toy {
+  flex: 0 0 auto;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 2px 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2.5px solid var(--ink) !important;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: center;
   transition: transform 0.08s;
 }
 .pet-toy canvas {
