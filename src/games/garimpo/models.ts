@@ -551,10 +551,10 @@ export function buildHouse(color: number): THREE.Mesh {
 export function buildStock(): { root: THREE.Group; bars: THREE.InstancedMesh } {
   const root = new THREE.Group();
   const k = new Kit();
-  k.box(9, 0.3, 7, C.steelD, 0, 0.15, 0);
-  for (const [x, z] of [[4.3, 3.3], [-4.3, 3.3], [4.3, -3.3], [-4.3, -3.3]]) k.box(0.3, 3.6, 0.3, C.steelD, x, 1.8, z);
+  k.box(9, 0.3, 7, 0x9a9a92, 0, 0.15, 0);
+  for (const [x, z] of [[4.3, 3.3], [-4.3, 3.3], [4.3, -3.3], [-4.3, -3.3]]) k.box(0.3, 3.6, 0.3, C.woodL, x, 1.8, z);
   k.box(9.6, 0.25, 7.6, C.red, 0, 3.7, 0, 0.08);
-  k.box(9, 2.6, 0.15, C.steel, 0, 1.6, -3.3);
+  k.box(9, 2.6, 0.15, C.woodL, 0, 1.6, -3.3);
   // cerca
   for (let i = -4; i <= 4; i++) k.box(0.08, 1.2, 0.08, C.steel, i, 0.6, 3.6);
   k.box(9, 0.06, 0.06, C.steel, 0, 1.1, 3.6);
