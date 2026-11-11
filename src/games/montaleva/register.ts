@@ -48,13 +48,13 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
     x.fill();
     x.stroke();
   };
-  blk(-s * 1.6, -s * 1.0, '#5b8def', '#2f5bb8');
-  blk(-s * 0.8, -s * 1.0, '#ef5d60', '#b8333a');
-  blk(0, -s * 1.0, '#5b8def', '#2f5bb8');
-  blk(s * 0.8, -s * 1.0, '#5b8def', '#2f5bb8');
+  blk(-s * 1.6, -s * 1.0, '#f59a32', '#c46a10');
+  blk(-s * 0.8, -s * 1.0, '#5d6573', '#323844');
+  blk(0, -s * 1.0, '#f59a32', '#c46a10');
+  blk(s * 0.8, -s * 1.0, '#f59a32', '#c46a10');
   // caixa de carga
-  x.fillStyle = '#ffb547';
-  x.strokeStyle = '#26303d';
+  x.fillStyle = '#c98b52';
+  x.strokeStyle = '#7d5129';
   x.beginPath();
   x.roundRect(-s * 0.4, -s * 1.85, s * 0.8, s * 0.8, s * 0.12);
   x.fill();
@@ -63,19 +63,19 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
     x.save();
     x.translate(wx, -s * 0.2);
     x.rotate(time * 5);
-    x.fillStyle = '#2d3340';
+    x.fillStyle = '#202227';
     x.beginPath();
     x.arc(0, 0, r, 0, Math.PI * 2);
     x.fill();
-    x.fillStyle = '#e9edf2';
+    x.fillStyle = '#d9dde3';
     x.beginPath();
-    x.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+    x.arc(0, 0, r * 0.6, 0, Math.PI * 2);
     x.fill();
-    x.strokeStyle = '#9aa5b5';
+    x.strokeStyle = '#3a3f48';
     x.lineWidth = 2;
     x.beginPath();
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
       x.moveTo(0, 0);
       x.lineTo(Math.cos(a) * r * 0.5, Math.sin(a) * r * 0.5);
     }

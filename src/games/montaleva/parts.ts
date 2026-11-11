@@ -20,7 +20,9 @@ export type PartId =
   | 'wheelL'
   | 'wheelG'
   | 'thruster'
-  | 'balloon';
+  | 'balloon'
+  | 'btn'
+  | 'btnR';
 
 /** struct = ocupa células; mount = vai EM CIMA de uma célula estrutural (roda, propulsor, balão) */
 export type Layer = 'struct' | 'mount';
@@ -42,12 +44,12 @@ export interface PartDef {
 }
 
 export const PARTS: Record<PartId, PartDef> = {
-  block: { id: 'block', layer: 'struct', rots: 1, cost: 10, density: 2, friction: 0.6, color: '#5b8def', dark: '#2f5bb8', order: 0 },
-  beam: { id: 'beam', layer: 'struct', rots: 2, cost: 20, density: 2.4, friction: 0.6, color: '#8a6cf0', dark: '#5a3fc0', order: 1 },
-  tri: { id: 'tri', layer: 'struct', rots: 4, cost: 8, density: 2, friction: 0.6, color: '#f2a541', dark: '#c47a17', order: 2 },
-  wheelS: { id: 'wheelS', layer: 'mount', rots: 1, cost: 15, density: 1.2, friction: 1.0, color: '#2d3340', dark: '#151a22', radius: 0.36, order: 3 },
-  wheelL: { id: 'wheelL', layer: 'mount', rots: 1, cost: 25, density: 0.8, friction: 1.0, color: '#2d3340', dark: '#151a22', radius: 0.65, order: 4 },
-  motor: { id: 'motor', layer: 'struct', rots: 1, cost: 30, density: 4, friction: 0.6, color: '#ef5d60', dark: '#b8333a', order: 5 },
+  block: { id: 'block', layer: 'struct', rots: 1, cost: 10, density: 2, friction: 0.6, color: '#f59a32', dark: '#c46a10', order: 0 },
+  beam: { id: 'beam', layer: 'struct', rots: 2, cost: 20, density: 2.4, friction: 0.6, color: '#f7ab45', dark: '#c4751a', order: 1 },
+  tri: { id: 'tri', layer: 'struct', rots: 4, cost: 8, density: 2, friction: 0.6, color: '#ffc25e', dark: '#cf8a22', order: 2 },
+  wheelS: { id: 'wheelS', layer: 'mount', rots: 1, cost: 15, density: 1.2, friction: 1.0, color: '#24262b', dark: '#101114', radius: 0.36, order: 3 },
+  wheelL: { id: 'wheelL', layer: 'mount', rots: 1, cost: 25, density: 0.8, friction: 1.0, color: '#24262b', dark: '#101114', radius: 0.65, order: 4 },
+  motor: { id: 'motor', layer: 'struct', rots: 1, cost: 30, density: 4, friction: 0.6, color: '#5d6573', dark: '#323844', order: 5 },
   spring: { id: 'spring', layer: 'struct', rots: 1, cost: 15, density: 1.6, friction: 0.6, color: '#3cc9a4', dark: '#1f8f72', order: 6 },
   hinge: { id: 'hinge', layer: 'struct', rots: 1, cost: 12, density: 3, friction: 0.6, color: '#9aa3b2', dark: '#5f6878', order: 7 },
   weight: { id: 'weight', layer: 'struct', rots: 1, cost: 12, density: 12, friction: 0.7, color: '#3e4756', dark: '#1f2530', order: 8 },
@@ -55,7 +57,16 @@ export const PARTS: Record<PartId, PartDef> = {
   wheelG: { id: 'wheelG', layer: 'mount', rots: 1, cost: 30, density: 1.2, friction: 2.6, color: '#3a3f2d', dark: '#1c2014', radius: 0.45, order: 10 },
   thruster: { id: 'thruster', layer: 'mount', rots: 4, cost: 40, density: 2, friction: 0.5, color: '#ff7a59', dark: '#c94a2b', order: 11 },
   balloon: { id: 'balloon', layer: 'mount', rots: 1, cost: 30, density: 0, friction: 0, color: '#ff6fa8', dark: '#cc3f78', order: 12 },
+  btn: { id: 'btn', layer: 'struct', rots: 1, cost: 10, density: 2, friction: 0.6, color: '#c3c8d0', dark: '#8a919c', order: 13 },
+  btnR: { id: 'btnR', layer: 'struct', rots: 1, cost: 10, density: 2, friction: 0.6, color: '#c3c8d0', dark: '#8a919c', order: 14 },
 };
+
+/** peças que podem receber fio de um botão */
+export const WIRABLE: Partial<Record<PartId, true>> = { motor: true, thruster: true, hinge: true };
+export const isButton = (t: PartId): boolean => t === 'btn' || t === 'btnR';
+/** cores das tampas dos botões (por ordem de colocação): frente e ré */
+export const CAP_FWD = ['#ef4444', '#f5b301', '#22b07d', '#a855f7'];
+export const CAP_REV = ['#3b82f6', '#06b6d4', '#64748b', '#ec4899'];
 
 export const PART_IDS = (Object.keys(PARTS) as PartId[]).sort((a, b) => PARTS[a].order - PARTS[b].order);
 
@@ -87,6 +98,10 @@ export function partName(id: PartId): string {
       return t('ml.p.thruster', 'Propulsor');
     case 'balloon':
       return t('ml.p.balloon', 'Balão');
+    case 'btn':
+      return t('ml.p.btn', 'Botão');
+    case 'btnR':
+      return t('ml.p.btnR', 'Botão de ré');
   }
 }
 
@@ -118,6 +133,10 @@ export function partDesc(id: PartId): string {
       return t('ml.d.thruster', 'Empurra quando você aperta o jato. Combustível limitado.');
     case 'balloon':
       return t('ml.d.balloon', 'Puxa para cima o tempo todo.');
+    case 'btn':
+      return t('ml.d.btn', 'Puxe um fio dele até um motor. Segure para andar.');
+    case 'btnR':
+      return t('ml.d.btnR', 'Igual ao botão, mas gira ao contrário (ré).');
   }
 }
 
@@ -126,6 +145,8 @@ export interface Placed {
   x: number;
   y: number;
   r: number;
+  /** botões: células-alvo dos fios (âncora do motor / propulsor / dobradiça) */
+  w?: [number, number][];
 }
 
 /** células ocupadas (camada struct) ou a célula de montagem (mount), relativas à âncora */

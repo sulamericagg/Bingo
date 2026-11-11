@@ -1,6 +1,6 @@
 /* MONTA & LEVA — CSS (injetado uma vez). Visual claro, minimalista, botões grandes e espaçados. */
 const CSS = `
-.ml-root{position:absolute;inset:0;overflow:hidden;background:#f3f5f8;color:#26303d;font-family:var(--font,'Fredoka'),system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}
+.ml-root{--mlb:max(var(--edge-b,0px),var(--safe-bot,env(safe-area-inset-bottom,0px)));position:absolute;inset:0;overflow:hidden;background:#f3f5f8;color:#26303d;font-family:var(--font,'Fredoka'),system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}
 .ml-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .ml-ui{position:absolute;inset:0;pointer-events:none}
 .ml-ui>*{pointer-events:auto}
@@ -21,12 +21,14 @@ const CSS = `
 .ml-btn.sm{min-height:40px;font-size:13px;border-radius:12px}
 .ml-btn.sm.ic{width:40px}
 .ml-btn.on{background:#26303d;color:#fff}
+.ml-btn.round{border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 0 0 1.5px #d5dae1,0 3px 10px rgba(38,48,61,.06)}
+.ml-btn.round svg{width:22px;height:22px;stroke-width:2}
 .ml-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:#fff;font-size:13px;font-weight:600;box-shadow:0 1px 0 rgba(38,48,61,.05),0 3px 10px rgba(38,48,61,.07);white-space:nowrap}
 .ml-chip svg{width:16px;height:16px}
 .ml-chip.ok{color:#1f9a71}.ml-chip.bad{color:#d0464a}
 .ml-chip.mute{color:#7a8596}
 /* ---------- menu ---------- */
-.ml-menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;padding:max(18px,var(--edge-t,0px)) max(28px,var(--edge-r,0px)) max(18px,var(--edge-b,0px)) max(28px,var(--edge-l,0px));pointer-events:none}
+.ml-menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;padding:max(18px,var(--edge-t,0px)) max(28px,var(--edge-r,0px)) max(18px,var(--mlb,0px)) max(28px,var(--edge-l,0px));pointer-events:none}
 .ml-menu>*{pointer-events:auto}
 .ml-mcol{display:flex;flex-direction:column;gap:10px;width:min(300px,86vw);background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);padding:20px;border-radius:24px;box-shadow:0 10px 40px rgba(38,48,61,.12)}
 .ml-logo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
@@ -38,10 +40,10 @@ const CSS = `
 .ml-mcol .ml-btn small{margin-left:auto;font-weight:500;color:#7a8596;font-size:12.5px}
 .ml-mcol .ml-btn.pri small{color:rgba(255,255,255,.85)}
 .ml-wallet{display:flex;gap:8px;justify-content:space-between}
-@media (orientation:portrait){.ml-menu{justify-content:center;align-items:flex-end;padding-bottom:max(28px,var(--edge-b,0px))}}
+@media (orientation:portrait){.ml-menu{justify-content:center;align-items:flex-end;padding-bottom:max(28px,var(--mlb,0px))}}
 @media (max-height:460px){.ml-mcol{gap:7px;padding:14px 16px;border-radius:20px}.ml-mcol .ml-btn{min-height:42px;font-size:15px}.ml-mcol .ml-btn.pri{min-height:50px}.ml-logo{margin-bottom:2px}.ml-logo b{font-size:24px}.ml-mark{width:40px;height:40px}.ml-menu{padding-top:10px;padding-bottom:10px}}
 /* ---------- telas cheias (fases, oficina, ajustes) ---------- */
-.ml-page{position:absolute;inset:0;background:#f3f5f8;display:flex;flex-direction:column;padding:max(10px,var(--edge-t,0px)) max(14px,var(--edge-r,0px)) max(10px,var(--edge-b,0px)) max(14px,var(--edge-l,0px));overflow:hidden}
+.ml-page{position:absolute;inset:0;background:#f3f5f8;display:flex;flex-direction:column;padding:max(10px,var(--edge-t,0px)) max(14px,var(--edge-r,0px)) max(10px,var(--mlb,0px)) max(14px,var(--edge-l,0px));overflow:hidden}
 .ml-head{display:flex;align-items:center;gap:10px;min-height:52px;flex:none}
 .ml-head h2{margin:0;font-size:22px;font-weight:700;flex:1}
 .ml-scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y pan-x;padding:4px 2px 14px}
@@ -60,6 +62,25 @@ const CSS = `
 .ml-stars i{width:10px;height:10px;clip-path:polygon(50% 0,63% 35%,100% 38%,71% 61%,80% 100%,50% 79%,20% 100%,29% 61%,0 38%,37% 35%);background:#cfd6e0}
 .ml-stars i.on{background:#ffb547}
 .ml-tile.cur .ml-stars i{background:rgba(255,255,255,.45)}
+.ml-head h2 small{display:block;font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.ml-chaps2{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.ml-chcard{font:inherit;position:relative;display:flex;align-items:center;gap:12px;border:0;border-radius:20px;background:#fff;padding:12px 14px 18px;text-align:left;color:#26303d;cursor:pointer;box-shadow:0 4px 18px rgba(38,48,61,.07);overflow:hidden;min-height:76px;transition:transform .08s}
+.ml-chcard:active{transform:scale(.97)}
+.ml-chcard::before{content:'';position:absolute;inset:0;background:var(--tint);opacity:.9;pointer-events:none}
+.ml-chcard>*{position:relative}
+.ml-chn{width:44px;height:44px;flex:none;border-radius:14px;background:var(--acc);color:#fff;font-size:21px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 -3px 0 rgba(0,0,0,.15)}
+.ml-cht{flex:1;min-width:0}
+.ml-cht b{display:block;font-size:15.5px;line-height:1.15}
+.ml-cht small{display:flex;align-items:center;gap:4px;color:#6b7686;font-size:13px;font-weight:600;margin-top:3px}
+.ml-cht small svg{width:16px;height:16px}
+.ml-chbar{position:absolute;left:14px;right:14px;bottom:8px;height:5px;border-radius:3px;background:rgba(38,48,61,.08);overflow:hidden}
+.ml-chbar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.ml-chcard.lock{opacity:.55}
+.ml-chcard.lock .ml-chn{background:#b3bcc8}
+.ml-tiles2{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:10px;max-width:760px;margin:0 auto}
+.ml-tag{position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%}
+.ml-tag.bot{background:#8b5cf6}
+.ml-tag.wire{background:#7cc6f2}
 .ml-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .ml-card{background:#fff;border-radius:20px;padding:14px;box-shadow:0 4px 18px rgba(38,48,61,.07);display:flex;gap:12px;align-items:center}
 .ml-card .ml-ci{width:52px;height:52px;border-radius:14px;background:#eef2f7;display:flex;align-items:center;justify-content:center;flex:none}
@@ -88,7 +109,7 @@ const CSS = `
 .ml-title small{font-size:11.5px;color:#6b7686;font-weight:500}
 .ml-goals{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
 .ml-sp{flex:1}
-.ml-tray{position:absolute;left:max(10px,var(--edge-l,0px));bottom:max(8px,var(--edge-b,0px));display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 6px;touch-action:pan-x;scrollbar-width:none;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-radius:20px;box-shadow:0 6px 24px rgba(38,48,61,.10)}
+.ml-tray{position:absolute;left:max(10px,var(--edge-l,0px));bottom:max(8px,var(--mlb,0px));display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 6px;touch-action:pan-x;scrollbar-width:none;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-radius:20px;box-shadow:0 6px 24px rgba(38,48,61,.10)}
 .ml-tray::-webkit-scrollbar{display:none}
 .ml-slot{font:inherit;position:relative;flex:none;width:70px;height:70px;border:0;border-radius:14px;background:#f1f4f8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;color:#26303d;padding:0;transition:background .12s,transform .08s;touch-action:none}
 .ml-slot canvas{width:38px;height:38px;pointer-events:none}
@@ -99,11 +120,11 @@ const CSS = `
 .ml-slot.empty b{background:#9aa5b5}
 .ml-slot .ml-new{position:absolute;left:4px;top:3px;width:8px;height:8px;border-radius:50%;background:#ef5d60;box-shadow:0 0 0 2px #fff}
 .ml-slot .ml-cost{position:absolute;left:4px;top:2px;font-size:10px;font-weight:700;color:#3b6fe0}
-.ml-acts{position:absolute;right:max(10px,var(--edge-r,0px));bottom:max(8px,var(--edge-b,0px));display:grid;grid-template-columns:48px 48px;gap:8px;align-items:end}
+.ml-acts{position:absolute;right:max(10px,var(--edge-r,0px));bottom:max(8px,var(--mlb,0px));display:grid;grid-template-columns:48px 48px;gap:8px;align-items:end}
 .ml-acts .ml-test{grid-column:1/3;min-height:60px;font-size:17px;border-radius:18px}
 .ml-acts .ml-test svg{width:26px;height:26px}
 @media (orientation:portrait){
-  .ml-acts{left:max(10px,var(--edge-l,0px));grid-template-columns:repeat(4,48px) 1fr;bottom:calc(max(8px,var(--edge-b,0px)) + 88px)}
+  .ml-acts{left:max(10px,var(--edge-l,0px));grid-template-columns:repeat(4,48px) 1fr;bottom:calc(max(8px,var(--mlb,0px)) + 88px)}
   .ml-acts .ml-test{grid-column:auto;min-height:48px;border-radius:14px}
   .ml-tray{right:max(10px,var(--edge-r,0px))}
   .ml-goals{display:none}
@@ -120,7 +141,7 @@ const CSS = `
 .ml-pips i{width:12px;height:12px;border-radius:4px;background:#ffb547;box-shadow:inset 0 0 0 1.5px rgba(38,48,61,.35)}
 .ml-pips i.in{background:#2fbf8f}
 .ml-pips i.lost{background:#e3e7ee;box-shadow:inset 0 0 0 1.5px #ef5d60}
-.ml-drive{position:absolute;bottom:max(14px,var(--edge-b,0px));display:flex;gap:12px;align-items:flex-end}
+.ml-drive{position:absolute;bottom:max(14px,var(--mlb,0px));display:flex;gap:12px;align-items:flex-end}
 .ml-drive.l{left:max(16px,var(--edge-l,0px))}
 .ml-drive.r{right:max(16px,var(--edge-r,0px))}
 .ml-pad{font:inherit;width:78px;height:78px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#26303d;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 0 rgba(38,48,61,.08),0 8px 24px rgba(38,48,61,.14);cursor:pointer}
@@ -131,6 +152,15 @@ const CSS = `
 .ml-pad.sm svg{width:28px;height:28px}
 .ml-pad.jet{background:#ff7a59;color:#fff;box-shadow:0 4px 0 #c94a2b}
 .ml-pad.tc-pressed{filter:brightness(.92)}
+.ml-bpads{position:absolute;left:0;right:0;bottom:max(14px,var(--mlb,0px));display:flex;justify-content:space-between;align-items:flex-end;padding:0 max(16px,var(--edge-r,0px)) 0 max(16px,var(--edge-l,0px));pointer-events:none}
+.ml-bpads>div{display:flex;gap:14px;align-items:flex-end;pointer-events:none}
+.ml-bpad{font:inherit;pointer-events:auto;position:relative;width:86px;height:86px;border-radius:22px;border:0;background:#cfd4db;box-shadow:inset 0 -5px 0 #a9b0ba,0 8px 20px rgba(38,48,61,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;touch-action:none}
+.ml-bpad i{width:60px;height:60px;border-radius:50%;background:var(--cap);box-shadow:inset 0 -6px 0 rgba(0,0,0,.2),inset 0 5px 0 rgba(255,255,255,.3),0 3px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;transition:transform .06s}
+.ml-bpad i svg{width:28px;height:28px}
+.ml-bpad.tc-pressed i,.ml-bpad.on i{transform:translateY(3px) scale(.95);box-shadow:inset 0 -2px 0 rgba(0,0,0,.2),inset 0 3px 0 rgba(255,255,255,.25)}
+.ml-bpad.sm{width:70px;height:70px;border-radius:18px}
+.ml-bpad.sm i{width:48px;height:48px}
+@media (max-height:420px){.ml-bpad{width:74px;height:74px}.ml-bpad i{width:52px;height:52px}}
 .ml-fuel{position:absolute;left:8px;right:8px;bottom:8px;height:5px;border-radius:3px;background:rgba(255,255,255,.4);overflow:hidden;pointer-events:none}
 .ml-fuel i{display:block;height:100%;background:#fff;border-radius:3px}
 /* ---------- resultado ---------- */
@@ -156,7 +186,13 @@ const CSS = `
 @keyframes mlFlash{0%{opacity:.22}100%{opacity:0}}
 /* ---------- tutorial ---------- */
 .ml-hand{position:absolute;left:0;top:0;width:44px;height:44px;margin:-6px 0 0 -14px;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.25));z-index:5;will-change:transform}
-.ml-tip{position:absolute;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:14px;background:#3b6fe0;color:#fff;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(59,111,224,.35);pointer-events:none;max-width:min(460px,86vw);text-align:center;animation:mlFade .25s ease-out both}
+@keyframes mlTap{0%,100%{scale:1}50%{scale:.82}}
+.ml-hand.tap{animation:mlTap .9s ease-in-out infinite;margin:-2px 0 0 -8px}
+.ml-tip{position:absolute;left:50%;translate:-50% 0;padding:8px 14px;border-radius:14px;background:#3b6fe0;color:#fff;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(59,111,224,.35);pointer-events:none;max-width:min(460px,86vw);text-align:center;animation:mlFade .25s ease-out both}
+.ml-tipic{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px}
+.ml-tipic canvas{width:30px;height:30px;background:#fff;border-radius:8px;padding:2px}
+.ml-tipic b svg{width:18px;height:18px;display:block}
+.ml-tip.pad{display:flex;align-items:center;gap:8px;left:auto;right:max(16px,var(--edge-r,0px));translate:none;bottom:calc(max(14px,var(--mlb,0px)) + 112px)}
 .ml-rot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:8px;color:#6b7686;font-size:13px;pointer-events:none}
 `;
 
@@ -211,5 +247,6 @@ export const IC = {
   tilt: S('<path d="M4 17h16"/><rect x="6" y="9" width="12" height="5" rx="1.5"/><circle cx="8.5" cy="16" r="1.4"/><circle cx="15.5" cy="16" r="1.4"/>'),
   palette: S('<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.4-1.3-1.6-1.3-2.8 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7.2" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>'),
   phone: S('<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M3 9a9 9 0 0 1 2-4M21 15a9 9 0 0 1-2 4"/>'),
+  bot: `<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="6" fill="#a78bfa" stroke="#3b2a6b" stroke-width="1.6"/><circle cx="12" cy="9" r="3" fill="#fff" stroke="#3b2a6b" stroke-width="1.2"/><circle cx="12.5" cy="9" r="1.4" fill="#2a2f38"/><rect x="7.5" y="14" width="9" height="6.5" rx="2" fill="#8b5cf6" stroke="#3b2a6b" stroke-width="1.6"/></svg>`,
   hand: `<svg viewBox="0 0 48 48"><path d="M17 26V9.5a3.5 3.5 0 0 1 7 0V22l1-.6V18a3.4 3.4 0 0 1 6.6-1.1l.4.1a3.4 3.4 0 0 1 6 2.2v.6a3.3 3.3 0 0 1 5 2.8V31c0 8-5 13-12.5 13h-2.7c-4.3 0-7.3-2-9.6-5.6L10.4 31a3.3 3.3 0 0 1 5.4-3.8z" fill="#fff" stroke="#26303d" stroke-width="2.4" stroke-linejoin="round"/></svg>`,
 };
