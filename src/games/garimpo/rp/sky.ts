@@ -185,6 +185,8 @@ export class SkyRig {
     private w: World,
     tier: Tier,
     lamps: LampPost[],
+    /** COMEÇO DO ZERO: postes de luz pertencem à lavadora (aparecem quando ela é construída) */
+    own: (o: THREE.Object3D) => void = () => {},
   ) {
     const sc = w.scene;
     // estrelas: pontos numa cúpula (seguem a câmera)
@@ -255,19 +257,23 @@ export class SkyRig {
       const pole = new THREE.Mesh(pg, poleMat);
       pole.position.set(l.x, l.y, l.z);
       sc.add(pole);
+      own(pole);
       const b = new THREE.Mesh(bg, this.bulbMat);
       b.position.set(l.x, l.y + 4.25, l.z);
       sc.add(b);
+      own(b);
       this.bulbs.push(b);
       const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd890, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, opacity: 0 }));
       h.scale.setScalar(3.2);
       h.position.copy(b.position);
       sc.add(h);
+      own(h);
       this.halos.push(h);
       if (tier >= 1 && i < (tier >= 3 ? 3 : 2)) {
         const pl = new THREE.PointLight(0xffc878, 0, 22, 1.4);
         pl.position.set(l.x, l.y + 4, l.z);
         sc.add(pl);
+        own(pl);
         this.campL.push(pl);
       }
     });

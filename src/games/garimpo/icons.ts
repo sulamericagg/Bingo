@@ -49,5 +49,9 @@ export const IC = {
   barrowDrop: S('<path d="M2 10h11l-1.5 5H5z" fill="currentColor"/><path d="M13 12l5 1M2 10l-1-2"/><circle cx="8" cy="18.5" r="1.8"/><path d="M19 3v7M16.5 7.5L19 10l2.5-2.5"/>'),
   barrowGrab: S('<path d="M2 12h11l-1.5 5H5z" fill="currentColor"/><path d="M13 14l4 1"/><circle cx="8" cy="20" r="1.6"/><path d="M17 15c0-3 1-5 2-7M19 8l-.5-4M19 8l1.8-3.4M19 8l2.6-1.4"/>'),
   check: S('<path d="M4 12.5l5 5L20 6.5"/>'),
+  // COMEÇO DO ZERO
+  hammer: S('<path d="M12 10l8 8-2 2-8-8z" fill="currentColor"/><path d="M4 6l5-3 5 5-3 3-1.5-1-3 3L4 10.5l3-3z"/>'),
+  pan: S('<ellipse cx="12" cy="13" rx="9.5" ry="4.5"/><ellipse cx="12" cy="12" rx="5.5" ry="2.2" fill="currentColor" opacity=".35"/><circle cx="12" cy="12" r="1.2" fill="#ffcf2e" stroke="none"/>'),
+  film: S('<rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M3 9l16-5 1 3.5L4 12z"/><path d="M10 13l5 2.5-5 2.5z" fill="currentColor"/>'),
 };
 export type IconKey = keyof typeof IC;

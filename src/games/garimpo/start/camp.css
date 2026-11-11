@@ -1,0 +1,33 @@
+/* COMEÇO DO ZERO: chip do objetivo, botão do martelo, menu Construir */
+.gbc-goal{position:absolute;left:calc(var(--edge-l,10px) + 54px);top:calc(var(--edge-t,8px) + 52px);display:flex;align-items:center;gap:8px;max-width:46px;height:46px;padding:3px;border-radius:24px;background:rgba(36,20,10,.62);border:2px solid rgba(255,207,46,.75);color:#fff;font:700 13px/1.15 var(--font,'Fredoka',sans-serif);overflow:hidden;transition:max-width .35s ease,background .3s;pointer-events:auto;cursor:pointer;box-sizing:border-box}
+.gbc-goal[hidden]{display:none}
+.gbc-goal.open{max-width:min(300px,38vw);padding-right:14px}
+.gbc-goal.ready{border-color:#8fe6ff;box-shadow:0 0 0 3px rgba(143,230,255,.35);animation:gbc-glow 1.4s ease-in-out infinite}
+.gbc-gi{position:relative;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:#fff3c0;display:flex;align-items:center;justify-content:center}
+.gbc-gi>svg{width:28px;height:28px}
+.gbc-gi i{position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0006}
+.gbc-gi i svg{width:17px;height:17px}
+.gbc-gt{display:flex;flex-direction:column;gap:4px;white-space:nowrap;min-width:0}
+.gbc-gt b{font-weight:700;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px #000a}
+.gbc-bar{display:none;height:7px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden;width:150px}
+.gbc-goal.prog .gbc-bar{display:block}
+.gbc-bar u{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffcf2e,#ffe680);border-radius:4px;transition:width .4s}
+.gbc-goal:not(.open) .gbc-gt{opacity:0}
+@keyframes gbc-glow{50%{box-shadow:0 0 0 7px rgba(143,230,255,.12)}}
+.gb-b.gbc-hammer svg{width:28px;height:28px}
+.gb-b.gbc-pulse{animation:gbc-pulse 1.1s ease-in-out infinite;border-color:#8fe6ff}
+@keyframes gbc-pulse{50%{transform:scale(1.12);box-shadow:0 0 14px #8fe6ff}}
+.gbc-menu .gbc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:9px;width:min(760px,100%)}
+.gbc-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px 9px;border-radius:16px;background:rgba(0,0,0,.42);border:2px solid #fff3;color:#fff;font:700 13px var(--font,'Fredoka',sans-serif);cursor:pointer}
+.gbc-card .gbc-ci{position:relative;width:58px;height:58px;border-radius:50%;background:#fff3c0;display:flex;align-items:center;justify-content:center}
+.gbc-card .gbc-ci>svg{width:44px;height:44px}
+.gbc-card .gbc-ci em{position:absolute;right:-6px;bottom:-4px;width:26px;height:26px}
+.gbc-card .gbc-ci em svg{width:26px;height:26px}
+.gbc-card small{display:flex;align-items:center;gap:3px;padding:3px 10px;border-radius:12px;background:#555;font:800 13px var(--font,'Fredoka',sans-serif)}
+.gbc-card small.ok{background:linear-gradient(#3cbf5a,#1d7a35)}
+.gbc-card small svg{width:16px;height:16px}
+.gbc-card.next{border-color:#8fe6ff;box-shadow:0 0 0 3px rgba(143,230,255,.3)}
+.gbc-card.done{opacity:.7}
+.gbc-card.done small{visibility:hidden}
+.gbc-card.locked{opacity:.45;cursor:default}
+.gbc-card[disabled]{cursor:default}

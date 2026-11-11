@@ -100,7 +100,7 @@ export class RpLayer {
     this.lastSold = s.sold;
     const w = g.w!;
     this.camp(w);
-    this.sky = new SkyRig(w, this.P.gov.tier, this.lamps(w));
+    this.sky = new SkyRig(w, this.P.gov.tier, this.lamps(w), (o) => w.attach('plant', { obj: o }));
     this.hud = new RpHud(this.P.wrap, () => this.openBag());
     this.rumorEl = document.createElement('div');
     this.rumorEl.className = 'gb-arrow';
@@ -189,8 +189,15 @@ export class RpLayer {
     pm.rotation.y = Math.atan2(m.camp.x - pump.x, m.camp.z - pump.z) + Math.PI / 2;
     w.scene.add(pm);
     this.props.push(pm);
-    w.addCircle({ x: pump.x + Math.sin(pm.rotation.y) * 0.9, z: pump.z + Math.cos(pm.rotation.y) * 0.9, r: 0.7 });
-    w.addCircle({ x: pump.x - Math.sin(pm.rotation.y) * 0.9, z: pump.z - Math.cos(pm.rotation.y) * 0.9, r: 0.7 });
+    // COMEÇO DO ZERO: bomba de diesel chega com a garagem, a barraca com o galpão (start/camp.ts)
+    for (const c of [
+      { x: pump.x + Math.sin(pm.rotation.y) * 0.9, z: pump.z + Math.cos(pm.rotation.y) * 0.9, r: 0.7 },
+      { x: pump.x - Math.sin(pm.rotation.y) * 0.9, z: pump.z - Math.cos(pm.rotation.y) * 0.9, r: 0.7 },
+    ]) {
+      w.addCircle(c);
+      w.attach('garage', { circle: c });
+    }
+    w.attach('garage', { obj: pm });
     const stall = this.freeSpot(w, m.camp.x, m.camp.z, 9, 16, 3.5, [pump, ...spawn]);
     this.stallAt = stall;
     const sh = buildShop(0xe8c27a, 0xd23a2a);
@@ -199,11 +206,13 @@ export class RpLayer {
     sh.rotation.y = Math.atan2(m.camp.x - stall.x, m.camp.z - stall.z);
     w.scene.add(sh);
     this.props.push(sh);
-    w.addCircle({ x: stall.x, z: stall.z, r: 2.2 });
+    const sc = { x: stall.x, z: stall.z, r: 2.2 };
+    w.addCircle(sc);
+    w.attach('stock', { obj: sh, circle: sc });
     // plaquinhas com ícone sobre os lugares
-    this.tag(w, pump.x, pump.z, 4.2, 'pump');
-    this.tag(w, stall.x, stall.z, 3.6, 'food');
-    for (const h of m.houses.slice(0, 1)) this.tag(w, h.x, h.z, 6, 'bed');
+    w.attach('garage', { obj: this.tag(w, pump.x, pump.z, 4.2, 'pump') });
+    w.attach('stock', { obj: this.tag(w, stall.x, stall.z, 3.6, 'food') });
+    for (const h of m.houses.slice(0, 1)) w.attach('houses', { obj: this.tag(w, h.x, h.z, 6, 'bed') });
     this.tag(w, m.gate.x, m.gate.z, 5, 'road');
   }
   private lamps(w: World): LampPost[] {
@@ -220,12 +229,14 @@ export class RpLayer {
       const p = this.freeSpot(w, cx, cz, r0, r0 + 6, 1.2, avoid);
       avoid.push(p);
       out.push({ x: p.x, z: p.z, y: w.T.heightAt(p.x, p.z) });
-      w.addCircle({ x: p.x, z: p.z, r: 0.3 });
+      const c = { x: p.x, z: p.z, r: 0.3 };
+      w.addCircle(c);
+      w.attach('plant', { circle: c });
     }
     return out;
   }
   /** ícone flutuante (sprite) para lugares de interação */
-  private tag(w: World, x: number, z: number, y: number, ic: RIcon): void {
+  private tag(w: World, x: number, z: number, y: number, ic: RIcon): THREE.Sprite {
     const cv = document.createElement('canvas');
     cv.width = cv.height = 96;
     const tex = new THREE.CanvasTexture(cv);
@@ -250,6 +261,7 @@ export class RpLayer {
     sp.renderOrder = 8;
     w.scene.add(sp);
     this.props.push(sp);
+    return sp;
   }
 
   /* ============================== utilidades ============================== */
@@ -355,7 +367,7 @@ export class RpLayer {
         sfx.pick();
       }
       // na moega com o carrinho vazio: despeja os sacos
-      if (ctl.act2 && this.item('saco') > 0 && wk.cargo.vol < 0.01 && wk.pos.distanceTo(g.hopperPos(_v)) < 6) this.dumpSacks();
+      if (ctl.act2 && this.item('saco') > 0 && wk.cargo.vol < 0.01 && g.w!.built('plant') && wk.pos.distanceTo(g.hopperPos(_v)) < 6) this.dumpSacks();
     }
     // diesel: sem diesel o motor apaga (o meu e o dos amigos)
     if (this.sys.fuel) {
@@ -586,6 +598,11 @@ export class RpLayer {
 
   /** botões do lugar */
   private actions(): Action[] {
+    // COMEÇO DO ZERO: vender no barco, construir aqui (start/camp.ts)
+    const extra = this.g.camp?.actions() ?? [];
+    return [...extra, ...this.actions0()];
+  }
+  private actions0(): Action[] {
     const g = this.g;
     const s = g.sv!;
     const cur = g.cur!;
@@ -611,12 +628,13 @@ export class RpLayer {
     }
     if (foot) {
       if (this.sys.fuel && dist(this.pumpAt) < 5 && this.item('jerry') < 3) out.push({ id: 'jfill', icon: 'jerry', label: t('gb.rp.buyJerry', 'Galão de diesel'), sub: ['coin', String(ITEMS.jerry.price)], run: () => this.buy('jerry', ITEMS.jerry.price, false) });
-      if (dist(this.stallAt) < 6) {
+      // COMEÇO DO ZERO: antes do galpão, o barco do comprador também vende comida e água
+      if ((dist(this.stallAt) < 6 && g.w!.built('stock')) || !!g.camp?.nearPier()) {
         out.push({ id: 'eat', icon: 'food', label: t('gb.rp.eat', 'Comer'), sub: ['coin', String(ITEMS.marmita.price)], run: () => this.eatMeal() });
         out.push({ id: 'drink', icon: 'water', label: t('gb.rp.drink', 'Beber água'), run: () => this.drink(true) });
         out.push({ id: 'shop', icon: 'cart', label: t('gb.rp.shop', 'Mercadinho'), cls: 'blue', run: () => this.openShop() });
       } else if (this.needsOn() && this.atWater()) out.push({ id: 'drink', icon: 'water', label: t('gb.rp.drink', 'Beber água'), run: () => this.drink(false) });
-      const house = m.houses.find((h) => dist(h) < 6.5);
+      const house = (g.camp ? g.camp.sleepSpots() : m.houses).find((h) => dist(h) < 6.5);
       if (house && (weather.isNight || (this.needsOn() && this.energyLow()))) out.push({ id: 'sleep', icon: 'bed', label: t('gb.rp.sleep', 'Dormir'), cls: 'blue', run: () => void this.sleep(null) });
       else if (house && this.needsOn() && this.st.needs.energy < 90) out.push({ id: 'rest', icon: 'bed', label: t('gb.rp.rest', 'Descansar'), cls: 'blue', run: () => void this.sleep(1) });
     }
@@ -772,7 +790,7 @@ export class RpLayer {
     if (lose > 0) this.spend(lose);
     this.st.faints++;
     if (g.cur !== g.worker) g.enterExit();
-    const h = g.w!.map.houses[0] ?? g.w!.map.camp;
+    const h = (g.camp ? g.camp.sleepSpots()[0] : g.w!.map.houses[0]) ?? g.w!.map.camp;
     g.worker!.place(h.x + 4, h.z + 4, 0, g.w!);
     const n = this.st.needs;
     n.food = Math.max(n.food, 45);

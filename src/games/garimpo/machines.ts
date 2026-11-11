@@ -710,6 +710,15 @@ export class Worker extends Machine {
   fp = false;
   /** CARRINHO: empurrando (true) ou largado no chão (false) */
   held = true;
+  /** COMEÇO DO ZERO (start/camp.ts): ainda sem carrinho — a terra vai num baldinho/saco (held fica true) */
+  noBarrow = false;
+  /** obra (start/camp.ts): fase da martelada 0..1 (−1 = sem martelo) */
+  hammer = -1;
+  setNoBarrow(on: boolean): void {
+    if (on && !this.held) this.grabBarrow();
+    this.noBarrow = on;
+    this.p.barrow.visible = !on;
+  }
   /** carrinho largado: onde a roda toca o chão e para onde aponta */
   bx = 0;
   bz = 0;
@@ -1047,8 +1056,8 @@ export class Worker extends Machine {
       if (this.fp) {
         // 1ª pessoa: o corpo olha para onde a câmera olha (o jogo gira); direcional = frente/lado
         fwd = -my;
-        side = mx * (this.held ? 0.55 : 1);
-        if (fwd < 0) fwd *= this.held ? 0.5 : 0.75;
+        side = mx * (this.held && !this.noBarrow ? 0.55 : 1);
+        if (fwd < 0) fwd *= this.held && !this.noBarrow ? 0.5 : 0.75;
       } else if (this.tank) {
         // de frente: x gira o corpo, y anda (para trás devagar)
         if (mx) g.rotation.y -= mx * Math.abs(mx) * dt * 2.4;
@@ -1061,7 +1070,7 @@ export class Worker extends Machine {
           const a = env.camYaw + Math.atan2(-mx, -my);
           let d = a - g.rotation.y;
           d = Math.atan2(Math.sin(d), Math.cos(d));
-          g.rotation.y += d * Math.min(1, dt * (this.held ? 7 : 10));
+          g.rotation.y += d * Math.min(1, dt * (this.held && !this.noBarrow ? 7 : 10));
           // virando muito (carrinho na mão): anda menos até alinhar
           fwd = mag * Math.max(0.25, Math.cos(d));
         }
@@ -1077,15 +1086,16 @@ export class Worker extends Machine {
     // suavizado (sem tremer na passada)
     this.grade += (gr - this.grade) * Math.min(1, dt * 8);
     const wet = T.wetAt(pos.x, pos.z);
-    const load = this.held ? 0.55 + this.fill * 0.4 : 0.45;
+    const push = this.held && !this.noBarrow;
+    const load = push ? 0.55 + this.fill * 0.4 : 0.45;
     const gG = this.grade;
-    const slope = gG > 0 ? Math.max(0.3, 1 - gG * load * 1.25) : 1 + Math.min(0.5, -gG) * (this.held ? 0.1 : 0.25);
+    const slope = gG > 0 ? Math.max(0.3, 1 - gG * load * 1.25) : 1 + Math.min(0.5, -gG) * (push ? 0.1 : 0.25);
     // a pé sem o carrinho anda livre e mais rápido
-    const base = this.held ? 3.3 - this.fill * 0.9 : 4.4;
+    const base = push ? 3.3 - this.fill * 0.9 : 4.4;
     fp.tune.speed = base * (1 - wet * 0.45) * slope;
     // empurrando o carrinho: mais massa (acelera e freia mais devagar)
-    fp.tune.accel = this.held ? 5 : 7;
-    fp.tune.decel = this.held ? 7 : 9;
+    fp.tune.accel = push ? 5 : 7;
+    fp.tune.decel = push ? 7 : 9;
     // FpController: frente = (−sin, −cos) da guinada → guinada da câmera = guinada do corpo + π
     fp.steer(dt, side, fwd, yaw + Math.PI);
     fp.move(dt);
@@ -1129,8 +1139,8 @@ export class Worker extends Machine {
       if (k >= 0.5 && k - dt / 0.6 < 0.5 && !this.ghost) {
         const yaw = g.rotation.y;
         // empurrando: cava do lado do carrinho; sem carrinho: bem na frente
-        const fw = this.held ? 0.9 : 1.1;
-        const sd = this.held ? 1.0 : 0;
+        const fw = this.held && !this.noBarrow ? 0.9 : 1.1;
+        const sd = this.held && !this.noBarrow ? 1.0 : 0;
         const fx = pos.x + Math.sin(yaw) * fw - Math.cos(yaw) * sd;
         const fz = pos.z + Math.cos(yaw) * fw + Math.sin(yaw) * sd;
         const y = T.heightAt(fx, fz);
@@ -1198,9 +1208,16 @@ export class Worker extends Machine {
     if (!pc || !Worker.paperCam) return;
     this.p.shovel.visible = false;
     if (this.fp) return;
-    pc.setTool(this.dig >= 0 ? 'shovel' : this.water > 0 ? 'bucket' : null, this.dig >= 0 ? '#b8c4d8' : '#c8d0e0');
+    // sem carrinho: a pá fica na mão; com terra, um baldinho marrom de terra
+    if (this.hammer >= 0) {
+      pc.setTool('hammer', '#bfc6cf');
+      pc.update(dt, Worker.paperCam, { yaw: this.group.rotation.y, speed: 0, act: this.hammer, lean: 0.1 });
+      return;
+    }
+    if (this.noBarrow && this.dig < 0 && this.water <= 0) pc.setTool(this.cargo.vol > 0.003 ? 'bucket' : 'shovel', this.cargo.vol > 0.003 ? '#9a5a2a' : '#b8c4d8');
+    else pc.setTool(this.dig >= 0 ? 'shovel' : this.water > 0 ? 'bucket' : null, this.dig >= 0 ? '#b8c4d8' : '#c8d0e0');
     // empurrando: inclina para a frente (mais subindo, para trás descendo)
-    const lean = this.held && mv > 0.3 ? clampN(0.1 + this.grade * 0.35, -0.12, 0.3) : this.dumping ? 0.12 : 0;
+    const lean = this.held && !this.noBarrow && mv > 0.3 ? clampN(0.1 + this.grade * 0.35, -0.12, 0.3) : this.dumping ? 0.12 : 0;
     pc.update(dt, Worker.paperCam, { yaw: this.group.rotation.y, speed: mv, act: this.dig, happy: this.dumping && this.cargo.vol <= 0.002, lean });
   }
   /** retrato: [x,y,z,yaw, velocidade, fase da pá (-1 = parado), carga 0..1, água, despejando] */

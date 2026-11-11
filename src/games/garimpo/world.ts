@@ -17,6 +17,22 @@ export interface Circle {
   r: number;
   /** árvore: índice em world.trees (para o fogo) */
   tree?: number;
+  /** construção ainda não feita (start/camp.ts): sem colisão */
+  off?: boolean;
+}
+export interface Blocker {
+  x: number;
+  z: number;
+  r: number;
+  y: number;
+  off?: boolean;
+}
+/** construção do acampamento: objetos + colisões que aparecem/somem juntos (start/camp.ts) */
+export interface Bld {
+  objs: THREE.Object3D[];
+  circles: Circle[];
+  blockers: Blocker[];
+  on: boolean;
 }
 
 const FAR = [95, 125, 165, 230];
@@ -39,7 +55,11 @@ export class World {
   veg: Vegetation | null = null;
   private grid = new Map<number, Circle[]>();
   /** volumes de prédios (a câmera não entra): centro, raio, altura do topo */
-  blockers: { x: number; z: number; r: number; y: number }[] = [];
+  blockers: Blocker[] = [];
+  /** construções do acampamento por id (plant, stock, garage, houses, portal) */
+  readonly bld = new Map<string, Bld>();
+  /** registrando objetos/colisões numa construção (build) */
+  private reg: Bld | null = null;
   plant!: ReturnType<typeof buildPlant>;
   /** portal da mina subterrânea e baia onde a esteira despeja */
   portal = { x: 0, z: 0, yaw: 0, obj: null as THREE.Object3D | null };
@@ -111,6 +131,7 @@ export class World {
     this.statics = [];
     this.grid.clear();
     this.blockers = [];
+    this.bld.clear();
     const m = this.map;
     // lago
     const wg = new THREE.CircleGeometry(m.lake.r + 4, 40);
@@ -120,33 +141,39 @@ export class World {
     this.addStatic(this.water);
     // prédios
     setLod(tier <= 1 ? 1 : 0);
+    this.regIn('plant');
     const plant = buildPlant();
     plant.root.position.set(m.plant.x, this.T.heightAt(m.plant.x, m.plant.z), m.plant.z);
     plant.root.rotation.y = m.plant.rot;
     this.plant = plant;
     this.addStatic(plant.root);
     this.solidBox(plant.root, 0, -1.8, 3.4, 5.6);
+    this.regIn('stock');
     const st = buildStock();
     st.root.position.set(m.stock.x, this.T.heightAt(m.stock.x, m.stock.z), m.stock.z);
     this.stock = st;
     this.addStatic(st.root);
     this.solidBox(st.root, 0, -1.5, 4.6, 2.2);
+    this.blocker({ x: st.root.position.x, z: st.root.position.z, r: 5.5, y: st.root.position.y + 4.2 });
+    this.regIn('plant');
+    this.blocker({ x: m.plant.x, z: m.plant.z, r: 5, y: plant.root.position.y + 3.5 });
+    this.regIn('garage');
     const gar = buildGarage();
     gar.position.set(m.garage.x, this.T.heightAt(m.garage.x, m.garage.z), m.garage.z);
     this.addStatic(gar);
-    this.blockers.push({ x: gar.position.x, z: gar.position.z, r: 7.5, y: gar.position.y + 5 });
-    this.blockers.push({ x: st.root.position.x, z: st.root.position.z, r: 5.5, y: st.root.position.y + 4.2 });
-    this.blockers.push({ x: m.plant.x, z: m.plant.z, r: 5, y: plant.root.position.y + 3.5 });
+    this.blocker({ x: gar.position.x, z: gar.position.z, r: 7.5, y: gar.position.y + 5 });
     this.solidBox(gar, 0, -4.3, 6, 0.4);
     this.solidBox(gar, -5.9, 0, 0.4, 4.5);
+    this.regIn('houses');
     for (const h of m.houses) {
       const hm = buildHouse(h.color);
       hm.position.set(h.x, this.T.heightAt(h.x, h.z) + 0.4, h.z);
       hm.rotation.y = h.rot;
       this.addStatic(hm);
       this.addCircle({ x: h.x, z: h.z, r: 3.1 });
-      this.blockers.push({ x: h.x, z: h.z, r: 3.6, y: hm.position.y + 4.5 });
+      this.blocker({ x: h.x, z: h.z, r: 3.6, y: hm.position.y + 4.5 });
     }
+    this.regIn('portal');
     // portal da mina subterrânea encostado na encosta (lado da montanha) + baia da esteira
     {
       const { a, r: pr } = this.portalAt;
@@ -198,6 +225,7 @@ export class World {
     const fl = buildFlag(C.yellow);
     fl.position.set(m.mine.x, this.T.heightAt(m.mine.x, m.mine.z), m.mine.z);
     this.addStatic(fl);
+    this.reg = null;
     this.buildTrees();
     this.setTier(tier);
   }
@@ -283,6 +311,49 @@ export class World {
     o.updateMatrixWorld(true);
     this.scene.add(o);
     this.statics.push(o);
+    this.reg?.objs.push(o);
+  }
+
+  /* ---------------- construções do acampamento (start/camp.ts) ---------------- */
+  /** passa a registrar o que for criado na construção `id` */
+  private regIn(id: string): void {
+    let b = this.bld.get(id);
+    if (!b) this.bld.set(id, (b = { objs: [], circles: [], blockers: [], on: true }));
+    this.reg = b;
+  }
+  private blocker(b: Blocker): void {
+    this.blockers.push(b);
+    this.reg?.blockers.push(b);
+  }
+  /** anexa algo criado depois (ex.: tambor da lavadora) a uma construção */
+  attach(id: string, o: { obj?: THREE.Object3D; circle?: Circle; blocker?: Blocker }): void {
+    this.regIn(id);
+    const b = this.reg!;
+    this.reg = null;
+    if (o.obj) {
+      b.objs.push(o.obj);
+      o.obj.visible = b.on;
+    }
+    if (o.circle) {
+      b.circles.push(o.circle);
+      o.circle.off = !b.on;
+    }
+    if (o.blocker) {
+      b.blockers.push(o.blocker);
+      o.blocker.off = !b.on;
+    }
+  }
+  /** mostra/esconde uma construção (com colisão e volume da câmera) */
+  setBuilt(id: string, on: boolean): void {
+    const b = this.bld.get(id);
+    if (!b) return;
+    b.on = on;
+    for (const o of b.objs) o.visible = on;
+    for (const c of b.circles) c.off = !on;
+    for (const k of b.blockers) k.off = !on;
+  }
+  built(id: string): boolean {
+    return this.bld.get(id)?.on ?? true;
   }
 
   /** caixa sólida (meia-largura hx, meia-prof hz) no referencial do objeto → círculos */
@@ -300,6 +371,7 @@ export class World {
   }
 
   addCircle(c: Circle): void {
+    this.reg?.circles.push(c);
     const k = (Math.floor(c.x / 8) & 0xffff) | ((Math.floor(c.z / 8) & 0xffff) << 16);
     let a = this.grid.get(k);
     if (!a) this.grid.set(k, (a = []));
@@ -312,7 +384,7 @@ export class World {
     for (let a = gx - 1; a <= gx + 1; a++)
       for (let b = gz - 1; b <= gz + 1; b++) {
         const l = this.grid.get((a & 0xffff) | ((b & 0xffff) << 16));
-        if (l) for (const c of l) fn(c);
+        if (l) for (const c of l) if (!c.off) fn(c);
       }
   }
 
@@ -370,6 +442,45 @@ export class World {
     const far = FAR[this.tier];
     f.far = far * (1 - k * 0.3);
     f.near = far * (0.45 - k * 0.3);
+  }
+
+  /** abertura (start/cinematic.ts): cores do céu/névoa e luz do sol/céu direto */
+  grade(o: { top: THREE.Color; bot: THREE.Color; sun: THREE.Color; sunI: number; hemiI: number; hemiSky?: THREE.Color }): void {
+    this.skyU.top.value.copy(o.top);
+    this.skyU.bot.value.copy(o.bot);
+    const f = this.scene.fog as THREE.Fog;
+    f.color.copy(o.bot);
+    (this.scene.background as THREE.Color).copy(o.bot);
+    this.sun.color.copy(o.sun);
+    this.sun.intensity = o.sunI;
+    this.hemi.intensity = o.hemiI;
+    if (o.hemiSky) this.hemi.color.copy(o.hemiSky);
+  }
+  /** estado do céu/luz para restaurar depois da abertura */
+  gradeSnap(): () => void {
+    const top = this.skyU.top.value.clone();
+    const bot = this.skyU.bot.value.clone();
+    const f = this.scene.fog as THREE.Fog;
+    const fc = f.color.clone();
+    const fn = f.near;
+    const ff = f.far;
+    const bg = (this.scene.background as THREE.Color).clone();
+    const sc = this.sun.color.clone();
+    const si = this.sun.intensity;
+    const hi = this.hemi.intensity;
+    const hc = this.hemi.color.clone();
+    return () => {
+      this.skyU.top.value.copy(top);
+      this.skyU.bot.value.copy(bot);
+      f.color.copy(fc);
+      f.near = fn;
+      f.far = ff;
+      (this.scene.background as THREE.Color).copy(bg);
+      this.sun.color.copy(sc);
+      this.sun.intensity = si;
+      this.hemi.intensity = hi;
+      this.hemi.color.copy(hc);
+    };
   }
 
   /** sombra/céu seguem a câmera */

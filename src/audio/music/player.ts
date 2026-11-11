@@ -300,7 +300,7 @@ export class Deck {
 }
 
 /* ============================== vinhetas (stingers) ============================== */
-export type StingId = 'win' | 'lose' | 'levelup' | 'item' | 'start';
+export type StingId = 'win' | 'lose' | 'levelup' | 'item' | 'start' | 'title';
 
 export function playSting(th: Theme, kind: StingId, c: Ctx, dest: AudioNode, rev: AudioNode, t: number): number {
   const lead = th.sting ?? (th.parts.find((p) => p.role === 'lead')?.inst as InstId | undefined) ?? 'marimba';
@@ -331,6 +331,15 @@ export function playSting(th: Theme, kind: StingId, c: Ctx, dest: AudioNode, rev
       playDrum('kick', o, t, 0.8);
       playDrum('kick', o, t + sd * 6, 0.9);
       return sd * 12;
+    }
+    case 'title': {
+      // cartão de título: arpejo que sobe, acorde de sinos e brilho de caixinha de música (o "glint")
+      [0, 2, 4, 7, 9, 11].forEach((x, i) => hit(lead, d(x), i * sd * 1.5, sd * 3, 0.75 + i * 0.04));
+      [0, 2, 4].forEach((x) => hit('bell', d(x + 7), sd * 9, 2.2, 0.85));
+      [0, 2, 4].forEach((x) => hit('padGlass', d(x), sd * 9, 2.6, 0.9));
+      [14, 16, 18, 21].forEach((x, i) => hit('musicbox', d(x), sd * 10 + i * sd * 0.8, 0.8, 0.7));
+      playDrum('tri', o, t + sd * 9, 0.9);
+      return sd * 9 + 2.6;
     }
     case 'lose': {
       // descida gentil (nada de "derrota" assustadora): 4 → 3 → 1, termina numa nota do acorde

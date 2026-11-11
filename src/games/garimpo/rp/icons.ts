@@ -81,5 +81,8 @@ export const RI = {
   sos: S('<circle cx="12" cy="12" r="10" fill="#e8442e"/><text x="12" y="15.5" font-size="8" text-anchor="middle" fill="#fff" stroke="none" font-weight="900" font-family="system-ui">SOS</text>'),
   music: S('<path d="M9 18V5l11-2v13" fill="none" stroke-width="1.8"/><circle cx="6.5" cy="18" r="2.6" fill="#5ac8ff"/><circle cx="17.5" cy="16" r="2.6" fill="#5ac8ff"/>'),
   close: S('<path d="M6 6l12 12M18 6L6 18" stroke="#fff" stroke-width="2.6"/>'),
+  // COMEÇO DO ZERO (start/camp.ts): construir e vender no barco
+  hammer: S('<path d="M13 9l8 8-2.5 2.5-8-8z" fill="#b8875a"/><path d="M4 5l5-3 6 6-3 3-2-1-3 3-3-3 3-3z" fill="#bfc6cf"/>'),
+  boat: S('<path d="M2 15h20l-3 5H5z" fill="#2f8fbf"/><path d="M11 4v11M11 5l7 8h-7z" fill="#f3efe6"/><circle cx="6" cy="9" r="3.2" fill="#ffcf2e"/>'),
 };
 export type RIcon = keyof typeof RI;
