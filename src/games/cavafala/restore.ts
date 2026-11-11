@@ -760,8 +760,9 @@ export class RestoreMode implements ModeCtl {
       t('cavafala.tuto.3', 'Desenterre a casa toda'),
       t('cavafala.tuto.4', 'Segure FALAR: “trampolim”'),
     ];
-    objective(short[this.tut]);
-    notify(steps[this.tut], { ms: 4200, key: 'tut' });
+    // só o chip curto do objetivo (com a seta/mão do tutorial): nada de muro de texto
+    objective(short[this.tut], { icon: 'hand-tap' });
+    void steps;
   }
   private tutNext(): void {
     this.tut++;
