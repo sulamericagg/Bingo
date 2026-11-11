@@ -18,6 +18,7 @@ import { sfx } from '../../3d/common/sfx';
 import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS } from './data';
 import { bigMoment, notify } from '../../ui/notify';
 import { openHangar, type HangarHandle } from './hangar';
+import { takePendingVoo } from './pending';
 import { hush, speak } from './voice';
 import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
@@ -109,6 +110,9 @@ export class VooGame implements MiniGameHandle, HudHost {
       await this.begin(this.opts.mode ?? '3d');
       return;
     }
+    // aberto por link/QR de sala (?voo=K7Q2M): entra direto
+    const code = takePendingVoo();
+    if (code) return void this.joinRoom(code, this.sv.mode === '2d' ? '2d' : '3d');
     this.lobby();
   }
 

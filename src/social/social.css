@@ -467,6 +467,10 @@
 /* ---------- amigos: busca de @, meu @, convites, pedidos, lista (friends-ui.ts) ---------- */
 .fr-body { padding-top: 4px; }
 .fr-search { position: sticky; top: -2px; z-index: 3; padding: 2px 0 6px; background: inherit; }
+.fr-srow { display: flex; gap: 8px; align-items: stretch; }
+.fr-srow .fr-field { flex: 1; min-width: 0; }
+.fr-scan { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 64px; border: 0; border-radius: 16px; background: linear-gradient(#7ad8ff, #2a9be0 55%, #1f6fc0); color: #fff; font: 800 11px var(--font, 'Fredoka', system-ui, sans-serif); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3); cursor: pointer; padding: 2px 8px; }
+.fr-scan:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3); }
 .fr-field { display: flex; align-items: center; gap: 6px; padding: 0 12px; height: 48px; border-radius: 16px; background: #fff; color: #1a0b3d; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25); }
 .fr-field svg { width: 20px; height: 20px; opacity: 0.6; flex: none; }
 .fr-field b { font-size: 19px; color: #7a4cff; }

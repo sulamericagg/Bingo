@@ -34,6 +34,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="bloopworld" android:host="amigo" />
             </intent-filter>
+
+            <!-- QR da sala do Pouso Forçado e do grupo: bloopworld://voo/<CÓDIGO> · bloopworld://grupo/<id>.<código> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bloopworld" android:host="voo" />
+                <data android:scheme="bloopworld" android:host="grupo" />
+            </intent-filter>
         </activity>
 
         <provider

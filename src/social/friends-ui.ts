@@ -73,8 +73,8 @@ async function openQr(h: string): Promise<void> {
   s.body.innerHTML = `<div class="fr-qr"><canvas></canvas><b>@${esc(h)}</b><p class="sc-note">${esc(t('fr.qr.hint', 'Seu amigo aponta a câmera e cai direto na tela de amigos com o seu @. Só mostre para quem você conhece!'))}</p><div class="fr-qr-acts"></div></div>`;
   const cv = s.body.querySelector('canvas')!;
   try {
-    const QR = await import('qrcode');
-    await QR.toCanvas(cv, link, { width: 220, margin: 2, color: { dark: '#1a0b3d', light: '#ffffff' } });
+    const { drawBloopQr } = await import('../ui/scan');
+    await drawBloopQr(cv, link, 230);
   } catch {
     cv.replaceWith(Object.assign(document.createElement('p'), { textContent: link }));
   }
@@ -219,7 +219,10 @@ export function renderFriendsTab(ctx: FriendsTab): void {
   /* ---------- 1. busca ---------- */
   const search = document.createElement('div');
   search.className = 'fr-search';
-  search.innerHTML = `<label class="fr-field">${icon('target', { size: 20 })}<b>@</b><input type="search" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" /></label><div class="fr-sugs" role="listbox"></div>`;
+  search.innerHTML = `<div class="fr-srow"><label class="fr-field">${icon('target', { size: 20 })}<b>@</b><input type="search" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" /></label><button class="fr-scan" type="button">${icon('camera', { size: 24 })}<span></span></button></div><div class="fr-sugs" role="listbox"></div>`;
+  const scanB = search.querySelector('.fr-scan') as HTMLButtonElement;
+  (scanB.lastElementChild as HTMLElement).textContent = t('scan.title', 'Escanear');
+  scanB.setAttribute('aria-label', t('fr.scan.aria', 'Escanear o QR do @ de um amigo'));
   const inp = search.querySelector('input')!;
   inp.placeholder = t('fr.search.ph', 'Buscar @amigo');
   inp.setAttribute('aria-label', t('fr.search.ph', 'Buscar @amigo'));
@@ -306,6 +309,20 @@ export function renderFriendsTab(ctx: FriendsTab): void {
       void runSearch();
     }
   });
+  // QR do @ de um amigo (ou de um grupo/sala): lê com a câmera aqui mesmo
+  scanB.onclick = async () => {
+    const { scanBloopLink } = await import('../ui/scan');
+    const l = await scanBloopLink({ title: t('scan.title', 'Escanear'), hint: t('fr.scan.hint', 'Aponte para o QR do @ do seu amigo') });
+    if (!l || !ctx.alive()) return;
+    if (l.type === 'amigo') {
+      inp.value = l.code;
+      clearTimeout(timer);
+      void runSearch();
+      return;
+    }
+    ctx.close();
+    void import('../ui/links').then((m) => m.openBloopLink(l));
+  };
 
   /* ---------- 2. meu @ ---------- */
   const mine = document.createElement('div');
