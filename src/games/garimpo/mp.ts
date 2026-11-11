@@ -21,7 +21,7 @@ import type { GbNet, NetMsg } from './net';
 import type { Garimpo } from './game';
 
 /** cores das camisas: anfitrião, convidados 1..3 */
-export const PCOL = [C.shirt as number, 0x2f7fd0, 0x3fae4a, 0xd0457f];
+export const PCOL = [C.shirt as number, 0xd8462e, 0x3fae4a, 0x9a4ad0];
 export const KINDS: Kind[] = ['pickup', 'truck', 'excavator', 'dozer', 'heli'];
 const SNAP_DT = 0.1;
 const INPUT_DT = 1 / 15;
@@ -63,7 +63,7 @@ export function nameTag(name: string, color: number): THREE.Sprite {
   tex.colorSpace = THREE.SRGBColorSpace;
   // tamanho fixo na tela (legível longe, não cobre a tela de perto)
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
-  sp.scale.set(0.2, 0.05, 1);
+  sp.scale.set(0.3, 0.075, 1);
   sp.position.y = 2.3;
   sp.renderOrder = 20;
   return sp;
@@ -190,6 +190,7 @@ export class MpHost {
       money: Math.floor(s.money),
       upg: s.upg,
       rain: g.rainOn ? 1 : 0,
+      ps: this.list().map((p) => [p.id, p.name, p.slot]),
     });
     for (let i = 0; i < parts; i++) this.net.send({ t: 'tp', to: r.id, i, d: ter.slice(i * CH, (i + 1) * CH) });
   }
@@ -417,6 +418,7 @@ export interface GuestInit {
   upg: { shovel: number; barrow: number; plant: number };
   rain: number;
   terrain: string;
+  peers: [string, string, number][];
 }
 
 /** convidado: espera o 'init' e as partes do terreno (com tempo-limite) */
@@ -444,6 +446,7 @@ export function awaitInit(net: GbNet, timeoutMs = 20000): Promise<GuestInit> {
         upg: Object.assign({ shovel: 0, barrow: 0, plant: 0 }, m.upg || {}),
         rain: num(m.rain),
         terrain: parts.join(''),
+        peers: Array.isArray(m.ps) ? m.ps : [],
       });
     };
     const check = () => {
@@ -515,12 +518,13 @@ export class MpGuest {
         if (idx >= 0 && idx === want && this.g.ms[idx]) this.g.enterNet(this.g.ms[idx]);
         else notify(t('gb.mp.busy', 'Alguém já está nessa máquina'), { icon: 'warning', kind: 'warn' });
       }),
-      net.on('pe', (m) => {
-        this.names.clear();
-        for (const p of (m.ps as [string, string, number][]) ?? []) this.names.set(String(p[0]), { name: String(p[1]), slot: num(p[2]) | 0 });
-        this.g.onPeersChanged();
-      }),
+      net.on('pe', (m) => this.setPeers(m.ps)),
     );
+  }
+  setPeers(ps: unknown): void {
+    this.names.clear();
+    for (const p of (ps as [string, string, number][]) ?? []) this.names.set(String(p[0]), { name: String(p[1]), slot: num(p[2]) | 0 });
+    this.g.onPeersChanged();
   }
   list(): Peer[] {
     return [...this.names].map(([id, p]) => ({ id, name: p.name, slot: p.slot })).sort((a, b) => a.slot - b.slot);

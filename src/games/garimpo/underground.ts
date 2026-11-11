@@ -83,9 +83,11 @@ function fadeMat<M extends THREE.Material>(m: M, u: { uCam: { value: THREE.Vecto
         vec3 ab = uTgt - uCam;
         float tt = clamp(dot(vFadeWp - uCam, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
         float dd = length(vFadeWp - (uCam + ab * tt));
-        float fd = (1.0 - smoothstep(0.7, 1.6, dd)) * smoothstep(0.0, 0.08, tt) * (1.0 - smoothstep(0.86, 0.97, tt));
-        float nz = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
-        if (fd > 0.0 && nz < fd * 0.9) discard;
+        float fd = (1.0 - smoothstep(0.45, 0.85, dd)) * smoothstep(0.02, 0.1, tt) * (1.0 - smoothstep(0.82, 0.95, tt));
+        // pontilhado ordenado (Bayer 4x4): some limpo, sem chiado
+        vec2 bq = mod(floor(gl_FragCoord.xy), 4.0);
+        float by = mod(bq.x + bq.y * 4.0 + floor(bq.x / 2.0) * 5.0 + floor(bq.y / 2.0) * 7.0, 16.0) / 16.0;
+        if (fd > 0.0 && by < fd * 0.92) discard;
       }`,
     );
   };
@@ -222,7 +224,7 @@ export class Underground {
     this.beams.frustumCulled = false;
     this.scene.add(this.beams);
     // pepitas brilhando nas faces de rocha rica
-    this.nuggets = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.11, 0), new THREE.MeshBasicMaterial({ color: 0xffd347 }), 900);
+    this.nuggets = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.085, 0), new THREE.MeshLambertMaterial({ color: 0xffd347, emissive: 0x9a6a08, flatShading: true }), 900);
     this.nuggets.count = 0;
     this.nuggets.frustumCulled = false;
     this.scene.add(this.nuggets);
@@ -479,6 +481,17 @@ export class Underground {
   setView(cam: THREE.Vector3, tgt: THREE.Vector3): void {
     this.fadeU.uCam.value.copy(cam);
     this.fadeU.uTgt.value.copy(tgt);
+    // mineiros-robô e vagonetas entre a câmera e o jogador somem (não tapam a vista)
+    const ax = tgt.x - cam.x;
+    const az = tgt.z - cam.z;
+    const L2 = ax * ax + az * az || 1;
+    const block = (o: THREE.Object3D) => {
+      const t = ((o.position.x - cam.x) * ax + (o.position.z - cam.z) * az) / L2;
+      if (t <= 0 || t >= 0.85) return false;
+      return Math.hypot(cam.x + ax * t - o.position.x, cam.z + az * t - o.position.z) < 1.1;
+    };
+    for (const b of this.bots) b.p.root.visible = !block(b.p.root);
+    for (const c of this.carts) c.mesh.visible = !block(c.mesh);
   }
   /** a câmera não entra na rocha: encurta o braço até o último ponto livre */
   armClamp(fx: number, fz: number, tx: number, tz: number): number {
@@ -696,9 +709,8 @@ export class Underground {
       l.intensity = 16 * (0.95 + Math.sin(this.time * 7 + k) * 0.05);
     });
     // veios brilham devagar
-    const nm = this.nuggets.material as THREE.MeshBasicMaterial;
-    const gl = 0.85 + Math.sin(this.time * 2.2) * 0.15;
-    nm.color.setRGB(1 * gl, 0.82 * gl, 0.3 * gl);
+    const nm = this.nuggets.material as THREE.MeshLambertMaterial;
+    nm.emissiveIntensity = 0.75 + Math.sin(this.time * 2.2) * 0.25;
     this.stepCarts(dt);
     this.stepBots(dt);
   }

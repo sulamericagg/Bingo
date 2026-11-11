@@ -520,6 +520,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.worker = { x: init.x, z: init.z, yaw: init.yaw, vol: 0, gold: 0 };
     const mp = new MpGuest(this, net);
     this.mp = mp;
+    mp.setPeers(init.peers);
     net.onClose((why) => {
       if (this.mp !== mp) return;
       notify(why === 'hostLeft' ? t('gb.mp.hostLeft', 'O anfitrião saiu') : t('gb.mp.lost2', 'A conexão caiu'), { icon: 'cloud-off', kind: 'bad', ms: 4000 });
@@ -1033,12 +1034,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.raf = requestAnimationFrame(this.loop);
     const el = now - this.last;
     this.last = now;
-    if (this.w && this.mp) {
-      this.host?.tick(Math.min(0.25, el / 1000));
-      // convidado com a tela de pausa aberta: solta os pedais lá no anfitrião
-      if (this.paused && this.guest) (this.mp as MpGuest).sendInput(this.idleCtl, Math.min(0.25, el / 1000));
-    }
-    if (this.paused || !this.w || !this.r) return;
+    if (this.w && this.mp) this.host?.tick(Math.min(0.25, el / 1000));
+    // online o mundo não para por causa de uma tela (loja, sala, pausa): só o meu controle solta
+    if ((this.paused && !this.mp) || !this.w || !this.r) return;
     const w0 = performance.now();
     const dt = Math.min(0.066, Math.max(0, el / 1000));
     for (let i = 0; i < this.speedup; i++) this.step(dt);
@@ -1058,7 +1056,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const hud = this.hud!;
     this.time += dt;
     s.played += dt;
-    const ctl = hud.read(dt);
+    const ctl = this.paused ? this.idleCtl : hud.read(dt);
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     // ferramentas e entradas (por quadro)
@@ -1157,7 +1155,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const mp = this.mp as MpGuest;
     this.time += dt;
     s.played += dt;
-    const ctl = this.hud!.read(dt);
+    const ctl = this.paused ? this.idleCtl : this.hud!.read(dt);
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     mp.frame(dt);
