@@ -1539,6 +1539,12 @@ export class PlaySession {
     while (this.world.bodies.length) this.world.removeBody(this.world.bodies[0]);
   }
 
+  /** dirigindo? e onde está (usado pelo passo a passo) */
+  status(): { driving: boolean; x: number; z: number } {
+    const f = this.focus();
+    return { driving: !!this.driving, x: f.x, z: f.z };
+  }
+
   /** para testes automatizados (?debug) */
   debug(): Record<string, unknown> {
     const f = this.focus();

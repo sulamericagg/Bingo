@@ -26,6 +26,7 @@ import { isPro, mapLimit, partLimit, setDebugPro } from './pro';
 import { localAuthor, store } from './store-mock';
 import { sicon } from './ui/sicons';
 import { Panels, type PanelId } from './ui/panels';
+import { CarGuide, guideDone } from './ui/guide';
 import type { PlaySession } from './play/session';
 import type { ShareLink } from './share';
 import { deserialize } from './format';
@@ -51,6 +52,7 @@ export class Studio {
   editor: Editor;
   world!: WorldView;
   panels: Panels;
+  guide: CarGuide;
   mode: 'edit' | 'play' = 'edit';
   play: PlaySession | null = null;
   dirty = false;
@@ -140,6 +142,7 @@ export class Studio {
     });
     this.panels = new Panels(this);
     this.buildChrome();
+    this.guide = new CarGuide(this);
     this.editor.on((k) => this.onEditorChange(k));
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -168,6 +171,7 @@ export class Studio {
     await this.openDoc(doc);
     this.loop();
     if (o.link) await this.openLink(o.link);
+    else if (first && !guideDone()) this.guide.start();
     else if (first) this.panels.open('library');
   }
 
@@ -201,11 +205,19 @@ export class Studio {
   }
 
   async openDoc(doc: Creation): Promise<void> {
+    this.guide?.stop();
     if (doc.deps) for (const d of doc.deps) remember(d);
     await preload(refIds(doc), async (id) => (await store().get(id))?.creation ?? null);
     this.setWorld(doc.worldKind ?? defaultWorld(doc.kind), doc.seed ?? 1);
     this.editor.load(doc);
-    this.editor.frameAll();
+    if (doc.parts.length) this.editor.frameAll();
+    else {
+      // criação vazia: câmera num ângulo bom para começar (mapa vê mais longe)
+      const c = this.editor.cam;
+      c.target.set(0, 0.5, 0);
+      c.dist = doc.kind === 'map' ? 22 : 8;
+      c.pitch = doc.kind === 'map' ? 0.75 : 0.5;
+    }
     this.dirty = false;
     try {
       localStorage.setItem(LAST, doc.id);
@@ -222,9 +234,6 @@ export class Studio {
     d.worldKind = defaultWorld(kind);
     d.seed = (Math.random() * 1e6) | 0;
     void this.openDoc(d);
-    this.editor.cam.target.set(0, 0.5, 0);
-    this.editor.cam.dist = kind === 'map' ? 22 : 9;
-    this.editor.cam.pitch = kind === 'map' ? 0.75 : 0.5;
   }
 
   setWorld(kind: WorldKind, seed: number): void {
@@ -687,6 +696,7 @@ export class Studio {
     cancelAnimationFrame(this.raf);
     this.play?.dispose();
     this.stopFly();
+    this.guide.dispose();
     this.panels.dispose();
     this.editor.dispose();
     this.world?.dispose();
@@ -712,6 +722,7 @@ export class Studio {
       },
       validate,
       edges,
+      guide: this.guide,
     };
   }
 }

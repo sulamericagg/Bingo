@@ -332,7 +332,7 @@ export class Panels {
       const hb = this.h(`<label class="bs-toggle"><input type="checkbox" ${hid ? 'checked' : ''}> ${t('studio.mold', 'Molde: escondido ao jogar (para "Criar cópia")')}</label>`);
       hb.querySelector('input')!.addEventListener('change', (e) => ed.setHidden((e.target as HTMLInputElement).checked));
       if (sel.length === 1 && (sel[0].t === 'box' || sel[0].t === 'wedge')) {
-        const kit = this.h(`<button class="bs-btn bs-wide bs-accent">${sicon('mech', 18)}${t('studio.wheelKit', 'Kit carro: 4 rodas + assento')}</button>`);
+        const kit = this.h(`<button class="bs-btn bs-wide bs-accent bs-kit">${sicon('mech', 18)}${t('studio.wheelKit', 'Kit carro: 4 rodas + assento')}</button>`);
         kit.addEventListener('click', () => this.wheelKit());
       }
       // juntas
@@ -390,7 +390,7 @@ export class Panels {
   }
 
   /** chassi selecionado → 4 rodas nas quinas + assento em cima */
-  private wheelKit(): void {
+  wheelKit(): void {
     const ed = this.s.editor;
     const ch = ed.selected()[0];
     if (!ch || !ed.doc) return;
@@ -656,6 +656,11 @@ export class Panels {
   /* ----------------------------- minhas criações ----------------------------- */
 
   private async renderLibrary(): Promise<void> {
+    const gd = this.h(`<button class="bs-btn bs-wide bs-accent bs-guidebtn">${sicon('mech', 20)}<span><b>${t('studio.guide.title', 'Monte um carro')}</b><small>${t('studio.guide.sub', 'passo a passo, em 5 passos')}</small></span></button>`);
+    gd.addEventListener('click', async () => {
+      if (this.s.dirty) await this.s.save(true);
+      this.s.guide.start();
+    });
     const nw = this.h(`<div><h4>${t('studio.newTitle', 'Nova criação')}</h4><div class="bs-row3">
       <button class="bs-new" data-n="object">${sicon('box', 28)}<b>${kindName('object')}</b></button>
       <button class="bs-new" data-n="vehicle">${sicon('mech', 28)}<b>${kindName('vehicle')}</b></button>
