@@ -1302,7 +1302,14 @@ export class Garimpo implements MiniGameHandle, BotHost {
     else audio.engineSet(0, 0);
     this.camp?.step(dt); // CAMP: objetivos e obra
     if (this.camp?.camera(dt, w.camera)) this.footFpOff();
-    else if (this.inMine) this.mineCamera(dt);
+    else if (this.camOverride && this.curView() === 'fp') {
+      // testes: câmera livre também na 1ª pessoa
+      this.footFpOff();
+      const o = this.camOverride;
+      w.camera.position.set(o[0], o[1], o[2]);
+      w.camera.lookAt(o[3], o[4], o[5]);
+      w.follow(o[3], o[5]);
+    } else if (this.inMine) this.mineCamera(dt);
     else this.camera(dt);
     // pickup descarregando na moega
     if (cur instanceof Pickup && ctl.act2 && w.built('plant') && cur.pos.distanceTo(this.hopperPos(_v)) < 9) cur.unload(dt, this.hopper);
@@ -2026,6 +2033,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   openPause(): void {
     if (!this.sv) return;
+    if (this.introOn) {
+      // CAMP: "voltar" na abertura = pular
+      void import('./start/cinematic').then((c) => c.skipIntro());
+      return;
+    }
     this.persist();
     const s = this.sv;
     const d = this.overlay(

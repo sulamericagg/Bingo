@@ -204,7 +204,7 @@ export class CampBuild {
     const p = this.g.cur?.pos;
     if (!p || this.g.cur !== this.g.worker) return false;
     const b = this.site.lay.buyer;
-    return Math.hypot(p.x - b.x, p.z - b.z) < 5;
+    return Math.hypot(p.x - b.x, p.z - b.z) < 3.4;
   }
 
   /* ============================== sítios das obras ============================== */
@@ -328,6 +328,7 @@ export class CampBuild {
     ghostMat.opacity = 0.22 + Math.sin(this.time * 3) * 0.08;
     if (this.marker.visible) this.marker.position.y += Math.sin(this.time * 2.4) * 0.004;
     if (this.fx) this.fxStep(dt);
+    if (this.s.mineOpen && !g.w!.built('portal') && !this.fx) g.w!.setBuilt('portal', true);
     if (this.guest) return;
     // objetivos (4×/s)
     this.chkT -= dt;
@@ -865,7 +866,7 @@ export class CampBuild {
       const badge = done ? SI.check : !open ? SI.lock : '';
       return `<button class="gbc-card ${cls}" data-b="${d.id}" ${open ? '' : 'disabled'}><div class="gbc-ci">${SI[d.icon]}${badge ? `<em>${badge}</em>` : ''}</div><span>${esc(d.name())}</span>${done ? '<small>&nbsp;</small>' : `<small class="${can ? 'ok' : ''}">${SI.coin}${d.price}</small>`}</button>`;
     }).join('');
-    const mach = `<div class="gbc-card ${this.has('garage') ? '' : 'locked'}" data-shop><div class="gbc-ci">${SI.pickup}${this.has('garage') ? '' : `<em>${SI.lock}</em>`}</div><span>${esc(t('gb.c.machines', 'Máquinas (loja)'))}</span><small>&nbsp;</small></div>`;
+    const mach = `<div class="gbc-card ${this.has('garage') ? '' : 'locked'}" data-shop><div class="gbc-ci">${SI.pickup}${this.has('garage') ? '' : `<em>${SI.lock}</em>`}</div><span>${esc(t('gb.c.machines', 'Máquinas (loja)'))}</span></div>`;
     const d = g.overlay(`<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${SI.hammer.replace('<svg', '<svg style="width:26px;height:26px;vertical-align:-6px"')} ${esc(t('gb.c.build', 'Construir'))}</h2><div class="gbc-grid">${cards}${mach}</div>`, 'gbc-menu');
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;

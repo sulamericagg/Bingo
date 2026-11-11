@@ -731,9 +731,17 @@ class Cinematic {
 }
 
 /** no jogo novo: usa o mundo e o renderizador do jogo */
+let current: Cinematic | null = null;
 export function playInGame(wrap: HTMLElement, r: THREE.WebGLRenderer, w: World, site: Site, tier: number, hide: THREE.Object3D[] = []): Promise<void> {
   const c = new Cinematic({ wrap, r, w, site, tier, hide });
-  return c.run();
+  current = c;
+  return c.run().finally(() => {
+    if (current === c) current = null;
+  });
+}
+/** botão "voltar" do aparelho durante a abertura = pular */
+export function skipIntro(): void {
+  current?.finish();
 }
 
 /** do menu: mundo de exemplo só para a abertura (sem jogo) */
