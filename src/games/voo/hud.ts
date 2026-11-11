@@ -161,10 +161,13 @@ export class Hud {
       </div>
       <div class="voo-top">
         <button class="voo-btn round red" data-exit aria-label="${t('voo.exit', 'Sair')}">${vIcon('close', 26)}</button>
-        <div class="voo-pill" data-phase></div>
-        <div class="voo-bars">
-          <div>${t('voo.hud.hull', 'Casco')}<b><i data-hull style="background:linear-gradient(90deg,#ff5c7a,#5ef08a)"></i></b></div>
-          <div>${t('voo.hud.panic', 'Pânico')}<b><i data-pan style="background:linear-gradient(90deg,#ffd34a,#ff4d6a)"></i></b></div>
+        <div class="voo-tlc">
+          <div class="voo-pill" data-phase></div>
+          <div class="voo-bars">
+            <div>${t('voo.hud.hull', 'Casco')}<b><i data-hull style="background:linear-gradient(90deg,#ff5c7a,#5ef08a)"></i></b></div>
+            <div>${t('voo.hud.panic', 'Pânico')}<b><i data-pan style="background:linear-gradient(90deg,#ffd34a,#ff4d6a)"></i></b></div>
+          </div>
+          <div class="voo-obj" style="display:none"></div>
         </div>
         <div class="voo-right">
           <canvas class="voo-mini" width="440" height="116"></canvas>
@@ -198,8 +201,9 @@ export class Hud {
     }
     this.buildCrew();
     this.bind();
-    setNotifyTop(66);
+    setNotifyTop(54);
     setNotifyAlign('center');
+    document.body.classList.add('voo-hud-on');
   }
 
   /* ------------------------------ entrada ------------------------------ */
@@ -728,7 +732,7 @@ export class Hud {
     // topo
     const phaseTxt =
       s.phase === 'cruise' ? t('voo.p.cruise', 'Cruzeiro') : s.phase === 'descent' ? t('voo.p.descent', 'Descida') : s.phase === 'final' ? t('voo.p.final', 'Aproximação') : t('voo.p.land', 'Pouso');
-    const ph = `${vIcon('plane', 24)}<span>${phaseTxt} · ${(f.dist / 1000).toFixed(1)} km · ${Math.round(f.alt)} m</span>`;
+    const ph = `${vIcon('plane', 22)}<span><b>${phaseTxt}</b><small>${(f.dist / 1000).toFixed(1)} km · ${Math.round(f.alt)} m</small></span>`;
     if (this.phase.dataset.v !== ph) {
       this.phase.dataset.v = ph;
       this.phase.innerHTML = ph;
@@ -814,8 +818,12 @@ export class Hud {
     if (tip !== this.lastTip) {
       this.lastTip = tip;
       const ek = s.active().filter((e) => e.kind !== 'turb').pop()?.kind;
-      const oi: IconName = this.tutText ? 'target' : me.seated ? 'planet' : ek === 'fire' ? 'fire' : ek === 'leak' ? 'drop' : ek === 'spark' ? 'bolt' : ek === 'panic' ? 'heart' : ek ? 'warning' : 'sparkle';
-      objective(tip || null, { icon: oi });
+      const oi = this.tutText ? 'star' : me.seated ? 'plane' : ek ?? 'info';
+      // objetivo dentro do HUD (coluna da esquerda): não briga com retratos, minimapa nem botão de girar
+      const ob = this.q('.voo-obj') as HTMLElement;
+      ob.style.display = tip ? '' : 'none';
+      ob.innerHTML = tip ? `${vIcon(oi, 16)}<span></span>` : '';
+      if (tip) (ob.querySelector('span') as HTMLElement).textContent = tip;
     }
     // instrumentos
     this.instT -= dt;
@@ -977,32 +985,127 @@ export class Hud {
     }
   }
 
-  private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number }): void {
+  /* ------------------------------ marcadores sem bagunça ------------------------------
+   * Regras: nunca em cima de controles/painéis (retângulos de exclusão lidos ~3x/s), fora da tela
+   * vão para a borda da área segura com seta, sobrepostos se empilham, perto somem/encolhem (o
+   * contorno amarelo do objeto já mostra), sentado na cabine ficam no para-brisa (não no painel). */
+  private excl: { l: number; t: number; r: number; b: number }[] = [];
+  private exclW = 0;
+  private wasModal = false;
+  private exclH = 0;
+  private exclT = 0;
+  private mkR = 26;
+  private placed: { x: number; y: number }[] = [];
+  private refreshExcl(W: number, H: number): void {
+    const er = this.el.getBoundingClientRect();
+    const out: { l: number; t: number; r: number; b: number }[] = [];
+    const add = (el: Element, pad = 6) => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;
+      out.push({ l: r.left - er.left - pad, t: r.top - er.top - pad, r: r.right - er.left + pad, b: r.bottom - er.top + pad });
+    };
+    this.el
+      .querySelectorAll(
+        '.voo-top .voo-btn,.voo-pill,.voo-bars,.voo-obj,.voo-mini,.voo-mate,.voo-acts .voo-act:not(.hide),.voo-thr,.voo-flyb .voo-btn:not(.hide),.voo-flytop .voo-btn,.voo-chud,.voo-trays,.voo-stickhint,.voo-menu,.voo-pfd',
+      )
+      .forEach((e) => add(e));
+    // botões globais por cima do jogo (girar tela do hub, besouro do beta) e o joystick visível
+    document.querySelectorAll('.gh-rot:not([hidden]),.beta-bug,.tc-joy.on .tc-ring,.tc-joy.idle .tc-ring,#nt-root .nt.on,.nt-big.on').forEach((e) => add(e, 8));
+    const me = this.host.sim.players[this.host.sim.me];
+    // sentado na cabine (1ª pessoa): o painel 3D com as telas e o manche fica livre
+    if (me.seated && this.host.is3d && !this.host.extCam()) out.push({ l: 0, t: H * 0.6, r: W, b: H });
+    this.excl = out;
+    this.mkR = H <= 420 ? 22 : 26;
+  }
+  private inExcl(x: number, y: number, rad: number): number {
+    for (let i = 0; i < this.excl.length; i++) {
+      const e = this.excl[i];
+      if (x + rad > e.l && x - rad < e.r && y + rad > e.t && y - rad < e.b) return i;
+    }
+    return -1;
+  }
+  /** posiciona um marcador (emergência/objetivo/destino) */
+  private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number; seated: boolean }): void {
     const h = this.host;
     h.project(x, y, z, this.pr);
+    const R = this.mkR;
+    const lab = 18; // rótulo de distância embaixo
+    const seatedFP = me.seated && h.is3d && !h.extCam();
+    const S = { l: R + 8, t: 58 + R, r: W - R - 8, b: (seatedFP ? H * 0.6 : H - 30) - R - lab };
     let px = this.pr.x;
     let py = this.pr.y;
-    const m = 44;
-    let edge = this.pr.behind || px < m || px > W - m || py < 96 || py > H - m;
-    if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
-    const em = d.querySelector('em') as HTMLElement;
+    let edge = this.pr.behind || px < S.l || px > S.r || py < S.t || py > S.b;
+    if (!h.is3d) edge = px < S.l || px > S.r || py < S.t || py > S.b;
+    const cx = W / 2;
+    const cy = (S.t + S.b) / 2;
+    let dx = px - cx;
+    let dy = py - cy;
     if (edge) {
-      const cx = W / 2;
-      const cy = H / 2;
-      const dx = px - cx;
-      let dy = py - cy;
-      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
-      const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
+      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 40; // atrás de mim: vai para a borda de baixo da área
+      const k = Math.min((S.r - cx) / Math.max(1, Math.abs(dx)), (S.b - cy) / Math.max(1, Math.abs(dy)));
       px = cx + dx * k;
-      py = Math.min(H - m, Math.max(100, cy + dy * k + 15));
-      em.style.display = '';
-      em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
-    } else em.style.display = 'none';
+      py = cy + dy * k;
+    }
+    // nunca em cima de controles: empurra para fora do retângulo pelo lado mais perto (dentro da área segura)
+    for (let it = 0; it < 4; it++) {
+      const i = this.inExcl(px, py, R);
+      if (i < 0) break;
+      const e = this.excl[i];
+      const opts: [number, number][] = [
+        [e.l - R - 2, py],
+        [e.r + R + 2, py],
+        [px, e.t - R - 2],
+        [px, e.b + R + lab + 2],
+      ];
+      let best: [number, number] | null = null;
+      let bd = 1e9;
+      for (const o of opts) {
+        if (o[0] < S.l || o[0] > S.r || o[1] < S.t || o[1] > S.b) continue;
+        const dd = Math.hypot(o[0] - px, o[1] - py);
+        if (dd < bd) (bd = dd), (best = o);
+      }
+      if (!best) break;
+      [px, py] = best;
+    }
+    // empilha os que se sobrepõem (coluna, na direção do centro)
+    let dir = py > cy ? -1 : 1;
+    const y0 = py;
+    const side = px > W / 2 ? -1 : 1;
+    for (let it = 0; it < 8; it++) {
+      const hit = this.placed.find((q) => Math.abs(q.x - px) < R * 2 && Math.abs(q.y - py) < R * 2 + lab - 2);
+      if (!hit) break;
+      py = hit.y + dir * (R * 2 + lab);
+      // saiu da área segura ou caiu num controle: empilha para o outro lado / para o lado
+      if (py < S.t || py > S.b || this.inExcl(px, py, R) >= 0) {
+        if (dir === (y0 > cy ? -1 : 1)) {
+          dir = -dir;
+          py = y0;
+        } else {
+          px += side * (R * 2 + 6);
+          py = y0;
+          dir = y0 > cy ? -1 : 1;
+        }
+      }
+    }
+    this.placed.push({ x: px, y: py });
+    const blocked = this.inExcl(px, py, R * 0.6) >= 0;
+    const em = d.querySelector('em') as HTMLElement | null;
+    if (em) {
+      if (edge) {
+        em.style.display = '';
+        em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+      } else em.style.display = 'none';
+    }
+    // perto: encolhe e some (o contorno amarelo do objeto já mostra onde é)
+    const dist = Math.hypot(x - me.x, z - me.z);
+    const near = !edge && !me.seated && dist < 3;
     d.classList.toggle('edge', edge);
+    d.classList.toggle('near', near);
+    d.style.display = blocked || (!edge && !me.seated && dist < 1.3) ? 'none' : '';
     d.style.transform = `translate(${px}px,${py}px)`;
-    const lbl = `${Math.round(Math.hypot(x - me.x, z - me.z))} m`;
-    const sp = d.querySelector('span')!;
-    if (sp.textContent !== lbl) sp.textContent = lbl;
+    const sp = d.querySelector('span');
+    const lbl = `${Math.round(dist)} m`;
+    if (sp && sp.textContent !== lbl) sp.textContent = lbl;
   }
 
   private ctxIcon(c: Ctx): string {
@@ -1072,8 +1175,42 @@ export class Hud {
     const H = this.el.clientHeight;
     const seen = new Set<number>();
     const box = this.q('.voo-mks');
-    for (const e of s.active()) {
-      if (e.kind === 'turb') continue;
+    // janela modal (copa/minijogo/menu de ordens): sem marcadores por cima
+    const modal = !!this.galley || !!this.miniGame;
+    box.style.display = modal ? 'none' : '';
+    if (modal !== this.wasModal) {
+      this.wasModal = modal;
+      document.body.classList.toggle('voo-modal', modal);
+    }
+    if (modal) return;
+    this.exclT -= 1 / 60;
+    if (this.exclT <= 0 || this.exclW !== W || this.exclH !== H) {
+      this.exclT = 0.25;
+      this.exclW = W;
+      this.exclH = H;
+      this.refreshExcl(W, H);
+    }
+    this.placed.length = 0;
+    // prioridade: objetivo do tutorial, depois as emergências mais graves
+    const ems = s
+      .active()
+      .filter((e) => e.kind !== 'turb')
+      .sort((a, b) => b.sev - a.sev);
+    // alvo do tutorial
+    const tt = this.tutTarget;
+    if (tt) {
+      if (!this.tutMk) {
+        this.tutMk = document.createElement('div');
+        this.tutMk.className = 'voo-mk obj';
+        this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
+        box.appendChild(this.tutMk);
+      }
+      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
+    } else if (this.tutMk) {
+      this.tutMk.remove();
+      this.tutMk = null;
+    }
+    for (const e of ems) {
       seen.add(e.id);
       let d = this.mk.get(e.id);
       if (!d) {
@@ -1089,20 +1226,6 @@ export class Hud {
       // anel de progresso (segurar para fechar/tapar, fogo diminuindo)
       const pr = e.kind === 'fire' ? Math.max(0, 1 - e.sev / 1.2) * (e.sev < 0.34 ? 1 : 0.4) : e.prog;
       (d.querySelector('.prog') as HTMLElement).style.background = pr > 0.02 ? `conic-gradient(#5ef08a ${pr * 360}deg, transparent 0)` : '';
-    }
-    // alvo do tutorial
-    const tt = this.tutTarget;
-    if (tt) {
-      if (!this.tutMk) {
-        this.tutMk = document.createElement('div');
-        this.tutMk.className = 'voo-mk obj';
-        this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
-        box.appendChild(this.tutMk);
-      }
-      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
-    } else if (this.tutMk) {
-      this.tutMk.remove();
-      this.tutMk = null;
     }
     for (const [id, d] of this.mk)
       if (!seen.has(id)) {
@@ -1130,7 +1253,7 @@ export class Hud {
         this.aimEl.innerHTML = vIcon(this.aimIco, 30);
       }
       h.project(c.x, c.y, c.z, this.pr);
-      this.aimEl.style.display = this.pr.behind ? 'none' : '';
+      this.aimEl.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 20) >= 0 ? 'none' : '';
       this.aimEl.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
     } else if (this.aimEl) this.aimEl.style.display = 'none';
     // medidor de calma em cima dos passageiros aflitos perto de mim
@@ -1148,8 +1271,8 @@ export class Hud {
         d.style.display = 'none';
         return;
       }
-      h.project(q.x, q.standing ? 1.45 : 1.2, q.z, this.pr);
-      d.style.display = this.pr.behind ? 'none' : '';
+      h.project(q.x, q.standing ? 1.5 : 1.25, q.z, this.pr);
+      d.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 14) >= 0 ? 'none' : '';
       d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
       const bar = d.querySelector('i') as HTMLElement;
       bar.style.width = Math.round((1 - q.panic) * 100) + '%';
@@ -1165,7 +1288,7 @@ export class Hud {
         continue;
       }
       h.project(p.x, p.seated ? 1.75 : 1.95, p.seated ? -2.9 : p.z, this.pr);
-      d.style.display = this.pr.behind ? 'none' : '';
+      d.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y - 14, 12) >= 0 ? 'none' : '';
       d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px) translate(-50%,-100%)`;
     }
   }
@@ -1182,6 +1305,7 @@ export class Hud {
     clearNotify();
     resetNotifyTop();
     setNotifyAlign('left');
+    document.body.classList.remove('voo-hud-on', 'voo-modal');
     this.el.remove();
   }
 }
