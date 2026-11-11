@@ -179,7 +179,7 @@ export class Hud {
   /** vida baixa: borda vermelha que pulsa */
   vignette(hp: number): void {
     const v = this.q('.jg-vig');
-    const k = hp < 40 ? (40 - hp) / 40 : 0;
+    const k = hp < 50 ? Math.min(1, (50 - hp) / 30) : 0;
     v.style.opacity = k.toFixed(2);
   }
   /** barra do chefe (null = some) */

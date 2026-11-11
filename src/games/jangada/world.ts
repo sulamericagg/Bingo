@@ -911,7 +911,7 @@ export class World {
         else if (loaded && d > 300) this.dropIsle(s.id);
         // detalhe (árvores, baús, donos) só perto: longe fica só o chão
         const il = this.isles.get(s.id);
-        if (il) il.detail(Math.hypot(this.cam.position.x - s.x, this.cam.position.z - s.z) < s.r + (this.tier >= 2 ? 150 : 110));
+        if (il) il.detail(Math.hypot((this.photo ? this.photo[0] : this.me.x) - s.x, (this.photo ? this.photo[2] : this.me.z) - s.z) < s.r + (this.tier >= 2 ? 150 : 110));
         // descobriu (chegou perto)
         const dm = Math.hypot(this.me.x - s.x, this.me.z - s.z);
         if (dm < 175 && !this.isleSt[s.id]?.k) this.discover(s);
@@ -4422,7 +4422,11 @@ export class World {
       wind: (w: number) => (this.wind = w),
       harpoon: () => this.throwHarpoon(this.sel),
       /** modo foto: câmera em (x,y,z) olhando (lx,ly,lz); sem args desliga */
-      photo: (...a: number[]) => (this.photo = a.length === 6 ? (a as [number, number, number, number, number, number]) : null),
+      photo: (...a: number[]) => {
+        this.photo = a.length === 6 ? (a as [number, number, number, number, number, number]) : null;
+        this.streamT = 0;
+        this.updateIsles(0);
+      },
       hud: (on: boolean) => {
         this.hud.show(on);
         this.ctl.show(on);

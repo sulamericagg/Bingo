@@ -693,6 +693,7 @@ class JSynth {
     const ctx = this.ctx;
     if (!ctx || !this.world) return null;
     if (!p || this.offline) return this.world;
+    if (!(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))) return this.world;
     const lp = this.listenerPos;
     if (Math.hypot(p.x - lp.x, p.y - lp.y, p.z - lp.z) > max) return null;
     const pn = ctx.createPanner();
@@ -1683,7 +1684,7 @@ class JSynth {
       this.motorN = { o, o2, g, f };
     }
     if (this.motorN) {
-      const m = this.motor;
+      const m = Number.isFinite(this.motor) ? Math.min(2, this.motor) : 0;
       this.motorN.g.gain.setTargetAtTime(m > 0.01 && save.sound ? 0.05 + m * 0.07 : 0, t, 0.2);
       this.motorN.o.frequency.setTargetAtTime(48 + m * 70, t, 0.25);
       this.motorN.o2.frequency.setTargetAtTime(24 + m * 35, t, 0.25);
@@ -1889,6 +1890,7 @@ export class JAudio {
     this.s.underwater = v;
   }
   listener(p: V3, f: V3): void {
+    if (![p.x, p.y, p.z, f.x, f.y, f.z].every(Number.isFinite)) return;
     engine.setListener(p.x, p.y, p.z, f.x, f.y, f.z);
     this.s.listener(p);
   }
@@ -1896,6 +1898,7 @@ export class JAudio {
     this.s.setFires(l);
   }
   private play(name: string, p: V3 | null = null, o: PlayOpts = {}): void {
+    if (p && !(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))) p = null;
     if (p) sfx.at('jangada.' + name, p.x, p.y, p.z, o);
     else sfx.play('jangada.' + name, o);
   }
