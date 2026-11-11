@@ -1,17 +1,7 @@
 /** API pública usada pelo jogo. */
 import { normalizeCode, type Gift, type PublicChallenge, type RedeemResult, type RewardPack } from '../shared/reward';
-import {
-  getCode,
-  getGifts,
-  getPlayer,
-  listChallenges,
-  pendingGiftsFor,
-  putCode,
-  putPlayer,
-  type GiftRec,
-  type PlayerRec,
-} from './store';
-import { codeSummary } from './summary';
+import { adminHub } from './admin-hub';
+import { getGifts, getPlayer, importLegacyCode, listChallenges, pendingGiftsFor, putPlayer, type GiftRec, type PlayerRec } from './store';
 import { cleanName, HttpError, json, num, PLAYER_ID_RE, randomPlayerName, readJson } from './util';
 
 /** Só regrava o jogador no sync se algo mudou ou o lastSeen está velho (economiza escritas do KV). */
@@ -94,8 +84,18 @@ export async function sync(req: Request, env: Env): Promise<Response> {
   await env.FRIENDS.get(env.FRIENDS.idFromName('hub'))
     .touch(id)
     .catch(() => {});
-  const inbox = pendingGiftsFor(p, await getGifts(env)).map(giftOut);
-  return json({ name: p.name, inbox });
+  const inbox = p.banned ? [] : pendingGiftsFor(p, await getGifts(env)).map(giftOut);
+  // status "entregue" no painel (só quando há algo na caixa: não custa nada no caso comum)
+  if (inbox.length) await adminHub(env).markSeen(id, inbox.map((g) => g.id)).catch(() => {});
+  return json({ name: p.name, inbox, flags: p.flags ?? [] });
+}
+
+const DAY = 86_400_000;
+
+/** Efeitos de um pacote que o servidor também acompanha (Clube / Passe) para o painel. */
+export function trackPack(p: PlayerRec, pack: RewardPack, now = Date.now()): void {
+  if (pack.clubDays) p.clubUntil = Math.max(p.clubUntil ?? 0, now) + pack.clubDays * DAY;
+  if (pack.passSeason !== undefined) p.passSeason = Math.max(p.passSeason ?? -1, pack.passSeason);
 }
 
 /** POST /api/inbox/claim { id, giftIds[] } → { rewards: RewardPack[], claimed: string[] } */
@@ -104,40 +104,44 @@ export async function claim(req: Request, env: Env): Promise<Response> {
   const id = requireId(body.id);
   const ids: string[] = Array.isArray(body.giftIds) ? body.giftIds.map(String).slice(0, 200) : [];
   const p = await getPlayer(env, id);
-  if (!p || !ids.length) return json({ rewards: [], claimed: [] });
+  if (!p || !ids.length || p.banned) return json({ rewards: [], claimed: [] });
   const gifts = await getGifts(env, true);
-  const pending = pendingGiftsFor(p, gifts).filter((g) => ids.includes(g.id));
+  let pending = pendingGiftsFor(p, gifts).filter((g) => ids.includes(g.id));
   if (!pending.length) return json({ rewards: [], claimed: [] });
+  // Atômico no AdminHub: dois aparelhos pegando ao mesmo tempo não recebem em dobro.
+  const fresh = new Set(await adminHub(env).claimGifts(id, pending.map((g) => g.id)));
+  pending = pending.filter((g) => fresh.has(g.id));
   // Mantém só ids de presentes que ainda existem (a lista não cresce para sempre).
   const live = new Set(gifts.map((g) => g.id));
-  p.claimed = [...p.claimed.filter((c) => live.has(c)), ...pending.map((g) => g.id)];
+  p.claimed = [...new Set([...p.claimed.filter((c) => live.has(c)), ...fresh])];
   p.lastSeen = Date.now();
+  for (const g of pending) trackPack(p, g.reward);
   await putPlayer(env, p);
   return json({ rewards: pending.map((g) => withText(g.reward, g.title, g.message)), claimed: pending.map((g) => g.id) });
 }
 
-/** POST /api/redeem { id, code } → { ok, reward?, error? } */
+/** POST /api/redeem { id, code } → { ok, reward?, error? }  (regras e contagem atômicas no AdminHub) */
 export async function redeem(req: Request, env: Env): Promise<Response> {
   const body = await readJson(req);
   const id = requireId(body.id);
   const key = normalizeCode(String(body.code ?? ''));
+  const ip = req.headers.get('cf-connecting-ip') ?? 'local';
   const fail = (error: NonNullable<RedeemResult['error']>) => json({ ok: false, error } satisfies RedeemResult);
   if (key.length < 3) return fail('invalid');
-  const code = await getCode(env, key);
-  const now = Date.now();
-  if (!code || !code.active) return fail('invalid');
-  if (code.startsAt && code.startsAt > now) return fail('invalid');
-  if (code.expiresAt && code.expiresAt <= now) return fail('expired');
   const { p } = await loadOrCreate(env, id, body);
-  if (p.redeemed.includes(key)) return fail('used');
-  if (code.maxUses > 0 && code.uses >= code.maxUses) return fail('limit');
-
-  code.uses++;
-  code.recent = [{ p: p.id, n: p.name, t: now }, ...(code.recent ?? [])].slice(0, 50);
-  p.redeemed.push(key);
-  p.lastSeen = now;
-  await Promise.all([putCode(env, code, codeSummary(code.reward)), putPlayer(env, p)]);
-  const reward: RewardPack = { ...code.reward };
+  if (p.banned) return fail('invalid');
+  const hub = adminHub(env);
+  let r = await hub.redeem(key, id, p.name, p.redeemed.includes(key), ip);
+  if (!r.ok && r.error === 'missing' && (await importLegacyCode(env, key))) r = await hub.redeem(key, id, p.name, p.redeemed.includes(key), ip);
+  if (!r.ok) {
+    if (r.error === 'missing') await hub.noteFail(id, ip);
+    return fail(r.error === 'missing' ? 'invalid' : r.error);
+  }
+  if (!p.redeemed.includes(key)) p.redeemed = [...p.redeemed, key].slice(-500);
+  p.lastSeen = Date.now();
+  trackPack(p, r.reward);
+  await putPlayer(env, p);
+  const reward: RewardPack = { ...r.reward };
   reward.title ??= 'Código resgatado!';
   return json({ ok: true, reward } satisfies RedeemResult);
 }

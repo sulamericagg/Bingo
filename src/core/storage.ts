@@ -54,7 +54,8 @@ export interface SaveData {
   /** Ingressos (campeonatos/eventos). */
   tickets: number;
   /** Clube Bloop (assinatura). expires = ms epoch; 0 = nunca assinou. */
-  club: { expires: number; lastRenewGrant: number; lastDrip: number };
+  /** gift = fim dos dias de Clube dados pelo painel admin (a checagem do Google Play não derruba) */
+  club: { expires: number; lastRenewGrant: number; lastDrip: number; gift?: number };
   /** Tempo sem anúncios ganho com vídeos premiados (ms epoch) + vídeos acumulados para o próximo bloco. */
   adFree: { until: number; videos: number };
   /** Passe da Casa (src/pass/home/state.ts) — mesma forma do Passe Estelar. */

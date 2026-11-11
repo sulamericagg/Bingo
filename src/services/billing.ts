@@ -5,6 +5,16 @@ import { bus } from '../core/events';
 import { isAndroid } from '../core/platform';
 import { dayNumber, persistNow, save } from '../core/storage';
 import { notePurchase, onNoAdsPurchased } from './ads';
+import { reportPurchase } from './online';
+
+/** Relatório (só estatística) para o painel → Pagamentos. Nunca bloqueia a entrega. */
+function report(t: Transaction | undefined, productId: string, type: 'inapp' | 'subs', source: 'buy' | 'restore', price?: string): void {
+  if (!t) return;
+  const token = t.purchaseToken || t.transactionId;
+  if (!token) return;
+  const exp = t.expirationDate ? Date.parse(t.expirationDate) : NaN;
+  void reportPurchase({ productId, token, orderId: t.orderId, type, source, price, expires: Number.isFinite(exp) ? exp : undefined });
+}
 
 const prices = new Map<string, string>();
 let supported = false;
@@ -87,6 +97,7 @@ async function reconcile(list: Transaction[]): Promise<void> {
   for (const t of list) {
     const def = PRODUCTS.find((p) => p.id === t.productIdentifier);
     if (!def || t.purchaseState === '2') continue; // 2 = pendente
+    report(t, def.id, 'inapp', 'restore', prices.get(def.id));
     if (def.consumable) {
       if (t.purchaseToken) {
         try {
@@ -139,6 +150,7 @@ export async function buy(def: ProductDef): Promise<BuyResult> {
     });
     if (t.purchaseState === '2') return 'pending';
     grant(def);
+    report(t, def.id, 'inapp', 'buy', priceOf(def));
     return 'ok';
   } catch (e: any) {
     const msg = String(e?.message ?? e).toLowerCase();
@@ -203,10 +215,11 @@ export async function refreshClub(): Promise<void> {
       // Google nem sempre informa a data: sem ela, vale por 3 dias e é reconferido a cada abertura.
       const exp = sub!.expirationDate ? Date.parse(sub!.expirationDate) : Date.now() + 3 * DAY;
       grantClub(Number.isFinite(exp) ? exp : Date.now() + 3 * DAY);
+      report(sub, CLUB.productId, 'subs', 'restore', clubPrice || undefined);
       if (sub!.purchaseToken && sub!.isAcknowledged === false) NativePurchases.acknowledgePurchase({ purchaseToken: sub!.purchaseToken }).catch(() => {});
-    } else if (save.club.expires > Date.now()) {
-      // consulta respondeu e não há assinatura: encerra agora
-      save.club.expires = Date.now();
+    } else if (save.club.expires > Date.now() && (save.club.gift ?? 0) < save.club.expires) {
+      // consulta respondeu e não há assinatura: encerra agora (dias de Clube dados pelo painel continuam valendo)
+      save.club.expires = Math.max(Date.now(), save.club.gift ?? 0);
       persistNow();
       bus.emit('club', false);
     }
@@ -226,6 +239,7 @@ export async function buyClub(): Promise<BuyResult> {
       autoAcknowledgePurchases: true,
     });
     if (t.purchaseState === '2') return 'pending';
+    report(t, CLUB.productId, 'subs', 'buy', clubPriceString());
     const exp = t.expirationDate ? Date.parse(t.expirationDate) : Date.now() + 31 * DAY;
     grantClub(Number.isFinite(exp) ? exp : Date.now() + 31 * DAY);
     return 'ok';

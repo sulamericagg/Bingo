@@ -17,6 +17,10 @@ export interface RewardPack {
   trails?: string[];
   noAds?: boolean;
   boosts?: RewardBoosts;
+  /** Passe Estelar premium (índice da temporada: 0 = s00). O app libera quando essa temporada estiver ativa. */
+  passSeason?: number;
+  /** Dias de Clube Bloop (somados a partir de agora ou do fim do Clube atual). */
+  clubDays?: number;
   title?: string;
   message?: string;
 }
@@ -31,7 +35,7 @@ export interface Gift {
   expiresAt: number | null;
 }
 
-export type RedeemError = 'invalid' | 'expired' | 'used' | 'limit';
+export type RedeemError = 'invalid' | 'expired' | 'used' | 'limit' | 'rate';
 
 export interface RedeemResult {
   ok: boolean;
@@ -92,6 +96,12 @@ export function sanitizePack(input: unknown): RewardPack {
     }
     if (Object.keys(b).length) out.boosts = b;
   }
+  if (p.passSeason !== undefined && p.passSeason !== null && p.passSeason !== '' && p.passSeason !== false) {
+    const s = Math.floor(Number(p.passSeason));
+    if (Number.isFinite(s) && s >= 0 && s < 600) out.passSeason = s;
+  }
+  const clubDays = clampInt(p.clubDays, 3650);
+  if (clubDays) out.clubDays = clubDays;
   const title = cleanText(p.title, 60);
   const message = cleanText(p.message, 300);
   if (title) out.title = title;
@@ -101,7 +111,7 @@ export function sanitizePack(input: unknown): RewardPack {
 
 /** true se o pacote não dá nada (só título/mensagem). */
 export function packIsEmpty(p: RewardPack): boolean {
-  return !p.coins && !p.gems && !p.skins?.length && !p.trails?.length && !p.noAds && !p.boosts;
+  return !p.coins && !p.gems && !p.skins?.length && !p.trails?.length && !p.noAds && !p.boosts && p.passSeason === undefined && !p.clubDays;
 }
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
@@ -120,6 +130,8 @@ export function packSummary(p: RewardPack, names: Record<string, string> = {}): 
   if (p.boosts?.magnet) parts.push(plural(p.boosts.magnet, 'ímã', 'ímãs'));
   if (p.boosts?.headstart) parts.push(plural(p.boosts.headstart, 'largada turbo', 'largadas turbo'));
   if (p.noAds) parts.push('sem anúncios');
+  if (p.passSeason !== undefined) parts.push(`Passe Estelar premium (temporada ${p.passSeason + 1})`);
+  if (p.clubDays) parts.push(plural(p.clubDays, 'dia de Clube Bloop', 'dias de Clube Bloop'));
   if (!parts.length) return 'um presente surpresa';
   if (parts.length === 1) return parts[0];
   return parts.slice(0, -1).join(', ') + ' e ' + parts[parts.length - 1];

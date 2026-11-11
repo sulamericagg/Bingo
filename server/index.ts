@@ -24,6 +24,9 @@ import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
 import { aiPet } from './ai-pet';
+import { adminHub } from './admin-hub';
+import { sessionWho } from './auth';
+import { purchaseReport } from './purchases';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -50,6 +53,8 @@ const PUBLIC: Record<string, PublicHandler> = {
   'POST /api/player/sync': sync,
   'POST /api/inbox/claim': claim,
   'POST /api/redeem': redeem,
+  // compras reportadas pelo app (não verificadas — docs/PAINEL-ADMIN.md §8)
+  'POST /api/player/purchase': purchaseReport,
   'GET /api/challenges': challenges,
   'POST /api/score': submitScore,
   'GET /api/leaderboard': getLeaderboard,
@@ -128,45 +133,79 @@ export { PartyRoom } from './party';
 export { FriendsHub } from './friends';
 export { SquadRoom } from './squad';
 export { FlightRoom } from './flight';
+export { AdminHub } from './admin-hub';
+
+/** Resumo do corpo para o registro: sem senha, listas grandes viram "[N itens]". */
+function summarizeBody(text: string): string {
+  if (!text) return '';
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return text.slice(0, 200);
+  }
+  const walk = (x: unknown, depth: number): unknown => {
+    if (Array.isArray(x)) return x.length > 8 ? `[${x.length} itens]` : x.map((y) => walk(y, depth + 1));
+    if (x && typeof x === 'object') {
+      if (depth > 3) return '{…}';
+      const o: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(x)) o[k] = /password|senha|token/i.test(k) ? '***' : walk(val, depth + 1);
+      return o;
+    }
+    return typeof x === 'string' ? x.slice(0, 120) : x;
+  };
+  return JSON.stringify(walk(v, 0)).slice(0, 600);
+}
+
+/**
+ * Toda rota /api/admin/*: limite de taxa por IP (AdminHub) + registro de auditoria das ações que mudam algo
+ * (e de todos os logins, certos ou errados). A autenticação continua em cada handler (requireAdmin).
+ */
+async function adminGate(req: Request, env: Env, ctx: ExecutionContext, path: string, handler: () => Promise<Response>): Promise<Response> {
+  const ip = req.headers.get('cf-connecting-ip') ?? 'local';
+  const hub = adminHub(env);
+  if (!(await hub.rate('adm:' + ip, 300, 60_000))) return json({ error: 'rate_limited', message: 'Muitas requisições ao painel. Espere 1 minuto.' }, 429);
+  const mutating = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
+  const body = mutating ? await req.clone().text().catch(() => '') : '';
+  let res: Response;
+  try {
+    res = await handler();
+  } catch (e) {
+    res = errorResponse(e);
+  }
+  const isLogin = path === '/api/admin/login';
+  if (mutating && (isLogin || (res.status !== 401 && res.status < 500))) {
+    let who = isLogin ? '' : sessionWho(req);
+    if (isLogin) {
+      try {
+        who = String(JSON.parse(body).who ?? '').slice(0, 24) || 'admin';
+      } catch {
+        who = '?';
+      }
+    }
+    const action = isLogin ? (res.ok ? 'login' : 'login falhou') : `${req.method} ${path.replace(/^\/api\/admin/, '')}`;
+    ctx.waitUntil(
+      hub.audit({ t: Date.now(), who, ip, action, detail: isLogin ? '' : summarizeBody(body), status: res.status }).catch(() => {}),
+    );
+  }
+  return res;
+}
+
+/** Despacha /api/admin/* (cada módulo faz o requireAdmin). Erros viram JSON em adminGate. */
+async function adminRoute(req: Request, env: Env, url: URL, path: string): Promise<Response> {
+  if (path.startsWith('/api/admin/social/')) return handleSocialAdmin(req, env, url);
+  if (path === '/api/admin/feedback' || path.startsWith('/api/admin/feedback/')) return handleFeedbackAdmin(req, env, url);
+  if (path.startsWith('/api/admin/home/')) return handleHomeAdmin(req, env, url);
+  return handleAdminApi(req, env, url);
+}
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
+    if (path === '/api/admin' || path.startsWith('/api/admin/')) return adminGate(req, env, ctx, path, () => adminRoute(req, env, url, path));
 
     if (path === '/admin' || path === '/admin/' || path === '/admin/index.html') return adminPage();
-
-    if (path.startsWith('/api/admin/social/')) {
-      try {
-        return await handleSocialAdmin(req, env, url);
-      } catch (e) {
-        return errorResponse(e);
-      }
-    }
-
-    if (path === '/api/admin/feedback' || path.startsWith('/api/admin/feedback/')) {
-      try {
-        return await handleFeedbackAdmin(req, env, url);
-      } catch (e) {
-        return errorResponse(e);
-      }
-    }
-
-    if (path.startsWith('/api/admin/home/')) {
-      try {
-        return await handleHomeAdmin(req, env, url);
-      } catch (e) {
-        return errorResponse(e);
-      }
-    }
-
-    if (path.startsWith('/api/admin/') || path === '/api/admin') {
-      try {
-        return await handleAdminApi(req, env, url);
-      } catch (e) {
-        return errorResponse(e);
-      }
-    }
 
     if (path === '/api/race/join') {
       try {

@@ -3,7 +3,8 @@
  *
  * Chaves:
  *   player:<id>        → PlayerRec           (metadata PlayerMeta, para listar sem get)
- *   code:<NORMALIZADO> → CodeRec             (metadata CodeMeta)
+ *   code:<NORMALIZADO> → CodeRec ANTIGO (legado). Códigos agora vivem no Durable Object AdminHub
+ *                        (server/admin-hub.ts); os antigos são importados na primeira consulta.
  *   challenge:<id>     → ChallengeRec        (metadata ChallengeMeta)
  *   gifts              → GiftRec[]           (todos os presentes ativos; 1 leitura por sync)
  *   presets            → Preset[]
@@ -15,6 +16,13 @@
  * resgatados e em `redeemed` os códigos já usados.
  */
 import { type RewardPack } from '../shared/reward';
+import { adminHub, type CodeDef, type CodeRec } from './admin-hub';
+
+export type { CodeDef, CodeRec } from './admin-hub';
+
+/** Permissões/selos que o painel pode dar a um jogador. */
+export const PLAYER_FLAGS = ['beta', 'mod', 'vip', 'tester', 'creator'] as const;
+export type PlayerFlag = (typeof PLAYER_FLAGS)[number];
 
 export interface PlayerRec {
   id: string;
@@ -29,6 +37,17 @@ export interface PlayerRec {
   lastSeen: number;
   claimed: string[];
   redeemed: string[];
+  /** @nome atual (cópia; a fonte é ph:<id>) */
+  handle?: string;
+  flags?: string[];
+  banned?: { reason: string; t: number } | null;
+  /** Clube Bloop: maior validade conhecida (compra reportada ou presente do painel) */
+  clubUntil?: number;
+  /** Passe premium dado pelo painel (índice da temporada) */
+  passSeason?: number;
+  /** nº de compras reportadas pelo app */
+  purchases?: number;
+  notes?: string;
 }
 
 interface PlayerMeta {
@@ -38,6 +57,13 @@ interface PlayerMeta {
   s: number;
   p: string;
   c: number;
+  h?: string;
+  f?: string;
+  x?: 1;
+  cu?: number;
+  $?: number;
+  co?: number;
+  ge?: number;
 }
 
 export interface PlayerRow {
@@ -48,13 +74,21 @@ export interface PlayerRow {
   lastSeen: number;
   platform: string;
   created: number;
+  handle: string;
+  flags: string[];
+  banned: boolean;
+  clubUntil: number;
+  purchases: number;
+  coins: number;
+  gems: number;
 }
 
-export interface CodeRec {
-  code: string; // como exibido (ex.: BLP-7KQ2-M9XA)
-  key: string; // normalizado (ex.: BLP7KQ2M9XA)
+/** Formato antigo do KV (só para importar). */
+interface LegacyCodeRec {
+  code: string;
+  key: string;
   reward: RewardPack;
-  maxUses: number; // 0 = ilimitado
+  maxUses: number;
   uses: number;
   startsAt: number | null;
   expiresAt: number | null;
@@ -63,7 +97,6 @@ export interface CodeRec {
   createdAt: number;
   batch?: string;
   challengeId?: string;
-  recent: { p: string; n: string; t: number }[];
 }
 
 interface CodeMeta {
@@ -80,20 +113,7 @@ interface CodeMeta {
   r?: string;
 }
 
-export interface CodeRow {
-  code: string;
-  key: string;
-  uses: number;
-  maxUses: number;
-  active: boolean;
-  startsAt: number | null;
-  expiresAt: number | null;
-  createdAt: number;
-  notes: string;
-  batch: string | null;
-  challengeId: string | null;
-  summary: string;
-}
+export type CodeRow = Omit<CodeRec, 'recent' | 'reward' | 'batch' | 'challengeId'> & { summary: string; batch: string | null; challengeId: string | null };
 
 export interface ChallengeRec {
   id: string;
@@ -137,11 +157,19 @@ export async function getPlayer(env: Env, id: string): Promise<PlayerRec | null>
   if (!p) return null;
   p.claimed ??= [];
   p.redeemed ??= [];
+  p.flags ??= [];
   return p;
 }
 
 export async function putPlayer(env: Env, p: PlayerRec): Promise<void> {
   const meta: PlayerMeta = { n: p.name, b: p.best, r: p.runs, s: p.lastSeen, p: p.platform.slice(0, 12), c: p.created };
+  if (p.handle) meta.h = p.handle;
+  if (p.flags?.length) meta.f = p.flags.join(',');
+  if (p.banned) meta.x = 1;
+  if (p.clubUntil) meta.cu = p.clubUntil;
+  if (p.purchases) meta.$ = p.purchases;
+  if (p.coins) meta.co = p.coins;
+  if (p.gems) meta.ge = p.gems;
   await env.DATA.put('player:' + p.id, JSON.stringify(p), { metadata: meta });
   playerCache = null;
 }
@@ -165,6 +193,13 @@ export async function listPlayers(env: Env, fresh = false): Promise<PlayerRow[]>
         lastSeen: m?.s ?? 0,
         platform: m?.p ?? '',
         created: m?.c ?? 0,
+        handle: m?.h ?? '',
+        flags: m?.f ? m.f.split(',') : [],
+        banned: m?.x === 1,
+        clubUntil: m?.cu ?? 0,
+        purchases: m?.$ ?? 0,
+        coins: m?.co ?? 0,
+        gems: m?.ge ?? 0,
       });
     }
     if (res.list_complete) break;
@@ -174,61 +209,78 @@ export async function listPlayers(env: Env, fresh = false): Promise<PlayerRow[]>
   return rows;
 }
 
-/* ---------------- Códigos ---------------- */
+/* ---------------- Códigos (Durable Object AdminHub) ---------------- */
+
+function fromLegacy(c: LegacyCodeRec, summary: string): CodeDef {
+  return {
+    code: c.code,
+    key: c.key,
+    reward: c.reward,
+    maxUses: c.maxUses ?? 0,
+    perPlayer: 1,
+    startsAt: c.startsAt ?? null,
+    expiresAt: c.expiresAt ?? null,
+    season: null,
+    allow: [],
+    allowHandles: [],
+    active: c.active !== false,
+    notes: c.notes ?? '',
+    createdAt: c.createdAt ?? Date.now(),
+    ...(c.batch ? { batch: c.batch } : {}),
+    ...(c.challengeId ? { challengeId: c.challengeId } : {}),
+    summary,
+  };
+}
+
+/** Importa um código antigo do KV para o AdminHub (se existir). true = importado. */
+export async function importLegacyCode(env: Env, key: string): Promise<boolean> {
+  const old = await env.DATA.get<LegacyCodeRec>('code:' + key, 'json');
+  if (!old) return false;
+  await adminHub(env).putCodes([fromLegacy(old, '')], false, [old.uses ?? 0]);
+  await env.DATA.delete('code:' + key);
+  return true;
+}
+
+/** Migra aos poucos (até 100 por chamada) os códigos antigos do KV. */
+export async function migrateLegacyCodes(env: Env): Promise<number> {
+  const res = await env.DATA.list<CodeMeta>({ prefix: 'code:', limit: 100 });
+  if (!res.keys.length) return 0;
+  const recs = (await Promise.all(res.keys.map((k) => env.DATA.get<LegacyCodeRec>(k.name, 'json')))).filter((c): c is LegacyCodeRec => !!c);
+  await adminHub(env).putCodes(
+    recs.map((c, i) => fromLegacy(c, res.keys[i]?.metadata?.r ?? '')),
+    false,
+    recs.map((c) => c.uses ?? 0),
+  );
+  await Promise.all(res.keys.map((k) => env.DATA.delete(k.name)));
+  return recs.length;
+}
 
 export async function getCode(env: Env, key: string): Promise<CodeRec | null> {
   if (!key) return null;
-  return env.DATA.get<CodeRec>('code:' + key, 'json');
+  const hub = adminHub(env);
+  const c = await hub.getCode(key);
+  if (c || !(await importLegacyCode(env, key))) return c;
+  return hub.getCode(key);
 }
 
-export async function putCode(env: Env, c: CodeRec, summary: string): Promise<void> {
-  const meta: CodeMeta = { d: c.code, u: c.uses, m: c.maxUses, a: c.active ? 1 : 0, s: c.startsAt, e: c.expiresAt, c: c.createdAt };
-  if (c.notes) meta.n = c.notes.slice(0, 80);
-  if (c.batch) meta.b = c.batch;
-  if (c.challengeId) meta.ch = c.challengeId;
-  if (summary) meta.r = summary.slice(0, 160);
-  // Metadata do KV tem limite de 1024 bytes.
-  let s = JSON.stringify(meta);
-  if (new TextEncoder().encode(s).length > 1000) {
-    delete meta.r;
-    meta.n = meta.n?.slice(0, 30);
-    s = JSON.stringify(meta);
-  }
-  await env.DATA.put('code:' + c.key, JSON.stringify(c), { metadata: meta });
+/** Grava a definição (os usos ficam no DO e não mudam aqui). */
+export async function putCode(env: Env, c: CodeDef, summary: string): Promise<void> {
+  const { recent: _r, uses: _u, players: _p, ...def } = c as CodeRec;
+  await adminHub(env).putCodes([{ ...def, summary: summary.slice(0, 200) }], false);
 }
 
 export async function deleteCode(env: Env, key: string): Promise<void> {
-  await env.DATA.delete('code:' + key);
+  await Promise.all([adminHub(env).deleteCodes([key]), env.DATA.delete('code:' + key)]);
 }
 
 export async function listCodes(env: Env): Promise<CodeRow[]> {
-  const rows: CodeRow[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < 50; page++) {
-    const res: KVNamespaceListResult<CodeMeta, string> = await env.DATA.list<CodeMeta>({ prefix: 'code:', cursor, limit: 1000 });
-    for (const k of res.keys) {
-      const m = k.metadata;
-      const key = k.name.slice(5);
-      rows.push({
-        code: m?.d ?? key,
-        key,
-        uses: m?.u ?? 0,
-        maxUses: m?.m ?? 0,
-        active: m ? m.a === 1 : true,
-        startsAt: m?.s ?? null,
-        expiresAt: m?.e ?? null,
-        createdAt: m?.c ?? 0,
-        notes: m?.n ?? '',
-        batch: m?.b ?? null,
-        challengeId: m?.ch ?? null,
-        summary: m?.r ?? '',
-      });
-    }
-    if (res.list_complete) break;
-    cursor = res.cursor;
-  }
-  rows.sort((a, b) => b.createdAt - a.createdAt || a.code.localeCompare(b.code));
-  return rows;
+  await migrateLegacyCodes(env).catch(() => 0);
+  return (await adminHub(env).listCodes()).map(({ recent: _r, reward: _w, ...c }) => ({
+    ...c,
+    summary: c.summary ?? '',
+    batch: c.batch ?? null,
+    challengeId: c.challengeId ?? null,
+  }));
 }
 
 /* ---------------- Desafios ---------------- */
