@@ -4,6 +4,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BIOMES, BASE_END, WORLD_Z, gateX } from '../data';
 
 export const WORLD_X1 = gateX(BIOMES.length) + 30;
@@ -28,43 +29,61 @@ export function slopeX(x: number, z: number): number {
   return (groundH(x + 0.5, z) - groundH(x - 0.5, z)) / 1;
 }
 
-function hexToRgb(h: string, out: THREE.Color): THREE.Color {
-  return out.set(h);
+const _cA = new THREE.Color();
+const _cB = new THREE.Color();
+const _cP = new THREE.Color();
+const SEG = (() => {
+  const st = [-40];
+  for (let b = 0; b < BIOMES.length; b++) st.push(gateX(b));
+  st.push(WORLD_X1);
+  return st;
+})();
+/** pedaço (0 = base, k = bioma k-1) que contém x */
+function segOf(x: number): number {
+  for (let k = SEG.length - 2; k >= 0; k--) if (x >= SEG[k]) return k;
+  return 0;
 }
 
-/** malha do chão: um pedaço por bioma (frustum culling por pedaço) */
+/**
+ * Cor do chão em (x,z) (pedaço k) e quanto cabe de grama de lâminas (0 no caminho e na serraria).
+ */
+export function groundColorAt(x: number, z: number, c: THREE.Color, k = segOf(x)): number {
+  const B = BIOMES[Math.max(0, k - 1)];
+  _cA.set(B.grass === '#ffffff' ? '#eef3ff' : B.grass);
+  _cB.set(B.mid);
+  _cP.set(k === 0 ? '#d8b880' : B.night ? '#6a5a8a' : B.id === 'cristal' ? '#c8d8f0' : B.id === 'nuvens' ? '#f4e8d8' : '#d8b880');
+  const az = Math.abs(z);
+  const n = Math.sin(x * 1.7 + z * 2.3) * 0.5 + Math.sin(x * 0.37 - z * 0.9) * 0.5;
+  c.copy(_cA);
+  if (az > 7) c.lerp(_cB, Math.min(0.8, (az - 7) / 20));
+  // manchas suaves (sem listras)
+  c.multiplyScalar(0.93 + n * 0.05);
+  const pathW = k === 0 ? 2.8 : 1.5;
+  const edge = pathW + Math.sin(x * 0.3) * 0.3;
+  if (az < edge) c.lerp(_cP, 0.85);
+  // grama: fora do caminho (com folga), fora da base/serraria e não nos morros distantes
+  let g = Math.min(1, Math.max(0, (az - edge - 0.35) / 0.8));
+  if (x < BASE_END + 6) g *= Math.max(0, (x - BASE_END) / 6);
+  if (B.id === 'nuvens') g *= 0.5;
+  return g;
+}
+
+/** malha do chão: um pedaço por bioma (frustum culling por pedaço), normais suaves */
 export function buildGroundMeshes(scene: THREE.Scene, mat: THREE.Material): THREE.Mesh[] {
   const zs = [-80, -58, -42, -30, -22, -16, -12, -9.5, -8, -6.8, -5.4, -4, -2.7, -1.4, -0.5, 0.5, 1.4, 2.7, 4, 5.4, 6.8, 8, 9.5, 12, 16, 22, 30, 42, 58, 80];
   const out: THREE.Mesh[] = [];
-  const cA = new THREE.Color();
-  const cB = new THREE.Color();
-  const cPath = new THREE.Color();
   const c = new THREE.Color();
-  const starts = [-40];
-  for (let b = 0; b < BIOMES.length; b++) starts.push(gateX(b));
-  starts.push(WORLD_X1);
+  const starts = SEG;
   for (let k = 0; k < starts.length - 1; k++) {
     const x0 = starts[k];
     const x1 = starts[k + 1];
-    const bi = Math.max(0, k - 1);
-    const B = BIOMES[bi];
     const nx = Math.max(2, Math.round((x1 - x0) / 2.2));
     const pos: number[] = [];
     const col: number[] = [];
-    hexToRgb(B.grass === '#ffffff' ? '#eef3ff' : B.grass, cA);
-    hexToRgb(B.mid, cB);
-    hexToRgb(k === 0 ? '#d8b880' : B.night ? '#6a5a8a' : B.id === 'cristal' ? '#c8d8f0' : B.id === 'nuvens' ? '#f4e8d8' : '#d8b880', cPath);
     const vert = (x: number, z: number) => {
       const y = groundH(x, z);
       pos.push(x, y, z);
-      const az = Math.abs(z);
-      const n = Math.sin(x * 1.7 + z * 2.3) * 0.5 + Math.sin(x * 0.37 - z * 0.9) * 0.5;
-      c.copy(cA);
-      if (az > 7) c.lerp(cB, Math.min(0.8, (az - 7) / 20));
-      // listras de grama mais escura
-      c.multiplyScalar(0.9 + n * 0.08);
-      const pathW = k === 0 ? 2.8 : 1.5;
-      if (az < pathW + Math.sin(x * 0.3) * 0.3) c.lerp(cPath, 0.85);
+      groundColorAt(x, z, c, k);
       col.push(c.r, c.g, c.b);
     };
     const tri = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => {
@@ -82,9 +101,12 @@ export function buildGroundMeshes(scene: THREE.Scene, mat: THREE.Material): THRE
         tri(xb, za, xa, zb, xb, zb);
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const g0 = new THREE.BufferGeometry();
+    g0.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g0.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    // vértices iguais viram um só: normais suaves (morros sem facetas)
+    const g = mergeVertices(g0, 1e-3);
+    g0.dispose();
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, mat);
     m.receiveShadow = true;

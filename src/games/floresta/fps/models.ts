@@ -9,6 +9,9 @@ import { save as globalSave } from '../../../core/storage';
 import { skinById } from '../../../game/skins';
 import { SPECIES, type Species } from '../data';
 import { drawTree } from '../draw2d';
+import { natureBush, natureTree, natureWind, windTime, type TreeKind } from '../../../3d/nature';
+
+export { windTime };
 
 const TAU = Math.PI * 2;
 export const INK = '#2a0b5c';
@@ -145,7 +148,7 @@ const base = {
   ico: new THREE.IcosahedronGeometry(1, 0),
   ico1: new THREE.IcosahedronGeometry(1, 1),
   cone: new THREE.ConeGeometry(1, 1, 7),
-  cap: new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI / 2),
+  cap: new THREE.SphereGeometry(1, 16, 6, 0, TAU, 0, Math.PI / 2),
   oct: new THREE.OctahedronGeometry(1, 0),
   box: new THREE.BoxGeometry(1, 1, 1),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
@@ -172,161 +175,13 @@ const base = {
 };
 
 
-/* ------------------------------ árvores: tronco curvo + copa em cachos ------------------------------ */
+/* ------------------------------ árvores (módulo de natureza + especiais) ------------------------------ */
 
-/** gerador determinístico simples (por espécie) */
-function rng(seed: number): () => number {
-  let a = seed | 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 const strSeed = (s: string): number => {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h;
 };
-
-interface Trunk {
-  g: THREE.BufferGeometry;
-  /** ponto no eixo do tronco (t = 0..1 da altura) */
-  at(t: number, out?: THREE.Vector3): THREE.Vector3;
-}
-/**
- * Tronco curvo e afinando: anéis ao longo de uma curva suave (reto perto do chão — o corte
- * e o entalhe continuam na base), raízes alargadas, sulcos de casca (atributo 'groove').
- */
-function curvedTrunk(H: number, r0: number, r1: number, bx: number, bz: number, rings: number, radial: number): Trunk {
-  const at = (t: number, out = new THREE.Vector3()) => out.set(bx * t * t, H * t, bz * t * t);
-  const pos: number[] = [];
-  const gr: number[] = [];
-  const idx: number[] = [];
-  const c = new THREE.Vector3();
-  for (let j = 0; j <= rings; j++) {
-    const t = j / rings;
-    at(t, c);
-    const r = r0 + (r1 - r0) * Math.pow(t, 0.8);
-    for (let i = 0; i <= radial; i++) {
-      const a = (i / radial) * TAU;
-      const ridge = Math.pow(Math.abs(Math.sin(a * 3.5 + t * 6)), 0.7);
-      const flare = 1 + Math.pow(Math.max(0, 0.14 - t) / 0.14, 2) * (0.5 + 0.3 * Math.max(0, Math.cos(a * 4 + 0.7)));
-      const k = r * (0.9 + ridge * 0.12) * flare;
-      pos.push(c.x + Math.cos(a) * k, c.y, c.z + Math.sin(a) * k);
-      gr.push(1 - ridge);
-    }
-  }
-  const n = radial + 1;
-  for (let j = 0; j < rings; j++)
-    for (let i = 0; i < radial; i++) {
-      const a = j * n + i;
-      idx.push(a, a + n, a + 1, a + 1, a + n, a + n + 1);
-    }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('groove', new THREE.Float32BufferAttribute(gr, 1));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return { g, at };
-}
-
-const _bq = new THREE.Quaternion();
-const _bd = new THREE.Vector3();
-/** galho do ponto a ao ponto b (raio r na base) */
-function branchTo(a: THREE.Vector3, b: THREE.Vector3, r: number): THREE.Matrix4 {
-  _bd.subVectors(b, a);
-  const len = _bd.length();
-  _bq.setFromUnitVectors(UPV, _bd.normalize());
-  return new THREE.Matrix4().compose(a, _bq, new THREE.Vector3(r, len, r));
-}
-const UPV = new THREE.Vector3(0, 1, 0);
-
-/** folhosa: tronco curvo, galhos até cachos de copa (3 tons), frutos/flores */
-function broadleaf(sp: Species, rare: number, lod: number, lite: boolean): THREE.BufferGeometry {
-  const h = sp.h;
-  const R = rng(strSeed(sp.leaf + sp.h) + rare * 7);
-  const L1 = crownColor(sp, rare);
-  const L2 = crownColor(sp, rare, true);
-  const T = rare === 1 ? '#d8a040' : sp.trunk;
-  const TD = shade(T, -0.22);
-  const tones = [L1, L2, shade(L1, 0.12), shade(L2, -0.06), shade(L1, -0.04)];
-  const parts: Part[] = [];
-  const lo = lod > 0 || lite;
-  const tr = curvedTrunk(h * 0.66, 0.36, 0.17, (R() - 0.5) * 0.9, (R() - 0.5) * 0.9, lo ? 3 : 7, lo ? 6 : 10);
-  parts.push({ g: tr.g, c: T, m: new THREE.Matrix4(), groove: 0.4, jit: 0.12 });
-  const top = tr.at(1);
-  const cloud = sp.shape === 'cloud';
-  // cacho do topo
-  const nC = lod ? 3 : lite ? 4 : 6;
-  const centers: [THREE.Vector3, number][] = [[new THREE.Vector3(top.x, h * 0.8, top.z), h * 0.22]];
-  for (let i = 0; i < nC; i++) {
-    const a = (i / nC) * TAU + R() * 0.8;
-    const rr = h * (0.17 + R() * 0.09);
-    const y = h * (0.6 + R() * 0.2 + (i % 2) * 0.06);
-    centers.push([new THREE.Vector3(top.x * 0.7 + Math.cos(a) * rr, y, top.z * 0.7 + Math.sin(a) * rr), h * (0.13 + R() * 0.05)]);
-  }
-  const clumpG = (i: number) => (lo ? base.clumpLo : base.clumps[i % 3]);
-  centers.forEach(([c, sz], ci) => {
-    if (ci > 0) {
-      // galho saindo do tronco até o cacho
-      const from = tr.at(0.55 + R() * 0.35);
-      parts.push({ g: base.branch, c: TD, m: branchTo(from, c.clone().lerp(from, 0.25), 0.07 + sz * 0.05), jit: 0.1 });
-    }
-    // miolo escuro + satélites claros (volume e recorte irregular)
-    parts.push({ g: clumpG(ci), c: ci === 0 ? L2 : tones[ci % tones.length], m: mat4(c.x, c.y, c.z, sz * 1.15, sz * (cloud ? 0.75 : 0.9), sz * 1.1, 0, R() * TAU, 0), ao: 0.55, jit: 0.14 });
-    const sat = lo ? 1 : 3;
-    for (let k = 0; k < sat; k++) {
-      const a = R() * TAU;
-      const o = sz * (0.6 + R() * 0.3);
-      const s2 = sz * (0.45 + R() * 0.25);
-      parts.push({ g: clumpG(ci + k + 1), c: tones[(ci + k + 2) % tones.length], m: mat4(c.x + Math.cos(a) * o, c.y + sz * (0.15 + R() * 0.35), c.z + Math.sin(a) * o, s2, s2 * 0.85, s2, 0, a, 0), ao: 0.45, jit: 0.14 });
-    }
-  });
-  if (!lod && sp.shape === 'blossom')
-    for (let i = 0; i < 14; i++) {
-      const [c, sz] = centers[i % centers.length];
-      const a = R() * TAU;
-      parts.push({ g: base.ico, c: i % 2 ? '#ffffff' : '#ffd0e6', m: mat4(c.x + Math.cos(a) * sz, c.y + (R() - 0.3) * sz, c.z + Math.sin(a) * sz, h * 0.035, h * 0.03, h * 0.035) });
-    }
-  if (!lod && sp.shape === 'round')
-    for (let i = 0; i < 7; i++) {
-      const [c, sz] = centers[1 + (i % (centers.length - 1))];
-      const a = R() * TAU;
-      const x = c.x + Math.cos(a) * sz * 0.95;
-      const z = c.z + Math.sin(a) * sz * 0.95;
-      const y = c.y - sz * 0.15;
-      parts.push({ g: base.clumpLo, c: '#ff4a5a', m: mat4(x, y, z, 0.15, 0.14, 0.15), ao: 0.35 });
-      parts.push({ g: base.cyl, c: '#5a3a1a', m: mat4(x, y + 0.15, z, 0.015, 0.08, 0.015) });
-    }
-  return mergeParts(parts);
-}
-
-/** conífera: tronco levemente curvo, camadas com caimento girando e variando de tom, ponta */
-function conifer(sp: Species, rare: number, lod: number, lite: boolean): THREE.BufferGeometry {
-  const h = sp.h;
-  const R = rng(strSeed(sp.leaf + 'pine') + rare * 3);
-  const L1 = crownColor(sp, rare);
-  const L2 = crownColor(sp, rare, true);
-  const T = rare === 1 ? '#d8a040' : sp.trunk;
-  const lo = lod > 0 || lite;
-  const parts: Part[] = [];
-  const tr = curvedTrunk(h * 0.85, 0.3, 0.08, (R() - 0.5) * 0.4, (R() - 0.5) * 0.4, lo ? 3 : 6, lo ? 6 : 9);
-  parts.push({ g: tr.g, c: T, m: new THREE.Matrix4(), groove: 0.35, jit: 0.1 });
-  const n = lod ? 3 : lite ? 4 : 6;
-  const tones = [L1, L2, shade(L1, 0.1), shade(L2, -0.06)];
-  for (let i = 0; i < n; i++) {
-    const f = i / n;
-    const w = h * (0.34 - f * 0.25) * (0.92 + R() * 0.16);
-    const c = tr.at(Math.min(1, 0.28 + f * 0.72));
-    const y = h * (0.24 + f * 0.62);
-    parts.push({ g: lo ? base.pineLo : base.pine, c: tones[i % tones.length], m: mat4(c.x + (R() - 0.5) * 0.15, y + h * 0.11, c.z + (R() - 0.5) * 0.15, w, h * (0.24 - f * 0.06), w, (R() - 0.5) * 0.08, R() * TAU, (R() - 0.5) * 0.08), ao: 0.5, jit: 0.12 });
-  }
-  const tp = tr.at(1);
-  parts.push({ g: base.cone, c: L1, m: mat4(tp.x, h * 1.02, tp.z, h * 0.05, h * 0.14, h * 0.05), ao: 0.3 });
-  return mergeParts(parts);
-}
 
 export function crownColor(sp: Species, rare: number, two = false): string {
   if (rare === 1) return two ? '#e9a400' : '#ffd34a';
@@ -349,24 +204,24 @@ export function treeGeometry(sp: Species, rare: number, lod = 0, lite = false): 
   /** galho do tronco até a copa */
   const branch = (y: number, a: number, len: number, r: number, tilt = 0.9) =>
     add(base.branch, TD, new THREE.Matrix4().compose(P.set(0, y, 0), Q.setFromEuler(E.set(0, a, -tilt, 'YXZ')), S.set(r, len, r)));
-  if (sp.shape === 'pine') return conifer(sp, rare, lod, lite);
-  if (sp.shape === 'round' || sp.shape === 'blossom' || sp.shape === 'cloud') return broadleaf(sp, rare, lod, lite);
+  if (sp.shape === 'pine' || sp.shape === 'round' || sp.shape === 'blossom' || sp.shape === 'cloud' || sp.shape === 'palm') {
+    // árvores estilizadas do módulo de natureza: copas de bolhas suaves (~300 tri)
+    const kind: TreeKind = sp.shape === 'round' ? 'oak' : sp.shape === 'blossom' ? 'blossom' : sp.shape === 'cloud' ? 'cloud' : sp.shape === 'pine' ? 'pine' : 'palm';
+    const lc = new THREE.Color(L1);
+    return natureTree({
+      kind,
+      h,
+      trunk: T,
+      trunkDark: rare === 1 ? shade(T, -0.3) : sp.trunkDark,
+      leaf: L1,
+      leaf2: L2,
+      seed: strSeed(sp.leaf + sp.h) + rare * 7,
+      lod: lod ? 1 : 0,
+      fruit: kind === 'oak' && !rare && lc.g > lc.r * 1.3 ? '#ff4a5a' : undefined,
+      speck: kind === 'blossom' ? '#fff4fa' : kind === 'cloud' ? '#ffffff' : undefined,
+    });
+  }
   switch (sp.shape) {
-    case 'palm': {
-      // tronco anelado e curvo
-      const seg = lod ? 3 : 6;
-      for (let i = 0; i < seg; i++) {
-        const t = i / seg;
-        add(lod ? base.barkLo : base.bark, i % 2 ? sp.trunkDark : T, mat4(-t * t * 0.6, h * 0.9 * t, 0, 0.8 - t * 0.25, (h * 0.9) / seg + 0.06, 0.8 - t * 0.25, 0, i, 0.12 * t), 0, 0.2);
-      }
-      const n = lod ? 5 : 9;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * TAU;
-        add(base.frond, i % 2 ? L2 : L1, new THREE.Matrix4().compose(P.set(-0.6, h * 0.9, 0), Q.setFromEuler(E.set(-0.25 - (i % 3) * 0.15, a, 0, 'YXZ')), S.set(h * 0.16, h * 0.3, h * 0.42)), 0);
-      }
-      for (let i = 0; i < 3; i++) add(base.clumpLo, '#7a4a24', mat4(-0.6 + Math.cos(i * 2.1) * 0.18, h * 0.86, Math.sin(i * 2.1) * 0.18, 0.18, 0.2, 0.18), 0.4);
-      break;
-    }
     case 'mushroom':
       add(bark, '#fff4e6', mat4(0, 0, 0, 2.2, h * 0.65, 2.2), 0, 0.08);
       // saia (anel) no talo
@@ -437,16 +292,9 @@ export function stumpGeometry(): THREE.BufferGeometry {
   return mergeParts(parts);
 }
 
+/** arbusto de bolhas suaves (cinza: a cor vem da instância) */
 export function bushGeometry(): THREE.BufferGeometry {
-  const parts: Part[] = [];
-  parts.push({ g: base.clumps[0], c: '#ffffff', m: mat4(0, 0.4, 0, 0.7, 0.55, 0.6), ao: 0.5 });
-  parts.push({ g: base.clumps[1], c: '#dddddd', m: mat4(0.45, 0.3, 0.1, 0.45, 0.4, 0.45), ao: 0.5 });
-  parts.push({ g: base.clumps[2], c: '#eeeeee', m: mat4(-0.4, 0.3, -0.1, 0.45, 0.38, 0.45), ao: 0.5 });
-  for (let i = 0; i < 5; i++) {
-    const a = i * 1.3;
-    parts.push({ g: base.clumpLo, c: i % 2 ? '#ffd34a' : '#ff86b6', m: mat4(Math.cos(a) * 0.45, 0.7 + (i % 2) * 0.12, Math.sin(a) * 0.4 + 0.1, 0.07, 0.07, 0.07) });
-  }
-  return mergeParts(parts);
+  return natureBush(1);
 }
 
 /** tora: lateral com sulcos de casca (cor da casca via instanceColor) */
@@ -976,32 +824,11 @@ export const geoms = base;
 
 /* ------------------------------ vento ------------------------------ */
 
-/** relógio compartilhado do vento (atualize .value a cada quadro) */
-export const windTime = { value: 0 };
 /**
  * Balanço suave das copas: desloca os vértices proporcional a altura² (o tronco quase não mexe),
- * com fase pela posição da instância (cada árvore balança no seu ritmo). Barato: só vertex shader.
+ * com fase pela posição da instância (cada árvore balança no seu ritmo) + tremidinha das folhas.
+ * Barato: só vertex shader (módulo compartilhado src/3d/nature).
  */
 export function addWind(mat: THREE.Material, amp = 0.0022): void {
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uWindT = windTime;
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uWindT;')
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-#ifdef USE_INSTANCING
-{
-  vec3 ip = instanceMatrix[3].xyz;
-  float ph = ip.x * 0.37 + ip.z * 0.29;
-  float h = max(0.0, transformed.y - 1.0);
-  float w = h * h * ${amp.toFixed(5)};
-  float g = sin(uWindT * 1.7 + ph) + 0.35 * sin(uWindT * 4.3 + ph * 2.1);
-  transformed.x += g * w;
-  transformed.z += cos(uWindT * 1.3 + ph) * w * 0.6;
-}
-#endif`,
-      );
-  };
-  mat.customProgramCacheKey = () => 'wind' + amp;
+  natureWind(mat, { amp, y0: 1, rustle: 0.035 });
 }

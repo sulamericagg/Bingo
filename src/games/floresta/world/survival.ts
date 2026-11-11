@@ -147,6 +147,8 @@ export class Sandbox implements MundoAPI {
       return n > 0 && blockDef(n).solid;
     };
     g.world.extraSolid = solidAt;
+    // bloco posto/tirado: a grama embaixo é refeita (não atravessa pisos)
+    this.blocks.onEdit = (x, _y, z) => g.world.grassDirtyAt(x, z, 1.5);
     g.world.extraFloor = (x, y, z) => {
       const ix = Math.floor(x);
       const iz = Math.floor(z);

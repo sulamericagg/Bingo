@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { ITEM } from './data';
 import { TK, NK } from './world';
+import { natureBerryBush, natureRock, natureTree, natureTuft } from '../../3d/nature';
 
 const TAU = Math.PI * 2;
 const _q = new THREE.Quaternion();
@@ -54,6 +55,21 @@ export class PB {
     if (gg !== g) gg.dispose();
     return this;
   }
+  /** junta uma geometria pronta (posição, normal, cor) deslocada para (x,y,z) */
+  addGeo(g: THREE.BufferGeometry, x = 0, y = 0, z = 0, sc = 1): this {
+    const gg = g.index ? g.toNonIndexed() : g;
+    const pa = gg.getAttribute('position');
+    const na = gg.getAttribute('normal');
+    const ca = gg.getAttribute('color');
+    for (let i = 0; i < pa.count; i++) {
+      this.pos.push(pa.getX(i) * sc + x, pa.getY(i) * sc + y, pa.getZ(i) * sc + z);
+      this.nor.push(na.getX(i), na.getY(i), na.getZ(i));
+      if (ca) this.col.push(ca.getX(i), ca.getY(i), ca.getZ(i));
+      else this.col.push(1, 1, 1);
+    }
+    if (gg !== g) gg.dispose();
+    return this;
+  }
   geo(): THREE.BufferGeometry {
     const out = new THREE.BufferGeometry();
     out.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
@@ -71,65 +87,57 @@ export const vcMat = (): THREE.MeshLambertMaterial => new THREE.MeshLambertMater
 export const glowMat = (c: string, opacity = 1): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity, fog: false });
 
 /* ------------------------------ árvores ------------------------------ */
+/** árvores estilizadas (módulo de natureza): copas de bolhas suaves, ~300 tri perto / ~70 longe */
 export function treeGeo(k: TK, lod: number): THREE.BufferGeometry {
-  const b = new PB();
-  const cl = lod ? G.ico0 : G.ico;
+  const l = (lod ? 1 : 0) as 0 | 1;
   switch (k) {
     case TK.Round:
-      b.add(G.taper, '#7a4a2a', 0, 1.1, 0, 0.42, 2.2, 0.42);
-      b.add(cl, '#3f9a4a', 0, 3.1, 0, 2.6, 2.2, 2.6, 0, 0, 0, 0.5);
-      b.add(cl, '#4fb05a', 0.7, 3.7, 0.3, 1.6, 1.4, 1.6, 0, 1, 0, 0.4);
-      if (!lod) b.add(cl, '#358a40', -0.8, 3.2, -0.4, 1.5, 1.3, 1.5, 0, 2, 0, 0.5);
-      break;
+      return natureTree({ kind: 'broad', h: 4.4, trunk: '#7a4a2a', trunkDark: '#4a2a16', leaf: '#56b85a', leaf2: '#2f7a3a', seed: 11, lod: l });
     case TK.Pine:
-      b.add(G.taper, '#6a3f22', 0, 1, 0, 0.34, 2, 0.34);
-      for (let i = 0; i < (lod ? 2 : 3); i++) b.add(lod ? G.cone5 : G.cone, i % 2 ? '#2f7a52' : '#276a48', 0, 2 + i * 1.05, 0, 2.6 - i * 0.65, 1.7, 2.6 - i * 0.65, 0, i, 0, 0.45);
-      break;
+      return natureTree({ kind: 'pine', h: 5.4, trunk: '#6a3f22', trunkDark: '#3e2412', leaf: '#3a8a5c', leaf2: '#1f5a3e', seed: 12, lod: l });
     case TK.Twisty:
-      b.add(G.taper, '#3a2a40', 0, 0.9, 0, 0.5, 1.8, 0.5, 0, 0, 0.15);
-      b.add(G.taper, '#3a2a40', 0.35, 2.3, 0, 0.32, 1.4, 0.32, 0, 0, -0.45);
-      b.add(G.cyl, '#3a2a40', -0.45, 2, 0.1, 0.16, 1.2, 0.16, 0, 0, 0.9);
-      b.add(cl, '#3b4f6a', 0.7, 3.3, 0, 1.9, 1.4, 1.9, 0, 0, 0, 0.55);
-      if (!lod) b.add(cl, '#4a3f6a', -0.9, 2.6, 0.2, 1.1, 0.9, 1.1, 0, 0, 0, 0.5);
-      break;
-    case TK.Birch:
-      b.add(G.taper, '#e8e0d0', 0, 1.3, 0, 0.3, 2.6, 0.3);
-      b.add(G.cyl, '#2a2420', 0, 1.6, 0, 0.31, 0.08, 0.31);
-      b.add(G.cyl, '#2a2420', 0, 0.9, 0, 0.31, 0.06, 0.31);
-      b.add(cl, '#8ccf5a', 0, 3.2, 0, 1.8, 2.2, 1.8, 0, 0, 0, 0.45);
-      if (!lod) b.add(cl, '#a8dc6a', 0.4, 3.9, 0.2, 1.1, 1.1, 1.1, 0, 0, 0, 0.4);
-      break;
+      return natureTree({ kind: 'twisty', h: 4.2, trunk: '#4a3448', trunkDark: '#241a26', leaf: '#5a6aa0', leaf2: '#36345e', seed: 13, lod: l });
+    default:
+      return natureTree({ kind: 'birch', h: 4.8, trunk: '#ece4d4', leaf: '#b4e070', leaf2: '#7cbf4a', seed: 14, lod: l });
   }
-  return b.geo();
 }
 export function stumpGeo(): THREE.BufferGeometry {
   return new PB().add(G.cyl, '#7a4a2a', 0, 0.22, 0, 0.6, 0.44, 0.6).add(G.cyl, '#f3d9a8', 0, 0.45, 0, 0.5, 0.02, 0.5).geo();
 }
 /** muralha de árvores escuras além da borda */
 export function wallTreeGeo(): THREE.BufferGeometry {
-  return new PB().add(G.cyl, '#2a1a20', 0, 1.5, 0, 0.5, 3, 0.5).add(G.cone5, '#14222a', 0, 4.5, 0, 4, 6, 4, 0, 0, 0, 0.6).geo();
+  return natureTree({ kind: 'pine', h: 8, trunk: '#2a1a20', leaf: '#1e3a34', leaf2: '#0e1c20', seed: 21, lod: 1 });
 }
 
 /* ------------------------------ nós de recurso ------------------------------ */
 export function nodeGeo(k: NK): THREE.BufferGeometry {
   const b = new PB();
   switch (k) {
-    case NK.Rock:
-      b.add(G.dodec, '#8a8aa0', 0, 0.35, 0, 1.6, 0.9, 1.3, 0.2, 0.4, 0, 0.4).add(G.dodec, '#a0a0b8', 0.6, 0.25, 0.4, 0.8, 0.6, 0.8, 0, 1, 0);
+    case NK.Rock: {
+      // pedras arredondadas com musgo (cinza azulado — sem instância para tingir)
+      const r1 = natureRock(7, '#4f7a3a', 0.5);
+      const r2 = natureRock(8, '#4f7a3a', 0.4);
+      const tint = (g: THREE.BufferGeometry, c: string) => {
+        const ca = g.getAttribute('color') as THREE.BufferAttribute;
+        const k = new THREE.Color(c);
+        for (let i = 0; i < ca.count; i++) {
+          const r = ca.getX(i);
+          const gg = ca.getY(i);
+          const bb = ca.getZ(i);
+          if (Math.max(r, gg, bb) - Math.min(r, gg, bb) < 0.05) ca.setXYZ(i, r * k.r, gg * k.g, bb * k.b);
+        }
+        return g;
+      };
+      tint(r1, '#a4a4b8').scale(0.8, 0.7, 0.68);
+      tint(r2, '#b8b8cc').scale(0.42, 0.4, 0.42);
+      b.addGeo(r1, 0, 0.12, 0).addGeo(r2, 0.62, 0.08, 0.42);
       break;
+    }
     case NK.Bush:
-      b.add(G.ico, '#3d8a3a', 0, 0.5, 0, 1.5, 1.1, 1.5, 0, 0, 0, 0.5);
-      for (let i = 0; i < 7; i++) {
-        const a = i * 0.9;
-        b.add(G.sph, '#ff3a6a', Math.cos(a) * 0.62, 0.45 + (i % 3) * 0.18, Math.sin(a) * 0.62, 0.18, 0.18, 0.18);
-      }
+      b.addGeo(natureBerryBush('#ff3a6a', 5));
       break;
     case NK.Grass:
-      for (let i = 0; i < 6; i++) {
-        const a = i * 1.1;
-        b.add(G.cone5, i % 2 ? '#8ac84a' : '#6aaa3a', Math.cos(a) * 0.25, 0.4, Math.sin(a) * 0.25, 0.18, 0.8 + (i % 3) * 0.2, 0.18, Math.cos(a) * 0.3, 0, Math.sin(a) * 0.3);
-      }
-      b.add(G.sph, '#f0e8c0', 0, 0.9, 0, 0.16, 0.24, 0.16);
+      b.addGeo(natureTuft('#4f8f30', '#b8e070', 11, 0.95, '#f6f0d6', 6));
       break;
     case NK.Shroom:
       for (let i = 0; i < 3; i++) {
@@ -159,13 +167,11 @@ export function nodeGeo(k: NK): THREE.BufferGeometry {
       b.add(G.box, '#b8c0d0', 0.1, 0.7, 0.1, 0.5, 0.15, 0.3, 0, 1, 0.3);
       break;
     case NK.Apple:
-      b.add(G.taper, '#7a4a2a', 0, 0.7, 0, 0.26, 1.4, 0.26);
-      b.add(G.ico, '#5ab04a', 0, 1.9, 0, 1.8, 1.4, 1.8, 0, 0, 0, 0.45);
-      for (let i = 0; i < 6; i++) b.add(G.sph, '#ff3a3a', Math.cos(i) * 0.75, 1.6 + (i % 2) * 0.4, Math.sin(i) * 0.75, 0.24, 0.24, 0.24);
+      b.addGeo(natureTree({ kind: 'oak', h: 2.9, trunk: '#7a4a2a', trunkDark: '#4a2a16', leaf: '#62c058', leaf2: '#2f7a3a', seed: 31 }));
+      for (let i = 0; i < 6; i++) b.add(G.sph, '#ff3a3a', Math.cos(i) * 0.8, 1.55 + (i % 2) * 0.35, Math.sin(i) * 0.8, 0.24, 0.24, 0.24);
       break;
     case NK.Sap:
-      b.add(G.taper, '#6a3f22', 0, 0.9, 0, 0.5, 1.8, 0.5);
-      b.add(G.cone, '#276a48', 0, 2.6, 0, 1.8, 2.2, 1.8, 0, 0, 0, 0.4);
+      b.addGeo(natureTree({ kind: 'pine', h: 4, trunk: '#6a3f22', trunkDark: '#3e2412', leaf: '#3a8a5c', leaf2: '#1f5a3e', seed: 32 }));
       b.add(G.cyl, '#b8c0d0', 0, 0.5, 0.36, 0.3, 0.32, 0.3);
       b.add(G.sph, '#ffb02e', 0, 0.85, 0.27, 0.16, 0.24, 0.12);
       break;
