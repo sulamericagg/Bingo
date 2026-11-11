@@ -1,6 +1,7 @@
 /**
- * CAÇA BLOOP — progresso local (localStorage 'bw-caca'). Só os SEUS bichinhos; nada de localização é salvo
- * além do "ponto virtual" aleatório do modo casa (que não é um lugar real).
+ * CAÇA BLOOP — progresso local (localStorage 'bw-caca'). Só os SEUS bichinhos. Localização: só o "ponto de partida"
+ * do modo controle (arredondado ~100 m, para o limite de passeio) e o último ponto do passeio — ficam SÓ no aparelho,
+ * nunca vão para o servidor. O GPS cru nunca é salvo.
  */
 import { dayNumber } from '../core/storage';
 import { genome, randomSeed, rarityOf, type Rarity } from './genome';
@@ -45,6 +46,22 @@ export interface CacaSave {
   battles: number;
   wins: number;
   starter: boolean;
+  /** 'real' = anda de verdade (GPS); 'controle' = anda pelo jogo (joystick / passeio) */
+  walkMode: 'real' | 'controle';
+  /** passos virtuais gastos hoje (m) */
+  joy: { day: number; m: number };
+  /** andado de verdade hoje (m) — dá bônus de passos virtuais */
+  real: { day: number; m: number };
+  /** ponto de partida do modo controle (aparelho apenas; arredondado) */
+  anchor: [number, number] | null;
+  /** onde o passeio parou (aparelho apenas) */
+  joyPos: [number, number] | null;
+  /** Pontos Bloop: próximo giro liberado (ms) */
+  stops: Record<string, number>;
+  /** dia em que a dica da noite foi mostrada */
+  nightTip: number;
+  /** zoom do mapa (px por metro) */
+  zoom: number;
 }
 
 const KEY = 'bw-caca';
@@ -53,6 +70,7 @@ let cache: CacaSave | null = null;
 const fresh = (): CacaSave => ({
   v: 1, safetyOk: false, locMode: null, homeSeed: seedHex(randomSeed()), ar: false, mons: [], team: [], dex: {}, done: [],
   streak: { day: 0, count: 0, best: 0 }, eggs: [], eggN: 0, km: 0, catches: 0, battles: 0, wins: 0, starter: false,
+  walkMode: 'real', joy: { day: 0, m: 0 }, real: { day: 0, m: 0 }, anchor: null, joyPos: null, stops: {}, nightTip: 0, zoom: 1.7,
 });
 
 export function cacaSave(): CacaSave {
@@ -66,6 +84,9 @@ export function cacaSave(): CacaSave {
   }
   for (const k of ['mons', 'team', 'done', 'eggs'] as const) if (!Array.isArray(s[k])) (s as unknown as Record<string, unknown>)[k] = [];
   if (!s.dex || typeof s.dex !== 'object') s.dex = {};
+  if (!s.stops || typeof s.stops !== 'object') s.stops = {};
+  if (s.walkMode !== 'controle') s.walkMode = 'real';
+  if (!Number.isFinite(s.zoom)) s.zoom = 1.7;
   cache = s;
   return s;
 }
@@ -225,4 +246,43 @@ export function starterSeeds(): string[] {
     }
   }
   return out;
+}
+
+/* ---------------- andar pelo jogo (modo controle) ---------------- */
+/** limite de passeio em volta do ponto de partida */
+export const JOY_RADIUS_M = 1500;
+/** passos virtuais por dia (m) */
+export const JOY_DAILY_M = 3000;
+/** bônus máximo por andar de verdade (m): cada 1 m real = +1 m virtual, até isto */
+export const JOY_BONUS_MAX_M = 2000;
+export function joyBudget(): { used: number; total: number; left: number } {
+  const s = cacaSave();
+  const today = dayNumber();
+  if (s.joy.day !== today) s.joy = { day: today, m: 0 };
+  const bonus = s.real.day === today ? Math.min(JOY_BONUS_MAX_M, s.real.m) : 0;
+  const total = JOY_DAILY_M + bonus;
+  return { used: s.joy.m, total, left: Math.max(0, total - s.joy.m) };
+}
+export function spendJoy(m: number): void {
+  const s = cacaSave();
+  const today = dayNumber();
+  if (s.joy.day !== today) s.joy = { day: today, m: 0 };
+  s.joy.m += m;
+}
+export function addRealWalk(m: number): void {
+  const s = cacaSave();
+  const today = dayNumber();
+  if (s.real.day !== today) s.real = { day: today, m: 0 };
+  s.real.m += m;
+}
+/** Pontos Bloop: pode girar? */
+export function stopReady(id: string, now = Date.now()): boolean {
+  return !(cacaSave().stops[id] > now);
+}
+export function stopUsed(id: string, cooldownMs: number): void {
+  const s = cacaSave();
+  const now = Date.now();
+  for (const k of Object.keys(s.stops)) if (s.stops[k] < now) delete s.stops[k];
+  s.stops[id] = now + cooldownMs;
+  persistCaca();
 }
