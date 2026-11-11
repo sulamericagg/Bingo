@@ -1,0 +1,18 @@
+/* Garimpo — água: medidor (represa / tanque da lavadora), barra de itens e faixa de aviso */
+.gbw-chip{position:absolute;right:var(--edge-r,10px);top:calc(var(--edge-t,8px) + 52px);z-index:20;display:flex;align-items:center;gap:4px;height:28px;padding:0 8px 0 4px;border-radius:14px;background:rgba(14,40,60,.62);pointer-events:none}
+.gbw-chip svg{width:20px;height:20px;color:#fff}
+.gbw-chip i{display:block;width:34px;height:8px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}
+.gbw-chip u{display:block;height:100%;width:0;background:#5ab8ff;border-radius:4px;transition:width .5s}
+.gbw-chip.low i:last-child u{background:#ff7a2a}
+.gbw-chip.hi i:first-of-type u{background:#ffcf2e}
+.gbw-bar{position:absolute;left:var(--edge-l,10px);top:calc(var(--edge-t,8px) + 92px);z-index:21;display:flex;flex-direction:column;gap:6px}
+.gbw-bar .gb-b{position:relative;width:48px;height:48px}
+.gbw-bar .gb-b svg{width:28px;height:28px}
+.gbw-bar .gb-b span{position:absolute;right:-4px;bottom:-4px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#ffcf2e;color:#3a2200;font:800 11px/16px var(--font,'Fredoka',sans-serif)}
+.gbw-ban{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 94px);transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:8px;padding:6px 16px;border-radius:20px;font:800 15px var(--font,'Fredoka',sans-serif);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap}
+.gbw-ban svg{width:24px;height:24px}
+.gbw-ban.s1{background:linear-gradient(90deg,#d58a00,#ffb31a)}
+.gbw-ban.s2{background:linear-gradient(90deg,#1d6fc2,#3fa2ff)}
+.gbw-ban.s3{background:linear-gradient(90deg,#c21d1d,#ff5a2a);animation:gbwBan .5s ease-in-out infinite alternate}
+@keyframes gbwBan{to{transform:translateX(-50%) scale(1.06)}}
+.gbw-ico svg{color:#fff}

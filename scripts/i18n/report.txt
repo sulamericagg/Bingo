@@ -1,4 +1,4 @@
-Chaves: 8683 (6501 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 8710 (6528 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 

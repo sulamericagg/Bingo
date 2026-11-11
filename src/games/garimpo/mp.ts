@@ -164,6 +164,7 @@ export class MpHost {
     const r: Remote = { id, name, slot, worker: wk, tag, ctl: newCtl(), foot: newCtl(), cy: 0, m: null, x: p.x, z: p.z, yaw: a, sp: 0 };
     this.peers.set(id, r);
     this.sendInit(r);
+    g.water?.netReset();
     this.sendPeers();
     notify(t('gb.mp.joined', '{n} entrou no garimpo!', { n: name }), { icon: 'user', kind: 'good' });
     audio.coin(1);
@@ -369,6 +370,8 @@ export class MpHost {
     if (ex) msg.ex = ex;
     const tr = w.T.takeNetDelta();
     if (tr) msg.tr = tr;
+    const wa = g.water?.netTake();
+    if (wa) msg.wa = wa;
     const fire = g.fire;
     if (fire?.active) {
       msg.fi = fire.netPts();
@@ -544,6 +547,7 @@ export class MpGuest {
     g.rainOn = !!m.rn;
     this.plantSpin = num(m.ps);
     if (typeof m.tr === 'string' && m.tr) w.T.applyNetDelta(m.tr);
+    if (m.wa) g.water?.netApply(m.wa);
     const fi = m.fi as number[] | undefined;
     this.fireOn = !!fi;
     this.fireN = 0;

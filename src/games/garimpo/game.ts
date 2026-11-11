@@ -27,6 +27,7 @@ import { setLod } from './kit';
 import { natureAnisotropy } from '../../3d/nature';
 import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, freshSlot, GOLD_PRICE, loadMeta, loadSlot, writeSlot, type Diff, type SlotSave } from './save';
 import { World } from './world';
+import { WaterSystem } from './water/system';
 import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
@@ -105,6 +106,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   worker: Worker | null = null;
   cur: Machine | null = null;
   fire: Fire | null = null;
+  /** água: represa, enchente, bombas (water/) */
+  water: WaterSystem | null = null;
   drivers: Driver[] = [];
   ug: Underground | null = null;
   inMine = false;
@@ -640,6 +643,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.cur = wk;
     if (s.driving >= 0 && this.ms[s.driving] && !guest) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
+    this.water = new WaterSystem(this, s);
     if (!guest) {
       // convidado: mina, ajudantes e fogo rodam no anfitrião
       if (s.mineOpen) this.openMine();
@@ -1147,6 +1151,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     w.T.uRain.value = w.T.rain;
     w.setRain(this.rainK);
     this.sv!.rain = this.rainOn;
+    this.water?.step(dt);
   }
 
   /** convidado: não simula — mostra o que o anfitrião manda, anda o próprio garimpeiro e manda a entrada */
@@ -1277,7 +1282,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const w = this.w!;
     const pl = w.plant;
     if (s.plantVol > 1e-4) {
-      const v = Math.min(s.plantVol, PLANT_RATE[s.upg.plant] * dt);
+      const v0 = Math.min(s.plantVol, PLANT_RATE[s.upg.plant] * dt);
+      const v = this.water ? this.water.wash(v0) : v0;
       const g = (s.plantGold * v) / s.plantVol;
       s.plantVol -= v;
       s.plantGold -= g;
@@ -1534,6 +1540,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   /* ---------------- qualidade ---------------- */
   private applyTier(tier: Tier): void {
     this.w?.setTier(tier);
+    this.water?.setTier(tier);
     this.applyPR();
   }
   private applyPR(): void {
@@ -1667,7 +1674,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}</div>`,
+      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -1694,6 +1701,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.mp.action('buy', { id });
       return true;
     }
+    if (this.water?.isItem(id)) return this.water.buy(id) && (this.persist(), true);
     const mi = MACHINES.find((m) => m.id === id);
     if (mi) {
       const n = this.ms.filter((m) => m.kind === mi.kind).length;
@@ -1774,6 +1782,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       s.worker = { x: p.x + Math.sin(p.yaw) * 3, z: p.z + Math.cos(p.yaw) * 3, yaw: p.yaw, vol: 0, gold: 0 };
     }
     s.terrain = encodeTerrain(w.T);
+    if (this.water) s.water = this.water.save();
     this.fire?.save(s);
     if (this.ug) s.ug = this.ug.save();
     if (!writeSlot(this.slot, s)) notify(t('gb.saveFail', 'Sem espaço para salvar'), { kind: 'bad' });
@@ -1829,6 +1838,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.worker = null;
     this.cur = null;
     this.fire = null;
+    this.water?.dispose();
+    this.water = null;
     this.w?.dispose();
     this.w = null;
     this.r?.dispose();

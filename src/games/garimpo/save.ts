@@ -47,6 +47,8 @@ export interface SlotSave {
   /** mina subterrânea aberta e seu estado */
   mineOpen?: boolean;
   ug?: import('./underground').UgSave;
+  /** água: profundidades, tanque da lavadora, poços/bombas/canos, tempo */
+  water?: import('./water/system').WaterSave;
 }
 export interface SlotMeta {
   seed: number;

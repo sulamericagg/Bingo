@@ -5,6 +5,7 @@
  *  (mais ricas e mais fundas na montanha; rasas e pobres na baixada).
  * ============================================================ */
 import { CELL, MAT_DIRT, MAT_GRASS, MAT_MUD, MAT_ROAD, MAT_SAND, N, SIZE, Terrain, V } from './terrain';
+import { carveDam, lakeRim, type DamInfo } from './water/dam';
 
 export interface P2 {
   x: number;
@@ -39,6 +40,8 @@ export interface MapInfo {
   trees: TreeSpot[];
   /** ponto de entrada do caminhão de exportação (borda do mapa) */
   gate: P2;
+  /** água: represa na encosta + riacho até o lago (water/dam.ts) */
+  dam?: DamInfo;
 }
 
 export function rng(seed: number): () => number {
@@ -182,6 +185,8 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
   flatten(mine.x, mine.z, 14, 24, mineH);
   // lago
   lake.level = hAt(lake.x, lake.z) - 0.6;
+  // ÁGUA: nível abaixo da borda natural — o lago simulado não vaza pelo terreno em volta
+  lake.level = Math.min(lake.level, lakeRim(hAt, lake) - 0.4);
   {
     const R = lake.r + 9;
     for (let j = 0; j < V; j++)
@@ -375,6 +380,9 @@ export function generate(T: Terrain, seed: number, treeBudget = 1): MapInfo {
     trees.push({ x, z, s: 0.7 + r() * 0.7, kind: 5, rot: r() * 6.28 });
   }
 
-  return { seed, camp, plant, stock, garage, houses, lake, mountain, mine, road: [...road], gateRoad: [gate, gateRoad[1], { x: stock.x, z: stock.z - 6 }], deposits, trees, gate };
+  const info: MapInfo = { seed, camp, plant, stock, garage, houses, lake, mountain, mine, road: [...road], gateRoad: [gate, gateRoad[1], { x: stock.x, z: stock.z - 6 }], deposits, trees, gate };
+  // ÁGUA: represa + riacho + borda do lago (mexe em h/h0 e tira árvores da bacia)
+  info.dam = carveDam(T, info);
+  return info;
 }
 
