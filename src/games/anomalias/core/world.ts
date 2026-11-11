@@ -35,6 +35,7 @@ export interface Npc {
 const _v = new THREE.Vector3();
 const _box = new THREE.Box3();
 const _dir = new THREE.Vector3();
+const _frus = new THREE.Frustum();
 const _m = new THREE.Matrix4();
 
 /** segmento × caixa (slab). Devolve t∈[0,1] do primeiro contato ou -1. */
@@ -109,8 +110,8 @@ void main(){
   uv.x += roll;
   vec3 c = texture2D(map, uv).rgb;
   float l = dot(c, vec3(0.299,0.587,0.114));
-  c = mix(c, vec3(l*0.75, l*1.1, l*0.85), 0.35);
-  c *= 1.15;
+  c = mix(c, vec3(l*0.8, l*1.08, l*0.86), 0.22);
+  c *= 1.3;
   float n = h(floor(vUv * vec2(320.0, 180.0)));
   c = mix(c, vec3(n), noise);
   c *= 0.86 + 0.14 * sin(vUv.y * 540.0);
@@ -138,8 +139,14 @@ export class World {
   private monMat: THREE.ShaderMaterial | null = null;
   private monCam = new THREE.PerspectiveCamera(68, 16 / 9, 0.1, 40);
   private monT = 0;
-  monNoise = 0.12;
+  monNoise = 0.08;
   private orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  /** culling por sala: malhas que cabem numa sala só (o resto, ex. geometria assada, fica sempre) */
+  private cull: { mesh: THREE.Object3D; room: number }[] = [];
+  private walls: Box[] = [];
+  private samples: THREE.Vector3[][] = [];
+  roomVis: boolean[] = [];
+  cullOn = true;
   /** câmera do monitor ligada (o turno desenha só o monitor) */
   monitorOn: { pos: Vec3; look: Vec3 } | null = null;
 
@@ -198,7 +205,84 @@ export class World {
       }
       this.slots.push({ slot, index, anchor0: a, npc });
     });
+    this.setupCull();
     this.resize();
+  }
+
+  /* ------------------------------ culling por sala ------------------------------ */
+  private setupCull(): void {
+    const rooms = this.build.rooms;
+    const b = new THREE.Box3();
+    const c = new THREE.Vector3();
+    const sz = new THREE.Vector3();
+    this.build.root.traverse((o) => {
+      if (!(o as THREE.Mesh).isMesh) return;
+      b.setFromObject(o);
+      if (b.isEmpty()) return;
+      b.getCenter(c);
+      b.getSize(sz);
+      const ri = rooms.findIndex((r) => c.x >= r.min.x && c.x <= r.max.x && c.z >= r.min.z && c.z <= r.max.z);
+      if (ri < 0) return;
+      const r = rooms[ri];
+      // cabe na sala (com folga de 0,5 m)?
+      if (b.min.x < r.min.x - 0.5 || b.max.x > r.max.x + 0.5 || b.min.z < r.min.z - 0.5 || b.max.z > r.max.z + 0.5) return;
+      this.cull.push({ mesh: o, room: ri });
+    });
+    // paredes altas (o que tapa a visão entre salas)
+    this.walls = this.build.colliders.filter((w) => w.min.y < 0.5 && w.max.y >= 2 && Math.min(w.max.x - w.min.x, w.max.z - w.min.z) < 0.5);
+    for (const r of rooms) {
+      const pts: THREE.Vector3[] = [];
+      const w = r.max.x - r.min.x,
+        d = r.max.z - r.min.z;
+      const nx = Math.max(2, Math.min(10, Math.ceil(w / 1.4))),
+        nz = Math.max(2, Math.min(10, Math.ceil(d / 1.4)));
+      for (let i = 0; i < nx; i++)
+        for (let j = 0; j < nz; j++)
+          for (const y of [0.4, 1.5]) pts.push(new THREE.Vector3(r.min.x + 0.3 + ((w - 0.6) * i) / (nx - 1), y, r.min.z + 0.3 + ((d - 0.6) * j) / (nz - 1)));
+      this.samples.push(pts);
+    }
+    this.roomVis = rooms.map(() => true);
+    this.monCam.layers.enable(1);
+  }
+  private wallBlocked(a: THREE.Vector3, p: THREE.Vector3): boolean {
+    for (const w of this.walls) {
+      const t = segBox(a.x, a.y, a.z, p.x, p.y, p.z, w);
+      if (t >= 0 && t < 0.999) return true;
+    }
+    return false;
+  }
+  /** quais salas a câmera do jogador pode ver agora (frustum + linha de visão por amostras) */
+  private updateCull(): void {
+    const cam = this.cam;
+    const rooms = this.build.rooms;
+    _m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    _frus.setFromProjectionMatrix(_m);
+    const cp = cam.position;
+    for (let i = 0; i < rooms.length; i++) {
+      const r = rooms[i];
+      let vis = cp.x >= r.min.x - 0.3 && cp.x <= r.max.x + 0.3 && cp.z >= r.min.z - 0.3 && cp.z <= r.max.z + 0.3;
+      if (!vis && this.cullOn) {
+        _box.min.set(r.min.x, 0, r.min.z);
+        _box.max.set(r.max.x, 3, r.max.z);
+        if (_frus.intersectsBox(_box))
+          for (const p of this.samples[i]) {
+            if (!_frus.containsPoint(p)) continue;
+            if (!this.wallBlocked(cp, p)) {
+              vis = true;
+              break;
+            }
+          }
+      } else if (!this.cullOn) vis = true;
+      this.roomVis[i] = vis;
+    }
+    for (const c of this.cull) c.mesh.layers.mask = this.roomVis[c.room] ? 1 : 2;
+    for (const n of this.npcs) {
+      const ri = rooms.findIndex((r) => n.pos.x >= r.min.x && n.pos.x <= r.max.x && n.pos.z >= r.min.z && n.pos.z <= r.max.z);
+      const mask = ri < 0 || this.roomVis[ri] ? 1 : 2;
+      if ((n as Npc & { _mask?: number })._mask === mask) continue;
+      (n as Npc & { _mask?: number })._mask = mask;
+      n.model.root.traverse((o) => (o.layers.mask = mask));
+    }
   }
 
   get colliders(): Box[] {
@@ -276,6 +360,7 @@ export class World {
   /* ------------------------------ render ------------------------------ */
   render(): void {
     if (this.monitorOn) return this.renderMonitor();
+    this.updateCull();
     this.renderer.render(this.scene, this.cam);
   }
 
@@ -343,6 +428,7 @@ export class World {
     const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: true });
     rt.texture.colorSpace = THREE.SRGBColorSpace;
     const cam = new THREE.PerspectiveCamera(68, w / h, 0.1, 40);
+    cam.layers.enable(1);
     const px = new Uint8Array(w * h * 4);
     const cv = document.createElement('canvas');
     cv.width = w;

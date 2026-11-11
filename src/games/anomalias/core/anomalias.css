@@ -2,11 +2,13 @@
 .ano-root{position:absolute;inset:0;overflow:hidden;background:#05060f;font-family:Fredoka,system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none;
   --ano-b:max(var(--edge-b,12px),var(--safe-bot,env(safe-area-inset-bottom,0px)));--ano-l:var(--edge-l,12px);--ano-r:var(--edge-r,12px);--ano-t:var(--edge-t,8px);
   --ink:#1d0b3a;--gold:#ffd34a;--pink:#ff5c9a;--mint:#3ee07a;--sky:#5ad1ff}
+.ano-root [hidden]{display:none!important}
 .ano-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .ano-hud{position:absolute;inset:0;pointer-events:none;z-index:20}
 .ano-hud > *{pointer-events:auto}
 .ano-hud.photo .ano-norm{display:none!important}
 .ano-hud:not(.photo) .ano-ph{display:none!important}
+.ano-hud.photo .ano-tl{opacity:.45}
 .ano-hud.mon .ano-g{display:none!important}
 
 /* --- canto superior esquerdo: relógio, perigo, tarefas --- */
@@ -62,7 +64,7 @@
 .ano-vf i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-radius:0 0 0 10px}
 .ano-vf i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-radius:0 0 10px 0}
 .ano-vf .cross{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px;border:3px solid rgba(255,255,255,.8);border-radius:50%}
-.ano-vf .rec{position:absolute;left:58px;top:10px;font-weight:700;font-size:15px;color:#fff;text-shadow:0 1px 3px #000;display:flex;align-items:center;gap:6px}
+.ano-vf .rec{position:absolute;right:58px;top:10px;font-weight:700;font-size:15px;color:#fff;text-shadow:0 1px 3px #000;display:flex;align-items:center;gap:6px}
 .ano-vf .rec::before{content:'';width:12px;height:12px;border-radius:50%;background:#ff3b5c;animation:anoPulse 1s infinite}
 .ano-shut{width:90px;height:90px;border-radius:50%;padding:4px;background:transparent;border:0;box-shadow:none}
 .ano-lower{width:56px;height:56px;border-radius:50%;background:rgba(10,8,30,.7);border:3px solid rgba(255,255,255,.6)}
@@ -182,14 +184,14 @@
 .ano-b2{height:54px;min-height:54px;border-radius:18px;border:3px solid var(--ink);background:#5b4a9a;color:#fff;font:700 18px Fredoka,system-ui;padding:0 16px 0 10px;display:flex;align-items:center;gap:6px;box-shadow:0 4px 0 rgba(0,0,0,.35)}
 .ano-b2 i{width:30px;height:30px;display:block}
 .ano-b2.go{background:linear-gradient(180deg,#9dffc4,#2fbf6f);color:var(--ink)}
-.ano-caught{position:absolute;inset:0;z-index:45;background:#000;opacity:0;transition:opacity .5s;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.ano-caught{position:absolute;inset:0;z-index:45;background:rgba(8,2,20,.82);opacity:0;transition:opacity .5s;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .ano-caught.on{opacity:1;pointer-events:auto}
 .ano-caught .ano-card{text-align:center;background:linear-gradient(180deg,#4b2a7a,#1d0b3a)}
 .ano-caught h2{font-size:32px;margin:4px 0 6px;color:#ffe14a;text-shadow:0 3px 0 #000}
 .ano-caught .face{width:110px;height:110px;margin:0 auto;animation:anoWob 1.2s infinite}
 .ano-shake{animation:anoQuake .5s}
 @keyframes anoQuake{10%,50%,90%{transform:translate(-9px,5px)}30%,70%{transform:translate(9px,-6px)}}
-.ano-dawn{position:absolute;inset:0;z-index:44;pointer-events:none;background:linear-gradient(180deg,#ffd58a,#ff9a6a 60%,#ff6fa0);opacity:0;transition:opacity 1.6s}
+.ano-dawn{position:absolute;inset:0;z-index:39;pointer-events:none;background:linear-gradient(180deg,#ffd58a,#ff9a6a 60%,#ff6fa0);opacity:0;transition:opacity 1.6s}
 .ano-dawn.on{opacity:.85}
 .ano-arrow{position:absolute;width:44px;height:44px;margin:-22px;z-index:19;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
 @media (max-height:340px){.ano-pol-grid{grid-template-columns:repeat(5,1fr)}.ano-map{height:100px;width:108px}.ano-map .em{font-size:36px}}

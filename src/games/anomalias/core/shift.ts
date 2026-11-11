@@ -236,7 +236,6 @@ export class Shift {
     if (this.state === 'memorize') {
       this.memT -= dt;
       if (this.memT <= 0) this.beginShift();
-      else if (this.hudT <= 0) this.hud.memorize(this.memT);
     } else if (this.state === 'play') this.playStep(dt);
     else if (this.state === 'caught') this.caughtStep(dt);
     else if (this.state === 'dawn') {
@@ -661,7 +660,7 @@ export class Shift {
         this.world.monitorOn = cam;
         this.world.monNoise = 0.55;
         this.world.monDirty();
-        setTimeout(() => (this.world.monNoise = 0.12), 140);
+        setTimeout(() => (this.world.monNoise = 0.08), 140);
         this.au.click();
       },
       () => {
@@ -819,7 +818,7 @@ export class Shift {
         this.au.bad();
         this.hud.toast(t('ano.wrongItem', 'Não é esse! Precisa deste:'), it ? itemSvg(it) : '❓', true);
         this.tasks.carrying = null;
-      } else this.hud.toast(t('ano.needItem', 'Precisa deste remédio:'), it ? itemSvg(it) : '❓');
+      } else this.hud.toast(t('ano.needItem', 'Precisa deste item:'), it ? itemSvg(it) : '❓');
     }
   }
 
@@ -901,8 +900,8 @@ export class Shift {
       this.arrow.style.transform = `translate(${((x + 1) / 2) * W}px, ${((1 - y) / 2) * H - 26 + bounce}px)`;
     } else {
       const k = 0.82 / Math.max(Math.abs(x), Math.abs(y), 1e-3);
-      const ex = clamp(x * k, -0.86, 0.86),
-        ey = clamp(y * k, -0.7, 0.7);
+      const ex = clamp(x * k, -0.8, 0.8),
+        ey = clamp(y * k, -0.55, 0.3);
       const ang = Math.atan2(-ey, ex) - Math.PI / 2;
       this.arrow.style.transform = `translate(${((ex + 1) / 2) * W}px, ${((1 - ey) / 2) * H}px) rotate(${ang}rad)`;
     }
@@ -1043,11 +1042,12 @@ export class Shift {
     this.catchT += dt;
     const h = this.hunt!;
     const k = Math.min(1, this.catchT / 0.7);
-    const dist = 2.4 - 1.55 * k * k;
+    const dist = 2.4 - 1.25 * k * k;
     const fx = -Math.sin(this.yaw),
       fz = -Math.cos(this.yaw);
     h.pos.set(this.pos.x + fx * dist, 0, this.pos.z + fz * dist);
-    h.m.root.position.set(h.pos.x, -0.15 * k, h.pos.z);
+    h.m.root.position.set(h.pos.x, 0.25 * k, h.pos.z);
+    this.pitch = -0.05 - 0.12 * k;
     h.m.root.rotation.y = this.yaw + Math.PI;
     h.m.root.scale.setScalar(1 + 0.25 * k);
     h.m.open = 0.4 + 0.6 * k;
@@ -1105,6 +1105,7 @@ export class Shift {
   private refreshHud(force: boolean): void {
     const min = this.state === 'memorize' ? 0 : Math.min(360, (this.t / this.cfg.shiftSec) * 360);
     this.hud.setClock(min, this.o.night);
+    if (this.state === 'memorize') this.hud.memorize(this.memT);
     this.hud.setDanger(this.danger / 100, !!this.hunt);
     this.hud.setTasks(this.tasks.tasks.map((x) => ({ icon: x.def.icon ?? '✋', done: x.done, item: x.want ? this.items.get(x.want) : undefined })));
     this.hud.setCarry(this.tasks.carrying ? (this.items.get(this.tasks.carrying) ?? null) : null);

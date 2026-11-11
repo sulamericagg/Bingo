@@ -78,6 +78,8 @@ export class Kit {
   readonly lampBlue: THREE.MeshBasicMaterial;
   readonly poolMat: THREE.MeshBasicMaterial;
   power = true;
+  /** material único das cores sólidas assadas (cor por vértice) */
+  readonly vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   constructor(readonly tier: number) {
     this.poolT = this.keep(poolTex());
@@ -275,7 +277,7 @@ export class Kit {
   /** lâmpada de teto (painel + moldura + poça de luz no chão), dinâmica */
   lamp(room: string, x: number, z: number, w = 1.2, d = 0.5, H = 3, pool = true): Lamp {
     const g = this.group(this.root, x, 0, z);
-    this.box(g, this.lam('#d8dce6'), w + 0.12, 0.05, d + 0.12, 0, H - 0.06, 0);
+    this.box(this.root, this.lam('#d8dce6'), w + 0.12, 0.05, d + 0.12, x, H - 0.06, z);
     const panel = this.box(g, this.lampOn, w, 0.03, d, 0, H - 0.085, 0);
     let pm: THREE.Mesh | null = null;
     if (pool) {
@@ -341,20 +343,25 @@ export class Kit {
     const basePos = obj.position.clone();
     const baseRot = obj.rotation.clone();
     const baseScale = obj.scale.clone();
-    const paint: THREE.Mesh[] = [];
-    obj.traverse((c) => {
-      const m = c as THREE.Mesh;
-      if (m.isMesh && m.userData.paint) paint.push(m);
-    });
-    if (!paint.length)
+    // malhas pintáveis: medidas na 1ª vez (depois do compact)
+    let paint: THREE.Mesh[] | null = null;
+    let orig: THREE.Material[] = [];
+    const paintList = (): THREE.Mesh[] => {
+      if (paint) return paint;
+      const p: THREE.Mesh[] = [];
       obj.traverse((c) => {
         const m = c as THREE.Mesh;
-        if (m.isMesh && m !== o.pic?.mesh) {
-          m.userData.paint = true;
-          paint.push(m);
-        }
+        if (m.isMesh && m.userData.paint) p.push(m);
       });
-    const orig = paint.map((m) => m.material as THREE.Material);
+      if (!p.length)
+        obj.traverse((c) => {
+          const m = c as THREE.Mesh;
+          if (m.isMesh && m !== o.pic?.mesh) p.push(m);
+        });
+      orig = p.map((m) => m.material as THREE.Material);
+      paint = p;
+      return p;
+    };
     for (const e of o.extra ?? []) {
       markDyn(e);
       e.visible = false;
@@ -399,7 +406,7 @@ export class Kit {
             break;
           case 'color': {
             const cs = o.colors ?? ['#ff3b5c', '#45d16b', '#3f6bff', '#ffcf2e'];
-            paint.forEach((m, i) => (m.material = on ? this.lam(cs[v % cs.length]) : orig[i]));
+            paintList().forEach((m, i) => (m.material = on ? this.lam(cs[v % cs.length]) : orig[i]));
             break;
           }
           case 'scale':
@@ -459,9 +466,23 @@ export class Kit {
         const g = m.geometry.clone();
         g.applyMatrix4(m.matrixWorld);
         for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
-        const list = by.get(m.material) ?? [];
+        let key: THREE.Material = m.material;
+        const lm = m.material as THREE.MeshLambertMaterial;
+        if (lm.isMeshLambertMaterial && !lm.map && !lm.transparent && lm.emissive.getHex() === 0) {
+          // cor sólida → cor por vértice: todas viram UMA malha
+          const n = g.getAttribute('position').count;
+          const col = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) {
+            col[i * 3] = lm.color.r;
+            col[i * 3 + 1] = lm.color.g;
+            col[i * 3 + 2] = lm.color.b;
+          }
+          g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+          key = this.vcMat;
+        }
+        const list = by.get(key) ?? [];
         list.push(g);
-        by.set(m.material, list);
+        by.set(key, list);
         kill.push(m);
       }
       for (const c of o.children) visit(c);
@@ -486,31 +507,43 @@ export class Kit {
   compact(g: THREE.Object3D, keep: THREE.Object3D[] = []): void {
     g.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
-    const by = new Map<THREE.Material, THREE.BufferGeometry[]>();
-    const kill: THREE.Mesh[] = [];
-    g.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || o === g || keep.includes(m) || m.userData.paint || Array.isArray(m.material)) return;
-      if (m.parent !== g) return; // só filhos diretos (subgrupos animados ficam)
-      const gg = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
-      const l = by.get(m.material) ?? [];
-      l.push(gg.index ? gg.toNonIndexed() : gg);
-      by.set(m.material, l);
-      kill.push(m);
-    });
-    for (const [mat, l] of by) {
-      if (l.length < 2) {
-        l.forEach((x) => x.dispose());
-        kill.splice(0, kill.length, ...kill.filter((k) => k.material !== mat));
-        continue;
-      }
-      const merged = mergeGeometries(l, false);
-      l.forEach((x) => x.dispose());
+    const by = new Map<string, { mat: THREE.Material; paint: boolean; list: THREE.Mesh[] }>();
+    for (const c of g.children) {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh || keep.includes(m) || Array.isArray(m.material) || !m.visible) continue;
+      let mat = m.material as THREE.Material;
+      const lm = mat as THREE.MeshLambertMaterial;
+      const vc = !m.userData.paint && lm.isMeshLambertMaterial && !lm.map && !lm.transparent && lm.emissive.getHex() === 0;
+      if (vc) mat = this.vcMat;
+      const key = mat.uuid + (m.userData.paint ? 'p' : '');
+      const e = by.get(key) ?? { mat, paint: !!m.userData.paint, list: [] };
+      e.list.push(m);
+      by.set(key, e);
+    }
+    for (const e of by.values()) {
+      if (e.list.length < 2) continue;
+      const geos = e.list.map((m) => {
+        const gg = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+        for (const k of Object.keys(gg.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') gg.deleteAttribute(k);
+        const out = gg.index ? gg.toNonIndexed() : gg;
+        if (e.mat === this.vcMat) {
+          const c = (m.material as THREE.MeshLambertMaterial).color;
+          const n = out.getAttribute('position').count;
+          const col = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
+          out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        }
+        return out;
+      });
+      const merged = mergeGeometries(geos, false);
+      geos.forEach((x) => x.dispose());
       if (!merged) continue;
       this.geos.push(merged);
-      g.add(new THREE.Mesh(merged, mat));
+      const mm = new THREE.Mesh(merged, e.mat);
+      if (e.paint) mm.userData.paint = true;
+      g.add(mm);
+      for (const m of e.list) m.removeFromParent();
     }
-    for (const m of kill) m.removeFromParent();
   }
 
   dispose(): void {
@@ -522,6 +555,7 @@ export class Kit {
     this.lampRed.dispose();
     this.lampBlue.dispose();
     this.poolMat.dispose();
+    this.vcMat.dispose();
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
