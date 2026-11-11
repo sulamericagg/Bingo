@@ -9,6 +9,10 @@ export const DS = 2;
 export const YARD = 140;
 export const HALF = 5.6; // meia-largura do asfalto (2 faixas + acostamento pintado)
 export const SHOULDER = 7.5;
+/* CONSERTOS (repair/highway.ts): rampa de escape = faixa de cascalho que sobe ao lado da pista */
+export const RAMP_LEN = 150;
+export const RAMP_W = 9;
+export const RAMP_RISE = 6;
 
 export type StopKind = 'station' | 'rest' | 'town' | 'dest';
 export interface Stop {
@@ -201,8 +205,22 @@ export class Road {
     // esquerda = (cos h, -sin h) (frente +z, x para a esquerda do motorista)
     out.lat = dx * fz - dz * fx;
   }
+  /** CONSERTOS: rampa de escape em (s, lat)? devolve a altura extra (≥0) ou -1 fora dela */
+  rampAt(s: number, lat: number): number {
+    for (const r of this.ramps) {
+      if (s < r.s - 40 || s > r.s + RAMP_LEN) continue;
+      const l = lat * r.side;
+      // a faixa abre devagar (taper) e depois sobe até RAMP_RISE m
+      const w = RAMP_W * ss(r.s - 40, r.s, s);
+      if (l < HALF + 0.3 || l > HALF + 0.6 + w) continue;
+      return RAMP_RISE * Math.pow(ss(r.s, r.s + RAMP_LEN, s), 1.2);
+    }
+    return -1;
+  }
   /** chão ao lado da pista (lat em m, + esquerda) */
   ground(s: number, lat: number, y0: number): number {
+    const ra = this.ramps.length ? this.rampAt(s, lat) : -1; // CONSERTOS
+    if (ra >= 0) return y0 - 0.12 + ra; // CONSERTOS
     const a = Math.abs(lat);
     if (a <= HALF + 0.4) return y0 - 0.02;
     let g = y0 - 0.25;

@@ -48,6 +48,8 @@ import { Lobby, type RemotePeer } from './net';
 import { gameFont } from '../../i18n/font';
 import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, edges, isSolo, soloToggle } from '../../ui/touch';
+import { partyRoomFor } from '../../party/contract';
+import type { LiveBar } from '../../party/duel';
 
 type State = 'garage' | 'play' | 'over' | 'results';
 
@@ -100,6 +102,8 @@ class RallyGame {
   private offs: (() => void)[] = [];
 
   private seed = trackSeed();
+  private partyBar: LiveBar | null = null;
+  private partyT = 0;
   private terrain = new Terrain(this.seed);
   private car!: Car;
   private skin: Skin;
@@ -204,6 +208,12 @@ class RallyGame {
     this.lobby.setSolo(isSolo('rally'));
     setNotifyTop(92); // abaixo do HUD (distância / combustível)
     void this.lobby.start(this.seed);
+    // grupo (docs/PARTY.md): placar ao vivo de quem foi mais longe na mesma pista
+    if (partyRoomFor('rally'))
+      void import('../../party/duel').then((D) => {
+        if (!this.el.isConnected) return;
+        this.partyBar = new D.LiveBar(this.root, (v) => `${Math.round(v)} m`, 'left');
+      });
 
     this.buildDom();
     this.resize();
@@ -716,6 +726,13 @@ class RallyGame {
         }
       }
       this.lobby.send(dt, car.x, car.y, car.a, this.dist, VEHICLES.indexOf(car.def));
+      this.partyT -= dt;
+      if (this.partyBar && this.partyT <= 0) {
+        this.partyT = 0.3;
+        const rows = [{ id: 'me', name: '', v: this.dist, me: true }, ...[...this.lobby.peers.values()].filter((p) => !p.bot).map((p) => ({ id: p.id, name: p.name, v: p.d, me: false }))];
+        const top = Math.max(1, ...rows.map((r) => r.v));
+        this.partyBar.set(rows.map((r) => ({ ...r, p: r.v / top })));
+      }
       if (this.myEmoteT > 0) this.myEmoteT -= dt;
     }
     this.lobby.update(dt, steps, car.x, car.speed, this.state === 'play');
@@ -1342,6 +1359,7 @@ class RallyGame {
     cancelAnimationFrame(this.raf);
     for (const f of this.offs) f();
     this.lobby.destroy();
+    this.partyBar?.destroy();
     this.el.remove();
   }
 }

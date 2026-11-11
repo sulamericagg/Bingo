@@ -24,32 +24,48 @@ async function loadFactory(b: string, text: { s: string | null }): Promise<void>
   if (!(globalThis as G).ModuleFactory) throw new Error('ModuleFactory');
 }
 
-export async function createLandmarker(b: string, simd: boolean, cpuOnly = false): Promise<{ lm: FaceLandmarker; delegate: 'GPU' | 'CPU' }> {
-  // só a variante SIMD vai no app (todo WebView moderno tem); sem SIMD → modo só microfone
-  if (!simd) throw new Error('no-simd');
-  const text = { s: null as string | null };
-  for (const d of cpuOnly ? (['CPU'] as const) : (['GPU', 'CPU'] as const)) {
-    try {
-      await loadFactory(b, text);
-      const lm = await FaceLandmarker.createFromOptions(
-        { wasmLoaderPath: '', wasmBinaryPath: b + 'vision_wasm_internal.wasm' },
-        {
-          baseOptions: { modelAssetPath: b + 'face_landmarker.task', delegate: d },
-          runningMode: 'VIDEO',
-          numFaces: 1,
-          outputFaceBlendshapes: true,
-          outputFacialTransformationMatrixes: true,
-          minFaceDetectionConfidence: 0.5,
-          minFacePresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        },
-      );
-      return { lm, delegate: d };
-    } catch (e) {
-      console.warn('[espelho] FaceLandmarker', d, e);
-    }
+export type Delegate = 'GPU' | 'CPU';
+
+/**
+ * Cria o FaceLandmarker com UM delegate (quem decide a ordem e as trocas é o tracker.ts,
+ * que também testa se o resultado chega de verdade — no Android, GPU em Mali/Adreno às
+ * vezes "cria" mas depois falha ou não acha rosto nenhum).
+ */
+export async function createLandmarker(b: string, delegate: Delegate): Promise<FaceLandmarker> {
+  await loadFactory(b, factoryText);
+  return FaceLandmarker.createFromOptions(
+    { wasmLoaderPath: '', wasmBinaryPath: b + 'vision_wasm_internal.wasm' },
+    {
+      baseOptions: { modelAssetPath: b + 'face_landmarker.task', delegate },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true,
+      minFaceDetectionConfidence: 0.45,
+      minFacePresenceConfidence: 0.45,
+      minTrackingConfidence: 0.45,
+    },
+  );
+}
+const factoryText = { s: null as string | null };
+
+/** Luminância média (0..1) e contraste de um quadro: quadro preto/vazio = entrada quebrada, não "sem rosto". */
+export function frameStats(img: ImageData): { luma: number; spread: number } {
+  const d = img.data;
+  const n = d.length >> 2;
+  const step = Math.max(1, Math.floor(n / 600));
+  let sum = 0;
+  let sum2 = 0;
+  let c = 0;
+  for (let i = 0; i < n; i += step) {
+    const o = i << 2;
+    const y = (d[o] * 0.299 + d[o + 1] * 0.587 + d[o + 2] * 0.114) / 255;
+    sum += y;
+    sum2 += y * y;
+    c++;
   }
-  throw new Error('model');
+  const m = c ? sum / c : 0;
+  return { luma: m, spread: Math.sqrt(Math.max(0, (c ? sum2 / c : 0) - m * m)) };
 }
 
 const bs: Record<string, number> = {};
@@ -61,8 +77,8 @@ export function mapResult(r: FaceLandmarkerResult, out: Rig): boolean {
   const g = (k: string) => bs[k] ?? 0;
   // MediaPipe (como o ARKit) usa o lado do PRÓPRIO jogador: "Left" = olho esquerdo dele,
   // que no espelho aparece do lado esquerdo da tela. Por isso L→L.
-  out.blinkL = remap(g('eyeBlinkLeft') + g('eyeSquintLeft') * 0.15, 0.32, 0.72);
-  out.blinkR = remap(g('eyeBlinkRight') + g('eyeSquintRight') * 0.15, 0.32, 0.72);
+  out.blinkL = remap(g('eyeBlinkLeft') + g('eyeSquintLeft') * 0.15, 0.28, 0.62);
+  out.blinkR = remap(g('eyeBlinkRight') + g('eyeSquintRight') * 0.15, 0.28, 0.62);
   out.browInner = clamp01(g('browInnerUp') * 1.4);
   out.browL = clamp01(g('browOuterUpLeft') * 1.6) - clamp01(g('browDownLeft') * 1.6);
   out.browR = clamp01(g('browOuterUpRight') * 1.6) - clamp01(g('browDownRight') * 1.6);

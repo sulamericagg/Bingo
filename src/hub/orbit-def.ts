@@ -3,6 +3,7 @@
  * É um jogo "embutido": reaproveita o HUD/pausa/fim de jogo de src/ui/ui.ts e o
  * canvas #game, que o hub só liga quando o menu fica escondido.
  */
+import { partySeat } from '../party/contract';
 import { bus } from '../core/events';
 import { save } from '../core/storage';
 import { drawPlayer, type PlayerPose } from '../game/character';
@@ -120,6 +121,12 @@ export function registerOrbit(hooks: OrbitHooks): void {
     drawShowcase,
     async launch() {
       skin = skinById(save.skin);
+      // grupo: o líder abriu o Orbit → todo mundo vai para a Corrida Orbital na sala do grupo (docs/PARTY.md)
+      const seat = partySeat('race');
+      if (seat?.host && seat.fresh) {
+        document.getElementById('btn-race')?.click();
+        return { destroy() {} };
+      }
       hooks.play();
       return { destroy() {} };
     },

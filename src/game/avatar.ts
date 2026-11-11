@@ -281,6 +281,8 @@ export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: numbe
   const pat = PATTERNS[parts.pattern] ?? PATTERNS.p_none;
   const calm = (p.mood === 'idle' || p.mood === 'happy') && !p.still;
   const br = calm ? Math.sin(p.t * 2.6) * 0.035 : 0;
+  const back = p.view === 'back';
+  const backFn = BACKS[parts.back] ?? BACKS.k_none;
   let pts = sh.pts;
   if (sh.anim) {
     sh.anim(p.t, animPts);
@@ -309,11 +311,11 @@ export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: numbe
   x.lineJoin = 'round';
 
   (AURAS[parts.aura] ?? AURAS.a_none)(d, 0);
-  (BACKS[parts.back] ?? BACKS.k_none)(d, 0);
+  if (!back) backFn(d, 0);
   if (mat.under) mat.under(d);
 
   // pezinhos
-  if (p.mood !== 'fly' && sh.feet) {
+  if (p.mood !== 'fly' && sh.feet && !p.noFeet) {
     const [f0, f1] = mat.feet ? mat.feet(d.c) : [d.c.Pd, d.c.Ph];
     const fy = sh.bottom * R * 0.88;
     for (const s of [-1, 1]) {
@@ -345,17 +347,20 @@ export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: numbe
   if (overlay) overlay(x, R, sh.fy, p.t);
   if (sh.sharp && parts.body === 'b_gem') gemFacets(d);
   x.restore();
-  drawOutline(d, mat);
+  if (!p.noLine) drawOutline(d, mat);
 
-  // rosto
-  const face = FACES[parts.face] ?? FACES.f_none;
-  face(d, 0);
-  if (!p.noFace) {
-    (EYES[parts.eyes] ?? EYES.e_dots)(d);
-    (MOUTHS[parts.mouth] ?? MOUTHS.mo_line)(d);
+  // rosto (de costas: só as costas, por cima do corpo)
+  if (back) backFn(d, 0);
+  else {
+    const face = FACES[parts.face] ?? FACES.f_none;
+    face(d, 0);
+    if (!p.noFace) {
+      (EYES[parts.eyes] ?? EYES.e_dots)(d);
+      (MOUTHS[parts.mouth] ?? MOUTHS.mo_line)(d);
+    }
+    face(d, 1);
+    backFn(d, 1);
   }
-  face(d, 1);
-  (BACKS[parts.back] ?? BACKS.k_none)(d, 1);
 
   // cabeça
   const head = HEADS[parts.head] ?? HEADS.h_none;

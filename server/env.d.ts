@@ -36,6 +36,8 @@ interface Env {
   GARIMPO: DurableObjectNamespace<import('./garimpo').GarimpoRoom>;
   /** Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + caixas de convite. */
   CAVA: DurableObjectNamespace<import('./cava').CavaRoom>;
+  /** Duelo: mesmo desafio para todos ao mesmo tempo (jogos solo jogados em grupo) — uma instância por jogo+código. */
+  DUEL: DurableObjectNamespace<import('./duel').DuelRoom>;
   /** Horas mínimas de conta para gerar moedas a criadores (padrão 72; .dev.vars usa 0 no teste local). */
   UGC_MIN_AGE_H?: string;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */

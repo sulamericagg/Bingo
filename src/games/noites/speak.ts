@@ -6,6 +6,7 @@
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { isNative } from '../../core/platform';
 import { getLang } from '../../i18n';
+import { narrationOn, onNarration } from '../../core/narration';
 
 const LANGS: Record<string, string> = {
   pt: 'pt-BR',
@@ -51,7 +52,7 @@ function native(): NativeTts | null {
  * `urgent` interrompe o que estiver falando.
  */
 export function speak(text: string, o: { cool?: number; urgent?: boolean } = {}): void {
-  if (!on || !text) return;
+  if (!on || !narrationOn() || !text) return;
   const now = performance.now();
   const lt = last.get(text) ?? -1e9;
   if (now - lt < (o.cool ?? 4000)) return;
@@ -79,6 +80,9 @@ export function speak(text: string, o: { cool?: number; urgent?: boolean } = {})
     /* sem voz */
   }
 }
+onNarration((v) => {
+  if (!v) stopSpeak();
+});
 export function stopSpeak(): void {
   try {
     window.speechSynthesis?.cancel();

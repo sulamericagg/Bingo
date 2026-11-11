@@ -35,7 +35,7 @@
                 <data android:scheme="bloopworld" android:host="amigo" />
             </intent-filter>
 
-            <!-- QR da sala do Pouso Forçado / Garimpo / Cava & Fala e do grupo: bloopworld://voo/<CÓDIGO> · bloopworld://garimpo/<CÓDIGO> · bloopworld://cava/<CÓDIGO> · bloopworld://grupo/<id>.<código> -->
+            <!-- QR da sala do Pouso Forçado / Garimpo / Cava & Fala, do grupo e do duelo: bloopworld://voo/<CÓDIGO> · bloopworld://garimpo/<CÓDIGO> · bloopworld://cava/<CÓDIGO> · bloopworld://grupo/<id>.<código> · bloopworld://duelo/<jogo>/<CÓDIGO> -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -44,6 +44,7 @@
                 <data android:scheme="bloopworld" android:host="grupo" />
                 <data android:scheme="bloopworld" android:host="garimpo" />
                 <data android:scheme="bloopworld" android:host="cava" />
+                <data android:scheme="bloopworld" android:host="duelo" />
             </intent-filter>
         </activity>
 

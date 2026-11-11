@@ -58,3 +58,7 @@
 .tubo-goals { position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 92px); display: flex; gap: 6px; pointer-events: none; }
 .tubo-goals span { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(60, 20, 70, .45); transition: background .15s, transform .15s; }
 .tubo-goals span.ok { background: rgba(40, 170, 90, .85); transform: scale(1.06); }
+
+/* duelo online (src/party/duel.ts): botão só na tela "toque para começar" */
+.tubo-duelbtn { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 132px); transform: translateX(-50%); display: none; align-items: center; gap: 8px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 999px; font: inherit; font-size: 18px; font-weight: 700; color: #2a0b5c; background: linear-gradient(180deg, #fff3a0, #ffc21a); box-shadow: 0 4px 0 rgba(120, 30, 80, .45); white-space: nowrap; }
+.tubo-root.is-ready:not(.is-duel) .tubo-duelbtn { display: inline-flex; }

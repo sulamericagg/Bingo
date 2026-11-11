@@ -122,14 +122,14 @@ export async function askMicPermission(): Promise<PermState> {
   const v = r?.speechRecognition;
   return v === 'granted' ? 'granted' : v === 'denied' ? 'denied' : 'unknown';
 }
-/** abre os ajustes do app (Android: BloopDevice.openSettings) para liberar o microfone; false se não deu */
+/** abre os ajustes do app (Android: BloopDevice.openAppSettings) para liberar o microfone; false se não deu */
 export async function openAppSettings(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    const Dev = registerPlugin<{ openSettings(): Promise<void> }>('BloopDevice');
+    const Dev = registerPlugin<{ openAppSettings(): Promise<void> }>('BloopDevice');
     let ok = true;
     await withTimeout(
-      Dev.openSettings().catch(() => {
+      Dev.openAppSettings().catch(() => {
         ok = false;
       }),
       3000,

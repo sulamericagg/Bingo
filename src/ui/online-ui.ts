@@ -10,6 +10,14 @@ import { celebrate, mergePacks, packChips } from './celebrate';
 import { $, esc } from './dom';
 import { icon, type IconName } from './icons';
 import { t } from '../i18n';
+import type { FriendInvite } from '../home/api';
+
+/** convites de amigos pendentes (grupo/jogo/duelo/festa): aparecem no topo do Correio com "Aceitar" */
+let friendInvites: FriendInvite[] = [];
+bus.on('friend-invites', (l: FriendInvite[]) => {
+  friendInvites = l.slice(0, 8);
+  bus.emit('inbox-invites', friendInvites.length);
+});
 
 const ERR: Record<NonNullable<RedeemResult['error']>, string> = {
   get invalid() { return t('redeem.err.invalid', 'Código inválido. Confira as letras e tente de novo.'); },
@@ -59,7 +67,26 @@ export class OnlineUI {
     box.innerHTML = '';
     btn.classList.toggle('hidden', !list.length);
     btn.disabled = this.busy;
-    if (!list.length) {
+    // convites de amigos primeiro, em destaque
+    if (friendInvites.length)
+      void Promise.all([import('../social/friends-ui'), import('../social/sheet')]).then(([u, sh]) => {
+        if (!box.isConnected) return;
+        for (const inv of friendInvites.slice().reverse()) {
+          const row = document.createElement('div');
+          row.className = 'gift gift-invite';
+          row.innerHTML = `<div class="plate plate-pink gift-ico"></div><div class="g-info"><div class="g-title"></div></div><button class="btn btn-green g-accept">✓ ${esc(t('ip.yes', 'ACEITAR'))}</button>`;
+          $('.gift-ico', row).appendChild(sh.skinThumb(inv.from.skin, 40, inv.from.avatar));
+          $('.g-title', row).textContent = u.inviteText(inv);
+          $('.g-accept', row).addEventListener('click', () => {
+            friendInvites = friendInvites.filter((x) => x !== inv);
+            bus.emit('inbox-invites', friendInvites.length);
+            document.querySelector<HTMLElement>('#inbox .close, #inbox [data-close]')?.click();
+            void u.acceptInvite(inv);
+          });
+          box.prepend(row);
+        }
+      });
+    if (!list.length && !friendInvites.length) {
       if (loading) box.innerHTML = `<div class="loading"><i></i><i></i><i></i></div>`;
       else if (onlineReachable() === false) box.innerHTML = emptyState('cloud-off', t('net.offline', 'Sem conexão'), t('inbox.offlineSub', 'Conecte-se à internet para receber presentes.'), 'violet');
       else box.innerHTML = emptyState('mail', t('inbox.empty', 'Nenhum presente por enquanto'), t('inbox.emptySub', 'Fique de olho: mandamos presentes em eventos e datas especiais!'), 'pink');
@@ -211,5 +238,52 @@ export class OnlineUI {
 
 /** Liga ouvintes globais (badge do correio etc.). */
 export function bindOnlineBadges(update: (n: number) => void): void {
-  bus.on('inbox', (list: Gift[]) => update(list.length));
+  let gifts = 0;
+  let invs = 0;
+  bus.on('inbox', (list: Gift[]) => update((gifts = list.length) + invs));
+  bus.on('inbox-invites', (n: number) => update(gifts + (invs = n)));
+  bindAutoGifts();
+}
+
+/*
+ * Presentes chegam SOZINHOS: quando há algo no Correio e o hub está livre (sem jogo/painel aberto),
+ * resgata e mostra a festa na hora — a criança não precisa achar o botão do Correio.
+ * Também consulta o servidor a cada 60 s enquanto o hub está aberto (antes: só ao abrir o app).
+ */
+let autoBusy = false;
+let autoTimer = 0;
+function bindAutoGifts(): void {
+  const tryNow = async (): Promise<void> => {
+    if (autoBusy || !getInbox().length) return;
+    const { hubIdle } = await import('../hub/hub');
+    if (!hubIdle()) return;
+    autoBusy = true;
+    try {
+      const list = getInbox();
+      const rewards = await claimGifts(list.map((g) => g.id));
+      if (rewards.length) {
+        const titled = rewards.length === 1 ? rewards[0].title || list[0]?.title : undefined;
+        await celebrate(mergePacks(rewards), {
+          title: t('inbox.giftsTitle', 'PRESENTES!'),
+          subtitle: titled || t('inbox.giftsN', '{n} presentes recebidos', { n: rewards.length }),
+        });
+      }
+    } finally {
+      autoBusy = false;
+    }
+  };
+  bus.on('inbox', () => void tryNow());
+  if (!autoTimer && typeof window !== 'undefined') {
+    let ticks = 0;
+    autoTimer = window.setInterval(() => {
+      ticks++;
+      if (document.visibilityState !== 'visible') return;
+      void tryNow(); // presente que chegou durante um jogo: entrega ao voltar para o hub
+      if (ticks % 20 === 0) {
+        void import('../hub/hub').then(({ hubVisible }) => {
+          if (hubVisible()) syncNow().catch(() => {});
+        });
+      }
+    }, 3000);
+  }
 }

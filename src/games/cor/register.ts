@@ -4,6 +4,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { registerGame } from '../../hub/registry';
+import { registerDuelGame } from '../../party/duel-link';
 
 const INK = '#1d0b48';
 const SAMPLES = [
@@ -77,6 +78,7 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
 }
 
 export function registerCor(): void {
+  registerDuelGame('cor'); // grupo/links: duelo online (src/party/duel.ts)
   registerGame({
     id: 'cor',
     get name() {
@@ -88,6 +90,7 @@ export function registerCor(): void {
     icon: 'paint',
     theme: { bg: ['#5b3aa8', '#ff5e8a'], accent: '#ff5e8a', accent2: '#ffd166', title: ['#fff6d6', '#ffd166'] },
     drawShowcase,
+    online: true,
     async launch(root, exit) {
       const m = await import('./game');
       return m.launch(root, exit);

@@ -10,6 +10,8 @@
  * Tudo vive dentro de <section id="menu"> (index.html), então qualquer tela que
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
+import { narrationOn, setNarration } from '../core/narration';
+import { paperPref, setPaperPref } from '../3d/paper/settings';
 import { ensureLandscape, restorePortrait, setPrefersPortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
@@ -152,8 +154,26 @@ export function playSelected(): void {
 }
 
 /** Abre um minigame em tela cheia. */
+/** Troca o jogo que vai abrir (grupo em votação: o mais votado). Devolve o mesmo def para não mudar nada. */
+let launchFilter: ((def: MiniGameDef) => MiniGameDef) | null = null;
+export function setLaunchFilter(fn: ((def: MiniGameDef) => MiniGameDef) | null): void {
+  launchFilter = fn;
+}
+/** Mostra no carrossel o jogo `id` (grupo: os membros acompanham o líder). false = não existe. */
+export function selectGameById(id: string, instant = false): boolean {
+  const i = cards.findIndex((c) => c.def.id === id);
+  if (i < 0) return false;
+  if (i !== idx) select(i, instant);
+  return true;
+}
+/** Elemento da carta de um jogo no carrossel (para selos do grupo: líder escolhendo, votos). */
+export function cardEl(id: string): HTMLElement | null {
+  return cards.find((c) => c.def.id === id)?.el ?? null;
+}
+
 export async function launchGame(def: MiniGameDef): Promise<void> {
   if (launching || hostActive) return;
+  if (launchFilter) def = launchFilter(def);
   bus.emit('game-launch', def.id); // grupo: o líder leva todo mundo junto (src/party)
   audio.unlock();
   haptics.tap('medium');
@@ -321,6 +341,17 @@ export function initHub(o: HubOptions): void {
   if (intro) {
     intro.checked = introEnabled();
     intro.onchange = () => setIntroEnabled(intro.checked);
+  }
+  const narr = document.getElementById('set-narration') as HTMLInputElement | null;
+  if (narr) {
+    narr.checked = narrationOn();
+    narr.onchange = () => setNarration(narr.checked);
+  }
+  // PAPER: Bloop 2D de papel nos jogos 3D (padrão ligado)
+  const paper = document.getElementById('set-paper') as HTMLInputElement | null;
+  if (paper) {
+    paper.checked = paperPref();
+    paper.onchange = () => setPaperPref(paper.checked);
   }
   window.addEventListener('keydown', (e) => {
     if (!hubVisible() || document.querySelector('.modal-screen.on')) return;

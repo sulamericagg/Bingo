@@ -49,6 +49,8 @@
       { "name": "TV", "class_name": "TvChannel" },
       // Garimpo Bruto online: sala por código (relé; o anfitrião simula com o save dele) + convites.
       { "name": "GARIMPO", "class_name": "GarimpoRoom" },
+      // Duelo (src/party/duel.ts): mesmo desafio para todos, placar ao vivo e pódio — jogos solo no grupo.
+      { "name": "DUEL", "class_name": "DuelRoom" },
       // Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + convites.
       { "name": "CAVA", "class_name": "CavaRoom" }
     ]
@@ -64,6 +66,7 @@
     { "tag": "v6-mundo", "new_sqlite_classes": ["WorldRoom"] },
     { "tag": "v7-loja-tv", "new_sqlite_classes": ["UgcHub", "TvChannel"] },
     { "tag": "v8-garimpo", "new_sqlite_classes": ["GarimpoRoom"] },
+    { "tag": "v9-duel", "new_sqlite_classes": ["DuelRoom"] },
     { "tag": "v10-cava", "new_sqlite_classes": ["CavaRoom"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]

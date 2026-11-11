@@ -2,6 +2,7 @@
  * Usa speechSynthesis no idioma do jogo; sem voz disponível, simplesmente não fala. */
 import { getLang } from '../../i18n';
 import { save } from '../../core/storage';
+import { narrationOn } from '../../core/narration';
 
 const LANG_TAG: Record<string, string> = {
   pt: 'pt-BR', en: 'en-US', es: 'es-ES', de: 'de-DE', fr: 'fr-FR', it: 'it-IT', ja: 'ja-JP', ko: 'ko-KR', ru: 'ru-RU', tr: 'tr-TR', id: 'id-ID', zh: 'zh-CN',
@@ -13,7 +14,7 @@ let lastText = '';
 export function speak(text: string, o: { urgent?: boolean; gap?: number } = {}): void {
   try {
     const ss = globalThis.speechSynthesis;
-    if (!ss || !text || !save.sound) return;
+    if (!ss || !text || !save.sound || !narrationOn()) return;
     const now = performance.now();
     if (!o.urgent && (now - lastAt < (o.gap ?? 1800) || (text === lastText && now - lastAt < 6000))) return;
     lastAt = now;

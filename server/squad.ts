@@ -9,7 +9,9 @@
  * WebSocket (JSON):
  *   cliente → {t:'hello', id, name, skin, avatar?, handle?, code?}  {t:'ready', on}  {t:'chat', text}  {t:'quick', code}
  *             {t:'emote', code}  {t:'kick', id}  {t:'promote', id}  {t:'launch', game, room}  {t:'leave'}  {t:'hb'}
- *   servidor → {t:'state', s:{id, code, leader, members:[{id,name,handle,skin,avatar?,ready,on}]}, you}
+ *             {t:'focus', game, cfg?} (líder: jogo/ajustes que está olhando)  {t:'votemode', on} (líder)  {t:'vote', game}
+ *   servidor → {t:'state', s:{id, code, leader, members:[{id,name,handle,skin,avatar?,ready,on}], focus, cfg, vote, votes}, you}
+ *              {t:'focus', game, cfg, by}
  *              {t:'chat', m:{id, from, name, text?|q?, at}}  {t:'emote', from, code}  {t:'launch', game, room, by}
  *              {t:'kicked'}  {t:'error', code}  {t:'reject', reason}
  *
@@ -54,6 +56,12 @@ interface State {
   members: Member[];
   invited: Record<string, number>;
   chat: ChatMsg[];
+  /** jogo que o líder está olhando no hub (os outros acompanham ao vivo) + ajustes dele */
+  focus?: string;
+  cfg?: Record<string, string | number>;
+  /** votação ligada pelo líder: cada um escolhe um jogo; JOGAR leva o mais votado */
+  vote?: boolean;
+  votes?: Record<string, string>;
 }
 interface Att {
   id: string;
@@ -142,6 +150,10 @@ export class SquadRoom extends DurableObject<Env> {
       code: s.code,
       leader: s.leader,
       members: s.members.map((m) => ({ id: m.id, name: m.name, handle: m.handle, skin: m.skin, ...(m.avatar ? { avatar: m.avatar } : {}), ready: m.ready, on: on.has(m.id) })),
+      focus: s.focus ?? '',
+      cfg: s.cfg ?? {},
+      vote: !!s.vote,
+      votes: s.votes ?? {},
     };
   }
   private pushState(): void {
@@ -273,8 +285,36 @@ export class SquadRoom extends DurableObject<Env> {
         await this.save();
         return this.pushState();
       }
+      case 'focus': {
+        // o líder passou para outro jogo / mudou um ajuste: todos veem na hora (sem gravar: é só "ao vivo")
+        if (!leader) return;
+        const game = String(msg.game ?? '');
+        if (!/^[a-z0-9-]{1,24}$/.test(game)) return;
+        const cfg: Record<string, string | number> = {};
+        if (msg.cfg && typeof msg.cfg === 'object')
+          for (const [k, v] of Object.entries(msg.cfg as Record<string, unknown>).slice(0, 8))
+            if (/^[a-z0-9_]{1,16}$/i.test(k) && (typeof v === 'number' || (typeof v === 'string' && v.length <= 24))) cfg[k] = v as string | number;
+        s.focus = game;
+        s.cfg = cfg;
+        return this.broadcast({ t: 'focus', game, cfg, by: me.id }, ws);
+      }
+      case 'votemode': {
+        if (!leader) return;
+        s.vote = !!msg.on;
+        s.votes = {};
+        await this.save();
+        return this.pushState();
+      }
+      case 'vote': {
+        const game = String(msg.game ?? '');
+        if (!s.vote || !/^[a-z0-9-]{1,24}$/.test(game)) return;
+        s.votes = { ...(s.votes ?? {}), [me.id]: game };
+        await this.save();
+        return this.pushState();
+      }
       case 'launch': {
         if (!leader) return;
+        s.votes = {};
         const game = String(msg.game ?? '');
         const room = String(msg.room ?? '');
         if (!/^[a-z0-9-]{1,24}$/.test(game) || !/^[a-z0-9-]{4,48}$/.test(room)) return;

@@ -30,10 +30,13 @@ import { World } from './world';
 import { WaterSystem } from './water/system';
 import { ProcSystem } from './proc/system';
 import { RpLayer } from './rp'; // RP: vida de garimpeiro (clima, necessidades, diesel, eventos, estrada)
+import { Repairs } from './repair'; // CONSERTOS: quebras raras + minijogos de oficina
 import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { takePendingGarimpo } from './pending';
+import { consumePartySeat, partySeat } from '../../party/contract';
+import { reportPlaying, stopPlaying } from '../../party/join';
 import { me as socialMe } from '../../social/net';
 import { displayName } from '../../services/leaderboard';
 
@@ -85,7 +88,14 @@ export function webglOk(): boolean {
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new Garimpo(root, exit);
   const code = takePendingGarimpo();
+  // grupo (docs/PARTY.md) — gancho do grupo: o líder abre a sala com o código do grupo, os outros entram nela
+  const seat = code ? null : partySeat('garimpo');
+  if (seat) consumePartySeat('garimpo');
   if (code) g.joinRoom(code);
+  else if (seat && seat.host) {
+    g.partyCode = seat.code(5, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789');
+    g.menu(true);
+  } else if (seat) g.joinRoom(seat.code(5, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), 50);
   else g.menu();
   return g;
 }
@@ -166,6 +176,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   mp: MpHost | MpGuest | null = null;
   /** RP: camada da vida de garimpeiro (rp/index.ts) */
   rp: RpLayer | null = null;
+  /** CONSERTOS: quebras, desgaste, peças e minijogos (repair/index.ts) */
+  repairs: Repairs | null = null;
   private lobby: LobbyHandle | null = null;
   private netChip: HTMLDivElement | null = null;
   /** convidado: carrinhos/mineiros da mina do anfitrião (só para a loja) */
@@ -215,11 +227,15 @@ export class Garimpo implements MiniGameHandle, BotHost {
       .join('');
     d.innerHTML = online
       ? `<h1>${IC.friends}${esc(t('gb.mp.title', 'Garimpar com amigos'))}</h1><div class="gb-sub">${esc(t('gb.mp.pick', 'Escolha o garimpo: seus amigos jogam nele com você'))}</div><div class="gb-row">${cards}</div><button class="gb-btn ghost" data-solo>${esc(t('gb.back', 'Voltar'))}</button>`
-      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button><button class="gb-btn blue" data-joinui>${IC.qr}${esc(t('gb.mp.enterCode', 'Entrar com código'))}</button></div><div class="gb-menuinv"></div>`;
+      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button></div><div class="gb-menuinv"></div><button class="gb-codelink" data-joinui>${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
     this.wrap.appendChild(d);
     // convites de amigos chegam aqui também
     if (!online) {
       const box = d.querySelector('.gb-menuinv') as HTMLElement;
+      // amigos garimpando agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
+      const pl = document.createElement('div');
+      box.before(pl);
+      void import('../../party/friends-play').then((f) => f.playingStrip(pl, 'garimpo'));
       pollInvites(
         () => this.myself().catch(() => null),
         (inv) =>
@@ -362,7 +378,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     let net: GbNet | null = null;
     for (let i = 0; i < 3 && !net; i++) {
       try {
-        net = await GbNet.open(newCode(), true, me);
+        // grupo: 1ª tentativa com o código do grupo (os amigos já estão esperando nele)
+        net = await GbNet.open(this.partyCode && i === 0 ? this.partyCode : newCode(), true, me);
       } catch (e) {
         if ((e as Error).message !== 'taken') break;
       }
@@ -374,6 +391,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     const mp = new MpHost(this, net);
     this.mp = mp;
+    reportPlaying('garimpo', net.code); // amigos veem "Fulano está jogando — Entrar"
     mp.onPeers = () => this.onPeersChanged();
     this.fire!.onEvent = (k, n) => mp.event(n === undefined ? [k] : [k, Math.round(n)]);
     net.onClose(() => {
@@ -386,6 +404,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   /** desliga a rede (o anfitrião continua jogando sozinho) */
   private dropNet(): void {
+    stopPlaying();
     this.lobby?.dispose();
     this.lobby = null;
     if (this.fire) this.fire.onEvent = null;
@@ -460,7 +479,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
     window.setTimeout(() => (d.querySelector('input') as HTMLInputElement | null)?.focus(), 50);
   }
   /** convidado: conecta, espera o mundo do anfitrião e entra no jogo */
-  joinRoom(code: string): void {
+  /** código do grupo (o líder abre a sala com ele; ver launch) */
+  partyCode = '';
+  joinRoom(code: string, tries = 1): void {
     this.closeOverlays();
     const d = document.createElement('div');
     d.className = 'gb-scr';
@@ -493,7 +514,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
       if (cancelled) return;
       if (!me.id) return fail(t('gb.mp.offline2', 'Sem internet agora'));
       try {
-        net = await GbNet.open(code, false, me);
+        for (let k = 0; ; k++) {
+          try {
+            net = await GbNet.open(code, false, me);
+            break;
+          } catch (e) {
+            // grupo: o líder ainda está escolhendo o jogo salvo — espera a sala abrir
+            if ((e as Error).message !== 'no_room' || k >= tries - 1 || cancelled) throw e;
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
       } catch (e) {
         const r = (e as Error).message;
         return fail(r === 'no_room' || r === 'bad_code' ? t('gb.mp.noRoom', 'Sala não encontrada. Confira o código!') : r === 'full' ? t('gb.mp.full', 'A sala está cheia (4 garimpeiros)') : t('gb.mp.offline2', 'Sem internet agora'));
@@ -632,7 +662,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     setLod(tier <= 1 ? 1 : 0);
     const guest = this.guest;
-    const wk = new Worker(guest ? PCOL[color] : undefined);
+    const wk = new Worker(guest ? PCOL[color] : undefined, 'me'); // PAPER: 'me' = meu Bloop
     wk.ghost = guest;
     this.worker = wk;
     wk.cargo.cap = BARROW[s.upg.barrow];
@@ -651,6 +681,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.fire = new Fire(w, s);
     this.water = new WaterSystem(this, s);
     this.proc = new ProcSystem(this, s);
+    this.repairs = new Repairs(this, s); // CONSERTOS
     if (!guest) {
       // convidado: mina, ajudantes e fogo rodam no anfitrião
       if (s.mineOpen) this.openMine();
@@ -1096,7 +1127,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
       const drv = m === cur || seat ? null : this.drivers.find((d) => d.truck === m);
       // amigo dirigindo: a câmera dele vale (garimpeiro/helicóptero andam relativos à tela)
       if (seat) this.env.camYaw = seat.cy;
-      m.update(dt, m === cur ? ctl : seat ? seat.ctl : drv ? drv.ctl : null, this.env);
+      const mc = m === cur ? ctl : seat ? seat.ctl : drv ? drv.ctl : null;
+      m.update(dt, this.repairs ? this.repairs.ctl(m, mc) : mc, this.env); // CONSERTOS: efeitos da quebra no controle
       this.env.camYaw = this.camYaw;
     }
     // física em passos fixos de 1/120 s
@@ -1113,6 +1145,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.prof.phys += (performance.now() - p0 - this.prof.phys) * 0.05;
     collide(this.ms, w);
     for (const m of this.ms) m.sync(dt);
+    this.repairs?.step(dt); // CONSERTOS: desgaste, quebras, emergência do freio, HUD
     // fuga: virou? desvira sozinho depois de 2 s
     if (cur.veh && cur.veh.flipped() && Math.abs(cur.veh.speed) < 1) {
       this.hintT += dt;
@@ -1179,6 +1212,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     mp.frame(dt);
+    this.repairs?.stepGuest(dt); // CONSERTOS
     if (cur === this.worker) this.worker.update(dt, ctl, this.env);
     else if (cur instanceof Excavator) cur.cam.yawOff = cur.swing + (ctl.drive ? 0 : 0.38);
     mp.sendInput(ctl, dt);
@@ -1694,7 +1728,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     };
     const d = this.overlay(
       `<button class="gb-b gb-x" data-x>${IC.close}</button><h2>${IC.coin.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-4px"')} ${Math.floor(s.money).toLocaleString('pt-BR')}</h2>
-      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}${this.proc ? this.proc.shopHtml(s.money) : ''}</div>`,
+      <div class="gb-shopgrid">${MACHINES.map((m) => item(m, false)).join('')}${HELPERS.map((u) => item(u, true)).join('')}${UPGRADES.map((u) => item(u, true)).join('')}${MINE.map((u) => item(u, true)).join('')}${this.water && !this.guest ? this.water.shopHtml(s.money) : ''}${this.proc ? this.proc.shopHtml(s.money) : ''}${this.repairs ? this.repairs.shopHtml(s.money) : ''}</div>`,
     );
     d.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
@@ -1723,6 +1757,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     if (this.water?.isItem(id)) return this.water.buy(id) && (this.persist(), true);
     if (this.proc?.isItem(id)) return this.proc.buy(id) && (this.persist(), true);
+    if (this.repairs?.isItem(id)) return this.repairs.buy(id) && (this.persist(), true); // CONSERTOS
     const mi = MACHINES.find((m) => m.id === id);
     if (mi) {
       const n = this.ms.filter((m) => m.kind === mi.kind).length;
@@ -1805,6 +1840,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.terrain = encodeTerrain(w.T);
     if (this.water) s.water = this.water.save();
     if (this.proc) s.proc = this.proc.save();
+    if (this.repairs) s.repair = this.repairs.save(); // CONSERTOS
     this.fire?.save(s);
     if (this.ug) s.ug = this.ug.save();
     this.rp?.save(s); // RP
@@ -1867,6 +1903,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.water = null;
     this.proc?.dispose();
     this.proc = null;
+    this.repairs?.dispose(); // CONSERTOS
+    this.repairs = null;
     this.w?.dispose();
     this.w = null;
     this.r?.dispose();
