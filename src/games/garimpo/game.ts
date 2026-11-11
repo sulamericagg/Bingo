@@ -56,7 +56,7 @@ export interface ShopItem {
   max?: number;
 }
 export const MACHINES: ShopItem[] = [
-  { id: 'pickup', kind: 'pickup', icon: 'enter', name: () => t('gb.m.pickup', 'Pickup 4x4'), price: [900], max: 2 },
+  { id: 'pickup', kind: 'pickup', icon: 'enter', name: () => t('gb.m.pickup', 'Pickup 4x4'), price: [750], max: 2 },
   { id: 'excavator', kind: 'excavator', icon: 'dig', name: () => t('gb.m.excavator', 'Escavadeira'), price: [6500], max: 2 },
   { id: 'truck', kind: 'truck', icon: 'tip', name: () => t('gb.m.truck', 'Caminhão basculante'), price: [5000], max: 3 },
   { id: 'dozer', kind: 'dozer', icon: 'bladeDown', name: () => t('gb.m.dozer', 'Trator de esteira'), price: [9000], max: 1 },
@@ -775,7 +775,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.rp = new RpLayer(this); // RP
     hud.setRainIcon(this.rainOn);
     hud.setKind(this.cur.kind, s.expert);
-    setNotifyTop(96);
+    setNotifyTop(114); // abaixo do chip de objetivo do acampamento (até ~106 px): não se sobrepõem no 1º minuto
     setNotifyAlign('center');
     this.toastEl = document.createElement('div');
     this.toastEl.className = 'gb-toast';
