@@ -11,12 +11,13 @@
  *   DO  AdminHub    Correio (presentes pessoais com as moedas)
  */
 import { buildExtra, filterMessage, maskLongText, safeName, type Extra } from '../shared/moderation';
-import { TV, UGC, UGC_REPORT_REASONS, type TvPayload, type UgcType } from '../shared/ugc';
+import { TV, UGC, UGC_REPORT_REASONS, type TvAiReject, type TvPayload, type UgcType } from '../shared/ugc';
 import { hashCreation, jsonBytes, validate, type Creation } from '../src/studio/format';
 import { adminHub } from './admin-hub';
 import { loadExtraWords } from './moderation';
 import { getPlayer } from './store';
 import { tvChannel } from './tv';
+import { moderateFilm } from './voice-mod';
 import { ugcHub, type BrowseIn, type Grant } from './ugc-hub';
 import { HttpError, json, PLAYER_ID_RE, sha256 } from './util';
 
@@ -323,6 +324,7 @@ export async function ugcUnpublish(req: Request, env: Env): Promise<Response> {
   const type = await ugcHub(env).unpublish(id, w.pid);
   if (type) {
     await env.DATA.delete((type === 'filme' ? 'ugc:f:' : 'ugc:c:') + id);
+    if (type === 'filme') await env.DATA.delete('ugc:fm:' + id).catch(() => {});
     if (type === 'filme') await tvChannel(env).removeFilm(id);
   }
   return json({ ok: !!type });
@@ -423,6 +425,8 @@ export async function tvSubmit(req: Request, env: Env): Promise<Response> {
     const b64 = String(c?.b64 ?? '');
     if (!/^audio\/[a-z0-9.+-]+(;\s*codecs=[a-z0-9.,"' -]+)?$/i.test(mime) || !/^[A-Za-z0-9+/=]+$/.test(b64)) continue;
     clips[k] = { mime: mime.slice(0, 60), b64, dur: Math.max(0, Math.min(60, Number(c?.dur) || 0)) };
+    // transcrição do aparelho (melhor esforço): usada só se a IA da Cloudflare não estiver disponível
+    if (typeof c?.tx === 'string') clips[k].tx = str(c.tx, 500);
     bytes += b64.length;
   }
   const projectJson = JSON.stringify(body.project);
@@ -431,7 +435,10 @@ export async function tvSubmit(req: Request, env: Env): Promise<Response> {
   const id = String(body.project.id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
   if (!id) return fail('invalid');
   const fid = 'tv_' + id;
-  const flags = autoFlags(info.texts, ex);
+  // IA: transcreve as vozes + filtro + (opcional) Claude — antes de entrar na fila humana
+  const lang = /^[a-z]{2}$/.test(String(body.lang ?? '')) ? String(body.lang) : 'pt';
+  const mod = await moderateFilm(env, body.project, clips, lang, ex);
+  const flags = [...mod.flags, ...autoFlags(info.texts, ex)];
   if (Object.keys(clips).length) flags.push(`🎙️ ${Object.keys(clips).length} gravação(ões) de voz — ouça antes de aprovar`);
   const r = await ugcHub(env).publish({
     id: fid,
@@ -444,16 +451,39 @@ export async function tvSubmit(req: Request, env: Env): Promise<Response> {
     category: 'filme',
     kind: info.mode,
     tags: [],
-    meta: { dur: Math.round(info.dur * 10) / 10, mode: info.mode, clips: Object.keys(clips).length, bytes },
+    meta: { dur: Math.round(info.dur * 10) / 10, mode: info.mode, clips: Object.keys(clips).length, bytes, ai: { v: mod.verdict, src: mod.src, llm: mod.llm } },
     thumbs: cleanThumbs(body.thumbs),
-    flags,
+    flags: flags.slice(0, 40),
     dailyLimit: TV.maxFilmsPerDay,
+    autoReject: mod.reject ? { reason: aiReason(mod.reject), reviewer: 'IA (automático)' } : undefined,
   });
   if (!r.ok) return fail(r.error === 'taken' ? 'invalid' : r.error);
   // reenviado: sai do ar até a nova revisão
   if (!r.isNew) await tvChannel(env).removeFilm(fid);
-  await env.DATA.put('ugc:f:' + fid, JSON.stringify({ project: body.project, clips } satisfies TvPayload));
-  return json({ ok: true, listing: r.item });
+  // a transcrição vai sem o `tx` do aparelho no filme público; o relatório da IA fica à parte (painel)
+  const pub: TvPayload['clips'] = {};
+  for (const [k, c] of Object.entries(clips)) pub[k] = { mime: c.mime, b64: c.b64, dur: c.dur };
+  await env.DATA.put('ugc:f:' + fid, JSON.stringify({ project: body.project, clips: pub } satisfies TvPayload));
+  await env.DATA.put('ugc:fm:' + fid, JSON.stringify(mod)).catch(() => {});
+  if (mod.reject) return json({ ok: false, error: 'ai', ai: mod.reject, reason: aiReason(mod.reject) });
+  return json({ ok: true, listing: r.item, ai: { verdict: mod.verdict, src: mod.src } });
+}
+
+/** Motivo gentil (o autor vê em "Meus envios"; o app mostra a versão traduzida a partir de `ai.why`). */
+function aiReason(r: TvAiReject): string {
+  const n = r.lines.map((l) => l.n).join(', ') || '?';
+  switch (r.why) {
+    case 'voice-bad':
+      return `Tem uma palavra que não pode na TV na fala ${n}. Regrave essa fala!`;
+    case 'voice-pii':
+      return `Na fala ${n} parece ter um dado pessoal (telefone, endereço, escola ou rede social). Regrave sem isso!`;
+    case 'text-bad':
+      return `Tem uma palavra que não pode na TV no balão da fala ${n}. Troque o texto!`;
+    case 'text-pii':
+      return `O balão da fala ${n} parece ter um dado pessoal. Troque o texto!`;
+    default:
+      return `A IA achou algo que não pode na TV na fala ${n}. Regrave ou troque essa fala!`;
+  }
 }
 
 /** POST /api/tv/vote { id, film } → { votes, voted } */

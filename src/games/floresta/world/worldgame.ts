@@ -13,6 +13,7 @@ import { reportRun } from '../../../hub/registry';
 import type { QualitySettings, Tier } from '../../../core/quality';
 import { short } from '../data';
 import { handTexture, lambert, myHandColors, toolModel, windTime } from '../fps/models';
+import { SkyDome, natureAnisotropy } from '../../../3d/nature';
 import { Forearm } from '../../../3d/common/hand';
 import { CH, WATER_Y, type Camp } from './gen';
 import { WBIOMES, WSPECIES } from './biomes';
@@ -197,6 +198,9 @@ export class WorldGame {
   q: WQ;
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
+  /** céu em degradê (topo do bioma → horizonte = neblina) */
+  private sky: SkyDome;
+  private skyTop = new THREE.Color(0x6ab8f0);
   private raf = 0;
   private last = 0;
   private paused = false;
@@ -287,14 +291,18 @@ export class WorldGame {
     r.domElement.className = 'fl-canvas';
     root.appendChild(r.domElement);
     this.renderer = r;
+    natureAnisotropy(r);
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 400);
     this.scene.add(this.camera);
     this.scene.fog = new THREE.Fog(0xcfeaf2, 30, 120);
     this.scene.background = new THREE.Color(0xcfeaf2);
 
-    this.hemi = new THREE.HemisphereLight(0xdff4ff, 0x6a5a3a, 1.25);
+    // luz quente: céu azulado em cima, rebatida esverdeada/terra embaixo, sol dourado
+    this.hemi = new THREE.HemisphereLight(0xdff4ff, 0x5e6a34, 1.25);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff2d8, 1.7);
+    this.sky = new SkyDome();
+    this.scene.add(this.sky.mesh);
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.75);
     this.sun.castShadow = this.q.shadows;
     this.sun.shadow.mapSize.set(1024, 1024);
     const sc = this.sun.shadow.camera;
@@ -305,14 +313,17 @@ export class WorldGame {
     this.sun.shadow.bias = -0.0015;
     this.scene.add(this.sun, this.sun.target);
 
-    this.world = new World(this.scene, this.save, this.q);
+    this.world = new World(this.scene, this.save, this.q, opts.tier);
     this.world.onCampLoad = (c, ch) => this.buildCamp(c, ch);
     this.phys = new Phys();
     this.world.vox.phys = this.phys;
     this.world.vox.budgetMs = [2, 3, 4, 6][opts.tier];
     this.world.vox.natR = opts.tier <= 1 ? 1 : 2;
     this.world.onUnload = (c) => this.phys.forgetChunk(c);
-    this.world.vox.onEditChunk = (c) => this.phys.touchChunk(c);
+    this.world.vox.onEditChunk = (c) => {
+      this.phys.touchChunk(c);
+      this.world.grassDirty(c);
+    };
     this.pBody = this.phys.kinBox(1, 0.32, 0.85, 0.32);
     this.lantern = new THREE.PointLight(0xffd8a0, 0, 20, 1.6);
     this.camera.add(this.lantern);
@@ -867,6 +878,11 @@ export class WorldGame {
     } else this.walk(dt);
     for (const v of this.vehs) if (this.vehs.indexOf(v) !== this.driving && v.m.g.visible) this.idleVeh(v, dt);
 
+    // quem amassa a grama: o jogador a pé ou o veículo dirigido
+    const pv = this.driving >= 0 ? this.vehs[this.driving] : null;
+    this.world.push.x = pv ? pv.x : this.px;
+    this.world.push.z = pv ? pv.z : this.pz;
+    this.world.push.r = pv ? 2.6 : 0.75;
     this.world.update(this.cx(), this.cz(), dt);
     this.world.vox.update(this.cx(), this.driving >= 0 ? this.vehs[this.driving].y : this.py, this.cz(), dt);
     this.stepFalls(dt);
@@ -877,6 +893,7 @@ export class WorldGame {
     this.camera.updateMatrixWorld();
     this.updateSky(dt);
     this.sb?.update(dt);
+    this.updateDome();
     this.updateHud(dt);
     if (this.markerT > 0) {
       this.markerT -= dt;
@@ -2034,6 +2051,7 @@ export class WorldGame {
       this.camera.far = f.far + 20;
       this.camera.updateProjectionMatrix();
       this.hemi.color.lerp(_top, 0.1);
+      this.skyTop.lerp(_top, 0.25);
       const wb = WBIOMES[this.world.lastBest];
       this.world.waterMat.color.lerp(_c.set(wb.water), 0.2);
       // bioma novo: aviso no topo
@@ -2059,6 +2077,17 @@ export class WorldGame {
       this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.5;
       this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.5;
     }
+  }
+
+  /** céu: horizonte = cor do fundo/neblina (já com noite/caverna); topo = céu do bioma escurecendo junto */
+  private updateDome(): void {
+    const bg = this.scene.background as THREE.Color;
+    this.sky.horizon.copy(bg);
+    const k = Math.min(1, Math.max(0, (1 - this.dayLight) * 1.25) + this.under);
+    this.sky.top.copy(this.skyTop).lerp(bg, k);
+    this.sky.sunDir.copy(this.sun.position).sub(this.sun.target.position).normalize();
+    this.sky.sunCol.setRGB(1, 0.92, 0.75).multiplyScalar(this.dayLight * (1 - this.under));
+    this.sky.follow(this.camera);
   }
 
   /** no subsolo: escurece, neblina fechada e lanterna */
@@ -2175,6 +2204,7 @@ export class WorldGame {
   setTier(tier: Tier, _s?: QualitySettings): void {
     const nq = wq(tier);
     Object.assign(this.q, nq);
+    this.world.setNatureTier(tier);
     this.renderer.setPixelRatio(nq.pr * this.resK);
     this.resize();
   }
@@ -2211,6 +2241,7 @@ export class WorldGame {
     this.hud.destroy();
     this.sb?.dispose();
     this.world.dispose();
+    this.sky.dispose();
     this.phys.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

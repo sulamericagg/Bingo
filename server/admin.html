@@ -296,6 +296,14 @@ td.acts { white-space: nowrap; text-align: right; }
 .ugc-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .ugc-lines { max-height: 300px; overflow: auto; display: grid; gap: 6px; }
 .ugc-lines audio { height: 32px; margin-top: 4px; }
+.ugc-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid rgba(127,127,160,.18); }
+.ugc-line:first-child { border-top: 0; }
+.ugc-tx { font-size: 12.5px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); }
+.ugc-tx.bad, .ugc-tx.pii { background: #ff5c7a22; outline: 1px solid #ff5c7a66; }
+.ugc-tx.mild { background: rgba(255,216,77,.10); outline: 1px solid rgba(255,216,77,.4); }
+.ugc-tx mark { background: #ff5c7a; color: #fff; border-radius: 4px; padding: 0 3px; }
+.ugc-tx.mild mark { background: var(--yellow); color: #222; }
+@media (max-width: 640px) { .ugc-line { grid-template-columns: 1fr; } }
 .pill.bad { background: #ff5c7a33; color: #ff8a8a; }
 @media (max-width: 640px) { .ugc-card { grid-template-columns: 1fr; } }
 </style>
@@ -694,7 +702,7 @@ function ugcCard(it) {
   return `<div class="ugc-card" data-id="${esc(it.id)}">
     <div class="ugc-thumbs">${(it.thumbs || []).map((t) => `<img src="${esc(t)}" alt="miniatura" loading="lazy" onerror="ugcBadThumb(this)">`).join('') || '<div class="ugc-nothumb">sem foto</div>'}</div>
     <div class="ugc-body">
-      <div><span class="pill">${UGC_TYPE[it.type] || it.type}</span> <span class="pill">${UGC_STATUS[it.status] || it.status}</span> ${it.reports ? `<span class="pill bad">🚩 ${it.reports} denúncia(s)</span>` : ''} ${it.authorBanned ? '<span class="pill bad">autor banido</span>' : ''}</div>
+      <div><span class="pill">${UGC_TYPE[it.type] || it.type}</span> <span class="pill">${UGC_STATUS[it.status] || it.status}</span> ${ugcAiPill(m.ai)} ${it.reports ? `<span class="pill bad">🚩 ${it.reports} denúncia(s)</span>` : ''} ${it.authorBanned ? '<span class="pill bad">autor banido</span>' : ''}</div>
       <h4>${esc(it.title)}</h4>
       ${it.descr ? `<p class="small">${esc(it.descr)}</p>` : ''}
       <div class="muted small">${info}</div>
@@ -707,6 +715,38 @@ function ugcCard(it) {
         ${it.status !== 'rejected' ? '<button class="btn danger sm" data-ug="reject">✗ Recusar</button>' : ''}
         ${it.authorBanned ? '' : `<button class="btn ghost sm" data-ug="ban" data-pid="${esc(it.author)}" data-name="${esc(it.aname)}">🚫 Banir autor</button>`}
       </div></div></div>`;
+}
+const AI_SRC = { whisper: 'Whisper (Workers AI)', device: 'transcrição do aparelho', mock: 'simulada (teste local)', none: 'sem transcrição', mixed: 'mista' };
+function ugcAiPill(ai) {
+  if (!ai) return '';
+  const src = ai.src === 'whisper' ? '' : ai.src === 'device' ? ' · só aparelho' : ai.src === 'mock' ? ' · teste' : ai.src === 'none' ? ' · sem transcrição' : '';
+  if (ai.v === 'reject') return `<span class="pill bad">🤖 IA: recusou${src}</span>`;
+  if (ai.v === 'review') return `<span class="pill warn">🤖 IA: atenção${src}</span>`;
+  return `<span class="pill on">🤖 IA: ok${src}</span>`;
+}
+/** Texto com os trechos achados pela IA destacados (<mark>). */
+function ugcMark(text, hits) {
+  let h = esc(text || '');
+  for (const w of (hits || []).filter((x) => x && x.length > 1).sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    h = h.replace(re, (x) => `<mark>${x}</mark>`);
+  }
+  return h;
+}
+function ugcFilmLines(c) {
+  const ai = c.ai || null;
+  const texts = new Map(((ai && ai.texts) || []).map((x) => [x.n, x]));
+  return (c.lines || []).map((l, i) => {
+    const n = i + 1;
+    const tx = ai && l.audio ? (ai.clips || {})[l.audio] : null;
+    const tb = texts.get(n);
+    const txHtml = l.audio
+      ? (tx
+        ? `<div class="ugc-tx ${tx.level}"><span class="muted">🎙️ ouvido pela IA (${esc(AI_SRC[tx.src] || tx.src)}):</span><br>${tx.tx ? ugcMark(tx.tx, tx.hits) : '<i class="muted">(silêncio / nada entendido)</i>'}</div>`
+        : '<div class="ugc-tx"><span class="muted">🎙️ sem relatório da IA (envio antigo) — ouça</span></div>')
+      : '<div></div>';
+    return `<div class="ugc-line"><div class="small"><b>${n}. ${esc(l.who || '—')}:</b> <span class="ugc-tx ${tb ? tb.level : ''}" style="display:inline;padding:0 4px">${tb ? ugcMark(l.t, tb.hits) : esc(l.t || '')}</span>${l.audio && c.clips && c.clips[l.audio] ? `<br><audio controls preload="none" src="${esc(c.clips[l.audio])}"></audio>` : ''}</div>${txHtml}</div>`;
+  }).join('');
 }
 function ugcBind(host) {
   $$('[data-ug]', host).forEach((b) => (b.onclick = () => {
@@ -743,7 +783,8 @@ async function openUgc(id) {
   let body = '';
   if (it.type === 'filme') {
     body = `<h4>Elenco</h4><p class="small">${(c.cast || []).map(esc).join(', ') || '—'}</p>
-      <h4>Falas (${(c.lines || []).length})</h4><div class="ugc-lines">${(c.lines || []).map((l) => `<div class="small"><b>${esc(l.who || '—')}:</b> ${esc(l.t || '')}${l.audio && c.clips && c.clips[l.audio] ? `<br><audio controls preload="none" src="${esc(c.clips[l.audio])}"></audio>` : ''}</div>`).join('') || '<span class="muted">sem falas</span>'}</div>`;
+      ${c.ai ? `<p class="small">🤖 Moderação por IA: <b>${c.ai.verdict === 'reject' ? 'recusado automaticamente' : c.ai.verdict === 'review' ? 'pediu atenção' : 'ok'}</b> · transcrição: ${esc(AI_SRC[c.ai.src] || c.ai.src)} · Claude: ${esc(c.ai.llm)}</p>` : '<p class="small muted">🤖 Sem relatório da IA (envio anterior à moderação por IA).</p>'}
+      <h4>Falas (${(c.lines || []).length}) — texto do balão · áudio · o que a IA ouviu</h4><div class="ugc-lines" style="max-height:420px">${ugcFilmLines(c) || '<span class="muted">sem falas</span>'}</div>`;
   } else {
     body = `<h4>Conteúdo</h4><p class="small">${esc(c.kind || '')} · ${fmtN(c.parts || 0)} peças</p>
       ${(c.partNames || []).length ? `<p class="small">Nomes das peças: ${c.partNames.map(esc).join(', ')}</p>` : ''}

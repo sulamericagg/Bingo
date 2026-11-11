@@ -19,6 +19,7 @@ export interface VoxHost {
 
 const _pt = { d: 0, m: 0 };
 const _col = new Float32Array(3);
+const _g4 = new Float32Array(4);
 const key = (cx: number, cz: number) => cx + ',' + cz;
 
 interface Job {
@@ -54,12 +55,11 @@ export class VoxWorld {
     this.ctx = {
       sample: (x, y, z, o) => this.sample(x, y, z, o),
       grass: (c, lx, lz, out) => {
-        const o = (lz * VN + lx) * 13;
-        const col = c.col;
-        const tn = col[o + 12];
-        out[0] = (col[o] + (col[o + 3] - col[o]) * tn) * 0.97;
-        out[1] = (col[o + 1] + (col[o + 4] - col[o + 1]) * tn) * 0.97;
-        out[2] = (col[o + 2] + (col[o + 5] - col[o + 2]) * tn) * 0.97;
+        // mesma cor do chão de altura (manchas, clareiras, areia, trilho): sem emenda entre os dois
+        c.grassAt(lx, lz, _g4);
+        out[0] = _g4[0];
+        out[1] = _g4[1];
+        out[2] = _g4[2];
       },
       ownX: true,
       ownZ: true,

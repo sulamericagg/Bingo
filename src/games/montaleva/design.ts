@@ -2,7 +2,7 @@
  *  MONTA & LEVA — projeto do veículo (grade, validação, grupos rígidos, desfazer/refazer).
  *  Sem DOM: usado pelo editor, pela física e pelo verificador de fases.
  * ============================================================ */
-import { MOTOR_REACH, PARTS, cellsOf, footprint, fullSide, type PartId, type Placed } from './parts';
+import { MOTOR_REACH, PARTS, WIRABLE, cellsOf, footprint, fullSide, isButton, type PartId, type Placed } from './parts';
 import type { CargoDef, LevelDef } from './levels';
 
 const K = (x: number, y: number) => x * 1000 + y;
@@ -13,8 +13,67 @@ const DIRS: [number, number][] = [
   [0, -1],
 ];
 
+/** fio resolvido: botão b → alvo t (índices em parts) */
+export interface WireRef {
+  b: number;
+  t: number;
+}
+
+/** alvo de fio numa célula (motor/dobradiça estrutural, ou propulsor montado) */
+export function wireTargetAt(parts: readonly Placed[], x: number, y: number): number {
+  let m = -1;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.x !== x || p.y !== y || !WIRABLE[p.t]) continue;
+    if (PARTS[p.t].layer === 'struct') return i;
+    m = i;
+  }
+  return m;
+}
+
+/** remove fios sem alvo e duplicados; devolve a MESMA lista quando nada muda */
+export function pruneWires(parts: readonly Placed[]): Placed[] {
+  let changed = false;
+  const out = parts.map((p) => {
+    if (!p.w) return p;
+    if (!isButton(p.t)) {
+      changed = true;
+      const { w: _w, ...rest } = p;
+      void _w;
+      return rest;
+    }
+    const seen = new Set<number>();
+    const w = p.w.filter(([x, y]) => {
+      const k = K(x, y);
+      if (seen.has(k) || wireTargetAt(parts, x, y) < 0) return false;
+      seen.add(k);
+      return true;
+    });
+    if (w.length === p.w.length) return p;
+    changed = true;
+    return { ...p, w };
+  });
+  return changed ? out : (parts as Placed[]);
+}
+
+/** ao mover peças: fios que apontavam para (ox,oy) passam a apontar para (nx,ny) */
+export function remapWires(parts: readonly Placed[], moves: [number, number, number, number][]): Placed[] {
+  if (!moves.length) return parts as Placed[];
+  return parts.map((p) => {
+    if (!p.w) return p;
+    return {
+      ...p,
+      w: p.w.map(([x, y]) => {
+        for (const [ox, oy, nx, ny] of moves) if (ox === x && oy === y) return [nx, ny] as [number, number];
+        return [x, y] as [number, number];
+      }),
+    };
+  });
+}
+
 export function cargoCells(c: CargoDef): [number, number][] {
   const n = c.t === 'big' || c.t === 'drops' ? 2 : 1;
+  if (c.t === 'bot') return [[c.x, c.y], [c.x, c.y + 1]];
   const out: [number, number][] = [];
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out.push([c.x + i, c.y + j]);
   return out;
@@ -40,6 +99,9 @@ export interface Analysis {
   power: Map<number, number[]>;
   /** motor → rodas que ele move */
   drives: Map<number, number[]>;
+  /** botões (índices), na ordem das peças */
+  buttons: number[];
+  wires: WireRef[];
 }
 
 export function analyze(parts: readonly Placed[]): Analysis {
@@ -118,7 +180,17 @@ export function analyze(parts: readonly Placed[]): Analysis {
     });
     drives.set(mi, list);
   });
-  return { struct, mount, group, groups, links, hinges, base, power, drives };
+  const buttons: number[] = [];
+  const wires: WireRef[] = [];
+  parts.forEach((p, i) => {
+    if (!isButton(p.t)) return;
+    buttons.push(i);
+    for (const [x, y] of p.w ?? []) {
+      const ti = wireTargetAt(parts, x, y);
+      if (ti >= 0 && !wires.some((w) => w.b === i && w.t === ti)) wires.push({ b: i, t: ti });
+    }
+  });
+  return { struct, mount, group, groups, links, hinges, base, power, drives, buttons, wires };
 }
 
 export function partCost(parts: readonly Placed[]): number {

@@ -1,10 +1,12 @@
 /* ============================================================
- *  MONTA & LEVA — desenho (Canvas 2D). Estilo: geométrico, chapado, contorno nítido, sombra sutil.
+ *  MONTA & LEVA — desenho (Canvas 2D). Estilo: mundo branco e limpo, plataformas cinza com volume suave,
+ *  chassi laranja chapado, pneus pretos raiados, botões cinza com tampa colorida e fios azul-claro.
  *  Coordenadas do mundo em metros (y para cima). As peças são desenhadas em "unidades de célula".
+ *  Sem alocação por quadro nos caminhos quentes (gradientes e caminhos reaproveitados quando possível).
  * ============================================================ */
 import type { CargoDef } from './levels';
-import { PARTS, U, triVerts, type PartId, type Placed } from './parts';
-import type { Pt, Track, TrackObj } from './track';
+import { CAP_FWD, CAP_REV, PARTS, U, triVerts, type PartId, type Placed } from './parts';
+import type { Pt, Span, Track, TrackObj } from './track';
 
 export interface View {
   /** px por metro */
@@ -16,24 +18,39 @@ export interface View {
   h: number;
 }
 
-export const INK = '#26303d';
+export const INK = '#2a2f38';
 export const COL = {
-  bg: '#f3f5f8',
-  dot: '#dfe4ec',
-  ground: '#dde3eb',
-  groundTop: '#8f9bad',
-  groundIn: '#cfd6e0',
-  zone: '#2fbf8f',
-  grid: '#c9d3e0',
-  gridBg: 'rgba(91,141,239,0.06)',
-  ok: '#2fbf8f',
-  bad: '#ef5d60',
-  shadow: 'rgba(25,35,55,0.12)',
+  bg: '#f6f7f9',
+  dot: '#e6e9ee',
+  ground: '#e2e5ea',
+  groundLo: '#d3d7de',
+  groundTop: '#f3f4f6',
+  edge: '#c3c8d0',
+  edgeHi: '#ffffff',
+  zone: '#22b07d',
+  grid: '#c9d0da',
+  gridBg: 'rgba(120,135,160,0.06)',
+  ok: '#22b07d',
+  bad: '#ef4444',
+  shadow: 'rgba(25,35,55,0.10)',
+  wire: '#7cc6f2',
+  wireDark: '#3a9bd6',
+  water: 'rgba(96,178,232,0.62)',
+  waterTop: '#bfe5fb',
 };
+/** profundidade das plataformas (efeito de volume): deslocamento da face de cima, em metros */
+const DEPTH_X = 0.2;
+const DEPTH_Y = 0.3;
 
 export type Palette = Partial<Record<PartId, [string, string]>>;
 export const PALETTES: Record<string, Palette> = {
   classic: {},
+  blueprint: {
+    block: ['#5b8def', '#2f5bb8'],
+    beam: ['#8a6cf0', '#5a3fc0'],
+    tri: ['#f2a541', '#c47a17'],
+    motor: ['#ef5d60', '#b8333a'],
+  },
   pastel: {
     block: ['#8fb3f5', '#4f73c0'],
     beam: ['#b7a3f5', '#7258c8'],
@@ -71,21 +88,21 @@ export const wx = (v: View, x: number) => v.ox + x * v.s;
 export const wy = (v: View, y: number) => v.oy - y * v.s;
 
 /* ------------------------------ fundo ------------------------------ */
-export function drawBackground(x: CanvasRenderingContext2D, v: View): void {
-  x.fillStyle = COL.bg;
+export function drawBackground(x: CanvasRenderingContext2D, v: View, tint = COL.bg): void {
+  x.fillStyle = tint;
   x.fillRect(0, 0, v.w, v.h);
   drawDots(x, v);
 }
 
 function drawDots(x: CanvasRenderingContext2D, v: View): void {
-  // grade de pontos do mundo
+  // grade de pontos bem discreta (dá noção de movimento à câmera)
   const ds = v.s >= 40 ? 1 : 2;
   const x0 = Math.floor(-v.ox / v.s / ds) * ds;
   const x1 = (v.w - v.ox) / v.s;
   const y0 = Math.floor((v.oy - v.h) / v.s / ds) * ds;
   const y1 = v.oy / v.s;
   x.fillStyle = COL.dot;
-  const r = Math.max(1, v.s * 0.03);
+  const r = Math.max(1, v.s * 0.028);
   for (let gx = x0; gx <= x1; gx += ds)
     for (let gy = y0; gy <= y1; gy += ds) {
       x.fillRect(wx(v, gx) - r / 2, wy(v, gy) - r / 2, r, r);
@@ -95,37 +112,104 @@ function drawDots(x: CanvasRenderingContext2D, v: View): void {
 /* ------------------------------ pista ------------------------------ */
 export function drawTrack(x: CanvasRenderingContext2D, v: View, tr: Track): void {
   const bottom = v.h + 40;
-  for (const line of tr.lines) drawGround(x, v, line, bottom);
-  // parede do começo
+  // parede do começo (bloco alto atrás da área de montagem)
   if (tr.lines[0]) {
     const p0 = tr.lines[0][0];
-    x.fillStyle = COL.ground;
-    x.fillRect(wx(v, p0.x) - 2 * v.s, wy(v, p0.y), 2 * v.s, bottom - wy(v, p0.y));
-    x.strokeStyle = COL.groundTop;
-    x.lineWidth = Math.max(2, v.s * 0.05);
-    x.beginPath();
-    x.moveTo(wx(v, p0.x) - 2 * v.s, wy(v, p0.y));
-    x.lineTo(wx(v, p0.x), wy(v, p0.y));
-    x.lineTo(wx(v, p0.x), wy(v, 0));
-    x.stroke();
+    const X0 = tr.dir > 0 ? p0.x - 2 : p0.x;
+    ledgeBox(x, v, X0, p0.y - 30, 2, 30, bottom);
   }
+  for (const line of tr.lines) drawGround(x, v, line, bottom);
   // parede final
   const wl = tr.wall;
-  x.fillStyle = COL.ground;
-  x.strokeStyle = COL.groundTop;
-  x.lineWidth = Math.max(2, v.s * 0.05);
+  ledgeBox(x, v, tr.dir > 0 ? wl.x : wl.x - 5.5, wl.y0 - 30, 6, wl.y1 - wl.y0 + 30, bottom);
+  for (const c of tr.ceils) drawCeil(x, v, c);
+}
+
+/** caixa com volume (face de cima + frente) */
+function ledgeBox(x: CanvasRenderingContext2D, v: View, X: number, Y: number, W: number, H: number, bottom: number): void {
+  const L = wx(v, X);
+  const R = wx(v, X + W);
+  const T = wy(v, Y + H);
+  const dx = DEPTH_X * v.s;
+  const dy = DEPTH_Y * v.s;
+  x.fillStyle = COL.groundTop;
   x.beginPath();
-  x.rect(wx(v, wl.x), wy(v, wl.y1), 0.5 * v.s, bottom - wy(v, wl.y1));
+  x.moveTo(L, T);
+  x.lineTo(L + dx, T - dy);
+  x.lineTo(R + dx, T - dy);
+  x.lineTo(R + dx, Math.min(bottom, wy(v, Y)) - dy);
+  x.lineTo(R, Math.min(bottom, wy(v, Y)));
+  x.lineTo(R, T);
+  x.closePath();
   x.fill();
+  x.fillStyle = COL.ground;
+  x.fillRect(L, T, R - L, Math.min(bottom, wy(v, Y)) - T);
+  x.strokeStyle = COL.edge;
+  x.lineWidth = Math.max(1, v.s * 0.022);
   x.beginPath();
-  x.moveTo(wx(v, wl.x), wy(v, wl.y0));
-  x.lineTo(wx(v, wl.x), wy(v, wl.y1));
-  x.lineTo(wx(v, wl.x + 0.5), wy(v, wl.y1));
+  x.moveTo(L, Math.min(bottom, wy(v, Y)));
+  x.lineTo(L, T);
+  x.lineTo(R, T);
+  x.lineTo(R, Math.min(bottom, wy(v, Y)));
   x.stroke();
+}
+
+function drawCeil(x: CanvasRenderingContext2D, v: View, c: Span): void {
+  const L = wx(v, c.x0);
+  const R = wx(v, c.x1);
+  const B = wy(v, c.y);
+  const T = Math.max(-40, wy(v, c.y + 1.4));
+  const dx = DEPTH_X * v.s;
+  const dy = DEPTH_Y * v.s;
+  // lateral direita (volume)
+  x.fillStyle = COL.groundLo;
+  x.beginPath();
+  x.moveTo(R, B);
+  x.lineTo(R + dx, B - dy);
+  x.lineTo(R + dx, T - dy);
+  x.lineTo(R, T);
+  x.closePath();
+  x.fill();
+  x.fillStyle = COL.groundTop;
+  x.beginPath();
+  x.moveTo(L, T);
+  x.lineTo(L + dx, T - dy);
+  x.lineTo(R + dx, T - dy);
+  x.lineTo(R, T);
+  x.closePath();
+  x.fill();
+  const g = x.createLinearGradient(0, T, 0, B);
+  g.addColorStop(0, COL.ground);
+  g.addColorStop(1, COL.groundLo);
+  x.fillStyle = g;
+  x.fillRect(L, T, R - L, B - T);
+  x.strokeStyle = COL.edge;
+  x.lineWidth = Math.max(1, v.s * 0.022);
+  x.strokeRect(L, T, R - L, B - T);
+  // faixa de aviso por baixo
+  x.fillStyle = 'rgba(42,47,56,0.12)';
+  x.fillRect(L, B - v.s * 0.06, R - L, v.s * 0.06);
 }
 
 function drawGround(x: CanvasRenderingContext2D, v: View, line: Pt[], bottom: number): void {
   if (line.length < 2) return;
+  const dx = DEPTH_X * v.s;
+  const dy = DEPTH_Y * v.s;
+  // face de cima (vai "para trás")
+  x.beginPath();
+  for (let i = 0; i < line.length; i++) {
+    const p = line[i];
+    if (i === 0) x.moveTo(wx(v, p.x), wy(v, p.y));
+    else x.lineTo(wx(v, p.x), wy(v, p.y));
+  }
+  for (let i = line.length - 1; i >= 0; i--) {
+    const p = line[i];
+    x.lineTo(wx(v, p.x) + dx, wy(v, p.y) - dy);
+  }
+  x.closePath();
+  x.fillStyle = COL.groundTop;
+  x.fill();
+  // frente
   x.beginPath();
   x.moveTo(wx(v, line[0].x), bottom);
   for (const p of line) x.lineTo(wx(v, p.x), wy(v, p.y));
@@ -133,21 +217,22 @@ function drawGround(x: CanvasRenderingContext2D, v: View, line: Pt[], bottom: nu
   x.closePath();
   x.fillStyle = COL.ground;
   x.fill();
-  // faixa interna mais escura (dá volume sem textura)
+  // sombra suave logo abaixo da quina (dá a sensação de bloco)
   x.save();
   x.clip();
   x.beginPath();
   for (let i = 0; i < line.length; i++) {
     const p = line[i];
     const X = wx(v, p.x);
-    const Y = wy(v, p.y) + v.s * 0.22;
+    const Y = wy(v, p.y) + v.s * 0.55;
     if (i === 0) x.moveTo(X, Y);
     else x.lineTo(X, Y);
   }
-  x.lineWidth = v.s * 0.18;
-  x.strokeStyle = COL.groundIn;
+  x.lineWidth = v.s * 0.7;
+  x.strokeStyle = 'rgba(255,255,255,0.35)';
   x.stroke();
   x.restore();
+  // quina
   x.beginPath();
   for (let i = 0; i < line.length; i++) {
     const p = line[i];
@@ -155,64 +240,130 @@ function drawGround(x: CanvasRenderingContext2D, v: View, line: Pt[], bottom: nu
     else x.lineTo(wx(v, p.x), wy(v, p.y));
   }
   x.lineJoin = 'round';
-  x.lineWidth = Math.max(2, v.s * 0.05);
-  x.strokeStyle = COL.groundTop;
+  x.lineWidth = Math.max(1, v.s * 0.022);
+  x.strokeStyle = COL.edge;
   x.stroke();
 }
 
-export function drawZone(x: CanvasRenderingContext2D, v: View, tr: Track, time: number, label: string, done: boolean): void {
+/** água (desenhada por cima do veículo: o que cai afunda) */
+export function drawWater(x: CanvasRenderingContext2D, v: View, tr: Track, time: number): void {
+  if (!tr.water.length) return;
+  const bottom = v.h + 40;
+  for (const w of tr.water) {
+    const L = wx(v, w.x0);
+    const R = wx(v, w.x1);
+    if (R < -10 || L > v.w + 10) continue;
+    const Y = wy(v, w.y);
+    x.fillStyle = COL.water;
+    x.beginPath();
+    x.moveTo(L, bottom);
+    const n = Math.max(4, Math.round((R - L) / 14));
+    for (let i = 0; i <= n; i++) {
+      const X = L + ((R - L) * i) / n;
+      x.lineTo(X, Y + Math.sin(time * 2.4 + i * 0.9) * v.s * 0.03);
+    }
+    x.lineTo(R, bottom);
+    x.closePath();
+    x.fill();
+    x.strokeStyle = COL.waterTop;
+    x.lineWidth = Math.max(1.5, v.s * 0.04);
+    x.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const X = L + ((R - L) * i) / n;
+      const yy = Y + Math.sin(time * 2.4 + i * 0.9) * v.s * 0.03;
+      if (i === 0) x.moveTo(X, yy);
+      else x.lineTo(X, yy);
+    }
+    x.stroke();
+  }
+}
+
+/** zona de entrega + placa de SAÍDA (boneco correndo, desenho próprio) com o número da fase */
+export function drawZone(x: CanvasRenderingContext2D, v: View, tr: Track, time: number, num: number, done: boolean): void {
   const z = tr.zone;
   const X0 = wx(v, z.x0);
   const X1 = wx(v, z.x1);
   const Y = wy(v, z.y);
   const H = 2.6 * v.s;
   const g = x.createLinearGradient(0, Y - H, 0, Y);
-  g.addColorStop(0, 'rgba(47,191,143,0)');
-  g.addColorStop(1, done ? 'rgba(47,191,143,0.30)' : 'rgba(47,191,143,0.16)');
+  g.addColorStop(0, 'rgba(34,176,125,0)');
+  g.addColorStop(1, done ? 'rgba(34,176,125,0.24)' : 'rgba(34,176,125,0.11)');
   x.fillStyle = g;
   x.fillRect(X0, Y - H, X1 - X0, H);
-  // faixas no chão
-  x.save();
-  x.beginPath();
-  x.rect(X0, Y - v.s * 0.12, X1 - X0, v.s * 0.12);
-  x.clip();
+  // faixa no chão
   x.fillStyle = COL.zone;
-  x.fillRect(X0, Y - v.s * 0.12, X1 - X0, v.s * 0.12);
-  x.fillStyle = 'rgba(255,255,255,0.55)';
-  const sw = v.s * 0.35;
+  x.fillRect(X0, Y - v.s * 0.06, X1 - X0, v.s * 0.06);
+  x.fillStyle = 'rgba(255,255,255,0.6)';
+  const sw = v.s * 0.3;
   const off = (time * v.s * 0.4) % (sw * 2);
-  for (let sx = X0 - sw * 2 + off; sx < X1; sx += sw * 2) {
-    x.beginPath();
-    x.moveTo(sx, Y);
-    x.lineTo(sx + sw, Y - v.s * 0.12);
-    x.lineTo(sx + sw * 1.6, Y - v.s * 0.12);
-    x.lineTo(sx + sw * 0.6, Y);
-    x.fill();
-  }
-  x.restore();
-  // bandeira
-  const fx = X0 + v.s * 0.2;
-  x.strokeStyle = INK;
-  x.lineWidth = Math.max(2, v.s * 0.05);
+  for (let sx = X0 - sw * 2 + off; sx < X1; sx += sw * 2) x.fillRect(Math.max(X0, sx), Y - v.s * 0.06, Math.max(0, Math.min(sw, X1 - sx)), v.s * 0.06);
+  // placa
+  const far = tr.dir > 0 ? z.x1 - 0.45 : z.x0 + 0.45;
+  const px = wx(v, far);
+  const s = v.s;
+  x.fillStyle = '#b9bfc8';
+  x.fillRect(px - s * 0.04, Y - s * 2.15, s * 0.08, s * 2.15);
+  const bw = s * 1.5;
+  const bh = s * 0.82;
+  const bx = tr.dir > 0 ? px - bw + s * 0.25 : px - s * 0.25;
+  const by = Y - s * 2.95 + Math.sin(time * 2) * s * 0.01;
+  x.fillStyle = 'rgba(25,35,55,0.12)';
   x.beginPath();
-  x.moveTo(fx, Y);
-  x.lineTo(fx, Y - v.s * 2.1);
-  x.stroke();
-  const wave = Math.sin(time * 4) * v.s * 0.06;
-  x.fillStyle = COL.zone;
-  x.beginPath();
-  x.moveTo(fx, Y - v.s * 2.1);
-  x.lineTo(fx + v.s * 0.85, Y - v.s * 1.9 + wave);
-  x.lineTo(fx, Y - v.s * 1.65);
-  x.closePath();
+  x.roundRect(bx + s * 0.05, by + s * 0.06, bw, bh, s * 0.1);
   x.fill();
+  x.fillStyle = done ? '#1fc78a' : COL.zone;
+  x.beginPath();
+  x.roundRect(bx, by, bw, bh, s * 0.1);
+  x.fill();
+  x.strokeStyle = '#15845d';
+  x.lineWidth = Math.max(1, s * 0.03);
   x.stroke();
-  if (v.s > 18) {
-    x.font = `700 ${Math.round(Math.max(10, v.s * 0.24))}px Fredoka, system-ui, sans-serif`;
-    x.textAlign = 'left';
-    x.textBaseline = 'alphabetic';
-    x.fillStyle = 'rgba(31,143,106,0.9)';
-    x.fillText(label, fx + v.s * 0.16, Y - v.s * 0.3);
+  // porta + boneco correndo (para o lado da saída)
+  const dir = tr.dir;
+  const fx = bx + (dir > 0 ? bw * 0.3 : bw * 0.7);
+  const fy = by + bh * 0.5;
+  const u = bh * 0.11;
+  x.save();
+  x.translate(fx, fy);
+  x.scale(dir, 1);
+  x.strokeStyle = '#fff';
+  x.fillStyle = '#fff';
+  x.lineCap = 'round';
+  x.lineJoin = 'round';
+  // porta
+  x.lineWidth = u * 0.55;
+  x.strokeRect(u * 1.6, -u * 3.4, u * 2.4, u * 6.6);
+  // boneco
+  const ph = Math.sin(time * 8) * 0.25;
+  x.lineWidth = u * 0.95;
+  x.beginPath();
+  x.arc(u * 0.55, -u * 2.75, u * 0.85, 0, Math.PI * 2);
+  x.fill();
+  x.beginPath();
+  x.moveTo(u * 0.2, -u * 1.5);
+  x.lineTo(-u * 0.4, u * 0.7);
+  // pernas
+  x.moveTo(-u * 0.4, u * 0.7);
+  x.lineTo(u * (0.9 + ph), u * 1.6);
+  x.lineTo(u * (0.8 + ph), u * 3.0);
+  x.moveTo(-u * 0.4, u * 0.7);
+  x.lineTo(-u * (1.3 + ph), u * 1.9);
+  x.lineTo(-u * (2.3 + ph), u * 1.6);
+  // braços
+  x.moveTo(u * 0.1, -u * 1.1);
+  x.lineTo(u * 1.2, -u * 0.3);
+  x.moveTo(u * 0.1, -u * 1.1);
+  x.lineTo(-u * 1.0, -u * 0.5);
+  x.lineTo(-u * 1.6, -u * 1.3);
+  x.stroke();
+  x.restore();
+  // número da fase
+  if (s > 14 && num > 0) {
+    x.fillStyle = '#fff';
+    x.font = `700 ${Math.round(bh * 0.5)}px Fredoka, system-ui, sans-serif`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(String(num), bx + (dir > 0 ? bw * 0.74 : bw * 0.26), by + bh * 0.53);
   }
 }
 
@@ -371,6 +522,35 @@ export function drawObj(x: CanvasRenderingContext2D, v: View, op: ObjPose, time:
       x.fill();
       break;
     }
+    case 'ferry': {
+      // trilho tracejado sobre o poço
+      x.strokeStyle = 'rgba(42,47,56,0.18)';
+      x.lineWidth = Math.max(1.5, v.s * 0.03);
+      x.setLineDash([v.s * 0.15, v.s * 0.12]);
+      x.beginPath();
+      x.moveTo(wx(v, Math.min(o.x0, o.x1) - o.w / 2), wy(v, o.y + 0.05));
+      x.lineTo(wx(v, Math.max(o.x0, o.x1) + o.w / 2), wy(v, o.y + 0.05));
+      x.stroke();
+      x.setLineDash([]);
+      x.strokeStyle = INK;
+      x.lineWidth = lw;
+      body(0, () => {
+        const W = o.w * v.s;
+        const H = 0.3 * v.s;
+        x.fillStyle = '#ffd45c';
+        x.beginPath();
+        x.roundRect(-W / 2, -H / 2, W, H, 0.06 * v.s);
+        x.fill();
+        x.stroke();
+        x.fillStyle = 'rgba(42,47,56,0.8)';
+        for (const k of [-0.32, 0, 0.32]) {
+          x.beginPath();
+          x.arc(k * W, 0, 0.05 * v.s, 0, Math.PI * 2);
+          x.fill();
+        }
+      });
+      break;
+    }
     case 'box':
       body(0, () => {
         const S = o.s * v.s;
@@ -403,23 +583,24 @@ export function drawCargo(x: CanvasRenderingContext2D, v: View, t: CargoDef['t']
     case 'crate':
     case 'big': {
       const S = (t === 'big' ? 0.94 : 0.46) * s;
-      x.fillStyle = '#ffb547';
+      x.fillStyle = '#c98b52';
+      x.strokeStyle = '#7d5129';
       x.beginPath();
-      x.roundRect(-S, -S, S * 2, S * 2, S * 0.18);
+      x.roundRect(-S, -S, S * 2, S * 2, S * 0.12);
       x.fill();
       x.stroke();
-      x.strokeStyle = 'rgba(38,48,61,0.45)';
+      // tábuas
+      x.fillStyle = '#b57941';
+      x.fillRect(-S * 0.86, -S * 0.86, S * 1.72, S * 0.34);
+      x.fillRect(-S * 0.86, S * 0.52, S * 1.72, S * 0.34);
+      x.strokeStyle = 'rgba(90,55,25,0.55)';
+      x.lineWidth = Math.max(1, s * 0.028);
       x.beginPath();
-      x.roundRect(-S * 0.62, -S * 0.62, S * 1.24, S * 1.24, S * 0.1);
-      x.moveTo(-S * 0.62, -S * 0.62);
-      x.lineTo(S * 0.62, S * 0.62);
+      x.moveTo(-S * 0.7, -S * 0.5);
+      x.lineTo(S * 0.7, S * 0.5);
+      x.moveTo(-S * 0.86, -S * 0.1);
+      x.lineTo(S * 0.86, -S * 0.1);
       x.stroke();
-      if (t === 'big') {
-        x.fillStyle = INK;
-        x.font = `700 ${Math.round(S * 0.45)}px Fredoka, system-ui, sans-serif`;
-        x.textAlign = 'center';
-        x.textBaseline = 'middle';
-      }
       break;
     }
     case 'glass': {
@@ -465,6 +646,10 @@ export function drawCargo(x: CanvasRenderingContext2D, v: View, t: CargoDef['t']
       x.stroke();
       break;
     }
+    case 'bot':
+      x.restore();
+      drawBot(x, v, px, py, a, broken ? 3 : ghost ? 3 : 0, 0, 0, 0, 1);
+      return;
     case 'drops': {
       const R = 0.1 * s;
       x.fillStyle = '#4a90ff';
@@ -484,11 +669,134 @@ export function drawCargo(x: CanvasRenderingContext2D, v: View, t: CargoDef['t']
   x.restore();
 }
 
+/** passageiro: robozinho de um olho só (desenho próprio).
+ *  mood: 0 contente, 1 assustado, 2 festejando, 3 tonto/caído. lean = inclinação visual extra (bamboleio), sq = amassadinho */
+export function drawBot(x: CanvasRenderingContext2D, v: View, px: number, py: number, a: number, mood: number, lean: number, sq: number, time: number, face: number): void {
+  const s = v.s;
+  x.save();
+  x.translate(wx(v, px), wy(v, py));
+  x.rotate(-a);
+  x.translate(0, 0.46 * s);
+  x.rotate(-lean);
+  x.scale(1 + sq, 1 - sq);
+  x.translate(0, -0.46 * s);
+  x.lineJoin = 'round';
+  x.lineCap = 'round';
+  const lw = Math.max(1.4, s * 0.032);
+  x.lineWidth = lw;
+  x.strokeStyle = '#3b2a6b';
+  const jump = mood === 2 ? Math.abs(Math.sin(time * 9)) * 0.05 * s : 0;
+  // pés
+  x.fillStyle = '#3b2a6b';
+  x.beginPath();
+  x.ellipse(-0.1 * s, 0.44 * s, 0.075 * s, 0.035 * s, 0, 0, Math.PI * 2);
+  x.ellipse(0.1 * s, 0.44 * s, 0.075 * s, 0.035 * s, 0, 0, Math.PI * 2);
+  x.fill();
+  x.translate(0, -jump);
+  // braços
+  const up = mood === 2 ? -1 : mood === 1 ? -0.4 : 0.6;
+  x.strokeStyle = '#6d4bd8';
+  x.lineWidth = lw * 1.6;
+  x.beginPath();
+  x.moveTo(-0.17 * s, 0.2 * s);
+  x.lineTo(-0.27 * s, (0.2 + 0.12 * up) * s);
+  x.moveTo(0.17 * s, 0.2 * s);
+  x.lineTo(0.27 * s, (0.2 + 0.12 * up) * s);
+  x.stroke();
+  x.lineWidth = lw;
+  x.strokeStyle = '#3b2a6b';
+  // corpo
+  x.fillStyle = '#8b5cf6';
+  x.beginPath();
+  x.roundRect(-0.19 * s, 0.1 * s, 0.38 * s, 0.32 * s, 0.09 * s);
+  x.fill();
+  x.stroke();
+  x.fillStyle = 'rgba(255,255,255,0.85)';
+  x.beginPath();
+  x.arc(0, 0.27 * s, 0.045 * s, 0, Math.PI * 2);
+  x.fill();
+  // antena
+  x.beginPath();
+  x.moveTo(0, -0.3 * s);
+  x.lineTo(0.03 * s, -0.4 * s);
+  x.stroke();
+  x.fillStyle = mood === 1 ? '#ef4444' : '#ffd45c';
+  x.beginPath();
+  x.arc(0.03 * s, -0.42 * s, 0.04 * s, 0, Math.PI * 2);
+  x.fill();
+  x.stroke();
+  // cabeça
+  x.fillStyle = '#a78bfa';
+  x.beginPath();
+  x.arc(0, -0.08 * s, 0.2 * s, 0, Math.PI * 2);
+  x.fill();
+  x.stroke();
+  // olho
+  const ex = 0.03 * s * face;
+  const ey = -0.1 * s;
+  if (mood === 3) {
+    x.strokeStyle = '#2a2f38';
+    x.lineWidth = lw * 1.3;
+    x.beginPath();
+    x.moveTo(ex - 0.06 * s, ey - 0.06 * s);
+    x.lineTo(ex + 0.06 * s, ey + 0.06 * s);
+    x.moveTo(ex + 0.06 * s, ey - 0.06 * s);
+    x.lineTo(ex - 0.06 * s, ey + 0.06 * s);
+    x.stroke();
+  } else if (mood === 2) {
+    x.strokeStyle = '#2a2f38';
+    x.lineWidth = lw * 1.4;
+    x.beginPath();
+    x.arc(ex, ey + 0.03 * s, 0.07 * s, Math.PI * 1.1, Math.PI * 1.9);
+    x.stroke();
+  } else {
+    const blink = Math.sin(time * 1.3 + px) > 0.985;
+    const R = (mood === 1 ? 0.12 : 0.105) * s;
+    x.fillStyle = '#fff';
+    x.beginPath();
+    if (blink) x.ellipse(ex, ey, R, R * 0.15, 0, 0, Math.PI * 2);
+    else x.arc(ex, ey, R, 0, Math.PI * 2);
+    x.fill();
+    x.stroke();
+    if (!blink) {
+      x.fillStyle = '#2a2f38';
+      x.beginPath();
+      x.arc(ex + 0.025 * s * face, ey + (mood === 1 ? 0 : 0.01 * s), (mood === 1 ? 0.035 : 0.055) * s, 0, Math.PI * 2);
+      x.fill();
+      x.fillStyle = '#fff';
+      x.beginPath();
+      x.arc(ex + 0.045 * s * face, ey - 0.02 * s, 0.017 * s, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+  // boca
+  x.strokeStyle = '#3b2a6b';
+  x.lineWidth = lw;
+  x.beginPath();
+  if (mood === 1) {
+    x.ellipse(ex * 0.6, 0.05 * s, 0.03 * s, 0.025 * s, 0, 0, Math.PI * 2);
+  } else if (mood === 3) {
+    x.moveTo(ex * 0.6 - 0.05 * s, 0.07 * s);
+    x.quadraticCurveTo(ex * 0.6, 0.03 * s, ex * 0.6 + 0.05 * s, 0.07 * s);
+  } else {
+    x.arc(ex * 0.6, 0.0 * s, mood === 2 ? 0.07 * s : 0.05 * s, Math.PI * 0.25, Math.PI * 0.75);
+  }
+  x.stroke();
+  if (mood === 1) {
+    // gotinha de suor
+    x.fillStyle = '#7cc6f2';
+    x.beginPath();
+    x.ellipse(-0.2 * s * face, -0.22 * s, 0.025 * s, 0.04 * s, 0, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.restore();
+}
+
 /** carga parada na grade de montagem (posições iniciais) */
 export function cargoPieces(c: CargoDef): { x: number; y: number }[] {
   const big = c.t === 'big' || c.t === 'drops';
   const cx = (c.x + (big ? 1 : 0.5)) * U;
-  const cy = (c.y + (big ? 1 : 0.5)) * U;
+  const cy = (c.y + (big || c.t === 'bot' ? 1 : 0.5)) * U;
   if (c.t !== 'drops') return [{ x: cx, y: cy }];
   const r = U * 0.2;
   const out: { x: number; y: number }[] = [];
@@ -501,7 +809,7 @@ export function cargoPieces(c: CargoDef): { x: number; y: number }[] {
  * Desenha uma peça estrutural com o contexto já em unidades de CÉLULA (y para cima, 1 = uma casa).
  * `lw` = espessura de linha em unidades de célula.
  */
-export function drawStructCell(x: CanvasRenderingContext2D, p: Placed, lw: number, alpha = 1): void {
+export function drawStructCell(x: CanvasRenderingContext2D, p: Placed, lw: number, alpha = 1, cap = '', pressed = 0): void {
   const [fill, dark] = colorOf(p.t);
   x.globalAlpha = alpha;
   x.lineWidth = lw;
@@ -569,6 +877,46 @@ export function drawStructCell(x: CanvasRenderingContext2D, p: Placed, lw: numbe
         x.lineTo(X + k * 0.5, Y + 0.92);
       }
       x.stroke();
+      break;
+    }
+    case 'btn':
+    case 'btnR': {
+      // base cinza com chanfro + tampa redonda colorida
+      x.fillStyle = fill;
+      x.beginPath();
+      x.roundRect(X + ins, Y + ins, 1 - ins * 2, 1 - ins * 2, 0.12);
+      x.fill();
+      x.stroke();
+      x.fillStyle = 'rgba(255,255,255,0.35)';
+      x.beginPath();
+      x.roundRect(X + 0.1, Y + 0.1, 0.8, 0.8, 0.1);
+      x.fill();
+      const c = cap || (p.t === 'btnR' ? CAP_REV[0] : CAP_FWD[0]);
+      const dy = 0.06 * (1 - pressed);
+      x.fillStyle = 'rgba(0,0,0,0.25)';
+      x.beginPath();
+      x.arc(X + 0.5, Y + 0.47, 0.31, 0, Math.PI * 2);
+      x.fill();
+      x.fillStyle = c;
+      x.beginPath();
+      x.arc(X + 0.5, Y + 0.47 + dy, 0.3, 0, Math.PI * 2);
+      x.fill();
+      x.strokeStyle = 'rgba(0,0,0,0.28)';
+      x.stroke();
+      x.fillStyle = 'rgba(255,255,255,0.45)';
+      x.beginPath();
+      x.ellipse(X + 0.42, Y + 0.58 + dy, 0.12, 0.07, 0.5, 0, Math.PI * 2);
+      x.fill();
+      if (p.t === 'btnR') {
+        // seta de ré na tampa
+        x.fillStyle = 'rgba(255,255,255,0.92)';
+        x.beginPath();
+        x.moveTo(X + 0.36, Y + 0.47 + dy);
+        x.lineTo(X + 0.6, Y + 0.6 + dy);
+        x.lineTo(X + 0.6, Y + 0.34 + dy);
+        x.closePath();
+        x.fill();
+      }
       break;
     }
     case 'hinge': {
@@ -665,48 +1013,118 @@ export function structSilhouette(x: CanvasRenderingContext2D, p: Placed): void {
   } else x.roundRect(X, Y, 1, 1, 0.14);
 }
 
-/** roda em unidades de célula, centrada em (cx,cy); ang = giro */
+/** roda em unidades de célula, centrada em (cx,cy); ang = giro. Pneu preto com aro claro e vários raios. */
 export function drawWheel(x: CanvasRenderingContext2D, t: PartId, cx: number, cy: number, ang: number, lw: number, powered: boolean, alpha = 1): void {
   const r = (PARTS[t].radius ?? 0.4) / U;
   x.globalAlpha = alpha;
   x.lineWidth = lw;
-  x.fillStyle = t === 'wheelG' ? '#3b4232' : '#2d3340';
-  x.strokeStyle = '#141820';
+  x.fillStyle = t === 'wheelG' ? '#2b2f24' : '#202227';
+  x.strokeStyle = '#0d0e10';
   x.beginPath();
   x.arc(cx, cy, r, 0, Math.PI * 2);
   x.fill();
   x.stroke();
   if (t === 'wheelG') {
     // garras
-    x.fillStyle = '#5a6448';
+    x.fillStyle = '#4c5540';
     for (let i = 0; i < 12; i++) {
       const a = ang + (i / 12) * Math.PI * 2;
-      x.save();
-      x.translate(cx + Math.cos(a) * r * 0.92, cy + Math.sin(a) * r * 0.92);
-      x.rotate(a);
-      x.fillRect(-0.06, -0.07, 0.14, 0.14);
-      x.restore();
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      x.beginPath();
+      x.moveTo(cx + c * r * 0.82 - sn * 0.07, cy + sn * r * 0.82 + c * 0.07);
+      x.lineTo(cx + c * r * 1.02 - sn * 0.05, cy + sn * r * 1.02 + c * 0.05);
+      x.lineTo(cx + c * r * 1.02 + sn * 0.05, cy + sn * r * 1.02 - c * 0.05);
+      x.lineTo(cx + c * r * 0.82 + sn * 0.07, cy + sn * r * 0.82 - c * 0.07);
+      x.fill();
     }
   }
-  const hr = r * 0.56;
-  x.fillStyle = '#e9edf2';
+  const hr = r * 0.62;
+  x.fillStyle = '#d9dde3';
   x.beginPath();
   x.arc(cx, cy, hr, 0, Math.PI * 2);
   x.fill();
-  x.strokeStyle = '#9aa5b5';
-  x.lineWidth = lw * 0.8;
+  // raios
+  const n = r > 1 ? 8 : 6;
+  x.strokeStyle = '#3a3f48';
+  x.lineWidth = lw * 1.25;
   x.beginPath();
-  for (let i = 0; i < 3; i++) {
-    const a = ang + (i / 3) * Math.PI * 2;
-    x.moveTo(cx + Math.cos(a) * hr * 0.3, cy + Math.sin(a) * hr * 0.3);
-    x.lineTo(cx + Math.cos(a) * hr * 0.92, cy + Math.sin(a) * hr * 0.92);
+  for (let i = 0; i < n; i++) {
+    const a = ang + (i / n) * Math.PI * 2;
+    x.moveTo(cx + Math.cos(a) * hr * 0.25, cy + Math.sin(a) * hr * 0.25);
+    x.lineTo(cx + Math.cos(a) * hr * 0.96, cy + Math.sin(a) * hr * 0.96);
   }
   x.stroke();
-  x.fillStyle = powered ? colorOf('motor')[0] : '#9aa5b5';
+  x.lineWidth = lw * 0.8;
+  x.strokeStyle = '#9aa3b0';
   x.beginPath();
-  x.arc(cx, cy, hr * 0.32, 0, Math.PI * 2);
+  x.arc(cx, cy, hr, 0, Math.PI * 2);
+  x.stroke();
+  x.fillStyle = powered ? '#ef4444' : '#3a3f48';
+  x.beginPath();
+  x.arc(cx, cy, hr * 0.26, 0, Math.PI * 2);
   x.fill();
   x.globalAlpha = 1;
+}
+
+/** esteira: correia em volta de uma fileira de rodas (mesma altura), em unidades de célula */
+export function drawTread(x: CanvasRenderingContext2D, pts: readonly { x: number; y: number }[], r: number, lw: number, phase: number): void {
+  if (pts.length < 2) return;
+  const a = pts[0];
+  const b = pts[pts.length - 1];
+  const ang = Math.atan2(b.y - a.y, b.x - a.x);
+  const L = Math.hypot(b.x - a.x, b.y - a.y);
+  x.save();
+  x.translate(a.x, a.y);
+  x.rotate(ang);
+  const R = r + 0.07;
+  x.strokeStyle = '#2a2d33';
+  x.lineWidth = 0.12;
+  x.beginPath();
+  x.moveTo(0, R);
+  x.lineTo(L, R);
+  x.arc(L, 0, R, Math.PI / 2, -Math.PI / 2, true);
+  x.lineTo(0, -R);
+  x.arc(0, 0, R, -Math.PI / 2, Math.PI / 2, true);
+  x.stroke();
+  // gomos
+  x.strokeStyle = '#555b66';
+  x.lineWidth = lw;
+  x.setLineDash([0.08, 0.14]);
+  x.lineDashOffset = -phase * R;
+  x.stroke();
+  x.setLineDash([]);
+  x.restore();
+}
+
+/** fio (cabo azul-claro com barriga suave) entre dois pontos, em unidades de célula */
+export function drawWire(x: CanvasRenderingContext2D, ax: number, ay: number, bx: number, by: number, lw: number, hot = false, alpha = 1): void {
+  const d = Math.hypot(bx - ax, by - ay);
+  const sag = 0.25 + d * 0.22;
+  x.globalAlpha = alpha;
+  x.lineCap = 'round';
+  x.beginPath();
+  x.moveTo(ax, ay);
+  x.bezierCurveTo(ax + (bx - ax) * 0.25, ay - sag, ax + (bx - ax) * 0.75, by - sag, bx, by);
+  x.strokeStyle = hot ? '#3a9bd6' : '#5aa9d9';
+  x.lineWidth = lw * 3.4;
+  x.stroke();
+  x.strokeStyle = hot ? '#b5e6ff' : COL.wire;
+  x.lineWidth = lw * 2;
+  x.stroke();
+  x.globalAlpha = 1;
+}
+
+/** nó de conexão (quadradinho branco com contorno) */
+export function drawNode(x: CanvasRenderingContext2D, cx: number, cy: number, lw: number, on = false, k = 1): void {
+  const h = 0.1 * k;
+  x.fillStyle = on ? '#e3f4ff' : '#fff';
+  x.strokeStyle = on ? '#3a9bd6' : '#7f8a99';
+  x.lineWidth = lw;
+  x.beginPath();
+  x.rect(cx - h, cy - h, h * 2, h * 2);
+  x.fill();
+  x.stroke();
 }
 
 export function drawThruster(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, lw: number, flame: number, time: number, alpha = 1): void {

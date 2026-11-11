@@ -40,4 +40,10 @@ interface Env {
   ADMIN_PASSWORD_HASH?: string;
   /** História Mágica (Bloop Cinema): chave da API da Anthropic — segredo, ver docs/IA.md. Sem ela, o app usa o gerador offline. */
   ANTHROPIC_API_KEY?: string;
+  /** Workers AI (Whisper): transcreve as vozes dos filmes da TV Bloop antes da fila humana (server/voice-mod.ts). */
+  AI?: Ai;
+  /** Só no teste local (.dev.vars): "device" = usa a transcrição do aparelho como se fosse a do Whisper. */
+  AI_STT_MOCK?: string;
+  /** "0" desliga a checagem extra das falas pela IA de texto (Claude), mesmo com ANTHROPIC_API_KEY. */
+  AI_LLM_CHECK?: string;
 }

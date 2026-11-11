@@ -23,9 +23,44 @@ denúncias ≥ 3 pessoas ─► aprovado vira "hidden" (sai do ar) ─► volta 
 - **Filtro automático** (`shared/moderation.ts` + palavras extras do painel): título, descrição e etiquetas com palavrão ou
   dado pessoal são **recusados na hora** (erro `name`); textos de dentro da criação/filme (nomes de peças, blocos "dizer",
   textos da missão, falas, nomes do elenco) só são **marcados** para o moderador ver.
+- **IA das vozes e balões (filmes)** — `server/voice-mod.ts`, antes da fila humana (veja a seção abaixo).
 - **Miniaturas**: o app manda 3 fotos pequenas (JPEG/WebP ≤ 60 KB cada). Não há classificador de imagem: o moderador olha.
 - **Vozes dos filmes**: vão junto (base64) e o moderador ouve no painel antes de aprovar.
 - Reenviar (mesmo id) volta para `pending` e, no caso de filme, tira do canal até a nova revisão.
+
+## IA das vozes (TV Bloop)
+
+No `POST /api/tv/submit`, antes de entrar na fila:
+
+1. **Transcrição**: cada voz passa pelo Whisper do **Workers AI** (`@cf/openai/whisper-large-v3-turbo`, base64; se falhar,
+   `@cf/openai/whisper` com os bytes), dica de idioma = idioma do app. Sem o binding/erro: usa a transcrição que o aparelho
+   fez durante a gravação (`clips[id].tx`) e marca "ouça antes de aprovar"; sem nenhuma: "sem transcrição".
+2. **Filtro** (`shared/moderation.ts → scanText`) nas transcrições **e** nos balões: `bad` (palavrão/termo sexual, com
+   disfarces) ou `pii` (telefone — também por extenso —, e-mail, link, @perfil, endereço, nome de escola, "meu zap"...) =
+   **recusa automática**; `mild` (insulto que depende do contexto: "feio", "burro"...) = destaque para o humano.
+3. **Claude (opcional)**: com `ANTHROPIC_API_KEY`, as transcrições e balões vão para `claude-haiku-5-5` com saída JSON
+   estrita (`ok | review | reject` + itens: palavrões, bullying, sexual, dado pessoal...). `reject` recusa, `review`
+   destaca; erro = segue só o filtro. `AI_LLM_CHECK=0` desliga.
+4. **Resultado**: recusa → o item entra **já recusado** (revisor "IA (automático)", motivo gentil "Tem uma palavra que não
+   pode na TV na fala 2. Regrave essa fala!"), **não gasta o limite diário**, e a resposta é
+   `{ ok:false, error:'ai', ai: { why, lines:[{id,n,text}] } }` — o app mostra o motivo e o botão "Regravar a fala N"
+   (abre a dublagem nela). Passou → fila humana com o selo **🤖 IA: ok** (ou "atenção" / "só aparelho"). Nada vai ao ar
+   sem um humano.
+5. **Painel**: selo da IA na fila; no detalhe, cada fala mostra balão, áudio e "o que a IA ouviu" com os trechos
+   destacados. Relatório completo no KV `ugc:fm:<id>` (apagado junto com o filme).
+
+**Para ligar na Cloudflare (dono):** o binding já está no `wrangler.jsonc` (`"ai": { "binding": "AI" }`) — basta o deploy.
+Workers AI precisa estar disponível na conta (painel → AI → Workers AI; o plano grátis tem uma cota diária de "neurons",
+o pago cobra por uso). Opcional: segredo `ANTHROPIC_API_KEY` (já usado pela História Mágica) para a checagem do Claude.
+
+**Teste local:** o `wrangler dev --local` não roda Workers AI ("AI: not supported"). Use
+`--var AI_STT_MOCK:device`: o servidor trata a transcrição do aparelho como se fosse a do Whisper (e o painel marca
+"transcrição simulada"). No teste automatizado a fala→texto do aparelho é simulada com `window.__bloopFakeStt`:
+
+```bash
+npx vite build && npx wrangler dev --local --port 8799 --var AI_STT_MOCK:device --var ADMIN_PASSWORD:senha-local --var UGC_MIN_AGE_H:0
+node scripts/dev/test-cinema-easy.mjs http://localhost:8799 /tmp/shots --submit
+```
 
 ## Moedas de criador (sempre moedas do jogo, nunca dinheiro)
 
@@ -75,7 +110,7 @@ como `@nome` ou `u<hash>`.
 | `POST /api/ugc/score` · `GET /api/ugc/board` | placar dos Jogos da Comunidade | `{ rank }` · `{ items }` |
 | `GET /api/tv/now` | — | `TvNow { now, cur, next[], films }` |
 | `GET /api/tv/film` | `f` | `{ id, title, author, payload: { project, clips } }` (cache 10 min) |
-| `POST /api/tv/submit` | `{ id, title, project, clips: { <id>: { mime, b64, dur } }, thumbs[] }` (≤ 3 MB) | `{ ok, listing }` ou `{ ok:false, error: name\|invalid\|empty\|too-long\|too-big\|daily-limit\|banned }` |
+| `POST /api/tv/submit` | `{ id, title, project, clips: { <id>: { mime, b64, dur, tx? } }, thumbs[], lang }` (≤ 3 MB) | `{ ok, listing, ai }` ou `{ ok:false, error: name\|invalid\|empty\|too-long\|too-big\|daily-limit\|banned\|ai, ai? }` |
 | `POST /api/tv/vote` | `{ id, film }` | `{ votes, voted }` (400 `self` no próprio) |
 | `GET /api/tv/voted` | `pid, f` | `{ voted }` |
 
@@ -87,6 +122,7 @@ Rotas de moderação (`/api/admin/ugc/*`) e de moderadores: `docs/PAINEL-ADMIN.m
 |---|---|
 | KV `ugc:c:<id>` | JSON da criação (≤ 512 KB) — 1 escrita por publicação |
 | KV `ugc:f:<id>` | filme `{ project, clips }` (≤ 3 MB; ids `tv_<id do projeto>`) |
+| KV `ugc:fm:<id>` | relatório da IA (transcrições, trechos achados, veredito) — só o painel lê |
 | DO `UgcHub` (`hub`) | `items` (metadados, estado, contadores, miniaturas), `likes`, `favs`, `uses`, `reports`, `pubs`, `earn`, `earn_day`, `scores`, `ubans` |
 | DO `TvChannel` (`main`) | `films`, `votes`, `vday`, `sched` |
 | DO `AdminHub` (`hub`) | `pgifts` (Correio pessoal), `mods` (moderadores) |

@@ -8,7 +8,7 @@ import { gameFont } from '../../i18n/font';
 import { addCoins } from '../../core/economy';
 import { audio } from '../../core/audio';
 import { tap, success } from '../../core/haptics';
-import { QualityGovernor, loadMode, type QualitySettings } from '../../core/quality';
+import { QualityGovernor, loadMode, type QualitySettings, type Tier } from '../../core/quality';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import type { PeerState, PresenceSession } from '../../services/presence-api';
 import { SKINS } from '../../game/skins';
@@ -26,6 +26,8 @@ export interface View {
   resize(): void;
   destroy(): void;
   setQuality?(q: QualitySettings): void;
+  /** nível (grama, sombras de contato) */
+  setTier?(tier: Tier): void;
   /** resolução dinâmica (fator no pixel ratio) */
   setResScale?(k: number): void;
   /** joystick (tela) → direção no mundo */
@@ -101,6 +103,7 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     this.sim = new Sim(loadSave(), opts.seed ?? WORLD_SEED);
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier, s) => {
         this.view?.setQuality?.(s);
+        this.view?.setTier?.(tier);
         this.world?.setTier(tier, s);
       }, onResScale: (k) => {
         this.view?.setResScale?.(k);

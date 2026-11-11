@@ -14,6 +14,8 @@ export interface DriveInput {
   brake: boolean;
   /** propulsores */
   boost: boolean;
+  /** botões segurados (bit i = i-ésimo botão do projeto) */
+  btn: number;
 }
 
 export interface Upgrades {
@@ -36,6 +38,9 @@ const BALLOON_DRAG = 2.6;
 const GLASS_BREAK = 3.2; // Δv (m/s) num único passo
 const GROUND_LOST = 1.0; // s de carga encostada no chão fora da zona
 const TIME_LIMIT = 120;
+const HINGE_TORQUE = 260;
+const HINGE_SPEED = 1.8;
+const BOT_GROUND_LOST = 0.5;
 
 export type FixKind = 'veh' | 'cargo' | 'ground' | 'obj';
 interface FixData {
@@ -55,6 +60,8 @@ export interface SimWheel {
   /** posição de montagem (local do chassi) */
   lx: number;
   ly: number;
+  /** motores que a movem: [índice do motor, torque] */
+  shares: [number, number][];
 }
 export interface SimMount {
   idx: number;
@@ -86,14 +93,28 @@ export interface FxEvent {
   kind: 'hit' | 'glass' | 'cargo';
 }
 
-export type SimResult = null | { win: true } | { win: false; reason: 'lost' | 'broken' | 'time' };
+export type SimResult = null | { win: true } | { win: false; reason: 'lost' | 'broken' | 'time' | 'bot' };
+export interface SimPin {
+  idx: number;
+  body: Body;
+  joints: RevoluteJoint[];
+  /** [ordem do botão, sinal] */
+  wired: [number, number][];
+  dir: number;
+}
 
 export class Sim {
   world: World;
   track: Track;
   an: Analysis;
   groups: Body[] = [];
-  pins: { idx: number; body: Body }[] = [];
+  pins: SimPin[] = [];
+  /** modo com fios: por motor (índice da peça) → [ordem do botão, sinal] */
+  motorWires = new Map<number, [number, number][]>();
+  thrusterWires = new Map<number, [number, number][]>();
+  wired = false;
+  /** direção atual de cada motor (-1, 0, 1) — para o desenho */
+  motorDir = new Map<number, number>();
   wheels: SimWheel[] = [];
   thrusters: SimMount[] = [];
   balloons: SimMount[] = [];
@@ -104,10 +125,12 @@ export class Sim {
   flipped = false;
   result: SimResult = null;
   fx: FxEvent[] = [];
-  input: DriveInput = { fwd: false, back: false, brake: false, boost: false };
+  input: DriveInput = { fwd: false, back: false, brake: false, boost: false, btn: 0 };
   /** quanto o veículo subiu para não nascer dentro do chão */
   lift = 0;
   maxX = 0;
+  /** maior pancada no vidro (fração do limite de quebra) — o gerador exige folga */
+  glassPeak = 0;
   private needCount: number;
   private totalPieces: number;
   private groundBody: Body;
@@ -116,11 +139,26 @@ export class Sim {
     public level: LevelDef,
     public parts: Placed[],
     public up: Upgrades = { motor: 0, grip: 0, spring: 0, pad: 0 },
+    /** perturbação mínima da posição inicial (só no gerador: testa se a solução é robusta a arredondamentos) */
+    jit = 0,
   ) {
     const w = new World({ gravity: new Vec2(0, -10) });
     this.world = w;
-    this.track = resolveTrack(level.track, level.grid[0] * U + 1.5);
+    this.track = resolveTrack(level.track, level.grid[0] * U + 1.5, !!level.mirror, !!level.wet);
     this.an = analyze(parts);
+    this.wired = !!level.wired;
+    const an0 = this.an;
+    for (const wr of an0.wires) {
+      const ord = an0.buttons.indexOf(wr.b);
+      const sg = parts[wr.b].t === 'btnR' ? -1 : 1;
+      const tp = parts[wr.t].t;
+      const map = tp === 'thruster' ? this.thrusterWires : tp === 'motor' ? this.motorWires : null;
+      if (map) {
+        const l = map.get(wr.t) ?? [];
+        l.push([ord, sg]);
+        map.set(wr.t, l);
+      }
+    }
     // chão
     const g = w.createBody();
     this.groundBody = g;
@@ -129,9 +167,16 @@ export class Sim {
     }
     const wl = this.track.wall;
     g.createFixture(new Box(0.25, (wl.y1 - wl.y0) / 2, new Vec2(wl.x + 0.25, (wl.y0 + wl.y1) / 2), 0), { friction: 0.05, userData: { k: 'ground' } as FixData });
+    for (const c of this.track.ceils) {
+      g.createFixture(new Box((c.x1 - c.x0) / 2, 1, new Vec2((c.x0 + c.x1) / 2, c.y + 1), 0), { friction: 0.4, userData: { k: 'obj' } as FixData });
+    }
     this.buildVehicle();
     this.buildCargo();
     this.liftToGround();
+    if (jit) {
+      for (const b of this.allVehicleBodies()) b.setPosition(new Vec2(b.getPosition().x + jit, b.getPosition().y + jit * 0.5));
+      for (const c of this.cargo) for (const b of c.bodies) b.setPosition(new Vec2(b.getPosition().x + jit, b.getPosition().y + jit * 0.5));
+    }
     this.buildObjs();
     let pieces = 0;
     for (const c of this.cargo) pieces += c.bodies.length;
@@ -176,10 +221,15 @@ export class Sim {
       const c = new Vec2((p.x + 0.5) * U, (p.y + 0.5) * U);
       const pin = w.createBody({ type: 'dynamic', position: c });
       pin.createFixture(new Circle(U * 0.42), veh({ density: PARTS.hinge.density * 1.27, friction: 0.6 }));
-      this.pins.push({ idx: i, body: pin });
+      const wiredTo: [number, number][] = [];
+      for (const wr of an.wires) if (wr.t === i) wiredTo.push([an.buttons.indexOf(wr.b), P[wr.b].t === 'btnR' ? -1 : 1]);
+      const joints: RevoluteJoint[] = [];
       for (const gi of an.hinges.get(i) ?? []) {
-        w.createJoint(new RevoluteJoint({ collideConnected: false }, this.groups[gi], pin, c));
+        const j = new RevoluteJoint(wiredTo.length ? { collideConnected: false, enableMotor: true, maxMotorTorque: HINGE_TORQUE, motorSpeed: 0 } : { collideConnected: false }, this.groups[gi], pin, c);
+        w.createJoint(j);
+        joints.push(j);
       }
+      this.pins.push({ idx: i, body: pin, joints, wired: wiredTo, dir: 0 });
     });
     // montagens
     P.forEach((p, i) => {
@@ -198,7 +248,13 @@ export class Sim {
         wb.createFixture(new Circle(r), veh({ density: d.density, friction: d.friction * (1 + 0.15 * this.up.grip), restitution: 0.08 }));
         const spring = P[bi].t === 'spring';
         let torque = 0;
-        for (const mi of an.power.get(i) ?? []) torque += (MOTOR_TORQUE * (1 + 0.25 * this.up.motor)) / Math.max(1, an.drives.get(mi)!.length);
+        const shares: [number, number][] = [];
+        for (const mi of an.power.get(i) ?? []) {
+          const sh = (MOTOR_TORQUE * (1 + 0.25 * this.up.motor)) / Math.max(1, an.drives.get(mi)!.length);
+          if (this.wired && !this.motorWires.has(mi)) continue;
+          torque += sh;
+          shares.push([mi, sh]);
+        }
         let j: Joint;
         if (spring) {
           j = new WheelJoint(
@@ -212,7 +268,7 @@ export class Sim {
           j = new RevoluteJoint({ enableMotor: true, maxMotorTorque: COAST_TORQUE, motorSpeed: 0 }, base, wb, new Vec2(lx, ly));
         }
         w.createJoint(j);
-        this.wheels.push({ idx: i, body: wb, joint: j, r, spring, grip, powered: torque, base, lx, ly });
+        this.wheels.push({ idx: i, body: wb, joint: j, r, spring, grip, powered: torque, base, lx, ly, shares });
       } else if (p.t === 'thruster') {
         base.createFixture(new Box(U * 0.32, U * 0.24, new Vec2(lx, ly), (p.r * Math.PI) / 2), veh({ density: d.density }));
         this.thrusters.push({ idx: i, body: base, lx, ly, r: p.r, fuel: THRUST_FUEL, on: false });
@@ -245,7 +301,7 @@ export class Sim {
       const ud = { k: 'cargo', ci } as FixData;
       const bodies: Body[] = [];
       const cx = (c.x + (c.t === 'big' || c.t === 'drops' ? 1 : 0.5)) * U;
-      const cy = (c.y + (c.t === 'big' || c.t === 'drops' ? 1 : 0.5)) * U;
+      const cy = (c.y + (c.t === 'big' || c.t === 'drops' || c.t === 'bot' ? 1 : 0.5)) * U;
       const mk = (x: number, y: number) => {
         const b = w.createBody({ type: 'dynamic', position: new Vec2(x, y) });
         bodies.push(b);
@@ -265,6 +321,13 @@ export class Sim {
           const b = mk(cx, cy);
           b.createFixture(new Circle(U * 0.44), { density: 1.6, friction: 0.5, restitution: 0.3, userData: ud });
           b.setAngularDamping(0.15);
+          break;
+        }
+        case 'bot': {
+          const b = mk(cx, cy);
+          b.createFixture(new Box(0.19, 0.17, new Vec2(0, -0.29), 0), { density: 1.6, friction: 0.95, restitution: 0.02, userData: ud });
+          b.createFixture(new Circle(new Vec2(0, 0.04), 0.19), { density: 0.9, friction: 0.5, restitution: 0.05, userData: ud });
+          b.setAngularDamping(0.6);
           break;
         }
         case 'drops': {
@@ -314,7 +377,7 @@ export class Sim {
         case 'seesaw': {
           const g = this.groundBody;
           g.createFixture(new Polygon([new Vec2(o.x - 0.45, o.y), new Vec2(o.x + 0.45, o.y), new Vec2(o.x, o.y + 0.62)]), { friction: 0.9, userData: { k: 'ground' } });
-          const ang = Math.asin(Math.min(0.95, 0.62 / (o.len / 2)));
+          const ang = Math.asin(Math.min(0.95, 0.62 / (o.len / 2))) * this.track.dir;
           const pl = w.createBody({ type: 'dynamic', position: new Vec2(o.x, o.y + 0.62), angle: ang });
           pl.createFixture(new Box(o.len / 2, 0.09), { density: 1.5, friction: 0.95, userData: ud });
           // âncora própria: o chão continua colidindo com a tábua
@@ -351,10 +414,16 @@ export class Sim {
         }
         case 'pend': {
           const a0 = 1.05;
-          const b = w.createBody({ type: 'dynamic', position: new Vec2(o.x + Math.sin(a0) * o.len, o.y - Math.cos(a0) * o.len) });
+          const b = w.createBody({ type: 'dynamic', position: new Vec2(o.x + Math.sin(a0) * o.len * this.track.dir, o.y - Math.cos(a0) * o.len) });
           b.createFixture(new Circle(0.42), { density: 3.5, friction: 0.4, restitution: 0.2, userData: ud });
           b.setSleepingAllowed(false);
           w.createJoint(new RevoluteJoint({}, this.groundBody, b, new Vec2(o.x, o.y)));
+          so.bodies.push(b);
+          break;
+        }
+        case 'ferry': {
+          const b = w.createBody({ type: 'kinematic', position: new Vec2(o.x0, o.y - 0.15) });
+          b.createFixture(new Box(o.w / 2, 0.15), { friction: 0.95, userData: ud });
           so.bodies.push(b);
           break;
         }
@@ -385,6 +454,7 @@ export class Sim {
         const cg = this.cargo[ud.ci];
         if (cg.def.t === 'glass') {
           const lim = GLASS_BREAK * (1 + 0.2 * this.up.pad);
+          if (this.time > 0.35 && dv / lim > this.glassPeak) this.glassPeak = dv / lim;
           if (dv > lim && cg.st[0] === 'ok' && this.time > 0.35) {
             cg.st[0] = 'broken';
             const p = b.getPosition();
@@ -420,6 +490,10 @@ export class Sim {
   }
 
   private applyDrive(): void {
+    if (this.wired) {
+      this.applyWired();
+      return;
+    }
     const { fwd, back, brake } = this.input;
     for (const wh of this.wheels) {
       const j = wh.joint as RevoluteJoint | WheelJoint;
@@ -438,6 +512,55 @@ export class Sim {
     for (const th of this.thrusters) {
       th.on = this.input.boost && th.fuel > 0;
       if (th.on) th.fuel = Math.max(0, th.fuel - DT);
+    }
+  }
+
+  /** modo com fios: cada botão segurado gira os motores / liga os propulsores / move as dobradiças ligados a ele */
+  private applyWired(): void {
+    const held = this.input.btn;
+    const brake = this.input.brake;
+    const md = this.motorDir;
+    for (const [mi, ws] of this.motorWires) {
+      let d = 0;
+      for (const [o, sg] of ws) if (held & (1 << o)) d += sg;
+      md.set(mi, d > 0 ? 1 : d < 0 ? -1 : 0);
+    }
+    for (const wh of this.wheels) {
+      const j = wh.joint as RevoluteJoint | WheelJoint;
+      let drive = 0;
+      for (const [mi, sh] of wh.shares) drive += (md.get(mi) ?? 0) * sh;
+      if (brake) {
+        j.setMotorSpeed(0);
+        j.setMaxMotorTorque(BRAKE_TORQUE);
+      } else if (drive !== 0) {
+        j.setMotorSpeed(((drive > 0 ? -1 : 0.75) * V_TARGET) / wh.r);
+        j.setMaxMotorTorque(Math.abs(drive));
+      } else if (wh.powered > 0) {
+        // solto: o motor segura a roda (para sozinho)
+        j.setMotorSpeed(0);
+        j.setMaxMotorTorque(wh.powered * 0.5);
+      } else {
+        j.setMotorSpeed(0);
+        j.setMaxMotorTorque(COAST_TORQUE);
+      }
+      if (held || brake) wh.body.setAwake(true);
+    }
+    for (const th of this.thrusters) {
+      const ws = this.thrusterWires.get(th.idx);
+      let on = false;
+      if (ws) {
+        for (const [o] of ws) if (held & (1 << o)) on = true;
+      } else on = this.input.boost;
+      th.on = on && th.fuel > 0;
+      if (th.on) th.fuel = Math.max(0, th.fuel - DT);
+    }
+    for (const pin of this.pins) {
+      if (!pin.wired.length) continue;
+      let d = 0;
+      for (const [o, sg] of pin.wired) if (held & (1 << o)) d += sg;
+      pin.dir = d;
+      pin.joints.forEach((j, k) => j.setMotorSpeed(k === 0 ? 0 : -Math.sign(d) * HINGE_SPEED));
+      if (d) pin.body.setAwake(true);
     }
   }
 
@@ -483,7 +606,7 @@ export class Sim {
       so.t += dt;
       if (o.k === 'lift') {
         const b = so.bodies[0];
-        const over = vx > o.x - o.w / 2 + 0.3 && vx < o.x + o.w / 2 + 0.6;
+        const over = this.track.dir > 0 ? vx > o.x - o.w / 2 + 0.3 && vx < o.x + o.w / 2 + 0.6 : vx < o.x + o.w / 2 - 0.3 && vx > o.x - o.w / 2 - 0.6;
         const load = this.loaded(b) && over;
         // state: tempo carregado (>0) / vazio (<0)
         if (load) so.state = Math.max(0, so.state) + dt;
@@ -493,6 +616,17 @@ export class Sim {
         const d = target - cy;
         const v = Math.abs(d) < 0.01 ? 0 : Math.sign(d) * Math.min(1.3, Math.abs(d) / dt);
         b.setLinearVelocity(new Vec2(0, v));
+      } else if (o.k === 'ferry') {
+        const b = so.bodies[0];
+        const cx = b.getPosition().x;
+        const over = Math.abs(vx - cx) < o.w / 2 + 0.2;
+        const load = this.loaded(b) && over;
+        if (load) so.state = Math.max(0, so.state) + dt;
+        else so.state = Math.min(0, so.state) - dt;
+        const target = so.state > 0.6 ? o.x1 : so.state < -1.5 ? o.x0 : cx;
+        const d = target - cx;
+        const v = Math.abs(d) < 0.01 ? 0 : Math.sign(d) * Math.min(1.6, Math.abs(d) / dt);
+        b.setLinearVelocity(new Vec2(v, 0));
       } else if (o.k === 'gate') {
         const b = so.bodies[0];
         // ciclo de 4,4 s: em cima 2 s, descendo, embaixo 1,6 s, subindo
@@ -521,6 +655,7 @@ export class Sim {
     let delivered = 0;
     let lost = 0;
     let broken = false;
+    let botLost = false;
     for (const c of this.cargo) {
       c.bodies.forEach((b, k) => {
         if (c.st[k] === 'broken') {
@@ -532,10 +667,14 @@ export class Sim {
           return;
         }
         const p = b.getPosition();
-        const inZone = p.x > z.x0 && p.x < z.x1 + 0.2 && p.y > z.y - 0.5 && p.y < z.y + 4;
-        if (p.y < this.track.killY || p.x < -6) {
+        const tr = this.track;
+        const inZone = p.x > z.x0 - 0.2 && p.x < z.x1 + 0.2 && p.y > z.y - 0.5 && p.y < z.y + 4;
+        let sunk = false;
+        for (const wt of tr.water) if (p.x > wt.x0 && p.x < wt.x1 && p.y < wt.y) sunk = true;
+        if (p.y < tr.killY || p.x < tr.minX - 2 || p.x > tr.maxX + 2 || sunk) {
           c.st[k] = 'lost';
           lost++;
+          if (c.def.t === 'bot') botLost = true;
           return;
         }
         // encostada no chão fora da zona?
@@ -553,9 +692,10 @@ export class Sim {
           }
         }
         c.ground[k] = onGround ? c.ground[k] + DT : 0;
-        if (c.ground[k] > GROUND_LOST) {
+        if (c.ground[k] > (c.def.t === 'bot' ? BOT_GROUND_LOST : GROUND_LOST)) {
           c.st[k] = 'lost';
           lost++;
+          if (c.def.t === 'bot') botLost = true;
           this.fx.push({ x: p.x, y: p.y, power: 0.6, kind: 'cargo' });
           return;
         }
@@ -565,6 +705,7 @@ export class Sim {
       });
     }
     if (broken) this.result = { win: false, reason: 'broken' };
+    else if (botLost) this.result = { win: false, reason: 'bot' };
     else if (lost > this.totalPieces - this.needCount) this.result = { win: false, reason: 'lost' };
     else if (delivered >= this.needCount) this.result = { win: true };
     else if (this.time > TIME_LIMIT) this.result = { win: false, reason: 'time' };
@@ -580,7 +721,7 @@ export class Sim {
         if (c.st[k] !== 'ok') lost++;
         else {
           const p = b.getPosition();
-          if (p.x > z.x0 && p.x < z.x1 + 0.2 && p.y > z.y - 0.5) inZone++;
+          if (p.x > z.x0 - 0.2 && p.x < z.x1 + 0.2 && p.y > z.y - 0.5) inZone++;
         }
       });
     return { total: this.totalPieces, need: this.needCount, lost, inZone };
@@ -648,3 +789,46 @@ export function designCOM(parts: readonly Placed[]): { x: number; y: number; m: 
 }
 
 export type { CargoType };
+
+/* ------------------------------ roteiro de direção (soluções e piloto automático) ------------------------------ */
+export type DriveStep = [number, string, ('x' | 'z' | 't')?];
+
+/** comando vigente: 'x' = progresso no sentido da pista, 'z' = progresso relativo à entrada da zona, senão = tempo */
+export function driveCmd(drive: readonly DriveStep[] | undefined, sim: Sim): string {
+  if (!drive || !drive.length) return 'F';
+  const tr = sim.track;
+  const prog = sim.focus().x * tr.dir;
+  const zp = tr.dir > 0 ? tr.zone.x0 : -tr.zone.x1;
+  let cur = 'F';
+  for (const [v, s, k] of drive) if (k === 'x' ? prog >= v : k === 'z' ? prog >= zp + v : sim.time >= v) cur = s;
+  return cur;
+}
+
+/** aplica um comando (F frente, R ré, B freio, J jato; letras a–d = botão i) às entradas da simulação.
+ *  Em fases com fios, F/R/J seguram os botões ligados a motores (frente/ré) e propulsores; B não existe (soltar já freia). */
+export function applyCmd(sim: Sim, s: string): void {
+  const inp = sim.input;
+  if (!sim.wired) {
+    inp.fwd = s.includes('F');
+    inp.back = s.includes('R');
+    inp.brake = s.includes('B');
+    inp.boost = s.includes('J');
+    inp.btn = 0;
+    return;
+  }
+  inp.fwd = inp.back = inp.brake = false;
+  inp.boost = s.includes('J');
+  let m = 0;
+  const an = sim.an;
+  an.buttons.forEach((bi, o) => {
+    const p = sim.parts[bi];
+    if (s.includes(String.fromCharCode(97 + o))) m |= 1 << o;
+    for (const w of an.wires) {
+      if (w.b !== bi) continue;
+      const tt = sim.parts[w.t].t;
+      if (tt === 'motor' && ((p.t === 'btn' && s.includes('F')) || (p.t === 'btnR' && s.includes('R')))) m |= 1 << o;
+      if (tt === 'thruster' && s.includes('J')) m |= 1 << o;
+    }
+  });
+  inp.btn = m;
+}

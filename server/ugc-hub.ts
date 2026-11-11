@@ -31,6 +31,8 @@ export interface ItemMeta {
   mode?: string;
   clips?: number;
   bytes?: number;
+  /** filme: resultado da moderação por IA (server/voice-mod.ts) */
+  ai?: { v: 'ok' | 'review' | 'reject'; src: string; llm: string };
 }
 
 export interface PublishIn {
@@ -48,6 +50,8 @@ export interface PublishIn {
   thumbs: string[];
   flags: string[];
   dailyLimit: number;
+  /** recusa automática (IA): entra já recusado, com o motivo, e não gasta o limite diário */
+  autoReject?: { reason: string; reviewer: string };
 }
 
 type Row = {
@@ -212,18 +216,21 @@ export class UgcHub extends DurableObject<Env> {
     if (cur && cur.type !== p.type) return { ok: false, error: 'taken' };
     const done = sql.exec<{ n: number }>('SELECT n FROM pubs WHERE pid = ? AND day = ? AND type = ?', p.pid, day, p.type).toArray()[0]?.n ?? 0;
     if (!cur && done >= p.dailyLimit) return { ok: false, error: 'daily-limit' };
+    const ar = p.autoReject;
+    const status: UgcStatus = ar ? 'rejected' : 'pending';
     this.ctx.storage.transactionSync(() => {
       if (cur) {
         sql.exec(
-          `UPDATE items SET aid = ?, aname = ?, title = ?, descr = ?, category = ?, kind = ?, tags = ?, meta = ?, thumbs = ?, status = 'pending', reason = '', flags = ?, updated = ?, reviewed = NULL, reviewer = '' WHERE id = ?`,
-          p.aid, p.aname, p.title, p.descr, p.category, p.kind, JSON.stringify(p.tags), JSON.stringify(p.meta), JSON.stringify(p.thumbs), JSON.stringify(p.flags), now, p.id,
+          `UPDATE items SET aid = ?, aname = ?, title = ?, descr = ?, category = ?, kind = ?, tags = ?, meta = ?, thumbs = ?, status = ?, reason = ?, flags = ?, updated = ?, reviewed = ?, reviewer = ? WHERE id = ?`,
+          p.aid, p.aname, p.title, p.descr, p.category, p.kind, JSON.stringify(p.tags), JSON.stringify(p.meta), JSON.stringify(p.thumbs), status, ar?.reason ?? '', JSON.stringify(p.flags), now, ar ? now : null, ar?.reviewer ?? '', p.id,
         );
       } else {
         sql.exec(
-          `INSERT INTO items (id, type, author, aid, aname, title, descr, category, kind, tags, meta, thumbs, status, flags, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-          p.id, p.type, p.pid, p.aid, p.aname, p.title, p.descr, p.category, p.kind, JSON.stringify(p.tags), JSON.stringify(p.meta), JSON.stringify(p.thumbs), JSON.stringify(p.flags), now, now,
+          `INSERT INTO items (id, type, author, aid, aname, title, descr, category, kind, tags, meta, thumbs, status, reason, flags, created, updated, reviewed, reviewer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          p.id, p.type, p.pid, p.aid, p.aname, p.title, p.descr, p.category, p.kind, JSON.stringify(p.tags), JSON.stringify(p.meta), JSON.stringify(p.thumbs), status, ar?.reason ?? '', JSON.stringify(p.flags), now, now, ar ? now : null, ar?.reviewer ?? '',
         );
-        sql.exec('INSERT INTO pubs (pid, day, type, n) VALUES (?, ?, ?, 1) ON CONFLICT(pid, day, type) DO UPDATE SET n = n + 1', p.pid, day, p.type);
+        // recusa automática não gasta o limite diário (a criança corrige e reenvia)
+        if (!ar) sql.exec('INSERT INTO pubs (pid, day, type, n) VALUES (?, ?, ?, 1) ON CONFLICT(pid, day, type) DO UPDATE SET n = n + 1', p.pid, day, p.type);
       }
     });
     return { ok: true, item: this.out(this.row(p.id)!, p.pid, true, true), isNew: !cur };

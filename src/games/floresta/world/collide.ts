@@ -42,8 +42,12 @@ export class Solids {
     return { x, z, y0, y1, hx, hz, c: Math.cos(yaw), s: Math.sin(yaw), tag };
   }
 
+  /** avisa quando uma caixa fixa entra/sai (a grama embaixo é refeita) */
+  onEdit: ((x0: number, z0: number, x1: number, z1: number) => void) | null = null;
+
   add(b: SBox): SBox {
     const r = Math.max(b.hx, b.hz) * 1.42;
+    this.onEdit?.(b.x - r, b.z - r, b.x + r, b.z + r);
     const x0 = Math.floor((b.x - r) / CELL);
     const x1 = Math.floor((b.x + r) / CELL);
     const z0 = Math.floor((b.z - r) / CELL);
@@ -59,6 +63,7 @@ export class Solids {
   }
   remove(b: SBox): void {
     const r = Math.max(b.hx, b.hz) * 1.42;
+    this.onEdit?.(b.x - r, b.z - r, b.x + r, b.z + r);
     const x0 = Math.floor((b.x - r) / CELL);
     const x1 = Math.floor((b.x + r) / CELL);
     const z0 = Math.floor((b.z - r) / CELL);
@@ -169,6 +174,22 @@ export class Solids {
       if (Math.abs(lx) < b.hx + r * 0.5 && Math.abs(lz) < b.hz + r * 0.5) best = b.y0;
     });
     return best;
+  }
+
+  /** alguma caixa FIXA (não veículo) ocupa (x,z) entre y0 e y1? — grama sob cabanas/construções */
+  staticAt(x: number, z: number, y0: number, y1: number): boolean {
+    const a = this.grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (!a) return false;
+    for (let i = 0; i < a.length; i++) {
+      const b = a[i];
+      if (b.off || b.y1 < y0 || b.y0 > y1) continue;
+      const dx = x - b.x;
+      const dz = z - b.z;
+      const lx = dx * b.c - dz * b.s;
+      const lz = dx * b.s + dz * b.c;
+      if (Math.abs(lx) <= b.hx + 0.15 && Math.abs(lz) <= b.hz + 0.15) return true;
+    }
+    return false;
   }
 
   /** chão (topo de caixa) sob o ponto até `y`, ou -Infinity */

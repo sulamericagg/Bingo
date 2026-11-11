@@ -52,7 +52,9 @@ export async function handleUgcAdmin(req: Request, env: Env, url: URL): Promise<
       const lines: { t: string; who: string; audio?: string }[] = [];
       const cast = new Map<string, string>((f.project?.cast ?? []).map((c: any) => [String(c.id), String(c.name)]));
       for (const sc of f.project?.scenes ?? []) for (const sh of sc.shots ?? []) for (const l of sh.lines ?? []) lines.push({ t: String(l.text ?? ''), who: cast.get(String(l.cast)) ?? '', ...(l.audio ? { audio: String(l.audio) } : {}) });
-      content = { cast: [...cast.values()], lines: lines.slice(0, 400), clips: Object.fromEntries(Object.entries(f.clips ?? {}).map(([k, c]) => [k, `data:${c.mime};base64,${c.b64}`])) };
+      // relatório da IA (transcrições + trechos achados) — server/voice-mod.ts
+      const ai = await env.DATA.get('ugc:fm:' + it.id, 'json').catch(() => null);
+      content = { cast: [...cast.values()], lines: lines.slice(0, 400), clips: Object.fromEntries(Object.entries(f.clips ?? {}).map(([k, c]) => [k, `data:${c.mime};base64,${c.b64}`])), ai };
     } else if (raw) {
       const c = raw as { name: string; kind: string; parts: { name?: string }[]; scripts?: unknown; game?: unknown; mission?: unknown };
       content = { name: c.name, kind: c.kind, parts: c.parts?.length ?? 0, partNames: [...new Set((c.parts ?? []).map((p) => p.name).filter(Boolean))].slice(0, 60), game: c.game ?? null, mission: c.mission ?? null };
