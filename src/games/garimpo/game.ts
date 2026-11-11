@@ -662,7 +662,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     }
     setLod(tier <= 1 ? 1 : 0);
     const guest = this.guest;
-    const wk = new Worker(guest ? PCOL[color] : undefined);
+    const wk = new Worker(guest ? PCOL[color] : undefined, 'me'); // PAPER: 'me' = meu Bloop
     wk.ghost = guest;
     this.worker = wk;
     wk.cargo.cap = BARROW[s.upg.barrow];

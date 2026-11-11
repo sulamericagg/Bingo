@@ -6993,6 +6993,7 @@ export default {
   "settings.haptics": "Vibration",
   "settings.intro": "Eröffnungsanimation der Spiele",
   "settings.narration": "Vorlesen (für Nicht-Leser)",
+  "settings.paperChar": "2D-Figur in 3D-Spielen",
   "settings.lang": "Sprache",
   "settings.langTitle": "SPRACHE",
   "settings.mirrorDiag": "Spiegel-Diagnose",

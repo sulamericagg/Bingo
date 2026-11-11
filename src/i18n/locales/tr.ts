@@ -6993,6 +6993,7 @@ export default {
   "settings.haptics": "Titreşim",
   "settings.intro": "Oyun açılış animasyonu",
   "settings.narration": "Sesli oku (okuyamayanlar için)",
+  "settings.paperChar": "3D oyunlarda 2D karakter",
   "settings.lang": "Dil",
   "settings.langTitle": "DİL",
   "settings.mirrorDiag": "Ayna tanılaması",
