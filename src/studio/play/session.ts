@@ -243,6 +243,8 @@ export class PlaySession {
     this.fire('start');
     for (const inst of this.insts) inst.vm?.emit('start');
     this.updateChip();
+    // testar um veículo (sem ponto de início): já começa sentado ao volante
+    if (doc.kind === 'vehicle' && this.vehicles.length && !doc.parts.some((p) => p.role === 'spawn')) this.enter(this.vehicles[0]);
   }
 
   /** todo corpo do mundo usa o material "sólido" (o Bloop desliza sem grudar em nada) */
