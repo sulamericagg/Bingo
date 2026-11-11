@@ -52,6 +52,8 @@ export interface HubPanelDef {
   badge?(): number | string;
   /** ordem na barra inferior (menor = mais à esquerda); undefined = só em menus secundários */
   navOrder?: number;
+  /** destaque pulsante na barra inferior (ex.: novidade) */
+  highlight?(): boolean;
 }
 
 const games: MiniGameDef[] = [];
