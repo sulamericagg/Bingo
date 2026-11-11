@@ -4,6 +4,7 @@
  *  objetos soltos com física simples e o pouso. Mesma sim no 2D e 3D.
  * ============================================================ */
 import { t } from '../../i18n';
+import { FpController, fpTuning, type FpCollider } from '../../3d/fpkit';
 import {
   BOXES, CEIL, HALF_W, ITEM_HOMES, NOSE_Z, P_RAD, REACH, SEATS, SPOTS, TAIL_Z, WIN_Z, emerName, itemName, roleName,
   type EmerKind, type ItemKind, type Role, type SpotId,
@@ -1542,6 +1543,8 @@ export class Sim {
     const sp = (p.bot ? BOT_SPEED : HUMAN_SPEED) * (p.hold >= 0 && this.item(p.hold)?.kind === 'bag' ? 0.7 : 1) * (this.cart.by === p.idx ? 0.65 : 1) * (1 - this.dizzy * 0.4);
     const ml = Math.hypot(mx, mz);
     if (ml > 1) (mx /= ml), (mz /= ml);
+    // eu (humano local): o andar compartilhado da Cozinha (src/3d/fpkit, preset 'indoor')
+    if (p.idx === this.me && !p.bot) return this.stepWalker(p, mx, mz, sp, dt);
     // aceleração rumo à velocidade desejada + forças da cabine
     const k = Math.min(1, dt * 10);
     p.vx += (mx * sp - p.vx) * k + this.acc.x * dt * 0.9;
@@ -1585,6 +1588,51 @@ export class Sim {
       }
     }
     this.collide(p);
+    this.carry(p, dt);
+  }
+
+  /** andar do jogador local com o kit de 1ª pessoa: aceleração/frenagem, deslize nas paredes, empurrão suave */
+  readonly walker = new FpController(fpTuning('indoor', { radius: P_RAD, eye: 1.45 }), {
+    sweep: (fx, fz, tx, tz, r, o) => {
+      const b = { x: tx, z: tz, vx: 0, vz: 0 };
+      this.collide(b, r);
+      o.x = b.x;
+      o.z = b.z;
+      o.hitX = Math.abs(b.x - tx) > 1e-4;
+      o.hitZ = Math.abs(b.z - tz) > 1e-4;
+      void fx;
+      void fz;
+    },
+  } as FpCollider);
+  private stepWalker(p: Player, mx: number, mz: number, sp: number, dt: number): void {
+    const w = this.walker;
+    // a sim pode ter me movido (sentar/levantar, correção do anfitrião): o corpo segue
+    if (Math.hypot(w.x - p.x, w.z - p.z) > 1e-3) w.place(p.x, p.z);
+    w.vx = p.vx;
+    w.vz = p.vz;
+    w.tune.speed = sp;
+    // direcional já no espaço do avião: yaw 0 → frente = -z, direita = +x
+    w.steer(dt, mx, -mz, 0);
+    // forças da cabine (inclinação/turbulência) e vento da porta/janela entre "calcular" e "mover"
+    w.vx += this.acc.x * dt * 0.9;
+    w.vz += this.acc.z * dt * 0.9;
+    const hole = this.holePos();
+    if (hole) {
+      const dx = hole[0] - w.x;
+      const dz = hole[1] - w.z;
+      const d = Math.max(0.6, Math.hypot(dx, dz));
+      const pull = Math.min(3.2, 9 / d);
+      w.vx += (dx / d) * pull * dt;
+      w.vz += (dz / d) * pull * dt;
+    }
+    w.move(dt);
+    for (const q of this.players) if (q !== p && !q.seated) w.pushAway(q.x, q.z);
+    for (const q of this.pax) if (q.mode >= 2) w.pushAway(q.x, q.z);
+    p.x = w.x;
+    p.z = w.z;
+    p.vx = w.vx;
+    p.vz = w.vz;
+    p.walk += Math.hypot(p.vx, p.vz) * dt;
     this.carry(p, dt);
   }
 

@@ -20,6 +20,7 @@ import {
 import { DRINKS, GS, MAINS, RWY_HALF, RWY_LEN, seatLabel, type Ev, type Order, type Sim } from './sim';
 import { GeoBuilder } from '../../3d/common/geo';
 import { vIconImg } from './icons';
+import { FpCamera, fpTuning, type FpCollider } from '../../3d/fpkit';
 import { CloudField } from './clouds';
 
 const TAU = Math.PI * 2;
@@ -60,6 +61,12 @@ function camClamp(x: number, z: number): [number, number] {
   }
   return [x, z];
 }
+
+const CAM_CLAMP: FpCollider = {
+  clampPoint: (x, z, _m, _px, _pz, out) => {
+    [out[0], out[1]] = camClamp(x, z);
+  },
+};
 
 export interface ViewOpts {
   livery: Livery;
@@ -1004,32 +1011,33 @@ export class View3D {
       this.yaw = clamp(this.yaw, Math.PI - 1.4, Math.PI + 1.4);
       this.pitch = clamp(this.pitch, -0.7, 0.5);
     }
-    // andar com a sensação da Cozinha: balanço de cabeça 0,025 m a ~9 Hz, leve rolagem, sem tremedeira
-    const walk = Math.hypot(me.vx, me.vz);
-    const speedK = Math.min(1, walk / 3.3);
-    this.bobT += dt * 9 * speedK;
-    const bobY = Math.sin(this.bobT * 2) * 0.025 * speedK;
-    const bobRoll = Math.cos(this.bobT) * 0.008 * speedK;
+    // a pé: câmera do kit compartilhado (src/3d/fpkit — o andar da Cozinha): balanço, rolagem, camClamp
+    const speedK = seated ? 0 : s.walker.speedK;
     const stun = me.stun > 0 ? Math.sin(Math.min(1, me.stun) * Math.PI) : 0;
-    // tremor: só por estol (buffet) e rajadas/solavancos da turbulência — suave e proporcional
+    // tremor: só por estol (buffet) e rajadas/solavancos da turbulência — suave e proporcional (sem ruído)
     const sh = this.shakeAmt();
     const shx = Math.sin(this.t * 19.7) * sh * 0.02;
     const shy = Math.sin(this.t * 15.3 + 0.7) * sh * 0.025 + Math.sin(this.t * 31.1) * sh * 0.008;
-    if (seated) cam.position.set(SPOTS.pilot.x, 1.5, SPOTS.pilot.z - 0.02);
-    else {
-      // posição interpolada entre passos (andar liso em 60/90/120 Hz) e afastada dos móveis
-      const k = s.lerpK;
-      const mx = (me.ox ?? me.x) + (me.x - (me.ox ?? me.x)) * k;
-      const mz = (me.oz ?? me.z) + (me.z - (me.oz ?? me.z)) * k;
-      const [cx, cz] = camClamp(mx, mz);
-      cam.position.set(cx, EYE + bobY - stun * 0.55, cz);
-    }
-    cam.position.x += shx;
-    cam.position.y += shy;
     const dz = s.dizzy;
     const wob = dz > 0 ? Math.sin(this.t * 1.3) * 0.06 * dz : 0;
-    cam.rotation.set(this.pitch + wob * 0.5 + shy * 0.6, this.yaw + Math.PI, -s.acc.x * 0.012 + stun * 0.5 + wob + bobRoll, 'YXZ');
-    cam.updateMatrixWorld();
+    if (seated) {
+      cam.position.set(SPOTS.pilot.x + shx, 1.5 + shy, SPOTS.pilot.z - 0.02);
+      cam.rotation.set(this.pitch + wob * 0.5 + shy * 0.6, this.yaw + Math.PI, -s.acc.x * 0.012 + wob, 'YXZ');
+      cam.updateMatrixWorld();
+    } else {
+      // posição interpolada entre passos (andar liso em 60/90/120 Hz)
+      const k = s.lerpK;
+      const fc = this.fpc;
+      fc.yaw = this.yaw + Math.PI;
+      fc.pitch = this.pitch;
+      fc.extraPitch = wob * 0.5 + shy * 0.6;
+      fc.extraRoll = -s.acc.x * 0.012 + stun * 0.5 + wob;
+      fc.extraY = shy - stun * 0.55;
+      this.fpBody.x = (me.ox ?? me.x) + (me.x - (me.ox ?? me.x)) * k + shx;
+      this.fpBody.z = (me.oz ?? me.z) + (me.z - (me.oz ?? me.z)) * k;
+      this.fpBody.speedK = speedK;
+      fc.apply(cam, dt, this.fpBody, CAM_CLAMP);
+    }
     this.syncWorldCam(cam, clamp(s.f.alt * 0.03, 2, 40));
     // mão
     const held = s.item(me.hold);
@@ -1051,7 +1059,9 @@ export class View3D {
     const turbG = Math.abs(s.acc.y) / 9.8;
     return clamp(s.f.buffet * 0.8 + (s.turb > 0 ? turbG * 1.4 + s.turb * 0.25 : 0) + this.shake * 0.6, 0, 1.6);
   }
-  private bobT = 0;
+  /** câmera a pé do kit compartilhado (preset 'indoor', olhos a 1,45 m) */
+  private fpc = new FpCamera(fpTuning('indoor', { eye: EYE }));
+  private fpBody = { x: 0, z: 0, y: 0, speedK: 0 };
 
   private syncWorldCam(cam: THREE.Camera, near: number): void {
     _m.multiplyMatrices(this.planeOff.matrixWorld, cam.matrixWorld);
