@@ -17,7 +17,7 @@
  *
  * Filmes oficiais do "Estúdio Bloop" (shared/tv-official.ts, gerado com o app): ficam SEMPRE no ar,
  * intercalados com os das crianças (nunca dois filmes de criança seguidos; a fatia das crianças cresce
- * com a quantidade aprovada, até metade da grade). Não precisam de seed: vêm no código do Worker, e o app
+ * com a quantidade aprovada: 12 ou mais = metade da grade). Não precisam de seed: vêm no código do Worker, e o app
  * desenha a partir do mesmo catálogo embutido (nada é baixado). Votos neles contam, mas não dão moedas.
  */
 import { DurableObject } from 'cloudflare:workers';
@@ -85,9 +85,10 @@ export class TvChannel extends DurableObject<Env> {
     const kids = this.ctx.storage.sql.exec<{ c: number }>('SELECT COUNT(*) AS c FROM films').one().c;
     const last = recent[recent.length - 1];
     const lastKid = !!last && !OFFICIAL.has(last);
-    // fatia das crianças: 15% + 3,5% por filme aprovado, até 50%; nunca duas seguidas (se houver oficiais)
-    const share = kids ? Math.min(0.5, 0.15 + kids * 0.035) : 0;
-    if (kids && (!OFFICIAL.size || (!lastKid && Math.random() < share * 2))) {
+    // depois de um oficial, chance de um filme de criança = filmes aprovados / 12 (1 filme ≈ a cada 12 da grade;
+    // 12 ou mais = alterna um a um, metade da grade); nunca dois de criança seguidos (havendo oficiais)
+    const pKid = Math.min(1, kids / 12);
+    if (kids && (!OFFICIAL.size || (!lastKid && Math.random() < pKid))) {
       const k = this.pickKid(recent);
       if (k) return k;
     }

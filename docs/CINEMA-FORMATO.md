@@ -39,11 +39,23 @@ O mesmo projeto toca em 2D **ou** 3D (`mode`): as chaves dos atores servem para 
                                    // permite "Editar história" no modo simples (refaz os planos a partir dele)
   "watermark": true,               // marca "Feito no Bloop World" (só Pro pode desligar)
   "mix": { "music": 0.7, "voice": 1, "sfx": 0.8 },      // 0..1
-  "music": { "song": "free-02", "offset": 8, "vol": 0.6 } | null,
+  "music": { "song": "free-02", "offset": 8, "vol": 0.6, "beat": BeatPat? } | null,   // beat = "Criar música"
   "cast": [ CastMember ],          // até 8
   "scenes": [ Scene ]              // cena = cenário; cada cena tem planos
 }
 ```
+
+### BeatPat ("Criar música" — `src/cinema/beatpat.ts`, tocado por `beat.ts`)
+Trilha criada pela criança = só um **padrão** (poucos bytes), sintetizado na hora (Synth do Bloop Banda) no editor, no
+vídeo exportado e na TV. Com `beat`, `song` vira a música parecida para versões antigas do app.
+```jsonc
+{ "v": 1, "mood": "alegre|aventura|suspense|sono|festa", "bpm": 112, "steps": 16, "key": 0,   // tônica 0..11
+  "mel": "piano|chip|metais|sanfona|violao|cordas|orgao", "bass": "baixo|synth|contra|chip", "kit": "bateria|eletro|chip|lofi|orq",
+  "m": "0.2.4...",          // melodia: 1 caractere por colcheia, '.' pausa, '0'..'7' linha da pentatônica (maior/menor pelo humor)
+  "b": "0..30...",          // baixo: '0' tônica, '1' quinta, '2' oitava, '3' terça do acorde da volta
+  "d": ["1000…", "0000…", "1010…"] }   // bumbo, caixa/palmas, chimbal
+```
+A cada volta da grade o acorde muda (progressão do humor) e a cada 4 voltas entra um prato.
 
 ### CastMember
 ```jsonc

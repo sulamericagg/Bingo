@@ -44,6 +44,9 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, tim
   return data as T;
 }
 
+/** Miniatura de um filme de jogador (a do meio das 3 enviadas). */
+export const kidThumbUrl = (id: string): string => `${apiBase()}/api/ugc/thumb?id=${encodeURIComponent(id)}&n=1`;
+
 export const myId = async (): Promise<string> => (await ensurePlayer(1500)).id;
 
 /** Grade + diferença do relógio (servidor − aparelho), corrigida pela metade da ida e volta. */

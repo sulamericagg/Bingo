@@ -26,6 +26,7 @@ import { parseProject, projectDuration, type Project } from './format';
 import { menu, sheet } from './sheets';
 import { music } from '../audio';
 import { GENRE_UI, isOfficialId, loadOfficial, localSlot, OFFICIAL_AUTHOR, officialProject, requestRemix, thumbUrl, type OfficialEntry } from './tv-official';
+import { kidThumbUrl } from './tv-net';
 import { fetchFilm, fetchNow, myFilms, report, submitFilm, vote, voted, type SubmitError } from './tv-net';
 
 const fmtClock = (s: number) => {
@@ -425,7 +426,7 @@ class TvPlayer {
     this.el.querySelector<HTMLButtonElement>('[data-a="report"]')!.disabled = !cur;
     const now = this.sNow();
     $('next').innerHTML = g?.next.length
-      ? g.next.map((n) => `<div class="tv-nx">${n.official ? `<img class="tv-nx-th" loading="lazy" src="${thumbUrl(n.id)}" alt="">` : '<span class="tv-nx-th kid">🎬</span>'}<div><b>${esc(n.title)}</b><small>${esc(n.author)} · ${t('tv.in', 'em {t}', { t: fmtClock((n.start - now) / 1000) })} · ${fmtClock(n.dur / 1000)}</small></div></div>`).join('')
+      ? g.next.map((n) => `<div class="tv-nx">${n.official ? `<img class="tv-nx-th" loading="lazy" src="${thumbUrl(n.id)}" alt="">` : `<img class="tv-nx-th" loading="lazy" src="${kidThumbUrl(n.id)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'tv-nx-th kid',textContent:'🎬'}))">`}<div><b>${esc(n.title)}</b><small>${esc(n.author)} · ${t('tv.in', 'em {t}', { t: fmtClock((n.start - now) / 1000) })} · ${fmtClock(n.dur / 1000)}</small></div></div>`).join('')
       : `<p class="cin-hint">${t('tv.noNext', 'A grade aparece aqui quando houver mais filmes.')}</p>`;
     if (cur && !this.myVote.has(cur.id) && !this.offline) {
       this.myVote.set(cur.id, false);
