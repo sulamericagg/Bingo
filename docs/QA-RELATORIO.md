@@ -174,27 +174,32 @@ Legenda: ✅ conferido e certo · ❌ ainda errado ou faltando · 📱 o robô n
 A máquina de teste estava muito ocupada (outros 5 agentes compilando e testando), então os números são o **pior caso**
 e servem para comparar os jogos entre si. Medido na tela de entrada de cada jogo:
 
-| Jogo | FPS | |
-|---|---|---|
-| Desastre (escolha 2D/3D) | 1 (um quadro de 4,9 s) | ❌ em obra pelo agente do Desastre |
-| Bloop Studio | 7 | ❌ |
-| Pouso Forçado (hangar) | 9 | ❌ |
-| Desenha e Vira | 13 | ❌ |
-| Cozinha | 25 | 🔶 |
-| Jangada | 28 | 🔶 |
-| Todos os outros 15 + hub | 57–60 | ✅ |
+| Jogo | Antes | Depois das correções | |
+|---|---|---|---|
+| Desastre (escolha 2D/3D) | 1 | 1 (um quadro de 3–5 s) | ❌ em obra pelo agente do Desastre |
+| Pouso Forçado (hangar) | 9 | 12–18 | 🔶 melhorou (30 quadros/s no menu, sem reflexo no aparelho fraco) |
+| Bloop Studio | 7 | 12–17 (mexendo); parado redesenha só 8×/s | 🔶 melhorou |
+| Desenha e Vira | 13 | **55–56** | ✅ |
+| Cozinha | 25 | 20–25 | 🔶 |
+| Jangada | 28 | 24–28 | 🔶 |
+| Monta & Leva | 33 | 28 | 🔶 |
+| Todos os outros + hub | 57–60 | 57–60 | ✅ |
+
+(Duas medidas por jogo porque a máquina oscilava muito com os outros agentes; a faixa mostra as duas.)
 
 Dentro da partida, sem CPU lenta: jogos 2D a ~60; 3D (Noites, Mundo, Garimpo, Cozinha) entre 12 e 35 aqui — no celular
 com placa de vídeo de verdade deve ser bem mais. **Precisa medir num tablet velho de verdade** 📱.
 
-## 6. Rodada final (o que o robô mostrou por último)
-| Teste | Resultado |
+## 6. Rodada final (`npm run qa` completo, 11/11 à noite)
+| Parte | Resultado |
 |---|---|
-| 22 jogos abrem → jogam → pausam → saem | 21/22 na rodada cheia; o que falhou (Pouso Forçado, erro no hangar) foi corrigido e passou (4/4 na repetição) |
-| HUD sem sobreposição em 740/844/915 | ✅ em todos os jogos medidos (Pouso Forçado, Anomalias e Desenha: conferidos só por foto) |
-| Hub | 56/56 |
-| Online (2 jogadores + servidor local) | **28/28**: cadastro, amizade, grupo, convite na hora, líder com coroa, entrar junto em Queda Giratória, Cozinha, Noites, Garimpo e Cava & Fala, pódio do duelo para os dois |
-| Memória (15 aberturas) | sem vazamento de memória, canvas ou 3D; ouvintes crescem um pouco (anotado) |
+| `games`: 22 jogos abrem → jogam → pausam → saem | **22/22** |
+| `hud`: sobreposição de controles em 740/844/915 | ✅ todos os jogos medidos (Pouso Forçado, Anomalias e Desenha: conferidos só por foto) |
+| `hub` (em pé), `small` (360×740), `en` (inglês) | **56/56 · 56/56 · 56/56** |
+| `online` (2 jogadores + servidor local) | **28/28**: cadastro, amizade, grupo, convite na hora, coroa, entrar junto em Queda Giratória, Cozinha, Noites e Cava & Fala, pódio do duelo |
+| `deep` (cenas do dono) | ✅ Lugar (pausa → mapa → início → sair), hangar e pasta do voo, Garimpo nascendo fora do galpão, TV com 100 filmes, Mundo sem o clássico |
+| `leaks` (15 aberturas) | memória, canvas e 3D sem crescer. Nenhum ouvinte global sobrando (sonda própria); o contador geral do Chrome ainda sobe ~5 por abertura, sem efeito na memória — anotado |
+| `perf` | ver §5 |
 | `tsc` app e servidor, `vite build`, `i18n:check`, `test:server` (278), `test:cava` (22), Monta & Leva (200 fases) | todos verdes |
 
 ## 7. Precisa testar no celular de verdade (📱)
