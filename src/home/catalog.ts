@@ -286,7 +286,7 @@ function starterRoom(id: RoomId): RoomDesign {
     },
     party: {
       id, floor: 'checker:12', wall: 'dots:3',
-      items: [it('garland0', 180, 40), it('discoball0', 180, 330), it('balloons0', 29, 262), it('balloons1', 333, 262), it('speaker0', 290, 268), it('partytable0', 180, 336), it('chair2', 108, 330), it('chair2', 252, 330)],
+      items: [it('garland0', 180, 40), it('discoball0', 180, 120), it('balloons0', 29, 262), it('balloons1', 333, 262), it('speaker0', 290, 268), it('partytable0', 180, 336), it('chair2', 108, 330), it('chair2', 252, 330)],
     },
   };
   return base[id];
@@ -331,6 +331,15 @@ export function surface(spec: string): [string, number] {
   return [a, Number(b) || 0];
 }
 /** Normaliza design vindo do servidor/cache (campos faltando → padrão). */
+/** item de parede só fica NA parede (y ≤ WALL_Y − h/2 − 4, WALL_Y = 230 do render-room): o globo de luz
+ *  do salão de festa inicial vinha em y=330 e era desenhado no chão, no meio dos convidados */
+function fixWallItems<T extends { id: string; y: number }>(items: T[]): T[] {
+  for (const it of items) {
+    const f = furnById(it.id);
+    if (f?.wall) it.y = Math.max(f.h / 2, Math.min(230 - f.h / 2 - 4, it.y));
+  }
+  return items;
+}
 export function normalizeDesign(d: HomeDesign | null | undefined): HomeDesign {
   const s = starterDesign();
   if (!d || d.v !== 1) return s;
@@ -338,12 +347,12 @@ export function normalizeDesign(d: HomeDesign | null | undefined): HomeDesign {
     const rd = d.rooms?.find((x) => x.id === id);
     const base = s.rooms.find((x) => x.id === id)!;
     if (!rd) return base;
-    return { id, floor: rd.floor || base.floor, wall: rd.wall || base.wall, items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) };
+    return { id, floor: rd.floor || base.floor, wall: rd.wall || base.wall, items: fixWallItems((rd.items || []).filter((i) => furnById(i.id)).slice(0, 60)) };
   });
   // cômodos comprados no 3D (Ampliar casa) vêm depois dos 5 de sempre
   for (const rd of d.rooms ?? []) {
     if (!rd || !isExtraRoom(rd.id) || rooms.some((r) => r.id === rd.id) || rooms.length >= 12) continue;
-    rooms.push({ id: rd.id as RoomId, floor: rd.floor || 'wood:15', wall: rd.wall || 'paint:14', items: (rd.items || []).filter((i) => furnById(i.id)).slice(0, 60) });
+    rooms.push({ id: rd.id as RoomId, floor: rd.floor || 'wood:15', wall: rd.wall || 'paint:14', items: fixWallItems((rd.items || []).filter((i) => furnById(i.id)).slice(0, 60)) });
   }
   return { v: 1, planet: { ...s.planet, ...d.planet }, exterior: { ...s.exterior, ...d.exterior }, rooms };
 }
