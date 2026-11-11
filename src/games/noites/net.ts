@@ -7,6 +7,7 @@
  * ============================================================ */
 import { wsUrl } from '../../social/net';
 import type { Action, Bag, Player, Sim } from './sim';
+import { validDesign } from './vehicles';
 
 /** código numérico estável de 6 dígitos para um id de jogador */
 export function roomCode(id: string): string {
@@ -114,6 +115,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 type PRow = [string, string, string, string, number, number, number, number, number, number, number, number, Bag, number, number, string, Record<string, string>, Record<string, number>, number, number, number, number, number, string];
 
 export interface SnapState {
+  verV: number;
   evSent: number;
   verT: number;
   verS: number;
@@ -121,7 +123,7 @@ export interface SnapState {
   full: number;
 }
 export function newSnapState(): SnapState {
-  return { evSent: 0, verT: -1, verS: -1, verC: -1, full: 0 };
+  return { verV: -1, evSent: 0, verT: -1, verS: -1, verC: -1, full: 0 };
 }
 
 export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<string, unknown>): Record<string, unknown> {
@@ -169,6 +171,15 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     s.chestOpen.forEach((v, i) => v && ch.push(i));
     o.ch = ch;
     o.vc = s.verChest;
+  }
+  if (s.vehView.length || s.looseView.length) {
+    o.vh = s.vehView.map((v) => [v.id, v.dk, r2(v.x), r2(v.y), r2(v.z), r2(v.q[0]), r2(v.q[1]), r2(v.q[2]), r2(v.q[3]), r1(v.fuel), v.driver, v.riders, r1(v.spin), r2(v.steer), r1(v.speed), v.logs.map(r2)]);
+    o.lo = s.looseView.map((l) => [l.id, r1(l.x), r1(l.z)]);
+  }
+  if (full || st.verV !== s.verVeh) {
+    st.verV = s.verVeh;
+    const used = new Set(s.vehView.map((v) => v.dk));
+    o.vd = Object.fromEntries([...s.designs].filter(([k]) => used.has(k)));
   }
   if (extra) Object.assign(o, extra);
   return o;
@@ -237,6 +248,12 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
     b.z = r[2];
     b.by = r[3];
   });
+  s.vehView = ((o.vh as any[]) ?? []).map((r) => ({ id: r[0], dk: r[1], x: r[2], y: r[3], z: r[4], q: [r[5], r[6], r[7], r[8]] as [number, number, number, number], fuel: r[9], driver: r[10], riders: r[11], spin: r[12], steer: r[13], speed: r[14], logs: r[15] }));
+  s.looseView = ((o.lo as any[]) ?? []).map((r) => ({ id: r[0], x: r[1], z: r[2] }));
+  if (o.vd) for (const k in o.vd) {
+    const d = validDesign(o.vd[k]);
+    if (d) s.designs.set(k, d);
+  }
   if (o.tr) {
     s.treeT.fill(0);
     const tr = o.tr as number[];
@@ -257,4 +274,4 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
   }
 }
 
-export type GuestMsg = { t: 'i'; x: number; z: number; yaw: number; aim: number; l: number; seat?: number } | ({ t: 'a' } & Action);
+export type GuestMsg = { t: 'i'; x: number; z: number; yaw: number; aim: number; l: number; th?: number; sr?: number } | ({ t: 'a' } & Action);

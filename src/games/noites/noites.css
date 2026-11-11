@@ -96,3 +96,23 @@
 @keyframes ncPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
 @keyframes ncBlink{50%{opacity:.4}}
 @media (max-height:380px){.nc-use{width:88px;height:88px}.nc-side .nc-btn.round{width:56px;height:56px}.nc-slot{width:50px;height:50px}.nc-menu .big .nc-btn{width:118px;height:100px}}
+
+.nc-garage .nc-vlist{display:flex;flex-direction:column;gap:6px;width:150px}
+.nc-vcards{display:flex;flex-direction:column;gap:6px;overflow-y:auto;touch-action:pan-y;flex:1}
+.nc-vcard{padding:2px;border-radius:12px}
+.nc-vcard canvas{width:120px;height:64px;display:block}
+.nc-vbuild{flex:1;display:flex;flex-direction:column;gap:4px;overflow-y:auto;touch-action:pan-y}
+.nc-vrow{display:flex;align-items:center;gap:5px}
+.nc-vlab{width:34px;display:flex;justify-content:center;cursor:pointer}
+.nc-vopt{width:50px;height:40px;padding:0;border-radius:12px;position:relative}
+.nc-vopt small{position:absolute;right:3px;bottom:0;font-size:12px}
+.nc-vcol{width:30px;height:30px;padding:0;border-radius:50%;min-width:30px;min-height:30px}
+.nc-vcol.on{outline:3px solid #fff;outline-offset:2px}
+.nc-vside{width:270px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.nc-vprev{width:260px;height:120px;background:rgba(255,255,255,.08);border-radius:14px}
+.nc-vstats{display:flex;gap:10px;font-weight:700;color:#ffd34a}
+.nc-vstats span{display:flex;align-items:center;gap:2px}
+.nc-vside .cost{display:flex;flex-wrap:wrap;gap:3px;justify-content:center}
+.nc-drive{display:flex;align-items:center;gap:6px;background:rgba(20,10,50,.6);border-radius:16px;padding:2px 8px;font-weight:700}
+.nc-drive .nc-bar i{background:linear-gradient(90deg,#3ec05a,#ffd34a)}
+@media (max-height:380px){.nc-vside{width:220px}.nc-vprev{width:210px;height:96px}.nc-vopt{width:44px;height:36px}}

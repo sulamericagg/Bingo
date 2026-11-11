@@ -111,6 +111,7 @@ const P: Record<string, (c: string) => string> = {
   pick: (c) => `<path d="M24 40V16M14 24l10-10 10 10" fill="none" stroke="${c || '#fff'}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`,
   coin: (c) => `<circle cx="24" cy="24" r="16" fill="${c || '#ffcf2e'}" ${W}/><circle cx="24" cy="24" r="10" fill="none" stroke="#e98f00" stroke-width="3"/>`,
   cloud: (c) => `<path d="M12 36a8 8 0 0 1 0-16 12 12 0 0 1 23-3 9 9 0 0 1 1 19z" fill="${c || '#c8d8ff'}" ${W}/><path d="M8 8l32 32" stroke="#ff4f6a" stroke-width="4"/>`,
+  paint: (c) => `<path d="M10 38c0-6 4-8 8-8l14-18 6 6-18 14c0 4-2 8-8 8z" fill="${c || '#ff8fd8'}" ${W}/><path d="M30 14l6 6" ${W}/>`,
   help: (c) => `<circle cx="24" cy="24" r="18" fill="${c || '#ff4f6a'}" ${W}/><path d="M18 18a6 6 0 1 1 8 6v4" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle cx="26" cy="34" r="2.5" fill="#fff"/>`,
 };
 

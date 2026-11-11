@@ -24,6 +24,8 @@ import { View, type Focus, type Ghost } from './view';
 import { Hud, esc, itemIcon, itemName, whyText } from './hud';
 import { ic } from './icons';
 import { setVoice, speak, stopSpeak, voiceOn } from './speak';
+import { Garage } from './garage';
+import { stats, vName, type VDesign } from './vehicles';
 import { NightsNet, apply, encode, newSnapState, roomCode, type GuestMsg, type Peer, type SnapState } from './net';
 
 /* ------------------------------ save ------------------------------ */
@@ -53,7 +55,8 @@ function writeSave(s: NSave): void {
 }
 
 type Target =
-  | { k: 'tree' | 'node' | 'chest' | 'baby' | 'proc' | 'pick'; i: number; x: number; z: number; r: number }
+  | { k: 'tree' | 'node' | 'chest' | 'baby' | 'proc' | 'pick' | 'garage'; i: number; x: number; z: number; r: number }
+  | { k: 'veh'; i: number; x: number; z: number; r: number; sub: 'enter' | 'load' | 'fuel' }
   | { k: 'fire' | 'bench'; i: -1; x: number; z: number; r: number };
 
 const SPEED = 5.2;
@@ -97,6 +100,10 @@ export class NoitesGame implements MiniGameHandle {
   private wasNight = false;
   private lastBlock = '';
   private botsN = 0;
+  private garage: Garage | null = null;
+  private garageKey = '';
+  private camAuto = 0;
+  private driveIn: [number, number] = [0, 0];
 
   constructor(
     root: HTMLElement,
@@ -339,6 +346,8 @@ export class NoitesGame implements MiniGameHandle {
     this.ctl?.dispose();
     this.ctl = null;
     this.wrap.querySelector('.nc-result')?.remove();
+    this.garage?.destroy();
+    this.garage = null;
     this.placing = null;
   }
 
@@ -375,7 +384,8 @@ export class NoitesGame implements MiniGameHandle {
           const p = s.player(from);
           if (!p) return;
           if (g.t === 'i') {
-            if (p.faint <= 0) {
+            if (p.seat >= 0) s.drive(from, Number(g.th) || 0, Number(g.sr) || 0);
+            else if (p.faint <= 0) {
               const [x, z] = s.collide(+g.x || 0, +g.z || 0, 0.4);
               if (Math.hypot(x - p.x, z - p.z) < 6) [p.x, p.z] = [x, z];
               p.yaw = +g.yaw || 0;
@@ -418,7 +428,7 @@ export class NoitesGame implements MiniGameHandle {
           this.onEvent(e);
         }
         const me2 = this.me;
-        if (me2 && keep) [me2.x, me2.z, me2.yaw, me2.aim, me2.lightOn] = [keep.x, keep.z, keep.yaw, keep.aim, me2.faint > 0 ? false : keep.l];
+        if (me2 && keep && me2.seat < 0 && !(o.ev as Ev[] | undefined)?.some((e) => e.k === 'vexit' && e.p === this.myId)) [me2.x, me2.z, me2.yaw, me2.aim, me2.lightOn] = [keep.x, keep.z, keep.yaw, keep.aim, me2.faint > 0 ? false : keep.l];
       }
     };
   }
@@ -565,6 +575,16 @@ export class NoitesGame implements MiniGameHandle {
       if (kind === 'kiln' || kind === 'still' || kind === 'charger' || kind === 'solar' || kind === 'garden' || kind === 'berrybed') consider({ k: 'proc', i: st.id, x: st.x, z: st.z, r: 1 }, 2.8, 2);
       else if (kind === 'torch' && st.burn <= 0) consider({ k: 'pick', i: st.id, x: st.x, z: st.z, r: 0.6 }, 2.4, 1);
     }
+    for (const v of s.vehView) {
+      const d = s.designs.get(v.dk);
+      if (!d) continue;
+      const st = stats(d);
+      const free = !v.driver || v.riders.length < d.seats - 1;
+      const sub: 'enter' | 'load' | 'fuel' = (me.bag.wood ?? 0) > 0 && st.cap > v.logs.length / 7 ? 'load' : st.energy && v.fuel < st.fuelCap * 0.6 && ((s.stash[st.energy] ?? 0) > 0 || (me.bag[st.energy] ?? 0) > 0) && (Math.hypot(v.x, v.z) < CAMP_R + 8 || !!s.nearGarage(v.x, v.z, 10)) ? 'fuel' : 'enter';
+      if (sub === 'enter' && !free) continue;
+      consider({ k: 'veh', i: v.id, x: v.x, z: v.z, r: st.l / 2 + 0.4, sub }, st.lt / 2 + 2.6, 3.5);
+    }
+    for (const st of s.structs) if (st.k === 'garage') consider({ k: 'garage', i: st.id, x: st.x, z: st.z, r: 1.8 }, 4, 2.5);
     W.each(me.x, me.z, (i) => {
       if (i >= 0) {
         if (s.treeT[i]) return;
@@ -588,6 +608,11 @@ export class NoitesGame implements MiniGameHandle {
     const s = this.sim;
     if (!me || !s || me.faint > 0 || this.hud?.crafting) return;
     if (this.placing) return this.placeCmd('ok');
+    if (me.seat >= 0) {
+      this.send({ a: 'vexit' });
+      if (!this.isClient) this.evNote('vexit');
+      return;
+    }
     const tg = this.target;
     if (!tg) {
       // sem alvo: martelada se tiver, senão nada
@@ -622,7 +647,37 @@ export class NoitesGame implements MiniGameHandle {
       case 'pick':
         this.send({ a: 'pick', s: tg.i });
         break;
+      case 'veh':
+        if (tg.sub === 'load') this.send({ a: 'vload', v: tg.i });
+        else if (tg.sub === 'fuel') this.send({ a: 'vfuel', v: tg.i });
+        else this.send({ a: 'venter', v: tg.i });
+        break;
+      case 'garage':
+        this.openGarage();
+        break;
     }
+  }
+  private evNote(_k: string): void {
+    sfx.click();
+  }
+  private openGarage(): void {
+    if (this.garage || !this.sim) return;
+    this.ctl?.show(false);
+    this.garage = new Garage(
+      this.wrap,
+      this.sim,
+      this.myId,
+      (d: VDesign) => {
+        this.send({ a: 'vbuild', d });
+        this.closeGarage();
+      },
+      () => this.closeGarage(),
+    );
+  }
+  private closeGarage(): void {
+    this.garage?.destroy();
+    this.garage = null;
+    this.ctl?.show(true);
   }
 
   /* ------------------------------ eventos ------------------------------ */
@@ -693,6 +748,14 @@ export class NoitesGame implements MiniGameHandle {
                   ? t('noites.need.grow', 'Ainda está crescendo. Volte amanhã!')
                   : w === 'sun'
                     ? t('noites.need.sun', 'O painel carrega com o sol.')
+                    : w === 'seat'
+                    ? t('noites.need.seat', 'Não tem lugar livre.')
+                    : w === 'camp'
+                    ? t('noites.need.camp', 'Abasteça perto do acampamento ou da garagem.')
+                    : w === 'carry'
+                    ? t('noites.need.carry', 'Leve o bebê a pé até a fogueira.')
+                    : w === 'garage'
+                    ? t('noites.need.garage', 'Fique perto da garagem.')
                     : w === 'tier' || w === 'pot' || w === 'baby' || w === 'have'
                       ? whyText(w, ITEM.bench2, s)
                       : t('noites.why.res', 'Falta {x}.', { x: resName(w as Res) });
@@ -778,6 +841,33 @@ export class NoitesGame implements MiniGameHandle {
         break;
       case 'heal':
         if (mine) sfx.fix();
+        break;
+      case 'vbuild':
+        if (mine) speak(t('noites.say.vbuild', 'Veículo montado! Chegue perto e toque para entrar.'), { cool: 1000, urgent: true });
+        sfx.fix();
+        break;
+      case 'venter':
+        if (mine) speak(t('noites.say.venter', 'Empurre o controle para frente para andar!'), { cool: 30000 });
+        sfx.boing();
+        break;
+      case 'vload':
+      case 'vlog':
+        if (mine) speak(t('noites.say.vload', 'As toras foram para a caçamba!'), { cool: 20000 });
+        sfx.thud();
+        break;
+      case 'unload':
+        if (e.p === this.myId || near) speak(t('noites.say.unload', '{n} toras entregues no acampamento!', { n: e.n ?? 0 }), { cool: 4000 });
+        sfx.sparkle();
+        break;
+      case 'nofuel':
+        if (e.p === this.myId) speak(t('noites.say.nofuel', 'Sem combustível! Abasteça no acampamento.'), { cool: 8000, urgent: true });
+        break;
+      case 'vfuel':
+        if (mine) speak(t('noites.say.vfuel', 'Tanque abastecido!'), { cool: 3000 });
+        sfx.catch();
+        break;
+      case 'logfall':
+        if (near) sfx.thud();
         break;
     }
   }
@@ -871,8 +961,24 @@ export class NoitesGame implements MiniGameHandle {
     const [dy, dp] = ctl.consumeLook(dt);
     v.camYaw -= dy;
     v.camPitch = Math.max(0.05, Math.min(1.2, v.camPitch + dp * 0.8));
+    // dirigir
+    const vNow = me && me.seat >= 0 ? s.vehView.find((q) => q.id === me.seat) : undefined;
+    if (me && vNow) {
+      const [rx, fw] = this.garage ? [0, 0] : ctl.dir();
+      const thr = Math.abs(fw) > 0.12 ? fw : 0;
+      const steer = Math.abs(rx) > 0.1 ? rx : 0;
+      this.driveIn = [thr, steer];
+      if (!this.isClient) s.drive(this.myId, thr, steer);
+      // câmera volta para trás do veículo quando ninguém mexe
+      const vy = Math.atan2(2 * (vNow.q[1] * vNow.q[3] + vNow.q[0] * vNow.q[2]), 1 - 2 * (vNow.q[1] * vNow.q[1] + vNow.q[0] * vNow.q[0]));
+      this.camAuto = dy || dp ? 1.5 : this.camAuto - dt;
+      if (this.camAuto <= 0 && Math.abs(vNow.speed) > 1) v.camYaw += Math.atan2(Math.sin(vy - v.camYaw), Math.cos(vy - v.camYaw)) * Math.min(1, dt * 2.5);
+      const d = s.designs.get(vNow.dk);
+      const st = d ? stats(d) : null;
+      hud.setDrive(st ? { fuel: st.fuelCap ? vNow.fuel / st.fuelCap : 1, inf: !st.energy, load: vNow.logs.length / 7, cap: st.cap } : null);
+    } else hud.setDrive(null);
     // andar
-    if (me && me.faint <= 0 && !hud.crafting) {
+    if (me && me.faint <= 0 && !hud.crafting && !vNow && !this.garage) {
       const [rx, fw] = ctl.dir();
       const yaw = v.camYaw;
       const mx = Math.sin(yaw) * fw - Math.cos(yaw) * rx;
@@ -920,15 +1026,16 @@ export class NoitesGame implements MiniGameHandle {
       this.sendT -= dt;
       if (this.sendT <= 0) {
         this.sendT = 1 / SNAP_HZ;
-        this.net!.send({ t: 'i', x: Math.round(me.x * 100) / 100, z: Math.round(me.z * 100) / 100, yaw: Math.round(me.yaw * 100) / 100, aim: Math.round(me.aim * 100) / 100, l: me.lightOn ? 1 : 0 });
+        this.net!.send({ t: 'i', x: Math.round(me.x * 100) / 100, z: Math.round(me.z * 100) / 100, yaw: Math.round(me.yaw * 100) / 100, aim: Math.round(me.aim * 100) / 100, l: me.lightOn ? 1 : 0, th: Math.round(this.driveIn[0] * 100) / 100, sr: Math.round(this.driveIn[1] * 100) / 100 });
       }
     }
     if (this.net) hud.setCode(this.code, s.players.length);
     // alvo e botão de ação
-    this.target = me && me.faint <= 0 ? this.findTarget(me) : null;
+    this.target = me && me.faint <= 0 && me.seat < 0 ? this.findTarget(me) : null;
     this.updAction(me);
     // câmera
-    if (me) v.placeCamera(me.x, me.z, dt);
+    if (me && vNow) v.placeCamera(vNow.x, vNow.z, dt, vNow.y - 0.6, 9.5);
+    else if (me) v.placeCamera(me.x, me.z, dt, s.w.height(me.x, me.z));
     const focus: Focus | null = this.target ? { x: this.target.x, z: this.target.z, r: this.target.r } : null;
     v.update(dt, me ?? null, focus, this.ghost(), me?.x ?? 0, me?.z ?? 0);
     // HUD
@@ -951,6 +1058,16 @@ export class NoitesGame implements MiniGameHandle {
         if (Math.hypot(me.x - BENCH_POS[0], me.z - BENCH_POS[1]) > 5) hud.closeCraft();
       }
     }
+    if (this.garage) {
+      const gk = JSON.stringify(s.stash) + s.bench + s.designs.size;
+      if (gk !== this.garageKey) {
+        this.garageKey = gk;
+        this.garage.refresh();
+      }
+      if (me && !s.nearGarage(me.x, me.z, 7)) this.closeGarage();
+    }
+    s.logCap = [20, 30, 45, 60][this.gov.tier];
+    if (s.veh) s.veh.maxLogs = s.logCap;
     if (s.phase === 'night' !== this.wasNight) {
       this.wasNight = s.phase === 'night';
       audio.setIntensity(this.wasNight ? 0.6 : 0);
@@ -962,6 +1079,7 @@ export class NoitesGame implements MiniGameHandle {
     const hud = this.hud!;
     const tg = this.target;
     const s = this.sim!;
+    if (me && me.seat >= 0) return hud.setAction('exit', t('noites.do.vexit', 'Descer'), t('noites.do.vexitS', 'Descer do veículo'), '#2a0b5c');
     if (!me || !tg) {
       if (me && me.bonk > 0 && s.dark) hud.setAction('hammer', '', t('noites.say.bonk', 'Martelada!'));
       else hud.setAction('hand', '', '');
@@ -989,6 +1107,16 @@ export class NoitesGame implements MiniGameHandle {
       }
       case 'pick':
         return hud.setAction('pick', t('noites.do.pick', 'Guardar'), t('noites.do.pickS', 'Pegar de volta'));
+      case 'garage':
+        return hud.setAction('garage', t('noites.do.garage', 'Garagem'), t('noites.do.garageS', 'Abrir a garagem'));
+      case 'veh': {
+        const v = s.vehView.find((q) => q.id === tg.i);
+        const d = v && s.designs.get(v.dk);
+        const nm = d ? vName(d) : '';
+        if (tg.sub === 'load') return hud.setAction('cargo', t('noites.do.vload', 'Carregar'), t('noites.do.vloadS', 'Pôr a lenha na caçamba'));
+        if (tg.sub === 'fuel') return hud.setAction('gas', t('noites.do.vfuel', 'Abastecer'), t('noites.do.vfuelS', 'Abastecer o veículo'));
+        return hud.setAction('car', t('noites.do.venter', 'Entrar'), t('noites.do.venterS', 'Entrar: {x}', { x: nm }), d?.col);
+      }
     }
   }
 

@@ -91,12 +91,20 @@ export class World {
   nodes: Node[] = [];
   chests: Chest[] = [];
   babies: BabySpot[] = [];
+  /** colinas suaves (gaussianas): o chão do bosque não é plano (veículos sobem/descem) */
+  hills: { x: number; z: number; h: number; s: number }[] = [];
   /** grade de colisão estática (árvores e nós sólidos) */
   private grid = new Map<number, number[]>();
   static readonly CELL = 4;
 
   constructor(readonly seed: number) {
     const r = rng(seed);
+    const rh = rng(seed ^ 0x5bd1e995);
+    for (let i = 0; i < 12; i++) {
+      const a = rh() * TAU;
+      const d = 34 + rh() * (WORLD_R - 44);
+      this.hills.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, h: 1.6 + rh() * 3.4, s: 6 + rh() * 8 });
+    }
     const occ = (x: number, z: number, d: number) => this.near(x, z, d);
     // árvores: amostragem com tremor, mais densas longe da fogueira
     const step = 4.6;
@@ -174,6 +182,20 @@ export class World {
         break;
       }
     }
+  }
+
+  /** altura do chão (m) — o acampamento é sempre plano */
+  height(x: number, z: number): number {
+    const dc = Math.hypot(x, z);
+    if (dc < 18) return 0;
+    let y = 0;
+    for (const h of this.hills) {
+      const dx = x - h.x;
+      const dz = z - h.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < h.s * h.s * 9) y += h.h * Math.exp(-d2 / (2 * h.s * h.s));
+    }
+    return dc < 28 ? y * ((dc - 18) / 10) : y;
   }
 
   private key(cx: number, cz: number): number {

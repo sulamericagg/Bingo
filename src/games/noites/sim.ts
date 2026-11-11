@@ -28,6 +28,7 @@ import {
   type Slot,
 } from './data';
 import { NODE_GIVES, NODE_R, NODE_REGROW, NK, World, treeR } from './world';
+import { ENERGY_PER, Vehicles, stats, validDesign, type VDesign } from './vehicles';
 
 export type Bag = Partial<Record<Res, number>>;
 export type BotCmd = 'follow' | 'stay' | 'wood' | 'guard';
@@ -150,7 +151,29 @@ export type Action =
   | { a: 'bonk'; yaw: number }
   | { a: 'proc'; s: number }
   | { a: 'cmd'; c: BotCmd }
-  | { a: 'pick'; s: number };
+  | { a: 'pick'; s: number }
+  | { a: 'vbuild'; d: VDesign }
+  | { a: 'venter'; v: number }
+  | { a: 'vexit' }
+  | { a: 'vload'; v: number }
+  | { a: 'vfuel'; v: number }
+  | { a: 'vstore'; v: number };
+
+export interface VehView {
+  id: number;
+  dk: string;
+  x: number;
+  y: number;
+  z: number;
+  q: [number, number, number, number];
+  fuel: number;
+  driver: string;
+  riders: string[];
+  spin: number;
+  steer: number;
+  logs: number[];
+  speed: number;
+}
 
 export interface LightSrc {
   x: number;
@@ -216,6 +239,15 @@ export class Sim {
   time = 0;
   /** hook: veículos (opcional) */
   vehLights: (() => LightSrc[]) | null = null;
+  /** veículos (só no host; criado no primeiro veículo) */
+  veh: Vehicles | null = null;
+  /** espelho dos veículos para convidados/vista */
+  vehView: VehView[] = [];
+  looseView: { id: number; x: number; z: number }[] = [];
+  designs = new Map<string, VDesign>();
+  verVeh = 0;
+  /** nível de qualidade do host (limita toras físicas) */
+  logCap = 40;
 
   constructor(readonly seed: number) {
     this.w = new World(seed);
@@ -274,6 +306,7 @@ export class Sim {
     const p = this.players.find((q) => q.id === id);
     if (!p) return;
     if (p.carry >= 0) this.dropBaby(p);
+    if (p.seat >= 0) this.veh?.exit(p);
     // o que estava no saco vai para o estoque (ninguém perde nada por cair a conexão)
     for (const k in p.bag) this.addStash(k as Res, p.bag[k as Res] ?? 0);
     this.players = this.players.filter((q) => q !== p);
@@ -414,6 +447,7 @@ export class Sim {
         z = BENCH_POS[1] + (bz / bd) * (0.9 + r);
       }
     }
+    if (this.veh) [x, z] = this.veh.collide(x, z, r);
     const d = Math.hypot(x, z);
     if (d > WORLD_R - 1) {
       x = (x / d) * (WORLD_R - 1);
@@ -450,6 +484,39 @@ export class Sim {
         return this.proc(p, A.s);
       case 'pick':
         return this.pickUp(p, A.s);
+      case 'vbuild':
+        return this.vBuild(p, A.d);
+      case 'venter': {
+        const v = this.veh?.get(A.v);
+        if (!v || p.seat >= 0 || Math.hypot(v.x - p.x, v.z - p.z) > v.st.lt / 2 + 3) return;
+        if (p.carry >= 0) return void this.ev('need', { p: p.id, i: 'carry' });
+        if (this.veh!.enter(p, v)) this.ev('venter', { p: p.id, n: v.id });
+        else this.ev('need', { p: p.id, i: 'seat' });
+        return;
+      }
+      case 'vexit':
+        if (p.seat >= 0) this.veh?.exit(p);
+        return;
+      case 'vload': {
+        const v = this.veh?.get(A.v);
+        if (!v || Math.hypot(v.x - p.x, v.z - p.z) > v.st.lt / 2 + 3) return;
+        const n = this.veh!.addLogs(v, p.bag.wood ?? 0);
+        if (n) {
+          p.bag.wood = (p.bag.wood ?? 0) - n;
+          this.ev('vload', { p: p.id, n, x: v.x, z: v.z });
+        } else this.ev('need', { p: p.id, i: 'space' });
+        return;
+      }
+      case 'vfuel':
+        return this.vFuel(p, A.v);
+      case 'vstore': {
+        const v = this.veh?.get(A.v);
+        if (!v || v.driver || !this.nearGarage(v.x, v.z, 8)) return;
+        this.veh!.remove(v);
+        this.verVeh++;
+        this.ev('vstore', { p: p.id, x: v.x, z: v.z });
+        return;
+      }
       case 'cmd':
         for (const b of this.players) if (b.bot) b.next = A.c;
         for (const b of this.players) if (b.bot) (b.delay = 0.6 + this.r() * 0.6), this.ev('think', { p: b.id, i: A.c });
@@ -493,6 +560,20 @@ export class Sim {
     const g: Bag = { wood: Math.round(2 + t.s * 2) };
     if (t.k === 0 && this.r() < 0.4) g.apple = 1;
     if (t.k === 1 && this.r() < 0.3) g.sap = 1;
+    // veículo com caçamba por perto: as toras vão para ela (guincho alcança mais longe)
+    const V = this.veh;
+    if (V) {
+      for (const v of V.list) {
+        if (!v.st.cap || v.logs.length >= v.st.cap) continue;
+        if (Math.hypot(v.x - t.x, v.z - t.z) > (v.d.winch ? 15 : 8)) continue;
+        const n = V.addLogs(v, g.wood ?? 0);
+        if (n) {
+          g.wood = (g.wood ?? 0) - n;
+          this.ev('vlog', { x: t.x, z: t.z, n, p: p.id, i: v.d.winch ? 'winch' : '' });
+        }
+        break;
+      }
+    }
     this.bagAdd(p, g);
     this.ev('fell', { x: t.x, z: t.z, p: p.id, n: i, i: 'wood' });
   }
@@ -705,6 +786,127 @@ export class Sim {
     this.ev(got ? 'collect' : loaded ? 'load' : 'need', { x: s.x, z: s.z, p: p.id, i: got ? out : loaded ? s.k : kind === 'kiln' ? 'wood' : kind === 'still' ? 'sap' : kind === 'charger' ? 'scrap' : 'sun', n: got });
   }
 
+  /* ------------------------------ veículos ------------------------------ */
+  ensureVeh(): Vehicles {
+    if (!this.veh) {
+      this.veh = new Vehicles(this);
+      this.veh.maxLogs = this.logCap;
+      this.vehLights = () => this.veh!.lights();
+    }
+    return this.veh;
+  }
+  nearGarage(x: number, z: number, d = 6): { x: number; z: number; r: number } | null {
+    return this.structs.find((q) => q.k === 'garage' && Math.hypot(q.x - x, q.z - z) < d) ?? null;
+  }
+  vBuild(p: Player, d0: VDesign): void {
+    const d = validDesign(d0);
+    if (!d) return;
+    const g = this.nearGarage(p.x, p.z);
+    if (!g) return void this.ev('need', { p: p.id, i: 'garage' });
+    const st = stats(d);
+    if (this.bench < st.bench) return void this.ev('need', { p: p.id, i: 'tier' });
+    if ((this.veh?.list.length ?? 0) >= 6) return void this.ev('need', { p: p.id, i: 'space' });
+    for (const k in st.cost) if ((this.stash[k as Res] ?? 0) < (st.cost[k as Res] ?? 0)) return void this.ev('need', { p: p.id, i: k });
+    for (const k in st.cost) this.stash[k as Res]! -= st.cost[k as Res] ?? 0;
+    const V = this.ensureVeh();
+    const dl = Math.hypot(g.x, g.z) || 1;
+    const x = g.x + (g.x / dl) * 4.5;
+    const z = g.z + (g.z / dl) * 4.5;
+    this.designs.set(d.id + '@' + p.id, d);
+    const v = V.spawn(d, x, z, Math.atan2(g.x, g.z), p.id);
+    v.d = d;
+    this.verVeh++;
+    this.ev('vbuild', { p: p.id, x, z, n: v.id, i: d.id });
+  }
+  vFuel(p: Player, vid: number): void {
+    const v = this.veh?.get(vid);
+    if (!v || Math.hypot(v.x - p.x, v.z - p.z) > v.st.lt / 2 + 3) return;
+    const e = v.st.energy;
+    if (!e) return void this.ev('need', { p: p.id, i: 'have' });
+    if (Math.hypot(v.x, v.z) > CAMP_R + 8 && !this.nearGarage(v.x, v.z, 10)) return void this.ev('need', { p: p.id, i: 'camp' });
+    const per = ENERGY_PER[e] ?? 15;
+    let n = 0;
+    while (v.fuel + per <= v.st.fuelCap + per * 0.5 && v.fuel < v.st.fuelCap) {
+      if ((p.bag[e] ?? 0) > 0) p.bag[e]!--;
+      else if ((this.stash[e] ?? 0) > 0) this.stash[e]!--;
+      else break;
+      v.fuel = Math.min(v.st.fuelCap, v.fuel + per);
+      n++;
+    }
+    this.ev(n ? 'vfuel' : 'need', { p: p.id, i: n ? e : e, n, x: v.x, z: v.z });
+  }
+  /** motorista manda acelerador/direção */
+  drive(pid: string, thr: number, steer: number): void {
+    const p = this.player(pid);
+    const v = p && p.seat >= 0 ? this.veh?.get(p.seat) : undefined;
+    if (!v || v.driver !== pid) return;
+    v.thr = clamp(+thr || 0, -1, 1);
+    v.steer = clamp(+steer || 0, -1, 1);
+  }
+  private stepVeh(dt: number): void {
+    const V = this.veh;
+    if (!V) return;
+    const evf = (k: string, o: Record<string, unknown>) => {
+      if (k === 'unload') this.addStash('wood', o.n as number);
+      this.ev(k, o as Omit<Ev, 's' | 'k'>);
+    };
+    V.step(dt, evf);
+    V.bump(evf);
+    for (const p of this.players) {
+      if (p.seat < 0) continue;
+      const v = V.get(p.seat);
+      if (!v) {
+        p.seat = -1;
+        continue;
+      }
+      const i = v.driver === p.id ? 0 : 1 + v.riders.indexOf(p.id);
+      const [x, , z] = V.seatPos(v, i);
+      p.x = x;
+      p.z = z;
+      p.yaw = p.aim = V.yaw(v);
+    }
+    // toras soltas: pega sozinho ao passar perto
+    if (V.loose.length) {
+      for (const p of this.players) {
+        if (p.faint > 0 || p.seat >= 0) continue;
+        for (const l of V.loose)
+          if (Math.hypot(l.x - p.x, l.z - p.z) < 1.4) {
+            l.id = -1;
+            p.bag.wood = (p.bag.wood ?? 0) + 1;
+            this.ev('take', { x: l.x, z: l.z, p: p.id, i: 'wood' });
+          }
+      }
+      if (V.loose.some((l) => l.id < 0)) {
+        V.loose = V.loose.filter((l) => l.id >= 0);
+        V.ver++;
+      }
+    }
+    this.mirrorVeh();
+  }
+  /** monta a lista leve (rede + vista) a partir da física */
+  mirrorVeh(): void {
+    const V = this.veh;
+    if (!V) return;
+    this.vehView = V.list.map((v) => ({
+      id: v.id,
+      dk: v.d.id + '@' + v.owner,
+      x: v.x,
+      y: v.y,
+      z: v.z,
+      q: v.q,
+      fuel: v.fuel,
+      driver: v.driver,
+      riders: v.riders,
+      spin: v.spin,
+      steer: v.steer,
+      speed: v.speed,
+      logs: v.logs.flatMap((l) => [l.position.x, l.position.y, l.position.z, l.quaternion.x, l.quaternion.y, l.quaternion.z, l.quaternion.w]),
+    }));
+    for (const v of V.list) this.designs.set(v.d.id + '@' + v.owner, v.d);
+    this.looseView = V.loose;
+    if (V.ver !== this.verVeh) this.verVeh = V.ver;
+  }
+
   /* ------------------------------ passo ------------------------------ */
   step(dt: number): void {
     if (this.over) return;
@@ -722,6 +924,7 @@ export class Sim {
     this.stepBabies(dt);
     this.stepCreatures(dt, L);
     this.stepStructs(dt);
+    this.stepVeh(dt);
     for (const f of this.flashes) f.t -= dt;
     if (this.flashes.some((f) => f.t <= 0)) this.flashes = this.flashes.filter((f) => f.t > 0);
   }
@@ -843,6 +1046,7 @@ export class Sim {
     p.invT = 1.6;
     this.ev('hurt', { p: p.id, x: p.x, z: p.z, i: why });
     if (p.hearts <= 0) {
+      if (p.seat >= 0) this.veh?.exit(p);
       p.faint = 5;
       if (p.carry >= 0) this.dropBaby(p);
       // metade do saco se perde

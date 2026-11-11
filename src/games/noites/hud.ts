@@ -66,6 +66,7 @@ export class Hud {
         <div class="nc-mid">
           <div class="nc-phase"><span data-v="pIcon"></span><span data-v="pNum">1</span><div class="pbar"><i data-v="pBar"></i></div><span data-v="pSpecial"></span></div>
           <div class="nc-fire">${ic('fire', 20)}<div class="nc-bar"><i data-v="fire"></i></div></div>
+          <div class="nc-drive" data-v="drive" hidden><span data-v="dIcon">${ic('gas', 20)}</span><div class="nc-bar"><i data-v="fuel"></i></div>${ic('wood', 20)}<span data-v="load">0</span></div>
           <div class="nc-obj nc-pe" data-v="obj"><i class="arr" data-v="arr">${ic('arrow', 22)}</i><i data-v="objI"></i><span data-v="objT"></span></div>
         </div>
         <div class="nc-right">
@@ -227,6 +228,19 @@ export class Hud {
         ),
       );
     });
+  }
+  /** modo dirigindo: combustível e carga (null = a pé) */
+  setDrive(o: { fuel: number; inf: boolean; load: number; cap: number } | null): void {
+    const el = this.q('[data-v="drive"]');
+    el.hidden = !o;
+    this.q('[data-b="light"]').hidden = !!o;
+    this.q('.nc-hot').style.visibility = o || this.q('.nc-place').classList.contains('on') ? 'hidden' : '';
+    if (!o) return;
+    this.set('fuel', String(Math.round(o.fuel * 30)) + o.inf, () => {
+      (this.q('[data-v="fuel"]') as HTMLElement).style.width = (o.inf ? 100 : Math.round(o.fuel * 100)) + '%';
+      el.classList.toggle('low', !o.inf && o.fuel < 0.15);
+    });
+    this.set('load', o.load + '/' + o.cap, () => (this.q('[data-v="load"]').textContent = o.cap ? o.load + '/' + o.cap : '-'));
   }
   setPlacing(on: boolean): void {
     this.q('.nc-place').classList.toggle('on', on);

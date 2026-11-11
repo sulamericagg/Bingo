@@ -11,6 +11,7 @@ import { BENCH_POS, CDEFS, CK, DAY_LEN, DUSK, ITEM, WORLD_R, CAMP_R, nightInfo, 
 import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
+import { VehView } from './vehview';
 import {
   G,
   PB,
@@ -153,6 +154,7 @@ export class View {
   private falls: Fall[] = [];
   private shake = new Map<number, number>();
   private fireflies: THREE.Points;
+  private vv: VehView;
   private lastBuild = { x: 1e9, z: 1e9, ver: -1, verC: -1, verS: -1 };
   private time = 0;
   private sunAmt = 1;
@@ -322,6 +324,7 @@ export class View {
     this.embers = new Particles(160, true);
     this.embers.budget = this.q.particles;
     sc.add(this.embers.obj);
+    this.vv = new VehView(sc, sim, this.parts);
 
     // vagalumes
     const ff: number[] = [];
@@ -383,7 +386,7 @@ export class View {
       if (d > 60) c.lerp(_c2.set('#2f5a48'), Math.min(1, (d - 60) / 50) * 0.6);
       if (d > WORLD_R) c.lerp(_c2.set('#14222a'), 0.8);
       col.push(c.r, c.g, c.b);
-      pa.setY(i, d > WORLD_R + 2 ? (d - WORLD_R - 2) * 0.25 : 0);
+      pa.setY(i, d > WORLD_R + 2 ? (d - WORLD_R - 2) * 0.25 : this.sim.w.height(x, z));
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
@@ -402,7 +405,7 @@ export class View {
       const z = Math.sin(a) * d;
       if (d < CAMP_R - 2 && Math.random() < 0.7) continue;
       const s = 0.7 + Math.random() * 0.9;
-      im.setMatrixAt(k++, _m.compose(_v.set(x, 0, z), _q.setFromAxisAngle(UP, Math.random() * TAU), _s.set(s, s, s)));
+      im.setMatrixAt(k++, _m.compose(_v.set(x, this.sim.w.height(x, z), z), _q.setFromAxisAngle(UP, Math.random() * TAU), _s.set(s, s, s)));
     }
     im.count = k;
     return im;
@@ -439,9 +442,10 @@ export class View {
       const dx = t.x - cx;
       const dz = t.z - cz;
       if (dx * dx + dz * dz > D2) return;
-      _m.compose(_v.set(t.x, 0, t.z), _q.setFromAxisAngle(UP, t.rot), _s.set(t.s, t.s, t.s));
+      const ty = W.height(t.x, t.z) - 0.15;
+      _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.set(t.s, t.s, t.s));
       if (s.treeT[i]) {
-        this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, 0, t.z), _q.setFromAxisAngle(UP, t.rot), _s.setScalar(t.s * 0.9)));
+        this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.setScalar(t.s * 0.9)));
         return;
       }
       this.trees[t.k].setMatrixAt(cnt[t.k], _m);
@@ -459,7 +463,7 @@ export class View {
       const dx = n.x - cx;
       const dz = n.z - cz;
       if (dx * dx + dz * dz > D2) return;
-      this.nodes[n.k].setMatrixAt(nc[n.k]++, _m.compose(_v.set(n.x, 0, n.z), _q.setFromAxisAngle(UP, n.rot), _s.setScalar(1)));
+      this.nodes[n.k].setMatrixAt(nc[n.k]++, _m.compose(_v.set(n.x, W.height(n.x, n.z) - 0.05, n.z), _q.setFromAxisAngle(UP, n.rot), _s.setScalar(1)));
     });
     this.nodes.forEach((m, k) => {
       m.count = nc[k];
@@ -470,7 +474,7 @@ export class View {
     const cc = [0, 0, 0, 0, 0, 0];
     this.sim.w.chests.forEach((c, i) => {
       const k = (this.sim.chestOpen[i] ? 3 : 0) + c.tier;
-      this.chests[k].setMatrixAt(cc[k]++, _m.compose(_v.set(c.x, 0, c.z), _q.setFromAxisAngle(UP, c.rot), _s.setScalar(1)));
+      this.chests[k].setMatrixAt(cc[k]++, _m.compose(_v.set(c.x, this.sim.w.height(c.x, c.z), c.z), _q.setFromAxisAngle(UP, c.rot), _s.setScalar(1)));
     });
     this.chests.forEach((m, k) => {
       m.count = cc[k];
@@ -492,7 +496,7 @@ export class View {
           gm.name = 'glow';
           o.add(gm);
         }
-        o.position.set(st.x, 0, st.z);
+        o.position.set(st.x, s.w.height(st.x, st.z), st.z);
         o.rotation.y = -st.r;
         this.scene.add(o);
         this.structs.set(st.id, o);
@@ -589,10 +593,13 @@ export class View {
       r.pz = p.z;
       r.walk += dt * Math.min(mv, 7) * 2.2;
       const bob = mv > 0.4 ? Math.abs(Math.sin(r.walk)) * 0.12 : Math.sin(this.time * 2.4) * 0.02;
-      g.position.set(p.x, bob, p.z);
+      const vh = p.seat >= 0 ? s.vehView.find((q) => q.id === p.seat) : undefined;
+      const gy = vh ? vh.y - 0.1 : s.w.height(p.x, p.z);
+      g.position.set(p.x, (vh ? 0 : bob) + gy, p.z);
       g.rotation.y = p.lightOn ? p.aim : p.yaw;
-      g.visible = p.seat < 0;
-      r.shadow.position.set(p.x, 0.03, p.z);
+      g.visible = true;
+      g.scale.setScalar(vh ? 0.75 : 1);
+      r.shadow.position.set(p.x, gy + 0.03, p.z);
       r.shadow.visible = g.visible;
       r.rig.feet[0].position.z = 0.05 + (mv > 0.4 ? Math.sin(r.walk) * 0.15 : 0);
       r.rig.feet[1].position.z = 0.05 - (mv > 0.4 ? Math.sin(r.walk) * 0.15 : 0);
@@ -624,7 +631,7 @@ export class View {
       if (r.beam.visible) {
         const [range, , ang] = s.lamp(p);
         const w = Math.tan(ang) * range;
-        r.beam.position.set(p.x + Math.sin(p.aim) * 0.5, 0.9, p.z + Math.cos(p.aim) * 0.5);
+        r.beam.position.set(p.x + Math.sin(p.aim) * 0.5, gy + 0.9, p.z + Math.cos(p.aim) * 0.5);
         r.beam.rotation.set(0, p.aim, 0);
         r.beam.rotateX(0.06);
         r.beam.scale.set(w, w * 0.6, range);
@@ -673,7 +680,7 @@ export class View {
       const w = Math.sin(this.time * 6 + c.id) * 0.06;
       const jit = c.lit > 0 ? (Math.random() - 0.5) * 0.12 : 0;
       const hop = c.k === CK.Hopper ? Math.max(0, Math.sin(c.t * 5)) * 0.6 : Math.sin(this.time * 2 + c.id) * 0.08 + 0.1;
-      r.g.position.set(c.x + jit, hop, c.z + jit);
+      r.g.position.set(c.x + jit, hop + s.w.height(c.x, c.z), c.z + jit);
       r.g.rotation.y = r.yaw;
       r.g.scale.set(sz * (1 - w), sz * (1 + w), sz * (1 - w));
       r.body.material = c.lit > 0 ? this.litMat : this.bodyMats[c.k];
@@ -702,7 +709,7 @@ export class View {
         const t = this.sim.w.trees[e.n ?? -1];
         if (!t) break;
         const m = new THREE.Mesh(this.trees[t.k].geometry, this.trees[t.k].material as THREE.Material);
-        m.position.set(t.x, 0, t.z);
+        m.position.set(t.x, this.sim.w.height(t.x, t.z) - 0.15, t.z);
         m.scale.setScalar(t.s);
         this.scene.add(m);
         const p = this.sim.players.find((q) => q.id === e.p);
@@ -787,7 +794,7 @@ export class View {
       const nt = t - dt;
       if (ii >= 0) {
         const a = nt > 0 ? Math.sin(nt * 60) * 0.05 * nt * 3 : 0;
-        this.trees[k].setMatrixAt(ii, _m.compose(_v.set(tr.x, 0, tr.z), _q.setFromAxisAngle(UP, tr.rot).multiply(new THREE.Quaternion().setFromAxisAngle(_s.set(1, 0, 0), a)), _s.setScalar(tr.s)));
+        this.trees[k].setMatrixAt(ii, _m.compose(_v.set(tr.x, s.w.height(tr.x, tr.z) - 0.15, tr.z), _q.setFromAxisAngle(UP, tr.rot).multiply(new THREE.Quaternion().setFromAxisAngle(_s.set(1, 0, 0), a)), _s.setScalar(tr.s)));
         this.trees[k].instanceMatrix.needsUpdate = true;
       }
       if (nt <= 0) this.shake.delete(i);
@@ -807,13 +814,15 @@ export class View {
     this.updLighting(dt, me);
     this.updPlayers(dt, me?.id ?? '');
     this.updCreatures(dt);
+    this.vv.update(dt, 1 - this.sunAmt);
 
     // bebês
     s.babies.forEach((b, i) => {
       const v = this.babies[i];
       const hop = b.st === 2 ? Math.abs(Math.sin(this.time * 3 + i)) * 0.25 : b.st === 1 ? Math.abs(Math.sin(this.time * 9)) * 0.15 : 0;
-      v.rig.g.position.set(b.x, hop, b.z);
-      v.shadow.position.set(b.x, 0.03, b.z);
+      const by = s.w.height(b.x, b.z);
+      v.rig.g.position.set(b.x, hop + by, b.z);
+      v.shadow.position.set(b.x, by + 0.03, b.z);
       if (b.st === 2) v.rig.g.rotation.y = Math.atan2(-b.x, -b.z);
       else if (b.st === 1) {
         const p = s.player(b.by);
@@ -833,7 +842,7 @@ export class View {
         this.scene.add(m);
         this.flashes.set(f.id, m);
       }
-      m.position.set(f.x, 0.4 + Math.sin(this.time * 8) * 0.05, f.z);
+      m.position.set(f.x, s.w.height(f.x, f.z) + 0.4 + Math.sin(this.time * 8) * 0.05, f.z);
       m.scale.setScalar(0.5 + Math.sin(this.time * 20) * 0.08);
       if (Math.random() < 0.4) this.embers.emit(f.x, 0.5, f.z, (Math.random() - 0.5) * 1.5, 2 + Math.random() * 2, (Math.random() - 0.5) * 1.5, { tile: 1, color: ITEM[f.k]?.col ?? '#ff8a6a', life: 0.6, size: 0.08, grav: 3 });
     }
@@ -848,7 +857,7 @@ export class View {
     fr.visible = !!focus;
     if (focus) {
       const k = 1 + Math.sin(this.time * 6) * 0.08;
-      fr.position.set(focus.x, 0.08, focus.z);
+      fr.position.set(focus.x, s.w.height(focus.x, focus.z) + 0.08, focus.z);
       fr.scale.setScalar(focus.r * k);
       (fr.material as THREE.MeshBasicMaterial).color.set(focus.col ?? '#fff36b');
       (fr.material as THREE.MeshBasicMaterial).opacity = 0.65 + Math.sin(this.time * 6) * 0.3;
@@ -861,7 +870,7 @@ export class View {
         this.ghostId = ghost.id;
       }
       this.ghost.visible = true;
-      this.ghost.position.set(ghost.x, 0.02, ghost.z);
+      this.ghost.position.set(ghost.x, s.w.height(ghost.x, ghost.z) + 0.02, ghost.z);
       this.ghost.rotation.y = -ghost.r;
       this.ghostMat.color.set(ghost.ok ? '#7dffb0' : '#ff5a6a');
     } else this.ghost.visible = false;
@@ -973,7 +982,7 @@ export class View {
     }
     for (const sr of srcs) {
       if (n >= 64) break;
-      dm.setMatrixAt(n, _m.compose(_v.set(sr.x, 0, sr.z), _q.identity(), _s.set(sr.r * 1.15, 1, sr.r * 1.15)));
+      dm.setMatrixAt(n, _m.compose(_v.set(sr.x, s.w.height(sr.x, sr.z), sr.z), _q.identity(), _s.set(sr.r * 1.15, 1, sr.r * 1.15)));
       dm.setColorAt(n, _c.set(sr.c).multiplyScalar(0.55));
       n++;
     }
@@ -990,7 +999,7 @@ export class View {
         l.intensity = 0;
         return;
       }
-      l.position.set(q.x, 1.6, q.z);
+      l.position.set(q.x, s.w.height(q.x, q.z) + 1.6, q.z);
       l.color.set(q.c);
       l.distance = q.r * 2;
       l.intensity = 2.2 * (1 - k);
@@ -1003,8 +1012,9 @@ export class View {
         const [range, , ang] = s.lamp(me);
         this.spot.angle = ang * 1.1;
         this.spot.distance = range * 1.4;
-        this.spot.position.set(me.x, 1.2, me.z);
-        this.spot.target.position.set(me.x + Math.sin(me.aim) * range, 0.2, me.z + Math.cos(me.aim) * range);
+        const hy = s.w.height(me.x, me.z);
+        this.spot.position.set(me.x, hy + 1.2, me.z);
+        this.spot.target.position.set(me.x + Math.sin(me.aim) * range, hy + 0.2, me.z + Math.cos(me.aim) * range);
         this.spot.target.updateMatrixWorld();
       }
     }
