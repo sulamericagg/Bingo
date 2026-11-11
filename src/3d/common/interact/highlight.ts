@@ -33,6 +33,8 @@ function css(): void {
 
 /** rótulo DOM preso a um ponto do mundo */
 export class WorldTag {
+  /** margem do topo (px) — abaixo do HUD do jogo */
+  static top = 84;
   readonly el: HTMLDivElement;
   private txt = '';
   private cls = '';
@@ -67,7 +69,12 @@ export class WorldTag {
     V.set(this.x, this.y, this.z).project(cam);
     const vis = V.z < 1 && Math.abs(V.x) < 1.1 && Math.abs(V.y) < 1.1;
     this.el.style.visibility = vis ? '' : 'hidden';
-    if (vis) this.el.style.transform = `translate(${(((V.x + 1) / 2) * w).toFixed(1)}px,${(((1 - V.y) / 2) * h).toFixed(1)}px) translate(-50%,-100%)`;
+    if (vis) {
+      // nunca embaixo do HUD do topo nem cortado nas laterais
+      const sx = Math.max(70, Math.min(w - 70, ((V.x + 1) / 2) * w));
+      const sy = Math.max(WorldTag.top, ((1 - V.y) / 2) * h);
+      this.el.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%)`;
+    }
   }
   dispose(): void {
     this.el.remove();
@@ -144,9 +151,9 @@ export class SnapGlows {
     private scene: THREE.Scene,
     readonly max = 24,
   ) {
-    this.dg = new THREE.RingGeometry(0.62, 1, 28);
+    this.dg = new THREE.RingGeometry(0.55, 1, 28);
     this.dg.rotateX(-Math.PI / 2);
-    this.dm = new THREE.MeshBasicMaterial({ color: '#3effa0', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+    this.dm = new THREE.MeshBasicMaterial({ color: '#3effa0', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false, depthTest: false });
     const cv = document.createElement('canvas');
     cv.width = cv.height = 64;
     const c = cv.getContext('2d')!;
@@ -199,7 +206,7 @@ export class SnapGlows {
   end(time: number): void {
     for (let i = this.n; i < this.discs.length; i++) this.discs[i].visible = false;
     for (let i = this.np; i < this.plus.length; i++) this.plus[i].visible = false;
-    this.dm.opacity = 0.38 + Math.sin(time * 5) * 0.18;
+    this.dm.opacity = 0.7 + Math.sin(time * 5) * 0.25;
     const s = 0.16 + Math.abs(Math.sin(time * 4)) * 0.03;
     for (let i = 0; i < this.np; i++) {
       this.plus[i].scale.set(s, s, 1);

@@ -29,7 +29,7 @@ import {
 } from '../../3d/common/interact';
 import { ING_INDEX, INGS, RECIPES, compIng, ingName } from './data';
 import { blitIng, charSprite, drawPetIcon } from './art';
-import { buildKitchen, H, HATCH_TOP, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
+import { buildKitchen, H, restY, T, WALL_H, type KitchenBuild } from './fps-kitchen';
 import { GK, Items3D } from './fps-items';
 import { FRIDGE_H, KitchenProps, type StProps } from './fps-props';
 import { drawScreen, drawTicket } from './fps-tickets';
@@ -426,18 +426,20 @@ class KitchenFps implements Renderer {
           if (on && p.cold) this.parts.burst((st.x + 0.5 + st.fx * 0.4) * T, H + 0.5, (st.y + 0.5 + st.fy * 0.4) * T, 6, 'steam', '#e8f6ff', 0.5);
         };
     }
-    // tela de pedidos sobre o 1º passa-pratos + impressora de comandas ao lado
+    // tela de pedidos NA ALTURA DOS OLHOS ao lado do 1º passa-pratos + impressora de comandas do outro lado
     const win = sim.st.find((s) => s.k === 'window' || s.k === 'belt');
     if (win) {
       const wx = (win.x + 0.5) * T;
-      const sw = Math.min(2.6, sim.cols * T - 0.6);
-      const scr = wallScreen(sw, sw * 0.27, 1024);
-      scr.group.position.set(Math.max(sw / 2 + 0.2, Math.min(sim.cols * T - sw / 2 - 0.2, wx)), HATCH_TOP + 0.48, 0.035);
+      const side = win.x + 0.5 > sim.cols / 2 ? -1 : 1; // lado com mais parede
+      const sw = 2.0;
+      const sh = 0.8;
+      const scr = wallScreen(sw, sh, 1024);
+      const edge = wx + side * (T / 2 + 0.06);
+      scr.group.position.set(edge + (side * sw) / 2, 1.3 + sh / 2, 0.035);
       this.scene.add(scr.group);
       this.screen = scr;
       const pr = new TicketPrinter(0.2, 0.3);
-      const left = win.x >= 1 ? -1 : 1;
-      pr.group.position.set(wx + left * (T / 2 + 0.2), 1.62, 0);
+      pr.group.position.set(wx - side * (T / 2 + 0.22), 1.66, 0);
       this.scene.add(pr.group);
       pr.onPrint = () => feedback('print');
       pr.refreshBox();
@@ -535,9 +537,12 @@ class KitchenFps implements Renderer {
     this.px = me.x * T;
     this.pz = me.y * T;
     // olha para o centro da cozinha / passa-pratos
-    const cx = (this.sim.cols / 2) * T;
-    const cz = (this.sim.rows / 2) * T - 0.5;
+    // olha para a tela de pedidos (o 1º pedido é o tutorial) ou para o centro
+    const sp = this.screen?.group.position;
+    const cx = sp ? sp.x : (this.sim.cols / 2) * T;
+    const cz = sp ? 0 : (this.sim.rows / 2) * T - 0.5;
     this.yaw = Math.atan2(-(cx - this.px), -(cz - this.pz));
+    this.pitch = -0.14; // a tela de pedidos (altura dos olhos) já aparece
     if (!this.hand) {
       this.hand = new Hand(this.camera, handColors(me.skin));
     }
@@ -1549,7 +1554,6 @@ class KitchenFps implements Renderer {
           I.flame(MB, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, 0.035, 0.05 + Math.sin(time * 20 + k) * 0.015, '#4fa8ff');
         }
       }
-      if (st.k === 'board' && it && it.k === IK.Ing && it.prog > 0 && it.prog < 1 && !(it.prog > 0 && st.busy > 0)) this.bar(cx, restY(st) + 0.5, cz, it.prog);
       // fogo!
       if (st.fire > 0) {
         fireN++;
@@ -1697,7 +1701,7 @@ class KitchenFps implements Renderer {
         return cv;
       });
       e.center.set(0.5, 0);
-      e.position.set((win.x + 0.5) * T, 1.45 + hop, -0.7);
+      e.position.set((win.x + 0.5) * T, 1.3 + hop, -0.7);
       e.scale.set(0.8, 0.6, 1);
     }
     const h = this.held();
@@ -1892,7 +1896,8 @@ class KitchenFps implements Renderer {
       else if (d.k === 2) label = itemName(d.l.it);
       else {
         const st = d.st;
-        label = stName(s, st);
+        const door = this.props?.by[st.i]?.door;
+        label = door && st.fire <= 0 ? door.label() : stName(s, st);
         warn = st.fire > 0 || (!!h && h.k !== IK.Ext && s.wouldAccept(st.i, h) === 0);
         const p = this.props?.by[st.i];
         const it = st.item;
@@ -2139,6 +2144,8 @@ function putLabel(s: Sim, st: Station, h: Item): string {
   if (st.item && st.item.k === IK.Plate && h.k === IK.Ing) return t('cozinha.fps.putPlate', 'Colocar no prato');
   if (st.item && h.k === IK.Plate && st.item.k === IK.Ing) return t('cozinha.fps.scoop', 'Pôr no prato');
   switch (st.k) {
+    case 'crate':
+      return t('cozinha.fps.putBack', 'Devolver');
     case 'board':
       return t('cozinha.fps.putBoard', 'Colocar na tábua');
     case 'pot':
