@@ -2,10 +2,10 @@
  *  MONTA & LEVA — simulação física (planck.js / Box2D). Sem DOM: roda no jogo e no verificador.
  *  Passo fixo de 1/60 s com 2 subpassos; velocidades limitadas; rodas com CCD (bullet).
  * ============================================================ */
-import { Box, Chain, Circle, Polygon, RevoluteJoint, Vec2, WheelJoint, World, type Body, type Contact, type ContactImpulse, type Fixture, type Joint } from 'planck';
+import { Box, Chain, Circle, Polygon, RevoluteJoint, Vec2, WheelJoint, World, type Body, type Contact, type ContactImpulse, type Fixture, type Joint, type RevoluteJointDef, type WheelJointDef } from 'planck';
 import { analyze, type Analysis } from './design';
 import type { CargoDef, CargoType, LevelDef } from './levels';
-import { PARTS, THRUST_FUEL, U, cellsOf, triVerts, type Placed } from './parts';
+import { PARTS, THRUST_FUEL, U, cellsOf, fullSide, triVerts, type PartId, type Placed } from './parts';
 import { resolveTrack, type Track, type TrackObj } from './track';
 
 export interface DriveInput {
@@ -24,6 +24,8 @@ export interface Upgrades {
   grip: number;
   spring: number;
   pad: number;
+  /** reforço das juntas (0..2); opcional para saves antigos */
+  frame?: number;
 }
 
 export const DT = 1 / 60;
@@ -42,16 +44,45 @@ const HINGE_TORQUE = 260;
 const HINGE_SPEED = 1.8;
 const BOT_GROUND_LOST = 0.5;
 
+/* ---------- peças que quebram ----------
+ * Cada peça estrutural é soldada às vizinhas. Uma pancada forte numa peça acima da resistência dela arranca a peça
+ * do corpo; o corpo se divide nas partes que continuarem ligadas. Eixos de roda e pinos de dobradiça quebram quando
+ * a reação da junta passa do limite. A medida é a variação de velocidade que a pancada impõe (impulso ÷ massa que a
+ * peça segura): assim um carro pesado bem montado não se desmancha à toa, mas um tombo/batida forte quebra.
+ * Tudo depende só do passo fixo → determinístico (o verificador continua estável). */
+/** solda: Δv (m/s) num subpasso que a peça aguenta, por material */
+export const WELD_DV: Partial<Record<PartId, number>> = { block: 7.8, motor: 8, weight: 9.5, beam: 7.2, tri: 6.6, basket: 7.2, spring: 7.4, btn: 6.6, btnR: 6.6 };
+/** eixo de roda: Δv (m/s) num subpasso da parte do chassi que a roda segura */
+export const AXLE_DV: Partial<Record<PartId, number>> = { wheelS: 7.6, wheelG: 7.8, wheelL: 8.6 };
+/** pino da dobradiça */
+export const HINGE_DV = 6;
+/** não quebra nada enquanto o carro assenta no chão */
+const BREAK_GRACE = 0.4;
+/** batente da suspensão: curso máximo (m) para cima/baixo e rigidez extra além dele */
+const SUSP_TRAVEL = 0.2;
+/** quanto a roda pode descer (pendurada numa crista, ela precisa achar o chão) */
+const SUSP_DROOP = 0.4;
+/** frequência e amortecimento "de verdade" da suspensão (para a massa que a roda segura) */
+const SUSP_HZ = 2.3;
+const SUSP_ZETA = 0.45;
+const SUSP_STOP_K = 900;
+const SUSP_STOP_C = 30;
+
 export type FixKind = 'veh' | 'cargo' | 'ground' | 'obj';
 interface FixData {
   k: FixKind;
   ci?: number;
+  /** peça do projeto dona do fixture (veículo) */
+  pi?: number;
+  /** parede do fim da pista / base da gangorra: bater nelas não quebra nada */
+  wall?: boolean;
 }
 
 export interface SimWheel {
   idx: number;
   body: Body;
-  joint: Joint;
+  /** null = eixo quebrado (a roda saiu rolando) */
+  joint: Joint | null;
   r: number;
   spring: boolean;
   grip: boolean;
@@ -60,8 +91,12 @@ export interface SimWheel {
   /** posição de montagem (local do chassi) */
   lx: number;
   ly: number;
-  /** motores que a movem: [índice do motor, torque] */
+  /** motores que a movem AGORA (presos à mesma estrutura): [índice do motor, torque] */
   shares: [number, number][];
+  /** todos os motores ao alcance no projeto */
+  allShares: [number, number][];
+  /** peça-base (onde a roda está montada) */
+  bi: number;
 }
 export interface SimMount {
   idx: number;
@@ -90,7 +125,9 @@ export interface FxEvent {
   x: number;
   y: number;
   power: number;
-  kind: 'hit' | 'glass' | 'cargo';
+  kind: 'hit' | 'glass' | 'cargo' | 'snap';
+  /** 'snap': peça que se soltou (para a cor dos estilhaços) */
+  t?: PartId;
 }
 
 export type SimResult = null | { win: true } | { win: false; reason: 'lost' | 'broken' | 'time' | 'bot' };
@@ -98,6 +135,12 @@ export interface SimPin {
   idx: number;
   body: Body;
   joints: RevoluteJoint[];
+  /** peças vizinhas presas ao pino */
+  nbr: number[];
+  /** vizinhas cuja ligação com o pino quebrou */
+  dead: Set<number>;
+  /** para cada junta, as vizinhas que ela segura */
+  jparts: number[][];
   /** [ordem do botão, sinal] */
   wired: [number, number][];
   dir: number;
@@ -108,6 +151,18 @@ export class Sim {
   track: Track;
   an: Analysis;
   groups: Body[] = [];
+  /** peças estruturais de cada corpo de groups (muda quando algo quebra) */
+  members: number[][] = [];
+  /** corpo atual de cada peça (null para peças sem corpo próprio) */
+  partBody: (Body | null)[] = [];
+  /** solda viva (paralelo a an.links) */
+  linkOn: boolean[] = [];
+  /** quantas peças/eixos já quebraram */
+  breaks = 0;
+  /** desligue para testar a física sem quebras */
+  breakable = true;
+  /** maiores esforços vistos (fração do limite) — calibração e o gerador */
+  stress = { weld: 0, axle: 0, hinge: 0 };
   pins: SimPin[] = [];
   /** modo com fios: por motor (índice da peça) → [ordem do botão, sinal] */
   motorWires = new Map<number, [number, number][]>();
@@ -134,6 +189,24 @@ export class Sim {
   private needCount: number;
   private totalPieces: number;
   private groundBody: Body;
+  private partFix: Fixture[][] = [];
+  /** peça-base → peças montadas nela que viram fixture (propulsores) */
+  private mountsOn = new Map<number, number[]>();
+  private linksOf: number[][] = [];
+  /** impulso de contato acumulado por peça no passo */
+  private hit: Float64Array;
+  /** peça encostou na parede de chegada neste subpasso */
+  private soft: Uint8Array;
+  private softAll = false;
+  /** massa do veículo ligado (por corpo) e nº de rodas nele */
+  private compMass = new Map<Body, number>();
+  /** velocidade de cada corpo antes do subpasso (a solda que quebra só freia o resto até o limite dela) */
+  private pre = new Map<Body, [number, number, number]>();
+  /** massa total da estrutura ligada (por juntas) de cada corpo */
+  private compTot = new Map<Body, number>();
+  private topoDirty = true;
+  private strength: number;
+  private wheelOpts = new Map<SimWheel, object>();
 
   constructor(
     public level: LevelDef,
@@ -146,6 +219,9 @@ export class Sim {
     this.world = w;
     this.track = resolveTrack(level.track, level.grid[0] * U + 1.5, !!level.mirror, !!level.wet);
     this.an = analyze(parts);
+    this.hit = new Float64Array(parts.length);
+    this.soft = new Uint8Array(parts.length);
+    this.strength = 1 + 0.35 * (up.frame ?? 0);
     this.wired = !!level.wired;
     const an0 = this.an;
     for (const wr of an0.wires) {
@@ -166,7 +242,7 @@ export class Sim {
       g.createFixture(new Chain(line.map((p) => new Vec2(p.x, p.y)), false), { friction: 0.9, userData: { k: 'ground' } as FixData });
     }
     const wl = this.track.wall;
-    g.createFixture(new Box(0.25, (wl.y1 - wl.y0) / 2, new Vec2(wl.x + 0.25, (wl.y0 + wl.y1) / 2), 0), { friction: 0.05, userData: { k: 'ground' } as FixData });
+    g.createFixture(new Box(0.25, (wl.y1 - wl.y0) / 2, new Vec2(wl.x + 0.25, (wl.y0 + wl.y1) / 2), 0), { friction: 0.05, userData: { k: 'ground', wall: true } as FixData });
     for (const c of this.track.ceils) {
       g.createFixture(new Box((c.x1 - c.x0) / 2, 1, new Vec2((c.x0 + c.x1) / 2, c.y + 1), 0), { friction: 0.4, userData: { k: 'obj' } as FixData });
     }
@@ -190,47 +266,82 @@ export class Sim {
     const w = this.world;
     const P = this.parts;
     const an = this.an;
-    const veh = (extra: object = {}) => ({ filterGroupIndex: -1, userData: { k: 'veh' } as FixData, ...extra });
+    const veh = (pi: number, extra: object = {}) => ({ filterGroupIndex: -1, userData: { k: 'veh', pi } as FixData, ...extra });
+    this.partBody = P.map(() => null);
+    this.partFix = P.map(() => []);
+    this.linksOf = P.map(() => []);
+    an.links.forEach((l, k) => {
+      this.linksOf[l.i].push(k);
+      this.linksOf[l.j].push(k);
+    });
+    this.linkOn = an.links.map(() => true);
     for (const grp of an.groups) {
       const b = w.createBody({ type: 'dynamic', position: new Vec2(0, 0), angularDamping: 0.05 });
       for (const i of grp) {
         const p = P[i];
         const d = PARTS[p.t];
-        const o = veh({ density: d.density, friction: d.friction, restitution: 0.05 });
+        const o = veh(i, { density: d.density, friction: d.friction, restitution: 0.05 });
+        const fx = this.partFix[i];
         if (p.t === 'beam') {
           const h = r0(p) ? 0.6 : 3;
           const ww = r0(p) ? 3 : 0.6;
           const cx = p.x + (r0(p) ? 1.5 : 0.5);
           const cy = p.y + (r0(p) ? 0.5 : 1.5);
-          b.createFixture(new Box((ww * U) / 2, (h * U) / 2, new Vec2(cx * U, cy * U), 0), o);
+          fx.push(b.createFixture(new Box((ww * U) / 2, (h * U) / 2, new Vec2(cx * U, cy * U), 0), o));
         } else if (p.t === 'tri') {
-          b.createFixture(new Polygon(triVerts(p.r).map(([vx, vy]) => new Vec2((p.x + vx) * U, (p.y + vy) * U))), o);
+          fx.push(b.createFixture(new Polygon(triVerts(p.r).map(([vx, vy]) => new Vec2((p.x + vx) * U, (p.y + vy) * U))), o));
         } else if (p.t === 'basket') {
-          b.createFixture(new Box(1.5 * U, 0.33 * U, new Vec2((p.x + 1.5) * U, (p.y + 0.67) * U), 0), o);
-          b.createFixture(new Box(0.11 * U, 0.5 * U, new Vec2((p.x + 0.11) * U, (p.y + 1.5) * U), 0), o);
-          b.createFixture(new Box(0.11 * U, 0.5 * U, new Vec2((p.x + 2.89) * U, (p.y + 1.5) * U), 0), o);
+          fx.push(b.createFixture(new Box(1.5 * U, 0.33 * U, new Vec2((p.x + 1.5) * U, (p.y + 0.67) * U), 0), o));
+          fx.push(b.createFixture(new Box(0.11 * U, 0.5 * U, new Vec2((p.x + 0.11) * U, (p.y + 1.5) * U), 0), o));
+          fx.push(b.createFixture(new Box(0.11 * U, 0.5 * U, new Vec2((p.x + 2.89) * U, (p.y + 1.5) * U), 0), o));
         } else {
-          b.createFixture(new Box(U / 2, U / 2, new Vec2((p.x + 0.5) * U, (p.y + 0.5) * U), 0), o);
+          fx.push(b.createFixture(new Box(U / 2, U / 2, new Vec2((p.x + 0.5) * U, (p.y + 0.5) * U), 0), o));
         }
+        this.partBody[i] = b;
       }
       this.groups.push(b);
+      this.members.push([...grp]);
     }
-    // dobradiças: pino próprio + articulação com cada grupo vizinho
+    // dobradiças: pino próprio + articulação com cada corpo vizinho
     P.forEach((p, i) => {
       if (p.t !== 'hinge') return;
       const c = new Vec2((p.x + 0.5) * U, (p.y + 0.5) * U);
       const pin = w.createBody({ type: 'dynamic', position: c });
-      pin.createFixture(new Circle(U * 0.42), veh({ density: PARTS.hinge.density * 1.27, friction: 0.6 }));
+      this.partFix[i].push(pin.createFixture(new Circle(U * 0.42), veh(i, { density: PARTS.hinge.density * 1.27, friction: 0.6 })));
+      this.partBody[i] = pin;
       const wiredTo: [number, number][] = [];
       for (const wr of an.wires) if (wr.t === i) wiredTo.push([an.buttons.indexOf(wr.b), P[wr.b].t === 'btnR' ? -1 : 1]);
-      const joints: RevoluteJoint[] = [];
-      for (const gi of an.hinges.get(i) ?? []) {
-        const j = new RevoluteJoint(wiredTo.length ? { collideConnected: false, enableMotor: true, maxMotorTorque: HINGE_TORQUE, motorSpeed: 0 } : { collideConnected: false }, this.groups[gi], pin, c);
-        w.createJoint(j);
-        joints.push(j);
+      const nbr: number[] = [];
+      const gs: number[] = [];
+      for (let s = 0; s < 4; s++) {
+        const dx = s === 0 ? 1 : s === 2 ? -1 : 0;
+        const dy = s === 1 ? 1 : s === 3 ? -1 : 0;
+        const j = an.struct.get((p.x + dx) * 1000 + p.y + dy);
+        if (j === undefined) continue;
+        const q = P[j];
+        if (q.t === 'hinge' || !fullSide(q, (s + 2) % 4)) continue;
+        // uma vizinha por grupo (como no projeto): a primeira encontrada segura o pino
+        if (gs.includes(an.group[j])) continue;
+        gs.push(an.group[j]);
+        nbr.push(j);
       }
-      this.pins.push({ idx: i, body: pin, joints, wired: wiredTo, dir: 0 });
+      const sp: SimPin = { idx: i, body: pin, joints: [], nbr, dead: new Set(), jparts: [], wired: wiredTo, dir: 0 };
+      this.pins.push(sp);
+      this.rebuildPin(sp);
     });
+    // suspensão: a mola do WheelJoint usa a massa da RODA; para o carro ter ~2,3 Hz e amortecimento de verdade,
+    // escala pela massa que cada roda segura (chassi ÷ rodas)
+    let vm = 0;
+    let nw = 0;
+    for (const b of this.groups) vm += b.getMass();
+    for (const sp of this.pins) vm += sp.body.getMass();
+    P.forEach((p, i) => {
+      const r = PARTS[p.t].radius;
+      if (!r || an.base.get(i) === undefined) return;
+      vm += Math.PI * r * r * PARTS[p.t].density;
+      nw++;
+    });
+    const share = vm / Math.max(1, nw);
     // montagens
     P.forEach((p, i) => {
       const d = PARTS[p.t];
@@ -245,7 +356,8 @@ export class Sim {
         const r = d.radius;
         const wb = w.createBody({ type: 'dynamic', position: new Vec2(lx, ly), bullet: true, angularDamping: 0.1 });
         const grip = p.t === 'wheelG';
-        wb.createFixture(new Circle(r), veh({ density: d.density, friction: d.friction * (1 + 0.15 * this.up.grip), restitution: 0.08 }));
+        this.partFix[i].push(wb.createFixture(new Circle(r), veh(i, { density: d.density, friction: d.friction * (1 + 0.15 * this.up.grip), restitution: 0.08 })));
+        this.partBody[i] = wb;
         const spring = P[bi].t === 'spring';
         let torque = 0;
         const shares: [number, number][] = [];
@@ -256,27 +368,35 @@ export class Sim {
           shares.push([mi, sh]);
         }
         let j: Joint;
+        let opts: object;
         if (spring) {
-          j = new WheelJoint(
-            { enableMotor: true, maxMotorTorque: COAST_TORQUE, motorSpeed: 0, frequencyHz: 4.2 + this.up.spring * 1.2, dampingRatio: 0.65 },
-            base,
-            wb,
-            new Vec2(lx, ly),
-            new Vec2(0, 1),
-          );
+          const mw = Math.PI * r * r * d.density;
+          const ratio = Math.sqrt(Math.max(1, share / mw));
+          opts = { enableMotor: true, maxMotorTorque: COAST_TORQUE, motorSpeed: 0, frequencyHz: (SUSP_HZ + this.up.spring * 0.45) * ratio, dampingRatio: SUSP_ZETA * ratio };
+          j = new WheelJoint(opts, base, wb, new Vec2(lx, ly), new Vec2(0, 1));
         } else {
-          j = new RevoluteJoint({ enableMotor: true, maxMotorTorque: COAST_TORQUE, motorSpeed: 0 }, base, wb, new Vec2(lx, ly));
+          opts = { enableMotor: true, maxMotorTorque: COAST_TORQUE, motorSpeed: 0 };
+          j = new RevoluteJoint(opts, base, wb, new Vec2(lx, ly));
         }
         w.createJoint(j);
-        this.wheels.push({ idx: i, body: wb, joint: j, r, spring, grip, powered: torque, base, lx, ly, shares });
+        const sw: SimWheel = { idx: i, body: wb, joint: j, r, spring, grip, powered: torque, base, lx, ly, shares: [...shares], allShares: shares, bi };
+        this.wheelOpts.set(sw, opts);
+        this.wheels.push(sw);
       } else if (p.t === 'thruster') {
-        base.createFixture(new Box(U * 0.32, U * 0.24, new Vec2(lx, ly), (p.r * Math.PI) / 2), veh({ density: d.density }));
+        this.partFix[i].push(base.createFixture(new Box(U * 0.32, U * 0.24, new Vec2(lx, ly), (p.r * Math.PI) / 2), veh(i, { density: d.density })));
+        const l = this.mountsOn.get(bi) ?? [];
+        l.push(i);
+        this.mountsOn.set(bi, l);
         this.thrusters.push({ idx: i, body: base, lx, ly, r: p.r, fuel: THRUST_FUEL, on: false });
       } else if (p.t === 'balloon') {
         this.balloons.push({ idx: i, body: base, lx, ly, r: 0, fuel: 0, on: true });
       }
     });
-    // corpo principal = o mais pesado
+    this.pickMain();
+  }
+
+  /** corpo principal = o mais pesado */
+  private pickMain(): void {
     let best = -1;
     for (const b of this.groups) {
       if (b.getMass() > best) {
@@ -286,12 +406,285 @@ export class Sim {
     }
   }
 
+  /** (re)cria as juntas de um pino de dobradiça: uma por corpo vizinho ainda preso */
+  private rebuildPin(sp: SimPin): void {
+    const w = this.world;
+    for (const j of sp.joints) w.destroyJoint(j);
+    sp.joints = [];
+    sp.jparts = [];
+    const c = sp.body.getPosition();
+    const bodies: Body[] = [];
+    for (const j of sp.nbr) {
+      if (sp.dead.has(j)) continue;
+      const b = this.partBody[j];
+      if (!b) continue;
+      const k = bodies.indexOf(b);
+      if (k >= 0) {
+        sp.jparts[k].push(j);
+        continue;
+      }
+      bodies.push(b);
+      const jt = new RevoluteJoint(sp.wired.length ? { collideConnected: false, enableMotor: true, maxMotorTorque: HINGE_TORQUE, motorSpeed: 0 } : { collideConnected: false }, b, sp.body, new Vec2(c.x, c.y));
+      w.createJoint(jt);
+      sp.joints.push(jt);
+      sp.jparts.push([j]);
+    }
+    this.topoDirty = true;
+  }
+
   /** corpo físico que carrega a peça estrutural i */
   bodyOfPart(i: number): Body | null {
-    const g = this.an.group[i];
-    if (g >= 0) return this.groups[g];
-    const pin = this.pins.find((q) => q.idx === i);
-    return pin ? pin.body : null;
+    return this.partBody[i] ?? null;
+  }
+
+  /* ------------------------------ quebras ------------------------------ */
+  /** arranca a peça i do corpo (quebra todas as soldas dela) */
+  private detachPart(i: number, lim = 0): void {
+    const b = this.partBody[i];
+    if (!b) return;
+    const gi = this.groups.indexOf(b);
+    if (gi < 0) return;
+    let any = false;
+    for (const k of this.linksOf[i]) {
+      if (this.linkOn[k]) {
+        this.linkOn[k] = false;
+        any = true;
+      }
+    }
+    if (!any) return;
+    this.breaks++;
+    const P = this.parts[i];
+    const c = this.fixCenter(i);
+    this.fx.push({ x: c.x, y: c.y, power: 1, kind: 'snap', t: P.t });
+    const pv = this.pre.get(b);
+    const n0 = this.groups.length;
+    this.resplit(gi);
+    // a solda só segurou até a resistência dela: o resto do carro não para junto com a peça que bateu
+    // (segue com quase toda a velocidade e bate de novo → a batida "desmonta" o carro em vários pedaços)
+    if (pv && lim > 0) {
+      const rest = [b, ...this.groups.slice(n0)].filter((q) => q !== this.partBody[i]);
+      for (const q of rest) {
+        const v = q.getLinearVelocity();
+        const dx = v.x - pv[0];
+        const dy = v.y - pv[1];
+        const d = Math.hypot(dx, dy);
+        if (d <= lim) continue;
+        const f = lim / d;
+        q.setLinearVelocity(new Vec2(pv[0] + dx * f, pv[1] + dy * f));
+        q.setAngularVelocity(pv[2] + (q.getAngularVelocity() - pv[2]) * f);
+      }
+    }
+  }
+
+  private fixCenter(i: number): { x: number; y: number } {
+    const b = this.partBody[i]!;
+    const cs = cellsOf(this.parts[i]);
+    let x = 0;
+    let y = 0;
+    for (const [cx, cy] of cs) {
+      x += cx + 0.5;
+      y += cy + 0.5;
+    }
+    const p = b.getWorldPoint(new Vec2((x / cs.length) * U, (y / cs.length) * U));
+    return { x: p.x, y: p.y };
+  }
+
+  /** divide o corpo gi nas partes que continuam soldadas; a maior fica no corpo original */
+  private resplit(gi: number): void {
+    const mem = this.members[gi];
+    const par = new Map<number, number>();
+    for (const i of mem) par.set(i, i);
+    const f = (i: number): number => {
+      let r = i;
+      while (par.get(r) !== r) r = par.get(r)!;
+      return r;
+    };
+    this.an.links.forEach((l, k) => {
+      if (!this.linkOn[k] || !par.has(l.i) || !par.has(l.j)) return;
+      const a = f(l.i);
+      const b = f(l.j);
+      if (a !== b) par.set(Math.max(a, b), Math.min(a, b));
+    });
+    const comps = new Map<number, number[]>();
+    for (const i of mem) {
+      const r = f(i);
+      const l = comps.get(r) ?? [];
+      l.push(i);
+      comps.set(r, l);
+    }
+    if (comps.size < 2) return;
+    const list = [...comps.values()].sort((a, b) => b.length - a.length || a[0] - b[0]);
+    const old = this.groups[gi];
+    this.members[gi] = list[0];
+    const w = this.world;
+    const moved: number[] = [];
+    for (let c = 1; c < list.length; c++) {
+      const nb = w.createBody({ type: 'dynamic', position: old.getPosition(), angle: old.getAngle(), angularDamping: 0.05 });
+      for (const i of list[c]) {
+        const fl = [...this.partFix[i]];
+        for (const m of this.mountsOn.get(i) ?? []) fl.push(...this.partFix[m]);
+        for (const fo of fl) {
+          const nf = nb.createFixture(fo.getShape(), {
+            density: fo.getDensity(),
+            friction: fo.getFriction(),
+            restitution: fo.getRestitution(),
+            // continua sem bater no resto do carro: os pedaços nascem encostados e, colidindo, seriam
+            // espremidos através do chão fino
+            filterGroupIndex: fo.getFilterGroupIndex(),
+            userData: fo.getUserData(),
+          });
+          const ud = fo.getUserData() as FixData;
+          old.destroyFixture(fo);
+          const own = this.partFix[ud.pi!];
+          own[own.indexOf(fo)] = nf;
+        }
+        this.partBody[i] = nb;
+        for (const m of this.mountsOn.get(i) ?? []) {
+          for (const th of this.thrusters) if (th.idx === m) th.body = nb;
+        }
+        for (const bl of this.balloons) if (this.an.base.get(bl.idx) === i) bl.body = nb;
+        moved.push(i);
+      }
+      const v = old.getLinearVelocityFromWorldPoint(nb.getWorldCenter());
+      nb.setLinearVelocity(v);
+      nb.setAngularVelocity(old.getAngularVelocity());
+      this.groups.push(nb);
+      this.members.push(list[c]);
+    }
+    // juntas presas às peças que mudaram de corpo
+    for (const wh of this.wheels) {
+      if (wh.joint && moved.includes(wh.bi)) this.rebaseWheel(wh);
+    }
+    for (const sp of this.pins) if (sp.nbr.some((j) => moved.includes(j))) this.rebuildPin(sp);
+    this.pickMain();
+    this.topoDirty = true;
+  }
+
+  private rebaseWheel(wh: SimWheel): void {
+    const old = wh.joint!;
+    const nb = this.partBody[wh.bi]!;
+    const opts = this.wheelOpts.get(wh)!;
+    let j: Joint;
+    if (wh.spring) {
+      const o = old as WheelJoint;
+      j = new WheelJoint({ ...opts, bodyA: nb, bodyB: wh.body, localAnchorA: o.getLocalAnchorA(), localAnchorB: o.getLocalAnchorB(), localAxisA: o.getLocalAxisA() } as WheelJointDef);
+    } else {
+      const o = old as RevoluteJoint;
+      j = new RevoluteJoint({ ...opts, bodyA: nb, bodyB: wh.body, localAnchorA: o.getLocalAnchorA(), localAnchorB: o.getLocalAnchorB(), referenceAngle: o.getReferenceAngle() } as RevoluteJointDef);
+    }
+    this.world.destroyJoint(old);
+    this.world.createJoint(j);
+    wh.joint = j;
+    wh.base = nb;
+  }
+
+  /** eixo quebrou: a roda sai rolando */
+  private breakAxle(wh: SimWheel): void {
+    if (!wh.joint) return;
+    this.world.destroyJoint(wh.joint);
+    wh.joint = null;
+    this.breaks++;
+    const p = wh.body.getPosition();
+    this.fx.push({ x: p.x, y: p.y, power: 1, kind: 'snap', t: this.parts[wh.idx].t });
+    this.topoDirty = true;
+  }
+
+  /** quais motores ainda giram cada roda (motor e eixo na mesma estrutura ligada por juntas) */
+  private updatePower(): void {
+    this.topoDirty = false;
+    const ids = new Map<Body, number>();
+    const par: number[] = [];
+    const id = (b: Body) => {
+      let k = ids.get(b);
+      if (k === undefined) {
+        k = par.length;
+        ids.set(b, k);
+        par.push(k);
+      }
+      return k;
+    };
+    const f = (i: number): number => (par[i] === i ? i : (par[i] = f(par[i])));
+    const join = (a: Body, b: Body) => {
+      const x = f(id(a));
+      const y = f(id(b));
+      if (x !== y) par[Math.max(x, y)] = Math.min(x, y);
+    };
+    for (const wh of this.wheels) if (wh.joint) join(wh.base, wh.body);
+    for (const sp of this.pins) for (const j of sp.joints) join(j.getBodyA(), j.getBodyB());
+    // massa de cada estrutura ligada ÷ rodas nela = quanto cada eixo segura
+    const cm = new Map<number, number>();
+    const cn = new Map<number, number>();
+    for (const b of this.allVehicleBodies()) {
+      const r = f(id(b));
+      cm.set(r, (cm.get(r) ?? 0) + b.getMass());
+    }
+    for (const wh of this.wheels) if (wh.joint) cn.set(f(id(wh.body)), (cn.get(f(id(wh.body))) ?? 0) + 1);
+    this.compMass.clear();
+    this.compTot.clear();
+    for (const b of this.allVehicleBodies()) this.compTot.set(b, cm.get(f(id(b)))!);
+    for (const wh of this.wheels) if (wh.joint) this.compMass.set(wh.body, cm.get(f(id(wh.body)))! / cn.get(f(id(wh.body)))!);
+    for (const wh of this.wheels) {
+      wh.shares = [];
+      wh.powered = 0;
+      if (!wh.joint) continue;
+      const cw = f(id(wh.body));
+      for (const sh of wh.allShares) {
+        const mb = this.partBody[sh[0]];
+        if (!mb || f(id(mb)) !== cw) continue;
+        wh.shares.push(sh);
+        wh.powered += sh[1];
+      }
+    }
+  }
+
+  /** depois de cada subpasso: soldas, eixos e pinos que passaram do limite */
+  private checkBreaks(h: number): void {
+    // carro já avariado fica mais frágil: depois da primeira quebra, uma batida forte desmonta o resto
+    const S = this.strength * (this.breaks ? 0.6 : 1);
+    const grace = this.time < BREAK_GRACE;
+    // soldas: impulso de contato do subpasso ÷ massa do corpo. Depois da primeira quebra no subpasso, as vizinhas
+    // ficam mais fracas (a batida "esfarela" o carro em vez de soltar uma peça só)
+    let cascade = 1;
+    for (let i = 0; i < this.hit.length; i++) {
+      const im = this.hit[i];
+      if (im <= 0) continue;
+      if (this.soft[i]) continue;
+      const mat = WELD_DV[this.parts[i].t];
+      if (!mat || !this.linksOf[i].length) continue;
+      const pb = this.partBody[i]!;
+      const k = im / ((this.compTot.get(pb) ?? pb.getMass()) * mat * S);
+      if (!grace && k > this.stress.weld) this.stress.weld = k;
+      if (k * cascade > 1 && !grace && this.breakable) {
+        this.detachPart(i, mat * S);
+        cascade = 1.6;
+      }
+    }
+    // empurrões de máquinas da pista (portão, elevador, pêndulo...) e a parede de chegada não quebram eixos
+    if (this.softAll) return;
+    for (const wh of this.wheels) {
+      if (!wh.joint) continue;
+      const im = wh.joint.getReactionForce(1 / h).length() * h;
+      if (this.soft[wh.idx]) continue;
+      const k = im / ((this.compMass.get(wh.body) ?? 1) * (AXLE_DV[this.parts[wh.idx].t] ?? 1) * S);
+      if (!grace && k > this.stress.axle) this.stress.axle = k;
+      if (k > 1 && !grace && this.breakable) this.breakAxle(wh);
+    }
+    for (const sp of this.pins) {
+      for (let q = 0; q < sp.joints.length; q++) {
+        const jq = sp.joints[q];
+        const im = jq.getReactionForce(1 / h).length() * h;
+        const k = im / (Math.min(jq.getBodyA().getMass(), sp.body.getMass() * 4) * HINGE_DV * S);
+        if (!grace && k > this.stress.hinge) this.stress.hinge = k;
+        if (k > 1 && !grace && this.breakable) {
+          for (const j of sp.jparts[q]) sp.dead.add(j);
+          this.breaks++;
+          const p = sp.body.getPosition();
+          this.fx.push({ x: p.x, y: p.y, power: 1, kind: 'snap', t: 'hinge' });
+          this.rebuildPin(sp);
+          break;
+        }
+      }
+    }
   }
 
   /* ------------------------------ carga ------------------------------ */
@@ -376,7 +769,7 @@ export class Sim {
       switch (o.k) {
         case 'seesaw': {
           const g = this.groundBody;
-          g.createFixture(new Polygon([new Vec2(o.x - 0.45, o.y), new Vec2(o.x + 0.45, o.y), new Vec2(o.x, o.y + 0.62)]), { friction: 0.9, userData: { k: 'ground' } });
+          g.createFixture(new Polygon([new Vec2(o.x - 0.45, o.y), new Vec2(o.x + 0.45, o.y), new Vec2(o.x, o.y + 0.62)]), { friction: 0.9, userData: { k: 'ground', wall: true } as FixData });
           const ang = Math.asin(Math.min(0.95, 0.62 / (o.len / 2))) * this.track.dir;
           const pl = w.createBody({ type: 'dynamic', position: new Vec2(o.x, o.y + 0.62), angle: ang });
           pl.createFixture(new Box(o.len / 2, 0.09), { density: 1.5, friction: 0.95, userData: ud });
@@ -449,6 +842,14 @@ export class Sim {
       const ud = f.getUserData() as FixData | null;
       const b = f.getBody();
       if (!b.isDynamic()) return;
+      if (ud?.k === 'veh' && ud.pi !== undefined) {
+        const od = other.getUserData() as FixData | null;
+        if (od?.wall || od?.k === 'obj') {
+          this.soft[ud.pi] = 1;
+          this.softAll = true;
+        }
+        else if (od?.k === 'ground') this.hit[ud.pi] += mx;
+      }
       const dv = mx / Math.max(0.05, b.getMass());
       if (ud?.k === 'cargo' && ud.ci !== undefined) {
         const cg = this.cargo[ud.ci];
@@ -481,9 +882,20 @@ export class Sim {
     this.updateObjs(DT);
     const h = DT / SUB;
     for (let s = 0; s < SUB; s++) {
+      if (this.topoDirty) this.updatePower();
       this.applyForces();
+      this.hit.fill(0);
+      this.soft.fill(0);
+      this.pre.clear();
+      for (const b of this.groups) {
+        const v = b.getLinearVelocity();
+        this.pre.set(b, [v.x, v.y, b.getAngularVelocity()]);
+      }
+      this.softAll = false;
       this.world.step(h, 8, 3);
+      this.checkBreaks(h);
     }
+    if (this.topoDirty) this.updatePower();
     this.clampAll();
     this.time += DT;
     this.updateRules();
@@ -496,7 +908,8 @@ export class Sim {
     }
     const { fwd, back, brake } = this.input;
     for (const wh of this.wheels) {
-      const j = wh.joint as RevoluteJoint | WheelJoint;
+      const j = wh.joint as RevoluteJoint | WheelJoint | null;
+      if (!j) continue;
       if (brake) {
         j.setMotorSpeed(0);
         j.setMaxMotorTorque(BRAKE_TORQUE);
@@ -526,7 +939,8 @@ export class Sim {
       md.set(mi, d > 0 ? 1 : d < 0 ? -1 : 0);
     }
     for (const wh of this.wheels) {
-      const j = wh.joint as RevoluteJoint | WheelJoint;
+      const j = wh.joint as RevoluteJoint | WheelJoint | null;
+      if (!j) continue;
       let drive = 0;
       for (const [mi, sh] of wh.shares) drive += (md.get(mi) ?? 0) * sh;
       if (brake) {
@@ -565,6 +979,22 @@ export class Sim {
   }
 
   private applyForces(): void {
+    // batente da suspensão: além do curso, mola dura + amortecedor (o amortecedor não "afunda" até o eixo)
+    for (const wh of this.wheels) {
+      if (!wh.spring || !wh.joint) continue;
+      const j = wh.joint as WheelJoint;
+      const tr = j.getJointTranslation();
+      const ex = tr > SUSP_TRAVEL ? tr - SUSP_TRAVEL : tr < -SUSP_DROOP ? tr + SUSP_DROOP : 0;
+      if (!ex) continue;
+      const ax = wh.base.getWorldVector(j.getLocalAxisA());
+      const wp = wh.body.getWorldCenter();
+      const vb = wh.body.getLinearVelocity();
+      const va = wh.base.getLinearVelocityFromWorldPoint(wp);
+      const sp = (vb.x - va.x) * ax.x + (vb.y - va.y) * ax.y;
+      const f = -ex * SUSP_STOP_K - sp * SUSP_STOP_C;
+      wh.body.applyForce(new Vec2(ax.x * f, ax.y * f), wp, true);
+      wh.base.applyForce(new Vec2(-ax.x * f, -ax.y * f), wp, true);
+    }
     for (const th of this.thrusters) {
       if (!th.on) continue;
       const b = th.body;

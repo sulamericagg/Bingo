@@ -104,11 +104,12 @@ const TUTORIAL: Record<number, TutStep[]> = {
   ],
 };
 
-const UPGRADES: { id: 'motor' | 'grip' | 'spring' | 'pad'; cost: [number, number]; name: () => string; desc: () => string; part: PartId }[] = [
+const UPGRADES: { id: 'motor' | 'grip' | 'spring' | 'pad' | 'frame'; cost: [number, number]; name: () => string; desc: () => string; part: PartId }[] = [
   { id: 'motor', cost: [60, 150], name: () => t('ml.up.motor', 'Motor turbo'), desc: () => t('ml.up.motorD', '+25% de força por nível'), part: 'motor' },
   { id: 'grip', cost: [50, 130], name: () => t('ml.up.grip', 'Pneus macios'), desc: () => t('ml.up.gripD', '+15% de aderência por nível'), part: 'wheelS' },
   { id: 'spring', cost: [40, 110], name: () => t('ml.up.spring', 'Molas firmes'), desc: () => t('ml.up.springD', 'Suspensão mais firme e estável'), part: 'spring' },
   { id: 'pad', cost: [50, 130], name: () => t('ml.up.pad', 'Espuma protetora'), desc: () => t('ml.up.padD', 'O vidro aguenta pancadas mais fortes'), part: 'basket' },
+  { id: 'frame', cost: [60, 150], name: () => t('ml.up.frame', 'Parafusos reforçados'), desc: () => t('ml.up.frameD', 'Juntas e eixos aguentam +35% de pancada'), part: 'block' },
 ];
 const PALS: { id: string; cost: number; name: () => string; sw: string[] }[] = [
   { id: 'classic', cost: 0, name: () => t('ml.pal.classic', 'Clássica'), sw: ['#f59a32', '#f7ab45', '#ffc25e', '#5d6573'] },
@@ -609,9 +610,11 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   /* ================================ montagem ================================ */
-  openLevel(n: number): void {
-    const L = LEVELS[n - 1];
-    if (!L) return;
+  openLevel(n: number, over?: Partial<LevelDef>): void {
+    const L0 = LEVELS[n - 1];
+    if (!L0) return;
+    // `over` só pelo modo debug (pistas de teste: quebra, suspensão)
+    const L = over ? { ...L0, ...over, n } : L0;
     this.L = L;
     this.track = resolveTrack(L.track, L.grid[0] * U + 1.5, !!L.mirror, !!L.wet);
     const rec = this.sv.levels[n];
@@ -844,7 +847,19 @@ export class MontaLeva implements MiniGameHandle {
     if (L.wired && parts.some((p) => p.t === 'motor') && !an.wires.some((x) => parts[x.t].t === 'motor'))
       w.push(t('ml.w.noWire', 'Ligue um botão ao motor com um fio'));
     else if (parts.length && wheels.length && !parts.some((p) => p.t === 'motor')) w.push(t('ml.w.noMotor', 'Sem motor: as rodas não giram'));
-    else if (wheels.length && parts.some((p) => p.t === 'motor') && ![...an.power.keys()].length) w.push(t('ml.w.far', 'Motor longe demais das rodas'));
+    else if (wheels.length && parts.some((p) => p.t === 'motor') && ![...an.power.keys()].length) {
+      // motor perto de uma roda mas sem estar preso à estrutura dela = motor solto
+      const near = parts.some((m) => m.t === 'motor' && wheels.some((q) => Math.max(Math.abs(q.x - m.x), Math.abs(q.y - m.y)) <= 2));
+      w.push(near ? t('ml.w.detached', 'Motor solto: prenda o motor no carro') : t('ml.w.far', 'Motor longe demais das rodas'));
+    }
+    // selo "Sem motor!" no botão Testar: há rodas e nenhuma é movida por um motor preso a ela (e ligado por fio, nas fases com fios)
+    const tb = acts?.querySelector<HTMLElement>('[data-a=test]');
+    if (tb) {
+      const moved = [...an.power.values()].some((ms) => !L.wired || ms.some((m) => an.wires.some((x) => x.t === m)));
+      const thrust = parts.some((p) => p.t === 'thruster' || p.t === 'balloon');
+      tb.classList.toggle('nomotor', wheels.length > 0 && !moved && !thrust);
+      tb.dataset.nm = t('ml.noMotorBadge', 'Sem motor!');
+    }
     // peças soltas: grupos não ligados entre si (nem por dobradiça)
     if (an.groups.length > 1) {
       const par = an.groups.map((_, i) => i);
@@ -1679,6 +1694,16 @@ export class MontaLeva implements MiniGameHandle {
         this.au.hit(e.power);
         this.fx.emit(3 + Math.round(e.power * 6), e.x, e.y, { speed: 1 + e.power * 2, color: ['#c9d1dc', '#9aa5b5'], size: 0.07, life: 0.4, up: 1 });
         if (e.power > 0.5) this.shake = Math.max(this.shake, e.power * 0.6);
+      } else if (e.kind === 'snap') {
+        // peça arrancada: estalo + parafusos e lascas voando
+        this.au.crack();
+        const c = e.t ? colorOf(e.t) : ['#c9d1dc', '#9aa5b5'];
+        this.fx.emit(7, e.x, e.y, { speed: 3.2, color: ['#e9edf2', '#9aa5b5', '#5d6573'], size: 0.06, life: 0.9, up: 2.2, grav: 9, shape: 2 });
+        this.fx.emit(6, e.x, e.y, { speed: 2.4, color: [c[0], c[1]], size: 0.1, life: 0.8, up: 1.5, grav: 8, shape: 0 });
+        this.fx.emit(4, e.x, e.y, { speed: 0.9, color: '#cfd6e0', size: 0.16, life: 0.6, up: 0.6, grav: -0.5, shape: 2 });
+        this.shake = Math.max(this.shake, 0.45);
+        this.squashBots(e.x, e.y, 1);
+        tap('medium');
       } else if (e.kind === 'cargo' && e.power > 0.3) {
         this.au.hit(e.power * 0.6);
         this.fx.emit(4, e.x, e.y, { speed: 1.2, color: ['#ffd08a', '#ffffff'], size: 0.06, life: 0.35 });
@@ -1942,6 +1967,58 @@ export class MontaLeva implements MiniGameHandle {
     }
     drawWater(x, v, tr, this.time);
     this.fx.draw(x, v);
+    if (sim && this.dbgFix) this.drawFixtures(sim);
+  }
+
+  /** depuração (?debug&fixtures ou __montaleva.fixtures(true)): contorno dos fixtures físicos por cima do desenho */
+  dbgFix = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]fixtures/.test(location.search);
+  private drawFixtures(sim: Sim): void {
+    const x = this.cx;
+    const v = this.view;
+    const col: Record<string, string> = { veh: '#ff00d4', cargo: '#00c853', ground: '#2962ff', obj: '#ff6d00' };
+    x.save();
+    x.lineWidth = 1.5;
+    for (let b = sim.world.getBodyList(); b; b = b.getNext()) {
+      for (let f = b.getFixtureList(); f; f = f.getNext()) {
+        const ud = f.getUserData() as { k?: string } | null;
+        x.strokeStyle = col[ud?.k ?? ''] ?? '#000';
+        const sh = f.getShape() as unknown as { getType(): string; m_p?: { x: number; y: number }; m_radius: number; m_vertices?: { x: number; y: number }[]; m_count?: number };
+        const tp = sh.getType();
+        x.beginPath();
+        if (tp === 'circle') {
+          const c = b.getWorldPoint(sh.m_p!);
+          x.arc(wx(v, c.x), wy(v, c.y), sh.m_radius * v.s, 0, Math.PI * 2);
+          // raio para ver o giro
+          const e = b.getWorldPoint({ x: sh.m_p!.x + sh.m_radius, y: sh.m_p!.y });
+          x.moveTo(wx(v, c.x), wy(v, c.y));
+          x.lineTo(wx(v, e.x), wy(v, e.y));
+        } else {
+          const vs = sh.m_vertices ?? [];
+          const n = tp === 'polygon' ? (sh.m_count ?? vs.length) : vs.length;
+          for (let i = 0; i < n; i++) {
+            const p = b.getWorldPoint(vs[i]);
+            if (i === 0) x.moveTo(wx(v, p.x), wy(v, p.y));
+            else x.lineTo(wx(v, p.x), wy(v, p.y));
+          }
+          if (tp === 'polygon') x.closePath();
+        }
+        x.stroke();
+      }
+      if (b.isDynamic()) {
+        const c = b.getWorldCenter();
+        x.fillStyle = '#ff1744';
+        x.fillRect(wx(v, c.x) - 2, wy(v, c.y) - 2, 4, 4);
+      }
+    }
+    // juntas: âncoras (amarelo) — roda solta = sem âncora
+    x.fillStyle = '#ffd600';
+    for (let j = sim.world.getJointList(); j; j = j.getNext()) {
+      const a = j.getAnchorA();
+      x.beginPath();
+      x.arc(wx(v, a.x), wy(v, a.y), 3, 0, Math.PI * 2);
+      x.fill();
+    }
+    x.restore();
   }
 
   private drawStaticObjs(tr: Track): void {
@@ -2289,15 +2366,17 @@ export class MontaLeva implements MiniGameHandle {
         x.translate(0.07, -0.09);
         x.fillStyle = COL.shadow;
         x.beginPath();
-        for (const i of an.groups[gi]) structSilhouette(x, parts[i]);
+        for (const i of sim.members[gi]) structSilhouette(x, parts[i]);
         x.fill();
         x.restore();
       }
-      for (const i of an.groups[gi]) {
+      for (const i of sim.members[gi]) {
         const o = isButton(parts[i].t) ? an.buttons.indexOf(i) : -1;
         drawStructCell(x, parts[i], lw, 1, o >= 0 ? (this.simCaps.get(i) ?? '') : '', o >= 0 && sim.input.btn & (1 << o) ? 1 : 0);
       }
-      for (const l of an.links) if (an.group[l.i] === gi) drawLink(x, l.x, l.y, lw);
+      an.links.forEach((l, k) => {
+        if (sim.linkOn[k] && sim.partBody[l.i] === b) drawLink(x, l.x, l.y, lw);
+      });
       // propulsores deste grupo
       for (const th of sim.thrusters) {
         if (th.body !== b) continue;
@@ -2320,14 +2399,18 @@ export class MontaLeva implements MiniGameHandle {
     // rodas + suspensão
     for (const w of sim.wheels) {
       const p = w.body.getPosition();
-      if (w.spring) {
-        const a = this.localToWorld(w.base, w.lx, w.ly + U * 0.45, this.tmpA);
-        this.drawSpring(a.x, a.y, p.x, p.y, w.base.getAngle());
-      }
       x.save();
       this.cellSpace(p.x, p.y, 0);
       drawWheel(x, parts[w.idx].t, 0, 0, w.body.getAngle(), lw, w.powered > 0);
       x.restore();
+    }
+    // amortecedores por cima das rodas (a roda cobre a célula da mola): topo da célula → cubo da roda
+    for (const w of sim.wheels) {
+      if (!w.spring || !w.joint) continue;
+      const p = w.body.getPosition();
+      // preso acima do pneu (senão o pneu esconde tudo); comprimento de repouso = topo do pneu + folga
+      const a = this.localToWorld(w.base, w.lx, w.ly + Math.max(U * 0.5, w.r + U * 0.14), this.tmpA);
+      this.drawSpring(a.x, a.y, p.x, p.y, w.base.getAngle());
     }
     // esteiras (fileiras de 3+ rodas iguais)
     if (this.treads.length) {
@@ -2427,24 +2510,66 @@ export class MontaLeva implements MiniGameHandle {
     return rows;
   }
 
+  /** amortecedor: cilindro preso no chassi, haste até o cubo da roda e mola helicoidal que encolhe com o curso */
   private drawSpring(ax: number, ay: number, bx: number, by: number, ang: number): void {
     const x = this.cx;
     const v = this.view;
-    const n = 6;
-    const nx = -Math.cos(ang);
-    const ny = -Math.sin(ang);
-    const w = 0.09;
-    x.strokeStyle = colorOf('spring')[1];
-    x.lineWidth = Math.max(1.5, v.s * 0.035);
+    let dx = bx - ax;
+    let dy = by - ay;
+    const L = Math.hypot(dx, dy);
+    if (L < 1e-4) return;
+    dx /= L;
+    dy /= L;
+    const nx = -dy;
+    const ny = dx;
+    void ang;
+    const P = (along: number, side: number): [number, number] => [wx(v, ax + dx * along + nx * side), wy(v, ay + dy * along + ny * side)];
+    const s = v.s;
+    // corpo do amortecedor (comprimento fixo) + haste cromada
+    const body = Math.min(L * 0.55, U * 0.3);
+    x.lineCap = 'round';
+    x.strokeStyle = '#9aa5b5';
+    x.lineWidth = Math.max(2, s * 0.022);
     x.beginPath();
-    x.moveTo(wx(v, ax), wy(v, ay));
-    for (let i = 1; i < n; i++) {
-      const k = i / n;
-      const s = i % 2 ? 1 : -1;
-      x.lineTo(wx(v, ax + (bx - ax) * k + nx * w * s), wy(v, ay + (by - ay) * k + ny * w * s));
-    }
-    x.lineTo(wx(v, bx), wy(v, by));
+    x.moveTo(...P(body, 0));
+    x.lineTo(...P(L, 0));
     x.stroke();
+    x.strokeStyle = '#3e4756';
+    x.lineWidth = Math.max(4, s * U * 0.2);
+    x.beginPath();
+    x.moveTo(...P(0, 0));
+    x.lineTo(...P(body, 0));
+    x.stroke();
+    // mola: 6 espiras entre o topo e o prato de baixo; o passo encolhe quando comprime
+    const n = 6;
+    const w = U * 0.16;
+    const bot = L - U * 0.1;
+    x.strokeStyle = '#ffd45c';
+    x.lineWidth = Math.max(2.2, s * U * 0.07);
+    x.beginPath();
+    x.moveTo(...P(0, 0));
+    for (let i = 0; i <= n * 2; i++) x.lineTo(...P((bot * i) / (n * 2), i % 2 ? w : -w));
+    x.lineTo(...P(bot, 0));
+    x.stroke();
+    // olhal no cubo da roda
+    const [hx, hy] = P(L, 0);
+    x.fillStyle = '#e9edf2';
+    x.strokeStyle = '#323844';
+    x.lineWidth = Math.max(1.5, s * 0.02);
+    x.beginPath();
+    x.arc(hx, hy, Math.max(3, s * U * 0.09), 0, Math.PI * 2);
+    x.fill();
+    x.stroke();
+    // pratos da mola
+    x.strokeStyle = '#323844';
+    x.lineWidth = Math.max(2, s * 0.03);
+    x.beginPath();
+    x.moveTo(...P(0, -w * 1.15));
+    x.lineTo(...P(0, w * 1.15));
+    x.moveTo(...P(bot, -w * 1.1));
+    x.lineTo(...P(bot, w * 1.1));
+    x.stroke();
+    x.lineCap = 'butt';
   }
 
   private drawSimCargo(sim: Sim): void {
@@ -2485,7 +2610,9 @@ export class MontaLeva implements MiniGameHandle {
         gears: this.sv.gears,
         stars: LEVELS.map((L) => starsOf(L.n)),
       }),
-      openLevel: (n: number) => this.openLevel(n),
+      openLevel: (n: number, over?: Partial<LevelDef>) => this.openLevel(n, over),
+      /** contorno dos fixtures por cima do desenho */
+      fixtures: (on = true) => (this.dbgFix = on),
       menu: () => this.menu(),
       levels: (c = -1) => this.levels(c),
       shop: () => this.shop(),

@@ -120,7 +120,7 @@ export function partDesc(id: PartId): string {
     case 'wheelG':
       return t('ml.d.wheelG', 'Borracha que agarra: sobe rampas íngremes.');
     case 'motor':
-      return t('ml.d.motor', 'Gira as rodas a até 2 casas de distância.');
+      return t('ml.d.motor2', 'Preso ao carro, gira as rodas a até 2 casas.');
     case 'spring':
       return t('ml.d.spring', 'Roda montada aqui ganha amortecedor.');
     case 'hinge':

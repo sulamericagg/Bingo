@@ -90,12 +90,14 @@ export interface Analysis {
   group: number[];
   groups: number[][];
   /** pontos de conexão (meio da aresta compartilhada), em células */
-  links: { x: number; y: number; vertical: boolean; i: number }[];
+  links: { x: number; y: number; vertical: boolean; i: number; j: number }[];
   /** dobradiça → grupos vizinhos */
   hinges: Map<number, number[]>;
   /** roda/propulsor/balão → peça base */
   base: Map<number, number>;
-  /** roda → motores que a movem */
+  /** grupo → componente ligado (grupos unidos por dobradiças) */
+  comp: number[];
+  /** roda → motores que a movem (motor perto E preso à mesma estrutura da roda) */
   power: Map<number, number[]>;
   /** motor → rodas que ele move */
   drives: Map<number, number[]>;
@@ -126,7 +128,7 @@ export function analyze(parts: readonly Placed[]): Analysis {
         if (q.t === 'hinge') continue;
         if (!fullSide(p, s) || !fullSide(q, s + 2)) continue;
         par[find(i)] = find(j);
-        links.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5, vertical: s === 0, i });
+        links.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5, vertical: s === 0, i, j });
       }
     }
   });
@@ -165,6 +167,11 @@ export function analyze(parts: readonly Placed[]): Analysis {
     const j = struct.get(K(p.x, p.y));
     if (j !== undefined) base.set(i, j);
   });
+  // componentes ligados: grupos rígidos unidos por dobradiças (o grafo de juntas do veículo)
+  const cp = groups.map((_, i) => i);
+  const cf = (i: number): number => (cp[i] === i ? i : (cp[i] = cf(cp[i])));
+  for (const gs of hinges.values()) for (let k = 1; k < gs.length; k++) cp[cf(gs[k])] = cf(gs[0]);
+  const comp = groups.map((_, i) => cf(i));
   const power = new Map<number, number[]>();
   const drives = new Map<number, number[]>();
   parts.forEach((m, mi) => {
@@ -173,6 +180,9 @@ export function analyze(parts: readonly Placed[]): Analysis {
     parts.forEach((w, wi) => {
       if (!PARTS[w.t].radius) return;
       if (Math.max(Math.abs(w.x - m.x), Math.abs(w.y - m.y)) > MOTOR_REACH) return;
+      // motor solto não move nada: precisa estar na mesma estrutura (direto ou por dobradiça) que o eixo da roda
+      const bi = base.get(wi);
+      if (bi === undefined || group[bi] < 0 || group[mi] < 0 || comp[group[bi]] !== comp[group[mi]]) return;
       list.push(wi);
       const pl = power.get(wi) ?? [];
       pl.push(mi);
@@ -190,7 +200,7 @@ export function analyze(parts: readonly Placed[]): Analysis {
       if (ti >= 0 && !wires.some((w) => w.b === i && w.t === ti)) wires.push({ b: i, t: ti });
     }
   });
-  return { struct, mount, group, groups, links, hinges, base, power, drives, buttons, wires };
+  return { struct, mount, group, groups, links, hinges, base, comp, power, drives, buttons, wires };
 }
 
 export function partCost(parts: readonly Placed[]): number {
