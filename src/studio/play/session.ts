@@ -470,19 +470,30 @@ export class PlaySession {
       const depth = wy + size * 0.25 - b.position.y;
       if (depth <= 0) return false;
       const k = Math.min(1.6, depth / Math.max(0.3, size * 0.5));
-      b.applyForce(new C.Vec3(0, b.mass * 9.82 * (0.4 + k * 1.1), 0), b.position);
+      b.applyForce(new C.Vec3(0, b.mass * 9.82 * (0.4 + k * 1.1), 0));
       b.velocity.scale(1 - Math.min(0.5, 1.6 * dt), b.velocity);
       b.angularVelocity.scale(1 - Math.min(0.5, 2 * dt), b.angularVelocity);
       return true;
     };
     for (const v of this.vehicles) {
       const inW = float(v.cl.body, 1.2 + v.size * 0.1);
+      if (inW) {
+        // boia de pé: endireita com força (barquinho não vira)
+        const b = v.cl.body;
+        const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+        const ax = up.y < -0.9 ? new THREE.Vector3(1, 0, 0).applyQuaternion(q) : up.clone().cross(UP);
+        const tq = ax.multiplyScalar(v.mass * 40);
+        b.applyTorque(new C.Vec3(tq.x, tq.y, tq.z));
+        b.angularVelocity.x *= 1 - Math.min(0.8, 6 * dt);
+        b.angularVelocity.z *= 1 - Math.min(0.8, 6 * dt);
+      }
       if (inW && this.driving === v) {
         // na água o carro vira barquinho: o joystick empurra e vira
         const b = v.cl.body;
         const q = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
         const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q).multiplyScalar(this.joyY * v.mass * 5);
-        b.applyForce(new C.Vec3(f.x, 0, f.z), b.position);
+        b.applyForce(new C.Vec3(f.x, 0, f.z));
         b.angularVelocity.y += -this.joyX * 1.6 * dt;
       }
     }
