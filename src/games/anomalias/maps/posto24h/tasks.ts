@@ -5,6 +5,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import type { MapCtx } from '../kit2/ctx';
+import type { InteractDef } from '../types';
 import { bloopProp, car } from '../kit2/props';
 import { BLOOP_PALS } from '../kit2/chars';
 import { cup3 } from '../kit2/food';
@@ -12,9 +13,10 @@ import { atmScreen } from './art';
 import { GONDOLAS, LEVELS, RESTOCK, productRow, PRODUCT_COLS } from './store';
 import { NOZZLE, PUMPS } from './outside';
 
-function addTask(ctx: MapCtx, id: string, room: string, kind: string, object: THREE.Object3D, at: [number, number], setState?: (s: string) => void): void {
+function addTask(ctx: MapCtx, id: string, room: string, kind: string, object: THREE.Object3D, at: [number, number], setState?: (s: string) => void, extra: Partial<InteractDef> = {}): void {
   object.userData.task = id;
-  ctx.interacts.push({ id, room, kind, object, at: { x: at[0], y: 0, z: at[1] }, setState });
+  ctx.interacts.push({ id, room, kind, object, at: { x: at[0], y: 0, z: at[1] }, setState, ...extra });
+  setState?.('done');
 }
 
 export function buildTasks(ctx: MapCtx): void {
@@ -64,7 +66,7 @@ export function buildTasks(ctx: MapCtx): void {
     addTask(ctx, 'bomba' + (i + 1), 'patio', 'pump', g, [px + side * 0.85, pz], (s) => {
       carG.visible = s !== 'empty';
       hose.visible = s === 'fueling';
-    });
+    }, { icon: '⛽' });
   });
 
   // ---------------------------------------------------------------- repor prateleira
@@ -91,10 +93,15 @@ export function buildTasks(ctx: MapCtx): void {
     for (let i = 0; i < 6; i++) bottles.cyl(0.03, 0.04, 0.24, -0.15 + (i % 3) * 0.15, 0.6, -0.05 + Math.floor(i / 3) * 0.15, PRODUCT_COLS[2], 8);
     const bm = ctx.mesh('loja', bottles, 'vc', 0, 0, 0, 0, cm);
     addTask(ctx, 'repor', 'loja', 'restock', row, [gx + side * 1.0, (z0 + z1) / 2], (s) => {
-      const full = s === 'full';
+      const full = s === 'full' || s === 'done';
       row.visible = full;
       bm.visible = !full;
-    });
+    }, { icon: '📦', wants: ['agua', 'salgadinho', 'doce'] });
+    // fonte: caixas de mercadoria no depósito (pega uma para levar à gôndola)
+    const src = new THREE.Object3D();
+    src.position.set(9.3, 1.0, 11.2);
+    ctx.roomGroup('deposito').add(src);
+    ctx.interacts.push({ id: 'estoque', room: 'deposito', kind: 'stock', object: src, at: { x: 8.5, y: 0, z: 11.2 }, icon: '📦', gives: ['agua', 'salgadinho', 'doce'] });
   }
 
   // ---------------------------------------------------------------- caixa
@@ -119,7 +126,7 @@ export function buildTasks(ctx: MapCtx): void {
     const cust = ctx.picture('loja', atmScreen(), 0.17, 0.13, 0, 0.26, -0.218, Math.PI, true, g);
     ctx.refs.set('register', g);
     ctx.refs.set('regCust', cust);
-    addTask(ctx, 'caixa', 'loja', 'register', g, [2.05, 5.0]);
+    addTask(ctx, 'caixa', 'loja', 'register', g, [2.05, 5.0], undefined, { icon: '💵' });
   }
 
   // ---------------------------------------------------------------- máquina de café
@@ -150,9 +157,9 @@ export function buildTasks(ctx: MapCtx): void {
     ctx.refs.set('coffeeCup', cup);
     ctx.refs.set('coffeeStream', stream);
     addTask(ctx, 'cafe', 'loja', 'coffee', g, [-8.6, 8.55], (s) => {
-      cup.visible = s !== 'idle';
+      cup.visible = s === 'todo' || s === 'cup' || s === 'brewing';
       stream.visible = s === 'brewing';
-    });
+    }, { icon: '☕', holdSec: 2.2 });
   }
 
   // ---------------------------------------------------------------- passar pano (refrigerante no corredor)
@@ -182,11 +189,11 @@ export function buildTasks(ctx: MapCtx): void {
     const signM = ctx.mesh('loja', sg, 'vc', 0, 0, -0.85, 0, g);
     ctx.refs.set('spill', g);
     addTask(ctx, 'pano', 'loja', 'mop', g, [-2.9, 9.3], (s) => {
-      const dirty = s !== 'clean';
+      const dirty = s === 'dirty' || s === 'todo';
       puddle.visible = dirty;
       bottle.visible = dirty;
       signM.visible = dirty;
-    });
+    }, { icon: '🧽', holdSec: 2.5 });
   }
 
   // ---------------------------------------------------------------- lixo (lixeira da calçada)
@@ -206,6 +213,6 @@ export function buildTasks(ctx: MapCtx): void {
     fl.cyl(0.04, 0.04, 0.14, -0.4, -0.1, -0.35, '#e8423a', 8, 0, Math.PI / 2);
     fl.box(0.16, 0.02, 0.1, -0.2, -0.1, -0.55, '#ffd23a', 1.2);
     const full = ctx.mesh('patio', fl, 'vc', 0, 0, 0, 0, g);
-    addTask(ctx, 'lixo', 'patio', 'trash', g, [-6.2, -0.1], (s) => (full.visible = s !== 'empty'));
+    addTask(ctx, 'lixo', 'patio', 'trash', g, [-6.2, -0.1], (s) => (full.visible = s === 'full' || s === 'todo'), { icon: '🗑️', holdSec: 1.6 });
   }
 }

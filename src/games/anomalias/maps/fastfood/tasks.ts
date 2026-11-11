@@ -6,14 +6,17 @@
  * ============================================================ */
 import * as THREE from 'three';
 import type { MapCtx } from '../kit2/ctx';
+import type { InteractDef } from '../types';
 import { bloopProp, car } from '../kit2/props';
 import { BLOOP_PALS } from '../kit2/chars';
 import { burger3, cup3, fries3 } from '../kit2/food';
 import { registerScreen } from './art';
 
-function addTask(ctx: MapCtx, id: string, room: string, kind: string, object: THREE.Object3D, at: [number, number], setState?: (s: string) => void): void {
+function addTask(ctx: MapCtx, id: string, room: string, kind: string, object: THREE.Object3D, at: [number, number], setState?: (s: string) => void, extra: Partial<InteractDef> = {}): void {
   object.userData.task = id;
-  ctx.interacts.push({ id, room, kind, object, at: { x: at[0], y: 0, z: at[1] }, setState });
+  ctx.interacts.push({ id, room, kind, object, at: { x: at[0], y: 0, z: at[1] }, setState, ...extra });
+  // estado inicial = "feito" (o núcleo chama 'todo' quando sorteia a tarefa)
+  setState?.('done');
 }
 
 export function buildTasks(ctx: MapCtx): void {
@@ -36,7 +39,7 @@ export function buildTasks(ctx: MapCtx): void {
     const cust = ctx.picture('balcao', registerScreen(), 0.17, 0.13, 0, 0.26, 0.218, 0, true, g);
     ctx.refs.set('regCust' + i, cust);
     ctx.refs.set('register' + i, g);
-    addTask(ctx, 'caixa' + (i + 1), 'balcao', 'register', g, [x, 1.2]);
+    addTask(ctx, 'caixa' + (i + 1), 'balcao', 'register', g, [x, 1.2], undefined, { icon: '🧾' });
   }
 
   // ---------------------------------------------------------------- chapa
@@ -97,11 +100,12 @@ export function buildTasks(ctx: MapCtx): void {
       sm.opacity = 0.18;
     });
     addTask(ctx, 'chapa', 'cozinha', 'grill', g, [3.1, -7.55], (s) => {
+      if (s === 'todo') s = 'raw';
       const m = s === 'raw' ? raw : s === 'burnt' ? burnt : done;
       for (const p of patties) p.material = m;
       cooking = s === 'raw' || s === 'cooking';
       for (const p of patties) p.visible = s !== 'empty';
-    });
+    }, { icon: '🔥', holdSec: 2.5 });
   }
 
   // ---------------------------------------------------------------- fritadeira
@@ -147,8 +151,8 @@ export function buildTasks(ctx: MapCtx): void {
       oilM.position.y = Math.sin(t * 17) * 0.002;
     });
     addTask(ctx, 'fritadeira', 'cozinha', 'fryer', g, [5.0, -7.55], (s) => {
-      down = s === 'down' ? [true, true] : s === 'up' ? [false, false] : [false, true];
-    });
+      down = s === 'down' || s === 'todo' ? [true, true] : s === 'up' ? [false, false] : [false, true];
+    }, { icon: '🍟', holdSec: 2.2 });
   }
 
   // ---------------------------------------------------------------- máquina de bebidas (balcão de trás)
@@ -191,9 +195,10 @@ export function buildTasks(ctx: MapCtx): void {
     ctx.refs.set('drinkCup', cup);
     ctx.refs.set('drinkStream', st);
     addTask(ctx, 'bebidas', 'balcao', 'drink', g, [5.05, -0.9], (s) => {
-      cup.visible = s !== 'idle';
+      if (s === 'todo') s = 'cup';
+      cup.visible = s !== 'idle' && s !== 'done';
       st.visible = s === 'pouring';
-    });
+    }, { icon: '🥤', holdSec: 2.0 });
   }
 
   // ---------------------------------------------------------------- montagem (ilha da cozinha)
@@ -235,7 +240,7 @@ export function buildTasks(ctx: MapCtx): void {
     scr.cyl(0.02, 0.02, 0.75, 0, 0, -0.42, '#8a8e98', 6);
     ctx.mesh('cozinha', scr, 'vc', 0, 0, 0, 0, g);
     ctx.g('cozinha', 'glow').box(0.64, 0.36, 0.01, 4.0, 0.94 + 0.78, -5.1 - 0.39, '#2a5a9a');
-    addTask(ctx, 'montagem', 'cozinha', 'assemble', g, [4.0, -4.15], (s) => (stack.visible = s === 'building' || s === 'done'));
+    addTask(ctx, 'montagem', 'cozinha', 'assemble', g, [4.0, -4.15], (s) => (stack.visible = s === 'building' || s === 'todo'), { icon: '🍔' });
     ctx.refs.set('assembly', g);
   }
 
@@ -273,11 +278,11 @@ export function buildTasks(ctx: MapCtx): void {
     const sign = ctx.mesh('salao', sg, 'vc', -0.75, 0, -0.5, 0.5, g);
     ctx.refs.set('spill', g);
     addTask(ctx, 'limpeza', 'salao', 'clean', g, [-1.4, 2.0], (s) => {
-      const dirty = s !== 'clean';
+      const dirty = s === 'dirty' || s === 'todo';
       puddle.visible = dirty;
       cup.visible = dirty;
       sign.visible = dirty;
-    });
+    }, { icon: '🧽', holdSec: 2.5 });
   }
 
   // ---------------------------------------------------------------- drive-thru (janela + carro com cliente)
@@ -303,8 +308,9 @@ export function buildTasks(ctx: MapCtx): void {
     ctx.refs.set('driveCar', carG);
     ctx.refs.set('driveDriver', drv.mesh);
     ctx.box(12.8, -2.6, 14.7, 1.4, 0, 1.7);
+    // o carro fica sempre (o motorista também é anomalia); a tarefa é escolher o pedido
     addTask(ctx, 'drive', 'drive', 'drivethru', win, [11.4, -0.3], (s) => {
       carG.visible = s !== 'empty';
-    });
+    }, { icon: '🚗' });
   }
 }

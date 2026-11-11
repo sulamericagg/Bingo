@@ -674,6 +674,37 @@ export function buildAnomalies(ctx: MapCtx): void {
     ctx.root.add(o);
     addSlot(ctx, 'luz_estrada', 'estrada', o, { light: roomLightFn(ctx, 'estrada') }, 4);
   }
+  // 44 extintor da ilha trocado (pato de borracha gigante / bisnaga de ketchup gigante)
+  {
+    const g = ctx.gb('vc');
+    g.cyl(0.1, 0.1, 0.5, 0, 0, 0, '#e8302a', 12);
+    g.sph(0.1, 0, 0.5, 0, '#e8302a', 1, 0.5, 1, 10);
+    g.box(0.06, 0.1, 0.06, 0, 0.55, 0, '#2a2a30');
+    g.tube(
+      [
+        [0.03, 0.6, 0],
+        [0.15, 0.5, 0.05],
+        [0.12, 0.2, 0.1],
+      ],
+      0.015,
+      '#2a2a30',
+      8,
+      5,
+    );
+    const ext = ctx.mesh('patio', g, 'vc', 3.5, 0.26, -14.4);
+    const duck = ctx.gb('vc');
+    duck.sph(0.2, 0, 0.18, 0, '#ffd23a', 1.2, 0.9, 1, 12);
+    duck.sph(0.13, 0.12, 0.42, 0, '#ffd23a', 1, 1, 1, 10);
+    duck.box(0.12, 0.04, 0.09, 0.27, 0.4, 0, '#ff8a1a');
+    duck.sph(0.02, 0.2, 0.47, 0.07, '#111', 1, 1, 1, 5);
+    duck.sph(0.02, 0.2, 0.47, -0.07, '#111', 1, 1, 1, 5);
+    const dm = ctx.mesh('patio', duck, 'vc', 3.5, 0.26, -14.4, -Math.PI / 2);
+    const kb = ctx.gb('vc');
+    kb.cyl(0.12, 0.14, 0.62, 0, 0, 0, '#e8302a', 12);
+    kb.cyl(0.03, 0.08, 0.14, 0, 0.62, 0, '#f2f2f2', 10);
+    const km = ctx.mesh('patio', kb, 'vc', 3.5, 0.26, -14.4);
+    addSlot(ctx, 'extintor', 'patio', ext, { swap: A.swap(ext, [dm, km]), missing: A.hide(ext), scale: A.scale(ext, [2.2]) }, 2);
+  }
   // 43 motorista da bomba 1 (rosto errado / sumiu)
   {
     const drv = ctx.refs.get('pumpDriver0') as THREE.Mesh;

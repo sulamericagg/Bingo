@@ -21,6 +21,9 @@ import { buildFurniture } from './furniture';
 import { buildOutside } from './outside';
 import { buildAnomalies } from './anomalies';
 import { buildTasks } from './tasks';
+import { BLOOP_PALS } from '../kit2/chars';
+import { chooseHandler } from '../kit2/tasks';
+import type { ItemDef, Vec3 } from '../types';
 
 async function build(opts: { tier: Tier }): Promise<MapBuild> {
   await fontsReady();
@@ -37,15 +40,15 @@ async function build(opts: { tier: Tier }): Promise<MapBuild> {
 
   // ---------- salas (ordem: interior primeiro) ----------
   const IN = 1.7;
-  ctx.room('kids', 'Cantinho Kids', [-12, 0, -2], [-6.5, 3.3, 9], '#3a3048', IN);
-  ctx.room('salao', 'Salão', [-6.5, 0, -2], [4, 3.3, 9], '#3a3044', IN);
-  ctx.room('balcao', 'Balcão', [4, 0, -2], [10, 3.3, 9], '#3a3044', IN);
-  ctx.room('drive', 'Drive-thru', [10, 0, -2], [12, 3.3, 1.5], '#30303e', IN);
-  ctx.room('cozinha', 'Cozinha', [0, 0, -9], [12, 3.3, -2], '#343a44', IN);
-  ctx.room('camara', 'Câmara Fria', [8, 0, -12], [12, 3.3, -9], '#2a3a50', IN);
-  ctx.room('banheiros', 'Banheiros', [-12, 0, -9], [-6, 3.3, -2], '#30384a', IN);
-  ctx.room('escritorio', 'Escritório', [-6, 0, -9], [0, 3.3, -2], '#2a2838', IN);
-  ctx.room('estac', 'Estacionamento', [-26, 0, -16], [28, 12, 30], '#1c2444', 0.55, true);
+  ctx.room('kids', 'Cantinho Kids', [-12, 0, -2], [-6.5, 3.3, 9], '#3a3048', IN).icon = '🧸';
+  ctx.room('salao', 'Salão', [-6.5, 0, -2], [4, 3.3, 9], '#3a3044', IN).icon = '🍽️';
+  ctx.room('balcao', 'Balcão', [4, 0, -2], [10, 3.3, 9], '#3a3044', IN).icon = '🧾';
+  ctx.room('drive', 'Drive-thru', [10, 0, -2], [12, 3.3, 1.5], '#30303e', IN).icon = '🚗';
+  ctx.room('cozinha', 'Cozinha', [0, 0, -9], [12, 3.3, -2], '#343a44', IN).icon = '🍳';
+  ctx.room('camara', 'Câmara Fria', [8, 0, -12], [12, 3.3, -9], '#2a3a50', IN).icon = '❄️';
+  ctx.room('banheiros', 'Banheiros', [-12, 0, -9], [-6, 3.3, -2], '#30384a', IN).icon = '🚻';
+  ctx.room('escritorio', 'Escritório', [-6, 0, -9], [0, 3.3, -2], '#2a2838', IN).icon = '🖥️';
+  ctx.room('estac', 'Estacionamento', [-26, 0, -16], [28, 12, 30], '#1c2444', 0.55, true).icon = '🅿️';
 
   // o que se enxerga de cada sala (portas abertas, janelas, passagem do balcão)
   const FRONT = ['kids', 'salao', 'balcao', 'drive', 'estac', 'banheiros', 'escritorio', 'cozinha'];
@@ -111,24 +114,47 @@ async function build(opts: { tier: Tier }): Promise<MapBuild> {
   V('v_porta', [-1.0, 1.6, 5.0], [-1.0, 1.2, 9.5]);
 
   // pontos de NPC (o núcleo põe/anima os clientes)
-  const N = (id: string, room: string, x: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie' = 'stand', y = 0) => ctx.npcSpots.push({ id, room, pos: { x, y, z }, yaw, pose });
+  // yaw no padrão do núcleo (personagem olha −Z com yaw 0): +π sobre a nossa convenção (+Z)
+  let ni = 0;
+  const N = (id: string, room: string, x: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie' = 'stand', y = 0) =>
+    ctx.npcSpots.push({ id, room, pos: { x, y, z }, yaw: yaw + Math.PI, pose, color: BLOOP_PALS[ni++ % BLOOP_PALS.length].light, hat: ['', 'cap', '', 'beanie', 'bow'][ni % 5] });
   N('fila1', 'balcao', 5.6, 3.0, Math.PI);
   N('fila2', 'balcao', 7.4, 3.0, Math.PI);
-  N('fila3', 'balcao', 5.6, 4.1, Math.PI);
-  N('fila4', 'balcao', 6.6, 5.3, Math.PI);
   N('retirada', 'balcao', 9.2, 3.0, Math.PI);
-  N('cabine3a', 'salao', 2.35, 8.4, -Math.PI / 2, 'sit', 0.45);
+  N('cabine3a', 'salao', 2.6, 8.3, Math.PI / 2, 'sit', 0.47);
   N('mesa1a', 'salao', -4.95, 0.6, Math.PI / 2, 'sit', 0.45);
   N('mesa4b', 'salao', 2.75, 4.0, -Math.PI / 2, 'sit', 0.45);
-  N('mesa5a', 'salao', 1.65, 0.6, Math.PI / 2, 'sit', 0.45);
   N('kids1', 'kids', -9.6, 4.6, 0.6);
-  N('kids2', 'kids', -8.4, 1.0, -2.5);
   N('porta', 'salao', -1, 7.6, Math.PI);
-  N('drive_carro', 'estac', 13.6, -0.3, Math.PI, 'sit', 0.6);
   N('calcada', 'estac', 4, 10.6, 0);
 
+  // grafo de caminhada do Bocudo (nós no chão; ligações sem parede no meio)
+  const nodes: Vec3[] = (
+    [
+      [8.5, 0.6], [5.0, 0.6], [6.75, -1.0], [6.75, -3.3], [1.5, -3.3], [9.8, -3.3], [1.5, -6.8], [5.0, -6.8], [9.8, -6.8],
+      [11.0, -2.4], [11.0, -0.6], [4.4, 2.0], [3.0, 2.8], [-1.0, 2.4], [-1.0, 6.5], [-2.4, -1.2], [-2.4, -2.7], [-3.0, -5.5],
+      [-0.6, -4.5], [-5.6, -1.0], [-8.0, -0.6], [-8.7, -2.7], [-8.5, -5.0], [-7.8, 5.0], [-1.0, 8.4], [-1.0, 10.6], [6.0, 12.4], [-10.0, 12.4],
+    ] as [number, number][]
+  ).map(([x, z]) => ({ x, y: 0, z }));
+  const links: [number, number][] = [
+    [0, 1], [1, 2], [2, 3], [3, 4], [3, 5], [4, 6], [6, 7], [7, 8], [8, 5], [5, 9], [9, 10], [10, 0], [1, 11], [11, 12], [12, 13], [13, 14],
+    [13, 15], [15, 16], [16, 17], [17, 18], [18, 4], [15, 19], [19, 20], [20, 21], [21, 22], [20, 23], [14, 24], [24, 25], [25, 26], [25, 27],
+  ];
+  const ITEMS: ItemDef[] = [
+    { id: 'lanche', color: '#c8743a', shape: 'circle' },
+    { id: 'batata', color: '#ffd23a', shape: 'square' },
+    { id: 'refri', color: '#3aa0ff', shape: 'drop' },
+    { id: 'shake', color: '#ff8ac0', shape: 'heart' },
+    { id: 'pepitas', color: '#ff9a2a', shape: 'star' },
+  ];
+  const food = ITEMS.map((i) => i.id);
   const b = ctx.finish('fastfood', { pos: { x: 7, y: 0, z: 0.4 }, yaw: Math.PI }, {
     atmosphere: { background: '#0b1026', fog: { color: '#141a34', near: 18, far: 70 } },
+    env: { fog: '#141a34', fogNear: 16, fogFar: 60, sky: '#8a96c8', ground: '#3a2f4a', ambient: 0.3 },
+    items: ITEMS,
+    taskHandlers: { register: chooseHandler(food, '🧾', 3, 11), drivethru: chooseHandler(food, '🚗', 3, 23) },
+    nav: { nodes, links },
+    creatureSpawns: [{ x: 5, y: 0, z: -6.8 }, { x: -8.5, y: 0, z: -5 }, { x: -3, y: 0, z: -5.5 }, { x: -1, y: 0, z: 12 }],
   });
   return b;
 }

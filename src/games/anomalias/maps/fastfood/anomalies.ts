@@ -152,7 +152,20 @@ export function buildAnomalies(ctx: MapCtx): void {
     burgo3(fg, 'fangs');
     const fang = ctx.bakeAs('salao', m, fg.build());
     ctx.boxAt(-2.75, 7.35, 0.9, 0.9, 0, 1.5);
+    // trocado por uma "estátua" de Sombrito no mesmo pedestal
+    const sw = new THREE.Group();
+    sw.position.set(-2.75, 0, 7.35);
+    sw.rotation.y = Math.PI * 0.85;
+    ctx.roomGroup('salao').add(sw);
+    sw.updateMatrixWorld(true);
+    const pd = ctx.gb('vc');
+    pd.rcyl(0.42, 0.2, 0, 0, 0, '#d8302a', 20, 0.3);
+    ctx.mesh('salao', pd, 'vc', 0, 0, 0, 0, sw);
+    const st = sombrito(ctx, 'salao', 0, 0.2, 0, 0, 1.45, sw);
+    st.visible = true;
+    sw.visible = false;
     addSlot(ctx, 'mascote', 'salao', m, {
+      swap: A.swap(m, [sw]),
       rotate: A.rot(m, [
         [0, Math.PI, 0],
         [0, Math.PI / 2, 0],

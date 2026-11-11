@@ -98,7 +98,7 @@ export function sombrito(ctx: MapCtx, room: string, x: number, y: number, z: num
   g.rotation.y = ry;
   g.scale.setScalar(scale);
   parent.add(g);
-  g.updateMatrixWorld(true);
+  g.updateWorldMatrix(true, true);
   const body = SOMB.body.clone();
   const m = new THREE.Mesh(body, ctx.mat(room, 'vc'));
   g.add(m);
@@ -180,7 +180,7 @@ export function car(ctx: MapCtx, room: string, col: string, x: number, z: number
   grp.position.set(x, 0, z);
   grp.rotation.y = ry;
   ctx.root.add(grp);
-  grp.updateMatrixWorld(true);
+  grp.updateWorldMatrix(true, true);
   const c = carGeo(col, kind, ctx.tier);
   if (!dynamic) {
     // carro parado de cenário: tudo numa malha da camada da sala (vidro escuro opaco, faróis apagados)

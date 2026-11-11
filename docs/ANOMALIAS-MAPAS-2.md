@@ -57,8 +57,8 @@ desenho 16–119 por vista** (meta < 120), 36k–110k triângulos. Ver "Desempen
 
 ## Convenções
 
-* Metros, Y para cima. Objetos/personagens olham para **+Z** com rotação 0; `npcSpots[].yaw` = rotation.y
-  do personagem nessa convenção. `spawn.yaw` = rotation.y da câmera (0 = olhando −Z).
+* Metros, Y para cima. Os modelos do kit olham para **+Z** com rotação 0; os `npcSpots[].yaw` já saem no
+  padrão do núcleo (personagem olha −Z com yaw 0: o índice soma π). `spawn.yaw` = rotation.y da câmera.
 * `rooms` vêm em ordem de prioridade: interiores primeiro; a última sala externa ("Estacionamento",
   "Pátio") é uma caixa grande que **contém** o prédio — use a **primeira** sala da lista que contém o ponto.
 * NPC `pose: 'sit'` traz `pos.y` = altura do assento.
@@ -69,7 +69,23 @@ desenho 16–119 por vista** (meta < 120), 36k–110k triângulos. Ver "Desempen
 * `object.userData.task` / `userData.slot` = id da tarefa/anomalia (útil no raycast da foto).
 * `root.userData.views` = vistas de 1ª pessoa nomeadas (só para o visualizador/screenshots).
 
-### Adições OPCIONAIS ao contrato (`types.ts`)
+### Contrato v1.1 (núcleo) — o que os dois mapas usam
+
+* `env` (neblina, céu/chão da luz hemisférica fraca `ambient 0.3` — a luz principal já está assada),
+  `items` + `taskHandlers` (`kit2/tasks.ts` → `chooseHandler`: o cliente/carro pede um item e só o certo
+  conclui): Lanchonete `register`/`drivethru` pedem lanche/batata/refri/shake/pepitas; Posto `pump` pede
+  gasolina (verde)/etanol (amarelo)/diesel (preto) e `register` água/salgadinho/doce/pão/café.
+* `gives`/`wants`: Posto — caixas do depósito (`stock`, fonte) → vão da gôndola (`restock`).
+* `holdSec` (chapa, fritadeira, bebida, limpeza, pano, café, lixo), `icon` em toda tarefa e sala.
+* `setState('todo' | 'done' | 'want:<item>')`: ao montar tudo fica "feito"; `todo` acende o visual da
+  tarefa (refri no chão, lixo cheio, carnes cruas, vão na prateleira…).
+* `nav` (grafo de caminhada do Bocudo: 28 nós na Lanchonete, 37 no Posto) e `creatureSpawns` (4 cada).
+* `anchor` da foto: se o centro do objeto cai dentro de um colisor (porta no vão), o kit puxa o ponto
+  para dentro da sala (`MapCtx.fixAnchors`).
+* Céu: a cúpula segue a câmera que estiver desenhando e encolhe para caber no `far` dela (o núcleo usa
+  `far = fogFar…+4`); estrelas são pontos de 1–2 px.
+
+### Adições OPCIONAIS ao contrato (`types.ts`, além da v1.1)
 
 ```ts
 atmosphere?: { background: string; fog?: { color: string; near: number; far: number } };
@@ -81,7 +97,8 @@ visibleFrom?(pos: Vec3): void;
 * `visibleFrom(pos)`: o núcleo chama antes de renderizar cada vista (jogador **e** câmeras de
   segurança) com a posição da câmera. Esconde as salas que não se veem dali e alimenta as **portas
   automáticas** de vidro (entrada da lanchonete e da loja do posto abrem quando a câmera chega a
-  ~2,3 m). Sem chamar: tudo visível e as portas de vidro ficam fechadas, porém sem colisor (dá para passar).
+  ~2,3 m). O núcleo atual não chama `visibleFrom` (ele tem o próprio corte por sala); as portas
+  automáticas funcionam mesmo assim, porque a cúpula do céu informa a câmera em `onBeforeRender`.
 
 ## Energia e luz
 
@@ -166,6 +183,9 @@ O painel lista salas (vista + câmeras) e cada anomalia (tipo + variação + ▶
 `window.__am` expõe `view`, `cam`, `apply(slot, kind, on, v)`, `clear`, `setPower`, `renderer`, `fps`.
 
 Screenshots: `node scripts/dev/shoot-anomap2.mjs shots-maps fastfood 1 rooms cams pair:mascote:rotate:0:v_mascote fps:salao`.
+
+Noite inteira no jogo de verdade (menu → caderno → memorizar → monitor → 4 anomalias fotografadas →
+tarefas → Bocudo → amanhecer): `node scripts/dev/shoot-anomap2-night.mjs shots-maps fastfood` (ou `posto24h`).
 
 ## Textos
 

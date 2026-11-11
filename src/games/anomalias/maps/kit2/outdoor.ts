@@ -45,7 +45,18 @@ export function skyDome(ctx: MapCtx, top = '#070a1e', hor = '#1c2448', r = 110):
   stars.name = 'estrelas';
   ctx.track(sg);
   ctx.track(sm);
-  ctx.root.add(stars);
+  m.add(stars);
+  // segue a câmera de quem estiver desenhando (jogador ou monitor) e cabe no plano distante dela;
+  // de quebra informa a posição da câmera (portas automáticas) mesmo sem visibleFrom()
+  m.frustumCulled = false;
+  stars.frustumCulled = false;
+  m.onBeforeRender = (_r, _s, cam) => {
+    m.position.copy(cam.position);
+    const far = (cam as THREE.PerspectiveCamera).far ?? 100;
+    m.scale.setScalar(Math.min(1, (far * 0.85) / r));
+    m.updateMatrixWorld(true);
+    ctx.hint(cam.position);
+  };
   return m;
 }
 

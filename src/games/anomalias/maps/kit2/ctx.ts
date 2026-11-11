@@ -412,19 +412,19 @@ export class MapCtx {
     m.position.set(x, y, z);
     m.rotation.y = ry;
     parent.add(m);
-    m.updateMatrixWorld(true);
+    m.updateWorldMatrix(true, false);
     if (!this.isGlow(key)) this.bakeMesh(room, m);
     this.disp.add(geo);
     return m;
   }
   /** assa a luz numa geometria já posicionada (usa a matriz do objeto no mundo) */
   bakeMesh(room: string, m: THREE.Mesh, geo: THREE.BufferGeometry = m.geometry): void {
-    m.updateMatrixWorld(true);
+    m.updateWorldMatrix(true, false);
     bakeGeo(geo, this.lightsFor(room), this.roomAmb(room), m.matrixWorld);
   }
   /** geometria extra (variações) assada como se estivesse no lugar de `m` */
   bakeAs(room: string, m: THREE.Object3D, geo: THREE.BufferGeometry): THREE.BufferGeometry {
-    m.updateMatrixWorld(true);
+    m.updateWorldMatrix(true, false);
     bakeGeo(geo, this.lightsFor(room), this.roomAmb(room), m.matrixWorld);
     this.disp.add(geo);
     return geo;
@@ -571,6 +571,7 @@ export class MapCtx {
       this.disp.add(geo);
     }
     this.layers.clear();
+    this.fixAnchors();
     const self = this;
     return {
       id,
@@ -617,11 +618,42 @@ export class MapCtx {
       inner.rotation.y += (t - inner.rotation.y) * Math.min(1, dt * 6);
     });
   }
-  private cullFrom(p: Vec3): void {
+  /** posição de uma câmera que vai desenhar (só a do jogador, abaixo de 2,6 m, conta para as portas) */
+  hint(p: Vec3): void {
     if (p.y < 2.6) this.viewer.set(p.x, p.y, p.z);
+  }
+  private cullFrom(p: Vec3): void {
+    this.hint(p);
     const r = this.rooms.find((d) => p.x >= d.min.x && p.x <= d.max.x && p.z >= d.min.z && p.z <= d.max.z && p.y >= d.min.y - 0.5 && p.y <= d.max.y + 0.5);
     const list = r ? this.sees.get(r.id) : undefined;
     for (const [id, g] of this.groups) g.visible = !list || list.includes(id);
+  }
+
+  /**
+   * Âncora da foto (v1.1): se o centro do objeto cai dentro de um colisor (porta fechada no vão,
+   * objeto encostado na parede), puxa o ponto para dentro da sala, para o raio da foto enxergá-lo.
+   */
+  private fixAnchors(): void {
+    const b = new THREE.Box3();
+    const c = new THREE.Vector3();
+    const inside = (p: THREE.Vector3) => this.colliders.some((k) => p.x > k.min.x - 0.05 && p.x < k.max.x + 0.05 && p.z > k.min.z - 0.05 && p.z < k.max.z + 0.05 && p.y > k.min.y && p.y < k.max.y);
+    this.root.updateMatrixWorld(true);
+    for (const s of this.slots) {
+      if (s.anchor) continue;
+      b.setFromObject(s.object);
+      if (b.isEmpty()) continue;
+      b.getCenter(c);
+      if (!inside(c)) continue;
+      const r = this.rs.get(s.room)!.def;
+      const tx = (r.min.x + r.max.x) / 2;
+      const tz = (r.min.z + r.max.z) / 2;
+      const d = Math.hypot(tx - c.x, tz - c.z) || 1;
+      for (let k = 1; k <= 12 && inside(c); k++) {
+        c.x += ((tx - c.x) / d) * 0.1;
+        c.z += ((tz - c.z) / d) * 0.1;
+      }
+      s.anchor = { x: c.x, y: c.y, z: c.z };
+    }
   }
 
   /* ------------------------------ luz por sala (energia / anomalia) ------------------------------ */

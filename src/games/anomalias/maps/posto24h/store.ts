@@ -176,13 +176,13 @@ export function buildStore(ctx: MapCtx): void {
     // gabinete oco (topo, base, fundo, laterais) — dá para ver as garrafas e a luz
     v.box(w + 0.1, 0.12, 0.85, cx, 0, 15.58, '#2a3034');
     v.box(w + 0.1, 0.32, 0.85, cx, 1.93, 15.58, '#2a3034');
-    v.sharp(w, 1.85, 0.03, cx, 0.1, 15.985, '#2a3034');
+    v.sharp(w, 1.85, 0.03, cx, 0.1, 15.885, '#2a3034');
     for (const ex of [FR_X0 - 0.05, FR_X0 + w + 0.05]) v.box(0.08, 2.25, 0.85, ex, 0, 15.58, '#2a3034');
     v.box(w + 0.1, 0.3, 0.06, cx, 2.0, z0 - 0.02, TEAL);
     const fridgeIn = ctx.gb('glow');
     for (let d = 0; d < FR_N; d++) {
       const x = FR_X0 + d * FR_W + FR_W / 2;
-      fridgeIn.sharp(FR_W - 0.08, 1.8, 0.02, x, 0.12, 15.955, '#e8f4ff');
+      fridgeIn.sharp(FR_W - 0.08, 1.8, 0.02, x, 0.12, 15.86, '#e8f4ff');
       fridgeIn.sharp(FR_W - 0.2, 0.03, 0.03, x, 1.88, 15.3, '#ffffff');
       for (let lv = 0; lv < 4; lv++) v.sharp(FR_W - 0.1, 0.02, 0.6, x, 0.24 + lv * 0.45, 15.6, '#c8ccd2');
       // caixilho de cada porta

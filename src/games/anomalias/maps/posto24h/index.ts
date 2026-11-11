@@ -21,6 +21,9 @@ import { buildOutside } from './outside';
 import { buildStore } from './store';
 import { buildTasks } from './tasks';
 import { buildAnomalies } from './anomalies';
+import { BLOOP_PALS } from '../kit2/chars';
+import { chooseHandler } from '../kit2/tasks';
+import type { ItemDef, Vec3 } from '../types';
 
 async function build(opts: { tier: Tier }): Promise<MapBuild> {
   await fontsReady();
@@ -33,13 +36,13 @@ async function build(opts: { tier: Tier }): Promise<MapBuild> {
   ctx.defMat('asphalt2', { map: asphaltTex(), uv: 1 / 4 });
 
   const IN = 1.7;
-  ctx.room('loja', 'Loja', [-10, 0, 2], [4, 3.5, 16], '#3a4048', IN);
-  ctx.room('escritorio', 'Escritório', [4, 0, 2], [10, 3.5, 7], '#2a2838', IN);
-  ctx.room('deposito', 'Depósito', [4, 0, 7], [10, 3.5, 16], '#2a2a34', IN);
-  ctx.room('banheiro', 'Banheiro', [12, 0, 4], [16, 3.1, 9], '#2e3640', IN);
-  ctx.room('lavajato', 'Lava-Jato', [-24, 0, -10], [-14, 4.3, 4], '#1c2444', 0.6, true);
-  ctx.room('estrada', 'Estrada', [-90, 0, -40], [90, 12, -24], '#1c2444', 0.5, true);
-  ctx.room('patio', 'Pátio', [-40, 0, -24], [40, 12, 40], '#1c2444', 0.55, true);
+  ctx.room('loja', 'Loja', [-10, 0, 2], [4, 3.5, 16], '#3a4048', IN).icon = '🛒';
+  ctx.room('escritorio', 'Escritório', [4, 0, 2], [10, 3.5, 7], '#2a2838', IN).icon = '🖥️';
+  ctx.room('deposito', 'Depósito', [4, 0, 7], [10, 3.5, 16], '#2a2a34', IN).icon = '📦';
+  ctx.room('banheiro', 'Banheiro', [12, 0, 4], [16, 3.1, 9], '#2e3640', IN).icon = '🚻';
+  ctx.room('lavajato', 'Lava-Jato', [-24, 0, -10], [-14, 4.3, 4], '#1c2444', 0.6, true).icon = '🧽';
+  ctx.room('estrada', 'Estrada', [-90, 0, -40], [90, 12, -24], '#1c2444', 0.5, true).icon = '🛣️';
+  ctx.room('patio', 'Pátio', [-40, 0, -24], [40, 12, 40], '#1c2444', 0.55, true).icon = '⛽';
 
   // visibilidade (o que se vê de cada sala)
   ctx.see('loja', ['patio', 'estrada', 'lavajato', 'escritorio', 'deposito']);
@@ -89,22 +92,52 @@ async function build(opts: { tier: Tier }): Promise<MapBuild> {
   V('v_espelho', [13.2, 1.6, 7.6], [15.9, 1.4, 5.1]);
   V('v_geladeira', [-4.0, 1.6, 13.3], [-6.5, 1.1, 15.8]);
 
-  const N = (id: string, room: string, x: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie' = 'stand', y = 0) => ctx.npcSpots.push({ id, room, pos: { x, y, z }, yaw, pose });
+  // yaw no padrão do núcleo (personagem olha −Z com yaw 0): +π sobre a nossa convenção (+Z)
+  let ni = 2;
+  const N = (id: string, room: string, x: number, z: number, yaw: number, pose: 'stand' | 'sit' | 'lie' = 'stand', y = 0) =>
+    ctx.npcSpots.push({ id, room, pos: { x, y, z }, yaw: yaw + Math.PI, pose, color: BLOOP_PALS[ni++ % BLOOP_PALS.length].light, hat: ['', 'cap', 'beanie', '', 'bow'][ni % 5] });
   N('fila1', 'loja', -0.2, 5.0, -Math.PI / 2);
   N('fila2', 'loja', -1.2, 5.6, -Math.PI / 2);
   N('corredor1', 'loja', -5.5, 9.0, 0);
-  N('corredor2', 'loja', -3.0, 7.5, Math.PI);
   N('geladeira', 'loja', -3.5, 14.2, Math.PI);
   N('cafe', 'loja', -8.6, 9.5, Math.PI / 2);
-  N('mesa_cafe', 'loja', -8.4, 3.8, 0, 'sit', 0.8);
   N('bomba_a', 'patio', 1.2, -14.8, 0);
-  N('bomba_b', 'patio', -6.0, -11.6, 0);
   N('calcada', 'patio', -8.5, 0.7, Math.PI);
   N('orelhao', 'patio', 11.0, 1.0, Math.PI);
-  N('banheiro_fila', 'patio', 11.2, 7.6, Math.PI / 2);
 
+  const nodes: Vec3[] = (
+    [
+      [2.4, 5.0], [2.4, 8.2], [-0.3, 8.2], [-0.3, 5.0], [-2.9, 5.0], [-5.5, 5.0], [-7.8, 5.4], [-8.3, 13.9], [-5.5, 14.1], [-2.9, 13.9],
+      [-0.3, 13.9], [2.4, 13.9], [5.5, 13.5], [7.5, 11.5], [3.3, 5.6], [5.2, 5.6], [6.5, 4.0], [-2.0, 3.2], [-2.0, 0.6], [-1.3, -3.0],
+      [-1.3, -11.0], [-1.3, -19.0], [-8.5, -11.0], [6.5, -13.0], [8.0, -1.5], [11.0, 4.0], [11.0, 6.5], [14.0, 7.0], [-19.0, -12.0], [-19.0, -5.0],
+      [-19.0, 2.0], [-1.3, -27.0], [-20.0, -27.0], [15.0, -27.0], [-2.9, 9.5], [-5.5, 9.5], [-8.3, 9.5],
+    ] as [number, number][]
+  ).map(([x, z]) => ({ x, y: 0, z }));
+  const links: [number, number][] = [
+    [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 36], [36, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 1], [11, 12], [12, 13], [0, 14],
+    [14, 15], [15, 16], [4, 17], [17, 18], [18, 19], [19, 20], [20, 21], [20, 22], [20, 23], [19, 24], [24, 25], [25, 26], [26, 27], [22, 28],
+    [28, 29], [29, 30], [21, 31], [31, 32], [31, 33], [32, 28], [4, 34], [34, 9], [5, 35], [35, 8], [2, 10],
+  ];
+  const ITEMS: ItemDef[] = [
+    { id: 'gasolina', color: '#2ac85a', shape: 'drop' },
+    { id: 'etanol', color: '#ffd23a', shape: 'drop' },
+    { id: 'diesel', color: '#3a3a44', shape: 'drop' },
+    { id: 'agua', color: '#3aa0ff', shape: 'circle' },
+    { id: 'salgadinho', color: '#e8423a', shape: 'triangle' },
+    { id: 'doce', color: '#ff8ac0', shape: 'star' },
+    { id: 'pao', color: '#e8b060', shape: 'circle' },
+    { id: 'cafe', color: '#6a3a1a', shape: 'heart' },
+  ];
   return ctx.finish('posto24h', { pos: { x: 2.3, y: 0, z: 5.0 }, yaw: Math.PI / 2 }, {
     atmosphere: { background: '#0a0f24', fog: { color: '#121a30', near: 22, far: 85 } },
+    env: { fog: '#121a30', fogNear: 20, fogFar: 70, sky: '#8a96c8', ground: '#2f3a3a', ambient: 0.3, outdoor: true },
+    items: ITEMS,
+    taskHandlers: {
+      pump: chooseHandler(['gasolina', 'etanol', 'diesel'], '⛽', 3, 5),
+      register: chooseHandler(['agua', 'salgadinho', 'doce', 'pao', 'cafe'], '💵', 3, 9),
+    },
+    nav: { nodes, links },
+    creatureSpawns: [{ x: -19, y: 0, z: -5 }, { x: 7.5, y: 0, z: 11.5 }, { x: 15, y: 0, z: -27 }, { x: -8.3, y: 0, z: 13.9 }],
   });
 }
 
