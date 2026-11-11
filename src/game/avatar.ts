@@ -350,8 +350,10 @@ export function drawAvatar(x: CanvasRenderingContext2D, av: AvatarData, R: numbe
   // rosto
   const face = FACES[parts.face] ?? FACES.f_none;
   face(d, 0);
-  (EYES[parts.eyes] ?? EYES.e_dots)(d);
-  (MOUTHS[parts.mouth] ?? MOUTHS.mo_line)(d);
+  if (!p.noFace) {
+    (EYES[parts.eyes] ?? EYES.e_dots)(d);
+    (MOUTHS[parts.mouth] ?? MOUTHS.mo_line)(d);
+  }
   face(d, 1);
   (BACKS[parts.back] ?? BACKS.k_none)(d, 1);
 

@@ -115,6 +115,126 @@ export const sfx = {
   rumble(): void {
     tone(70, 0.45, 'sawtooth', 0.05, 0.8);
   },
+  /* ---------- caretas e travessuras ---------- */
+  /** "ptuí!" (cuspir) */
+  spit(): void {
+    noise(0.12, 0.3, 2400, 2, 0.5);
+    tone(900, 0.1, 'square', 0.05, 0.4);
+  },
+  /** "eeeca" ondulado descendo */
+  yuck(): void {
+    const c = ctx();
+    if (!c) return;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    const lfo = c.createOscillator();
+    const lg = c.createGain();
+    const g = c.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(420, t);
+    o.frequency.exponentialRampToValueAtTime(170, t + 0.6);
+    lfo.frequency.value = 14;
+    lg.gain.value = 30;
+    lfo.connect(lg).connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.65);
+    o.connect(g).connect(A.sfxBus);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.7);
+    lfo.stop(t + 0.7);
+  },
+  /** bafo de fogo (vuuush) */
+  fire(): void {
+    noise(0.7, 0.22, 500, 0.7, 3);
+    tone(160, 0.5, 'sawtooth', 0.04, 2.2);
+  },
+  /** biquinho azedo: "iiiii" apertadinho */
+  sour(): void {
+    tone(1500, 0.45, 'sine', 0.07, 1.35);
+    tone(1520, 0.45, 'triangle', 0.04, 1.3, 0.02);
+  },
+  /** "hmpf!" emburrado */
+  hmph(): void {
+    tone(260, 0.09, 'square', 0.06, 0.8);
+    tone(200, 0.18, 'square', 0.05, 0.7, 0.1);
+  },
+  /** gargalhada longa */
+  laugh(): void {
+    const b = 640 + Math.random() * 120;
+    for (let i = 0; i < 8; i++) tone(b + (i % 2) * 200 - i * 18, 0.08, 'triangle', 0.09, 1.15, i * 0.09);
+  },
+  /** travesseirada: "pufff" + estrelinhas */
+  bonk(): void {
+    noise(0.16, 0.3, 380, 0.8, 0.6);
+    tone(130, 0.12, 'sine', 0.2, 0.6);
+    [2093, 2637, 3136].forEach((f, i) => tone(f, 0.18, 'sine', 0.04, 1, 0.12 + i * 0.07));
+  },
+  /** borrifador: "psst psst" */
+  spray(): void {
+    noise(0.14, 0.18, 5200, 0.9, 0.8);
+  },
+  /** almofada de pum (pfrrrrt cartunesco) */
+  whoopee(): void {
+    const c = ctx();
+    if (!c) return;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    const lfo = c.createOscillator();
+    const lg = c.createGain();
+    const g = c.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(60, t + 0.8);
+    lfo.type = 'square';
+    lfo.frequency.setValueAtTime(28, t);
+    lfo.frequency.linearRampToValueAtTime(18, t + 0.8);
+    lg.gain.value = 25;
+    lfo.connect(lg).connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.04);
+    g.gain.setValueAtTime(0.16, t + 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    o.connect(g).connect(A.sfxBus);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.9);
+    lfo.stop(t + 0.9);
+  },
+  /** caixinha de música da caixa-surpresa (sobe tensão) */
+  crank(i: number): void {
+    const notes = [523, 587, 659, 523, 659, 523, 659];
+    tone(notes[i % notes.length], 0.12, 'triangle', 0.07, 1);
+  },
+  /** susto: "iiik!" subindo */
+  eek(): void {
+    tone(700, 0.28, 'square', 0.06, 2.4);
+    tone(1000, 0.22, 'sine', 0.06, 1.8, 0.05);
+  },
+  /** cutucão rápido */
+  poke(): void {
+    tone(900 + Math.random() * 300, 0.05, 'sine', 0.08, 0.7);
+  },
+  /** peteleco no nariz */
+  flick(): void {
+    noise(0.04, 0.3, 3000, 3);
+    tone(1400, 0.08, 'triangle', 0.08, 0.6);
+  },
+  /** gelatina esticando/soltando */
+  jelly(): void {
+    const b = 260 + Math.random() * 60;
+    tone(b, 0.35, 'sine', 0.12, 1.8);
+    tone(b * 1.5, 0.25, 'sine', 0.06, 0.6, 0.08);
+  },
+  /** escondendo debaixo da coberta */
+  rustle(): void {
+    noise(0.4, 0.12, 1200, 0.5, 0.6);
+  },
+  /** moedinhas caindo */
+  jingle(): void {
+    [1800, 2400, 2100, 2700].forEach((f, i) => tone(f, 0.12, 'sine', 0.06, 1, i * 0.06));
+  },
   click(): void {
     audio.click();
   },

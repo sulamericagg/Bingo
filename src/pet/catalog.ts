@@ -4,7 +4,26 @@
  * ============================================================ */
 import { t } from '../i18n';
 
-export type FoodShape = 'cookie' | 'apple' | 'soup' | 'pudding' | 'melon' | 'cake' | 'jelly' | 'carrot';
+export type FoodShape =
+  | 'cookie'
+  | 'apple'
+  | 'soup'
+  | 'pudding'
+  | 'melon'
+  | 'cake'
+  | 'jelly'
+  | 'carrot'
+  | 'broccoli'
+  | 'sock'
+  | 'pepper'
+  | 'onion'
+  | 'worm'
+  | 'lemon';
+
+/** Sabor "especial" (reação engraçada ao comer). */
+export type FoodFlavor = 'gross' | 'spicy' | 'sour';
+/** Gosto do bichinho por uma comida. */
+export type Taste = 'fav' | 'ok' | 'hate';
 
 export interface FoodDef {
   id: string;
@@ -18,6 +37,8 @@ export interface FoodDef {
   fun: number;
   /** energia extra */
   energy: number;
+  /** comidas de pegadinha: o bichinho faz careta (nojenta/ardida/azeda) */
+  flavor?: FoodFlavor;
 }
 
 export const FOODS: FoodDef[] = [
@@ -29,7 +50,44 @@ export const FOODS: FoodDef[] = [
   { id: 'pudding', shape: 'pudding', name: () => t('pet.food.pudding', 'Pudim Lunar'), coins: 45, food: 36, fun: 10, energy: 4 },
   { id: 'cake', shape: 'cake', name: () => t('pet.food.cake', 'Bolo Cometa'), coins: 80, food: 55, fun: 18, energy: 6 },
   { id: 'jelly', shape: 'jelly', name: () => t('pet.food.jelly', 'Gelatina Nebulosa'), gems: 3, food: 70, fun: 25, energy: 15 },
+  // comidas de pegadinha (baratinhas): caretas engraçadas, nunca faz mal
+  { id: 'broccoli', shape: 'broccoli', name: () => t('pet.food.broccoli', 'Brócolis Cru'), coins: 3, food: 6, fun: 0, energy: 1, flavor: 'gross' },
+  { id: 'sock', shape: 'sock', name: () => t('pet.food.sock', 'Sopa de Meia'), coins: 4, food: 4, fun: 0, energy: 0, flavor: 'gross' },
+  { id: 'pepper', shape: 'pepper', name: () => t('pet.food.pepper', 'Pimenta Ardida'), coins: 4, food: 3, fun: 0, energy: 4, flavor: 'spicy' },
+  { id: 'onion', shape: 'onion', name: () => t('pet.food.onion', 'Picolé de Cebola'), coins: 3, food: 5, fun: 0, energy: 0, flavor: 'gross' },
+  { id: 'worm', shape: 'worm', name: () => t('pet.food.worm', 'Sanduíche de Minhoca de Goma'), coins: 5, food: 8, fun: 0, energy: 0, flavor: 'gross' },
+  { id: 'lemon', shape: 'lemon', name: () => t('pet.food.lemon', 'Limão Azedinho'), coins: 3, food: 3, fun: 0, energy: 2, flavor: 'sour' },
 ];
+
+/** Comidas "normais" (as de pegadinha têm flavor). */
+const NICE = ['cookie', 'apple', 'carrot', 'soup', 'melon', 'pudding', 'cake', 'jelly'];
+
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/**
+ * Gostos de cada bichinho (determinístico pela skin): 2 comidas favoritas e
+ * 1 comida normal que ele detesta; as de pegadinha ele sempre odeia (é a graça).
+ */
+export function tasteFor(skinId: string, foodId: string): Taste {
+  const f = foodById(foodId);
+  if (!f) return 'ok';
+  if (f.flavor) return 'hate';
+  const h = hash(skinId || 'bloop');
+  const n = NICE.length;
+  const fav1 = h % n;
+  const fav2 = (fav1 + 1 + ((h >>> 8) % (n - 1))) % n;
+  let hate = (h >>> 16) % n;
+  // a gelatina (gemas) nunca é odiada; garante que o odiado não é favorito
+  for (let k = 0; k < n && (hate === fav1 || hate === fav2 || NICE[hate] === 'jelly'); k++) hate = (hate + 1) % n;
+  const i = NICE.indexOf(foodId);
+  if (i === fav1 || i === fav2) return 'fav';
+  if (i === hate) return 'hate';
+  return 'ok';
+}
 
 export const foodById = (id: string): FoodDef | undefined => FOODS.find((f) => f.id === id);
 
