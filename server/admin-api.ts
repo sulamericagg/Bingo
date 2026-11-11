@@ -118,7 +118,7 @@ export async function handleAdminApi(req: Request, env: Env, url: URL): Promise<
 
 route('GET', '/me', async () => json({ ok: true }));
 
-route('GET', '/catalog', async () => json({ skins: CATALOG_SKINS, trails: CATALOG_TRAILS, boosts: CATALOG_BOOSTS }));
+route('GET', '/catalog', async () => json({ skins: CATALOG_SKINS, trails: CATALOG_TRAILS, boosts: CATALOG_BOOSTS, products: PRODUCT_INFO }));
 
 /* ---- Painel ---- */
 route('GET', '/stats', async (_req, env) => {

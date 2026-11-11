@@ -12,9 +12,28 @@ import { adminHub } from './admin-hub';
 import { getPlayer, putPlayer } from './store';
 import { cleanName, HttpError, json, PLAYER_ID_RE, randomPlayerName, readJson, sha256 } from './util';
 
+const NAMES: Record<string, string> = {
+  starter_pack: 'Pack Iniciante',
+  remove_ads: 'Remover anúncios',
+  gems_small: 'Gemas (100)',
+  gems_medium: 'Gemas (220)',
+  gems_large: 'Gemas (600)',
+  gems_mega: 'Gemas (1.300)',
+  gems_ultra: 'Gemas (2.800)',
+  gems_galaxy: 'Gemas (6.000)',
+  skin_phoenix: 'Skin Fênix',
+  skin_lava_golem: 'Skin Golem de Lava',
+  trail_neon: 'Rastro Neon',
+  coin_doubler: 'Moedas em dobro',
+  boost_bundle: 'Pacote de power-ups',
+  vip_pack: 'Pacote VIP',
+  mega_bundle: 'Mega pacote',
+  flash_gems: 'Oferta relâmpago',
+};
+
 /** id → nome amigável e preço de referência (fallback da loja) */
 export const PRODUCT_INFO: Record<string, { name: string; price: string; kind: 'inapp' | 'subs' }> = {
-  ...Object.fromEntries(PRODUCTS.map((p) => [p.id, { name: p.id, price: p.fallbackPrice, kind: 'inapp' as const }])),
+  ...Object.fromEntries(PRODUCTS.map((p) => [p.id, { name: NAMES[p.id] ?? p.id, price: p.fallbackPrice, kind: 'inapp' as const }])),
   [CLUB.productId]: { name: 'Clube Bloop', price: CLUB.fallbackPrice, kind: 'subs' },
 };
 
