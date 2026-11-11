@@ -627,7 +627,7 @@ class View3D implements View {
       const glow = sp === 4 || sp === 5 || rare >= 2;
       m = new THREE.InstancedMesh(this.geoFor(sp, rare), glow ? this.glowMat : this.treeMat, Math.max(1, cap));
       // cartões de folhas na borda da copa (Médio/Alto)
-      const cg = this.tier >= 2 ? natureLeafCards(this.geoFor(sp, rare), 10, sp * 4 + rare + 1) : null;
+      const cg = this.tier >= 2 ? natureLeafCards(this.geoFor(sp, rare), 5, sp * 4 + rare + 1) : null;
       if (cg) {
         const cm = new THREE.InstancedMesh(this.trackG(cg), this.cardMat, Math.max(1, cap));
         cm.count = 0;

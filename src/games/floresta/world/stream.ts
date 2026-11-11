@@ -178,7 +178,7 @@ export class World {
     for (let s = 0; s < WSPECIES.length; s++) {
       const tg = wTreeGeometry(s, 0, q.lite);
       this.nearT.push(new Inst(tg, this.treeMat, scene, cap, true));
-      const cg = natureLeafCards(tg, 10, s + 1);
+      const cg = natureLeafCards(tg, 5, s + 1);
       this.nearC.push(cg ? new Inst(cg, this.cardMat, scene, cap, false) : null);
       this.farT.push(new Inst(wTreeGeometry(s, 1, true), this.treeMat, scene, cap * 2, false));
     }

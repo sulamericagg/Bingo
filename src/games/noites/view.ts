@@ -291,7 +291,7 @@ export class View {
       this.trees.push(im);
       this.treeIdx.push([]);
       // cartões de folhas na borda das copas (Médio/Alto)
-      const cg = tier >= 2 ? natureLeafCards(im.geometry, 10, k + 3) : null;
+      const cg = tier >= 2 ? natureLeafCards(im.geometry, 5, k + 3) : null;
       const cm = new THREE.InstancedMesh(cg ?? new THREE.BufferGeometry(), this.cardMat, Math.max(1, n));
       cm.count = 0;
       cm.frustumCulled = false;
