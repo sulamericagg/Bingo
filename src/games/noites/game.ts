@@ -35,6 +35,7 @@ import { CamView } from '../../3d/camview';
 import { PIECE } from './build/pieces'; // BUILD
 import { consumePartySeat, partyRoomFor, partySeat } from '../../party/contract';
 import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
+import { introGate } from '../../3d/cine/gate';
 
 /* ------------------------------ save ------------------------------ */
 interface NSave {
@@ -276,7 +277,10 @@ export class NoitesGame implements MiniGameHandle {
         } else if (b.dataset.m === 'solo') {
           clearRun();
           this.runSave = null;
-          this.startSolo();
+          // abertura (docs/INTROS.md): só na primeira partida nova
+          void introGate('noites', () => import('./intro/cinematic').then((m) => m.playIntro(this.wrap))).then(() => {
+            if (!this.destroyed && !this.sim) this.startSolo();
+          });
         } else if (b.dataset.m === 'host') void this.startHost();
         else if (b.dataset.m === 'join') this.showJoin();
       }),
