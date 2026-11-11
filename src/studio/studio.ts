@@ -15,18 +15,19 @@ import { dayNumber } from '../core/storage';
 import { clearNotify, notify, setNotifyTop, resetNotifyTop } from '../ui/notify';
 import { createJoystick, edges, type Joystick } from '../ui/touch';
 import type { MiniGameHandle } from '../hub/registry';
-import { emptyCreation, findDep, LIMITS, partCount, refIds, validate, type Creation, type CreationKind, type WorldKind } from './format';
+import { cyrb53, emptyCreation, findDep, LIMITS, partCount, refIds, validate, type Creation, type CreationKind, type WorldKind } from './format';
 import { Editor, type Tool } from './editor/editor';
 import { buildCreation, captureThumb, disposeTree } from './render/build';
 import { disposeGeoCache } from './render/geo';
 import { disposeMaterials, setMaterialQuality } from './render/mats';
-import { createWorld, type WorldView } from './world/terrain';
+import { createWorld, type WorldOptions, type WorldView } from './world/terrain';
 import { countMaps, loadMine, preload, remember, resolveSync, saveMine } from './library';
 import { isPro, mapLimit, partLimit, setDebugPro } from './pro';
 import { localAuthor, store } from './store-mock';
 import { sicon } from './ui/sicons';
 import { Panels, type PanelId } from './ui/panels';
 import { CarGuide, guideDone } from './ui/guide';
+import { Sculptor } from './editor/sculpt';
 import type { PlaySession } from './play/session';
 import type { ShareLink } from './share';
 import { deserialize } from './format';
@@ -53,6 +54,7 @@ export class Studio {
   world!: WorldView;
   panels: Panels;
   guide: CarGuide;
+  sculptor: Sculptor;
   mode: 'edit' | 'play' = 'edit';
   play: PlaySession | null = null;
   dirty = false;
@@ -143,6 +145,8 @@ export class Studio {
     this.panels = new Panels(this);
     this.buildChrome();
     this.guide = new CarGuide(this);
+    this.sculptor = new Sculptor(this);
+    this.editor.sculpt = this.sculptor;
     this.editor.on((k) => this.onEditorChange(k));
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -208,7 +212,7 @@ export class Studio {
     this.guide?.stop();
     if (doc.deps) for (const d of doc.deps) remember(d);
     await preload(refIds(doc), async (id) => (await store().get(id))?.creation ?? null);
-    this.setWorld(doc.worldKind ?? defaultWorld(doc.kind), doc.seed ?? 1);
+    this.syncWorld(doc);
     this.editor.load(doc);
     if (doc.parts.length) this.editor.frameAll();
     else {
@@ -236,13 +240,30 @@ export class Studio {
     void this.openDoc(d);
   }
 
-  setWorld(kind: WorldKind, seed: number): void {
-    if (this.world && this.world.kind === kind && (kind !== 'infinite' || (this.world as unknown as { gen?: { seed: number } }).gen?.seed === seed)) return;
+  private worldKey = '';
+  /** o relevo acabou de ser salvo no doc pelo próprio pincel: não recria o mundo */
+  keepWorld = false;
+  private keyOf(kind: WorldKind, seed: number, o: WorldOptions): string {
+    return kind + '|' + (kind === 'infinite' ? seed + JSON.stringify(o.gen ?? {}) : '') + '|' + (kind === 'flat' && o.terrain ? cyrb53(JSON.stringify(o.terrain)) : '');
+  }
+  /** mundo da criação (tipo, semente, mundo personalizado, relevo) */
+  syncWorld(c: Creation = this.editor.doc): void {
+    this.setWorld(c.worldKind ?? defaultWorld(c.kind), c.seed ?? 1, { terrain: c.terrain, gen: c.gen });
+  }
+  setWorld(kind: WorldKind, seed: number, o: WorldOptions = {}): void {
+    const key = this.keyOf(kind, seed, o);
+    if (this.keepWorld) {
+      this.keepWorld = false;
+      this.worldKey = key;
+      return;
+    }
+    if (this.world && key === this.worldKey) return;
+    this.worldKey = key;
     if (this.world) {
       this.scene.remove(this.world.group);
       this.world.dispose();
     }
-    this.world = createWorld(kind, seed, this.tier);
+    this.world = createWorld(kind, seed, this.tier, o);
     this.scene.add(this.world.group);
     this.scene.background = this.world.sky.clone();
     this.scene.fog = new THREE.Fog(this.world.sky.clone(), this.world.fogFar * 0.45, this.world.fogFar);
@@ -321,7 +342,7 @@ export class Studio {
 
   /* ---------------------------------- jogar ---------------------------------- */
 
-  async startPlay(doc = this.editor.doc, exitLabel = t('studio.edit', 'Editar')): Promise<void> {
+  async startPlay(doc = this.editor.doc, exitLabel = t('studio.edit', 'Editar'), spawnAt?: THREE.Vector3): Promise<void> {
     if (this.mode === 'play') return;
     this.panels.closeAll();
     this.mode = 'play';
@@ -345,6 +366,7 @@ export class Studio {
       exitLabel: sicon('back', 18) + `<span>${exitLabel}</span>`,
       onExit: () => this.stopPlay(),
       onWin: (sec, score) => this.onWin(doc, sec, score),
+      spawnAt,
     }, doc);
   }
 
@@ -358,7 +380,7 @@ export class Studio {
     if (this.resume) {
       const r = this.resume;
       this.resume = null;
-      this.setWorld(r.world, r.seed);
+      this.syncWorld(r.doc);
       this.editor.setEnabled(true);
       this.panels.open('store');
     } else this.editor.setEnabled(true);
@@ -371,7 +393,7 @@ export class Studio {
     this.playingListing = listed ? c.id : null;
     this.resume = { doc: this.editor.doc, world: this.world.kind, seed: (this.world as unknown as { gen?: { seed: number } }).gen?.seed ?? 1, hist: true };
     if (c.deps) for (const d of c.deps) remember(d);
-    this.setWorld(c.worldKind ?? defaultWorld(c.kind), c.seed ?? 1);
+    this.syncWorld(c);
     await this.startPlay(c, t('studio.back', 'Voltar'));
   }
 
@@ -446,9 +468,11 @@ export class Studio {
       ['rotate', 'rotate', t('studio.tool.rotate', 'Girar')],
       ['scale', 'scale', t('studio.tool.scale', 'Tamanho')],
       ['paint', 'paint', t('studio.tool.paint', 'Pintar')],
+      ['terrain', 'terrain', t('studio.tool.terrain', 'Terreno')],
       ['pen', 'pen', t('studio.tool.pen', 'Caneta 3D'), true],
       ['mech', 'mech', t('studio.tool.mech', 'Mecânica')],
       ['logic', 'logic', t('studio.tool.logic', 'Lógica'), true],
+      ['mission', 'mission', t('studio.tool.mission', 'Missão')],
       ['measure', 'measure', t('studio.tool.measure', 'Medir')],
       ['layers', 'layers', t('studio.tool.layers', 'Camadas')],
       ['world', 'world', t('studio.tool.world', 'Mundo')],
@@ -526,7 +550,17 @@ export class Studio {
 
   onTool(id: string): void {
     const ed = this.editor;
-    if (id === 'add' || id === 'mech' || id === 'layers' || id === 'world') {
+    if (id === 'terrain') {
+      if (this.panels.current === 'terrain') return this.panels.closeAll();
+      this.panels.open('terrain');
+      if (this.world.kind === 'flat') {
+        ed.setTool('terrain');
+        notify(t('studio.terr.tipShort', '1 dedo esculpe · 2 dedos movem a câmera'), { icon: 'hand-tap', key: 'tip' });
+      }
+      this.refreshChrome();
+      return;
+    }
+    if (id === 'add' || id === 'mech' || id === 'layers' || id === 'world' || id === 'mission') {
       this.panels.toggle(id as PanelId);
       return;
     }
@@ -567,6 +601,7 @@ export class Studio {
   }
 
   private onEditorChange(k: string): void {
+    if (k === 'world') this.syncWorld();
     if (k === 'doc') {
       this.dirty = true;
       this.autosaveT = 20;
@@ -697,6 +732,7 @@ export class Studio {
     this.play?.dispose();
     this.stopFly();
     this.guide.dispose();
+    this.sculptor.dispose();
     this.panels.dispose();
     this.editor.dispose();
     this.world?.dispose();

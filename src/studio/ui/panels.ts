@@ -17,11 +17,14 @@ import { starterName } from '../starters';
 import type { Studio } from '../studio';
 import { esc } from '../studio';
 import { sicon } from './sicons';
+import { MAT_COLORS, type Brush } from '../world/field';
 import { BlocksEditor } from './blocks';
+import { renderMissionPanel } from './mission';
+import { openWorldSheet } from './worldsheet';
 import { GAME_TAGS } from '../store-api';
 import { linkFor, MAX_INLINE, shareUrl } from '../share';
 
-export type PanelId = 'add' | 'paint' | 'pen' | 'mech' | 'logic' | 'layers' | 'world' | 'library' | 'store' | 'info' | 'publish';
+export type PanelId = 'add' | 'paint' | 'pen' | 'mech' | 'logic' | 'layers' | 'world' | 'library' | 'store' | 'info' | 'publish' | 'terrain' | 'mission';
 
 const COLORS = ['#ff5cc8', '#ff4f6a', '#ff9a2e', '#ffd34a', '#4fd67a', '#2ec4a0', '#5ec8ff', '#3f6aff', '#8a5cff', '#c8a8ff', '#ffffff', '#c8ccd8', '#6a6a7a', '#2e2440', '#a8742e', '#f0d494'];
 
@@ -152,6 +155,7 @@ export class Panels {
     else this.open(id);
   }
   closeAll(): void {
+    if (this.current === 'terrain' && this.s.editor.tool === 'terrain') this.s.editor.setTool('move');
     this.current = null;
     this.el.classList.remove('on');
     this.s.el.classList.remove('wide');
@@ -177,7 +181,7 @@ export class Panels {
   /** re-desenha o painel aberto quando a seleção/doc muda (só os que dependem disso) */
   refresh(): void {
     if (!this.current) return;
-    if (['mech', 'layers', 'info', 'paint', 'world'].includes(this.current) || (this.current === 'logic' && !this.s.editor.picking)) this.render();
+    if (['mech', 'layers', 'info', 'paint', 'world', 'mission'].includes(this.current) || (this.current === 'logic' && !this.s.editor.picking)) this.render();
   }
 
   private render(): void {
@@ -195,6 +199,8 @@ export class Panels {
       store: () => t('studio.storeTitle', 'Loja de Criações'),
       info: () => t('studio.info', 'Sobre a criação'),
       publish: () => t('studio.publish', 'Publicar'),
+      terrain: () => t('studio.tool.terrain', 'Terreno'),
+      mission: () => t('studio.tool.mission', 'Missão'),
     };
     this.title.textContent = T[id]();
     const scroll = this.body.scrollTop;
@@ -230,6 +236,12 @@ export class Panels {
         break;
       case 'publish':
         void this.renderPublish();
+        break;
+      case 'terrain':
+        this.renderTerrain();
+        break;
+      case 'mission':
+        this.renderMission();
         break;
     }
     this.body.scrollTop = scroll;
@@ -561,7 +573,7 @@ export class Panels {
   private pendingRule: LogicRule | null = null;
 
   /** banner "toque numa peça" + espera a escolha */
-  private async pick(msg: string): Promise<number | null> {
+  async pick(msg: string): Promise<number | null> {
     const b = this.pickBanner;
     b.innerHTML = `<span>${msg}</span><button>${t('studio.cancel', 'Cancelar')}</button>`;
     b.hidden = false;
@@ -626,7 +638,99 @@ export class Panels {
     });
   }
 
+  /* --------------------------------- terreno --------------------------------- */
+
+  private renderTerrain(): void {
+    const s = this.s;
+    const sc = s.sculptor;
+    if (s.world.kind !== 'flat') {
+      this.h(`<p class="bs-hint bs-callout">${t('studio.terr.needFlat', 'O relevo é esculpido no mundo Plano. No Infinito, use “Personalizar mundo”.')}</p>`);
+      const b = this.h(`<button class="bs-btn bs-wide bs-accent">${sicon('terrain', 18)}${t('studio.terr.useFlat', 'Usar o mundo Plano')}</button>`);
+      b.addEventListener('click', () => {
+        s.editor.change('world', () => (s.editor.doc.worldKind = 'flat'));
+        s.syncWorld();
+        this.render();
+      });
+      return;
+    }
+    const B: [Brush, string, string][] = [
+      ['raise', 'raise', t('studio.terr.raise', 'Subir')],
+      ['lower', 'lower', t('studio.terr.lower', 'Baixar')],
+      ['smooth', 'smooth', t('studio.terr.smooth', 'Suavizar')],
+      ['flatten', 'flatten', t('studio.terr.flatten', 'Aplainar')],
+      ['level', 'level', t('studio.terr.level', 'Nivelar')],
+      ['ramp', 'slope', t('studio.terr.ramp', 'Rampa')],
+      ['paint', 'paint', t('studio.terr.paint', 'Pintar chão')],
+      ['water', 'water', t('studio.terr.water', 'Rio')],
+      ['lake', 'lake', t('studio.terr.lake', 'Lago')],
+    ];
+    const g = this.h(`<div class="bs-grid bs-tgrid">${B.map(([id, ic, nm]) => `<button class="bs-cell${sc.brush === id ? ' on' : ''}" data-b="${id}">${sicon(ic, 26)}<span>${nm}</span></button>`).join('')}</div>`);
+    this.on(g, '[data-b]', (b) => {
+      sc.brush = b.dataset.b as Brush;
+      s.editor.setTool('terrain');
+      this.render();
+    });
+    const HINT: Record<Brush, () => string> = {
+      raise: () => t('studio.terr.hRaise', 'Passe o dedo para fazer morros. Segure parado para subir mais.'),
+      lower: () => t('studio.terr.hLower', 'Passe o dedo para cavar buracos e vales.'),
+      smooth: () => t('studio.terr.hSmooth', 'Deixa o chão mais redondinho, sem pontas.'),
+      flatten: () => t('studio.terr.hFlatten', 'Deixa tudo na altura de onde você começou a passar o dedo.'),
+      level: () => t('studio.terr.hLevel', 'Deixa o chão exatamente na altura escolhida abaixo.'),
+      ramp: () => t('studio.terr.hRamp', 'Arraste de onde a rampa começa até onde ela termina. Ela sobe a altura escolhida.'),
+      paint: () => t('studio.terr.hPaint', 'Escolha o chão e passe o dedo para pintar.'),
+      water: () => t('studio.terr.hWater', 'Desenhe um rio: o chão afunda um pouco e enche de água.'),
+      lake: () => t('studio.terr.hLake', 'Toque para cavar um lago. Toque num lago para tirar.'),
+    };
+    this.h(`<p class="bs-hint bs-callout">${HINT[sc.brush]()}</p>`);
+    if (sc.brush === 'paint') {
+      const M: [number, string, string][] = [
+        [0, MAT_COLORS.grass, t('studio.terr.m.grass', 'Grama')],
+        [1, MAT_COLORS.sand, t('studio.terr.m.sand', 'Areia')],
+        [2, MAT_COLORS.snow, t('studio.terr.m.snow', 'Neve')],
+        [3, MAT_COLORS.rock, t('studio.terr.m.rock', 'Pedra')],
+        [4, MAT_COLORS.dirt, t('studio.terr.m.dirt', 'Terra')],
+      ];
+      const m = this.h(`<div class="bs-chips">${M.map(([i, c, nm]) => `<button class="bs-chip${sc.mat === i ? ' on' : ''}" data-m="${i}"><i class="bs-dot" style="background:${c}"></i>${nm}</button>`).join('')}</div>`);
+      this.on(m, '[data-m]', (b) => {
+        sc.mat = Number(b.dataset.m);
+        this.render();
+      });
+    }
+    const sl = this.h(`<div class="bs-sliders">
+      <label>${t('studio.terr.size', 'Tamanho')}<input type="range" min="1" max="16" step="0.5" value="${sc.size}" data-k="size"><b>${sc.size} m</b></label>
+      ${sc.brush === 'paint' || sc.brush === 'lake' ? '' : `<label>${t('studio.terr.force', 'Força')}<input type="range" min="0.1" max="1" step="0.05" value="${sc.strength}" data-k="strength"><b>${Math.round(sc.strength * 100)}%</b></label>`}
+      ${sc.brush === 'level' || sc.brush === 'ramp' ? `<label>${t('studio.terr.height', 'Altura')}<input type="range" min="-10" max="20" step="0.5" value="${sc.level}" data-k="level"><b>${sc.level} m</b></label>` : ''}</div>`);
+    sl.querySelectorAll<HTMLInputElement>('input').forEach((inp) =>
+      inp.addEventListener('input', () => {
+        const k = inp.dataset.k as 'size' | 'strength' | 'level';
+        sc[k] = Number(inp.value);
+        const b = inp.parentElement!.querySelector('b')!;
+        b.textContent = k === 'strength' ? Math.round(sc.strength * 100) + '%' : inp.value + ' m';
+      }),
+    );
+    const row = this.h(`<div class="bs-row2"><button class="bs-btn" data-x="top">${sicon('topview', 18)}${t('studio.terr.top', 'Vista de cima')}</button><button class="bs-btn" data-x="reset">${sicon('trash', 18)}${t('studio.terr.reset', 'Aplainar tudo')}</button></div>`);
+    this.on(row, '[data-x]', (b) => {
+      if (b.dataset.x === 'top') {
+        const c = s.editor.cam;
+        c.pitch = 1.4;
+        c.dist = Math.max(c.dist, 40);
+      } else
+        this.confirm(t('studio.terr.resetQ', 'Deixar o chão todo plano de novo?'), () => {
+          s.editor.change('terrain', () => delete s.editor.doc.terrain);
+        });
+    });
+    this.h(`<p class="bs-hint">${t('studio.terr.tip', '1 dedo pincela · 2 dedos movem a câmera · Desfazer volta cada traço.')}</p>`);
+  }
+
   /* ---------------------------------- mundo ---------------------------------- */
+
+  worldSheet(): void {
+    openWorldSheet(this.s, (h) => this.openSheet(h), () => this.closeSheet());
+  }
+
+  private renderMission(): void {
+    renderMissionPanel(this.s, this.body, (h) => this.h(h), (el, sel, fn) => this.on(el, sel, fn), () => this.render());
+  }
 
   private renderWorld(): void {
     const ed = this.s.editor;
@@ -640,15 +744,19 @@ export class Panels {
       <button data-w="flat" class="bs-wcard w-flat${wk === 'flat' ? ' on' : ''}"><b>${t('studio.world.flat', 'Plano')}</b><small>${t('studio.world.flatSub', 'chão enorme e liso')}</small></button>
       <button data-w="void" class="bs-wcard w-void${wk === 'void' ? ' on' : ''}"><b>${t('studio.world.void', 'Vazio')}</b><small>${t('studio.world.voidSub', 'vitrine num pedestal')}</small></button></div></div>`);
     this.on(w, '[data-w]', (b) => {
+      const was = d.worldKind;
       ed.change('world', () => (d.worldKind = b.dataset.w as Creation['worldKind']));
       if (!d.seed) d.seed = 1;
-      this.s.setWorld(d.worldKind!, d.seed);
+      this.s.syncWorld();
+      if (d.worldKind === 'infinite' && was !== 'infinite') this.worldSheet();
     });
     if (wk === 'infinite') {
+      const cu = this.h(`<button class="bs-btn bs-wide bs-accent">${sicon('sliders', 18)}${t('studio.wg.title', 'Personalizar mundo')}</button>`);
+      cu.addEventListener('click', () => this.worldSheet());
       const sd = this.h(`<button class="bs-btn bs-wide">${sicon('refresh', 18)}${t('studio.newSeed', 'Outro terreno (semente {n})', { n: d.seed ?? 1 })}</button>`);
       sd.addEventListener('click', () => {
         ed.change('world', () => (d.seed = (Math.random() * 1e6) | 0));
-        this.s.setWorld('infinite', d.seed!);
+        this.s.syncWorld();
       });
     }
     this.h(`<p class="bs-hint">${t('studio.worldHint', 'A área de construção perto do centro é sempre plana. Aperte Testar para andar e dirigir nesse mundo.')}</p>`);
