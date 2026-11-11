@@ -1,4 +1,4 @@
-# Bloop Studio — formato das criações (v2)
+# Bloop Studio — formato das criações (v3)
 
 Contrato compartilhado em **`src/studio/format.ts`** (sem dependências; roda no app, no Worker e no
 servidor). Usado pelo Bloop Studio (editor/jogar/loja), pelo estúdio de machinima (`src/cinema`) e pelo
@@ -8,6 +8,9 @@ incompatível ⇒ subir `FORMAT_VERSION` e converter em `migrate()`.
 **Versões:** v1 = peças, juntas, fichas. **v2** = + `scripts` (Blocos de lógica), + `game` (Jogo da
 Comunidade), + papel `collect`. Toda criação v1 continua válida: `migrate()` só troca `v: 1 → 2`
 (não há campo removido nem renomeado). Leitores antigos podem ignorar `scripts`/`game`.
+**v3** = + `terrain` (relevo esculpido e água), + `gen` (mundo Infinito personalizado), + `mission`
+(objetivos da partida), + papel `enemy`. `migrate()` troca `v: 1|2 → 3`; nada foi removido. Leitores
+v2 que ignorarem os campos novos continuam mostrando as peças (o relevo some, o chão fica plano).
 
 ## Convenções
 
@@ -22,7 +25,7 @@ Comunidade), + papel `collect`. Toda criação v1 continua válida: `migrate()` 
 
 ```ts
 Creation {
-  v: 1                     // versão do formato
+  v: 3                     // versão do formato (1 e 2 continuam válidos)
   id: string               // [A-Za-z0-9_-]{1,64}, estável; a loja usa o mesmo
   kind: 'object' | 'vehicle' | 'map'
   name: string             // ≤ 32
@@ -39,6 +42,9 @@ Creation {
   deps?: Creation[]        // criações importadas embutidas (1 nível) — mapa abre offline
   scripts?: Script[]       // v2: Blocos de lógica
   game?: GameMeta          // v2: { title, desc ≤200, tags ≤5, maxPlayers 1..16 }
+  terrain?: TerrainData    // v3: relevo + água (mundo Plano)
+  gen?: WorldGenSettings   // v3: ajustes do mundo Infinito
+  mission?: Mission        // v3: objetivos, vidas, tempo, textos de vitória/derrota
   created?, updated?: number
 }
 ```
@@ -58,7 +64,9 @@ material (padrão 0), `g?` grupo, `layer?` (0..7), `phys?` (`'static'` padrão �
 Papéis (`role`): `seat` assento do motorista · `wheel` roda · `thruster` propulsor (veículo voador) ·
 `spawn` ponto de início · `checkpoint` · `goal` bandeira de chegada · `button` · `zone` área-gatilho
 (invisível ao jogar) · `light` lâmpada · `hazard` (encostou: "morre", perde vida, volta ao checkpoint) ·
-`collect` (v2, coletável: some ao tocar e dispara o evento `collect`).
+`collect` (v2, coletável: some ao tocar e dispara o evento `collect`) · `enemy` (v3, inimigo: anda
+sozinho em volta de onde foi posto e persegue o jogador por perto; encostar = perder vida; pular em
+cima = derrotar).
 
 Grupo (`g`): peças com o mesmo `g` são selecionadas juntas e, ao jogar, viram **um só corpo**.
 
@@ -117,10 +125,59 @@ Blocos (`part` ausente = "esta peça", a que disparou o evento):
 Limites: 64 scripts, 1024 blocos no total, profundidade 8. `validate()` remove blocos inválidos
 (peça/junta inexistente, tipo desconhecido) e limita números.
 
+### Relevo — `TerrainData` (v3)
+
+```ts
+TerrainData {
+  n: number        // vértices por lado, 9..129
+  cell: number     // metros entre vértices, 0,25..8  ((n−1)·cell ≤ 512)
+  h: string        // base64 de Int16 little-endian, n·n alturas em CENTÍMETROS
+  m?: string       // base64 de Uint8, n·n índices de TERRAIN_MATS (ausente = tudo grama)
+  wy?: number      // superfície da água nos vértices pintados de 'water' (padrão −0,3)
+  water?: { x, z, w, d, y }[]   // ≤ 16 lagos retangulares: centro, tamanho, altura da superfície
+}
+TERRAIN_MATS = ['grass', 'sand', 'snow', 'rock', 'dirt', 'water']
+```
+
+A grade é centrada na origem; o índice é `j·n + i` com `x = i·cell − (n−1)·cell/2` e
+`z = j·cell − (n−1)·cell/2`. Fora da grade o chão continua plano em y=0 e a borda da grade fica
+sempre em 0 (sem degrau). Use `encodeHeights()`/`decodeHeights()` de `format.ts`. Só vale no mundo
+Plano. A água boia: corpos dinâmicos e veículos recebem empuxo abaixo da superfície (`waterAt`).
+
+### Mundo personalizado — `WorldGenSettings` (v3)
+
+Todos opcionais (ausente = padrão; multiplicadores 1 = normal):
+`preset` (`normal` · `flat` plano em camadas · `islands` · `flatIslands` só ilhas planas · `floating`
+ilhas flutuantes), `height` 0..2, `rough` 0..2, `sea` −12..12 m, `biomeSize` 0,25..4,
+`biomes` { campo, floresta, deserto, neve, pantano, montanhas, oceano, savana, outono, cogumelos,
+tropical, ilhas: peso 0..3 (0 = desligado) }, `trees`/`caves`/`ores` 0..2 e, no `flat`,
+`layers: { k: TerrainMat, n: metros }[]` (≤ 8, de baixo para cima; a de cima é o chão; `water`
+por cima vira mar raso). A área de construção (raio ~34 m) é sempre plana em y=0. Mesmo
+`seed` + mesmo `gen` ⇒ mesmo mundo em qualquer aparelho.
+
+### Missão — `Mission` (v3)
+
+```ts
+Mission {
+  objectives: Objective[]   // ≤ 8
+  order?: 'seq'             // um de cada vez (padrão: qualquer ordem)
+  lives?: number            // 0 = infinitas
+  time?: number             // tempo limite em s (0 = sem)
+  win?, lose?: string       // textos das telas de fim (≤ 60)
+}
+Objective { k: 'reach'|'collect'|'defeat'|'survive'|'drive', n?, sec?, part? }
+```
+
+`reach`: chegar à peça `part` (ou a qualquer `goal`) · `collect`: coletar `n` (padrão: todos) ·
+`defeat`: derrotar `n` inimigos (padrão: todos) · `survive`: aguentar `sec` s · `drive`: chegar
+pilotando um veículo. Com missão, encostar na chegada não vence sozinho: vence quando todos os
+objetivos estão feitos; acabou o tempo ou as vidas ⇒ tela de derrota (Jogar de novo / Editar).
+
 ## Limites (`LIMITS`)
 
 Teto do formato: 2000 peças, 64 juntas, 64 fichas, 32 materiais, 256 pontos por traço, 24 deps,
-512 KB de JSON, posições ±2000 m, peças 0,02–200 m, 3 níveis de `ref`. O editor aplica limites
+512 KB de JSON, posições ±2000 m, peças 0,02–200 m, 3 níveis de `ref`; relevo até 129×129
+vértices e 512 m, 16 lagos, 8 objetivos. O editor aplica limites
 **menores** por qualidade do aparelho e assinatura (ver `src/studio/pro.ts`).
 
 ## Funções

@@ -19,7 +19,7 @@ import { esc } from '../studio';
 import { sicon } from './sicons';
 import { MAT_COLORS, type Brush } from '../world/field';
 import { BlocksEditor } from './blocks';
-import { renderMissionPanel } from './mission';
+import { makeTemplate, renderMissionPanel, templateInfo, type TemplateId } from './mission';
 import { openWorldSheet } from './worldsheet';
 import { GAME_TAGS } from '../store-api';
 import { linkFor, MAX_INLINE, shareUrl } from '../share';
@@ -774,6 +774,15 @@ export class Panels {
       <button class="bs-new" data-n="object">${sicon('box', 28)}<b>${kindName('object')}</b></button>
       <button class="bs-new" data-n="vehicle">${sicon('mech', 28)}<b>${kindName('vehicle')}</b></button>
       <button class="bs-new" data-n="map">${sicon('mapadd', 28)}<b>${kindName('map')}</b></button></div></div>`);
+    const tg = this.h(`<div><h4>${t('studio.mis.templatesGame', 'Jogo pronto para mudar')}</h4><div class="bs-tpls">${templateInfo()
+      .map(([id, ic, nm, sub]) => `<button class="bs-tpl" data-tp="${id}">${sicon(ic, 26)}<b>${nm}</b><small>${sub}</small></button>`)
+      .join('')}</div></div>`);
+    this.on(tg, '[data-tp]', async (b) => {
+      if (this.s.dirty) await this.s.save(true);
+      await this.s.openDoc(makeTemplate(b.dataset.tp as TemplateId));
+      this.s.dirty = true;
+      this.open('mission');
+    });
     this.on(nw, '[data-n]', async (b) => {
       if (this.s.dirty) await this.s.save(true);
       this.s.newDoc(b.dataset.n as Creation['kind']);
