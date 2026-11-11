@@ -27,6 +27,8 @@ import { setVoice, speak, stopSpeak, voiceOn } from './speak';
 import { Garage } from './garage';
 import { stats, vName, type VDesign } from './vehicles';
 import { NightsNet, apply, encode, newSnapState, roomCode, type GuestMsg, type Peer, type SnapState } from './net';
+import { BuildController } from './build/controller'; // BUILD
+import { PIECE } from './build/pieces'; // BUILD
 import { consumePartySeat, partyRoomFor, partySeat } from '../../party/contract';
 import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
 
@@ -112,6 +114,8 @@ export class NoitesGame implements MiniGameHandle {
   private garageKey = '';
   private camAuto = 0;
   private driveIn: [number, number] = [0, 0];
+  /** construção em grade (API para o inventário: build.enterPlacement/rotate/place/cancel...) */
+  build: BuildController | null = null; // BUILD
 
   constructor(
     root: HTMLElement,
@@ -363,6 +367,15 @@ export class NoitesGame implements MiniGameHandle {
     });
     this.hud.setVoice(voiceOn());
     this.hud.showBotsBtn(this.botsN > 0);
+    // BUILD: modo construção
+    this.build = new BuildController({
+      wrap: this.wrap,
+      sim: () => this.sim,
+      view: () => this.view,
+      me: () => this.me,
+      send: (a) => this.send(a),
+      busy: () => !this.me || this.me.faint > 0 || this.me.seat >= 0 || !!this.hud?.crafting || !!this.garage || !!this.placing,
+    });
     const top = this.wrap.querySelector('.nc-top') as HTMLElement;
     setNotifyTop(top.getBoundingClientRect().bottom + 4);
     const me = this.me!;
@@ -383,6 +396,8 @@ export class NoitesGame implements MiniGameHandle {
     this.garage?.destroy();
     this.garage = null;
     this.placing = null;
+    this.build?.dispose(); // BUILD
+    this.build = null;
   }
 
   /* ------------------------------ rede ------------------------------ */
@@ -481,6 +496,14 @@ export class NoitesGame implements MiniGameHandle {
       if (e.code === 'KeyF') this.toggleLight();
       if (e.code === 'KeyQ') this.doBonk();
       if (e.code === 'Escape' && this.hud.crafting) this.hud.closeCraft();
+      // BUILD: B construir, R girar, G grade/livre, X desmontar, Esc sair
+      if (e.code === 'KeyB') this.build?.toggle();
+      if (this.build?.active) {
+        if (e.code === 'KeyR') this.build.rotate();
+        if (e.code === 'KeyG') this.build.toggleFree();
+        if (e.code === 'KeyX') this.build.tool('del');
+        if (e.code === 'Escape') this.build.cancel();
+      }
       if (/^Digit[1-6]$/.test(e.code)) {
         const items = this.hotItems();
         const it = items[+e.code.slice(5) - 1];
@@ -604,6 +627,7 @@ export class NoitesGame implements MiniGameHandle {
     W.chests.forEach((c, i) => !s.chestOpen[i] && consider({ k: 'chest', i, x: c.x, z: c.z, r: 0.9 }, 2.8, 4));
     consider({ k: 'fire', i: -1, x: 0, z: 0, r: 1.6 }, 3.8, 3);
     consider({ k: 'bench', i: -1, x: BENCH_POS[0], z: BENCH_POS[1], r: 1.3 }, 3.2, 3);
+    for (const bp of s.build.pieces) if (bp.k === PIECE.bench.idx) consider({ k: 'bench', i: -1, x: bp.x, z: bp.z, r: 1.2 }, 3.2, 3); // BUILD: bancada extra
     for (const st of s.structs) {
       const kind = ITEM[st.k]?.place?.kind;
       if (kind === 'kiln' || kind === 'still' || kind === 'charger' || kind === 'solar' || kind === 'garden' || kind === 'berrybed') consider({ k: 'proc', i: st.id, x: st.x, z: st.z, r: 1 }, 2.8, 2);
@@ -641,6 +665,7 @@ export class NoitesGame implements MiniGameHandle {
     const me = this.me;
     const s = this.sim;
     if (!me || !s || me.faint > 0 || this.hud?.crafting) return;
+    if (this.build?.active) return this.build.place(); // BUILD
     if (this.placing) return this.placeCmd('ok');
     if (me.seat >= 0) {
       this.send({ a: 'vexit' });
@@ -720,6 +745,7 @@ export class NoitesGame implements MiniGameHandle {
     const mine = e.p === this.myId;
     const near = e.x === undefined || !this.me || Math.hypot((e.x ?? 0) - this.me.x, (e.z ?? 0) - this.me.z) < 30;
     this.view?.fx(e);
+    this.build?.onEvent(e, this.myId); // BUILD
     switch (e.k) {
       case 'night': {
         const sp = e.i === 'boss' ? t('noites.ev.boss', 'Cuidado: o Rei Sombrão vem aí!') : e.i === 'fog' ? t('noites.ev.fog', 'Noite de neblina!') : e.i === 'moon' ? t('noites.ev.moon', 'Lua cheia: brilhinhos em dobro!') : t('noites.ev.nightSub', 'Fique perto da luz!');
@@ -1070,7 +1096,8 @@ export class NoitesGame implements MiniGameHandle {
     // câmera
     if (me && vNow) v.placeCamera(vNow.x, vNow.z, dt, vNow.y - 0.6, 9.5);
     else if (me) v.placeCamera(me.x, me.z, dt, s.w.height(me.x, me.z));
-    const focus: Focus | null = this.target ? { x: this.target.x, z: this.target.z, r: this.target.r } : null;
+    this.build?.update(dt); // BUILD: fantasma (antes da vista desenhar)
+    const focus: Focus | null = this.target && !this.build?.active ? { x: this.target.x, z: this.target.z, r: this.target.r } : null;
     v.update(dt, me ?? null, focus, this.ghost(), me?.x ?? 0, me?.z ?? 0);
     // HUD
     if (me) {
@@ -1089,7 +1116,7 @@ export class NoitesGame implements MiniGameHandle {
           this.craftKey = key;
           hud.renderCraft(s, me);
         }
-        if (Math.hypot(me.x - BENCH_POS[0], me.z - BENCH_POS[1]) > 5) hud.closeCraft();
+        if (Math.hypot(me.x - BENCH_POS[0], me.z - BENCH_POS[1]) > 5 && !s.build.benchNear(me.x, me.z, 5)) hud.closeCraft(); // BUILD: bancada extra
       }
     }
     if (this.garage) {
