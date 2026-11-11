@@ -181,6 +181,7 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     const used = new Set(s.vehView.map((v) => v.dk));
     o.vd = Object.fromEntries([...s.designs].filter(([k]) => used.has(k)));
   }
+  Object.assign(o, s.build.netOut(st, full)); // BUILD: peças construídas (bd = lista, bh = vidas)
   if (extra) Object.assign(o, extra);
   return o;
 }
@@ -267,6 +268,7 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
     s.structs = (o.sc as any[]).map((r) => ({ id: r[0], k: r[1], x: r[2], z: r[3], r: r[4], hp: r[5], burn: r[6], a: r[7], b: r[8], t: r[9] }));
     s.verStruct = o.vs + 1e6;
   }
+  s.build.netIn(o); // BUILD
   if (o.ch) {
     s.chestOpen.fill(0);
     for (const i of o.ch as number[]) s.chestOpen[i] = 1;

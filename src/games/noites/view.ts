@@ -12,6 +12,7 @@ import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
+import { BuildView } from './build/view'; // BUILD
 import { BlobShadows, GrassField, LeafBurst, hitTreeShake, natureTick, windTime, NL, TL, lerpSplat, setSplat, splatAttributes, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
@@ -211,6 +212,8 @@ export class View {
   private shake = new Map<number, number>();
   private fireflies: THREE.Points;
   private vv: VehView;
+  /** construção em grade (peças, fantasma, barras) */
+  build: BuildView; // BUILD
   private lastBuild = { x: 1e9, z: 1e9, ver: -1, verC: -1, verS: -1 };
   private time = 0;
   private sunAmt = 1;
@@ -405,6 +408,7 @@ export class View {
     this.embers.budget = this.q.particles;
     sc.add(this.embers.obj);
     this.vv = new VehView(sc, sim, this.parts);
+    this.build = new BuildView(sc, sim, this.parts); // BUILD
 
     // vagalumes
     const ff: number[] = [];
@@ -930,6 +934,7 @@ export class View {
     this.updPlayers(dt, me?.id ?? '');
     this.updCreatures(dt);
     this.vv.update(dt, 1 - this.sunAmt);
+    this.build.update(dt, this.camera, me ? me.x : camX, me ? me.z : camZ); // BUILD
 
     // bebês
     s.babies.forEach((b, i) => {
@@ -1166,6 +1171,7 @@ export class View {
   }
 
   destroy(): void {
+    this.build.dispose(); // BUILD
     this.grass.dispose();
     this.blobs.dispose();
     this.leafFx.dispose();
