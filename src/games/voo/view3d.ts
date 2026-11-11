@@ -240,8 +240,8 @@ export class View3D {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'voo-canvas';
     root.appendChild(this.canvas);
-    this.r = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: q.tier >= 2, powerPreference: 'high-performance', stencil: false });
-    this.r.setPixelRatio(q.pr);
+    this.r = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: q.tier >= 1, powerPreference: 'high-performance', stencil: false });
+    this.r.setPixelRatio(this.prFor(q));
     this.r.outputColorSpace = THREE.SRGBColorSpace;
     this.r.toneMapping = THREE.ACESFilmicToneMapping;
     this.r.toneMappingExposure = q.standard ? 1.0 : 1.1;
@@ -526,13 +526,19 @@ export class View3D {
   private cw = 1;
   private ch = 1;
   /** resolução dinâmica (QualityGovernor.onResScale) */
+  /** resolução da cabine: nunca tão baixa que as colunas do para-brisa virem escadinha */
+  private prFor(q: Q3, k = 1): number {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const floor = Math.min(dpr, q.tier >= 1 ? 1 : 0.8);
+    return Math.max(floor, q.pr * k);
+  }
   setResScale(k: number): void {
-    this.resK = k;
-    this.r.setPixelRatio(this.q.pr * k);
+    this.resK = Math.max(0.8, k);
+    this.r.setPixelRatio(this.prFor(this.q, this.resK));
   }
   setTier(tier: Tier): void {
     this.q = q3For(tier);
-    this.r.setPixelRatio(this.q.pr * this.resK);
+    this.r.setPixelRatio(this.prFor(this.q, this.resK));
     this.fx.budget = this.flames.budget = this.q.particles;
     this.resize();
   }
@@ -845,10 +851,11 @@ export class View3D {
     this.syncWorldCam(cam, clamp(s.f.alt * 0.08, 2, 120));
     // mão
     const held = s.item(me.hold);
-    this.hand.setPose(held ? 'grab' : 'open');
+    this.hand.setPose(held || seated ? 'grab' : 'open');
     this.hand.scrub = me.actKind === 'hug' || me.actKind === 'door' || me.actKind === 'patch' ? 1 : 0;
     this.hand.update(dt, Math.min(1, walk / 3.3), lx, ly);
-    this.hand.visible = !seated;
+    this.hand.visible = true; // sentado: a mão fica na manete (canto de baixo), menor para não tapar as telas
+    this.hand.sizeMul = seated ? 0.72 : 1;
   }
 
   private syncWorldCam(cam: THREE.Camera, near: number): void {
@@ -926,10 +933,10 @@ export class View3D {
     const sx = pilot && !pilot.bot ? s.ctrl.sx : 0;
     const sy = pilot && !pilot.bot ? s.ctrl.sy : 0;
     cab.yokeL.rotation.z = -sx * 0.6;
-    cab.yokeL.position.z = -3.36 - sy * 0.08;
+    cab.yokeL.position.z = (cab.yokeL.userData.z0 as number) - sy * 0.06;
     cab.throttle.rotation.x = -0.5 + f.thr * 1.0;
     cab.flapLever.rotation.x = -0.4 + f.flaps * 0.4;
-    cab.gearLever.position.y = f.gear ? 0.66 : 0.8;
+    cab.gearLever.position.y = (cab.gearLever.userData.y0 as number) - (f.gear ? 0.1 : 0);
     // comandante
     const cap = this.captain;
     if (intro) {

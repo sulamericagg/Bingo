@@ -159,22 +159,33 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   b.sharp(2.2, 0.06, 17.7, 0, 2.34, -1.2 + 17.7 / 2, '#f7f3fb');
   for (let z = 0; z < 16.5; z += 1.8) glow.cyl(0.07, 0.07, 0.02, 0, 2.32, z, '#fffbe8', 10);
   // ---------- cabine de comando ----------
+  // Olho do piloto ≈ (-0.55, 1.5, -2.92). Painel inclinado para trás com as telas dentro de molduras
+  // (montado em buildPanel, abaixo); aqui só a casca: parede, para-brisa, laterais, assentos, pedestal e teto.
   const CK = '#8f96c4';
-  b.sharp(3.56, 1.08, 0.12, 0, 0, -4.02, CK); // parede frontal baixa (atrás do painel)
-  // painel
-  b.box(3.0, 0.98, 0.3, 0, 0, -3.85, '#7d86b0');
-  // glare shield raso: com o olho mais alto, a aba funda escondia as telas e metade do para-brisa
-  b.box(3.0, 0.08, 0.3, 0, 1.07, -3.83, '#5d6596');
-  // janelas: postes e teto
-  for (const x of [-1.5, -0.74, 0, 0.74, 1.5]) b.sharp(0.09, 0.78, 0.09, x, 1.08, -3.98, CK);
-  b.sharp(3.4, 0.5, 0.12, 0, 1.86, -3.98, CK);
+  const CKD = '#7d86b8';
+  b.sharp(3.56, 1.08, 0.12, 0, 0, -4.04, CK); // parede frontal baixa (atrás do painel)
+  // corpo do painel (embaixo da face inclinada) até o piso
+  b.box(2.84, 0.66, 0.3, 0, 0, -3.86, CKD);
+  // glare shield: aba arredondada que não passa da frente das telas
+  b.box(2.96, 0.08, 0.32, 0, 0.985, -3.88, '#7a84bd');
+  // para-brisa: colunas redondas, peitoril e travessa de cima
+  for (const x of [-1.5, -0.74, 0, 0.74, 1.5]) b.cyl(0.045, 0.05, 0.84, x, 1.04, -3.97, CK, 12);
+  b.box(3.4, 0.06, 0.16, 0, 1.03, -3.97, CK);
+  b.sharp(3.4, 0.44, 0.12, 0, 1.88, -3.98, CK);
+  b.cyl(0.05, 0.05, 3.3, 1.65, 1.88, -3.93, CK, 12, 0, Math.PI / 2);
   b.sharp(3.4, 0.06, 2.9, 0, 2.18, -2.6, '#b8bde0');
   for (const side of [-1, 1]) {
     const X = side * 1.7;
+    // laterais com janela (abertura entre z -3.5 e -2.5)
     b.sharp(0.08, 1.12, 2.8, X, 0, -2.6, CK);
     b.sharp(0.08, 0.5, 2.8, X, 1.7, -2.6, CK);
     b.sharp(0.08, 0.58, 0.5, X, 1.12, -3.75, CK);
     b.sharp(0.08, 0.58, 1.3, X, 1.12, -1.85, CK);
+    b.cyl(0.035, 0.035, 0.58, X - side * 0.03, 1.12, -3.5, CK, 10);
+    b.cyl(0.035, 0.035, 0.58, X - side * 0.03, 1.12, -2.5, CK, 10);
+    // console lateral (apoio de braço) com um botãozinho em cima
+    b.box(0.22, 0.75, 1.2, side * 1.5, 0, -2.95, CKD);
+    glow.box(0.05, 0.015, 0.05, side * 1.5, 0.75, -3.25, side < 0 ? '#3fe06c' : '#46d9e6');
     // assentos dos pilotos
     const sx = side * 0.55;
     b.box(0.6, 0.12, 0.55, sx, 0.0, -2.85, '#2a2d40');
@@ -184,21 +195,24 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
     b.cyl(0.05, 0.05, 0.42, sx, 0, -2.85, '#888ba3', 8);
     b.box(0.08, 0.06, 0.4, sx - 0.32, 0.72, -2.85, '#2a2d40');
     b.box(0.08, 0.06, 0.4, sx + 0.32, 0.72, -2.85, '#2a2d40');
-    // coluna do manche
-    b.box(0.1, 0.62, 0.1, sx, 0, -3.42, '#2a2d40');
+    // coluna do manche (sai do piso, encosta no painel)
+    b.box(0.09, 0.72, 0.09, sx, 0, -3.6, '#2a2d40');
+    b.box(0.1, 0.06, 0.2, sx, 0.0, -3.6, '#2a2d40');
   }
   // parede de trás com porta aberta
   b.sharp(1.3, 2.4, 0.12, -1.1, 0, -1.2, '#d8cfe8');
   b.sharp(1.3, 2.4, 0.12, 1.1, 0, -1.2, '#d8cfe8');
   b.sharp(0.9, 0.4, 0.12, 0, 2.0, -1.2, '#d8cfe8');
   b.box(0.06, 1.95, 0.85, -0.47, 0, -1.6, '#c3b6dc', 0.0); // porta aberta encostada
-  // console central
-  metal.box(0.4, 0.8, 0.9, 0, 0, -3.05, '#55608a');
-  // painel de cima com botões
-  b.box(1.2, 0.08, 0.7, 0, 2.08, -3.2, '#4f5680');
+  // pedestal central (manetes, flapes e trem ficam em cima dele)
+  metal.box(0.42, 0.74, 0.86, 0, 0, -3.15, '#55608a');
+  metal.box(0.38, 0.03, 0.8, 0, 0.74, -3.15, '#3d4570');
+  glow.box(0.05, 0.012, 0.05, -0.15, 0.77, -2.82, '#3fe06c');
+  glow.box(0.05, 0.012, 0.05, 0.15, 0.77, -2.82, '#ffd34a');
+  // painel de cima: placa com botões embutidos na face de baixo
+  b.box(1.2, 0.1, 0.7, 0, 2.06, -3.2, '#4f5680');
   const btnCols = ['#ff5c7a', '#ffd34a', '#3fe06c', '#46d9e6', '#ffffff'];
-  for (let i = 0; i < 14; i++) glow.box(0.07, 0.03, 0.07, -0.45 + (i % 7) * 0.15, 2.05, -3.4 + Math.floor(i / 7) * 0.25, btnCols[i % 5]);
-  for (let i = 0; i < 10; i++) glow.box(0.06, 0.06, 0.02, -1.2 + i * 0.12 + (i > 4 ? 1.2 : 0), 0.82, -3.53, btnCols[(i * 3) % 5]);
+  for (let i = 0; i < 14; i++) glow.box(0.07, 0.025, 0.07, -0.45 + (i % 7) * 0.15, 2.04, -3.4 + Math.floor(i / 7) * 0.25, btnCols[i % 5]);
   // ---------- primeira classe ----------
   for (const z of [0.15, 1.95])
     for (const side of [-1, 1]) {
@@ -317,32 +331,73 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
       group.add(g);
       wins.push({ x: side * WALL_X, z, y: WIN_Y, glass: g });
     }
-  // telas (PFD e mapa)
-  const pfd = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.37), new THREE.MeshBasicMaterial({ map: pfdTex, toneMapped: false }));
-  pfd.position.set(-0.55, 0.87, -3.68);
-  pfd.rotation.x = -0.42;
-  const nav = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.37), new THREE.MeshBasicMaterial({ map: navTex, toneMapped: false }));
-  nav.position.set(0.55, 0.87, -3.68);
-  nav.rotation.x = -0.42;
-  group.add(pfd, nav);
-
   const mk = (fn: (g: GeoBuilder) => void, m = mat(standard)) => {
     const g = new GeoBuilder();
     g.bevel = bevel;
     fn(g);
     return new THREE.Mesh(g.build(), m);
   };
-  // manches (o "W" do Bloop Air: duas alças e centro arredondado)
+  // ---------- painel de instrumentos ----------
+  // grupo inclinado: origem na base da face, z local 0 = superfície da face (z+ = para o piloto)
+  const panelG = new THREE.Group();
+  panelG.position.set(0, 0.62, -3.72);
+  panelG.rotation.x = -0.35;
+  group.add(panelG);
+  const FACE_H = 0.42;
+  panelG.add(
+    mk((g) => {
+      g.box(2.8, FACE_H, 0.1, 0, 0, -0.05, '#8d97cc');
+      g.box(2.8, 0.03, 0.11, 0, FACE_H - 0.03, -0.05, '#b4bce6'); // friso de cima
+      // anunciadores (alertas) entre as telas, presos NA face
+      const ann = ['#ff5c7a', '#ffd34a', '#3fe06c', '#46d9e6', '#ffffff', '#ffb02e'];
+      for (let i = 0; i < 6; i++) g.box(0.07, 0.04, 0.012, -0.08 + (i % 2) * 0.16, 0.12 + Math.floor(i / 2) * 0.09, 0.006, ann[i]);
+      // parafusos/botões discretos nas pontas
+      for (const x of [-1.25, -1.13, 1.13, 1.25]) g.cyl(0.018, 0.018, 0.012, x, 0.16, 0.006, '#c9c9d9', 10, Math.PI / 2);
+    }, (() => {
+      // face levemente iluminada por dentro (luz de painel): não vira um bloco escuro contra o céu
+      const m = mat(standard, { rough: 0.6 }) as THREE.MeshLambertMaterial;
+      m.emissive = new THREE.Color('#2e3466');
+      return m;
+    })()),
+  );
+  // telas embutidas: moldura (com profundidade) + vidro um pouco à frente da face, com polygonOffset
+  const SW = 0.44;
+  const SH = 0.29;
+  const bezel = (() => {
+    const outer = roundRectShape(SW + 0.06, SH + 0.06, 0.035);
+    outer.holes.push(roundRectShape(SW, SH, 0.012) as unknown as THREE.Path);
+    const g = new THREE.ExtrudeGeometry(outer, { depth: 0.03, bevelEnabled: false, curveSegments: 4 });
+    return g;
+  })();
+  const bezelMat = standard ? new THREE.MeshStandardMaterial({ color: '#2a2f4a', roughness: 0.5 }) : new THREE.MeshLambertMaterial({ color: '#2a2f4a' });
+  const screen = (tex: THREE.Texture, x: number): THREE.Mesh => {
+    const fr = new THREE.Mesh(bezel, bezelMat);
+    fr.position.set(x, 0.235, 0);
+    panelG.add(fr);
+    // fundo preto da tela (sem vão para a face aparecer)
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ color: '#0d0f1c' }));
+    back.position.set(x, 0.235, 0.004);
+    panelG.add(back);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    m.position.set(x, 0.235, 0.012);
+    panelG.add(m);
+    return m;
+  };
+  const pfd = screen(pfdTex, -0.55);
+  const nav = screen(navTex, 0.55);
+
+  // manches (o "W" do Bloop Air), na frente de cada piloto; as alças aparecem embaixo da tela
   const yoke = (side: number) => {
     const g = new THREE.Group();
-    g.position.set(side * 0.55, 0.7, -3.36);
+    g.position.set(side * 0.55, 0.74, -3.42);
+    g.userData.z0 = g.position.z;
     g.add(
       mk((y) => {
-        y.box(0.08, 0.08, 0.3, 0, -0.04, 0.12, '#2a2d40');
-        y.box(0.34, 0.1, 0.06, 0, 0, 0.26, '#5a6080');
-        y.box(0.07, 0.2, 0.07, -0.18, 0, 0.26, '#5a6080');
-        y.box(0.07, 0.2, 0.07, 0.18, 0, 0.26, '#5a6080');
-        y.box(0.08, 0.05, 0.05, 0, 0.08, 0.29, '#ffd34a');
+        y.box(0.07, 0.07, 0.12, 0, -0.04, -0.06, '#6a7099');
+        y.box(0.36, 0.08, 0.06, 0, 0, 0, '#5a6080');
+        y.box(0.07, 0.17, 0.07, -0.19, -0.09, 0, '#5a6080');
+        y.box(0.07, 0.17, 0.07, 0.19, -0.09, 0, '#5a6080');
+        y.box(0.09, 0.04, 0.04, 0, 0.07, 0.01, '#ffd34a');
       }),
     );
     group.add(g);
@@ -352,31 +407,33 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   const yokeR = yoke(1);
   const lever = (x: number, z: number, col: string, knob: 'ball' | 'wheel' | 'flap') => {
     const g = new THREE.Group();
-    g.position.set(x, 0.8, z);
+    g.position.set(x, 0.76, z);
+    g.userData.y0 = g.position.y;
     g.add(
       mk((y) => {
-        y.box(0.03, 0.22, 0.03, 0, 0, 0, '#888ba3');
-        if (knob === 'wheel') y.cyl(0.06, 0.06, 0.04, 0, 0.22, 0, col, 12, Math.PI / 2);
-        else if (knob === 'flap') y.box(0.09, 0.05, 0.06, 0, 0.22, 0, col);
-        else y.sph(0.04, 0, 0.24, 0, col);
+        y.box(0.025, 0.16, 0.025, 0, 0, 0, '#888ba3');
+        if (knob === 'wheel') y.cyl(0.045, 0.045, 0.035, 0, 0.16, 0, col, 14, Math.PI / 2);
+        else if (knob === 'flap') y.box(0.08, 0.04, 0.05, 0, 0.16, 0, col);
+        else y.sph(0.035, 0, 0.18, 0, col);
       }),
     );
     group.add(g);
     return g;
   };
+  // manetes no meio do pedestal
   const throttle = new THREE.Group();
-  throttle.position.set(0, 0.8, -3.15);
-  for (const x of [-0.07, 0.07]) {
+  throttle.position.set(0, 0.76, -3.1);
+  for (const x of [-0.06, 0.06]) {
     const l = mk((y) => {
-      y.box(0.03, 0.2, 0.03, 0, 0, 0, '#888ba3');
-      y.box(0.08, 0.05, 0.06, 0, 0.2, 0, '#2a2d40');
+      y.box(0.025, 0.18, 0.025, 0, 0, 0, '#888ba3');
+      y.box(0.07, 0.045, 0.06, 0, 0.18, 0, '#2a2d40');
     });
     l.position.x = x;
     throttle.add(l);
   }
   group.add(throttle);
-  const flapLever = lever(0.13, -3.45, '#e0e4f0', 'flap');
-  const gearLever = lever(-0.22, -3.6, '#ffffff', 'wheel');
+  const flapLever = lever(0.14, -3.42, '#e0e4f0', 'flap');
+  const gearLever = lever(-0.14, -3.42, '#e8ecff', 'wheel');
   // porta do painel elétrico (abre na pane)
   const elecDoor = new THREE.Group();
   elecDoor.position.set(1.66, 0.95, SPOTS.elec.z - 0.31);
