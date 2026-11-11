@@ -119,8 +119,18 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
     if (mode === 'world') {
       try {
         const m = await import('./world/worldgame');
+        const W = await import('./world/worlds');
         if (this.destroyed) return;
-        this.world = m.createWorld(this.wrap, { tier: this.gov.tier, exit: () => this.finish() });
+        const pick = await W.pickWorld(this.wrap, { servers: m.serversAvailable() });
+        if (this.destroyed) return;
+        if (!pick) return this.finish();
+        if (pick.kind === 'servers') {
+          this.world = await m.openServers(this.wrap, { tier: this.gov.tier, exit: () => this.finish() });
+          if (!this.world) return this.finish();
+        } else if (pick.kind === 'world') {
+          const id = pick.meta.id;
+          this.world = m.createWorld(this.wrap, { tier: this.gov.tier, exit: () => this.finish(), mode: pick.meta.mode, save: pick.save, onSave: (sv) => W.saveWorldById(id, sv) });
+        } else this.world = m.createWorld(this.wrap, { tier: this.gov.tier, exit: () => this.finish() });
         this.world.onSample = (a, b) => this.gov.sample(a, b);
         return;
       } catch (e) {

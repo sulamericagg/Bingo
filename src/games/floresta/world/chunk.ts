@@ -118,6 +118,9 @@ export class Chunk {
   volReady = false;
   /** tem boca de caverna/ravina natural */
   natVol = false;
+  /** ilhas no céu sobre este pedaço (faixa de altura) */
+  skyTop = -1e9;
+  skyBot = 1e9;
 
   constructor(
     readonly cx: number,

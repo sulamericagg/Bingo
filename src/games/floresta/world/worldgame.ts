@@ -26,6 +26,11 @@ import * as CANNON from 'cannon-es';
 import { Phys, LOG_R } from './phys';
 import type { SBox, MoveOut } from './collide';
 import { M as VM, MATS, BED_Y } from './vox';
+import { Sandbox } from './survival';
+import type { GameMode } from './engine';
+import { iconURL } from './itemicons';
+import { ITEM } from './items';
+import { playIntro } from './intro';
 import { forestSolo, setForestSolo } from '../touchcfg';
 
 const TAU = Math.PI * 2;
@@ -173,18 +178,23 @@ const angDiff = (a: number, b: number) => {
 export interface WorldOpts {
   tier: Tier;
   exit: () => void;
+  /** modo sandbox (sobrevivência/criação); sem isso, o modo clássico de lenhador */
+  mode?: GameMode;
+  /** save a usar (multi-mundos); sem isso, o save antigo único */
+  save?: WorldSave;
+  onSave?: (s: WorldSave) => void;
 }
 
 export class WorldGame {
-  private renderer: THREE.WebGLRenderer;
-  private scene = new THREE.Scene();
-  private camera: THREE.PerspectiveCamera;
-  private world: World;
-  private save: WorldSave;
-  private hud: WorldHud;
-  private q: WQ;
-  private sun: THREE.DirectionalLight;
-  private hemi: THREE.HemisphereLight;
+  renderer: THREE.WebGLRenderer;
+  scene = new THREE.Scene();
+  camera: THREE.PerspectiveCamera;
+  world: World;
+  save: WorldSave;
+  hud: WorldHud;
+  q: WQ;
+  sun: THREE.DirectionalLight;
+  hemi: THREE.HemisphereLight;
   private raf = 0;
   private last = 0;
   private paused = false;
@@ -195,22 +205,22 @@ export class WorldGame {
   px = 0;
   py = 0;
   pz = 0;
-  private vy = 0;
+  vy = 0;
   yaw = 0;
   pitch = -0.1;
-  private tYaw = 0;
-  private tPitch = -0.1;
+  tYaw = 0;
+  tPitch = -0.1;
   private walkT = 0;
-  private tool = 0;
-  private swing = 0;
-  private swingCd = 0;
+  tool = 0;
+  swing = 0;
+  swingCd = 0;
   carry = 0;
   carryVal = 0;
   private ore = 0;
-  private hand: THREE.Group;
-  private handMesh: THREE.Mesh;
-  private arm: Forearm;
-  private tools: THREE.Object3D[] = [];
+  hand: THREE.Group;
+  handMesh: THREE.Mesh;
+  arm: Forearm;
+  tools: THREE.Object3D[] = [];
   driving = -1;
   private camYawOff = 0;
   private camIdle = 0;
@@ -221,12 +231,12 @@ export class WorldGame {
   private logMesh: THREE.InstancedMesh;
   private cargoMesh: THREE.InstancedMesh;
   private falls: Fall[] = [];
-  private tnts: Tnt[] = [];
-  private tntCd = 0;
+  tnts: Tnt[] = [];
+  tntCd = 0;
   pets: Pet[] = [];
   private petFollow = true;
   private chopHp = new Map<string, number>();
-  private aimTree: TreeRef | null = null;
+  aimTree: TreeRef | null = null;
   private marker: THREE.Mesh;
 
   // partículas
@@ -237,28 +247,32 @@ export class WorldGame {
   private pGeo: THREE.BufferGeometry;
   private pN = 0;
 
-  private phys: Phys;
-  private held: Log | null = null;
-  private aimLog: Log | null = null;
+  phys: Phys;
+  sb: Sandbox | null = null;
+  introPending = false;
+  /** cena de abertura rodando (trava controles) */
+  cine: ((dt: number) => boolean) | null = null;
+  held: Log | null = null;
+  aimLog: Log | null = null;
   private pBody: CANNON.Body;
   private mv: MoveOut = { ground: -Infinity, hit: false };
   private _pp = { x: 0, z: 0 };
-  private onGround = true;
+  onGround = true;
   private lantern: THREE.PointLight;
-  private under = 0;
+  under = 0;
   private biome = -1;
   private biomeT = 0;
   private saveT = 0;
   private earned = 0;
   private trees = 0;
-  private time = 0;
+  time = 0;
   private skyT = 0;
 
   constructor(
-    private root: HTMLElement,
-    private opts: WorldOpts,
+    readonly root: HTMLElement,
+    readonly opts: WorldOpts,
   ) {
-    this.save = loadWorld();
+    this.save = opts.save ?? loadWorld();
     this.save.solo = forestSolo();
     this.q = wq(opts.tier);
     const r = new THREE.WebGLRenderer({ antialias: opts.tier >= 2, powerPreference: 'high-performance' });
@@ -373,13 +387,27 @@ export class WorldGame {
 
     this.hud = new WorldHud(root, (a) => this.act(a));
     this.hud.set('tool', this.toolIcon(), true);
+    if (opts.mode) {
+      this.sb = new Sandbox(this, root, opts.mode);
+      const fresh = !this.sb.load(this.save.sb);
+      this.applyOwned();
+      if (fresh) {
+        this.sb.starter();
+        if (!this.save.vehPlaced) this.introPending = true;
+      }
+      this.hud.el.classList.add('fw-sandbox');
+      this.hud.onHotkey = (i) => this.sb?.select(i);
+    }
     this.refreshPetsUi();
     this.resize();
     const ro = () => this.resize();
     window.addEventListener('resize', ro);
     this.offs.push(() => window.removeEventListener('resize', ro));
     if (location.search.includes('debug')) (window as any).__forest = this;
-    this.hud.toast(t('floresta.w.hello', 'Mundo aberto! Explore, corte e cave.'));
+    if (this.introPending) {
+      this.introPending = false;
+      playIntro(this);
+    } else this.hud.toast(this.sb ? t('mundo.hello', 'Bem-vindo de volta!') : t('floresta.w.hello', 'Mundo aberto! Explore, corte e cave.'));
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
   }
@@ -483,6 +511,16 @@ export class WorldGame {
     }
   }
 
+  /** sobrevivência: só aparecem os veículos montados (o quadriciclo é o carrinho inicial) */
+  applyOwned(): void {
+    for (const v of this.vehs) {
+      const on = !this.sb || this.save.veh.owned.includes(v.k);
+      v.m.g.visible = on;
+      v.box.off = !on;
+      if (!on) this.phys.moveKin(v.kin, 0, -9999, 0, 0, 0, 0, 0);
+    }
+  }
+
   private findWater(x: number, z: number): [number, number] {
     const g = this.world.gen;
     for (let r = 20; r < 700; r += 12)
@@ -533,6 +571,7 @@ export class WorldGame {
     }
     if (a === 'veh') return this.toggleVehicle();
     if (a === 'grab') return this.grab();
+    if (a === 'inv') return this.sb?.openInv();
     if (a === 'sell') return this.sell();
     if (a === 'pets') {
       if (this.save.solo) {
@@ -641,10 +680,11 @@ export class WorldGame {
     this.hud.toast(t('floresta.w.fetchOrder', 'Ajudantes: "Já trazemos!"'));
   }
 
-  private nearVeh(): Veh | null {
+  nearVeh(): Veh | null {
     let best: Veh | null = null;
     let bd = 4.5 * 4.5;
     for (const v of this.vehs) {
+      if (!v.m.g.visible) continue;
       const d = (v.x - this.px) ** 2 + (v.z - this.pz) ** 2 + ((v.y - this.py) * 0.5) ** 2;
       if (d < bd) {
         bd = d;
@@ -654,7 +694,7 @@ export class WorldGame {
     return best;
   }
 
-  private toggleVehicle(): void {
+  toggleVehicle(): void {
     if (this.driving >= 0) {
       const v = this.vehs[this.driving];
       if (v.k === VK.Heli && v.y - Math.max(this.world.waterLevel(v.x, v.z), this.world.heightAt(v.x, v.z)) > 2.5) {
@@ -738,7 +778,7 @@ export class WorldGame {
     this.hud.toast(t('floresta.w.sold', '+{v} bolotas ({n} toras)', { v: short(v), n }), 'gold');
   }
 
-  private exit(): void {
+  exit(): void {
     if (this.paused) return;
     this.paused = true;
     this.persist();
@@ -785,9 +825,14 @@ export class WorldGame {
     this.yaw = this.tYaw;
     this.pitch = this.tPitch;
 
-    if (this.driving >= 0) this.drive(dt);
-    else this.walk(dt);
-    for (const v of this.vehs) if (this.vehs.indexOf(v) !== this.driving) this.idleVeh(v, dt);
+    if (this.cine) {
+      if (!this.cine(dt)) this.cine = null;
+    } else if (this.driving >= 0) this.drive(dt);
+    else if (this.sb?.carts.riding) {
+      this.sb.carts.ride(this);
+      this.poseHand(dt, 0);
+    } else this.walk(dt);
+    for (const v of this.vehs) if (this.vehs.indexOf(v) !== this.driving && v.m.g.visible) this.idleVeh(v, dt);
 
     this.world.update(this.cx(), this.cz(), dt);
     this.world.vox.update(this.cx(), this.driving >= 0 ? this.vehs[this.driving].y : this.py, this.cz(), dt);
@@ -798,6 +843,7 @@ export class WorldGame {
     this.stepParticles(dt);
     this.camera.updateMatrixWorld();
     this.updateSky(dt);
+    this.sb?.update(dt);
     this.updateHud(dt);
     if (this.markerT > 0) {
       this.markerT -= dt;
@@ -922,6 +968,12 @@ export class WorldGame {
     const fz = -Math.cos(this.yaw);
     this.aimTree = this.tool === 0 && !this.held ? this.world.treeNear(this.px + fx * 0.6, this.pz + fz * 0.6, REACH, fx, fz, 0.55) : null;
     this.aimLog = this.held ? null : this.findAimLog();
+    if (this.sb) {
+      // sobrevivência: a mira de árvore vale para qualquer item que não seja peça
+      const it = ITEM.get(this.sb.held());
+      this.aimTree = !this.held && !it?.place ? this.world.treeNear(this.px + fx * 0.6, this.pz + fz * 0.6, REACH, fx, fz, 0.55) : null;
+      return;
+    }
     if (!c.use || this.swingCd > 0 || this.held) return;
     if (this.tool === 0) {
       this.swingCd = 0.42;
@@ -1037,7 +1089,7 @@ export class WorldGame {
     } else this.chopHp.set(k, nh);
   }
 
-  private startFall(tr: TreeRef, dx: number, dz: number, pet: boolean): void {
+  startFall(tr: TreeRef, dx: number, dz: number, pet: boolean): void {
     const key = this.world.treeKey(tr);
     if (this.world.hidden.has(key)) return;
     const d = Math.hypot(dx, dz) || 1;
@@ -1056,7 +1108,7 @@ export class WorldGame {
     if (!pet) tap('medium');
   }
 
-  private stepFalls(dt: number): void {
+  stepFalls(dt: number): void {
     for (let i = this.falls.length - 1; i >= 0; i--) {
       const f = this.falls[i];
       f.angV += dt * (1.2 + f.ang * 3.5);
@@ -1255,7 +1307,7 @@ export class WorldGame {
     tap('heavy');
   }
   onBoom: ((x: number, y: number, z: number, r: number) => void) | null = null;
-  private shake = 0;
+  shake = 0;
 
   /* ------------------------------ toras (física) ------------------------------ */
 
@@ -1878,7 +1930,7 @@ export class WorldGame {
 
   /* ------------------------------ partículas ------------------------------ */
 
-  private emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, col: string): void {
+  emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, col: string): void {
     const N = this.pLife.length;
     const i = this.pN++ % N;
     this.pPos[i * 3] = x;
@@ -1893,7 +1945,7 @@ export class WorldGame {
     this.pCol[i * 3 + 1] = _c.g;
     this.pCol[i * 3 + 2] = _c.b;
   }
-  private burst(n: number, x: number, y: number, z: number, col: string, sp: number): void {
+  burst(n: number, x: number, y: number, z: number, col: string, sp: number): void {
     n = Math.ceil(n * this.q.particles);
     for (let i = 0; i < n; i++) this.emit(x, y, z, (Math.random() - 0.5) * sp, Math.random() * sp * 0.8 + 1, (Math.random() - 0.5) * sp, 0.6 + Math.random() * 0.6, col);
   }
@@ -2025,6 +2077,15 @@ export class WorldGame {
     h.set('grab', this.held ? t('mundo.throw', 'Jogar') : t('mundo.grab', 'Pegar'));
     h.show('.fw-up', !!v && v.k === VK.Heli);
     h.show('.fw-down', !!v && v.k === VK.Heli);
+    if (this.sb && !v) {
+      const hid = this.sb.held();
+      const it = ITEM.get(hid);
+      const lbl = !it ? (this.aimTree ? t('floresta.chop', 'Cortar') : t('mundo.hit', 'Bater')) : it.food ? t('mundo.eat', 'Comer') : it.place ? t('mundo.place', 'Colocar') : it.tool === 'pick' || it.tool === 'shovel' ? (this.aimTree ? t('floresta.chop', 'Cortar') : t('floresta.w.dig', 'Cavar')) : it.tool === 'axe' ? t('floresta.chop', 'Cortar') : it.fill !== undefined ? t('mundo.place', 'Colocar') : t('mundo.use', 'Usar');
+      h.set('use', lbl);
+      h.set('useI', it ? `<img src="${iconURL(hid)}" width="34" height="34" alt="">` : flIcon('axe', 34), true);
+      h.show('.fw-tool', false);
+      return;
+    }
     const useLbl = v ? VDEFS[v.k].use() : [t('floresta.chop', 'Cortar'), t('floresta.w.dig', 'Cavar'), t('floresta.w.place', 'Acender')][this.tool];
     h.set('use', useLbl);
     h.set('useI', v ? flIcon('wheel', 34) : this.toolIcon(), true);
@@ -2038,9 +2099,11 @@ export class WorldGame {
     s.pz = this.driving >= 0 ? this.vehs[this.driving].z : this.pz;
     s.yaw = this.yaw;
     s.time += 0;
+    if (this.sb) s.sb = this.sb.toJSON();
     s.veh.pos = this.vehs.map((v) => [Math.round(v.x * 10) / 10, Math.round(v.z * 10) / 10, Math.round(v.yaw * 100) / 100, v.cargo, Math.round(v.cargoVal)]);
     this.world.storeAll();
-    writeWorld(s);
+    if (this.opts.onSave) this.opts.onSave(s);
+    else writeWorld(s);
   }
 
   setTier(tier: Tier, _s?: QualitySettings): void {
@@ -2080,6 +2143,7 @@ export class WorldGame {
     this.persist();
     for (const f of this.offs) f();
     this.hud.destroy();
+    this.sb?.dispose();
     this.world.dispose();
     this.phys.dispose();
     this.renderer.dispose();
@@ -2125,4 +2189,13 @@ export class WorldGame {
 
 export function createWorld(root: HTMLElement, opts: WorldOpts): WorldGame {
   return new WorldGame(root, opts);
+}
+
+/** multiplayer: disponível quando o módulo de rede existir */
+export function serversAvailable(): boolean {
+  return true;
+}
+export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<WorldGame | null> {
+  const net = await import('./net');
+  return net.openServers(root, opts);
 }

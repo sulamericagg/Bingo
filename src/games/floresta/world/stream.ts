@@ -146,7 +146,7 @@ export class World {
     readonly save: WorldSave,
     public q: StreamQ,
   ) {
-    this.gen = new WorldGen(save.seed);
+    this.gen = new WorldGen(save.seed, save.gen);
     this.groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.vox = new VoxWorld(this);
     addWind(this.treeMat);

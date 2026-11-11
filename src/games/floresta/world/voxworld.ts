@@ -14,7 +14,7 @@ export interface VoxHost {
   scene: THREE.Scene;
   groundMat: THREE.Material;
   waterMat: THREE.Material;
-  gen: { height(x: number, z: number): number; seed: number };
+  gen: { height(x: number, z: number): number; seed: number; o?: { type: string }; skyIsland?(x: number, z: number, o: Float32Array): void };
 }
 
 const _pt = { d: 0, m: 0 };
@@ -45,6 +45,8 @@ export class VoxWorld {
 
   constructor(private h: VoxHost) {
     this.vg = new VolGen(h.gen.seed);
+    const gg = h.gen as { o?: { type: string }; skyIsland?: (x: number, z: number, o: Float32Array) => void };
+    if (gg.o?.type === 'flutuantes' && gg.skyIsland) this.vg.sky = (x, z, o) => gg.skyIsland!(x, z, o);
     this.ctx = {
       sample: (x, y, z, o) => this.sample(x, y, z, o),
       grass: (c, lx, lz, out) => {
@@ -141,6 +143,17 @@ export class VoxWorld {
 
   /** boca de caverna ou ravina natural neste pedaço? (teste barato) */
   natural(c: Chunk): boolean {
+    if (this.vg.sky) {
+      const o = new Float32Array(2);
+      for (let j = 0; j <= RES; j += 8) for (let i = 0; i <= RES; i += 8) {
+        this.vg.sky(c.x0 + i, c.z0 + j, o);
+        if (o[0] > 0) {
+          c.skyTop = Math.max(c.skyTop, o[1] + 8);
+          c.skyBot = Math.min(c.skyBot, o[1] - 28);
+        }
+      }
+      if (c.skyTop > -1e8) return true;
+    }
     for (let j = 2; j < RES; j += 7)
       for (let i = 2; i < RES; i += 7) {
         const wx = c.x0 + i;
@@ -230,6 +243,8 @@ export class VoxWorld {
         if (!v) continue;
         const [s0, s1] = this.band(v);
         for (let s = s0; s <= s1; s++) this.want(v, s, dc * 2 + Math.abs(s - ps));
+        if (c.skyTop > -1e8)
+          for (let s = Math.max(0, Math.floor((c.skyBot - BED_Y) / SEC)); s <= Math.min(NSEC - 1, Math.floor((c.skyTop - BED_Y) / SEC)); s++) this.want(v, s, dc * 2 + Math.abs(s - ps));
         for (let s = 0; s < NSEC; s++) {
           const S = v.secs[s];
           if (S?.edited && (s < s0 || s > s1)) this.want(v, s, dc * 2 + Math.abs(s - ps));
@@ -240,6 +255,7 @@ export class VoxWorld {
         for (let s = 0; s < NSEC; s++) {
           const S = v.secs[s];
           if (!S || S.edited || (s >= s0 && s <= s1)) continue;
+          if (c.skyTop > -1e8 && s * SEC + BED_Y <= c.skyTop && (s + 1) * SEC + BED_Y >= c.skyBot) continue;
           if (dc > 2 || Math.abs(s - ps) > 2) this.dropMesh(v, S);
         }
       }

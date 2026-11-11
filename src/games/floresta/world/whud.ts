@@ -44,6 +44,7 @@ export type WAct = 'ctl' | 'exit' | 'tool' | 'veh' | 'sell' | 'pets' | 'cmdChop'
 export class WorldHud {
   el: HTMLDivElement;
   ctl: WControls = { mx: 0, my: 0, lookDX: 0, lookDY: 0, use: false, up: false, down: false, jump: false };
+  onHotkey: ((i: number) => void) | null = null;
   private q = <T extends HTMLElement>(s: string) => this.el.querySelector(s) as T;
   private offs: (() => void)[] = [];
   private last: Record<string, string> = {};
@@ -213,6 +214,10 @@ export class WorldHud {
       else if (k === 'q') this.onAct('tool');
       else if (k === 'v') this.onAct('sell');
       else if (k === 'g') this.onAct('grab');
+      else if (k === 'i' || k === 'tab') {
+        e.preventDefault();
+        this.onAct('inv');
+      } else if (k >= '1' && k <= '9') this.onHotkey?.(+k - 1);
       else if (k === 'arrowleft') this.ctl.lookDX -= 60;
       else if (k === 'arrowright') this.ctl.lookDX += 60;
       else if (k === 'arrowup') this.ctl.lookDY -= 40;

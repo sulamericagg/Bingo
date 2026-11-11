@@ -45,6 +45,12 @@ export interface WorldSave {
   coins: number;
   /** jogar sozinho: sem ajudantes */
   solo: boolean;
+  /** sobrevivência/criação (inventário, construções…) */
+  sb?: unknown;
+  /** o carrinho inicial já foi posto (pula a abertura) */
+  vehPlaced?: boolean;
+  /** opções de criação (tipo, relevo, biomas) */
+  gen?: import('./gen').GenOpts;
 }
 
 const KEY = 'bw-floresta-mundo';
@@ -65,11 +71,19 @@ export function freshWorld(seed = 20261110): WorldSave {
 }
 
 export function loadWorld(): WorldSave {
-  const d = freshWorld();
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return d;
-    const o = JSON.parse(raw);
+    if (!raw) return freshWorld();
+    return parseWorld(JSON.parse(raw));
+  } catch {
+    return freshWorld();
+  }
+}
+
+/** valida um save vindo do disco/rede */
+export function parseWorld(o: any): WorldSave {
+  const d = freshWorld();
+  try {
     if (!o || o.v !== 1) return d;
     const num = (v: unknown, def: number) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
     d.seed = num(o.seed, d.seed);
@@ -94,6 +108,9 @@ export function loadWorld(): WorldSave {
     d.pets = Math.max(0, Math.min(3, num(o.pets, 3)));
     d.coins = Math.max(0, num(o.coins, 0));
     d.solo = o.solo === true;
+    if (o.sb && typeof o.sb === 'object') d.sb = o.sb;
+    d.vehPlaced = o.vehPlaced === true;
+    if (o.gen && typeof o.gen === 'object') d.gen = o.gen;
   } catch {
     /* corrompido: recomeça */
   }

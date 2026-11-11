@@ -126,7 +126,33 @@ const ORE_TAB: [number, number, number, number][] = [
 ];
 
 export class VolGen {
+  /** ilhas no céu: função da máscara (só no tipo "flutuantes") */
+  sky: ((x: number, z: number, out: Float32Array) => void) | null = null;
+  private sk = new Float32Array(2);
+  private lx = NaN;
+  private lz = NaN;
   constructor(readonly seed: number) {}
+  /** densidade das ilhas flutuantes (ou -99) */
+  island(wx: number, wy: number, wz: number, out: { d: number; m: number }): boolean {
+    if (!this.sky) return false;
+    if (wx !== this.lx || wz !== this.lz) {
+      this.lx = wx;
+      this.lz = wz;
+      this.sky(wx, wz, this.sk);
+    }
+    const m = this.sk[0];
+    if (m <= 0) return false;
+    const cy = this.sk[1];
+    const top = cy + m * 5;
+    const bot = cy - m * 26 - noise3(wx / 9, wy / 9, wz / 9, this.seed + 97) * 3;
+    const d = Math.min(top - wy, wy - bot);
+    if (d <= 0) return false;
+    out.d = Math.min(DMAX, d);
+    const dep = top - wy;
+    out.m = dep < 1 ? M.Topo : dep < 3 ? M.Terra : M.Pedra;
+    if (dep > 3 && noise3(wx / 4, wy / 4, wz / 4, this.seed + 98) > 0.76) out.m = wy > 50 ? M.Ouro : M.Ferro;
+    return true;
+  }
   /** fatores por coluna (bocas de caverna, ravinas) */
   column(wx: number, wz: number, out: Float32Array): void {
     const s = this.seed;
@@ -139,6 +165,7 @@ export class VolGen {
   }
   /** densidade (m) e material num ponto; H = altura do terreno na coluna */
   point(wx: number, wy: number, wz: number, H: number, col: Float32Array, desert: boolean, out: { d: number; m: number }): void {
+    if (wy > H + 8 && this.island(wx, wy, wz, out)) return;
     const s = this.seed;
     const depth = H - wy;
     // rocha-mãe ondulada no fundo
@@ -295,7 +322,7 @@ export class VolChunk {
         for (let y = 0; y < SY; y++) {
           const wy = y0 + y;
           const i = sidx(x, y, z);
-          if (wy > H + 2 && _col[1] > 6) {
+          if (wy > H + 2 && _col[1] > 6 && !this.vg.sky) {
             S.d[i] = -127;
             S.m[i] = M.Air;
             continue;
