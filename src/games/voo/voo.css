@@ -403,3 +403,9 @@
 .voo-hud.seated .voo-thr{height:118px}
 .voo-hud.seated .voo-flyb{right:calc(var(--edge-r,12px) + 62px);bottom:calc(var(--edge-b,12px) + 10px)}
 }
+
+/* código/QR: secundário (amigos primeiro) — mas grande quando aberto */
+.vr-more{width:100%}
+.vr-more>summary{cursor:pointer;text-align:center;color:#ffe9b8;font-weight:700;font-size:15px;text-decoration:underline;padding:6px;list-style:none}
+.vr-more>summary::-webkit-details-marker{display:none}
+.vr-more[open] .vr-code b i{font-size:1.25em}

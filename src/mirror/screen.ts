@@ -12,7 +12,9 @@
 import './mirror.css';
 import { audio } from '../core/audio';
 import { pushBack } from '../core/back';
+import { openAppSettings, probeWebGL } from '../core/device';
 import { bus } from '../core/events';
+import { isNative } from '../core/platform';
 import { t } from '../i18n';
 import { openClub, openPass } from '../pass/register';
 import { rewardedAvailable, showRewarded } from '../services/ads';
@@ -22,10 +24,12 @@ import { canRecord, cleanupShared, MAX_REC_MS, Recorder, shareOrSave } from './m
 import { canAdBonus, consumeMirror, FREE_DAILY_MS, flushMirror, fmtLeft, grantAdBonus, mirrorLeftMs, mirrorSave, mirrorUnlimited, setDebugUnlimited, setMirrorPref } from './quota';
 import { composeShot, drawFrame, mirrorAvatar, SCENES, STICKERS, type Expr, type FrameState, type SceneId, type StickerId } from './render';
 import { approach, neutralRig, RIG_KEYS, RigFilter, type Rig, type RigKey } from './rig';
-import type { FaceTracker } from './tracker';
+import type { FaceTracker, TrackDiag } from './tracker';
 import { FREE_VOICES, VoiceFx, VOICES, type MouthFromVoice, type VoiceId } from './voice-fx';
 
 const DEBUG = /[?&]debug\b/.test(location.search);
+/** Configurações (linha escondida "Diagnóstico do espelho") liga o painel na próxima abertura */
+export const DIAG_KEY = 'bloop.mirror.diag';
 
 type Session = 'off' | 'starting' | 'on';
 type Tab = 'voice' | 'scene' | 'sticker';
@@ -100,6 +104,31 @@ let lastShot: Blob | null = null;
 let lastRec: Blob | null = null;
 let msgKey = '';
 
+/** pedido de permissão em andamento (o diálogo do Android esconde o app: não desligar por isso) */
+let asking = 0;
+let micBusy = false;
+let camBusy = false;
+let lastMode: 'cam' | 'mic' = 'cam';
+let camErrLast = '';
+let micErrLast = '';
+/** diagnóstico do rastreador que falhou ao criar (o painel mostra mesmo sem rastreador) */
+let failDiag: TrackDiag | null = null;
+/** quando o rastreador ficou pronto com a câmera ligada (a dica de rosto espera 1,5 s depois disso) */
+let trackOnAt = 0;
+let permToSettings = false;
+let diagOn = false;
+let lastDiag = 0;
+
+/* calibração do rosto neutro: ~2 s de amostras logo que o rosto aparece */
+const CALIB_MS = 2000;
+let calibFrom = 0;
+let calibSamples: Rig[] = [];
+let calib: Rig | null = null;
+const raw: Rig = neutralRig();
+/** piscada detectada fica visível no mínimo ~110 ms (detecção a 15 fps pode pegar 1 quadro só) */
+let blinkHoldL = 0;
+let blinkHoldR = 0;
+
 const expr: Expr = { rig, open: 0, round: 0, wide: 0, sticker: 'none' };
 const frame: FrameState = { t: 0, scene: 'quarto', expr, avatar: mirrorAvatar(), bounce: 0 };
 
@@ -135,6 +164,13 @@ export function openMirror(qualityTier = 2): void {
   raf = requestAnimationFrame(loop);
   refreshUi(true);
   if (DEBUG) installDebug();
+  let diagPref = false;
+  try {
+    diagPref = localStorage.getItem(DIAG_KEY) === '1';
+  } catch {
+    /* sem storage */
+  }
+  setDiag(DEBUG || diagPref);
   if (!m.consent) showConsent();
   else if (mirrorLeftMs() <= 0) showPaywall('time');
   else void startSession('cam');
@@ -147,6 +183,8 @@ export function closeMirror(): boolean {
   tracker?.close();
   tracker = null;
   trackerFailed = false;
+  failDiag = null;
+  diagOn = false;
   for (const o of offs) o();
   offs = [];
   document.removeEventListener('visibilitychange', onVis);
@@ -164,8 +202,17 @@ export function closeMirror(): boolean {
 function onVis(): void {
   if (!document.hidden) {
     audio.suspend(); // o app religa a música ao voltar; aqui ela fica muda
+    // voltou das Configurações do Android com o cartão de permissão aberto: tenta de novo sozinho
+    const card = root?.querySelector('.mr-perm');
+    if (card && permToSettings) {
+      permToSettings = false;
+      const kind = (card as HTMLElement).dataset.kind as PermKind;
+      card.closest('.mr-sheet-bg')?.remove();
+      void retryPerm(kind);
+    }
     return;
   }
+  if (asking > 0) return; // diálogo de permissão do Android por cima: quem pediu decide
   // câmera/microfone NUNCA ficam ligados com o app em segundo plano
   // ('starting': o pedido de permissão do Android pausa o app; stillWanted decide quando ele responder)
   if (session === 'on') {
@@ -206,12 +253,15 @@ function build(): void {
       </div>
       <div class="mr-chips"></div>
       <div class="mr-actions">
-        <button class="mr-act" data-a="shot" aria-label="${t('mirror.photo', 'Foto')}">${icon('camera', { size: 32 })}</button>
+        <button class="mr-tog" data-a="camtog" aria-pressed="false" aria-label="${t('mirror.camToggle', 'Ligar ou desligar a câmera')}"><span class="c">${icon('camera', { size: 30 })}<i class="slash"></i></span><small>${t('mirror.camShort', 'Câmera')}</small></button>
+        <button class="mr-tog" data-a="mic" aria-pressed="false" aria-label="${t('mirror.micToggle', 'Ligar ou desligar o microfone')}"><span class="c">${icon('mic', { size: 32 })}<i class="slash"></i></span><small>${t('mirror.micShort', 'Microfone')}</small></button>
         <button class="mr-rec" data-a="rec" aria-label="${t('mirror.record', 'Gravar vídeo')}"><svg class="ring" viewBox="0 0 76 76"><circle cx="38" cy="38" r="35" fill="none" stroke="#ff3d6e" stroke-width="4" stroke-dasharray="220" stroke-dashoffset="220"/></svg><i></i><b>0:00</b></button>
-        <button class="mr-act" data-a="pip" aria-label="${t('mirror.preview', 'Ver câmera')}">${icon('user', { size: 30 })}</button>
+        <button class="mr-act" data-a="shot" aria-label="${t('mirror.photo', 'Foto')}"><span class="c">${icon('photo', { size: 30 })}</span><small>${t('mirror.photo', 'Foto')}</small></button>
+        <button class="mr-act" data-a="pip" aria-label="${t('mirror.preview', 'Ver câmera')}"><span class="c">${icon('user', { size: 28 })}</span><small>${t('mirror.previewShort', 'Eu')}</small></button>
       </div>
     </div>
-    <div class="mr-flash"></div>`;
+    <div class="mr-flash"></div>
+    <div class="mr-diag" hidden></div>`;
   document.body.appendChild(root);
   cv = $<HTMLCanvasElement>('.mr-cv');
   const base = tier <= 0 ? 360 : tier === 1 ? 432 : 540;
@@ -223,6 +273,8 @@ function build(): void {
   cx = cv.getContext('2d')!;
   video = $<HTMLVideoElement>('.mr-pip');
   root.addEventListener('click', onClick);
+  // segurar a dica (ou o indicador da câmera) ~0,7 s abre o diagnóstico
+  for (const sel of ['.mr-msg', '.mr-cam span']) longPress($(sel), () => setDiag(!diagOn));
   root.addEventListener('scroll', () => root && (root.scrollTop = root.scrollLeft = 0));
 }
 
@@ -250,11 +302,32 @@ function onClick(e: MouseEvent): void {
     case 'shot':
       void takeShot();
       break;
+    case 'mic':
+      void setMic(!micStream);
+      break;
+    case 'camtog':
+      void setCam(!camStream);
+      break;
+    case 'diag-close':
+      setDiag(false);
+      try {
+        localStorage.removeItem(DIAG_KEY);
+      } catch {
+        /* sem storage */
+      }
+      break;
+    case 'diag-send':
+      void sendDiag();
+      break;
+    case 'diag-retry':
+      void restartTracker();
+      break;
     case 'rec':
       toggleRec();
       break;
     case 'pip':
-      video.classList.toggle('on');
+      // escondido com opacidade (não display:none): alguns WebViews param de atualizar <video> invisível
+      video.classList.toggle('hide');
       break;
   }
 }
@@ -265,7 +338,10 @@ function pick(v: string): void {
     if (!voiceAllowed(id)) return showPaywall('voice');
     setMirrorPref('voice', id);
     fx?.setVoice(id);
-    if (!fx) notify(t('mirror.voiceNoMic', 'Ligue o microfone para usar as vozes.'), { icon: 'sound' });
+    if (!fx) {
+      notify(t('mirror.voiceNoMic', 'Ligue o microfone para usar as vozes.'), { icon: 'mic' });
+      if (!micBusy) void setMic(true);
+    }
   } else if (tab === 'scene') {
     frame.scene = v as SceneId;
     setMirrorPref('scene', v);
@@ -301,6 +377,15 @@ function refreshUi(full = false): void {
     const left = mirrorLeftMs();
     tm.className = 'mr-time' + (left < 30_000 ? ' low' : '');
     tm.innerHTML = `${icon('clock', { size: 16 })}<span>${fmtLeft(left)}</span>`;
+  }
+  for (const [sel, on, busy] of [
+    ['[data-a="mic"]', micOn, micBusy],
+    ['[data-a="camtog"]', camOn, camBusy],
+  ] as const) {
+    const b = $(sel);
+    b.classList.toggle('on', on);
+    b.classList.toggle('busy', busy || session === 'starting');
+    b.setAttribute('aria-pressed', String(on));
   }
   const recEl = $('.mr-rec');
   recEl.classList.toggle('on', rec.active);
@@ -411,82 +496,139 @@ function showPaywall(why: 'time' | 'voice'): void {
 function errName(e: unknown): string {
   return (e as { name?: string })?.name ?? 'Error';
 }
+const isDenied = (e: string): boolean => e === 'NotAllowedError' || e === 'SecurityError' || e === 'PermissionDeniedError';
+
+/** Pede a câmera frontal. Devolve '' ou o nome do erro. */
+async function openCam(): Promise<string> {
+  const md = navigator.mediaDevices;
+  asking++;
+  try {
+    if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
+    camStream = await md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } }, audio: false });
+    camErrLast = '';
+    return '';
+  } catch (e) {
+    camStream = null;
+    console.warn('[espelho] câmera', e);
+    return (camErrLast = errName(e));
+  } finally {
+    asking--;
+  }
+}
+
+/** Pede o microfone (pedido SEPARADO: no Android o WebView nega tudo se uma das permissões for negada). */
+async function openMic(): Promise<string> {
+  const md = navigator.mediaDevices;
+  asking++;
+  try {
+    if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
+    micStream = await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
+    micErrLast = '';
+    return '';
+  } catch (e) {
+    micStream = null;
+    console.warn('[espelho] microfone', e);
+    return (micErrLast = errName(e));
+  } finally {
+    asking--;
+  }
+}
+
+/** Liga o vídeo e o rastreador. Devolve '' ou 'model' (sem rastreamento: a câmera é desligada). */
+async function attachCam(token: number): Promise<string | null> {
+  if (!camStream) return '';
+  video.srcObject = camStream;
+  video.classList.add('on');
+  await video.play().catch(() => {});
+  if (!tracker && !trackerFailed) {
+    $('.mr-loading').classList.add('on');
+    try {
+      const mod = await import('./tracker');
+      const tr = await mod.createFaceTracker();
+      if (!root) tr.close();
+      else {
+        tracker = tr;
+        tr.onResult = onTrack;
+        failDiag = null;
+      }
+    } catch (e) {
+      console.warn('[espelho] rastreamento indisponível', e);
+      failDiag = (e as { diag?: TrackDiag }).diag ?? null;
+      if (failDiag && !failDiag.lastError) failDiag.lastError = String((e as Error)?.message ?? e);
+      trackerFailed = true;
+    }
+    root?.querySelector('.mr-loading')?.classList.remove('on');
+    if (!(await stillWanted(token))) return null;
+  }
+  if (!tracker) {
+    stopCam();
+    return 'model';
+  }
+  trackOnAt = performance.now();
+  resetCalib();
+  return '';
+}
+
+function attachMic(): void {
+  if (!micStream || fx) return;
+  fx = new VoiceFx(micStream);
+  const v = mirrorSave().voice as VoiceId;
+  fx.setVoice(VOICES.includes(v) && voiceAllowed(v) ? v : 'normal');
+  void fx.resume();
+}
+
+function stopCam(): void {
+  camStream?.getTracks().forEach((tr) => tr.stop());
+  camStream = null;
+  if (video) {
+    video.srcObject = null;
+    video.classList.remove('on');
+  }
+  faceAt = 0;
+}
+
+function stopMic(): void {
+  if (rec.active) rec.stop(); // a gravação usa a trilha do microfone
+  fx?.dispose();
+  fx = null;
+  micStream?.getTracks().forEach((tr) => tr.stop());
+  micStream = null;
+}
 
 async function startSession(mode: 'cam' | 'mic'): Promise<void> {
   if (!root || session !== 'off') return;
   if (mirrorLeftMs() <= 0) return showPaywall('time');
+  lastMode = mode;
   const token = ++sessionToken;
   session = 'starting';
   showMsg('', null);
   refreshUi();
-  const md = navigator.mediaDevices;
-  let camErr = '';
-  let micErr = '';
-  // pedidos SEPARADOS: no Android o WebView nega tudo se uma das permissões for negada
-  if (mode === 'cam') {
-    try {
-      if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
-      camStream = await md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 30, max: 30 } }, audio: false });
-    } catch (e) {
-      camErr = errName(e);
-      camStream = null;
-    }
-  }
+  const wantMic = mode === 'mic' || mirrorSave().mic;
+  let camErr = mode === 'cam' ? await openCam() : '';
   if (!(await stillWanted(token))) return;
-  try {
-    if (!md?.getUserMedia) throw Object.assign(new Error('x'), { name: 'NotFoundError' });
-    micStream = await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
-  } catch (e) {
-    micErr = errName(e);
-    micStream = null;
-  }
+  const micErr = wantMic ? await openMic() : '';
   if (!(await stillWanted(token))) return;
-
   if (camStream) {
-    video.srcObject = camStream;
-    video.classList.add('on');
-    await video.play().catch(() => {});
-    if (!tracker && !trackerFailed) {
-      $('.mr-loading').classList.add('on');
-      try {
-        const mod = await import('./tracker');
-        const tr = await mod.createFaceTracker();
-        if (!root) tr.close();
-        else {
-          tracker = tr;
-          tr.onResult = onTrack;
-        }
-      } catch (e) {
-        console.warn('[espelho] rastreamento indisponível', e);
-        trackerFailed = true;
-      }
-      root?.querySelector('.mr-loading')?.classList.remove('on');
-      if (!(await stillWanted(token))) return;
-    }
-    if (!tracker) {
-      // sem modelo: a câmera não serve para nada → desliga já
-      camStream.getTracks().forEach((tr) => tr.stop());
-      camStream = null;
-      video.srcObject = null;
-      video.classList.remove('on');
-      camErr = 'model';
-    }
+    const r = await attachCam(token);
+    if (r === null) return;
+    camErr = r;
   }
-  if (micStream) {
-    fx = new VoiceFx(micStream);
-    const v = mirrorSave().voice as VoiceId;
-    fx.setVoice(VOICES.includes(v) && voiceAllowed(v) ? v : 'normal');
-    await fx.resume();
-  }
+  attachMic();
   if (!camStream && !micStream) {
     session = 'off';
-    const denied = camErr === 'NotAllowedError' || micErr === 'NotAllowedError' || camErr === 'SecurityError';
-    showMsg(
-      'none',
-      denied
-        ? t('mirror.err.denied', 'Sem permissão de câmera e microfone. Dá para permitir nas configurações do aparelho.')
-        : t('mirror.err.none', 'Não achamos câmera nem microfone neste aparelho.'),
-    );
+    if (isDenied(camErr) || isDenied(micErr)) {
+      showMsg(
+        'none',
+        isDenied(camErr) && isDenied(micErr)
+          ? t('mirror.err.denied', 'Sem permissão de câmera e microfone. Dá para permitir nas configurações do aparelho.')
+          : isDenied(camErr)
+            ? t('mirror.err.camBlocked', 'Câmera bloqueada. Permita a câmera e toque em Ligar.')
+            : t('mirror.err.micBlocked', 'Microfone bloqueado. Permita o microfone e toque nele de novo.'),
+      );
+      showPerm(isDenied(camErr) && isDenied(micErr) ? 'both' : isDenied(camErr) ? 'cam' : 'mic');
+    } else if (camErr === 'model') showMsg('cam', t('mirror.err.modelMic', 'Não deu para ler o rosto neste aparelho. Ligue o microfone e o Bloop segue a sua voz.'));
+    else if (camErr === 'NotReadableError' || micErr === 'NotReadableError') showMsg('none', t('mirror.err.busy', 'A câmera ou o microfone está sendo usado por outro app. Feche o outro app e toque em Ligar.'));
+    else showMsg('none', t('mirror.err.none', 'Não achamos câmera nem microfone neste aparelho.'));
     refreshUi(true);
     return;
   }
@@ -499,12 +641,148 @@ async function startSession(mode: 'cam' | 'mic'): Promise<void> {
       'cam',
       camErr === 'model'
         ? t('mirror.err.model', 'Não deu para ler o rosto neste aparelho: o Bloop segue só a sua voz.')
-        : camErr === 'NotAllowedError' || camErr === 'SecurityError'
+        : isDenied(camErr)
           ? t('mirror.err.camDenied', 'Câmera bloqueada: o Bloop segue só a sua voz. Dá para permitir nas configurações do aparelho.')
           : t('mirror.err.noCam', 'Sem câmera aqui: o Bloop segue só a sua voz.'),
     );
-  } else if (!micStream) showMsg('mic', t('mirror.err.mic', 'Microfone desligado: as vozes e o som dos vídeos não funcionam.'));
+    if (isDenied(camErr)) showPerm('cam');
+  } else if (wantMic && !micStream) {
+    showMsg('mic', t('mirror.err.mic', 'Microfone desligado: as vozes e o som dos vídeos não funcionam.'));
+    if (isDenied(micErr)) showPerm('mic');
+  }
   refreshUi(true);
+}
+
+/** Botão do microfone: liga/desliga só o microfone (a câmera continua como está). */
+async function setMic(on: boolean): Promise<void> {
+  if (!root || micBusy) return;
+  if (!on) {
+    stopMic();
+    setMirrorPref('mic', false);
+    if (session === 'on' && !camStream) {
+      stopSession();
+      showMsg('off', t('mirror.msg.off', 'Câmera e microfone desligados.'));
+    }
+    refreshUi(true);
+    return;
+  }
+  setMirrorPref('mic', true);
+  if (session === 'off') return void startSession('mic');
+  if (session !== 'on' || micStream) return;
+  micBusy = true;
+  refreshUi();
+  const token = sessionToken;
+  const err = await openMic();
+  micBusy = false;
+  const got = micStream as MediaStream | null;
+  if (!(await stillOn(token))) {
+    got?.getTracks().forEach((tr) => tr.stop());
+    micStream = null;
+    return;
+  }
+  if (got) {
+    attachMic();
+    if (msgKey === 'mic') showMsg('', null);
+    notify(t('mirror.micOn', 'Microfone ligado: fale e o Bloop fala junto!'), { icon: 'mic', kind: 'good' });
+  } else if (isDenied(err)) showPerm('mic');
+  else notify(err === 'NotReadableError' ? t('mirror.err.micBusy', 'O microfone está sendo usado por outro app.') : t('mirror.err.noMic', 'Não achamos um microfone neste aparelho.'), { icon: 'warning', kind: 'warn' });
+  refreshUi(true);
+}
+
+/** Botão da câmera: liga/desliga só a câmera (o microfone continua como está). */
+async function setCam(on: boolean): Promise<void> {
+  if (!root || camBusy) return;
+  if (!on) {
+    stopCam();
+    if (session === 'on' && !micStream) {
+      stopSession();
+      showMsg('off', t('mirror.msg.off', 'Câmera e microfone desligados.'));
+    } else if (msgKey === 'face') showMsg('', null);
+    refreshUi(true);
+    return;
+  }
+  if (session === 'off') return void startSession('cam');
+  if (session !== 'on' || camStream) return;
+  lastMode = 'cam';
+  camBusy = true;
+  refreshUi();
+  const token = sessionToken;
+  const err = await openCam();
+  if (!(await stillOn(token))) {
+    camBusy = false;
+    stopCam();
+    return;
+  }
+  const r = camStream ? await attachCam(token) : err;
+  camBusy = false;
+  if (r === null) return;
+  if (!camStream) {
+    if (isDenied(r)) showPerm('cam');
+    else if (r === 'model') showMsg('cam', t('mirror.err.model', 'Não deu para ler o rosto neste aparelho: o Bloop segue só a sua voz.'));
+    else notify(r === 'NotReadableError' ? t('mirror.err.camBusy', 'A câmera está sendo usada por outro app.') : t('mirror.err.noCam', 'Sem câmera aqui: o Bloop segue só a sua voz.'), { icon: 'warning', kind: 'warn' });
+  } else if (msgKey === 'cam') showMsg('', null);
+  refreshUi(true);
+}
+
+/** O pedido no meio da sessão terminou: a sessão ainda é a mesma e o app está na frente? */
+async function stillOn(token: number): Promise<boolean> {
+  if (document.hidden) await waitVisible(1500);
+  if (root && token === sessionToken && session === 'on' && !document.hidden) return true;
+  if (root && session === 'on' && document.hidden) stopSession();
+  return false;
+}
+
+/* ============================== permissão negada ============================== */
+
+type PermKind = 'cam' | 'mic' | 'both';
+
+function showPerm(kind: PermKind): void {
+  if (!root) return;
+  root.querySelector('.mr-perm')?.closest('.mr-sheet-bg')?.remove();
+  const what =
+    kind === 'cam'
+      ? t('mirror.perm.cam', 'O Bloop precisa da câmera para copiar o seu rosto.')
+      : kind === 'mic'
+        ? t('mirror.perm.mic', 'O Bloop precisa do microfone para as vozes e o som dos vídeos.')
+        : t('mirror.perm.both', 'O Bloop precisa da câmera e do microfone.');
+  const thing = kind === 'mic' ? t('mirror.perm.stepMic', 'Microfone') : kind === 'cam' ? t('mirror.perm.stepCam', 'Câmera') : t('mirror.perm.stepBoth', 'Câmera e Microfone');
+  const bg = sheet(
+    'mr-perm',
+    `<div class="mr-perm-ic">${icon(kind === 'mic' ? 'mic' : 'camera', { size: 52 })}${kind === 'both' ? icon('mic', { size: 40 }) : ''}</div>
+    <h2>${t('mirror.perm.title', 'Falta a sua permissão')}</h2>
+    <p>${what}</p>
+    <ol class="mr-steps" aria-hidden="true"><li>${icon('gear', { size: 30 })}</li><li>${icon('lock', { size: 30 })}</li><li>${icon(kind === 'mic' ? 'mic' : 'camera', { size: 30 })}</li><li>${icon('check', { size: 30 })}</li></ol>
+    <p class="mr-path">${t('mirror.perm.step1', 'Configurações')} › ${t('mirror.perm.step2', 'Permissões')} › ${thing} › ${t('mirror.perm.step4', 'Permitir')}</p>
+    ${isNative ? `<button class="mr-btn main" data-p="settings">${icon('gear')}${t('mirror.perm.open', 'Abrir configurações')}</button>` : ''}
+    <button class="mr-btn${isNative ? '' : ' main'}" data-p="retry">${icon('refresh')}${t('mirror.perm.retry', 'Tentar de novo')}</button>
+    <button class="mr-btn ghost" data-p="no">${t('mirror.perm.later', 'Agora não')}</button>
+    <small>${t('mirror.perm.note', 'Tudo fica só no seu celular: nada da câmera ou do microfone é enviado.')}</small>`,
+  );
+  (bg.firstElementChild as HTMLElement).dataset.kind = kind;
+  bg.addEventListener('click', async (e) => {
+    const p = (e.target as HTMLElement).closest<HTMLElement>('[data-p]')?.dataset.p;
+    if (!p) return;
+    e.stopPropagation();
+    if (p === 'no') return void bg.remove();
+    if (p === 'retry') {
+      bg.remove();
+      return void retryPerm(kind);
+    }
+    permToSettings = true;
+    if (!(await openAppSettings())) {
+      permToSettings = false;
+      notify(t('mirror.perm.manual', 'Abra Configurações > Apps > Bloop World > Permissões e permita.'), { icon: 'gear' });
+    }
+  });
+}
+
+async function retryPerm(kind: PermKind): Promise<void> {
+  if (!root) return;
+  if (kind !== 'cam') setMirrorPref('mic', true);
+  if (session === 'off') return startSession(kind === 'mic' && lastMode === 'mic' ? 'mic' : kind === 'mic' ? lastMode : 'cam');
+  if (session !== 'on') return;
+  if (kind !== 'mic' && !camStream) await setCam(true);
+  if (kind !== 'cam' && !micStream) await setMic(true);
 }
 
 /** O diálogo de permissão do Android pausa o app: espera um pouco ele voltar antes de decidir. */
@@ -528,15 +806,8 @@ async function stillWanted(token: number): Promise<boolean> {
 function stopSession(): void {
   sessionToken++;
   if (rec.active) rec.stop();
-  camStream?.getTracks().forEach((tr) => tr.stop());
-  micStream?.getTracks().forEach((tr) => tr.stop());
-  camStream = micStream = null;
-  if (video) {
-    video.srcObject = null;
-    video.classList.remove('on');
-  }
-  fx?.dispose();
-  fx = null;
+  stopCam();
+  stopMic();
   session = 'off';
   flushMirror();
   root?.querySelector('.mr-loading')?.classList.remove('on');
@@ -546,17 +817,83 @@ function stopSession(): void {
 /* ============================== laço ============================== */
 
 /** canais que precisam responder rápido (piscar, boca) */
-const FAST: Partial<Record<RigKey, boolean>> = { blinkL: true, blinkR: true, jaw: true, round: true, wide: true };
+const FAST: Partial<Record<RigKey, boolean>> = { blinkL: true, blinkR: true, jaw: true, round: true, wide: true, smileL: true, smileR: true };
+
+/** O rastreador tentou tudo e desistiu no meio da sessão: câmera desliga (não serve para nada), segue a voz. */
+function trackerGaveUp(): void {
+  if (!tracker) return;
+  failDiag = tracker.diag;
+  tracker.close();
+  tracker = null;
+  trackerFailed = true;
+  stopCam();
+  const mic = !!micStream;
+  if (session === 'on' && !mic) stopSession();
+  showMsg('cam', mic ? t('mirror.err.model', 'Não deu para ler o rosto neste aparelho: o Bloop segue só a sua voz.') : t('mirror.err.modelMic', 'Não deu para ler o rosto neste aparelho. Ligue o microfone e o Bloop segue a sua voz.'));
+  refreshUi(true);
+}
+
+/* ---- calibração do rosto neutro ---- */
+/** canais 0..1: o neutro vira 0 e o resto é reescalado; teto = quanto o "neutro" pode descontar no máximo */
+const CAL_POS: Partial<Record<RigKey, number>> = { blinkL: 0.35, blinkR: 0.35, jaw: 0.2, smileL: 0.3, smileR: 0.3, frown: 0.3, round: 0.3, wide: 0.3, cheek: 0.3, browInner: 0.3 };
+/** canais com sinal (sobrancelhas, olhar, cabeça): só desconta o deslocamento */
+const CAL_SIGNED: Partial<Record<RigKey, number>> = { browL: 0.3, browR: 0.3, lookX: 0.3, lookY: 0.3, yaw: 0.2, pitch: 0.35, roll: 0.2 };
+
+function resetCalib(): void {
+  calibFrom = 0;
+  calibSamples = [];
+  calib = null;
+}
+
+function quantile(a: number[], p: number): number {
+  const s = [...a].sort((x, y) => x - y);
+  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))];
+}
+
+/** Junta amostras por ~2 s; o neutro de cada canal é um valor BAIXO (percentil 25) — se a criança
+ *  sorriu ou abriu a boca durante a calibração, isso não vira o "neutro". */
+function feedCalib(r: Rig, now: number): void {
+  if (calib) return;
+  if (!calibFrom) calibFrom = now;
+  calibSamples.push({ ...r });
+  if (now - calibFrom < CALIB_MS || calibSamples.length < 8) return;
+  const c = neutralRig();
+  for (const k of RIG_KEYS) {
+    const vals = calibSamples.map((x) => x[k]);
+    const pos = CAL_POS[k];
+    const sg = CAL_SIGNED[k];
+    if (pos !== undefined) c[k] = Math.min(pos, quantile(vals, 0.25));
+    else if (sg !== undefined) c[k] = Math.max(-sg, Math.min(sg, quantile(vals, 0.5)));
+  }
+  calib = c;
+  calibSamples = [];
+}
+
+function applyCalib(r: Rig): void {
+  if (!calib) return;
+  for (const k of RIG_KEYS) {
+    const b = calib[k];
+    if (!b) continue;
+    if (CAL_POS[k] !== undefined) r[k] = Math.max(0, Math.min(1, (r[k] - b) / (1 - b)));
+    else r[k] = r[k] - b;
+  }
+}
 
 /** resultado de uma detecção (chega fora do rAF; do worker ou de uma tarefa depois do quadro) */
 function onTrack(found: boolean, r: Rig, costMs: number): void {
   detectMs = detectMs ? detectMs * 0.8 + costMs * 0.2 : costMs;
   if (!found || debugFace) return;
   const t = performance.now();
+  Object.assign(raw, r);
+  feedCalib(raw, t);
+  applyCalib(raw);
+  // piscada: mesmo pega em 1 quadro só, aparece inteira por ~110 ms
+  if (raw.blinkL > 0.5) blinkHoldL = t + 110;
+  if (raw.blinkR > 0.5) blinkHoldR = t + 110;
   const gap = lastRes ? (t - lastRes) / 1000 : 1 / 15;
   lastRes = t;
   faceAt = t;
-  filter.apply(r, tgt, gap);
+  filter.apply(raw, tgt, gap);
 }
 
 function loop(now: number): void {
@@ -576,11 +913,11 @@ function loop(now: number): void {
     }
   }
 
-  // rastreamento: o quadro reduzido vai para o worker (ou roda depois deste quadro);
-  // ~12–20 por segundo conforme a qualidade, mais devagar se o aparelho não der conta.
-  const hz = tier <= 0 ? 12 : tier === 1 ? 15 : 20;
-  const interval = Math.max(1000 / hz, detectMs * 1.2);
-  faceGrace = Math.max(600, interval * 2.5);
+  // rastreamento: o quadro reduzido (256–320 px) vai para o worker (ou roda depois deste quadro);
+  // 15–24 por segundo conforme a qualidade, mais devagar se o aparelho não der conta.
+  const hz = tier <= 0 ? 15 : tier === 1 ? 18 : 24;
+  const interval = Math.max(1000 / hz, detectMs * 1.15);
+  faceGrace = Math.min(1500, Math.max(450, interval * 2.5));
   if (debugFace) {
     filter.apply(debugFace, tgt, dt);
     faceAt = now;
@@ -588,12 +925,19 @@ function loop(now: number): void {
     lastDetect = now;
     const vw = video.videoWidth || 640;
     const vh = video.videoHeight || 480;
-    const sw = tier <= 0 ? 224 : 256;
-    tracker.submit(video, sw, Math.round((sw * vh) / vw), now);
+    const sw = tier <= 1 ? 256 : 320;
+    tracker.submit(video, sw, Math.round((sw * vh) / vw / 2) * 2, now);
+  } else if (tracker && camStream && tracker.busy) {
+    // deixa o rastreador perceber resposta perdida (troca de modo sozinho)
+    tracker.submit(video, 0, 0, now);
   }
-  if (faceAt > 0 && now - faceAt <= faceGrace) {
+  if (tracker && tracker.diag.stage === 'failed') trackerGaveUp();
+  const faceLive = faceAt > 0 && now - faceAt <= faceGrace;
+  if (faceLive) {
     // entre detecções o Bloop desliza até o último alvo (60 fps, sem degraus)
-    for (const k of RIG_KEYS) rig[k] = approach(rig[k], tgt[k], FAST[k] ? 40 : 22, dt);
+    for (const k of RIG_KEYS) rig[k] = approach(rig[k], tgt[k], FAST[k] ? 45 : 26, dt);
+    if (now < blinkHoldL) rig.blinkL = Math.max(rig.blinkL, 0.95);
+    if (now < blinkHoldR) rig.blinkR = Math.max(rig.blinkR, 0.95);
   } else {
     // sem rosto: volta ao neutro, pisca sozinho e balança de leve (modo só microfone fica vivo)
     for (const k of RIG_KEYS) rig[k] = approach(rig[k], 0, 5, dt);
@@ -608,18 +952,18 @@ function loop(now: number): void {
     filter.reset();
     lastRes = 0;
   }
+  // dica "mostre seu rosto": some assim que o rosto aparece; volta só depois de ~1,5 s sem rosto
   if (camStream && tracker && session === 'on') {
-    if (now - faceAt > 2500) {
-      if (!msgKey) showMsg('face', t('mirror.msg.face', 'Mostre seu rosto para a câmera, com o rosto bem iluminado.'));
-    } else if (msgKey === 'face') showMsg('', null);
-  }
+    if (faceLive) {
+      if (msgKey === 'face') showMsg('', null);
+    } else if (!msgKey && now - Math.max(faceAt, trackOnAt) > 1500) showMsg('face', t('mirror.msg.face', 'Mostre seu rosto para a câmera, com o rosto bem iluminado.'));
+  } else if (msgKey === 'face') showMsg('', null);
 
-  // voz → boca
+  // voz → boca: SÓ quando o rosto não está sendo seguido (reserva, nunca mistura com o rosto)
   const level = fx ? fx.poll(vm) : ((vm.open *= 0.8), (vm.round *= 0.8), (vm.wide *= 0.8), 0);
-  const faceLive = now - faceAt < faceGrace;
-  expr.open = Math.max(rig.jaw, vm.open * (faceLive ? 0.55 : 1));
-  expr.round = Math.max(rig.round, faceLive ? 0 : vm.round);
-  expr.wide = Math.max(rig.wide, faceLive ? 0 : vm.wide);
+  expr.open = faceLive ? rig.jaw : Math.max(rig.jaw, vm.open);
+  expr.round = faceLive ? rig.round : Math.max(rig.round, vm.round);
+  expr.wide = faceLive ? rig.wide : Math.max(rig.wide, vm.wide);
   // pulinho ao falar (mola)
   if (level - prevLevel > 0.22) bounceV += 3.2;
   prevLevel = level;
@@ -637,6 +981,10 @@ function loop(now: number): void {
   if (now - lastUi > 250) {
     lastUi = now;
     refreshUi();
+  }
+  if (diagOn && now - lastDiag > 500) {
+    lastDiag = now;
+    renderDiag();
   }
 }
 
@@ -701,6 +1049,119 @@ function showResult(blob: Blob, kind: 'photo' | 'video'): void {
   });
 }
 
+/* ============================== diagnóstico ============================== */
+
+/** segurar ~0,7 s */
+function longPress(el: HTMLElement, fn: () => void): void {
+  let timer = 0;
+  const cancel = (): void => clearTimeout(timer);
+  el.addEventListener('pointerdown', () => {
+    cancel();
+    timer = window.setTimeout(fn, 700);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, cancel);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+function setDiag(on: boolean): void {
+  if (!root) return;
+  diagOn = on;
+  const el = $('.mr-diag');
+  el.hidden = !on;
+  if (on) renderDiag();
+}
+
+let gpuName: string | null = null;
+function gpu(): string {
+  if (gpuName === null) {
+    try {
+      gpuName = probeWebGL().gpu || '?';
+    } catch {
+      gpuName = '?';
+    }
+  }
+  return gpuName;
+}
+
+const yn = (v: boolean): string => (v ? t('mirror.diag.yes', 'sim') : t('mirror.diag.no', 'não'));
+
+/** Linhas do diagnóstico (só dados técnicos: nada de imagem, som ou rosto). */
+function diagLines(): [string, string][] {
+  const d = tracker?.diag ?? failDiag;
+  const now = performance.now();
+  const ua = navigator.userAgent;
+  const chrome = /Chrome\/([\d.]+)/.exec(ua)?.[1] ?? '?';
+  const android = /Android ([\d.]+)/.exec(ua)?.[1];
+  const L: [string, string][] = [
+    [t('mirror.diag.where', 'Onde roda'), d ? `${d.where} · ${d.delegate} · ${d.stage}` : tracker ? '-' : trackerFailed ? 'falhou' : '-'],
+    [t('mirror.diag.model', 'Modelo carregado'), d ? `${yn(d.model)}${d.model ? ` (${(d.loadMs / 1000).toFixed(1)} s)` : ''}` : yn(false)],
+    [t('mirror.diag.fps', 'Detecção'), d ? `${d.detFps.toFixed(1)} fps · ${Math.round(d.costMs)} ms · ${d.inW}×${d.inH}${d.rvfc ? ' · rVFC' : ''}` : '-'],
+    [t('mirror.diag.count', 'Quadros'), d ? `${d.sent} → ${d.results} · ${t('mirror.diag.faces', 'rostos')} ${d.faces} · ${t('mirror.diag.errors', 'erros')} ${d.errors}` : '-'],
+    [t('mirror.diag.face', 'Rosto agora'), faceAt > 0 ? `${yn(now - faceAt <= faceGrace)} (${((now - faceAt) / 1000).toFixed(1)} s)` : yn(false)],
+    [t('mirror.diag.calib', 'Calibrado'), yn(!!calib)],
+    [t('mirror.diag.image', 'Imagem'), d && d.luma >= 0 ? `luz ${d.luma.toFixed(2)} · contraste ${d.spread.toFixed(2)} · ${d.video}` : video?.videoWidth ? `${video.videoWidth}x${video.videoHeight} rs${video.readyState}` : '-'],
+    [t('mirror.diag.cam', 'Câmera'), camStream ? yn(true) : camErrLast || yn(false)],
+    [t('mirror.diag.mic', 'Microfone'), micStream ? yn(true) : micErrLast || yn(false)],
+    [t('mirror.diag.error', 'Último erro'), d?.lastError || '-'],
+    ['GPU', gpu()],
+    ['WebView', `Chrome ${chrome}${android ? ` · Android ${android}` : ''} · WebGL ${d?.webgl ?? '?'} · SIMD ${d?.simd ?? '?'} · ${navigator.hardwareConcurrency || '?'} cpu`],
+    ['App', `v${__APP_VERSION__} · ${tier}`],
+  ];
+  if (d?.log.length) L.push([t('mirror.diag.log', 'Histórico'), d.log.join('\n')]);
+  return L;
+}
+
+function renderDiag(): void {
+  if (!root) return;
+  const el = $('.mr-diag');
+  const esc = (v: string): string => v.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+  el.innerHTML = `<div class="mr-diag-h"><b>${t('mirror.diag.title', 'Diagnóstico do espelho')}</b><button data-a="diag-close" aria-label="${t('mirror.back', 'Voltar')}">${icon('close', { size: 18 })}</button></div>
+    <dl>${diagLines()
+      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`)
+      .join('')}</dl>
+    <div class="mr-diag-b"><button data-a="diag-retry">${icon('refresh', { size: 16 })}${t('mirror.diag.retry', 'Recarregar rosto')}</button><button data-a="diag-send">${icon('mail', { size: 16 })}${t('mirror.diag.send', 'Enviar diagnóstico')}</button></div>`;
+}
+
+/** Reinicia o rastreador do zero (depois de trocar algo no aparelho ou para medir de novo). */
+async function restartTracker(): Promise<void> {
+  if (!root) return;
+  tracker?.close();
+  tracker = null;
+  trackerFailed = false;
+  failDiag = null;
+  if (session === 'off') return startSession('cam');
+  if (session !== 'on') return;
+  if (!camStream) return setCam(true);
+  const r = await attachCam(sessionToken);
+  if (r === 'model') showMsg('cam', t('mirror.err.model', 'Não deu para ler o rosto neste aparelho: o Bloop segue só a sua voz.'));
+  refreshUi(true);
+}
+
+/** Manda o diagnóstico (anônimo: sem nome/ID, sem imagem/som) pelo canal de relatórios do Beta. */
+async function sendDiag(): Promise<void> {
+  try {
+    const { collectContext, submitReport } = await import('../services/feedback');
+    const text = '[espelho-diag]\n' + diagLines()
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n');
+    const d = tracker?.diag ?? failDiag;
+    const r = await submitReport({
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      pid: '',
+      name: '',
+      handle: '',
+      category: 'other',
+      text: text.slice(0, 1000),
+      ctx: collectContext(),
+      errors: (d?.log ?? []).map((m) => ({ t: Date.now(), kind: 'console' as const, msg: m.slice(0, 400) })),
+      t: Date.now(),
+    });
+    notify(r === 'sent' ? t('mirror.diag.sent', 'Diagnóstico enviado. Obrigado!') : t('mirror.diag.queued', 'Sem internet: o diagnóstico vai quando ela voltar.'), { icon: 'check', kind: 'good' });
+  } catch {
+    notify(t('mirror.shareFail', 'Não deu para salvar agora.'), { icon: 'warning', kind: 'bad' });
+  }
+}
+
 /* ============================== depuração (?debug) ============================== */
 
 function installDebug(): void {
@@ -715,6 +1176,14 @@ function installDebug(): void {
       setDebugUnlimited(v);
       onEntitlement();
     },
+    /** simula resultados do rastreador (testa a dica e a calibração sem rosto de verdade) */
+    track(found: boolean, p: Partial<Rig> = {}) {
+      onTrack(found, { ...neutralRig(), ...p }, 30);
+    },
+    trackOnAt: () => trackOnAt,
+    perm(kind: PermKind) {
+      showPerm(kind);
+    },
     burn(ms: number) {
       consumeMirror(ms);
     },
@@ -723,7 +1192,9 @@ function installDebug(): void {
       cam: !!camStream,
       mic: !!micStream,
       tracker: tracker?.delegate ?? (trackerFailed ? 'failed' : null),
-      faceLive: performance.now() - faceAt < faceGrace,
+      diag: tracker?.diag ?? failDiag,
+      calib: calib ? { ...calib } : null,
+      faceLive: faceAt > 0 && performance.now() - faceAt <= faceGrace,
       leftMs: mirrorLeftMs(),
       unlimited: mirrorUnlimited(),
       recording: rec.active,

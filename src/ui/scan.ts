@@ -2,7 +2,7 @@
  *  ESCANEAR / QR — módulo compartilhado.
  *   - openScanner(): abre a câmera traseira e lê um QR (BarcodeDetector nativo quando existe;
  *     senão jsQR). Tudo acontece no aparelho: nenhuma imagem é enviada. A câmera desliga ao sair.
- *   - parseBloopLink(texto): entende os links do Bloop World (?voo= ?grupo= ?amigo= ?garimpo= e bloopworld://…)
+ *   - parseBloopLink(texto): entende os links do Bloop World (?voo= ?grupo= ?amigo= ?garimpo= ?duelo= e bloopworld://…)
  *   - bloopLink(tipo, código): monta o link que o app entende
  *   - drawBloopQr(canvas, texto): QR no estilo Bloop (módulos arredondados coloridos, correção H,
  *     logo do Bloop no meio)
@@ -12,16 +12,17 @@ import { ONLINE } from '../config';
 import { isNative } from '../core/platform';
 import { icon } from './icons';
 
-export type BloopLinkType = 'voo' | 'grupo' | 'amigo' | 'garimpo';
+export type BloopLinkType = 'voo' | 'grupo' | 'amigo' | 'garimpo' | 'duelo';
 export interface BloopLink {
   type: BloopLinkType;
-  /** voo/garimpo: código de 5 letras · grupo: "<id>.<código>" · amigo: @ sem o @ */
+  /** voo/garimpo: código de 5 letras · grupo: "<id>.<código>" · amigo: @ sem o @ · duelo: "<jogo>/<CÓDIGO>" */
   code: string;
 }
 
 const VOO_RE = /^[A-HJ-NP-Z2-9]{5}$/;
 const GRUPO_RE = /^[a-z0-9]{8,16}\.[a-z0-9]{4,12}$/;
 const AMIGO_RE = /^[a-z0-9_.]{3,16}$/;
+const DUELO_RE = /^([a-z]{2,12})[/.]([A-HJ-NP-Z2-9]{5})$/;
 
 function valid(type: BloopLinkType, raw: string): BloopLink | null {
   const v = raw.trim();
@@ -30,6 +31,10 @@ function valid(type: BloopLinkType, raw: string): BloopLink | null {
     return VOO_RE.test(c) ? { type, code: c } : null;
   }
   if (type === 'grupo') return GRUPO_RE.test(v) ? { type, code: v } : null;
+  if (type === 'duelo') {
+    const m = DUELO_RE.exec(v.replace(/[^/.]+$/, (c) => c.toUpperCase()));
+    return m ? { type, code: `${m[1]}/${m[2]}` } : null;
+  }
   const h = v.replace(/^@+/, '').toLowerCase();
   return AMIGO_RE.test(h) ? { type, code: h } : null;
 }
@@ -47,15 +52,15 @@ export function parseBloopLink(text: string): BloopLink | null {
     return null;
   }
   if (u.protocol === 'bloopworld:') {
-    // bloopworld://voo/K7Q2M · bloopworld://grupo/<id>.<cod> · bloopworld://amigo/<@>
+    // bloopworld://voo/K7Q2M · bloopworld://grupo/<id>.<cod> · bloopworld://amigo/<@> · bloopworld://duelo/<jogo>/<CÓDIGO>
     const type = (u.host || u.pathname.replace(/^\/+/, '').split('/')[0]) as BloopLinkType;
     const rest = u.host ? u.pathname.replace(/^\/+/, '') : u.pathname.replace(/^\/+/, '').split('/').slice(1).join('/');
-    if (type === 'voo' || type === 'grupo' || type === 'amigo' || type === 'garimpo') return valid(type, decodeURIComponent(rest));
+    if (type === 'voo' || type === 'grupo' || type === 'amigo' || type === 'garimpo' || type === 'duelo') return valid(type, decodeURIComponent(rest));
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
-  for (const type of ['voo', 'grupo', 'amigo', 'garimpo'] as const) {
+  for (const type of ['voo', 'grupo', 'amigo', 'garimpo', 'duelo'] as const) {
     const v = u.searchParams.get(type) ?? hash.get(type);
     if (v) return valid(type, v);
   }
@@ -68,7 +73,7 @@ export function bloopLink(type: BloopLinkType, code: string): string {
   return `${base.replace(/\/+$/, '')}/?${type}=${encodeURIComponent(code)}`;
 }
 /** variante do esquema do app (abre o app instalado) */
-export const bloopAppLink = (type: BloopLinkType, code: string): string => `bloopworld://${type}/${encodeURIComponent(code)}`;
+export const bloopAppLink = (type: BloopLinkType, code: string): string => `bloopworld://${type}/${type === 'duelo' ? code : encodeURIComponent(code)}`;
 
 /* ============================== QR no estilo Bloop ============================== */
 

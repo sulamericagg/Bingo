@@ -9,6 +9,7 @@ import { icon } from '../../ui/icons';
 import { notify } from '../../ui/notify';
 import { detectInitialTier } from '../../core/quality';
 import { dzIcon } from './icons';
+import { partyRoomFor } from '../../party/contract';
 
 const MODE_KEY = 'bo-disaster-mode';
 
@@ -95,6 +96,11 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
     if (paused) inner?.pause?.();
   };
   const q = /[?&]dz3d=([01])/.exec(location.search);
+  // grupo (docs/PARTY.md): todos direto no 2D (mesmo cenário + placar do grupo), sem tela de escolha
+  if (partyRoomFor('disaster')) {
+    void start('2d');
+    return handle;
+  }
   if (q) {
     void start(q[1] === '1' ? '3d' : '2d');
     return handle;

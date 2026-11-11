@@ -13,6 +13,9 @@ import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
 import { BuildView } from './build/view'; // BUILD
+// PAPER: Bloops 2D de papel (src/3d/paper) — opção "Personagem 2D" + chave PAPER_GAMES.noites
+import { PaperChar, mySpec, npcSpec, paperOn, specOf, type PaperTool } from '../../3d/paper';
+import { squad } from '../../party/squad';
 import { BlobShadows, GrassField, LeafBurst, hitTreeShake, natureTick, windTime, NL, TL, lerpSplat, setSplat, splatAttributes, terrainMaterial, leafCardMat, natureAnisotropy, natureLeafCards, natureMat, natureQ, type GrassSource } from '../../3d/nature';
 import {
   G,
@@ -84,6 +87,8 @@ interface PRig {
   pz: number;
   walk: number;
   zz: THREE.Sprite;
+  /** PAPER: personagem 2D (null = Bloop 3D clássico) */
+  paper: PaperChar | null;
 }
 interface CRig {
   g: THREE.Group;
@@ -205,7 +210,10 @@ export class View {
   private embers: Particles;
   private players = new Map<string, PRig>();
   private cre = new Map<number, CRig>();
-  private babies: { rig: BloopRig; help: THREE.Sprite; shadow: THREE.Mesh }[] = [];
+  private babies: { rig: BloopRig; help: THREE.Sprite; shadow: THREE.Mesh; paper: PaperChar | null }[] = [];
+  /** PAPER: mostra o próprio Bloop (câmera em 1ª pessoa esconde) */
+  selfVisible = true;
+  private paper = paperOn('noites');
   private structs = new Map<number, THREE.Object3D>();
   private flashes = new Map<number, THREE.Mesh>();
   private falls: Fall[] = [];
@@ -428,14 +436,16 @@ export class View {
 
     // bebês
     for (const b of sim.w.babies) {
-      const rig = bloopModel({ light: b.col, dark: b.col, belly: '#ffffff', eye: '#2a1140' }, 0.5, true);
+      // PAPER: bebê perdido de papel (Bloop redondinho da cor dele, olhos tristes)
+      const pp = this.paper ? new PaperChar(npcSpec(b.col, '#ffffff', { eyes: 'e_sleepy', mouth: 'mo_kiss', face: 'f_blush' }), { radius: 0.25, cell: 80 }) : null;
+      const rig = pp ? paperRig(pp) : bloopModel({ light: b.col, dark: b.col, belly: '#ffffff', eye: '#2a1140' }, 0.5, true);
       const help = iconSprite(ic('help', 48));
       help.position.y = 2.4;
       help.scale.setScalar(1.6);
       rig.g.add(help);
       const sh = this.mkShadow(0.5);
       sc.add(rig.g, sh);
-      this.babies.push({ rig, help, shadow: sh });
+      this.babies.push({ rig, help, shadow: sh, paper: pp });
     }
   }
   private bodyGeo: THREE.BufferGeometry;
@@ -627,7 +637,11 @@ export class View {
     let r = this.players.get(p.id);
     if (r) return r;
     const sk = SKINS.find((s) => s.id === p.skin) ?? SKINS[0];
-    const rig = bloopModel({ light: p.bot ? '#8ad8ff' : sk.light, dark: p.bot ? '#3a8aff' : sk.dark, belly: sk.belly, eye: sk.eye });
+    // PAPER: eu = meu Bloop salvo; amigos = avatar do grupo (se veio), senão a skin; ajudantes = Bloop azul de boné
+    const paper = this.paper
+      ? new PaperChar(me ? mySpec() : p.bot ? npcSpec('#8ad8ff', '#3a8aff', { head: 'h_cap', eyes: 'e_big' }) : specOf(p.skin, squad()?.members.find((m) => m.id === p.id)?.avatar), { radius: 0.5, cell: me ? 128 : 96 })
+      : null;
+    const rig = paper ? paperRig(paper) : bloopModel({ light: p.bot ? '#8ad8ff' : sk.light, dark: p.bot ? '#3a8aff' : sk.dark, belly: sk.belly, eye: sk.eye });
     const beam = new THREE.Mesh(this.beamGeo, this.beamMat);
     beam.visible = false;
     const zz = iconSprite(ic('sleep', 48), '#2a2a5a');
@@ -658,7 +672,7 @@ export class View {
     }
     const sh = this.mkShadow(0.9);
     this.scene.add(rig.g, beam, sh);
-    r = { rig, shadow: sh, tool: null, toolK: '', hatK: '', beam, label, bubble: null, bubbleK: '', bubbleT: 0, px: p.x, pz: p.z, walk: 0, zz };
+    r = { rig, shadow: sh, tool: null, toolK: '', hatK: '', beam, label, bubble: null, bubbleK: '', bubbleT: 0, px: p.x, pz: p.z, walk: 0, zz, paper };
     this.players.set(p.id, r);
     return r;
   }
@@ -716,6 +730,14 @@ export class View {
         r.toolK = tk;
       }
       r.rig.hand.rotation.x = p.swing > 0 ? -Math.sin((1 - p.swing / 0.4) * Math.PI) * 1.8 : p.lightOn ? 0 : -0.3;
+      // PAPER: billboard 2D (pés no chão, sem pulinho 3D; ferramenta 2D na mão)
+      if (r.paper) {
+        g.position.y = gy + (vh ? 0 : Math.max(0, bob - 0.1) * 0.5);
+        if (p.id === meId && !this.selfVisible) g.visible = false;
+        const col = p.lightOn ? (ITEM[p.lampId]?.col ?? '#fff6c0') : tk.startsWith('hammer') ? '#ffb3d9' : ['#c8d0e0', '#c8d0e0', '#b8c4d8', '#7ad0ff', '#ffd34a', '#ffd34a', '#ff8fd8'][Math.round(p.axe)] ?? '#c8d0e0';
+        r.paper.setTool((p.lightOn ? 'lamp' : tk.startsWith('hammer') ? 'hammer' : 'axe') as PaperTool, col);
+        r.paper.update(dt, this.camera, { yaw: p.lightOn ? p.aim : p.yaw, speed: vh ? 0 : mv, act: p.swing > 0 ? 1 - p.swing / 0.4 : -1, faint, hurt: p.invT > 0 && !faint });
+      }
       // chapéu: cosmético, ou gorro vestido
       const hk = p.wear.head === 'beanie' ? 'beanie' : p.hat;
       if (hk !== r.hatK) {
@@ -745,6 +767,7 @@ export class View {
     for (const [id, r] of this.players)
       if (!seen.has(id)) {
         this.scene.remove(r.rig.g, r.beam, r.shadow);
+        r.paper?.dispose(); // PAPER
         this.players.delete(id);
       }
   }
@@ -949,6 +972,8 @@ export class View {
         if (p) v.rig.g.rotation.y = p.yaw;
       } else v.rig.g.rotation.y = Math.sin(this.time * 0.7 + i) * 0.6;
       v.help.visible = b.st === 0;
+      // PAPER
+      if (v.paper) v.paper.update(dt, this.camera, { yaw: v.rig.g.rotation.y, speed: b.st === 1 ? 3 : 0, act: -1, happy: b.st === 2, hurt: b.st === 0 && Math.sin(this.time * 0.9 + i) > 0.6 });
       v.help.position.y = 2.2 + Math.sin(this.time * 3) * 0.15;
     });
 
@@ -1188,3 +1213,8 @@ export class View {
 }
 
 export { treeR };
+
+/** PAPER: "rig" de mentira em volta do billboard — o código do Bloop 3D continua rodando sem efeito visível */
+function paperRig(pc: PaperChar): BloopRig {
+  return { g: pc.root, body: new THREE.Group(), hand: new THREE.Group(), hat: new THREE.Group(), feet: [new THREE.Mesh(), new THREE.Mesh()] };
+}

@@ -45,6 +45,8 @@ async function page(q, init) {
   if (init) await p.addInitScript(init);
   await p.goto(`${base}/scripts/dev/mirror.html?debug&${q}`);
   await waitFor(p, () => document.title === 'ready' && !!window.__mirror);
+  // ?debug abre o diagnóstico: fecha para as fotos
+  await p.evaluate(() => document.querySelector('[data-a="diag-close"]')?.click());
   return { p, ctx };
 }
 
@@ -57,7 +59,10 @@ console.log('grátis + câmera');
   await p.click('.mr-consent [data-c="cam"]');
   ok(await waitFor(p, () => window.__mirror.state().session === 'on'), 'sessão liga após aceitar');
   const s1 = await state(p);
-  ok(s1.cam && s1.mic, 'câmera e microfone ligados');
+  ok(s1.cam && !s1.mic, 'câmera ligada; microfone só pelo botão');
+  ok(await p.isVisible('[data-a="mic"]'), 'botão do microfone visível');
+  await p.click('[data-a="mic"]');
+  ok(await waitFor(p, () => window.__mirror.state().mic, 8000), 'botão liga o microfone');
   await waitFor(p, () => !!window.__mirror.state().tracker, 30000);
   const s2 = await state(p);
   console.log('   rastreador:', s2.tracker, 'tempo:', s2.leftMs);
@@ -181,7 +186,8 @@ console.log('assinante (Clube ativo)');
   ok((await p.textContent('.mr-time')).includes('Sem limite'), 'chip "Sem limite"');
   ok((await p.locator('.mr-chip.lock').count()) === 0, 'todas as vozes liberadas');
   await p.click('.mr-chip[data-pick="robo"]');
-  ok((await state(p)).voice === 'robo', 'voz Robô aplicada');
+  // escolher uma voz com o microfone desligado liga o microfone sozinho
+  ok(await waitFor(p, () => window.__mirror.state().voice === 'robo', 8000), 'voz Robô aplicada (liga o microfone)');
   await p.evaluate(() => window.__mirror.burn(10 * 60000));
   await p.waitForTimeout(800);
   ok((await state(p)).session === 'on' && !(await p.isVisible('.mr-pay')), 'continua ligado (ilimitado)');
@@ -200,9 +206,12 @@ console.log('câmera negada');
     md.getUserMedia = (c) => (c && c.video ? Promise.reject(new DOMException('negado', 'NotAllowedError')) : orig(c));
   });
   await p.click('.mr-consent [data-c="cam"]');
+  ok(await waitFor(p, () => !!document.querySelector('.mr-perm'), 8000), 'câmera negada: cartão de permissão com passos');
+  await p.click('.mr-perm [data-p="no"]');
+  await p.click('[data-a="mic"]');
   await waitFor(p, () => window.__mirror.state().session === 'on');
   const s = await state(p);
-  ok(!s.cam && s.mic && s.msg === 'cam', 'sem câmera: segue só com o microfone e mostra aviso');
+  ok(!s.cam && s.mic, 'sem câmera: segue só com o microfone');
   await p.waitForTimeout(1200);
   await shot(p, '13-so-microfone');
   await ctx.close();

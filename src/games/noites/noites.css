@@ -116,3 +116,6 @@
 .nc-drive{display:flex;align-items:center;gap:6px;background:rgba(20,10,50,.6);border-radius:16px;padding:2px 8px;font-weight:700}
 .nc-drive .nc-bar i{background:linear-gradient(90deg,#3ec05a,#ffd34a)}
 @media (max-height:380px){.nc-vside{width:220px}.nc-vprev{width:210px;height:96px}.nc-vopt{width:44px;height:36px}}
+/* amigos primeiro (src/party/friends-play.ts): código só como link pequeno */
+.nc-codelink{border:0;background:none;color:#cbb8ff;font:inherit;font-size:14px;text-decoration:underline;padding:6px;cursor:pointer}
+.nc-playing:empty{display:none}

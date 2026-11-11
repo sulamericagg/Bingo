@@ -31,25 +31,49 @@ App: `src/party/` — `squad.ts` (sessão), `lobby.ts` (os Bloops do grupo no hu
 `panel.ts` (membros, convidar, link/QR, chat, sair), `bell.ts` (central de avisos), `contract.ts`.
 
 ## Jogar junto — contrato para jogos (`src/party/contract.ts`)
-Quando o **líder** abre um jogo (o hub emite `bus 'game-launch'`), o grupo recebe `{ game, room }` e cada
-membro chama `partyLaunch(game, room)` e abre o mesmo jogo.
+**O grupo É a sala.** Quando o **líder** aperta JOGAR (o hub emite `bus 'game-launch'`), o grupo recebe `{ game, room }`;
+cada membro vê "3‑2‑1 Entrando no jogo do líder" (pode tocar "Ficar aqui") e o app abre o mesmo jogo já conectado —
+sem código, sem botão extra. Jogos com `join(room)` registrado são chamados direto (`pg.join(room)`).
+
+| Modo | Jogos | Como entra |
+|---|---|---|
+| sala própria (`mode:'room'`) | voo, noites, garimpo, floresta (Mundo Aberto) | `partySeat(jogo)` → `{ host, leader, code() }`: o líder cria a sala com o código derivado do grupo; os outros entram nela (tentam de novo até o líder abrir). Garimpo: o líder escolhe o save, os outros esperam. |
+| presença | disaster (mesmo cenário + placar "quem sobreviveu mais"), band, cozinha, rally (placar de distância), tycoon | `joinPresence(jogo)` já usa `?party=<room>` |
+| duelo (`mode:'duel'`) | cor, lugar, tubo, montaleva, desenho | `registerDuelGame(jogo)` + `takeDuel(jogo)` → `startDuel({...})` (abaixo) |
+| corrida | orbit → Corrida Orbital | `partyRoomFor('race')` |
+| juntos (`mode:'together'`) | caca, studio, cinema | faixa com quem do grupo está no jogo + emotes (`src/party/together.ts`) |
+| ainda solo | cavafala, anomalias (em obra — `PARTY_WIP`) | aviso "Esse jogo ainda é solo" |
 
 ```ts
-import { partyRoomFor, registerPartyGame } from '../../party/contract';
-
-// 1) Jogo com presença (services/presence.ts): NADA a fazer — joinPresence(gameId) já conecta em
-//    /api/presence/<gameId>?party=<room> (sala só do grupo). Lista: PRESENCE_GAMES em contract.ts.
-// 2) Jogo com online próprio (ex.: Pouso Forçado):
-registerPartyGame('pouso', {
-  async join(room) { /* abrir o jogo e entrar na sala `room` */ },
-});
-//    e, ao conectar, usar a sala do grupo se houver:
-const room = partyRoomFor('pouso'); // string | null (aceita 'pouso-xyz')
-//    também dá para ouvir bus.on('party-launch', ({ game, room }) => ...)
+import { partySeat, consumePartySeat, registerPartyGame } from '../../party/contract';
+registerPartyGame('meu-jogo', { mode: 'room' });           // register.ts (leve)
+const seat = partySeat('meu-jogo');                         // ao abrir o jogo
+if (seat) { consumePartySeat('meu-jogo'); seat.host ? criarSala(seat.code()) : entrarComRetry(seat.code()); }
 ```
-- Corrida Orbital: automático (`/api/race/join?party=<room>` → todos na sala `room-party-<room>`).
-- Festa na casa: botão "Festa na minha casa" (líder) → membros entram na festa da casa do líder (precisam ser amigos do líder).
-- Jogo sem online: membros veem "Esse jogo ainda é solo".
+
+### No hub, ao vivo (`src/party/follow.ts`, mensagens `focus` / `votemode` / `vote` do SquadRoom)
+- O líder tem coroa ♛ no saguão. Quando ele passa entre os jogos, o carrossel dos outros acompanha com o selo
+  "♛ @líder escolhendo…" (e os ajustes enviados em `sendFocus(jogo, cfg)`).
+- **Votação** (botão no saguão, só o líder liga): cada um escolhe na própria tela (a carta = o voto), fotinhos
+  dos votos na carta; no JOGAR do líder vence o mais votado (empate → o do líder) — `setLaunchFilter` do hub.
+
+### Duelo (`src/party/duel.ts`, servidor `server/duel.ts`, DO `DuelRoom`, migração `v9-duel`)
+Mesma semente para todos, contagem 3‑2‑1, placar ao vivo (`LiveBar`, reutilizável), "esperando os outros",
+pódio com Revanche. `rank: 'score' | 'time'`, limite de tempo (o servidor encerra por alarme).
+WebSocket `/api/duel/<jogo>/<CÓDIGO>`. Fora do grupo: botão "Duelo online" no menu do jogo → sala com
+"Chamar amigo" (principal) e código/QR (secundário); link `bloopworld://duelo/<jogo>/<CÓDIGO>` ou `?duelo=<jogo>/<CÓDIGO>`.
+
+### Amigos primeiro, código só como alternativa (`src/party/friends-play.ts`, `src/party/join.ts`)
+- Quem abre uma sala avisa os amigos: `reportPlaying(jogo, código)` → `POST /api/friends/playing {id, j}`
+  (memória do FriendsHub, ~100 s). `GET /api/friends` traz `playing: "<jogo>.<CÓDIGO>"` → "Fulano está jogando — ENTRAR"
+  (na carta do jogo no hub e nos menus online). `openJoin()` abre o jogo já entrando na sala.
+- "Chamar amigos": lista com bolinha online e "Chamar" em um toque — convite `kind:'game'`, `game:"j-<jogo>-<código>"`.
+- "Entrar com código / QR" fica como link pequeno.
+
+### Convite na hora (`src/party/invite-pop.ts`)
+O servidor manda `{t:'ping'}` pelo `/api/friends/live`; o app lê `/api/friends` e mostra um cartão grande com a foto
+de quem chamou, ACEITAR / Recusar, som e vibração (dentro de um jogo: faixa compacta no topo). O convite também
+fica no Correio (cartão em destaque com Aceitar, badge) e no sino; com o app em 2º plano, notificação local.
 
 ## Avisos
 Toast pequeno (`ui/notify`) + badge no botão Social + sino com a lista (pedidos, convites, amigo online).

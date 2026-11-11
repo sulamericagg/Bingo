@@ -30,8 +30,24 @@ export interface NativeDeviceInfo {
 
 interface BloopDevicePlugin {
   info(): Promise<NativeDeviceInfo>;
+  /** desde a v1.2.45: abre a tela do app nas Configurações do Android (permissões) */
+  openAppSettings(): Promise<void>;
 }
 const Native = registerPlugin<BloopDevicePlugin>('BloopDevice');
+
+/**
+ * Abre as configurações do app no Android (para liberar câmera/microfone negados com
+ * "não perguntar de novo"). false: não deu (web, iOS ou APK antigo sem o método).
+ */
+export async function openAppSettings(): Promise<boolean> {
+  if (!isNative) return false;
+  try {
+    await Native.openAppSettings();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface DeviceProfile {
   /** GPU sem máscara (ex.: "Mali-G52 MC2", "Adreno (TM) 610") ou '' */

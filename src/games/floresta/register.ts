@@ -2,8 +2,10 @@
  * Só a vitrine (leve) entra no pacote principal; o jogo é carregado sob demanda. */
 import { registerGame, type MiniGameHandle } from '../../hub/registry';
 import { t } from '../../i18n';
+import { registerPartyGame } from '../../party/contract';
 
 export function registerFloresta(): void {
+  registerPartyGame('floresta', { mode: 'room' }); // grupo: todos no mesmo Mundo Aberto online
   registerGame({
     id: 'floresta',
     get name() {

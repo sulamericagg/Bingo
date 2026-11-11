@@ -8,6 +8,8 @@ import { buildDozer, buildExcavator, buildHeli, buildPickup, buildTruck, buildWo
 import { CELL, type BladeState } from './terrain';
 import { Vehicle, type VehSpec, type WheelDef } from './vehicle';
 import type { World } from './world';
+// PAPER: garimpeiro = Bloop 2D de papel (src/3d/paper; chave PAPER_GAMES.garimpo)
+import { mySpec, npcSpec, PaperChar, paperOn, type PaperSpec } from '../../3d/paper';
 
 export type Kind = 'worker' | 'pickup' | 'truck' | 'excavator' | 'dozer' | 'heli';
 
@@ -690,10 +692,23 @@ export class Worker extends Machine {
   dumping = false;
   /** anfitrião: velocidade de andar vinda do convidado (anima as pernas; -1 = usa a própria) */
   extMove = -1;
-  constructor(shirt?: number) {
+  /** PAPER: personagem 2D (null = boneco 3D clássico) */
+  private paper: PaperChar | null = null;
+  /** PAPER: câmera para virar os billboards (atualizada pelo update de qualquer garimpeiro) */
+  static paperCam: THREE.Camera | null = null;
+  /** spec: 'me' = o Bloop do jogador; sem spec = ajudante (ou cor do jogador online) */
+  constructor(shirt?: number, spec?: PaperSpec | 'me') {
     super();
     this.p = buildWorker(shirt);
     this.group.add(this.p.root);
+    if (paperOn('garimpo')) {
+      const sp = spec === 'me' ? mySpec() : (spec ?? (shirt !== undefined ? npcSpec('#' + shirt.toString(16).padStart(6, '0'), '#ffd34a', { head: 'h_cap' }) : npcSpec('#ffd34a', '#c87a2a', { head: 'h_cap', eyes: 'e_big' })));
+      this.paper = new PaperChar(sp, { radius: 0.6, cell: spec === 'me' ? 128 : 96, shadow: true });
+      // esconde o corpo 3D (o carrinho, o balde e o monte de terra continuam 3D)
+      const keep = new Set<THREE.Object3D>([this.p.barrow, this.p.bucket]);
+      for (const c of this.p.root.children) if (!keep.has(c)) c.visible = false;
+      this.p.root.add(this.paper.root);
+    }
     this.cargo.cap = 0.12;
     this.cam = { dist: 5.8, height: 3.2, look: 0.9, yawOff: 0 };
     this.rad = 0.5;
@@ -838,6 +853,17 @@ export class Worker extends Machine {
     this.p.heap.visible = this.cargo.vol > 0.003;
     this.p.heap.scale.set(1, 0.4 + this.fill * 0.8, 1);
     this.p.bucket.visible = this.water > 0;
+    // PAPER
+    Worker.paperCam = env.world.camera;
+    this.paperTick(dt, mv);
+  }
+  /** PAPER: anima o Bloop de papel (pá aparece só cavando) */
+  private paperTick(dt: number, mv: number): void {
+    const pc = this.paper;
+    if (!pc || !Worker.paperCam) return;
+    this.p.shovel.visible = false;
+    pc.setTool(this.dig >= 0 ? 'shovel' : null, '#b8c4d8');
+    pc.update(dt, Worker.paperCam, { yaw: this.group.rotation.y, speed: mv, act: this.dig, happy: this.dumping });
   }
   /** retrato: [x,y,z,yaw, velocidade, fase da pá (-1 = parado), carga 0..1, água, despejando] */
   netState(): number[] {
@@ -872,6 +898,11 @@ export class Worker extends Machine {
     this.p.heap.visible = a[6] > 0.02;
     this.p.heap.scale.set(1, 0.4 + a[6] * 0.8, 1);
     this.p.bucket.visible = this.water > 0;
+    this.paperTick(dt, mv); // PAPER
+  }
+  dispose(): void {
+    this.paper?.dispose(); // PAPER
+    super.dispose();
   }
   sync(): void {}
 }

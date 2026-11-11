@@ -19,7 +19,7 @@ export interface MLSave {
   wireTut?: boolean;
   gears: number;
   levels: Record<number, LevelRec>;
-  up: { motor: number; grip: number; spring: number; pad: number };
+  up: { motor: number; grip: number; spring: number; pad: number; frame: number };
   palettes: string[];
   palette: string;
   music: boolean;
@@ -34,7 +34,7 @@ const fresh = (): MLSave => ({
   v: 2,
   gears: 0,
   levels: {},
-  up: { motor: 0, grip: 0, spring: 0, pad: 0 },
+  up: { motor: 0, grip: 0, spring: 0, pad: 0, frame: 0 },
   palettes: ['classic'],
   palette: 'classic',
   music: true,

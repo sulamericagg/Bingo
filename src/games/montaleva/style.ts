@@ -179,6 +179,9 @@ const CSS = `
 .ml-gl div.ok>svg:last-child{color:#1f9a71}
 .ml-rw{display:flex;justify-content:center;gap:8px;margin:6px 0 12px}
 .ml-row{display:flex;gap:8px;justify-content:center}
+.ml-test{position:relative}
+.ml-test.nomotor::after{content:attr(data-nm);position:absolute;top:-11px;right:-4px;background:#ef4444;color:#fff;font-size:11.5px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;box-shadow:0 2px 6px rgba(239,68,68,.45);pointer-events:none;animation:ml-nm 1.6s ease-in-out infinite}
+@keyframes ml-nm{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 .ml-row .ml-btn{flex:1}
 .ml-fail{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:10px;padding:12px 20px;border-radius:18px;background:#fff;color:#d0464a;font-size:19px;font-weight:700;box-shadow:0 10px 36px rgba(208,70,74,.25);animation:mlPop .25s ease-out both;pointer-events:none}
 .ml-fail svg{width:26px;height:26px}

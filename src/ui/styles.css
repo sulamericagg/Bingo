@@ -3151,3 +3151,8 @@ button {
     font-size: 64px;
   }
 }
+
+/* Correio: convite de amigo em destaque (ui/online-ui.ts) */
+.gift.gift-invite { border: 2px solid #ffd34a; background: linear-gradient(90deg, rgba(255, 92, 200, 0.28), rgba(138, 92, 255, 0.22)); align-items: center; }
+.gift.gift-invite .gift-ico { overflow: hidden; display: grid; place-items: center; }
+.gift.gift-invite .g-accept { flex: none; min-height: 44px; padding: 0 14px; font-weight: 900; }

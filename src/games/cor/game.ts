@@ -20,6 +20,8 @@ import { Picker } from './picker';
 import { addRecord, corSave, levelOf, persistCor, type CorRecord } from './save';
 import { drawItem } from './shapes';
 import { injectPgCss } from './style';
+import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
+import type { DuelCtl } from '../../party/duel';
 
 type Mode = 'duel' | 'practice' | 'daily';
 type Phase = 'idle' | 'handoff' | 'show' | 'pick' | 'reveal';
@@ -176,7 +178,13 @@ class CorGame implements MiniGameHandle {
   private parts: { x: number; y: number; vx: number; vy: number; r: number; vr: number; c: string; w: number; life: number }[] = [];
   private cfRaf = 0;
 
-  constructor(root: HTMLElement, private exitFn: () => void) {
+  // duelo online (src/party/duel.ts): mesmos itens para todos, placar ao vivo e pódio
+  private duel: DuelCtl | null = null;
+
+  constructor(
+    private root: HTMLElement,
+    private exitFn: () => void,
+  ) {
     this.el = document.createElement('div');
     this.el.className = 'pg-root';
     root.appendChild(this.el);
@@ -188,6 +196,39 @@ class CorGame implements MiniGameHandle {
     this.offs.push(() => window.removeEventListener('resize', onResize));
     this.layout();
     this.menu();
+    const d = takeDuel('cor');
+    if (d) void this.onlineDuel(d);
+  }
+
+  /* ============================== duelo online ============================== */
+  private async onlineDuel(entry: DuelEntry): Promise<void> {
+    const D = await import('../../party/duel');
+    if (this.dead) return;
+    this.duel?.leave();
+    this.duel = D.startDuel({
+      game: 'cor',
+      root: this.root,
+      title: t('cor.name', 'Pintou, Ganhou!'),
+      rank: 'score',
+      limitSec: 200,
+      entry,
+      fmt: (n) => fmt(n),
+      start: (seed) => {
+        this.mode = 'practice';
+        this.level = 2;
+        this.players = [this.mkPlayer(t('cor.you', 'Você'), HUMAN_COLORS[0], -1)];
+        this.maxSets = this.setsToWin = 1;
+        this.rng = mulberry(seed);
+        this.official = false;
+        this.recent.clear();
+        this.begin(7);
+      },
+      stop: () => this.menu(),
+      exit: () => {
+        this.duel = null;
+        this.menu();
+      },
+    });
   }
 
   /* ============================== utilidades ============================== */
@@ -254,6 +295,7 @@ class CorGame implements MiniGameHandle {
       <div class="pg-modes">
         <button class="pg-mode pg-m1" data-m="duel"><span class="pg-mi">${icon('crown', { size: 34 })}</span><span><b>${t('cor.duel', 'Duelo')}</b><small>${t('cor.duelD', 'Contra robôs e amigos no mesmo celular (até 5)')}</small></span></button>
         <button class="pg-mode pg-m2" data-m="practice"><span class="pg-mi">${icon('paint', { size: 34 })}</span><span><b>${t('cor.practice', 'Treino')}</b><small>${t('cor.practiceD', 'Sozinho, escolha a categoria e o ritmo')}</small></span></button>
+        <button class="pg-mode pg-m1" data-m="online"><span class="pg-mi">${icon('rocket', { size: 34 })}</span><span><b>${t('duel.menu', 'Duelo online')}</b><small>${t('cor.onlineD', 'Mesmas cores para todos, cada um no seu celular')}</small></span></button>
         <button class="pg-mode pg-m3" data-m="daily"><span class="pg-mi">${icon('calendar', { size: 34 })}</span><span><b>${t('cor.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('cor.dailyDone', 'Hoje: {n} pts · dias seguidos: {d}', { n: fmt(s.dailyScore), d: s.dailyStreak }) : t('cor.dailyD', '10 itens iguais para todo mundo. Vale uma vez por dia!')}</small></span></button>
       </div>
       <div class="pg-row pg-bottom">
@@ -264,8 +306,9 @@ class CorGame implements MiniGameHandle {
       <button class="pg-btn pg-ghost" data-a="exit">${icon('home', { size: 20 })}${t('cor.exit', 'Sair')}</button>`;
     this.bind(d, '[data-m]', (b) => {
       audio.unlock();
-      const m = b.dataset.m as Mode;
-      if (m === 'duel') this.duelLobby();
+      const m = b.dataset.m as Mode | 'online';
+      if (m === 'online') void this.onlineDuel(freshDuel('cor'));
+      else if (m === 'duel') this.duelLobby();
       else if (m === 'practice') this.practiceLobby();
       else this.startDaily();
     });
@@ -464,6 +507,8 @@ class CorGame implements MiniGameHandle {
     });
     this.bind(q, '[data-a=yes]', () => {
       this.paused = false;
+      this.duel?.leave();
+      this.duel = null;
       this.menu();
     });
   }
@@ -666,6 +711,7 @@ class CorGame implements MiniGameHandle {
     }
     for (const p of mine) s.bestStreak = Math.max(s.bestStreak, p.bestStreak);
     this.save();
+    this.duel?.progress(Math.round(me.total), (this.idx + 1) / this.items.length);
 
     this.setPhaseLabel('');
     this.setHint('');
@@ -804,6 +850,7 @@ class CorGame implements MiniGameHandle {
       dailyMsg = t('cor.dailyStreak', 'Dias seguidos no desafio: {n}', { n: s.dailyStreak });
     }
     const score = Math.round(lead.total);
+    this.duel?.finish(score);
     let recPos = -1;
     if (this.official) {
       const rec: CorRecord = { score, mode, day: dayNumber() };
@@ -1088,6 +1135,7 @@ class CorGame implements MiniGameHandle {
   }
   destroy(): void {
     this.dead = true;
+    this.duel?.leave();
     cancelAnimationFrame(this.raf);
     cancelAnimationFrame(this.cfRaf);
     this.picker?.destroy();

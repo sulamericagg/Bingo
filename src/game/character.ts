@@ -24,6 +24,12 @@ export interface PlayerPose {
   still?: boolean;
   /** não desenha olhos/boca (quem chama desenha uma careta própria por cima) */
   noFace?: boolean;
+  /** PAPER (src/3d/paper): 'back' = visto de costas (sem rosto/barriga; costas na frente do corpo) */
+  view?: 'back';
+  /** PAPER: não desenha os pezinhos (o billboard 3D anima os próprios) */
+  noFeet?: boolean;
+  /** PAPER: sem o contorno do corpo (vistas giradas ganham contorno próprio) */
+  noLine?: boolean;
 }
 
 const PI = Math.PI;
@@ -241,6 +247,7 @@ const DASH_NONE: number[] = [];
 export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p: PlayerPose): void {
   if (skin.id === 'custom') return drawAvatar(x, save.avatar, R, p);
   const d = derive(skin);
+  const back = p.view === 'back';
   const ghost = skin.pattern === 'ghost';
   const calm = (p.mood === 'idle' || p.mood === 'happy') && !p.still;
   const br = calm ? Math.sin(p.t * 2.6) * 0.035 : 0;
@@ -250,7 +257,7 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
   if (br) x.translate(0, R * br);
 
   // pezinhos
-  if (p.mood !== 'fly' && !ghost) {
+  if (p.mood !== 'fly' && !ghost && !p.noFeet) {
     for (const s of [-1, 1]) {
       x.fillStyle = d.feet;
       ell(x, s * R * 0.42, R * 0.86, R * 0.28, R * 0.18);
@@ -261,7 +268,7 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
     }
   }
 
-  drawAccessory(x, skin, R, p, true);
+  if (!back) drawAccessory(x, skin, R, p, true);
 
   // corpo
   bodyPath(x, R, p.t, ghost);
@@ -277,7 +284,7 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
   x.save();
   x.clip();
   drawPattern(x, skin, d, R, p);
-  if (d.belly) {
+  if (d.belly && !back) {
     x.fillStyle = skin.belly;
     x.globalAlpha = 0.55;
     ell(x, 0, R * 0.55, R * 0.6, R * 0.42);
@@ -327,7 +334,9 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
   // contorno
   x.strokeStyle = d.outline;
   x.lineWidth = R * 0.065;
-  if (ghost) {
+  if (p.noLine) {
+    /* PAPER: sem contorno */
+  } else if (ghost) {
     x.globalAlpha = 0.5;
     bodyPath(x, R * 0.985, p.t, true);
     x.stroke();
@@ -337,7 +346,8 @@ export function drawPlayer(x: CanvasRenderingContext2D, skin: Skin, R: number, p
     x.stroke();
   }
 
-  if (!p.noFace) drawFace(x, skin, d, R, p);
+  if (back) drawAccessory(x, skin, R, p, true);
+  else if (!p.noFace) drawFace(x, skin, d, R, p);
   drawAccessory(x, skin, R, p, false);
   x.restore();
 }
