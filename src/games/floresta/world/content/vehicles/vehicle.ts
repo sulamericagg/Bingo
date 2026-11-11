@@ -65,6 +65,10 @@ const _tv = new THREE.Vector3();
 const _tq = new THREE.Quaternion();
 const _tm = new THREE.Matrix4();
 const _tmi = new THREE.Matrix4();
+const _one = new THREE.Vector3(1, 1, 1);
+const _wp = new THREE.Vector3();
+const _wq = new THREE.Quaternion();
+const _ws = new THREE.Vector3();
 /** rigidez da suspensão (o cannon multiplica pela massa do chassi; a carga entra em scanCargo) */
 const STIFF = 46;
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
@@ -115,7 +119,8 @@ export class Vehicle {
   /* ferramentas */
   toolOn = false;
   craneMode = false;
-  craneYaw = 0;
+  /** braço em repouso apontando para trás (por cima da caçamba, fora da cabine) */
+  craneYaw = Math.PI;
   cranePitch = 0.45;
   craneCable = 1.2;
   readonly craneIn = { yaw: 0, pitch: 0, winch: 0 };
@@ -605,7 +610,8 @@ export class Vehicle {
       // limite de aderência do conjunto (não "sobe parede")
       for (let i = 0; i < n; i++) {
         rv.applyEngineForce(drive[i], i);
-        rv.setBrake(brake * (b.mass + this.cargoMass) * 0.045, i);
+        // freio fixo (dimensionado pelo veículo vazio): carregado, para mais longe
+        rv.setBrake(brake * b.mass * 0.05, i);
       }
       if (F * v > 0 || (F !== 0 && Math.abs(v) < 0.5)) mech += Math.abs(F) * Math.max(Math.abs(v), 0.3);
       used = Math.abs(F) / Math.max(1, driveForce(P, v));
@@ -871,13 +877,10 @@ export class Vehicle {
         this.rv.updateWheelTransform(i);
         wi.isInContact = inC; // updateWheelTransform zera o contato (o passo seguinte precisa dele)
         const t = wi.worldTransform;
-        _tm.compose(_tv.set(t.position.x, t.position.y, t.position.z), _tq.set(t.quaternion.x, t.quaternion.y, t.quaternion.z, t.quaternion.w), _tv.clone().setScalar(1));
+        _tm.compose(_tv.set(t.position.x, t.position.y, t.position.z), _tq.set(t.quaternion.x, t.quaternion.y, t.quaternion.z, t.quaternion.w), _one);
         _tm.premultiply(_tmi);
-        const p = new THREE.Vector3();
-        const q = new THREE.Quaternion();
-        const sc = new THREE.Vector3();
-        _tm.decompose(p, q, sc);
-        poseWheel(m, i, p, q);
+        _tm.decompose(_wp, _wq, _ws);
+        poseWheel(m, i, _wp, _wq);
       }
       m.wheels.instanceMatrix.needsUpdate = true;
     }
