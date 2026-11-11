@@ -32,6 +32,8 @@ O mesmo projeto toca em 2D **ou** 3D (`mode`): as chaves dos atores servem para 
   "created": 1762700000000, "updated": 1762700000000,   // ms
   "mode": "2d",                    // "2d" | "3d" (3D = Cinema Pro)
   "template": "bolo",              // opcional: história de origem (remix)
+  "story": StorySpec,              // opcional: roteiro do "Criar história"/História Mágica (shared/story.ts);
+                                   // permite "Editar história" no modo simples (refaz os planos a partir dele)
   "watermark": true,               // marca "Feito no Bloop World" (só Pro pode desligar)
   "mix": { "music": 0.7, "voice": 1, "sfx": 0.8 },      // 0..1
   "music": { "song": "free-02", "offset": 8, "vol": 0.6 } | null,
