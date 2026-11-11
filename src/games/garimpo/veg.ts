@@ -175,7 +175,7 @@ export class Vegetation {
    * Esconde as árvores que tapam a vista: perto do segmento câmera→alvo (a,b).
    * Chamar por quadro; só reescreve as instâncias que mudaram.
    */
-  occlude(ax: number, az: number, bx: number, bz: number): void {
+  occlude(ax: number, az: number, bx: number, bz: number, pad = 0): void {
     const dx = bx - ax;
     const dz = bz - az;
     const L2 = dx * dx + dz * dz || 1;
@@ -190,7 +190,7 @@ export class Vegetation {
       u = u < 0 ? 0 : u;
       const px = ax + dx * u - t.x;
       const pz = az + dz * u - t.z;
-      const rr = t.kind === 3 ? 1.2 : 2.6 * t.s;
+      const rr = (t.kind === 3 ? 1.2 : 2.6 * t.s) + pad;
       if (px * px + pz * pz < rr * rr) now.add(n);
     }
     let dirty = false;
@@ -208,6 +208,12 @@ export class Vegetation {
       this.hidden.clear();
       for (const n of now) this.hidden.add(n);
     }
+  }
+  /** água: planta derrubada pela enchente / sob um cano — some de vez (a oclusão não a traz de volta) */
+  fell(n: number): void {
+    if (!this.ref[n]) return;
+    _m.makeScale(0, 0, 0).toArray(this.mats, n * 16);
+    this.setVis(n, false);
   }
   private setVis(n: number, on: boolean): void {
     const r = this.ref[n];

@@ -29,6 +29,7 @@ import { decodeTerrain, deleteSlot, encodeTerrain, EXPORT_EVERY, FIRE_EVERY, fre
 import { World } from './world';
 import { WaterSystem } from './water/system';
 import { ProcSystem } from './proc/system';
+import { RpLayer } from './rp'; // RP: vida de garimpeiro (clima, necessidades, diesel, eventos, estrada)
 import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
@@ -163,6 +164,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
   /* ---------------- online ---------------- */
   /** anfitrião (roda tudo e manda retratos) ou convidado (só mostra e manda entrada) */
   mp: MpHost | MpGuest | null = null;
+  /** RP: camada da vida de garimpeiro (rp/index.ts) */
+  rp: RpLayer | null = null;
   private lobby: LobbyHandle | null = null;
   private netChip: HTMLDivElement | null = null;
   /** convidado: carrinhos/mineiros da mina do anfitrião (só para a loja) */
@@ -677,6 +680,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
       },
     });
     this.hud = hud;
+    this.rp = new RpLayer(this); // RP
     hud.setRainIcon(this.rainOn);
     hud.setKind(this.cur.kind, s.expert);
     setNotifyTop(96);
@@ -1046,6 +1050,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.last = now;
     if (this.w && this.mp) this.host?.tick(Math.min(0.25, el / 1000));
     // online o mundo não para por causa de uma tela (loja, sala, pausa): só o meu controle solta
+    // RP: a estrada (fase própria) toma o quadro
+    if (this.w && this.r && this.rp?.takeover(Math.min(0.066, Math.max(0, el / 1000)))) return;
     if ((this.paused && !this.mp) || !this.w || !this.r) return;
     const w0 = performance.now();
     const dt = Math.min(0.066, Math.max(0, el / 1000));
@@ -1067,6 +1073,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.time += dt;
     s.played += dt;
     const ctl = this.paused ? this.idleCtl : hud.read(dt);
+    this.rp?.pre(dt, ctl); // RP
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     // ferramentas e entradas (por quadro)
@@ -1168,6 +1175,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.time += dt;
     s.played += dt;
     const ctl = this.paused ? this.idleCtl : this.hud!.read(dt);
+    this.rp?.pre(dt, ctl); // RP
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     mp.frame(dt);
@@ -1244,6 +1252,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const f0 = performance.now();
     w.T.flush();
     this.prof.flush += (performance.now() - f0 - this.prof.flush) * 0.05;
+    this.rp?.post(dt); // RP
   }
 
   private atWater(): boolean {
@@ -1535,6 +1544,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     w.follow(tx, tz);
     // árvores entre a câmera e o jogador somem (nunca tapam a vista)
     w.veg?.occlude(cam.position.x, cam.position.z, tx, tz);
+    this.water?.camFx(cam, dt);
   }
   camOverride: number[] | null = null;
   /** testes: passos de simulação por quadro */
@@ -1797,6 +1807,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     if (this.proc) s.proc = this.proc.save();
     this.fire?.save(s);
     if (this.ug) s.ug = this.ug.save();
+    this.rp?.save(s); // RP
     if (!writeSlot(this.slot, s)) notify(t('gb.saveFail', 'Sem espaço para salvar'), { kind: 'bad' });
   }
 
@@ -1836,6 +1847,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     this.ug?.dispose();
     this.ug = null;
     this.inMine = false;
+    this.rp?.dispose(); // RP
+    this.rp = null;
     this.hud?.destroy();
     this.hud = null;
     for (const m of this.ms) {

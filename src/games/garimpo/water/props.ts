@@ -60,7 +60,8 @@ const pipeMatOutlet = new THREE.MeshPhongMaterial({ color: 0x5c5f63, shininess: 
 /** cano deitado no chão entre dois pontos (segue o terreno, levantado 0,2 m) */
 export function buildPipe(T: Terrain, ax: number, az: number, bx: number, bz: number, outlet = false): THREE.Mesh {
   const L = Math.hypot(bx - ax, bz - az);
-  const n = Math.max(2, Math.min(60, Math.ceil(L / 2.5)));
+  // amostra a cada ~1,2 m: o cano deita no chão (não atravessa morrinhos)
+  const n = Math.max(2, Math.min(110, Math.ceil(L / 1.2)));
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -68,8 +69,8 @@ export function buildPipe(T: Terrain, ax: number, az: number, bx: number, bz: nu
     const z = az + (bz - az) * t;
     // nunca enterra: maior altura do terreno perto do ponto
     let y = -1e9;
-    for (const o of [-0.6, 0, 0.6]) y = Math.max(y, T.heightAt(x + ((bx - ax) / L) * o, z + ((bz - az) / L) * o));
-    pts.push(new THREE.Vector3(x, y + (outlet ? 0.3 : 0.2), z));
+    for (const o of [-0.45, 0, 0.45]) y = Math.max(y, T.heightAt(x + ((bx - ax) / L) * o, z + ((bz - az) / L) * o));
+    pts.push(new THREE.Vector3(x, y + (outlet ? 0.22 : 0.14), z));
   }
   const curve = new THREE.CatmullRomCurve3(pts);
   const g = new THREE.TubeGeometry(curve, n * 2, outlet ? 0.2 : 0.13, 6, false);

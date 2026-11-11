@@ -41,6 +41,7 @@ const sim = (n) =>
   }, n);
 const cam = (p) => ev((p) => (window.__garimpo.camOverride = p), p);
 const shot = async (name, bare = false) => {
+  if (only !== 'cine') await ev(() => window.__garimpo.water.fx.endCine());
   await trees(!bare);
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${out}/${name}.png` });
@@ -103,8 +104,7 @@ if (only === 'all' || only === 'breach') {
   damView();
   await shot('03-breach-eroding');
   valleyView();
-  await shot('04-flood-midway');
-  await shot('04b-flood-midway-bare', true);
+  await shot('04-flood-midway', true);
   await sim(400);
   valleyView();
   await shot('05-flood-valley', true);
@@ -195,6 +195,24 @@ if (only === 'pump') {
   await shot('12-pump-lake');
   damView();
   await shot('13-pump-filling');
+}
+if (only === 'all' || only === 'cine') {
+  // cinema da brecha em quadros reais (a simulação roda no jogo)
+  await ev(() => {
+    const g = window.__garimpo;
+    g.camOverride = null;
+    g.water.debug.breach(3);
+  });
+  await sim(20);
+  await ev(() => window.__garimpo.water.slow(1));
+  const times = [1.5, 4, 7, 10, 14, 18, 24, 30];
+  let last = 0;
+  for (const tm of times) {
+    await page.waitForTimeout((tm - last) * 1000);
+    last = tm;
+    await page.screenshot({ path: `${out}/20-cine-${String(tm).replace('.', '_')}s.png` });
+    console.log('cine', tm, JSON.stringify(await ev(() => ({ cine: window.__garimpo.water.fx.inCine, rum: window.__garimpo.water.fx.rumbleK.toFixed(2), fel: window.__garimpo.water.fx.felled.size, res: window.__garimpo.water.debug.info().res | 0 }))));
+  }
 }
 if (only === 'perf') {
   const cdp = await page.context().newCDPSession(page);

@@ -22,7 +22,7 @@
  *  Rede: ver netTake/netApply — só ladrilhos que mudaram, profundidade em cm (u16) e velocidade
  *  em dm/s (i8) quando a água corre.
  * ============================================================ */
-import { CELL, N, SIZE, V, MAT_DIRT, MAT_GRASS, MAT_MUD, MAT_SAND, type Terrain } from '../terrain';
+import { CELL, N, SIZE, V, MAT_MUD, type Terrain } from '../terrain';
 
 export const WN = 128;
 export const WCS = SIZE / WN; // 1,5 m
@@ -360,7 +360,10 @@ export class WaterSim {
     this.advectSed(dtE);
     // margens desmoronam no canal (alarga a brecha)
     if (this.relaxQ.length) {
-      for (const k of this.relaxQ) T.relax(((k % WN) + 0.5) * WCS, (((k / WN) | 0) + 0.5) * WCS, 2.2, 0.85);
+      for (const k of this.relaxQ) {
+        T.relax(((k % WN) + 0.5) * WCS, (((k / WN) | 0) + 0.5) * WCS, 2.2, 0.85);
+        this.mudRing(k % WN, (k / WN) | 0);
+      }
       this.relaxQ.length = 0;
     }
     const E = this.eBox;
@@ -370,6 +373,25 @@ export class WaterSim {
       E.i1 = E.j1 = -1;
     }
     return total;
+  }
+  /** barrancos em volta do canal também viram lama molhada */
+  private mudRing(ci: number, cj: number): void {
+    const T = this.T;
+    const i0 = Math.max(0, ci * SUB - 5);
+    const j0 = Math.max(0, cj * SUB - 5);
+    const i1 = Math.min(N, ci * SUB + 8);
+    const j1 = Math.min(N, cj * SUB + 8);
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const k = j * V + i;
+        if (T.mat[k] !== MAT_MUD) T.mat[k] = MAT_MUD;
+        if (T.wet[k] < 0.6) T.wet[k] = 0.6;
+      }
+    const E = this.eBox;
+    if (i0 < E.i0) E.i0 = i0;
+    if (j0 < E.j0) E.j0 = j0;
+    if (i1 > E.i1) E.i1 = i1;
+    if (j1 > E.j1) E.j1 = j1;
   }
   private looseAt(i: number, j: number): number {
     const k = (j * SUB + 1) * V + i * SUB + 1;
@@ -392,7 +414,9 @@ export class WaterSim {
         if (dz > 0) {
           const nh = Math.max(fl, h[k] - dz * w);
           h[k] = nh;
-          if (T.mat[k] === MAT_GRASS || T.mat[k] === MAT_SAND) T.mat[k] = MAT_DIRT;
+          // terra arrancada pela água: lama vermelha (não rocha), escura de molhada
+          T.mat[k] = MAT_MUD;
+          if (T.wet[k] < 0.75) T.wet[k] = 0.75;
         } else {
           const add = -dz * w;
           const loose = Math.max(0, h[k] - T.h0[k]);
