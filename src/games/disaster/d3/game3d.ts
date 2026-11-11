@@ -25,7 +25,7 @@ import { mySpec, PaperChar, paperOn, specOf } from '../../../3d/paper';
 import { bindButton, createJoystick, createLook, isSolo, type BoundButton, type Joystick, type LookDrag } from '../../../ui/touch';
 import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../../ui/notify';
 import { icon } from '../../../ui/icons';
-import { DISASTERS, scenarioName, scenarios, mulberry, type DisasterId, type Scenario } from '../scenarios';
+import { DISASTERS, hint3d, scenarioName, scenarios, mulberry, type DisasterId, type Scenario } from '../scenarios';
 import { dzIcon, type DzIcon } from '../icons';
 import { CamView } from '../../../3d/camview';
 import { FpCamera, FpController, fpTuning } from '../../../3d/fpkit';
@@ -1159,8 +1159,7 @@ export class Disaster3D implements MiniGameHandle {
     const d = this.sc.disasters[Math.min(this.dIndex, this.sc.disasters.length - 1)];
     (this.phaseEl.querySelector('.pi') as HTMLElement).innerHTML = p === 'end' ? icon('trophy', { size: 22 }) : p === 'intro' || p === 'prepare' ? icon('clock', { size: 22 }) : dzIcon(d, 22);
     if (p === 'prepare') {
-      notify(DISASTERS[d].hint(), { kind: 'warn', key: 'dz-hint', ms: 3200 });
-      objective(DISASTERS[d].hint(), { icon: 'warning' });
+      objective(hint3d(d), { icon: 'warning' }); // uma dica só (antes: toast + pílula com o mesmo texto)
       for (const pl of this.players) if (pl.bot) this.plan(pl, d);
     } else if (p === 'end' || p === 'intro') objective(null);
   }
@@ -2976,7 +2975,7 @@ export class Disaster3D implements MiniGameHandle {
       this.phaseEl.style.visibility = show ? 'hidden' : '';
       // o chip de objetivo (canto direito) cruzaria o cartão em retrato: sai durante o alerta
       if (show) objective(null);
-      else if (this.phase === 'disaster') objective(DISASTERS[d].hint(), { icon: 'warning' });
+      else if (this.phase === 'disaster') objective(hint3d(d), { icon: 'warning' });
       if (show) {
         (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(ic, 50);
         const water = ic === 'enchente' || ic === 'acido' || ic === 'tsunami' || ic === 'vulcao' || ic === 'avalanche' || ic === 'wave';

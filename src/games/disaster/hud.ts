@@ -214,7 +214,14 @@ export class Hud {
   }
 
   /** aviso compacto no topo (src/ui/notify) */
+  private lastToast = '';
+  private lastToastAt = 0;
   toast(msg: string, key = 'dz-hint'): void {
+    // a mesma frase repetida virava "×14", "×26": só renova depois de 6 s
+    const now = performance.now();
+    if (msg === this.lastToast && now - this.lastToastAt < 6000) return;
+    this.lastToast = msg;
+    this.lastToastAt = now;
     notify(msg, { key, ms: 3000 });
   }
 
@@ -244,8 +251,8 @@ export class Hud {
                 : t('dz.ph.next', 'Próximo cenário');
     this.phaseLbl.textContent = lbl;
     // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
-    if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + DISASTERS[g.sc.disasters[0]].hint() : DISASTERS[g.sc.disasters[0]].hint());
-    if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
+    // a dica do desastre aparece UMA vez, na pílula de objetivo (antes também saía igual num toast)
+    if (p === 'prepare' && !g.finale && g.training) this.toast(t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.'));
     // objetivo atual num chip minúsculo no canto (fica até a rodada acabar)
     if (p === 'prepare') objective(g.finale ? t('dz.tip.bunker', 'Siga para a direita e entre no bunker!') : DISASTERS[g.sc.disasters[0]].hint(), { icon: 'warning' });
     else if (p === 'end' || p === 'intro') objective(null);
