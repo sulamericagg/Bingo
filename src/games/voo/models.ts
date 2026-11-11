@@ -162,8 +162,9 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   const CK = '#8f96c4';
   b.sharp(3.56, 1.08, 0.12, 0, 0, -4.02, CK); // parede frontal baixa (atrás do painel)
   // painel
-  b.box(3.0, 1.0, 0.45, 0, 0, -3.75, '#7d86b0');
-  b.box(3.0, 0.1, 0.62, 0, 1.0, -3.68, '#5d6596'); // glare shield
+  b.box(3.0, 0.98, 0.3, 0, 0, -3.85, '#7d86b0');
+  // glare shield raso: com o olho mais alto, a aba funda escondia as telas e metade do para-brisa
+  b.box(3.0, 0.08, 0.3, 0, 1.07, -3.83, '#5d6596');
   // janelas: postes e teto
   for (const x of [-1.5, -0.74, 0, 0.74, 1.5]) b.sharp(0.09, 0.78, 0.09, x, 1.08, -3.98, CK);
   b.sharp(3.4, 0.5, 0.12, 0, 1.86, -3.98, CK);
@@ -317,12 +318,12 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
       wins.push({ x: side * WALL_X, z, y: WIN_Y, glass: g });
     }
   // telas (PFD e mapa)
-  const pfd = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshBasicMaterial({ map: pfdTex, toneMapped: false }));
-  pfd.position.set(-0.55, 0.78, -3.52);
-  pfd.rotation.x = -0.25;
-  const nav = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshBasicMaterial({ map: navTex, toneMapped: false }));
-  nav.position.set(0.55, 0.78, -3.52);
-  nav.rotation.x = -0.25;
+  const pfd = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.37), new THREE.MeshBasicMaterial({ map: pfdTex, toneMapped: false }));
+  pfd.position.set(-0.55, 0.87, -3.68);
+  pfd.rotation.x = -0.42;
+  const nav = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.37), new THREE.MeshBasicMaterial({ map: navTex, toneMapped: false }));
+  nav.position.set(0.55, 0.87, -3.68);
+  nav.rotation.x = -0.42;
   group.add(pfd, nav);
 
   const mk = (fn: (g: GeoBuilder) => void, m = mat(standard)) => {
