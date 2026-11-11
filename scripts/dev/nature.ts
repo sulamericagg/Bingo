@@ -50,6 +50,14 @@ if (g === 'world') {
         }
       }
   }
+  if (qs.has('camp')) {
+    const gen = new WorldGen(sv.seed);
+    const cp = gen.nearestCamp(x, z, 1e9);
+    if (cp) {
+      x = cp.x + num('cdx', 0);
+      z = cp.z + num('cdz', 14);
+    }
+  }
   sv.px = x;
   sv.pz = z;
   sv.yaw = num('yaw', 0);

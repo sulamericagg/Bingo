@@ -156,6 +156,7 @@ export class View {
   private ground: THREE.Mesh;
   private trees: THREE.InstancedMesh[] = [];
   private treeIdx: number[][] = [];
+  private farTrees: THREE.InstancedMesh[] = [];
   private stumps: THREE.InstancedMesh;
   private nodes: THREE.InstancedMesh[] = [];
   private chests: THREE.InstancedMesh[] = [];
@@ -285,6 +286,12 @@ export class View {
       sc.add(im);
       this.trees.push(im);
       this.treeIdx.push([]);
+      // longe: modelo leve (~70 tri)
+      const fm = new THREE.InstancedMesh(treeGeo(k as TK, 1), this.treeMat, Math.max(1, n));
+      fm.count = 0;
+      fm.frustumCulled = false;
+      sc.add(fm);
+      this.farTrees.push(fm);
     }
     this.stumps = new THREE.InstancedMesh(stumpGeo(), vcMat(), W.trees.length);
     this.stumps.count = 0;
@@ -466,6 +473,8 @@ export class View {
     const D = this.q.draw;
     const D2 = D * D;
     const cnt = [0, 0, 0, 0];
+    const fcnt = [0, 0, 0, 0];
+    const near2 = (this.tierNow >= 3 ? 40 : this.tierNow === 2 ? 30 : 22) ** 2;
     this.treeIdx.forEach((a) => (a.length = 0));
     let st = 0;
     this.blobs.begin();
@@ -480,11 +489,19 @@ export class View {
         this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.setScalar(t.s * 0.9)));
         return;
       }
+      if (dx * dx + dz * dz > near2) {
+        this.farTrees[t.k].setMatrixAt(fcnt[t.k]++, _m);
+        return;
+      }
       this.trees[t.k].setMatrixAt(cnt[t.k], _m);
       this.treeIdx[t.k][cnt[t.k]++] = i;
     });
     this.trees.forEach((m, k) => {
       m.count = cnt[k];
+      m.instanceMatrix.needsUpdate = true;
+    });
+    this.farTrees.forEach((m, k) => {
+      m.count = fcnt[k];
       m.instanceMatrix.needsUpdate = true;
     });
     this.stumps.count = st;
