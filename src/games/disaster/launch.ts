@@ -10,6 +10,7 @@ import { notify } from '../../ui/notify';
 import { detectInitialTier } from '../../core/quality';
 import { dzIcon } from './icons';
 import { partyRoomFor } from '../../party/contract';
+import { loadMode, MODE_KEY as DIFF_KEY, type DzMode } from './tuning';
 
 const MODE_KEY = 'bo-disaster-mode';
 
@@ -23,6 +24,9 @@ const CSS = `
 .dz-pick .m b{font-size:34px;line-height:1}
 .dz-pick .m small{font-size:13px;font-weight:600;opacity:.85;text-align:center}
 .dz-pick .m:active{transform:translateY(3px);box-shadow:0 2px 0 #2a0b5c}
+.dz-pick .dif{display:flex;gap:6px;background:rgba(30,15,70,.6);border-radius:16px;padding:4px}
+.dz-pick .dif button{font:inherit;font-weight:700;font-size:15px;color:#fff;background:transparent;border:0;border-radius:12px;padding:6px 12px;cursor:pointer}
+.dz-pick .dif button.on{background:linear-gradient(180deg,#ffe680,#ffb03a);color:#2a0b5c;box-shadow:0 3px 0 #2a0b5c}
 .dz-pick .out{font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 16px;display:flex;align-items:center;gap:6px;cursor:pointer}
 @media (orientation:landscape) and (max-height:500px){.dz-pick .m{min-height:120px}.dz-pick h2{font-size:22px}}
 `;
@@ -127,8 +131,28 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
       <button class="m d2${last === '2d' ? ' last' : ''}" data-m="2d"><b>2D</b>${dzIcon('house', 54)}<small>${t('dz.mode2dD', 'Leve, roda em qualquer celular')}</small></button>
       <button class="m d3${last === '3d' ? ' last' : ''}" data-m="3d"${gl ? '' : ' disabled'}><b>3D</b>${dzIcon('tornado', 54)}<small>${!gl ? t('dz.no3dShort', 'Indisponível neste aparelho') : weak ? t('dz.mode3dWeak', 'Pode ficar lento neste aparelho') : t('dz.mode3dD', 'Ilha 3D com física de verdade')}</small></button>
     </div>
+    <div class="dif" role="radiogroup" aria-label="${t('dz.diff', 'Dificuldade')}">
+      <button data-d="facil">${t('dz.diff.easy', 'Fácil')}</button><button data-d="normal">${t('dz.diff.normal', 'Normal')}</button><button data-d="dificil">${t('dz.diff.hard', 'Difícil')}</button>
+    </div>
     <button class="out">${icon('home', { size: 22 })}${t('dz.exit', 'Sair')}</button>`;
   root.appendChild(pick);
+  // dificuldade (lembrada; vale no 2D e no 3D — docs/DISASTER-DESIGN.md §3)
+  const paint = (m: DzMode) => pick!.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.d === m);
+    b.setAttribute('aria-pressed', String(b.dataset.d === m));
+  });
+  paint(loadMode());
+  pick.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) =>
+    b.addEventListener('click', () => {
+      audio.click();
+      try {
+        localStorage.setItem(DIFF_KEY, b.dataset.d || 'normal');
+      } catch {
+        /* */
+      }
+      paint(loadMode());
+    }),
+  );
   pick.querySelectorAll<HTMLButtonElement>('[data-m]').forEach((b) =>
     b.addEventListener('click', () => {
       audio.unlock();

@@ -10,7 +10,7 @@ const sil = (shapes: string, g: G, w = 3): string =>
 const hl = (shapes: string, o = 0.5): string => `<g fill="#fff" opacity="${o}">${shapes}</g>`;
 const ink = (shapes: string): string => `<g fill="${INK}">${shapes}</g>`;
 
-export type DzIcon = DisasterId | 'house' | 'bunker' | 'ghost';
+export type DzIcon = DisasterId | 'house' | 'bunker' | 'ghost' | 'wave' | 'combo';
 
 const ICONS: Record<DzIcon, string> = {
   house: sil('<path d="M6 24L24 8L42 24Z"/><rect x="11" y="22" width="26" height="20" rx="2"/>', 'orange') + ink('<rect x="20" y="30" width="8" height="12" rx="2"/>') + hl('<path d="M12 22L24 11L26 12L14 23Z"/>', 0.5),
@@ -26,6 +26,10 @@ const ICONS: Record<DzIcon, string> = {
   avalanche: sil('<path d="M2 42L20 10L30 24L36 16L46 42Z"/>', 'silver') + sil('<path d="M14 22L20 10L26 20L22 18L18 23Z"/>', 'white', 1.5) + sil('<circle cx="36" cy="36" r="5"/><circle cx="26" cy="38" r="4"/>', 'white', 2),
   raios: sil('<path d="M12 18C8 18 6 15 6 12S9 6 13 7C14 4 18 2 22 3C26 2 30 5 31 8C35 7 40 9 40 13S37 18 34 18Z"/>', 'silver', 2.6) + sil('<path d="M24 18L16 32H23L19 45L32 27H25L29 18Z"/>', 'gold', 2.6),
   acido: sil('<path d="M4 30C10 26 14 30 20 28S30 24 34 28S42 30 44 28V44H4Z"/>', 'green') + sil('<circle cx="16" cy="18" r="4"/><circle cx="28" cy="12" r="5"/><circle cx="36" cy="20" r="3"/>', 'green', 2) + hl('<circle cx="26" cy="10" r="1.8"/><circle cx="14" cy="16" r="1.4"/>', 0.8),
+  sumidouro: sil('<path d="M4 22H44V42H4Z"/>', 'rock') + ink('<ellipse cx="24" cy="30" rx="13" ry="7"/>') + `<path d="M8 22L14 16M40 22L34 15M24 22V14" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>` + hl('<path d="M8 26H20V28H8Z"/>', 0.5),
+  areia: sil('<path d="M4 14H30C36 14 38 8 34 6M4 24H40C46 24 46 32 40 32M4 34H26C32 34 32 42 26 42"/>', 'orange', 2.2) + sil('<rect x="36" y="10" width="8" height="8" rx="2" transform="rotate(20 40 14)"/>', 'rock', 2),
+  wave: sil('<path d="M4 40C4 26 14 14 26 14C34 14 40 19 40 25C35 21 28 22 27 28C32 27 35 30 34 33H44V42H4Z"/>', 'cyan') + hl('<path d="M10 32C12 24 18 18 25 17L24 19C19 21 15 26 13 32Z"/>', 0.6),
+  combo: sil('<circle cx="17" cy="24" r="12"/>', 'orange') + sil('<circle cx="31" cy="24" r="12"/>', 'red') + `<path d="M20 18L28 30M28 18L20 30" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>` + hl('<circle cx="13" cy="19" r="3"/>', 0.7),
 };
 
 export function dzIcon(name: DzIcon, size = 48): string {
