@@ -32,8 +32,9 @@ import { Sandbox } from './survival';
 import type { GameMode } from './engine';
 import { iconURL } from './itemicons';
 import { ITEM } from './items';
-import { playIntro } from './intro';
+import { Wreck, playIntro } from './intro';
 import { forestSolo, setForestSolo } from '../touchcfg';
+import { FpCamera, FpController, HeightGround, fpTuning, type FpCollider } from '../../../3d/fpkit';
 
 const TAU = Math.PI * 2;
 const EYE = 1.6;
@@ -222,10 +223,41 @@ export class WorldGame {
   private offs: (() => void)[] = [];
 
   // jogador
-  px = 0;
-  py = 0;
-  pz = 0;
-  vy = 0;
+  /** corpo a pé: andar compartilhado (src/3d/fpkit, preset 'survival') — px/py/pz/vy são o corpo do kit */
+  fp: FpController;
+  fpc: FpCamera;
+  get px(): number {
+    return this.fp.x;
+  }
+  set px(v: number) {
+    this.fp.x = v;
+  }
+  /** pés */
+  get py(): number {
+    return this.fp.y;
+  }
+  set py(v: number) {
+    this.fp.y = v;
+  }
+  get pz(): number {
+    return this.fp.z;
+  }
+  set pz(v: number) {
+    this.fp.z = v;
+  }
+  get vy(): number {
+    return this.fp.vy;
+  }
+  set vy(v: number) {
+    this.fp.vy = v;
+    if (v > 0) this.fp.grounded = false;
+  }
+  get onGround(): boolean {
+    return this.fp.grounded;
+  }
+  set onGround(v: boolean) {
+    this.fp.grounded = v;
+  }
   yaw = 0;
   pitch = -0.1;
   tYaw = 0;
@@ -272,6 +304,16 @@ export class WorldGame {
   phys: Phys;
   sb: Sandbox | null = null;
   introPending = false;
+  /** destroços da nave (marco do início) */
+  wreck: Wreck | null = null;
+  /** efeitos que continuam depois da cena (fumaça se dissolvendo); true = continua */
+  afterCine: ((dt: number) => boolean)[] = [];
+  /** (re)coloca os destroços salvos em save.wreck */
+  placeWreck(): void {
+    this.wreck?.dispose();
+    const w = this.save.wreck;
+    this.wreck = w ? new Wreck(this, w[0], w[1], w[2], w[3]) : null;
+  }
   /** cena de abertura rodando (trava controles) */
   cine: ((dt: number) => boolean) | null = null;
   held: Log | null = null;
@@ -279,7 +321,6 @@ export class WorldGame {
   private pBody: CANNON.Body;
   private mv: MoveOut = { ground: -Infinity, hit: false };
   private _pp = { x: 0, z: 0 };
-  onGround = true;
   private lantern: THREE.PointLight;
   under = 0;
   private biome = -1;
@@ -296,6 +337,12 @@ export class WorldGame {
   ) {
     this.save = opts.save ?? loadWorld();
     this.save.solo = forestSolo();
+    // andar = kit compartilhado (o mesmo da Cozinha), preset de sobrevivência ajustado para o mundo de blocos:
+    // passo de 1/2 bloco sem pular, bloco inteiro só pulando; olho suavizado em rampas/degraus (sem tremor)
+    const tune = fpTuning('survival', { speed: 5.0, accel: 11, decel: 13, sprintMul: 1, radius: 0.32, gravity: 24, jumpV: 8.1, airControl: 0.6, eye: EYE, eyeSmooth: 18, eyeLag: 0.9, bobAmp: 0.022, bobRate: 8.5, rollAmp: 0.006, camMargin: 0 });
+    const fcol: FpCollider = { isFree: (x, z, r) => this.bodyFree(x, z, r) };
+    this.fp = new FpController(tune, fcol, new HeightGround((x, z) => this.bodyFloor(x, z), { stepUp: 0.6, stepDown: 0.7, maxSlope: 1.0, probe: 0.3, bumpTol: 0.1 }));
+    this.fpc = new FpCamera(tune);
     this.q = wq(opts.tier);
     const r = new THREE.WebGLRenderer({ antialias: opts.tier >= 2, powerPreference: 'high-performance' });
     r.setPixelRatio(this.q.pr);
@@ -336,6 +383,13 @@ export class WorldGame {
     this.world.vox.budgetMs = [2, 3, 4, 6][opts.tier];
     this.world.vox.natR = opts.tier <= 1 ? 1 : 2;
     this.world.onUnload = (c) => this.phys.forgetChunk(c);
+    // acampamentos (serraria) e a nave caída: o chão em volta não se cava (nada fica voando)
+    this.world.vox.guard = (x, y, z, r) => {
+      const c = this.world.gen.nearestCamp(x, z, 24);
+      if (c && Math.abs(x - (c.x + 1)) < 10 + r && Math.abs(z - c.z) < 5 + r && y > this.world.baseAt(c.x, c.z) - 6) return true;
+      const w = this.save.wreck;
+      return !!w && (x - w[0]) ** 2 + (z - w[2]) ** 2 < (3.8 + r) ** 2 && y > w[1] - 5;
+    };
     this.world.vox.onEditChunk = (c) => {
       this.phys.touchChunk(c);
       this.world.grassDirty(c);
@@ -429,14 +483,15 @@ export class WorldGame {
       if (opts.net) {
         opts.net.attach(this);
         // minijogos não ganham carrinho (atrapalha lotes/esconderijos)
-        if (!this.save.vehPlaced && !opts.net.meta?.mini) {
-          this.save.vehPlaced = true;
-          this.save.veh.owned = [];
-          this.sb.starterVehicle(this.px + 4, this.pz + 3, this.yaw);
-          this.applyOwned();
-        }
+        // sem carrinho surgindo ao lado de quem entra (o kit inicial fica na mochila)
+        this.save.vehPlaced = true;
         this.hud.addNet(() => void import('./net').then((n) => n.inviteFriends(opts.net!, root)));
-        void import('./mini').then((mm) => mm.startMini(this, opts.net!));
+        void import('./mini').then((mm) => {
+          mm.startMini(this, opts.net!);
+          // banner do minijogo: abre 3–4 s quando muda e recolhe para um ícone (mesmo padrão do objetivo)
+          const ban = this.hud.el.querySelector<HTMLElement>('.mg-ban');
+          if (ban) this.hud.collapsible(ban);
+        });
       }
       this.hud.el.classList.add('fw-sandbox');
       this.hud.onHotkey = (i) => this.sb?.select(i);
@@ -447,6 +502,7 @@ export class WorldGame {
     window.addEventListener('resize', ro);
     this.offs.push(() => window.removeEventListener('resize', ro));
     if (location.search.includes('debug')) (window as any).__forest = this;
+    if (this.save.wreck) this.placeWreck();
     if (this.introPending) {
       this.introPending = false;
       playIntro(this);
@@ -496,9 +552,14 @@ export class WorldGame {
     x.textAlign = 'center';
     x.fillText(t('floresta.w.mill', 'SERRARIA'), 128, 62);
     const tex = new THREE.CanvasTexture(cv);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.1), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-    sign.position.set(3, 3.2, 0);
+    // placa com as duas faces legíveis (antes o verso mostrava o texto espelhado)
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.1), new THREE.MeshBasicMaterial({ map: tex }));
+    sign.position.set(3, 3.2, 0.01);
     g.add(sign);
+    const back = new THREE.Mesh(sign.geometry, sign.material);
+    back.position.set(3, 3.2, -0.01);
+    back.rotation.y = Math.PI;
+    g.add(back);
     for (const s of [-1, 1]) box(0.15, 2.6, 0.15, '#6a3a1a', 3 + s * 1.3, 1.6, 0);
     // pilha de toras
     for (let i = 0; i < 5; i++) {
@@ -556,8 +617,13 @@ export class WorldGame {
 
   /** sobrevivência: só aparecem os veículos montados (o quadriciclo é o carrinho inicial) */
   applyOwned(): void {
+    const sp = this.save.veh.pos;
     for (const v of this.vehs) {
-      const on = !this.sb || this.save.veh.owned.includes(v.k);
+      // modo blocos: os veículos antigos da floresta não aparecem do nada na garagem perto do início —
+      // só um que o jogador já levou para outro lugar (saves antigos); os novos vêm de kits/oficina
+      const p = sp[v.k];
+      const moved = !!p && p.length >= 2 && Math.hypot(p[0] - (-18 + v.k * 5.2), p[1] - 46) > 3;
+      const on = !this.sb || (this.save.veh.owned.includes(v.k) && moved);
       v.m.g.visible = on;
       v.box.off = !on;
       if (!on) this.phys.moveKin(v.kin, 0, -9999, 0, 0, 0, 0, 0);
@@ -842,7 +908,7 @@ export class WorldGame {
     this.persist();
     const coins = this.earned > 0 || this.trees > 0 ? Math.min(300, Math.round(4 + Math.sqrt(this.earned) * 1.2 + this.trees * 0.8)) : 0;
     if (coins > 0) addCoins(coins);
-    reportRun({ game: 'floresta', score: Math.round(this.earned), coins, durationSec: Math.round(this.time), stats: { trees: this.trees, planks: 0 } });
+    reportRun({ game: 'mundo', score: Math.round(this.earned), coins, durationSec: Math.round(this.time), stats: { trees: this.trees, planks: 0 } });
     this.opts.exit();
   }
 
@@ -854,7 +920,7 @@ export class WorldGame {
     const el = now - this.last;
     this.last = now;
     if (this.paused) return;
-    const dt = Math.min(0.05, el / 1000);
+    const dt = Math.max(0, Math.min(0.05, el / 1000)); // o 1º quadro pode vir com "now" anterior ao início
     const w0 = performance.now();
     this.step(dt);
     this.renderer.render(this.scene, this.camera);
@@ -908,6 +974,8 @@ export class WorldGame {
     this.stepTnt(dt);
     this.stepPets(dt);
     this.stepParticles(dt);
+    this.wreck?.update(dt, this.px, this.pz);
+    if (this.afterCine.length) this.afterCine = this.afterCine.filter((f) => f(dt));
     this.camera.updateMatrixWorld();
     this.updateSky(dt);
     this.sb?.update(dt);
@@ -930,77 +998,81 @@ export class WorldGame {
   private walk(dt: number): void {
     const c = this.hud.ctl;
     const W = this.world;
-    const fx = -Math.sin(this.yaw);
-    const fz = -Math.cos(this.yaw);
-    const rx = Math.cos(this.yaw);
-    const rz = -Math.sin(this.yaw);
+    const fp = this.fp;
     const wl = W.waterLevel(this.px, this.pz);
     const swim = this.py < wl - 1.0;
     const fl = W.vox.matAt(this.px, this.py + 0.7, this.pz);
     const inAq = fl === VM.Agua;
     const inLava = fl === VM.Lava;
-    const sp = (swim || inAq ? 3 : 6.2) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
-    let mx = rx * c.mx + fx * -c.my;
-    let mz = rz * c.mx + fz * -c.my;
-    const len = Math.hypot(mx, mz);
-    if (len > 1) {
-      mx /= len;
-      mz /= len;
+    const T = fp.tune;
+    // nadar: boia com a cabeça para fora; andando para a frente olhando para baixo, mergulha; solto, sobe de volta
+    const surf = wl - 1.25;
+    const diving = swim && c.my < -0.3 && this.pitch < -0.35;
+    const under = swim && (diving || this.py < surf - 0.05);
+    this.swimFloor = swim && !under ? surf : -Infinity;
+    T.speed = (swim || inAq ? 2.6 : 5.0) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
+    T.gravity = inAq || inLava ? 4 : 24;
+    T.jumpV = swim || inAq || inLava ? 3.2 : 8.1;
+    // cabeça batendo (teto de terreno, bloco ou construção)
+    const head = (y: number) => W.vox.dens(this.px, y, this.pz) > 0 || !!W.extraSolid?.(this.px, y, this.pz) || W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < y;
+    // direcional: x = direita, y = frente
+    fp.steer(dt, c.mx, -c.my, this.yaw);
+    if (under) {
+      T.gravity = 0;
+      fp.grounded = false;
+      if (diving) fp.vy = Math.sin(this.pitch) * 2.4;
+      else fp.vy = Math.min(fp.vy + 5 * dt, c.jump || c.up ? 2.4 : 1.4);
+    } else if ((inAq || inLava) && (c.up || c.jump)) {
+      fp.vy = Math.min(fp.vy + 14 * dt, 3);
+      fp.grounded = false;
+    } else if (c.jump) fp.jump();
+    if (fp.vy > 0 && head(this.py + 1.85 + fp.vy * dt)) fp.vy = 0;
+    const x0 = fp.x;
+    const y0 = fp.y;
+    const z0 = fp.z;
+    const up = fp.vy > 0;
+    fp.move(dt);
+    // não atravessa teto: pulando, a cabeça bate; subindo rampa/degrau sem altura livre, o passo não acontece
+    if (fp.y > y0 + 1e-4 && head(fp.y + 1.82)) {
+      if (!up) {
+        fp.x = x0;
+        fp.z = z0;
+        fp.vx = fp.vz = 0;
+      }
+      fp.y = y0;
+      fp.vy = Math.min(0, fp.vy);
     }
-    // horizontal em passos curtos (não atravessa paredes finas)
-    const total = sp * dt * Math.min(1, len);
-    const n = Math.max(1, Math.ceil(total / 0.25));
-    const p = this._pp;
-    for (let k = 0; k < n; k++) {
-      const dx = (mx * sp * dt) / n;
-      const dz = (mz * sp * dt) / n;
-      if (!dx && !dz) break;
-      if (!this.blocked(this.px + dx, this.pz + dz, dx, dz)) {
-        this.px += dx;
-        this.pz += dz;
-      } else if (!this.blocked(this.px + dx, this.pz, dx, 0)) this.px += dx;
-      else if (!this.blocked(this.px, this.pz + dz, 0, dz)) this.pz += dz;
+    // já preso dentro de algo (veículo encostou, árvore nasceu): empurra para fora
+    if (!this.bodyFree(this.px, this.pz, T.radius * 0.9)) {
+      // primeiro tenta subir (chão mais alto que o pé) — até 1,2 m
+      for (let k = 1; k <= 12; k++) {
+        fp.y += 0.1;
+        if (this.bodyFree(this.px, this.pz, T.radius * 0.9)) break;
+        if (k === 12) fp.y -= 1.2;
+      }
     }
-    p.x = this.px;
-    p.z = this.pz;
-    W.pushOutTrees(p, 0.38, this.py);
-    W.solids.resolve(p, this.py, 1.75, 0.38, 0.55, this.mv);
-    // empurrões não podem enfiar o jogador na parede
-    if (!this.blocked(p.x, p.z, 0, 0)) {
-      this.px = p.x;
-      this.pz = p.z;
-    }
-    // vertical
-    const tf = Math.max(W.terrainFloor(this.px, this.py + 0.6, this.pz), W.extraFloor ? W.extraFloor(this.px, this.py + 0.6, this.pz) : -Infinity);
-    const bf = this.mv.ground;
-    let floor = tf > bf ? tf : bf;
-    if (swim) floor = Math.max(floor, wl - 1.25);
-    if (inAq || inLava) {
-      this.vy += (c.up || c.jump ? 4 : -1.2 - this.vy) * dt * 3;
-    } else this.vy -= 22 * dt;
-    if (this.vy > 0 && (W.vox.dens(this.px, this.py + 1.85 + this.vy * dt, this.pz) > 0 || W.extraSolid?.(this.px, this.py + 1.85 + this.vy * dt, this.pz))) this.vy = 0;
-    if (this.vy > 0 && W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < this.py + 1.85) this.vy = 0;
-    this.py += this.vy * dt;
-    this.onGround = false;
-    if (this.py <= floor) {
-      // degrau: sobe suave (sem teleporte visível)
-      const up = floor - this.py;
-      this.py = up > 0.05 ? this.py + Math.min(up, Math.max(0.12, up * 0.5)) : floor;
-      if (this.py > floor) this.py = floor;
-      if (this.vy < 0) this.vy = 0;
-      this.onGround = true;
+    if (!this.bodyFree(this.px, this.pz, T.radius * 0.9)) {
+      const p = this._pp;
+      p.x = this.px;
+      p.z = this.pz;
+      W.pushOutTrees(p, T.radius, this.py);
+      W.solids.resolve(p, this.py, 1.75, T.radius, 0.6, this.mv);
+      if (p.x !== this.px || p.z !== this.pz) {
+        this.px = p.x;
+        this.pz = p.z;
+      }
     }
     if (this.py < BED_Y - 4) {
       // caiu do mundo (não deveria): volta para a superfície
-      this.py = W.heightAt(this.px, this.pz) + 1;
-      this.vy = 0;
+      fp.place(this.px, this.pz, W.heightAt(this.px, this.pz) + 1);
     }
-    if ((c.jump || (swim && c.up)) && (this.onGround || swim)) this.vy = swim ? 3.5 : 7.2;
     if (inLava) this.hurt?.(dt * 18, 'lava');
+    const len = fp.speedK;
     this.walkT += len * dt * 9;
-    const eye = this.py + EYE + Math.sin(this.walkT) * 0.05 * Math.min(1, len);
-    this.camera.position.set(this.px, eye, this.pz);
-    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    const fc = this.fpc;
+    fc.yaw = this.yaw;
+    fc.pitch = this.pitch;
+    fc.apply(this.camera, dt, fp, null);
     if (this.camera.fov !== 70) {
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
@@ -1009,6 +1081,36 @@ export class WorldGame {
     this.poseHand(dt, len);
     this.phys.moveKin(this.pBody, this.px, this.py + 0.9, this.pz, this.yaw, 0, 0, dt);
   }
+  /** nível da água como "chão" ao nadar (cabeça para fora) */
+  private swimFloor = -Infinity;
+  /** chão debaixo do corpo em (x,z) — terreno/caverna, blocos, construções (procurando de pé + meio bloco) */
+  private bodyFloor(x: number, z: number): number {
+    const f = this.world.floorAt(x, this.fp.y + 0.65, z);
+    return f > this.swimFloor ? f : this.swimFloor;
+  }
+  /** corpo (cilindro de raio r, do joelho à cabeça) livre em (x,z)? — terreno, blocos */
+  private bodyFree(x: number, z: number, r: number): boolean {
+    const W = this.world;
+    const y = this.fp.y;
+    const ex = W.extraSolid;
+    for (const h of [0.68, 1.2, 1.72]) {
+      const yy = y + h;
+      // no joelho só meio raio: em encosta íngreme quem manda é o limite de rampa do chão (HeightGround)
+      const rr = h < 1 ? r * 0.5 : r;
+      for (let i = 0; i < 4; i++) {
+        const ox = i === 0 ? rr : i === 1 ? -rr : 0;
+        const oz = i === 2 ? rr : i === 3 ? -rr : 0;
+        if (W.vox.dens(x + ox, yy, z + oz) > 0 || (ex && ex(x + ox, yy, z + oz))) return false;
+      }
+    }
+    // troncos/pedras e caixas (construções, acampamentos, veículos): o kit desliza nelas eixo a eixo
+    const p = this._pp;
+    p.x = x;
+    p.z = z;
+    if (W.pushOutTrees(p, r, y)) return false;
+    W.solids.resolve(p, y, 1.75, r, 0.6, this.mv);
+    return !this.mv.hit;
+  }
   /** dano (sobrevivência liga isso) */
   hurt: ((n: number, why: string) => void) | null = null;
   /** dirigindo/montado: o corpo físico do jogador sai do caminho (não segura o veículo) */
@@ -1016,22 +1118,6 @@ export class WorldGame {
     this.pBody.velocity.set(0, 0, 0);
     this.pBody.position.set(this.px, -9999, this.pz);
     this.pBody.aabbNeedsUpdate = true;
-  }
-
-  /** parede/terreno íngreme ou sólido na altura do corpo em (x,z)? */
-  private blocked(x: number, z: number, dx: number, dz: number): boolean {
-    const W = this.world;
-    const d = Math.hypot(dx, dz);
-    const ox = d > 0 ? (dx / d) * 0.32 : 0;
-    const oz = d > 0 ? (dz / d) * 0.32 : 0;
-    const y = this.py;
-    for (const h of [0.62, 1.15, 1.7]) if (W.vox.dens(x + ox, y + h, z + oz) > 0 || W.extraSolid?.(x + ox, y + h, z + oz)) return true;
-    // rampa íngreme demais (≈ 55°) num passo
-    if (d > 0) {
-      const f = W.terrainFloor(x + ox, y + 0.6, z + oz);
-      if (f - y > 0.55 + d * 1.4 && f - y < 2) return true;
-    }
-    return false;
   }
 
   private useTool(dt: number): void {
@@ -1098,16 +1184,18 @@ export class WorldGame {
   }
 
   private _counts = new Map<number, number>();
-  private _stat = { blocked: 0 };
+  private _stat: { blocked: number; prot?: number } = { blocked: 0 };
   /** escava uma esfera no volume (pá, picareta, máquinas, explosões) */
   carve(x: number, y: number, z: number, r: number, hard: number, machine: boolean): Map<number, number> {
     const counts = this._counts;
     counts.clear();
     this._stat.blocked = 0;
+    this._stat.prot = 0;
     const W = this.world;
     const n = W.vox.edit(x, y, z, r, -1, hard, counts, this._stat);
     if (this._stat.blocked > 0 && n === 0) {
-      this.hud.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
+      if (this._stat.prot) this.hud.toast(t('mundo.protected', 'Aqui não dá para cavar: área protegida'), 'warn');
+      else this.hud.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
       audio.click();
       return counts;
     }
@@ -2144,6 +2232,7 @@ export class WorldGame {
     const cx = this.cx();
     const cz = this.cz();
     this.underground(dt);
+    this.underwater();
     this.sun.position.set(cx + 30, 60, cz + 18);
     this.sun.target.position.set(cx, 0, cz);
     if (this.shake > 0) {
@@ -2152,6 +2241,31 @@ export class WorldGame {
       this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.5;
     }
   }
+
+  /** olhos debaixo d'água: neblina curta azul e um véu na tela (as bolhas de ar aparecem no HUD) */
+  private wetEl: HTMLDivElement | null = null;
+  private underwater(): void {
+    const cy = this.camera.position.y;
+    const wl = this.driving >= 0 ? -Infinity : this.world.waterLevel(this.camera.position.x, this.camera.position.z);
+    const wet = cy < wl - 0.02 || (this.driving < 0 && this.world.vox.matAt(this.camera.position.x, cy, this.camera.position.z) === VM.Agua);
+    if (wet) {
+      const f = this.scene.fog as THREE.Fog;
+      f.color.copy(this.world.waterMat.color).multiplyScalar(0.55);
+      (this.scene.background as THREE.Color).copy(f.color);
+      f.near = 0.5;
+      f.far = 16;
+      if (!this.wetEl) {
+        this.wetEl = document.createElement('div');
+        this.wetEl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,rgba(40,120,200,.18),rgba(10,40,90,.5));transition:opacity .25s';
+        this.root.appendChild(this.wetEl);
+        this.offs.push(() => this.wetEl?.remove());
+      }
+    }
+    if (this.wetEl) this.wetEl.style.opacity = wet ? '1' : '0';
+    if (!wet && this.wasWet) this.skyT = 0; // sai d'água: a neblina normal volta já
+    this.wasWet = wet;
+  }
+  private wasWet = false;
 
   /** céu: horizonte = cor do fundo/neblina (já com noite/caverna); topo = céu do bioma escurecendo junto */
   private updateDome(): void {
@@ -2310,10 +2424,12 @@ export class WorldGame {
     if (this.destroyed) return;
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    this.sb?.flushDrops();
     this.persist();
     for (const f of this.offs) f();
     this.hud.destroy();
     this.sb?.dispose();
+    this.wreck?.dispose();
     this.world.dispose();
     this.sky.dispose();
     this.leaves.dispose();
@@ -2367,7 +2483,7 @@ export function createWorld(root: HTMLElement, opts: WorldOpts): WorldGame {
 export function serversAvailable(): boolean {
   return true;
 }
-export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }, o: { gameId?: string } = {}): Promise<WorldGame | null> {
   const net = await import('./net');
-  return net.openServers(root, opts, party);
+  return net.openServers(root, opts, party, o);
 }

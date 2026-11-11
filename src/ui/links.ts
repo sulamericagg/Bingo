@@ -6,6 +6,7 @@
  *   ?garimpo=<CÓDIGO> → abre o Garimpo Bruto já entrando na sala do amigo
  *   ?cava=<CÓDIGO>    → abre o Cava & Fala já entrando na sala do amigo
  *   ?duelo=<jogo>/<CÓDIGO> → abre o jogo já entrando no duelo (src/party/duel.ts)
+ *  ?mundo=<CÓDIGO>   → abre o Mundo já entrando no servidor (src/games/floresta/world/browser.ts)
  *  (web: ?param na URL · app: bloopworld://tipo/código ou https://…/?param=)
  * ============================================================ */
 import { bloopLink, parseBloopLink, type BloopLink } from './scan';
@@ -27,6 +28,11 @@ export async function openBloopLink(l: BloopLink): Promise<void> {
     const [game, code] = l.code.split('/');
     const d = await import('../party/duel-link');
     await d.openDuel(game, code);
+  } else if (l.type === 'mundo') {
+    const [reg, j] = await Promise.all([import('../hub/registry'), import('../party/join')]);
+    // o Mundo pode ter id próprio no hub ('mundo') ou ainda morar na Floresta
+    const game = reg.listGames().some((g) => g.id === 'mundo') ? 'mundo' : 'floresta';
+    await j.openJoin({ game, code: l.code });
   } else if (l.type === 'garimpo') {
     const [{ setPendingGarimpo }, reg, hub] = await Promise.all([import('../games/garimpo/pending'), import('../hub/registry'), import('../hub/hub')]);
     setPendingGarimpo(l.code);
@@ -44,7 +50,7 @@ export async function openBloopLink(l: BloopLink): Promise<void> {
 export function openVooLink(url: string): boolean {
   const l = parseBloopLink(url);
   // ?voo= (web/https) e bloopworld://voo|grupo/… (app; ?grupo= e amigo já têm tratamento próprio)
-  if (!l || !(l.type === 'voo' || l.type === 'garimpo' || l.type === 'cava' || l.type === 'duelo' || (l.type === 'grupo' && url.startsWith('bloopworld:')))) return false;
+  if (!l || !(l.type === 'voo' || l.type === 'garimpo' || l.type === 'cava' || l.type === 'duelo' || l.type === 'mundo' || (l.type === 'grupo' && url.startsWith('bloopworld:')))) return false;
   void openBloopLink(l);
   if (url === location.href) {
     const u = new URL(location.href);
@@ -52,6 +58,7 @@ export function openVooLink(url: string): boolean {
     u.searchParams.delete('garimpo');
     u.searchParams.delete('cava');
     u.searchParams.delete('duelo');
+    u.searchParams.delete('mundo');
     history.replaceState(null, '', u.pathname + u.search + u.hash);
   }
   return true;

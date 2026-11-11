@@ -419,6 +419,11 @@ export interface TerrainOpts {
    */
   noSplat?: boolean;
   topLayer?: TerrainLayer;
+  /**
+   * faixas retas pintadas por pixel (estrada/leito do trilho ao longo de X, repetidas em Z a cada `period`):
+   * borda nítida e suavizada (fwidth), só no chão (não nas paredes). Padrão: nenhuma.
+   */
+  strips?: { period: number; half: number; layer: TerrainLayer; color: [number, number, number] };
 }
 
 /**
@@ -502,10 +507,25 @@ vec3 terrLayer(int i, vec2 uv, vec3 base) {
   vec3 col = terrLayer(i1, uv, vColor);
   ${one ? '' : 'float f = b2 / max(b1 + b2, 1e-4); if (f > 0.02) col = mix(col, terrLayer(i2, uv, vColor), f);'}
   ${macro ? 'col *= 0.84 + texture2D(uGTex, uv * 0.045 + vec2(0.37, 0.71)).r * 0.32;' : ''}
+  ${
+    o.strips
+      ? `{
+    float sd = abs(vTW.z - ${o.strips.period.toFixed(1)} * floor(vTW.z / ${o.strips.period.toFixed(1)} + 0.5));
+    float aa = max(fwidth(sd), 0.02);
+    float sm = (1.0 - smoothstep(${o.strips.half.toFixed(2)} - aa, ${o.strips.half.toFixed(2)} + aa, sd)) * smoothstep(0.55, 0.75, an.y);
+    if (sm > 0.0) {
+      vec3 rc = terrLayer(${TL[o.strips.layer]}, vTW.xz, vec3(${o.strips.color.map((v) => v.toFixed(3)).join(',')}));
+      // meio-fio escuro fininho na borda (pintura limpa)
+      float edge = smoothstep(${(o.strips.half - 0.25).toFixed(2)}, ${o.strips.half.toFixed(2)}, sd);
+      col = mix(col, rc * (1.0 - edge * 0.25), sm);
+    }
+  }`
+      : ''
+  }
   diffuseColor.rgb *= col;
 }`,
       );
   };
-  m.customProgramCacheKey = () => `terrain3_${one ? 1 : 0}_${macro ? 1 : 0}_${o.noSplat ? 'n' + top : 's'}`;
+  m.customProgramCacheKey = () => `terrain3_${one ? 1 : 0}_${macro ? 1 : 0}_${o.noSplat ? 'n' + top : 's'}${o.strips ? '_r' + o.strips.period + o.strips.half : ''}`;
   return m;
 }

@@ -25,25 +25,79 @@ import { MobManager, MOB_ITEMS, type MobHost, type Mob as BigMob, type BiomeId }
 import { WBIOMES } from './biomes';
 import { BLOCKS, BLOCK_CHUNK, BlockStore, BlockWorld, blockDef, blockForItem, blockIconURL, breakInfo, rollDrops } from './content/blocks';
 import { WSPECIES } from './biomes';
+import { AimFx } from './aimfx';
+import { TREE_STRIDE } from './chunk';
+import { blockViewModel, depthClearer, disposeViewModel, iconViewModel, toolViewModel } from './heldtools';
+import { HeldItem } from '../../../3d/fpkit';
+import { M as VM } from './vox';
 
 const DAY = 720;
 /** kit antigo → planta do módulo de veículos */
 const KIT_BP = ['kart', 'trator', 'caminhao', 'escavadeira', 'trator', 'helicoptero', 'barco', 'picape'];
 const KEYMAP: Record<string, string> = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', q: 'KeyQ', r: 'KeyR', f: 'KeyF', ' ': 'Space', arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight' }; // s por dia inteiro
 const _v = new THREE.Vector3();
+const _n = new THREE.Vector3();
 const _c = new THREE.Color();
+/** alvo da grade: célula (x,y,z) que quebra e (px,py,pz) que recebe um bloco */
+interface Tgt {
+  kind: 'block' | 'terr';
+  x: number;
+  y: number;
+  z: number;
+  px: number;
+  py: number;
+  pz: number;
+  num: number;
+  mat: number;
+  hx: number;
+  hy: number;
+  hz: number;
+  n: THREE.Vector3;
+  dist: number;
+}
+/** bolhas de ar (s debaixo d'água) */
+const AIR_MAX = 10;
+/** nível a partir dos pontos: cada nível pede 7 + 2·n pontos (curva suave do gênero) */
+export function xpLevel(xp: number): { n: number; k: number } {
+  let n = 0;
+  let need = 7;
+  while (xp >= need && n < 999) {
+    xp -= need;
+    n++;
+    need = 7 + 2 * n;
+  }
+  return { n, k: xp / need };
+}
+const ISVG = (b: string) => `<svg viewBox="0 0 20 20" aria-hidden="true">${b}</svg>`;
+const HEART = 'M10 17.5C4.5 13.6 2 10.8 2 7.4 2 5 3.9 3 6.2 3c1.6 0 2.9.9 3.8 2.2C10.9 3.9 12.2 3 13.8 3 16.1 3 18 5 18 7.4c0 3.4-2.5 6.2-8 10.1z';
+const LEG_B = '<path d="M8.4 11.6 4.6 15.4" stroke="#2a0b5c" stroke-width="4.6" stroke-linecap="round"/><path d="M8.4 11.6 4.6 15.4" stroke="#fff4e0" stroke-width="2.2" stroke-linecap="round"/><circle cx="3.6" cy="14.6" r="1.9" fill="#fff4e0" stroke="#2a0b5c" stroke-width="1.2"/><circle cx="5.4" cy="16.4" r="1.9" fill="#fff4e0" stroke="#2a0b5c" stroke-width="1.2"/>';
+const LEG_M = (f: string) => `<ellipse cx="12.2" cy="7.8" rx="6.6" ry="5.4" transform="rotate(-40 12.2 7.8)" fill="${f}" stroke="#2a0b5c" stroke-width="1.5"/>`;
+const ICO = {
+  heart: ISVG(`<path d="${HEART}" fill="#ff4f6a" stroke="#2a0b5c" stroke-width="1.6"/><path d="M5.2 6.2c.4-1 1.3-1.5 2.2-1.3" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" opacity=".8"/>`),
+  heartH: ISVG(`<defs><clipPath id="msh"><rect x="0" y="0" width="10" height="20"/></clipPath></defs><path d="${HEART}" fill="rgba(20,8,48,.55)" stroke="#2a0b5c" stroke-width="1.6"/><path d="${HEART}" fill="#ff4f6a" clip-path="url(#msh)"/><path d="${HEART}" fill="none" stroke="#2a0b5c" stroke-width="1.6"/>`),
+  heartE: ISVG(`<path d="${HEART}" fill="rgba(20,8,48,.55)" stroke="#2a0b5c" stroke-width="1.6"/>`),
+  food: ISVG(`${LEG_B}${LEG_M('#d8843a')}<path d="M10.6 4.6c1.4-1 3.2-.9 4.2.2" fill="none" stroke="#ffd8a0" stroke-width="1.4" stroke-linecap="round"/>`),
+  foodH: ISVG(`<defs><clipPath id="msf"><rect x="10" y="0" width="10" height="20"/></clipPath></defs>${LEG_M('rgba(20,8,48,.55)')}<g clip-path="url(#msf)">${LEG_M('#d8843a')}</g>`),
+  foodE: ISVG(`${LEG_M('rgba(20,8,48,.55)')}`),
+  air: ISVG(`<circle cx="10" cy="10" r="6.5" fill="rgba(138,216,255,.55)" stroke="#2a0b5c" stroke-width="1.5"/><circle cx="8" cy="7.8" r="1.8" fill="#fff"/>`),
+  airE: ISVG(`<circle cx="10" cy="10" r="3" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>`),
+};
 const NIGHT = new THREE.Color('#1a1848');
 const DUSK = new THREE.Color('#ff9a6a');
 
 const CSS = `
-.ms-bars{position:absolute;left:calc(50% - 196px);bottom:calc(var(--edgeB,10px) + 50px);display:flex;gap:8px;pointer-events:none;z-index:6}
-.ms-bar{display:flex;align-items:center;gap:3px;font-size:11px;font-weight:900;color:#fff;text-shadow:0 1px 0 #2a0b5c}
-.ms-bar i{display:block;width:62px;height:9px;border-radius:5px;background:rgba(20,8,48,.55);border:2px solid #2a0b5c;overflow:hidden}
-.ms-bar i b{display:block;height:100%;width:100%;transition:width .2s}
-.ms-act{position:absolute;right:calc(var(--edgeR,12px) + 104px);bottom:calc(var(--edgeB,10px) + 122px);pointer-events:auto;min-height:40px;font-size:12px;padding:4px 12px;z-index:6}
-.ms-stash{position:absolute;right:calc(var(--edgeR,12px) + 164px);bottom:calc(var(--edgeB,10px) + 122px);pointer-events:auto;min-height:40px;font-size:12px;padding:4px 10px;z-index:6}
-.ms-rot{position:absolute;right:calc(var(--edgeR,12px) + 164px);bottom:calc(var(--edgeB,10px) + 62px);width:52px;height:52px;pointer-events:auto;z-index:6}
-.ms-act.hide,.ms-stash.hide,.ms-rot.hide{display:none}
+.mi-stats{height:calc(var(--slot,38px) * .5 + 9px)}
+.ms-row{position:absolute;bottom:9px;display:flex;gap:0;pointer-events:none}
+.ms-row.l{left:2px}
+.ms-row.r{right:2px;flex-direction:row-reverse}
+.ms-row.air{bottom:calc(var(--slot,38px) * .42 + 11px)}
+.ms-row svg{width:calc(var(--slot,38px) * .42);height:calc(var(--slot,38px) * .42);display:block;filter:drop-shadow(0 1px 0 rgba(20,8,48,.6))}
+.ms-row.low svg:first-child{animation:msLow .5s infinite alternate}
+@keyframes msLow{to{transform:translateY(-2px)}}
+.ms-xp{position:absolute;left:2px;right:2px;bottom:1px;height:5px;border-radius:3px;background:rgba(20,8,48,.6);box-shadow:0 0 0 1.5px rgba(20,8,48,.85)}
+.ms-xp b{display:block;height:100%;border-radius:3px;background:linear-gradient(#b8ff6a,#5ad02a);transition:width .25s}
+.ms-xp span{position:absolute;left:50%;bottom:3px;transform:translateX(-50%);font:900 calc(var(--slot,38px) * .34)/1 inherit;color:#b8ff6a;text-shadow:0 0 2px #2a0b5c,0 1px 0 #2a0b5c,1px 0 0 #2a0b5c,-1px 0 0 #2a0b5c}
+.ms-crea{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font:800 12px/1 inherit;color:#fff;text-shadow:0 1px 0 #2a0b5c}
 .ms-ko{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(40,10,60,.55);color:#fff;font-weight:900;font-size:26px;text-shadow:0 2px 0 #2a0b5c;pointer-events:none;flex-direction:column;gap:6px}
 .ms-ko small{font-size:14px}
 .ms-dmg{position:absolute;inset:0;pointer-events:none;z-index:4;box-shadow:inset 0 0 80px rgba(255,60,90,.0);transition:box-shadow .25s}
@@ -79,18 +133,31 @@ export class Sandbox implements MundoAPI {
   private aimEnt: Entity | null = null;
   private handMesh: THREE.Mesh;
   private handTex = new Map<string, THREE.Texture>();
-  private handId = '';
+  /** viewmodel: raiz (filha da câmera), modelo atual, cache por item, animação do kit */
+  private vmRoot = new THREE.Group();
+  private vmCur: THREE.Group | null = null;
+  private vmId = '\u0000';
+  private vmCache = new Map<string, THREE.Group>();
+  private heldAnim = new HeldItem(this.vmRoot, { base: [0.4, -0.36, -0.62], rot: [-0.55, 0.35, 0.5], lag: 1, bob: 1.2, idle: 1 });
+  private lastSwing = 0;
   private stars: THREE.Points;
   private nightWas = false;
   private koT = 0;
   private hurtFlash = 0;
   private placeables = new Map<string, Placeable>();
   private uiT = 0;
-  private lastHeld = '';
+  private laidOut = false;
   /** blocos de construção (macios se fundem no chão; duros chanfrados) */
   blocks: BlockWorld;
   private grav = 0;
-  private dig: { x: number; y: number; z: number; t: number } | null = null;
+  /** alvo da mira (bloco da grade ou célula do terreno suave) */
+  private tgt: Tgt | null = null;
+  /** quebra em curso (segurando) */
+  private brk = { key: '', t: 0, need: 1 };
+  private fx: AimFx;
+  /** cavando com a mão/ferramenta: 1 item por célula (não por amostra) */
+  private digOne = false;
+  private holdCd = 0;
   /** veículos fabricáveis (garagem da oficina) */
   vm: VehicleManager;
   private chase: ChaseCam;
@@ -125,6 +192,16 @@ export class Sandbox implements MundoAPI {
       document.head.appendChild(s);
     }
     this.builds = new Builds(g.scene, g.world.solids, g.opts.tier >= 2 ? 4 : 2);
+    this.builds.ground = (x, y, z) => g.world.floorAt(x, y, z);
+    this.fx = new AimFx(g.scene);
+    this.fx.ground = (x, y, z) => g.world.floorAt(x, y, z);
+    // flor/moita/pedrinha cujo chão foi cavado (ou coberto por bloco) some e solta um item ali
+    g.world.onDecoGone = (x, y, z, kind, col) => {
+      if (this.mode === 'criativo' || (x - g.px) ** 2 + (z - g.pz) ** 2 > 400) return;
+      const id = kind === 'rock' ? 'pedrinha' : kind === 'bush' ? 'graveto' : col && /^#(5|6|7|8|9)[0-9a-f]{2}ff/i.test(col) ? 'flor_azul' : col && /^#ff[0-9a-c]/i.test(col) && !/^#ffd/i.test(col) ? 'flor_rosa' : 'flor_amarela';
+      this.flyGive(id, 1, x, g.world.floorAt(x, y + 0.5, z) + 0.3, z);
+    };
+    g.hud.sandbox = true;
     this.blocks = new BlockWorld({ parent: g.scene, tier: g.opts.tier as 0 | 1 | 2 | 3, terrain: { density: (x: number, y: number, z: number) => g.world.vox.dens(x, y, z) } });
     // itens dos blocos (os que o catálogo ainda não tem)
     for (const b of BLOCKS) {
@@ -148,7 +225,10 @@ export class Sandbox implements MundoAPI {
     };
     g.world.extraSolid = solidAt;
     // bloco posto/tirado: a grama embaixo é refeita (não atravessa pisos)
-    this.blocks.onEdit = (x, _y, z) => g.world.grassDirtyAt(x, z, 1.5);
+    this.blocks.onEdit = (x, _y, z) => {
+      g.world.grassDirtyAt(x, z, 1.5);
+      this.builds.settle(x + 0.5, z + 0.5, 2.5);
+    };
     g.world.extraFloor = (x, y, z) => {
       const ix = Math.floor(x);
       const iz = Math.floor(z);
@@ -162,9 +242,8 @@ export class Sandbox implements MundoAPI {
     this.spawner = new Spawner(g.opts.tier <= 1 ? 6 : 10);
     const hudEl = g.hud.el;
     this.hot = new Hotbar(hudEl, this.inv, (i) => this.select(i), () => this.openInv());
-    this.bars = document.createElement('div');
-    this.bars.className = 'ms-bars';
-    hudEl.appendChild(this.bars);
+    this.bars = this.hot.stats;
+    requestAnimationFrame(() => g.hud.relayout());
     const btn = (cls: string, html: string, f: () => void) => {
       const b = document.createElement('button');
       b.className = 'fl-btn ' + cls;
@@ -174,7 +253,7 @@ export class Sandbox implements MundoAPI {
         e.preventDefault();
         f();
       });
-      hudEl.appendChild(b);
+      g.hud.ctxEl.appendChild(b);
       return b;
     };
     this.actBtn = btn('green ms-act hide', '', () => this.interact());
@@ -191,6 +270,11 @@ export class Sandbox implements MundoAPI {
     this.handMesh.renderOrder = 12;
     this.handMesh.visible = false;
     g.camera.add(this.handMesh);
+    // viewmodel 3D (ferramentas/blocos) — limpa o depth antes, mão do Bloop por cima do cabo
+    g.camera.add(this.vmRoot);
+    g.camera.add(depthClearer());
+    g.handMesh.renderOrder = 24;
+    g.arm.mesh.renderOrder = 23;
     // estrelas
     const n = 500;
     const pos = new Float32Array(n * 3);
@@ -603,6 +687,8 @@ export class Sandbox implements MundoAPI {
     if (this.net?.veh && !this.net.veh.canDrive(v)) return;
     this.vm.enter(v);
     g.stowBody();
+    // um analógico só: o HUD de dirigir traz o dele; o de andar some (e para de ouvir toques)
+    g.hud.setControls(false);
     g.hud.el.style.display = 'none';
     g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = false;
     this.handMesh.visible = false;
@@ -643,6 +729,7 @@ export class Sandbox implements MundoAPI {
     this.dhud?.destroy();
     this.dhud = null;
     g.hud.el.style.display = '';
+    g.hud.setControls(true);
     g.hand.visible = g.handMesh.visible = g.arm.mesh.visible = true;
     if (p) {
       g.px = p.x;
@@ -674,6 +761,8 @@ export class Sandbox implements MundoAPI {
     this.inv.give('fruta', 6);
     this.inv.give('tocha', 6);
     this.inv.give('tabua', 8);
+    // carrinho: vem como kit na mochila e aparece onde o jogador montar (nada surge do nada no início)
+    this.inv.give('kit_0', 1);
     if (this.mode === 'criativo') {
       this.inv.give('bancada', 1);
       this.inv.give('parede_madeira', 32);
@@ -708,6 +797,7 @@ export class Sandbox implements MundoAPI {
         if (p?.chest || p?.furnace) this.builds.onChange?.('upd', p);
       },
       onCraft: (r) => {
+        this.addXp(1);
         audio.coin(3);
         tap('light');
         if (r.out.startsWith('kit_')) this.toast(t('mundo.kitHint', 'Segure o kit e toque em Usar para montar o veículo'), 'good');
@@ -796,11 +886,16 @@ export class Sandbox implements MundoAPI {
     if (this.uiT <= 0) {
       this.uiT = 0.1;
       this.hot.refresh(0.1);
+      if (!this.laidOut && this.hot.el.offsetWidth > 100) {
+        this.laidOut = true;
+        g.hud.relayout();
+      }
       this.hot.show(g.driving < 0);
       this.stashBtn.classList.toggle('hide', !(g.aimLog || g.held) || g.driving >= 0);
       this.stashBtn.textContent = t('mundo.stash', 'Guardar tora');
     }
-    this.poseHandItem();
+    this.fx.update(dt, g.px, g.py + 0.9, g.pz);
+    this.poseHandItem(dt);
     if (this.hurtFlash > 0) {
       this.hurtFlash = Math.max(0, this.hurtFlash - dt);
       this.dmgEl.style.boxShadow = `inset 0 0 90px rgba(255,60,90,${this.hurtFlash})`;
@@ -860,7 +955,8 @@ export class Sandbox implements MundoAPI {
       if (this.hp <= 0) this.ko('fome');
     }
     if (this.mode === 'pacifico' && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + dt * 0.3);
-    // afogamento: muito tempo com a cabeça dentro do aquífero
+    // afogamento: muito tempo com a cabeça dentro d'água
+    this.stepAir(dt);
     this.barsT -= dt;
     if (this.barsT <= 0) {
       this.barsT = 0.3;
@@ -871,13 +967,64 @@ export class Sandbox implements MundoAPI {
 
   private renderBars(): void {
     if (this.mode === 'criativo') {
-      this.bars.innerHTML = `<div class="ms-bar">✦ ${t('mundo.mode.criativo', 'Criativo')}</div>`;
+      const h = `<div class="ms-crea">✦ ${t('mundo.mode.criativo', 'Criativo')}</div>`;
+      if (h !== this.barsHtml) this.bars.innerHTML = this.barsHtml = h;
       return;
     }
-    const bar = (ic: string, v: number, mx: number, col: string) => `<div class="ms-bar">${ic}<i><b style="width:${Math.round((v / mx) * 100)}%;background:${col}"></b></i></div>`;
-    const h = bar('❤', this.hp, this.maxHp, '#ff5a7a') + bar('🍞', this.food, 20, '#ffb02e') + bar('⚡', this.stam, 10, '#7ad0ff');
-    if (h !== this.bars.innerHTML) this.bars.innerHTML = h;
+    // 10 corações (2 de vida cada), 10 coxinhas (2 de fome cada), XP com nível, bolhas de ar quando submerso
+    const row = (cls: string, v: number, mx: number, full: string, half: string, empty: string) => {
+      let h = `<div class="ms-row ${cls}">`;
+      const n = Math.ceil(mx / 2);
+      for (let i = 0; i < n; i++) {
+        const k = v - i * 2;
+        h += k >= 1.5 ? full : k >= 0.5 ? half : empty;
+      }
+      return h + '</div>';
+    };
+    const hp = Math.ceil(this.hp);
+    const fd = Math.ceil(this.food);
+    let h = row(`l${hp <= 6 ? ' low' : ''}`, hp, this.maxHp, ICO.heart, ICO.heartH, ICO.heartE) + row('r', fd, 20, ICO.food, ICO.foodH, ICO.foodE);
+    if (this.air < AIR_MAX - 0.01) h += row('r air', Math.ceil(this.air * 2) / 2 * 2, AIR_MAX * 2, ICO.air, ICO.air, ICO.airE);
+    const lv = xpLevel(this.xp);
+    h += `<div class="ms-xp"><b style="width:${Math.round(lv.k * 100)}%"></b>${lv.n > 0 ? `<span>${lv.n}</span>` : ''}</div>`;
+    if (h !== this.barsHtml) this.bars.innerHTML = this.barsHtml = h;
   }
+  private barsHtml = '';
+  /** fôlego (bolhas) 0..AIR_MAX */
+  air = AIR_MAX;
+  /** pontos de experiência */
+  xp = 0;
+  /** ganha XP (minério, bicho, criar, cozinhar) */
+  addXp(n: number): void {
+    if (this.mode === 'criativo' || n <= 0) return;
+    const before = xpLevel(this.xp).n;
+    this.xp += n;
+    if (xpLevel(this.xp).n > before) {
+      audio.coin(6);
+      tap('light');
+    }
+  }
+  /** cabeça debaixo d'água: bolhas acabam em ~10 s, depois afoga devagar; fora d'água enche rápido */
+  private stepAir(dt: number): void {
+    const g = this.g;
+    const W = g.world;
+    const hy = g.camera.position.y;
+    const under = g.driving < 0 && !this.vm.driving && (hy < W.waterLevel(g.px, g.pz) - 0.05 || W.vox.matAt(g.px, hy, g.pz) === VM.Agua);
+    if (under) {
+      this.air = Math.max(0, this.air - dt);
+      if (this.air <= 0) {
+        this.drownT -= dt;
+        if (this.drownT <= 0) {
+          this.drownT = 1;
+          this.hurtPlayer(2, 'afogou', false);
+        }
+      }
+    } else {
+      this.air = Math.min(AIR_MAX, this.air + dt * 5);
+      this.drownT = 0;
+    }
+  }
+  private drownT = 0;
 
   private ko(why: string): void {
     if (this.koT > 0) return;
@@ -935,30 +1082,320 @@ export class Sandbox implements MundoAPI {
     if (placeId && !g.held) this.showGhost(placeId, cp, _v);
     else this.hideGhost();
     this.rotBtn.classList.toggle('hide', !placeId);
-    // usar
+    // alvo da grade (bloco ou célula do terreno), contorno, fantasma
     this.useCd -= dt;
+    this.holdCd -= dt;
     const c = g.hud.ctl;
-    if (!c.use || g.held) {
+    this.tgt = g.held ? null : this.findTarget(cp, _v);
+    // árvore só conta se o tronco estiver MESMO na mira (antes: qualquer árvore no cone à frente roubava o golpe
+    // de quem mirava o chão ou um bloco ao lado dela)
+    if (g.aimTree) {
+      const T = g.aimTree.c.trees;
+      const o = g.aimTree.i * TREE_STRIDE;
+      const tx = T[o];
+      const ty = T[o + 1];
+      const tz = T[o + 2];
+      const hh = _v.x * _v.x + _v.z * _v.z;
+      const tt = hh > 1e-6 ? ((tx - cp.x) * _v.x + (tz - cp.z) * _v.z) / hh : 0;
+      const hx = cp.x + _v.x * tt - tx;
+      const hz = cp.z + _v.z * tt - tz;
+      const hy = cp.y + _v.y * tt;
+      const trunkR = 0.42 * T[o + 4] + 0.3;
+      const onTrunk = tt > 0 && hx * hx + hz * hz < trunkR * trunkR && hy > ty - 0.3 && hy < ty + 5;
+      if (!onTrunk || (this.tgt && this.tgt.dist + 0.25 < tt)) g.aimTree = null;
+    }
+    const bplace = it && !it.place ? blockForItem(it.id) : null;
+    const tg = this.tgt;
+    const hasLabel = !!lbl;
+    if (tg && !this.aimMob && !this.aimEnt && !this.aimPiece) {
+      this.fx.showOutline(tg.x, tg.y, tg.z, tg.kind === 'terr');
+      if (bplace) {
+        const ok = this.canPlace(tg.px, tg.py, tg.pz);
+        this.fx.showGhost(tg.px, tg.py, tg.pz, ok);
+      } else this.fx.hideGhost();
+    } else {
+      this.fx.hideOutline();
+      this.fx.hideGhost();
+    }
+    // toques (usar / colocar) — um por toque
+    while (c.taps > 0) {
+      c.taps--;
+      if (!g.held) this.tapUse(it, st, hasLabel);
+    }
+    // segurar: quebrar / bater / comer
+    if (!c.brk || g.held) {
       this.eatT = 0;
+      this.resetBreak();
+    } else this.holdUse(dt, it, st);
+    const mob = (this.aimMob && this.aimMob.def.kind !== 'animal') || (this.aimEnt && this.aimEnt.hit && !this.aimEnt.interact);
+    g.hud.crosshair(mob ? 'mob' : tg || this.aimPiece || this.aimEnt || this.aimMob || g.aimTree || hasLabel ? 'tgt' : '', this.brk.key ? Math.min(1, this.brk.t / this.brk.need) : 0);
+  }
+
+  /* ============================ grade: mira, quebrar, colocar ============================ */
+
+  /** bloco da grade na mira, ou a célula do terreno suave onde o raio bate */
+  private findTarget(cp: THREE.Vector3, d: THREE.Vector3): Tgt | null {
+    const g = this.g;
+    const REACH_B = 5;
+    const bh = this.blocks.pick(cp.x, cp.y, cp.z, d.x, d.y, d.z, REACH_B);
+    const td = g.world.vox.ray(cp.x, cp.y, cp.z, d.x, d.y, d.z, REACH_B);
+    if (bh && (td < 0 || bh.dist <= td + 0.05)) {
+      return { kind: 'block', x: bh.x, y: bh.y, z: bh.z, px: bh.x + bh.nx, py: bh.y + bh.ny, pz: bh.z + bh.nz, num: bh.num, mat: 0, hx: 0, hy: 0, hz: 0, n: _n.set(bh.nx, bh.ny, bh.nz), dist: bh.dist };
+    }
+    if (td < 0) return null;
+    const hx = cp.x + d.x * td;
+    const hy = cp.y + d.y * td;
+    const hz = cp.z + d.z * td;
+    // normal do terreno (gradiente da densidade) — aponta para fora
+    const V = g.world.vox;
+    const e = 0.35;
+    _n.set(V.dens(hx - e, hy, hz) - V.dens(hx + e, hy, hz), V.dens(hx, hy - e, hz) - V.dens(hx, hy + e, hz), V.dens(hx, hy, hz - e) - V.dens(hx, hy, hz + e));
+    if (_n.lengthSq() < 1e-6) _n.set(-d.x, -d.y, -d.z);
+    _n.normalize();
+    // célula de dentro (a que quebra) e a de fora no eixo dominante da normal (a que recebe o bloco)
+    const x = Math.floor(hx - _n.x * 0.45);
+    const y = Math.floor(hy - _n.y * 0.45);
+    const z = Math.floor(hz - _n.z * 0.45);
+    const ax = Math.abs(_n.x);
+    const ay = Math.abs(_n.y);
+    const az = Math.abs(_n.z);
+    let fx = 0;
+    let fy = 0;
+    let fz = 0;
+    if (ay >= ax && ay >= az) fy = Math.sign(_n.y);
+    else if (ax >= az) fx = Math.sign(_n.x);
+    else fz = Math.sign(_n.z);
+    const mat = V.matAt(hx - _n.x * 0.3, hy - _n.y * 0.3, hz - _n.z * 0.3);
+    return { kind: 'terr', x, y, z, px: x + fx, py: y + fy, pz: z + fz, num: 0, mat, hx, hy, hz, n: _n, dist: td };
+  }
+
+  /** dá para pôr um bloco na célula? (vazia, fora do corpo do jogador, dentro do mundo) */
+  private canPlace(x: number, y: number, z: number): boolean {
+    const g = this.g;
+    if (y > 126 || y < BED_Y + 1) return false;
+    if (this.blocks.getBlock(x, y, z)) return false;
+    // corpo do jogador: caixa 0,7 × 1,8
+    if (x + 1 > g.px - 0.34 && x < g.px + 0.34 && z + 1 > g.pz - 0.34 && z < g.pz + 0.34 && y + 1 > g.py + 0.02 && y < g.py + 1.8) return false;
+    // célula enterrada de vez no terreno: nada a fazer
+    if (g.world.vox.dens(x + 0.5, y + 0.5, z + 0.5) > 0.6) return false;
+    for (const p of this.builds.pieces) if (Math.abs(p.x - x - 0.5) < 0.9 && Math.abs(p.z - z - 0.5) < 0.9 && p.y > y - 0.9 && p.y < y + 1) return false;
+    return true;
+  }
+
+  /** bloco na grade: entra encaixado; no terreno suave, o chão sobe por baixo até encostar (nada flutua) */
+  private placeBlock(def: { num: number; id: string }): boolean {
+    const g = this.g;
+    const tg = this.tgt;
+    if (!tg) return false;
+    const { px: x, py: y, pz: z } = tg;
+    if (!this.canPlace(x, y, z)) {
+      audio.click();
+      return false;
+    }
+    const rot = (Math.round(-g.yaw / (Math.PI / 2)) + 8) & 3;
+    this.setBlock(x, y, z, def.num, rot);
+    this.supportBlock(x, y, z, tg);
+    if (this.mode !== 'criativo') this.inv.useHeld();
+    g.swing = 1;
+    tap('light');
+    audio.tick(2);
+    return true;
+  }
+  /** enche o terreno embaixo do bloco onde houver vão (cantos e centro) */
+  private supportBlock(x: number, y: number, z: number, tg: Tgt): void {
+    const g = this.g;
+    if (this.blocks.getBlock(x, y - 1, z)) return;
+    const V = g.world.vox;
+    const mat = tg.kind === 'terr' && tg.mat > 0 && tg.mat < 20 && tg.mat !== VM.RochaMae ? (tg.mat === VM.Topo ? VM.Terra : tg.mat) : VM.Terra;
+    const pts = [
+      [0.5, 0.5],
+      [0.2, 0.2],
+      [0.8, 0.2],
+      [0.2, 0.8],
+      [0.8, 0.8],
+    ];
+    let filled = 0;
+    for (const [ox, oz] of pts) {
+      const fx = x + ox;
+      const fz = z + oz;
+      const f = g.world.terrainFloor(fx, y + 0.4, fz);
+      const gap = y - f;
+      if (gap > 0.06 && gap < 2.2) {
+        V.edit(fx, y - 0.5, fz, gap > 1 ? 0.95 : 0.7, mat, 99, new Map());
+        filled++;
+      }
+    }
+    if (filled) g.world.grassDirtyAt(x + 0.5, z + 0.5, 2);
+  }
+
+  private resetBreak(): void {
+    if (this.brk.key) {
+      this.brk.key = '';
+      this.brk.t = 0;
+      this.fx.hideCrack();
+    }
+  }
+
+  /** segundos para cavar uma célula do terreno (null = ferramenta fraca demais) */
+  private terrSeconds(mat: number, it: ItemDef | undefined): number | null {
+    if (this.mode === 'criativo') return 0.15;
+    const mi = MATS[mat];
+    const hard = mi?.hard ?? 0;
+    if (hard >= 99) return null;
+    const kind = it?.tool;
+    const tier = it?.tier ?? 0;
+    if (hard > 0) {
+      if (kind !== 'pick' || tier < hard) return null;
+      return (0.7 + hard * 0.35) / (1 + 0.35 * tier);
+    }
+    if (kind === 'shovel') return 0.35 / (1 + 0.3 * tier);
+    if (kind === 'pick') return 0.6;
+    return 1.0;
+  }
+
+  /** TOQUE: abrir/usar o que está na mira, bater uma vez, colocar bloco/peça, comer, atirar… */
+  private tapUse(it: ItemDef | undefined, st: Stack | null, hasLabel: boolean): void {
+    const g = this.g;
+    const bplace = it && !it.place ? blockForItem(it.id) : null;
+    // 1) baú, porta, cama, estação, bicho manso… (como no gênero: tocar abre)
+    if (hasLabel) {
+      this.interact();
       return;
     }
+    // 2) bicho/entidade bravo na mira: um golpe
+    if ((this.aimMob || (this.aimEnt && this.aimEnt.hit)) && !bplace && !it?.place) {
+      this.useCd = 0;
+      this.use(it, st);
+      g.hud.hitMark();
+      return;
+    }
+    // 3) bloco na mão: coloca na face mirada
+    if (bplace) {
+      if (this.placeBlock(bplace)) this.useCd = 0.12;
+      return;
+    }
+    // 4) comida: come na hora
     if (it?.food) {
+      if (this.food >= 20 && this.mode !== 'criativo') {
+        this.toast(t('mundo.notHungry', 'Sem fome agora'));
+        return;
+      }
+      this.eat(it);
+      return;
+    }
+    // 5) peças, kits, dinamite, estilingue, enxada… (caminho antigo do "usar")
+    if (it && (it.place || it.veh !== undefined || it.tool === 'sling' || it.tool === 'boomerang' || it.tool === 'hoe' || it.id === 'dinamite')) {
+      this.useCd = 0;
+      this.use(it, st);
+      return;
+    }
+    // 6) árvore: uma machadada
+    if (g.aimTree) {
+      this.useCd = 0;
+      this.use(it, st);
+      return;
+    }
+    g.swing = Math.max(g.swing, 0.6);
+  }
+
+  /** SEGURAR: quebra o alvo com rachaduras; bate em bichos e árvores no ritmo da ferramenta; come */
+  private holdUse(dt: number, it: ItemDef | undefined, st: Stack | null): void {
+    const g = this.g;
+    if (it?.food && !this.aimMob && !this.aimEnt) {
       if (this.food >= 20 && this.mode !== 'criativo') return;
       this.eatT += dt;
       g.swing = Math.min(1, g.swing + dt * 3);
       if (this.eatT > 0.8) {
         this.eatT = 0;
-        this.feedPlayer(it.food);
-        this.healPlayer(it.food * 0.25);
-        this.inv.useHeld();
-        audio.coin(4);
-        this.burst(6, g.px - Math.sin(g.yaw) * 0.5, g.py + 1.4, g.pz - Math.cos(g.yaw) * 0.5, it.ic.c, 2);
-        this.toast(t('mundo.yum', 'Nham! {i}', { i: it.name() }), 'good');
+        this.eat(it);
       }
       return;
     }
-    if (this.useCd > 0) return;
-    this.use(it, st);
+    // bicho ou árvore: golpes repetidos (o próprio "usar" tem o tempo de recarga)
+    if (this.aimMob || (this.aimEnt && this.aimEnt.hit) || (g.aimTree && !(this.tgt && this.tgt.kind === 'block' && this.tgt.dist < 2))) {
+      this.resetBreak();
+      if (this.useCd > 0) return;
+      const mob = !!this.aimMob || !!this.aimEnt;
+      this.use(it?.place || (it && blockForItem(it.id)) ? undefined : it, st);
+      if (mob) g.hud.hitMark();
+      return;
+    }
+    const tg = this.tgt;
+    if (!tg) {
+      this.resetBreak();
+      if (this.holdCd <= 0) {
+        this.holdCd = 0.35;
+        g.swing = 1;
+      }
+      return;
+    }
+    const key = `${tg.kind}:${tg.x},${tg.y},${tg.z}`;
+    if (this.brk.key !== key) {
+      this.brk.key = key;
+      this.brk.t = 0;
+      let need: number | null;
+      if (tg.kind === 'block') {
+        const kind = it?.tool;
+        const tool = kind === 'pick' || kind === 'axe' || kind === 'shovel' ? kind : 'mao';
+        const bi = breakInfo(tg.num, tool, this.mode === 'criativo' ? 99 : it?.tier ?? 0);
+        need = bi.can ? (this.mode === 'criativo' ? 0.15 : bi.seconds) : null;
+      } else need = this.terrSeconds(tg.mat, it);
+      if (need === null) {
+        this.brk.need = Infinity;
+        if (this.holdCd <= 0) {
+          this.holdCd = 1.2;
+          this.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
+          audio.click();
+        }
+      } else this.brk.need = Math.max(0.1, need * (this.stam < 1 ? 1.4 : 1));
+    }
+    if (!Number.isFinite(this.brk.need)) return;
+    this.brk.t += dt;
+    g.swing = Math.max(g.swing, 0.35 + 0.65 * Math.abs(Math.sin(this.brk.t * 9)));
+    const k = Math.min(1, this.brk.t / this.brk.need);
+    if (tg.kind === 'block') this.fx.crackBlock(tg.x, tg.y, tg.z, k);
+    else this.fx.crackSurface(tg.hx, tg.hy, tg.hz, tg.n, k);
+    if (this.holdCd <= 0) {
+      this.holdCd = 0.22;
+      audio.tick(0);
+      const col = tg.kind === 'block' ? '#d8c8b0' : '#' + new THREE.Color(...(MATS[tg.mat]?.col ?? [0.6, 0.5, 0.4])).getHexString();
+      if (tg.kind === 'block') this.burst(2, tg.x + 0.5, tg.y + 0.5, tg.z + 0.5, col, 1.6);
+      else this.burst(2, tg.hx, tg.hy, tg.hz, col, 1.6);
+    }
+    if (k < 1) return;
+    // quebrou!
+    this.resetBreak();
+    if (tg.kind === 'block') {
+      const num = tg.num;
+      this.setBlock(tg.x, tg.y, tg.z, 0, 0);
+      this.burst(12, tg.x + 0.5, tg.y + 0.5, tg.z + 0.5, '#c8b8a0', 3.2);
+      if (this.mode !== 'criativo') for (const dr of rollDrops(num)) this.flyGive(dr.id, dr.n, tg.x + 0.5, tg.y + 0.5, tg.z + 0.5);
+      if (blockDef(num).cat === 'minerio') this.addXp(2);
+    } else {
+      this.digOne = true;
+      const hard = this.mode === 'criativo' ? 99 : it?.tool === 'pick' ? it.tier ?? 0 : 0;
+      g.carve(tg.x + 0.5, tg.y + 0.5, tg.z + 0.5, 1.02, hard, false);
+      this.digOne = false;
+    }
+    if (it?.tool) this.wear();
+    this.stam = Math.max(0, this.stam - 0.2);
+    tap('light');
+  }
+
+  private eat(it: ItemDef): void {
+    const g = this.g;
+    this.feedPlayer(it.food!);
+    this.healPlayer(it.food! * 0.25);
+    this.inv.useHeld();
+    audio.coin(4);
+    this.burst(6, g.px - Math.sin(g.yaw) * 0.5, g.py + 1.4, g.pz - Math.cos(g.yaw) * 0.5, it.ic.c, 2);
+    this.toast(t('mundo.yum', 'Nham! {i}', { i: it.name() }), 'good');
+  }
+
+  /** o item sai do bloco, cai no chão e entra na mochila quando o jogador chega perto */
+  private flyGive(id: string, n: number, x: number, y: number, z: number): void {
+    if (!ITEM.has(id)) return;
+    this.fx.drop(iconURL(id), x, y, z, () => this.give(id, n));
   }
 
   private pickEnt(o: THREE.Vector3, d: THREE.Vector3, max: number): Entity | null {
@@ -1103,7 +1540,6 @@ export class Sandbox implements MundoAPI {
   private use(it: ItemDef | undefined, st: Stack | null): void {
     const g = this.g;
     const kind = it?.tool;
-    const tier = it?.tier ?? 0;
     const creative = this.mode === 'criativo';
     const tired = this.stam < 1 ? 1.6 : 1;
     // 0) bichos grandes (gerente): golpe em arco / tiro
@@ -1112,7 +1548,7 @@ export class Sandbox implements MundoAPI {
       this.useCd = (kind === 'sword' ? 0.45 : 0.55) * tired;
       g.swing = 1;
       if (this.net && !this.net.isHost) this.net.hitMirror(this.aimMob, dmg);
-      else this.mm.damage(this.aimMob, dmg, { kind: 'melee', fromX: g.px, fromZ: g.pz, knock: kind === 'sword' ? 5 : 3 });
+      else if (this.mm.damage(this.aimMob, dmg, { kind: 'melee', fromX: g.px, fromZ: g.pz, knock: kind === 'sword' ? 5 : 3 }).killed) this.addXp(this.aimMob.def.kind === 'animal' ? 1 : 4);
       this.stam = Math.max(0, this.stam - 0.6);
       if (kind) this.wear();
       return;
@@ -1140,61 +1576,6 @@ export class Sandbox implements MundoAPI {
       this.aimEnt.hit(dmg, 'player', this);
       this.stam = Math.max(0, this.stam - 0.6);
       if (kind) this.wear();
-      return;
-    }
-    // 1b) bloco na mira: quebrar com o tempo certo da ferramenta
-    const cpos = g.camera.position;
-    g.camera.getWorldDirection(_v);
-    const bh = this.blocks.pick(cpos.x, cpos.y, cpos.z, _v.x, _v.y, _v.z, 5);
-    const td = g.world.vox.ray(cpos.x, cpos.y, cpos.z, _v.x, _v.y, _v.z, 5);
-    const blockFirst = bh && (td < 0 || bh.dist <= td + 0.05);
-    const bplace = it && !it.place ? blockForItem(it.id) : null;
-    if (bplace && (blockFirst || td >= 0)) {
-      // colocar bloco: célula + normal (ou em cima do chão mirado)
-      let bx: number, by: number, bz: number;
-      if (blockFirst) {
-        bx = bh!.x + bh!.nx;
-        by = bh!.y + bh!.ny;
-        bz = bh!.z + bh!.nz;
-      } else {
-        bx = Math.floor(cpos.x + _v.x * (td - 0.3));
-        by = Math.floor(cpos.y + _v.y * (td - 0.3));
-        bz = Math.floor(cpos.z + _v.z * (td - 0.3));
-      }
-      if (Math.abs(bx + 0.5 - g.px) < 0.9 && Math.abs(bz + 0.5 - g.pz) < 0.9 && by >= Math.floor(g.py) - 0 && by <= Math.floor(g.py + 1.8)) return;
-      if (this.blocks.getBlock(bx, by, bz) || by > 126) return;
-      this.useCd = 0.22;
-      const rot = (Math.round(-g.yaw / (Math.PI / 2)) + 8) & 3;
-      this.setBlock(bx, by, bz, bplace.num, rot);
-      if (this.mode !== 'criativo') this.inv.useHeld();
-      g.swing = 1;
-      tap('light');
-      audio.tick(2);
-      return;
-    }
-    if (blockFirst && !it?.place) {
-      const tool = kind === 'pick' || kind === 'axe' || kind === 'shovel' ? kind : 'mao';
-      const bi = breakInfo(bh!.num, tool, creative ? 99 : tier);
-      g.swing = 1;
-      this.useCd = 0.25;
-      if (!bi.can) {
-        this.toast(t('mundo.tooHard', 'Duro demais! Precisa de uma picareta melhor'), 'warn');
-        this.useCd = 0.6;
-        return;
-      }
-      const d = this.dig && this.dig.x === bh!.x && this.dig.y === bh!.y && this.dig.z === bh!.z ? this.dig : (this.dig = { x: bh!.x, y: bh!.y, z: bh!.z, t: 0 });
-      d.t += creative ? 99 : 0.25;
-      const def = blockDef(bh!.num);
-      this.burst(3, bh!.x + 0.5, bh!.y + 0.5, bh!.z + 0.5, '#d8c8b0', 2);
-      audio.tick(0);
-      if (d.t >= bi.seconds) {
-        this.dig = null;
-        this.setBlock(bh!.x, bh!.y, bh!.z, 0, 0);
-        if (!creative && bi.drops) for (const dr of rollDrops(bh!.num)) this.give(dr.id, dr.n);
-        this.burst(10, bh!.x + 0.5, bh!.y + 0.5, bh!.z + 0.5, '#c8b8a0', 3.5);
-        if (kind) this.wear();
-        void def;
-      }
       return;
     }
     // 2) colocar peça / objeto
@@ -1243,22 +1624,6 @@ export class Sandbox implements MundoAPI {
       audio.click();
       return;
     }
-    // 6) bloco suave (terra, pedra, areia…): enche onde mira
-    if (it?.fill !== undefined) {
-      const hit = g.aimPoint(4.5);
-      if (!hit) return;
-      this.useCd = 0.3;
-      g.camera.getWorldDirection(_v);
-      const x = hit[0] - _v.x * 0.6;
-      const y = hit[1] - _v.y * 0.6;
-      const z = hit[2] - _v.z * 0.6;
-      if (Math.hypot(x - g.px, z - g.pz) < 1.1 && y > g.py - 0.5 && y < g.py + 2) return; // não se enterra
-      const n = g.world.vox.edit(x, y, z, 0.95, it.fill, 99, new Map());
-      if (n > 0 && !creative) this.inv.useHeld();
-      g.swing = 1;
-      audio.tick(0);
-      return;
-    }
     // 7) enxada: vira canteiro no chão
     if (kind === 'hoe') {
       const hit = g.aimPoint(4);
@@ -1292,15 +1657,7 @@ export class Sandbox implements MundoAPI {
       audio.click();
       return;
     }
-    // cavar: picareta (dura) / pá (macia, rápida) / mão (só terra, devagar)
-    const hard = creative ? 99 : kind === 'pick' ? tier : 0;
-    const r = creative ? 1.6 : kind === 'pick' ? 0.95 + tier * 0.07 : kind === 'shovel' ? 1.15 + tier * 0.08 : 0.75;
-    this.useCd = (kind === 'pick' ? 0.5 - tier * 0.025 : kind === 'shovel' ? 0.38 : 0.7) * tired;
-    const counts = g.mineAim(r, hard, false);
-    if (counts && counts.size) {
-      this.stam = Math.max(0, this.stam - 0.35);
-      if (kind) this.wear();
-    }
+    // cavar/quebrar agora é "segurar" (holdUse), com rachaduras e 1 célula por vez
   }
 
   /** muda um bloco (e avisa a rede) */
@@ -1322,6 +1679,19 @@ export class Sandbox implements MundoAPI {
 
   /** materiais minerados viram itens */
   private mined(counts: Map<number, number>, x: number, y: number, z: number): void {
+    this.builds.settle(x, z, 3.5);
+    if (this.digOne) {
+      // célula cavada pelo jogador: 1 item do material que mais saiu
+      let best = -1;
+      let bn = 0;
+      for (const [m, n] of counts) if (MATS[m]?.drop && n > bn) (best = m), (bn = n);
+      if (best >= 0 && this.mode !== 'criativo') this.flyGive(MATS[best].drop, 1, x, y, z);
+      // minério dá experiência (carvão 1, metais 2, raros 4)
+      if (best >= VM.Carvao && best <= VM.Gema) this.addXp(best === VM.Carvao ? 1 : best >= VM.Prata ? 4 : 2);
+      if (counts.get(1) && Math.random() < 0.08 && this.mode !== 'criativo') this.flyGive('semente', 1, x, y, z);
+      this.bus.emit('mined', counts, x, y, z);
+      return;
+    }
     const acc = this.mineAcc;
     for (const [m, n] of counts) {
       const mi = MATS[m];
@@ -1489,49 +1859,81 @@ export class Sandbox implements MundoAPI {
 
   /* ============================ mão ============================ */
 
-  private poseHandItem(): void {
+  /** modelo da mão para o item segurado (ferramenta 3D, cubinho do bloco, ou plaquinha) */
+  private vmFor(id: string): THREE.Group | null {
+    let m = this.vmCache.get(id);
+    if (m) return m;
+    const it = ITEM.get(id);
+    if (!it) return null;
+    const tool = it.tool;
+    const bdef = !it.place ? blockForItem(id) : null;
+    if (tool === 'pick' || tool === 'axe' || tool === 'shovel' || tool === 'sword' || tool === 'hoe' || tool === 'hammer') {
+      const tc = TOOL_TIERS[(it.tier ?? 1) - 1];
+      m = toolViewModel(tool, tc?.col ?? it.ic.c, tc?.col2 ?? it.ic.c2 ?? it.ic.c);
+    } else if (bdef) m = blockViewModel(bdef);
+    else m = iconViewModel(iconURL(id));
+    this.vmCache.set(id, m);
+    return m;
+  }
+
+  /** item na mão: modelo + mão do Bloop na empunhadura + antebraço; balança com o passo, atrasa ao olhar, golpeia */
+  private poseHandItem(dt = 1 / 60): void {
     const g = this.g;
     const st = this.inv.held();
     const id = st?.id ?? '';
-    const it = id ? ITEM.get(id) : undefined;
-    // ferramentas com modelo 3D próprio: machado; o resto vira plaquinha com o ícone
-    const useModel = !it || it.tool === 'axe';
-    g.tool = useModel ? 0 : -1;
-    for (let i = 0; i < g.tools.length; i++) g.tools[i].visible = useModel && !!it && i === 0 && g.driving < 0 && !g.held;
-    if (useModel && it?.tool === 'axe') {
-      // pinta o machado com a cor do nível
-      const tc = TOOL_TIERS[(it.tier ?? 1) - 1]?.col;
-      if (tc && this.lastHeld !== id) {
-        g.tools[0].traverse((m) => {
-          const mm = (m as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
-          if (mm && (m as THREE.Mesh).isMesh && m.name !== 'handle' && mm.color && mm.color.getHex() !== 0x2a0b5c && mm.color.r > 0.6) mm.color.set(tc);
-        });
-      }
+    // o sistema antigo (machado fixo da floresta) fica desligado no modo blocos
+    for (const o of g.tools) o.visible = false;
+    g.hand.visible = false;
+    this.handMesh.visible = false;
+    const show = g.driving < 0 && !g.held && !this.vm.driving && !this.mm?.riding && !this.carts.riding && !g.cine && this.hp > 0;
+    if (id !== this.vmId) {
+      this.vmId = id;
+      this.vmRoot.scale.setScalar(0.74);
+      if (this.vmCur) this.vmRoot.remove(this.vmCur);
+      this.vmCur = id ? this.vmFor(id) : null;
+      if (this.vmCur) this.vmRoot.add(this.vmCur);
+      this.heldAnim.swing('raise', 0.3); // troca de item: sobe de baixo
     }
-    this.lastHeld = id;
-    const show = !useModel && !!it && g.driving < 0 && !g.held && !this.vm.driving;
-    this.handMesh.visible = show;
+    this.vmRoot.visible = show;
+    g.handMesh.visible = g.arm.mesh.visible = show;
     if (!show) return;
-    if (this.handId !== id) {
-      this.handId = id;
-      let tx = this.handTex.get(id);
-      if (!tx) {
-        const img = new Image();
-        img.src = iconURL(id);
-        tx = new THREE.Texture(img);
-        tx.colorSpace = THREE.SRGBColorSpace;
-        img.onload = () => (tx!.needsUpdate = true);
-        this.handTex.set(id, tx);
-      }
-      const m = this.handMesh.material as THREE.MeshBasicMaterial;
-      m.map = tx;
-      m.needsUpdate = true;
+    // golpe: cada novo golpe (g.swing sobe) e, segurando para quebrar, um atrás do outro
+    if (g.swing > this.lastSwing + 0.25 && !this.heldAnim.swinging) this.heldAnim.swing('swing', 0.26);
+    else if (this.brk.key && !this.heldAnim.swinging) this.heldAnim.swing('swing', 0.26);
+    this.lastSwing = g.swing;
+    // empunhadura no canto de baixo à direita (fora da barra de itens); mais para dentro em tela estreita
+    // (empunhadura a ~80% da meia-largura da tela, rente à borda de baixo: entre a mochila e o pular)
+    const hh = 0.62 * Math.tan((g.camera.fov * Math.PI) / 360);
+    const b = this.heldAnim.base;
+    b[0] = hh * Math.min(2.2, g.camera.aspect) * 0.66;
+    b[1] = -hh * 0.9;
+    b[2] = -0.62;
+    const it = id ? ITEM.get(id) : undefined;
+    const blk = !!id && !it?.place && !!blockForItem(id);
+    const r = this.heldAnim.rot;
+    if (!id) {
+      // mão vazia: só a mão, um pouco mais para dentro
+      r[0] = 0;
+      r[1] = 0;
+      r[2] = 0;
+    } else if (blk || !it?.tool) {
+      r[0] = -0.1;
+      r[1] = -0.4;
+      r[2] = 0.15;
+    } else {
+      // ferramenta inclinada para dentro, cabeça para a frente/esquerda
+      r[0] = -0.55;
+      r[1] = 0.35;
+      r[2] = 0.5;
     }
-    const s = g.swing;
-    const arc = s > 0.6 ? (1 - s) / 0.4 : s / 0.6;
-    const ax = Math.min(1, g.camera.aspect / 1.6);
-    this.handMesh.position.set(0.12 + 0.24 * ax, -0.3 - arc * 0.08, -0.6);
-    this.handMesh.rotation.set(-0.2 - arc * 0.9, -0.3, 0.2 + arc * 0.4);
+    this.heldAnim.update(dt, g.fp.speedK, g.fpc.lookDX, g.fpc.lookDY);
+    // mão do Bloop na empunhadura (por cima do cabo) + antebraço até fora do quadro
+    this.vmRoot.updateMatrix();
+    _v.set(0, 0.0, 0.02).applyMatrix4(this.vmRoot.matrix);
+    g.handMesh.position.copy(_v);
+    g.handMesh.rotation.set(0, 0, this.vmRoot.rotation.z * 0.5);
+    _v.y -= 0.034;
+    g.arm.set(_v, g.camera, 0.72, 0);
   }
 
   /* ============================ save ============================ */
@@ -1545,6 +1947,7 @@ export class Sandbox implements MundoAPI {
       sel: this.inv.sel,
       hp: Math.round(this.hp * 10) / 10,
       food: Math.round(this.food * 10) / 10,
+      xp: Math.round(this.xp),
       day: Math.round(this.dayT * 1000) / 1000,
       spawn: this.spawn,
       b: this.builds.toJSON(),
@@ -1563,6 +1966,7 @@ export class Sandbox implements MundoAPI {
     this.inv.sel = Math.max(0, Math.min(HOTBAR - 1, +o.sel || 0));
     this.hp = Math.max(1, Math.min(this.maxHp, +o.hp || this.maxHp));
     this.food = Math.max(0, Math.min(20, +o.food || 20));
+    this.xp = Math.max(0, +o.xp || 0);
     this.dayT = typeof o.day === 'number' ? o.day % 1 : 0.3;
     this.spawn = Array.isArray(o.spawn) ? (o.spawn as [number, number, number]) : null;
     this.builds.load(o.b);
@@ -1604,7 +2008,13 @@ export class Sandbox implements MundoAPI {
     }
   }
 
+  /** itens soltos no chão vão para a mochila (antes de salvar ao sair) */
+  flushDrops(): void {
+    this.fx.dispose();
+  }
+
   dispose(): void {
+    this.fx.dispose();
     this.blocks.dispose();
     this.mm?.dispose();
     this.dhud?.destroy();
@@ -1618,5 +2028,6 @@ export class Sandbox implements MundoAPI {
     this.hot.destroy();
     this.g.scene.remove(this.stars);
     for (const tx of this.handTex.values()) tx.dispose();
+    for (const m of this.vmCache.values()) disposeViewModel(m);
   }
 }

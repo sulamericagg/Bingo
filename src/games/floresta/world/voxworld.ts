@@ -4,7 +4,7 @@
  *  consistentes nas bordas, consultas de densidade/chão/raio, save.
  * ============================================================ */
 import * as THREE from 'three';
-import { NL, TL, setSplat, splatAttributes } from '../../../3d/nature/textures';
+import { NL, TL, setSplat, splatAttributes, terrainMaterial } from '../../../3d/nature/textures';
 import { CH, RES, VN } from './gen';
 import { Chunk, TREE_STRIDE, TState } from './chunk';
 import { BED_Y, M, MATS, NSEC, SEC, Section, TOP_Y, VolChunk, VolGen, encodeSec, meshSection, takeFacetMesh, takeFluid, takeMesh, type MeshCtx } from './vox';
@@ -34,7 +34,12 @@ export class VoxWorld {
   readonly vg: VolGen;
   readonly lavaMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
   /** subsolo: facetado (rocha lapidada, nítida perto da lanterna) */
-  readonly caveMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  readonly caveMat: THREE.MeshLambertMaterial = (() => {
+    // rocha lapidada COM textura (pedra/terra nas paredes, cascalho no chão): nada de cor chapada na caverna
+    const m = terrainMaterial({ tier: 2, noSplat: true, topLayer: 'gravel' });
+    m.flatShading = true;
+    return m;
+  })();
   private jobs: Job[] = [];
   private wantT = 0;
   /** jogador (para prioridade e seções "perto") */
@@ -443,8 +448,15 @@ export class VoxWorld {
    * Amostras mais duras que `maxHard` ficam. Conta materiais removidos/colocados em `counts`.
    * Devolve quantas amostras mudaram de estado; `blocked` conta as duras demais.
    */
-  edit(x: number, y: number, z: number, r: number, fill: number, maxHard: number, counts: Map<number, number>, stat = { blocked: 0 }): number {
+  /** zonas protegidas (acampamentos/serraria, nave): true = não cava aqui */
+  guard: ((x: number, y: number, z: number, r: number) => boolean) | null = null;
+  edit(x: number, y: number, z: number, r: number, fill: number, maxHard: number, counts: Map<number, number>, stat: { blocked: number; prot?: number } = { blocked: 0 }): number {
     if (y + r > TOP_Y - 1) return 0;
+    if (fill < 0 && this.guard?.(x, y, z, r)) {
+      stat.blocked++;
+      stat.prot = (stat.prot ?? 0) + 1;
+      return 0;
+    }
     const x0 = Math.floor(x - r - 1);
     const x1 = Math.ceil(x + r + 1);
     const y0 = Math.max(BED_Y, Math.floor(y - r - 1));

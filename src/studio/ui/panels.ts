@@ -1032,7 +1032,15 @@ export class Panels {
       if (l.review === 'rejected' || l.review === 'needs-changes') return `<i class="bs-rev bad">${t('studio.rev.bad', 'Recusada')}${l.reviewReason ? ': ' + esc(l.reviewReason) : ''}</i>`;
       return `<i class="bs-rev wait">${t('studio.rev.wait', 'Em análise')}</i>`;
     };
-    const list = this.h(`<div class="bs-cards">${mine.map((l) => `<div class="bs-lib" data-id="${l.id}"><div class="bs-thumb" style="${l.thumb ? `background-image:url(${l.thumb})` : ''}"></div><div class="bs-meta"><b>${esc(l.game?.title ?? l.name)}</b><small>${status(l)} ♥ ${l.likes} · ${t('studio.uses', '{n} usos', { n: l.uses })}</small></div><div class="bs-acts"><button class="bs-mini" data-un>${t('studio.unpublish', 'Tirar da loja')}</button></div></div>`).join('') || `<p class="bs-hint">${t('studio.noPubs', 'Você ainda não publicou nada.')}</p>`}</div>`);
+    const list = this.h(`<div class="bs-cards">${mine.map((l) => `<div class="bs-lib" data-id="${l.id}"><div class="bs-thumb" style="${l.thumb ? `background-image:url(${l.thumb})` : ''}"></div><div class="bs-meta"><b>${esc(l.game?.title ?? l.name)}</b><small>${status(l)} ♥ ${l.likes} · ${t('studio.uses', '{n} usos', { n: l.uses })}</small></div><div class="bs-acts">${l.kind === 'map' && l.review !== 'rejected' && l.review !== 'needs-changes' ? `<button class="bs-mini" data-srv>${t('srv.publish', 'Criar servidor')}</button>` : ''}<button class="bs-mini" data-un>${t('studio.unpublish', 'Tirar da loja')}</button></div></div>`).join('') || `<p class="bs-hint">${t('studio.noPubs', 'Você ainda não publicou nada.')}</p>`}</div>`);
+    // mapa publicado → servidor online (lista em Mundo → Servidores, depois da moderação)
+    this.on(list, '[data-srv]', async (b) => {
+      const l = mine.find((x) => x.id === b.closest<HTMLElement>('[data-id]')!.dataset.id);
+      if (!l) return;
+      const sv = await import('../../games/floresta/world/srvapi');
+      const r = await sv.studioServerForm(this.s.el, { id: l.id, title: l.game?.title ?? l.name, thumb: l.thumb });
+      if (r) notify(r.status === 'approved' ? t('srv.pubOk', 'Servidor criado! Já aparece na lista.') : t('srv.pubWait', 'Servidor criado! Ele aparece para todos quando a moderação aprovar.'), { icon: 'party', kind: 'good' });
+    });
     this.on(list, '[data-un]', async (b) => {
       await store().unpublish(b.closest<HTMLElement>('[data-id]')!.dataset.id!);
       void this.renderMine();

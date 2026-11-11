@@ -34,6 +34,8 @@ export async function openJoin(r: JoinRef): Promise<boolean> {
     const d = await import('./duel-link');
     return d.openDuel(r.duel, r.code);
   }
+  // o mundo aberto online saiu da Floresta para o Mundo Bloop: convites/links antigos com código vão para lá
+  if (r.game === 'floresta' && r.code) r = { ...r, game: 'mundo' };
   const [reg, hub] = await Promise.all([import('../hub/registry'), import('../hub/hub')]);
   const def = reg.listGames().find((g) => g.id === r.game);
   if (!def) return false;

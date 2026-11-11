@@ -408,7 +408,7 @@ export class VolChunk {
       for (let k = 1; k <= 8; k++) {
         const yy = y + k * 0.25;
         const d = this.dens(x, yy, z);
-        if (d <= 0) return yy - 0.25 + (prev / (prev - d)) * 0.25;
+        if (d <= 0) return this.refine(x, z, yy - 0.25, yy, prev, d);
         prev = d;
       }
       return y;
@@ -420,10 +420,27 @@ export class VolChunk {
       yy -= st;
       if (yy < BED_Y) return BED_Y + 2;
       const d = this.dens(x, yy, z);
-      if (d > 0) return yy + (d / (d - prev)) * st;
+      if (d > 0) return this.refine(x, z, yy, yy + st, d, prev);
       prev = d;
     }
     return BED_Y + 2;
+  }
+
+  /** superfície entre lo (sólido, dLo > 0) e hi (ar, dHi ≤ 0): bisseção + interpolação final.
+   *  Sem isso a resposta dependia da fase da amostragem de 0,5 m (o pé "tremia" ±8 cm andando). */
+  private refine(x: number, z: number, lo: number, hi: number, dLo: number, dHi: number): number {
+    for (let i = 0; i < 4; i++) {
+      const m = (lo + hi) * 0.5;
+      const d = this.dens(x, m, z);
+      if (d > 0) {
+        lo = m;
+        dLo = d;
+      } else {
+        hi = m;
+        dHi = d;
+      }
+    }
+    return lo + (dLo / (dLo - dHi)) * (hi - lo);
   }
 
   /** topo sólido da coluna (para heightAt / árvores) */

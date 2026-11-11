@@ -308,9 +308,41 @@ export class Builds {
     }
   }
 
+  /** chão (terreno + blocos + construções) — o motor liga; objetos soltos pousam nele */
+  ground: ((x: number, y: number, z: number) => number) | null = null;
+  /** baú, fornalha, bancadas, cama: objetos soltos que nunca podem ficar flutuando */
+  static loose(d: PDef | undefined): boolean {
+    // móveis soltos (baú, fornalha, bancadas, cama, mesa…): os de grade (piso, parede, trilho) ficam onde estão
+    return !!d && (!!(d.chest || d.furnace || d.station || d.bed) || !!d.floor) && d.snap === 'free' && !d.rail && !d.door;
+  }
+  private snapY(d: PDef, x: number, y: number, z: number): number {
+    if (!this.ground || !Builds.loose(d)) return y;
+    const g = this.ground(x, y + 1.2, z);
+    return Number.isFinite(g) && Math.abs(g - y) < 8 ? g : y;
+  }
+  /** depois de mexer no chão: objetos soltos por perto caem até o chão novo */
+  settle(x: number, z: number, r: number): void {
+    if (!this.ground) return;
+    for (const p of this.pieces) {
+      if ((p.x - x) ** 2 + (p.z - z) ** 2 > r * r) continue;
+      const d = PDEFS.get(p.id);
+      if (!Builds.loose(d)) continue;
+      for (const bx of p.boxes) bx.off = true; // não se apoia em si mesmo
+      const g = this.ground(p.x, p.y + 0.3, p.z);
+      for (const bx of p.boxes) bx.off = false;
+      if (!Number.isFinite(g) || g >= p.y - 0.04 || p.y - g > 40) continue;
+      p.y = g;
+      this.colliders(p);
+      const b = this.batches.get(p.id);
+      if (b) b.dirty = true;
+      this.onChange?.('upd', p);
+    }
+  }
+
   add(id: string, x: number, y: number, z: number, r: number, uid = 0): Piece | null {
     const b = this.batch(id);
     if (!b) return null;
+    y = this.snapY(PDEFS.get(id)!, x, y, z);
     const p: Piece = { uid: uid || this.uid++, id, x, y, z, r: r & 3, boxes: [] };
     if (uid >= this.uid) this.uid = uid + 1;
     const d = PDEFS.get(id)!;

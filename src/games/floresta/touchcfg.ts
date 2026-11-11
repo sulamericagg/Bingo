@@ -14,7 +14,7 @@ export const PAW_SVG = (size = 24): string =>
   `<svg class="ico" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><ellipse cx="24" cy="31" rx="11" ry="9" fill="#ffb347" stroke="#2a0b5c" stroke-width="3"/><circle cx="12" cy="18" r="5" fill="#ffb347" stroke="#2a0b5c" stroke-width="3"/><circle cx="20" cy="11" r="5" fill="#ffb347" stroke="#2a0b5c" stroke-width="3"/><circle cx="29" cy="11" r="5" fill="#ffb347" stroke="#2a0b5c" stroke-width="3"/><circle cx="37" cy="18" r="5" fill="#ffb347" stroke="#2a0b5c" stroke-width="3"/></svg>`;
 
 /** abre/fecha o painel de Controles (sobre o jogo, fora das bordas) */
-export function openControls(root: HTMLElement, onSolo?: (solo: boolean) => void): void {
+export function openControls(root: HTMLElement, onSolo?: (solo: boolean) => void, extra?: HTMLElement): void {
   const old = root.querySelector('.fl-ctlpanel');
   if (old) {
     old.remove();
@@ -30,6 +30,7 @@ export function openControls(root: HTMLElement, onSolo?: (solo: boolean) => void
     st.dataset.touchIgnore = '1';
     m.insertBefore(st, bd);
   }
+  if (extra) bd.appendChild(extra);
   renderControlsSettings(bd);
   m.addEventListener('pointerdown', (e) => e.stopPropagation());
   m.addEventListener('click', (e) => {
