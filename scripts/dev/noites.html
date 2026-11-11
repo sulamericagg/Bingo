@@ -4,10 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Dev: Noites do Acampamento</title>
-<style>html,body{margin:0;height:100%;background:#0a0e22}#app{position:fixed;inset:0}</style>
+<style>html,body{margin:0;height:100%;background:#0a0e22}#app{position:fixed;inset:0}#ad{position:fixed;left:0;right:0;bottom:0;height:50px;background:repeating-linear-gradient(45deg,#c33 0 10px,#a22 10px 20px);opacity:.55;z-index:99999;pointer-events:none;font:12px sans-serif;color:#fff;display:flex;align-items:center;justify-content:center}</style>
+<link rel="stylesheet" href="/src/ui/styles.css" />
 </head>
 <body>
 <div id="app"></div>
+<div id="ad">AD</div>
 <script type="module" src="./noites.ts"></script>
 </body>
 </html>

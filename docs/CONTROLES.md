@@ -158,3 +158,24 @@ o terço de cima, pequenos, e somem rápido.
 | Fábrica Estelar (`src/games/tycoon`) | joystick de arrastar com raio físico, zona morta, mola, anel que acompanha e cancelamento seguro; 3-2-1 menor e no alto; `--edge-*` |
 | Tubo (`src/games/tubo`) | combo e faixa de zona menores; `--edge-*` |
 | Global (`src/ui/ui.ts`) | `UI.toast` usa `notify`; seção Controles no Ajustes |
+
+## Câmera dos jogos 3D (`src/3d/camview.ts`)
+
+Componente compartilhado para o botão de câmera no topo da tela (como nos jogos de blocos):
+**1ª pessoa → 3ª pessoa (atrás) → 3ª pessoa de frente (selfie) → 1ª**. Padrão: 1ª pessoa; o modo fica
+salvo por jogo (`localStorage` `camview:<jogo>`).
+
+```ts
+import { CamView } from '../../3d/camview';
+const cam = new CamView('meujogo');                       // lembra o modo
+cam.mountButton(barraDoTopo, { cls: 'meu-btn', label: t('x.cam', 'Trocar câmera') });
+cam.onChange = (m) => avatar.setVisible(m !== 'fp');     // Bloop de papel: PaperChar.setVisible
+// a cada quadro (yaw: 0 = +z; pitch > 0 = olhando para cima):
+if (cam.firstPerson) { /* câmera nos olhos + item na mão (ex.: noites/fpview.ts) */ }
+cam.pose({ x, y: chao, z, yaw, pitch, eye: 1.2, dist: 5.5, smooth: 0.08, dt, block }, camera);
+```
+
+- `block(x0,y0,z0,x1,y1,z1)` devolve a fração livre (0..1) do olho até a câmera — a 3ª pessoa encosta
+  em árvores/paredes em vez de atravessar (Noites usa `Sim.collide` em 8 pontos).
+- Em 1ª pessoa: esconda o próprio avatar, desenhe o item na mão e use mira no centro da tela.
+- Exemplo completo: `src/games/noites/game.ts` (`camv`, `camBlock`, `placeCameraFP`).

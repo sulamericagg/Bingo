@@ -12,7 +12,7 @@ import { BENCH_POS, CDEFS, CK } from '../data';
 import type { Creature, LightSrc, Player, Sim } from '../sim';
 import { NODE_R, treeR } from '../world';
 import { BUILD_R, CELL, DIRS, E, LINE_MAX, N, PIECE, PIECES, REACH, S, W, byIdx, refundOf, repairOf, type PieceDef } from './pieces';
-import { benchLevel, canAfford, depositBag, give, missing, pay } from './res';
+import { benchLevel, canAfford, give, missing, pay } from './res';
 
 export interface BPiece {
   id: number;
@@ -295,14 +295,7 @@ export class BuildState {
     for (const p of this.pieces) {
       const d = this.def(p);
       if (d.id === 'chest' && doChest) {
-        for (const pl of this.sim.players) {
-          if (pl.faint > 0 || Math.hypot(pl.x - p.x, pl.z - p.z) > 2) continue;
-          let any = false;
-          for (const k in pl.bag) if ((pl.bag[k as keyof typeof pl.bag] ?? 0) > 0) any = true;
-          if (!any) continue;
-          const n = depositBag(this.sim, pl);
-          if (n && (!pl.bot || n > 2)) this.sim.ev('deposit', { p: pl.id, n, x: p.x, z: p.z });
-        }
+        // baú construído = mais uma porta para o baú do acampamento (mesma interface: Sim.nearStore + painel da mochila)
       } else if (d.id === 'campfire') {
         for (const pl of this.sim.players) if (pl.faint <= 0 && Math.hypot(pl.x - p.x, pl.z - p.z) < 3.2) pl.warmth = Math.min(100, pl.warmth + 6 * dt);
       }
