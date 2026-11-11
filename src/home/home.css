@@ -229,6 +229,8 @@
   background: #fff !important; border: 2.5px solid var(--ink) !important; box-shadow: 0 3px 0 var(--ink);
 }
 .hm-x:active { transform: translateY(3px); box-shadow: none; }
+/* o X flutuante invadia a 1ª fileira abaixo do título (cobria "Escolher @" em 360 px) */
+.hm-card > .hm-row, .hm-card > .hm-tabs { clear: right; }
 .hm-net {
   position: absolute; left: 50%; transform: translateX(-50%); top: calc(58px + var(--st)); z-index: 4;
   max-width: calc(100% - 24px); display: flex; align-items: center; gap: 6px;

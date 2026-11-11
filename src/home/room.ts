@@ -1532,8 +1532,30 @@ export class RoomScene {
     this.dirtyStat = true;
     this.host.onDesign(this.room, 'items');
   }
+  /**
+   * Móveis derrubados (sujeira "moved") apontam para o ÍNDICE do item. Quando a lista muda
+   * (apagar, modelo, kit), remapeia — antes o fantasma/derrubado passava a ser outro móvel.
+   * map(i) → novo índice ou -1 (o móvel sumiu / foi trocado: volta ao lugar sozinho).
+   */
+  remapMoved(map: (i: number) => number): void {
+    for (let k = this.host.mess.length - 1; k >= 0; k--) {
+      const m = this.host.mess[k];
+      if (m.room !== this.room || !m.moved) continue;
+      const ni = map(Number(m.moved.itemId));
+      if (ni >= 0) m.moved.itemId = String(ni);
+      else {
+        this.host.mess.splice(k, 1);
+        this.host.onMess('remove', m, false);
+      }
+    }
+    this.invalidate();
+  }
   removeSel(): void {
     const set = new Set(this.sel);
+    const n = this.items.length;
+    const newIdx: number[] = [];
+    for (let i = 0, j = 0; i < n; i++) newIdx.push(set.has(i) ? -1 : j++);
+    this.remapMoved((i) => newIdx[i] ?? -1);
     for (const i of this.sel) {
       const it = this.items[i];
       emit(1, it.x, it.y - 10, 10, 90, 0.6, 8, 9);
@@ -1549,6 +1571,7 @@ export class RoomScene {
     const tp = TEMPLATES.find((x) => x.id === id);
     if (!tp) return;
     const list = tp.items[this.room] ?? tp.items.any;
+    this.remapMoved(() => -1);
     this.rd.items = list.filter(([fid]) => furnById(fid)).map(([fid, x, y]) => ({ id: fid, x, y }));
     this.sel = [];
     this.rd.items.forEach((_, i) => this.bounce.set(i, -i * 0.06));

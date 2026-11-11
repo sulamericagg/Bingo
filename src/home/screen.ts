@@ -638,6 +638,7 @@ function action(a: string, b: HTMLElement): void {
       break;
     case 'mode':
       scene.setMode(b.dataset.m as 'edit');
+      calmBots(scene.mode === 'clean');
       refreshBar();
       break;
     case 'done':
@@ -816,6 +817,7 @@ function action(a: string, b: HTMLElement): void {
       if (!k?.item.kit) break;
       const list = k.item.kit.items.filter((id) => furnById(id));
       if (k.item.kit.room !== scene.room) scene.setRoom(k.item.kit.room);
+      scene.remapMoved(() => -1);
       scene.rd.items = list.map((id, i) => {
         const d = furnById(id)!;
         return { id, x: 50 + ((i * 70) % 280), y: d.wall ? 100 : 330 + (i % 2) * 40 };
@@ -837,8 +839,14 @@ function finishMode(): void {
     changed();
   }
   scene.setMode(session ? 'party' : 'look');
+  calmBots(false);
   refreshBar();
   flushSave();
+}
+/** limpando no meio da festa: os robôs (festa local) param de jogar comida — antes sujavam mais rápido do que dava para limpar */
+function calmBots(on: boolean): void {
+  const s = session as (PartySession & { calm?: boolean }) | null;
+  if (s && 'calm' in s) s.calm = on;
 }
 function firstMessRoom(): RoomId {
   return (S.mess.find((m) => !m.moved)?.room ?? S.mess[0]?.room ?? 'living') as RoomId;
