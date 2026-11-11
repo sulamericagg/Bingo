@@ -62,7 +62,7 @@ const NG = 5;
 const TGT = [0.97, 0.9, 0.74, 0.24, 0.04, 0.02];
 const MOB = [1.5, 1.25, 1.0, 0.36, 0.13, 0.05];
 /** raio (no disco unitário) */
-const RAD = [0.085, 0.042, 0.016, 0.014, 0.017, 0.055];
+const RAD = [0.085, 0.045, 0.021, 0.015, 0.018, 0.055];
 /** atrito/atração para o fundo (pesado corre para o centro do cone) */
 const HEAVY = [0.1, 0.1, 0.05, 0.45, 1, 1];
 const MAXP = 380;
@@ -89,6 +89,8 @@ const A_SPILL = 3;
 const A_VIAL = 4;
 /** no balde (antes de pôr na bateia) */
 const A_BUCKET = 5;
+/** já caiu na bateia (durante a peneira) */
+const A_PAN = 6;
 
 /** dificuldade: [fácil, normal, difícil, muito difícil] */
 const GOLD_RES = [0.45, 0.22, 0.1, 0.04];
@@ -134,6 +136,7 @@ export class PanGame {
   private spr: HTMLCanvasElement[][] = [];
   private glint!: HTMLCanvasElement;
   private glintW!: HTMLCanvasElement;
+  private bed!: HTMLCanvasElement;
   private hand = handPath();
   /* grãos (SoA) */
   private n = 0;
@@ -213,6 +216,8 @@ export class PanGame {
   private clinkT = 0;
   private autoT = 0;
   private lostSaid = 0;
+  /** depois da revelação, só um toque novo pega ouro (quem ainda gira não chupa sem querer) */
+  private pickArm = false;
   private vialG: CanvasGradient | null = null;
   private stageEls: HTMLElement[] = [];
   private gaugeKey = -1;
@@ -283,6 +288,27 @@ export class PanGame {
     this.sieve = sieveArt(this.R * 0.98);
     this.vial = vialArt(this.vw, this.vh);
     this.vialG = null;
+    // leito de sedimento (dá corpo ao monte de terra na bateia)
+    {
+      const S = Math.ceil(this.R * 1.6);
+      const c = document.createElement('canvas');
+      c.width = c.height = S;
+      const x = c.getContext('2d')!;
+      const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      g.addColorStop(0, 'rgba(120,88,52,.95)');
+      g.addColorStop(0.55, 'rgba(110,80,48,.75)');
+      g.addColorStop(1, 'rgba(100,72,44,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, S, S);
+      const rr = rng(5);
+      for (let i = 0; i < 900; i++) {
+        const a = rr() * Math.PI * 2;
+        const d = Math.sqrt(rr()) * S * 0.45;
+        x.fillStyle = rr() < 0.5 ? 'rgba(60,40,20,.35)' : 'rgba(220,190,140,.3)';
+        x.fillRect(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, 1.5, 1.5);
+      }
+      this.bed = c;
+    }
     this.bucket = bucketArt(this.bkR, this.o.mode === 'clean' ? '#2b2622' : '#7a5332');
     if (!this.spr.length) this.sprites();
   };
@@ -292,11 +318,11 @@ export class PanGame {
     const R = this.R;
     const big = this.o.diff === 0 ? 1.25 : 1;
     const v = (n: number, f: () => HTMLCanvasElement) => Array.from({ length: n }, f);
-    this.spr[RK] = v(6, () => rockSprite(r, R * RAD[RK] * 2 * (0.85 + r() * 0.3), [120 + r() * 30, 110 + r() * 25, 95 + r() * 20], 0.6));
+    this.spr[RK] = v(6, () => rockSprite(r, R * RAD[RK] * 2 * (0.85 + r() * 0.3), [128 + r() * 30, 104 + r() * 25, 82 + r() * 20], 0.6));
     this.spr[GV] = v(8, () => rockSprite(r, R * RAD[GV] * 2 * (0.8 + r() * 0.4), [140 + r() * 40, 115 + r() * 30, 80 + r() * 25], 0.4));
     this.spr[SD] = v(6, () => grainSprite(Math.max(3, R * RAD[SD] * 2 * (0.8 + r() * 0.5)), [180 + r() * 40, 150 + r() * 30, 100 + r() * 30], 0.3));
     this.spr[BS] = v(4, () => grainSprite(Math.max(3, R * RAD[BS] * 2 * (0.8 + r() * 0.4)), [28 + r() * 15, 28 + r() * 15, 34 + r() * 15], 0.9));
-    this.spr[AU] = v(8, () => flakeSprite(r, Math.max(4, R * RAD[AU] * 2.2 * big * (0.8 + r() * 0.5))));
+    this.spr[AU] = v(8, () => flakeSprite(r, Math.max(5, R * RAD[AU] * 3 * big * (0.8 + r() * 0.5))));
     this.spr[NG] = v(2, () => nuggetSprite(r, R * RAD[NG] * 2.2));
     this.glint = glintSprite(Math.round(R * 0.16));
     this.glintW = glintSprite(Math.round(R * 0.1), false);
@@ -308,8 +334,8 @@ export class PanGame {
     const r = this.r;
     const clean = o.mode === 'clean';
     const nRock = clean ? 0 : 9;
-    const nGv = clean ? 0 : 34;
-    const nSd = clean ? 34 : 120;
+    const nGv = clean ? 0 : 40;
+    const nSd = clean ? 40 : 165;
     const nBs = clean ? 95 : 64;
     const unit = o.diff === 0 ? 0.07 : 0.11;
     const nAu = Math.round(clamp(o.gold / unit, o.gold > 0.01 ? 6 : 0, 46));
@@ -393,7 +419,7 @@ export class PanGame {
     this.swishT -= dt;
     this.clinkT -= dt;
     if (this.ph === P_SIEVE) this.stepSieve(dt);
-    else if (this.ph >= P_DIP && this.ph <= P_PICK) this.stepPan(dt);
+    else if (this.ph >= P_DIP && this.ph <= P_BLACK) this.stepPan(dt);
     this.stepFly(dt);
     this.phase(dt);
   }
@@ -406,6 +432,11 @@ export class PanGame {
       this.sovy += (-this.soy * 60 - this.sovy * 9) * dt;
       this.sox += this.sovx * dt;
       this.soy += this.sovy * dt;
+    }
+    if (this.down && this.grab < 0) {
+      // dedo parado: a peneira para
+      this.sovx *= Math.exp(-dt * 6);
+      this.sovy *= Math.exp(-dt * 6);
     }
     const sp = Math.hypot(this.sovx, this.sovy) / this.R;
     this.shake += (Math.min(3, sp) - this.shake) * Math.min(1, dt * 6);
@@ -446,6 +477,10 @@ export class PanGame {
     if (this.ph !== P_SIEVE) return;
     // o que sobrou cai (fino) ou vai junto para a bateia (pedras, se pulou)
     for (let i = 0; i < this.n; i++) {
+      if (this.pa[i] === A_PAN) {
+        this.pa[i] = A_IN;
+        continue;
+      }
       if (this.pa[i] !== A_IN && this.pa[i] !== A_FALL) continue;
       const t = this.pt[i];
       if ((t === RK || t === NG) && !skip) {
@@ -524,18 +559,30 @@ export class PanGame {
       const txn = -y / rd;
       const tyn = x / rd;
       const vt = vx * txn + vy * tyn;
-      const want = this.wVel * rd * 0.55 * couple;
+      const want = this.wVel * rd * 0.42 * couple;
       ax += txn * (want - vt) * 3.2;
       ay += tyn * (want - vt) * 3.2;
       // força centrífuga empurra o leve para fora
-      const cf = (vt * vt) / rd * 0.5 * (1 - hv * 0.8);
+      const cf = ((vt * vt) / rd) * 0.14 * (1 - hv * 0.8);
       ax += (x / rd) * cf;
       ay += (y / rd) * cf;
       // areia preta: no giro final abre para fora (meia-lua), o ouro fica no fundo
       if (black && t === BS && gentle) {
-        const want2 = 0.68;
+        // meia-lua: anel em ~0,6 puxado para o lado de trás (longe do lábio)
+        const want2 = 0.6;
         ax += (x / rd) * (want2 - rd) * 3;
         ay += (y / rd) * (want2 - rd) * 3;
+        const ta = Math.atan2(y, x);
+        let da = 2.4 - ta;
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        ax += txn * da * 0.9;
+        ay += tyn * da * 0.9;
+      }
+      if (black && t >= AU) {
+        // o ouro fica no fundo, mas sem amontoar no centro
+        ax += x * kb * 0.85;
+        ay += y * kb * 0.85;
       }
       if (black && t === SD) {
         ax += (x / rd) * 1.2;
@@ -595,7 +642,7 @@ export class PanGame {
             if (Math.abs(this.ps[i] - this.ps[j]) > 0.3) continue;
             const ddx = this.px[j] - this.px[i];
             const ddy = this.py[j] - this.py[i];
-            const want = (ri + RAD[this.pt[j]]) * 0.85;
+            const want = (ri + RAD[this.pt[j]]) * (this.pt[i] >= AU && this.pt[j] >= AU ? 1.6 : 0.85);
             const d2 = ddx * ddx + ddy * ddy;
             if (d2 >= want * want || d2 < 1e-9) continue;
             const d = Math.sqrt(d2);
@@ -673,7 +720,7 @@ export class PanGame {
       if (a === A_FALL) {
         this.ft[i] += dt * 2.4;
         if (this.ft[i] >= 1) {
-          this.pa[i] = A_IN;
+          this.pa[i] = this.ph === P_SIEVE ? A_PAN : A_IN;
           // cai onde estava, um pouco espalhado
           this.px[i] = clamp(this.px[i] * 0.85 + (this.r() - 0.5) * 0.1, -0.8, 0.8);
           this.py[i] = clamp(this.py[i] * 0.85 + (this.r() - 0.5) * 0.1, -0.8, 0.8);
@@ -697,7 +744,7 @@ export class PanGame {
             tap('light');
           }
         }
-      } else if (a === A_BUCKET && this.ft[i] > 0) {
+      } else if (a === A_BUCKET && this.ft[i] !== 0) {
         // balde → bateia
         this.ft[i] += dt * 1.8;
         if (this.ft[i] >= 1) {
@@ -785,8 +832,8 @@ export class PanGame {
     const lightK = light / this.nLight0;
     if (ph === P_SWIRL) {
       this.prog += (clamp((strat - 0.45) / 0.45, 0, 1) - this.prog) * Math.min(1, dt * 4);
-      if (this.prog > 0.97 || (strat > 0.9 && lightK < LIGHT_DONE[diff])) {
-        if (lightK < LIGHT_DONE[diff]) return this.toBlack();
+      if (this.prog > 0.97 || (strat > 0.9 && (lightK < LIGHT_DONE[diff] || light <= 4))) {
+        if (lightK < LIGHT_DONE[diff] || light <= 4) return this.toBlack();
         this.ph = P_WASH;
         this.phT = 0;
         this.cycleSpill = 0;
@@ -797,7 +844,7 @@ export class PanGame {
         this.stageUi();
       }
     } else if (ph === P_WASH) {
-      if (lightK < LIGHT_DONE[diff] && this.tilt < 0.3) return this.toBlack();
+      if ((lightK < LIGHT_DONE[diff] || light <= 4) && this.tilt < 0.3) return this.toBlack();
       // nada mais sai nesta inclinação: soltou → girar de novo
       if (this.tiltIn < 0.08 && this.tilt < 0.12 && this.phT > 0.8 && (this.cycleSpill > 0 || this.phT > 4) && this.spillT > 0.6) {
         this.ph = P_SWIRL;
@@ -844,6 +891,21 @@ export class PanGame {
   }
 
   private reveal(): void {
+    // ouro espalhado num rastro curto no fundo (como na bateia de verdade), areia preta de lado
+    const r = this.r;
+    for (let i = 0; i < this.n; i++) {
+      if (this.pa[i] !== A_IN) continue;
+      const t = this.pt[i];
+      if (t >= AU) {
+        const u = r();
+        const a = -0.6 + u * 1.5 + (r() - 0.5) * 0.5;
+        const d = 0.06 + u * 0.4 + r() * 0.08;
+        this.px[i] = Math.cos(a) * d - 0.05;
+        this.py[i] = Math.sin(a) * d * 0.8;
+        this.pvx[i] = this.pvy[i] = 0;
+        this.ps[i] = 0.9;
+      } else if (t === BS) this.ps[i] = 0.2;
+    }
     this.ph = P_PICK;
     this.phT = 0;
     this.autoT = 0;
@@ -955,7 +1017,10 @@ export class PanGame {
         this.pid = -1;
         this.down = false;
       }
-    } else if (ph === P_PICK) this.suck(p[0], p[1]);
+    } else if (ph === P_PICK) {
+      this.pickArm = true;
+      this.suck(p[0], p[1]);
+    }
   };
   private pMove = (e: PointerEvent): void => {
     if (e.pointerId !== this.pid || !this.down) return;
@@ -1000,7 +1065,7 @@ export class PanGame {
       }
     } else if (ph === P_WASH) {
       this.tiltIn = clamp((p[0] - this.dx0) / (this.R * 0.9), 0, 1.3);
-    } else if (ph === P_PICK) this.suck(p[0], p[1]);
+    } else if (ph === P_PICK && this.pickArm) this.suck(p[0], p[1]);
   };
   private pUp = (e: PointerEvent): void => {
     if (e.pointerId !== this.pid) return;
@@ -1059,7 +1124,7 @@ export class PanGame {
     let k = 0;
     for (let i = 0; i < this.n; i++)
       if (this.pa[i] === A_BUCKET && this.ft[i] === 0) {
-        this.ft[i] = 0.001 - (k++ % 40) * 0.012;
+        this.ft[i] = -0.0001 - (k++ % 40) * 0.012;
       }
     if (k) {
       sfx.splat();
@@ -1090,7 +1155,7 @@ export class PanGame {
       if (sieve ? t !== RK && t !== NG : t !== RK && t < AU) continue;
       const [sx, sy] = sieve ? this.toSieve(this.px[i], this.py[i]) : this.toScreen(this.px[i], this.py[i]);
       const d = Math.hypot(sx - x, sy - y);
-      const lim = Math.max(24, RAD[t] * this.R * 1.6);
+      const lim = sieve ? Math.max(12, RAD[t] * this.R * 1.15) : Math.max(24, RAD[t] * this.R * 1.6);
       if (d < lim && d < bd) {
         bd = d;
         best = i;
@@ -1196,7 +1261,7 @@ export class PanGame {
     x.globalCompositeOperation = 'lighter';
     const T = this.time;
     for (let L = 0; L < 2; L++) {
-      x.globalAlpha = L ? 0.09 : 0.13;
+      x.globalAlpha = L ? 0.05 : 0.075;
       const sc = L ? 1.6 : 1;
       const s = 256 * sc;
       const ox = ((T * (L ? 18 : 30)) % s) - s;
@@ -1275,15 +1340,35 @@ export class PanGame {
     this.cnt.fill(0);
     for (let i = 0; i < n; i++) {
       const a = this.pa[i];
-      if (a !== A_IN && a !== A_FALL) continue;
+      if (a !== A_IN && a !== A_FALL && a !== A_PAN) continue;
       if (ph === P_SIEVE && a === A_IN) continue;
       this.cnt[Math.min(9, (this.ps[i] * 10) | 0)]++;
     }
     for (let b2 = 1; b2 < 10; b2++) this.cnt[b2] += this.cnt[b2 - 1];
+    // leito: centro de massa do material leve, tamanho pela quantidade
+    {
+      let lx = 0;
+      let ly = 0;
+      let ln = 0;
+      for (let i = 0; i < n; i++)
+        if ((this.pa[i] === A_IN || this.pa[i] === A_PAN) && this.pt[i] <= BS && (ph !== P_SIEVE || this.pa[i] === A_PAN)) {
+          lx += this.px[i];
+          ly += this.py[i];
+          ln++;
+        }
+      if (ln > 4) {
+        const k2 = Math.min(1, ln / 200);
+        this.toScreen(lx / ln, ly / ln);
+        const bs = R * (0.7 + 0.9 * k2) * (1 - this.tilt * 0.15);
+        x.globalAlpha = 0.25 + k2 * 0.6;
+        x.drawImage(this.bed, _p[0] - bs / 2, _p[1] - bs / 2, bs, bs);
+        x.globalAlpha = 1;
+      }
+    }
     let tot = 0;
     for (let i = n - 1; i >= 0; i--) {
       const a = this.pa[i];
-      if (a !== A_IN && a !== A_FALL) continue;
+      if (a !== A_IN && a !== A_FALL && a !== A_PAN) continue;
       if (ph === P_SIEVE && a === A_IN) continue;
       const bk = Math.min(9, (this.ps[i] * 10) | 0);
       this.ord[--this.cnt[bk]] = i;
@@ -1297,8 +1382,8 @@ export class PanGame {
       if (!drewMurk && this.ps[i] >= 0.5) {
         drewMurk = true;
         if (murk > 0.01) {
-          x.globalAlpha = Math.min(0.92, murk * 0.95);
-          x.fillStyle = '#6b5236';
+          x.globalAlpha = Math.min(0.62, murk * 0.68);
+          x.fillStyle = '#7d6040';
           x.fillRect(cx - R, cy - R, R * 2, R * 2);
           x.globalAlpha = 1;
         }
@@ -1327,14 +1412,14 @@ export class PanGame {
     }
     x.globalAlpha = 1;
     if (!drewMurk && murk > 0.01) {
-      x.globalAlpha = Math.min(0.92, murk * 0.95);
-      x.fillStyle = '#6b5236';
+      x.globalAlpha = Math.min(0.62, murk * 0.68);
+      x.fillStyle = '#7d6040';
       x.fillRect(cx - R, cy - R, R * 2, R * 2);
       x.globalAlpha = 1;
     }
     if (murk > 0.01) {
-      x.globalAlpha = murk * 0.3;
-      x.fillStyle = '#6b5236';
+      x.globalAlpha = murk * 0.2;
+      x.fillStyle = '#8a6a44';
       x.fillRect(cx - R, cy - R, R * 2, R * 2);
       x.globalAlpha = 1;
     }
@@ -1347,12 +1432,12 @@ export class PanGame {
         if (this.pa[i] !== A_IN || this.pt[i] < AU) continue;
         const cover = Math.max(0, this.ps[i] < 0.5 ? murk : 0);
         const ph2 = Math.sin(this.time * (3 + (i % 5)) + i * 1.7);
-        const a = (ph2 * 0.5 + 0.5) ** 6 * reveal * (1 - cover);
+        const a = (ph2 * 0.5 + 0.5) ** 14 * reveal * (1 - cover);
         if (a < 0.03) continue;
         this.toScreen(this.px[i], this.py[i]);
         const sx = _p[0];
         const sy = _p[1];
-        const s = (this.pt[i] === NG ? 1.6 : 0.9) * (0.6 + a * 0.6);
+        const s = (this.pt[i] === NG ? 1.4 : 0.6) * (0.6 + a * 0.6);
         x.globalAlpha = Math.min(1, a * 1.2);
         x.drawImage(gs, sx - (gs.width * s) / 2, sy - (gs.height * s) / 2, gs.width * s, gs.height * s);
       }
@@ -1503,7 +1588,14 @@ export class PanGame {
         x.globalCompositeOperation = 'source-over';
       } else if (a === A_BUCKET) {
         const f = this.ft[i];
-        if (f <= 0) continue;
+        if (f <= 0) {
+          // ainda no balde: monte de terra/concentrado dentro
+          const an = i * 2.399;
+          const d = Math.sqrt((i % 23) / 23) * this.bkR * 0.62;
+          x.globalAlpha = 1;
+          x.drawImage(sp, this.bkx + Math.cos(an) * d - sp.width / 2, this.bky + Math.sin(an) * d - sp.height / 2);
+          continue;
+        }
         const ff = Math.min(1, f);
         const [bx, by] = this.toScreen(this.px[i] * 0.5, this.py[i] * 0.5);
         const sx = this.bkx + (bx - this.bkx) * ff + (this.pv[i] - 3) * 3;

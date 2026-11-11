@@ -10,9 +10,9 @@ import { sfx } from '../../../3d/common/sfx';
 import { tap } from '../../../core/haptics';
 import { speak } from '../../voo/voice';
 import { PIC } from './icons';
-import { bucketArt, causticTile, flakeSprite, glintSprite, grainSprite, handPath, rng } from './panart';
+import { bucketArt, causticTile, flakeSprite, glintSprite, grainSprite, handPath, riverBg, rng } from './panart';
 
-const NG = 150;
+const NG = 260;
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 
 export class CleanGame {
@@ -49,6 +49,7 @@ export class CleanGame {
   private glint!: HTMLCanvasElement;
   private bucket!: HTMLCanvasElement;
   private caus!: HTMLCanvasElement;
+  private bg!: HTMLCanvasElement;
   private swT = 0;
   /* layout: calha */
   private x0 = 0;
@@ -94,7 +95,8 @@ export class CleanGame {
     const nGold = clamp(Math.round(6 + grams * 4), 6, 40);
     for (let i = 0; i < NG; i++) {
       const rib = Math.floor((r() * r()) * 10);
-      this.gx[i] = 0.06 + rib * 0.09 + r() * 0.05;
+      // concentrado fica no remanso logo atrás de cada riffle
+      this.gx[i] = 0.06 + rib * 0.09 + 0.05 - r() * r() * 0.045;
       this.gy[i] = (r() - 0.5) * 0.86;
       this.gt[i] = i < nGold ? 1 : 0;
       this.gs[i] = (r() * 5) | 0;
@@ -120,7 +122,47 @@ export class CleanGame {
     this.bx = W * 0.87;
     this.by = H * 0.66;
     this.bucket = bucketArt(this.bR, '#3b6f86');
+    this.bg = riverBg(W, H, rng(99));
+    // calha e barra de riffle pré-desenhadas (nada de gradiente por quadro)
+    const L = this.x1 - this.x0;
+    const hh = this.hh;
+    const tr = document.createElement('canvas');
+    tr.width = Math.ceil(L + 30);
+    tr.height = Math.ceil(hh + 40);
+    const x = tr.getContext('2d')!;
+    x.fillStyle = 'rgba(0,0,0,.35)';
+    x.fillRect(16, 22, L, hh);
+    const g = x.createLinearGradient(0, 0, 0, hh + 24);
+    g.addColorStop(0, '#dfe5ea');
+    g.addColorStop(0.5, '#8d979f');
+    g.addColorStop(1, '#c7cfd6');
+    x.fillStyle = g;
+    x.fillRect(0, 0, L + 16, hh + 24);
+    x.fillStyle = '#2f6b3a';
+    x.fillRect(8, 12, L, hh);
+    x.strokeStyle = 'rgba(20,50,25,.6)';
+    x.lineWidth = 2;
+    for (let i = 0; i < 46; i++) {
+      const px = 8 + ((i + 0.5) / 46) * L;
+      x.beginPath();
+      x.moveTo(px, 12);
+      x.lineTo(px, 12 + hh);
+      x.stroke();
+    }
+    this.trough = tr;
+    const bar = document.createElement('canvas');
+    bar.width = 10;
+    bar.height = Math.ceil(hh);
+    const y = bar.getContext('2d')!;
+    const rg = y.createLinearGradient(0, 0, 10, 0);
+    rg.addColorStop(0, '#f2f5f7');
+    rg.addColorStop(1, '#5d666e');
+    y.fillStyle = rg;
+    y.fillRect(0, 0, 10, hh);
+    this.bar = bar;
   };
+  private trough!: HTMLCanvasElement;
+  private bar!: HTMLCanvasElement;
 
   private loop = (now: number): void => {
     if (this.dead) return;
@@ -198,7 +240,7 @@ export class CleanGame {
     this.my = ny;
     this.idle = 0;
     if (this.st === 0) this.trayY = Math.max(0, this.y0 - ny);
-    else if (this.st === 1) this.energy = Math.min(3, this.energy + Math.abs(dx) / this.W * 7);
+    else if (this.st === 1) this.energy = Math.min(3, this.energy + (Math.abs(dx) / this.W) * 2.6);
   };
   private pUp = (e: PointerEvent): void => {
     if (e.pointerId !== this.pid) return;
@@ -218,37 +260,20 @@ export class CleanGame {
     const W = this.W;
     const H = this.H;
     x.setTransform(this.k, 0, 0, this.k, 0, 0);
-    // chão de terra molhada
-    x.fillStyle = '#5a4630';
-    x.fillRect(0, 0, W, H);
-    x.globalAlpha = 0.25;
-    x.drawImage(this.caus, 0, 0, W, W);
+    // beira do rio (a calha está na correnteza rasa)
+    x.drawImage(this.bg, 0, 0, W, H);
+    x.globalCompositeOperation = 'lighter';
+    x.globalAlpha = 0.06;
+    const o = (this.time * 30) % 256;
+    for (let yy = -256; yy < H; yy += 256) for (let xx = o - 256; xx < W; xx += 256) x.drawImage(this.caus, xx, yy);
     x.globalAlpha = 1;
+    x.globalCompositeOperation = 'source-over';
     const x0 = this.x0;
     const x1 = this.x1;
     const cy = this.cy;
     const hh = this.hh;
-    // calha: chapa
-    x.fillStyle = 'rgba(0,0,0,.35)';
-    x.fillRect(x0 + 8, cy - hh / 2 + 10, x1 - x0, hh);
-    const g = x.createLinearGradient(0, cy - hh / 2 - 12, 0, cy + hh / 2 + 12);
-    g.addColorStop(0, '#dfe5ea');
-    g.addColorStop(0.5, '#8d979f');
-    g.addColorStop(1, '#c7cfd6');
-    x.fillStyle = g;
-    x.fillRect(x0 - 8, cy - hh / 2 - 12, x1 - x0 + 16, hh + 24);
-    // tapete verde
-    x.fillStyle = '#2f6b3a';
-    x.fillRect(x0, cy - hh / 2, x1 - x0, hh);
-    x.strokeStyle = 'rgba(20,50,25,.6)';
-    x.lineWidth = 2;
-    for (let i = 0; i < 46; i++) {
-      const px = x0 + ((i + 0.5) / 46) * (x1 - x0);
-      x.beginPath();
-      x.moveTo(px, cy - hh / 2);
-      x.lineTo(px, cy + hh / 2);
-      x.stroke();
-    }
+    // calha (chapa + tapete)
+    x.drawImage(this.trough, x0 - 8, cy - hh / 2 - 12);
     // concentrado
     const L = x1 - x0;
     for (let i = 0; i < NG; i++) {
@@ -311,11 +336,7 @@ export class CleanGame {
       }
       for (let i = 0; i < 10; i++) {
         const px = x0 + 0.06 * L + i * 0.09 * L + 0.05 * L;
-        const rg = x.createLinearGradient(px, 0, px + 10, 0);
-        rg.addColorStop(0, '#f2f5f7');
-        rg.addColorStop(1, '#5d666e');
-        x.fillStyle = rg;
-        x.fillRect(px, cy - hh / 2 + ty, 10, hh);
+        x.drawImage(this.bar, px, cy - hh / 2 + ty);
       }
       x.fillStyle = '#4d5257';
       x.fillRect(x0, cy - hh / 2 - 6 + ty, L, 8);

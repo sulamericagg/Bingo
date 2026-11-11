@@ -46,15 +46,23 @@
 .gbp-bar .gbp-b small{position:absolute;right:-6px;bottom:-6px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#ffcf2e;color:#3a2200;font:800 12px/20px var(--font,'Fredoka',sans-serif)}
 @keyframes gbpGlow{to{box-shadow:0 0 0 7px rgba(255,220,80,.15)}}
 /* painel da calha / lavadora (medidor) */
-.gbp-panel{position:absolute;left:50%;bottom:calc(var(--edge-b,12px) + var(--safe-bot,0px) + 8px);transform:translateX(-50%);z-index:22;display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:20px;background:rgba(20,14,8,.7);color:#fff;font:800 15px var(--font,'Fredoka',sans-serif);pointer-events:none;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.gbp-panel{position:absolute;left:calc(var(--edge-l,10px) + 2px);top:calc(var(--edge-t,8px) + 104px);z-index:22;display:grid;grid-template-columns:repeat(3,auto);justify-items:center;align-items:center;gap:4px 6px;padding:6px 8px;border-radius:18px;background:rgba(20,14,8,.7);color:#fff;font:800 15px var(--font,'Fredoka',sans-serif);pointer-events:none;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .gbp-panel[hidden]{display:none}
+.gbw-bar:not(:empty)~.gbp-panel{left:calc(var(--edge-l,10px) + 60px)}
+.gbp-panel .gbp-gw{grid-column:1/4;display:flex}
+.gbp-panel .gbp-ico{display:none}
+.gbp-panel.plant{grid-template-columns:repeat(2,auto)}
+.gbp-panel.plant .gbp-rpct{grid-column:1/3}
+.gbp-panel.plant .gbp-ups{grid-column:1/3;display:flex;gap:2px}
+.gbp-panel.plant .gbp-ups svg{width:22px;height:22px}
 .gbp-panel>*{pointer-events:auto}
 .gbp-panel svg{width:26px;height:26px}
 .gbp-panel .gbp-b{width:42px;height:42px;min-width:42px;border-radius:12px}
 .gbp-panel .gbp-b svg{width:26px;height:26px}
-.gbp-gauge{width:108px;height:58px;pointer-events:none}
-.gbp-meter{display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;min-width:52px}
-.gbp-meter i{display:block;width:52px;height:9px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden}
+.gbp-gauge{width:124px;height:66px;pointer-events:none}
+.gbp-meter{display:flex;flex-direction:column;align-items:center;gap:1px;pointer-events:none;min-width:40px}
+.gbp-meter svg{width:20px;height:20px}
+.gbp-meter i{display:block;width:40px;height:9px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden}
 .gbp-meter u{display:block;height:100%;background:#ffcf2e;border-radius:5px}
 .gbp-rpct{display:flex;align-items:center;gap:4px;padding:3px 10px;border-radius:14px;background:linear-gradient(#ffd23a,#e39a10);color:#3a2000;font-size:18px;pointer-events:none}
 .gbp-rpct svg{width:22px;height:22px;color:#3a2000}

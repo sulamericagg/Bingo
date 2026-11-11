@@ -27,6 +27,7 @@ import { tap } from '../../../core/haptics';
 import { sfx } from '../../../3d/common/sfx';
 import { bigMoment, notify } from '../../../ui/notify';
 import { CELL, MAT_SAND, V, type Terrain } from '../terrain';
+import { SACK_VOL } from '../rp/state';
 import type { Receiver, Worker } from '../machines';
 import type { Garimpo } from '../game';
 import type { NetMsg } from '../net';
@@ -138,13 +139,14 @@ export class ProcSystem {
   private toastT = 0;
   private group = new THREE.Group();
   private parts: { grizzly?: THREE.Object3D; runs?: { root: THREE.Group; waters: THREE.Mesh[] }; shaker?: ReturnType<typeof buildShaker>; room?: THREE.Object3D } = {};
-  private badge = new Badge('gold', 2.6);
+  private badge = new Badge('gold', 4.2);
   private barrel: THREE.Group;
   private barrelPos = { x: 0, z: 0 };
   /** minijogo aberto */
   private game: PanGame | CleanGame | null = null;
   private ui: { bar: HTMLDivElement; panel: HTMLDivElement; gauge: HTMLCanvasElement } | null = null;
   private barKey = '';
+  private visT = 0;
   private panelKey = '';
   private uiT = 0;
   private tailT = 0;
@@ -157,6 +159,8 @@ export class ProcSystem {
   private dirty = true;
   /** para testes: força a beira d'água */
   forceWater = false;
+  /** para testes: próximo carrinho traz pepita */
+  forceNug = false;
 
   constructor(g: Garimpo, s: import('../save').SlotSave) {
     this.g = g;
@@ -191,7 +195,7 @@ export class ProcSystem {
     this.group.add(this.barrel);
     w.addCircle({ x: _v.x, z: _v.z, r: 0.55 });
     // placa da recuperação em cima da lavadora
-    _v.set(0, 6.0, 1.5);
+    _v.set(0, 6.6, 1.5);
     w.plant.root.localToWorld(_v);
     this.badge.sprite.position.copy(_v);
     this.group.add(this.badge.sprite);
@@ -261,6 +265,7 @@ export class ProcSystem {
       }
       for (let i = 0; i < this.sl.length; i++) this.sluiceStep(this.sl[i], dt);
       this.waterBuckets();
+      this.depositBag();
     }
     // aviso "+g" quando a lavadora termina
     this.toastT -= dt;
@@ -277,6 +282,29 @@ export class ProcSystem {
       this.measureTails();
     }
     this.uiUpdate();
+  }
+
+  /** RP: sacos na mochila */
+  private sacks(): number {
+    return this.g.rp?.st.inv.saco ?? 0;
+  }
+  /** RP: pepitas da mochila entram no estoque perto do estoque ou da moega */
+  private depositBag(): void {
+    const g = this.g;
+    const rp = g.rp;
+    if (!rp || !this.onFoot()) return;
+    const p = rp.st.inv.pepita ?? 0;
+    if (p < 0.005) return;
+    const w = g.w!;
+    const wp = g.worker!.group.position;
+    const st = w.stock.root.position;
+    g.hopperPos(_v);
+    if (Math.hypot(wp.x - st.x, wp.z - st.z) > 8 && Math.hypot(wp.x - _v.x, wp.z - _v.z) > 7) return;
+    rp.addItem('pepita', -p);
+    g.sv!.stock += p;
+    g.toast('+' + fmtG(p) + ' g');
+    audio.coin(3);
+    sfx.sparkle();
   }
 
   /* ---------------- calhas ---------------- */
@@ -414,8 +442,8 @@ export class ProcSystem {
     const ox = x + 2.4;
     stake.position.set(ox, w.T.heightAt(ox, z), z);
     this.group.add(stake);
-    const badge = new Badge('tail', 1.8);
-    badge.sprite.position.set(ox, stake.position.y + 2.3, z);
+    const badge = new Badge('tail', 2.6);
+    badge.sprite.position.set(ox, stake.position.y + 2.5, z);
     badge.set('0 g');
     this.group.add(badge.sprite);
     this.tails.push({ x, z, g: 0, stake, badge });
@@ -485,11 +513,11 @@ export class ProcSystem {
       cm.opacity = clamp(sl.mat / SL_MAT, 0, 1) * 0.85;
       m.heap.scale.y = 0.01 + Math.min(1, sl.load / 0.25);
       m.heap.visible = sl.load > 0.003;
-      if (sl.run && Math.random() < 0.5) {
+      if (sl.run && Math.random() < 0.12) {
         this.tailPos(sl, _v);
         const y = w.T.heightAt(_v.x, _v.z) + 0.5;
         w.drops.spawn(_v.x + Math.sin(sl.yaw) * 0.9, y, _v.z + Math.cos(sl.yaw) * 0.9, -Math.sin(sl.yaw) * 1.2, 0.4, -Math.cos(sl.yaw) * 1.2, 0.07, 0.6, 0.8, 1);
-        if (Math.random() < 0.4) w.clods.spawn(_v.x + Math.sin(sl.yaw) * 0.9, y, _v.z + Math.cos(sl.yaw) * 0.9, -Math.sin(sl.yaw) * 0.9, 0.2, -Math.cos(sl.yaw) * 0.9, 0.05, 0.62, 0.55, 0.45);
+        if (Math.random() < 0.25) w.clods.spawn(_v.x + Math.sin(sl.yaw) * 0.9, y, _v.z + Math.cos(sl.yaw) * 0.9, -Math.sin(sl.yaw) * 0.9, 0.2, -Math.cos(sl.yaw) * 0.9, 0.05, 0.62, 0.55, 0.45);
       }
     }
   }
@@ -523,7 +551,6 @@ export class ProcSystem {
     if (this.upg[4] && !P.room) {
       P.room = buildGoldRoom();
       sit(P.room, -7.4, -4.6, 1.9);
-      P.room.rotation.y = Math.PI / 2;
       this.g.w!.blockers.push({ x: _v.x, z: _v.z, r: 2.2, y: P.room.position.y + pl.root.position.y + 2.8 });
     }
     pl.root.updateMatrixWorld(true);
@@ -551,13 +578,23 @@ export class ProcSystem {
   startPan(): void {
     const g = this.g;
     const wk = g.worker!;
-    if (this.game || !this.onFoot() || wk.cargo.vol < 0.004) return;
+    if (this.game || !this.onFoot()) return;
+    // RP: sacos de cascalho da mochila também vão para a bateia
+    if (wk.cargo.vol < 0.004 && !g.guest && this.sacks() > 0) {
+      const rp = g.rp!;
+      wk.cargo.vol += this.sacks() * SACK_VOL;
+      wk.cargo.gold += rp.st.sackGold;
+      rp.st.sackGold = 0;
+      rp.addItem('saco', -this.sacks());
+    }
+    if (wk.cargo.vol < 0.004) return;
     const gold = wk.cargo.gold;
     const vol = wk.cargo.vol;
     // pepita: carrinhos ricos às vezes trazem uma (no garimpo de verdade é a fração grossa)
     let nug = 0;
     const chance = clamp(gold / 5, 0, 0.5) * NUG_K[this.diff];
-    if (gold > 0.3 && Math.random() < chance) nug = gold * (0.25 + Math.random() * 0.15);
+    if (gold > 0.3 && (this.forceNug || Math.random() < chance)) nug = gold * (0.25 + Math.random() * 0.15);
+    this.forceNug = false;
     this.request({ op: 'take', src: 'barrow' });
     this.open(
       (root, done) =>
@@ -671,7 +708,11 @@ export class ProcSystem {
         return;
       }
       const got = clamp(num(m.g), 0, pd.gold);
-      s.stock += got;
+      // RP: o ouro do frasco vai na mochila (pepitas) até o estoque; sem RP vai direto
+      if (who === 'me' && g.rp) {
+        g.rp.addItem('pepita', Math.round(got * 100) / 100);
+        if (got > 0.01) this.say('bag', t('gb.p.toBag', 'O ouro foi para a mochila! Leve ao estoque para guardar.'));
+      } else s.stock += got;
       this.tailsAt(pd, pd.vol, pd.gold - got);
       const combo = clamp(Math.round(num(m.combo)), 0, 99);
       if (combo >= 2) s.money += Math.min(50, combo * 5);
@@ -760,6 +801,12 @@ export class ProcSystem {
     gauge.height = 116;
     root.append(bar, panel);
     this.ui = { bar, panel, gauge };
+    // telas por cima (loja, pausa) param o mundo: some junto com o HUD mesmo sem passo
+    this.visT = window.setInterval(() => {
+      const g = this.g;
+      const off = !g.hud || g.hud.el.hidden || !!this.game || !!document.querySelector('.gb-scr[data-ov]');
+      bar.style.visibility = panel.style.visibility = off ? 'hidden' : '';
+    }, 200);
   }
   private act(k: string): void {
     const g = this.g;
@@ -805,7 +852,7 @@ export class ProcSystem {
     }
     const pr = g.w!.map.plant;
     this.nearPlant = hudOn && !g.inMine && Math.hypot(pr.x - p.x, pr.z - p.z) < 14;
-    this.canPan = foot && !!wk && wk.cargo.vol > 0.004 && this.atWater();
+    this.canPan = foot && !!wk && (wk.cargo.vol > 0.004 || (!g.guest && this.sacks() > 0)) && this.atWater();
     if (this.canPan && g.sv && !g.sv.tips.includes('pan1')) {
       g.sv.tips.push('pan1');
       g.say(t('gb.p.tipPan', 'Água! Lave a terra na bateia: você pega mais ouro e acha pepitas!'));
@@ -831,8 +878,9 @@ export class ProcSystem {
       const sl = this.sl[this.nearSl];
       pk = 's' + this.nearSl;
       if (this.panelKey !== pk) {
-        ui.panel.innerHTML = `<span class="gbp-ico">${PIC.sluice}</span><button class="gbp-b" data-p="dn">${PIC.slopeDn}</button><span class="gbp-gw"></span><button class="gbp-b" data-p="up">${PIC.slopeUp}</button>
-          <div class="gbp-meter" data-m="w">${PIC.barrel}<i><u></u></i></div><div class="gbp-meter" data-m="m">${PIC.clean}<i><u></u></i></div><div class="gbp-rpct"><b></b></div>`;
+        ui.panel.className = 'gbp-panel';
+        ui.panel.innerHTML = `<span class="gbp-gw"></span><button class="gbp-b" data-p="dn">${PIC.slopeDn}</button><div class="gbp-rpct"><b></b></div><button class="gbp-b" data-p="up">${PIC.slopeUp}</button>
+          <div class="gbp-meter" data-m="w">${PIC.barrel}<i><u></u></i></div><span></span><div class="gbp-meter" data-m="m">${PIC.clean}<i><u></u></i></div>`;
         ui.panel.querySelector('.gbp-gw')!.appendChild(ui.gauge);
       }
       this.drawGauge(sl.speed, sl.rec);
@@ -848,7 +896,8 @@ export class ProcSystem {
       pk = 'p' + (this.manual ? 1 : 0) + this.upg.join('');
       if (this.panelKey !== pk) {
         const icons = UPG.map((u, i) => `<i class="${this.upg[i] ? 'on' : ''}" style="display:flex;opacity:${this.upg[i] ? 1 : 0.3}">${PIC[u.icon]}</i>`).join('');
-        ui.panel.innerHTML = `<div class="gbp-rpct">${PIC.vial}<b></b></div><span style="display:flex;gap:2px">${icons}</span><div class="gbp-meter" data-m="b">${PIC.goldroom}<i><u></u></i></div><button class="gbp-b ${this.manual ? 'on' : ''}" data-p="mode">${this.manual ? PIC.hand : PIC.auto}</button>`;
+        ui.panel.className = 'gbp-panel plant';
+        ui.panel.innerHTML = `<div class="gbp-rpct">${PIC.vial}<b></b></div><span class="gbp-ups">${icons}</span><div class="gbp-meter" data-m="b">${PIC.goldroom}<i><u></u></i></div><button class="gbp-b ${this.manual ? 'on' : ''}" data-p="mode">${this.manual ? PIC.hand : PIC.auto}</button>`;
       }
       ui.panel.querySelector('.gbp-rpct b')!.textContent = Math.round(this.totalRec() * 100) + '%';
       const u = ui.panel.querySelector<HTMLElement>('.gbp-meter u');
@@ -1029,6 +1078,7 @@ export class ProcSystem {
     this.g.say(text);
   }
   dispose(): void {
+    window.clearInterval(this.visT);
     this.game?.dispose();
     this.game = null;
     this.ui?.bar.remove();
@@ -1051,6 +1101,7 @@ export class ProcSystem {
       this.applyParts();
     },
     sluice: (x: number, z: number, yaw: number) => this.addSluice(x, z, yaw),
+    sls: () => this.sl,
     clean: (i: number) => this.startClean(i),
     pan: () => this.startPan(),
   };

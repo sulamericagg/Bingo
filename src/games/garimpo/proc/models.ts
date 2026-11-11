@@ -195,7 +195,7 @@ export function buildShaker(): { root: THREE.Group; deck: THREE.Group; water: TH
     for (let i = 0; i < 9; i++) kk.box(2.0 - i * 0.12, 0.02, 0.025, 0xb8c2c8, 0.12 + i * 0.06, 0.05, -0.6 + i * 0.13);
   });
   // a famosa linha de ouro (diagonal) e a faixa de areia preta abaixo
-  dk.use('shiny').box(1.7, 0.012, 0.06, 0xffc928, 0.1, 0.06, -0.05, 0, 0.35).use('paint');
+  dk.use('glow').box(1.8, 0.014, 0.09, 0xffd23a, 0.1, 0.062, -0.05, 0, 0.35).use('paint');
   dk.box(1.7, 0.01, 0.16, 0x2a2622, 0.2, 0.055, 0.2, 0, 0.35);
   dk.box(1.7, 0.01, 0.2, 0x9a8a72, 0.3, 0.05, 0.48, 0, 0.32);
   // calha de alimentação e potes

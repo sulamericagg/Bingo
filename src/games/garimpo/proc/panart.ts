@@ -50,7 +50,7 @@ function blobPath(x: CanvasRenderingContext2D, r: Rnd, cx: number, cy: number, r
 const hex = (r: number, g: number, b: number) => `rgb(${Math.round(Math.max(0, Math.min(255, r)))},${Math.round(Math.max(0, Math.min(255, g)))},${Math.round(Math.max(0, Math.min(255, b)))})`;
 
 /** seixo/pedra: blob com sombra, gradiente de luz (luz de cima-esquerda) e pintas */
-export function rockSprite(r: Rnd, size: number, base: [number, number, number], speck = 0.5): HTMLCanvasElement {
+export function rockSprite(r: Rnd, size: number, base: [number, number, number], speck = 0.5, wet = true): HTMLCanvasElement {
   const pad = 3;
   const c = mk(size + pad * 2, size + pad * 2);
   const x = ctx2(c);
@@ -91,7 +91,7 @@ export function rockSprite(r: Rnd, size: number, base: [number, number, number],
   }
   x.restore();
   // brilho molhado
-  x.fillStyle = 'rgba(255,255,255,.28)';
+  x.fillStyle = wet ? 'rgba(255,255,255,.28)' : 'rgba(255,255,255,.06)';
   x.beginPath();
   x.ellipse(cx - rad * 0.32, cy - rad * 0.38, rad * 0.32, rad * 0.16, -0.5, 0, Math.PI * 2);
   x.fill();
@@ -228,15 +228,21 @@ export function riverBg(w: number, h: number, r: Rnd): HTMLCanvasElement {
     x.fillStyle = gg;
     x.fillRect(px - rr, py - rr, rr * 2, rr * 2);
   }
-  // seixos
-  const n = Math.round((w * h) / 900);
+  // seixos (fora de foco: o fundo do rio fica borrado, a bateia em foco)
+  const pc = mk(w, h);
+  const px = ctx2(pc);
+  const n = Math.round((w * h) / 1300);
   for (let i = 0; i < n; i++) {
-    const sz = 6 + r() * r() * 34;
+    const sz = 8 + r() * r() * 38;
     const tone = 70 + r() * 70;
-    const sp = rockSprite(r, sz, [tone + 10, tone, tone - 15], 0.3);
-    x.globalAlpha = 0.55 + r() * 0.35;
-    x.drawImage(sp, r() * w - sp.width / 2, r() * h - sp.height / 2);
+    const warm = r();
+    const sp = rockSprite(r, sz, [tone + 20 * warm + 10, tone + 5 * warm, tone - 20 * warm], 0.3, false);
+    px.globalAlpha = 0.45 + r() * 0.35;
+    px.drawImage(sp, r() * w - sp.width / 2, r() * h - sp.height / 2);
   }
+  x.filter = 'blur(1.6px)';
+  x.drawImage(pc, 0, 0);
+  x.filter = 'none';
   x.globalAlpha = 1;
   // água por cima (azul-esverdeado, mais fundo à direita)
   const wg = x.createLinearGradient(0, 0, w, 0);
@@ -274,10 +280,11 @@ export function riverBg(w: number, h: number, r: Rnd): HTMLCanvasElement {
 export function causticTile(s: number, r: Rnd): HTMLCanvasElement {
   const c = mk(s, s);
   const x = ctx2(c);
-  x.strokeStyle = 'rgba(210,250,255,.55)';
+  x.strokeStyle = 'rgba(210,250,255,.5)';
   x.lineCap = 'round';
+  x.filter = 'blur(1.2px)';
   const pts: number[] = [];
-  const n = 22;
+  const n = 64;
   for (let i = 0; i < n; i++) pts.push(r() * s, r() * s);
   // liga cada ponto aos 3 mais próximos (com repetição) — células tipo Voronoi
   for (let i = 0; i < n; i++) {
@@ -298,7 +305,7 @@ export function causticTile(s: number, r: Rnd): HTMLCanvasElement {
       const [, bx, by] = near[k];
       for (let ox = -1; ox <= 1; ox++)
         for (let oy = -1; oy <= 1; oy++) {
-          x.lineWidth = 1.2 + r() * 2.2;
+          x.lineWidth = 0.8 + r() * 1.6;
           x.beginPath();
           const mx = (ax + bx) / 2 + (r() - 0.5) * 14;
           const my = (ay + by) / 2 + (r() - 0.5) * 14;
@@ -419,18 +426,18 @@ export function sieveArt(R: number): { mesh: HTMLCanvasElement; frame: HTMLCanva
   x.clip();
   x.fillStyle = 'rgba(20,14,8,.35)';
   x.fillRect(0, 0, S, S);
-  const step = Math.max(7, R / 13);
+  const step = Math.max(8, R / 11);
   for (let i = -R; i <= R; i += step) {
-    x.strokeStyle = 'rgba(30,30,30,.7)';
-    x.lineWidth = 2.6;
+    x.strokeStyle = 'rgba(20,20,20,.45)';
+    x.lineWidth = 2;
     x.beginPath();
     x.moveTo(h + i + 1, h - R);
     x.lineTo(h + i + 1, h + R);
     x.moveTo(h - R, h + i + 1);
     x.lineTo(h + R, h + i + 1);
     x.stroke();
-    x.strokeStyle = 'rgba(205,210,214,.95)';
-    x.lineWidth = 1.6;
+    x.strokeStyle = 'rgba(175,182,188,.85)';
+    x.lineWidth = 1.2;
     x.beginPath();
     x.moveTo(h + i, h - R);
     x.lineTo(h + i, h + R);
