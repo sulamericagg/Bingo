@@ -395,6 +395,7 @@ export class DisasterGame implements MiniGameHandle {
     this.meteor.ring = -1;
     this.meteor.flash = 0;
     this.outCount = 0;
+    this.tornadoSide = 0;
     this.roundCoins = 0;
     this.roundT = 0;
     this.timeScale = 1;
@@ -470,6 +471,32 @@ export class DisasterGame implements MiniGameHandle {
     this.phaseT = 0;
     this.phaseDur = dur;
     this.hud.onPhase();
+  }
+
+  /** lado de onde o tornado vem (sorteado uma vez por rodada, antes do alerta, para o aviso mostrar) */
+  private tornadoSide = 0;
+  nextSide(): number {
+    if (!this.tornadoSide) this.tornadoSide = this.rng() < 0.5 ? -1 : 1;
+    return this.tornadoSide;
+  }
+
+  /** de onde vem o desastre d: -1 esquerda, 1 direita, 2 de cima, 3 de baixo (para o aviso) */
+  hazardFrom(d: DisasterId): number {
+    switch (d) {
+      case 'tsunami':
+        return -1;
+      case 'avalanche':
+        return 1;
+      case 'tornado':
+        return this.nextSide();
+      case 'vulcao':
+        return 1;
+      case 'enchente':
+      case 'acido':
+        return 3;
+      default:
+        return 2;
+    }
   }
 
   get finale(): boolean {
@@ -586,7 +613,7 @@ export class DisasterGame implements MiniGameHandle {
         break;
       case 'tornado':
         this.tornado.on = true;
-        this.tornado.x = this.rng() < 0.5 ? -120 : this.world.W + 120;
+        this.tornado.x = this.nextSide() < 0 ? -120 : this.world.W + 120;
         this.tornado.vx = (this.tornado.x < 0 ? 1 : -1) * (66 + df * 12) * (this.training ? 0.75 : 1);
         this.tornado.r = 58 + df * 3;
         break;

@@ -10,6 +10,7 @@ import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
 import { DISASTERS, type DisasterId } from './scenarios';
+import { dzIcon } from './icons';
 import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
@@ -45,7 +46,21 @@ const CSS = `
 .dz-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
 .dz-big:disabled{opacity:.5}
-@media (orientation:landscape) and (max-height:500px){.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
+.dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + max(40px,env(safe-area-inset-top)));transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
+.dz-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
+.dz-warn .ico{width:54px;height:54px;animation:dzwob .5s ease-in-out infinite alternate}
+.dz-warn b{font-size:46px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
+.dz-warn .safe{display:flex;align-items:center;opacity:.95}.dz-warn .safe .ico{width:34px;height:34px;animation:none}
+@keyframes dzwob{from{transform:rotate(-8deg) scale(.95)}to{transform:rotate(8deg) scale(1.08)}}
+.dz-edge{position:absolute;pointer-events:none;opacity:0;transition:opacity .15s;display:flex;gap:2px;filter:drop-shadow(0 3px 0 #2a0b5c)}
+.dz-edge.on{opacity:1;animation:dzpulse .45s ease-in-out infinite alternate}
+.dz-edge .ico{width:44px;height:44px;filter:hue-rotate(-125deg) saturate(1.6)}
+.dz-edge.l{left:calc(var(--edge-l,6px) + 2px);top:42%}.dz-edge.l .ico{transform:rotate(90deg)}
+.dz-edge.r{right:calc(var(--edge-r,6px) + 2px);top:42%}.dz-edge.r .ico{transform:rotate(-90deg)}
+.dz-edge.t{left:50%;top:28%;margin-left:-66px}.dz-edge.t .ico{transform:rotate(180deg)}
+.dz-edge.b{left:50%;bottom:calc(var(--edge-b,14px) + 110px);margin-left:-66px}
+@keyframes dzpulse{from{transform:scale(.92)}to{transform:scale(1.1)}}
+@media (orientation:landscape) and (max-height:500px){.dz-warn{top:calc(var(--nt-top,56px) + 58px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -63,6 +78,12 @@ export class Hud {
   joy: Joystick;
   private offCtl: () => void;
   private lastNum = -1;
+  /** aviso visual (ícone + contagem + seta de onde vem) — sem depender de leitura */
+  private warnEl!: HTMLElement;
+  private warnNum!: HTMLElement;
+  private edgeEl!: HTMLElement;
+  private warnKey = '';
+  private warnN = -1;
   /** dedos no botão pular */
   private jumpIds = new Set<number>();
   private syncJump: () => void = () => {};
@@ -85,6 +106,8 @@ export class Hud {
         <div class="dz-mid"><div class="dz-scn"></div><div class="dz-phase"><span class="lbl"></span><b></b></div></div>
         <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div></div>
       </div>
+      <div class="dz-warn" aria-hidden="true"><span class="di"></span><b></b><span class="safe"></span></div>
+      <div class="dz-edge" aria-hidden="true">${icon('arrow-up')}${icon('arrow-up')}${icon('arrow-up')}</div>
       <div class="dz-ctrl">
         <div class="dz-pad jump" data-touch-ignore>${icon('arrow-up')}</div>
       </div>`;
@@ -96,6 +119,9 @@ export class Hud {
     this.phaseNum = el.querySelector('.dz-phase b')!;
     this.alive = el.querySelector('.dz-chip.a span')!;
     this.streak = el.querySelector('.dz-chip.s span')!;
+    this.warnEl = el.querySelector('.dz-warn')!;
+    this.warnNum = el.querySelector('.dz-warn b')!;
+    this.edgeEl = el.querySelector('.dz-edge')!;
     // joystick flutuante na metade esquerda (direita no modo canhoto); pular fica do outro lado
     this.joy = createJoystick(g.root, { zoneTop: 0.18, deadZone: 0.18, mouse: false });
     const ctl = el.querySelector('.dz-ctrl') as HTMLElement;
@@ -217,8 +243,35 @@ export class Hud {
     else if (p === 'end' || p === 'intro') objective(null);
   }
 
+  /** alerta antes de cada desastre: ícone grande, contagem até começar e seta do lado de onde vem */
+  private warnTick(): void {
+    const g = this.g;
+    const left = g.phase === 'warn' ? g.phaseDur - g.phaseT : g.phase === 'prepare' && !g.finale ? g.phaseDur - g.phaseT + 2.6 : 99;
+    const show = left <= 5.6 && left > 0;
+    const d = g.sc.disasters[Math.min(g.dIndex, g.sc.disasters.length - 1)];
+    const from = show ? g.hazardFrom(d) : 0;
+    const key = show ? d + from : '';
+    if (key !== this.warnKey) {
+      this.warnKey = key;
+      this.warnEl.classList.toggle('on', show);
+      this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');
+      if (show) {
+        (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(d, 54);
+        // dica sem texto: casa (tornado), seta para cima (água/lava/neve), céu aberto = nada
+        const safe = d === 'tornado' ? dzIcon('house', 34) : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
+        (this.warnEl.querySelector('.safe') as HTMLElement).innerHTML = safe;
+      }
+    }
+    const n = show ? Math.ceil(left) : -1;
+    if (n !== this.warnN) {
+      this.warnN = n;
+      this.warnNum.textContent = n > 0 ? String(n) : '';
+    }
+  }
+
   tick(_dt = 1 / 60): void {
     const g = this.g;
+    this.warnTick();
     const n = Math.max(0, Math.ceil(g.phaseDur - g.phaseT));
     if (n !== this.lastNum) {
       this.lastNum = n;
