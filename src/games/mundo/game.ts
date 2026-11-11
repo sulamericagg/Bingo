@@ -63,7 +63,7 @@ export class MundoGame implements MiniGameHandle {
     if (this.destroyed) return;
     const opts = { tier: this.gov.tier, exit: () => this.finish() };
     if (seat) {
-      this.world = await m.openServers(this.wrap, opts, { code: seat.code(6, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), host: seat.host });
+      this.world = await m.openServers(this.wrap, opts, { code: seat.code(6, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), host: seat.host }, { gameId: MUNDO_ID });
       if (!this.world) return this.finish();
       this.world.onSample = (a, b) => this.gov.sample(a, b);
       return;
@@ -72,7 +72,7 @@ export class MundoGame implements MiniGameHandle {
     if (this.destroyed) return;
     if (!pick) return this.finish();
     if (pick.kind === 'servers') {
-      this.world = await m.openServers(this.wrap, opts);
+      this.world = await m.openServers(this.wrap, opts, undefined, { gameId: MUNDO_ID });
       if (!this.world) return this.finish();
     } else if (pick.kind === 'world') {
       const id = pick.meta.id;

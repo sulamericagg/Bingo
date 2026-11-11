@@ -887,7 +887,7 @@ export class WorldGame {
     this.persist();
     const coins = this.earned > 0 || this.trees > 0 ? Math.min(300, Math.round(4 + Math.sqrt(this.earned) * 1.2 + this.trees * 0.8)) : 0;
     if (coins > 0) addCoins(coins);
-    reportRun({ game: 'floresta', score: Math.round(this.earned), coins, durationSec: Math.round(this.time), stats: { trees: this.trees, planks: 0 } });
+    reportRun({ game: 'mundo', score: Math.round(this.earned), coins, durationSec: Math.round(this.time), stats: { trees: this.trees, planks: 0 } });
     this.opts.exit();
   }
 
@@ -2424,7 +2424,7 @@ export function createWorld(root: HTMLElement, opts: WorldOpts): WorldGame {
 export function serversAvailable(): boolean {
   return true;
 }
-export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }, o: { gameId?: string } = {}): Promise<WorldGame | null> {
   const net = await import('./net');
-  return net.openServers(root, opts, party);
+  return net.openServers(root, opts, party, o);
 }
