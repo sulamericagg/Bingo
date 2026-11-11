@@ -33,8 +33,8 @@ export const LOADERS: Record<string, Loader> = {
   hospital: () => import('./hospital'),
   creche: () => import('./creche'),
   cabanas: () => import('./cabanas'),
-  // fastfood: () => import('./fastfood'),
-  // posto24h: () => import('./posto24h'),
+  fastfood: () => import('./fastfood'),
+  posto24h: () => import('./posto24h'),
 };
 
 export const mapAvailable = (id: string): boolean => !!LOADERS[id];
