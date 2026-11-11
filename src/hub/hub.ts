@@ -1082,7 +1082,9 @@ function ensureRotBtn(show: boolean, game: string): void {
       void ensureLandscape(game);
     }
   };
-  rotBtn.hidden = !show;
+  // só aparece quando o 3D ficou EM PÉ (o giro automático falhou ou o jogador escolheu em pé);
+  // deitado, o botão sumia por cima do botão de câmera dos jogos e o dono pediu tela limpa
+  rotBtn.hidden = !show || isLand();
 }
 function watch3d(root: HTMLElement, game: string): void {
   unwatch3d();

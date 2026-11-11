@@ -501,3 +501,12 @@
 .magic-mic{position:relative;overflow:hidden}
 .magic-mic.rec{box-shadow:0 0 0 calc(var(--l,0) * 14px) #ff5c5c55,0 4px 0 #8a1d5f}
 .tv-acts [hidden]{display:none!important}
+
+/* Criar história / Mágica deitado (celular baixo): o botão grande vai para uma coluna à direita
+   em vez de uma faixa fixa embaixo — a faixa tampava o 1º cartão de fala (QA) */
+@media (orientation:landscape) and (max-height:560px){
+  .kid-root{padding-right:calc(150px + var(--edge-r,0px));padding-bottom:calc(var(--edge-b,0px) + 16px)}
+  .kid-foot{left:auto;right:calc(8px + var(--edge-r,0px));width:136px;top:0;bottom:0;padding:0;background:none;align-items:center;pointer-events:none}
+  .kid-foot .kid-big{pointer-events:auto;min-width:0;width:136px;min-height:96px;font-size:18px;line-height:1.15;padding:10px 8px;white-space:normal}
+  .kid-dots{margin-right:0}
+}

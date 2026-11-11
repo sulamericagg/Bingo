@@ -343,7 +343,9 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.route = [CITIES[a], CITIES[b]];
     this.flightNo = 'BL-' + (100 + Math.floor(rnd() * 900));
     this.weather = Math.floor(rnd() * 3);
-    this.setBack(() => this.finish());
+    // voltar na pasta de missão: o "Sair do jogo?" do hub (antes saía do jogo direto, sem perguntar)
+    this.popBack?.();
+    this.popBack = null;
     const id = await briefing(this.wrap, { flight: this.flightNo, from: this.route[0], to: this.route[1], weather: this.weather, mode: this.flightKind, crew: this.crewLines() });
     if (this.destroyed) return;
     void id;
