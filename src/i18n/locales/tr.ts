@@ -2941,8 +2941,6 @@ export default {
   "dz.h2.tornado": "Bir eve saklan ama hortum çatıları uçurur. Ondan uzak dur!",
   "dz.h2.tsunami": "Gittikçe büyüyen dalgalar! Tırman ve dalgalar arasında yer değiştir.",
   "dz.h2.vulcao": "Lav sağdan akıyor ve ateş topları düşüyor. Gölgelerden kaç!",
-  "dz.h3.avalanche": "Kar dalgalar halinde yükseliyor ve kar topları yuvarlanıyor. Yükseğe tırman ve zıpla!",
-  "dz.h3.vulcao": "Lav dalgalar halinde yükseliyor ve ateş topları düşüyor. Yükseğe tırman ve gölgelerden kaç!",
   "dz.helped": "Yardım ettin! {name} kurtuldu.",
   "dz.lost": "Az kaldı!",
   "dz.lostsolo": "Bir dahakine başaracaksın!",

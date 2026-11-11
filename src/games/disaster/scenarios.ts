@@ -183,10 +183,3 @@ export function scenarioName(s: Scenario): string {
   const m = s.mod !== 'none' && s.mod !== 'dupla' ? ` (${MOD_NAMES[s.mod]()})` : '';
   return `${s.map.name()} + ${d}${m}`;
 }
-
-/** Dica no 3D: lá a lava e a avalanche sobem em ondas (não vêm "da direita" como no 2D). */
-export function hint3d(d: DisasterId): string {
-  if (d === 'vulcao') return t('dz.h3.vulcao', 'A lava sobe em ondas e bolas de fogo caem. Suba alto e fuja das sombras!');
-  if (d === 'avalanche') return t('dz.h3.avalanche', 'A neve sobe em ondas e bolas de neve rolam. Suba alto e pule!');
-  return DISASTERS[d].hint();
-}

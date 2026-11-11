@@ -92,7 +92,8 @@ export class RpHud {
   clock(): void {
     const w = weather;
     const night = w.isNight;
-    const k = `${hhmm(w.hour)}|${w.sky}|${w.next}|${night}`;
+    // a largura entra na chave: girar/redimensionar reposiciona (antes ficava em cima da carga "0.0 g")
+    const k = `${hhmm(w.hour)}|${w.sky}|${w.next}|${night}|${innerWidth}x${innerHeight}`;
     if (k === this.lastClock) return;
     this.lastClock = k;
     // fica logo à direita dos chips do topo (dinheiro/estoque/carga)

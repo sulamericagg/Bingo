@@ -16,7 +16,7 @@ const ROUTES = {
   jangada: ['nova jangada|^continuar', '^(tranquilo|normal)'],
   cavafala: ['restaurar a vila'],
   anomalias: ['turno da noite', '^(hospital|jogar|noite 1|1)'],
-  disaster: [],
+  disaster: ['^3d'],
   desenho: [],
   studio: [],
 };

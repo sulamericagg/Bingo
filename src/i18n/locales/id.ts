@@ -2941,8 +2941,6 @@ export default {
   "dz.h2.tornado": "Berlindunglah di rumah, tapi tornado menerbangkan atap. Jauhi dia!",
   "dz.h2.tsunami": "Ombak makin besar! Naik dan pindah tempat di antara ombak.",
   "dz.h2.vulcao": "Lava mengalir dari kanan dan bola api berjatuhan. Hindari bayangannya!",
-  "dz.h3.avalanche": "Salju naik bergelombang dan bola salju menggelinding. Naik ke tempat tinggi dan lompat!",
-  "dz.h3.vulcao": "Lahar naik bergelombang dan bola api berjatuhan. Naik ke tempat tinggi dan hindari bayangannya!",
   "dz.helped": "Kamu membantu! Kamu menyelamatkan {name}.",
   "dz.lost": "Hampir!",
   "dz.lostsolo": "Lain kali pasti bisa!",

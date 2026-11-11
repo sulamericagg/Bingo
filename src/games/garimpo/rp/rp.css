@@ -195,5 +195,3 @@
 .rp-result .rp-pay div.tot{font-size:17px}
 .rp-result .rp-go{margin-top:6px;padding:5px 18px 5px 8px;font-size:16px}
 .rp-result .rp-go svg{width:28px;height:28px}
-/* celular deitado (≤ 960 px): o relógio no meio do topo cobria a carga "0.0 g" das fichas da esquerda (QA) */
-@media (max-width:960px){.rp-clock{position:fixed;left:auto;right:calc(env(safe-area-inset-right,0px) + 160px);top:calc(var(--edge-t,8px) + 50px);transform:none}}

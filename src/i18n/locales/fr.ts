@@ -2941,8 +2941,6 @@ export default {
   "dz.h2.tornado": "Abrite-toi dans une maison, mais la tornade arrache les toits. Reste loin d'elle !",
   "dz.h2.tsunami": "Des vagues de plus en plus grandes ! Grimpe et change de place entre elles.",
   "dz.h2.vulcao": "La lave descend de la droite et des boules de feu tombent. Évite les ombres !",
-  "dz.h3.avalanche": "La neige monte par vagues et des boules de neige roulent. Monte haut et saute !",
-  "dz.h3.vulcao": "La lave monte par vagues et des boules de feu tombent. Monte haut et évite les ombres !",
   "dz.helped": "Bien joué ! Tu as sauvé {name}.",
   "dz.lost": "Presque !",
   "dz.lostsolo": "Tu y arriveras la prochaine fois !",

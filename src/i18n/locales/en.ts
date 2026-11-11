@@ -2941,8 +2941,6 @@ export default {
   "dz.h2.tornado": "Hide in a house, but the tornado rips off roofs. Stay away from it!",
   "dz.h2.tsunami": "Bigger and bigger waves! Climb and switch spots between them.",
   "dz.h2.vulcao": "Lava flows from the right and fireballs fall. Dodge the shadows!",
-  "dz.h3.avalanche": "Snow rises in waves and snowballs roll. Climb high and jump!",
-  "dz.h3.vulcao": "Lava rises in waves and fireballs fall. Climb high and dodge the shadows!",
   "dz.helped": "You helped! You saved {name}.",
   "dz.lost": "So close!",
   "dz.lostsolo": "You'll get it next time!",
