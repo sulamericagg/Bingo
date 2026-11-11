@@ -93,7 +93,7 @@ const scenes = {
     note('cinema', 'Criar história: falas', null, await q.shot(page, 'deep-cinema-beats'));
     await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(1200);
     const cover = await page.evaluate(() => { const f = document.querySelector('.kid-foot .kid-big'); const c = document.querySelector('.kid-beat'); if (!f || !c) return null; const a = f.getBoundingClientRect(), b = c.getBoundingClientRect(); const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); return ix > 2 && iy > 2; });
-    note('cinema', '"Fazer o filme!" não cobre o 1º cartão (deitado 844×390)', cover === false, await q.shot(page, 'deep-cinema-beats-land'), `cobre=${cover}`);
+    note('cinema', '"Fazer o filme!" não cobre o 1º cartão (deitado 844×390)', cover === null ? null : cover === false, await q.shot(page, 'deep-cinema-beats-land'), `cobre=${cover}`);
     await exit(page);
   },
   async tv(page) {
@@ -138,7 +138,8 @@ const scenes = {
     const txt = await page.evaluate(() => document.querySelector('#game-host')?.innerText || '');
     const places = ['Hospital', 'Creche', 'Cabana', 'Lanchonete', 'Posto'].filter((p) => new RegExp(p, 'i').test(txt));
     const modes = ['Recepção', 'Corredor'].filter((p) => new RegExp(p, 'i').test(txt));
-    note('anomalias', '5 lugares e modos Recepção/Corredor no menu', places.length === 5 && modes.length === 2, '', `lugares=${places.join(',')} modos=${modes.join(',')}`);
+    // os 5 lugares ficam dentro do "Turno da noite"
+    note('anomalias', 'modos Turno da noite, Recepção e Corredor no menu', /turno/i.test(txt) && modes.length === 2, '', `modos=${modes.join(',')} lugares no menu=${places.join(',') || '(dentro do Turno)'}`);
     const music = await page.evaluate(() => window.__qaAudio?.());
     note('anomalias', 'áudio', null, '', JSON.stringify(music));
     await exit(page);

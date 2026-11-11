@@ -566,10 +566,10 @@ body.hub-lowfx .hub-card.active {
   filter: brightness(0.8);
 }
 .hub-arrow.prev {
-  left: max(2px, calc(50% - var(--cw) / 2 - 20px));
+  left: max(6px, calc(50% - var(--cw) / 2 - 20px));
 }
 .hub-arrow.next {
-  right: max(2px, calc(50% - var(--cw) / 2 - 20px));
+  right: max(6px, calc(50% - var(--cw) / 2 - 20px));
 }
 .hub-stage.single .hub-arrow,
 .hub-stage.single + .hub-dots {
@@ -580,7 +580,7 @@ body.hub-lowfx .hub-card.active {
 .hub-dots {
   display: flex;
   justify-content: center;
-  gap: 7px;
+  gap: min(7px, 1.1vw); /* 22 jogos: com 7 px a fileira passava de 360 px e o 1º pontinho saía da tela (QA) */
   height: 12px;
   align-items: center;
 }

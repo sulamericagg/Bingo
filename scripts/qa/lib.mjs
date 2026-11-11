@@ -136,7 +136,14 @@ export async function tapAt(page, x, y) { await page.touchscreen.tap(x, y); }
 export async function tapSel(page, sel) {
   const el = typeof sel === 'string' ? await page.$(sel) : sel;
   if (!el) return false;
-  const bb = await el.boundingBox();
+  // espera o elemento parar (folhas que sobem animadas): sob carga o toque caía no botão de baixo
+  let bb = await el.boundingBox();
+  for (let i = 0; i < 12 && bb; i++) {
+    await page.waitForTimeout(150);
+    const b2 = await el.boundingBox();
+    if (b2 && Math.abs(b2.x - bb.x) < 0.5 && Math.abs(b2.y - bb.y) < 0.5) break;
+    bb = b2;
+  }
   if (!bb) return false;
   await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2);
   return true;
