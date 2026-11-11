@@ -9,9 +9,10 @@ import { audio } from '../../core/audio';
 import { addCoins } from '../../core/economy';
 import { rewardedAvailable, showRewarded } from '../../services/ads';
 import type { DisasterGame } from './game';
-import { DISASTERS, type DisasterId } from './scenarios';
+import type { DisasterId } from './scenarios';
+import { openPedia } from './roulette';
 import { dzIcon, type DzIcon } from './icons';
-import { bigMoment, clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
+import { bigMoment, clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, createJoystick, onControlsChange, soloToggle, type Joystick } from '../../ui/touch';
 
 const CSS = `
@@ -46,11 +47,18 @@ const CSS = `
 .dz-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
 .dz-big:disabled{opacity:.5}
-.dz-warn{position:absolute;left:50%;top:calc(var(--nt-top,64px) + env(safe-area-inset-top,0px) + 40px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
+.dz-warn{position:absolute;left:50%;top:calc(max(10px,env(safe-area-inset-top)) + 98px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:6px 16px 6px 10px;border-radius:22px;background:rgba(160,20,40,.78);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;pointer-events:none;opacity:0;transition:opacity .15s,transform .15s}
 .dz-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
 .dz-warn.combo{background:linear-gradient(90deg,rgba(255,90,60,.9),rgba(160,20,140,.9))}
 .dz-warn .cb{font-weight:800;font-size:18px;color:#fff;-webkit-text-stroke:1px #2a0b5c;white-space:nowrap}
 .dz-chip.c{background:rgba(120,80,0,.72)}
+.dz-hint{position:absolute;left:50%;top:calc(max(10px,env(safe-area-inset-top)) + 62px);transform:translate(-50%,-4px);max-width:min(64vw,460px);padding:5px 14px;border-radius:16px;background:rgba(24,14,60,.82);border:2px solid rgba(255,255,255,.22);font-weight:600;font-size:14px;line-height:1.2;text-align:center;pointer-events:none;opacity:0;transition:opacity .18s,transform .18s;z-index:4}
+.dz-hint.on{opacity:1;transform:translate(-50%,0)}
+.dz-hint.low{top:calc(max(10px,env(safe-area-inset-top)) + 168px)}
+.dz-hint.alert{background:rgba(170,24,48,.9);border-color:#ffd0d8;font-weight:700}
+.dz-hint.good{background:rgba(24,120,70,.9);border-color:#c8ffd8}
+.dz-hint .ico{width:18px;height:18px;vertical-align:-3px;margin-right:4px}
+.dz-mid .dz-scn .ico{width:16px;height:16px;vertical-align:-3px;margin-right:3px}
 .dz-warn .ico{width:54px;height:54px;animation:dzwob .5s ease-in-out infinite alternate}
 .dz-warn b{font-size:46px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
 .dz-warn .safe{display:flex;align-items:center;opacity:.95}.dz-warn .safe .ico{width:34px;height:34px;animation:none}
@@ -63,7 +71,7 @@ const CSS = `
 .dz-edge.t{left:50%;top:28%;margin-left:-66px}.dz-edge.t .ico{transform:rotate(180deg)}
 .dz-edge.b{left:50%;bottom:calc(var(--edge-b,14px) + 110px);margin-left:-66px}
 @keyframes dzpulse{from{transform:scale(.92)}to{transform:scale(1.1)}}
-@media (orientation:landscape) and (max-height:500px){.dz-warn{top:calc(var(--nt-top,56px) + 34px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
+@media (orientation:landscape) and (max-height:500px){.dz-hint{top:calc(max(10px,env(safe-area-inset-top)) + 54px);font-size:13px}.dz-hint.low{top:calc(max(10px,env(safe-area-inset-top)) + 140px)}.dz-warn{top:calc(max(10px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.dz-warn .ico{width:40px;height:40px}.dz-warn b{font-size:34px}.dz-pad{width:58px;height:58px}.dz-pad.jump{width:70px;height:70px}}
 `;
 
 let cssDone = false;
@@ -89,6 +97,11 @@ export class Hud {
   private edgeEl!: HTMLElement;
   private warnKey = '';
   private warnN = -1;
+  /** dica única (substitui os toasts empilhados) */
+  private hintEl!: HTMLElement;
+  private hintT = 0;
+  private hintPri = 0;
+  private hintAt = 0;
   /** dedos no botão pular */
   private jumpIds = new Set<number>();
   private syncJump: () => void = () => {};
@@ -111,6 +124,7 @@ export class Hud {
         <div class="dz-mid"><div class="dz-scn"></div><div class="dz-phase"><span class="lbl"></span><b></b></div></div>
         <div class="dz-alive"><div class="dz-chip a">${icon('user', { size: 18 })}<span></span></div><div class="dz-chip s">${icon('fire', { size: 18 })}<span></span></div><div class="dz-chip c" hidden>${icon('coin', { size: 18 })}<span></span></div></div>
       </div>
+      <div class="dz-hint" role="status" aria-live="polite"></div>
       <div class="dz-warn" aria-hidden="true"><span class="di"></span><b></b><span class="safe"></span></div>
       <div class="dz-edge" aria-hidden="true">${icon('arrow-up')}${icon('arrow-up')}${icon('arrow-up')}</div>
       <div class="dz-ctrl">
@@ -126,6 +140,7 @@ export class Hud {
     this.streak = el.querySelector('.dz-chip.s span')!;
     this.held = el.querySelector('.dz-chip.c')!;
     this.warnEl = el.querySelector('.dz-warn')!;
+    this.hintEl = el.querySelector('.dz-hint')!;
     this.warnNum = el.querySelector('.dz-warn b')!;
     this.edgeEl = el.querySelector('.dz-edge')!;
     // joystick flutuante na metade esquerda (direita no modo canhoto); pular fica do outro lado
@@ -188,17 +203,15 @@ export class Hud {
 
   roundCard(): void {
     const g = this.g;
-    this.scn.textContent = (g.training ? t('dz.train', 'Treino') + ' · ' : '') + g.scenarioTitle();
-    // faixa curta no topo (antes: cartão grande no meio da tela)
-    bigMoment(t('dz.round', 'Cenário {n}', { n: g.sc.n }), { sub: g.sc.map.name() + ' ' + '★'.repeat(g.sc.difficulty), ms: 1200 });
+    this.scn.innerHTML = (g.training ? t('dz.train', 'Treino') + ' · ' : '') + esc(g.scenarioTitle()) + ' ' + '★'.repeat(g.sc.difficulty);
+    this.hide();
   }
 
   /** antes de cada desastre o aviso é UM cartão só (ícone + contagem + seta: warnTick); o meteoro final
    *  (sem fase de alerta) ainda ganha a faixa grande */
   disasterCard(d: DisasterId): void {
     if (d !== 'meteoro') return;
-    const info = DISASTERS[d];
-    bigMoment(info.name() + '!', { icon: 'warning', color: 'linear-gradient(90deg,#ff5a3c,#c8193c)', ms: 1200 });
+    bigMoment(this.g.hzOf(d).name() + '!', { icon: 'warning', color: 'linear-gradient(90deg,#ff5a3c,#c8193c)', ms: 1200 });
   }
 
   resultCard(survived: boolean, coins: number, alive: number): void {
@@ -206,16 +219,32 @@ export class Hud {
     if (survived && g.newBest) celebrateRecord(t('dz.recDetail', 'Sequência {n}', { n: g.streak }));
     if (survived) {
       bigMoment(g.newBest ? t('dz.record', 'Novo recorde!') : t('dz.survived', 'Sobreviveu!'), { icon: 'trophy', sub: '+' + fmt(coins), ms: 1200 });
-      notify(t('dz.streak', 'Sequência {n}', { n: g.streak }), { icon: 'fire', kind: 'good' });
+      this.toast(t('dz.streak', 'Sequência {n}', { n: g.streak }), 'dz-good');
     } else {
       bigMoment(t('dz.lost', 'Quase!'), { color: 'linear-gradient(90deg,#5b6bb0,#2c3f7a)', ms: 1100 });
-      notify(g.training ? t('dz.train.lost', 'Tudo bem, é treino! Fique perto da seta verde.') : g.players.length > 1 ? t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive }) : t('dz.lostsolo', 'Na próxima você consegue!'), { ms: 3000 });
+      this.toast(g.training ? t('dz.train.lost', 'Tudo bem, é treino! Fique perto da seta verde.') : g.players.length > 1 ? t('dz.lostsub', '{n} sobreviveram. Na próxima você consegue!', { n: alive }) : t('dz.lostsolo', 'Na próxima você consegue!'), 'dz-end');
     }
   }
 
-  /** aviso compacto no topo (src/ui/notify) */
+  /**
+   * UMA dica por vez (pedido do dono: nada de "×26" empilhado). Alertas (contagem/sirene) passam na
+   * frente; dicas comuns não apagam um alerta recente; a mesma dica repetida só renova o tempo.
+   */
   toast(msg: string, key = 'dz-hint'): void {
-    notify(msg, { key, ms: 3000 });
+    if (!msg) return;
+    const pri = key === 'dz-alert' ? 3 : key === 'dz-good' || key === 'dz-saved' ? 2 : key === 'dz-end' ? 2 : 1;
+    const now = performance.now();
+    if (this.hintT > 0 && pri < this.hintPri && now - this.hintAt < 1600) return;
+    const el = this.hintEl;
+    if (el.textContent !== msg) el.textContent = msg;
+    el.className = 'dz-hint on' + (pri === 3 ? ' alert' : key === 'dz-good' || key === 'dz-saved' ? ' good' : '') + (this.warnEl.classList.contains('on') ? ' low' : '');
+    this.hintT = pri === 3 ? 2.6 : 3.2;
+    this.hintPri = pri;
+    this.hintAt = now;
+  }
+  private hide(): void {
+    this.hintT = 0;
+    this.hintEl.classList.remove('on');
   }
 
   onPhase(): void {
@@ -230,11 +259,7 @@ export class Hud {
         : p === 'prepare'
           ? g.finale
             ? t('dz.ph.run', 'Corra ao bunker!')
-            : g.sc.disasters[0] === 'tornado'
-              ? t('dz.ph.house', 'Entre numa casa!')
-              : g.sc.disasters[0] === 'terremoto' || g.sc.disasters[0] === 'meteoros' || g.sc.disasters[0] === 'raios'
-                ? t('dz.ph.open', 'Fique no aberto!')
-                : t('dz.ph.prepare', 'Suba em algum lugar!')
+            : prepLabel(g.sc.disasters[0])
           : p === 'warn'
             ? t('dz.ph.warn', 'Alerta!')
             : p === 'disaster'
@@ -243,12 +268,10 @@ export class Hud {
                 ? t('dz.ph.impact', 'Impacto!')
                 : t('dz.ph.next', 'Próximo cenário');
     this.phaseLbl.textContent = lbl;
-    // dica já no preparo, específica do desastre que vem (antes era genérica "suba": errado para tornado)
-    if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + DISASTERS[g.sc.disasters[0]].hint() : DISASTERS[g.sc.disasters[0]].hint());
+    // dica já no preparo, específica do desastre que vem (uma só: o que fazer)
+    if (p === 'prepare' && !g.finale) this.toast(g.training ? t('dz.train.tip', 'Treino! Siga a seta verde até o lugar seguro.') + ' ' + g.hzOf(g.sc.disasters[0]).tele() : g.hzOf(g.sc.disasters[0]).tele());
     if (p === 'prepare' && g.finale) this.toast(t('dz.tip.bunker', 'Siga para a direita e entre no bunker!'));
-    // objetivo atual num chip minúsculo no canto (fica até a rodada acabar)
-    if (p === 'prepare') objective(g.finale ? t('dz.tip.bunker', 'Siga para a direita e entre no bunker!') : DISASTERS[g.sc.disasters[0]].hint(), { icon: 'warning' });
-    else if (p === 'end' || p === 'intro') objective(null);
+    if (p === 'intro') this.hide();
   }
 
   /** alerta antes de cada desastre: ícone grande, contagem até começar e seta do lado de onde vem */
@@ -259,12 +282,14 @@ export class Hud {
     const left = mid ? g.alertT : g.phase === 'warn' ? g.phaseDur - g.phaseT : g.phase === 'prepare' && !g.finale ? g.phaseDur - g.phaseT + 2.6 : 99;
     const show = left <= 5.6 && left > 0;
     const d = g.sc.disasters[Math.min(g.dIndex, g.sc.disasters.length - 1)];
-    const ic: DzIcon = mid ? g.alertIcon : d;
+    const ic: DzIcon = mid ? (g.alertIcon === d ? (g.hzOf(d).icon as DzIcon) : g.alertIcon) : (g.hzOf(d).icon as DzIcon);
     const from = show ? (mid ? g.alertFrom : g.hazardFrom(d)) : 0;
     const key = show ? ic + from : '';
     if (key !== this.warnKey) {
       this.warnKey = key;
       this.warnEl.classList.toggle('on', show);
+      // a dica desce para baixo do cartão de alerta (nunca um em cima do outro)
+      this.hintEl.classList.toggle('low', show);
       // o chip de fase (com a outra contagem) some enquanto o cartão de alerta está na tela
       this.phase.style.visibility = show ? 'hidden' : '';
       this.edgeEl.className = 'dz-edge' + (show ? ' on ' + (from === -1 ? 'l' : from === 1 ? 'r' : from === 2 ? 't' : 'b') : '');
@@ -272,7 +297,8 @@ export class Hud {
         (this.warnEl.querySelector('.di') as HTMLElement).innerHTML = dzIcon(ic, 54);
         this.warnEl.classList.toggle('combo', ic === 'combo');
         // dica sem texto: casa (tornado), seta para cima (água/lava/neve), céu aberto = nada
-        const safe = ic === 'combo' ? `<span class="cb">${t('dz.combo', 'Desastre duplo!')}</span>` : ic === 'tornado' || ic === 'areia' ? dzIcon('house', 34) : ic === 'terremoto' || ic === 'sumidouro' ? '' : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
+        const sh = safeHint(d);
+        const safe = ic === 'combo' ? `<span class="cb">${t('dz.combo', 'Desastre duplo!')}</span>` : sh === 'house' ? dzIcon('house', 34) : sh === 'shade' ? dzIcon('shade', 34) : sh === 'fire' ? dzIcon('fire', 34) : sh === 'up' ? icon('arrow-up', { size: 34 }) : sh === 'none' ? '' : from === 3 || from === -1 || from === 1 ? icon('arrow-up', { size: 34 }) : '';
         (this.warnEl.querySelector('.safe') as HTMLElement).innerHTML = safe;
       }
     }
@@ -283,9 +309,13 @@ export class Hud {
     }
   }
 
-  tick(_dt = 1 / 60): void {
+  tick(dt = 1 / 60): void {
     const g = this.g;
     this.warnTick();
+    if (this.hintT > 0) {
+      this.hintT -= dt;
+      if (this.hintT <= 0) this.hintEl.classList.remove('on');
+    }
     const n = Math.max(0, Math.ceil(g.phaseDur - g.phaseT));
     if (n !== this.lastNum) {
       this.lastNum = n;
@@ -322,6 +352,7 @@ export class Hud {
       <div class="row"><span>${t('dz.sum.coins', 'Moedas')}</span><b class="cn">${icon('coin', { size: 16 })}${fmt(g.sessionCoins)}</b></div>
       <div class="dz-solo"></div>
       <div class="acts">
+        <button class="dz-big alt ped">${dzIcon('book', 24)}${t('dz.pedia', 'Desastrepédia')}</button>
         ${canDouble ? `<button class="dz-big dbl">${icon('video', { size: 22 })}${t('dz.sum.double', 'Dobrar moedas')}</button>` : ''}
         <button class="dz-big alt cont">${icon('play', { size: 20 })}${t('dz.sum.continue', 'Continuar jogando')}</button>
         <button class="dz-big alt out">${icon('home', { size: 20 })}${t('dz.sum.exit', 'Voltar ao menu')}</button>
@@ -342,6 +373,10 @@ export class Hud {
         g.sessionCoins = 0;
         dbl.remove();
       } else dbl.disabled = false;
+    });
+    m.querySelector('.ped')!.addEventListener('click', () => {
+      audio.click();
+      openPedia(g.root);
     });
     m.querySelector('.cont')!.addEventListener('click', () => {
       audio.click();
@@ -372,5 +407,56 @@ export class Hud {
     clearNotify();
     resetNotifyTop();
     this.el.remove();
+  }
+}
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+/** rótulo da fase de preparo: o que fazer antes deste desastre */
+function prepLabel(d: DisasterId): string {
+  switch (safeHint(d)) {
+    case 'house':
+      return t('dz.ph.house', 'Entre numa casa!');
+    case 'shade':
+      return t('dz.ph.shade', 'Ache um teto!');
+    case 'fire':
+      return t('dz.ph.warm', 'Ache um lugar quente!');
+    case 'none':
+      return t('dz.ph.open', 'Fique no aberto!');
+    case 'move':
+      return t('dz.ph.move', 'Fique esperto!');
+    default:
+      return t('dz.ph.prepare', 'Suba em algum lugar!');
+  }
+}
+/** contra-jogada de cada motor (ícone do cartão de alerta e rótulo do preparo) */
+function safeHint(d: DisasterId): 'house' | 'shade' | 'fire' | 'up' | 'none' | 'move' | '' {
+  switch (d) {
+    case 'tornado':
+    case 'areia':
+    case 'abelhas':
+    case 'fantasma':
+    case 'buraco':
+      return 'house';
+    case 'gravidade':
+    case 'calor':
+    case 'abducao':
+      return 'shade';
+    case 'nevasca':
+      return 'fire';
+    case 'terremoto':
+    case 'sumidouro':
+    case 'meteoros':
+    case 'raios':
+    case 'geiser':
+    case 'pisao':
+      return 'none';
+    case 'laser':
+      return 'move';
+    case 'incendio':
+    case 'bolas':
+      return 'up';
+    default:
+      return '';
   }
 }

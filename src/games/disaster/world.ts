@@ -303,6 +303,18 @@ export class World {
     this.solid(bx, -96, 230, 16, 'bunker', false);
   }
 
+  /** objeto que aparece no meio da rodada (piano que caiu): vira obstáculo/degrau */
+  addProp(x: number, y: number, w: number, h: number, kind: BodyKind, color: string, color2: string, heavy: number): number {
+    if (this.bodies.length >= this.maxBodies) {
+      // reaproveita um corpo morto
+      const i = this.bodies.findIndex((b) => !b.alive);
+      if (i < 0) return -1;
+      this.bodies[i] = { id: i, x, y, w, h, vx: 0, vy: 0, kind, color, color2, awake: false, still: 0, tip: 0, tipT: 0, ang: 0, va: 0, alive: true, check: 0.2, heavy, wet: 0, py: y + h, rest: false, sub: 0 };
+      return i;
+    }
+    return this.body(x, y, w, h, kind, color, color2, heavy);
+  }
+
   /* --------------------------- consultas --------------------------- */
 
   /** x está sobre um buraco aberto no chão? (margem: o Bloop precisa estar bem dentro) */

@@ -1,6 +1,8 @@
-// Screenshots do "Sobreviva aos Desastres": cada desastre num momento tenso, 2D e 3D (3ª pessoa com o
-// SEU Bloop + 1ª pessoa com as setas de ameaça fora da vista). Paisagem 844×390, dpr 1.
-// Uso: NODE_PATH=$(npm root -g) node scripts/dev/disaster-shots.mjs [--port 5287] [--out shots-dgame] [--only tsunami] [--no3d] [--no2d]
+// Screenshots do "Sobreviva aos Desastres" a partir do CATÁLOGO (catalog.ts): cada desastre num momento
+// tenso, 2D e 3D, + roleta "Próximo desastre: ?" e Desastrepédia. Paisagem 844×390, dpr 1.
+// Uso: NODE_PATH=$(npm root -g) node scripts/dev/disaster-shots.mjs [--port 5291] [--out shots-dis3]
+//        [--only tsunami@praia:16,pianos] [--no3d] [--no2d] [--ui] [--tier 2] [--fp]
+// Cada item: chave[@mapa][:segundos]. Sem --only usa a lista PLAN abaixo.
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 
@@ -10,94 +12,145 @@ const arg = (k, d) => {
   const i = process.argv.indexOf('--' + k);
   return i > 0 ? process.argv[i + 1] : d;
 };
-const PORT = Number(arg('port', 5287));
-const OUT = arg('out', 'shots-dgame');
+const PORT = Number(arg('port', 5291));
+const OUT = arg('out', 'shots-dis3');
 const ONLY = arg('only', '');
+const TIER = Number(arg('tier', 2));
+const [VW, VH] = arg('size', '844x390').split('x').map(Number);
+const SUF = arg('suffix', '');
 mkdirSync(OUT, { recursive: true });
 
-// o "Meu Bloop" do jogador (gato rosa com saco de papel): tem que aparecer como o personagem
 const SAVE = {
   skin: 'custom',
   ownedSkins: ['bloop', 'custom'],
   avatar: { parts: { body: 'b_cat', material: 'm_plush', pattern: 'p_spots', eyes: 'e_big', mouth: 'mo_line', head: 'h_bag', face: 'f_bandaid', back: 'k_none', aura: 'a_none' }, colors: { primary: '#ff7ac8', secondary: '#7ad8ff' } },
 };
-// momento tenso de cada desastre (s depois que o desastre começou) e mapa
-const PLAN = {
-  tsunami: { t: 16.5, map: 1 },
-  enchente: { t: 30, map: 0 },
-  acido: { t: 26, map: 2 },
-  vulcao: { t: 22, map: 4 },
-  terremoto: { t: 15.5, map: 2 },
-  tornado: { t: 14, map: 0 },
-  meteoros: { t: 20, map: 6 },
-  raios: { t: 18, map: 3 },
-  avalanche: { t: 14, map: 5 },
-  sumidouro: { t: 16, map: 2 },
-  areia: { t: 4, map: 8 },
-  meteoro: { t: -6, map: 0 },
-};
-const list = ONLY ? ONLY.split(',') : Object.keys(PLAN);
+const PLAN = [
+  'tsunami@praia:15', 'geleia@doces:14', 'lama@montanha:12', 'enchente@cidade:28', 'chocolate@doces:26', 'bolhas@parque:24',
+  'vulcao@ilha:20', 'chaolava@parque:18', 'acido@cidade:24', 'avalanche@polo:13', 'meteoros@estacao:18', 'granizo@fazenda:16',
+  'doces@doces:16', 'melancias@fazenda:16', 'pianos@cidade:18', 'boliche@parque:14', 'bolaneve@polo:16', 'raios@floresta:16',
+  'terremoto@cidade:15', 'tornado@fazenda:14', 'furacao@praia:16', 'sumidouro@deserto:16', 'gelo@polo:14', 'areia@deserto:6',
+  'vento@porto:8', 'meteoro@vila:-6', 'gravidade@estacao:9', 'lua@estacao:14', 'buraco@cidade:14', 'abducao@fazenda:12',
+  'laser@estacao:10', 'pisao@cidade:10', 'calor@deserto:14', 'incendio@floresta:20', 'nevasca@polo:16', 'geiser@ilha:12',
+  'fantasma@floresta:14', 'abelhas@fazenda:12', 'c_tornado_raios@vila:20', 'tsunami_noite@porto:16',
+];
+const list = (ONLY ? ONLY.split(',') : PLAN).map((s) => {
+  const m = /^([a-z_]+)(?:@([a-z]+))?(?::(-?[\d.]+))?$/.exec(s);
+  return { key: m[1], map: m[2] || '', t: m[3] ? Number(m[3]) : 14 };
+});
 
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 1 });
-await ctx.addInitScript((save) => {
-  try {
-    const k = 'bloop-orbit-save-v1';
-    const o = JSON.parse(localStorage.getItem(k) || '{}');
-    localStorage.setItem(k, JSON.stringify({ ...o, ...save }));
-    localStorage.setItem('bo-quality-detect', JSON.stringify({ v: 'x', tier: 2, score: 0, cap: 3 }));
-    localStorage.setItem('bo-disaster', JSON.stringify({ next: 1, best: 0, survived: 0, played: 99 }));
-    localStorage.setItem('bo-disaster3d', JSON.stringify({ next: 1, best: 0, played: 99 }));
-    localStorage.setItem('bo-disaster-diff', 'normal');
-  } catch {
-    /* */
-  }
-}, SAVE);
+const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
+await ctx.addInitScript(
+  ({ save, tier }) => {
+    try {
+      const k = 'bloop-orbit-save-v1';
+      const o = JSON.parse(localStorage.getItem(k) || '{}');
+      localStorage.setItem(k, JSON.stringify({ ...o, ...save }));
+      localStorage.setItem('bo-quality-detect', JSON.stringify({ v: 'x', tier, score: 0, cap: 3 }));
+      localStorage.setItem('bo-quality', String(tier));
+      localStorage.setItem('bo-disaster', JSON.stringify({ next: 1, best: 0, survived: 0, played: 99 }));
+      localStorage.setItem('bo-disaster3d', JSON.stringify({ next: 1, best: 0, played: 99 }));
+      localStorage.setItem('bo-disaster-diff', 'normal');
+      if (!localStorage.getItem('bo-dz-pedia')) localStorage.setItem('bo-dz-pedia', JSON.stringify({ seen: {}, deck: [], recent: [], rounds: 30 }));
+    } catch {
+      /* */
+    }
+  },
+  { save: SAVE, tier: TIER },
+);
 const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('pageerror', e.message));
+
+/* ---------- interface: roleta e Desastrepédia ---------- */
+if (process.argv.includes('--ui')) {
+  await p.goto(`http://localhost:${PORT}/scripts/dev/disaster.html?s=1`);
+  await p.waitForFunction(() => document.title === 'ready', null, { timeout: 60000 });
+  // alguns descobertos para a coleção
+  await p.evaluate(async () => {
+    const C = await import('/src/games/disaster/catalog.ts');
+    const pd = C.loadPedia();
+    for (const e of C.entries()) if (e.n % 3 !== 0 && e.n < 80) pd.seen[e.key] = [1 + (e.n % 4), e.n % 3];
+    C.savePedia(pd);
+    const g = window.dz;
+    g.pause();
+    const R = await import('/src/games/disaster/roulette.ts');
+    R.showRoulette(g.root, C.entryByKey('c_tornado_raios'), { isNew: true, spin: 1.2, hold: 30 });
+  });
+  await p.waitForTimeout(700);
+  await p.evaluate(() => window.dz.draw.frame());
+  await p.screenshot({ path: `${OUT}/ui-roulette-spin.png` });
+  await p.waitForTimeout(1300);
+  await p.screenshot({ path: `${OUT}/ui-roulette-reveal.png` });
+  await p.evaluate(async () => {
+    document.querySelectorAll('.dzr').forEach((e) => e.remove());
+    const R = await import('/src/games/disaster/roulette.ts');
+    R.openPedia(window.dz.root);
+  });
+  await p.waitForTimeout(400);
+  await p.screenshot({ path: `${OUT}/ui-pedia.png` });
+  await p.evaluate(() => document.querySelector('.dzp .c:not(.off)')?.click());
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: `${OUT}/ui-pedia-card.png` });
+  await p.evaluate(() => document.querySelector('.dzp')?.remove());
+  console.log('ui ok');
+}
 
 if (!process.argv.includes('--no2d')) {
   await p.goto(`http://localhost:${PORT}/scripts/dev/disaster.html?s=1`);
   await p.waitForFunction(() => document.title === 'ready', null, { timeout: 60000 });
   await p.waitForTimeout(600);
-  for (const d of list) {
-    const pl = PLAN[d];
-    const info = await p.evaluate(
-      async ({ d, pl }) => {
-        const S = await import('/src/games/disaster/scenarios.ts');
-        const g = window.dz;
-        g.pause();
-        const L = S.scenarios();
-        L[0] = { n: 1, seed: 4242 + d.length * 31, map: S.MAPS[pl.map], disasters: [d], mod: 'none', difficulty: 2 };
-        g.progress.next = 1;
-        g.progress.played = 99;
-        g.autoMe = true;
-        g.startRound();
-        // avança até o momento (seu Bloop protegido enquanto avança: só para a foto ter você vivo)
-        let guard = 0;
-        // ondas: espera a frente chegar perto de você (o momento tenso)
-        const near = () => !g.fluid || !g.fluid.dir || d === 'vulcao' || Math.abs(g.fluid.front - g.me.x) < 260 || g.phaseT > pl.t + 14;
-        const done = () => (pl.t < 0 ? g.phase === 'prepare' && g.phaseT > -pl.t : g.phase === 'disaster' && g.phaseT >= pl.t && near());
-        while (!done() && guard++ < 60 * 140) {
-          g.me.shield = 9;
-          g.update(1 / 60);
-        }
-        g.me.shield = 0;
-        // caiu num buraco enquanto protegido: volta para o chão firme ao lado (só para a foto)
-        if (g.me.y > 30) {
-          g.me.x = Math.max(40, g.me.x - 120);
-          g.me.y = g.world.topAt(g.me.x);
-          g.me.vy = 0;
-        }
-        for (let i = 0; i < 3; i++) g.update(1 / 60);
-        g.draw.frame();
-        return { phase: g.phase, t: g.phaseT.toFixed(1), alive: g.players.filter((q) => q.alive).length, me: [Math.round(g.me.x), Math.round(g.me.y)], swim: g.me.swim };
-      },
-      { d, pl },
-    );
-    await p.waitForTimeout(1500);
-    await p.screenshot({ path: `${OUT}/2d-${d}.png` });
-    console.log('2d', d, JSON.stringify(info));
+  for (const it of list) {
+    const info = await p.evaluate(async (it) => {
+      const C = await import('/src/games/disaster/catalog.ts');
+      const g = window.dz;
+      g.pause();
+      const e = C.entryByKey(it.key);
+      if (!e) return { err: 'no entry ' + it.key };
+      g.forced = C.buildScenario(e, 4242 + it.key.length * 31, 2, it.map || undefined);
+      g.progress.played = 99;
+      g.autoMe = true;
+      g.startRound();
+      let guard = 0;
+      // momento tenso: a ameaça perto de você (frente da onda, pé descendo, disco com raio, laser, fantasma...)
+      const ex = g.ex;
+      const mx = () => g.me.x;
+      const tense = () => {
+        if (g.fluid && g.fluid.dir && !it.key.startsWith('vulcao')) return Math.abs(g.fluid.front - mx()) < 260;
+        if (ex.stomps.some((s) => s.on && s.t > 0 && s.t < s.T * 0.25 && Math.abs(s.x - mx()) < 260)) return true;
+        if (ex.ufos.some((u) => u.on && u.st === 2 && Math.abs(u.bx - mx()) < 300)) return true;
+        if (ex.lasers.some((l) => l.on && l.warn <= 0 && Math.abs(l.front - mx()) < 260)) return true;
+        if (ex.ghosts.some((o) => o.on && o.fade <= 0 && Math.abs(o.x - mx()) < 200)) return true;
+        if (ex.swarms.some((o) => o.on && Math.abs(o.x - mx()) < 220)) return true;
+        if (ex.vents.some((v) => v.erupt > 0 && Math.abs(v.x - mx()) < 260)) return true;
+        if (ex.hole.on) return ex.hole.st === 2;
+        if (g.active.has('incendio')) return (ex.fire.a > -1e8 && Math.abs(ex.fire.a - mx()) < 300) || (ex.fire.b < 1e8 && Math.abs(ex.fire.b - mx()) < 300);
+        if (g.active.has('calor')) return ex.sun.st === 2;
+        if (g.active.has('gravidade')) return ex.grav.st === 2 && ex.grav.t > 0.6;
+        if (g.active.has('tornado')) return Math.abs(g.tornado.x - mx()) < 300;
+        if (g.active.has('bolas')) return g.strikes.some((s2) => s2.on && s2.kind === 'ball' && s2.live && Math.abs(s2.x - mx()) < 300);
+        return true;
+      };
+      const near = () => tense() || g.phaseT > it.t + 16;
+      const done = () => (it.t === 0 ? g.phase === 'warn' && g.phaseT > 1 : it.t < 0 ? g.phase === 'prepare' && g.phaseT > -it.t : g.phase === 'disaster' && g.phaseT >= it.t && near());
+      while (!done() && guard++ < 60 * 140) {
+        g.me.shield = 9;
+        g.update(1 / 60);
+      }
+      g.me.shield = 0;
+      if (g.me.y > 30) {
+        g.me.x = Math.max(40, g.me.x - 120);
+        g.me.y = g.world.topAt(g.me.x);
+        g.me.vy = 0;
+      }
+      for (let i = 0; i < 3; i++) g.update(1 / 60);
+      g.draw.frame();
+      return { phase: g.phase, t: g.phaseT.toFixed(1), alive: g.players.filter((q) => q.alive).length, map: g.sc.map.id };
+    }, it);
+    await p.waitForTimeout(250);
+    await p.evaluate(() => window.dz.draw.frame());
+    await p.screenshot({ path: `${OUT}/2d-${it.key}${SUF}.png` });
+    console.log('2d', it.key, JSON.stringify(info));
   }
 }
 
@@ -105,17 +158,17 @@ if (!process.argv.includes('--no3d')) {
   await p.goto(`http://localhost:${PORT}/scripts/dev/disaster.html?d3=1`);
   await p.waitForFunction(() => document.title === 'ready', null, { timeout: 60000 });
   await p.waitForTimeout(800);
-  for (const d of list) {
-    const pl = PLAN[d];
-    for (const view of ['tp', 'fp']) {
+  const views = process.argv.includes('--fp') ? ['tp', 'fp'] : ['tp'];
+  for (const it of list) {
+    for (const view of views) {
       const info = await p.evaluate(
-        async ({ d, pl, view }) => {
-          const S = await import('/src/games/disaster/scenarios.ts');
+        async ({ it, view }) => {
+          const C = await import('/src/games/disaster/catalog.ts');
           const g = window.dz3;
           g.paused = true;
-          const L = S.scenarios();
-          L[0] = { n: 1, seed: 4242 + d.length * 31, map: S.MAPS[pl.map], disasters: [d], mod: 'none', difficulty: 2 };
-          g.progress.next = 1;
+          const e = C.entryByKey(it.key);
+          if (!e) return { err: 'no entry' };
+          g.forced = C.buildScenario(e, 4242 + it.key.length * 31, 2, it.map || undefined);
           g.progress.played = 99;
           g.cv.mode = view;
           g.startRound();
@@ -124,68 +177,58 @@ if (!process.argv.includes('--no3d')) {
           g.knockOut = (q) => {
             if (!q.self) ko(q);
           };
-          // você: anda um pouco pela ilha (protegido enquanto avança para a foto)
           let guard = 0;
-          const tt = pl.t < 0 ? 6 : Math.min(pl.t, 18);
-          while (!(g.phase === 'disaster' && g.phaseT >= tt) && guard++ < 60 * 120) {
+          const tt = it.t < 0 ? 6 : Math.min(it.t, 18);
+          while (!(it.t === 0 ? g.phase === 'warn' && g.phaseT > 1 : g.phase === 'disaster' && g.phaseT >= tt) && guard++ < 60 * 120) {
             if (!me.alive) {
               me.alive = true;
               me.pos.set(0, g.topAt(0, -12), -12);
               me.mesh.visible = true;
             }
             me.air = 1;
+            if (me.meter !== undefined) me.meter = 0;
             g.update(1 / 60);
           }
-          // olha: 3ª pessoa de frente para a ameaça; 1ª pessoa de lado para ela (setas na borda)
-          let tx = 0;
-          let tz = 0;
-          const s = g.strikes.find((o) => o.on);
-          if (g.tornado.on) {
-            tx = g.tornado.x;
-            tz = g.tornado.z;
-          } else if (g.fluid && g.fluid.dir) {
-            tx = g.fluid.front;
-            tz = me.pos.z;
-          } else if (s) {
-            tx = s.x;
-            tz = s.z;
-          } else {
-            tx = me.pos.x + 5;
-            tz = me.pos.z;
+          // espera o momento tenso dos motores novos (até +12 s)
+          const ex = g.ex;
+          const d2 = (x, z) => Math.hypot(x - me.pos.x, z - me.pos.z);
+          const tense3 = () =>
+            !ex ||
+            (ex.ufos.some((u) => u.on) ? ex.ufos.some((u) => u.on && u.st === 2 && d2(u.bx, u.bz) < 14) : true) &&
+              (ex.stomps.some((o) => o.on) || g.active.has('pisao') ? ex.stomps.some((o) => o.on && o.t > 0 && o.t < o.T * 0.4 && d2(o.x, o.z) < 14) : true) &&
+              (g.active.has('laser') ? ex.lasers.some((l) => l.on && l.warn <= 0 && Math.abs((l.ax === 0 ? me.pos.x : me.pos.z) - l.pos) < 12) : true) &&
+              (g.active.has('geiser') ? ex.vents.some((v) => v.erupt > 0 && d2(v.x, v.z) < 14) : true) &&
+              (g.active.has('fantasma') ? ex.ghosts.some((o) => o.on && o.fade <= 0 && d2(o.x, o.z) < 9) : true) &&
+              (g.active.has('abelhas') ? ex.swarms.some((o) => o.on && d2(o.x, o.z) < 9) : true) &&
+              (g.active.has('bolas') ? ex.balls.some((b) => b.on && b.warn <= 0 && d2(b.x, b.z) < 14) : true);
+          for (let k = 0; k < 60 * 12 && !tense3(); k++) {
+            me.alive = true;
+            me.air = 1;
+            if (me.meter !== undefined) me.meter = 0;
+            g.update(1 / 60);
           }
+          const tgt = g.threatPos ? g.threatPos() : null;
+          const tx = tgt ? tgt.x : me.pos.x + 5;
+          const tz = tgt ? tgt.z : me.pos.z;
           const a = Math.atan2(tx - me.pos.x, tz - me.pos.z);
-          g.yaw = view === 'fp' ? a + 1.9 : a;
-          g.pitch = view === 'fp' ? 0.3 : 0.38;
-          if (view === 'fp') {
-            // ameaças garantidas fora da vista para mostrar as setas
-            // ameaças garantidas fora da vista (atrás e ao lado) para mostrar as setas
-            for (const [ang, kind] of [[g.yaw + Math.PI, d === 'raios' ? 'bolt' : 'meteor'], [g.yaw - 1.6, d === 'vulcao' ? 'bomb' : 'meteor']]) {
-              g.spawnStrike(kind);
-              const st = g.strikes.find((o) => o.on && !o.mark);
-              if (st) st.mark = 1;
-              if (!st) continue;
-              st.x = me.pos.x + Math.sin(ang) * 6;
-              st.z = me.pos.z + Math.cos(ang) * 6;
-              st.y = g.topAt(st.x, st.z);
-              st.t = st.T * 0.4;
-              st.ring.position.set(st.x, st.y + 0.06, st.z);
-            }
-          }
+          g.yaw = a;
+          const tyH = tgt && tgt.y !== undefined ? tgt.y : 0;
+          g.pitch = view === 'fp' ? 0.32 - Math.min(0.5, tyH * 0.04) : 0.36 - Math.min(0.45, tyH * 0.035);
           g.knockOut = ko;
+          g.storm = 1;
           for (let i = 0; i < 4; i++) {
             me.alive = true;
             g.update(1 / 60);
           }
           g.render(1 / 60);
-          g.edgeTick();
-          return { phase: g.phase, t: g.phaseT.toFixed(1), mode: g.cv.mode, alive: g.players.filter((q) => q.alive).length, edges: [...document.querySelectorAll('.d3-edge.on')].length };
+          return { phase: g.phase, t: g.phaseT.toFixed(1), alive: g.players.filter((q) => q.alive).length, map: g.sc.map.id };
         },
-        { d, pl, view },
+        { it, view },
       );
-      await p.waitForTimeout(1500);
+      await p.waitForTimeout(900);
       await p.evaluate(() => window.dz3.render(1 / 60));
-      await p.screenshot({ path: `${OUT}/3d-${view}-${d}.png` });
-      console.log('3d', view, d, JSON.stringify(info));
+      await p.screenshot({ path: `${OUT}/3d-${view}-${it.key}${SUF}.png` });
+      console.log('3d', view, it.key, JSON.stringify(info));
     }
   }
 }

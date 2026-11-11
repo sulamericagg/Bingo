@@ -16,7 +16,8 @@ export type MapId =
   | 'deserto'
   | 'estacao'
   | 'polo'
-  | 'fazenda';
+  | 'fazenda'
+  | 'doces';
 
 export type DisasterId =
   | 'tsunami'
@@ -30,7 +31,20 @@ export type DisasterId =
   | 'acido'
   | 'meteoro'
   | 'sumidouro'
-  | 'areia';
+  | 'areia'
+  // motores novos (catalog.ts monta os 100+ desastres a partir deles)
+  | 'gravidade'
+  | 'buraco'
+  | 'abducao'
+  | 'laser'
+  | 'pisao'
+  | 'calor'
+  | 'incendio'
+  | 'nevasca'
+  | 'geiser'
+  | 'fantasma'
+  | 'abelhas'
+  | 'bolas';
 
 export type ModId = 'none' | 'noite' | 'vento' | 'rapido' | 'dupla';
 
@@ -61,7 +75,7 @@ const M = (m: MapTheme) => m;
 export const MAPS: MapTheme[] = [
   M({ id: 'vila', name: () => t('dz.map.vila', 'Vila'), sky: ['#7cc8ff', '#b8e4ff', '#e9f7ff'], far: '#9cc7e8', mid: '#7fbf7a', ground: '#7a5233', groundTop: '#59c35a', farKind: 'hills', houses: 5, towers: 1, trees: 4, floats: 2, crates: 4, wall: ['#ffd9a8', '#ffe9c9', '#f6c9e4', '#cfe8ff'], roof: ['#e2574c', '#d9822b', '#9b5de5'], leaf: '#3fb54f', trunk: '#8a5a33' }),
   M({ id: 'praia', name: () => t('dz.map.praia', 'Praia'), sky: ['#4fc3ff', '#9fe3ff', '#fff3d6'], far: '#5ac8e8', mid: '#f5d58a', ground: '#d9a75a', groundTop: '#ffe39a', farKind: 'sea', houses: 3, towers: 2, trees: 4, floats: 3, crates: 3, wall: ['#fff3e0', '#c9f3ff', '#ffd6e0'], roof: ['#ff7a59', '#3ab0c9', '#ffb03a'], leaf: '#35c46a', trunk: '#b07a43' }),
-  M({ id: 'cidade', name: () => t('dz.map.cidade', 'Cidade'), sky: ['#6aa9ff', '#a9cbff', '#e3eeff'], far: '#8fa7d6', mid: '#6f86b8', ground: '#5b5f6e', groundTop: '#8b90a3', farKind: 'city', houses: 2, towers: 4, trees: 1, floats: 3, crates: 3, wall: ['#d9dde8', '#f2e2c9', '#c9d8f2', '#f0c9c9'], roof: ['#56607a', '#3e4a66'], leaf: '#3fa34f', trunk: '#7a5233' }),
+  M({ id: 'cidade', name: () => t('dz.map.cidade', 'Cidade'), sky: ['#6aa9ff', '#a9cbff', '#e3eeff'], far: '#8fa7d6', mid: '#6f86b8', ground: '#5b5f6e', groundTop: '#8b90a3', farKind: 'city', houses: 2, towers: 4, trees: 1, floats: 3, crates: 3, wall: ['#e8a87c', '#f2d27a', '#8fc1e8', '#e88a8a', '#b8e0a8', '#c9b8f0', '#f4ece0'], roof: ['#56607a', '#3e4a66', '#a0523d'], leaf: '#3fa34f', trunk: '#7a5233' }),
   M({ id: 'floresta', name: () => t('dz.map.floresta', 'Floresta'), sky: ['#8fd3c2', '#c4ecd9', '#effbe9'], far: '#7fb79c', mid: '#3f8f5c', ground: '#5e3d22', groundTop: '#3e9a43', farKind: 'pines', houses: 2, towers: 1, trees: 8, floats: 3, crates: 2, wall: ['#c9925a', '#b47b45'], roof: ['#6b3e1f', '#3e7a3b'], leaf: '#2f9e44', trunk: '#6b4423' }),
   M({ id: 'ilha', name: () => t('dz.map.ilha', 'Ilha'), sky: ['#39b8ff', '#8fe0ff', '#f2fff6'], far: '#47b9d9', mid: '#59d07a', ground: '#c99a5b', groundTop: '#68d05b', farKind: 'sea', houses: 3, towers: 1, trees: 6, floats: 3, crates: 2, wall: ['#f7e1b5', '#ffe9d9'], roof: ['#d9a648', '#c9773a'], leaf: '#2fbf5a', trunk: '#a8743f' }),
   M({ id: 'montanha', name: () => t('dz.map.montanha', 'Montanha'), sky: ['#7fb2ff', '#c7dcff', '#f4f8ff'], far: '#a9b9dc', mid: '#7c8fb3', ground: '#6b6070', groundTop: '#e8f1ff', farKind: 'peaks', houses: 3, towers: 2, trees: 4, floats: 4, crates: 2, wall: ['#b8865a', '#d9a874'], roof: ['#7a3e2a', '#a14d3a'], leaf: '#2e8b57', trunk: '#6b4423' }),
@@ -70,6 +84,7 @@ export const MAPS: MapTheme[] = [
   M({ id: 'deserto', name: () => t('dz.map.deserto', 'Deserto'), sky: ['#ffb36b', '#ffd9a1', '#fff4dc'], far: '#f0b77a', mid: '#e0a060', ground: '#c98a4a', groundTop: '#f2c27a', farKind: 'dunes', houses: 4, towers: 2, trees: 2, floats: 2, crates: 3, wall: ['#f2d3a0', '#e9c08a'], roof: ['#d98a4a', '#c9773a'], leaf: '#5bb04a', trunk: '#8a6a3a' }),
   M({ id: 'estacao', name: () => t('dz.map.estacao', 'Estação Espacial'), sky: ['#1b1446', '#3a2a7a', '#6a4fb3'], far: '#4a3a8f', mid: '#2e2466', ground: '#4f5878', groundTop: '#9aa8d6', farKind: 'domes', houses: 2, towers: 3, trees: 0, floats: 5, crates: 3, wall: ['#d6def5', '#b8c4ee', '#e6f0ff'], roof: ['#7b8ccf', '#5ac8ff'], leaf: '#5ac8ff', trunk: '#6a7aa8' }),
   M({ id: 'polo', name: () => t('dz.map.polo', 'Polo Gelado'), sky: ['#8fd0ff', '#cdeaff', '#ffffff'], far: '#cfe3f7', mid: '#a9cbe8', ground: '#7fa3c4', groundTop: '#ffffff', farKind: 'peaks', houses: 3, towers: 1, trees: 3, floats: 3, crates: 2, wall: ['#e8f4ff', '#cfe8ff'], roof: ['#5a8fd6', '#e2574c'], leaf: '#2e8b6f', trunk: '#6b4423' }),
+  M({ id: 'doces', name: () => t('dz.map.doces', 'Terra dos Doces'), sky: ['#ff9ad5', '#ffc6e8', '#fff0fa'], far: '#f7a8d8', mid: '#ffd36e', ground: '#a0522d', groundTop: '#ff8fc8', farKind: 'domes', houses: 4, towers: 2, trees: 4, floats: 3, crates: 3, wall: ['#fff3fb', '#ffe0f0', '#d9f6ff', '#fff1c9'], roof: ['#ff5aa5', '#7ad8ff', '#ffb03a', '#9b5de5'], leaf: '#ff7ac8', trunk: '#fff3fb' }),
   M({ id: 'fazenda', name: () => t('dz.map.fazenda', 'Fazenda'), sky: ['#7cc8ff', '#c2e6ff', '#fff8e1'], far: '#a7d18a', mid: '#8cc46a', ground: '#7a5233', groundTop: '#8fd35a', farKind: 'hills', houses: 4, towers: 1, trees: 3, floats: 2, crates: 5, wall: ['#e2574c', '#ffe9c9', '#f2d3a0'], roof: ['#8a3a2a', '#ffffff', '#5a4a3c'], leaf: '#3fb54f', trunk: '#8a5a33' }),
 ];
 
@@ -93,6 +108,18 @@ export const DISASTERS: Record<DisasterId, DisasterInfo> = {
   meteoro: { id: 'meteoro', name: () => t('dz.d.meteoro', 'Meteoro Gigante'), hint: () => t('dz.h.meteoro', 'Corra até o bunker antes do impacto!'), color: '#ff3f6a' },
   sumidouro: { id: 'sumidouro', name: () => t('dz.d.sumidouro', 'Sumidouro'), hint: () => t('dz.h.sumidouro', 'O chão afunda onde aparecem rachaduras. Vá para o chão firme!'), color: '#8a5a33' },
   areia: { id: 'areia', name: () => t('dz.d.areia', 'Tempestade de Areia'), hint: () => t('dz.h.areia', 'Rajadas e destroços voando! Entre numa casa ou pule os destroços.'), color: '#e0a060' },
+  gravidade: { id: 'gravidade', name: () => t('dz.hz.gravidade', 'Gravidade Maluca'), hint: () => t('dz.hzt.gravidade', 'Quando tudo flutuar, fique embaixo de um teto!'), color: '#b69cff' },
+  buraco: { id: 'buraco', name: () => t('dz.hz.buraco', 'Buraco Negro'), hint: () => t('dz.hzt.buraco', 'Ele puxa tudo para o meio! Corra para longe ou entre numa casa.'), color: '#7a4dff' },
+  abducao: { id: 'abducao', name: () => t('dz.hz.abducao', 'Abdução Alienígena'), hint: () => t('dz.hzt.abducao', 'Saia da luz do disco voador ou fique embaixo de um teto!'), color: '#7dff9a' },
+  laser: { id: 'laser', name: () => t('dz.hz.laser', 'Lasers de Disco Voador'), hint: () => t('dz.hzt.laser', 'Laser baixo: pule! Laser alto: fique no chão!'), color: '#ff4fd8' },
+  pisao: { id: 'pisao', name: () => t('dz.hz.pisao', 'Pisão do Gigante'), hint: () => t('dz.hzt.pisao', 'Saia da sombra do pé e pule quando ele bater no chão!'), color: '#a07850' },
+  calor: { id: 'calor', name: () => t('dz.hz.calor', 'Onda de Calor'), hint: () => t('dz.hzt.calor', 'Fuja do sol! Fique na sombra ou dentro de uma casa.'), color: '#ffb000' },
+  incendio: { id: 'incendio', name: () => t('dz.hz.incendio', 'Incêndio na Floresta'), hint: () => t('dz.hzt.incendio', 'O fogo vem dos lados! Suba e desça no chão já queimado.'), color: '#ff6a1e' },
+  nevasca: { id: 'nevasca', name: () => t('dz.hz.nevasca', 'Nevasca Congelante'), hint: () => t('dz.hzt.nevasca', 'Fique quentinho: dentro de casa ou perto da fogueira!'), color: '#9fd8ff' },
+  geiser: { id: 'geiser', name: () => t('dz.hz.geiser', 'Campo de Gêiseres'), hint: () => t('dz.hzt.geiser', 'Saia de cima do chão que borbulha!'), color: '#7fe0ff' },
+  fantasma: { id: 'fantasma', name: () => t('dz.hz.fantasma', 'Neblina dos Fantasminhas'), hint: () => t('dz.hzt.fantasma', 'Fantasminhas brincalhões! Fuja deles ou entre numa casa iluminada.'), color: '#cfd8ff' },
+  abelhas: { id: 'abelhas', name: () => t('dz.hz.abelhas', 'Enxame de Abelhas'), hint: () => t('dz.hzt.abelhas', 'Corra do enxame e entre numa casa para despistar!'), color: '#ffd23f' },
+  bolas: { id: 'bolas', name: () => t('dz.hz.boliche', 'Bolas de Boliche Gigantes'), hint: () => t('dz.hzt.boliche', 'Bolas rolando! Pule por cima ou suba bem alto.'), color: '#5a6bff' },
 };
 
 export const MOD_NAMES: Record<ModId, () => string> = {
@@ -104,12 +131,16 @@ export const MOD_NAMES: Record<ModId, () => string> = {
 };
 
 export interface Scenario {
-  n: number; // 1..100
+  n: number; // nº do desastre na Desastrepédia (1..N)
   seed: number;
   map: MapTheme;
-  disasters: DisasterId[]; // 1 ou 2 (combo)
+  disasters: DisasterId[]; // motores: 1 ou 2 (combo)
   mod: ModId;
   difficulty: number; // 1..5
+  /** ajustes do catálogo (aparência/parâmetros); ausente = padrão do motor */
+  tune?: import('./catalog').Tune;
+  /** chave do desastre no catálogo (Desastrepédia) */
+  key?: string;
 }
 
 /* ----------------------------- RNG ----------------------------- */
@@ -138,6 +169,7 @@ export const FIT: Record<MapId, DisasterId[]> = {
   estacao: ['meteoros', 'acido', 'terremoto', 'raios'],
   polo: ['avalanche', 'meteoros', 'tsunami', 'terremoto'],
   fazenda: ['tornado', 'enchente', 'raios', 'areia', 'terremoto', 'vulcao', 'sumidouro'],
+  doces: ['enchente', 'meteoros', 'tsunami', 'terremoto', 'tornado', 'acido'],
 };
 
 let cache: Scenario[] | null = null;

@@ -1,4 +1,4 @@
-Chaves: 10360 (8178 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
+Chaves: 10513 (8331 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rastros/músicas/passes/peças)
 
 == Conflitos (mesma chave, textos diferentes): 0
 
@@ -46,25 +46,25 @@ Chaves: 10360 (8178 de t()/HTML + 2182 de dados: bichinhos/temporadas/skins/rast
   src/pass/music/index.ts:346  t("mpass.${r.id}", r.name)
 
 == Por idioma (faltando obrigatórias / faltando dados opcionais / órfãs / problemas)
-  en: 0 / 1120 / 118 / 0
+  en: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  es: 0 / 1120 / 118 / 0
+  es: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  de: 0 / 1120 / 118 / 0
+  de: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  fr: 0 / 1120 / 118 / 0
+  fr: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  it: 0 / 1120 / 118 / 0
+  it: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  ja: 0 / 1120 / 118 / 0
+  ja: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  ko: 0 / 1120 / 118 / 0
+  ko: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  ru: 0 / 1120 / 118 / 0
+  ru: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  tr: 0 / 1120 / 118 / 0
+  tr: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  id: 0 / 1120 / 118 / 0
+  id: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …
-  zh: 0 / 1120 / 118 / 0
+  zh: 0 / 1120 / 119 / 0
       órfãs: caca.gps.denied, cavafala.help, cavafala.listening, cavafala.net.callFail, cavafala.net.callOne, cavafala.net.called, cavafala.net.create, cavafala.net.createGo, cavafala.net.invited, cavafala.net.joinHint, cavafala.net.joinTitle, cavafala.net.loading, cavafala.net.noFriends, cavafala.net.noneOnline, cavafala.obj.restore, cavafala.type.maybe, cavafala.voice.maybe, cavafala.voice.nothing, cavafala.voice.perm, cavafala.voice.unknown, cin.home.local, cin.home.storySub, cin.share.text, cozinha.chop, cozinha.fps.drop, cozinha.fps.dropIt, cozinha.fps.hint, cozinha.fps.hint2, cozinha.fps.put, cozinha.fps.serve …

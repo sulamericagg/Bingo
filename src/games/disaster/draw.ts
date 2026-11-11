@@ -8,12 +8,13 @@ import type { DisasterGame, Player } from './game';
 import { drawGrade, drawLight, drawSoftShadow, drawSpecular, drawVignette, glowSprite } from '../../gfx/light';
 import { R } from './game';
 import { GROUND_Y, shade, type Body } from './world';
+import { artOf, cloudStrip, facadeOverlay, gradeFor, shingleOverlay, skyStrip, soilTile, starStrip, topStrip, type MapArt } from './art2d';
 
 const TAU = Math.PI * 2;
 
 /* ------------------------------ partículas ------------------------------ */
 
-type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop' | 'spray' | 'goo';
+export type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop' | 'spray' | 'goo' | 'juice' | 'candy' | 'snow' | 'leaf' | 'ember' | 'choco' | 'jelly' | 'bubble' | 'mud';
 const PCOL: Record<PKind, string[]> = {
   fire: ['#ffe14d', '#ff9a2e', '#ff5a1f', '#7a3a2a'],
   spark: ['#ffffff', '#fff6a0', '#9fe8ff'],
@@ -23,15 +24,44 @@ const PCOL: Record<PKind, string[]> = {
   drop: ['#bfe6ff'],
   spray: ['#ffffff', '#e4f6ff', '#bfe6ff', '#9fd4ff'],
   goo: ['#d8ff8a', '#a6f04a', '#7bd83a'],
+  juice: ['#ff5a6a', '#ff8a8a', '#3fbf5a', '#2a0b5c'],
+  candy: ['#ff5aa5', '#7ad8ff', '#ffe14d', '#9b5de5', '#5ee08a'],
+  snow: ['#ffffff', '#eef6ff', '#d8e8ff'],
+  leaf: ['#5ab84a', '#3f9a3a', '#c9a02a', '#d9772b'],
+  ember: ['#ffe680', '#ffb13a', '#ff6a1e'],
+  choco: ['#7a4a2a', '#5a3218', '#a0683a'],
+  jelly: ['#ff7ac8', '#ff9ad5', '#ffc6e8'],
+  bubble: ['#ffffff', '#d8f4ff', '#bfe6ff'],
+  mud: ['#7a5233', '#5e3d22', '#9a7048'],
+};
+/** gravidade de cada tipo (as fumaças/bolhas sobem) */
+const PGRAV: Record<PKind, number> = { fire: 300, spark: 700, dust: 700, puff: -20, debris: 700, drop: 700, spray: 700, goo: 700, juice: 800, candy: 700, snow: 60, leaf: 90, ember: -60, choco: 700, jelly: 700, bubble: -90, mud: 750 };
+/** cores da superfície por pele: linha, faixa de espuma, espuma, brilho interno */
+const FSURF: Record<FSkin, [string, string, string, string]> = {
+  water: ['rgba(245,253,255,.95)', 'rgba(235,250,255,.3)', 'rgba(255,255,255,.88)', 'rgba(220,245,255,.28)'],
+  goo: ['#e8ffa0', 'rgba(230,255,170,.3)', 'rgba(225,255,160,.85)', 'rgba(240,255,200,.22)'],
+  jelly: ['#ffe0f2', 'rgba(255,220,240,.35)', 'rgba(255,235,248,.9)', 'rgba(255,230,245,.3)'],
+  choco: ['#d8a070', 'rgba(200,140,90,.3)', 'rgba(230,190,150,.75)', 'rgba(220,170,120,.18)'],
+  bubble: ['#ffffff', 'rgba(255,255,255,.5)', 'rgba(255,255,255,.95)', 'rgba(255,255,255,.35)'],
+  lava: ['#fff07a', '', '', ''],
+  snow: ['', '', '', ''],
+  mud: ['', '', '', ''],
 };
 /** degradê de profundidade (0 = nível médio da superfície, 1 = chão) */
-const FLUID_GRAD: Record<'water' | 'lava' | 'goo' | 'snow', [number, string][]> = {
+type FSkin = 'water' | 'lava' | 'goo' | 'snow' | 'jelly' | 'choco' | 'bubble' | 'mud';
+const FLUID_GRAD: Record<FSkin, [number, string][]> = {
+  jelly: [[0, 'rgba(255,170,220,.75)'], [0.15, 'rgba(255,110,190,.8)'], [0.55, 'rgba(220,60,150,.86)'], [1, 'rgba(140,20,90,.92)']],
+  choco: [[0, '#c48a56'], [0.06, '#8a5530'], [0.35, '#5a3016'], [1, '#1e0d04']],
+  bubble: [[0, 'rgba(255,255,255,.9)'], [0.2, 'rgba(225,245,255,.86)'], [0.6, 'rgba(170,215,250,.85)'], [1, 'rgba(110,160,220,.9)']],
+  mud: [[0, '#a07a52'], [0.3, '#7a5233'], [0.75, '#5e3d22'], [1, '#3e2614']],
   water: [[0, 'rgba(120,212,255,.6)'], [0.12, 'rgba(56,150,240,.7)'], [0.5, 'rgba(26,92,200,.8)'], [1, 'rgba(12,40,120,.9)']],
   lava: [[0, '#ffd84a'], [0.1, '#ff9a22'], [0.4, '#e8471a'], [1, '#701208']],
   goo: [[0, 'rgba(210,255,120,.8)'], [0.15, 'rgba(130,230,64,.84)'], [0.55, 'rgba(62,165,42,.9)'], [1, 'rgba(22,86,28,.95)']],
   snow: [[0, '#ffffff'], [0.3, '#eef4ff'], [0.75, '#d2def3'], [1, '#a9bcdc']],
 };
-const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop', 'spray', 'goo'];
+const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop', 'spray', 'goo', 'juice', 'candy', 'snow', 'leaf', 'ember', 'choco', 'jelly', 'bubble', 'mud'];
+const KGRAV = KINDS.map((k) => PGRAV[k]);
+const KDRAG = KINDS.map((k) => (k === 'puff' || k === 'snow' || k === 'leaf' || k === 'bubble' || k === 'ember' ? 3 : 0.8));
 
 export class Particles {
   n = 420;
@@ -90,9 +120,8 @@ export class Particles {
       if (this.life[i] <= 0) continue;
       this.life[i] -= dt;
       const k = this.kind[i];
-      const g = k === 3 ? -20 : k === 0 ? 300 : 700;
-      this.vy[i] += g * dt;
-      this.vx[i] *= 1 - Math.min(1, dt * (k === 3 ? 3 : 0.8));
+      this.vy[i] += KGRAV[k] * dt;
+      this.vx[i] *= 1 - Math.min(1, dt * KDRAG[k]);
       this.x[i] += this.vx[i] * dt;
       this.y[i] += this.vy[i] * dt;
     }
@@ -122,7 +151,6 @@ export class Particles {
 export class Drawer {
   g: DisasterGame;
   particles = new Particles();
-  private sky: CanvasGradient | null = null;
   private far: HTMLCanvasElement | null = null;
   private mid: HTMLCanvasElement | null = null;
   private layerScale = 1;
@@ -130,6 +158,20 @@ export class Drawer {
   private fGrad: CanvasGradient | null = null;
   private fGradKind = '';
   private lavaGlow: HTMLCanvasElement | null = null;
+  private near: HTMLCanvasElement | null = null;
+  private art: MapArt = artOf('vila');
+  private skyN: HTMLCanvasElement | null = null;
+  private skyS: HTMLCanvasElement | null = null;
+  private skyNight: HTMLCanvasElement | null = null;
+  private clouds: HTMLCanvasElement | null = null;
+  private cloudsS: HTMLCanvasElement | null = null;
+  private stars: HTMLCanvasElement | null = null;
+  private soilPat: CanvasPattern | null = null;
+  private topPat: CanvasPattern | null = null;
+  private wallPat: CanvasPattern | null = null;
+  private roofPat: CanvasPattern | null = null;
+  /** 0..1: tempestade/noite suavizadas */
+  private stormK = 0;
 
   constructor(g: DisasterGame) {
     this.g = g;
@@ -137,8 +179,8 @@ export class Drawer {
   }
 
   onResize(): void {
-    this.sky = null;
-    this.far = this.mid = null;
+    this.skyN = null;
+    this.far = this.mid = this.near = null;
   }
   onRound(): void {
     this.onResize();
@@ -149,6 +191,18 @@ export class Drawer {
   private buildLayers(): void {
     const g = this.g;
     const m = g.world.map;
+    this.art = artOf(m.id);
+    const ctx = g.ctx;
+    this.soilPat = ctx.createPattern(soilTile(this.art.ground, m), 'repeat');
+    this.topPat = ctx.createPattern(topStrip(this.art.ground, m), 'repeat-x');
+    this.wallPat = ctx.createPattern(facadeOverlay(this.art.facade), 'repeat');
+    this.roofPat = ctx.createPattern(shingleOverlay(), 'repeat');
+    this.skyN = skyStrip(m.sky, false, false);
+    this.skyS = skyStrip(m.sky, true, false);
+    this.skyNight = skyStrip(m.sky, false, true);
+    this.clouds = cloudStrip(false, g.sc.seed);
+    this.cloudsS = cloudStrip(true, g.sc.seed + 7);
+    this.stars = starStrip(g.sc.seed);
     const ps = Math.min(1.5, g.cam.ps);
     this.layerScale = ps;
     const W = 1024;
@@ -175,82 +229,169 @@ export class Drawer {
       x.lineTo(W, H);
       x.fill();
     };
+    const haze = this.art.haze;
+    // perspectiva aérea: mistura a cor com a névoa do horizonte
+    const hz = (c: string, k: number) => mixHex(c, haze, k);
     this.far = mk((x) => {
       const k = m.farKind;
+      const col = hz(m.far, 0.35);
       if (k === 'peaks') {
-        x.fillStyle = m.far;
+        // cordilheira com neve e encostas sombreadas
+        const pts: [number, number][] = [];
+        for (let i = 0; i <= 10; i++) pts.push([i * 102.4, 120 + rnd() * 90]);
+        x.fillStyle = col;
         x.beginPath();
         x.moveTo(0, H);
-        for (let i = 0; i <= 8; i++) {
-          x.lineTo(i * 128, 200 + rnd() * 60);
-          x.lineTo(i * 128 + 64, 70 + rnd() * 80);
+        for (let i = 0; i < pts.length; i++) {
+          const [px, py] = pts[i];
+          x.lineTo(px - 51, py + 70 + rnd() * 30);
+          x.lineTo(px, py);
         }
-        x.lineTo(W, 230);
         x.lineTo(W, H);
         x.fill();
-        x.fillStyle = 'rgba(255,255,255,.75)';
-        for (let i = 0; i < 8; i++) {
-          const px = i * 128 + 64;
+        for (const [px, py] of pts) {
+          x.fillStyle = 'rgba(30,40,80,.12)';
           x.beginPath();
-          x.arc(px, 110, 20, 0, TAU);
+          x.moveTo(px, py);
+          x.lineTo(px + 40, py + 90);
+          x.lineTo(px + 6, py + 120);
+          x.fill();
+          x.fillStyle = 'rgba(255,255,255,.92)';
+          x.beginPath();
+          x.moveTo(px, py);
+          x.lineTo(px - 16, py + 26);
+          x.lineTo(px - 6, py + 22);
+          x.lineTo(px, py + 30);
+          x.lineTo(px + 8, py + 22);
+          x.lineTo(px + 18, py + 28);
           x.fill();
         }
       } else if (k === 'city') {
-        x.fillStyle = m.far;
-        for (let i = 0; i < W; i += 36 + rnd() * 20) {
-          const h = 90 + rnd() * 180;
-          x.fillRect(i, H - h - 60, 30 + rnd() * 20, h + 60);
+        // horizonte de prédios com janelas e antenas
+        for (let i = -10; i < W; i += 30 + rnd() * 26) {
+          const bw = 26 + rnd() * 30;
+          const h = 90 + rnd() * 200;
+          // tons variados (tijolo, areia, azul, verde-água, lilás) misturados ao tom da camada → cidade colorida mas com profundidade
+          const tint = ['#d9876a', '#e8c37a', '#7fa8d8', '#86c9b4', '#b49ad8', '#e89a9a'][Math.floor(rnd() * 6)];
+          x.fillStyle = shade(mixHex(col, tint, 0.45), (rnd() - 0.5) * 0.12);
+          x.fillRect(i, H - h - 40, bw, h + 40);
+          x.fillStyle = 'rgba(255,255,255,.22)';
+          x.fillRect(i, H - h - 40, 3, h + 40);
+          for (let wy = H - h - 30; wy < H - 50; wy += 12)
+            for (let wx = i + 5; wx < i + bw - 5; wx += 8) {
+              x.fillStyle = rnd() < 0.12 ? 'rgba(255,236,160,.85)' : 'rgba(40,60,110,.25)';
+              x.fillRect(wx, wy, 4, 6);
+            }
+          if (rnd() < 0.3) {
+            x.fillStyle = col;
+            x.fillRect(i + bw / 2 - 1, H - h - 64, 2, 24);
+          }
         }
-        x.fillStyle = 'rgba(255,255,255,.25)';
-        for (let i = 0; i < 120; i++) x.fillRect(rnd() * W, 200 + rnd() * 160, 4, 6);
-      } else if (k === 'dunes') wave(x, 280, 90, 2, m.far);
-      else if (k === 'sea') {
-        wave(x, 300, 40, 3, m.far);
-        x.fillStyle = 'rgba(255,255,255,.35)';
-        for (let i = 0; i < 40; i++) x.fillRect(rnd() * W, 300 + rnd() * 100, 18, 2);
-      } else if (k === 'pines') {
-        x.fillStyle = m.far;
-        x.fillRect(0, 320, W, 100);
-        for (let i = 0; i < W; i += 22) {
-          const h = 80 + rnd() * 90;
+      } else if (k === 'dunes') {
+        wave(x, 280, 90, 2, col);
+        x.fillStyle = 'rgba(255,255,255,.18)';
+        wave(x, 284, 90, 2, 'rgba(255,255,255,.0)');
+      } else if (k === 'sea') {
+        // mar com brilhos e veleiros ao longe
+        wave(x, 300, 22, 3, col);
+        x.fillStyle = 'rgba(255,255,255,.45)';
+        for (let i = 0; i < 60; i++) x.fillRect(rnd() * W, 300 + rnd() * 110, 10 + rnd() * 16, 1.5);
+        for (let i = 0; i < 3; i++) {
+          const bx = rnd() * W;
+          x.fillStyle = 'rgba(255,255,255,.85)';
           x.beginPath();
-          x.moveTo(i - 18, 330);
-          x.lineTo(i, 330 - h);
-          x.lineTo(i + 18, 330);
+          x.moveTo(bx, 294);
+          x.lineTo(bx + 10, 268);
+          x.lineTo(bx + 12, 294);
+          x.fill();
+          x.fillStyle = shade(col, -0.2);
+          x.fillRect(bx - 6, 294, 22, 4);
+        }
+        // ilhas
+        x.fillStyle = hz(m.mid, 0.4);
+        x.beginPath();
+        x.ellipse(rnd() * W, 300, 120, 26, 0, Math.PI, TAU);
+        x.fill();
+      } else if (k === 'pines') {
+        x.fillStyle = col;
+        x.fillRect(0, 320, W, 100);
+        for (let i = 0; i < W; i += 18) {
+          const h = 80 + rnd() * 90;
+          x.fillStyle = shade(col, (rnd() - 0.5) * 0.1);
+          x.beginPath();
+          x.moveTo(i - 16, 332);
+          x.lineTo(i, 332 - h);
+          x.lineTo(i + 16, 332);
           x.fill();
         }
       } else if (k === 'domes') {
-        x.fillStyle = m.far;
+        x.fillStyle = col;
         x.fillRect(0, 320, W, 100);
         for (let i = 0; i < 6; i++) {
           x.beginPath();
           x.arc(80 + i * 170 + rnd() * 40, 330, 50 + rnd() * 50, Math.PI, 0);
           x.fill();
         }
-        // roda-gigante / antenas
-        x.strokeStyle = m.far;
+        x.strokeStyle = col;
         x.lineWidth = 5;
         x.beginPath();
         x.arc(520, 200, 90, 0, TAU);
         x.stroke();
-        for (let a = 0; a < 8; a++) {
+        for (let a2 = 0; a2 < 8; a2++) {
           x.beginPath();
           x.moveTo(520, 200);
-          x.lineTo(520 + Math.cos((a / 8) * TAU) * 90, 200 + Math.sin((a / 8) * TAU) * 90);
+          x.lineTo(520 + Math.cos((a2 / 8) * TAU) * 90, 200 + Math.sin((a2 / 8) * TAU) * 90);
           x.stroke();
+          x.fillStyle = ['#ff7ac8', '#7ad8ff', '#ffe14d', '#9b5de5'][a2 % 4];
+          x.fillRect(520 + Math.cos((a2 / 8) * TAU) * 90 - 6, 200 + Math.sin((a2 / 8) * TAU) * 90, 12, 10);
         }
-      } else wave(x, 260, 110, 2, m.far);
+      } else wave(x, 260, 110, 2, col);
     });
     this.mid = mk((x) => {
-      wave(x, 330, 50, 3, m.mid);
+      const col = hz(m.mid, 0.15);
+      wave(x, 330, 46, 3, col);
       if (m.farKind !== 'city' && m.farKind !== 'domes') {
-        x.fillStyle = shade(m.mid, -0.15);
-        for (let i = 0; i < 14; i++) {
+        // árvores redondas no morro (luz de cima)
+        for (let i = 0; i < 26; i++) {
           const px = rnd() * W;
+          const r = 12 + rnd() * 16;
+          const py = 338 - r * 0.4;
+          x.fillStyle = shade(col, -0.18);
           x.beginPath();
-          x.arc(px, 330, 16 + rnd() * 14, 0, TAU);
+          x.arc(px, py, r, 0, TAU);
+          x.fill();
+          x.fillStyle = shade(col, 0.08);
+          x.beginPath();
+          x.arc(px - r * 0.25, py - r * 0.25, r * 0.6, 0, TAU);
           x.fill();
         }
+      } else {
+        // casinhas/prédios baixos
+        for (let i = 0; i < W; i += 60 + rnd() * 40) {
+          const bw = 40 + rnd() * 30;
+          const bh = 40 + rnd() * 60;
+          x.fillStyle = shade(col, (rnd() - 0.5) * 0.15);
+          x.fillRect(i, 350 - bh, bw, bh + 70);
+          x.fillStyle = 'rgba(255,240,200,.4)';
+          for (let wy = 360 - bh; wy < 340; wy += 14) x.fillRect(i + 6, wy, bw - 12, 4);
+        }
+      }
+    });
+    this.near = mk((x) => {
+      // fileira de arbustos/cerca na frente do horizonte
+      const col = this.art.ground === 'snow' ? '#e8f0ff' : this.art.ground === 'sand' ? '#e8c27a' : this.art.ground === 'candy' ? '#ffb4dc' : this.art.ground === 'metal' ? '#3a4470' : this.art.ground === 'city' ? '#8a92a8' : shade(m.groundTop, -0.15);
+      x.fillStyle = col;
+      x.fillRect(0, 392, W, 40);
+      for (let i = 0; i < W; i += 22 + rnd() * 26) {
+        const r = 10 + rnd() * 14;
+        x.fillStyle = shade(col, -0.1);
+        x.beginPath();
+        x.arc(i, 396 - r * 0.3, r, Math.PI, 0);
+        x.fill();
+        x.fillStyle = shade(col, 0.1);
+        x.beginPath();
+        x.arc(i - r * 0.2, 394 - r * 0.45, r * 0.55, Math.PI, 0);
+        x.fill();
       }
     });
   }
@@ -265,29 +406,64 @@ export class Drawer {
     const cw = g.canvas.width;
     const ch = g.canvas.height;
     this.particles.budget = g.q.particleBudget;
-    if (!this.far) this.buildLayers();
+    if (!this.far || !this.skyN) this.buildLayers();
 
-    // céu
+    // céu: degradê + (tempestade cruzando) + sol/lua + estrelas + nuvens em 2 planos
     x.setTransform(1, 0, 0, 1, 0, 0);
-    if (!this.sky) {
-      const s = x.createLinearGradient(0, 0, 0, ch);
-      const sk = w.map.sky;
-      s.addColorStop(0, sk[0]);
-      s.addColorStop(0.6, sk[1]);
-      s.addColorStop(1, sk[2]);
-      this.sky = s;
-    }
-    x.fillStyle = this.sky;
-    x.fillRect(0, 0, cw, ch);
     const storm = g.phase === 'disaster' || g.phase === 'warn' || g.phase === 'impact' || g.phase === 'end';
-    if (storm) {
-      x.fillStyle = 'rgba(30,36,70,0.28)';
-      x.fillRect(0, 0, cw, ch);
-      // nuvens pesadas no topo, horizonte mais claro (céu dramático)
-      if (g.q.grade) drawGrade(x, cw, ch * 0.7, 'rgba(14,12,40,0.55)', 'rgba(14,12,40,0)', 1, 'source-over');
-    } else if (g.q.dynLights && !g.night) {
-      // sol de fim de tarde por trás do cenário
-      drawLight(x, '255,236,190', cw * 0.8, ch * 0.16, Math.max(cw, ch) * 0.45, 0.55);
+    const A = g.active;
+    const clearSky = A.has('calor') || A.has('gravidade') || A.has('laser') || A.has('abducao') || A.has('buraco') || A.has('pisao') || A.has('bolas') || A.has('geiser') || A.has('sumidouro');
+    const stormy = storm && !clearSky;
+    this.stormK += ((stormy ? 1 : 0) - this.stormK) * Math.min(1, 0.02 + 1 / 60);
+    if (this.skyN) {
+      x.drawImage(g.night ? this.skyNight! : this.skyN, 0, 0, cw, ch);
+      if (this.stormK > 0.01 && !g.night) {
+        x.globalAlpha = this.stormK;
+        x.drawImage(this.skyS!, 0, 0, cw, ch);
+        x.globalAlpha = 1;
+      }
+    }
+    const sunX = cw * (this.art.warm ? 0.78 : 0.82) - c.x * 0.02 * c.ps;
+    const sunY = ch * (this.art.warm ? 0.32 : 0.14);
+    if (g.night) {
+      if (this.stars) {
+        const sw = this.stars.width * g.dpr;
+        const ox = -((c.x * 0.03 * c.ps) % sw);
+        for (let px = ox - sw; px < cw; px += sw) x.drawImage(this.stars, px, 0, sw, this.stars.height * g.dpr);
+      }
+      x.fillStyle = '#fff6d8';
+      x.beginPath();
+      x.arc(sunX, ch * 0.16, 22 * g.dpr, 0, TAU);
+      x.fill();
+      x.fillStyle = 'rgba(12,16,52,1)';
+      x.beginPath();
+      x.arc(sunX + 9 * g.dpr, ch * 0.16 - 6 * g.dpr, 19 * g.dpr, 0, TAU);
+      x.fill();
+      if (g.q.dynLights) drawLight(x, '200,210,255', sunX, ch * 0.16, 140 * g.dpr, 0.35);
+    } else if (this.stormK < 0.95) {
+      const sa = 1 - this.stormK;
+      if (g.q.dynLights) drawLight(x, this.art.warm ? '255,190,120' : '255,240,200', sunX, sunY, Math.max(cw, ch) * 0.5, 0.6 * sa);
+      x.globalAlpha = sa;
+      x.fillStyle = this.art.warm ? '#ffd28a' : '#fff6d0';
+      x.beginPath();
+      x.arc(sunX, sunY, 26 * g.dpr * (A.has('calor') ? 1.6 : 1), 0, TAU);
+      x.fill();
+      x.globalAlpha = 1;
+    }
+    {
+      const cl = this.clouds;
+      const cs = this.cloudsS;
+      const drawC = (img: HTMLCanvasElement, f: number, y: number, a: number) => {
+        const iw = img.width * g.dpr * 0.9;
+        const ih = img.height * g.dpr * 0.9;
+        let ox = -((c.x * f * c.ps + g.time * 8 * g.dpr) % iw);
+        if (ox > 0) ox -= iw;
+        x.globalAlpha = a;
+        for (let px = ox; px < cw; px += iw) x.drawImage(img, px, y, iw, ih);
+        x.globalAlpha = 1;
+      };
+      if (cl && this.stormK < 0.98) drawC(cl, 0.04, -10 * g.dpr, (1 - this.stormK) * (g.night ? 0.25 : 0.95));
+      if (cs && this.stormK > 0.02) drawC(cs, 0.06, -20 * g.dpr, this.stormK);
     }
 
     let sx = 0;
@@ -301,8 +477,14 @@ export class Drawer {
 
     // parallax
     const refTop = 150 - c.vh;
-    if (this.far && g.q.starLayers >= 2) this.layer(this.far, 0.2, 70, left, top, refTop, w.map.far);
-    if (this.mid) this.layer(this.mid, 0.45, 50, left, top, refTop, w.map.mid);
+    if (this.far && g.q.starLayers >= 2) this.layer(this.far, 0.15, 70, left, top, refTop, mixHex(w.map.far, this.art.haze, 0.35));
+    if (this.mid) this.layer(this.mid, 0.35, 50, left, top, refTop, mixHex(w.map.mid, this.art.haze, 0.15));
+    if (this.near && g.q.starLayers >= 2) this.layer(this.near, 0.6, 28, left, top, refTop, shade(w.map.ground, -0.05));
+    // névoa leve entre o fundo e o jogo (profundidade)
+    if (g.q.grade) {
+      x.fillStyle = g.night ? 'rgba(20,24,70,.18)' : 'rgba(255,255,255,.08)';
+      x.fillRect(0, 0, cw, ch);
+    }
 
     // mundo
     const ps = c.ps;
@@ -317,12 +499,24 @@ export class Drawer {
     for (const s of w.solids) {
       if (s.x + s.w < x0 || s.x > x1) continue;
       if (s.kind === 'ground') {
-        x.fillStyle = m.ground;
-        x.fillRect(s.x, s.y, s.w, Math.min(s.h, 400));
-        x.fillStyle = m.groundTop;
-        x.fillRect(s.x, s.y, s.w, 10);
-        x.fillStyle = 'rgba(0,0,0,.08)';
-        x.fillRect(s.x, s.y + 10, s.w, 5);
+        const gx0 = Math.max(s.x, x0);
+        const gx1 = Math.min(s.x + s.w, x1);
+        const hh = Math.min(s.h, 400);
+        x.fillStyle = this.soilPat ?? m.ground;
+        x.fillRect(gx0, s.y, gx1 - gx0, hh);
+        // mais escuro para baixo (profundidade)
+        const dg = x.createLinearGradient(0, s.y + 8, 0, s.y + 200);
+        dg.addColorStop(0, 'rgba(0,0,0,0)');
+        dg.addColorStop(1, 'rgba(10,0,20,.35)');
+        x.fillStyle = dg;
+        x.fillRect(gx0, s.y + 8, gx1 - gx0, Math.min(hh, 220));
+        if (this.topPat) {
+          x.save();
+          x.translate(0, s.y - 6);
+          x.fillStyle = this.topPat;
+          x.fillRect(gx0, 0, gx1 - gx0, 28);
+          x.restore();
+        }
       } else if (s.kind === 'plat') {
         if (s.gone && (s.fallY ?? 0) > 360) continue;
         const shk = (s.crumble ?? 0) > 0 ? Math.sin(g.time * 60) * 2 : 0;
@@ -388,37 +582,14 @@ export class Drawer {
     // árvores
     for (const t of w.trees) {
       if (t.x + t.r < x0 || t.x - t.r > x1) continue;
-      x.fillStyle = m.trunk;
-      x.fillRect(t.x - 7, -t.h, 14, t.h);
-      const ls = w.solids[t.solid];
-      const fy = ls?.gone ? (ls.fallY ?? 0) : 0;
-      if (fy > 380) continue;
-      const lk = ls && (ls.crumble ?? 0) > 0 ? Math.sin(g.time * 50) * 2.5 : 0;
-      x.save();
-      if (fy) x.globalAlpha = Math.max(0, 1 - fy / 380);
-      x.translate(lk, fy);
-      x.fillStyle = shade(m.leaf, -0.2);
-      x.beginPath();
-      x.arc(t.x, -t.h + 6, t.r, 0, TAU);
-      x.fill();
-      x.fillStyle = m.leaf;
-      x.beginPath();
-      x.arc(t.x - t.r * 0.35, -t.h - t.r * 0.25, t.r * 0.7, 0, TAU);
-      x.arc(t.x + t.r * 0.4, -t.h - t.r * 0.15, t.r * 0.65, 0, TAU);
-      x.fill();
-      if (lk) this.cracks(x, t.x - t.r * 0.6, -t.h - 6, t.r * 1.2, 10, g.time);
-      x.restore();
+      this.tree(x, t, m, g);
     }
     // interior das casas
     for (const h of w.houses) {
       if (h.x + h.w < x0 || h.x > x1) continue;
       const ok = w.isSheltered(h.x + h.w / 2, -2);
       if (!ok) continue;
-      x.fillStyle = 'rgba(40,30,60,.35)';
-      x.fillRect(h.x + 12, h.top, h.w - 24, -h.top);
-      // porta
-      x.fillStyle = 'rgba(40,30,60,.25)';
-      x.fillRect(h.x + h.w / 2 - 12, -40, 24, 40);
+      this.facade(x, h, g);
     }
     // bunker
     if (w.bunker) this.bunker(x, w.bunker);
@@ -541,6 +712,7 @@ export class Drawer {
       x.globalAlpha = 1;
     }
 
+    g.ex.drawBack(x, x0, x1, top);
     // jogadores (etiquetas de nome não se sobrepõem: a primeira que ocupa o lugar fica)
     this.tagBoxes.length = 0;
     for (const p of g.players) if (p.alive) this.player(x, p, p.shield > 0 && Math.sin(g.time * 30) > 0 ? 0.45 : 1);
@@ -569,6 +741,7 @@ export class Drawer {
     if (g.tornado.on) this.tornado(x, g.tornado.x, g.tornado.r, g.time, top);
     if (g.tornado2.on) this.tornado(x, g.tornado2.x, g.tornado2.r, g.time * 1.1 + 2, top);
     if (g.fluid) this.fluid(x, x0, x1, top + c.vh + 20);
+    g.ex.drawFront(x, x0, x1, top);
     // treino: seta verde pulando sobre o lugar seguro (presa na borda se estiver fora da tela)
     if (g.safe) this.safeArrow(x, g.safe.x, g.safe.y, x0, x1, g.time);
     // fantasminhas por cima de tudo
@@ -595,7 +768,9 @@ export class Drawer {
       }
       if (s.kind === 'ball' || s.kind === 'gust') {
         if (!s.live) continue;
-        if (s.kind === 'ball') this.snowball(x, s.x, s.ty, s.r, s.x * 0.05);
+        const bs = g.sc.tune?.ball;
+        if (s.kind === 'ball' && (bs === 'bowling' || bs === 'boulder')) this.bigBall(x, s.x, s.ty, s.r, s.x / s.r, bs);
+        else if (s.kind === 'ball') this.snowball(x, s.x, s.ty, s.r, s.x * 0.05);
         else this.plank(x, s.x, s.ty, g.time * 9 * Math.sign(s.vx));
         continue;
       }
@@ -617,7 +792,9 @@ export class Drawer {
       const k = 1 - s.t / (s.T * 0.75);
       const px = s.sx + (s.x - s.sx) * k;
       const py = s.sy + (s.ty - s.sy) * k - (s.kind === 'bomb' ? Math.sin(k * Math.PI) * 240 : 0);
-      this.rock(x, px, py, s.kind === 'rock' ? 11 : s.kind === 'bomb' ? 12 : 15, s.kind !== 'rock', vis);
+      const sk = s.kind === 'meteor' && !g.finale ? g.sc.tune?.strike : undefined;
+      if (sk && sk !== 'meteor') this.skinned(x, sk, px, py, s.r, vis, g.time);
+      else this.rock(x, px, py, s.kind === 'rock' ? 11 : s.kind === 'bomb' ? 12 : 15 * Math.max(0.8, Math.min(1.6, s.r / 40)), s.kind !== 'rock', vis);
     }
 
     // meteoro gigante
@@ -655,12 +832,15 @@ export class Drawer {
       x.fill();
     }
 
+    g.ex.drawMeters(x, x0, x1);
+
     // tela
     x.setTransform(1, 0, 0, 1, 0, 0);
     if (g.night) {
       x.fillStyle = 'rgba(12,14,48,0.42)';
       x.fillRect(0, 0, cw, ch);
     }
+    g.ex.drawScreen(x, cw, ch, ((g.me.ghost ? g.me.gx : g.me.x) - left) * ps, ((g.me.ghost ? g.me.gy : g.me.y) - 14 - top) * ps, ps);
     // cinzas do vulcão / areia: tela escurece aos poucos (o seu Bloop continua visível: brilho em volta)
     if (g.haze > 0.02 || g.gust.vis > 0.02) {
       x.fillStyle = g.gust.vis > g.haze ? `rgba(196,140,80,${g.gust.vis})` : `rgba(58,46,48,${g.haze})`;
@@ -696,7 +876,14 @@ export class Drawer {
       x.fillStyle = `rgba(255,250,235,${Math.min(1, mt.flash * 1.2)})`;
       x.fillRect(0, 0, cw, ch);
     }
-    if (g.q.grade) drawVignette(x, cw, ch, storm ? 0.55 : 0.32, storm ? '8,6,30' : '30,16,40');
+    // cor por desastre (gradação suave) — cada desastre com a sua "luz"
+    const gr = storm ? gradeFor(g.active, g.night) : null;
+    if (gr && g.q.grade) {
+      drawGrade(x, cw, ch, gr.top, gr.bottom, gr.a);
+      x.fillStyle = gr.tint;
+      x.fillRect(0, 0, cw, ch);
+    }
+    if (g.q.grade) drawVignette(x, cw, ch, storm ? 0.5 : 0.28, storm ? '8,6,30' : '30,16,40');
     if (g.timeScale < 0.8) {
       x.fillStyle = `rgba(0,0,0,${(0.8 - g.timeScale) * 0.4})`;
       x.fillRect(0, 0, cw, ch * 0.08);
@@ -758,8 +945,20 @@ export class Drawer {
       x.lineTo(b.x + b.w * 0.7, b.y + 1);
       x.lineTo(b.x + b.w + 3, b.y + b.h);
       x.fill();
-      x.fillStyle = b.color2;
-      x.fillRect(b.x + b.w * 0.3, b.y + 1, b.w * 0.4, 4);
+      if (this.roofPat) {
+        x.fillStyle = this.roofPat;
+        x.beginPath();
+        x.moveTo(b.x - 3, b.y + b.h);
+        x.lineTo(b.x + b.w * 0.3, b.y + 1);
+        x.lineTo(b.x + b.w * 0.7, b.y + 1);
+        x.lineTo(b.x + b.w + 3, b.y + b.h);
+        x.fill();
+      }
+      // beiral claro + sombra embaixo
+      x.fillStyle = 'rgba(255,255,255,.35)';
+      x.fillRect(b.x + b.w * 0.3, b.y + 1, b.w * 0.4, 3);
+      x.fillStyle = 'rgba(0,0,0,.18)';
+      x.fillRect(b.x - 3, b.y + b.h - 3, b.w + 6, 3);
     } else if (b.kind === 'ladder') {
       this.ladder(x, b.x, b.y, b.w, b.h);
     } else {
@@ -769,6 +968,15 @@ export class Drawer {
       x.fillStyle = b.color;
       roundRect(x, b.x, b.y, b.w, b.h, 3);
       x.fill();
+      if ((b.kind === 'wall' || b.kind === 'block' || b.kind === 'slab') && this.wallPat) {
+        x.fillStyle = this.wallPat;
+        x.fillRect(b.x, b.y, b.w, b.h);
+        // luz de cima / sombra embaixo (volume)
+        x.fillStyle = 'rgba(255,255,255,.14)';
+        x.fillRect(b.x, b.y, b.w, Math.min(5, b.h * 0.2));
+        x.fillStyle = 'rgba(20,0,40,.12)';
+        x.fillRect(b.x, b.y + b.h * 0.75, b.w, b.h * 0.25);
+      }
       if (b.kind === 'crate') {
         x.strokeStyle = b.color2;
         x.lineWidth = 2.5;
@@ -778,13 +986,19 @@ export class Drawer {
         x.lineTo(b.x + b.w - 4, b.y + b.h - 4);
         x.stroke();
       } else if (b.kind === 'block' && b.w > 30 && b.h > 30) {
-        // janelas
-        x.fillStyle = '#5a7ab8';
+        // janelas com moldura e brilho (acesas de noite)
         const ww = b.w > b.h ? b.h : b.w;
-        x.fillRect(b.x + ww * 0.2, b.y + b.h * 0.25, ww * 0.22, b.h * 0.35);
-        x.fillRect(b.x + b.w - ww * 0.42, b.y + b.h * 0.25, ww * 0.22, b.h * 0.35);
-        x.fillStyle = 'rgba(255,255,255,.5)';
-        x.fillRect(b.x + ww * 0.2, b.y + b.h * 0.25, ww * 0.08, b.h * 0.35);
+        const lit = this.g.night || this.stormK > 0.6;
+        for (const wx of [b.x + ww * 0.17, b.x + b.w - ww * 0.45]) {
+          x.fillStyle = '#fff7ea';
+          x.fillRect(wx - 2, b.y + b.h * 0.22 - 2, ww * 0.28 + 4, b.h * 0.42 + 4);
+          x.fillStyle = lit && (b.id + Math.round(wx)) % 3 ? '#ffd88a' : '#5a8ad0';
+          x.fillRect(wx, b.y + b.h * 0.22, ww * 0.28, b.h * 0.42);
+          x.fillStyle = 'rgba(255,255,255,.45)';
+          x.fillRect(wx, b.y + b.h * 0.22, ww * 0.1, b.h * 0.42);
+          x.fillStyle = '#fff7ea';
+          x.fillRect(wx + ww * 0.13, b.y + b.h * 0.22, 2, b.h * 0.42);
+        }
       } else if (b.kind === 'wall' && b.h > b.w) {
         x.fillStyle = 'rgba(0,0,0,.1)';
         x.fillRect(b.x + b.w - 4, b.y, 4, b.h);
@@ -1054,6 +1268,318 @@ export class Drawer {
   }
 
   /** destroço voando (tábua girando) */
+  /** árvore com volume: tronco com casca e raízes, copa em lóbulos (sombra embaixo, brilho em cima) */
+  private tree(x: CanvasRenderingContext2D, t: { x: number; h: number; r: number; solid: number }, m: { leaf: string; trunk: string; id: string }, g: DisasterGame): void {
+    const w = g.world;
+    const ink = '#2a1a3a';
+    // tronco
+    x.fillStyle = ink;
+    x.beginPath();
+    x.moveTo(t.x - 10, 2);
+    x.lineTo(t.x - 6, -t.h);
+    x.lineTo(t.x + 6, -t.h);
+    x.lineTo(t.x + 10, 2);
+    x.fill();
+    x.fillStyle = m.trunk;
+    x.beginPath();
+    x.moveTo(t.x - 8, 1);
+    x.lineTo(t.x - 4.5, -t.h);
+    x.lineTo(t.x + 4.5, -t.h);
+    x.lineTo(t.x + 8, 1);
+    x.fill();
+    x.fillStyle = 'rgba(0,0,0,.18)';
+    x.fillRect(t.x + 1.5, -t.h, 3, t.h);
+    x.strokeStyle = 'rgba(40,20,10,.25)';
+    x.lineWidth = 1;
+    for (let k = 1; k < 5; k++) {
+      x.beginPath();
+      x.moveTo(t.x - 3, -t.h * (k / 5));
+      x.lineTo(t.x + 2, -t.h * (k / 5) - 4);
+      x.stroke();
+    }
+    const ls = w.solids[t.solid];
+    const fy = ls?.gone ? (ls.fallY ?? 0) : 0;
+    if (fy > 380) return;
+    const lk = ls && (ls.crumble ?? 0) > 0 ? Math.sin(g.time * 50) * 2.5 : 0;
+    x.save();
+    if (fy) x.globalAlpha = Math.max(0, 1 - fy / 380);
+    x.translate(lk + Math.sin(g.time * 1.3 + t.x) * (g.wind ? 2 : 0.6), fy);
+    const cx = t.x;
+    const cy = -t.h - 4;
+    const R = t.r;
+    const lobes: [number, number, number][] = [
+      [-0.55, 0.15, 0.62],
+      [0.55, 0.12, 0.6],
+      [-0.2, -0.35, 0.7],
+      [0.28, -0.4, 0.62],
+      [0, 0.1, 0.8],
+    ];
+    const burnt = g.active.has('incendio') && g.ex?.burningAt(t.x);
+    const leaf = burnt ? '#7a4a2a' : m.leaf;
+    x.fillStyle = ink;
+    x.beginPath();
+    for (const [lx, ly, lr] of lobes) {
+      x.moveTo(cx + lx * R + lr * R + 2.5, cy + ly * R);
+      x.arc(cx + lx * R, cy + ly * R, lr * R + 2.5, 0, TAU);
+    }
+    x.fill();
+    x.fillStyle = shade(leaf, -0.22);
+    x.beginPath();
+    for (const [lx, ly, lr] of lobes) {
+      x.moveTo(cx + lx * R + lr * R, cy + ly * R);
+      x.arc(cx + lx * R, cy + ly * R, lr * R, 0, TAU);
+    }
+    x.fill();
+    x.fillStyle = leaf;
+    x.beginPath();
+    for (const [lx, ly, lr] of lobes) {
+      x.moveTo(cx + lx * R + lr * R * 0.78, cy + ly * R - lr * R * 0.18);
+      x.arc(cx + lx * R - lr * R * 0.06, cy + ly * R - lr * R * 0.18, lr * R * 0.78, 0, TAU);
+    }
+    x.fill();
+    x.fillStyle = 'rgba(255,255,255,.22)';
+    x.beginPath();
+    x.arc(cx - R * 0.3, cy - R * 0.55, R * 0.28, 0, TAU);
+    x.fill();
+    if (m.id === 'polo') {
+      x.fillStyle = '#ffffff';
+      x.beginPath();
+      x.ellipse(cx - R * 0.2, cy - R * 0.8, R * 0.55, R * 0.22, 0, 0, TAU);
+      x.ellipse(cx + R * 0.35, cy - R * 0.62, R * 0.4, R * 0.18, 0, 0, TAU);
+      x.fill();
+    } else if (m.id !== 'doces' && !burnt) {
+      // frutinhas/flores
+      x.fillStyle = m.id === 'fazenda' ? '#ff4a4a' : '#ffffff';
+      for (let k = 0; k < 4; k++) {
+        x.beginPath();
+        x.arc(cx + Math.sin(k * 2.3 + t.x) * R * 0.7, cy + Math.cos(k * 1.7) * R * 0.4, 2.2, 0, TAU);
+        x.fill();
+      }
+    }
+    if (lk) this.cracks(x, cx - R * 0.6, cy - 2, R * 1.2, 10, g.time);
+    x.restore();
+  }
+
+  /** parede do fundo da casa (entre as duas paredes): reboco/tijolo, janelas, porta e luminária */
+  private facade(x: CanvasRenderingContext2D, h: { x: number; w: number; top: number; wallL: number }, g: DisasterGame): void {
+    const w = g.world;
+    const wb = w.bodies[h.wallL];
+    const col = wb ? wb.color : '#ffe9c9';
+    const fx = h.x + 12;
+    const fw = h.w - 24;
+    const fy = h.top;
+    const fh = -h.top;
+    x.fillStyle = shade(col, -0.12);
+    x.fillRect(fx, fy, fw, fh);
+    if (this.wallPat) {
+      x.fillStyle = this.wallPat;
+      x.fillRect(fx, fy, fw, fh);
+    }
+    // sombra do teto (casa tem profundidade)
+    const sg = x.createLinearGradient(0, fy, 0, fy + 26);
+    sg.addColorStop(0, 'rgba(20,0,40,.35)');
+    sg.addColorStop(1, 'rgba(20,0,40,0)');
+    x.fillStyle = sg;
+    x.fillRect(fx, fy, fw, 26);
+    const lit = g.night || this.stormK > 0.6;
+    // janelas
+    const ww = Math.min(22, fw * 0.22);
+    for (const wx of [fx + fw * 0.18, fx + fw * 0.82 - ww]) {
+      x.fillStyle = '#fff7ea';
+      x.fillRect(wx - 2, fy + 16, ww + 4, 22);
+      x.fillStyle = lit ? '#ffd88a' : '#6a9ad8';
+      x.fillRect(wx, fy + 18, ww, 18);
+      x.fillStyle = 'rgba(255,255,255,.4)';
+      x.fillRect(wx + 2, fy + 18, 5, 18);
+      x.fillStyle = '#fff7ea';
+      x.fillRect(wx + ww / 2 - 1, fy + 18, 2, 18);
+      // floreira
+      x.fillStyle = '#8a5a3a';
+      x.fillRect(wx - 3, fy + 38, ww + 6, 4);
+      x.fillStyle = ['#ff7ac8', '#ffe14d', '#ff5a5a'][(h.wallL + Math.round(wx)) % 3];
+      for (let k = 0; k < 3; k++) {
+        x.beginPath();
+        x.arc(wx + 3 + k * (ww / 2.4), fy + 37, 2.6, 0, TAU);
+        x.fill();
+      }
+      if (lit && g.tier >= 3) drawLight(x, '255,210,120', wx + ww / 2, fy + 27, 40, 0.35);
+    }
+    // porta
+    const dw = 22;
+    const dx = fx + fw / 2 - dw / 2;
+    x.fillStyle = '#2a1a3a';
+    roundRect(x, dx - 2, -42, dw + 4, 42, 6);
+    x.fill();
+    x.fillStyle = '#9a5a3a';
+    roundRect(x, dx, -40, dw, 40, 5);
+    x.fill();
+    x.fillStyle = 'rgba(255,255,255,.18)';
+    x.fillRect(dx + 3, -36, dw - 6, 14);
+    x.fillStyle = '#ffd34a';
+    x.beginPath();
+    x.arc(dx + dw - 5, -20, 2, 0, TAU);
+    x.fill();
+    // chão de dentro (tapete)
+    x.fillStyle = 'rgba(255,90,90,.35)';
+    x.fillRect(dx - 10, -3, dw + 20, 3);
+  }
+
+  /** objetos que caem do céu (catálogo): granizo, bala, melancia, piano, estrela */
+  private skinned(x: CanvasRenderingContext2D, sk: string, px: number, py: number, r: number, a: number, time: number): void {
+    x.globalAlpha = a;
+    x.save();
+    x.translate(px, py);
+    const s = Math.max(7, r * 0.42);
+    if (sk === 'hail') {
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.arc(0, 0, s * 0.62 + 2, 0, TAU);
+      x.fill();
+      x.fillStyle = '#e8f6ff';
+      x.beginPath();
+      x.arc(0, 0, s * 0.62, 0, TAU);
+      x.fill();
+      x.fillStyle = '#ffffff';
+      x.beginPath();
+      x.arc(-s * 0.2, -s * 0.2, s * 0.22, 0, TAU);
+      x.fill();
+    } else if (sk === 'candy') {
+      x.rotate(time * 4);
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.moveTo(-s * 1.7, -s * 0.7);
+      x.lineTo(-s * 0.8, 0);
+      x.lineTo(-s * 1.7, s * 0.7);
+      x.moveTo(s * 1.7, -s * 0.7);
+      x.lineTo(s * 0.8, 0);
+      x.lineTo(s * 1.7, s * 0.7);
+      x.fill();
+      x.fillStyle = '#ff9ad5';
+      x.beginPath();
+      x.moveTo(-s * 1.5, -s * 0.5);
+      x.lineTo(-s * 0.8, 0);
+      x.lineTo(-s * 1.5, s * 0.5);
+      x.moveTo(s * 1.5, -s * 0.5);
+      x.lineTo(s * 0.8, 0);
+      x.lineTo(s * 1.5, s * 0.5);
+      x.fill();
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.arc(0, 0, s + 2, 0, TAU);
+      x.fill();
+      x.fillStyle = '#ff3d8b';
+      x.beginPath();
+      x.arc(0, 0, s, 0, TAU);
+      x.fill();
+      x.strokeStyle = '#fff';
+      x.lineWidth = s * 0.25;
+      x.beginPath();
+      x.arc(0, 0, s * 0.55, 0, Math.PI * 1.3);
+      x.stroke();
+    } else if (sk === 'melon') {
+      x.rotate(time * 2);
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.ellipse(0, 0, s * 1.35 + 2, s + 2, 0, 0, TAU);
+      x.fill();
+      x.fillStyle = '#3fbf5a';
+      x.beginPath();
+      x.ellipse(0, 0, s * 1.35, s, 0, 0, TAU);
+      x.fill();
+      x.strokeStyle = '#1f7a35';
+      x.lineWidth = s * 0.22;
+      for (const o of [-0.5, 0, 0.5]) {
+        x.beginPath();
+        x.ellipse(0, 0, s * 1.3 * Math.max(0.15, 1 - Math.abs(o) * 1.5), s, 0, -Math.PI / 2, Math.PI / 2, o < 0);
+        x.stroke();
+      }
+    } else if (sk === 'piano') {
+      const w = s * 2.6;
+      const h = s * 1.5;
+      x.rotate(Math.sin(time * 3) * 0.2);
+      x.fillStyle = '#2a0b5c';
+      roundRect(x, -w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 6);
+      x.fill();
+      x.fillStyle = '#1b1b2c';
+      roundRect(x, -w / 2, -h / 2, w, h, 5);
+      x.fill();
+      x.fillStyle = '#fff';
+      x.fillRect(-w / 2 + 4, h * 0.05, w - 8, h * 0.3);
+      x.fillStyle = '#1b1b2c';
+      for (let i = 1; i < 8; i++) x.fillRect(-w / 2 + 4 + (i * (w - 8)) / 8 - 1, h * 0.05, 2.4, h * 0.18);
+      x.fillStyle = '#3a3a5a';
+      x.fillRect(-w / 2 + 6, h / 2, 4, h * 0.35);
+      x.fillRect(w / 2 - 10, h / 2, 4, h * 0.35);
+    } else {
+      // estrela cadente
+      x.rotate(time * 3);
+      x.fillStyle = '#2a0b5c';
+      this.star(x, s * 1.25 + 3);
+      x.fill();
+      x.fillStyle = '#ffe14d';
+      this.star(x, s * 1.25);
+      x.fill();
+      x.fillStyle = '#fff6b0';
+      this.star(x, s * 0.6);
+      x.fill();
+    }
+    x.restore();
+    x.globalAlpha = 1;
+  }
+  private star(x: CanvasRenderingContext2D, r: number): void {
+    x.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU - Math.PI / 2;
+      const rr = i % 2 ? r * 0.45 : r;
+      if (i) x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      else x.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    x.closePath();
+  }
+  /** bola de boliche / pedregulho rolando */
+  private bigBall(x: CanvasRenderingContext2D, px: number, py: number, r: number, a: number, k: string): void {
+    x.save();
+    x.translate(px, py);
+    x.fillStyle = '#2a0b5c';
+    x.beginPath();
+    x.arc(0, 0, r + 3, 0, TAU);
+    x.fill();
+    const gr = x.createRadialGradient(-r * 0.4, -r * 0.4, r * 0.1, 0, 0, r);
+    if (k === 'bowling') {
+      gr.addColorStop(0, '#9aa6ff');
+      gr.addColorStop(0.5, '#4a4ad8');
+      gr.addColorStop(1, '#1e1a7a');
+    } else {
+      gr.addColorStop(0, '#c8b8a0');
+      gr.addColorStop(0.6, '#8a7a68');
+      gr.addColorStop(1, '#4a3e34');
+    }
+    x.fillStyle = gr;
+    x.beginPath();
+    x.arc(0, 0, r, 0, TAU);
+    x.fill();
+    x.rotate(a);
+    x.fillStyle = k === 'bowling' ? '#120e40' : 'rgba(60,46,36,.6)';
+    if (k === 'bowling') {
+      for (const [hx, hy] of [
+        [-0.25, -0.35],
+        [0.12, -0.42],
+        [-0.05, -0.12],
+      ]) {
+        x.beginPath();
+        x.arc(hx * r, hy * r, r * 0.12, 0, TAU);
+        x.fill();
+      }
+    } else {
+      for (let i = 0; i < 4; i++) {
+        x.beginPath();
+        x.arc(Math.cos(i * 1.7) * r * 0.5, Math.sin(i * 2.3) * r * 0.5, r * (0.12 + (i % 2) * 0.08), 0, TAU);
+        x.fill();
+      }
+    }
+    x.restore();
+  }
+
   private plank(x: CanvasRenderingContext2D, px: number, py: number, a: number): void {
     x.save();
     x.translate(px, py);
@@ -1227,7 +1753,11 @@ export class Drawer {
     const f = g.fluid!;
     const s = g.sim;
     if (!s) return;
-    const kind = f.kind;
+    const pk = f.kind;
+    const ts = g.sc.tune?.fluid;
+    // pele (catálogo) por cima da física: gelatina/chocolate/espuma são "água"; lama é "neve"
+    const sk: FSkin = ts && ((pk === 'water' && (ts === 'jelly' || ts === 'choco' || ts === 'bubble')) || (pk === 'snow' && ts === 'mud')) ? ts : pk;
+    const kind: 'water' | 'lava' | 'goo' | 'snow' = pk === 'water' || pk === 'goo' ? pk : pk;
     const t = g.time;
     const tier = g.tier;
     const dx = s.dx;
@@ -1266,13 +1796,14 @@ export class Drawer {
       x.closePath();
     }
     if (!any) return;
-    if (!this.fGrad || this.fGradKind !== kind) {
+    if (!this.fGrad || this.fGradKind !== sk) {
       // degradê em coordenadas 0..1 (escalado na hora de pintar): criado uma vez por tipo
       const gr = x.createLinearGradient(0, 0, 0, 1);
-      for (const [o, c] of FLUID_GRAD[kind]) gr.addColorStop(o, c);
+      for (const [o, c] of FLUID_GRAD[sk]) gr.addColorStop(o, c);
       this.fGrad = gr;
-      this.fGradKind = kind;
+      this.fGradKind = sk;
     }
+    const SC = FSURF[sk];
     const lvl = Math.max(26, f.level);
     x.save();
     x.translate(0, GROUND_Y - lvl - 6);
@@ -1280,6 +1811,38 @@ export class Drawer {
     x.fillStyle = this.fGrad;
     x.fill();
     x.restore();
+
+    // ---- chocolate: profundidade (faixas de ondulação em perspectiva + brilho de cobertura) ----
+    if (sk === 'choco' && lvl > 40) {
+      const span = x1 - x0;
+      const rows = tier === 0 ? 4 : 7;
+      for (let r = 0; r < rows; r++) {
+        const fr = (r + 1) / (rows + 1); // 0 = perto da superfície (longe), 1 = fundo (perto)
+        const yy = GROUND_Y - lvl + 14 + fr * fr * (lvl - 20);
+        if (yy > GROUND_Y - 4) continue;
+        const sp = 6 + fr * 26; // parallax: faixas mais "perto" andam mais rápido
+        const len = 26 + fr * 70;
+        const n = 4 + Math.floor((1 - fr) * 6);
+        x.beginPath();
+        for (let k = 0; k < n; k++) {
+          let px = (k * (span / n) + r * 97 + t * sp) % span;
+          if (px < 0) px += span;
+          px += x0;
+          const wob = Math.sin(t * 1.3 + k * 1.7 + r) * (1 + fr * 3);
+          x.moveTo(px - len / 2, yy + wob);
+          x.quadraticCurveTo(px, yy - 3 - fr * 5 + wob, px + len / 2, yy + wob);
+        }
+        x.strokeStyle = 'rgba(255,214,170,' + (0.2 - fr * 0.1).toFixed(3) + ')';
+        x.lineWidth = 1.5 + fr * 3;
+        x.stroke();
+        x.strokeStyle = 'rgba(30,10,2,' + (0.1 + fr * 0.12).toFixed(3) + ')';
+        x.lineWidth = 1 + fr * 2;
+        x.save();
+        x.translate(0, 3 + fr * 4);
+        x.stroke();
+        x.restore();
+      }
+    }
 
     // ---- reflexos de luz andando por baixo da superfície (água e gosma) ----
     if (kind === 'water' || kind === 'goo') {
@@ -1302,7 +1865,7 @@ export class Drawer {
         x.moveTo(px - len * 0.5, ya + depth + wob);
         x.quadraticCurveTo(px, ym + depth - 2 + wob, px + len * 0.5, yb + depth + wob);
       }
-      x.strokeStyle = kind === 'water' ? 'rgba(220,245,255,.28)' : 'rgba(240,255,200,.22)';
+      x.strokeStyle = SC[3];
       x.lineWidth = 2.2;
       x.lineCap = 'round';
       x.stroke();
@@ -1314,11 +1877,11 @@ export class Drawer {
     if (kind === 'water' || kind === 'goo') {
       // faixa de espuma macia logo abaixo + linha clara na superfície
       this.surfPath(x, i0, i1, 4);
-      x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.3)' : 'rgba(230,255,170,.3)';
-      x.lineWidth = 7;
+      x.strokeStyle = SC[1];
+      x.lineWidth = sk === 'bubble' ? 12 : 7;
       x.stroke();
       this.surfPath(x, i0, i1, 0);
-      x.strokeStyle = kind === 'water' ? 'rgba(245,253,255,.95)' : '#e8ffa0';
+      x.strokeStyle = SC[0];
       x.lineWidth = 2.6;
       x.stroke();
       // carneirinhos: espuma onde a água mexe (crista, respingos, frente)
@@ -1340,8 +1903,54 @@ export class Drawer {
         x.moveTo(px + r, py);
         x.arc(px, py, r, 0, TAU);
       }
-      x.fillStyle = kind === 'water' ? 'rgba(255,255,255,.88)' : 'rgba(225,255,160,.85)';
+      x.fillStyle = SC[2];
       x.fill();
+      if (sk === 'choco') {
+        // chocolate brilhante: faixa de brilho logo abaixo da superfície + redemoinhos de creme
+        this.surfPath(x, i0, i1, 7);
+        x.strokeStyle = 'rgba(255,214,170,.32)';
+        x.lineWidth = 4;
+        x.stroke();
+        this.surfPath(x, i0, i1, 16);
+        x.strokeStyle = 'rgba(40,14,4,.35)';
+        x.lineWidth = 8;
+        x.stroke();
+        x.strokeStyle = 'rgba(255,236,210,.45)';
+        x.lineWidth = 2.2;
+        const span = x1 - x0;
+        for (let k = 0; k < 9; k++) {
+          const px = x0 + ((k * 173.3 + t * 12) % span);
+          const py = s.surf(px);
+          if (py > 5000 || py + 30 > GROUND_Y) continue;
+          x.beginPath();
+          x.arc(px, py + 22 + (k % 3) * 9, 7 + (k % 4) * 3, 0.3 + t * 0.5, 3.6 + t * 0.5);
+          x.stroke();
+        }
+        for (let k = 0; k < 6; k++) {
+          const px = x0 + ((k * 211.7 + t * 20) % span);
+          const py = s.surf(px);
+          if (py < 5000) drawSpecular(x, px, py + 2, 5, 0.6);
+        }
+      }
+      if (sk === 'bubble') {
+        // espuma: bolhas grandes na superfície
+        x.beginPath();
+        for (let i = i0 - (i0 % 3); i <= i1; i += 3) {
+          if (i < 0 || !wet[i]) continue;
+          const h = Math.sin(i * 7.31) * 43758.5453;
+          const j = h - Math.floor(h);
+          const r = 5 + j * 9;
+          const px = sx0 + i * dx;
+          const py = GROUND_Y - rest[i] - dd[i] + 2 + Math.sin(t * 2 + i) * 2;
+          x.moveTo(px + r, py);
+          x.arc(px, py, r, 0, TAU);
+        }
+        x.fillStyle = 'rgba(255,255,255,.55)';
+        x.fill();
+        x.strokeStyle = 'rgba(160,210,255,.7)';
+        x.lineWidth = 1.2;
+        x.stroke();
+      }
     } else if (kind === 'lava') {
       this.surfPath(x, i0, i1, 0);
       if (g.q.glows) {
@@ -1372,7 +1981,7 @@ export class Drawer {
     } else {
       // neve: superfície granulosa (montinhos) + sombra azulada logo abaixo
       this.surfPath(x, i0, i1, 5);
-      x.strokeStyle = 'rgba(150,175,215,.45)';
+      x.strokeStyle = sk === 'mud' ? 'rgba(60,36,20,.5)' : 'rgba(150,175,215,.45)';
       x.lineWidth = 6;
       x.stroke();
       const st = tier === 0 ? 3 : 2;
@@ -1387,7 +1996,7 @@ export class Drawer {
         x.moveTo(px + r, py);
         x.arc(px, py, r, 0, TAU);
       }
-      x.fillStyle = '#ffffff';
+      x.fillStyle = sk === 'mud' ? '#a07a52' : '#ffffff';
       x.fill();
     }
 
@@ -1406,7 +2015,7 @@ export class Drawer {
         x.fillStyle = 'rgba(255,215,90,.8)';
         x.fill();
       } else {
-        x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.7)' : 'rgba(235,255,180,.75)';
+        x.strokeStyle = sk === 'goo' ? 'rgba(235,255,180,.75)' : sk === 'choco' ? 'rgba(220,170,120,.7)' : 'rgba(235,250,255,.7)';
         x.lineWidth = 1.2;
         x.stroke();
       }
@@ -1436,7 +2045,7 @@ export class Drawer {
           x.lineTo(fx, fy < 5000 ? fy : yc + 20 * C);
           x.lineTo(xc, yc + 6);
           x.closePath();
-          x.fillStyle = 'rgba(70,170,250,.88)';
+          x.fillStyle = sk === 'jelly' ? 'rgba(255,120,200,.9)' : sk === 'choco' ? 'rgba(140,85,48,.95)' : sk === 'bubble' ? 'rgba(230,245,255,.92)' : 'rgba(70,170,250,.88)';
           x.fill();
           // tubo (sombra dentro do enrolado)
           x.beginPath();
@@ -1474,7 +2083,7 @@ export class Drawer {
             x.moveTo(px + r, py);
             x.arc(px, py, r, 0, TAU);
           }
-          x.fillStyle = 'rgba(255,255,255,.92)';
+          x.fillStyle = sk === 'mud' ? 'rgba(140,100,64,.95)' : 'rgba(255,255,255,.92)';
           x.fill();
         }
       }
@@ -1542,6 +2151,14 @@ export class Drawer {
     }
     x.stroke();
   }
+}
+
+/** mistura duas cores #rrggbb (k = 0 → a, 1 → b) */
+export function mixHex(a: string, b: string, k: number): string {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const m = (s2: number) => Math.round(((pa >> s2) & 255) * (1 - k) + ((pb >> s2) & 255) * k);
+  return '#' + ((1 << 24) | (m(16) << 16) | (m(8) << 8) | m(0)).toString(16).slice(1);
 }
 
 export function roundRect(x: CanvasRenderingContext2D, rx: number, ry: number, w: number, h: number, r: number): void {
