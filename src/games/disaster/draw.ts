@@ -13,7 +13,7 @@ const TAU = Math.PI * 2;
 
 /* ------------------------------ partículas ------------------------------ */
 
-type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop' | 'spray' | 'goo';
+export type PKind = 'fire' | 'spark' | 'dust' | 'puff' | 'debris' | 'drop' | 'spray' | 'goo' | 'juice' | 'candy' | 'snow' | 'leaf' | 'ember' | 'choco' | 'jelly' | 'bubble' | 'mud';
 const PCOL: Record<PKind, string[]> = {
   fire: ['#ffe14d', '#ff9a2e', '#ff5a1f', '#7a3a2a'],
   spark: ['#ffffff', '#fff6a0', '#9fe8ff'],
@@ -23,15 +23,44 @@ const PCOL: Record<PKind, string[]> = {
   drop: ['#bfe6ff'],
   spray: ['#ffffff', '#e4f6ff', '#bfe6ff', '#9fd4ff'],
   goo: ['#d8ff8a', '#a6f04a', '#7bd83a'],
+  juice: ['#ff5a6a', '#ff8a8a', '#3fbf5a', '#2a0b5c'],
+  candy: ['#ff5aa5', '#7ad8ff', '#ffe14d', '#9b5de5', '#5ee08a'],
+  snow: ['#ffffff', '#eef6ff', '#d8e8ff'],
+  leaf: ['#5ab84a', '#3f9a3a', '#c9a02a', '#d9772b'],
+  ember: ['#ffe680', '#ffb13a', '#ff6a1e'],
+  choco: ['#7a4a2a', '#5a3218', '#a0683a'],
+  jelly: ['#ff7ac8', '#ff9ad5', '#ffc6e8'],
+  bubble: ['#ffffff', '#d8f4ff', '#bfe6ff'],
+  mud: ['#7a5233', '#5e3d22', '#9a7048'],
+};
+/** gravidade de cada tipo (as fumaças/bolhas sobem) */
+const PGRAV: Record<PKind, number> = { fire: 300, spark: 700, dust: 700, puff: -20, debris: 700, drop: 700, spray: 700, goo: 700, juice: 800, candy: 700, snow: 60, leaf: 90, ember: -60, choco: 700, jelly: 700, bubble: -90, mud: 750 };
+/** cores da superfície por pele: linha, faixa de espuma, espuma, brilho interno */
+const FSURF: Record<FSkin, [string, string, string, string]> = {
+  water: ['rgba(245,253,255,.95)', 'rgba(235,250,255,.3)', 'rgba(255,255,255,.88)', 'rgba(220,245,255,.28)'],
+  goo: ['#e8ffa0', 'rgba(230,255,170,.3)', 'rgba(225,255,160,.85)', 'rgba(240,255,200,.22)'],
+  jelly: ['#ffe0f2', 'rgba(255,220,240,.35)', 'rgba(255,235,248,.9)', 'rgba(255,230,245,.3)'],
+  choco: ['#d8a070', 'rgba(200,140,90,.3)', 'rgba(230,190,150,.75)', 'rgba(220,170,120,.18)'],
+  bubble: ['#ffffff', 'rgba(255,255,255,.5)', 'rgba(255,255,255,.95)', 'rgba(255,255,255,.35)'],
+  lava: ['#fff07a', '', '', ''],
+  snow: ['', '', '', ''],
+  mud: ['', '', '', ''],
 };
 /** degradê de profundidade (0 = nível médio da superfície, 1 = chão) */
-const FLUID_GRAD: Record<'water' | 'lava' | 'goo' | 'snow', [number, string][]> = {
+type FSkin = 'water' | 'lava' | 'goo' | 'snow' | 'jelly' | 'choco' | 'bubble' | 'mud';
+const FLUID_GRAD: Record<FSkin, [number, string][]> = {
+  jelly: [[0, 'rgba(255,170,220,.75)'], [0.15, 'rgba(255,110,190,.8)'], [0.55, 'rgba(220,60,150,.86)'], [1, 'rgba(140,20,90,.92)']],
+  choco: [[0, '#b07a4a'], [0.12, '#8a5530'], [0.5, '#5e3418'], [1, '#2e160a']],
+  bubble: [[0, 'rgba(255,255,255,.9)'], [0.2, 'rgba(225,245,255,.86)'], [0.6, 'rgba(170,215,250,.85)'], [1, 'rgba(110,160,220,.9)']],
+  mud: [[0, '#a07a52'], [0.3, '#7a5233'], [0.75, '#5e3d22'], [1, '#3e2614']],
   water: [[0, 'rgba(120,212,255,.6)'], [0.12, 'rgba(56,150,240,.7)'], [0.5, 'rgba(26,92,200,.8)'], [1, 'rgba(12,40,120,.9)']],
   lava: [[0, '#ffd84a'], [0.1, '#ff9a22'], [0.4, '#e8471a'], [1, '#701208']],
   goo: [[0, 'rgba(210,255,120,.8)'], [0.15, 'rgba(130,230,64,.84)'], [0.55, 'rgba(62,165,42,.9)'], [1, 'rgba(22,86,28,.95)']],
   snow: [[0, '#ffffff'], [0.3, '#eef4ff'], [0.75, '#d2def3'], [1, '#a9bcdc']],
 };
-const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop', 'spray', 'goo'];
+const KINDS: PKind[] = ['fire', 'spark', 'dust', 'puff', 'debris', 'drop', 'spray', 'goo', 'juice', 'candy', 'snow', 'leaf', 'ember', 'choco', 'jelly', 'bubble', 'mud'];
+const KGRAV = KINDS.map((k) => PGRAV[k]);
+const KDRAG = KINDS.map((k) => (k === 'puff' || k === 'snow' || k === 'leaf' || k === 'bubble' || k === 'ember' ? 3 : 0.8));
 
 export class Particles {
   n = 420;
@@ -90,9 +119,8 @@ export class Particles {
       if (this.life[i] <= 0) continue;
       this.life[i] -= dt;
       const k = this.kind[i];
-      const g = k === 3 ? -20 : k === 0 ? 300 : 700;
-      this.vy[i] += g * dt;
-      this.vx[i] *= 1 - Math.min(1, dt * (k === 3 ? 3 : 0.8));
+      this.vy[i] += KGRAV[k] * dt;
+      this.vx[i] *= 1 - Math.min(1, dt * KDRAG[k]);
       this.x[i] += this.vx[i] * dt;
       this.y[i] += this.vy[i] * dt;
     }
@@ -541,6 +569,7 @@ export class Drawer {
       x.globalAlpha = 1;
     }
 
+    g.ex.drawBack(x, x0, x1, top);
     // jogadores (etiquetas de nome não se sobrepõem: a primeira que ocupa o lugar fica)
     this.tagBoxes.length = 0;
     for (const p of g.players) if (p.alive) this.player(x, p, p.shield > 0 && Math.sin(g.time * 30) > 0 ? 0.45 : 1);
@@ -569,6 +598,7 @@ export class Drawer {
     if (g.tornado.on) this.tornado(x, g.tornado.x, g.tornado.r, g.time, top);
     if (g.tornado2.on) this.tornado(x, g.tornado2.x, g.tornado2.r, g.time * 1.1 + 2, top);
     if (g.fluid) this.fluid(x, x0, x1, top + c.vh + 20);
+    g.ex.drawFront(x, x0, x1, top);
     // treino: seta verde pulando sobre o lugar seguro (presa na borda se estiver fora da tela)
     if (g.safe) this.safeArrow(x, g.safe.x, g.safe.y, x0, x1, g.time);
     // fantasminhas por cima de tudo
@@ -595,7 +625,9 @@ export class Drawer {
       }
       if (s.kind === 'ball' || s.kind === 'gust') {
         if (!s.live) continue;
-        if (s.kind === 'ball') this.snowball(x, s.x, s.ty, s.r, s.x * 0.05);
+        const bs = g.sc.tune?.ball;
+        if (s.kind === 'ball' && (bs === 'bowling' || bs === 'boulder')) this.bigBall(x, s.x, s.ty, s.r, s.x / s.r, bs);
+        else if (s.kind === 'ball') this.snowball(x, s.x, s.ty, s.r, s.x * 0.05);
         else this.plank(x, s.x, s.ty, g.time * 9 * Math.sign(s.vx));
         continue;
       }
@@ -617,7 +649,9 @@ export class Drawer {
       const k = 1 - s.t / (s.T * 0.75);
       const px = s.sx + (s.x - s.sx) * k;
       const py = s.sy + (s.ty - s.sy) * k - (s.kind === 'bomb' ? Math.sin(k * Math.PI) * 240 : 0);
-      this.rock(x, px, py, s.kind === 'rock' ? 11 : s.kind === 'bomb' ? 12 : 15, s.kind !== 'rock', vis);
+      const sk = s.kind === 'meteor' && !g.finale ? g.sc.tune?.strike : undefined;
+      if (sk && sk !== 'meteor') this.skinned(x, sk, px, py, s.r, vis, g.time);
+      else this.rock(x, px, py, s.kind === 'rock' ? 11 : s.kind === 'bomb' ? 12 : 15 * Math.max(0.8, Math.min(1.6, s.r / 40)), s.kind !== 'rock', vis);
     }
 
     // meteoro gigante
@@ -655,12 +689,15 @@ export class Drawer {
       x.fill();
     }
 
+    g.ex.drawMeters(x, x0, x1);
+
     // tela
     x.setTransform(1, 0, 0, 1, 0, 0);
     if (g.night) {
       x.fillStyle = 'rgba(12,14,48,0.42)';
       x.fillRect(0, 0, cw, ch);
     }
+    g.ex.drawScreen(x, cw, ch, ((g.me.ghost ? g.me.gx : g.me.x) - left) * ps, ((g.me.ghost ? g.me.gy : g.me.y) - 14 - top) * ps, ps);
     // cinzas do vulcão / areia: tela escurece aos poucos (o seu Bloop continua visível: brilho em volta)
     if (g.haze > 0.02 || g.gust.vis > 0.02) {
       x.fillStyle = g.gust.vis > g.haze ? `rgba(196,140,80,${g.gust.vis})` : `rgba(58,46,48,${g.haze})`;
@@ -1054,6 +1091,162 @@ export class Drawer {
   }
 
   /** destroço voando (tábua girando) */
+  /** objetos que caem do céu (catálogo): granizo, bala, melancia, piano, estrela */
+  private skinned(x: CanvasRenderingContext2D, sk: string, px: number, py: number, r: number, a: number, time: number): void {
+    x.globalAlpha = a;
+    x.save();
+    x.translate(px, py);
+    const s = Math.max(7, r * 0.42);
+    if (sk === 'hail') {
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.arc(0, 0, s * 0.62 + 2, 0, TAU);
+      x.fill();
+      x.fillStyle = '#e8f6ff';
+      x.beginPath();
+      x.arc(0, 0, s * 0.62, 0, TAU);
+      x.fill();
+      x.fillStyle = '#ffffff';
+      x.beginPath();
+      x.arc(-s * 0.2, -s * 0.2, s * 0.22, 0, TAU);
+      x.fill();
+    } else if (sk === 'candy') {
+      x.rotate(time * 4);
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.moveTo(-s * 1.7, -s * 0.7);
+      x.lineTo(-s * 0.8, 0);
+      x.lineTo(-s * 1.7, s * 0.7);
+      x.moveTo(s * 1.7, -s * 0.7);
+      x.lineTo(s * 0.8, 0);
+      x.lineTo(s * 1.7, s * 0.7);
+      x.fill();
+      x.fillStyle = '#ff9ad5';
+      x.beginPath();
+      x.moveTo(-s * 1.5, -s * 0.5);
+      x.lineTo(-s * 0.8, 0);
+      x.lineTo(-s * 1.5, s * 0.5);
+      x.moveTo(s * 1.5, -s * 0.5);
+      x.lineTo(s * 0.8, 0);
+      x.lineTo(s * 1.5, s * 0.5);
+      x.fill();
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.arc(0, 0, s + 2, 0, TAU);
+      x.fill();
+      x.fillStyle = '#ff3d8b';
+      x.beginPath();
+      x.arc(0, 0, s, 0, TAU);
+      x.fill();
+      x.strokeStyle = '#fff';
+      x.lineWidth = s * 0.25;
+      x.beginPath();
+      x.arc(0, 0, s * 0.55, 0, Math.PI * 1.3);
+      x.stroke();
+    } else if (sk === 'melon') {
+      x.rotate(time * 2);
+      x.fillStyle = '#2a0b5c';
+      x.beginPath();
+      x.ellipse(0, 0, s * 1.35 + 2, s + 2, 0, 0, TAU);
+      x.fill();
+      x.fillStyle = '#3fbf5a';
+      x.beginPath();
+      x.ellipse(0, 0, s * 1.35, s, 0, 0, TAU);
+      x.fill();
+      x.strokeStyle = '#1f7a35';
+      x.lineWidth = s * 0.22;
+      for (const o of [-0.5, 0, 0.5]) {
+        x.beginPath();
+        x.ellipse(0, 0, s * 1.3 * Math.max(0.15, 1 - Math.abs(o) * 1.5), s, 0, -Math.PI / 2, Math.PI / 2, o < 0);
+        x.stroke();
+      }
+    } else if (sk === 'piano') {
+      const w = s * 2.6;
+      const h = s * 1.5;
+      x.rotate(Math.sin(time * 3) * 0.2);
+      x.fillStyle = '#2a0b5c';
+      roundRect(x, -w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 6);
+      x.fill();
+      x.fillStyle = '#1b1b2c';
+      roundRect(x, -w / 2, -h / 2, w, h, 5);
+      x.fill();
+      x.fillStyle = '#fff';
+      x.fillRect(-w / 2 + 4, h * 0.05, w - 8, h * 0.3);
+      x.fillStyle = '#1b1b2c';
+      for (let i = 1; i < 8; i++) x.fillRect(-w / 2 + 4 + (i * (w - 8)) / 8 - 1, h * 0.05, 2.4, h * 0.18);
+      x.fillStyle = '#3a3a5a';
+      x.fillRect(-w / 2 + 6, h / 2, 4, h * 0.35);
+      x.fillRect(w / 2 - 10, h / 2, 4, h * 0.35);
+    } else {
+      // estrela cadente
+      x.rotate(time * 3);
+      x.fillStyle = '#2a0b5c';
+      this.star(x, s * 1.25 + 3);
+      x.fill();
+      x.fillStyle = '#ffe14d';
+      this.star(x, s * 1.25);
+      x.fill();
+      x.fillStyle = '#fff6b0';
+      this.star(x, s * 0.6);
+      x.fill();
+    }
+    x.restore();
+    x.globalAlpha = 1;
+  }
+  private star(x: CanvasRenderingContext2D, r: number): void {
+    x.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU - Math.PI / 2;
+      const rr = i % 2 ? r * 0.45 : r;
+      if (i) x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      else x.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    x.closePath();
+  }
+  /** bola de boliche / pedregulho rolando */
+  private bigBall(x: CanvasRenderingContext2D, px: number, py: number, r: number, a: number, k: string): void {
+    x.save();
+    x.translate(px, py);
+    x.fillStyle = '#2a0b5c';
+    x.beginPath();
+    x.arc(0, 0, r + 3, 0, TAU);
+    x.fill();
+    const gr = x.createRadialGradient(-r * 0.4, -r * 0.4, r * 0.1, 0, 0, r);
+    if (k === 'bowling') {
+      gr.addColorStop(0, '#9aa6ff');
+      gr.addColorStop(0.5, '#4a4ad8');
+      gr.addColorStop(1, '#1e1a7a');
+    } else {
+      gr.addColorStop(0, '#c8b8a0');
+      gr.addColorStop(0.6, '#8a7a68');
+      gr.addColorStop(1, '#4a3e34');
+    }
+    x.fillStyle = gr;
+    x.beginPath();
+    x.arc(0, 0, r, 0, TAU);
+    x.fill();
+    x.rotate(a);
+    x.fillStyle = k === 'bowling' ? '#120e40' : 'rgba(60,46,36,.6)';
+    if (k === 'bowling') {
+      for (const [hx, hy] of [
+        [-0.25, -0.35],
+        [0.12, -0.42],
+        [-0.05, -0.12],
+      ]) {
+        x.beginPath();
+        x.arc(hx * r, hy * r, r * 0.12, 0, TAU);
+        x.fill();
+      }
+    } else {
+      for (let i = 0; i < 4; i++) {
+        x.beginPath();
+        x.arc(Math.cos(i * 1.7) * r * 0.5, Math.sin(i * 2.3) * r * 0.5, r * (0.12 + (i % 2) * 0.08), 0, TAU);
+        x.fill();
+      }
+    }
+    x.restore();
+  }
+
   private plank(x: CanvasRenderingContext2D, px: number, py: number, a: number): void {
     x.save();
     x.translate(px, py);
@@ -1227,7 +1420,11 @@ export class Drawer {
     const f = g.fluid!;
     const s = g.sim;
     if (!s) return;
-    const kind = f.kind;
+    const pk = f.kind;
+    const ts = g.sc.tune?.fluid;
+    // pele (catálogo) por cima da física: gelatina/chocolate/espuma são "água"; lama é "neve"
+    const sk: FSkin = ts && ((pk === 'water' && (ts === 'jelly' || ts === 'choco' || ts === 'bubble')) || (pk === 'snow' && ts === 'mud')) ? ts : pk;
+    const kind: 'water' | 'lava' | 'goo' | 'snow' = pk === 'water' || pk === 'goo' ? pk : pk;
     const t = g.time;
     const tier = g.tier;
     const dx = s.dx;
@@ -1266,13 +1463,14 @@ export class Drawer {
       x.closePath();
     }
     if (!any) return;
-    if (!this.fGrad || this.fGradKind !== kind) {
+    if (!this.fGrad || this.fGradKind !== sk) {
       // degradê em coordenadas 0..1 (escalado na hora de pintar): criado uma vez por tipo
       const gr = x.createLinearGradient(0, 0, 0, 1);
-      for (const [o, c] of FLUID_GRAD[kind]) gr.addColorStop(o, c);
+      for (const [o, c] of FLUID_GRAD[sk]) gr.addColorStop(o, c);
       this.fGrad = gr;
-      this.fGradKind = kind;
+      this.fGradKind = sk;
     }
+    const SC = FSURF[sk];
     const lvl = Math.max(26, f.level);
     x.save();
     x.translate(0, GROUND_Y - lvl - 6);
@@ -1302,7 +1500,7 @@ export class Drawer {
         x.moveTo(px - len * 0.5, ya + depth + wob);
         x.quadraticCurveTo(px, ym + depth - 2 + wob, px + len * 0.5, yb + depth + wob);
       }
-      x.strokeStyle = kind === 'water' ? 'rgba(220,245,255,.28)' : 'rgba(240,255,200,.22)';
+      x.strokeStyle = SC[3];
       x.lineWidth = 2.2;
       x.lineCap = 'round';
       x.stroke();
@@ -1314,11 +1512,11 @@ export class Drawer {
     if (kind === 'water' || kind === 'goo') {
       // faixa de espuma macia logo abaixo + linha clara na superfície
       this.surfPath(x, i0, i1, 4);
-      x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.3)' : 'rgba(230,255,170,.3)';
-      x.lineWidth = 7;
+      x.strokeStyle = SC[1];
+      x.lineWidth = sk === 'bubble' ? 12 : 7;
       x.stroke();
       this.surfPath(x, i0, i1, 0);
-      x.strokeStyle = kind === 'water' ? 'rgba(245,253,255,.95)' : '#e8ffa0';
+      x.strokeStyle = SC[0];
       x.lineWidth = 2.6;
       x.stroke();
       // carneirinhos: espuma onde a água mexe (crista, respingos, frente)
@@ -1340,8 +1538,27 @@ export class Drawer {
         x.moveTo(px + r, py);
         x.arc(px, py, r, 0, TAU);
       }
-      x.fillStyle = kind === 'water' ? 'rgba(255,255,255,.88)' : 'rgba(225,255,160,.85)';
+      x.fillStyle = SC[2];
       x.fill();
+      if (sk === 'bubble') {
+        // espuma: bolhas grandes na superfície
+        x.beginPath();
+        for (let i = i0 - (i0 % 3); i <= i1; i += 3) {
+          if (i < 0 || !wet[i]) continue;
+          const h = Math.sin(i * 7.31) * 43758.5453;
+          const j = h - Math.floor(h);
+          const r = 5 + j * 9;
+          const px = sx0 + i * dx;
+          const py = GROUND_Y - rest[i] - dd[i] + 2 + Math.sin(t * 2 + i) * 2;
+          x.moveTo(px + r, py);
+          x.arc(px, py, r, 0, TAU);
+        }
+        x.fillStyle = 'rgba(255,255,255,.55)';
+        x.fill();
+        x.strokeStyle = 'rgba(160,210,255,.7)';
+        x.lineWidth = 1.2;
+        x.stroke();
+      }
     } else if (kind === 'lava') {
       this.surfPath(x, i0, i1, 0);
       if (g.q.glows) {
@@ -1372,7 +1589,7 @@ export class Drawer {
     } else {
       // neve: superfície granulosa (montinhos) + sombra azulada logo abaixo
       this.surfPath(x, i0, i1, 5);
-      x.strokeStyle = 'rgba(150,175,215,.45)';
+      x.strokeStyle = sk === 'mud' ? 'rgba(60,36,20,.5)' : 'rgba(150,175,215,.45)';
       x.lineWidth = 6;
       x.stroke();
       const st = tier === 0 ? 3 : 2;
@@ -1387,7 +1604,7 @@ export class Drawer {
         x.moveTo(px + r, py);
         x.arc(px, py, r, 0, TAU);
       }
-      x.fillStyle = '#ffffff';
+      x.fillStyle = sk === 'mud' ? '#a07a52' : '#ffffff';
       x.fill();
     }
 
@@ -1406,7 +1623,7 @@ export class Drawer {
         x.fillStyle = 'rgba(255,215,90,.8)';
         x.fill();
       } else {
-        x.strokeStyle = kind === 'water' ? 'rgba(235,250,255,.7)' : 'rgba(235,255,180,.75)';
+        x.strokeStyle = sk === 'goo' ? 'rgba(235,255,180,.75)' : sk === 'choco' ? 'rgba(220,170,120,.7)' : 'rgba(235,250,255,.7)';
         x.lineWidth = 1.2;
         x.stroke();
       }
@@ -1436,7 +1653,7 @@ export class Drawer {
           x.lineTo(fx, fy < 5000 ? fy : yc + 20 * C);
           x.lineTo(xc, yc + 6);
           x.closePath();
-          x.fillStyle = 'rgba(70,170,250,.88)';
+          x.fillStyle = sk === 'jelly' ? 'rgba(255,120,200,.9)' : sk === 'choco' ? 'rgba(140,85,48,.95)' : sk === 'bubble' ? 'rgba(230,245,255,.92)' : 'rgba(70,170,250,.88)';
           x.fill();
           // tubo (sombra dentro do enrolado)
           x.beginPath();
@@ -1474,7 +1691,7 @@ export class Drawer {
             x.moveTo(px + r, py);
             x.arc(px, py, r, 0, TAU);
           }
-          x.fillStyle = 'rgba(255,255,255,.92)';
+          x.fillStyle = sk === 'mud' ? 'rgba(140,100,64,.95)' : 'rgba(255,255,255,.92)';
           x.fill();
         }
       }

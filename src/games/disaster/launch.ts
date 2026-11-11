@@ -11,6 +11,7 @@ import { detectInitialTier } from '../../core/quality';
 import { dzIcon } from './icons';
 import { partyRoomFor } from '../../party/contract';
 import { loadMode, MODE_KEY as DIFF_KEY, type DzMode } from './tuning';
+import { openPedia, pediaCount } from './roulette';
 
 const MODE_KEY = 'bo-disaster-mode';
 
@@ -27,6 +28,10 @@ const CSS = `
 .dz-pick .dif{display:flex;gap:6px;background:rgba(30,15,70,.6);border-radius:16px;padding:4px}
 .dz-pick .dif button{font:inherit;font-weight:700;font-size:15px;color:#fff;background:transparent;border:0;border-radius:12px;padding:6px 12px;cursor:pointer}
 .dz-pick .dif button.on{background:linear-gradient(180deg,#ffe680,#ffb03a);color:#2a0b5c;box-shadow:0 3px 0 #2a0b5c}
+.dz-pick .ped{font:inherit;font-weight:700;color:#2a0b5c;background:linear-gradient(180deg,#d9f6ff,#8fd3ff);border:3px solid #2a0b5c;border-radius:16px;box-shadow:0 4px 0 #2a0b5c;padding:6px 14px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.dz-pick .ped .ico{width:30px;height:30px}
+.dz-pick .ped small{font-weight:600;opacity:.75}
+.dz-pick .bot{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
 .dz-pick .out{font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 16px;display:flex;align-items:center;gap:6px;cursor:pointer}
 @media (orientation:landscape) and (max-height:500px){.dz-pick .m{min-height:120px}.dz-pick h2{font-size:22px}}
 `;
@@ -134,7 +139,8 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
     <div class="dif" role="radiogroup" aria-label="${t('dz.diff', 'Dificuldade')}">
       <button data-d="facil">${t('dz.diff.easy', 'Fácil')}</button><button data-d="normal">${t('dz.diff.normal', 'Normal')}</button><button data-d="dificil">${t('dz.diff.hard', 'Difícil')}</button>
     </div>
-    <button class="out">${icon('home', { size: 22 })}${t('dz.exit', 'Sair')}</button>`;
+    <div class="bot"><button class="ped">${dzIcon('book', 30)}<span>${t('dz.pedia', 'Desastrepédia')} <small>${pediaCount().seen}/${pediaCount().total}</small></span></button>
+    <button class="out">${icon('home', { size: 22 })}${t('dz.exit', 'Sair')}</button></div>`;
   root.appendChild(pick);
   // dificuldade (lembrada; vale no 2D e no 3D — docs/DISASTER-DESIGN.md §3)
   const paint = (m: DzMode) => pick!.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => {
@@ -160,6 +166,14 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
       void start(b.dataset.m === '3d' && gl ? '3d' : '2d');
     }),
   );
+  pick.querySelector('.ped')!.addEventListener('click', () => {
+    audio.click();
+    openPedia(root, () => {
+      const c = pediaCount();
+      const sm = pick?.querySelector('.ped small');
+      if (sm) sm.textContent = c.seen + '/' + c.total;
+    });
+  });
   pick.querySelector('.out')!.addEventListener('click', () => {
     audio.click();
     exit();

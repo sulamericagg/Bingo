@@ -1,11 +1,13 @@
-// Banco de sobrevivência do "Sobreviva aos Desastres" (2D): roda rodadas inteiras sem desenhar,
-// com tempo simulado, e mede quantos sobrevivem por desastre e por estratégia:
-//   parado  = o seu Bloop sem nenhum comando (fica onde nasceu)
-//   óbvio   = bots com habilidade máxima, sem preguiça (vão direto ao "lugar seguro" óbvio)
-//   médio   = bots com habilidade 0,6 (aproximação de uma criança média)
-// Uso: NODE_PATH=$(npm root -g) node scripts/dev/disaster-bench.mjs [--port 5287] [--rounds 3] [--df 1] [--only tsunami,vulcao] [--mode normal]
-// Precisa de um vite rodando (npx vite --port 5287). Saída: tabela + JSON.
+// Banco de sobrevivência do "Sobreviva aos Desastres" (2D) sobre o CATÁLOGO (catalog.ts): roda rodadas
+// inteiras sem desenhar, com tempo simulado, e mede quantos sobrevivem por desastre e por estratégia:
+//   parado      = o seu Bloop sem nenhum comando (fica onde nasceu)
+//   bot-esperto = bots com habilidade máxima, sem preguiça
+//   bot-médio   = bots com habilidade 0,6 (aproximação de uma criança média) — alvo: 40–70% no Normal
+// Uso: NODE_PATH=$(npm root -g) node scripts/dev/disaster-bench.mjs [--port 5291] [--rounds 2] [--df 1]
+//        [--set base|all|mods|combos] [--only tsunami,c_tornado_raios] [--mode normal] [--why] [--json out.json]
+// Precisa de um vite rodando (npx vite --port 5291).
 import { createRequire } from 'node:module';
+import { writeFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -13,12 +15,14 @@ const arg = (k, d) => {
   const i = process.argv.indexOf('--' + k);
   return i > 0 ? process.argv[i + 1] : d;
 };
-const PORT = Number(arg('port', 5287));
-const ROUNDS = Number(arg('rounds', 3));
+const PORT = Number(arg('port', 5291));
+const ROUNDS = Number(arg('rounds', 2));
 const DF = Number(arg('df', 1));
 const ONLY = arg('only', '');
+const SET = arg('set', 'base');
 const MODE = arg('mode', 'normal');
 const STREAK = Number(arg('streak', 0));
+const JSON_OUT = arg('json', '');
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 1 });
@@ -27,6 +31,7 @@ await ctx.addInitScript((mode) => {
     localStorage.setItem('bo-quality-detect', JSON.stringify({ v: 'x', tier: 1, score: 0, cap: 3 }));
     localStorage.setItem('bo-disaster-diff', mode);
     localStorage.setItem('bo-disaster', JSON.stringify({ next: 1, best: 0, survived: 0, played: 99 }));
+    localStorage.setItem('bo-dz-pedia', JSON.stringify({ seen: {}, deck: [], recent: [], rounds: 30 }));
   } catch {
     /* */
   }
@@ -37,122 +42,74 @@ await p.goto(`http://localhost:${PORT}/scripts/dev/disaster.html?s=1`);
 await p.waitForFunction(() => document.title === 'ready', null, { timeout: 60000 });
 
 const res = await p.evaluate(
-  async ({ ROUNDS, DF, ONLY, STREAK }) => {
-    const S = await import('/src/games/disaster/scenarios.ts');
+  async ({ ROUNDS, DF, ONLY, STREAK, SET }) => {
+    const C = await import('/src/games/disaster/catalog.ts');
     const g = window.dz;
     g.pause();
-    const list = S.scenarios();
-    const all = Object.keys(S.DISASTERS);
-    const ds = ONLY ? ONLY.split(',') : all;
+    g.benchStreak = STREAK;
+    const all = C.entries();
+    let list = all;
+    if (ONLY) list = all.filter((e) => ONLY.split(',').includes(e.key));
+    else if (SET === 'base') list = all.filter((e) => e.hz.length === 1 && !e.mods.length);
+    else if (SET === 'mods') list = all.filter((e) => e.hz.length === 1 && e.mods.length);
+    else if (SET === 'combos') list = all.filter((e) => e.hz.length > 1);
     const out = {};
-    // estratégia "óbvia" para desastres de fluido: subir na torre mais alta (escada) e ficar lá
     const FLUIDS = ['tsunami', 'enchente', 'acido', 'vulcao', 'avalanche'];
-    const orig = g.plan.bind(g);
-    g.plan = (pl, known) => {
-      orig(pl, known);
-      if (pl.tag !== 'safe' || !known || !FLUIDS.includes(known) || g.finale) return;
-      const w = g.world;
-      let best = null;
-      for (const l of w.ladders) {
-        const lb = l.body >= 0 ? w.bodies[l.body] : null;
-        if (lb && (!lb.alive || lb.awake || lb.tip)) continue;
-        const top = lb ? lb.y : l.top;
-        if (!best || top < best.top) best = { x: lb ? lb.x : l.x, top };
-      }
-      if (!best) return;
-      const b = pl.bot;
-      if (pl.y <= best.top + 6) {
-        // já em cima: anda até o meio do chapéu da torre
-        const cap = w.bodies.find((o) => o.alive && o.kind === 'cap' && Math.abs(o.x + o.w - (best.x - 2) - 8) < 20);
-        b.gx = cap ? cap.x + cap.w / 2 : best.x - 20;
-        b.gy = best.top;
-      } else {
-        b.gx = best.x + 8;
-        b.gy = best.top;
-      }
-    };
-    for (const d of ds) {
-      // mesmos 4 mapas para todos (antes/depois comparáveis): vila, praia, cidade, montanha
-      const maps = [0, 1, 2, 5].map((i) => S.MAPS[i]);
-      const st = { why: {}, rounds: 0, still: 0, stillN: 0, safe: 0, safeN: 0, spot: 0, spotN: 0, top: 0, topN: 0, avg: 0, avgN: 0, outT: [] };
-      for (const map of maps) {
+    for (const e of list) {
+      const maps = (e.maps ?? C.HAZARDS[e.hz[0]].maps).slice(0, 2);
+      const st = { why: {}, rounds: 0, still: 0, stillN: 0, safe: 0, safeN: 0, avg: 0, avgN: 0, outT: [] };
+      for (const mapId of maps) {
         for (let k = 0; k < ROUNDS; k++) {
-          list[0] = { n: 1, seed: 1000 + map.id.length * 131 + k * 977 + d.length * 17, map, disasters: [d], mod: 'none', difficulty: DF };
-          g.progress.next = 1;
+          g.forced = C.buildScenario(e, 1000 + mapId.length * 131 + k * 977 + e.n * 17, DF, mapId);
           g.progress.played = 99;
           g.streak = STREAK;
-          if ('benchRounds' in g) g.benchRounds = STREAK;
-          // (a) rodada com os bots (você parado + 3 espertos + 4 médios); (b) mesma rodada só com estátuas
-          //     nos lugares altos (separado: estátuas paradas fazem plataformas cederem e atraem golpes)
-          for (const pass of ['bots', 'spots']) {
-            g.startRound();
-            for (let i = 0; i < g.players.length; i++) {
-              const pl = g.players[i];
-              if (i === 0) {
-                pl.bot = null;
-                continue;
-              }
-              if (!pl.bot) continue;
-              if (i <= 3) {
-                pl.bot.skill = 1;
-                pl.bot.lazy = 0;
-                pl.tag = 'safe';
-              } else {
-                pl.bot.skill = 0.6;
-                pl.bot.lazy = 0.4;
-                pl.tag = 'avg';
+          g.startRound();
+          for (let i = 0; i < g.players.length; i++) {
+            const pl = g.players[i];
+            if (i === 0) {
+              pl.bot = null;
+              continue;
+            }
+            if (!pl.bot) continue;
+            if (i <= 3) {
+              pl.bot.skill = 1;
+              pl.bot.lazy = 0;
+              pl.tag = 'safe';
+            } else {
+              pl.bot.skill = 0.6;
+              pl.bot.lazy = 0.4;
+              pl.tag = 'avg';
+            }
+          }
+          let guard = 0;
+          while (g.phase !== 'end' && guard++ < 60 * 200) g.update(1 / 60);
+          st.rounds++;
+          for (const pl of g.players) {
+            if (pl.self) {
+              st.stillN++;
+              st.still += pl.alive ? 1 : 0;
+            } else if (pl.tag === 'safe') {
+              st.safeN++;
+              st.safe += pl.alive ? 1 : 0;
+            } else if (pl.tag === 'avg') {
+              st.avgN++;
+              st.avg += pl.alive ? 1 : 0;
+              if (!pl.alive) {
+                const w = (pl.why || '?').split(' ')[0];
+                st.why[w] = (st.why[w] || 0) + 1;
               }
             }
-            if (pass === 'spots') {
-              if (g.finale) continue;
-              g.players.length = 1;
-              const w = g.world;
-              const spots = [];
-              for (const so of w.solids) if (so.oneWay) spots.push({ x: so.x + so.w / 2, y: so.y, k: so.kind });
-              for (const bd of w.bodies) if (bd.kind === 'cap' || bd.kind === 'roof') spots.push({ x: bd.x + bd.w / 2, y: bd.y, k: bd.kind });
-              for (const sp of spots) {
-                const me = g.players[0];
-                g.players.push({ ...me, id: 'spot', self: false, bot: null, x: sp.x, y: sp.y, vx: 0, vy: 0, tag: 'spot', alive: true, ghost: false, input: { l: false, r: false, j: false, u: false }, sprite: null });
-              }
-              let top = null;
-              for (const pl of g.players) if (pl.tag === 'spot' && (!top || pl.y < top.y)) top = pl;
-              if (top) top.top = true;
-            }
-            let guard = 0;
-            while (g.phase !== 'end' && guard++ < 60 * 200) g.update(1 / 60);
-            if (pass === 'bots') st.rounds++;
-            for (const pl of g.players) {
-              if (pl.self) {
-                if (pass !== 'bots') continue;
-                st.stillN++;
-                st.still += pl.alive ? 1 : 0;
-              } else if (pl.tag === 'safe') {
-                st.safeN++;
-                st.safe += pl.alive ? 1 : 0;
-              } else if (pl.tag === 'spot') {
-                st.spotN++;
-                st.spot += pl.alive ? 1 : 0;
-                if (pl.top) {
-                  st.topN++;
-                  st.top += pl.alive ? 1 : 0;
-                }
-                continue;
-              } else if (pl.tag === 'avg') {
-                st.avgN++;
-                st.avg += pl.alive ? 1 : 0;
-                if (!pl.alive) st.why[pl.why || '?'] = (st.why[pl.why || '?'] || 0) + 1;
-              }
-              if (!pl.alive) st.outT.push(Math.round(pl.outT || 0));
-            }
+            if (!pl.alive) st.outT.push(Math.round(pl.outT || 0));
           }
         }
       }
-      out[d] = {
+      void FLUIDS;
+      out[e.key] = {
+        n: e.n,
+        name: e.name(),
         rounds: st.rounds,
         still: Math.round((100 * st.still) / Math.max(1, st.stillN)),
         safe: Math.round((100 * st.safe) / Math.max(1, st.safeN)),
-        top: Math.round((100 * st.top) / Math.max(1, st.topN)),
-        spot: Math.round((100 * st.spot) / Math.max(1, st.spotN)),
         avg: Math.round((100 * st.avg) / Math.max(1, st.avgN)),
         medOut: st.outT.sort((a, b) => a - b)[st.outT.length >> 1] ?? null,
         why: st.why,
@@ -160,11 +117,14 @@ const res = await p.evaluate(
     }
     return out;
   },
-  { ROUNDS, DF, ONLY, STREAK },
+  { ROUNDS, DF, ONLY, STREAK, SET },
 );
-console.log(`df=${DF} mode=${MODE} streak=${STREAK} rounds/map=${ROUNDS}`);
-console.log('desastre      rodadas  parado  mais-alto  lugar-alto  bot-esperto  bot-médio  (s até cair, mediana)');
-for (const [d, r] of Object.entries(res)) console.log(`${d.padEnd(13)} ${String(r.rounds).padStart(6)} ${String(r.still).padStart(6)}% ${String(r.top).padStart(8)}% ${String(r.spot).padStart(9)}% ${String(r.safe).padStart(10)}% ${String(r.avg).padStart(9)}%   ${r.medOut ?? '-'}`);
-if (process.argv.includes('--why')) for (const [d, r] of Object.entries(res)) console.log(d.padEnd(12), JSON.stringify(r.why));
-else console.log(JSON.stringify(res));
+console.log(`df=${DF} mode=${MODE} streak=${STREAK} rounds/map=${ROUNDS} set=${ONLY || SET}`);
+console.log('#   desastre                               rodadas parado esperto  médio  (s até cair)  motivo');
+for (const [k, r] of Object.entries(res)) {
+  const flag = r.avg < 40 ? ' <' : r.avg > 70 ? ' >' : '  ';
+  const why = Object.entries(r.why).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([w, n]) => w + ':' + n).join(' ');
+  console.log(`${String(r.n).padStart(3)} ${(k + ' ' + r.name).slice(0, 38).padEnd(38)} ${String(r.rounds).padStart(5)} ${String(r.still).padStart(5)}% ${String(r.safe).padStart(6)}% ${String(r.avg).padStart(5)}%${flag} ${String(r.medOut ?? '-').padStart(6)}   ${why}`);
+}
+if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify(res, null, 1));
 await browser.close();

@@ -32,6 +32,15 @@ if (qs.get('showcase')) {
 } else {
   const { DisasterGame } = await import('../../src/games/disaster/game');
   const g = new DisasterGame(app, () => (location.href = location.pathname), { scenario: Number(qs.get('s')) || undefined });
+  if (qs.get('e')) {
+    // ?e=chave do catálogo (Desastrepédia): força o desastre da próxima rodada
+    const C = await import('../../src/games/disaster/catalog');
+    const e = C.entryByKey(qs.get('e')!);
+    if (e) {
+      g.forced = C.buildScenario(e, 1000 + e.n * 77, 2);
+      g.startRound();
+    }
+  }
   (window as any).dz = g;
   if (qs.get('auto')) (g as any).autoMe = true;
   document.title = 'ready';
