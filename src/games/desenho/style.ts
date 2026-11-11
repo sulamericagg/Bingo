@@ -217,6 +217,7 @@ const CSS = `
   .dv-sheet .dv-sep{width:2px;height:auto;margin:4px 2px}
   .dv-sheet .dv-side{width:min(100%,420px);order:2}
   .dv-sheet .dv-stage{order:1}
+  .dv-sheet .dv-extras{display:flex!important;min-height:34px}
 }
 `;
 let done = false;

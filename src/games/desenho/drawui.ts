@@ -123,7 +123,15 @@ export class DrawUI {
     // folha quadrada que cabe entre as colunas
     const r = this.el.getBoundingClientRect();
     const land = r.width >= r.height;
-    const side = land ? Math.min(r.height - 20, r.width - 360) : Math.min(r.width - 20, r.height - 330);
+    let side: number;
+    if (land) side = Math.min(r.height - 20, r.width - 360);
+    else {
+      // retrato: o papel fica com o que sobra depois das ferramentas (o BUM nunca sai da tela)
+      const cs = getComputedStyle(this.el);
+      const gap = parseFloat(cs.rowGap) || 8;
+      const used = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + this.q<HTMLElement>('.dv-rail').offsetHeight + this.q<HTMLElement>('.dv-side').offsetHeight + gap * 2 + 8;
+      side = Math.min(r.width - 20, r.height - used);
+    }
     this.paper.el.style.width = this.paper.el.style.height = Math.max(180, Math.floor(side)) + 'px';
   }
 
