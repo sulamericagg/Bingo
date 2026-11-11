@@ -438,7 +438,7 @@ async function visit(id: string, party: boolean, f?: FriendInfo): Promise<void> 
   }
   S.ownerId = id;
   S.isOwner = false;
-  S.name = f?.handle ?? '';
+  S.name = f?.handle ?? (await api.friends().catch(() => [])).find((x) => x.id === id)?.handle ?? ''; // grupo/convite: sem FriendInfo
   S.design = d;
   S.mess = st.mess.slice();
   S.role = roleFor(d, S.myId, false);

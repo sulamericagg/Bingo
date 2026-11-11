@@ -141,6 +141,7 @@ function render(): void {
     slots.appendChild(add);
     if (!v) break;
   }
+  root.classList.toggle('solo', !v);
   const side = root.querySelector('.pl-side') as HTMLElement;
   side.hidden = !v;
   if (v) {

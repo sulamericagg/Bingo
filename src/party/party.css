@@ -27,7 +27,9 @@
 .pl-unread, .bl-badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #ff3d71; color: #fff; font: 800 11px/18px sans-serif; font-style: normal; text-align: center; }
 @keyframes plBob { 50% { transform: translateY(-4px); } }
 @media (orientation: landscape) and (max-height: 500px) {
-  .pl-lobby { height: 60px; }
+  /* deitado e baixo: o carrossel precisa da altura toda — o saguão flutua no canto (e some quando sozinho) */
+  .pl-lobby { position: absolute !important; left: 6px; bottom: calc(62px + var(--safe-bot, 0px)); height: 60px; margin: 0; z-index: 3 !important; }
+  .pl-lobby.solo { display: none; }
   .pl-slot { width: 54px; height: 60px; }
   .pl-fig, .pl-fig canvas { width: 42px; height: 42px; }
   .pl-bub { bottom: 54px; }
@@ -36,6 +38,7 @@
 /* sino (central de avisos) — fica na barra de cima do hub, ao lado da engrenagem */
 .bl-btn { position: relative; width: 42px; height: 42px; flex: none; border: 0; border-radius: 14px; color: #fff; background: rgba(255, 255, 255, 0.12); display: grid; place-items: center; margin-right: 6px; }
 .bl-btn svg { width: 24px; height: 24px; }
+@media (max-width: 380px) { .bl-btn { width: 36px; height: 36px; margin-right: 4px; } .bl-btn svg { width: 21px; height: 21px; } }
 .bl-btn.ring svg { animation: blRing 0.8s ease 2; transform-origin: 50% 10%; }
 @keyframes blRing { 25% { transform: rotate(14deg); } 75% { transform: rotate(-14deg); } }
 .bl-list .sc-row { align-items: flex-start; }
