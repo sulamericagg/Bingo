@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "音效",
   "lugar.start": "开始",
   "lugar.streak": "连续{n}天",
+  "lugar.streak1": "连续1天",
   "lugar.tagline": "每行、每列、每种颜色一个布鲁普。而且不能挨着！",
   "lugar.toMap": "关卡地图",
   "lugar.toMenu": "菜单",

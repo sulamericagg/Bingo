@@ -33,7 +33,7 @@ const waitFor = async (p, fn, ms = 20000, arg) => {
 };
 
 async function open(ctxOpts, lugarSave) {
-  const ctx = await b.newContext({ ...ctxOpts, hasTouch: true });
+  const ctx = await b.newContext({ ...ctxOpts, hasTouch: true, locale: 'pt-BR' });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => fails.push('pageerror: ' + e));
   p.on('console', (m) => m.type() === 'error' && !/favicon|Failed to load resource|adsbygoogle|net::/.test(m.text()) && console.log('   [console]', m.text().slice(0, 200)));
@@ -41,6 +41,7 @@ async function open(ctxOpts, lugarSave) {
     if (sessionStorage.getItem('lg-init')) return;
     sessionStorage.setItem('lg-init', '1');
     localStorage.setItem('bw-intro', '0');
+    localStorage.setItem('bo-lang', 'pt');
     localStorage.setItem('bw-profile-v1', JSON.stringify({ onboarded: true, nick: 'Teste', handle: '', handleStatus: 'none', beta: false, betaSince: 0 }));
     if (ls) localStorage.setItem('bw-lugar', JSON.stringify(ls));
   }, lugarSave ?? null);

@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "Звуки",
   "lugar.start": "Начать",
   "lugar.streak": "{n} дн. подряд",
+  "lugar.streak1": "1 день подряд",
   "lugar.tagline": "Один Блуп на строку, столбец и цвет. И никаких касаний!",
   "lugar.toMap": "Карта уровней",
   "lugar.toMenu": "Меню",

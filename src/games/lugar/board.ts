@@ -365,7 +365,7 @@ export class Board {
           const tc = document.createElement('canvas');
           tc.width = tc.height = ts;
           const tx = tc.getContext('2d')!;
-          tx.globalAlpha = 0.5;
+          tx.globalAlpha = 0.32;
           drawPattern(tx, g, ts, col.deep);
           p = x.createPattern(tc, 'repeat');
           p?.setTransform(new DOMMatrix().scale(1 / dpr, 1 / dpr).translate(pad * dpr, pad * dpr));
@@ -551,6 +551,15 @@ export class Board {
       x.strokeStyle = `rgba(255,70,100,${0.55 + 0.35 * pulse})`;
       x.lineWidth = Math.max(2, this.cs * 0.06);
       for (const u of this.deadUnits) this.outline(x, this.unitCells(u));
+      // Bloops brigando: anel vermelho pulsando em cada um
+      x.lineWidth = Math.max(2.5, this.cs * 0.07);
+      for (const c of this.conflictCells) {
+        const [cx, cy] = this.cellXY(c);
+        x.strokeStyle = `rgba(255,40,80,${0.6 + 0.4 * pulse})`;
+        x.beginPath();
+        x.arc(cx, cy, this.cs * (0.42 + 0.03 * pulse), 0, TAU);
+        x.stroke();
+      }
     }
 
     // dica: foco

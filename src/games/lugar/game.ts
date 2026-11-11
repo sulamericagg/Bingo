@@ -170,6 +170,16 @@ class LugarGame implements MiniGameHandle {
       }),
     );
   }
+  /** aviso curtinho perto das ferramentas (não cobre os corações nem o tabuleiro) */
+  private toast(text: string, good = false): void {
+    this.el.querySelectorAll('.lg-toast').forEach((e) => e.remove());
+    const d = document.createElement('div');
+    d.className = 'lg-toast' + (good ? ' good' : '');
+    d.innerHTML = icon(good ? 'check' : 'heart', { size: 18 });
+    d.append(text);
+    this.el.appendChild(d);
+    setTimeout(() => d.remove(), 1900);
+  }
   private closeBack(): void {
     this.popBack?.();
     this.popBack = null;
@@ -600,7 +610,7 @@ class LugarGame implements MiniGameHandle {
       const inf = this.infinite();
       if (!inf) this.hearts = Math.max(0, this.hearts - 1);
       this.renderHearts(inf ? -1 : this.hearts);
-      notify(this.hearts > 0 || inf ? t('lugar.wrong', 'Aí não mora Bloop!') : t('lugar.wrongLast', 'Ih, acabaram os corações…'), { kind: 'bad', icon: 'heart', key: 'lg-wrong' });
+      this.toast(this.hearts > 0 || inf ? t('lugar.wrong', 'Aí não mora Bloop!') : t('lugar.wrongLast', 'Ih, acabaram os corações…'));
       this.afterChange();
       if (!inf && this.hearts <= 0) {
         this.running = false;
@@ -1059,7 +1069,7 @@ class LugarGame implements MiniGameHandle {
       <div class="lg-card lg-wincard">
         <div class="lg-wintitle">${title}</div>
         ${this.mode !== 'zen' ? `<div class="lg-stars">${starRow}</div>` : ''}
-        <div class="lg-pstats"><span>${icon('clock', { size: 18 })}${mmss(time)}</span>${coins ? `<span class="lg-coins">${icon('coin', { size: 20 })}+${coins}</span>` : ''}${streak ? `<span>${icon('fire', { size: 18 })}${t('lugar.streak', '{n} dias seguidos', { n: streak })}</span>` : ''}</div>
+        <div class="lg-pstats"><span>${icon('clock', { size: 18 })}${mmss(time)}</span>${coins ? `<span class="lg-coins">${icon('coin', { size: 20 })}+${coins}</span>` : ''}${streak ? `<span>${icon('fire', { size: 18 })}${(streak === 1 ? t('lugar.streak1', '1 dia seguido') : t('lugar.streak', '{n} dias seguidos', { n: streak }))}</span>` : ''}</div>
         ${this.mode === 'daily' && !first ? `<p class="lg-p">${t('lugar.dailyAgain', 'Você já tinha feito o de hoje — esse foi só pela diversão!')}</p>` : ''}
         ${hasNext ? `<button class="lg-btn lg-green lg-big" data-a="next">${icon('play', { size: 24 })}${t('lugar.nextLevel', 'Próxima fase')}</button>` : ''}
         ${this.mode === 'zen' ? `<button class="lg-btn lg-green lg-big" data-a="zen">${icon('sparkle', { size: 24 })}${t('lugar.another', 'Outro tabuleiro')}</button>` : ''}

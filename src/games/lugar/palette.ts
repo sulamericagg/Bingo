@@ -56,9 +56,9 @@ export function drawPattern(x: CanvasRenderingContext2D, id: number, s: number, 
       x.quadraticCurveTo(s * 0.75, h + s * 0.2, s, h);
       x.stroke();
       break;
-    case 3: // cruzinhas
-      line(h - s * 0.12, h, h + s * 0.12, h);
-      line(h, h - s * 0.12, h, h + s * 0.12);
+    case 3: // quadradinhos
+      x.fillRect(s * 0.2, s * 0.2, s * 0.14, s * 0.14);
+      x.fillRect(s * 0.66, s * 0.66, s * 0.14, s * 0.14);
       break;
     case 4: // anéis
       x.beginPath();

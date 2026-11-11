@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "Sesler",
   "lugar.start": "Başla",
   "lugar.streak": "{n} gün üst üste",
+  "lugar.streak1": "1 gün üst üste",
   "lugar.tagline": "Her satır, sütun ve renkte bir Bloop. Ve değmek yok!",
   "lugar.toMap": "Seviye haritası",
   "lugar.toMenu": "Menü",

@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "サウンド",
   "lugar.start": "スタート",
   "lugar.streak": "{n}日連続",
+  "lugar.streak1": "1日連続",
   "lugar.tagline": "各行・各列・各色にブループひとり。くっつくのはなし!",
   "lugar.toMap": "ステージマップ",
   "lugar.toMenu": "メニュー",

@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "Sonidos",
   "lugar.start": "Empezar",
   "lugar.streak": "{n} días seguidos",
+  "lugar.streak1": "1 día seguido",
   "lugar.tagline": "Un Bloop por fila, columna y color. ¡Y sin tocarse!",
   "lugar.toMap": "Mapa de niveles",
   "lugar.toMenu": "Menú",

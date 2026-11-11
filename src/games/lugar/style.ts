@@ -47,6 +47,10 @@ const CSS = `
 .lg-m1{background:linear-gradient(140deg,#ff6fae,#ff9a5c)}
 .lg-m2{background:linear-gradient(140deg,#3ccfc4,#5b7cff)}
 .lg-home .lg-row{width:min(440px,100%)}
+.lg-home>:first-child{margin-top:auto}.lg-home>:last-child{margin-bottom:auto}
+.lg-toast{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);transform:translateX(-50%);z-index:14;display:flex;align-items:center;gap:6px;padding:7px 16px 7px 10px;border-radius:999px;background:rgba(16,5,44,.9);border:2.5px solid #ff6b8a;font-weight:700;font-size:15px;white-space:nowrap;pointer-events:none;animation:lgToast 1.8s ease forwards}
+.lg-toast.good{border-color:#4fd67a}
+@keyframes lgToast{0%{opacity:0;transform:translate(-50%,12px) scale(.9)}12%,78%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-6px)}}
 .lg-home .lg-ghost{width:min(440px,100%)}
 .lg-card{width:min(440px,100%);background:linear-gradient(#4a2fa0,#2e1a72);border:3px solid #1d0b48;border-radius:24px;padding:16px;box-shadow:0 7px 0 #12053a,inset 0 2px 0 rgba(255,255,255,.18);display:flex;flex-direction:column;gap:11px}
 .lg-ctitle{display:flex;align-items:center;gap:8px;font-size:22px;font-weight:700}

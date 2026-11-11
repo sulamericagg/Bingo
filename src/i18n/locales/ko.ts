@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "소리",
   "lugar.start": "시작",
   "lugar.streak": "{n}일 연속",
+  "lugar.streak1": "1일 연속",
   "lugar.tagline": "행, 열, 색마다 블룹 하나. 서로 닿으면 안 돼요!",
   "lugar.toMap": "단계 지도",
   "lugar.toMenu": "메뉴",

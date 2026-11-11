@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "Sons",
   "lugar.start": "Commencer",
   "lugar.streak": "{n} jours d'affilée",
+  "lugar.streak1": "1 jour d'affilée",
   "lugar.tagline": "Un Bloop par ligne, colonne et couleur. Et on ne se touche pas !",
   "lugar.toMap": "Carte des niveaux",
   "lugar.toMenu": "Menu",

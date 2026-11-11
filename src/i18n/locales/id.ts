@@ -3083,6 +3083,7 @@ export default {
   "lugar.sound": "Suara",
   "lugar.start": "Mulai",
   "lugar.streak": "{n} hari berturut-turut",
+  "lugar.streak1": "1 hari berturut-turut",
   "lugar.tagline": "Satu Bloop per baris, kolom, dan warna. Dan tidak boleh bersentuhan!",
   "lugar.toMap": "Peta level",
   "lugar.toMenu": "Menu",
