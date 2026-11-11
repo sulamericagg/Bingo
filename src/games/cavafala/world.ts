@@ -20,7 +20,10 @@ import { Fx } from './fx';
 import { GADGETS, gadgetById, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
 import { Hud, SVG } from './hud';
 import { OBox, makeBody, rayBox, stepBody, type Body, type PhysWorld } from './phys';
-import { parseBest, type Parsed } from './parser';
+import { norm, parseBest, type Parsed } from './parser';
+import { Maker } from './maker';
+import { disposeCreationCache } from './creation';
+import { isCommand } from '../../../shared/cavagen';
 import { cavaSave, discover, persist } from './save';
 import type { Terrain } from './terrain';
 import type { Town } from './town';
@@ -108,6 +111,8 @@ export interface WorldNet {
   fire(a: Actor, s: Slot, o: THREE.Vector3, d: THREE.Vector3): void;
   hit(target: Actor, dx: number, dy: number, dz: number, power: number, by: Actor): void;
   voice(a: Actor, text: string): void;
+  /** objeto falado (forma compacta) — mesmo uid = troca (IA melhorou / Refazer) */
+  obj?(a: Actor, uid: string, spec: unknown, pos: THREE.Vector3, yaw: number, text: string): void;
 }
 /** atraso da interpolação dos Bloops remotos (ms) */
 const INTERP_MS = 140;
@@ -278,6 +283,8 @@ export class World {
   readonly actors: Actor[] = [];
   readonly me: Actor;
   readonly structs: Struct[] = [];
+  /** objetos falados (criação livre) */
+  readonly objs: Maker;
   private projs: Proj[] = [];
   private builds: BuildAnim[] = [];
   private grows: Grow[] = [];
@@ -421,6 +428,7 @@ export class World {
     this.resizeObs.observe(root);
     this.resize();
     this.updateHot();
+    this.objs = new Maker(this);
   }
 
   /* ---------------------------- atores ---------------------------- */
@@ -505,6 +513,7 @@ export class World {
     const b: OBox[] = [];
     if (this.town) b.push(...this.town.colliders());
     for (const s of this.structs) for (const c of s.cols) b.push(c.box);
+    if (this.objs) for (const o of this.objs.list) for (const c of o.cols) b.push(c.box);
     this.phys.boxes = b;
   }
 
@@ -513,25 +522,36 @@ export class World {
     const key = g.id + JSON.stringify(mods);
     const c = this.thumbs.get(key);
     if (c) return c;
-    const N = 96;
-    if (!this.thumbRT) {
+    const b = buildModel(g, mods, g.kind !== 'struct');
+    const url = this.renderThumb(b.group, g.kind === 'struct' ? 2.5 : 2.2);
+    this.thumbs.set(key, url);
+    return url;
+  }
+  /** miniatura (PNG data URL) de um objeto 3D qualquer */
+  renderThumb(obj: THREE.Object3D, rotY: number, N = 96): string {
+    if (!this.thumbRT || this.thumbRT.width !== N) {
+      this.thumbRT?.dispose();
       this.thumbRT = new THREE.WebGLRenderTarget(N, N);
+    }
+    if (!this.thumbScene) {
       this.thumbScene = new THREE.Scene();
       this.thumbScene.add(new THREE.HemisphereLight('#ffffff', '#9a8ac8', 1.7));
       const d = new THREE.DirectionalLight('#ffffff', 1.6);
       d.position.set(2, 3, 2);
       this.thumbScene.add(d);
     }
-    const b = buildModel(g, mods, g.kind !== 'struct');
-    const box = new THREE.Box3().setFromObject(b.group);
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
     const ctr = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length() || 1;
-    b.group.position.sub(ctr);
+    const holder = new THREE.Group();
+    holder.add(obj);
+    holder.position.copy(ctr).negate();
     const pivot = new THREE.Group();
-    pivot.add(b.group);
-    pivot.rotation.set(0.45, g.kind === 'struct' ? 2.5 : 2.2, 0);
-    this.thumbScene!.add(pivot);
-    const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
+    pivot.add(holder);
+    pivot.rotation.set(0.45, rotY, 0);
+    this.thumbScene.add(pivot);
+    const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 200);
     cam.position.set(0, 0, size * 1.75);
     const prevRT = this.renderer.getRenderTarget();
     const prevCol = this.renderer.getClearColor(new THREE.Color());
@@ -539,12 +559,12 @@ export class World {
     this.renderer.setRenderTarget(this.thumbRT);
     this.renderer.setClearColor('#000000', 0);
     this.renderer.clear();
-    this.renderer.render(this.thumbScene!, cam);
+    this.renderer.render(this.thumbScene, cam);
     const px = new Uint8Array(N * N * 4);
     this.renderer.readRenderTargetPixels(this.thumbRT, 0, 0, N, N, px);
     this.renderer.setRenderTarget(prevRT);
     this.renderer.setClearColor(prevCol, prevA);
-    this.thumbScene!.remove(pivot);
+    this.thumbScene.remove(pivot);
     const cv = document.createElement('canvas');
     cv.width = cv.height = N;
     const cx = cv.getContext('2d')!;
@@ -562,9 +582,7 @@ export class World {
         img.data[d + 3] = a;
       }
     cx.putImageData(img, 0, 0);
-    const url = cv.toDataURL();
-    this.thumbs.set(key, url);
-    return url;
+    return cv.toDataURL();
   }
 
   /* ---------------------------- qualidade ---------------------------- */
@@ -611,6 +629,7 @@ export class World {
     this.mode?.update(dt);
     for (const a of this.actors) this.simActor(a, dt);
     this.updateStructs(dt);
+    this.objs.update(dt);
     this.updateProjs(dt);
     this.updateBuilds(dt);
     this.updateGrows(dt);
@@ -769,6 +788,12 @@ export class World {
     }
     if (a.remote) {
       this.simPuppet(a, dt);
+      return;
+    }
+    if (a === this.me && this.objs.riding) {
+      this.objs.pinRider(a, a.move, a.pitch, this.jumpQ || this.jumpHeld);
+      this.jumpQ = false;
+      this.visuals(a, dt);
       return;
     }
     a.shieldT = Math.max(0, a.shieldT - dt);
@@ -1146,6 +1171,50 @@ export class World {
     }
     return n;
   }
+  /* ---------------------------- ajudantes das criações (creation.ts) ---------------------------- */
+  backpackOf(a: Actor, out: THREE.Vector3): THREE.Vector3 {
+    return this.backpack(a, out);
+  }
+  takeLight(): boolean {
+    if (this.lights >= this.q.lights) return false;
+    this.lights++;
+    return true;
+  }
+  freeLight(): void {
+    this.lights = Math.max(0, this.lights - 1);
+  }
+  /** cava um buraco (robô cavador, escavadeira) e dá o material ao dono */
+  digAt(owner: Actor, x: number, y: number, z: number, r: number): void {
+    const got: Inv = {};
+    const n = this.T.dig(x, y, z, r, got, 1);
+    if (n <= 0) return;
+    this.net?.dig(x, y, z, r, 1);
+    for (const [k, v] of Object.entries(got)) owner.inv[+k] = (owner.inv[+k] ?? 0) + v!;
+    if (owner.isPlayer) this.hud.setInv(owner.inv);
+    if (this.isNear(x, y, z)) {
+      const col = matColor(this.T.matAt(x, y - r, z) || M.Terra, this.theme ?? undefined);
+      this.fx.chunks(x, y, z, 0, 1, 0, col, 6, 4);
+      this.fx.dust(x, y, z, col, 6);
+    }
+    this.mode?.onDig?.(owner, got, new THREE.Vector3(x, y, z));
+  }
+  /** projétil mole (bolha/espuma/confete/água/neve) que uma criação atira */
+  shootSoft(owner: Actor, o: THREE.Vector3, d: THREE.Vector3, kind: string, power: number): void {
+    const beh = kind === 'bubbles' ? 'bubble' : kind === 'confetti' ? 'confetti' : kind === 'snow' ? 'snow' : 'foam';
+    const n = beh === 'confetti' ? 4 : 1;
+    for (let i = 0; i < n; i++) {
+      const dir = V2.copy(d);
+      if (n > 1) dir.applyAxisAngle(UP, (i - (n - 1) / 2) * 0.15).normalize();
+      const speed = beh === 'bubble' ? 10 : beh === 'confetti' ? 18 : 20;
+      const r = beh === 'bubble' ? 0.38 : beh === 'confetti' ? 0.12 : 0.24;
+      const col = kind === 'water' ? '#8fd3ff' : beh === 'bubble' ? '#bff4ff' : beh === 'snow' ? '#ffffff' : beh === 'confetti' ? ['#ff4f6a', '#ffd34a', '#5ab0ff', '#5ad6a0'][i % 4] : '#fff4e6';
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), beh === 'bubble' ? new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.5, depthWrite: false }) : lam(col, 0.2));
+      mesh.position.copy(o);
+      this.scene.add(mesh);
+      this.projs.push({ p: o.clone(), v: dir.clone().multiplyScalar(speed).add(V3.set(0, 1, 0)), kind: beh, power, owner, life: 2.6, r, mesh, bounces: 0, homing: false, trap: beh === 'bubble', slow: beh === 'snow', grav: beh === 'bubble' ? 1 : 4, confetti: beh === 'confetti' });
+    }
+    if (this.isNear(o.x, o.y, o.z)) (beh === 'bubble' ? sfx.bubble : kind === 'water' ? sfx.spray : sfx.throw)();
+  }
   isNear(x: number, y: number, z: number): boolean {
     const c = this.cam.position;
     return (c.x - x) ** 2 + (c.y - y) ** 2 + (c.z - z) ** 2 < 900;
@@ -1425,6 +1494,18 @@ export class World {
     const p = parseBest(alts);
     this.lastParsed = p;
     this.net?.voice(this.me, p.heard || alts[0]);
+    const said = (p.heard || alts[0] || '').trim();
+    // receita do catálogo só para pedidos curtos e certeiros; o resto vira OBJETO FALADO (qualquer coisa!)
+    const recipe = !!p.g && (p.sure || how === 'type') && p.rest.length === 0 && isCommand(said);
+    if (!recipe && said && norm(said).length >= 2) {
+      this.hud.heard(said, true, '✨');
+      const ok = this.objs.make(said, how);
+      if (ok && how === 'voice') {
+        cavaSave().spoken++;
+        persist();
+      }
+      return ok;
+    }
     if (p.g && (p.sure || how === 'type')) {
       this.hud.heard(p.heard, true, fullName(p.g, p.mods));
       const ok = this.create(this.me, p.g, p.mods, how);
@@ -1578,16 +1659,17 @@ export class World {
           .filter(Boolean)
           .map((g) => `<button class="cf-sug" data-w="${g!.name()}">${g!.name()}</button>`)
           .join('')}</div>
-        <div class="cf-row"><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
+        <div class="cf-row"><button class="cf-btn o" data-a="gal">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
       </div>`,
     );
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const inp = d.querySelector('input')!;
     const prev = d.querySelector<HTMLDivElement>('.cf-preview')!;
     const upd = () => {
       const p = parseBest([inp.value]);
       if (!inp.value.trim()) prev.innerHTML = '';
-      else if (p.g) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
-      else prev.innerHTML = `<span style="opacity:.6">${p.suggest.length ? t('cavafala.type.maybe', 'Talvez:') + ' ' + p.suggest.map((g) => g.name()).join(', ') : '…'}</span>`;
+      else if (p.g && p.rest.length === 0 && isCommand(inp.value)) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
+      else prev.innerHTML = `<b>✨ ${esc(t('cavafala.obj.willMake', 'Vou criar:'))}</b> ${esc(inp.value.trim().slice(0, 40))}`;
     };
     inp.addEventListener('input', upd);
     const close = () => {
@@ -1639,7 +1721,8 @@ export class World {
         return `<button class="cf-ri${ok ? '' : ' no'}" data-id="${g.id}" style="left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%"><img src="${this.thumb(g, noMods())}" alt=""/><b>${g.name()}</b></button>`;
       })
       .join('');
-    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button>`);
+    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button><button class="cf-btn o" data-a="gal" style="position:absolute;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button>`);
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const center = d.querySelector<HTMLDivElement>('.cf-rc')!;
     let picked: GDef | null = null;
     const close = () => {
@@ -2652,6 +2735,7 @@ export class World {
     window.removeEventListener('keyup', this.keyU);
     this.resizeObs.disconnect();
     this.ctl.dispose();
+    this.objs.dispose();
     this.hud.dispose();
     for (const a of [...this.actors]) this.removeActor(a);
     this.fx.dispose();
@@ -2664,6 +2748,7 @@ export class World {
       if (m.isMesh && m.geometry && !(m as unknown as { isInstancedMesh?: boolean }).isInstancedMesh) m.geometry.dispose?.();
     });
     disposeGadgetCache();
+    disposeCreationCache();
     disposeBloopCache();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

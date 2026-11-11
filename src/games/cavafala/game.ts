@@ -780,6 +780,27 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         menu();
       },
       say: (s: string) => world?.say(s),
+      /** objeto falado (criação livre) */
+      make: (s: string) => world?.objs.make(s, 'type'),
+      objs: () => world?.objs.state() ?? null,
+      gallery: () => world?.objs.openGallery(),
+      keep: () => world?.objs.keep(),
+      redo: () => world?.objs.redo(),
+      ride: () => world?.objs.mountNear(),
+      /** aplaina um terreiro (fotos de teste): corta acima de y0 e enche abaixo */
+      flatten: (x: number, z: number, R = 10, y0?: number) => {
+        const w = world;
+        if (!w) return;
+        const y = y0 ?? w.T.groundY(x, z, 80, -40);
+        for (let dx = -R; dx <= R; dx += 1.5)
+          for (let dz = -R; dz <= R; dz += 1.5) {
+            if (dx * dx + dz * dz > R * R) continue;
+            for (let h = 1.2; h < 12; h += 1.6) w.T.dig(x + dx, y + h, z + dz, 1.4, null, 9);
+          }
+        w.T.add(x, y - 2, z, { hx: R, hy: 2, hz: R }, 1);
+        for (let i = 0; i < 400 && w.T.pending > 0; i++) w.T.update(50, w.cam.position);
+      },
+      getOff: () => world?.objs.dismount(),
       mic: (on?: boolean) => {
         const w = world;
         if (!w) return null;

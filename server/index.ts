@@ -30,6 +30,7 @@ import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
 import { aiPet } from './ai-pet';
+import { cavaMake } from './cava-ai';
 import { adminHub } from './admin-hub';
 import { sessionWho } from './auth';
 import { purchaseReport } from './purchases';
@@ -115,6 +116,7 @@ const PUBLIC: Record<string, PublicHandler> = {
   'GET /api/garimpo/invites': garimpoInvites,
   // Cava & Fala online: convites entre amigos
   'POST /api/cava/invite': cavaInvite,
+  'POST /api/cava/make': cavaMake,
   'GET /api/cava/invites': cavaInvites,
   // Jangada Bloop online: convites entre amigos
   'POST /api/raft/invite': raftInvite,

@@ -152,6 +152,37 @@ const CSS = `
 .cf-mt .cf-mtlog{min-height:44px;max-height:96px;overflow:auto;padding:8px;border-radius:12px;background:#f3eeff;font:700 14px/1.35 inherit;text-align:left}
 .cf-mt .cf-mtlog i{opacity:.55;font-style:normal}
 @media (max-height:420px){.cf-mt .cf-mtbars{height:48px}.cf-opt{width:132px;padding:6px}.cf-opt img{width:56px;height:56px}.cf-permic{width:56px;height:56px}.cf-permic svg{width:32px;height:32px}.cf-choose h2,.cf-perm h2{font-size:17px}.cf-title{font-size:26px}.cf-sub{font-size:12px}.cf-mode small{font-size:11px}}
+/* objeto falado: pílula "Criando…", cartão Refazer/Guardar, Montar, galeria */
+.cf-make{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 100px);transform:translate(-50%,-10px) scale(.96);display:flex;align-items:center;gap:8px;padding:8px 14px 8px 10px;border-radius:20px;background:linear-gradient(135deg,#7b3cff,#ff4fa3);color:#fff;font:800 15px/1.1 inherit;box-shadow:0 6px 22px rgba(80,0,120,.45);opacity:0;transition:opacity .2s,transform .25s;pointer-events:none;max-width:82vw;white-space:nowrap}
+.cf-make.on{opacity:1;transform:translate(-50%,0) scale(1)}
+.cf-make em{font-style:normal;font-weight:700;opacity:.92;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.cf-make i{display:block;width:70px;height:8px;border-radius:6px;background:rgba(255,255,255,.3);overflow:hidden;flex:none}
+.cf-make u{display:block;height:100%;width:0;background:#ffd34a;border-radius:6px;transition:width .1s}
+.cf-make .cf-mk-s{font-size:20px;animation:cfspin 1.2s linear infinite}
+.cf-make.magic{background:linear-gradient(135deg,#2fb3ff,#9a5aff,#ff4fa3);background-size:200% 200%;animation:cfmagic 1.4s ease-in-out infinite}
+.cf-make.magic i u{width:100%!important;background:repeating-linear-gradient(90deg,#ffd34a 0 10px,#fff6c0 10px 20px);animation:cfbar .6s linear infinite}
+@keyframes cfspin{to{transform:rotate(360deg)}}
+@keyframes cfmagic{50%{background-position:100% 50%}}
+@keyframes cfbar{to{background-position:20px 0}}
+.cf-mcard{position:absolute;left:50%;bottom:calc(var(--cfb) + 8px);transform:translate(-50%,20px);display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-radius:18px;background:rgba(255,255,255,.96);color:#2a0b5c;box-shadow:0 6px 22px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s;max-width:min(560px,64vw);z-index:3}
+.cf-mcard.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.cf-mc-t{display:flex;flex-direction:column;min-width:0;gap:1px}
+.cf-mc-t b{font:800 15px/1.15 inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-mc-t small{font:600 12px/1.2 inherit;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-mc-t em{font:700 11px/1 inherit;font-style:normal;color:#7b3cff}
+.cf-mc-b{display:flex;gap:6px;flex:none}
+.cf-mc-b .cf-btn{min-height:38px;padding:8px 12px;font-size:14px}
+.cf-mc-b .cf-btn[disabled]{opacity:.55}
+.cf-mount{position:absolute;right:calc(var(--cfr) + 96px);bottom:calc(var(--cfb) + 150px);min-height:48px;padding:0 18px;border:0;border-radius:24px;background:#ffd34a;color:#2a0b5c;font:800 16px/1 inherit;box-shadow:0 4px 0 rgba(0,0,0,.25),0 0 0 3px #fff;opacity:0;transform:scale(.8);transition:opacity .15s,transform .15s;pointer-events:none!important}
+.cf-mount.on{opacity:1;transform:scale(1);pointer-events:auto!important}
+.cf-gal{width:min(640px,94vw);max-height:86vh;display:flex;flex-direction:column}
+.cf-galg{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;overflow:auto;padding:4px;margin:6px 0}
+.cf-gi{position:relative}
+.cf-gb{width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border:0;border-radius:14px;background:#efe8ff;color:#2a0b5c;cursor:pointer}
+.cf-gb img{width:72px;height:72px}
+.cf-gb b{font:800 12px/1.15 inherit;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-gb span{display:flex;flex-wrap:wrap;justify-content:center}
+.cf-gx{position:absolute;right:2px;top:2px;width:26px;height:26px;min-height:26px!important;border:0;border-radius:50%;background:#ff4f6a;color:#fff;font:800 16px/1 inherit}
 `;
 let done = false;
 export function injectCss(): void {
