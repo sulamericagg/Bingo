@@ -17,6 +17,8 @@ export const SVG = {
   jump: '<svg viewBox="0 0 48 48"><path d="M24 8l14 16h-8v14H18V24h-8z" fill="#fff" stroke="#2a0b5c" stroke-width="2.5" stroke-linejoin="round"/></svg>',
   kb: '<svg viewBox="0 0 48 48"><rect x="4" y="12" width="40" height="26" rx="5" fill="#fff" stroke="#2a0b5c" stroke-width="2.5"/><g fill="#2a0b5c"><rect x="9" y="17" width="5" height="5" rx="1"/><rect x="17" y="17" width="5" height="5" rx="1"/><rect x="25" y="17" width="5" height="5" rx="1"/><rect x="33" y="17" width="5" height="5" rx="1"/><rect x="13" y="28" width="22" height="5" rx="1"/></g></svg>',
   book: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17" fill="#fff" stroke="#2a0b5c" stroke-width="2.5"/><g fill="#ff8a3a"><circle cx="24" cy="12" r="4"/><circle cx="34" cy="20" r="4" fill="#5ab0ff"/><circle cx="31" cy="32" r="4" fill="#5ad6a0"/><circle cx="17" cy="32" r="4" fill="#b05aff"/><circle cx="14" cy="20" r="4" fill="#ff4f6a"/></g></svg>',
+  bag: '<svg viewBox="0 0 48 48"><path d="M14 16h20l4 26H10z" fill="#c8874a" stroke="#2a0b5c" stroke-width="2.5" stroke-linejoin="round"/><path d="M18 16a6 6 0 0 1 12 0" stroke="#2a0b5c" stroke-width="2.5" fill="none"/><path d="M17 27l7 5 7-5" stroke="#ffd34a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
+  ear: '<svg viewBox="0 0 48 48"><path d="M16 20a10 10 0 1 1 18 6c-3 3-5 4-5 8a6 6 0 0 1-11 3" stroke="#2a0b5c" stroke-width="4" fill="#ffd8c8" stroke-linecap="round"/><path d="M21 21a4 4 0 1 1 7 2" stroke="#2a0b5c" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
   pause: '<svg viewBox="0 0 48 48"><rect x="13" y="10" width="8" height="28" rx="3" fill="#fff"/><rect x="27" y="10" width="8" height="28" rx="3" fill="#fff"/></svg>',
   arrow: '<svg viewBox="0 0 48 48"><path d="M24 4l16 20H30v20H18V24H8z" fill="#ffd34a" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/></svg>',
 };
@@ -72,6 +74,7 @@ export class Hud {
     el.innerHTML = `
       <div class="cf-top">
         <button class="cf-ib cf-pause" aria-label="${esc(t('cavafala.pause', 'Pausa'))}">${SVG.pause}</button>
+        <button class="cf-bag" aria-label="${esc(t('cavafala.bag', 'Materiais'))}">${SVG.bag}<b>0</b></button>
         <div class="cf-mats"></div>
       </div>
       <div class="cf-status"></div>
@@ -79,14 +82,14 @@ export class Hud {
       <div class="cf-prog"><b></b><span></span></div>
       <div class="cf-gains"></div>
       <div class="cf-arrow">${SVG.arrow}</div>
-      <div class="cf-listen"><div class="cf-wave"><i></i><i></i><i></i><i></i><i></i></div><span></span></div>
+      <div class="cf-listen"><div class="cf-wave">${'<i></i>'.repeat(9)}</div><span></span></div>
+      <div class="cf-heard"></div>
+      <div class="cf-subt"><span></span><div class="cf-subt-sug"></div></div>
       <div class="cf-hot"></div>
       <button class="cf-b cf-mic" data-k="mic">${SVG.mic}<small>${esc(t('cavafala.btn.talk', 'FALAR'))}</small></button>
       <button class="cf-b cf-dig" data-k="dig">${SVG.dig}<small>${esc(t('cavafala.btn.dig', 'CAVAR'))}</small></button>
       <button class="cf-b cf-use" data-k="use">${SVG.use}<small>${esc(t('cavafala.btn.use', 'USAR'))}</small></button>
-      <button class="cf-b cf-jump" data-k="jump">${SVG.jump}</button>
-      <button class="cf-b cf-sm cf-kb" data-k="kb" aria-label="${esc(t('cavafala.btn.type', 'Digitar'))}">${SVG.kb}</button>
-      <button class="cf-b cf-sm cf-book" data-k="book" aria-label="${esc(t('cavafala.btn.recipes', 'Receitas'))}">${SVG.book}</button>`;
+      <button class="cf-b cf-jump" data-k="jump">${SVG.jump}</button>`;
     root.appendChild(el);
     this.el = el;
     this.mats = el.querySelector('.cf-mats')!;
@@ -115,19 +118,111 @@ export class Hud {
     b('.cf-use', (d) => h.use(d));
     b('.cf-jump', (d) => h.jump(d));
     b('.cf-mic', (d) => h.mic(d), 'medium');
-    b('.cf-kb', (d) => d && h.type());
-    b('.cf-book', (d) => d && h.book());
+    // materiais: um chip só (total); toque abre/fecha a lista
+    this.bag = el.querySelector('.cf-bag')!;
+    b('.cf-bag', (d) => d && this.mats.classList.toggle('open'));
+    this.waveBars = [...el.querySelectorAll<HTMLElement>('.cf-wave i')];
+    this.heardEl = el.querySelector('.cf-heard')!;
+    this.subEl = el.querySelector('.cf-subt')!;
+  }
+  private subEl: HTMLDivElement;
+  private subT = 0;
+  private micOffT = 0;
+  /** microfone ligado (modo liga/desliga): anel brilhando + "Ouvindo…"; desligado: aviso curto */
+  micState(st: 'on' | 'starting' | 'off', silent = false): void {
+    const on = st !== 'off';
+    this.micBtn.classList.toggle('live', on);
+    this.micBtn.classList.toggle('wait', st === 'starting');
+    const lab = this.micBtn.querySelector('small')!;
+    lab.textContent = on ? t('cavafala.btn.listening', 'OUVINDO') : t('cavafala.btn.talk', 'FALAR');
+    this.listenEl.classList.toggle('on', on);
+    this.listenEl.classList.remove('off');
+    const s = this.listenEl.querySelector('span')!;
+    clearTimeout(this.micOffT);
+    if (on) s.textContent = st === 'starting' ? t('cavafala.mic.starting', 'Ligando o microfone…') : t('cavafala.mic.on', 'Ouvindo… é só falar!');
+    else {
+      this.level(0);
+      this.subtitle(null);
+      if (!silent) {
+        s.textContent = t('cavafala.mic.off', 'Microfone desligado');
+        this.listenEl.classList.add('on', 'off');
+        this.micOffT = window.setTimeout(() => this.listenEl.classList.remove('on', 'off'), 1600);
+      }
+    }
+  }
+  /**
+   * legenda "Você: …" (palavra por palavra). kind: 'live' parcial · 'ok' comando entendido (destaca `hit`)
+   * · 'no' não entendeu (com sugestões para tocar) · 'hint' dica (ex.: fala mais alto) · null esconde
+   */
+  subtitle(text: string | null, kind: 'live' | 'ok' | 'no' | 'hint' = 'live', hit = '', sugs: { label: string; go: () => void }[] = []): void {
+    clearTimeout(this.subT);
+    const el = this.subEl;
+    if (text == null) {
+      el.classList.remove('on');
+      return;
+    }
+    el.className = 'cf-subt on ' + kind;
+    const sp = el.querySelector('span')!;
+    const you = kind === 'hint' ? '' : `<b>${esc(t('cavafala.sub.you', 'Você:'))}</b> `;
+    sp.innerHTML = you + esc(text) + (kind === 'ok' && hit ? ` <em>→ ${esc(hit)}</em>` : '') + (kind === 'no' ? ` <em>${esc(t('cavafala.sub.no', 'não entendi'))}</em>` : '');
+    const sg = el.querySelector('.cf-subt-sug') as HTMLElement;
+    sg.innerHTML = '';
+    for (const s of sugs) {
+      const b = document.createElement('button');
+      b.textContent = s.label;
+      b.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        s.go();
+        this.subtitle(null);
+      });
+      sg.appendChild(b);
+    }
+    if (kind === 'ok') this.subT = window.setTimeout(() => el.classList.remove('on'), 2600);
+    if (kind === 'no') this.subT = window.setTimeout(() => el.classList.remove('on'), 5000);
+  }
+  private bag: HTMLButtonElement;
+  private waveBars: HTMLElement[] = [];
+  private waveHist: number[] = new Array(9).fill(0.1);
+  private heardEl: HTMLDivElement;
+  private heardT = 0;
+  /** nível do microfone (0..1): barrinhas da onda (rolam como um gráfico do som de verdade) */
+  level(v: number): void {
+    this.waveHist.push(v);
+    this.waveHist.shift();
+    const n = this.waveBars.length;
+    for (let i = 0; i < n; i++) {
+      const x = this.waveHist[i];
+      // meio mais alto: parece uma onda
+      const k = 0.55 + 0.45 * Math.sin(((i + 0.5) / n) * Math.PI);
+      this.waveBars[i].style.height = Math.round(4 + x * k * 24) + 'px';
+    }
+  }
+  /** balão "Ouvi: …" (some sozinho) */
+  heard(text: string, ok: boolean, what = ''): void {
+    clearTimeout(this.heardT);
+    const h = this.heardEl;
+    h.className = 'cf-heard on' + (ok ? ' ok' : ' no');
+    h.innerHTML = `${SVG.ear}<span>${esc(t('cavafala.voice.heard', 'Ouvi:'))} <q>${esc(text || '…')}</q>${ok && what ? ` <b>→ ${esc(what)}</b>` : ''}</span>`;
+    this.heardT = window.setTimeout(() => h.classList.remove('on'), ok ? 2600 : 3600);
   }
 
   setInv(inv: Inv, flash?: number): void {
     const key = MATS.map((m) => Math.floor(inv[m] ?? 0)).join(',');
     if (key === this.lastInv && !flash) return;
     this.lastInv = key;
+    const tot = MATS.reduce((a, m) => a + Math.floor(inv[m] ?? 0), 0);
+    this.bag.querySelector('b')!.textContent = tot > 9999 ? Math.floor(tot / 1000) + 'k' : String(tot);
+    if (flash) {
+      this.bag.classList.remove('pop');
+      void this.bag.offsetWidth;
+      this.bag.classList.add('pop');
+    }
     for (const m of MATS) {
       const s = this.matEls.get(m)!;
       const v = Math.floor(inv[m] ?? 0);
       s.querySelector('b')!.textContent = v > 999 ? Math.floor(v / 100) / 10 + 'k' : String(v);
       s.classList.toggle('z', v <= 0);
+      s.style.display = v <= 0 ? 'none' : '';
       if (flash === m) {
         s.classList.remove('pop');
         void s.offsetWidth;
@@ -187,7 +282,8 @@ export class Hud {
     this.listenEl.classList.toggle('on', on);
     this.micBtn.classList.toggle('rec', on);
     const s = this.listenEl.querySelector('span')!;
-    s.textContent = text || t('cavafala.listening', 'Ouvindo... diga o que você quer criar!');
+    s.textContent = text ? '“' + text + '”' : t('cavafala.listening2', 'Fale agora!');
+    if (!on) this.level(0);
   }
   /** seta do tutorial: aponta o alvo (no mundo) ou some */
   pointAt(target: THREE.Vector3 | null, cam: THREE.PerspectiveCamera, w: number, h: number): void {

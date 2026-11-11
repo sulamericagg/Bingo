@@ -167,6 +167,17 @@ export interface MapBuild {
   nav?: { nodes: Vec3[]; links: [number, number][] };
   /** (v1.1) onde o Bocudo surge quando começa a caçar (padrão: centro da sala mais longe) */
   creatureSpawns?: Vec3[];
+  /**
+   * (v1.1b, mapas 2) OPCIONAL — clima do mapa: cor de fundo e neblina linear que o núcleo aplica na cena
+   * (scene.background / scene.fog). Sem isto, o núcleo usa o seu padrão.
+   */
+  atmosphere?: { background: string; fog?: { color: string; near: number; far: number } };
+  /**
+   * (v1.1b, mapas 2) OPCIONAL — corte por sala (desempenho): o núcleo chama antes de renderizar uma vista
+   * (jogador ou câmera de segurança) com a posição da câmera; o mapa esconde as salas que
+   * não se veem dali. Sem chamar, tudo fica visível (correto, só mais caro).
+   */
+  visibleFrom?(pos: Vec3): void;
 }
 
 export interface MapDef {

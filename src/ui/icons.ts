@@ -113,7 +113,7 @@ const GRADS: Record<Grad, [string, string, string]> = {
 
 const PRE = 'bo-';
 
-function defsMarkup(): string {
+export function defsMarkup(): string {
   return Object.entries(GRADS)
     .map(
       ([k, [a, b, c]]) =>

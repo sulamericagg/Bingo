@@ -6,7 +6,8 @@
  *  amigos entram pela lista de amigos sem digitar nada.
  * ============================================================ */
 import { wsUrl } from '../../social/net';
-import type { Action, Bag, Player, Sim } from './sim';
+import { lootPhys, type Action, type Bag, type Player, type Sim } from './sim';
+import { packSlots, unpackSlots } from './items';
 import { validDesign } from './vehicles';
 
 /** código numérico estável de 6 dígitos para um id de jogador */
@@ -112,7 +113,7 @@ export class NightsNet {
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-type PRow = [string, string, string, string, number, number, number, number, number, number, number, number, Bag, number, number, string, Record<string, string>, Record<string, number>, number, number, number, number, number, string];
+type PRow = [string, string, string, string, number, number, number, number, number, number, number, number, (0 | [string, number])[], number, Record<string, string>, number, number, number, number, number, string, number];
 
 export interface SnapState {
   verV: number;
@@ -120,10 +121,11 @@ export interface SnapState {
   verT: number;
   verS: number;
   verC: number;
+  verL: number;
   full: number;
 }
 export function newSnapState(): SnapState {
-  return { verV: -1, evSent: 0, verT: -1, verS: -1, verC: -1, full: 0 };
+  return { verV: -1, evSent: 0, verT: -1, verS: -1, verC: -1, verL: -1, full: 0 };
 }
 
 export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<string, unknown>): Record<string, unknown> {
@@ -134,7 +136,8 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     ph: s.phase === 'night' ? 1 : 0,
     c: r1(s.clock),
     tm: r1(s.time),
-    f: [r1(s.fire.fuel), s.fire.max, +s.fire.ring, +s.fire.bellows, +s.fire.big, r1(s.fire.outT)],
+    f: [r1(s.fire.fuel), s.fire.max, +s.fire.ring, +s.fire.bellows, +s.fire.big, r1(s.fire.outT), s.fire.lv, Math.round(s.fire.xp), r2(s.fire.flare)],
+    df: s.diff,
     st: s.stash,
     b: s.bench,
     cp: +s.compass,
@@ -143,8 +146,8 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     pf: s.poofs,
     ov: +s.over,
     w: +s.won,
-    pl: s.players.map((p): PRow => [p.id, p.name, p.skin, p.hat, +p.bot, r2(p.x), r2(p.z), r2(p.yaw), r2(p.aim), p.hearts, Math.round(p.hunger), Math.round(p.warmth), p.bag, p.axe, p.bonk, p.lampId, p.wear as Record<string, string>, p.inv, +p.lightOn, r1(p.faint), p.carry, r2(p.swing), p.seat, p.cmd]),
-    cr: s.creatures.map((c) => [c.id, c.k, r2(c.x), r2(c.z), r1(c.hp), r1(c.max), r2(c.lit), r1(c.drain), r1(c.t)]),
+    pl: s.players.map((p): PRow => [p.id, p.name, p.skin, p.hat, +p.bot, r2(p.x), r2(p.z), r2(p.yaw), r2(p.aim), p.hearts, Math.round(p.hunger), Math.round(p.warmth), packSlots(p.slots), p.sel, p.wear as Record<string, string>, +p.lightOn, r1(p.faint), p.carry, r2(p.swing), p.seat, p.cmd, r1(p.scared)]),
+    cr: s.creatures.map((c) => [c.id, c.k, r2(c.x), r2(c.z), r1(c.hp), r1(c.max), r2(c.lit), r1(c.drain), r1(c.t), r2(c.sz)]),
     fl: s.flashes.map((f) => [f.id, r1(f.x), r1(f.z), f.r, r1(f.t), f.k]),
     bb: s.babies.map((b) => [b.st, r2(b.x), r2(b.z), b.by]),
     ev: s.events.filter((e) => e.s > st.evSent),
@@ -158,11 +161,20 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     s.nodeT.forEach((v, i) => v && nd.push(i, v));
     o.tr = tr;
     o.nd = nd;
+    o.th = [...s.treeHit].flatMap(([i, h]) => [i, r1(h), r2(s.treeSide.get(i) ?? 0)]);
     o.vt = s.verTrees;
   }
-  if (full || st.verS !== s.verStruct) {
+  if (full || st.verL !== s.verLoot) {
+    st.verL = s.verLoot;
+    o.lt = s.loot.map((l) => [l.id, l.k, l.n, r2(l.x), r2(l.y), r2(l.z), r1(l.vx), r1(l.vy), r1(l.vz), +l.rest, r2(l.d), l.by, +l.fire]);
+    o.fe = s.felled.map((f) => [f.id, f.i, r2(f.a), r1(f.hp), r1(f.age)]);
+  } else {
+    const mv = s.loot.filter((l) => !l.rest && l.d <= 0);
+    if (mv.length) o.lm = mv.map((l) => [l.id, r2(l.x), r2(l.y), r2(l.z), r1(l.vx), r1(l.vy), r1(l.vz)]);
+  }
+  if (full || st.verS !== s.verStruct || s.structs.some((q) => q.by)) {
     st.verS = s.verStruct;
-    o.sc = s.structs.map((q) => [q.id, q.k, r2(q.x), r2(q.z), r2(q.r), r1(q.hp), r1(q.burn), q.a, q.b, r1(q.t)]);
+    o.sc = s.structs.map((q) => [q.id, q.k, r2(q.x), r2(q.z), r2(q.r), r1(q.hp), r1(q.burn), q.a, q.b, r1(q.t), q.by ?? '', q.load ?? 0]);
     o.vs = s.verStruct;
   }
   if (full || st.verC !== s.verChest) {
@@ -181,6 +193,7 @@ export function encode(s: Sim, st: SnapState, full: boolean, extra?: Record<stri
     const used = new Set(s.vehView.map((v) => v.dk));
     o.vd = Object.fromEntries([...s.designs].filter(([k]) => used.has(k)));
   }
+  Object.assign(o, s.build.netOut(st, full)); // BUILD: peças construídas (bd = lista, bh = vidas)
   if (extra) Object.assign(o, extra);
   return o;
 }
@@ -198,6 +211,10 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
   s.fire.bellows = !!f[3];
   s.fire.big = !!f[4];
   s.fire.outT = f[5];
+  s.fire.lv = f[6] ?? 1;
+  s.fire.xp = f[7] ?? 0;
+  s.fire.flare = Math.max(s.fire.flare, f[8] ?? 0);
+  s.diff = o.df ?? 1;
   s.stash = o.st;
   s.bench = o.b;
   s.compass = !!o.cp;
@@ -220,25 +237,23 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
       p.z = r[6];
       p.yaw = r[7];
       p.aim = r[8];
-      p.lightOn = !!r[18];
     }
     p.hearts = r[9];
     p.hunger = r[10];
     p.warmth = r[11];
-    p.bag = r[12];
-    p.axe = r[13];
-    p.bonk = r[14];
-    p.lampId = r[15];
-    p.wear = r[16] as Player['wear'];
-    p.inv = r[17];
-    p.faint = r[19];
-    p.carry = r[20];
-    if (!mine) p.swing = r[21];
-    p.seat = r[22];
-    p.cmd = r[23] as Player['cmd'];
+    p.slots = unpackSlots(r[12]);
+    if (!mine) p.sel = r[13];
+    p.wear = r[14] as Player['wear'];
+    if (!mine) p.lightOn = !!r[15];
+    p.faint = r[16];
+    p.carry = r[17];
+    if (!mine) p.swing = r[18];
+    p.seat = r[19];
+    p.cmd = r[20] as Player['cmd'];
+    p.scared = r[21] ?? 0;
     return p;
   });
-  s.creatures = (o.cr as number[][]).map((r) => ({ id: r[0], k: r[1], x: r[2], z: r[3], hp: r[4], max: r[5], lit: r[6], drain: r[7], vx: 0, vz: 0, t: r[8], summonT: 0 }));
+  s.creatures = (o.cr as number[][]).map((r) => ({ id: r[0], k: r[1], x: r[2], z: r[3], hp: r[4], max: r[5], lit: r[6], drain: r[7], vx: 0, vz: 0, t: r[8], summonT: 0, sz: r[9] ?? 1 }));
   s.flashes = (o.fl as any[]).map((r) => ({ id: r[0], x: r[1], z: r[2], r: r[3], t: r[4], dmg: 0, k: r[5] }));
   (o.bb as any[]).forEach((r, i) => {
     const b = s.babies[i];
@@ -261,12 +276,44 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
     s.nodeT.fill(0);
     const nd = o.nd as number[];
     for (let i = 0; i < nd.length; i += 2) s.nodeT[nd[i]] = nd[i + 1];
+    s.treeHit.clear();
+    s.treeSide.clear();
+    const th = (o.th as number[]) ?? [];
+    for (let i = 0; i + 2 < th.length; i += 3) {
+      s.treeHit.set(th[i], th[i + 1]);
+      s.treeSide.set(th[i], th[i + 2]);
+    }
     s.verTrees = o.vt + 1e6; // força a vista a reconstruir
   }
+  if (o.lt) {
+    const old = new Map(s.loot.map((l) => [l.id, l]));
+    s.loot = (o.lt as any[]).map((r) => {
+      const l = old.get(r[0]);
+      // já estava aqui e ainda voando: segue a física local (sem tranco)
+      if (l && !l.rest && !r[9]) return l;
+      return { id: r[0], k: r[1], n: r[2], x: r[3], y: r[4], z: r[5], vx: r[6], vy: r[7], vz: r[8], rest: !!r[9], age: 1, d: r[10], by: r[11], fire: !!r[12] };
+    });
+    s.felled = (o.fe as any[]).map((r) => ({ id: r[0], i: r[1], a: r[2], hp: r[3], age: r[4] }));
+    s.verLoot = (s.verLoot | 0) + 1;
+  }
+  if (o.lm) {
+    const m = new Map(s.loot.map((l) => [l.id, l]));
+    for (const r of o.lm as number[][]) {
+      const l = m.get(r[0]);
+      if (!l) continue;
+      // corrige suave para a posição do anfitrião
+      l.x += (r[1] - l.x) * 0.5;
+      l.y += (r[2] - l.y) * 0.5;
+      l.z += (r[3] - l.z) * 0.5;
+      [l.vx, l.vy, l.vz] = [r[4], r[5], r[6]];
+      l.rest = false;
+    }
+  }
   if (o.sc) {
-    s.structs = (o.sc as any[]).map((r) => ({ id: r[0], k: r[1], x: r[2], z: r[3], r: r[4], hp: r[5], burn: r[6], a: r[7], b: r[8], t: r[9] }));
+    s.structs = (o.sc as any[]).map((r) => ({ id: r[0], k: r[1], x: r[2], z: r[3], r: r[4], hp: r[5], burn: r[6], a: r[7], b: r[8], t: r[9], ...(r[11] ? { by: r[10] as string, load: r[11] as Bag } : {}) }));
     s.verStruct = o.vs + 1e6;
   }
+  s.build.netIn(o); // BUILD
   if (o.ch) {
     s.chestOpen.fill(0);
     for (const i of o.ch as number[]) s.chestOpen[i] = 1;
@@ -274,4 +321,11 @@ export function apply(s: Sim, o: Record<string, any>, myId: string): void {
   }
 }
 
-export type GuestMsg = { t: 'i'; x: number; z: number; yaw: number; aim: number; l: number; th?: number; sr?: number } | ({ t: 'a' } & Action);
+export type GuestMsg = { t: 'i'; x: number; z: number; yaw: number; aim: number; l: number; th?: number; sr?: number; h?: number } | ({ t: 'a' } & Action);
+
+/** convidado: avança as coisas voando entre um instantâneo e outro */
+export function guestLoot(s: Sim, dt: number): void {
+  const g = (x: number, z: number) => s.w.height(x, z);
+  for (const l of s.loot) lootPhys(l, dt, g);
+  for (const f of s.felled) f.age += dt;
+}

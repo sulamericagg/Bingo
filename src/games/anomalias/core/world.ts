@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { AnomalySlot, MapBuild, RoomDef, Vec3 } from '../maps/types';
 import { settingsFor, type Tier } from '../../../core/quality';
 import { NpcBloop } from './models';
+import type { FpCollider, SweepResult } from '../../../3d/fpkit';
 
 export type Box = { min: Vec3; max: Vec3 };
 export const EYE = 1.55;
@@ -61,6 +62,75 @@ export function segBox(ax: number, ay: number, az: number, bx: number, by: numbe
   return t0;
 }
 const inside = (p: THREE.Vector3, b: Box, m = 0) => p.x > b.min.x - m && p.x < b.max.x + m && p.y > b.min.y - m && p.y < b.max.y + m && p.z > b.min.z - m && p.z < b.max.z + m;
+
+/**
+ * Colisão do fpkit sobre a lista VIVA de caixas do mapa (o mapa muda a lista: porta fechada = caixa a
+ * mais), com o mesmo filtro de altura do slide (corpo entre 0,15 e 1,7 m). Mesmo algoritmo do
+ * AabbCollider do kit (sweep em subpassos ≤ r/2, desliza por eixo; camClamp).
+ */
+export class LiveBoxCollider implements FpCollider {
+  constructor(private boxes: () => Box[]) {}
+  private static live(b: Box): boolean {
+    return !(b.max.y < 0.15 || b.min.y > 1.7);
+  }
+  isFree(x: number, z: number, r: number): boolean {
+    const r2 = r * r;
+    for (const b of this.boxes()) {
+      if (!LiveBoxCollider.live(b)) continue;
+      const dx = x - Math.max(b.min.x, Math.min(x, b.max.x));
+      const dz = z - Math.max(b.min.z, Math.min(z, b.max.z));
+      if (dx * dx + dz * dz < r2) return false;
+    }
+    return true;
+  }
+  sweep(fx: number, fz: number, tx: number, tz: number, r: number, out: SweepResult): void {
+    const n = Math.max(1, Math.ceil(Math.hypot(tx - fx, tz - fz) / Math.max(0.02, r * 0.5)));
+    const sx = (tx - fx) / n,
+      sz = (tz - fz) / n;
+    let x = fx,
+      z = fz;
+    out.hitX = out.hitZ = false;
+    for (let i = 0; i < n; i++) {
+      if (!out.hitX) {
+        if (this.isFree(x + sx, z, r)) x += sx;
+        else out.hitX = true;
+      }
+      if (!out.hitZ) {
+        if (this.isFree(x, z + sz, r)) z += sz;
+        else out.hitZ = true;
+      }
+    }
+    // saída de emergência: se já começou dentro (porta fechou em cima), empurra como o slide antigo
+    if (!this.isFree(x, z, r)) {
+      const p = { x, z };
+      slide(p, r, this.boxes());
+      x = p.x;
+      z = p.z;
+    }
+    out.x = x;
+    out.z = z;
+  }
+  clampPoint(x: number, z: number, margin: number, px: number, pz: number, out: [number, number]): void {
+    for (const b of this.boxes()) {
+      if (!LiveBoxCollider.live(b)) continue;
+      const nx = Math.max(b.min.x, Math.min(x, b.max.x));
+      const nz = Math.max(b.min.z, Math.min(z, b.max.z));
+      const dx = x - nx,
+        dz = z - nz;
+      const d = Math.hypot(dx, dz);
+      if (d >= margin) continue;
+      if (d < 1e-4) {
+        x = px;
+        z = pz;
+        continue;
+      }
+      x = nx + (dx / d) * margin;
+      z = nz + (dz / d) * margin;
+    }
+    out[0] = x;
+    out[1] = z;
+  }
+}
 
 /** move um círculo (x,z) contra caixas (só as que cruzam a altura 0.1..1.7) */
 export function slide(p: { x: number; z: number }, r: number, boxes: Box[]): void {

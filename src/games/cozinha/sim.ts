@@ -4,7 +4,7 @@
  *  Sem alocação por quadro: itens nascem só em eventos (pegar da caixa).
  * ============================================================ */
 import {
-  BURN_AFTER, FIRE_AFTER, FIRE_SPREAD, INGS, PROC_TIME, RECIPES, compIng, compRoute, compStage, comp, dayParams, recipeProcs,
+  BURN_AFTER, EMPTY_FIRE, EMPTY_SMOKE, FIRE_AFTER, FIRE_SPREAD, INGS, PROC_TIME, RECIPES, compIng, compRoute, compStage, comp, dayParams, recipeProcs,
   type DayParams, type Proc, type Role, type Special, type Theme, type UpId,
 } from './data';
 import type { Level } from './levels';
@@ -64,6 +64,8 @@ export interface Station {
   bump: number;
   /** fogo/forno/liquidificador ligado (só conta com sim.manualHeat — 3D com botão físico) */
   heat: boolean;
+  /** s com o fogo LIGADO e a panela vazia (fumaça → fogo) */
+  dry: number;
 }
 export interface PIn {
   mx: number;
@@ -134,6 +136,10 @@ export const enum FX {
   Coins,
   Event,
   Bump,
+  /** fumaça (fogão esquecido / comida queimando) */
+  Smoke,
+  /** panela esquecida "estourou" (pipoca de desenho) — v = 1 se jogou o conteúdo para fora */
+  Pop,
 }
 export interface FxEv {
   t: FX;
@@ -222,6 +228,8 @@ export class Sim {
   fxHead = 0;
   fxCount = 0;
   seats = 4;
+  /** escala dos tempos de "fogão esquecido" (fácil no começo; ∞ no treino) */
+  fireMul = 1;
   /** apagão em andamento */
   get outage(): boolean {
     return this.special === 'outage' && this.specialLeft > 0;
@@ -244,6 +252,9 @@ export class Sim {
     this.rnd = mulberry(o.seed ^ (o.day * 2654435761));
     for (let i = 0; i < 48; i++) this.fx.push({ t: 0 as FX, x: 0, y: 0, v: 0 });
     this.seats = Math.min(8, 3 + o.ups.dining + Math.floor(o.day / 4));
+    // fogão esquecido: no treino nunca pega fogo; nos primeiros dias/fases demora mais
+    const lvN = this.lv ? this.lv.n : o.day;
+    this.fireMul = this.lv?.tutorial ? 99 : lvN <= 2 ? 1.6 : lvN <= 6 ? 1.25 : 1;
     this.pickTheme();
     this.buildMenuAndLayout();
     this.totalPlates = this.lv?.plates || 3 + Math.min(5, Math.ceil(this.p.maxOrders * 0.8)) + Math.floor(o.crew / 2);
@@ -439,6 +450,7 @@ export class Sim {
         claim: 0,
         bump: 0,
         heat: false,
+        dry: 0,
       };
       if (grid[i] === 2) s.k = 'counter';
       this.stAt[i] = s.i;
@@ -694,7 +706,8 @@ export class Sim {
     g.force = -1;
     if (g.hold !== it) {
       g.hold = null;
-      return 1;
+      // devolvido (pedido errado na janela): continua solto no chão — antes sumia de vez
+      return this.floor.includes(it) ? 0 : 1;
     }
     g.hold = null;
     return it.parts.length !== np ? 2 : 0;
@@ -780,6 +793,8 @@ export class Sim {
         s.item = null;
         s.prog = 0;
         s.claim = 0;
+        // ajudante desliga o fogo que ele mesmo ligou (fogão esquecido vira fogo)
+        if (p.bot && COOKERS[s.k]) s.heat = false;
         this.emit(FX.Pick, s.x + 0.5, s.y + 0.5);
         return;
       }
@@ -996,7 +1011,8 @@ export class Sim {
       plate.y = s.y + 0.5 + s.fy * 1.1;
       plate.z = 1;
       plate.vz = 3;
-      this.floor.push(plate);
+      // (no 3D o prato arremessado já está no chão: não duplica)
+      if (!this.floor.includes(plate)) this.floor.push(plate);
       return;
     }
     const r = RECIPES[o.r];
@@ -1099,6 +1115,18 @@ export class Sim {
         continue;
       }
       const proc = COOKERS[s.k];
+      // fogão esquecido LIGADO: vazio esquenta → fumaça → fogo (pequeno, de desenho). Treino: nunca.
+      if (this.manualHeat && s.heat && (s.k === 'pot' || s.k === 'pan') && !this.outage && this.fireMul < 50 && (!it || it.k !== IK.Ing)) {
+        s.dry += dt;
+        const smokeAt = EMPTY_SMOKE * this.fireMul;
+        if (s.dry > smokeAt && Math.random() < dt * 6) this.emit(FX.Smoke, s.x + 0.5, s.y + 0.5);
+        if (s.dry > (EMPTY_SMOKE + EMPTY_FIRE) * this.fireMul) {
+          s.dry = 0;
+          this.ignite(s);
+        }
+        continue;
+      }
+      s.dry = 0;
       if (!proc || !it || it.k !== IK.Ing) continue;
       if (this.outage) continue;
       if (this.manualHeat && !s.heat) continue;
@@ -1121,7 +1149,12 @@ export class Sim {
         }
       } else if (it.burnt && it.over > -1e5) {
         it.over += dt;
-        if (it.over > BURN_AFTER + FIRE_AFTER) this.ignite(s);
+        if (Math.random() < dt * 3) this.emit(FX.Smoke, s.x + 0.5, s.y + 0.5);
+        if (it.over > BURN_AFTER + FIRE_AFTER * this.fireMul) {
+          // panela/frigideira esquecida: "POC!" e o carvão pula fora (o 3D faz o voo)
+          if (s.k === 'pan' || s.k === 'pot') this.emit(FX.Pop, s.x + 0.5, s.y + 0.5, 1);
+          this.ignite(s);
+        }
       }
     }
     // itens no chão (pulo visual; no barco escorregam) — no 3D físico quem move é o renderizador
