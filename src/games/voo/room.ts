@@ -21,6 +21,7 @@ import { vIcon } from './icons';
 import { CODE_OK, type FlightNet, type Me, type NetMsg } from './net';
 import { speak } from './voice';
 import { bloopLink, drawBloopQr, scanBloopLink } from '../../ui/scan';
+import { joinInvite, joinStr } from '../../party/join';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -121,11 +122,12 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
   el.innerHTML = `<div class="vr-in">
     <header class="vh-top"><button class="vh-icb" data-x aria-label="${esc(t('voo.hg.exit', 'Sair'))}">${vIcon('close', 30)}</button>
       <div class="vh-ttl"><b>${esc(t('voo.hg.friends', 'Voar com amigos'))}</b><small>${esc(t('voo.r.sub', 'Até 4 no mesmo avião. Lugar vazio vira ajudante.'))}</small></div></header>
-    <div class="vr-code"><small>${esc(t('voo.r.code', 'CÓDIGO'))}</small><b>${net.code.split('').map((c) => `<i>${c}</i>`).join('')}</b><button class="vr-qr" data-qr aria-label="${esc(t('voo.r.qr', 'QR para escanear'))}"><canvas></canvas></button></div>
     <div class="vr-seats"></div>
     <div class="vr-friends"><div class="vh-lbl">${esc(t('voo.r.call', 'Chamar amigos'))}</div><div class="vr-flist"><div class="vr-note">${esc(t('voo.r.loading', 'Procurando amigos online…'))}</div></div></div>
+    <details class="vr-more"><summary>${esc(t('fp.code', 'Entrar com código / QR'))}</summary>
+    <div class="vr-code"><small>${esc(t('voo.r.code', 'CÓDIGO'))}</small><b>${net.code.split('').map((c) => `<i>${c}</i>`).join('')}</b><button class="vr-qr" data-qr aria-label="${esc(t('voo.r.qr', 'QR para escanear'))}"><canvas></canvas></button></div>
     <button class="vr-scan" data-scan>${icon('camera', { size: 30 })}<span><b>${esc(t('voo.r.scan', 'Escanear'))}</b><small>${esc(t('voo.r.scanSub', 'Aponte para o QR do amigo e entre na sala dele'))}</small></span></button>
-    <form class="vr-join" data-joinf><span>${vIcon('plane', 22)}${esc(t('voo.r.haveCode', 'Tem um código?'))}</span><input maxlength="5" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC23" aria-label="${esc(t('voo.r.code', 'CÓDIGO'))}"><button class="vr-jbtn" type="submit">${esc(t('voo.r.join', 'Entrar'))}</button></form>
+    <form class="vr-join" data-joinf><span>${vIcon('plane', 22)}${esc(t('voo.r.haveCode', 'Tem um código?'))}</span><input maxlength="5" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC23" aria-label="${esc(t('voo.r.code', 'CÓDIGO'))}"><button class="vr-jbtn" type="submit">${esc(t('voo.r.join', 'Entrar'))}</button></form></details>
     <div class="vr-foot"><div class="vr-status"></div><button class="vh-fly vr-main" data-main><span class="vh-flyi">${vIcon(host ? 'plane' : 'check', 36)}</span><span class="vh-flyt"><b></b><small></small></span></button></div>
   </div>`;
   root.appendChild(el);
@@ -391,7 +393,9 @@ export function openRoom(root: HTMLElement, o: RoomOpts): RoomHandle {
       b.classList.add('done');
       b.innerHTML = vIcon('check', 22) + esc(t('voo.r.called', 'Chamado'));
       try {
-        await api('/voo/invite', { id: me.id, to: b.dataset.call, code: net.code, name: me.name });
+        // convite pelo sistema de amigos: aparece NA HORA em qualquer tela (party/invite-pop.ts) e entra direto
+        await api('/friends/invite', { id: me.id, to: b.dataset.call, kind: 'game', game: joinInvite(joinStr('voo', net.code)) });
+        void api('/voo/invite', { id: me.id, to: b.dataset.call, code: net.code, name: me.name }).catch(() => {});
         speak(t('voo.r.calledV', 'Chamado!'), { gap: 600 });
       } catch {
         invited.delete(b.dataset.call);

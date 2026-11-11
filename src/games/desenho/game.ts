@@ -21,6 +21,8 @@ import { renderThumb } from './paper';
 import { addToGallery, dvSave, persistDv, totalStars } from './save';
 import { cloneDrawing, emptyDrawing, parseShareCode, type Drawing, type Material } from './strokes';
 import { injectDvCss } from './style';
+import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
+import type { DuelCtl } from '../../party/duel';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -69,9 +71,13 @@ class DesenhoGame implements MiniGameHandle {
   private tut = 0;
   private dead = false;
   private busy = false;
+  // duelo online (src/party/duel.ts): o mesmo desafio para todos — quem resolver primeiro vence
+  private duel: DuelCtl | null = null;
+  private duelOn = false;
+  private duelTries = 0;
 
   constructor(
-    root: HTMLElement,
+    private root: HTMLElement,
     private exit: () => void,
   ) {
     this.el = document.createElement('div');
@@ -85,6 +91,45 @@ class DesenhoGame implements MiniGameHandle {
     this.tut = this.sv.tut;
     this.menu();
     (window as unknown as { __dv?: unknown }).__dv = this;
+    const d = takeDuel('desenho');
+    if (d) void this.onlineDuel(d);
+  }
+
+  /* ----------------------------- duelo online ----------------------------- */
+  private async onlineDuel(entry: DuelEntry): Promise<void> {
+    const D = await import('../../party/duel');
+    if (this.dead) return;
+    this.duel?.leave();
+    this.duel = D.startDuel({
+      game: 'desenho',
+      root: this.root,
+      title: t('dv.name', 'Desenha e Vira!'),
+      rank: 'time',
+      limitSec: 240,
+      entry,
+      hud: 'left',
+      start: (seed) => {
+        this.duelOn = true;
+        this.duelTries = 0;
+        // desafios do começo (todo mundo já entende o que desenhar)
+        this.playLevel(seed % Math.min(8, LEVELS.length));
+      },
+      stop: () => {
+        this.duelOn = false;
+        this.menu();
+      },
+      exit: () => {
+        this.duel = null;
+        this.duelOn = false;
+        this.menu();
+      },
+    });
+  }
+  private leaveDuel(): void {
+    if (!this.duelOn) return;
+    this.duelOn = false;
+    this.duel?.leave();
+    this.duel = null;
   }
 
   /* ----------------------------- ateliê (também fundo do menu) ----------------------------- */
@@ -130,6 +175,7 @@ class DesenhoGame implements MiniGameHandle {
   }
 
   menu(): void {
+    this.leaveDuel();
     this.closeDraw();
     if (this.chal) {
       this.eng.setStage(null);
@@ -148,6 +194,7 @@ class DesenhoGame implements MiniGameHandle {
       <div class="dv-mbtns">
         <button class="dv-mode dv-m1" data-go="atelier"><i>${dvIcon('draw', 34)}</i><b>${t('dv.atelier', 'Ateliê')}</b><small>${t('dv.atelier.d', 'Desenhe, faça BUM! e brinque')}</small></button>
         <button class="dv-mode dv-m2" data-go="chal"><i>${dvIcon('flag', 34)}</i><b>${t('dv.chal', 'Desafios')}</b><small>${dvIcon('star', 14)} ${fmt(stars)}/${LEVELS.length * 3}</small></button>
+        <button class="dv-mode dv-m2" data-go="duel"><i><svg viewBox="0 0 32 24" width="40" height="30" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg></i><b>${t('duel.menu', 'Duelo online')}</b><small>${t('dv.duelD', 'Mesmo desafio, quem resolve primeiro?')}</small></button>
         <button class="dv-mode dv-m3" data-go="gal"><i>${dvIcon('gallery', 34)}</i><b>${t('dv.gallery', 'Galeria')}</b><small>${t('dv.gallery.d', '{n} criações', { n: this.sv.gallery.length })}</small></button>
       </div>`,
     );
@@ -156,6 +203,7 @@ class DesenhoGame implements MiniGameHandle {
       b.addEventListener('click', () => {
         const g = b.dataset.go;
         if (g === 'atelier') this.enterAtelier();
+        else if (g === 'duel') void this.onlineDuel(freshDuel('desenho'));
         else if (g === 'chal') this.levelSelect();
         else this.gallery();
       }),
@@ -402,10 +450,26 @@ class DesenhoGame implements MiniGameHandle {
     const c = new Challenge(this.eng, this.layer, lv, i);
     this.chal = c;
     this.eng.setStage(c);
-    c.onExit = () => this.levelSelect();
+    c.onExit = () => {
+      this.leaveDuel();
+      this.levelSelect();
+    };
     c.onRestart = () => this.playLevel(i);
-    c.onWin = (r) => setTimeout(() => !this.dead && this.chal === c && this.results(i, r), 1100);
-    c.onFail = () => setTimeout(() => !this.dead && this.chal === c && this.failed(i), 700);
+    c.onWin = (r) => {
+      if (this.duelOn) {
+        this.duelOn = false;
+        this.duel?.finish(r.stars * 100 + Math.max(0, Math.round((lv.ink - r.ink) * 10)));
+      }
+      setTimeout(() => !this.dead && this.chal === c && this.results(i, r), 1100);
+    };
+    c.onFail = () => {
+      if (this.duelOn) {
+        // duelo: cada tentativa conta um pouquinho na barra; tenta de novo na hora
+        this.duelTries++;
+        this.duel?.progress(this.duelTries, Math.min(0.8, this.duelTries * 0.2));
+      }
+      setTimeout(() => !this.dead && this.chal === c && this.failed(i), 700);
+    };
   }
 
   private results(i: number, r: ChallengeResult): void {
@@ -462,6 +526,7 @@ class DesenhoGame implements MiniGameHandle {
   destroy(): void {
     if (this.dead) return;
     this.dead = true;
+    this.duel?.leave();
     objective(null);
     clearNotify();
     resetNotifyTop();

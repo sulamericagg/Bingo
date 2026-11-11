@@ -2,8 +2,10 @@
  * Só a vitrine (leve) entra no pacote principal; o jogo (e o three.js) carregam sob demanda. */
 import { registerGame, type MiniGameHandle } from '../../hub/registry';
 import { t } from '../../i18n';
+import { registerPartyGame } from '../../party/contract';
 
 export function registerVoo(): void {
+  registerPartyGame('voo', { mode: 'room' }); // grupo: todos no mesmo avião (o líder é o anfitrião)
   registerGame({
     id: 'voo',
     get name() {
@@ -15,7 +17,7 @@ export function registerVoo(): void {
     icon: 'rocket',
     theme: { bg: ['#ffb36b', '#6a3fb8'], accent: '#ff5cae', accent2: '#ffd34a', title: ['#fff6d6', '#ffd34a'] },
     drawShowcase,
-    online: false,
+    online: true,
     async launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
       const m = await import('./game');
       return m.launch(root, exit);

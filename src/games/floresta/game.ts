@@ -19,6 +19,7 @@ import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
 import { Hud, type CtxKind, type HudHost } from './hud';
 import { forestSolo } from './touchcfg';
+import { consumePartySeat, partySeat } from '../../party/contract';
 
 /** visão (2D ou 3D) */
 export interface View {
@@ -117,6 +118,10 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
 
   async start(): Promise<void> {
     let mode = this.opts.mode;
+    // grupo (docs/PARTY.md): todos no mesmo Mundo Aberto online (o líder cria; código do grupo)
+    const seat = partySeat('floresta');
+    if (seat) consumePartySeat('floresta');
+    if (!mode && seat && webglOk()) mode = 'world';
     if (!mode) mode = await this.chooseMode();
     if (this.destroyed) return;
     if (mode === 'world') {
@@ -124,6 +129,12 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
         const m = await import('./world/worldgame');
         const W = await import('./world/worlds');
         if (this.destroyed) return;
+        if (seat) {
+          this.world = await m.openServers(this.wrap, { tier: this.gov.tier, exit: () => this.finish() }, { code: seat.code(6, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), host: seat.host });
+          if (!this.world) return this.finish();
+          this.world.onSample = (a, b) => this.gov.sample(a, b);
+          return;
+        }
         const pick = await W.pickWorld(this.wrap, { servers: m.serversAvailable() });
         if (this.destroyed) return;
         if (!pick) return this.finish();

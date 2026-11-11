@@ -13,6 +13,7 @@ import { speak } from '../voo/voice';
 import { IC } from './icons';
 import { CODE_OK, MAX_PLAYERS, type Me } from './net';
 import { PCOL, type Peer } from './mp';
+import { joinInvite, joinStr } from '../../party/join';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -176,7 +177,9 @@ export function fillLobby(el: HTMLElement, o: LobbyOpts): LobbyHandle {
       b.classList.add('done');
       b.innerHTML = IC.check + esc(t('gb.mp.called', 'Chamado'));
       try {
-        await api('/garimpo/invite', { id: o.me.id, to: id, code: o.code, name: o.me.name });
+        // convite pelo sistema de amigos: aparece NA HORA em qualquer tela e entra direto (src/party/invite-pop.ts)
+        await api('/friends/invite', { id: o.me.id, to: id, kind: 'game', game: joinInvite(joinStr('garimpo', o.code)) });
+        void api('/garimpo/invite', { id: o.me.id, to: id, code: o.code, name: o.me.name }).catch(() => {});
       } catch {
         invited.delete(id);
         notify(t('gb.mp.callFail', 'Não deu para chamar agora'), { icon: 'cloud-off', kind: 'bad' });

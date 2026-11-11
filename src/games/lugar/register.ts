@@ -4,6 +4,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { registerGame } from '../../hub/registry';
+import { registerDuelGame } from '../../party/duel-link';
 import { drawPlayer } from '../../game/character';
 import { SKINS } from '../../game/skins';
 import { save } from '../../core/storage';
@@ -88,6 +89,7 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
 }
 
 export function registerLugar(): void {
+  registerDuelGame('lugar'); // grupo/links: duelo online (src/party/duel.ts)
   registerGame({
     id: 'lugar',
     get name() {
