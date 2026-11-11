@@ -452,8 +452,10 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
   /* ---------- desenho: cartões de papel ---------- */
   const drawCards = (time: number) => {
     roleBtns.forEach((b, r) => {
-      const c = b.querySelector('canvas') as HTMLCanvasElement;
-      const x = c.getContext('2d')!;
+      const c = b.querySelector('canvas') as HTMLCanvasElement | null;
+      // o navegador pode negar o contexto 2D (memória/GPU sob pressão): sem erro a cada quadro (QA)
+      const x = c?.getContext('2d');
+      if (!c || !x) return;
       x.clearRect(0, 0, c.width, c.height);
       const sel = r === sv.role;
       const hop = sel ? Math.abs(Math.sin(time * 3.2)) * 8 : 0;

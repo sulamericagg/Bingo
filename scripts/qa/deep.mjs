@@ -33,6 +33,7 @@ const scenes = {
   async garimpo(page, cdp) {
     await launch(page, 'garimpo');
     for (let i = 0; i < 4; i++) { if (!(await tapText(page, '^(jogar|novo|começar|continuar|sozinho|garimpar|bora|ok|entrar)'))) break; await page.waitForTimeout(3000); }
+    for (let i = 0; i < 6; i++) { if (await tapText(page, '^pular')) { await page.waitForTimeout(2500); break; } await page.waitForTimeout(1500); } // abertura do vovô
     await page.waitForTimeout(4000);
     const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
     const st = await page.evaluate(() => { const g = window.__garimpo; const c = g?.cur; return { view: g?.curView?.(), held: c?.held, worker: c?.constructor?.name }; });
@@ -55,9 +56,8 @@ const scenes = {
   async cinema(page) {
     await launch(page, 'cinema');
     note('cinema', 'abertura', null, await q.shot(page, 'deep-cinema-0'));
-    await tapText(page, 'criar filme|criar história'); await page.waitForTimeout(2500);
+    await page.evaluate(() => document.querySelector('#game-host [data-a="story"]')?.click()); await page.waitForTimeout(3000); // ✨ Criar história
     note('cinema', 'Criar história (em pé)', null, await q.shot(page, 'deep-cinema-story'));
-    await tapText(page, 'piquenique|em branco|do zero', 'body'); await page.waitForTimeout(2500);
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => { const c = [...document.querySelectorAll('.kid-card')]; c.slice(0, 2).forEach((x) => x.click()); });
       await page.waitForTimeout(600);

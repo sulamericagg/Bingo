@@ -511,3 +511,10 @@
   .kid-foot .kid-big{pointer-events:auto;min-width:0;width:136px;min-height:96px;font-size:18px;line-height:1.15;padding:10px 8px;white-space:normal}
   .kid-dots{margin-right:0}
 }
+/* "Minha história" deitado e baixo (844×390): a barra Cena/Assistir/Dublar/Música/Enviar (~100 px) deixava ~80 px
+   para o cartão da cena. Botões numa linha, mais baixos (QA) */
+@media (orientation:landscape) and (max-height:560px){
+  .easy-bar{padding:4px 10px calc(6px + var(--edge-b,0px))}
+  .easy-big{min-height:44px;flex-direction:row;gap:6px;border-radius:14px;font-size:13px}
+  .easy-big b{font-size:20px}
+}
