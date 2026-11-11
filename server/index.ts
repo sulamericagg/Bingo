@@ -19,6 +19,7 @@ import { handleCheck, handleClaim, handleMine, handlesSearch, playerByHandle } f
 import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
+import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
@@ -128,6 +129,7 @@ export { PartyRoom } from './party';
 export { FriendsHub } from './friends';
 export { SquadRoom } from './squad';
 export { FlightRoom } from './flight';
+export { NightsRoom } from './nights';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -210,6 +212,16 @@ export default {
     if (vm) {
       try {
         return await flightJoin(req, env, vm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Noites do Acampamento (WebSocket): /api/nights/<código de 6 dígitos>
+    const nm = /^\/api\/nights\/(\d{6})$/.exec(path);
+    if (nm) {
+      try {
+        return await nightsJoin(req, env, nm[1]);
       } catch (e) {
         return errorResponse(e);
       }

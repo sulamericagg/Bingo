@@ -40,6 +40,7 @@ import { registerCor } from './games/cor/register';
 import { registerCinema } from './cinema/register';
 import { registerCaca } from './caca/register';
 import { registerMontaLeva } from './games/montaleva/register';
+import { registerNoites } from './games/noites/register';
 import { registerCavaFala } from './games/cavafala/register';
 import { registerStudio } from './studio/register';
 import { registerCreatures } from './creatures/register';
@@ -112,6 +113,7 @@ async function boot(): Promise<void> {
   registerCor();
   registerCaca();
   registerMontaLeva();
+  registerNoites();
   registerCavaFala();
   registerStudio();
   registerPet();

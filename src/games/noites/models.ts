@@ -393,12 +393,12 @@ export function bloopModel(c: BloopCols, scale = 1, sad = false): BloopRig {
   const g = new THREE.Group();
   const body = new THREE.Group();
   g.add(body);
-  const mBody = new THREE.MeshLambertMaterial({ color: c.light });
+  const mBody = new THREE.MeshLambertMaterial({ color: c.light, emissive: new THREE.Color(c.light).multiplyScalar(0.22) });
   const bm = new THREE.Mesh(G.sph, mBody);
   bm.scale.set(1, 0.92, 1);
   bm.position.y = 0.5;
   body.add(bm);
-  const belly = new THREE.Mesh(G.sph, new THREE.MeshLambertMaterial({ color: c.belly }));
+  const belly = new THREE.Mesh(G.sph, new THREE.MeshLambertMaterial({ color: c.belly, emissive: new THREE.Color(c.belly).multiplyScalar(0.2) }));
   belly.scale.set(0.62, 0.55, 0.3);
   belly.position.set(0, 0.42, 0.36);
   body.add(belly);

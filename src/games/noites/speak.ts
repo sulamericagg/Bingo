@@ -3,6 +3,8 @@
  *  TTS nativo (plugin Capacitor TextToSpeech, se existir) ou
  *  speechSynthesis do navegador. Sem voz → só o som/ícone.
  * ============================================================ */
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import { isNative } from '../../core/platform';
 import { getLang } from '../../i18n';
 
 const LANGS: Record<string, string> = {
@@ -41,8 +43,7 @@ export function setVoice(v: boolean): void {
 
 type NativeTts = { speak(o: { text: string; lang: string; rate: number; pitch: number }): Promise<void>; stop?(): Promise<void> };
 function native(): NativeTts | null {
-  const w = window as unknown as { Capacitor?: { Plugins?: { TextToSpeech?: NativeTts } } };
-  return w.Capacitor?.Plugins?.TextToSpeech ?? null;
+  return isNative ? (TextToSpeech as unknown as NativeTts) : null;
 }
 
 /**

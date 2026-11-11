@@ -22,6 +22,8 @@ interface Env {
   SQUAD: DurableObjectNamespace<import('./squad').SquadRoom>;
   /** Pouso Forçado online: salas de voo (relé anfitrião↔convidados) + caixas de convite. */
   FLIGHT: DurableObjectNamespace<import('./flight').FlightRoom>;
+  /** Noites do Acampamento: sala co-op por código (relé anfitrião↔convidados). */
+  NIGHTS: DurableObjectNamespace<import('./nights').NightsRoom>;
   /** Segredo definido no painel da Cloudflare (Settings → Variables and Secrets). */
   ADMIN_PASSWORD?: string;
   /** Hash PBKDF2 da senha do painel (público; usado se ADMIN_PASSWORD não existir). */

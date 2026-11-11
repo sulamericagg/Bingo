@@ -32,7 +32,9 @@
       // Grupo (party de até 4) com chat e "jogar junto" (docs/PARTY.md).
       { "name": "SQUAD", "class_name": "SquadRoom" },
       // Pouso Forçado online: sala de voo por código (relé) + convites entre amigos.
-      { "name": "FLIGHT", "class_name": "FlightRoom" }
+      { "name": "FLIGHT", "class_name": "FlightRoom" },
+      // Noites do Acampamento: sala co-op por código (relé; o anfitrião simula).
+      { "name": "NIGHTS", "class_name": "NightsRoom" }
     ]
   },
   "migrations": [
@@ -40,7 +42,8 @@
     { "tag": "v2-social", "new_sqlite_classes": ["PresenceRoom", "ChatRoom", "Championship"] },
     { "tag": "v3-home", "new_sqlite_classes": ["PartyRoom", "FriendsHub"] },
     { "tag": "v4-squad", "new_sqlite_classes": ["SquadRoom"] },
-    { "tag": "v4-voo", "new_sqlite_classes": ["FlightRoom"] }
+    { "tag": "v4-voo", "new_sqlite_classes": ["FlightRoom"] },
+    { "tag": "v5-noites", "new_sqlite_classes": ["NightsRoom"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em
