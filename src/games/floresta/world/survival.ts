@@ -274,7 +274,7 @@ export class Sandbox implements MundoAPI {
       this.drive(v);
       return true;
     };
-    if (!g.opts.net) {
+    {
       this.mm = new MobManager(this.mobHost(), g.scene, g.renderer, g.opts.tier as 0 | 1 | 2 | 3, g.hud.el);
       this.mm.on('toast', (msg) => this.toast(msg, 'good'));
       this.mm.on('bossStart', () => this.toast(t('mundo.boss', 'Um chefão acordou!'), 'warn'));
@@ -664,6 +664,12 @@ export class Sandbox implements MundoAPI {
         e.dispose(this);
       }
     }
+    if (this.mm && this.net) {
+      // online: o anfitrião simula; os outros só espelham os retratos
+      const host = this.net.isHost;
+      this.mm.autoSpawn = host;
+      this.mm.aiOn = host;
+    }
     if (this.mm) {
       if (this.mm.riding) {
         const c = g.hud.ctl;
@@ -1004,7 +1010,8 @@ export class Sandbox implements MundoAPI {
       const dmg = it?.dmg ?? 1;
       this.useCd = (kind === 'sword' ? 0.45 : 0.55) * tired;
       g.swing = 1;
-      this.mm.damage(this.aimMob, dmg, { kind: 'melee', fromX: g.px, fromZ: g.pz, knock: kind === 'sword' ? 5 : 3 });
+      if (this.net && !this.net.isHost) this.net.hitMirror(this.aimMob, dmg);
+      else this.mm.damage(this.aimMob, dmg, { kind: 'melee', fromX: g.px, fromZ: g.pz, knock: kind === 'sword' ? 5 : 3 });
       this.stam = Math.max(0, this.stam - 0.6);
       if (kind) this.wear();
       return;

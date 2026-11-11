@@ -19,6 +19,7 @@ import type { Entity, GameMode, MundoAPI } from './engine';
 import { Mob, MOB } from './mobs';
 import { modeName } from './worlds';
 import { CH } from './gen';
+import { ALL_MOBS, MOB_INDEX, type Mob as BigMob } from './content/mobs';
 
 export const MCODE_OK = /^[A-HJ-NP-Z2-9]{6}$/;
 const ALPH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -435,6 +436,14 @@ export class NetSession {
         g.hud.toast(this.pvp ? t('mundo.net.pvpOn', 'PvP ligado') : t('mundo.net.pvpOff', 'PvP desligado'), 'warn');
         break;
       case 'mg':
+        if (m.k === 'hitb' && this.isHost && g.sb!.mm) {
+          for (const mob of g.sb!.mm.mobs)
+            if (this.bigId.get(mob) === m.id) {
+              g.sb!.mm.damage(mob, Math.min(20, +m.d || 1), { kind: 'melee', fromX: +m.fx, fromZ: +m.fz, knock: 3 });
+              break;
+            }
+          break;
+        }
         if (m.k === 'hitm' && this.isHost) {
           const e = g.sb!.entities().find((x) => x.id === m.id);
           e?.hit?.(Math.min(20, +m.d || 1), 'net', g.sb!);
@@ -451,9 +460,73 @@ export class NetSession {
     }
   }
 
+  /* ---- bichos do módulo completo (anfitrião simula; os outros espelham) ---- */
+  private bigId = new WeakMap<BigMob, number>();
+  private bigN = 1;
+  private mirror = new Map<number, BigMob>();
+  private mirrorAtk = 0;
+  private bigMobsOut(): number[][] {
+    const g = this.g!;
+    const mm = g.sb!.mm!;
+    const l: number[][] = [];
+    for (const m of mm.mobs) {
+      if (m.dead) continue;
+      let near = Math.hypot(m.x - g.px, m.z - g.pz) < 90;
+      if (!near) for (const a of this.peers.values()) if (Math.hypot(m.x - a.x, m.z - a.z) < 90) near = true;
+      if (!near) continue;
+      let id = this.bigId.get(m);
+      if (!id) this.bigId.set(m, (id = this.bigN++));
+      l.push([id, MOB_INDEX.get(m.def.id) ?? 0, r2(m.x), r2(m.y), r2(m.z), r2(m.yaw), m.st === 'dying' ? 1 : 0]);
+      if (l.length >= 60) break;
+    }
+    return l;
+  }
+  private bigMobsIn(l: number[][]): void {
+    const mm = this.g!.sb!.mm!;
+    const seen = new Set<number>();
+    for (const e of l) {
+      const [rid, di, x, y, z, yaw, dying] = e;
+      const def = ALL_MOBS[di];
+      if (!def) continue;
+      seen.add(rid);
+      let m = this.mirror.get(rid);
+      if (!m || m.dead) {
+        m = mm.spawn(def.id, x, z, { y, persistent: true });
+        this.mirror.set(rid, m);
+        this.bigId.set(m, rid);
+      }
+      const dx = x - m.x;
+      const dz = z - m.z;
+      m.spd = Math.min(8, Math.hypot(dx, dz) * 5);
+      m.x = x;
+      m.y = y;
+      m.z = z;
+      m.vx = m.vz = 0;
+      m.yaw = yaw;
+      if (dying && m.st !== 'dying') mm.kill(m, false);
+    }
+    for (const [rid, m] of this.mirror)
+      if (!seen.has(rid)) {
+        m.dead = true;
+        this.mirror.delete(rid);
+      }
+  }
+  /** golpe num bicho espelhado: o anfitrião aplica */
+  hitMirror(m: BigMob, d: number): void {
+    const id = this.bigId.get(m);
+    if (!id) return;
+    const g = this.g!;
+    this.send({ t: 'mg', k: 'hitb', id, d, fx: r2(g.px), fz: r2(g.pz) });
+    g.burst(5, m.x, m.y + 1, m.z, '#ffffff', 3);
+  }
+
   private ents(l: number[][]): void {
     const g = this.g!;
     const sb = g.sb!;
+    if (sb.mm) {
+      this.bigMobsIn(l);
+      return;
+    }
     const seen = new Set<number>();
     for (const e of l) {
       const [rid, ki, x, y, z, yaw] = e;
@@ -490,17 +563,32 @@ export class NetSession {
       const p = v ? [r2(v.x), r2(v.y + 0.8), r2(v.z), r2(v.yaw - Math.PI / 2)] : [r2(g.px), r2(g.py), r2(g.pz), r2(g.yaw)];
       this.send({ t: 's', p, h: g.sb!.held() });
     }
+    if (!this.isHost && g.sb!.mm) {
+      this.mirrorAtk -= dt;
+      if (this.mirrorAtk <= 0 && g.sb!.mode !== 'pacifico')
+        for (const m of this.mirror.values()) {
+          if (m.dead || m.def.kind === 'animal' || m.tamed) continue;
+          if (Math.hypot(m.x - g.px, m.z - g.pz) < 1.7 && Math.abs(m.y - g.py) < 2) {
+            this.mirrorAtk = 1.2;
+            g.sb!.hurtPlayer(Math.max(1, (m.def as unknown as { dmg?: number }).dmg ?? 2), 'mob');
+            break;
+          }
+        }
+    }
     if (this.isHost) {
       this.entT -= dt;
       if (this.entT <= 0) {
         this.entT = 0.2;
-        const l: number[][] = [];
-        for (const e of g.sb!.entities()) {
-          if (!e.kind.startsWith('mob:')) continue;
-          const ki = MOB_KINDS.indexOf(e.kind.slice(4));
-          l.push([e.id, ki, r2(e.x), r2(e.y), r2(e.z), r2((e as unknown as { yaw: number }).yaw ?? 0)]);
+        if (g.sb!.mm) this.send({ t: 'ent', l: this.bigMobsOut() });
+        else {
+          const l: number[][] = [];
+          for (const e of g.sb!.entities()) {
+            if (!e.kind.startsWith('mob:')) continue;
+            const ki = MOB_KINDS.indexOf(e.kind.slice(4));
+            l.push([e.id, ki, r2(e.x), r2(e.y), r2(e.z), r2((e as unknown as { yaw: number }).yaw ?? 0)]);
+          }
+          this.send({ t: 'ent', l });
         }
-        this.send({ t: 'ent', l });
       }
     }
   }
