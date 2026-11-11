@@ -43,6 +43,8 @@ import {
 } from './rings';
 import { RED, ZONES, ZONE_LEN, zoneAt } from './zones';
 import { gameFont } from '../../i18n/font';
+import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
+import type { DuelCtl } from '../../party/duel';
 
 /** valor de cada moeda coletada no tubo */
 const COIN_VALUE = 3;
@@ -241,7 +243,14 @@ class TuboGame implements MiniGameHandle {
   };
   private offs: (() => void)[] = [];
 
-  constructor(root: HTMLElement, private exitFn: () => void) {
+  // duelo online (src/party/duel.ts): mesmos anéis para todos; quem fizer mais pontos em 90 s vence
+  private duel: DuelCtl | null = null;
+  private duelRng: (() => number) | null = null;
+
+  constructor(
+    private root: HTMLElement,
+    private exitFn: () => void,
+  ) {
     if (import.meta.env.DEV) (window as unknown as { __tuboGame?: unknown; __tuboHit?: unknown }).__tuboGame = this;
     if (import.meta.env.DEV) (window as unknown as { __tuboHit?: unknown }).__tuboHit = hitTest;
     try {
@@ -272,6 +281,7 @@ class TuboGame implements MiniGameHandle {
         <span>${t('tubo.hint.gap', 'Caia pela abertura quando ela passar embaixo de você')}</span>
         <span class="tubo-hint-red">${icon('warning', { size: 18 })}${t('tubo.hint.red', 'Não mergulhe no vermelho listrado!')}</span>
       </div>
+      <button class="tubo-duelbtn" data-act="duel"><svg viewBox="0 0 32 24" width="30" height="22" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg><span>${t('duel.menu', 'Duelo online')}</span></button>
       <div class="tubo-ov"></div>`;
     root.appendChild(el);
     this.el = el;
@@ -321,6 +331,52 @@ class TuboGame implements MiniGameHandle {
     this.resize();
     this.reset();
     this.raf = requestAnimationFrame(this.loop);
+    const d = takeDuel('tubo');
+    if (d) void this.onlineDuel(d);
+  }
+
+  /* ============================== duelo online ============================== */
+  private async onlineDuel(entry: DuelEntry): Promise<void> {
+    const D = await import('../../party/duel');
+    if (this.dead) return;
+    this.duel?.leave();
+    this.hud.ov.classList.remove('on');
+    this.hud.ov.innerHTML = '';
+    this.duel = D.startDuel({
+      game: 'tubo',
+      root: this.root,
+      title: t('tubo.name', 'Queda Giratória'),
+      rank: 'score',
+      limitSec: 90,
+      entry,
+      fmt: (n) => fmt(n),
+      hud: 'bottom',
+      start: (seed) => {
+        let a = seed >>> 0 || 1;
+        this.duelRng = () => {
+          a = (a + 0x6d2b79f5) >>> 0;
+          let x = a;
+          x = Math.imul(x ^ (x >>> 15), x | 1);
+          x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+          return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+        };
+        this.reset();
+        this.el.classList.add('is-duel');
+      },
+      stop: () => {
+        // o tempo acabou: a queda para onde está
+        if (this.mode !== 'over') {
+          this.mode = 'over';
+          this.finish();
+        }
+      },
+      exit: () => {
+        this.duel = null;
+        this.duelRng = null;
+        this.el.classList.remove('is-duel');
+        this.reset();
+      },
+    });
   }
 
   /* ============================== setup ============================== */
@@ -410,6 +466,7 @@ class TuboGame implements MiniGameHandle {
     this.pops.length = 0;
     this.skin = skinById(save.skin);
     this.hud.hint.classList.add('on');
+    this.el.classList.add('is-ready');
     this.hud.ov.innerHTML = '';
     this.hud.ov.classList.remove('on');
     this.el.classList.remove('is-over');
@@ -431,7 +488,8 @@ class TuboGame implements MiniGameHandle {
     while (next <= this.ringI + AHEAD) {
       // pressão suave pelo tempo: a cada ~9 s de partida, +1 anel "equivalente" de dificuldade (teto 30)
       const heat = this.startedAt && this.mode !== 'ready' ? Math.min(30, (performance.now() - this.startedAt) / 9000) : 0;
-      const r = genRing(next, this.geo, Math.random, zoneAt(next), heat);
+      // duelo: anéis da semente comum e dificuldade só pela profundidade (igual para todos)
+      const r = this.duelRng ? genRing(next, this.geo, this.duelRng, zoneAt(next), Math.min(30, next / 10)) : genRing(next, this.geo, Math.random, zoneAt(next), heat);
       r.y = next * this.geo.spacing;
       spinRing(r, this.time);
       this.rings.push(r);
@@ -463,6 +521,7 @@ class TuboGame implements MiniGameHandle {
       this.mode = 'hop';
       this.startedAt = performance.now();
       this.hud.hint.classList.remove('on');
+      this.el.classList.remove('is-ready');
     }
     if (this.mode === 'hop') {
       // antes: toque durante a tontura (0,22 s depois de quicar) era ignorado em silêncio
@@ -501,6 +560,7 @@ class TuboGame implements MiniGameHandle {
     else if (act === 'giveup') this.finish();
     else if (act === 'double') this.tryDouble(b);
     else if (act === 'again') this.reset();
+    else if (act === 'duel') void this.onlineDuel(freshDuel('tubo'));
     else if (act === 'home') this.destroyAndExit();
   };
 
@@ -574,6 +634,7 @@ class TuboGame implements MiniGameHandle {
     this.checkGoals();
     const pts = Math.min(this.combo, 10);
     this.score += pts;
+    this.duel?.progress(this.score, 0);
     if (r.idx + 1 > this.depth) this.coinsRun += 1; // cada anel novo também paga 1 moeda
     this.depth = Math.max(this.depth, r.idx + 1);
     this.popup('+' + pts, this.combo >= 3 ? '#fff3a0' : '#ffffff', this.combo >= 3 ? 1.15 : 0.95);
@@ -712,7 +773,7 @@ class TuboGame implements MiniGameHandle {
 
   private showRevive(): void {
     this.mode = 'over';
-    const can = !this.revived && rewardedAvailable();
+    const can = !this.revived && !this.duel && rewardedAvailable();
     if (!can) return this.finish();
     this.el.classList.add('is-over');
     const ov = this.hud.ov;
@@ -760,6 +821,7 @@ class TuboGame implements MiniGameHandle {
   private finish(): void {
     if (this.credited) return this.showResults();
     this.mode = 'over';
+    this.duel?.finish(this.score);
     const base = this.coinsRun;
     const hook = (window as unknown as { petCoinBonus?: (n: number) => number }).petCoinBonus;
     let bonus = 0;
@@ -818,7 +880,7 @@ class TuboGame implements MiniGameHandle {
           <div><span>${t('tubo.over.coins', 'Moedas')}</span><b class="tubo-coinval">${icon('coin', { size: 18 })}${fmt(base * (this.doubled ? 2 : 1) + this.bonus)}</b></div>
         </div>
         ${canDouble ? `<button class="tubo-btn tubo-btn-gold" data-act="double">${icon('video', { size: 24 })}<span>${t('tubo.over.double', 'Dobrar moedas')}</span></button>` : ''}
-        <button class="tubo-btn tubo-btn-main" data-act="again">${icon('refresh', { size: 24 })}<span>${t('tubo.over.again', 'Jogar de novo')}</span></button>
+        ${this.duel ? '' : `<button class="tubo-btn tubo-btn-main" data-act="again">${icon('refresh', { size: 24 })}<span>${t('tubo.over.again', 'Jogar de novo')}</span></button>`}
         <button class="tubo-btn tubo-btn-ghost" data-act="home">${icon('home', { size: 22 })}<span>${t('tubo.over.home', 'Voltar')}</span></button>
       </div>`;
     ov.classList.add('on');
@@ -900,6 +962,7 @@ class TuboGame implements MiniGameHandle {
 
   destroy(): void {
     if (this.dead) return;
+    this.duel?.leave();
     // saiu pelo "Sair do jogo?" do hub (voltar do Android) no meio da queda ou na tela de "Continuar":
     // as moedas coletadas não podem sumir (o "Sair" da pausa própria já fazia isso)
     const m = this.mode === 'paused' ? this.prevMode : this.mode;

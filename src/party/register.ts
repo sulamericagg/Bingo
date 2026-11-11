@@ -8,6 +8,7 @@
 import { bus } from '../core/events';
 import { mountBell, type Notif } from './bell';
 import { initSquad, joinSquad, squadFromLink } from './squad';
+import { partyRoomFor, registerPartyGame, TOGETHER_GAMES } from './contract';
 
 export { partyLaunch, partyRoomFor, registerPartyGame } from './contract';
 
@@ -32,6 +33,17 @@ export function registerParty(): void {
   done = true;
   initSquad();
   mountBell();
+  // jogos de criar/explorar: o grupo abre junto e vê quem está ali (faixa "juntos" com emotes)
+  for (const g of TOGETHER_GAMES) registerPartyGame(g, { mode: 'together' });
+  let together: typeof import('./together') | null = null;
+  bus.on('host-open', (id: string) => {
+    if (TOGETHER_GAMES.includes(id) && partyRoomFor(id))
+      void import('./together').then((m) => {
+        together = m;
+        void m.mountTogether(id);
+      });
+  });
+  bus.on('host-close', () => together?.unmountTogether());
   void import('./lobby').then((m) => m.mountLobby());
   bus.on('notif-open', (n: Notif) => {
     if (n.invite) void import('../social/friends-ui').then((u) => u.acceptInvite(n.invite as Parameters<typeof u.acceptInvite>[0]));

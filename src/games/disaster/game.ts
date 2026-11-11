@@ -19,6 +19,8 @@ import { GROUND_Y, World, type Body, type FluidField } from './world';
 import { FluidSim } from './fluid';
 import { Drawer } from './draw';
 import { Hud } from './hud';
+import { partyRoomFor, partyCode } from '../../party/contract';
+import type { LiveBar } from '../../party/duel';
 
 /* ------------------------------ tipos ------------------------------ */
 
@@ -171,6 +173,10 @@ export class DisasterGame implements MiniGameHandle {
   players: Player[] = [];
   me!: Player;
   peers: PeerState[] = [];
+  /** grupo (docs/PARTY.md): mesmo cenário para todos e placar "quem sobreviveu mais rodadas" */
+  private partyBar: LiveBar | null = null;
+  private partySv = 0;
+  private partyRounds = 0;
   presence: PresenceSession | null = null;
 
   phase: Phase = 'intro';
@@ -365,19 +371,38 @@ export class DisasterGame implements MiniGameHandle {
         return;
       }
       this.presence = s;
+      if (partyRoomFor('disaster')) {
+        const D = await import('../../party/duel');
+        if (this.destroyed) return;
+        this.partyBar = new D.LiveBar(this.root, (v) => String(v), 'left');
+      }
       s.onPeers((peers) => {
         this.peers = peers.filter((p) => !p.bot).slice(0, 4);
+        this.syncPartyBar();
       });
+      this.syncPartyBar();
     } catch {
       /* sem online: só bots */
     }
+  }
+
+  /** placar do grupo: rodadas sobrevividas de cada um (eu + quem está na sala do grupo) */
+  private syncPartyBar(): void {
+    const b = this.partyBar;
+    if (!b) return;
+    const rows = [{ id: 'me', name: '', v: this.partySv, rd: this.partyRounds, me: true }, ...this.peers.map((p) => ({ id: p.id, name: p.name, v: p.s.sv ?? 0, rd: p.s.rd ?? 0, me: false }))];
+    const top = Math.max(1, ...rows.map((r) => r.v));
+    b.set(rows.map((r) => ({ id: r.id, name: r.name, v: r.v, p: r.v / top, me: r.me })));
   }
 
   /* ------------------------------ rodada ------------------------------ */
 
   startRound(): void {
     const list = scenarios();
-    this.sc = list[(this.progress.next - 1) % 100];
+    const pr = partyRoomFor('disaster');
+    // grupo jogando junto: todos no mesmo cenário (a sala do grupo escolhe; muda a cada rodada igual para todos)
+    const pIdx = pr ? (parseInt(partyCode(pr, 4, '0123456789'), 10) + this.sessionRounds) % 100 : -1;
+    this.sc = list[pIdx >= 0 ? pIdx : (this.progress.next - 1) % 100];
     this.training = this.progress.played < 3 || /[?&]train=1/.test(location.search);
     this.safe = null;
     this.safeT = 0;
@@ -667,6 +692,9 @@ export class DisasterGame implements MiniGameHandle {
     const survived = me.alive;
     const alive = this.players.filter((p) => p.alive).length;
     this.sessionRounds++;
+    this.partyRounds++;
+    if (survived) this.partySv++;
+    this.syncPartyBar();
     this.progress.survived += survived ? 1 : 0;
     this.progress.played++;
     let place = 1;
@@ -888,7 +916,7 @@ export class DisasterGame implements MiniGameHandle {
     if (this.presence && this.sendT <= 0) {
       this.sendT = 0.2;
       const m = this.me;
-      this.presence.send({ x: Math.round(m.ghost ? m.gx : m.x), y: Math.round(m.ghost ? m.gy : m.y), g: m.ghost ? 1 : 0, f: m.face });
+      this.presence.send({ x: Math.round(m.ghost ? m.gx : m.x), y: Math.round(m.ghost ? m.gy : m.y), g: m.ghost ? 1 : 0, f: m.face, sv: this.partySv, rd: this.partyRounds });
     }
   }
 
@@ -1656,6 +1684,7 @@ export class DisasterGame implements MiniGameHandle {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     for (const f of this.offs) f();
+    this.partyBar?.destroy();
     this.hud.destroy();
     try {
       this.presence?.leave();

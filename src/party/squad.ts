@@ -253,7 +253,9 @@ let roomSeq = 0;
 function onLeaderLaunch(gameId: string): void {
   if (pulling || !view || !isLeader() || view.members.filter((m) => m.on).length < 2) return;
   const room = `${view.id}-${Date.now().toString(36)}${roomSeq++}`;
-  partyLaunch(gameId, room);
+  const n = view.members.filter((m) => m.on).length;
+  // Bloop Orbit: o grupo vai junto para a Corrida Orbital (sala do grupo)
+  partyLaunch(gameId === 'orbit' ? 'race' : gameId, room, { host: true, leader: view.you, n });
   send({ t: 'launch', game: gameId, room });
 }
 /** Leva o grupo para a festa na casa do líder. */
@@ -290,16 +292,17 @@ async function onLaunch(game: string, room: string, by: string): Promise<void> {
   const pg = partyGame(game);
   const { listGames } = await import('../hub/registry');
   const def = listGames().find((g) => g.id === game);
-  if (!pg && game !== 'race') {
+  if (!pg && game !== 'race' && game !== 'orbit') {
     notify(t('sq.solo', 'Esse jogo ainda é solo — {w} está jogando {g}.', { w: who, g: def?.name ?? game }), { icon: 'user', ms: 4500 });
     return;
   }
   notify(t('sq.go', '{w} chamou o grupo para jogar!', { w: who }), { icon: 'rocket', kind: 'good' });
-  partyLaunch(game, room);
+  const n = view?.members.filter((m) => m.on).length ?? 2;
+  partyLaunch(game === 'orbit' ? 'race' : game, room, { host: false, leader: by, n });
   pulling = true;
   try {
     if (pg?.join) await pg.join(room);
-    else if (game === 'race') {
+    else if (game === 'race' || game === 'orbit') {
       const hub = await import('../hub/hub');
       hub.closeHost();
       document.getElementById('btn-race')?.click();

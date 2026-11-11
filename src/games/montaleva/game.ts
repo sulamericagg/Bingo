@@ -49,6 +49,8 @@ import { isUnlocked, levelRec, mlSave, persistML, starsOf, unlockedUpTo } from '
 import { DT, Sim, applyCmd, designCOM, driveCmd, norm, type DriveStep } from './sim';
 import { IC, injectMLCss } from './style';
 import { resolveTrack, type Track, type TrackObj } from './track';
+import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
+import type { DuelCtl } from '../../party/duel';
 
 type Screen = 'menu' | 'levels' | 'shop' | 'settings' | 'build' | 'test';
 
@@ -260,8 +262,13 @@ export class MontaLeva implements MiniGameHandle {
   /** estado visual dos passageiros (bamboleio, humor) */
   private botVis: { lean: number; vl: number; sq: number; mood: number; moodT: number; vx: number; face: number }[] = [];
 
+  // duelo online (src/party/duel.ts): a mesma fase para todos — quem entregar primeiro vence
+  private duel: DuelCtl | null = null;
+  private duelOn = false;
+  private duelX0 = 0;
+
   constructor(
-    root: HTMLElement,
+    private root: HTMLElement,
     private exitFn: () => void,
   ) {
     this.el = document.createElement('div');
@@ -305,10 +312,62 @@ export class MontaLeva implements MiniGameHandle {
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.frame(t));
     if (location.search.includes('debug')) (window as unknown as { __montaleva: unknown }).__montaleva = this.debugApi();
+    const d = takeDuel('montaleva');
+    if (d) void this.onlineDuel(d);
+  }
+
+  /* ================================ duelo online ================================ */
+  private async onlineDuel(entry: DuelEntry): Promise<void> {
+    const D = await import('../../party/duel');
+    if (this.dead) return;
+    this.duel?.leave();
+    this.duel = D.startDuel({
+      game: 'montaleva',
+      root: this.root,
+      title: t('ml.name', 'Monta & Leva'),
+      rank: 'time',
+      limitSec: 300,
+      entry,
+      hud: 'left',
+      start: (seed) => {
+        // fases sem tutorial, do começo do jogo (todo mundo consegue montar em poucos minutos)
+        const pool = LEVELS.filter((L) => !L.tut && L.n >= 3 && L.n <= 24);
+        const L = pool[seed % pool.length] ?? LEVELS[0];
+        this.duelOn = true;
+        this.openLevel(L.n, true);
+      },
+      stop: () => {
+        this.duelOn = false;
+        this.menu();
+      },
+      exit: () => {
+        this.duel = null;
+        this.duelOn = false;
+        this.menu();
+      },
+    });
+  }
+  /** progresso no duelo: montagem até 30%, depois a distância da carga até a zona de entrega */
+  private duelTick(): void {
+    if (!this.duelOn || !this.duel) return;
+    const L = this.L;
+    if (!L) return;
+    let p = Math.min(0.3, (this.hist.parts.length / Math.max(1, L.goals.parts)) * 0.3);
+    const sim = this.sim;
+    if (sim && this.screen === 'test') {
+      const z = sim.track.zone;
+      const f = sim.focus();
+      const dir = sim.track.dir || 1;
+      const goal = dir > 0 ? z.x0 : z.x1;
+      const span = Math.abs(goal - this.duelX0) || 1;
+      p = 0.3 + 0.7 * clamp(((f.x - this.duelX0) * dir) / span, 0, 1);
+    }
+    this.duel.progress(Math.round(p * 100), p);
   }
 
   /* ================================ ciclo ================================ */
   destroy(): void {
+    this.duel?.leave();
     this.dead = true;
     cancelAnimationFrame(this.raf);
     this.clearScreen();
@@ -409,6 +468,12 @@ export class MontaLeva implements MiniGameHandle {
 
   /* ---------------------------- menu ---------------------------- */
   private menu(): void {
+    if (this.duelOn) {
+      // saiu da fase do duelo pelo próprio jogo: sai do duelo também
+      this.duelOn = false;
+      this.duel?.leave();
+      this.duel = null;
+    }
     this.clearScreen();
     this.screen = 'menu';
     this.au.mood = 'menu';
@@ -426,6 +491,7 @@ export class MontaLeva implements MiniGameHandle {
       <div class="ml-mcol ml-fade">
         <div class="ml-logo">${logoSvg()}<div><b>${t('ml.name', 'Monta & Leva')}</b><small>${t('ml.tagline', 'Monte o veículo. Entregue a carga.')}</small></div></div>
         <button class="ml-btn pri" data-a="play">${IC.play}${t('ml.play', 'Jogar')}<small>${t('ml.levelN', 'Fase {n}', { n: next })}</small></button>
+        <button class="ml-btn" data-a="duel"><svg viewBox="0 0 32 24" width="30" height="22" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg>${t('duel.menu', 'Duelo online')}<small>${t('ml.duelD', 'quem entrega primeiro?')}</small></button>
         <button class="ml-btn" data-a="levels">${IC.map}${t('ml.levels', 'Fases')}<small>★ ${stars}/${LEVELS.length * 3}</small></button>
         <button class="ml-btn" data-a="shop">${IC.wrench}${t('ml.shop', 'Oficina')}<small>⚙ ${fmt(this.sv.gears)}</small></button>
         <button class="ml-btn" data-a="settings">${IC.sliders}${t('ml.settings', 'Configurações')}</button>
@@ -434,6 +500,7 @@ export class MontaLeva implements MiniGameHandle {
     this.ui.appendChild(d);
     this.on(d, '[data-a=play]', () => this.openLevel(next));
     this.on(d, '[data-a=levels]', () => this.levels(-1));
+    this.on(d, '[data-a=duel]', () => void this.onlineDuel(freshDuel('montaleva')));
     this.on(d, '[data-a=shop]', () => this.shop());
     this.on(d, '[data-a=settings]', () => this.settings());
     this.on(d, '[data-a=exit]', () => this.exitFn());
@@ -609,19 +676,20 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   /* ================================ montagem ================================ */
-  openLevel(n: number): void {
+  openLevel(n: number, duel = false): void {
     const L = LEVELS[n - 1];
     if (!L) return;
     this.L = L;
     this.track = resolveTrack(L.track, L.grid[0] * U + 1.5, !!L.mirror, !!L.wet);
     const rec = this.sv.levels[n];
-    const start = rec?.design ? rec.design.filter((p) => PARTS[p.t]) : L.pre ? L.pre.map((p) => ({ ...p })) : [];
+    // duelo: todo mundo começa do zero (sem o projeto salvo de cada um)
+    const start = rec?.design && !duel ? rec.design.filter((p) => PARTS[p.t]) : L.pre ? L.pre.map((p) => ({ ...p })) : [];
     this.hist = new History(start);
     this.sel = -1;
     this.armed = null;
     this.trayRot = {};
     this.overview = false;
-    this.tut = L.tut && !rec?.done ? (L.tut === 4 ? wireTutorial(L) : TUTORIAL[L.tut]) : null;
+    this.tut = L.tut && !rec?.done && !duel ? (L.tut === 4 ? wireTutorial(L) : TUTORIAL[L.tut]) : null;
     this.wdrag = null;
     this.tutIdx = -1;
     this.build(true);
@@ -811,6 +879,7 @@ export class MontaLeva implements MiniGameHandle {
   }
 
   private afterChange(): void {
+    if (this.duelOn) queueMicrotask(() => this.duelTick());
     const L = this.L;
     if (!L) return;
     const parts = this.hist.parts;
@@ -1465,6 +1534,7 @@ export class MontaLeva implements MiniGameHandle {
     this.au.go();
     this.overview = false;
     this.sim = new Sim(L, parts.map((p) => ({ ...p })), { ...this.sv.up });
+    if (this.duelOn) this.duelX0 = this.sim.focus().x;
     this.acc = 0;
     this.ending = 0;
     this.endKind = null;
@@ -1734,6 +1804,7 @@ export class MontaLeva implements MiniGameHandle {
         this.hud.fuel.style.width = `${Math.round(fuel * 100)}%`;
       }
     }
+    if (tt === this.lastHudT && this.duelOn) this.duelTick();
     if (this.endKind === 'fail' && this.ending > 0.95) this.failBack();
     if (this.endKind === 'win' && this.ending > 0.7 && !this.hud.res) this.showWin();
   }
@@ -1847,6 +1918,10 @@ export class MontaLeva implements MiniGameHandle {
     persistML();
     const coins = (first ? 5 : 1) + newStars * 2;
     addCoins(coins);
+    if (this.duelOn) {
+      this.duelOn = false;
+      this.duel?.finish(after * 100 + Math.max(0, Math.round((L.goals.time * 2 - time) * 10)));
+    }
     reportRun({
       game: 'montaleva',
       score: after * 100 + Math.max(0, Math.round((L.goals.time * 2 - time) * 10)),

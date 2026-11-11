@@ -23,6 +23,7 @@ import { nightsJoin } from './nights';
 import { flightInvite, flightInvites, flightJoin } from './flight';
 import { mundoInvite, mundoInvites, mundoJoin } from './mundo';
 import { garimpoInvite, garimpoInvites, garimpoJoin } from './garimpo';
+import { duelJoin } from './duel';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
@@ -232,6 +233,7 @@ async function adminRoute(req: Request, env: Env, url: URL, path: string): Promi
 export { NightsRoom } from './nights';
 export { WorldRoom } from './mundo';
 export { GarimpoRoom } from './garimpo';
+export { DuelRoom } from './duel';
 export { UgcHub } from './ugc-hub';
 export { TvChannel } from './tv';
 
@@ -295,6 +297,16 @@ export default {
     if (gm) {
       try {
         return await garimpoJoin(req, env, gm[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Duelo (WebSocket): /api/duel/<jogo>/<CÓDIGO> — mesmo desafio para todos (src/party/duel.ts)
+    const dm = /^\/api\/duel\/([a-z]{2,12})\/([A-Z0-9]{5})$/.exec(path);
+    if (dm) {
+      try {
+        return await duelJoin(req, env, dm[1], dm[2]);
       } catch (e) {
         return errorResponse(e);
       }

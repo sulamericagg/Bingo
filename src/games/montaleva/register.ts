@@ -4,6 +4,7 @@
  * ============================================================ */
 import { t } from '../../i18n';
 import { registerGame } from '../../hub/registry';
+import { registerDuelGame } from '../../party/duel-link';
 
 function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: number): void {
   const g = x.createLinearGradient(0, 0, 0, h);
@@ -86,6 +87,7 @@ function drawShowcase(x: CanvasRenderingContext2D, w: number, h: number, time: n
 }
 
 export function registerMontaLeva(): void {
+  registerDuelGame('montaleva'); // grupo/links: duelo online (src/party/duel.ts)
   registerGame({
     id: 'montaleva',
     get name() {

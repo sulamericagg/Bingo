@@ -27,6 +27,7 @@ import { setVoice, speak, stopSpeak, voiceOn } from './speak';
 import { Garage } from './garage';
 import { stats, vName, type VDesign } from './vehicles';
 import { NightsNet, apply, encode, newSnapState, roomCode, type GuestMsg, type Peer, type SnapState } from './net';
+import { consumePartySeat, partySeat } from '../../party/contract';
 
 /* ------------------------------ save ------------------------------ */
 interface NSave {
@@ -65,6 +66,12 @@ const SNAP_HZ = 12;
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new NoitesGame(root, exit);
   g.showMenu();
+  // grupo (docs/PARTY.md): o líder cria a sala (código = o dele) e os outros entram sozinhos
+  const seat = partySeat('noites');
+  if (seat) {
+    consumePartySeat('noites');
+    void g.partyStart(seat.host, seat.leader);
+  }
   return g;
 }
 
@@ -236,6 +243,20 @@ export class NoitesGame implements MiniGameHandle {
       return null;
     }
   }
+  /** grupo: anfitrião = líder; convidados tentam por ~30 s até o líder abrir a sala */
+  async partyStart(host: boolean, leader: string): Promise<void> {
+    if (host || !leader) return this.startHost();
+    const code = roomCode(leader);
+    for (let i = 0; i < 25 && !this.destroyed && !this.net; i++) {
+      const p = await this.me4net();
+      const net = new NightsNet();
+      const r = p ? await net.connect(code, p, false) : 'offline';
+      if (r === 'ok' && p) return this.startJoin(code, { net, p });
+      net.close();
+      if (r !== 'no_host') return this.netFail(r);
+      await new Promise((res) => setTimeout(res, 1200));
+    }
+  }
   private async startHost(): Promise<void> {
     const p = await this.me4net();
     const net = new NightsNet();
@@ -255,10 +276,10 @@ export class NoitesGame implements MiniGameHandle {
     this.newSim(Math.floor(Math.random() * 1e9));
     speak(t('noites.say.hosted', 'Sala criada! Seus amigos entram com o código {c}.', { c: this.code.split('').join(' ') }), { cool: 1000, urgent: true });
   }
-  private async startJoin(code: string): Promise<void> {
-    const p = await this.me4net();
-    const net = new NightsNet();
-    const r = p ? await net.connect(code, p, false) : 'offline';
+  private async startJoin(code: string, ready?: { net: NightsNet; p: Peer }): Promise<void> {
+    const p = ready ? ready.p : await this.me4net();
+    const net = ready ? ready.net : new NightsNet();
+    const r = ready ? 'ok' : p ? await net.connect(code, p, false) : 'offline';
     if (this.destroyed) return net.close();
     if (r !== 'ok' || !p) {
       net.close();

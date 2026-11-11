@@ -954,7 +954,7 @@ export const MINI_NAMES: Record<Exclude<Mini, ''>, [() => string, () => string]>
 };
 
 /** saguão dos servidores; resolve com o jogo montado (ou null) */
-export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<WorldGame | null> {
+export async function openServers(root: HTMLElement, opts: WorldOpts, party?: { code: string; host: boolean }): Promise<WorldGame | null> {
   const m = document.createElement('div');
   m.className = 'fl-modal';
   root.appendChild(m);
@@ -988,8 +988,8 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         ${(Object.keys(MINI_NAMES) as Exclude<Mini, ''>[]).map((k) => `<div class="mw-row"><div class="sp"><b>${MINI_NAMES[k][0]()}</b><small>${MINI_NAMES[k][1]()}</small></div><button class="fl-btn green" data-mini="${k}">${t('mundo.play', 'Jogar')}</button></div>`).join('')}
       </div></div>`;
     };
-    const start = async (code: string, create: Record<string, unknown> | null) => {
-      if (busy || !who) return;
+    const start = async (code: string, create: Record<string, unknown> | null): Promise<string> => {
+      if (busy || !who) return 'busy';
       busy = true;
       render(t('mundo.net.connecting', 'Conectando…'));
       const sess = new NetSession(code, who.name);
@@ -999,7 +999,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         busy = false;
         const r = (e as Error).message;
         render(r === 'no_world' ? t('mundo.net.noWorld', 'Esse mundo não existe (confira o código)') : r === 'full' ? t('mundo.net.full', 'Mundo cheio (8 jogadores)') : r === 'kicked' ? t('mundo.net.kicked', 'O anfitrião tirou você do mundo') : t('mundo.net.fail', 'Não deu para conectar agora'));
-        return;
+        return r;
       }
       const meta = sess.meta!;
       rememberWorld(code, meta.name, meta.mini);
@@ -1047,6 +1047,7 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
         },
       });
       resolve(g);
+      return 'ok';
     };
     m.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
@@ -1092,6 +1093,20 @@ export async function openServers(root: HTMLElement, opts: WorldOpts): Promise<W
     };
     void poll();
     const invT = window.setInterval(() => void poll(), 6000);
+    // grupo (docs/PARTY.md): o líder cria o mundo com o código do grupo e os outros entram sozinhos
+    if (party && who)
+      void (async () => {
+        if (party.host) {
+          await start(party.code, { name: t('mundo.net.worldOf', 'Mundo de {n}', { n: who?.name ?? 'Bloop' }), seed: Math.floor(Math.random() * 1e9), gen: { type: 'normal', h: 1, off: [] }, mode: 'sobrevivencia', pvp: false });
+          return;
+        }
+        for (let i = 0; i < 25 && m.isConnected; i++) {
+          const r = await start(party.code, null);
+          if (r !== 'no_world') return;
+          render(t('mundo.net.waitLeader', 'Esperando o líder abrir o mundo…'));
+          await new Promise((res) => setTimeout(res, 1200));
+        }
+      })();
   });
 }
 

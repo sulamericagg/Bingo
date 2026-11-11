@@ -34,6 +34,7 @@ import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { takePendingGarimpo } from './pending';
+import { consumePartySeat, partySeat } from '../../party/contract';
 import { me as socialMe } from '../../social/net';
 import { displayName } from '../../services/leaderboard';
 
@@ -85,7 +86,14 @@ export function webglOk(): boolean {
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new Garimpo(root, exit);
   const code = takePendingGarimpo();
+  // grupo (docs/PARTY.md) — gancho do grupo: o líder abre a sala com o código do grupo, os outros entram nela
+  const seat = code ? null : partySeat('garimpo');
+  if (seat) consumePartySeat('garimpo');
   if (code) g.joinRoom(code);
+  else if (seat && seat.host) {
+    g.partyCode = seat.code(5, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789');
+    g.menu(true);
+  } else if (seat) g.joinRoom(seat.code(5, 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'), 50);
   else g.menu();
   return g;
 }
@@ -362,7 +370,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     let net: GbNet | null = null;
     for (let i = 0; i < 3 && !net; i++) {
       try {
-        net = await GbNet.open(newCode(), true, me);
+        // grupo: 1ª tentativa com o código do grupo (os amigos já estão esperando nele)
+        net = await GbNet.open(this.partyCode && i === 0 ? this.partyCode : newCode(), true, me);
       } catch (e) {
         if ((e as Error).message !== 'taken') break;
       }
@@ -460,7 +469,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
     window.setTimeout(() => (d.querySelector('input') as HTMLInputElement | null)?.focus(), 50);
   }
   /** convidado: conecta, espera o mundo do anfitrião e entra no jogo */
-  joinRoom(code: string): void {
+  /** código do grupo (o líder abre a sala com ele; ver launch) */
+  partyCode = '';
+  joinRoom(code: string, tries = 1): void {
     this.closeOverlays();
     const d = document.createElement('div');
     d.className = 'gb-scr';
@@ -493,7 +504,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
       if (cancelled) return;
       if (!me.id) return fail(t('gb.mp.offline2', 'Sem internet agora'));
       try {
-        net = await GbNet.open(code, false, me);
+        for (let k = 0; ; k++) {
+          try {
+            net = await GbNet.open(code, false, me);
+            break;
+          } catch (e) {
+            // grupo: o líder ainda está escolhendo o jogo salvo — espera a sala abrir
+            if ((e as Error).message !== 'no_room' || k >= tries - 1 || cancelled) throw e;
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
       } catch (e) {
         const r = (e as Error).message;
         return fail(r === 'no_room' || r === 'bad_code' ? t('gb.mp.noRoom', 'Sala não encontrada. Confira o código!') : r === 'full' ? t('gb.mp.full', 'A sala está cheia (4 garimpeiros)') : t('gb.mp.offline2', 'Sem internet agora'));

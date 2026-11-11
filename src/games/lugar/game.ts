@@ -24,6 +24,8 @@ import { REGION_COLORS } from './palette';
 import { FREE_HINTS, hintsLeft, lugarSave, persistLugar, spendHint, starCount, totalStars, type LugarSave } from './save';
 import { sfx } from './sfx';
 import { injectLugarCss } from './style';
+import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
+import type { DuelCtl } from '../../party/duel';
 
 type Mode = 'level' | 'daily' | 'zen';
 
@@ -125,8 +127,12 @@ class LugarGame implements MiniGameHandle {
   private lastSec = -1;
   private ui: { timer?: HTMLElement; hearts?: HTMLElement; undo?: HTMLButtonElement; redo?: HTMLButtonElement; hintBadge?: HTMLElement; stage?: HTMLElement; hintCard?: HTMLElement } = {};
 
+  // duelo online (src/party/duel.ts): o mesmo tabuleiro para todos — quem resolver primeiro vence
+  private duel: DuelCtl | null = null;
+  private duelOn = false;
+
   constructor(
-    root: HTMLElement,
+    private root: HTMLElement,
     private exitFn: () => void,
   ) {
     this.el = document.createElement('div');
@@ -141,6 +147,39 @@ class LugarGame implements MiniGameHandle {
     this.home();
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
+    const d = takeDuel('lugar');
+    if (d) void this.onlineDuel(d);
+  }
+
+  /* ============================== duelo online ============================== */
+  private async onlineDuel(entry: DuelEntry): Promise<void> {
+    const D = await import('../../party/duel');
+    if (this.dead) return;
+    this.duel?.leave();
+    this.duel = D.startDuel({
+      game: 'lugar',
+      root: this.root,
+      title: t('lugar.name', 'Bloop no Lugar'),
+      rank: 'time',
+      limitSec: 420,
+      entry,
+      hud: 'bottom',
+      start: (seed) => {
+        this.duelOn = true;
+        this.mode = 'zen';
+        this.loading(() => this.begin(generate(6, (seed % 900000) + 1), 'duel'));
+      },
+      stop: () => {
+        this.duelOn = false;
+        this.running = false;
+        this.home();
+      },
+      exit: () => {
+        this.duel = null;
+        this.duelOn = false;
+        this.home();
+      },
+    });
   }
 
   /* ============================== utilidades ============================== */
@@ -218,6 +257,7 @@ class LugarGame implements MiniGameHandle {
       <button class="lg-btn lg-green lg-big lg-play-btn" data-a="play">${icon('play', { size: 28 })}<span><b>${resume ? t('lugar.continue', 'Continuar') : t('lugar.play', 'Jogar')}</b><small>${t('lugar.levelN', 'Fase {n}', { n: next + 1 })} · ${chapterSize(Math.floor(next / PER_CHAPTER))}×${chapterSize(Math.floor(next / PER_CHAPTER))}</small></span></button>
       <div class="lg-modes">
         <button class="lg-mode lg-m1" data-a="daily"><span class="lg-mi">${icon('calendar', { size: 30 })}</span><span><b>${t('lugar.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('lugar.dailyDone', 'Feito! {t} · volte amanhã', { t: mmss(s.dailyTime) }) : t('lugar.dailyD', 'O mesmo para todo mundo hoje')}</small></span></button>
+        <button class="lg-mode lg-m1" data-a="duel"><span class="lg-mi">${icon('rocket', { size: 30 })}</span><span><b>${t('duel.menu', 'Duelo online')}</b><small>${t('lugar.duelD', 'Mesmo tabuleiro: quem resolve primeiro?')}</small></span></button>
         <button class="lg-mode lg-m2" data-a="zen"><span class="lg-mi">${icon('sparkle', { size: 30 })}</span><span><b>${t('lugar.zen', 'Zen')}</b><small>${t('lugar.zenD', 'Sem corações, sem pressa')}</small></span></button>
       </div>
       <div class="lg-row">
@@ -231,6 +271,7 @@ class LugarGame implements MiniGameHandle {
     this.bind(d, '[data-a=play]', () => this.startLevel(next));
     this.bind(d, '[data-a=daily]', () => this.startDaily());
     this.bind(d, '[data-a=zen]', () => this.zenPicker());
+    this.bind(d, '[data-a=duel]', () => void this.onlineDuel(freshDuel('lugar')));
     this.bind(d, '[data-a=map]', () => this.map(Math.floor(next / PER_CHAPTER)));
     this.bind(d, '[data-a=how]', () => this.howTo(() => this.home()));
     this.bind(d, '[data-a=settings]', () => this.settings(() => this.home()));
@@ -693,13 +734,14 @@ class LugarGame implements MiniGameHandle {
     if (this.hint && saveIt) this.closeHint();
     this.updateTools();
     if (saveIt) this.queueSave();
+    if (this.duelOn) this.duel?.progress(this.regionsDone.size, this.regionsDone.size / n);
   }
   private queueSave(): void {
     clearTimeout(this.saveT);
     this.saveT = window.setTimeout(() => this.saveProgress(), 600);
   }
   private saveProgress(): void {
-    if (!this.pz || this.won) return;
+    if (!this.pz || this.won || this.duelOn) return;
     this.sv.prog = { key: this.key, cells: [...this.cells], hearts: this.hearts, time: Math.round(this.time), hints: this.hintsUsed, mistakes: this.mistakes };
     persistLugar();
   }
@@ -932,6 +974,11 @@ class LugarGame implements MiniGameHandle {
   }
   private leave(): void {
     this.running = false;
+    if (this.duelOn) {
+      this.duelOn = false;
+      this.duel?.leave();
+      this.duel = null;
+    }
     if (this.mode === 'level') this.map(Math.floor(this.idx / PER_CHAPTER));
     else this.home();
   }
@@ -1037,7 +1084,10 @@ class LugarGame implements MiniGameHandle {
       s.zenSolved++;
       coins = 2 + Math.floor(p.n / 2);
     }
-    s.prog = null;
+    if (this.duelOn) {
+      this.duel?.finish(Math.max(0, 100 - this.mistakes * 10 - this.hintsUsed * 5));
+      this.duelOn = false;
+    } else s.prog = null;
     persistLugar();
     if (coins > 0) addCoins(coins);
     reportRun({
@@ -1253,6 +1303,7 @@ class LugarGame implements MiniGameHandle {
   destroy(): void {
     if (this.ui.stage && !this.won) this.saveProgress();
     this.dead = true;
+    this.duel?.leave();
     cancelAnimationFrame(this.raf);
     clearTimeout(this.saveT);
     this.board?.destroy();
