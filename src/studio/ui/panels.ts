@@ -568,7 +568,9 @@ export class Panels {
     b.querySelector('button')!.onclick = () => this.s.editor.cancelPick();
     const id = await this.s.editor.pickPart();
     b.hidden = true;
-    this.el.classList.remove('picking');
+    // o toque que escolheu a peça ainda gera um "click" logo depois: o painel só volta a
+    // receber toques um pouco depois (senão o clique fantasma aperta o botão que estiver ali)
+    setTimeout(() => this.el.classList.remove('picking'), 400);
     return id;
   }
 

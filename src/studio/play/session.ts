@@ -1488,6 +1488,8 @@ export class PlaySession {
         }
     }
     this.act = act;
+    // ao volante o pulo não faz nada: some (menos botões para a criança)
+    this.hud.classList.toggle('driving', !!this.driving);
     this.actBtn.hidden = !act;
     if (act && this.actBtn.textContent !== label) this.actBtn.textContent = label;
   }
