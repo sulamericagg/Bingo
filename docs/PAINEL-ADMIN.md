@@ -80,6 +80,23 @@ Depois de 8 senhas erradas seguidas, o login fica bloqueado por 15 minutos.
 ### 📦 Pacotes
 Salve combinações de prêmio para reutilizar. Em qualquer formulário, use "Começar de um pacote salvo".
 
+### 🛡️ Moderação (Loja de Criações + TV Bloop)
+Tudo o que os jogadores publicam — criações do **Bloop Studio** e filmes enviados para a **TV Bloop** pelo Bloop Cinema —
+entra numa **fila de revisão** e só aparece para os outros depois de **aprovado** (o autor vê "Em análise"). Detalhes: `docs/LOJA-TV.md`.
+- **Para revisar** (padrão): itens novos + itens que receberam **3 denúncias** de pessoas diferentes (saem do ar sozinhos até você decidir).
+- Cada cartão mostra as **3 miniaturas** (fotos tiradas pelo app), título/descrição, autor (@ ou apelido público), e o que o
+  **filtro automático** achou nos textos de dentro (nomes de peças, falas, blocos "dizer", placas…). Filme com voz gravada vem marcado 🎙️.
+- **🔎 Ver detalhes**: falas do filme com **player de áudio** de cada gravação; nomes das peças / descrição do jogo; lista de denúncias.
+- **✓ Aprovar** (entra na loja / no canal na hora) · **✗ Recusar** (motivo obrigatório — o autor vê) · **🙈 Tirar do ar** (um aprovado) ·
+  **🚫 Banir autor** (tudo dele sai do ar e ele não publica mais na Loja/TV; desfaz em "Autores banidos").
+- A antiga página de moderação do chat agora se chama **Chat**.
+
+### 👮 Moderadores (só o dono)
+Crie logins para quem ajuda na moderação: **nome + senha (mín. 10)**. A senha fica guardada só como hash PBKDF2 no AdminHub.
+O moderador entra na mesma tela de login, com o **nome** no campo "Seu nome" e a **senha dele**; o painel mostra só a página
+**Moderação** e o servidor recusa (403) qualquer outra rota. Trocar a senha, desativar ou apagar o moderador derruba as sessões
+abertas dele na hora. Tudo o que ele faz vai para o **Registro** como `mod:<nome>`.
+
 ## 5. Ligar o app Android ao servidor
 
 Depois do primeiro deploy, **mande para o Claude o endereço do Worker** (ex.: `https://bloop-orbit.seu-usuario.workers.dev`).
@@ -119,7 +136,12 @@ Comandos: `npm run worker:dev` (local, KV simulado; crie `.dev.vars` com `ADMIN_
 ### Durable Object `AdminHub` (novo — migração `v5-admin`, SQLite, plano grátis)
 Instância única `hub` (server/admin-hub.ts). Guarda o que precisa de contagem atômica ou consulta, sem gastar escritas do KV:
 `codes` (definição + usos), `code_uses` (usos por jogador), `gift_claims` / `gift_seen` (pego / entregue),
-`purchases` (compras reportadas, deduplicadas pelo hash do token), `audit` (registro, ~1 ano / 20 mil linhas).
+`purchases` (compras reportadas, deduplicadas pelo hash do token), `audit` (registro, ~1 ano / 20 mil linhas),
+`pgifts` (presentes **pessoais** no Correio — moedas de criador da Loja/TV; aparecem no `sync` junto com os do painel e são pegos
+atomicamente no `claim`; ids começam com `pg`), `mods` (moderadores: nome, hash PBKDF2, ativo, `since` = sessões mais antigas não valem).
+
+### Durable Objects `UgcHub` e `TvChannel` (migração `v7-loja-tv`)
+Loja de Criações, fila de moderação e TV Bloop — veja `docs/LOJA-TV.md`.
 Limites de taxa ficam em memória do DO (painel: 300 req/min por IP; compras: 20/h por jogador e 60/h por IP; chutes de código).
 Códigos antigos (`code:` no KV) são **importados sozinhos** para o AdminHub na primeira consulta/resgate e apagados do KV.
 
@@ -167,7 +189,14 @@ Novas (painel 2):
 `POST /codes` aceita `maxUses (0=∞), perPlayer (0=∞, padrão 1), oneShot, allowHandles ("@a @b"), season ('current'|'next'|índice), startsAt, expiresAt` ·
 `GET /purchases?from=&to=&q=&product=&page=&size=` (lista + por dia + por produto + estimativa) · `GET /audit?before=&q=` · `GET /seasons`.
 Pacotes (`RewardPack`) ganharam `passSeason` (Passe premium daquela temporada, índice 0 = s00) e `clubDays`.
-Login: `POST /api/admin/login { password, who? }` — `who` (seu nome) aparece no Registro.
+Login: `POST /api/admin/login { password, who? }` — `who` (seu nome) aparece no Registro. Resposta tem `role: 'owner'|'mod'`
+(moderador: `who` = nome do moderador + a senha dele). `GET /me → { role, who }` (abre para moderadores).
+
+Moderação (dono **e** moderadores): `GET /ugc/stats` · `GET /ugc/queue?status=review|pending|hidden|approved|rejected|all&type=criacao|filme` ·
+`GET /ugc/item/:id` (item + denúncias + conteúdo: falas com áudio em data URL / nomes das peças) ·
+`POST /ugc/item/:id/review { status: 'approved'|'rejected'|'hidden', reason }` · `POST /ugc/ban { pid, reason }` · `POST /ugc/unban { pid }` ·
+`GET /ugc/bans` · `GET /ugc/tv` (filmes no canal + grade).
+Moderadores (só dono): `GET /mods` · `POST /mods { name, password }` (cria ou troca a senha) · `POST /mods/:nome/active { active }` · `DELETE /mods/:nome`.
 
 ---
 
@@ -247,4 +276,5 @@ Para o servidor **conferir cada compra direto com a Google** (Google Play Develo
 
 - Todas as rotas `/api/admin/*` exigem o token do login (`requireAdmin`); o token expira em 72 h e trocar a senha derruba todas as sessões.
 - Login: 8 senhas erradas → bloqueio de 15 min por IP. Painel: no máx. 300 requisições/min por IP.
+- Papéis: **dono** (senha do painel) vê tudo; **moderador** (login próprio) só as rotas `/api/admin/ugc/*` e `/me` — as outras respondem 403.
 - **Registro** (aba 📜): toda ação que muda algo (e todo login, certo ou errado) fica gravada com nome digitado no login, sessão, IP e um resumo (senhas nunca são gravadas).

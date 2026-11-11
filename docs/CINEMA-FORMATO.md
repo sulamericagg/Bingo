@@ -3,7 +3,9 @@
 O estúdio de filmes (`src/cinema/`) salva cada filme como **um JSON** no IndexedDB do aparelho
 (banco `bloop-cinema`, store `projects`). As gravações de voz ficam no store `clips` (Blob de áudio +
 envelope de volume), referenciadas por id. **Nada é enviado para servidor**: o vídeo exportado sai só
-pelo menu de compartilhar do sistema (ou download na web), quando a pessoa escolhe.
+pelo menu de compartilhar do sistema (ou download na web), quando a pessoa escolhe. A única exceção é
+**Exportar → Enviar para a TV Bloop** (escolha explícita, com regras): o projeto + as gravações de voz (base64) vão para a
+fila de moderação e, aprovados, passam no canal ao vivo — veja `docs/LOJA-TV.md`.
 
 Fonte da verdade dos tipos: `src/cinema/format.ts` (mantenha este documento em sincronia).
 Leitura tolerante + migração: `parseProject(raw)` — corrige campos faltando, limita valores e devolve

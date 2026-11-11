@@ -250,7 +250,7 @@ export class UgcHub extends DurableObject<Env> {
     // candidatos (os 800 mais novos que batem o filtro); a ordem "Em alta" é calculada aqui
     let rows = sql.exec<Row>(`SELECT ${COLS.split(', ').map((c) => 'i.' + c).join(', ')} FROM items i ${join} WHERE ${w.join(' AND ')} ORDER BY i.created DESC LIMIT 800`, ...a).toArray();
     const now = Date.now();
-    // Em alta: curtidas + usos×2 + partidas, com decaimento pela idade (meia-vida ~1 mês, expoente 0.6)
+    // Em alta: (curtidas + usos×2 + partidas + 1) / (1 + idade em semanas)^0.9 — o novo sobe rápido, o velho cai devagar
     const hot = (r: Row) => (r.likes + r.uses * 2 + r.plays + 1) / Math.pow(1 + (now - r.created) / DAY / 7, 0.9);
     if (q.sort === 'top') rows.sort((x, y) => y.likes - x.likes || y.created - x.created);
     else if (q.sort === 'trending') rows.sort((x, y) => hot(y) - hot(x));
