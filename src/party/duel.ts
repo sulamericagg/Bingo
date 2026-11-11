@@ -705,6 +705,7 @@ export function startDuel(o: DuelOpts): DuelCtl {
   };
 
   void connect(o.entry.code && DUEL_CODE_RE.test(o.entry.code) ? o.entry.code : newDuelCode(), o.entry.create);
+  if (location.search.includes('debug')) (window as unknown as { __duel: unknown }).__duel = Object.assign(ctl, { state: () => net?.state, code: () => net?.code });
   return ctl;
 }
 

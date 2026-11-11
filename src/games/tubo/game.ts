@@ -342,6 +342,7 @@ class TuboGame implements MiniGameHandle {
     this.duel?.leave();
     this.hud.ov.classList.remove('on');
     this.hud.ov.innerHTML = '';
+    this.el.classList.add('is-duel');
     this.duel = D.startDuel({
       game: 'tubo',
       root: this.root,

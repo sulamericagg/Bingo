@@ -163,7 +163,7 @@ class LugarGame implements MiniGameHandle {
       rank: 'time',
       limitSec: 420,
       entry,
-      hud: 'bottom',
+      hud: 'top',
       start: (seed) => {
         this.duelOn = true;
         this.mode = 'zen';

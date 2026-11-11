@@ -659,3 +659,7 @@
   align-items: center;
   justify-content: center;
 }
+/* sozinho na sala: "Chamar amigo" é o botão principal */
+.dl-btn[data-call] {
+  background: linear-gradient(180deg, #fff3a0, #ffc21a);
+}

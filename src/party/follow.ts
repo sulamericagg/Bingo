@@ -76,7 +76,7 @@ function renderVoteBtn(v: SquadView | null): void {
   }
   b.classList.toggle('on', !!v.vote);
   b.disabled = !isLeader();
-  b.textContent = (v.vote ? '🗳 ' : '♛ ') + (v.vote ? t('pf.voteOn', 'Votação!') : isLeader() ? t('pf.vote', 'Votação') : t('pf.leaderPicks', 'Líder escolhe'));
+  b.textContent = (v.vote ? '✋ ' : '♛ ') + (v.vote ? t('pf.voteOn', 'Votação!') : isLeader() ? t('pf.vote', 'Votação') : t('pf.leaderPicks', 'Líder escolhe'));
 }
 
 /* ---------- "Fulano está jogando — ENTRAR" na carta do jogo (amigos com sala aberta desse jogo) ---------- */

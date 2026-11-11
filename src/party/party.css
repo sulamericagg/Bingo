@@ -92,7 +92,7 @@
 @keyframes ipPulse { 50% { transform: scale(1.04); } }
 
 /* ===== grupo no hub: líder escolhendo / votação / entrando no jogo do líder ===== */
-.pf-banner { position: absolute; left: 50%; transform: translateX(-50%); top: 6px; z-index: 6; display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 999px; background: rgba(16, 6, 40, 0.82); border: 2px solid #ffd34a; color: #fff; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); white-space: nowrap; pointer-events: none; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.pf-banner { position: absolute; left: 50%; transform: translateX(-50%); top: 46px; z-index: 6; display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 999px; background: rgba(16, 6, 40, 0.82); border: 2px solid #ffd34a; color: #fff; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); white-space: nowrap; pointer-events: none; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
 .pf-banner img { width: 26px; height: 26px; border-radius: 50%; background: #8a5cff; }
 .pf-banner .pf-crown { color: #ffd34a; font-size: 16px; }
 .pf-votes { position: absolute; left: 50%; transform: translateX(-50%); bottom: 6px; z-index: 6; display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: rgba(16, 6, 40, 0.8); color: #fff; font: 800 13px var(--font, 'Fredoka', system-ui, sans-serif); pointer-events: none; }
