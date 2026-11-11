@@ -158,7 +158,7 @@ export class NoitesGame implements MiniGameHandle {
       </div>
       <div class="hats">${hats}</div>`;
     this.wrap.appendChild(m);
-    speak(t('noites.say.welcome', 'Noites do Acampamento! Toque no botão verde para jogar.'), { cool: 60000 });
+    speak(t('noites.say.welcome', 'Noites do Acampamento! Toque no botão amarelo para jogar.'), { cool: 60000 });
     m.querySelectorAll<HTMLElement>('button').forEach((b) =>
       b.addEventListener('click', () => {
         audio.unlock();
