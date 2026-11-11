@@ -130,7 +130,28 @@ const CSS = `
 .cf-permic{width:72px;height:72px;margin:0 auto 6px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8fd8,#d8329a);display:grid;place-items:center;box-shadow:0 0 0 6px rgba(255,79,163,.25);animation:cfrec .7s ease-in-out infinite alternate}
 .cf-permic svg{width:42px;height:42px}
 .cf-permic.off{filter:grayscale(1);animation:none}
-@media (max-height:420px){.cf-opt{width:132px;padding:6px}.cf-opt img{width:56px;height:56px}.cf-permic{width:56px;height:56px}.cf-permic svg{width:32px;height:32px}.cf-choose h2,.cf-perm h2{font-size:17px}.cf-title{font-size:26px}.cf-sub{font-size:12px}.cf-mode small{font-size:11px}}
+.cf-mic.live{animation:cflive 1.1s ease-in-out infinite;box-shadow:0 0 0 5px #fff,0 0 0 11px rgba(255,79,163,.55),0 0 30px #ff4fa3}
+.cf-mic.wait{opacity:.8}
+@keyframes cflive{50%{box-shadow:0 0 0 5px #fff,0 0 0 16px rgba(255,79,163,.25),0 0 40px #ff4fa3}}
+.cf-listen.off{background:#3a2a5a;color:#fff}
+.cf-listen.off .cf-wave{display:none}
+.cf-subt{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 104px);transform:translateX(-50%);max-width:min(560px,64vw);padding:7px 14px;border-radius:14px;background:rgba(10,4,30,.78);color:#fff;font:700 16px/1.3 inherit;text-align:center;opacity:0;transition:opacity .15s;pointer-events:none}
+.cf-subt.on{opacity:1}
+.cf-subt b{color:#ff8fd8}
+.cf-subt em{font-style:normal;color:#ffd34a}
+.cf-subt.ok{background:rgba(20,110,60,.88)}.cf-subt.ok em{color:#d8ffd0}
+.cf-subt.no{background:rgba(120,50,20,.88)}
+.cf-subt.hint{background:rgba(42,11,92,.88);color:#ffe6a0}
+.cf-subt-sug{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.cf-subt-sug:empty{display:none}
+.cf-subt-sug button{pointer-events:auto;margin-top:5px;border:0;border-radius:999px;padding:6px 12px;font:800 13px/1 inherit;background:#fff;color:#2a0b5c;min-height:34px}
+.cf-seg2{background:#efe8ff}.cf-seg2 button{color:#2a0b5c}
+.cf-mt{width:min(480px,92vw);text-align:center}
+.cf-mt .cf-mtbars{display:flex;gap:4px;align-items:flex-end;justify-content:center;height:70px;margin:8px 0}
+.cf-mt .cf-mtbars i{width:10px;height:4px;border-radius:4px;background:linear-gradient(#ff8fd8,#7b3cff);transition:height .06s}
+.cf-mt .cf-mtlog{min-height:44px;max-height:96px;overflow:auto;padding:8px;border-radius:12px;background:#f3eeff;font:700 14px/1.35 inherit;text-align:left}
+.cf-mt .cf-mtlog i{opacity:.55;font-style:normal}
+@media (max-height:420px){.cf-mt .cf-mtbars{height:48px}.cf-opt{width:132px;padding:6px}.cf-opt img{width:56px;height:56px}.cf-permic{width:56px;height:56px}.cf-permic svg{width:32px;height:32px}.cf-choose h2,.cf-perm h2{font-size:17px}.cf-title{font-size:26px}.cf-sub{font-size:12px}.cf-mode small{font-size:11px}}
 `;
 let done = false;
 export function injectCss(): void {

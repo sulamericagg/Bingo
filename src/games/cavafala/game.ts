@@ -624,7 +624,8 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     w.setPaused(true);
     const d = w.hud.panel(`<div class="cf-card" style="text-align:center">
       <h2>${esc(t('cavafala.paused', 'Pausa'))}</h2>
-      <p>${esc(t('cavafala.help', 'Cave com CAVAR, segure FALAR e diga o que quer (ex.: “ponte”, “trampolim de ouro”, “canhão de espuma duplo”, “carrinho com foguete”). Sem microfone? Toque no teclado.'))}</p>
+      <p>${esc(t('cavafala.help2', 'Cave com CAVAR e FALE o que quer criar (ex.: “ponte”, “trampolim de ouro”, “canhão de espuma duplo”). Sem microfone? CRIAR abre as receitas.'))}</p>
+      <div class="cf-row" style="margin-top:6px"><span class="cf-lab" style="color:#2a0b5c">${esc(t('cavafala.mic.mode', 'Microfone:'))}</span><span class="cf-seg cf-seg2" data-seg="mic"><button data-v="toggle" class="${(sv.micMode ?? 'toggle') === 'toggle' ? 'on' : ''}">${esc(t('cavafala.mic.toggle', 'Toque liga/desliga'))}</button><button data-v="hold" class="${sv.micMode === 'hold' ? 'on' : ''}">${esc(t('cavafala.mic.hold', 'Segurar para falar'))}</button></span><button class="cf-btn w" data-a="mictest">${esc(t('cavafala.mt.title', 'Testar microfone'))}</button></div>
       <div class="cf-row">
         <button class="cf-btn g" data-a="go">${icon('play', { size: 18 })}${esc(t('cavafala.resume', 'Continuar'))}</button>
         ${restore ? `<button class="cf-btn o" data-a="top">${esc(t('cavafala.toTop', 'Voltar ao topo'))}</button>` : ''}
@@ -644,6 +645,18 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     d.querySelector('[data-a=menu]')?.addEventListener('click', menu);
     d.querySelector('[data-a=room]')?.addEventListener('click', toRoomOrLeave);
     d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
+    d.querySelectorAll<HTMLButtonElement>('[data-seg=mic] button').forEach((b) =>
+      b.addEventListener('click', () => {
+        audio.click();
+        sv.micMode = b.dataset.v as 'toggle' | 'hold';
+        persist();
+        d.querySelectorAll('[data-seg=mic] button').forEach((x) => x.classList.toggle('on', x === b));
+      }),
+    );
+    d.querySelector('[data-a=mictest]')!.addEventListener('click', () => {
+      audio.unlock();
+      w.micTest(() => pause());
+    });
     setBack(close);
   }
   /** online: anfitrião leva todos de volta à sala; convidado sai */
@@ -767,6 +780,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         menu();
       },
       say: (s: string) => world?.say(s),
+      mic: (on?: boolean) => {
+        const w = world;
+        if (!w) return null;
+        if (on === true) void w.micStart();
+        if (on === false) w.micOff();
+        return w.micOn;
+      },
+      pause: () => pause(),
       card: (k: 'ask' | 'denied' | 'none' | 'slow') => {
         const w = world as unknown as { permCard(m: string): void; noVoiceCard(m: string): void } | null;
         if (k === 'ask' || k === 'denied') w?.permCard(k);
