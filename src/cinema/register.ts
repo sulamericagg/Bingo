@@ -3,7 +3,7 @@
  *  vitrine animada são carregados sob demanda).
  * ============================================================ */
 import { t } from '../i18n';
-import { registerGame } from '../hub/registry';
+import { registerGame, registerPanel } from '../hub/registry';
 
 type Draw = (x: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
 let rich: Draw | null = null;
@@ -27,6 +27,16 @@ function placeholder(x: CanvasRenderingContext2D, w: number, h: number, time: nu
 }
 
 export function registerCinema(): void {
+  // TV Bloop: canal ao vivo com os filmes aprovados (botão na barra do hub)
+  registerPanel({
+    id: 'tv',
+    get label() {
+      return t('tv.name', 'TV Bloop');
+    },
+    icon: 'video',
+    navOrder: 65,
+    open: () => void import('./tv').then((m) => m.openTv()),
+  });
   registerGame({
     id: 'cinema',
     get name() {

@@ -96,6 +96,7 @@ class CinemaApp {
           <button class="cin-herobtn story" data-a="story"><b>✨</b><span>${t('cin.home.story', 'Criar história')}<small>${t('cin.home.storySub', 'Escolha, fale e pronto: vira filme!')}</small></span></button>
           <button class="cin-herobtn magic" data-a="magic"><b>🪄</b><span>${t('cin.home.magic', 'História Mágica')}<small>${t('cin.home.magicSub', 'Conte uma ideia e a mágica faz o filme')}</small></span></button>
         </div>
+        <button class="cin-tvbtn" data-a="tv"><b>📺</b><span>${t('tv.name', 'TV Bloop')}<small>${t('tv.homeSub', 'Assista ao vivo os filmes da galera — e envie o seu!')}</small></span></button>
         <h4>📚 ${t('cin.home.tpls', 'Histórias prontas para remixar')}</h4>
         <div class="cin-tpls">${TEMPLATES.map((tp) => `<button class="cin-tpl" data-a="tpl" data-v="${tp.id}"><canvas width="344" height="194" data-tpl="${tp.id}"></canvas><div><b>${esc(tp.name)}${tp.pro && free ? ' <span class="cin-pro">PRO</span>' : ''}</b><small>${esc(tp.desc)}</small></div></button>`).join('')}</div>
         <h4>🎞️ ${t('cin.home.mine', 'Meus filmes')} ${free ? `<span class="cin-hint">(${list.length}/${maxProjects()})</span>` : ''}</h4>
@@ -111,7 +112,7 @@ class CinemaApp {
           </div>
           <div class="cin-row c" style="margin-top:12px"><button class="cin-btn sm ghost" data-a="import">📂 ${t('cin.home.import', 'Importar projeto (.json)')}</button></div>
         </details>
-        <p class="cin-foot">🔒 ${t('cin.home.local', 'Seus filmes ficam salvos só neste aparelho.')}</p>
+        <p class="cin-foot">🔒 ${t('cin.home.local2', 'Seus filmes ficam salvos só neste aparelho — só vão para a TV Bloop se você enviar.')}</p>
       </div>`;
     // miniaturas das histórias
     this.el.querySelectorAll<HTMLCanvasElement>('canvas[data-tpl]').forEach((cv) => {
@@ -133,6 +134,7 @@ class CinemaApp {
       const a = b.dataset.a;
       const v = b.dataset.v!;
       if (a === 'pro') paywall('item');
+      else if (a === 'tv') void import('./tv').then((m) => m.openTv());
       else if (a === 'story') void this.createStory(list.length);
       else if (a === 'magic') void this.magicStory(list.length);
       else if (a === 'new2d' || a === 'new3d') {
@@ -838,6 +840,7 @@ class CinemaApp {
        <div class="cin-menu" style="margin-top:14px">
          <button class="cin-btn pri" data-a="video" ${canExportVideo() ? '' : 'disabled'}>🎬 ${t('cin.ex.video', 'Gravar vídeo com som')}</button>
          <button class="cin-btn" data-a="gif">🖼️ ${t('cin.ex.gif', 'GIF curtinho (6 s, sem som)')}</button>
+         <button class="cin-btn" data-a="tv">📺 ${t('tv.send', 'Enviar para a TV Bloop')}</button>
          ${canExportVideo() ? '' : `<p class="cin-hint">${t('cin.ex.noVideo', 'Este aparelho não grava vídeo. Tente o GIF!')}</p>`}
        </div>`,
       async (a, el, close) => {
@@ -855,6 +858,11 @@ class CinemaApp {
         } else if (a === 'gif') {
           close();
           await this.runGifExport(wm);
+        } else if (a === 'tv') {
+          close();
+          await flushSave();
+          const m = await import('./tv');
+          m.sendToTvSheet(S.p, S.r);
         }
       },
     );
