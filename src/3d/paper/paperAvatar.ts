@@ -270,10 +270,11 @@ function rotateView(F: Uint8ClampedArray, B: Uint8ClampedArray, out: Uint8Clampe
       const u = (px + 0.5 - cx) / R - cd;
       const s = u / rr;
       if (s < -1 || s > 1) continue;
-      const th = Math.asin(s) + phi;
-      const c = Math.cos(th);
-      const front = c >= 0;
-      const sx = front ? cf + rr * kk * Math.sin(th) : cb - rr * kk * Math.sin(th);
+      // θ = asin(s) + φ, sem trigonometria por pixel
+      const q = Math.sqrt(1 - s * s);
+      const sinT = s * cp + q * sp;
+      const front = q * cp - s * sp >= 0;
+      const sx = front ? cf + rr * kk * sinT : cb - rr * kk * sinT;
       const fx = cx + sx * R - 0.5;
       const ix = Math.floor(fx);
       const fr = fx - ix;
@@ -297,7 +298,7 @@ function rotateView(F: Uint8ClampedArray, B: Uint8ClampedArray, out: Uint8Clampe
       if (a < 2) continue;
       const j = row + px;
       const o = j * 4;
-      const bz = rr * Math.sqrt(1 - s * s);
+      const bz = rr * q;
       const ba = a / 255;
       const br = r / a;
       const bg = g / a;
@@ -353,69 +354,86 @@ function drawFeet(x: CanvasRenderingContext2D, m: Metrics, R: number, cx: number
 }
 
 /** contorno de papel recortado: borda branca (bw px) + fio de tinta fora dela */
+let olD: Float32Array | null = null;
 function paperOutline(d: Uint8ClampedArray, W: number, x0: number, y0: number, C: number, bw: number): void {
-  const n = C * C;
-  const al = new Uint8Array(n);
-  for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) al[y * C + x] = d[((y0 + y) * W + x0 + x) * 4 + 3];
+  const ink = bw + 1.1;
+  // só a caixa do desenho (+ margem da borda): ~3× menos pixels
+  let bx0 = C;
+  let by0 = C;
+  let bx1 = -1;
+  let by1 = -1;
+  for (let y = 0; y < C; y++) {
+    const row = ((y0 + y) * W + x0) * 4 + 3;
+    for (let x = 0; x < C; x++)
+      if (d[row + x * 4] > 8) {
+        if (x < bx0) bx0 = x;
+        if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y;
+        by1 = y;
+      }
+  }
+  if (bx1 < 0) return;
+  const m = Math.ceil(ink) + 2;
+  bx0 = Math.max(0, bx0 - m);
+  by0 = Math.max(0, by0 - m);
+  bx1 = Math.min(C - 1, bx1 + m);
+  by1 = Math.min(C - 1, by1 + m);
+  const w = bx1 - bx0 + 1;
+  const h = by1 - by0 + 1;
+  if (!olD || olD.length < w * h) olD = new Float32Array(C * C);
+  const D = olD;
   // distância aproximada (chamfer 2 passes) até um pixel sólido
-  const D = new Float32Array(n).fill(1e9);
-  for (let i = 0; i < n; i++) if (al[i] > 96) D[i] = 0;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) D[y * w + x] = d[((y0 + by0 + y) * W + x0 + bx0 + x) * 4 + 3] > 96 ? 0 : 1e9;
   const S2 = Math.SQRT2;
-  for (let y = 0; y < C; y++)
-    for (let x = 0; x < C; x++) {
-      const i = y * C + x;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
       let v = D[i];
+      if (v === 0) continue;
       if (x > 0) v = Math.min(v, D[i - 1] + 1);
       if (y > 0) {
-        v = Math.min(v, D[i - C] + 1);
-        if (x > 0) v = Math.min(v, D[i - C - 1] + S2);
-        if (x < C - 1) v = Math.min(v, D[i - C + 1] + S2);
+        v = Math.min(v, D[i - w] + 1);
+        if (x > 0) v = Math.min(v, D[i - w - 1] + S2);
+        if (x < w - 1) v = Math.min(v, D[i - w + 1] + S2);
       }
       D[i] = v;
     }
-  for (let y = C - 1; y >= 0; y--)
-    for (let x = C - 1; x >= 0; x--) {
-      const i = y * C + x;
+  for (let y = h - 1; y >= 0; y--)
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
       let v = D[i];
-      if (x < C - 1) v = Math.min(v, D[i + 1] + 1);
-      if (y < C - 1) {
-        v = Math.min(v, D[i + C] + 1);
-        if (x < C - 1) v = Math.min(v, D[i + C + 1] + S2);
-        if (x > 0) v = Math.min(v, D[i + C - 1] + S2);
+      if (v === 0) continue;
+      if (x < w - 1) v = Math.min(v, D[i + 1] + 1);
+      if (y < h - 1) {
+        v = Math.min(v, D[i + w] + 1);
+        if (x < w - 1) v = Math.min(v, D[i + w + 1] + S2);
+        if (x > 0) v = Math.min(v, D[i + w - 1] + S2);
       }
       D[i] = v;
     }
-  const ink = bw + 1.1;
-  for (let y = 0; y < C; y++)
-    for (let x = 0; x < C; x++) {
-      const i = y * C + x;
-      const dist = D[i];
-      const o = ((y0 + y) * W + x0 + x) * 4;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const dist = D[y * w + x];
+      const o = ((y0 + by0 + y) * W + x0 + bx0 + x) * 4;
       const a0 = d[o + 3] / 255;
-      let r: number;
-      let g: number;
-      let b: number;
-      let a: number;
+      if (a0 >= 0.999) continue;
+      let r = 52;
+      let g = 30;
+      let b = 70;
+      let a = 0;
       if (dist <= bw) {
         r = 255;
         g = 252;
         b = 246;
         a = 1;
-      } else if (dist <= ink) {
-        r = 52;
-        g = 30;
-        b = 70;
-        a = Math.min(1, ink - dist + 0.35) * 0.85;
-      } else {
+      } else if (dist <= ink) a = Math.min(1, ink - dist + 0.35) * 0.85;
+      else if (a0 <= 0) {
         // fora: cor de tinta com alpha 0 (o mipmap não puxa preto/branco estranho)
-        d[o] = 52;
-        d[o + 1] = 30;
-        d[o + 2] = 70;
-        if (a0 <= 0) continue;
-        r = 52;
-        g = 30;
-        b = 70;
-        a = 0;
+        d[o] = r;
+        d[o + 1] = g;
+        d[o + 2] = b;
+        continue;
       }
       // o desenho por cima da borda
       const na = a0 + a * (1 - a0);
@@ -427,7 +445,7 @@ function paperOutline(d: Uint8ClampedArray, W: number, x0: number, y0: number, C
     }
 }
 
-/** gera o atlas (≈ 30–80 ms no celular; cacheado por spec) */
+/** gera o atlas (~90 ms para célula 128 num PC sem GPU no canvas; cacheado por spec) */
 export function buildPaperAtlas(spec: PaperSpec, C: number): PaperAtlas {
   const key = specKey(spec, C);
   const W = C * FRAMES;
@@ -436,7 +454,8 @@ export function buildPaperAtlas(spec: PaperSpec, C: number): PaperAtlas {
   canvas.width = W;
   canvas.height = H;
   const ax = canvas.getContext('2d', { willReadFrequently: true })!;
-  const S = C * 2;
+  // 1,5× a célula: o desenho é reduzido depois (borda lisa) sem custar 4× os pixels
+  const S = Math.round(C * 1.5);
   const R = S * R_K;
   const cx = S / 2;
   const cy = S * CY_K;
@@ -491,7 +510,7 @@ export function buildPaperAtlas(spec: PaperSpec, C: number): PaperAtlas {
       const phi = (VIEW_DEG[v] * Math.PI) / 180;
       const ends = v === 0 || v === VIEWS - 1;
       rotateView(ends ? F : Fn, ends ? B : Bn, out.data, zb, S, cx, R, ends ? rowsEnd : rowsRot, phi);
-      tx.setTransform(1, 0, 0, 1, 0, 0);
+        tx.setTransform(1, 0, 0, 1, 0, 0);
       tx.clearRect(0, 0, S, S);
       drawFeet(tx, m, R, cx, cy, phi, fd, 0);
       // corpo por cima dos pés de trás
@@ -502,7 +521,7 @@ export function buildPaperAtlas(spec: PaperSpec, C: number): PaperAtlas {
       ax.imageSmoothingEnabled = true;
       ax.imageSmoothingQuality = 'high';
       ax.drawImage(tmp, 0, 0, S, S, f * C, v * C, C, C);
-    }
+      }
   }
   // contorno de papel em todas as células
   const img = ax.getImageData(0, 0, W, H);
