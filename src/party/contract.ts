@@ -26,7 +26,7 @@ export const PRESENCE_GAMES = ['disaster', 'band', 'floresta', 'cozinha', 'rally
 /** Jogos de criar/explorar sem placar: o grupo abre junto com a faixa "juntos" (src/party/together.ts). */
 export const TOGETHER_GAMES = ['caca', 'studio', 'cinema'];
 /** Jogos que outro time está terminando (ainda solo no grupo). */
-export const PARTY_WIP = ['cavafala', 'anomalias'];
+export const PARTY_WIP = ['anomalias'];
 
 const games = new Map<string, PartyGame>();
 interface Cur {

@@ -34,6 +34,10 @@ interface Env {
   TV: DurableObjectNamespace<import('./tv').TvChannel>;
   /** Garimpo Bruto online: salas de garimpo (relé anfitrião↔convidados) + caixas de convite. */
   GARIMPO: DurableObjectNamespace<import('./garimpo').GarimpoRoom>;
+  /** Cava & Fala online: arena/vila por código (relé; o anfitrião manda na partida) + caixas de convite. */
+  CAVA: DurableObjectNamespace<import('./cava').CavaRoom>;
+  /** Jangada Bloop online: jangada por código (relé; o anfitrião manda no mundo) + caixas de convite. */
+  RAFT: DurableObjectNamespace<import('./raft').RaftRoom>;
   /** Duelo: mesmo desafio para todos ao mesmo tempo (jogos solo jogados em grupo) — uma instância por jogo+código. */
   DUEL: DurableObjectNamespace<import('./duel').DuelRoom>;
   /** Navegador de servidores do Mundo (oficiais, de amigos, do Bloop Studio) — instância única 'hub' (server/servers.ts). */
@@ -52,4 +56,6 @@ interface Env {
   AI_STT_MOCK?: string;
   /** "0" desliga a checagem extra das falas pela IA de texto (Claude), mesmo com ANTHROPIC_API_KEY. */
   AI_LLM_CHECK?: string;
+  /** Só teste local: "fixtures" = POST /api/cava/make responde com planos fixos (server/cava-ai-fixtures.ts), sem IA. */
+  CAVA_AI_MOCK?: string;
 }

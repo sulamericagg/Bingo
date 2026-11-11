@@ -17,15 +17,19 @@ import { FpsControls } from '../../ui/touch';
 import { BloopModel, disposeBloopCache, lam, type Hat } from './bloop';
 import { M, MATS, emptyInv, matColor, matName, type Inv, type Theme } from './data';
 import { Fx } from './fx';
-import { GADGETS, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
-import { Hud } from './hud';
+import { GADGETS, gadgetById, buildModel, disposeGadgetCache, canPay, costOf, fullName, missing, modStats, noMods, pay, type Built, type GDef, type Mods } from './gadgets';
+import { Hud, SVG } from './hud';
 import { OBox, makeBody, rayBox, stepBody, type Body, type PhysWorld } from './phys';
-import { parseBest, type Parsed } from './parser';
+import { norm, parseBest, type Parsed } from './parser';
+import { Maker } from './maker';
+import { disposeCreationCache } from './creation';
+import { isCommand } from '../../../shared/cavagen';
 import { cavaSave, discover, persist } from './save';
 import type { Terrain } from './terrain';
 import type { Town } from './town';
-import { listen, voiceKind, type VoiceSession } from './voice';
+import { askMicPermission, listen, listenContinuous, openAppSettings, voiceKind, withTimeout, type ContSession, type VoiceFail, type VoiceSession } from './voice';
 
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const TAU = Math.PI * 2;
 export const EYE = 1.45;
 
@@ -77,7 +81,41 @@ export interface Actor {
   teleCd: number;
   place: number;
   outT: number;
+  /** online: id na rede (jogador = id do jogador; bot = 'b<n>') */
+  nid?: string;
+  /** online: boneco de outro aparelho (posição vem da rede, sem física aqui) */
+  remote?: boolean;
+  snaps?: Snap[];
+  /** online: bandeiras do último retrato (1 escudo · 2 bolha · 4 montado) */
+  netF?: number;
+  /** online: engenhoca na mão (id) */
+  netG?: string;
+  /** online: quando falou por último (balão) */
+  voiceAt?: number;
 }
+
+/** retrato de um Bloop de outro aparelho (interpolação) */
+export interface Snap {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+}
+
+/** online: o que o motor manda para a rede (net.ts / online.ts) */
+export interface WorldNet {
+  dig(x: number, y: number, z: number, r: number, p: number): void;
+  build(a: Actor, g: GDef, mods: Mods, pos: THREE.Vector3, yaw: number, tp: THREE.Vector3 | null): void;
+  fire(a: Actor, s: Slot, o: THREE.Vector3, d: THREE.Vector3): void;
+  hit(target: Actor, dx: number, dy: number, dz: number, power: number, by: Actor): void;
+  voice(a: Actor, text: string): void;
+  /** objeto falado (forma compacta) — mesmo uid = troca (IA melhorou / Refazer) */
+  obj?(a: Actor, uid: string, spec: unknown, pos: THREE.Vector3, yaw: number, text: string): void;
+}
+/** atraso da interpolação dos Bloops remotos (ms) */
+const INTERP_MS = 140;
 
 export interface Struct {
   g: GDef;
@@ -245,12 +283,20 @@ export class World {
   readonly actors: Actor[] = [];
   readonly me: Actor;
   readonly structs: Struct[] = [];
+  /** objetos falados (criação livre) */
+  readonly objs: Maker;
   private projs: Proj[] = [];
   private builds: BuildAnim[] = [];
   private grows: Grow[] = [];
   private digbots: Bot2[] = [];
   private tornados: Tornado[] = [];
   mode: ModeCtl | null = null;
+  /** online (null = offline) */
+  net: WorldNet | null = null;
+  /** chamado a cada passo da simulação (online: manda o retrato) */
+  onStep: ((dt: number) => void) | null = null;
+  private teleFar: THREE.Vector3 | null = null;
+  private teleForce: THREE.Vector3 | null = null;
   readonly theme: Theme | null;
   readonly arena: boolean;
   time = 0;
@@ -368,7 +414,7 @@ export class World {
         this.jumpHeld = d;
         if (d) this.jumpQ = true;
       },
-      mic: (d) => (d ? void this.micDown() : void this.micUp()),
+      mic: (d) => this.micBtn(d),
       type: () => this.openType(),
       book: () => this.openRing(),
       select: (i) => this.select(this.me, i),
@@ -382,6 +428,7 @@ export class World {
     this.resizeObs.observe(root);
     this.resize();
     this.updateHot();
+    this.objs = new Maker(this);
   }
 
   /* ---------------------------- atores ---------------------------- */
@@ -466,6 +513,7 @@ export class World {
     const b: OBox[] = [];
     if (this.town) b.push(...this.town.colliders());
     for (const s of this.structs) for (const c of s.cols) b.push(c.box);
+    if (this.objs) for (const o of this.objs.list) for (const c of o.cols) b.push(c.box);
     this.phys.boxes = b;
   }
 
@@ -474,25 +522,36 @@ export class World {
     const key = g.id + JSON.stringify(mods);
     const c = this.thumbs.get(key);
     if (c) return c;
-    const N = 96;
-    if (!this.thumbRT) {
+    const b = buildModel(g, mods, g.kind !== 'struct');
+    const url = this.renderThumb(b.group, g.kind === 'struct' ? 2.5 : 2.2);
+    this.thumbs.set(key, url);
+    return url;
+  }
+  /** miniatura (PNG data URL) de um objeto 3D qualquer */
+  renderThumb(obj: THREE.Object3D, rotY: number, N = 96): string {
+    if (!this.thumbRT || this.thumbRT.width !== N) {
+      this.thumbRT?.dispose();
       this.thumbRT = new THREE.WebGLRenderTarget(N, N);
+    }
+    if (!this.thumbScene) {
       this.thumbScene = new THREE.Scene();
       this.thumbScene.add(new THREE.HemisphereLight('#ffffff', '#9a8ac8', 1.7));
       const d = new THREE.DirectionalLight('#ffffff', 1.6);
       d.position.set(2, 3, 2);
       this.thumbScene.add(d);
     }
-    const b = buildModel(g, mods, g.kind !== 'struct');
-    const box = new THREE.Box3().setFromObject(b.group);
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
     const ctr = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length() || 1;
-    b.group.position.sub(ctr);
+    const holder = new THREE.Group();
+    holder.add(obj);
+    holder.position.copy(ctr).negate();
     const pivot = new THREE.Group();
-    pivot.add(b.group);
-    pivot.rotation.set(0.45, g.kind === 'struct' ? 2.5 : 2.2, 0);
-    this.thumbScene!.add(pivot);
-    const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
+    pivot.add(holder);
+    pivot.rotation.set(0.45, rotY, 0);
+    this.thumbScene.add(pivot);
+    const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 200);
     cam.position.set(0, 0, size * 1.75);
     const prevRT = this.renderer.getRenderTarget();
     const prevCol = this.renderer.getClearColor(new THREE.Color());
@@ -500,12 +559,12 @@ export class World {
     this.renderer.setRenderTarget(this.thumbRT);
     this.renderer.setClearColor('#000000', 0);
     this.renderer.clear();
-    this.renderer.render(this.thumbScene!, cam);
+    this.renderer.render(this.thumbScene, cam);
     const px = new Uint8Array(N * N * 4);
     this.renderer.readRenderTargetPixels(this.thumbRT, 0, 0, N, N, px);
     this.renderer.setRenderTarget(prevRT);
     this.renderer.setClearColor(prevCol, prevA);
-    this.thumbScene!.remove(pivot);
+    this.thumbScene.remove(pivot);
     const cv = document.createElement('canvas');
     cv.width = cv.height = N;
     const cx = cv.getContext('2d')!;
@@ -523,9 +582,7 @@ export class World {
         img.data[d + 3] = a;
       }
     cx.putImageData(img, 0, 0);
-    const url = cv.toDataURL();
-    this.thumbs.set(key, url);
-    return url;
+    return cv.toDataURL();
   }
 
   /* ---------------------------- qualidade ---------------------------- */
@@ -553,7 +610,7 @@ export class World {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
       const t0 = performance.now();
-      if (!this.paused) this.step(dt);
+      if (!this.paused || this.net) this.step(dt);
       this.render();
       this.gov.sample(dt * 1000, performance.now() - t0);
     };
@@ -567,10 +624,12 @@ export class World {
 
   private step(dt: number): void {
     this.time += dt;
-    this.controlPlayer(dt);
+    if (!this.paused) this.controlPlayer(dt);
+    else this.me.move.set(0, 0, 0);
     this.mode?.update(dt);
     for (const a of this.actors) this.simActor(a, dt);
     this.updateStructs(dt);
+    this.objs.update(dt);
     this.updateProjs(dt);
     this.updateBuilds(dt);
     this.updateGrows(dt);
@@ -585,6 +644,7 @@ export class World {
     this.fx.update(dt, this.cam, this.renderer.domElement.height);
     this.updateHand(dt);
     this.updateHudLive();
+    this.onStep?.(dt);
   }
 
   private render(): void {
@@ -647,7 +707,7 @@ export class World {
         this.digHeld = down;
         break;
       case 'KeyV':
-        if (!e.repeat) void (down ? this.micDown() : this.micUp());
+        if (!e.repeat) this.micBtn(down);
         break;
       case 'KeyT':
       case 'Enter':
@@ -724,6 +784,16 @@ export class World {
     const b = a.body;
     if (!a.alive) {
       if (a.model) a.model.root.visible = false;
+      return;
+    }
+    if (a.remote) {
+      this.simPuppet(a, dt);
+      return;
+    }
+    if (a === this.me && this.objs.riding) {
+      this.objs.pinRider(a, a.move, a.pitch, this.jumpQ || this.jumpHeld);
+      this.jumpQ = false;
+      this.visuals(a, dt);
       return;
     }
     a.shieldT = Math.max(0, a.shieldT - dt);
@@ -824,12 +894,22 @@ export class World {
     }
     // caiu no vazio / muito fundo
     if (b.p.y < this.T.oy - 6) this.mode?.onOut?.(a);
+    this.visuals(a, dt);
+    // jetpack recarrega no chão
+    if (b.onGround) a.fuel = Math.min(1, a.fuel + dt * 0.6);
+  }
+
+  /** modelo, carrinho, escudo e bolha (todos os Bloops, inclusive os de outros aparelhos) */
+  private visuals(a: Actor, dt: number): void {
+    const b = a.body;
+    const sel = a.slots[a.sel];
     // modelo
     if (a.model) {
       a.model.root.visible = true;
       a.model.root.position.copy(b.p);
       a.model.root.rotation.y = a.yaw;
       a.model.update(dt, Math.hypot(b.v.x, b.v.z), !b.onGround);
+      if (a.remote) a.model.tagDist(this.cam.position.distanceTo(b.p));
       this.syncHeld(a);
     }
     // carrinho montado: modelo segue o Bloop e dá trombada
@@ -841,7 +921,7 @@ export class World {
       a.cart.position.set(b.p.x, b.p.y - 0.05, b.p.z);
       a.cart.rotation.y = a.yaw;
       const spd = Math.hypot(b.v.x, b.v.z);
-      if (spd > 6)
+      if (spd > 6 && !a.remote)
         for (const o of this.actors) {
           if (o === a || !o.alive) continue;
           V1.copy(o.body.p).sub(b.p);
@@ -874,8 +954,110 @@ export class World {
       a.bubbleMesh.visible = !a.isPlayer;
       a.bubbleMesh.position.set(b.p.x, b.p.y + 0.7, b.p.z);
     } else if (a.bubbleMesh) a.bubbleMesh.visible = false;
-    // jetpack recarrega no chão
-    if (b.onGround) a.fuel = Math.min(1, a.fuel + dt * 0.6);
+  }
+
+  /* ---------------------------- Bloops de outros aparelhos (online) ---------------------------- */
+  /** guarda um retrato vindo da rede */
+  pushSnap(a: Actor, x: number, y: number, z: number, yaw: number, pitch: number, pct: number, f: number, g: string): void {
+    const s = (a.snaps ??= []);
+    const now = performance.now();
+    if (!s.length) a.body.p.set(x, y, z);
+    s.push({ t: now, x, y, z, yaw, pitch });
+    if (s.length > 24) s.splice(0, s.length - 24);
+    a.pct = pct;
+    a.netF = f;
+    if (g !== a.netG) {
+      a.netG = g;
+      this.puppetHeld(a, g);
+    }
+  }
+  private puppetHeld(a: Actor, id: string): void {
+    let i = a.slots.findIndex((s) => s.g.id === id);
+    if (i < 0) {
+      const g = id === PAZINHA.id ? PAZINHA : gadgetById(id);
+      if (!g) return;
+      a.slots.push({ g, mods: noMods(), uses: 0, thumb: '', on: false });
+      if (a.slots.length > 8) a.slots.splice(0, 1);
+      i = a.slots.length - 1;
+    }
+    a.sel = i;
+  }
+  private simPuppet(a: Actor, dt: number): void {
+    const b = a.body;
+    const s = a.snaps;
+    if (s && s.length) {
+      const rt = performance.now() - INTERP_MS;
+      let k = s.length - 1;
+      while (k > 0 && s[k - 1].t > rt) k--;
+      const B = s[k];
+      const A = k > 0 ? s[k - 1] : B;
+      const px = b.p.x,
+        py = b.p.y,
+        pz = b.p.z;
+      if (A === B || rt >= B.t) {
+        // sem retrato novo: segura no último (sem extrapolar longe)
+        b.p.set(B.x, B.y, B.z);
+        a.yaw = B.yaw;
+        a.pitch = B.pitch;
+      } else {
+        const u = Math.max(0, Math.min(1, (rt - A.t) / Math.max(1, B.t - A.t)));
+        b.p.set(A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u, A.z + (B.z - A.z) * u);
+        let dy = B.yaw - A.yaw;
+        dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        a.yaw = A.yaw + dy * u;
+        a.pitch = A.pitch + (B.pitch - A.pitch) * u;
+      }
+      if (dt > 0) {
+        b.v.set((b.p.x - px) / dt, (b.p.y - py) / dt, (b.p.z - pz) / dt);
+        if (b.v.lengthSq() > 900) b.v.setLength(30);
+      }
+      // no chão? (para a animação)
+      b.onGround = this.T.sample(b.p.x, b.p.y - 0.15, b.p.z) > 0 || Math.abs(b.v.y) < 0.6;
+      if (s.length > 2 && s[0].t < rt - 1000) s.splice(0, 1);
+    }
+    const f = a.netF ?? 0;
+    a.shieldT = f & 1 ? 1 : 0;
+    a.trapT = f & 2 ? 1 : 0;
+    a.mounted = !!(f & 4);
+    this.visuals(a, dt);
+  }
+  /** cavada que veio da rede */
+  netDig(x: number, y: number, z: number, r: number, p: number): void {
+    const n = this.T.dig(x, y, z, r, null, p);
+    if (n > 0 && this.isNear(x, y, z)) {
+      const col = matColor(this.T.matAt(x, y - r, z) || M.Terra, this.theme ?? undefined);
+      this.fx.chunks(x, y, z, 0, 1, 0, col, 3 + Math.min(5, Math.round(n / 6)), 4);
+      this.fx.dust(x, y, z, col, 4);
+    }
+  }
+  /** engenhoca que alguém (de outro aparelho) montou: mesmo lugar, sem pagar */
+  netCreate(a: Actor, g: GDef, mods: Mods, x: number, y: number, z: number, yaw: number, tp: THREE.Vector3 | null): void {
+    a.body.p.set(x, y, z);
+    a.yaw = yaw;
+    if (!a.voiceAt || performance.now() - a.voiceAt > 2500) a.model?.say(fullName(g, mods) + '!', 1800);
+    this.teleForce = tp;
+    if (g.kind === 'struct') this.placeStruct(a, g, mods);
+    else this.buildTool(a, g, mods);
+    this.teleForce = null;
+  }
+  /** espuma/martelo/tornado/robô de outro aparelho (o acerto é decidido por quem usou) */
+  netFire(a: Actor, g: GDef, mods: Mods, o: THREE.Vector3, d: THREE.Vector3): void {
+    let s = a.slots.find((x) => x.g.id === g.id && JSON.stringify(x.mods) === JSON.stringify(mods));
+    if (!s) {
+      s = { g, mods, uses: 0, thumb: '', on: false };
+      a.slots.push(s);
+      if (a.slots.length > 8) a.slots.splice(0, 1);
+    }
+    a.useCd = 0;
+    this.useSlot(a, s, true, 1 / 30, o, d);
+  }
+  /** balão com o que alguém falou */
+  netVoice(a: Actor, text: string): void {
+    a.voiceAt = performance.now();
+    a.model?.say('“' + text + '”', 2600);
+  }
+  actorByNid(nid: string): Actor | null {
+    return this.actors.find((a) => a.nid === nid) ?? null;
   }
 
   /** engenhoca na mão dos Bloops (bots/ajudantes) */
@@ -945,6 +1127,7 @@ export class World {
     }
     const got: Inv = {};
     const n = this.T.dig(x, y, z, R, got, tool.power);
+    if (n > 0 && this.net) this.net.dig(x, y, z, R, tool.power);
     const col = matColor(mat || M.Terra, this.theme ?? undefined);
     const ex = hit ? hit.x : x,
       ey = hit ? hit.y : y,
@@ -988,67 +1171,476 @@ export class World {
     }
     return n;
   }
+  /* ---------------------------- ajudantes das criações (creation.ts) ---------------------------- */
+  backpackOf(a: Actor, out: THREE.Vector3): THREE.Vector3 {
+    return this.backpack(a, out);
+  }
+  takeLight(): boolean {
+    if (this.lights >= this.q.lights) return false;
+    this.lights++;
+    return true;
+  }
+  freeLight(): void {
+    this.lights = Math.max(0, this.lights - 1);
+  }
+  /** cava um buraco (robô cavador, escavadeira) e dá o material ao dono */
+  digAt(owner: Actor, x: number, y: number, z: number, r: number): void {
+    const got: Inv = {};
+    const n = this.T.dig(x, y, z, r, got, 1);
+    if (n <= 0) return;
+    this.net?.dig(x, y, z, r, 1);
+    for (const [k, v] of Object.entries(got)) owner.inv[+k] = (owner.inv[+k] ?? 0) + v!;
+    if (owner.isPlayer) this.hud.setInv(owner.inv);
+    if (this.isNear(x, y, z)) {
+      const col = matColor(this.T.matAt(x, y - r, z) || M.Terra, this.theme ?? undefined);
+      this.fx.chunks(x, y, z, 0, 1, 0, col, 6, 4);
+      this.fx.dust(x, y, z, col, 6);
+    }
+    this.mode?.onDig?.(owner, got, new THREE.Vector3(x, y, z));
+  }
+  /** projétil mole (bolha/espuma/confete/água/neve) que uma criação atira */
+  shootSoft(owner: Actor, o: THREE.Vector3, d: THREE.Vector3, kind: string, power: number): void {
+    const beh = kind === 'bubbles' ? 'bubble' : kind === 'confetti' ? 'confetti' : kind === 'snow' ? 'snow' : 'foam';
+    const n = beh === 'confetti' ? 4 : 1;
+    for (let i = 0; i < n; i++) {
+      const dir = V2.copy(d);
+      if (n > 1) dir.applyAxisAngle(UP, (i - (n - 1) / 2) * 0.15).normalize();
+      const speed = beh === 'bubble' ? 10 : beh === 'confetti' ? 18 : 20;
+      const r = beh === 'bubble' ? 0.38 : beh === 'confetti' ? 0.12 : 0.24;
+      const col = kind === 'water' ? '#8fd3ff' : beh === 'bubble' ? '#bff4ff' : beh === 'snow' ? '#ffffff' : beh === 'confetti' ? ['#ff4f6a', '#ffd34a', '#5ab0ff', '#5ad6a0'][i % 4] : '#fff4e6';
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), beh === 'bubble' ? new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.5, depthWrite: false }) : lam(col, 0.2));
+      mesh.position.copy(o);
+      this.scene.add(mesh);
+      this.projs.push({ p: o.clone(), v: dir.clone().multiplyScalar(speed).add(V3.set(0, 1, 0)), kind: beh, power, owner, life: 2.6, r, mesh, bounces: 0, homing: false, trap: beh === 'bubble', slow: beh === 'snow', grav: beh === 'bubble' ? 1 : 4, confetti: beh === 'confetti' });
+    }
+    if (this.isNear(o.x, o.y, o.z)) (beh === 'bubble' ? sfx.bubble : kind === 'water' ? sfx.spray : sfx.throw)();
+  }
   isNear(x: number, y: number, z: number): boolean {
     const c = this.cam.position;
     return (c.x - x) ** 2 + (c.y - y) ** 2 + (c.z - z) ** 2 < 900;
   }
 
   /* ---------------------------- voz / texto / círculo ---------------------------- */
+  /* ---------- microfone LIGA/DESLIGA (contínuo) ---------- */
+  private cont: ContSession | null = null;
+  private contStarting = false;
+  private lastSpeech = 0;
+  private silenceT = 0;
+  private visH = () => document.hidden && this.micOff(true);
+  /** 'toggle' (padrão): toque liga/desliga · 'hold': segurar para falar */
+  micMode(): 'toggle' | 'hold' {
+    return cavaSave().micMode ?? 'toggle';
+  }
+  get micOn(): boolean {
+    return !!this.cont || this.contStarting;
+  }
+  private micBtn(down: boolean): void {
+    if (this.micMode() === 'hold') {
+      void (down ? this.micDown() : this.micUp());
+      return;
+    }
+    if (!down) return;
+    if (this.micOn) this.micOff();
+    else void this.micStart();
+  }
+  /** liga: ouve sem parar até desligar (o reconhecedor reinicia sozinho depois de cada frase) */
+  async micStart(): Promise<void> {
+    if (this.micOn || this.dead) return;
+    audio.unlock();
+    sfx.pick();
+    if (voiceKind() === 'none') {
+      this.noVoiceCard();
+      return;
+    }
+    this.contStarting = true;
+    this.hud.micState('starting');
+    let why: VoiceFail | null = null;
+    const s = await withTimeout(
+      listenContinuous({
+        onPartial: (txt) => {
+          this.lastSpeech = performance.now();
+          if (txt.trim()) this.hud.subtitle(txt, 'live');
+        },
+        onFinal: (alts) => this.contFinal(alts),
+        onLevel: (lv) => this.hud.level(lv),
+        onAskPerm: () => {
+          this.hud.micState('off', true);
+          this.permCard('ask');
+        },
+        onError: (w) => {
+          why = w;
+          if (w === 'perm' && this.cont) {
+            this.micOff(true);
+            this.permCard('denied');
+          }
+        },
+      }),
+      35000,
+      null,
+    );
+    if ((this.hud.overlay as HTMLDivElement | null)?.dataset.perm === 'ask') this.closePanelGo();
+    this.contStarting = false;
+    if (!s || this.dead || this.paused) {
+      s?.stop();
+      this.hud.micState('off', true);
+      if (this.dead || this.paused) return;
+      if (why === 'perm') this.permCard('denied');
+      else this.noVoiceCard(why === 'unavailable' ? 'none' : why ? 'err' : 'slow');
+      return;
+    }
+    this.cont = s;
+    this.lastSpeech = performance.now();
+    this.hud.micState('on');
+    document.addEventListener('visibilitychange', this.visH);
+    // silêncio comprido: dica (a criança falou e nada apareceu → chegue mais perto)
+    clearInterval(this.silenceT);
+    this.silenceT = window.setInterval(() => {
+      if (!this.cont) return;
+      if (performance.now() - this.lastSpeech > 7000) {
+        this.hud.subtitle(t('cavafala.mic.louder', 'Fala mais alto ou chega mais perto 🎤'), 'hint');
+        this.lastSpeech = performance.now() - 3000; // repete a cada ~4 s, sem piscar
+      }
+    }, 500);
+  }
+  /** desliga (botão, pausa, app no fundo, sair) — sempre funciona */
+  micOff(silent = false): void {
+    clearInterval(this.silenceT);
+    document.removeEventListener('visibilitychange', this.visH);
+    const was = this.micOn;
+    this.cont?.stop();
+    this.cont = null;
+    this.contStarting = false;
+    if (was) {
+      this.hud.micState('off', silent);
+      if (!silent) sfx.drop();
+    }
+  }
+  /** frase completa no modo contínuo: destaca o comando e monta; senão sugere (sem parar de ouvir) */
+  private contFinal(alts: string[]): void {
+    this.lastSpeech = performance.now();
+    const heard = alts[0]?.trim() ?? '';
+    if (!heard || this.dead) return;
+    if (this.hud.overlay) return;
+    const p = parseBest(alts);
+    this.lastParsed = p;
+    this.net?.voice(this.me, p.heard || heard);
+    if (p.g && (p.sure || p.score >= 0.78)) {
+      this.hud.subtitle(p.heard || heard, 'ok', fullName(p.g, p.mods));
+      const ok = this.create(this.me, p.g, p.mods, 'voice');
+      if (ok) {
+        cavaSave().spoken++;
+        persist();
+      }
+      return;
+    }
+    this.logMiss(p);
+    const opts = [...(p.g ? [p.g] : []), ...p.suggest].filter((g, i, a) => a.indexOf(g) === i).slice(0, 3);
+    this.hud.subtitle(
+      p.heard || heard,
+      'no',
+      '',
+      opts.map((g) => ({ label: g.name(), go: () => this.create(this.me, g, g === p.g ? p.mods : noMods(), 'radial') })),
+    );
+  }
+
+  /** teste do microfone (pausa): barras do nível + o que ouviu, para ver se o aparelho escuta */
+  micTest(onClose: () => void): void {
+    this.micOff(true);
+    const d = this.hud.panel(
+      `<div class="cf-card cf-mt"><h2>${esc(t('cavafala.mt.title', 'Testar microfone'))}</h2>
+        <p data-st>${esc(t('cavafala.mic.starting', 'Ligando o microfone…'))}</p>
+        <div class="cf-mtbars">${'<i></i>'.repeat(20)}</div>
+        <div class="cf-mtlog"><i>${esc(t('cavafala.mt.say', 'Fale alguma coisa, tipo “trampolim”…'))}</i></div>
+        <div class="cf-row"><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div></div>`,
+    );
+    d.dataset.mictest = '1';
+    const bars = [...d.querySelectorAll<HTMLElement>('.cf-mtbars i')];
+    const hist = new Array(bars.length).fill(0);
+    const log = d.querySelector('.cf-mtlog') as HTMLElement;
+    const st = d.querySelector('[data-st]') as HTMLElement;
+    let lines: string[] = [];
+    let live = '';
+    const draw = () => (log.innerHTML = [...lines.slice(-3).map((l) => `<div>${esc(l)}</div>`), live ? `<div><i>${esc(live)}…</i></div>` : ''].join('') || `<i>${esc(t('cavafala.mt.say', 'Fale alguma coisa, tipo “trampolim”…'))}</i>`);
+    let sess: ContSession | null = null;
+    let closed = false;
+    const close = () => {
+      closed = true;
+      sess?.stop();
+      this.hud.closePanel();
+      onClose();
+    };
+    d.querySelector('[data-a=x]')!.addEventListener('click', close);
+    void listenContinuous({
+      onPartial: (s) => {
+        live = s;
+        draw();
+      },
+      onFinal: (alts) => {
+        live = '';
+        const p = parseBest(alts);
+        lines.push(`“${alts[0]}”` + (p.g ? ` → ${fullName(p.g, p.mods)}` : ''));
+        lines = lines.slice(-6);
+        draw();
+      },
+      onLevel: (v) => {
+        hist.push(v);
+        hist.shift();
+        bars.forEach((b, i) => (b.style.height = Math.round(4 + hist[i] * 62) + 'px'));
+      },
+      onError: (w) => {
+        st.textContent = w === 'perm' ? t('cavafala.perm.deniedT', 'O microfone está desligado') : t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.');
+      },
+    }).then((s) => {
+      if (closed) return s?.stop();
+      sess = s;
+      if (s) st.textContent = t('cavafala.mic.on', 'Ouvindo… é só falar!');
+    });
+  }
+
+  private micCancel = false;
+  private lastPartial = '';
+  private misses: string[] = [];
   private async micDown(): Promise<void> {
     if (this.voiceBusy || this.hud.overlay) return;
-    this.voiceBusy = true;
-    sfx.pick();
-    this.hud.listening(true);
     audio.unlock();
-    const v = await listen(
-      (s) => this.hud.listening(true, '“' + s + '”'),
-      (err) => notify(err === 'perm' ? t('cavafala.voice.perm', 'Sem permissão do microfone — digite (T) ou use o círculo.') : t('cavafala.voice.err', 'Não deu para ouvir. Tente de novo ou digite.'), { kind: 'warn' }),
-    );
-    if (!v) {
+    sfx.pick();
+    if (voiceKind() === 'none') {
+      this.noVoiceCard();
+      return;
+    }
+    this.voiceBusy = true;
+    this.micCancel = false;
+    this.lastPartial = '';
+    this.hud.listening(true);
+    let why: VoiceFail | null = null;
+    let slow = false;
+    let askedPerm = false;
+    // nunca fica infinito: sem resposta do reconhecedor em 8 s → cai para digitar/escolher
+    let dog = window.setTimeout(() => (slow = true), 8000);
+    const v = await Promise.race([
+      listen({
+        onPartial: (s) => {
+          this.lastPartial = s;
+          this.hud.listening(true, s);
+        },
+        onLevel: (lv) => this.hud.level(lv),
+        onAskPerm: () => {
+          askedPerm = true;
+          clearTimeout(dog);
+          dog = window.setTimeout(() => (slow = true), 32000);
+          this.hud.listening(false);
+          this.permCard('ask');
+        },
+        onError: (w) => (why = w),
+      }),
+      new Promise<null>((r) => {
+        const chk = window.setInterval(() => {
+          if (slow) {
+            clearInterval(chk);
+            r(null);
+          }
+        }, 200);
+      }),
+    ]);
+    clearTimeout(dog);
+    if ((this.hud.overlay as HTMLDivElement | null)?.dataset.perm === 'ask') this.closePanelGo();
+    if (!v || slow || this.dead) {
+      v?.cancel();
       this.hud.listening(false);
       this.voiceBusy = false;
-      if (voiceKind() === 'none') notify(t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.'), { kind: 'warn' });
-      this.openType();
+      if (this.dead) return;
+      if (why === 'perm') this.permCard('denied');
+      else this.noVoiceCard(slow ? 'slow' : why === 'unavailable' ? 'none' : 'err');
+      return;
+    }
+    if (this.micCancel && !askedPerm) {
+      // soltou rápido (antes do reconhecedor abrir): segue normal com o que ouviu
+      this.voice = v;
+      void this.micUp();
+      return;
+    }
+    if (this.micCancel) {
+      // soltou o botão enquanto pedia a permissão: agora já pode falar
+      v.cancel();
+      this.hud.listening(false);
+      this.voiceBusy = false;
+      notify(t('cavafala.voice.ready', 'Microfone pronto! Segure FALAR e diga o que quer.'), { kind: 'good', icon: 'check' });
       return;
     }
     this.voice = v;
   }
   private async micUp(): Promise<void> {
     const v = this.voice;
-    if (!v) return;
+    if (!v) {
+      if (this.voiceBusy) this.micCancel = true;
+      return;
+    }
     this.voice = null;
-    const alts = await v.finish();
+    let alts = await withTimeout(v.finish(), 4000, [] as string[]);
     this.hud.listening(false);
     this.voiceBusy = false;
     sfx.drop();
+    if (!alts.length && this.lastPartial) alts = [this.lastPartial];
     if (!alts.length) {
-      notify(t('cavafala.voice.nothing', 'Não ouvi nada... segure o botão e fale.'), { kind: 'warn' });
+      this.hud.heard('', false);
+      this.chooseCard(null);
       return;
     }
+    this.heardText(alts, 'voice');
+  }
+
+  /** o que ouviu/leu → engenhoca (certeza), ou "você quis dizer?" com 3 opções (nunca "nada acontece") */
+  private heardText(alts: string[], how: 'voice' | 'type'): boolean {
     const p = parseBest(alts);
     this.lastParsed = p;
-    if (p.g) {
-      const ok = this.create(this.me, p.g, p.mods, 'voice');
-      if (ok) {
+    this.net?.voice(this.me, p.heard || alts[0]);
+    const said = (p.heard || alts[0] || '').trim();
+    // receita do catálogo só para pedidos curtos e certeiros; o resto vira OBJETO FALADO (qualquer coisa!)
+    const recipe = !!p.g && (p.sure || how === 'type') && p.rest.length === 0 && isCommand(said);
+    if (!recipe && said && norm(said).length >= 2) {
+      this.hud.heard(said, true, '✨');
+      const ok = this.objs.make(said, how);
+      if (ok && how === 'voice') {
         cavaSave().spoken++;
         persist();
       }
-    } else this.notUnderstood(p);
+      return ok;
+    }
+    if (p.g && (p.sure || how === 'type')) {
+      this.hud.heard(p.heard, true, fullName(p.g, p.mods));
+      const ok = this.create(this.me, p.g, p.mods, how);
+      if (ok && how === 'voice') {
+        cavaSave().spoken++;
+        persist();
+      }
+      return ok;
+    }
+    this.hud.heard(p.heard, false);
+    this.logMiss(p);
+    this.chooseCard(p);
+    return false;
   }
-  private notUnderstood(p: Parsed): void {
-    const sug = p.suggest.map((g) => g.name()).join(', ');
-    notify(sug ? t('cavafala.voice.maybe', '“{h}”? Talvez: {s}', { h: p.heard, s: sug }) : t('cavafala.voice.unknown', 'Não conheço “{h}”. Tente “ponte”, “trampolim”...', { h: p.heard }), { kind: 'warn', ms: 3600 });
+  /** guarda o que não entendeu (só texto) e manda em lote para o serviço de relatórios */
+  private logMiss(p: Parsed): void {
+    if (!p.heard.trim()) return;
+    this.misses.push(`“${p.heard.slice(0, 60)}” → ${p.g ? '?' + p.g.id : '-'} [${p.suggest.map((g) => g.id).join(',')}]`);
+    if (this.misses.length >= 5) this.flushMisses();
+  }
+  private flushMisses(): void {
+    if (!this.misses.length) return;
+    const txt = '[cavafala voz não entendida] ' + this.misses.join(' | ');
+    this.misses = [];
+    void import('../../services/feedback').then((f) => f.submitReport(f.buildReport('other', txt, false, ''))).catch(() => {});
+  }
+
+  private closePanelGo(): void {
+    this.hud.closePanel();
+    this.paused = false;
+  }
+  /** "Você quis dizer?": até 3 engenhocas grandes para tocar + falar de novo / digitar */
+  chooseCard(p: Parsed | null): void {
+    if (this.hud.overlay) return;
+    const opts: { g: GDef; mods: Mods }[] = [];
+    if (p?.g) opts.push({ g: p.g, mods: p.mods });
+    for (const g of p?.suggest ?? []) if (opts.length < 3 && !opts.some((o) => o.g === g)) opts.push({ g, mods: noMods() });
+    const found = cavaSave().found;
+    for (const id of ['trampolim', 'ponte', 'escada', 'canhao', 'escudo']) {
+      const g = GADGETS.find((x) => x.id === id);
+      if (opts.length < 3 && g && found.includes(id) && (!this.arena || g.arena || g.kind === 'weapon') && !opts.some((o) => o.g === g)) opts.push({ g, mods: noMods() });
+    }
+    this.paused = true;
+    this.digHeld = this.useHeld = false;
+    const heard = p?.heard.trim() ?? '';
+    const d = this.hud.panel(
+      `<div class="cf-card cf-choose">
+        <h2>${heard ? `${esc(t('cavafala.voice.heard', 'Ouvi:'))} <q>${esc(heard)}</q>` : esc(t('cavafala.voice.nothing2', 'Não ouvi direito...'))}</h2>
+        <p>${esc(p?.g ? t('cavafala.voice.meant', 'Você quis dizer?') : t('cavafala.voice.pick', 'Toque no que você quer criar:'))}</p>
+        <div class="cf-opts3">${opts
+          .map((o, i) => `<button class="cf-opt" data-i="${i}"><img src="${this.thumb(o.g, o.mods)}" alt=""/><b>${esc(fullName(o.g, o.mods))}</b><span>${Hud.costChips(o.g, o.mods, this.me.inv, this.theme)}</span></button>`)
+          .join('')}</div>
+        <div class="cf-row"><button class="cf-btn p" data-a="mic">${SVG.mic}${esc(t('cavafala.voice.again', 'Falar de novo'))}</button><button class="cf-btn w" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div>
+      </div>`,
+    );
+    d.querySelectorAll<HTMLButtonElement>('.cf-opt').forEach((b) =>
+      b.addEventListener('click', () => {
+        const o = opts[+b.dataset.i!];
+        this.closePanelGo();
+        this.create(this.me, o.g, o.mods, 'radial');
+      }),
+    );
+    d.querySelector('[data-a=mic]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      notify(t('cavafala.voice.hold', 'Segure FALAR enquanto fala!'), { icon: 'hand-tap', key: 'hold' });
+    });
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=x]')!.addEventListener('click', () => this.closePanelGo());
+  }
+  /** microfone: pedindo permissão (ask) ou bloqueado (denied) */
+  private permCard(mode: 'ask' | 'denied'): void {
+    this.hud.closePanel();
+    this.paused = true;
+    const d = this.hud.panel(
+      `<div class="cf-card cf-perm"><div class="cf-permic">${SVG.mic}</div>
+        <h2>${esc(mode === 'ask' ? t('cavafala.perm.askT', 'Deixa o Bloop ouvir você?') : t('cavafala.perm.deniedT', 'O microfone está desligado'))}</h2>
+        <p>${esc(mode === 'ask' ? t('cavafala.perm.ask', 'Toque em PERMITIR na janelinha. O som só é usado para entender o que você quer criar.') : t('cavafala.perm.denied', 'Sem o microfone, o Bloop não escuta. Libere nos ajustes do aparelho ou crie digitando.'))}</p>
+        <div class="cf-row">${
+          mode === 'denied'
+            ? `<button class="cf-btn g" data-a="retry">${esc(t('cavafala.perm.retry', 'Permitir microfone'))}</button><button class="cf-btn" data-a="settings">${esc(t('cavafala.perm.settings', 'Abrir ajustes'))}</button>`
+            : ''
+        }<button class="cf-btn w" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn w" data-a="ring">${SVG.book}${esc(t('cavafala.btn.recipes', 'Receitas'))}</button></div>
+      </div>`,
+    );
+    d.dataset.perm = mode;
+    d.querySelector('[data-a=retry]')?.addEventListener('click', async () => {
+      const r = await askMicPermission();
+      this.closePanelGo();
+      if (r === 'granted') notify(t('cavafala.voice.ready', 'Microfone pronto! Segure FALAR e diga o que quer.'), { kind: 'good', icon: 'check' });
+      else this.permCard('denied');
+    });
+    d.querySelector('[data-a=settings]')?.addEventListener('click', async () => {
+      const ok = await openAppSettings();
+      if (!ok) notify(t('cavafala.perm.howto', 'Ajustes → Apps → Bloop World → Permissões → Microfone'), { ms: 6000, icon: 'gear' });
+    });
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=ring]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openRing();
+    });
+  }
+  /** sem voz agora (aparelho sem reconhecedor, demorou ou deu erro): digitar ou escolher */
+  private noVoiceCard(why: 'none' | 'slow' | 'err' = 'none'): void {
+    if (this.hud.overlay) return;
+    this.paused = true;
+    const msg =
+      why === 'slow'
+        ? t('cavafala.voice.slow', 'O reconhecimento de voz não respondeu. Crie digitando ou escolhendo:')
+        : why === 'err'
+          ? t('cavafala.voice.err', 'Não deu para ouvir. Tente de novo ou digite.')
+          : t('cavafala.voice.none', 'Voz indisponível aqui: digite o que quer criar.');
+    const d = this.hud.panel(
+      `<div class="cf-card cf-perm"><div class="cf-permic off">${SVG.mic}</div><h2>${esc(msg)}</h2>
+        <div class="cf-row"><button class="cf-btn g" data-a="kb">${SVG.kb}${esc(t('cavafala.btn.type', 'Digitar'))}</button><button class="cf-btn" data-a="ring">${SVG.book}${esc(t('cavafala.btn.recipes', 'Receitas'))}</button><button class="cf-btn w" data-a="x">${esc(t('cavafala.close', 'Fechar'))}</button></div></div>`,
+    );
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openType();
+    });
+    d.querySelector('[data-a=ring]')!.addEventListener('click', () => {
+      this.closePanelGo();
+      this.openRing();
+    });
+    d.querySelector('[data-a=x]')!.addEventListener('click', () => this.closePanelGo());
   }
 
   /** cria pelo texto (painel de digitar e testes). Devolve true se começou a construir. */
   say(text: string): boolean {
-    const p = parseBest([text]);
-    this.lastParsed = p;
-    if (!p.g) {
-      this.notUnderstood(p);
-      return false;
-    }
-    return this.create(this.me, p.g, p.mods, 'type');
+    return this.heardText([text], 'type');
   }
 
   openType(): void {
@@ -1067,16 +1659,17 @@ export class World {
           .filter(Boolean)
           .map((g) => `<button class="cf-sug" data-w="${g!.name()}">${g!.name()}</button>`)
           .join('')}</div>
-        <div class="cf-row"><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
+        <div class="cf-row"><button class="cf-btn o" data-a="gal">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button><button class="cf-btn w" data-a="x">${t('cavafala.close', 'Fechar')}</button></div>
       </div>`,
     );
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const inp = d.querySelector('input')!;
     const prev = d.querySelector<HTMLDivElement>('.cf-preview')!;
     const upd = () => {
       const p = parseBest([inp.value]);
       if (!inp.value.trim()) prev.innerHTML = '';
-      else if (p.g) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
-      else prev.innerHTML = `<span style="opacity:.6">${p.suggest.length ? t('cavafala.type.maybe', 'Talvez:') + ' ' + p.suggest.map((g) => g.name()).join(', ') : '…'}</span>`;
+      else if (p.g && p.rest.length === 0 && isCommand(inp.value)) prev.innerHTML = `<b>${fullName(p.g, p.mods)}</b> · ${Hud.costChips(p.g, p.mods, this.me.inv, this.theme)}`;
+      else prev.innerHTML = `<b>✨ ${esc(t('cavafala.obj.willMake', 'Vou criar:'))}</b> ${esc(inp.value.trim().slice(0, 40))}`;
     };
     inp.addEventListener('input', upd);
     const close = () => {
@@ -1128,7 +1721,8 @@ export class World {
         return `<button class="cf-ri${ok ? '' : ' no'}" data-id="${g.id}" style="left:${50 + Math.cos(a) * 38}%;top:${50 + Math.sin(a) * 38}%"><img src="${this.thumb(g, noMods())}" alt=""/><b>${g.name()}</b></button>`;
       })
       .join('');
-    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button>`);
+    const d = this.hud.panel(`<div class="cf-ring">${items}<div class="cf-rc">${t('cavafala.ring.hint', 'Toque para ver')}</div></div>${pages > 1 ? `<button class="cf-btn w" data-a="more" style="position:absolute;right:16px;bottom:16px">${t('cavafala.ring.more', 'Mais')} ${page + 1}/${pages}</button>` : ''}<button class="cf-btn w" data-a="x" style="position:absolute;left:16px;bottom:16px">${t('cavafala.close', 'Fechar')}</button><button class="cf-btn w" data-a="kb" style="position:absolute;left:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${SVG.kb}${t('cavafala.btn.type', 'Digitar')}</button><button class="cf-btn o" data-a="gal" style="position:absolute;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px)">${esc(t('cavafala.obj.gallery', 'Minhas criações'))}</button>`);
+    d.querySelector('[data-a=gal]')!.addEventListener('click', () => this.objs.openGallery());
     const center = d.querySelector<HTMLDivElement>('.cf-rc')!;
     let picked: GDef | null = null;
     const close = () => {
@@ -1151,6 +1745,10 @@ export class World {
     );
     d.querySelector('[data-a=x]')!.addEventListener('click', close);
     d.querySelector('[data-a=more]')?.addEventListener('click', () => this.openRing(page + 1));
+    d.querySelector('[data-a=kb]')!.addEventListener('click', () => {
+      close();
+      this.openType();
+    });
     d.addEventListener('pointerdown', (e) => {
       if (e.target === d) close();
     });
@@ -1179,8 +1777,12 @@ export class World {
       this.lastCreated = g.id;
       this.created++;
     } else a.model?.say(fullName(g, mods) + '!', 1800);
+    const at = a.body.p.clone();
+    const yaw = a.yaw;
+    this.teleFar = null;
     if (g.kind === 'struct') this.placeStruct(a, g, mods);
     else this.buildTool(a, g, mods);
+    this.net?.build(a, g, mods, at, yaw, this.teleFar);
     return true;
   }
 
@@ -1311,13 +1913,17 @@ export class World {
     if (g.beh === 'teleport' && a) {
       // par: o 2º portal vai onde você está mirando (ou 12 m à frente)
       let far: THREE.Vector3;
-      const dir = a.isPlayer ? this.aimDir(V2) : V2.set(-Math.sin(yaw), -0.3, -Math.cos(yaw)).normalize();
-      const o = a.isPlayer ? this.cam.position : V3.copy(a.body.p).add(UP);
-      const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 30);
-      if (hit && hit.dist > 5) far = new THREE.Vector3(hit.x, hit.y, hit.z).add(new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-2));
-      else far = pos.clone().addScaledVector(new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), 14);
-      const gy = this.T.groundY(far.x, far.z, far.y + 3, far.y - 8);
-      if (gy > -Infinity) far.y = gy;
+      if (this.teleForce) far = this.teleForce.clone();
+      else {
+        const dir = a.isPlayer ? this.aimDir(V2) : V2.set(-Math.sin(yaw), -0.3, -Math.cos(yaw)).normalize();
+        const o = a.isPlayer ? this.cam.position : V3.copy(a.body.p).add(UP);
+        const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 30);
+        if (hit && hit.dist > 5) far = new THREE.Vector3(hit.x, hit.y, hit.z).add(new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-2));
+        else far = pos.clone().addScaledVector(new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), 14);
+        const gy = this.T.groundY(far.x, far.z, far.y + 3, far.y - 8);
+        if (gy > -Infinity) far.y = gy;
+      }
+      this.teleFar = far.clone();
       const twin = this.spawnStruct(null, g, mods, far, yaw + Math.PI, true);
       twin.owner = a;
       s.pair = twin;
@@ -1585,6 +2191,7 @@ export class World {
         if (beh === 'glove' || beh === 'hammer') this.melee(a, s, o, dir);
         else if (beh === 'tornado') this.spawnTornado(a, s, o, dir);
         else this.shoot(a, s, o, dir);
+        if (!a.remote) this.net?.fire(a, s, o, dir);
         if (s.g.beh === 'digbomb') consume();
         this.mode?.onUse?.(a, s, null);
         break;
@@ -1674,6 +2281,7 @@ export class World {
             const hit = this.T.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, 20);
             const at = hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : V1.copy(b.p).addScaledVector(dir, 4).clone();
             this.spawnDigbot(a, s, at);
+            if (!a.remote) this.net?.fire(a, s, o, dir);
             consume();
             break;
           }
@@ -1815,7 +2423,9 @@ export class World {
         const ang = this.time * 2.3;
         const p = V1.set(d.p.x + Math.cos(ang) * 1.2, d.p.y - 0.4, d.p.z + Math.sin(ang) * 1.2);
         const got: Inv = {};
-        const n = this.T.dig(p.x, p.y, p.z, 1.1, got, 1.4);
+        // robô de outro aparelho: só o dono cava (a cavada chega pela rede)
+        const n = d.owner.remote ? 0 : this.T.dig(p.x, p.y, p.z, 1.1, got, 1.4);
+        if (n > 0 && this.net) this.net.dig(p.x, p.y, p.z, 1.1, 1.4);
         if (n > 0) {
           for (const [k, v] of Object.entries(got)) d.owner.inv[+k] = (d.owner.inv[+k] ?? 0) + v!;
           const mm = this.T.matAt(p.x, p.y - 0.5, p.z);
@@ -1914,7 +2524,8 @@ export class World {
     if (p.kind === 'digbomb') {
       const got: Inv = {};
       const R = 2.5 * Math.sqrt(p.power);
-      const n = this.T.dig(x, y, z, R, got, 1.3);
+      const n = p.owner.remote ? 0 : this.T.dig(x, y, z, R, got, 1.3);
+      if (n > 0 && this.net) this.net.dig(x, y, z, R, 1.3);
       for (const [k, v] of Object.entries(got)) p.owner.inv[+k] = (p.owner.inv[+k] ?? 0) + v!;
       if (p.owner.isPlayer) this.hud.setInv(p.owner.inv);
       const col = matColor(this.T.matAt(x, y - 1, z) || M.Terra, this.theme ?? undefined);
@@ -1973,6 +2584,20 @@ export class World {
 
   /** empurrão de desenho animado (sem dano: só a % de "splat" sobe e empurra mais) */
   knock(a: Actor, dx: number, dy: number, dz: number, power: number, by: Actor | null): void {
+    if (!a.alive) return;
+    if (this.net) {
+      // online: quem usou a engenhoca decide o acerto
+      if (by?.remote) return; // o dono manda o 'hit' (se acertou na tela dele)
+      if (a.remote) {
+        if (by) this.net.hit(a, dx, dy, dz, power, by);
+        a.model?.splat();
+        return;
+      }
+    }
+    this.applyKnock(a, dx, dy, dz, power, by);
+  }
+  /** aplica o empurrão (local ou vindo da rede) */
+  applyKnock(a: Actor, dx: number, dy: number, dz: number, power: number, by: Actor | null): void {
     if (!a.alive) return;
     if (a.shieldT > 0) {
       power *= 0.15;
@@ -2077,6 +2702,11 @@ export class World {
   tipOnce(id: string, text: string): void {
     if (this.tipShown.has(id)) return;
     this.tipShown.add(id);
+    // dica aparece uma vez só (fica guardada): nada de muro de texto toda partida
+    const sv = cavaSave() as { tips?: string[] };
+    if ((sv.tips ??= []).includes(id)) return;
+    sv.tips.push(id);
+    persist();
     notify(text, { ms: 4200 });
   }
 
@@ -2086,6 +2716,7 @@ export class World {
     this.digHeld = this.useHeld = this.jumpHeld = false;
     this.ctl.show(!p);
     if (p) {
+      this.micOff(true);
       this.voice?.cancel();
       this.voice = null;
       this.voiceBusy = false;
@@ -2095,6 +2726,8 @@ export class World {
 
   dispose(): void {
     this.dead = true;
+    this.micOff(true);
+    this.flushMisses();
     cancelAnimationFrame(this.raf);
     this.voice?.cancel();
     this.mode?.dispose?.();
@@ -2102,6 +2735,7 @@ export class World {
     window.removeEventListener('keyup', this.keyU);
     this.resizeObs.disconnect();
     this.ctl.dispose();
+    this.objs.dispose();
     this.hud.dispose();
     for (const a of [...this.actors]) this.removeActor(a);
     this.fx.dispose();
@@ -2114,6 +2748,7 @@ export class World {
       if (m.isMesh && m.geometry && !(m as unknown as { isInstancedMesh?: boolean }).isInstancedMesh) m.geometry.dispose?.();
     });
     disposeGadgetCache();
+    disposeCreationCache();
     disposeBloopCache();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

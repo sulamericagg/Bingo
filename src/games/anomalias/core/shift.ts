@@ -10,6 +10,7 @@ import { t } from '../../../i18n';
 import { tap } from '../../../core/haptics';
 import { QualityGovernor, FpsLimiter, loadMode, settingsFor } from '../../../core/quality';
 import { FpsControls } from '../../../ui/touch';
+import { FpCamera, FpController, fpTuning } from '../../../3d/fpkit';
 import type { AnomalyKind, InteractDef, ItemDef, MapBuild, RoomDef } from '../maps/types';
 import { AnoAudio } from './audio';
 import { DANGER_AFTER_SCARE, DANGER_REPORT, DIFF, MEMORIZE_SEC, type Diff, type DiffCfg, type NightResult } from './data';
@@ -20,7 +21,7 @@ import { Bocudo, FACE_VARIANTS } from './models';
 import { TaskBoard } from './tasks';
 import { Rng, clamp } from './util';
 import { say } from './voice';
-import { EYE, PLAYER_R, World, slide, type Npc, type SlotInfo } from './world';
+import { EYE, LiveBoxCollider, PLAYER_R, World, slide, type Npc, type SlotInfo } from './world';
 
 export interface ShiftOpts {
   root: HTMLElement;
@@ -69,11 +70,24 @@ export class Shift {
   private memT = MEMORIZE_SEC;
   danger = 0;
   private hunt: Hunt | null = null;
-  private yaw: number;
-  private pitch = -0.05;
+  /** andar/câmera do kit compartilhado (src/3d/fpkit, preset indoor; mesma velocidade do turno) */
+  readonly fp: FpController;
+  readonly fpc: FpCamera;
+  private col: LiveBoxCollider;
+  private get yaw(): number {
+    return this.fpc.yaw;
+  }
+  private set yaw(v: number) {
+    this.fpc.yaw = v;
+  }
+  private get pitch(): number {
+    return this.fpc.pitch;
+  }
+  private set pitch(v: number) {
+    this.fpc.pitch = v;
+  }
   readonly pos: { x: number; z: number };
   private stepAcc = 0;
-  private bob = 0;
   photo = false;
   private photoCd = 0;
   private fov: number;
@@ -122,8 +136,14 @@ export class Shift {
     this.items = new Map((b.items ?? []).map((i) => [i.id, i]));
     this.world = new World(o.root, b, o.tier);
     this.fov = this.world.baseFov;
-    this.pos = { x: b.spawn.pos.x, z: b.spawn.pos.z };
+    const tune = fpTuning('indoor', { speed: WALK, radius: PLAYER_R, eye: EYE, pitchMin: -1.25, pitchMax: 1.2 });
+    this.col = new LiveBoxCollider(() => this.world.colliders);
+    this.fp = new FpController(tune, this.col);
+    this.fpc = new FpCamera(tune);
+    this.fp.place(b.spawn.pos.x, b.spawn.pos.z);
+    this.pos = this.fp;
     this.yaw = b.spawn.yaw;
+    this.pitch = -0.05;
     const slots: DirSlot[] = b.slots.map((s) => ({ id: s.id, room: s.room, kinds: s.kinds, variants: s.variants ?? 1, minNight: s.minNight ?? 1 }));
     this.dir = new Director(slots, o.night, o.diff, o.seed);
     this.tasks = new TaskBoard(b, new Rng(o.seed ^ 0x51ed27), this.dir.cfg.tasks);
@@ -277,27 +297,22 @@ export class Shift {
   }
 
   private control(dt: number): void {
-    if (this.hud.panelOpen || this.monIdx >= 0) return;
+    if (this.hud.panelOpen || this.monIdx >= 0) {
+      this.fp.stop();
+      return;
+    }
     const [ly, lp] = this.ctl.consumeLook(dt);
     const sens = this.photo ? 0.6 : 1;
-    this.yaw -= ly * sens;
-    this.pitch = clamp(this.pitch - lp * sens, -1.25, 1.2);
+    this.fpc.look(ly * sens, lp * sens);
     if (this.keys.has('KeyJ')) this.yaw += dt * 2;
     if (this.keys.has('KeyL')) this.yaw -= dt * 2;
     const [rx, fy] = this.ctl.dir();
-    const sp = WALK * (this.photo ? 0.55 : 1);
-    const sx = -Math.sin(this.yaw),
-      sz = -Math.cos(this.yaw);
-    const dx = (sx * fy + Math.cos(this.yaw) * rx) * sp * dt;
-    const dz = (sz * fy - Math.sin(this.yaw) * rx) * sp * dt;
-    const ox = this.pos.x,
-      oz = this.pos.z;
-    this.pos.x += dx;
-    this.pos.z += dz;
-    slide(this.pos, PLAYER_R, this.world.colliders);
-    const moved = Math.hypot(this.pos.x - ox, this.pos.z - oz);
-    this.bob += moved * 6.5;
-    this.stepAcc += moved;
+    this.fp.tune.speed = WALK * (this.photo ? 0.55 : 1);
+    const ox = this.fp.x,
+      oz = this.fp.z;
+    this.fp.steer(dt, rx, fy, this.yaw);
+    this.fp.move(dt);
+    this.stepAcc += Math.hypot(this.fp.x - ox, this.fp.z - oz);
     if (this.stepAcc > 0.62) {
       this.stepAcc = 0;
       this.au.step();
@@ -318,16 +333,10 @@ export class Shift {
       c.updateMatrixWorld();
       return;
     }
-    let sx = 0,
-      sy = 0;
-    if (this.state === 'caught') {
-      const k = Math.max(0, 1 - Math.abs(this.catchT - 0.75) * 2);
-      sx = (Math.random() - 0.5) * 0.12 * k;
-      sy = (Math.random() - 0.5) * 0.12 * k;
-    }
-    c.position.set(this.pos.x + sx, EYE + Math.sin(this.bob) * 0.035 + sy, this.pos.z);
-    c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
-    c.updateMatrixWorld();
+    if (this.state === 'caught') this.fpc.shake = Math.max(0, 1 - Math.abs(this.catchT - 0.75) * 2);
+    const playing = this.state === 'play' || this.state === 'memorize';
+    if (!playing) this.fp.speedK = 0;
+    this.fpc.apply(c, dt, this.fp, this.col);
   }
 
   get room(): RoomDef | null {

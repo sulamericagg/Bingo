@@ -7,11 +7,16 @@ import * as THREE from 'three';
 import type { Tier } from '../../core/quality';
 import { Particles } from '../../3d/common/particles';
 import { SKINS } from '../../game/skins';
-import { BENCH_POS, CDEFS, CK, DAY_LEN, DUSK, ITEM, WORLD_R, CAMP_R, nightInfo, TAU } from './data';
+import { BENCH_POS, CDEFS, CHEST_POS, CK, DAY_LEN, DUSK, FIRE_LV, FIRE_MAX_LV, ITEM, WORLD_R, CAMP_R, TAU } from './data';
+import { heldKind } from './items';
+import { LootView } from './lootview';
+import { FpView } from './fpview';
+import { fireLvLabel } from './hud';
 import type { Ev, Player, Sim } from './sim';
 import { NK, TK, treeR } from './world';
 import { ic } from './icons';
 import { VehView } from './vehview';
+import { BuildView } from './build/view'; // BUILD
 // PAPER: Bloops 2D de papel (src/3d/paper) — opção "Personagem 2D" + chave PAPER_GAMES.noites
 import { PaperChar, mySpec, npcSpec, paperOn, specOf, type PaperTool } from '../../3d/paper';
 import { squad } from '../../party/squad';
@@ -27,6 +32,8 @@ import {
   glowTex,
   hatMesh,
   iconSprite,
+  itemGeo,
+  logGeo,
   nodeGeo,
   shadowBodyGeo,
   stumpGeo,
@@ -100,6 +107,7 @@ interface CRig {
 }
 interface Fall {
   m: THREE.Mesh;
+  /** tempo desde que começou a cair (s); < 0 = já estava deitada */
   t: number;
   dx: number;
   dz: number;
@@ -107,7 +115,20 @@ interface Fall {
   hit: boolean;
   h: number;
   col: string;
+  /** sacode ao levar golpe */
+  shake: number;
 }
+interface Notch {
+  g: THREE.Group;
+  cut: THREE.Mesh;
+  core: THREE.Mesh;
+  prog: number;
+  shown: number;
+}
+/** raio do tronco na altura do corte (por tipo de árvore, escala 1) */
+const TRUNK_R = [0.22, 0.2, 0.2, 0.17];
+/** altura do corte (escala 1) — bate com o topo do toco */
+export const CUT_Y = 0.72;
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -174,7 +195,7 @@ export class View {
   camYaw = 0;
   camPitch = 0.46;
   camDist = 6.8;
-  private hemi: THREE.HemisphereLight;
+  hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private fireLight: THREE.PointLight;
   private pool: THREE.PointLight[] = [];
@@ -215,10 +236,27 @@ export class View {
   private paper = paperOn('noites');
   private structs = new Map<number, THREE.Object3D>();
   private flashes = new Map<number, THREE.Mesh>();
-  private falls: Fall[] = [];
+  /** árvores caídas (id do Felled → malha) */
+  private falls = new Map<number, Fall>();
+  private notches = new Map<number, Notch>();
+  private notchMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  loot: LootView;
+  fp: FpView;
+  /** câmera em 1ª pessoa (o próprio boneco some; o item aparece na mão) */
+  firstPerson = true;
+  private meId = '';
+  fpPitch = -0.1;
+  private chestMesh: THREE.Mesh;
+  private fireSign: THREE.Sprite;
+  private fireSignKey = '';
+  private fireSignCtx: CanvasRenderingContext2D;
+  private fireSignTex: THREE.CanvasTexture;
+  private storeKey = '';
   private shake = new Map<number, number>();
   private fireflies: THREE.Points;
   private vv: VehView;
+  /** construção em grade (peças, fantasma, barras) */
+  build: BuildView; // BUILD
   private lastBuild = { x: 1e9, z: 1e9, ver: -1, verC: -1, verS: -1 };
   private time = 0;
   private sunAmt = 1;
@@ -413,6 +451,27 @@ export class View {
     this.embers.budget = this.q.particles;
     sc.add(this.embers.obj);
     this.vv = new VehView(sc, sim, this.parts);
+    this.loot = new LootView(sc, sim);
+    this.fp = new FpView(this.camera.aspect);
+    // baú do acampamento
+    this.chestMesh = new THREE.Mesh(chestGeo(false, 0), vcMat());
+    this.chestMesh.scale.setScalar(1.25);
+    this.chestMesh.position.set(CHEST_POS[0], 0, CHEST_POS[1]);
+    this.chestMesh.rotation.y = Math.atan2(-CHEST_POS[0], -CHEST_POS[1]);
+    sc.add(this.chestMesh);
+    // placa da fogueira: tempo restante + nível
+    const fc = document.createElement('canvas');
+    fc.width = 256;
+    fc.height = 112;
+    this.fireSignCtx = fc.getContext('2d')!;
+    this.fireSignTex = new THREE.CanvasTexture(fc);
+    this.fireSignTex.colorSpace = THREE.SRGBColorSpace;
+    this.fireSign = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fireSignTex, fog: false, depthTest: false, transparent: true, sizeAttenuation: false }));
+    // tamanho fixo na tela (legível de longe)
+    this.fireSign.scale.set(0.34, 0.149, 1);
+    this.fireSign.renderOrder = 30;
+    sc.add(this.fireSign);
+    this.build = new BuildView(sc, sim, this.parts); // BUILD
 
     // vagalumes
     const ff: number[] = [];
@@ -515,6 +574,7 @@ export class View {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.fp.setAspect(w / h);
   }
 
   /* ------------------------------ instâncias do bosque ------------------------------ */
@@ -537,7 +597,7 @@ export class View {
       if (!s.treeT[i] && dx * dx + dz * dz < 45 * 45) this.blobs.push(t.x, ty + 0.15, t.z, t.s * (t.k === TK.Pine ? 1.25 : 1.55));
       _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.set(t.s, t.s, t.s));
       if (s.treeT[i]) {
-        this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.setScalar(t.s * 0.9)));
+        this.stumps.setMatrixAt(st++, _m.compose(_v.set(t.x, ty, t.z), _q.setFromAxisAngle(UP, t.rot), _s.set(t.s * 0.9, (CUT_Y * t.s + 0.15) / 0.46, t.s * 0.9)));
         return;
       }
       if (dx * dx + dz * dz > near2) {
@@ -672,6 +732,15 @@ export class View {
     this.players.set(p.id, r);
     return r;
   }
+  private carryMat = vcMat();
+  /**
+   * GANCHO (avatar 2.5D / outros agentes): o boneco deste jogador deve aparecer?
+   * Em 1ª pessoa o jogador local some (a mão com o item é desenhada pelo FpView).
+   */
+  avatarVisible(pid: string): boolean {
+    if (pid !== this.meId) return true;
+    return !this.firstPerson && this.selfVisible;
+  }
   /** balão de ícone sobre um jogador/ajudante (comando, pensamento) */
   bubble(pid: string, icon: string, secs = 2): void {
     const r = this.players.get(pid);
@@ -716,31 +785,61 @@ export class View {
       r.rig.body.scale.set(faint ? 1.25 : 1, faint ? 0.45 : 1, faint ? 1.25 : 1);
       r.zz.visible = faint;
       if (p.invT > 0 && !faint) g.visible = Math.floor(this.time * 12) % 2 === 0;
-      // ferramenta na mão
-      const tk = p.lightOn ? 'lamp' + p.lampId : p.bonk > 0 && s.dark ? 'hammer' + p.bonk : 'axe' + p.axe;
+      // o que está na mão (ferramentas são itens; toras vão nos braços)
+      const held = p.slots[p.sel];
+      const hk = heldKind(held?.id);
+      const tk = (held?.id ?? '') + ':' + (held?.id === 'wood' ? Math.min(held.n, 4) : 1);
       if (tk !== r.toolK) {
-        if (r.tool) r.rig.hand.remove(r.tool);
-        const col = p.lightOn ? (ITEM[p.lampId]?.col ?? '#fff6c0') : tk.startsWith('hammer') ? '#ffb3d9' : ['#c8d0e0', '#c8d0e0', '#b8c4d8', '#7ad0ff', '#ffd34a', '#ffd34a', '#ff8fd8'][Math.round(p.axe)] ?? '#c8d0e0';
-        r.tool = toolMesh(p.lightOn ? 'lamp' : tk.startsWith('hammer') ? 'hammer' : 'axe', col);
-        r.rig.hand.add(r.tool);
+        if (r.tool) r.tool.parent?.remove(r.tool);
+        r.tool = null;
+        if (held) {
+          const d = ITEM[held.id];
+          if (hk === 'axe' || hk === 'lamp' || hk === 'bonk') {
+            r.tool = toolMesh(hk === 'axe' ? 'axe' : hk === 'lamp' ? 'lamp' : 'hammer', d.col);
+            r.rig.hand.add(r.tool);
+          } else if (held.id === 'wood') {
+            const gg = new THREE.Group();
+            for (let i = 0; i < Math.min(held.n, 4); i++) {
+              const l = new THREE.Mesh(logGeo(), this.carryMat);
+              l.position.set(0, i * 0.2, 0);
+              l.scale.setScalar(0.7);
+              gg.add(l);
+            }
+            gg.position.set(0, 0.42, 0.55);
+            r.tool = gg;
+            (r.paper ? g : r.rig.body).add(gg);
+          } else {
+            const m = new THREE.Mesh(itemGeo(held.id), this.carryMat);
+            m.scale.setScalar(0.7);
+            r.tool = m;
+            if (r.paper) {
+              m.position.set(0.35, 0.5, 0.35);
+              g.add(m);
+            } else r.rig.hand.add(m);
+          }
+        }
         r.toolK = tk;
       }
       r.rig.hand.rotation.x = p.swing > 0 ? -Math.sin((1 - p.swing / 0.4) * Math.PI) * 1.8 : p.lightOn ? 0 : -0.3;
       // PAPER: billboard 2D (pés no chão, sem pulinho 3D; ferramenta 2D na mão)
       if (r.paper) {
         g.position.y = gy + (vh ? 0 : Math.max(0, bob - 0.1) * 0.5);
-        if (p.id === meId && !this.selfVisible) g.visible = false;
-        const col = p.lightOn ? (ITEM[p.lampId]?.col ?? '#fff6c0') : tk.startsWith('hammer') ? '#ffb3d9' : ['#c8d0e0', '#c8d0e0', '#b8c4d8', '#7ad0ff', '#ffd34a', '#ffd34a', '#ff8fd8'][Math.round(p.axe)] ?? '#c8d0e0';
-        r.paper.setTool((p.lightOn ? 'lamp' : tk.startsWith('hammer') ? 'hammer' : 'axe') as PaperTool, col);
+        const pt: PaperTool | null = hk === 'axe' ? 'axe' : hk === 'lamp' ? 'lamp' : hk === 'bonk' ? 'hammer' : held?.id === 'torch' ? 'torch' : null;
+        r.paper.setTool(pt, held ? ITEM[held.id]?.col ?? '#c8d0e0' : '#c8d0e0');
         r.paper.update(dt, this.camera, { yaw: p.lightOn ? p.aim : p.yaw, speed: vh ? 0 : mv, act: p.swing > 0 ? 1 - p.swing / 0.4 : -1, faint, hurt: p.invT > 0 && !faint });
       }
+      // 1ª pessoa: o próprio boneco não aparece (gancho: avatarVisible / selfVisible)
+      if (!this.avatarVisible(p.id)) {
+        g.visible = false;
+        r.shadow.visible = false;
+      }
       // chapéu: cosmético, ou gorro vestido
-      const hk = p.wear.head === 'beanie' ? 'beanie' : p.hat;
-      if (hk !== r.hatK) {
+      const hat = p.wear.head === 'beanie' ? 'beanie' : p.hat;
+      if (hat !== r.hatK) {
         r.rig.hat.clear();
-        const h = hatMesh(hk);
+        const h = hatMesh(hat);
         if (h) r.rig.hat.add(h);
-        r.hatK = hk;
+        r.hatK = hat;
       }
       // feixe
       r.beam.visible = p.lightOn && !faint && g.visible;
@@ -793,7 +892,7 @@ export class View {
       r.pz = c.z;
       const D = CDEFS[c.k];
       const hpk = 0.55 + 0.45 * Math.max(0, c.hp / c.max);
-      const sz = D.size * hpk;
+      const sz = D.size * (c.sz || 1) * hpk;
       const w = Math.sin(this.time * 6 + c.id) * 0.06;
       const jit = c.lit > 0 ? (Math.random() - 0.5) * 0.12 : 0;
       const hop = c.k === CK.Hopper ? Math.max(0, Math.sin(c.t * 5)) * 0.6 : Math.sin(this.time * 2 + c.id) * 0.08 + 0.1;
@@ -817,29 +916,49 @@ export class View {
     const x = e.x ?? 0;
     const z = e.z ?? 0;
     switch (e.k) {
-      case 'chop':
-        this.parts.burst(x, 1, z, 8, 'chunk', '#c08a52', 2.5);
-        this.parts.burst(x, 2.6, z, 5, 'chunk', '#4fb05a', 1.5);
-        if (e.n !== undefined) this.shake.set(e.n, 0.3);
-        hitTreeShake(x, z, 1);
-        break;
-      case 'fell': {
+      case 'chop': {
         const t = this.sim.w.trees[e.n ?? -1];
-        if (!t) break;
-        const m = new THREE.Mesh(this.trees[t.k].geometry, this.trees[t.k].material as THREE.Material);
-        if (this.cards[t.k].visible) m.add(new THREE.Mesh(this.cards[t.k].geometry, this.cardMat));
-        // cai a partir do corte (o toco fica)
-        m.position.set(t.x, this.sim.w.height(t.x, t.z) + 0.3 * t.s, t.z);
-        m.scale.setScalar(t.s);
-        this.scene.add(m);
-        const p = this.sim.players.find((q) => q.id === e.p);
-        const a = p ? Math.atan2(t.x - p.x, t.z - p.z) : 0;
-        this.falls.push({ m, t: 0, dx: Math.sin(a), dz: Math.cos(a), hit: false, h: 4.6 * t.s, col: TREE_LEAF[t.k] });
+        const a = e.a ?? 0;
+        const cy = t ? s0(t) : 0.4;
+        // lascas claras saem do corte, casca escura e umas folhas lá de cima
+        const hx = x + Math.sin(a) * 0.35;
+        const hz = z + Math.cos(a) * 0.35;
+        this.parts.burst(hx, cy + this.sim.w.height(x, z), hz, 10, 'chunk', '#f3d9a8', 2.8);
+        this.parts.burst(hx, cy + this.sim.w.height(x, z), hz, 5, 'chunk', '#6a3f22', 2.2);
+        this.parts.burst(x, 2.6 * (t?.s ?? 1), z, 4 + Math.round((e.y ?? 0) * 6), 'chunk', '#4fb05a', 1.5);
+        if (e.n !== undefined) this.shake.set(e.n, 0.25 + (e.y ?? 0) * 0.35);
+        hitTreeShake(x, z, 0.8 + (e.y ?? 0));
+        break;
+      }
+      case 'fell':
         this.parts.burst(x, 0.5, z, 10, 'chunk', '#ffe2b0', 3);
         this.parts.burst(x, 0.5, z, 14, 'poof', '#e8dcc0', 2);
         this.lastBuild.ver = -1;
         break;
+      case 'logchop': {
+        const f = this.falls.get(e.n ?? -1);
+        if (f) f.shake = 0.25;
+        this.parts.burst(x, 0.6 + this.sim.w.height(x, z), z, 10, 'chunk', '#f3d9a8', 2.6);
+        this.parts.burst(x, 0.6 + this.sim.w.height(x, z), z, 5, 'chunk', '#4fb05a', 2);
+        break;
       }
+      case 'split':
+        this.parts.burst(x, 0.6, z, 22, 'poof', '#e8dcc0', 3);
+        this.parts.burst(x, 0.6, z, 16, 'chunk', '#c08a52', 3.5);
+        break;
+      case 'nodehit':
+        this.parts.burst(x, 0.5 + this.sim.w.height(x, z), z, 10, 'chunk', '#c8c8d8', 2.6);
+        break;
+      case 'burn':
+        this.embers.burst(0, 1.2, 0, 26, 'spark', '#ffcf6a', 3.5);
+        this.embers.burst(0, 1.4, 0, 10, 'flame', '#ff8a30', 1.6);
+        break;
+      case 'firelv':
+        this.embers.burst(0, 2, 0, 50, 'spark', '#ffe45c', 5);
+        break;
+      case 'relight':
+        this.embers.burst(0, 1, 0, 30, 'flame', '#ffb030', 2);
+        break;
       case 'take':
       case 'collect':
         this.parts.burst(x, 0.6, z, 10, 'spark', '#9dffcb', 2);
@@ -854,9 +973,6 @@ export class View {
       case 'bossdown':
         this.parts.burst(x, 2, z, 60, 'poof', '#6a4aa0', 5);
         this.parts.burst(x, 2, z, 60, 'spark', '#ffe45c', 7);
-        break;
-      case 'feed':
-        this.embers.burst(0, 1, 0, 20, 'spark', '#ffb030', 2.5);
         break;
       case 'rescue':
         this.parts.burst(x, 1, z, 30, 'spark', '#ff8fd8', 3);
@@ -925,34 +1041,20 @@ export class View {
       if (nt <= 0) this.shake.delete(i);
       else this.shake.set(i, nt);
     }
-    for (const f of this.falls) {
-      f.t += dt;
-      // range (0,3 s) → queda acelerando → quique ao bater → some em folhas
-      const tt = Math.max(0, f.t - 0.3);
-      let a = f.t < 0.3 ? f.t * 0.3 + Math.sin(f.t * 40) * 0.02 : Math.min(Math.PI / 2, 0.09 + tt * tt * 3);
-      if (a >= Math.PI / 2 && !f.hit) {
-        f.hit = true;
-        const cx = f.m.position.x + f.dx * f.h * 0.65;
-        const cz = f.m.position.z + f.dz * f.h * 0.65;
-        this.leafFx.emit(this.q.particles >= 0.8 ? 50 : 26, cx, this.sim.w.height(cx, cz) + 0.7, cz, f.h * 0.25, f.col, 3);
-        this.parts.burst(cx, 0.4, cz, 12, 'poof', '#e8dcc0', 2);
-      }
-      if (f.hit) a -= Math.abs(Math.sin((f.t - 0.3 - Math.sqrt((Math.PI / 2 - 0.09) / 3)) * 14)) * 0.08 * Math.max(0, 1 - (f.t - 0.95) * 3);
-      f.m.quaternion.setFromAxisAngle(_v.set(f.dz, 0, -f.dx), a);
-      if (f.t > 1.4) f.m.scale.multiplyScalar(1 - dt * 4);
-    }
-    if (this.falls.some((f) => f.t > 1.9)) {
-      for (const f of this.falls) if (f.t > 1.9) this.scene.remove(f.m);
-      this.falls = this.falls.filter((f) => f.t <= 1.9);
-    }
-
     this.leafFx.update(dt);
     natureTick(dt);
     windTime.value = this.time;
     this.updLighting(dt, me);
+    this.meId = me?.id ?? '';
     this.updPlayers(dt, me?.id ?? '');
+    this.updFelled(dt);
+    this.updNotches(dt);
+    this.updStores();
+    this.loot.night = 1 - this.sunAmt;
+    this.loot.update(dt, camX, camZ, this.q.draw);
     this.updCreatures(dt);
     this.vv.update(dt, 1 - this.sunAmt);
+    this.build.update(dt, this.camera, me ? me.x : camX, me ? me.z : camZ); // BUILD
 
     // bebês
     s.babies.forEach((b, i) => {
@@ -1030,7 +1132,7 @@ export class View {
     } else sunT = 0;
     this.sunAmt += (Math.max(0, sunT) - this.sunAmt) * Math.min(1, dt * 3);
     const k = smooth(Math.max(0, Math.min(1, this.sunAmt)));
-    const ni = nightInfo(s.night);
+    const ni = s.nightNow();
     const dark = ni.dark;
     const fog = ni.fog && s.phase === 'night';
     const dusk = 1 - Math.abs(k - 0.5) * 2; // pico no meio da transição
@@ -1072,8 +1174,9 @@ export class View {
     // fogueira
     const fr = s.fireR();
     const fl = s.fire.fuel / s.fire.max;
+    const left = s.fireLeft();
     const flick = 1 + Math.sin(this.time * 13) * 0.06 + Math.sin(this.time * 7.3) * 0.08;
-    this.fireLight.intensity = fr > 0 ? (2.2 + fl * 3) * flick * (0.35 + 0.65 * (1 - k)) : 0;
+    this.fireLight.intensity = fr > 0 ? (2.2 + Math.min(1, left / 90) * 3 + s.fire.flare * 3) * flick * (0.35 + 0.65 * (1 - k)) : 0;
     this.fireLight.distance = fr * 2.1 + 2;
     const fk = (s.fire.ring ? 'r' : '') + (s.fire.big ? 'b' : '');
     if (fk !== this.fireKey) {
@@ -1081,15 +1184,18 @@ export class View {
       this.fireBase.geometry.dispose();
       this.fireBase.geometry = fireBaseGeo(s.fire.ring, s.fire.big);
     }
-    const fs = fr > 0 ? 0.45 + fl * 0.9 * (s.fire.big ? 1.3 : 1) : 0.0001;
+    // chamas: maiores por nível, encolhem quando o tempo acaba, e "acendem" quando algo cai no fogo
+    const lowK = Math.min(1, left / 60);
+    const fs = fr > 0 ? (0.35 + 0.75 * Math.sqrt(lowK)) * (0.7 + s.fire.lv * 0.3) * (s.fire.big ? 1.2 : 1) * (1 + Math.min(1, s.fire.flare) * 0.3) : 0.0001;
+    this.updFireSign();
     this.flames.forEach((f, i) => {
       const w = [1, 0.7, 0.4][i];
-      const h = [1.8, 1.4, 0.9][i] * fs * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.12);
+      const h = [1.8, 1.4, 0.9][i] * Math.pow(fs, 0.65) * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.12);
       f.scale.set(w * fs, h, w * fs);
       f.position.set(Math.sin(this.time * 3 + i) * 0.05, h / 2 + 0.15, Math.cos(this.time * 2.6 + i) * 0.05);
       f.rotation.y = this.time * (0.6 + i * 0.4);
     });
-    if (fr > 0 && Math.random() < 0.5 * fs) this.embers.burst(0, 0.8 + fs * 0.5, 0, 1, 'flame', '#ff9a40', 0.8);
+    if (fr > 0 && Math.random() < 0.5 * Math.min(1.5, fs)) this.embers.burst(0, 0.8 + fs * 0.5, 0, 1, 'flame', '#ff9a40', 0.8);
     if (fr > 0 && Math.random() < 0.15) this.embers.emit((Math.random() - 0.5) * 0.6, 1.2, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.4, 1.8 + Math.random(), (Math.random() - 0.5) * 0.4, { tile: 1, color: '#ffcf6a', life: 1.4, size: 0.05, grav: -0.2 });
     if (this.benchLv !== s.bench) {
       this.benchLv = s.bench;
@@ -1164,6 +1270,311 @@ export class View {
     this.fireflies.position.set(Math.sin(this.time * 0.1) * 2, Math.sin(this.time * 0.7) * 0.3, Math.cos(this.time * 0.13) * 2);
   }
 
+  /* ------------------------------ árvores caídas e entalhes ------------------------------ */
+  private updFelled(dt: number): void {
+    const s = this.sim;
+    const seen = new Set<number>();
+    for (const fe of s.felled) {
+      seen.add(fe.id);
+      let f = this.falls.get(fe.id);
+      const t = s.w.trees[fe.i];
+      if (!f) {
+        const m = new THREE.Mesh(this.trees[t.k].geometry, this.trees[t.k].material as THREE.Material);
+        if (this.cards[t.k].visible) m.add(new THREE.Mesh(this.cards[t.k].geometry, this.cardMat));
+        // gira no entalhe (o toco fica embaixo); o tronco começa no corte
+        m.position.set(t.x, s.w.height(t.x, t.z) - 0.15 + CUT_Y * t.s, t.z);
+        m.scale.setScalar(t.s);
+        const g = new THREE.Group();
+        g.add(m);
+        this.scene.add(m);
+        f = { m, t: fe.age < 0.8 ? 0 : -1, dx: Math.sin(fe.a), dz: Math.cos(fe.a), hit: fe.age >= 0.8, h: 4.6 * t.s, col: TREE_LEAF[t.k], shake: 0 };
+        this.falls.set(fe.id, f);
+      }
+      const END = Math.PI / 2 - 0.1;
+      let a = END;
+      if (f.t >= 0) {
+        f.t += dt;
+        // range (0,35 s) → queda acelerando → quique ao bater
+        const tt = Math.max(0, f.t - 0.35);
+        a = f.t < 0.35 ? f.t * 0.25 + Math.sin(f.t * 40) * 0.015 : Math.min(END, 0.09 + tt * tt * 3.2);
+        if (a >= END && !f.hit) {
+          f.hit = true;
+          const cx = f.m.position.x + f.dx * f.h * 0.65;
+          const cz = f.m.position.z + f.dz * f.h * 0.65;
+          this.leafFx.emit(this.q.particles >= 0.8 ? 50 : 26, cx, s.w.height(cx, cz) + 0.7, cz, f.h * 0.25, f.col, 3);
+          this.parts.burst(cx, 0.4 + s.w.height(cx, cz), cz, 14, 'poof', '#e8dcc0', 2.2);
+          this.onFallHit?.(cx, cz);
+        }
+        if (f.hit) a -= Math.abs(Math.sin(f.t * 14)) * 0.06 * Math.max(0, 1 - (f.t - 1.0) * 3);
+        if (f.t > 2) f.t = -1;
+      }
+      f.shake = Math.max(0, f.shake - dt);
+      const sh = f.shake > 0 ? Math.sin(f.shake * 70) * 0.02 : 0;
+      f.m.quaternion.setFromAxisAngle(_v.set(f.dz, 0, -f.dx), a + sh);
+    }
+    for (const [id, f] of this.falls)
+      if (!seen.has(id)) {
+        // virou toras: folhas voam e some
+        const cx = f.m.position.x + f.dx * f.h * 0.5;
+        const cz = f.m.position.z + f.dz * f.h * 0.5;
+        this.leafFx.emit(30, cx, this.sim.w.height(cx, cz) + 0.6, cz, f.h * 0.3, f.col, 2.5);
+        this.scene.remove(f.m);
+        this.falls.delete(id);
+      }
+  }
+  /** hook: árvore bateu no chão (som) */
+  onFallHit: ((x: number, z: number) => void) | null = null;
+  /** raio real do tronco na altura do corte (medido na malha de cada tipo) */
+  private trunkR(k: number): number {
+    if (this.trunkRs[k]) return this.trunkRs[k];
+    const pa = this.trees[k].geometry.getAttribute('position');
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < pa.count; i++) {
+      const y = pa.getY(i);
+      if (Math.abs(y - CUT_Y) > 0.22) continue;
+      const d = Math.hypot(pa.getX(i), pa.getZ(i));
+      if (d > 0.05 && d < 0.7) (sum += d), n++;
+    }
+    return (this.trunkRs[k] = n ? sum / n : TRUNK_R[k]);
+  }
+  private trunkRs: number[] = [];
+  /** entalhe em cunha: "lente" clara na casca (alto no meio, some nas pontas), face de cima clara, de baixo mais escura, fundo escuro */
+  private notchGeo(ang: number, hh: number, p: number): THREE.BufferGeometry {
+    // decalque na casca (r=1): faixa em "lente"; o sombreado claro→escuro→médio dá a cunha cortada
+    const N = 10;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const top = new THREE.Color('#fbe6bc');
+    const mid = new THREE.Color('#e9c48c');
+    const deep = new THREE.Color('#4a2a12').lerp(new THREE.Color('#8a5a30'), 1 - p);
+    const bot = new THREE.Color('#c08850');
+    const ring = (i: number) => -ang / 2 + (i / N) * ang;
+    const push = (a: number, y: number, c: THREE.Color) => {
+      pos.push(Math.sin(a), y, Math.cos(a));
+      col.push(c.r, c.g, c.b);
+    };
+    // linhas: topo, meio-cima, fundo (linha escura), baixo
+    const rows: [number, THREE.Color][] = [
+      [1, top],
+      [0.35, mid],
+      [0, deep],
+      [-0.45, bot],
+    ];
+    for (let i = 0; i < N; i++) {
+      const a0 = ring(i);
+      const a1 = ring(i + 1);
+      const h0 = Math.cos((a0 / (ang / 2)) * (Math.PI / 2));
+      const h1 = Math.cos((a1 / (ang / 2)) * (Math.PI / 2));
+      for (let r = 0; r < rows.length - 1; r++) {
+        const [ya, ca] = rows[r];
+        const [yb, cb] = rows[r + 1];
+        push(a0, ya * h0 * hh, ca), push(a1, ya * h1 * hh, ca), push(a1, yb * h1 * hh, cb);
+        push(a0, ya * h0 * hh, ca), push(a1, yb * h1 * hh, cb), push(a0, yb * h0 * hh, cb);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+  private updNotches(dt: number): void {
+    const s = this.sim;
+    // decalque sem luz própria: acompanha o claro/escuro da cena
+    this.notchMat.color.setScalar(Math.min(1, 0.25 + this.hemi.intensity * 0.75));
+    for (const [i, h] of s.treeHit) {
+      const t = s.w.trees[i];
+      if (!t || s.treeT[i]) continue;
+      let n = this.notches.get(i);
+      if (!n) {
+        const g = new THREE.Group();
+        const cut = new THREE.Mesh(new THREE.BufferGeometry(), this.notchMat);
+        g.add(cut);
+        this.scene.add(g);
+        n = { g, cut, core: cut, prog: 0, shown: 0 };
+        this.notches.set(i, n);
+      }
+      n.prog = Math.min(1, h / t.hp);
+      const was = n.shown;
+      n.shown += (n.prog - n.shown) * Math.min(1, dt * 14);
+      const side = s.treeSide.get(i) ?? 0;
+      const R = this.trunkR(t.k) * t.s * 1.01;
+      n.g.position.set(t.x, s.w.height(t.x, t.z) - 0.15 + CUT_Y * t.s, t.z);
+      n.g.rotation.set(0, side - t.rot, 0);
+      n.g.rotation.y = side;
+      n.g.scale.set(R, t.s, R);
+      if (Math.abs(n.shown - was) > 0.002 || !n.cut.geometry.getAttribute('position')) {
+        const p = n.shown;
+        n.cut.geometry.dispose();
+        n.cut.geometry = this.notchGeo(0.8 + p * 1.3, 0.05 + p * 0.17, p);
+      }
+    }
+    for (const [i, n] of this.notches)
+      if (!s.treeHit.has(i) || s.treeT[i]) {
+        this.scene.remove(n.g);
+        n.cut.geometry.dispose();
+        this.notches.delete(i);
+      }
+  }
+  /** estantes/caixotes/lixeira mostram o que tem no baú; carrinhos mostram a carga */
+  private updStores(): void {
+    const s = this.sim;
+    const loadKey = s.structs.map((q) => (q.load ? q.id + ':' + JSON.stringify(q.load) : '')).join('|');
+    const key = JSON.stringify(s.stash) + s.verStruct + loadKey;
+    if (key === this.storeKey) return;
+    this.storeKey = key;
+    const shares = new Map<string, number>();
+    for (const st of s.structs) {
+      const d = ITEM[st.k]?.place;
+      const o = this.structs.get(st.id);
+      if (!o || !d) continue;
+      const old = o.getObjectByName('fill');
+      if (old) o.remove(old);
+      const fill = new THREE.Group();
+      fill.name = 'fill';
+      if (d.kind === 'rack') {
+        // cada estante mostra até 15 toras do baú
+        const used = shares.get('rack') ?? 0;
+        const n = Math.max(0, Math.min(15, (s.stash.wood ?? 0) - used));
+        shares.set('rack', used + n);
+        for (let i = 0; i < n; i++) {
+          const l = new THREE.Mesh(logGeo(), this.carryMat);
+          const row = Math.floor(i / 5);
+          l.position.set(-0.6 + (i % 5) * 0.3, 0.27 + row * 0.25, 0);
+          l.rotation.y = Math.PI / 2;
+          l.scale.set(0.85, 1, 1);
+          fill.add(l);
+        }
+      } else if (d.shows) {
+        let n = 0;
+        let top = '';
+        let topN = 0;
+        for (const k of d.shows) {
+          const c = s.stash[k] ?? 0;
+          n += c;
+          if (c > topN) (topN = c), (top = k);
+        }
+        if (n > 0) {
+          const peek = new THREE.Mesh(itemGeo(top), this.carryMat);
+          peek.position.y = d.kind === 'crate' ? 0.8 : 0.84;
+          fill.add(peek);
+        }
+        const lab = this.countSprite(n, d.kind === 'bin' ? 'scrap' : d.kind === 'crate' ? 'berry' : 'wood');
+        lab.position.y = 1.55;
+        fill.add(lab);
+      } else if (d.haul && st.load) {
+        let i = 0;
+        for (const k in st.load) {
+          for (let q = 0; q < Math.min(st.load[k], 12 - i); q++, i++) {
+            const m = new THREE.Mesh(k === 'wood' ? logGeo() : itemGeo(k), this.carryMat);
+            m.position.set(k === 'wood' ? 0 : ((i % 3) - 1) * 0.25, (d.kind === 'cart' ? 0.72 : 0.5) + Math.floor(i / 3) * 0.2, k === 'wood' ? 0.1 + ((i % 3) - 1) * 0.28 : 0.1);
+            if (k === 'wood') m.scale.set(1, 0.9, 0.9);
+            fill.add(m);
+          }
+        }
+      }
+      o.add(fill);
+    }
+    // baú do acampamento: total guardado
+    const old = this.chestMesh.getObjectByName('fill');
+    if (old) this.chestMesh.remove(old);
+    const lab = this.countSprite(Object.values(s.stash).reduce((a, b) => a + b, 0), 'box');
+    lab.name = 'fill';
+    lab.position.y = 1.35;
+    lab.scale.multiplyScalar(0.8);
+    this.chestMesh.add(lab);
+  }
+  private countSprite(n: number, icon: string): THREE.Sprite {
+    const c = document.createElement('canvas');
+    c.width = 160;
+    c.height = 64;
+    const x = c.getContext('2d')!;
+    x.fillStyle = 'rgba(30,14,70,0.85)';
+    x.beginPath();
+    x.roundRect(4, 4, 152, 56, 26);
+    x.fill();
+    x.font = '700 40px Fredoka, sans-serif';
+    x.fillStyle = '#fff';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(String(n), 104, 34);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const img = new Image();
+    img.onload = () => {
+      x.drawImage(img, 12, 8, 48, 48);
+      tex.needsUpdate = true;
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(ic(icon, 48).replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"'));
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, depthTest: true }));
+    sp.scale.set(1.0, 0.4, 1);
+    return sp;
+  }
+  /** placa sobre a fogueira: quanto tempo ainda queima + barra de nível */
+  private updFireSign(): void {
+    const s = this.sim;
+    const f = s.fire;
+    const left = Math.ceil(s.fireLeft());
+    const mm = Math.floor(left / 60);
+    const ss = String(left % 60).padStart(2, '0');
+    const lvP = f.lv >= FIRE_MAX_LV ? 1 : (f.xp - FIRE_LV[f.lv]) / (FIRE_LV[f.lv + 1] - FIRE_LV[f.lv]);
+    const key = left + ':' + f.lv + ':' + Math.round(lvP * 40) + ':' + Math.round((f.fuel / f.max) * 40);
+    const fh = 2.2 + f.lv * 0.35;
+    this.fireSign.position.set(0, fh, 0);
+    if (key === this.fireSignKey) return;
+    this.fireSignKey = key;
+    const x = this.fireSignCtx;
+    x.clearRect(0, 0, 256, 112);
+    x.fillStyle = 'rgba(30,14,70,0.82)';
+    x.beginPath();
+    x.roundRect(4, 4, 248, 104, 22);
+    x.fill();
+    const low = left < 40;
+    x.font = '700 44px Fredoka, sans-serif';
+    x.textAlign = 'left';
+    x.textBaseline = 'middle';
+    x.fillStyle = f.fuel <= 0 ? '#ff6a6a' : low ? '#ffb070' : '#fff';
+    x.fillText(f.fuel <= 0 ? '0:00' : `${mm}:${ss}`, 64, 38);
+    // chama pequena desenhada
+    x.fillStyle = low ? '#ff6a4a' : '#ffb030';
+    x.beginPath();
+    x.moveTo(36, 14);
+    x.quadraticCurveTo(58, 40, 36, 60);
+    x.quadraticCurveTo(14, 40, 36, 14);
+    x.fill();
+    // barra de combustível
+    x.fillStyle = 'rgba(255,255,255,0.18)';
+    x.fillRect(20, 70, 216, 10);
+    x.fillStyle = low ? '#ff6a4a' : '#ffcf3a';
+    x.fillRect(20, 70, 216 * Math.min(1, f.fuel / f.max), 10);
+    // nível
+    x.font = '700 18px Fredoka, sans-serif';
+    x.fillStyle = '#ffe45c';
+    x.fillText(fireLvLabel(f.lv), 20, 96);
+    x.fillStyle = 'rgba(255,255,255,0.18)';
+    x.fillRect(80, 90, 156, 8);
+    x.fillStyle = '#9ffcff';
+    x.fillRect(80, 90, 156 * Math.max(0, Math.min(1, lvP)), 8);
+    this.fireSignTex.needsUpdate = true;
+  }
+
+  /** câmera em 1ª pessoa (olhos do Bloop), com tremida de impacto */
+  placeCameraFP(x: number, z: number, gy: number, bob: number): void {
+    const c = this.camera;
+    const sh = this.fp.shake;
+    const jx = sh > 0 ? (Math.random() - 0.5) * sh * 0.25 : 0;
+    const jy = sh > 0 ? (Math.random() - 0.5) * sh * 0.25 : 0;
+    c.position.set(x, gy + 1.22 + bob, z);
+    const cp = Math.cos(this.fpPitch);
+    _v.set(x + Math.sin(this.camYaw + jx) * cp, gy + 1.22 + bob + Math.sin(this.fpPitch + jy), z + Math.cos(this.camYaw + jx) * cp);
+    c.lookAt(_v);
+  }
+  /** direção do olhar (para mirar com a mira do centro) */
+  lookDir(out: THREE.Vector3): THREE.Vector3 {
+    return this.camera.getWorldDirection(out);
+  }
+
   /** câmera em terceira pessoa atrás do alvo */
   placeCamera(x: number, z: number, dt: number, y = 0, dist = this.camDist): void {
     const p = this.camPitch;
@@ -1180,6 +1591,7 @@ export class View {
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+    if (this.firstPerson) this.fp.render(this.renderer);
   }
 
   /** posição na tela (px CSS) e se está à frente da câmera */
@@ -1191,6 +1603,9 @@ export class View {
   }
 
   destroy(): void {
+    this.loot.dispose();
+    this.fp.dispose();
+    this.build.dispose(); // BUILD
     this.grass.dispose();
     this.blobs.dispose();
     this.leafFx.dispose();
@@ -1207,6 +1622,10 @@ export class View {
 }
 
 export { treeR };
+/** altura do corte de uma árvore (m acima do chão) */
+function s0(t: { s: number }): number {
+  return CUT_Y * t.s;
+}
 
 /** PAPER: "rig" de mentira em volta do billboard — o código do Bloop 3D continua rodando sem efeito visível */
 function paperRig(pc: PaperChar): BloopRig {

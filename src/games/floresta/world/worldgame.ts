@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { t } from '../../../i18n';
 import { audio } from '../../../core/audio';
+import { digSound } from '../../../audio/hooks'; // AUDIO
 import { tap } from '../../../core/haptics';
 import { addCoins } from '../../../core/economy';
 import { reportRun } from '../../../hub/registry';
@@ -1122,7 +1123,7 @@ export class WorldGame {
       }
     }
     this.burst(machine ? 16 : 10, x, y, z, col, 4.5);
-    audio.tick(1);
+    digSound(counts, machine); // AUDIO: som do material cavado (terra/pedra/areia/cristal/neve)
     tap('light');
     this.onMined?.(counts, x, y, z);
     // árvores sem chão tombam
