@@ -316,7 +316,9 @@ export class World {
     this.diff = o.diff;
     this.camMode = o.cam % 3;
     initMats();
-    this.gov = new QualityGovernor({ initial: o.tier, emit: false, persist: false, onChange: (tr) => this.applyQ(tr) });
+    // ?jgtier=N (testes/medição): nível fixo, sem o automático mexer
+    const fixed = /[?&]jgtier=\d/.test(location.search);
+    this.gov = new QualityGovernor({ initial: o.tier, ...(fixed ? { mode: o.tier } : {}), emit: false, persist: false, onChange: (tr) => this.applyQ(tr) });
     this.tier = this.gov.tier;
     const r = new THREE.WebGLRenderer({ antialias: this.tier >= 2, powerPreference: 'high-performance' });
     r.setPixelRatio(this.pr());
@@ -3121,7 +3123,7 @@ export class World {
       case 'sail':
         this.act({ o: 'use', id: p.id, a: 'sail', yaw: Math.round(this.me.yaw * 100) / 100 });
         this.au.flap(pos);
-        if (!d.on) notify(t('jangada.sailOn', 'Vela aberta: a jangada vai para onde você estava olhando!'), { icon: 'sparkle', key: 'jgsail' });
+        if (!d.on) notify(t('jangada.sailOn2', 'Vela aberta: chegam mais coisas boiando!'), { icon: 'sparkle', key: 'jgsail' });
         return;
       case 'anchor':
         this.act({ o: 'use', id: p.id, a: 'anchor' });

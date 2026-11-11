@@ -138,8 +138,8 @@ export const PIECES: PieceDef[] = [
   P({ id: 'fire', idx: 9, cost: { wood: 5, rope: 2, leaf: 3 }, hp: 70, slot: 'obj', col: '#ff8a3a', n: () => t('jangada.p.fire', 'Fogueira'), say: () => t('jangada.s.fire', 'Assa comida. Fogo maior = mais receitas!') }),
   P({ id: 'purifier', idx: 10, cost: { plastic: 6, leaf: 4, rope: 1 }, hp: 60, slot: 'obj', col: '#4fd8ff', n: () => t('jangada.p.purifier', 'Purificador'), say: () => t('jangada.s.purifier', 'Ferve a água do mar: vira água doce.') }),
   P({ id: 'planter', idx: 11, cost: { wood: 4, rope: 2, plastic: 2 }, hp: 60, slot: 'obj', up: true, col: '#7ad86a', n: () => t('jangada.p.planter', 'Horta'), say: () => t('jangada.s.planter', 'Plante sementes de batata.') }),
-  P({ id: 'sail', idx: 12, cost: { wood: 8, rope: 6, plastic: 4, leaf: 4 }, hp: 80, slot: 'obj', col: '#fff3d6', n: () => t('jangada.p.sail', 'Vela'), say: () => t('jangada.s.sail', 'Abra a vela para ir para onde você olha!') }),
-  P({ id: 'anchor', idx: 13, cost: { wood: 4, rope: 4, scrap: 2 }, hp: 90, slot: 'obj', col: '#8a94a8', n: () => t('jangada.p.anchor', 'Âncora'), say: () => t('jangada.s.anchor', 'Para a jangada (perto de ilhas!).') }),
+  P({ id: 'sail', idx: 12, cost: { wood: 8, rope: 6, plastic: 4, leaf: 4 }, hp: 80, slot: 'obj', col: '#fff3d6', n: () => t('jangada.p.sail', 'Vela'), say: () => t('jangada.s.sail2', 'Abra a vela: o vento traz mais coisas boiando!') }),
+  P({ id: 'anchor', idx: 13, cost: { wood: 4, rope: 4, scrap: 2 }, hp: 90, slot: 'obj', col: '#8a94a8', n: () => t('jangada.p.anchor', 'Âncora'), say: () => t('jangada.s.anchor2', 'Baixe a âncora: a jangada balança menos.') }),
   P({ id: 'lamp', idx: 14, cost: { wood: 2, leaf: 2, scrap: 1 }, hp: 40, slot: 'obj', up: true, fire: 2, col: '#ffd34a', n: () => t('jangada.p.lamp', 'Lampião'), say: () => t('jangada.s.lamp', 'Luz à noite: o fantasminha não gosta!') }),
   P({ id: 'flag', idx: 15, cost: { wood: 2, plastic: 2 }, hp: 30, slot: 'obj', up: true, col: '#ff4fa3', n: () => t('jangada.p.flag', 'Bandeira Bloop'), say: () => t('jangada.s.flag', 'A bandeira da sua jangada!') }),
 ];
