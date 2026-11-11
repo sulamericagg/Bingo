@@ -21,6 +21,8 @@ export interface FluidDrive {
   dir: number;
   crest: number;
   speed: number;
+  /** nível que fica no mapa todo (água das ondas anteriores); opcional */
+  base?: number;
 }
 
 interface Phys {
@@ -123,6 +125,7 @@ export class FluidSim {
   dir = 0;
   crest = 0;
   speed = 0;
+  base = 0;
   private seed = 0x2f6b1;
 
   constructor(kind: FluidKind, world: World, tier: number) {
@@ -172,7 +175,8 @@ export class FluidSim {
     let H = L;
     if (this.dir !== 0) {
       const u = (this.front - x) * this.dir; // > 0: atrás da frente (já passou)
-      if (u < -6) return 0;
+      if (u < -6) H = 0;
+      else {
       const C = this.crest;
       // tsunami: parede de água; avalanche: rampa larga rolando
       const fw = this.kind === 'snow' ? 140 : 52;
@@ -190,6 +194,9 @@ export class FluidSim {
         const q = x - this.front * 0.92;
         H += (2.6 * fsin(q * 0.13) * fsin(q * 0.047) + 1.6 * fsin(q * 0.31)) * Math.min(1, H / 30);
       }
+      }
+      // água que ficou das ondas anteriores (tsunami/avalanche em várias ondas)
+      if (H < this.base) H = this.base;
     }
     if (H < 0.5) return 0;
     const sw = this.ph.swell;
@@ -205,6 +212,7 @@ export class FluidSim {
     if (!(dt > 0) || dt > 0.25) return;
     this.time += dt;
     this.level = f.level;
+    this.base = f.base ?? 0;
     this.front = f.front;
     this.dir = f.dir;
     this.crest = f.crest;
