@@ -107,6 +107,7 @@ export class Avatar implements Entity {
   private bob = 0;
   held = '';
   veh = -1;
+  private tag: THREE.Sprite;
   get face(): number {
     return this.yaw;
   }
@@ -121,7 +122,8 @@ export class Avatar implements Entity {
     AV_MAT ??= new THREE.MeshLambertMaterial({ vertexColors: true });
     const body = new THREE.Mesh(avatarGeo(skin), AV_MAT);
     body.castShadow = true;
-    this.g.add(body, nameSprite(name));
+    this.tag = nameSprite(name);
+    this.g.add(body, this.tag);
   }
   set(p: number[]): void {
     this.tx = p[0];
@@ -145,6 +147,7 @@ export class Avatar implements Entity {
       this.g.position.set(this.x, this.y, this.z);
       this.g.rotation.y = this.yaw;
       this.g.visible = this.sess.visible(this);
+      this.tag.visible = this.sess.tagVisible(this);
       return true;
     }
     const k = Math.min(1, dt * 10);
@@ -164,6 +167,7 @@ export class Avatar implements Entity {
     this.g.position.set(this.x, this.y + Math.abs(Math.sin(this.bob)) * 0.08, this.z);
     this.g.rotation.y = this.yaw + Math.PI;
     this.g.visible = this.sess.visible(this);
+    this.tag.visible = this.sess.tagVisible(this);
     return true;
   }
   hit(dmg: number, from: string): void {
@@ -267,6 +271,8 @@ export class NetSession {
   closed = false;
   /** esconder alguém (esconde-esconde: o pegador não vê… nada) */
   visible: (a: Avatar) => boolean = () => true;
+  /** nome em cima da cabeça (aparece através das paredes; o esconde-esconde desliga) */
+  tagVisible: (a: Avatar) => boolean = () => true;
 
   constructor(
     readonly code: string,

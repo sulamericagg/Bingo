@@ -401,7 +401,8 @@ export class WorldGame {
       }
       if (opts.net) {
         opts.net.attach(this);
-        if (!this.save.vehPlaced) {
+        // minijogos não ganham carrinho (atrapalha lotes/esconderijos)
+        if (!this.save.vehPlaced && !opts.net.meta?.mini) {
           this.save.vehPlaced = true;
           this.save.veh.owned = [];
           this.sb.starterVehicle(this.px + 4, this.pz + 3, this.yaw);

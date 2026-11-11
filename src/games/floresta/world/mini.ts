@@ -108,7 +108,8 @@ export function startMini(g: WorldGame, sess: NetSession): void {
       send({ k: 'start', game: 'ceu', sp });
     } else if (mini === 'corrida') {
       const pl: Record<string, [number, number]> = {};
-      ids.forEach((id, i) => (pl[id] = [i * 48, 30]));
+      // lotes longe do acampamento inicial (casa, placas, carrinhos), lado a lado
+      ids.forEach((id, i) => (pl[id] = [Math.round((i - (ids.length - 1) / 2) * 48), 96]));
       plots = pl;
       votes = {};
       theme = Math.floor(Math.random() * THEMES.length);
@@ -153,7 +154,7 @@ export function startMini(g: WorldGame, sess: NetSession): void {
           T = m.T;
           plots = m.plots;
           theme = m.theme;
-          const p = plots[sess.you] ?? [0, 30];
+          const p = plots[sess.you] ?? [0, 96];
           tp(p[0], g.world.floorAt(p[0], 60, p[1]) + 0.2, p[1]);
           say(t('mundo.mg.theme', 'Tema: {t}', { t: THEMES[theme]() }));
         } else {
@@ -186,7 +187,13 @@ export function startMini(g: WorldGame, sess: NetSession): void {
         black = null;
         voteEl?.remove();
         voteEl = null;
-        say(m.id ? t('mundo.mg.winner', 'Vencedor: {n}!', { n: m.name ?? nameOf(m.id) }) : t('mundo.mg.nobody', 'Fim de jogo!'));
+        say(
+          Array.isArray(m.tie)
+            ? t('mundo.mg.tie', 'Empate entre {n}!', { n: (m.tie as string[]).map(nameOf).join(' e ') })
+            : m.id || m.name
+              ? t('mundo.mg.winner', 'Vencedor: {n}!', { n: m.name ?? nameOf(m.id) })
+              : t('mundo.mg.nobody', 'Fim de jogo!'),
+        );
         audio.cash();
         break;
       case 'vote':
@@ -194,10 +201,13 @@ export function startMini(g: WorldGame, sess: NetSession): void {
         T = m.T;
         voteI = m.i;
         {
-          const p = (plots as Record<string, [number, number]>)[m.plot] ?? [0, 30];
-          tp(p[0], g.world.floorAt(p[0], 60, p[1] + 16) + 0.2, p[1] + 16);
+          const p = (plots as Record<string, [number, number]>)[m.plot] ?? [0, 96];
+          // cada visitante num ponto da plateia (não ficam um dentro do outro)
+          const ids = everyone().sort();
+          const ox = (ids.indexOf(sess.you) - (ids.length - 1) / 2) * 2.6;
+          tp(p[0] + ox, g.world.floorAt(p[0] + ox, 60, p[1] + 14) + 0.2, p[1] + 14);
           g.yaw = g.tYaw = 0;
-          g.pitch = g.tPitch = -0.15;
+          g.pitch = g.tPitch = -0.3;
         }
         say(t('mundo.mg.voteFor', 'Vote no lote de {n}', { n: nameOf(m.plot) }));
         voteEl?.remove();
@@ -243,8 +253,16 @@ export function startMini(g: WorldGame, sess: NetSession): void {
   };
   let seekT = 180;
   sess.onMg = (m) => on(m);
+  // testes (?debug): ler o estado e encurtar o relógio
+  if (location.search.includes('debug'))
+    (window as unknown as { __mini: unknown }).__mini = {
+      state: () => ({ phase, T, seekers: [...seekers], plots, votes, status }),
+      setT: (v: number) => (T = v),
+    };
   // esconde-esconde: escondidos não aparecem para quem procura enquanto contam
   sess.visible = () => !(black !== null);
+  // esconde-esconde: o nome atravessa paredes — some enquanto a rodada corre
+  sess.tagVisible = () => mini !== 'esconde' || phase === 'lobby' || phase === 'end';
 
   sb.on('death', () => {
     if (mini === 'ceu' && phase === 'play' && !myOut) {
@@ -268,17 +286,19 @@ export function startMini(g: WorldGame, sess: NetSession): void {
           const ni = voteI + 1;
           if (ni < voteOrder.length) send({ k: 'vote', plot: voteOrder[ni], i: ni, T: 14 });
           else {
-            let best = '';
+            let best: string[] = [];
             let bs = -1;
             for (const id of voteOrder) {
               const a = votes[id] ?? [];
               const sc = a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
-              if (sc > bs) {
+              if (sc > bs + 1e-6) {
                 bs = sc;
-                best = id;
-              }
+                best = [id];
+              } else if (Math.abs(sc - bs) <= 1e-6) best.push(id);
             }
-            send({ k: 'win', id: best });
+            // empate: todos os melhores dividem a vitória
+            if (best.length > 1) send({ k: 'win', id: best[0], tie: best });
+            else send({ k: 'win', id: best[0] ?? '' });
           }
         } else if (mini === 'esconde' && phase === 'hide') send({ k: 'seek', T: seekT });
         else if (mini === 'esconde' && phase === 'play') send({ k: 'win', id: '', name: t('mundo.mg.hiders', 'os escondidos') });
