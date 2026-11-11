@@ -229,4 +229,4 @@
 .nc-codelink{border:0;background:none;color:#cbb8ff;font:inherit;font-size:14px;text-decoration:underline;padding:6px;cursor:pointer}
 .nc-playing:empty{display:none}
 /* celular deitado estreito (740×360): a barra de itens encostava no analógico (QA) */
-@media (max-width:780px) and (max-height:400px){.nc-slot{width:42px;height:42px}.nc-bagbtn{width:48px;height:48px}.nc-hot{gap:3px;padding:3px}.nc-hotwrap{left:calc(50% + 14px)}}
+@media (max-width:780px) and (max-height:400px){.nc-slot{width:46px;height:46px;min-width:46px;min-height:46px}.nc-bagbtn{width:50px;height:50px;min-width:50px;min-height:50px}.nc-hot{gap:3px;padding:3px}.nc-hotwrap{left:calc(50% + 16px)}}

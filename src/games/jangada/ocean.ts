@@ -450,6 +450,8 @@ void main(){
   float path = dep / ndvG;
   float absorb = 1.0 - exp(-path * 0.42);
   absorb = mix(absorb, 1.0, smoothstep(5.0, 12.0, dep));
+  // perto da jangada a água funda não é 100% opaca: o corpo do tubarão/peixes aparece embaixo, não só a barbatana (QA)
+  absorb = min(absorb, mix(0.78, 1.0, smoothstep(14.0, 40.0, dist)));
   // sol: brilho físico pelo meio-vetor
   vec3 H = normalize(L + V);
   float ndh = max(dot(N, H), 0.0);

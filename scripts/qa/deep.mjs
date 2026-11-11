@@ -13,7 +13,9 @@ async function launch(page, id) {
   await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id);
   let w = 0;
   while (w < 40000 && (await page.$('#game-host .gh-loading'))) { await page.waitForTimeout(250); w += 250; }
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(1500);
+    for (let k = 0; k < 40 && (await page.$('.i3-root')); k++) { if (k === 4) await page.touchscreen.tap(30, 30).catch(() => {}); await page.waitForTimeout(400); } // intro 3D por cima
+    await page.waitForTimeout(1500);
 }
 async function tapText(page, re, root = '#game-host') {
   const h = await page.evaluateHandle(({ re, root }) => { const R = new RegExp(re, 'i'); return [...document.querySelectorAll(root + ' button, ' + root + ' [role=button]')].find((b) => { const r = b.getBoundingClientRect(); return r.width > 4 && r.bottom <= innerHeight && R.test((b.textContent || b.getAttribute('aria-label') || '').trim()); }) || null; }, { re, root });

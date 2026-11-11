@@ -10,7 +10,7 @@ const ROUTES = {
   noites: ['^sozinho'],
   mundo: ['novo mundo', 'criar e jogar'],
   floresta: ['primeira pessoa'],
-  garimpo: ['^começar', '^jogar'],
+  garimpo: ['novo jogo', '^(começar|jogar|pular|ok)', '^(começar|jogar|pular|ok)'],
   cozinha: ['primeira pessoa'],
   voo: ['^voar', 'embarcar|pular'],
   jangada: ['nova jangada|^continuar', '^(tranquilo|normal)'],
@@ -34,9 +34,10 @@ function overlapsInPage() {
   const host = document.querySelector('#game-host .gh-root');
   if (!host) return { items: 0, pairs: [] };
   const sel = 'button, [role=button], .tc-joy.on .tc-ring, .tc-joy.idle .tc-ring, [class*=hot], [class*=slot], [class*=bar]:not([class*=scroll]), [class*=bag], [class*=meter], [class*=hearts], [class*=vitals]';
-  let els = [...host.querySelectorAll(sel)].filter((e) => { const r = e.getBoundingClientRect(); return r.width >= 18 && r.height >= 18 && r.width < innerWidth * 0.8 && r.height < innerHeight * 0.6 && vis(e) && getComputedStyle(e).pointerEvents !== 'none' || e.classList.contains('tc-ring'); });
+  let els = [...host.querySelectorAll(sel)].filter((e) => { const r = e.getBoundingClientRect(); return r.width >= 18 && r.height >= 18 && r.width < innerWidth * 0.8 && r.height < innerHeight * 0.6 && vis(e) && (getComputedStyle(e).pointerEvents !== 'none' || e.classList.contains('tc-ring') || !e.matches('button')); });
   // ignora telas/menus por cima (modais) — só HUD de jogo
-  els = els.filter((e) => !e.closest('[class*=modal], [class*=sheet], [class*=menu]:not([class*=hud]), .gh-confirm, [class*=dialog], [class*=panel]:not([class*=hud])'));
+  const over = (e) => { for (let p = e; p && p !== host; p = p.parentElement) if (p.matches('[class*=modal], [class*=sheet], [class*=menu]:not([class*=hud]), [class*=dialog], [class*=panel]:not([class*=hud])')) return true; return false; };
+  els = els.filter((e) => !over(e));
   const name = (e) => (e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : e.tagName) + (e.textContent ? ' "' + e.textContent.trim().replace(/\s+/g, ' ').slice(0, 14) + '"' : '');
   const pairs = [];
   for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
@@ -67,7 +68,9 @@ function overlapsInPage() {
     await page.setViewportSize({ width: 412, height: 915 }); await page.waitForTimeout(400);
     await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id);
     let w = 0; while (w < 40000 && (await page.$('#game-host .gh-loading'))) { await page.waitForTimeout(250); w += 250; }
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(1500);
+    for (let k = 0; k < 40 && (await page.$('.i3-root')); k++) { if (k === 4) await page.touchscreen.tap(30, 30).catch(() => {}); await page.waitForTimeout(400); } // intro 3D por cima
+    await page.waitForTimeout(1500);
     for (const re of ROUTES[id]) { if (await tapText(page, re)) await page.waitForTimeout(3500); }
     await page.waitForTimeout(6000);
     const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
