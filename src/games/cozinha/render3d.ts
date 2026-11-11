@@ -213,6 +213,8 @@ class KitchenFps implements Renderer {
   private ctxAct = '';
   /** toque curto em CORTAR/ESFREGAR conta como um golpe (s) */
   private actPulse = 0;
+  /** s em que toques no botão principal são ignorados (logo depois de terminar de cortar) */
+  private verbGuard = 0;
   private charge = -1;
   private throwHeld = false;
   private keyThrow = false;
@@ -576,6 +578,8 @@ class KitchenFps implements Renderer {
   }
   /** toque no botão da mão (id = verbo atual) */
   private tap(id: string): void {
+    // tocando CORTAR/ESFREGAR sem parar: quando termina, os toques seguintes não pegam o item sem querer
+    if (this.verbGuard > 0 && id !== 'chop' && id !== 'scrub') return;
     const sim = this.sim;
     const st = this.tgSt >= 0 ? sim.st[this.tgSt] : null;
     switch (id) {
@@ -700,6 +704,8 @@ class KitchenFps implements Renderer {
     vc.p = st ? this.props?.by[st.i] ?? null : null;
     vc.acc = h && st ? sim.wouldAccept(st.i, h) : 0;
     const verb = resolveVerb(vc, VERB_RULES, FALLBACK);
+    if (this.verbGuard > 0) this.verbGuard -= dt;
+    if ((this.ctxAct === 'chop' || this.ctxAct === 'scrub') && verb.id !== this.ctxAct) this.verbGuard = 0.6;
     this.ctxAct = verb.id;
     this.verbDef = verb;
     if (this.actPulse > 0) this.actPulse -= dt;
