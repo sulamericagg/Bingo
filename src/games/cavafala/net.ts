@@ -6,6 +6,7 @@
  *   - 'state'  {x,y,z,yaw,pct,…}   → posição/porcentagem de cada Bloop (10 Hz; o anfitrião junta os bots)
  *   - 'dig'    {x,y,z,r,p}          → aplicar no terreno dos outros
  *   - 'build'  {a,id,mods,x,y,z,yaw} → montar a engenhoca igual (a = quem montou: jogador ou bot)
+ *              {a,id:'@obj',uid,spec,text,x,y,z,yaw} → OBJETO FALADO (forma compacta; mesmo uid = troca)
  *   - 'fire'   {a,id,mods,o,d}      → jogar espuma/bolha/martelo igual (efeito visual nos outros)
  *   - 'hit'    {target,dx,dy,dz,power,by} → quem atirou decide o acerto; o atingido aplica o empurrão
  *   - 'voice'  {a,text}             → balão com o que o amigo falou
@@ -17,7 +18,7 @@ import { wsUrl } from '../../social/net';
 export type Num3 = [number, number, number];
 export type NetEvent =
   | { t: 'dig'; x: number; y: number; z: number; r: number; p: number }
-  | { t: 'build'; a: string; id: string; mods: unknown; x: number; y: number; z: number; yaw: number; tp?: Num3 }
+  | { t: 'build'; a: string; id: string; mods?: unknown; x: number; y: number; z: number; yaw: number; tp?: Num3; uid?: string; spec?: unknown; text?: string }
   | { t: 'fire'; a: string; id: string; mods: unknown; o: Num3; d: Num3 }
   | { t: 'state'; x: number; y: number; z: number; yaw: number; pitch: number; pct: number; f: number; g: string; bots?: BotState[] }
   | { t: 'hit'; target: string; dx: number; dy: number; dz: number; power: number; by: string }

@@ -52,4 +52,6 @@ interface Env {
   AI_STT_MOCK?: string;
   /** "0" desliga a checagem extra das falas pela IA de texto (Claude), mesmo com ANTHROPIC_API_KEY. */
   AI_LLM_CHECK?: string;
+  /** Só teste local: "fixtures" = POST /api/cava/make responde com planos fixos (server/cava-ai-fixtures.ts), sem IA. */
+  CAVA_AI_MOCK?: string;
 }

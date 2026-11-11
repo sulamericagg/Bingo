@@ -16,12 +16,14 @@
  *   servidor → todos: {t:'host', id} quando o anfitrião sai e o mais antigo assume (a partida continua).
  * Modo "auto" (?auto=1, usado pelo grupo/party): cria se a sala não existe, senão entra.
  * Texto livre: só `voice.text` (o que o amigo falou para criar a engenhoca) — passa pelo filtro do chat;
+ * 'build' de OBJETO FALADO (id '@obj'): o objeto compacto é revalidado aqui (shared/cavaspec.ts) antes de repassar;
  * nomes vêm do servidor (join/welcome) e passam por safeName.
  * Limites: 4 pessoas; mensagem ≤ 16 KB (anfitrião) / 4 KB (convidado); ~50 mensagens/s por pessoa.
  */
 import { DurableObject } from 'cloudflare:workers';
 import { hub } from './friends';
 import { filterMessage, safeName } from './moderation';
+import { packSpec, unpackSpec } from '../shared/cavaspec';
 import { cleanName, HttpError, json, PLAYER_ID_RE, readJson } from './util';
 
 export const CAVA_MAX = 4;
@@ -145,6 +147,15 @@ export class CavaRoom extends DurableObject<Env> {
       const f = filterMessage(String(msg.text ?? '').slice(0, VOICE_MAX));
       if (!f.ok) return;
       msg.text = f.text;
+    }
+    if (msg.t === 'build' && msg.id === '@obj') {
+      // objeto falado: o servidor revalida (peças, tamanho, cores, comportamentos, nome) e reempacota
+      const spec = unpackSpec(msg.spec);
+      if (!spec) return;
+      msg.spec = packSpec(spec);
+      msg.uid = String(msg.uid ?? '').slice(0, 48);
+      const f = filterMessage(String(msg.text ?? '').slice(0, VOICE_MAX));
+      msg.text = f.ok ? f.text : '';
     }
     const to = a.host && typeof msg.to === 'string' ? msg.to : '';
     msg.from = a.id;

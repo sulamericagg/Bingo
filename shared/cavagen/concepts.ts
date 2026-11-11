@@ -176,7 +176,7 @@ c('trator', 'tractor, trator de fazenda', 'vehicle', 'tractor', {}, 'green yello
 c('escavadeira', 'retroescavadeira, escavadeira amarela, excavator, digger, bulldozer, trator de esteira', 'vehicle', 'tractor', { tool: 'scoop' }, 'yellow orange black', LAND + ' digs', { fn: 'crane' });
 c('guindaste', 'grua, crane, guindastezinho', 'machine', 'tractor', { tool: 'crane' }, 'yellow orange gray', 'rolls carries', { fn: 'crane' });
 c('carrinho_de_mao', 'carrinho de mao, carrinho de supermercado, carrinho de compras, wheelbarrow, shopping cart, carroca, carroça, carruagem, carriage', 'vehicle', 'cart', { handle: true }, 'red gray silver', LAND + ' carries');
-c('food_truck', 'food truck, carro de sorvete, carrinho de sorvete, carrinho de pipoca, carrinho de cachorro quente, ice cream truck', 'vehicle', 'truck', { cargo: 'box' }, 'pink mint white', LAND + ' sound:music');
+c('food_truck', 'food truck, carrinho de pipoca, carrinho de cachorro quente, lanchonete, burger stand', 'vehicle', 'truck', { cargo: 'box' }, 'pink mint white', LAND + ' sound:music');
 /* ---------------------------- ar / espaço ---------------------------- */
 c('aviao', 'aviaozinho, aviao de papel, airplane, plane, avion, jatinho, jato, jet, planador', 'air', 'plane', {}, 'white blue red', 'flies:propeller ride');
 c('helicoptero', 'heli, helicopter, helicoptero de resgate', 'air', 'heli', {}, 'red white yellow', 'flies:propeller ride');

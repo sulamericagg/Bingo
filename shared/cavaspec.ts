@@ -144,7 +144,7 @@ export const SPEC_LIMITS = {
   volume: 140,
   minPart: 0.05,
   maxPart: 8,
-  name: 28,
+  name: 40,
   desc: 90,
   /** JSON cru aceito (bytes) */
   rawBytes: 24_000,

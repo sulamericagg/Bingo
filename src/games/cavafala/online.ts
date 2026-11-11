@@ -93,6 +93,10 @@ export class Binder implements WorldNet {
     if (!a.nid || a.remote) return;
     this.net.send({ t: 'build', a: a.nid, id: g.id, mods, x: r2(pos.x), y: r2(pos.y), z: r2(pos.z), yaw: r2(yaw), ...(tp ? { tp: r3(tp) } : {}) });
   }
+  obj(a: Actor, uid: string, spec: unknown, pos: THREE.Vector3, yaw: number, text: string): void {
+    if (!a.nid || a.remote) return;
+    this.net.send({ t: 'build', a: a.nid, id: '@obj', uid, spec, text: text.slice(0, 40), x: r2(pos.x), y: r2(pos.y), z: r2(pos.z), yaw: r2(yaw) });
+  }
   fire(a: Actor, s: Slot, o: THREE.Vector3, d: THREE.Vector3): void {
     if (!a.nid || a.remote) return;
     this.net.send({ t: 'fire', a: a.nid, id: s.g.id, mods: s.mods, o: r3(o), d: [Math.round(d.x * 1000) / 1000, Math.round(d.y * 1000) / 1000, Math.round(d.z * 1000) / 1000] });
@@ -129,6 +133,11 @@ export class Binder implements WorldNet {
         if (fin(e.r, 8) > 0) w.netDig(fin(e.x), fin(e.y), fin(e.z), fin(e.r, 8), fin(e.p, 6));
         break;
       case 'build': {
+        if (e.id === '@obj') {
+          const a = this.puppet(e.a);
+          if (a && a.alive && typeof e.uid === 'string') w.objs.netSpawn(a, e.spec, e.uid.slice(0, 48), fin(e.x), fin(e.y), fin(e.z), fin(e.yaw), String(e.text ?? '').slice(0, 40));
+          break;
+        }
         const a = this.puppet(e.a);
         const g = gadgetById(String(e.id));
         if (!a || !g || !a.alive) break;
