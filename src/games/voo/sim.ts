@@ -49,6 +49,8 @@ export type CmdKind = 'fix' | 'pilot' | 'follow' | 'calm' | 'stay';
 export interface Cmd {
   kind: CmdKind;
   emer?: number;
+  /** quem mandou ("me seguir" segue essa pessoa) */
+  by?: number;
 }
 export interface Stats {
   fires: number;
@@ -57,6 +59,8 @@ export interface Stats {
   pilotSec: number;
   patched: number;
   falls: number;
+  /** malas guardadas de volta no bagageiro */
+  stowed?: number;
 }
 export interface Player {
   idx: number;
@@ -164,10 +168,12 @@ export type Ev =
   | { k: 'bags'; ids: number[] }
   | { k: 'fx'; t: 'fireOut' | 'spark' | 'glass' | 'patch' | 'calm' | 'pump' | 'fixed' | 'stun'; x: number; z: number; y?: number }
   | { k: 'touch'; out: Outcome }
-  | { k: 'say'; who: number; msg: string };
+  | { k: 'say'; who: number; msg: string }
+  /** online: o anfitrião abriu um minijogo para o jogador `who` (convidado) */
+  | { k: 'mini'; who: number; kind: MiniKind; emer: number };
 
 export interface Ctx {
-  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick';
+  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow';
   label: string;
   hold: boolean;
   target: number;
@@ -176,6 +182,28 @@ export interface Ctx {
   y: number;
 }
 export type MiniKind = 'rewire' | 'pump' | 'valve' | 'crank';
+/** online: entrada de um convidado (posição é dele; ações a sim do anfitrião decide) */
+export interface RemoteIn {
+  x: number;
+  z: number;
+  yaw: number;
+  fx: number;
+  fz: number;
+  act: boolean;
+  tap: boolean;
+  sx: number;
+  sy: number;
+  thr: number;
+}
+/** ação discreta enviada pelo convidado ao anfitrião */
+export type NetAct =
+  | ['flaps', number]
+  | ['gear', number]
+  | ['cmd', number, string, number]
+  | ['mini', number, number]
+  | ['miniClose']
+  | ['throw', number]
+  | ['stand'];
 
 export interface SimOpts {
   seed: number;
@@ -236,6 +264,9 @@ export class Sim {
   private warnT: Record<string, number> = {};
   private gearPlanned = false;
   private leakCount = 0;
+  /** pontos extras (malas guardadas) */
+  bonus = 0;
+  private bonked = new Set<number>();
 
   constructor(opts: SimOpts) {
     this.opts = opts;
@@ -325,6 +356,16 @@ export class Sim {
   step(dt: number): void {
     if (dt <= 0) return;
     this.time += dt;
+    // convidado no manche: o manche dele comanda o avião
+    const pl = this.pilot;
+    if (pl?.remote) {
+      const ri = this.rin.get(pl.idx);
+      if (ri) {
+        this.ctrl.sx = ri.sx;
+        this.ctrl.sy = ri.sy;
+        this.ctrl.thr = ri.thr;
+      }
+    }
     if (this.flying || this.phase === 'rollout') this.stepFlight(dt);
     if (this.phase === 'crash' || this.phase === 'rollout') {
       this.endT += dt;
@@ -553,7 +594,7 @@ export class Sim {
     const f = this.f;
     const avgPanic = this.panicSamples > 0 ? this.panicInt / this.panicSamples : 0;
     const land = { perfect: 5000, good: 3500, rough: 2000, crash: 0 }[kind];
-    let score = land + this.fixedCount * 200 + Math.round((1 - avgPanic) * 1500) + Math.round(this.hull * 15) + Math.round(f.fuel * 10);
+    let score = land + this.bonus + this.fixedCount * 200 + Math.round((1 - avgPanic) * 1500) + Math.round(this.hull * 15) + Math.round(f.fuel * 10);
     if (kind === 'crash') score = Math.round(score * 0.25);
     let stars = { perfect: 3, good: 2, rough: 1, crash: 0 }[kind];
     if (stars > 1 && (this.hull < 40 || avgPanic > 0.6)) stars--;
@@ -876,6 +917,8 @@ export class Sim {
       const jy = (r() * 2 - 1) * amt * 1.2;
       ay = jy * 4;
       this.ev.push({ k: 'jolt', amt });
+      // solavanco forte: um bagageiro abre e uma mala despenca
+      if (amt > 1.5 && this.flying && r() < 0.35) this.dropBags(1);
       for (const p of this.players) {
         if (p.seated) continue;
         p.vx += jx;
@@ -927,6 +970,7 @@ export class Sim {
       return;
     }
     if (p.stun > 0) p.stun -= dt;
+    if (p.remote) return this.stepRemote(p, dt);
     let mx = 0;
     let mz = 0;
     if (p.idx === this.me && !p.bot && !p.remote) {
@@ -934,7 +978,10 @@ export class Sim {
       mz = this.input.mz;
       const l = Math.hypot(this.input.fx, this.input.fz);
       if (l > 0.01) p.yaw = Math.atan2(this.input.fx, this.input.fz);
-      if (p.stun <= 0 && p.busy < 0) this.localAct(p, dt);
+      if (p.stun <= 0 && p.busy < 0) {
+        if (this.client) this.clientAct(p);
+        else this.localAct(p, this.input, dt);
+      }
     } else if (p.bot) {
       mx = this.botMove.x;
       mz = this.botMove.z;
@@ -987,7 +1034,11 @@ export class Sim {
       }
     }
     this.collide(p);
-    // segurando um objeto
+    this.carry(p, dt);
+  }
+
+  /** objeto na mão acompanha o jogador */
+  private carry(p: Player, dt: number): void {
     const it = this.item(p.hold);
     if (it) {
       it.x = p.x + Math.sin(p.yaw) * 0.4;
@@ -1000,6 +1051,91 @@ export class Sim {
     }
     if (!p.spraying) {
       for (const i of this.items) if (i.kind === 'ext' && i.held < 0) i.charge = Math.min(1, i.charge + dt * 0.08);
+    }
+  }
+
+  /* ------------------------------ online ------------------------------ */
+
+  /** anfitrião: entradas dos convidados, por índice de jogador */
+  rin = new Map<number, RemoteIn>();
+  /** convidado: a sim não roda aqui — só o meu boneco anda (previsão); o resto vem do anfitrião */
+  client = false;
+  /** convidado: toques acumulados (vão no pacote de entrada) */
+  tapCount = 0;
+  /** convidado: ações que mexeriam no mundo viram mensagens para o anfitrião */
+  proxy: ((a: NetAct) => void) | null = null;
+
+  /** anfitrião: convidado anda no próprio celular; aqui só seguimos a posição dele e decidimos as ações */
+  private stepRemote(p: Player, dt: number): void {
+    const ri = this.rin.get(p.idx);
+    if (!ri) return;
+    if (p.stun <= 0) {
+      const k = Math.min(1, dt * 14);
+      const nx = p.x + (ri.x - p.x) * k;
+      const nz = p.z + (ri.z - p.z) * k;
+      p.vx = (nx - p.x) / Math.max(dt, 1e-3);
+      p.vz = (nz - p.z) / Math.max(dt, 1e-3);
+      p.walk += Math.hypot(nx - p.x, nz - p.z);
+      p.x = nx;
+      p.z = nz;
+      p.yaw = ri.yaw;
+      if (p.busy < 0) this.localAct(p, ri, dt);
+      ri.tap = false;
+    }
+    this.carry(p, dt);
+  }
+
+  /** convidado: só calcula o que o botão de ação mostra; o toque vai para o anfitrião */
+  private clientAct(p: Player): void {
+    this.lastCtx = this.contextFor(p, this.input.fx, this.input.fz);
+    if (this.input.tap) {
+      this.input.tap = false;
+      this.tapCount++;
+    }
+  }
+
+  /** convidado: passo local (só o meu boneco) */
+  stepClient(dt: number): void {
+    this.time += dt;
+    const me = this.players[this.me];
+    if (me) this.stepPlayer(me, dt);
+  }
+
+  setFlaps(v: number): void {
+    if (this.proxy) this.proxy(['flaps', v]);
+    this.f.flaps = v;
+  }
+  setGear(v: number): void {
+    if (this.proxy) this.proxy(['gear', v]);
+    this.f.gear = v;
+  }
+  /** anfitrião: aplica uma ação de convidado */
+  applyAct(p: Player, a: NetAct): void {
+    switch (a[0]) {
+      case 'flaps':
+        if (p.seated) this.f.flaps = Math.max(0, Math.min(2, a[1] | 0));
+        break;
+      case 'gear':
+        if (p.seated && !this.gearStuck) this.f.gear = a[1] ? 1 : 0;
+        break;
+      case 'cmd': {
+        const b = this.players[a[1]];
+        if (b?.bot) this.command(b, { kind: a[2] as CmdKind, ...(a[3] >= 0 ? { emer: a[3] } : {}), by: p.idx });
+        break;
+      }
+      case 'mini':
+        if (p.busy === a[1]) this.miniAdd(a[1], Math.max(0, Math.min(0.2, +a[2] || 0)), p);
+        break;
+      case 'miniClose':
+        this.miniClose(p);
+        break;
+      case 'throw':
+        p.yaw = +a[1] || 0;
+        this.drop(p, true);
+        break;
+      case 'stand':
+        this.standUp(p);
+        break;
     }
   }
 
@@ -1072,7 +1208,7 @@ export class Sim {
       else if (e.kind === 'spark') consider('rewire', t('voo.a.rewire', 'Consertar'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
       else if (e.kind === 'pressure') consider('valve', t('voo.a.valve', 'Girar'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
       else if (e.kind === 'gear') consider('crank', t('voo.a.crank', 'Manivela'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
-      else if (e.kind === 'door') consider('door', t('voo.a.door', 'Segurar'), true, e.id, e.x, e.z, e.y, REACH, 0.8);
+      else if (e.kind === 'door') consider('door', t('voo.a.doorClose', 'Fechar porta'), true, e.id, e.x, e.z, e.y, REACH, 0.8);
     }
     for (let i = 0; i < this.pax.length; i++) {
       const q = this.pax[i];
@@ -1087,13 +1223,18 @@ export class Sim {
         if (!it.alive || it.held >= 0) continue;
         consider('pick', itemName(it.kind), false, it.id, it.x, it.z, it.y, REACH, it.kind === 'bag' ? -0.2 : 0.1);
       }
+    } else if (held.kind === 'bag' && p.z > 6 && p.z < 14.8) {
+      // guardar a mala de volta no bagageiro da fileira mais próxima
+      let bz = WIN_Z[0];
+      for (const z of WIN_Z) if (Math.abs(z - p.z) < Math.abs(bz - p.z)) bz = z;
+      const side = p.x < 0 ? -1 : 1;
+      consider('stow', t('voo.a.stow', 'Guardar mala'), false, held.id, side * 1.2, bz, 2.0, REACH + 0.6, 0.5);
     }
     return best;
   }
 
   /** ação do jogador local: segurando (act) ou toque (tap) */
-  private localAct(p: Player, dt: number): void {
-    const inp = this.input;
+  private localAct(p: Player, inp: { fx: number; fz: number; act: boolean; tap: boolean }, dt: number): void {
     const c = this.contextFor(p, inp.fx, inp.fz);
     this.lastCtx = c;
     p.spraying = false;
@@ -1134,9 +1275,24 @@ export class Sim {
       case 'pick': {
         const it = this.item(c.target);
         if (!it || it.held >= 0) return '';
+        this.bonked.delete(it.id);
         it.held = p.idx;
         p.hold = it.id;
         this.sfx('pick');
+        return '';
+      }
+      case 'stow': {
+        const it = this.item(p.hold);
+        if (!it) return '';
+        it.alive = false;
+        it.held = -1;
+        p.hold = -1;
+        p.stats.stowed = (p.stats.stowed ?? 0) + 1;
+        this.bonus += 120;
+        for (const q of this.pax) if (Math.hypot(q.sx - p.x, q.sz - p.z) < 2.6) q.panic = Math.max(0, q.panic - 0.15);
+        this.ev.push({ k: 'fx', t: 'calm', x: c.x, z: c.z, y: 1.9 });
+        this.toast(t('voo.t.stowed', 'Mala guardada! Bônus'), 'bag', 'good');
+        this.sfx('calm');
         return '';
       }
       case 'give': {
@@ -1157,7 +1313,8 @@ export class Sim {
           return '';
         }
         p.busy = c.target;
-        this.miniOpen = { kind: c.kind, emer: c.target };
+        if (p.idx === this.me) this.miniOpen = { kind: c.kind, emer: c.target };
+        else this.ev.push({ k: 'mini', who: p.idx, kind: c.kind, emer: c.target });
         return c.kind;
     }
     return '';
@@ -1241,6 +1398,7 @@ export class Sim {
 
   /** progresso de minijogo (0..1 acumulado) */
   miniAdd(emerId: number, amt: number, by: Player): void {
+    if (this.proxy) return this.proxy(['mini', emerId, amt]);
     const e = this.emer(emerId);
     if (!e) return;
     e.prog = Math.min(1, e.prog + amt);
@@ -1251,11 +1409,13 @@ export class Sim {
     }
   }
   miniClose(p: Player): void {
+    if (this.proxy && p.idx === this.me) this.proxy(['miniClose']);
     p.busy = -1;
-    this.miniOpen = null;
+    if (p.idx === this.me) this.miniOpen = null;
   }
 
   drop(p: Player, thr: boolean): void {
+    if (this.proxy) return this.proxy(['throw', p.yaw]);
     const it = this.item(p.hold);
     p.hold = -1;
     if (!it) return;
@@ -1275,6 +1435,7 @@ export class Sim {
   }
   standUp(p: Player): void {
     if (!p.seated) return;
+    if (this.proxy) return this.proxy(['stand']);
     p.seated = false;
     p.x = 0.05;
     p.z = -2.15;
@@ -1301,6 +1462,18 @@ export class Sim {
       it.y += it.vy * dt;
       it.z += it.vz * dt;
       it.rot += it.spin * dt;
+      // mala caindo acerta passageiro sentado (bonk de desenho animado)
+      if (it.kind === 'bag' && it.vy < -0.8 && it.y < 1.3 && !this.bonked.has(it.id)) {
+        for (const q of this.pax) {
+          if (q.standing || Math.hypot(q.sx - it.x, q.sz - it.z) > 0.45) continue;
+          this.bonked.add(it.id);
+          q.panic = Math.min(1, q.panic + 0.22);
+          q.calmT = 0;
+          this.ev.push({ k: 'fx', t: 'stun', x: q.sx, z: q.sz });
+          this.sfx('thud');
+          break;
+        }
+      }
       const fy = 0.12;
       if (it.y < fy) {
         it.y = fy;
@@ -1335,6 +1508,7 @@ export class Sim {
 
   command(p: Player, cmd: Cmd): void {
     if (!p.bot) return;
+    if (this.proxy) return this.proxy(['cmd', p.idx, cmd.kind, cmd.emer ?? -1]);
     if (p.seated && cmd.kind !== 'pilot') this.standUp(p);
     if (p.busy >= 0) p.busy = -1;
     p.cmd = cmd;
@@ -1411,7 +1585,7 @@ export class Sim {
     const cmd = p.cmd;
     if (!cmd || cmd.kind === 'stay') return;
     if (cmd.kind === 'follow') {
-      const me = this.players[this.me];
+      const me = this.players[cmd.by ?? this.me] ?? this.players[this.me];
       if (me.seated) {
         this.walkTo(p, 0.1, -1.6);
         return;

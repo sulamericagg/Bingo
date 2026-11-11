@@ -19,6 +19,7 @@ import { handleCheck, handleClaim, handleMine, handlesSearch, playerByHandle } f
 import { homeGet, homePutDesign, homePutMess } from './home';
 import { handleHomeAdmin } from './home-admin';
 import { partyJoin } from './party';
+import { flightInvite, flightInvites, flightJoin } from './flight';
 import { feedbackPost, handleFeedbackAdmin } from './feedback';
 import { aiStory } from './ai';
 import { HttpError, json } from './util';
@@ -88,6 +89,9 @@ const PUBLIC: Record<string, PublicHandler> = {
   // POST também (alguns proxies/webviews antigos não mandam PUT)
   'POST /api/home/design': homePutDesign,
   'POST /api/home/mess': homePutMess,
+  // Pouso Forçado online: convites entre amigos
+  'POST /api/voo/invite': flightInvite,
+  'GET /api/voo/invites': flightInvites,
 };
 
 function withHeaders(res: Response, headers: Record<string, string>): Response {
@@ -123,6 +127,7 @@ export { Championship } from './champ';
 export { PartyRoom } from './party';
 export { FriendsHub } from './friends';
 export { SquadRoom } from './squad';
+export { FlightRoom } from './flight';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -195,6 +200,16 @@ export default {
     if (sq) {
       try {
         return await squadJoin(req, env, sq[1]);
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
+    // Pouso Forçado online (WebSocket): /api/voo/room/<CÓDIGO>
+    const vm = /^\/api\/voo\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (vm) {
+      try {
+        return await flightJoin(req, env, vm[1]);
       } catch (e) {
         return errorResponse(e);
       }

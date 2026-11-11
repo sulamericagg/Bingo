@@ -16,6 +16,8 @@ import { FpsControls, bindButton, createJoystick, type BoundButton, type Joystic
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyAlign, setNotifyTop } from '../../ui/notify';
 import type { IconName } from '../../ui/icons';
 import type { Cmd, Ctx, Sim } from './sim';
+import { SPOTS } from './data';
+import { speak } from './voice';
 
 export interface HudHost {
   sim: Sim;
@@ -31,6 +33,8 @@ export interface HudHost {
   onStand(): void;
   onCam(): void;
   extCam(): boolean;
+  /** pausa a simulação (só sozinho; online não pausa) */
+  holdSim?(on: boolean): void;
 }
 
 const TAU = Math.PI * 2;
@@ -63,6 +67,16 @@ export class Hud {
   private pfdX: CanvasRenderingContext2D;
   private navX: CanvasRenderingContext2D;
   private instT = 0;
+  private chudT = 0;
+  private goMk: { el: HTMLDivElement; x: number; y: number; z: number; until: number } | null = null;
+  private aimEl: HTMLDivElement | null = null;
+  private aimIco = '';
+  private calmEls: HTMLDivElement[] = [];
+  private pointEl: HTMLDivElement | null = null;
+  /** tutorial: para onde a mãozinha aponta */
+  tutPoint: '' | 'act' | 'stand' | 'stick' | 'mate' = '';
+  private lastTut = '';
+  private flyTutEl: HTMLDivElement | null = null;
   private bannerT = 0;
   private lastCtx = '';
   private seated = false;
@@ -131,9 +145,10 @@ export class Hud {
           <button class="voo-btn ghost" data-gear>${vIcon('gear', 22)}<span></span></button>
         </div>
         <div class="voo-flytop">
-          <button class="voo-btn gold" data-stand>${vIcon('up', 22)}<span>${t('voo.f.stand', 'Levantar')}</span></button>
-          <button class="voo-btn ghost" data-cam>${vIcon('cam', 22)}<span>${t('voo.f.cam', 'Câmera')}</span></button>
+          <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}</button>
+          <button class="voo-btn round gold" data-stand aria-label="${t('voo.f.stand', 'Levantar')}" title="${t('voo.f.stand', 'Levantar')}">${vIcon('up', 24)}</button>
         </div>
+        <div class="voo-chud"><div><small>${t('voo.ch.spd', 'VEL')}</small><b data-c="spd"></b></div><div><small>${t('voo.ch.alt', 'ALT')}</small><b data-c="alt"></b></div><div><small>${t('voo.ch.vs', 'V/S')}</small><b data-c="vs"></b></div><svg data-c="brg" viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="17" fill="rgba(0,0,0,.25)" stroke="#fff" stroke-width="2"/><path d="M20 5L28 24H12Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg></div>
       </div>
       <div class="voo-top">
         <button class="voo-btn round red" data-exit aria-label="${t('voo.exit', 'Sair')}">${vIcon('close', 26)}</button>
@@ -166,6 +181,7 @@ export class Hud {
     this.phase = this.q('[data-phase]');
     this.hullI = this.q('[data-hull]');
     this.panI = this.q('[data-pan]');
+    this.el.classList.toggle('is3d', host.is3d);
     if (!host.is3d) {
       this.ret.style.display = 'none';
       this.q('[data-cam]').style.display = 'none';
@@ -185,11 +201,13 @@ export class Hud {
       const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-mate],[data-cmd]') as HTMLElement | null;
       if (!b) return;
       if (b.dataset.exit !== undefined) h.onExit();
-      else if (b.dataset.flaps !== undefined) s.f.flaps = (s.f.flaps + 1) % 3;
+      else if (b.dataset.flaps !== undefined) s.setFlaps((s.f.flaps + 1) % 3);
       else if (b.dataset.gear !== undefined) this.toggleGear();
       else if (b.dataset.stand !== undefined) h.onStand();
       else if (b.dataset.cam !== undefined) h.onCam();
-      else if (b.dataset.mate !== undefined) this.openMenu(+b.dataset.mate);
+      else if (b.dataset.mate !== undefined) {
+        if (performance.now() - this.dragged > 300) this.openMenu(+b.dataset.mate);
+      }
       else if (b.dataset.cmd !== undefined) this.doCmd(b.dataset.cmd);
     });
     // ação (tocar ou segurar) e jogar — botões compartilhados (disparam no toque)
@@ -234,7 +252,7 @@ export class Hud {
         h.actHeld = true;
         h.onTap();
       } else if (e.code === 'KeyQ') h.onThrow();
-      else if (e.code === 'KeyF' && me.seated) s.f.flaps = (s.f.flaps + 1) % 3;
+      else if (e.code === 'KeyF' && me.seated) s.setFlaps((s.f.flaps + 1) % 3);
       else if (e.code === 'KeyG' && me.seated) this.toggleGear();
       else if (e.code === 'KeyC') h.onCam();
       else if (e.code === 'KeyX' && me.seated) h.onStand();
@@ -265,7 +283,7 @@ export class Hud {
       this.toast(t('voo.t.gearStuck', 'O trem não desce! Alguém precisa girar a manivela no porão'), 'gear', 'bad');
       return;
     }
-    s.f.gear = s.f.gear ? 0 : 1;
+    s.setGear(s.f.gear ? 0 : 1);
   }
 
   /** teclado/joystick → entrada da sim e do manche */
@@ -336,6 +354,10 @@ export class Hud {
 
   /* ------------------------------ tripulação ------------------------------ */
 
+  rebuildCrew(): void {
+    this.closeMenu();
+    this.buildCrew();
+  }
   private buildCrew(): void {
     const s = this.host.sim;
     this.crewEl.innerHTML = '';
@@ -359,7 +381,98 @@ export class Hud {
       b.appendChild(c);
       b.insertAdjacentHTML('beforeend', `<span class="hat">${hatIcon(p.role, 24)}</span><span class="st"></span>`);
       this.crewEl.appendChild(b);
+      this.dragMate(b, p.idx);
     }
+  }
+
+  /** ícone, frase falada e destino de cada ordem (para quem ainda não lê) */
+  private cmdInfo(c: string): { ico: string; say: string } {
+    const s = this.host.sim;
+    if (c.startsWith('fix:')) {
+      const e = s.emer(+c.slice(4));
+      const k = e?.kind ?? 'fire';
+      if (k === 'fire') return { ico: 'ext', say: t('voo.v.fire', 'Apaga o fogo!') };
+      if (k === 'bird' || (k === 'leak' && e?.stage === 0)) return { ico: 'tape', say: t('voo.v.tape', 'Tapa o buraco!') };
+      if (k === 'leak') return { ico: 'fuel', say: t('voo.v.fuel', 'Bombeia combustível!') };
+      if (k === 'gear') return { ico: 'gear', say: t('voo.v.gear', 'Gira a manivela do trem!') };
+      if (k === 'door') return { ico: 'door', say: t('voo.v.door', 'Fecha a porta!') };
+      if (k === 'pressure') return { ico: 'pressure', say: t('voo.v.valve', 'Gira a válvula!') };
+      if (k === 'panic') return { ico: 'calm', say: t('voo.v.calm', 'Acalma os passageiros!') };
+      return { ico: 'wrench', say: t('voo.v.fix', 'Conserta isso!') };
+    }
+    if (c === 'pilot') return { ico: 'yoke', say: t('voo.v.pilot', 'Segura o manche!') };
+    if (c === 'calm') return { ico: 'calm', say: t('voo.v.calm', 'Acalma os passageiros!') };
+    if (c === 'follow') return { ico: 'follow', say: t('voo.v.follow', 'Vem comigo!') };
+    return { ico: 'stay', say: t('voo.v.stay', 'Fica aí!') };
+  }
+  /** arrastar o retrato do ajudante até um problema (marcador ou minimapa) dá a ordem sem ler nada */
+  private dragMate(b: HTMLElement, idx: number): void {
+    let x0 = 0;
+    let y0 = 0;
+    let id = -1;
+    let ghost: HTMLElement | null = null;
+    b.style.touchAction = 'none';
+    b.addEventListener('pointerdown', (e) => {
+      id = e.pointerId;
+      x0 = e.clientX;
+      y0 = e.clientY;
+      b.setPointerCapture?.(e.pointerId);
+    });
+    b.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      if (!ghost && Math.hypot(e.clientX - x0, e.clientY - y0) > 12) {
+        ghost = b.cloneNode(true) as HTMLElement;
+        ghost.classList.add('voo-ghost');
+        const c0 = b.querySelector('canvas');
+        const c1 = ghost.querySelector('canvas');
+        if (c0 && c1) c1.getContext('2d')!.drawImage(c0, 0, 0);
+        document.body.appendChild(ghost);
+        this.closeMenu();
+      }
+      if (ghost) {
+        ghost.style.left = e.clientX + 'px';
+        ghost.style.top = e.clientY + 'px';
+        const over = this.dropTarget(e.clientX, e.clientY, ghost);
+        this.q('.voo-mks').querySelectorAll('.voo-mk').forEach((m) => m.classList.toggle('drop', m === over.el));
+      }
+    });
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      id = -1;
+      if (!ghost) return;
+      const over = this.dropTarget(e.clientX, e.clientY, ghost);
+      ghost.remove();
+      ghost = null;
+      this.q('.voo-mks').querySelectorAll('.voo-mk.drop').forEach((m) => m.classList.remove('drop'));
+      this.dragged = performance.now();
+      if (over.cmd) this.giveCmd(idx, over.cmd);
+    };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', end);
+  }
+  private dragged = 0;
+  private dropTarget(x: number, y: number, ghost: HTMLElement): { el: Element | null; cmd: string } {
+    ghost.style.display = 'none';
+    const hit = document.elementsFromPoint(x, y);
+    ghost.style.display = '';
+    const s = this.host.sim;
+    // marcadores não recebem toque (pointer-events:none): teste geométrico, com folga para dedos
+    for (const [id, mk] of this.mk) {
+      const r = mk.getBoundingClientRect();
+      if (x > r.left - 16 && x < r.right + 16 && y > r.top - 16 && y < r.bottom + 16) return { el: mk, cmd: 'fix:' + id };
+    }
+    for (const el of hit) {
+      if (el === this.mini) {
+        // minimapa: emergência mais perto do ponto solto
+        const r = this.mini.getBoundingClientRect();
+        const z = ((x - r.left) / r.width) * this.mini.width;
+        const zz = ((z - 18) / (this.mini.width - 30)) * 26 - 4.5;
+        const e = s.active().filter((q) => q.kind !== 'turb').sort((a, b) => Math.abs(a.z - zz) - Math.abs(b.z - zz))[0];
+        if (e && Math.abs(e.z - zz) < 4) return { el: this.mk.get(e.id) ?? null, cmd: 'fix:' + e.id };
+      }
+      if (el.closest('.voo-hud .voo-fly .voo-flytop') || (el as HTMLElement).dataset?.stand !== undefined) return { el: null, cmd: 'pilot' };
+    }
+    return { el: null, cmd: '' };
   }
 
   private openMenu(idx: number): void {
@@ -370,17 +483,24 @@ export class Hud {
     this.closeMenu();
     this.menuFor = idx;
     const m = document.createElement('div');
-    m.className = 'voo-menu';
+    m.className = 'voo-menu big';
     const em = s.active().filter((e) => e.kind !== 'turb');
+    const cmds = [...em.map((e) => 'fix:' + e.id), 'pilot', 'calm', 'follow', 'stay'];
+    const lbl = (c: string) => {
+      if (c.startsWith('fix:')) return emerName(s.emer(+c.slice(4))?.kind ?? 'fire').replace('!', '');
+      return c === 'pilot' ? t('voo.cmd.pilot', 'Segurar o manche') : c === 'calm' ? t('voo.cmd.calm', 'Acalmar passageiros') : c === 'follow' ? t('voo.cmd.follow', 'Me seguir') : t('voo.cmd.stay', 'Parar');
+    };
     m.innerHTML =
-      `<h4>${hatIcon(p.role, 22)}${p.name}</h4><small>${t('voo.cmd.note', 'Ajudantes só fazem o que você manda (e demoram um pouquinho).')}</small>` +
-      em.map((e) => `<button data-cmd="fix:${e.id}">${vIcon(e.kind, 22)}${emerName(e.kind).replace('!', '')}</button>`).join('') +
-      `<button data-cmd="pilot">${vIcon('yoke', 22)}${t('voo.cmd.pilot', 'Segurar o manche')}</button>` +
-      `<button data-cmd="calm">${vIcon('calm', 22)}${t('voo.cmd.calm', 'Acalmar passageiros')}</button>` +
-      `<button data-cmd="follow">${vIcon('follow', 22)}${t('voo.cmd.follow', 'Me seguir')}</button>` +
-      `<button data-cmd="stay">${vIcon('stay', 22)}${t('voo.cmd.stay', 'Parar')}</button>`;
+      `<h4>${hatIcon(p.role, 26)}<span>${p.name}</span><button class="x" data-cmd="x" aria-label="${t('voo.hg.exit', 'Sair')}">${vIcon('close', 24)}</button></h4>` +
+      `<div class="grid">${cmds
+        .map((c) => {
+          const e = c.startsWith('fix:') ? s.emer(+c.slice(4)) : null;
+          return `<button data-cmd="${c}" class="${e ? 'em' : ''}" title="${lbl(c)}">${vIcon(this.cmdInfo(c).ico, 44)}${e && this.cmdInfo(c).ico !== e.kind ? `<i class="bd">${vIcon(e.kind, 20)}</i>` : ''}<small>${lbl(c)}</small></button>`;
+        })
+        .join('')}</div>`;
     this.el.appendChild(m);
     this.menu = m;
+    speak(p.name, { urgent: true });
     this.crewEl.querySelectorAll('.voo-mate').forEach((b) => b.classList.toggle('sel', (b as HTMLElement).dataset.mate === String(idx)));
   }
   closeMenu(): void {
@@ -393,11 +513,40 @@ export class Hud {
     const s = this.host.sim;
     const p = s.players[this.menuFor];
     if (!p) return;
+    if (c === 'x') return this.closeMenu();
+    this.giveCmd(p.idx, c);
+    this.closeMenu();
+  }
+  /** dá a ordem (menu ou arrastando o retrato), fala e mostra para onde o ajudante vai */
+  giveCmd(idx: number, c: string): void {
+    const s = this.host.sim;
+    const p = s.players[idx];
+    if (!p || !p.bot) return;
     let cmd: Cmd;
     if (c.startsWith('fix:')) cmd = { kind: 'fix', emer: +c.slice(4) };
     else cmd = { kind: c as Cmd['kind'] };
+    cmd.by = s.me;
+    const info = this.cmdInfo(c);
+    speak(info.say, { urgent: true });
     s.command(p, cmd);
-    this.closeMenu();
+    // seta animada até o destino
+    let to: { x: number; y: number; z: number } | null = null;
+    const e = cmd.emer !== undefined ? s.emer(cmd.emer) : undefined;
+    if (e) to = { x: e.x, y: e.y + 0.4, z: e.z };
+    else if (c === 'pilot') to = { x: SPOTS.pilot.x, y: 1.3, z: SPOTS.pilot.z };
+    else if (c === 'calm') {
+      const q = s.pax.slice().sort((a, b) => b.panic - a.panic)[0];
+      if (q) to = { x: q.x, y: 1.3, z: q.z };
+    } else if (c === 'follow') to = null;
+    this.goMk?.el.remove();
+    this.goMk = null;
+    if (to) {
+      const d = document.createElement('div');
+      d.className = 'voo-mk go';
+      d.innerHTML = `${hatIcon(p.role, 30)}<span></span><em></em>`;
+      this.q('.voo-mks').appendChild(d);
+      this.goMk = { el: d, ...to, until: performance.now() + 3200 };
+    }
   }
 
   /* ------------------------------ avisos ------------------------------ */
@@ -471,6 +620,8 @@ export class Hud {
     // modo sentado x a pé
     if (me.seated !== this.seated) {
       this.seated = me.seated;
+      this.el.classList.toggle('seated', me.seated);
+      if (me.seated) this.maybeFlyTut();
       this.walk.style.display = me.seated ? 'none' : '';
       this.fly.style.display = me.seated ? '' : 'none';
       h.actHeld = false;
@@ -493,8 +644,8 @@ export class Hud {
       const key = c.kind + c.label + (s.item(me.hold)?.kind ?? '');
       if (key !== this.lastCtx) {
         this.lastCtx = key;
-        const ico =
-          c.kind === 'spray' ? 'ext' : c.kind === 'patch' ? 'tape' : c.kind === 'pump' ? 'fuel' : c.kind === 'rewire' ? 'spark' : c.kind === 'valve' ? 'pressure' : c.kind === 'crank' ? 'gear' : c.kind === 'door' ? 'door' : c.kind === 'give' || c.kind === 'hug' ? 'calm' : c.kind === 'sit' ? 'yoke' : c.kind === 'take' ? (c.target === 0 ? 'water' : 'snack') : 'hand';
+        const ico = this.ctxIcon(c);
+        this.aimIco = ico;
         this.act.querySelector('.ic')!.innerHTML = vIcon(ico, 30);
         this.act.querySelector('.lb')!.textContent = c.label || t('voo.a.use', 'Usar');
         this.act.classList.toggle('hide', !c.kind);
@@ -506,6 +657,18 @@ export class Hud {
       const prog = me.actKind === 'spray' ? me.actProg : me.actProg;
       this.ring.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, h.actHeld && c.hold ? prog : 0))));
     } else {
+      const ext = h.extCam();
+      this.el.classList.toggle('ext', ext);
+      this.chudT -= dt;
+      if (ext && this.chudT <= 0) {
+        this.chudT = 0.1;
+        (this.q('[data-c="spd"]') as HTMLElement).textContent = String(Math.round(f.spd * 1.944));
+        (this.q('[data-c="alt"]') as HTMLElement).textContent = String(Math.round(f.alt));
+        const vs = this.q('[data-c="vs"]') as HTMLElement;
+        vs.textContent = (f.vs >= 0 ? '+' : '') + f.vs.toFixed(1);
+        vs.style.color = f.vs < -9 ? '#ff8aa0' : '';
+        (this.q('[data-c="brg"]') as HTMLElement).style.transform = `rotate(${f.brg}rad)`;
+      }
       const fb = this.q('[data-flaps] span');
       const ft = t('voo.f.flaps', 'Flape {n}', { n: f.flaps });
       if (fb.textContent !== ft) fb.textContent = ft;
@@ -525,10 +688,16 @@ export class Hud {
       this.q('[data-cam]').classList.toggle('on', h.extCam());
     }
     // dica
+    if (this.tutText !== this.lastTut) {
+      this.lastTut = this.tutText;
+      if (this.tutText) speak(this.tutText, { urgent: true });
+    }
     const tip = this.tutText || this.tipText();
     if (tip !== this.lastTip) {
       this.lastTip = tip;
-      objective(tip || null, { icon: this.tutText ? 'target' : 'sparkle' });
+      const ek = s.active().filter((e) => e.kind !== 'turb').pop()?.kind;
+      const oi: IconName = this.tutText ? 'target' : me.seated ? 'planet' : ek === 'fire' ? 'fire' : ek === 'leak' ? 'drop' : ek === 'spark' ? 'bolt' : ek === 'panic' ? 'heart' : ek ? 'warning' : 'sparkle';
+      objective(tip || null, { icon: oi });
     }
     // instrumentos
     this.instT -= dt;
@@ -553,6 +722,47 @@ export class Hud {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner.classList.remove('show');
     }
+  }
+
+  /** "Como pilotar": 3 passos na primeira vez que alguém senta no manche */
+  private maybeFlyTut(): void {
+    let seen = false;
+    try {
+      seen = localStorage.getItem('bw-voo-flytut') === '1';
+    } catch {
+      /* */
+    }
+    if (seen || this.flyTutEl) return;
+    const steps = [
+      { ico: vIcon('yoke', 54), title: t('voo.ft.t1', 'O manche (lado esquerdo)'), txt: t('voo.ft.s1', 'Arraste para baixo: o nariz sobe. Para cima: o nariz desce. Para os lados: o avião inclina e faz a curva.') },
+      { ico: vIcon('fuel', 54), title: t('voo.ft.t2', 'Potência (lado direito)'), txt: t('voo.ft.s2', 'Mais potência = mais velocidade. Devagar demais o avião perde sustentação (estol)!') },
+      { ico: `<svg viewBox="0 0 48 48" width="54" height="54"><path d="M24 4L40 40L24 31L8 40Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/></svg>`, title: t('voo.ft.t3', 'Siga a seta rosa'), txt: t('voo.ft.s3', 'A seta rosa aponta para a pista. Na descida, baixe flapes e trem e toque o chão bem devagar.') },
+    ];
+    let i = 0;
+    const d = document.createElement('div');
+    d.className = 'voo-ftut';
+    const render = () => {
+      const st = steps[i];
+      speak(st.title + '. ' + st.txt, { urgent: true });
+      d.innerHTML = `<div class="card"><div class="dots">${steps.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div><div class="ic">${st.ico}</div><h3>${st.title}</h3><p>${st.txt}</p><button class="voo-btn ${i === steps.length - 1 ? 'green' : 'gold'}" data-n>${i === steps.length - 1 ? t('voo.ft.go', 'Voar!') : t('voo.ft.next', 'Próximo')}</button></div>`;
+    };
+    render();
+    d.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('[data-n]')) return;
+      i++;
+      if (i < steps.length) return render();
+      d.remove();
+      this.flyTutEl = null;
+      this.host.holdSim?.(false);
+      try {
+        localStorage.setItem('bw-voo-flytut', '1');
+      } catch {
+        /* */
+      }
+    });
+    this.el.appendChild(d);
+    this.flyTutEl = d;
+    this.host.holdSim?.(true);
   }
 
   private tipText(): string {
@@ -654,8 +864,8 @@ export class Hud {
     h.project(x, y, z, this.pr);
     let px = this.pr.x;
     let py = this.pr.y;
-    const m = 34;
-    let edge = this.pr.behind || px < m || px > W - m || py < 86 || py > H - m;
+    const m = 44;
+    let edge = this.pr.behind || px < m || px > W - m || py < 96 || py > H - m;
     if (!h.is3d) edge = px < m || px > W - m || py < m || py > H - m;
     const em = d.querySelector('em') as HTMLElement;
     if (edge) {
@@ -666,7 +876,7 @@ export class Hud {
       if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 60;
       const k = Math.min((W / 2 - m - 10) / Math.max(1, Math.abs(dx)), (H / 2 - 70) / Math.max(1, Math.abs(dy)));
       px = cx + dx * k;
-      py = Math.max(90, cy + dy * k + 15);
+      py = Math.min(H - m, Math.max(100, cy + dy * k + 15));
       em.style.display = '';
       em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
     } else em.style.display = 'none';
@@ -675,6 +885,59 @@ export class Hud {
     const lbl = `${Math.round(Math.hypot(x - me.x, z - me.z))} m`;
     const sp = d.querySelector('span')!;
     if (sp.textContent !== lbl) sp.textContent = lbl;
+  }
+
+  private ctxIcon(c: Ctx): string {
+    const s = this.host.sim;
+    switch (c.kind) {
+      case 'spray':
+        return 'ext';
+      case 'patch':
+        return 'tape';
+      case 'pump':
+        return 'fuel';
+      case 'rewire':
+        return 'wrench';
+      case 'valve':
+        return 'pressure';
+      case 'crank':
+        return 'gear';
+      case 'door':
+        return 'door';
+      case 'give':
+      case 'hug':
+        return 'calm';
+      case 'sit':
+        return 'yoke';
+      case 'take':
+        return c.target === 0 ? 'water' : 'snack';
+      case 'pick':
+        return s.item(c.target)?.kind ?? 'hand';
+      case 'stow':
+        return 'bag';
+    }
+    return 'hand';
+  }
+
+  private updatePoint(): void {
+    const k = this.tutPoint;
+    const tgt = k === 'act' ? this.act : k === 'stand' ? this.q('[data-stand]') : k === 'mate' ? (this.crewEl.querySelector('.voo-mate') as HTMLElement | null) : k === 'stick' ? (this.q('.voo-stickhint') as HTMLElement) : null;
+    const r = tgt && tgt.offsetParent ? tgt.getBoundingClientRect() : null;
+    if (!r || !r.width) {
+      if (this.pointEl) this.pointEl.style.display = 'none';
+      return;
+    }
+    if (!this.pointEl) {
+      this.pointEl = document.createElement('div');
+      this.pointEl.className = 'voo-point';
+      this.pointEl.innerHTML = vIcon('hand', 46);
+      this.el.appendChild(this.pointEl);
+    }
+    const er = this.el.getBoundingClientRect();
+    this.pointEl.style.display = '';
+    this.pointEl.style.left = r.left - er.left + r.width * 0.5 + 'px';
+    this.pointEl.style.top = r.top - er.top + (k === 'mate' ? r.height + 4 : -50) + 'px';
+    this.pointEl.classList.toggle('up', k === 'mate');
   }
 
   private updateMarkers(): void {
@@ -692,12 +955,16 @@ export class Hud {
       if (!d) {
         d = document.createElement('div');
         d.className = 'voo-mk';
-        d.innerHTML = vIcon(e.kind, 28) + '<span></span><em></em>';
+        d.innerHTML = vIcon(e.kind, 36) + '<span></span><em></em><i class="prog"></i>';
+        d.dataset.e = String(e.id);
         box.appendChild(d);
         this.mk.set(e.id, d);
       }
       this.placeMk(d, e.x, e.y + 0.45, e.z, W, H, me);
       d.classList.toggle('mine', me.busy === e.id || me.actTarget === e.id);
+      // anel de progresso (segurar para fechar/tapar, fogo diminuindo)
+      const pr = e.kind === 'fire' ? Math.max(0, 1 - e.sev / 1.2) * (e.sev < 0.34 ? 1 : 0.4) : e.prog;
+      (d.querySelector('.prog') as HTMLElement).style.background = pr > 0.02 ? `conic-gradient(#5ef08a ${pr * 360}deg, transparent 0)` : '';
     }
     // alvo do tutorial
     const tt = this.tutTarget;
@@ -718,8 +985,55 @@ export class Hud {
         d.remove();
         this.mk.delete(id);
       }
-    // falas dos bots
+    // destino da ordem dada a um ajudante
     const now = performance.now();
+    if (this.goMk) {
+      if (now > this.goMk.until) {
+        this.goMk.el.remove();
+        this.goMk = null;
+      } else this.placeMk(this.goMk.el, this.goMk.x, this.goMk.y, this.goMk.z, W, H, me);
+    }
+    // contorno pulsante no objeto que dá para usar agora
+    const c = !me.seated ? this.ctx : null;
+    if (c && c.kind && h.is3d) {
+      if (!this.aimEl) {
+        this.aimEl = document.createElement('div');
+        this.aimEl.className = 'voo-aim';
+        box.appendChild(this.aimEl);
+      }
+      if (this.aimEl.dataset.i !== this.aimIco) {
+        this.aimEl.dataset.i = this.aimIco;
+        this.aimEl.innerHTML = vIcon(this.aimIco, 30);
+      }
+      h.project(c.x, c.y, c.z, this.pr);
+      this.aimEl.style.display = this.pr.behind ? 'none' : '';
+      this.aimEl.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
+    } else if (this.aimEl) this.aimEl.style.display = 'none';
+    // medidor de calma em cima dos passageiros aflitos perto de mim
+    const near = me.seated ? [] : s.pax.filter((q) => q.panic > 0.3 && Math.hypot(q.x - me.x, q.z - me.z) < 5).sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z)).slice(0, 5);
+    while (this.calmEls.length < near.length) {
+      const d = document.createElement('div');
+      d.className = 'voo-calm';
+      d.innerHTML = `${vIcon('calm', 18)}<b><i></i></b>`;
+      box.appendChild(d);
+      this.calmEls.push(d);
+    }
+    this.calmEls.forEach((d, i) => {
+      const q = near[i];
+      if (!q) {
+        d.style.display = 'none';
+        return;
+      }
+      h.project(q.x, q.standing ? 1.45 : 1.2, q.z, this.pr);
+      d.style.display = this.pr.behind ? 'none' : '';
+      d.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
+      const bar = d.querySelector('i') as HTMLElement;
+      bar.style.width = Math.round((1 - q.panic) * 100) + '%';
+      bar.style.background = q.panic > 0.7 ? '#ff4d6a' : q.panic > 0.5 ? '#ffb02e' : '#5ef08a';
+    });
+    // mãozinha do tutorial apontando para o botão certo
+    this.updatePoint();
+    // falas dos bots
     for (const [idx, d] of this.says) {
       const p = s.players[idx];
       if (!p || +(d.dataset.t ?? 0) < now) {

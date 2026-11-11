@@ -15,12 +15,17 @@ import { save as globalSave } from '../../core/storage';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { displayName } from '../../services/leaderboard';
 import { sfx } from '../../3d/common/sfx';
-import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS, roleName } from './data';
-import { bigMoment } from '../../ui/notify';
+import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS } from './data';
+import { bigMoment, notify } from '../../ui/notify';
+import { openHangar, type HangarHandle } from './hangar';
+import { hush, speak } from './voice';
 import { briefing, endReport, titleCard, type CrewLine } from './dossier';
 import { Hud, type HudHost } from './hud';
-import { hatIcon, vIcon } from './icons';
-import { LocalNet, type VooNet } from './net';
+import type { FlightKind } from './hangar';
+import { vIcon } from './icons';
+import { FlightNet, HostSync, InputOut, LocalNet, SnapSync, newCode, type Me, type NetMsg, type VooNet } from './net';
+import { inviteCard, openRoom, pollInvites, type RoomHandle, type StartCrew } from './room';
+import { me as socialMe } from '../../social/net';
 import { cabinOf, dayIndex, liveryOf, loadSave, writeSave, type VooSave } from './save';
 import { Sim, mulberry } from './sim';
 import { View2D } from './view2d';
@@ -54,7 +59,6 @@ export async function launch(root: HTMLElement, exit: () => void, opts: LaunchOp
   return g;
 }
 
-type FlightKind = 'normal' | 'daily' | 'training';
 
 export class VooGame implements MiniGameHandle, HudHost {
   sim!: Sim;
@@ -95,7 +99,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.sv = loadSave();
     this.gov = new QualityGovernor({ mode: loadMode(), persist: false, emit: false, onChange: (tier) => this.view && 'setTier' in this.view && (this.view as View3D).setTier(tier), onResScale: (k) => this.view && 'setResScale' in this.view && (this.view as View3D).setResScale(k) });
     this.bots = opts.bots ?? this.sv.bots;
-    this.role = opts.role ?? 0;
+    this.role = opts.role ?? this.sv.role ?? 0;
     if (location.search.includes('debug')) (window as unknown as { __voo: VooGame }).__voo = this;
   }
 
@@ -110,66 +114,178 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   /* ============================== hangar (lobby) ============================== */
 
+  private hangar: HangarHandle | null = null;
   private lobby(): void {
-    this.setBack(() => this.finish());
     const sv = this.sv;
-    const gl = webglOk();
-    const tier = detectInitialTier();
-    let mode: '2d' | '3d' = sv.mode === '2d' || !gl ? '2d' : '3d';
-    const d = document.createElement('div');
-    d.className = 'voo-scr voo-lobby';
-    const today = dayIndex();
-    const dailyDone = sv.daily.day === today;
-    const render = () => {
-      d.innerHTML = `<div class="voo-lcard">
-        <h2>${vIcon('plane', 36)}${esc(t('voo.name', 'Pouso Forçado'))}<small>${esc(t('voo.lobby.sub', 'O comandante desmaiou. Pousem esse avião!'))}</small><button class="voo-btn round red" data-x>${vIcon('close', 26)}</button></h2>
-        <div class="voo-sec"><b>${vIcon('cube', 20)}${esc(t('voo.lobby.view', 'Visão'))}</b><div class="voo-row">
-          <button class="voo-opt ${mode === '3d' ? 'sel' : ''}" data-m="3d" ${gl ? '' : 'disabled'}>${vIcon('cube', 22)}<span>3D<small>${esc(gl ? (tier <= 1 ? t('voo.lobby.3dWeak', 'Primeira pessoa (pode pesar aqui)') : t('voo.lobby.3d', 'Primeira pessoa, dentro do avião')) : t('voo.lobby.no3d', 'Indisponível neste aparelho'))}</small></span></button>
-          <button class="voo-opt ${mode === '2d' ? 'sel' : ''}" data-m="2d">${vIcon('square', 22)}<span>2D<small>${esc(t('voo.lobby.2d', 'Vista de cima, leve'))}</small></span></button>
-        </div></div>
-        <div class="voo-sec"><b>${vIcon('calendar', 20)}${esc(t('voo.lobby.flight', 'Voo'))}</b><div class="voo-row">
-          <button class="voo-opt ${this.flightKind === 'normal' ? 'sel' : ''}" data-f="normal">${vIcon('plane', 22)}<span>${esc(t('voo.mode.normal', 'Voo normal'))}<small>${esc(t('voo.lobby.normal', 'Emergências aleatórias'))}</small></span></button>
-          <button class="voo-opt ${this.flightKind === 'daily' ? 'sel' : ''}" data-f="daily">${vIcon('calendar', 22)}<span>${esc(t('voo.mode.daily', 'Voo do dia'))}<small>${esc(dailyDone ? t('voo.lobby.dailyDone', 'Feito hoje: {s} estrela(s)', { s: sv.daily.stars }) : t('voo.lobby.daily', 'Igual para todos hoje · bônus'))}</small></span></button>
-          <button class="voo-opt ${this.flightKind === 'training' ? 'sel' : ''}" data-f="training">${vIcon('school', 22)}<span>${esc(t('voo.mode.training', 'Treino de pouso'))}<small>${esc(t('voo.lobby.training', 'Só a final, sem emergências'))}</small></span></button>
-        </div></div>
-        <div class="voo-sec"><b>${hatIcon(this.role, 20)}${esc(t('voo.lobby.role', 'Seu papel'))}</b><div class="voo-row">
-          ${[0, 1, 2, 3].map((r) => `<button class="voo-opt ${this.role === r ? 'sel' : ''}" data-r="${r}">${hatIcon(r, 26)}<span>${esc(roleName(r))}</span></button>`).join('')}
-        </div><div class="voo-note">${esc(t('voo.lobby.roleNote', 'Todo mundo pode fazer tudo — o papel muda o chapéu e onde você começa.'))}</div></div>
-        <div class="voo-sec"><b>${vIcon('crew', 20)}${esc(t('voo.lobby.helpers', 'Ajudantes Bloop'))}</b><div class="voo-row">
-          ${[0, 1, 2, 3].map((n) => `<button class="voo-opt ${this.bots === n ? 'sel' : ''}" data-b="${n}">${n === 0 ? esc(t('voo.lobby.solo', 'Sozinho')) : n}</button>`).join('')}
-        </div><div class="voo-note">${esc(t('voo.lobby.botsNote', 'Eles só agem quando você manda, e demoram um pouco. Pilotar e pousar é com você!'))}</div></div>
-        <div class="voo-sec"><b>${vIcon('star', 20)}${esc(t('voo.lobby.livery', 'Pintura do avião'))}</b><div class="voo-row">
-          ${LIVERIES.map((l) => `<button class="voo-opt ${liveryOf(sv).id === l.id ? 'sel' : ''}" data-l="${l.id}" ${sv.stars >= l.stars ? '' : 'disabled'}><span class="sw" style="background:linear-gradient(135deg,${l.body} 40%,${l.stripe} 40% 60%,${l.tail} 60%)"></span>${esc(l.name())}${sv.stars >= l.stars ? '' : ` <small>${vIcon('star', 12)}${l.stars}</small>`}</button>`).join('')}
-        </div></div>
-        <div class="voo-sec"><b>${vIcon('calm', 20)}${esc(t('voo.lobby.cabin', 'Cabine'))}</b><div class="voo-row">
-          ${CABINS.map((c) => `<button class="voo-opt ${cabinOf(sv).id === c.id ? 'sel' : ''}" data-c="${c.id}" ${sv.perfects >= c.perfect ? '' : 'disabled'}><span class="sw" style="background:linear-gradient(135deg,${c.seat} 50%,${c.seat2} 50%)"></span>${esc(c.name())}${sv.perfects >= c.perfect ? '' : ` <small>${esc(t('voo.lobby.perfects', '{n} pousos perfeitos', { n: c.perfect }))}</small>`}</button>`).join('')}
-        </div></div>
-        <div class="voo-stats"><span>${vIcon('trophy', 18)}${esc(t('voo.lobby.best', 'Recorde {n}', { n: sv.best }))}</span><span>${vIcon('star', 18)}${sv.stars}</span><span>${vIcon('runway', 18)}${esc(t('voo.lobby.landings', '{n} pousos', { n: sv.landings }))}</span><span>${vIcon('check', 18)}${esc(t('voo.lobby.perfectN', '{n} perfeitos', { n: sv.perfects }))}</span></div>
-        <div class="voo-go"><button class="voo-btn green" data-go>${vIcon('plane', 26)}${esc(t('voo.lobby.go', 'Abrir o dossiê'))}</button></div>
-      </div>`;
-    };
-    render();
-    this.wrap.appendChild(d);
-    d.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (!b || b.disabled) return;
-      audio.click();
-      if (b.dataset.x !== undefined) return this.finish();
-      if (b.dataset.m) mode = b.dataset.m as '2d' | '3d';
-      if (b.dataset.f) this.flightKind = b.dataset.f as FlightKind;
-      if (b.dataset.r) this.role = +b.dataset.r;
-      if (b.dataset.b) this.bots = +b.dataset.b;
-      if (b.dataset.l) sv.livery = b.dataset.l;
-      if (b.dataset.c) sv.cabin = b.dataset.c;
-      if (b.dataset.go !== undefined) {
-        sv.mode = mode;
-        sv.bots = this.bots;
-        writeSave(sv);
-        d.remove();
-        void this.brief(mode);
-        return;
+    const h = openHangar(this.wrap, { sv, gl: webglOk(), weak: detectInitialTier() <= 1, dailyBonus: 25 });
+    this.hangar = h;
+    this.setBack(() => h.back());
+    this.listenInvites(h);
+    void h.done.then((pick) => {
+      this.hangar = null;
+      if (this.destroyed) return;
+      if (pick.kind === 'exit') return this.finish();
+      this.role = sv.role;
+      this.bots = sv.bots;
+      if (pick.kind === 'friends') return void this.friends(pick.mode);
+      this.flightKind = pick.flight;
+      void this.brief(pick.mode);
+    });
+  }
+
+  /* ============================== online ============================== */
+
+  private meP: Promise<Me> | null = null;
+  private myself(): Promise<Me> {
+    if (!this.meP) {
+      this.meP = socialMe().then((m) => ({ id: m.id, name: m.name || displayName() || 'Bloop', skin: m.skin }));
+      this.meP.catch(() => (this.meP = null));
+    }
+    return this.meP;
+  }
+  private room: RoomHandle | null = null;
+  private hostSync: HostSync | null = null;
+  private snapSync: SnapSync | null = null;
+  private inOut: InputOut | null = null;
+  private crewOverride: CrewLine[] | null = null;
+
+  /** convites de amigos enquanto estou no hangar */
+  private listenInvites(h: HangarHandle): void {
+    pollInvites(
+      () => this.myself().catch(() => null),
+      (inv) =>
+        inviteCard(this.wrap, inv, () => {
+          if (this.hangar !== h) return;
+          h.destroy();
+          this.hangar = null;
+          void this.joinRoom(inv.code, this.sv.mode === '2d' ? '2d' : '3d');
+        }),
+      () => this.hangar === h && !this.destroyed,
+    );
+  }
+
+  /** "Voar com amigos": cria a sala na hora (um toque) */
+  private async friends(mode: '2d' | '3d'): Promise<void> {
+    const wait = this.waiting(t('voo.r.creating', 'Abrindo a sala…'));
+    try {
+      const me = await this.myself();
+      let net: FlightNet | null = null;
+      for (let k = 0; k < 3 && !net; k++) {
+        try {
+          net = await FlightNet.open(newCode(), true, me);
+        } catch (e) {
+          if ((e as Error).message !== 'taken') throw e;
+        }
       }
-      render();
+      wait();
+      if (!net || this.destroyed) return void net?.leave();
+      this.inRoom(net, me, mode);
+    } catch {
+      wait();
+      if (this.destroyed) return;
+      notify(t('voo.r.offline', 'Sem internet agora: voe com os ajudantes!'), { icon: 'cloud-off', kind: 'bad' });
+      this.lobby();
+    }
+  }
+  private async joinRoom(code: string, mode: '2d' | '3d'): Promise<void> {
+    const wait = this.waiting(t('voo.r.joining', 'Entrando na sala {c}…', { c: code }));
+    try {
+      const me = await this.myself();
+      const net = await FlightNet.open(code, false, me);
+      wait();
+      if (this.destroyed) return net.leave();
+      this.inRoom(net, me, mode);
+    } catch (e) {
+      wait();
+      if (this.destroyed) return;
+      const why = (e as Error).message;
+      notify(
+        why === 'no_room' ? t('voo.r.noRoom', 'Sala {c} não encontrada', { c: code }) : why === 'started' ? t('voo.r.started', 'Esse voo já decolou') : why === 'full' ? t('voo.r.full', 'A sala está cheia (4)') : t('voo.r.offline', 'Sem internet agora: voe com os ajudantes!'),
+        { icon: 'warning', kind: 'bad' },
+      );
+      this.lobby();
+    }
+  }
+  private inRoom(net: FlightNet, me: Me, mode: '2d' | '3d'): void {
+    const r = openRoom(this.wrap, { net, me, role: this.sv.role, mode });
+    this.room = r;
+    this.setBack(() => r.back());
+    void r.done.then((res) => {
+      this.room = null;
+      if (this.destroyed) return net.leave();
+      if (res.kind === 'start') return void this.beginOnline(net, me, res.start, mode);
+      net.leave();
+      if (res.kind === 'join') return void this.joinRoom(res.code, mode);
+      this.lobby();
+    });
+  }
+  private waiting(txt: string): () => void {
+    const d = document.createElement('div');
+    d.className = 'voo-scr vr-wait';
+    d.innerHTML = `<div>${vIcon('plane', 56)}<b>${txt.replace(/[&<>]/g, '')}</b></div>`;
+    this.wrap.appendChild(d);
+    return () => d.remove();
+  }
+
+  private async beginOnline(net: FlightNet, me: Me, start: NetMsg, mode: '2d' | '3d'): Promise<void> {
+    this.net = net;
+    this.flightKind = 'normal';
+    this.seedCache = (+start.seed | 0) || 1;
+    const crew = ((start.crew ?? []) as StartCrew[]).slice(0, 4).sort((a, b) => a.r - b.r);
+    this.crewOverride = crew.map((c) => ({ name: String(c.name).slice(0, 24), role: c.r, bot: !!c.bot, me: c.id === me.id, skin: c.bot ? c.skin : c.id === me.id ? globalSave.skin : c.skin, id: c.id }));
+    const mine = crew.find((c) => c.id === me.id);
+    if (mine) this.role = mine.r;
+    const rnd = mulberry(this.seed());
+    const a = Math.floor(rnd() * CITIES.length);
+    const b = (a + 1 + Math.floor(rnd() * (CITIES.length - 1))) % CITIES.length;
+    this.route = [CITIES[a], CITIES[b]];
+    this.flightNo = 'BL-' + (100 + Math.floor(rnd() * 900));
+    this.weather = Math.floor(rnd() * 3);
+    net.onClose((why) => {
+      if (this.destroyed || this.reported) return;
+      this.netEnded(why === 'hostLeft' ? t('voo.r.hostLeftF', 'O anfitrião saiu: o voo acabou') : t('voo.r.lost', 'Conexão perdida'));
+    });
+    await this.begin(mode);
+    if (this.destroyed || !this.sim) return;
+    const s = this.sim;
+    if (net.isHost) {
+      this.hostSync = new HostSync(s, net, crew.map((c) => (c.bot ? '' : c.id)), (i) => {
+        const p = s.players[i];
+        this.hud?.toast(t('voo.r.leftBot', '{n} saiu: um ajudante assumiu', { n: p.name }), 'crew', 'info');
+        this.hud?.rebuildCrew();
+      });
+    } else {
+      s.client = true;
+      this.snapSync = new SnapSync(s);
+      this.inOut = new InputOut(s, net);
+      s.proxy = (a) => this.inOut?.push(a);
+      net.on('snap', (m) => this.snapSync?.apply(m));
+    }
+  }
+
+  private leaveNet(): void {
+    this.hostSync?.dispose();
+    this.hostSync = null;
+    this.snapSync = null;
+    this.inOut = null;
+    this.crewOverride = null;
+    this.net.leave();
+    this.net = new LocalNet();
+  }
+
+  /** voo online interrompido (anfitrião saiu ou caiu a conexão) */
+  private netEnded(msg: string): void {
+    this.paused = true;
+    audio.engineStop();
+    const d = document.createElement('div');
+    d.className = 'voo-scr';
+    d.style.background = 'rgba(20,8,48,.7)';
+    d.innerHTML = `<div class="voo-lcard" style="width:min(380px,100%);grid-template-columns:1fr;text-align:center"><h2 style="justify-content:center">${vIcon('crew', 34)}${esc(msg)}</h2><div class="voo-go" style="justify-content:center"><button class="voo-btn green" data-ok>${vIcon('plane', 22)}${esc(t('voo.r.backHangar', 'Voltar ao hangar'))}</button></div></div>`;
+    this.wrap.appendChild(d);
+    speak(msg, { urgent: true });
+    d.querySelector('[data-ok]')!.addEventListener('click', () => {
+      d.remove();
+      this.restart();
     });
   }
 
@@ -210,14 +326,14 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   private async begin(mode: '2d' | '3d'): Promise<void> {
     const sv = this.sv;
-    const crew = this.crewLines();
+    const crew = this.crewOverride ?? this.crewLines();
     const rnd = mulberry(this.seed() ^ 99);
     const skins = BOT_SKINS.slice().sort(() => rnd() - 0.5);
     const tier = this.gov.tier;
     this.sim = new Sim({
       seed: this.seed(),
       mode: this.flightKind,
-      crew: crew.map((c, i) => ({ name: c.name, skin: c.me ? globalSave.skin : skins[i % skins.length], bot: c.bot, local: c.me })),
+      crew: crew.map((c, i) => ({ name: c.name, skin: c.me ? globalSave.skin : c.skin ?? skins[i % skins.length], bot: c.bot, local: c.me })),
       maxBags: [3, 5, 8, 12][tier],
     });
     // os papéis certos (crewLines já está em ordem de papel)
@@ -251,7 +367,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.offs.push(() => window.removeEventListener('resize', ro));
     this.setBack(() => this.onExit());
     // primeiro voo: tutorial guiado (um objetivo por vez + seta)
-    if ((!sv.tutDone && this.flightKind === 'normal') || this.opts.tutorial) {
+    if (((!sv.tutDone && this.flightKind === 'normal') || this.opts.tutorial) && !this.net.online) {
       this.tut = 0;
       this.tutT = 0;
       this.sim.paused = true;
@@ -261,8 +377,11 @@ export class VooGame implements MiniGameHandle, HudHost {
     }
     sv.flights++;
     writeSave(sv);
-    if (!this.opts.quick) this.startCutscene();
-    else this.cut = -1;
+    if (!this.opts.quick && !this.net.online) this.startCutscene();
+    else {
+      this.cut = -1;
+      if (this.net.online) this.hud?.showBanner(t('voo.go.title', 'Alguém no manche!'), t('voo.go.sub', 'Siga a seta rosa até a pista'), 3);
+    }
     this.startT = performance.now();
     this.last = performance.now();
     audio.engineStart();
@@ -344,6 +463,9 @@ export class VooGame implements MiniGameHandle, HudHost {
         writeSave(this.sv);
         break;
     }
+    // mãozinha apontando para o controle certo (sem precisar ler)
+    const k = this.tut;
+    hud.tutPoint = k < 0 || k >= 7 ? '' : k === 1 ? 'stick' : k === 2 ? 'stand' : k === 6 ? 'mate' : s.lastCtx.kind ? 'act' : '';
   }
 
   private startCutscene(): void {
@@ -416,9 +538,15 @@ export class VooGame implements MiniGameHandle, HudHost {
     if (this.tut >= 0) this.tutorial(dt);
     // passos menores para o voo ficar estável
     const n = dt > 0.025 ? 2 : 1;
-    for (let i = 0; i < n; i++) s.step(dt / n);
+    if (this.snapSync) {
+      // convidado: só o meu boneco anda aqui; o resto vem do anfitrião
+      s.stepClient(dt);
+      this.snapSync.smooth(dt);
+      this.inOut?.tick(dt);
+    } else if (!this.simHeld) for (let i = 0; i < n; i++) s.step(dt / n);
     s.input.tap = false;
     this.events();
+    this.hostSync?.tick(dt);
     this.view!.frame(dt);
     this.hud!.update(dt);
     this.sounds(dt);
@@ -433,6 +561,8 @@ export class VooGame implements MiniGameHandle, HudHost {
       if (ev.k === 'toast') {
         this.hud?.toast(ev.msg, ev.ico, ev.tone);
         if (ev.tone === 'bad') tap('medium');
+        // emergência nova: fala o nome (crianças que ainda não leem)
+        if (ev.tone === 'bad' && ev.emer !== undefined) speak(ev.msg, { gap: 2500 });
       } else if (ev.k === 'say') this.hud?.say(ev.who, ev.msg);
       else if (ev.k === 'sfx') this.sfx(ev.s);
       else if (ev.k === 'touch') {
@@ -451,6 +581,7 @@ export class VooGame implements MiniGameHandle, HudHost {
       }
     }
     for (const p of s.players) if (p.bot && p.sayT > 2.35 && p.say) this.hud?.say(p.idx, p.say);
+    this.hostSync?.capture(s.ev);
     s.ev.length = 0;
   }
 
@@ -546,11 +677,18 @@ export class VooGame implements MiniGameHandle, HudHost {
   extCam(): boolean {
     return this.is3d && (this.view as View3D).extCam;
   }
+  holdSim(on: boolean): void {
+    if (this.net.online) return;
+    this.simHeld = on;
+    if (!on) this.last = performance.now();
+  }
+  private simHeld = false;
 
   /* ------------------------------ fim ------------------------------ */
 
   private async finishFlight(): Promise<void> {
     this.reported = true;
+    this.hostSync?.tick(0, true);
     const s = this.sim;
     const sv = this.sv;
     const o = s.outcome!;
@@ -601,6 +739,7 @@ export class VooGame implements MiniGameHandle, HudHost {
 
   private restart(): void {
     cancelAnimationFrame(this.raf);
+    this.leaveNet();
     this.view?.destroy();
     this.hud?.destroy();
     for (const f of this.offs) f();
@@ -658,8 +797,12 @@ export class VooGame implements MiniGameHandle, HudHost {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.popBack?.();
+    this.hangar?.destroy();
+    this.room?.back();
+    this.leaveNet();
     for (const f of this.offs) f();
     audio.engineStop();
+    hush();
     this.net.leave();
     this.view?.destroy();
     this.hud?.destroy();

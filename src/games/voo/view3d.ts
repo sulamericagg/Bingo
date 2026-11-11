@@ -22,6 +22,7 @@ import { GS, RWY_HALF, RWY_LEN, type Ev, type Sim } from './sim';
 const TAU = Math.PI * 2;
 const EYE = 1.12;
 const UP = new THREE.Vector3(0, 1, 0);
+const STREAKS = 44;
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -181,6 +182,10 @@ export class View3D {
   private fireLight: THREE.PointLight | null = null;
   private fog: THREE.Fog;
   private clouds: THREE.InstancedMesh;
+  private nearClouds: THREE.InstancedMesh;
+  private nearPos: THREE.Vector4[] = [];
+  private streaks: THREE.LineSegments;
+  private streakPos: THREE.Vector3[] = [];
   private cloudPos: THREE.Vector4[] = [];
   private lights: THREE.Points;
   private papi: THREE.Points;
@@ -214,6 +219,8 @@ export class View3D {
   cut = -1;
   private ending: { t: number; kind: string; base: THREE.Vector3; hdg: number; poppers: Popper[] } | null = null;
   private shake = 0;
+  private paxBump = 0;
+  private paxWorried: number[] = [];
   private t = 0;
   private lookD = { x: 0, y: 0 };
   private wasSeated = false;
@@ -320,6 +327,19 @@ export class View3D {
       this.clouds.setMatrixAt(i, _m);
     }
     this.world.add(this.clouds);
+    // nuvens de passagem perto do avião (parallax forte: dá a sensação de velocidade)
+    const nN = q.tier < 2 ? 10 : 18;
+    this.nearClouds = new THREE.InstancedMesh(cloudGeo(q.tier < 2), this.clouds.material as THREE.Material, nN);
+    this.nearClouds.frustumCulled = false;
+    for (let i = 0; i < nN; i++) this.nearPos.push(new THREE.Vector4(0, -99999, 0, 0));
+    this.world.add(this.nearClouds);
+    // riscos de vento/velocidade
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STREAKS * 6), 3));
+    this.streaks = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.3, depthWrite: false, fog: false }));
+    this.streaks.frustumCulled = false;
+    for (let i = 0; i < STREAKS; i++) this.streakPos.push(new THREE.Vector3(0, -99999, 0));
+    this.world.add(this.streaks);
     // luzes do aeroporto
     this.lights = this.buildLights();
     this.world.add(this.lights);
@@ -391,6 +411,9 @@ export class View3D {
       const sk = handColors(PAX_SKINS[i >> 1]);
       const im = new THREE.InstancedMesh(bloopGeo(sk, -1, i % 2 ? 'worried' : 'normal', 0.82), mat(q.standard, { rough: 0.55 }), Math.max(1, counts[i]));
       im.count = 0;
+      // instâncias espalhadas pela cabine inteira: a esfera da geometria-base (na origem) fazia o
+      // three.js descartar o grupo todo quando a origem saía da tela → passageiros sumindo
+      im.frustumCulled = false;
       im.castShadow = q.tier >= 3;
       this.paxMeshes.push(im);
       this.cabin.add(im);
@@ -592,6 +615,7 @@ export class View3D {
     this.planeObj.updateMatrixWorld(true);
     // ----- ambiente (hora do dia avança para o pôr do sol) -----
     this.updateSky(intro && this.cut < 6 ? 0 : s.progress);
+    this.updateMotion(intro && this.cut < 6);
     // ----- interior: personagens, objetos, efeitos -----
     this.updateCabin(dt, intro);
     // ----- câmera -----
@@ -680,6 +704,64 @@ export class View3D {
     this.sun.intensity = (this.q.standard ? 1.7 : 1.0) * (1 - inCloud * 0.7);
   }
 
+  /** nuvens de passagem e riscos de vento em volta do avião (reciclados) */
+  private updateMotion(hide: boolean): void {
+    const f = this.sim.f;
+    const P = this.planeObj.position;
+    const fx = Math.sin(f.hdg);
+    const fz = -Math.cos(f.hdg);
+    const air = !hide && f.alt > 250 && this.sim.flying;
+    // nuvens
+    const nc = this.nearClouds;
+    for (let i = 0; i < this.nearPos.length; i++) {
+      const c = this.nearPos[i];
+      const dx = c.x - P.x;
+      const dz = c.z - P.z;
+      const ahead = dx * fx + dz * fz;
+      if (air && (c.y < -9000 || ahead < -900 || Math.hypot(dx, dz) > 4200)) {
+        const first = c.y < -9000;
+        const d = first ? 200 + Math.random() * 3000 : 2400 + Math.random() * 1400;
+        const side = (Math.random() * 2 - 1) * 1500;
+        c.set(P.x + fx * d - fz * side, Math.max(160, P.y + (Math.random() * 2 - 1) * 260 - 60), P.z + fz * d + fx * side, 70 + Math.random() * 170);
+      }
+      _m.compose(_v.set(c.x, air ? c.y : -99999, c.z), _q.setFromAxisAngle(UP, i * 1.7), _v2.set(c.w * 1.5, c.w * 0.55, c.w));
+      nc.setMatrixAt(i, _m);
+    }
+    nc.instanceMatrix.needsUpdate = true;
+    // riscos: pontos fixos no ar que passam pela câmera
+    const st = this.streaks;
+    st.visible = !hide && f.spd > 45 && this.sim.flying;
+    if (!st.visible) return;
+    const C = this.wcam.position;
+    const v = f.spd;
+    const gx = fx * Math.cos(f.gamma);
+    const gy = Math.sin(f.gamma);
+    const gz = fz * Math.cos(f.gamma);
+    const len = Math.min(26, v * 0.11);
+    const arr = (st.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    for (let i = 0; i < this.streakPos.length; i++) {
+      const p = this.streakPos[i];
+      const rx = p.x - C.x;
+      const ry = p.y - C.y;
+      const rz = p.z - C.z;
+      const along = rx * gx + ry * gy + rz * gz;
+      if (along < -30 || along > 260 || p.y < -9000) {
+        const d = 60 + Math.random() * 190;
+        const sx = (Math.random() * 2 - 1) * 34;
+        const sy = (Math.random() * 2 - 1) * 22;
+        p.set(C.x + gx * d - fz * sx, C.y + gy * d + sy, C.z + gz * d + fx * sx);
+      }
+      arr[i * 6] = p.x;
+      arr[i * 6 + 1] = p.y;
+      arr[i * 6 + 2] = p.z;
+      arr[i * 6 + 3] = p.x - gx * len;
+      arr[i * 6 + 4] = p.y - gy * len;
+      arr[i * 6 + 5] = p.z - gz * len;
+    }
+    st.geometry.getAttribute('position').needsUpdate = true;
+    (st.material as THREE.LineBasicMaterial).opacity = Math.min(0.42, 0.12 + (v - 45) / 400 + this.sim.turb * 0.4);
+  }
+
   private updateAirportLights(): void {
     const ca = this.lights.geometry.getAttribute('color') as THREE.BufferAttribute;
     const ph = (this.t * 2.2) % 1;
@@ -729,7 +811,7 @@ export class View3D {
     if (seated !== this.wasSeated) {
       this.wasSeated = seated;
       this.yaw = Math.PI;
-      this.pitch = seated ? -0.2 : -0.05;
+      this.pitch = seated ? -0.36 : -0.05;
     }
     this.yaw -= look.x;
     this.pitch = clamp(this.pitch - look.y, -1.2, 1.1);
@@ -743,9 +825,14 @@ export class View3D {
     const walk = Math.hypot(me.vx, me.vz);
     const bob = Math.sin(me.walk * 3.2) * 0.035 * Math.min(1, walk / 3);
     const stun = me.stun > 0 ? Math.sin(Math.min(1, me.stun) * Math.PI) : 0;
+    // tremor de estol (buffet) e balanço suave do ar
+    const f = s.f;
+    const vRef = 110 - f.flaps * 18;
+    if (s.flying && (f.stall || f.spd < vRef * 0.82)) this.shake = Math.max(this.shake, f.stall ? 0.9 : 0.35);
     this.shake = Math.max(0, this.shake - dt * 3);
     const shx = (Math.random() - 0.5) * this.shake * 0.06;
-    const shy = (Math.random() - 0.5) * this.shake * 0.06;
+    const air = s.flying ? 1 + s.turb * 5 : 0.2;
+    const shy = (Math.random() - 0.5) * this.shake * 0.06 + (Math.sin(this.t * 1.3) * 0.006 + Math.sin(this.t * 3.1) * 0.0025) * air;
     if (seated) cam.position.set(SPOTS.pilot.x, 1.34, SPOTS.pilot.z + 0.05);
     else cam.position.set(me.x, EYE + bob - stun * 0.55, me.z);
     cam.position.x += shx;
@@ -902,18 +989,26 @@ export class View3D {
     // passageiros
     const cnt = new Array(16).fill(0);
     const bangList: { x: number; z: number; p: number }[] = [];
-    for (const p of s.pax) {
-      const w = p.panic > 0.55 ? 1 : 0;
+    this.paxBump = Math.max(0, this.paxBump - dt * 4);
+    const bump = this.paxBump > 0 ? Math.sin(this.paxBump * 18) * 0.05 * this.paxBump : 0;
+    for (let k = 0; k < s.pax.length; k++) {
+      const p = s.pax[k];
+      // rosto preocupado com histerese (não pisca entre as duas malhas)
+      const was = this.paxWorried[k] ?? 0;
+      const w = p.panic > 0.58 ? 1 : p.panic < 0.45 ? 0 : was;
+      this.paxWorried[k] = w;
       const im = this.paxMeshes[p.skin * 2 + w];
       const i = cnt[p.skin * 2 + w]++;
-      const jit = p.panic > 0.55 ? Math.sin(p.bob * 22) * 0.03 * p.panic : 0;
-      const jump = p.standing ? Math.abs(Math.sin(p.bob * 6)) * 0.18 : 0;
-      const happy = p.happyT > 0 ? Math.abs(Math.sin(p.bob * 9)) * 0.08 : 0;
-      _m.compose(
-        _v.set(p.x + jit, (p.standing ? 0 : 0.36) + jump + happy, p.z + (p.standing ? 0 : -0.05)),
-        _q.setFromEuler(_e.set(0, p.standing ? Math.PI * 0.5 * Math.sign(p.sx) + Math.sin(p.bob * 3) * 0.6 : 0, jit * 2)),
-        _v2.setScalar(1),
-      );
+      if (!p.standing) {
+        // sentado: preso à poltrona (sem física). Pânico = balanço lento e legível; solavanco só na turbulência
+        const sway = w ? Math.sin(p.bob * 3.2) * 0.1 * p.panic : 0;
+        const happy = p.happyT > 0 ? Math.abs(Math.sin(p.bob * 5)) * 0.05 : 0;
+        _m.compose(_v.set(p.sx, 0.36 + happy + bump * (0.6 + (k % 3) * 0.2), p.sz - 0.05), _q.setFromEuler(_e.set(0, 0, sway)), _v2.setScalar(1));
+      } else {
+        // de pé no corredor: pulinho lento de aflição
+        const hop = Math.abs(Math.sin(p.bob * 3.4)) * 0.07;
+        _m.compose(_v.set(p.x, hop, p.z), _q.setFromEuler(_e.set(0, Math.PI * 0.5 * Math.sign(p.sx) + Math.sin(p.bob * 1.6) * 0.25, 0)), _v2.setScalar(1));
+      }
       im.setMatrixAt(i, _m);
       if (p.panic > 0.7) bangList.push({ x: p.x, z: p.z, p: p.panic });
     }
@@ -1137,7 +1232,10 @@ export class View3D {
 
   onEv(ev: Ev): void {
     const s = this.sim;
-    if (ev.k === 'jolt') this.shake = Math.min(1.5, this.shake + ev.amt * 0.4);
+    if (ev.k === 'jolt') {
+      this.shake = Math.min(1.5, this.shake + ev.amt * 0.4);
+      if (ev.amt > 0.8) this.paxBump = Math.min(1, ev.amt * 0.35);
+    }
     else if (ev.k === 'fx') {
       const y = ev.y ?? 1;
       if (ev.t === 'fireOut') this.fx.burst(ev.x, y, ev.z, 26, 'steam', '#e8e8f0', 1.2);

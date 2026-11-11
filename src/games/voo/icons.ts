@@ -14,7 +14,7 @@ const stroke = (d: string, color: string, w = 4): string =>
 export type VIcon =
   | 'fire' | 'leak' | 'fuel' | 'spark' | 'pressure' | 'door' | 'turb' | 'panic' | 'bird' | 'gear' | 'check' | 'info' | 'warn' | 'yoke'
   | 'down' | 'runway' | 'ext' | 'tape' | 'water' | 'snack' | 'bag' | 'close' | 'hand' | 'throw' | 'drop' | 'cube' | 'square' | 'star'
-  | 'starOff' | 'crew' | 'follow' | 'stay' | 'calm' | 'cam' | 'flaps' | 'plane' | 'up' | 'clock' | 'calendar' | 'school' | 'trophy' | 'coin';
+  | 'starOff' | 'wrench' | 'crew' | 'follow' | 'stay' | 'calm' | 'cam' | 'flaps' | 'plane' | 'up' | 'clock' | 'calendar' | 'school' | 'trophy' | 'coin';
 
 const ICONS: Record<VIcon, string> = {
   fire:
@@ -72,6 +72,7 @@ const ICONS: Record<VIcon, string> = {
   calendar: sil('<rect x="6" y="10" width="36" height="32" rx="6"/>', 'white') + sil('<rect x="6" y="10" width="36" height="10" rx="5"/>', 'red', 1.5) + ink('<rect x="13" y="25" width="6" height="5" rx="1"/><rect x="21" y="25" width="6" height="5" rx="1"/><rect x="29" y="25" width="6" height="5" rx="1"/><rect x="13" y="32" width="6" height="5" rx="1"/>'),
   school: sil('<path d="M4 18L24 8L44 18L24 28Z"/>', 'violet') + sil('<path d="M12 23V33C16 38 32 38 36 33V23L24 29Z"/>', 'cyan', 2) + stroke('M40 20V34', '#ffd34a', 3),
   trophy: sil('<path d="M14 6H34V16C34 24 30 28 24 28C18 28 14 24 14 16Z"/>', 'gold') + sil('<rect x="18" y="36" width="12" height="8" rx="2"/>', 'gold', 2) + sil('<rect x="22" y="28" width="4" height="9"/>', 'gold', 1.5),
+  wrench: sil('<path d="M30 6C24 6 20 11 21 17L7 31C5 33 5 37 7 39L9 41C11 43 15 43 17 41L31 27C37 28 42 24 42 18L36 22L30 20L28 14L32 8C31 7 31 6 30 6Z"/>', 'silver') + hl('<circle cx="12" cy="36" r="2.5"/>', 0.8),
   coin: sil('<circle cx="24" cy="24" r="18"/>', 'gold') + stroke('M24 14V34', '#b36b00', 3) + hl('<circle cx="17" cy="16" r="4"/>', 0.6),
 };
 
