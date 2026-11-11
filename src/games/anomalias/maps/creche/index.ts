@@ -242,7 +242,7 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
   const outBox = new THREE.Box3(new THREE.Vector3(16.0, -1, -40), new THREE.Vector3(60, 30, 30));
   k.baker.add(21, 2.6, -2.6, '#ffd9a0', 1.3, 7, 'night', outBox, true); // poste do pátio
   k.baker.add(0.5, 0.7, -0.6, '#8a9aff', 0.45, 0, 'night', outBox, false); // lua (direcional)
-  k.baker.ambient.set('#1c2140');
+  k.baker.ambient.set('#141830');
   k.baker.ambientMain.set('#2a2328');
 
   /* ===================== RECEPÇÃO ===================== */
@@ -756,7 +756,7 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
   // nav: o centro do refeitório tem a mesinha → dois pontos livres
   k.navAdd('refeitorio', [[11.4, -0.9], [11.3, 2.6], [9.0, 2.6]]);
   return k.finish({ pos: { x: 2.5, y: 0, z: 4.6 }, yaw: 0 }, {
-    env: { fog: '#0a0d22', fogNear: 14, fogFar: 42, sky: '#6a78b0', ground: '#2a2030', ambient: 0.3 },
+    env: { fog: '#0a0d22', fogNear: 14, fogFar: 42, sky: '#6a78b0', ground: '#2a2030', ambient: 0.55 },
     items: [
       { id: 'leite', color: '#ffffff', shape: 'drop' },
       { id: 'suco', color: '#ffb43a', shape: 'drop' },
@@ -1279,9 +1279,7 @@ function slotsAndTasks(k: MapKit, babies: Baby[], view: (room: string, x: number
         bt2.visible = s === 'fed';
       },
     });
-    k.npc('cadeirao_esq', 'refeitorio', 9.3, 0.74, 3.8, Math.PI, 'sit', { color: '#ffd27a', scale: 0.55, hat: 'bow' });
-    k.npc('cadeirao_dir', 'refeitorio', 11.5, 0.74, 3.8, Math.PI, 'sit', { color: '#9be8b4', scale: 0.55, hat: 'beanie' });
-    k.slot({ id: 'npc_cadeirao', room: 'refeitorio', object: new THREE.Group(), npc: 'cadeirao_esq', kinds: { face: [], move: [], color: [] } });
+    // (cadeirões laterais ficam vazios: o Bloop "sentado" do núcleo não cabe no assento de bebê)
   }
 
   // mamadeiras na prateleira (a mais / sumiram / leite roxo)

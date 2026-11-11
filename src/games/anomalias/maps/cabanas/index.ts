@@ -128,7 +128,7 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
   k.baker.add(-0.4, 0.75, -0.5, '#8aa0ff', 0.42, 0, 'night', undefined, false).ex = inside;
   // fogueira (fora)
   k.baker.add(-4.5, 0.6, -20.5, '#ff9a4a', 1.3, 6, 'night', undefined, false).ex = inside;
-  k.baker.ambient.set('#141c2c');
+  k.baker.ambient.set('#0e1420');
   k.baker.ambientMain.set('#2a2420');
 
   /* ===================== CHÃO, TRILHA ===================== */
@@ -411,7 +411,7 @@ async function build({ tier }: { tier: Tier }): Promise<MapBuild> {
   k.navAdd('trilha', [[-3.5, 8.0], [-8.4, 7.2], [-8.6, -6.6], [-2.0, -6.4], [-1.2, -8.6], [-0.2, -11.5], [0, -14], [0, -18], [0, -20.5], [0, -24], [0, -27], [0, -31], [0, -34.5], [0, -37.5]], true);
   k.navAdd('lareira', [[1.4, 0.0], [2.2, -3.2], [2.2, 3.0]]);
   return k.finish({ pos: { x: -3.5, y: 0, z: 3.6 }, yaw: 0 }, {
-    env: { fog: '#0a1220', fogNear: tier >= 2 ? 9 : 7, fogFar: tier >= 2 ? 40 : 32, sky: '#5a6a96', ground: '#1e2418', ambient: 0.3, outdoor: true },
+    env: { fog: '#0a1220', fogNear: tier >= 2 ? 9 : 7, fogFar: tier >= 2 ? 40 : 32, sky: '#5a6a96', ground: '#1e2418', ambient: 0.5, outdoor: true },
     items: [
       ...CABINS.map((c) => ({ id: 'chave' + c.n, color: c.col, shape: ({ star: 'star', moon: 'moon', drop: 'drop', sun: 'circle', heart: 'heart', leaf: 'triangle' } as const)[c.icon as 'star'] })),
       { id: 'lenha', color: '#8a5a32', shape: 'square' as const },
@@ -603,7 +603,7 @@ function buildCabin(k: MapKit, c: CabinInfo): CabinParts {
   k.place(guest, -1.55, 0, 0.4, -Math.PI / 2);
   guest.visible = false;
   // caroço debaixo da colcha (alguém dormindo)
-  const lump = k.part((g) => g('fabric').sph(0.35, 0, 0, 0, c.quilt, 0.8, 0.45, 1.6, 12), 0, 0.6, 0.15, 0, bed);
+  const lump = k.part((g) => g('fabric').sph(0.4, 0, 0, 0, c.quilt, 1.0, 0.7, 1.9, 14), 0, 0.62, 0.1, 0, bed);
   lump.visible = false;
   // quadro sobre a cama
   const pk = (['lake', 'mountain', 'forest', 'boat', 'moose'] as const)[(c.n - 1) % 5];
