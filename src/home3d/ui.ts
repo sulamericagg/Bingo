@@ -3,7 +3,7 @@
  *  joystick + olhar, botões de ação grandes, paleta, avisos.
  *  Todo texto via t('home3d.*'); fonte via var(--font).
  * ============================================================ */
-import { lockOrientation, restorePortrait } from '../core/orientation';
+import { lockOrientation, reportFailure, restorePortrait } from '../core/orientation';
 import { FpsControls } from '../ui/touch';
 import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../ui/notify';
 import { t } from '../i18n';
@@ -255,10 +255,16 @@ export const playsPortrait = (): boolean => portraitChosen;
 export async function askLandscape(root: HTMLElement, skip: boolean): Promise<boolean> {
   portraitChosen = false;
   if (skip) return true;
-  void within(lockOrientation('landscape'), 1500, undefined);
-  // a rotação nativa leva um instante para refletir em innerWidth/innerHeight
-  if (!isLandscape()) await new Promise((r) => setTimeout(r, 450));
-  if (isLandscape()) return true;
+  // espera o plugin (com prazo) e confere de verdade; tenta de novo antes de mostrar o aviso
+  const fails: string[] = [];
+  for (const o of ['landscape', 'landscape-primary'] as const) {
+    const r = await within(lockOrientation(o), 1500, { ok: false, err: 'timeout' });
+    if (!r.ok) fails.push(`${o}:${r.err}`);
+    // a rotação nativa leva um instante para refletir em innerWidth/innerHeight
+    if (!isLandscape()) await new Promise((r) => setTimeout(r, 800));
+    if (isLandscape()) return true;
+  }
+  reportFailure('casa3d', fails, screen.orientation?.type ?? '');
   const box = el(
     'div',
     'h3-full h3-rotate',
