@@ -593,7 +593,7 @@ export class ProcSystem {
       rp.st.sackGold = 0;
       rp.addItem('saco', -this.sacks());
     }
-    if (wk.cargo.vol < 0.004) return;
+    if (wk.cargo.vol < 0.004 || wk.barrowDist() >= 4) return;
     const gold = wk.cargo.gold;
     const vol = wk.cargo.vol;
     // pepita: carrinhos ricos às vezes trazem uma (no garimpo de verdade é a fração grossa)
@@ -858,7 +858,8 @@ export class ProcSystem {
     }
     const pr = g.w!.map.plant;
     this.nearPlant = hudOn && !g.inMine && Math.hypot(pr.x - p.x, pr.z - p.z) < 14;
-    this.canPan = foot && !!wk && (wk.cargo.vol > 0.004 || (!g.guest && this.sacks() > 0)) && this.atWater();
+    // carrinho largado longe: a terra dele não chega na bateia
+    this.canPan = foot && !!wk && ((wk.cargo.vol > 0.004 && wk.barrowDist() < 4) || (!g.guest && this.sacks() > 0)) && this.atWater();
     if (this.canPan && g.sv && !g.sv.tips.includes('pan1')) {
       g.sv.tips.push('pan1');
       g.say(t('gb.p.tipPan', 'Água! Lave a terra na bateia: você pega mais ouro e acha pepitas!'));

@@ -20,6 +20,7 @@ import { Driver, MinerBot, type BotHost } from './bots';
 import { Fire } from './fire';
 import { Underground, UG_PRICE, CS as UGCS, WALL_H, type Tool } from './underground';
 import { Hud } from './hud';
+import { camBadge, camLabel, CamViews, type CamCtx, type CamView } from './camview';
 import { IC, type IconKey } from './icons';
 import { collide, Excavator, Heli, makeMachine, newCtl, Pickup, Truck, Worker, type Ctl, type Env, type Kind, type Machine, type Receiver } from './machines';
 import { buildExportTruck } from './models';
@@ -32,7 +33,7 @@ import { ProcSystem } from './proc/system';
 import { RpLayer } from './rp'; // RP: vida de garimpeiro (clima, necessidades, diesel, eventos, estrada)
 import { Repairs } from './repair'; // CONSERTOS: quebras raras + minijogos de oficina
 import { GbNet, newCode, type Me } from './net';
-import { awaitInit, KINDS, MpGuest, MpHost, PCOL, type GuestInit } from './mp';
+import { awaitInit, KINDS, MpGuest, MpHost, myAvatar, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { takePendingGarimpo } from './pending';
 import { consumePartySeat, partySeat } from '../../party/contract';
@@ -148,6 +149,11 @@ export class Garimpo implements MiniGameHandle, BotHost {
   private lookPitch = 0;
   private lookIdle = 0;
   private camMode = 0;
+  /** vista da câmera (1ª pessoa / 3ª atrás / de frente), salva por jogo */
+  private views = new CamViews('bw-camview-garimpo');
+  private viewKey = '';
+  /** cache: caixa local das máquinas (vista do capô) */
+  private hood = new WeakMap<Machine, THREE.Box3>();
   // lavadora / exportação
   private plantSpin = 0;
   get plantSpinK(): number {
@@ -560,6 +566,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     const mp = new MpGuest(this, net);
     this.mp = mp;
     mp.setPeers(init.peers);
+    const myAv = myAvatar(); // PAPER: meu avatar montado para os outros verem
+    if (myAv) mp.action('av', { a: myAv });
     net.onClose((why) => {
       if (this.mp !== mp) return;
       notify(why === 'hostLeft' ? t('gb.mp.hostLeft', 'O anfitrião saiu') : t('gb.mp.lost2', 'A conexão caiu'), { icon: 'cloud-off', kind: 'bad', ms: 4000 });
@@ -676,6 +684,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     wk.cargo.vol = s.worker.vol;
     wk.cargo.gold = s.worker.gold;
     w.scene.add(wk.group);
+    if (s.barrow && s.barrow.length >= 3 && !guest) wk.dropAt(s.barrow[0], s.barrow[1], s.barrow[2]); // CARRINHO largado
     this.cur = wk;
     if (s.driving >= 0 && this.ms[s.driving] && !guest) this.enter(this.ms[s.driving]);
     this.fire = new Fire(w, s);
@@ -701,9 +710,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
         sfx.click();
       },
       cam: () => {
-        this.camMode = (this.camMode + 1) % 3;
+        const v = this.views.cycle(this.camCtx());
+        this.lookYaw = 0;
+        this.lookPitch = 0;
+        this.syncView();
+        this.toast(camLabel(v));
+        if (this.inMine) this.mineCamera(0, true);
+        else this.snapCam();
         sfx.click();
       },
+      barrow: () => this.toggleBarrow(),
       mode: () => this.toggleExpert(),
       detector: () => {
         this.detOn = !this.detOn;
@@ -884,8 +900,30 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.lookPitch = Math.max(-0.3, Math.min(0.5, this.lookPitch + dPitch));
       this.lookIdle = 0;
     } else this.lookIdle += dt;
+    ug.cam = cam;
+    const view = this.curView();
+    if (view === 'fp') {
+      // 1ª pessoa: arrastar gira o mineiro; olhos na altura do Bloop
+      ug.yaw -= dYaw;
+      this.camYaw = ug.yaw;
+      const p = ug.pos;
+      const ex = p.x - Math.sin(ug.yaw) * 0.1;
+      const ez = p.z - Math.cos(ug.yaw) * 0.1;
+      this.camPos.set(ex, 1.2, ez);
+      cam.position.copy(this.camPos);
+      const pd = 0.28 + this.lookPitch * 0.9;
+      cam.lookAt(ex + Math.sin(ug.yaw) * Math.cos(pd), 1.2 - Math.sin(pd), ez + Math.cos(ug.yaw) * Math.cos(pd));
+      ug.setView(cam.position, _v.set(p.x + Math.sin(ug.yaw) * 2, 1.1, p.z + Math.cos(ug.yaw) * 2));
+      return;
+    }
+    if (view === 'front') {
+      // de frente: a câmera fica na frente do mineiro, olhando para ele
+      const want = ug.yaw + Math.PI;
+      const d = Math.atan2(Math.sin(want - this.camYaw), Math.cos(want - this.camYaw));
+      this.camYaw += snap ? d : d * Math.min(1, dt * 3);
+    }
     // andando: a câmera volta devagar para trás do mineiro
-    if (ug.moving && this.lookIdle > 1.2) {
+    else if (ug.moving && this.lookIdle > 1.2) {
       const d = Math.atan2(Math.sin(ug.yaw - this.camYaw), Math.cos(ug.yaw - this.camYaw));
       this.camYaw += d * Math.min(1, dt * 1.4);
     }
@@ -1012,6 +1050,10 @@ export class Garimpo implements MiniGameHandle, BotHost {
       return;
     }
     if (this.cur === this.worker && this.nearPortal()) {
+      if (!this.worker!.held) {
+        notify(t('gb.bar.mine', 'Pegue o carrinho antes de entrar na mina'), { icon: 'warning', kind: 'warn' });
+        return;
+      }
       this.enterMine();
       return;
     }
@@ -1105,6 +1147,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.played += dt;
     const ctl = this.paused ? this.idleCtl : hud.read(dt);
     this.rp?.pre(dt, ctl); // RP
+    this.syncView();
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     // ferramentas e entradas (por quadro)
@@ -1209,6 +1252,7 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.played += dt;
     const ctl = this.paused ? this.idleCtl : this.hud!.read(dt);
     this.rp?.pre(dt, ctl); // RP
+    this.syncView();
     this.env.camYaw = this.camYaw;
     const cur = this.cur!;
     mp.frame(dt);
@@ -1275,8 +1319,9 @@ export class Garimpo implements MiniGameHandle, BotHost {
       det: det === null ? null : this.detV,
       arrow,
       canEnter: this.inMine ? Math.hypot(this.ug!.pos.x - this.ug!.cx(this.ug!.entrance), this.ug!.pos.z - this.ug!.cz(this.ug!.entrance)) < UGCS * 2.3 : cur === this.worker ? !!this.nearMachine() || this.nearPortal() : false,
-      hot2: (nearHopper && cur.fill > 0.01) || (cur === this.worker && cur.fill > 0.01 && !!this.bedNear()),
+      hot2: (nearHopper && cur.fill > 0.01 && (cur !== this.worker || this.worker.held)) || (cur === this.worker && this.worker.held && cur.fill > 0.01 && !!this.bedNear()),
       water: cur === this.worker && (this.worker!.water > 0 || this.atWater()),
+      barrow: cur === this.worker && !this.inMine ? (this.worker!.held ? 'drop' : this.worker!.canGrab() ? 'grab' : 'far') : null,
     });
     // partículas, terreno
     w.clods.update(dt, w.T, w.waterY);
@@ -1297,10 +1342,118 @@ export class Garimpo implements MiniGameHandle, BotHost {
   }
   private bedNear(): Machine | null {
     const wk = this.worker!;
-    const fx = wk.group.position.x + Math.sin(wk.group.rotation.y) * 1.6;
-    const fz = wk.group.position.z + Math.cos(wk.group.rotation.y) * 1.6;
-    for (const m of this.ms) if ((m instanceof Truck || m instanceof Pickup) && m.inBed(_v.set(fx, wk.group.position.y + 1, fz), 0.9)) return m;
+    // boca da caçamba do carrinho de mão
+    const fx = wk.lipW.x;
+    const fz = wk.lipW.z;
+    for (const m of this.ms) if ((m instanceof Truck || m instanceof Pickup) && m.inBed(_v.set(fx, Math.max(wk.lipW.y + 0.3, wk.group.position.y + 1), fz), 0.9)) return m;
     return null;
+  }
+
+  /* ---------------- CARRINHO: largar / pegar ---------------- */
+  private toggleBarrow(): void {
+    const wk = this.worker;
+    if (!wk || this.cur !== wk || this.inMine) return;
+    if (wk.held) {
+      wk.dropBarrow();
+      sfx.thunk();
+      tap('light');
+      if (!this.sv!.tips.includes('bar-drop')) {
+        this.sv!.tips.push('bar-drop');
+        this.say(t('gb.bar.tipDrop', 'Carrinho no chão! Ande livre e cave perto dele para encher. Perto dele, toque de novo para pegar.'));
+      }
+    } else if (wk.canGrab()) {
+      wk.grabBarrow(this.w);
+      sfx.click();
+      tap('light');
+    } else {
+      notify(t('gb.bar.far', 'O carrinho ficou a {n} m. Vá até ele!', { n: Math.round(wk.barrowDist()) }), { icon: 'warning' });
+      return;
+    }
+    if (this.mp instanceof MpGuest) this.mp.action('barrow', { b: wk.netBarrow() });
+  }
+
+  /* ---------------- vista da câmera ---------------- */
+  private camCtx(): CamCtx {
+    const c = this.cur;
+    if (this.inMine || !c || c === this.worker) return 'foot';
+    return c instanceof Heli ? 'heli' : 'veh';
+  }
+  private curView(): CamView {
+    return this.views.get(this.camCtx());
+  }
+  /** aplica a vista: 1ª pessoa esconde o Bloop; 1ª e de frente usam controle "tanque" */
+  private syncView(): void {
+    const v = this.curView();
+    const wk = this.worker;
+    const foot = this.cur === wk;
+    if (wk) {
+      wk.fp = foot && v === 'fp' && !this.inMine;
+      wk.tank = foot && v !== 'back';
+    }
+    if (this.ug) {
+      this.ug.fp = this.inMine && v === 'fp';
+      this.ug.tank = this.inMine && v !== 'back';
+    }
+    const k = v + this.camCtx();
+    if (k !== this.viewKey) {
+      this.viewKey = k;
+      this.hud?.setCamBadge(camBadge(v), camLabel(v));
+    }
+  }
+  /** 1ª pessoa: olhos do Bloop (a pé) ou capô/cabine (máquinas) */
+  private fpCamera(dt: number, c: Machine): void {
+    const cam = this.w!.camera;
+    const T = this.w!.T;
+    if (c instanceof Worker) {
+      // arrastar gira o corpo (o carrinho vai junto); para cima/baixo olha
+      c.group.rotation.y += this.lookYaw;
+      this.lookYaw = 0;
+      const yaw = c.group.rotation.y;
+      this.camYaw = yaw;
+      const p = c.group.position;
+      // olhos um pouco atrás do centro: pegadores e mãos aparecem embaixo, a caçamba na frente
+      const ex = p.x - Math.sin(yaw) * 0.12;
+      const ez = p.z - Math.cos(yaw) * 0.12;
+      const ey = Math.max(p.y + 1.18, T.heightAt(ex, ez) + 0.9);
+      this.camPos.set(ex, ey, ez);
+      const pd = 0.32 + this.lookPitch * 0.9 - (c.grade || 0) * 0.35;
+      cam.position.copy(this.camPos);
+      cam.lookAt(ex + Math.sin(yaw) * Math.cos(pd), ey - Math.sin(pd), ez + Math.cos(yaw) * Math.cos(pd));
+      this.w!.follow(p.x, p.z);
+      this.w!.veg?.occlude(ex, ez, ex + Math.sin(yaw) * 3, ez + Math.cos(yaw) * 3);
+      this.water?.camFx(cam, dt);
+      return;
+    }
+    // máquina: em cima do capô/cabine, olhando para a frente da máquina (+ o arrasto)
+    let box = this.hood.get(c);
+    if (!box) {
+      const g = c.group;
+      const pp = g.position.clone();
+      const qq = g.quaternion.clone();
+      g.position.set(0, 0, 0);
+      g.quaternion.identity();
+      g.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(g);
+      g.position.copy(pp);
+      g.quaternion.copy(qq);
+      g.updateMatrixWorld(true);
+      this.hood.set(c, box);
+    }
+    if (this.lookIdle > 2.5) this.lookYaw *= 1 - Math.min(1, dt * 1.5);
+    c.group.updateMatrixWorld();
+    const exc = c instanceof Excavator;
+    // escavadeira: cabine gira com a casa
+    const yaw = c.yaw() + c.cam.yawOff + this.lookYaw;
+    if (exc) _v.set(0, Math.min(box.max.y * 0.62, 2.9), 0).applyMatrix4(c.group.matrixWorld).addScaledVector(_v2.set(Math.sin(yaw), 0, Math.cos(yaw)), 0.5);
+    else _v.set(0, box.max.y + 0.3, box.max.z * 0.3).applyMatrix4(c.group.matrixWorld);
+    this.camPos.copy(_v);
+    _v2.set(0, 0, 1).applyQuaternion(c.group.quaternion);
+    const slope = Math.max(-0.5, Math.min(0.5, _v2.y));
+    const pd = 0.12 + this.lookPitch * 0.8 - slope;
+    cam.position.copy(this.camPos);
+    cam.lookAt(_v.x + Math.sin(yaw) * Math.cos(pd), _v.y - Math.sin(pd), _v.z + Math.cos(yaw) * Math.cos(pd));
+    this.w!.follow(c.pos.x, c.pos.z);
+    this.water?.camFx(cam, dt);
   }
 
   private arrowTo(x: number, z: number, icon: IconKey): { a: number; icon: IconKey; dist: number } {
@@ -1486,14 +1639,20 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.lookPitch = Math.max(-0.35, Math.min(0.6, this.lookPitch + dPitch));
       this.lookIdle = 0;
     } else this.lookIdle += dt;
+    const view = this.curView();
+    if (view === 'fp' && !(c instanceof Heli)) {
+      this.fpCamera(dt, c);
+      return;
+    }
+    const front = view === 'front';
     const moving = c.veh ? Math.abs(c.veh.speed) > 1.5 : c instanceof Worker ? c.speedNow > 0.5 : false;
     if (this.lookIdle > 2.5 && moving) {
       this.lookYaw *= 1 - Math.min(1, dt * 1.5);
       this.lookPitch *= 1 - Math.min(1, dt * 1.5);
     }
     // o garimpeiro e o helicóptero: câmera só segue devagar (andam relativos à tela)
-    const free = c instanceof Worker || c instanceof Heli;
-    let want = c.yaw() + c.cam.yawOff;
+    const free = (c instanceof Worker || c instanceof Heli) && !front;
+    let want = c.yaw() + c.cam.yawOff + (front ? Math.PI : 0);
     // dando ré até a moega: câmera de lado mostra caminhão e moega juntos
     if (c instanceof Truck && c.veh && (c.veh.gear < 0 || c.tilt > 0.1) && c.pos.distanceTo(this.hopperPos(_v2)) < 22) want += 1.15;
     if (free) {
@@ -1509,12 +1668,12 @@ export class Garimpo implements MiniGameHandle, BotHost {
       this.camYaw += this.lookYaw;
       this.lookYaw = 0;
     }
-    const mul = [1, 1.6, 0.72][this.camMode];
+    const mul = [1, 1.6, 0.72][this.camMode] * (front && c instanceof Worker ? 0.8 : 1);
     const dist = c.cam.dist * mul;
-    const hgt = c.cam.height * mul * (1 + this.lookPitch * 1.4);
+    const hgt = c.cam.height * mul * (front ? 0.55 : 1) * (1 + this.lookPitch * 1.4);
     const p = c.pos;
     // a pé: mira um pouco à frente (o carrinho de mão aparece na tela)
-    const fwd = c instanceof Worker ? 1.3 : 0;
+    const fwd = c instanceof Worker ? (front ? 0.3 : 1.3) : 0;
     const tx = p.x + Math.sin(c.yaw()) * fwd;
     const ty = p.y + c.cam.look;
     const tz = p.z + Math.cos(c.yaw()) * fwd;
@@ -1832,6 +1991,8 @@ export class Garimpo implements MiniGameHandle, BotHost {
     s.machines = this.ms.map((m) => ({ kind: m.kind, x: m.pos.x, z: m.pos.z, yaw: m.yaw(), vol: m.cargo.vol, gold: m.cargo.gold }));
     const wk = this.worker!;
     s.worker = { x: wk.group.position.x, z: wk.group.position.z, yaw: wk.group.rotation.y, vol: wk.cargo.vol, gold: wk.cargo.gold };
+    if (wk.held) delete s.barrow;
+    else s.barrow = [wk.bx, wk.bz, wk.by].map((v) => Math.round(v * 100) / 100);
     s.driving = this.cur && this.cur !== wk ? this.ms.indexOf(this.cur) : -1;
     if (this.inMine) {
       const p = this.w!.portal;

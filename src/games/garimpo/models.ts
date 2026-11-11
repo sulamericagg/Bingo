@@ -643,32 +643,9 @@ export function buildWorker(shirt = C.shirt): WorkerParts {
   const legR = limb(-0.11, 0.8, 0.74, 0.16, C.jeans, 0x4a3020, true);
   const armL = limb(0.29, 1.42, 0.6, 0.12, shirt, C.skin, false);
   const armR = limb(-0.29, 1.42, 0.6, 0.12, shirt, C.skin, false);
-  // carrinho de mão (na frente, maior e visível)
-  const barrow = new THREE.Group();
-  const bk = new Kit({ y: 0.3, k: 0.5 });
-  const tray = new THREE.CylinderGeometry(0.62, 0.36, 0.42, lod() ? 8 : 16, 1, true);
-  tray.scale(1, 1, 1.35);
-  bk.add(tray, C.red, 0, 0.66, 1.0);
-  bk.add(new THREE.CircleGeometry(0.36, lod() ? 8 : 16).rotateX(-Math.PI / 2), C.red, 0, 0.45, 1.0, 0, 0, 0, 1, 1, 1.35);
-  bk.cyl(0.64, 0.64, 0.04, C.dark, 0, 0.87, 1.0, 16, 0, 0, 0);
-  bk.use('shiny');
-  bk.cyl(0.025, 0.025, 1.6, C.steel, 0.3, 0.5, 0.75, 6, Math.PI / 2 - 0.15);
-  bk.cyl(0.025, 0.025, 1.6, C.steel, -0.3, 0.5, 0.75, 6, Math.PI / 2 - 0.15);
-  bk.use('paint');
-  bk.cyl(0.03, 0.03, 0.15, C.black, 0.3, 0.38, -0.02, 6, Math.PI / 2);
-  bk.cyl(0.03, 0.03, 0.15, C.black, -0.3, 0.38, -0.02, 6, Math.PI / 2);
-  bk.add(new THREE.TorusGeometry(0.2, 0.06, 6, lod() ? 10 : 16), C.rubber, 0, 0.24, 1.6, 0, Math.PI / 2, 0);
-  bk.cylX(0.08, 0.1, C.steel, 0, 0.24, 1.6, 8);
-  bk.cyl(0.02, 0.02, 0.42, C.steelD, 0.22, 0.24, 0.62, 6);
-  bk.cyl(0.02, 0.02, 0.42, C.steelD, -0.22, 0.24, 0.62, 6);
-  barrow.add(bk.build());
-  const hk = new Kit();
-  hk.ball(0.34, C.dirt, 0, 0, 0, 1.4, 0.45, 1.75, 1);
-  const heap = new THREE.Mesh(hk.geometry(), MAT.paint);
-  heap.position.set(0, 0.78, 1.0);
-  heap.visible = false;
-  barrow.add(heap);
-  root.add(barrow);
+  // carrinho de mão: objeto à parte (o garimpeiro empurra ou larga no chão)
+  const { root: barrow, heap } = buildBarrow();
+  barrow.visible = true;
   const shovel = new THREE.Group();
   const sk = new Kit();
   sk.cyl(0.025, 0.025, 1.2, C.woodL, 0, 0, 0.4, 6, Math.PI / 2);
@@ -685,6 +662,93 @@ export function buildWorker(shirt = C.shirt): WorkerParts {
   bucket.visible = false;
   root.add(bucket);
   return { root, legL, legR, armL, armR, barrow, heap, shovel, bucket };
+}
+
+/* --------------------------- carrinho de mão --------------------------- */
+/** medidas do carrinho (origem = onde a roda toca o chão, +Z = frente, pegadores em −Z) */
+export const BW = {
+  /** raio da roda (eixo fica nesta altura) */
+  wheelR: 0.26,
+  /** pegadores (centro entre as duas mãos) */
+  grip: new THREE.Vector3(0, 0.5, -1.7),
+  /** meia distância entre os pegadores */
+  gripX: 0.3,
+  /** pé de apoio (parado no chão) */
+  leg: new THREE.Vector3(0, 0, -1.15),
+  /** fundo da caçamba */
+  tray: new THREE.Vector3(0, 0.46, -0.7),
+  /** boca da caçamba (onde a terra cai ao despejar) */
+  lip: new THREE.Vector3(0, 0.82, 0.12),
+};
+/** cilindro entre dois pontos (para o Kit) */
+function barGeo(ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number): THREE.BufferGeometry {
+  const a = new THREE.Vector3(ax, ay, az);
+  const b = new THREE.Vector3(bx, by, bz);
+  const d = b.clone().sub(a);
+  const g = new THREE.CylinderGeometry(r, r, d.length(), 6);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  g.translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+  return g;
+}
+/** vira a malha do avesso (parede de dentro da caçamba: normais para dentro, sem ficar preta) */
+function inside(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const n = g.index ? g.toNonIndexed() : g;
+  if (n !== g) g.dispose();
+  const P = n.getAttribute('position') as THREE.BufferAttribute;
+  const N = n.getAttribute('normal') as THREE.BufferAttribute;
+  for (let i = 0; i < P.count; i += 3) {
+    for (const A of [P, N]) {
+      const x = A.getX(i + 1), y = A.getY(i + 1), z = A.getZ(i + 1);
+      A.setXYZ(i + 1, A.getX(i + 2), A.getY(i + 2), A.getZ(i + 2));
+      A.setXYZ(i + 2, x, y, z);
+    }
+  }
+  for (let i = 0; i < N.count; i++) N.setXYZ(i, -N.getX(i), -N.getY(i), -N.getZ(i));
+  return n;
+}
+/** carrinho de mão: caçamba aberta (por fora vermelha, por dentro metal gasto — antes uma
+ *  tampa escura cobria a boca e a parede de dentro sumia: "caçamba preta"), roda na frente,
+ *  dois cabos com pegadores e pés de apoio. Parado no chão: roda e pés tocam y = 0. */
+export function buildBarrow(): { root: THREE.Group; heap: THREE.Mesh } {
+  const root = new THREE.Group();
+  const B = BW;
+  const bk = new Kit({ y: 0.25, k: 0.35 });
+  const ty = 0.66;
+  const tz = B.tray.z;
+  const seg = lod() ? 10 : 18;
+  const shell = new THREE.CylinderGeometry(0.6, 0.36, 0.4, seg, 1, true);
+  shell.scale(1, 1, 1.3);
+  bk.add(shell, C.red, 0, ty, tz);
+  const inner = new THREE.CylinderGeometry(0.585, 0.35, 0.39, seg, 1, true);
+  inner.scale(1, 1, 1.3);
+  bk.add(inside(inner), 0x8f3a2c, 0, ty + 0.005, tz);
+  // fundo: por dentro (para cima) e por baixo (para baixo)
+  bk.add(new THREE.CircleGeometry(0.35, seg).rotateX(-Math.PI / 2), 0x7d3326, 0, ty - 0.19, tz, 0, 0, 0, 1, 1, 1.3);
+  bk.add(new THREE.CircleGeometry(0.36, seg).rotateX(Math.PI / 2), C.red, 0, ty - 0.2, tz, 0, 0, 0, 1, 1, 1.3);
+  // borda enrolada (aro)
+  bk.use('shiny');
+  bk.add(new THREE.TorusGeometry(0.6, 0.028, 5, seg * 2).rotateX(Math.PI / 2), C.steelD, 0, ty + 0.2, tz, 0, 0, 0, 1, 1, 1.3);
+  // cabos: do garfo da roda até os pegadores, por baixo da caçamba
+  for (const s of [1, -1]) {
+    bk.add(barGeo(s * 0.13, B.wheelR, 0.04, s * B.gripX, B.grip.y, B.grip.z - 0.08, 0.026), C.steel);
+    // pé de apoio
+    bk.add(barGeo(s * 0.25, 0.44, B.leg.z + 0.03, s * 0.27, 0.0, B.leg.z - 0.04, 0.022), C.steel);
+    bk.add(barGeo(s * 0.25, 0.42, B.leg.z + 0.02, s * 0.2, 0.42, tz - 0.05, 0.016), C.steel);
+  }
+  bk.cylX(0.025, 0.3, C.steel, 0, B.wheelR, 0, 6); // eixo
+  bk.use('paint');
+  for (const s of [1, -1]) bk.add(barGeo(s * B.gripX, B.grip.y + 0.004, B.grip.z + 0.14, s * B.gripX, B.grip.y - 0.01, B.grip.z - 0.12, 0.036), C.rubber);
+  // roda
+  bk.add(new THREE.TorusGeometry(0.2, 0.06, 6, lod() ? 10 : 16), C.rubber, 0, B.wheelR, 0, 0, Math.PI / 2, 0);
+  bk.cylX(0.1, 0.09, C.yellowD, 0, B.wheelR, 0, 10);
+  root.add(bk.build());
+  const hk = new Kit();
+  hk.ball(0.34, C.dirt, 0, 0, 0, 1.3, 0.42, 1.6, 1);
+  const heap = new THREE.Mesh(hk.geometry(), MAT.paint);
+  heap.position.set(0, ty - 0.02, tz);
+  heap.visible = false;
+  root.add(heap);
+  return { root, heap };
 }
 
 /* --------------------------- prédios --------------------------- */
