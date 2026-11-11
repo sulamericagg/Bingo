@@ -28,13 +28,16 @@
       { "name": "CHAMP", "class_name": "Championship" },
       // Casa, Planeta & Amigos (docs/CASA-AMIGOS.md): festas por anfitrião + amizades.
       { "name": "PARTY", "class_name": "PartyRoom" },
-      { "name": "FRIENDS", "class_name": "FriendsHub" }
+      { "name": "FRIENDS", "class_name": "FriendsHub" },
+      // Pouso Forçado online: sala de voo por código (relé) + convites entre amigos.
+      { "name": "FLIGHT", "class_name": "FlightRoom" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RaceRoom"] },
     { "tag": "v2-social", "new_sqlite_classes": ["PresenceRoom", "ChatRoom", "Championship"] },
-    { "tag": "v3-home", "new_sqlite_classes": ["PartyRoom", "FriendsHub"] }
+    { "tag": "v3-home", "new_sqlite_classes": ["PartyRoom", "FriendsHub"] },
+    { "tag": "v4-voo", "new_sqlite_classes": ["FlightRoom"] }
   ],
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }]
   // O segredo ADMIN_PASSWORD NÃO fica aqui: configure em
