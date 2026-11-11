@@ -1249,7 +1249,7 @@ export class DisasterGame implements MiniGameHandle {
     // câmera lenta nos últimos instantes
     const slow = this.phase === 'disaster' && this.phaseDur - this.phaseT < 1.4 && this.dIndex === this.sc.disasters.length - 1;
     this.timeScale += ((slow ? 0.35 : 1) - this.timeScale) * Math.min(1, rdt * 6);
-    const dt = rdt * this.timeScale * (this.sc.mod === 'rapido' && this.phase === 'disaster' ? 1.2 : 1);
+    const dt = rdt * this.timeScale * ((this.sc.tune?.turbo || this.sc.mod === 'rapido') && this.phase === 'disaster' ? 1.2 : 1);
     if (this.phase !== 'end' && this.phase !== 'intro') this.roundT += rdt;
     if (this.phaseT >= this.phaseDur) this.nextPhase();
 
