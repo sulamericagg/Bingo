@@ -79,7 +79,7 @@ export function offlineStory(idea: string): StorySpec {
   const B = 1;
   const C = 2;
   const s1: StoryBeat[] = [
-    { who: -1, text: t('cin.gen.open', 'Era uma vez, em {place}...', { place: place.toLowerCase() }), cam: 'wide' },
+    { who: -1, text: t('cin.gen.open2', '{place}: era uma vez...', { place: `${BACKGROUNDS.find((b) => b.id === bg)?.glyph ?? ''} ${place}`.trim() }), cam: 'wide' },
     { who: A, text: t('cin.gen.hi', 'Oi, gente! Hoje vai ser um dia incrível!'), expr: 'happy', pose: 'wave', move: 'enter' },
   ];
   const s2: StoryBeat[] = [];
