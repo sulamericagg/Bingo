@@ -673,6 +673,13 @@ export class World {
   get treeMaterial(): THREE.Material {
     return this.treeMat;
   }
+  /** tufos de folhas da espécie (null = sem) e o material deles — para a árvore caindo */
+  treeCards(sp: number): THREE.BufferGeometry | null {
+    return this.nq.cards ? (this.nearC[sp]?.mesh.geometry ?? null) : null;
+  }
+  get cardMaterial(): THREE.Material {
+    return this.cardMat;
+  }
 
   /** colisão simples com troncos: empurra (x,z) para fora; devolve true se encostou */
   pushOutTrees(p: { x: number; z: number }, rad: number, y = -1e9): boolean {

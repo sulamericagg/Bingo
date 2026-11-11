@@ -13,3 +13,4 @@ export { Mesher, blob, canopy, trunk, branch } from './mesher';
 export { fbm2, vnoise2, vnoise3, hash2, hash3, rng } from './noise';
 export { natureLeafCards, leafCardMat, leafAtlas } from './leaves';
 export { TERRAIN_LAYERS, TL, NL, natureTexture, natureTexCanvas, natureTextureArray, natureTexMeans, terrainMaterial, splatAttributes, setSplat, copySplat, lerpSplat, markSplat, type TerrainLayer, type TerrainOpts } from './textures';
+export { LeafBurst, hitTreeShake, natureHit, natureTick } from './fx';

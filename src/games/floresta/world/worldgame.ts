@@ -13,7 +13,7 @@ import { reportRun } from '../../../hub/registry';
 import type { QualitySettings, Tier } from '../../../core/quality';
 import { short } from '../data';
 import { handTexture, lambert, myHandColors, toolModel, windTime } from '../fps/models';
-import { SkyDome, natureAnisotropy } from '../../../3d/nature';
+import { LeafBurst, SkyDome, hitTreeShake, natureAnisotropy, natureTick } from '../../../3d/nature';
 import { Forearm } from '../../../3d/common/hand';
 import { CH, WATER_Y, type Camp } from './gen';
 import { WBIOMES, WSPECIES } from './biomes';
@@ -36,6 +36,9 @@ import { forestSolo, setForestSolo } from '../touchcfg';
 
 const TAU = Math.PI * 2;
 const EYE = 1.6;
+/** altura do corte (o toco fica abaixo) e duração do "range" antes de tombar */
+const CUT_H = 0.45;
+const CREAK = 0.4;
 const REACH = 2.9;
 const MAX_LOGS = 260;
 const ON_FOOT_CAP = 4;
@@ -112,6 +115,14 @@ interface Fall {
   rare: number;
   scale: number;
   byPet: boolean;
+  /** tempo desde o último estalo (fase de rachar, 0..CREAK) */
+  t: number;
+  /** já bateu no chão (quique) */
+  hit: boolean;
+  /** tempo depois do impacto (vira toras ao assentar) */
+  settle: number;
+  /** ângulo final (deitada no chão, com a inclinação do terreno) */
+  angMax: number;
 }
 interface Tnt {
   o: THREE.Object3D;
@@ -200,6 +211,8 @@ export class WorldGame {
   hemi: THREE.HemisphereLight;
   /** céu em degradê (topo do bioma → horizonte = neblina) */
   private sky: SkyDome;
+  /** folhas voando (corte de árvore) */
+  private leaves: LeafBurst;
   private skyTop = new THREE.Color(0x6ab8f0);
   private raf = 0;
   private last = 0;
@@ -302,6 +315,7 @@ export class WorldGame {
     this.scene.add(this.hemi);
     this.sky = new SkyDome();
     this.scene.add(this.sky.mesh);
+    this.leaves = new LeafBurst(this.scene, 220);
     this.sun = new THREE.DirectionalLight(0xfff0d0, 1.75);
     this.sun.castShadow = this.q.shadows;
     this.sun.shadow.mapSize.set(1024, 1024);
@@ -314,6 +328,7 @@ export class WorldGame {
     this.scene.add(this.sun, this.sun.target);
 
     this.world = new World(this.scene, this.save, this.q, opts.tier);
+    this.leaves.ground = (x, z) => this.world.heightAt(x, z);
     this.world.onCampLoad = (c, ch) => this.buildCamp(c, ch);
     this.phys = new Phys();
     this.world.vox.phys = this.phys;
@@ -849,6 +864,7 @@ export class WorldGame {
   step(dt: number): void {
     this.time += dt;
     windTime.value = this.time;
+    natureTick(dt);
     const c = this.hud.ctl;
     // olhar suavizado (alvo ← dedo; câmera persegue o alvo)
     // o módulo compartilhado já suaviza (sub-quadro, sem atraso de lerp)
@@ -886,6 +902,7 @@ export class WorldGame {
     this.world.update(this.cx(), this.cz(), dt);
     this.world.vox.update(this.cx(), this.driving >= 0 ? this.vehs[this.driving].y : this.py, this.cz(), dt);
     this.stepFalls(dt);
+    this.leaves.update(dt);
     this.stepLogs(dt);
     this.stepTnt(dt);
     this.stepPets(dt);
@@ -1127,6 +1144,9 @@ export class WorldGame {
     const p = this.world.treePos(tr, _v2);
     const s = WSPECIES[sp];
     this.burst(pet ? 3 : 7, p.x, p.y + 1.1, p.z, s.trunk, 3);
+    // a copa chacoalha e solta umas folhinhas
+    hitTreeShake(p.x, p.z, pet ? 0.5 : 1);
+    if (!pet) this.leaves.emit(4, p.x, p.y + s.h * this.world.treeScale(tr) * 0.7, p.z, s.h * 0.2, s.leaf, 1);
     if (!pet) {
       audio.tick(Math.floor(Math.random() * 3));
       tap('light');
@@ -1151,15 +1171,29 @@ export class WorldGame {
     const d = Math.hypot(dx, dz) || 1;
     const sp = this.world.treeSp(tr);
     const p = this.world.treePos(tr, _v2);
-    const mesh = new THREE.Mesh(this.world.treeGeo(sp), this.world.treeMaterial);
     const sc = this.world.treeScale(tr);
+    // a árvore cai inteira a partir do corte (o toco fica no chão desde já)
+    const mesh = new THREE.Mesh(this.world.treeGeo(sp), this.world.treeMaterial);
+    const cg = this.world.treeCards(sp);
+    if (cg) mesh.add(new THREE.Mesh(cg, this.world.cardMaterial));
     mesh.scale.setScalar(sc);
-    mesh.position.set(p.x, p.y - 0.1, p.z);
+    mesh.position.set(p.x, p.y + CUT_H * sc, p.z);
     mesh.castShadow = this.q.shadows;
     this.scene.add(mesh);
     this.world.hidden.add(key);
+    this.world.fell(tr);
     this.world.markTreesDirty();
-    this.falls.push({ mesh, ref: tr, x: p.x, y: p.y, z: p.z, dx: dx / d, dz: dz / d, ang: 0, angV: 0.2, sp, rare: this.world.treeRare(tr), scale: sc, byPet: pet });
+    // ângulo até deitar: 90° menos a subida do terreno à frente
+    const len = WSPECIES[sp].h * sc;
+    const fx = p.x + (dx / d) * len * 0.6;
+    const fz = p.z + (dz / d) * len * 0.6;
+    const rise = this.world.heightAt(fx, fz) + 0.5 - (p.y + CUT_H * sc);
+    const angMax = Math.PI / 2 - Math.atan2(rise, len * 0.6) * 0.9;
+    this.falls.push({ mesh, ref: tr, x: p.x, y: p.y, z: p.z, dx: dx / d, dz: dz / d, ang: 0, angV: 0, sp, rare: this.world.treeRare(tr), scale: sc, byPet: pet, t: 0, hit: false, settle: 0, angMax: Math.min(1.75, Math.max(1.1, angMax)) });
+    // estalo: lascas no corte
+    this.burst(14, p.x, p.y + CUT_H * sc, p.z, '#ffe2b0', 4.5);
+    this.burst(8, p.x, p.y + CUT_H * sc, p.z, WSPECIES[sp].trunk, 3.5);
+    hitTreeShake(p.x, p.z, 1.2);
     audio.crack();
     if (!pet) tap('medium');
   }
@@ -1167,27 +1201,66 @@ export class WorldGame {
   stepFalls(dt: number): void {
     for (let i = this.falls.length - 1; i >= 0; i--) {
       const f = this.falls[i];
-      f.angV += dt * (1.2 + f.ang * 3.5);
-      f.ang += f.angV * dt;
-      // eixo perpendicular à direção da queda
+      const s = WSPECIES[f.sp];
+      const len = s.h * f.scale;
+      f.t += dt;
+      if (f.t < CREAK) {
+        // range: tomba um pouquinho e treme antes de ir
+        const k = f.t / CREAK;
+        f.ang = k * 0.12 + Math.sin(f.t * 38) * 0.02 * (1 - k);
+      } else if (!f.hit) {
+        // queda com aceleração crescente (ease-in): começa devagar, despenca no fim
+        f.angV += dt * (0.9 + Math.sin(f.ang) * 5.5);
+        f.ang += f.angV * dt;
+        if (f.ang >= f.angMax) {
+          f.ang = f.angMax;
+          f.angV = -f.angV * 0.22; // quique da copa
+          f.hit = true;
+          const cx = f.x + f.dx * len * 0.68;
+          const cz = f.z + f.dz * len * 0.68;
+          const gy = this.world.heightAt(cx, cz);
+          this.leaves.emit(this.q.particles >= 0.8 ? 70 : 36, cx, gy + 0.8, cz, len * 0.22, s.leaf, 3.2);
+          this.leaves.emit(this.q.particles >= 0.8 ? 30 : 14, cx, gy + 1.2, cz, len * 0.25, s.leaf2, 2.2);
+          this.burst(22, cx, gy + 0.4, cz, WBIOMES[this.world.biomeAt(cx, cz)].dirt, 6);
+          const dd = Math.hypot(cx - this.px, cz - this.pz);
+          this.shake = Math.max(this.shake, Math.max(0, 0.45 - dd * 0.02));
+          audio.crack();
+          if (dd < 25) tap('heavy');
+        }
+      } else {
+        // quica e assenta
+        f.angV += dt * 9;
+        f.ang = Math.min(f.angMax, f.ang + f.angV * dt);
+        if (f.ang >= f.angMax && f.angV > 0) f.angV = -f.angV * 0.3;
+        f.settle += dt;
+      }
+      // eixo perpendicular à direção da queda (gira em volta do corte)
       _v.set(f.dz, 0, -f.dx);
-      f.mesh.quaternion.setFromAxisAngle(_v, Math.min(f.ang, Math.PI / 2));
-      if (f.ang < Math.PI / 2 - 0.05) continue;
-      // bateu no chão: vira toras
+      f.mesh.quaternion.setFromAxisAngle(_v, f.ang);
+      // depois de assentar: a copa se desfaz em folhas e o tronco vira toras
+      if (f.settle < 0.55) continue;
+      if (f.settle < 0.8) {
+        const k = 1 - (f.settle - 0.55) / 0.25;
+        f.mesh.scale.setScalar(f.scale * Math.max(0.05, 0.4 + k * 0.6));
+        continue;
+      }
       this.scene.remove(f.mesh);
       this.world.hidden.delete(this.world.treeKey(f.ref));
       this.petTrees.delete(this.world.treeKey(f.ref));
-      this.world.fell(f.ref);
-      const s = WSPECIES[f.sp];
       const n = s.logs * (f.rare ? 2 : 1);
-      const len = s.h * f.scale;
+      const base = f.y + CUT_H * f.scale;
       for (let k = 0; k < n; k++) {
-        const t0 = 0.2 + (k / Math.max(1, n)) * 0.6;
+        // toras ao longo do tronco deitado, pulando de leve e rolando
+        const t0 = 0.12 + ((k + 0.5) / n) * 0.5;
         const x = f.x + f.dx * len * t0;
         const z = f.z + f.dz * len * t0;
-        this.addLog(x, this.world.heightAt(x, z) + 0.6, z, (Math.random() - 0.5) * 2, 2 + Math.random() * 2, (Math.random() - 0.5) * 2, f.sp, s.value * (f.rare ? 3 : 1));
+        const y = Math.max(this.world.heightAt(x, z) + 0.45, base + Math.cos(f.angMax) * len * t0);
+        this.addLog(x, y, z, f.dz * (Math.random() - 0.5) * 3, 2.5 + Math.random() * 1.5, -f.dx * (Math.random() - 0.5) * 3, f.sp, s.value * (f.rare ? 3 : 1), Math.atan2(-f.dz, f.dx));
       }
-      this.burst(18, f.x + f.dx * len * 0.6, f.y + 0.6, f.z + f.dz * len * 0.6, s.leaf, 5);
+      const cx = f.x + f.dx * len * 0.68;
+      const cz = f.z + f.dz * len * 0.68;
+      this.leaves.emit(this.q.particles >= 0.8 ? 50 : 24, cx, this.world.heightAt(cx, cz) + 0.6, cz, len * 0.25, s.leaf, 2);
+      this.burst(18, f.x + f.dx * len * 0.4, base + 0.3, f.z + f.dz * len * 0.4, '#ffe2b0', 5);
       this.trees++;
       this.save.stats.trees++;
       this.save.bookTrees[f.sp] = (this.save.bookTrees[f.sp] ?? 0) + 1;
@@ -2242,6 +2315,7 @@ export class WorldGame {
     this.sb?.dispose();
     this.world.dispose();
     this.sky.dispose();
+    this.leaves.dispose();
     this.phys.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
