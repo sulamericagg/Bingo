@@ -1408,7 +1408,6 @@ export class Sandbox implements MundoAPI {
   private use(it: ItemDef | undefined, st: Stack | null): void {
     const g = this.g;
     const kind = it?.tool;
-    const tier = it?.tier ?? 0;
     const creative = this.mode === 'criativo';
     const tired = this.stam < 1 ? 1.6 : 1;
     // 0) bichos grandes (gerente): golpe em arco / tiro

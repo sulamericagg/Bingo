@@ -48,6 +48,9 @@ export interface FpTuning {
   camMargin: number;
   /** suavização vertical do olho (1/s) ao subir degraus/rampas. 0 = segue os pés na hora */
   eyeSmooth: number;
+  /** >0: o olho suaviza também no ar (pulo/queda sem "pulo" de câmera) e nunca fica mais longe
+   *  que isto dos pés (teleporte/queda longa puxam junto). 0 = desligado (comportamento original) */
+  eyeLag: number;
 }
 
 /** Cozinha Maluca — a referência ("anda bonito"). Valores IDÊNTICOS ao render3d original. */
@@ -75,6 +78,7 @@ export const FP_COZINHA: Readonly<FpTuning> = Object.freeze({
   recoilAmp: 0.012,
   camMargin: 0.34,
   eyeSmooth: 0,
+  eyeLag: 0,
 });
 
 /** Sobrevivência/exploração ao ar livre: mais massa (acelera e freia devagar), corrida, pulo, gravidade. */

@@ -34,6 +34,7 @@ import { iconURL } from './itemicons';
 import { ITEM } from './items';
 import { playIntro } from './intro';
 import { forestSolo, setForestSolo } from '../touchcfg';
+import { FpCamera, FpController, HeightGround, fpTuning, type FpCollider } from '../../../3d/fpkit';
 
 const TAU = Math.PI * 2;
 const EYE = 1.6;
@@ -222,10 +223,41 @@ export class WorldGame {
   private offs: (() => void)[] = [];
 
   // jogador
-  px = 0;
-  py = 0;
-  pz = 0;
-  vy = 0;
+  /** corpo a pé: andar compartilhado (src/3d/fpkit, preset 'survival') — px/py/pz/vy são o corpo do kit */
+  fp: FpController;
+  fpc: FpCamera;
+  get px(): number {
+    return this.fp.x;
+  }
+  set px(v: number) {
+    this.fp.x = v;
+  }
+  /** pés */
+  get py(): number {
+    return this.fp.y;
+  }
+  set py(v: number) {
+    this.fp.y = v;
+  }
+  get pz(): number {
+    return this.fp.z;
+  }
+  set pz(v: number) {
+    this.fp.z = v;
+  }
+  get vy(): number {
+    return this.fp.vy;
+  }
+  set vy(v: number) {
+    this.fp.vy = v;
+    if (v > 0) this.fp.grounded = false;
+  }
+  get onGround(): boolean {
+    return this.fp.grounded;
+  }
+  set onGround(v: boolean) {
+    this.fp.grounded = v;
+  }
   yaw = 0;
   pitch = -0.1;
   tYaw = 0;
@@ -279,7 +311,6 @@ export class WorldGame {
   private pBody: CANNON.Body;
   private mv: MoveOut = { ground: -Infinity, hit: false };
   private _pp = { x: 0, z: 0 };
-  onGround = true;
   private lantern: THREE.PointLight;
   under = 0;
   private biome = -1;
@@ -296,6 +327,12 @@ export class WorldGame {
   ) {
     this.save = opts.save ?? loadWorld();
     this.save.solo = forestSolo();
+    // andar = kit compartilhado (o mesmo da Cozinha), preset de sobrevivência ajustado para o mundo de blocos:
+    // passo de 1/2 bloco sem pular, bloco inteiro só pulando; olho suavizado em rampas/degraus (sem tremor)
+    const tune = fpTuning('survival', { speed: 5.0, accel: 11, decel: 13, sprintMul: 1, radius: 0.32, gravity: 24, jumpV: 8.1, airControl: 0.6, eye: EYE, eyeSmooth: 18, eyeLag: 0.9, bobAmp: 0.022, bobRate: 8.5, rollAmp: 0.006, camMargin: 0 });
+    const fcol: FpCollider = { isFree: (x, z, r) => this.bodyFree(x, z, r) };
+    this.fp = new FpController(tune, fcol, new HeightGround((x, z) => this.bodyFloor(x, z), { stepUp: 0.6, stepDown: 0.7, maxSlope: 1.0, probe: 0.3, bumpTol: 0.1 }));
+    this.fpc = new FpCamera(tune);
     this.q = wq(opts.tier);
     const r = new THREE.WebGLRenderer({ antialias: opts.tier >= 2, powerPreference: 'high-performance' });
     r.setPixelRatio(this.q.pr);
@@ -937,95 +974,72 @@ export class WorldGame {
   private walk(dt: number): void {
     const c = this.hud.ctl;
     const W = this.world;
-    const fx = -Math.sin(this.yaw);
-    const fz = -Math.cos(this.yaw);
-    const rx = Math.cos(this.yaw);
-    const rz = -Math.sin(this.yaw);
+    const fp = this.fp;
     const wl = W.waterLevel(this.px, this.pz);
     const swim = this.py < wl - 1.0;
     const fl = W.vox.matAt(this.px, this.py + 0.7, this.pz);
     const inAq = fl === VM.Agua;
     const inLava = fl === VM.Lava;
-    const sp = (swim || inAq ? 3 : 6.2) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
-    let mx = rx * c.mx + fx * -c.my;
-    let mz = rz * c.mx + fz * -c.my;
-    const len = Math.hypot(mx, mz);
-    if (len > 1) {
-      mx /= len;
-      mz /= len;
+    this.swimFloor = swim ? wl - 1.25 : -Infinity;
+    const T = fp.tune;
+    T.speed = (swim || inAq ? 2.6 : 5.0) * (this.held ? 0.85 : 1) * (this.sb?.slowed ? 0.55 : 1);
+    T.gravity = inAq || inLava ? 4 : 24;
+    T.jumpV = swim || inAq || inLava ? 3.2 : 8.1;
+    // cabeça batendo (teto de terreno, bloco ou construção)
+    const head = (y: number) => W.vox.dens(this.px, y, this.pz) > 0 || !!W.extraSolid?.(this.px, y, this.pz) || W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < y;
+    // direcional: x = direita, y = frente
+    fp.steer(dt, c.mx, -c.my, this.yaw);
+    if ((inAq || inLava) && (c.up || c.jump)) {
+      fp.vy = Math.min(fp.vy + 14 * dt, 3);
+      fp.grounded = false;
+    } else if (c.jump) fp.jump();
+    if (fp.vy > 0 && head(this.py + 1.85 + fp.vy * dt)) fp.vy = 0;
+    const x0 = fp.x;
+    const y0 = fp.y;
+    const z0 = fp.z;
+    const up = fp.vy > 0;
+    fp.move(dt);
+    // não atravessa teto: pulando, a cabeça bate; subindo rampa/degrau sem altura livre, o passo não acontece
+    if (fp.y > y0 + 1e-4 && head(fp.y + 1.82)) {
+      if (!up) {
+        fp.x = x0;
+        fp.z = z0;
+        fp.vx = fp.vz = 0;
+      }
+      fp.y = y0;
+      fp.vy = Math.min(0, fp.vy);
     }
-    // horizontal em passos curtos (não atravessa paredes finas)
-    const total = sp * dt * Math.min(1, len);
-    const n = Math.max(1, Math.ceil(total / 0.25));
-    const p = this._pp;
-    for (let k = 0; k < n; k++) {
-      const dx = (mx * sp * dt) / n;
-      const dz = (mz * sp * dt) / n;
-      if (!dx && !dz) break;
-      if (!this.blocked(this.px + dx, this.pz + dz, dx, dz)) {
-        this.px += dx;
-        this.pz += dz;
-      } else if (!this.blocked(this.px + dx, this.pz, dx, 0)) this.px += dx;
-      else if (!this.blocked(this.px, this.pz + dz, 0, dz)) this.pz += dz;
+    // já preso dentro de algo (veículo encostou, árvore nasceu): empurra para fora
+    if (!this.bodyFree(this.px, this.pz, T.radius * 0.9)) {
+      // primeiro tenta subir (chão mais alto que o pé) — até 1,2 m
+      for (let k = 1; k <= 12; k++) {
+        fp.y += 0.1;
+        if (this.bodyFree(this.px, this.pz, T.radius * 0.9)) break;
+        if (k === 12) fp.y -= 1.2;
+      }
     }
-    p.x = this.px;
-    p.z = this.pz;
-    W.pushOutTrees(p, 0.38, this.py);
-    W.solids.resolve(p, this.py, 1.75, 0.38, 0.55, this.mv);
-    // empurrões não podem enfiar o jogador na parede
-    if (!this.blocked(p.x, p.z, 0, 0)) {
-      this.px = p.x;
-      this.pz = p.z;
+    if (!this.bodyFree(this.px, this.pz, T.radius * 0.9)) {
+      const p = this._pp;
+      p.x = this.px;
+      p.z = this.pz;
+      W.pushOutTrees(p, T.radius, this.py);
+      W.solids.resolve(p, this.py, 1.75, T.radius, 0.6, this.mv);
+      if (p.x !== this.px || p.z !== this.pz) {
+        this.px = p.x;
+        this.pz = p.z;
+      }
     }
-    // vertical
-    const tf = Math.max(W.terrainFloor(this.px, this.py + 0.6, this.pz), W.extraFloor ? W.extraFloor(this.px, this.py + 0.6, this.pz) : -Infinity);
-    const bf = this.mv.ground;
-    let floor = tf > bf ? tf : bf;
-    if (swim) floor = Math.max(floor, wl - 1.25);
-    if (inAq || inLava) {
-      this.vy += (c.up || c.jump ? 4 : -1.2 - this.vy) * dt * 3;
-    } else this.vy -= 22 * dt;
-    if (this.vy > 0 && (W.vox.dens(this.px, this.py + 1.85 + this.vy * dt, this.pz) > 0 || W.extraSolid?.(this.px, this.py + 1.85 + this.vy * dt, this.pz))) this.vy = 0;
-    if (this.vy > 0 && W.solids.ceiling(this.px, this.pz, this.py + 1.0, 0.3) < this.py + 1.85) this.vy = 0;
-    const wasGround = this.onGround;
-    this.py += this.vy * dt;
-    this.onGround = false;
-    // tolerância de descida: andando em rampa/duna para baixo o pé "gruda" no chão
-    // (antes: cada quadro virava queda livre → alterna chão/ar = tremedeira e pulo falhando)
-    const snapDown = wasGround && this.vy <= 0 && !swim && !inAq ? 0.3 + total * 1.6 : 0;
-    if (this.py <= floor) {
-      // degrau: sobe suave (sem teleporte visível)
-      const up = floor - this.py;
-      this.py = up > 0.05 ? this.py + Math.min(up, Math.max(0.12, up * 0.5)) : floor;
-      if (this.py > floor) this.py = floor;
-      if (this.vy < 0) this.vy = 0;
-      this.onGround = true;
-    } else if (snapDown > 0 && this.py - floor <= snapDown) {
-      this.py = floor;
-      this.vy = 0;
-      this.onGround = true;
-    }
-    this.coyote = this.onGround ? 0.12 : Math.max(0, this.coyote - dt);
     if (this.py < BED_Y - 4) {
       // caiu do mundo (não deveria): volta para a superfície
-      this.py = W.heightAt(this.px, this.pz) + 1;
-      this.vy = 0;
-    }
-    if ((c.jump || (swim && c.up)) && (this.onGround || this.coyote > 0 || swim)) {
-      this.vy = swim ? 3.5 : 7.2;
-      this.coyote = 0;
-      this.onGround = false;
+      fp.place(this.px, this.pz, W.heightAt(this.px, this.pz) + 1);
     }
     if (inLava) this.hurt?.(dt * 18, 'lava');
+    const len = fp.speedK;
     this.walkT += len * dt * 9;
-    // altura da câmera suavizada no chão (degraus/rampas sem tranco); no ar segue direto
-    const eyeT = this.py + EYE;
-    const de = eyeT - this.eyeY;
-    if (this.onGround && Math.abs(de) < 0.6) this.eyeY += de * damp(22, dt);
-    else this.eyeY = eyeT;
-    const eye = this.eyeY + Math.sin(this.walkT) * 0.03 * Math.min(1, len);
-    this.camera.position.set(this.px, eye, this.pz);
-    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    const fc = this.fpc;
+    fc.yaw = this.yaw;
+    fc.pitch = this.pitch;
+    fc.apply(this.camera, dt, fp, null);
     if (this.camera.fov !== 70) {
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();
@@ -1034,10 +1048,36 @@ export class WorldGame {
     this.poseHand(dt, len);
     this.phys.moveKin(this.pBody, this.px, this.py + 0.9, this.pz, this.yaw, 0, 0, dt);
   }
-  /** tempo de "coiote": ainda pode pular logo depois de sair da beirada */
-  private coyote = 0;
-  /** olho suavizado (m) */
-  private eyeY = 0;
+  /** nível da água como "chão" ao nadar (cabeça para fora) */
+  private swimFloor = -Infinity;
+  /** chão debaixo do corpo em (x,z) — terreno/caverna, blocos, construções (procurando de pé + meio bloco) */
+  private bodyFloor(x: number, z: number): number {
+    const f = this.world.floorAt(x, this.fp.y + 0.65, z);
+    return f > this.swimFloor ? f : this.swimFloor;
+  }
+  /** corpo (cilindro de raio r, do joelho à cabeça) livre em (x,z)? — terreno, blocos */
+  private bodyFree(x: number, z: number, r: number): boolean {
+    const W = this.world;
+    const y = this.fp.y;
+    const ex = W.extraSolid;
+    for (const h of [0.68, 1.2, 1.72]) {
+      const yy = y + h;
+      // no joelho só meio raio: em encosta íngreme quem manda é o limite de rampa do chão (HeightGround)
+      const rr = h < 1 ? r * 0.5 : r;
+      for (let i = 0; i < 4; i++) {
+        const ox = i === 0 ? rr : i === 1 ? -rr : 0;
+        const oz = i === 2 ? rr : i === 3 ? -rr : 0;
+        if (W.vox.dens(x + ox, yy, z + oz) > 0 || (ex && ex(x + ox, yy, z + oz))) return false;
+      }
+    }
+    // troncos/pedras e caixas (construções, acampamentos, veículos): o kit desliza nelas eixo a eixo
+    const p = this._pp;
+    p.x = x;
+    p.z = z;
+    if (W.pushOutTrees(p, r, y)) return false;
+    W.solids.resolve(p, y, 1.75, r, 0.6, this.mv);
+    return !this.mv.hit;
+  }
   /** dano (sobrevivência liga isso) */
   hurt: ((n: number, why: string) => void) | null = null;
   /** dirigindo/montado: o corpo físico do jogador sai do caminho (não segura o veículo) */
@@ -1045,22 +1085,6 @@ export class WorldGame {
     this.pBody.velocity.set(0, 0, 0);
     this.pBody.position.set(this.px, -9999, this.pz);
     this.pBody.aabbNeedsUpdate = true;
-  }
-
-  /** parede/terreno íngreme ou sólido na altura do corpo em (x,z)? */
-  private blocked(x: number, z: number, dx: number, dz: number): boolean {
-    const W = this.world;
-    const d = Math.hypot(dx, dz);
-    const ox = d > 0 ? (dx / d) * 0.32 : 0;
-    const oz = d > 0 ? (dz / d) * 0.32 : 0;
-    const y = this.py;
-    for (const h of [0.62, 1.15, 1.7]) if (W.vox.dens(x + ox, y + h, z + oz) > 0 || W.extraSolid?.(x + ox, y + h, z + oz)) return true;
-    // rampa íngreme demais (≈ 55°) num passo
-    if (d > 0) {
-      const f = W.terrainFloor(x + ox, y + 0.6, z + oz);
-      if (f - y > 0.55 + d * 1.4 && f - y < 2) return true;
-    }
-    return false;
   }
 
   private useTool(dt: number): void {

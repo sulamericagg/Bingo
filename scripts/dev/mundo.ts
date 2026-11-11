@@ -1,12 +1,17 @@
 // Página de desenvolvimento: abre o Mundo Bloop direto num mundo novo (sem o hub).
 // /scripts/dev/mundo.html?mode=sobrevivencia|criativo|pacifico &seed= &biome=N &x= &z= &yaw= &tier=0..3
 // &hub=1 (abre pelo jogo de verdade, com a lista de mundos) &showcase=1 (só a vitrine)
+import '../../src/games/floresta/floresta.css';
 import { saveMode } from '../../src/core/quality';
 import { listGames } from '../../src/hub/registry';
 import { registerMundo } from '../../src/games/mundo/register';
 
 const qs = new URLSearchParams(location.search);
-const app = document.getElementById('app')!;
+const app0 = document.getElementById('app')!;
+// o jogo de verdade roda dentro de .fl-root (games/mundo/game.ts)
+const app = document.createElement('div');
+app.className = 'fl-root mb-root';
+app0.appendChild(app);
 const W = window as any;
 const num = (k: string, d: number) => (qs.has(k) ? Number(qs.get(k)) : d);
 const tier = num('tier', 2) as 0 | 1 | 2 | 3;

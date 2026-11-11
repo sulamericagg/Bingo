@@ -41,6 +41,7 @@ export class FpCamera {
   fx = true;
   tune: FpTuning;
   private eyeY = NaN;
+  private lastFeet = 0;
   constructor(tune: FpTuning | Readonly<FpTuning> = fpTuning()) {
     this.tune = { ...tune };
   }
@@ -98,8 +99,18 @@ export class FpCamera {
     cam.rotation.set(this.pitch + sy * 0.5 + this.extraPitch, this.yaw + sx * 0.5 + this.extraYaw, roll);
     // olho: pés (+ suavização em degraus) + altura
     const feet = b.y ?? 0;
-    if (t.eyeSmooth > 0 && b.grounded !== false && this.eyeY === this.eyeY) this.eyeY += (feet - this.eyeY) * Math.min(1, dt * t.eyeSmooth);
+    if (t.eyeLag > 0 && t.eyeSmooth > 0 && this.eyeY === this.eyeY) {
+      // modo "deslocamento": no chão, a mudança de altura dos pés vira um atraso que decai; no ar o olho
+      // segue os pés (pulo/queda exatos) e só termina de desfazer o atraso que já tinha
+      let off = this.eyeY - this.lastFeet;
+      if (b.grounded !== false) off -= feet - this.lastFeet;
+      off *= 1 - Math.min(1, dt * t.eyeSmooth);
+      if (off > t.eyeLag) off = t.eyeLag;
+      else if (off < -t.eyeLag) off = -t.eyeLag;
+      this.eyeY = feet + off;
+    } else if (t.eyeSmooth > 0 && b.grounded !== false && this.eyeY === this.eyeY) this.eyeY += (feet - this.eyeY) * Math.min(1, dt * t.eyeSmooth);
     else this.eyeY = feet;
+    this.lastFeet = feet;
     let cx = b.x + sx;
     let cz = b.z;
     if (collider?.clampPoint) {
