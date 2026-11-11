@@ -1041,7 +1041,13 @@ export class Disaster3D implements MiniGameHandle {
     const ramp: Ramp = { x0: hx + 4.5, x1: hx + 8, z0: hz - 1.2, z1: hz + 1.2, h0: 0.9, h1: 0 };
     this.ramps.push(ramp);
     const len = Math.hypot(ramp.x1 - ramp.x0, ramp.h0);
-    this.batchBox((ramp.x0 + ramp.x1) / 2, ramp.h0 / 2 - 0.1, hz, len, 0.2, 2.4, '#a08a6a', -Math.atan2(ramp.h0, ramp.x1 - ramp.x0));
+    {
+      // rampa de pedra (mesma textura do morro)
+      const rg = boxUV(0, 0, 0, len, 0.2, 2.4, new THREE.Color(m.id === 'doces' ? '#ffb4dc' : m.id === 'polo' ? '#f4f8ff' : m.id === 'deserto' ? '#f0c27a' : '#9ad35a'), 2.5);
+      rg.rotateZ(-Math.atan2(ramp.h0, ramp.x1 - ramp.x0));
+      rg.translate((ramp.x0 + ramp.x1) / 2, ramp.h0 / 2 - 0.1, hz);
+      this.stoneBatch.push(rg);
+    }
     // plataforma de mão única por cima do morro
     this.solid(hx - 1.5, 4.0, hz + 5.2, hx + 1.5, 4.2, hz + 6.4, '#b8864f', true);
     this.solid(hx - 0.2, 0, hz + 5.6, hx + 0.2, 4.0, hz + 6.0, '#8a5a2a', false, true);

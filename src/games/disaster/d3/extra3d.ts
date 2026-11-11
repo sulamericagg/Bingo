@@ -275,11 +275,11 @@ export class Extra3D {
         x.stroke();
       }
     });
-    this.holeDisk = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshBasicMaterial({ map: diskT, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    this.holeDisk.rotation.x = -Math.PI / 2 + 0.35;
+    this.holeDisk = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), new THREE.MeshBasicMaterial({ map: diskT, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    this.holeDisk.rotation.x = -Math.PI / 2 + 0.8;
     this.holeG.add(this.holeDisk);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: softSprite(), color: 0x9a6aff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6 }));
-    halo.scale.setScalar(14);
+    halo.scale.setScalar(20);
     this.holeG.add(halo);
     // ---- discos voadores ----
     const prof: THREE.Vector2[] = [];
@@ -307,7 +307,19 @@ export class Extra3D {
         l.position.set(Math.cos((k / 10) * TAU) * 2.35, -0.05, Math.sin((k / 10) * TAU) * 2.35);
         gr.add(l);
       }
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.6, 1, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x9dffb0, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      const beamT = canvasTex(8, 128, (x) => {
+        const gr = x.createLinearGradient(0, 0, 0, 128);
+        gr.addColorStop(0, 'rgba(255,255,255,0)');
+        gr.addColorStop(0.15, 'rgba(255,255,255,.9)');
+        gr.addColorStop(1, 'rgba(255,255,255,.25)');
+        x.fillStyle = gr;
+        x.fillRect(0, 0, 8, 128);
+        for (let i = 0; i < 10; i++) {
+          x.fillStyle = 'rgba(255,255,255,.35)';
+          x.fillRect(0, Math.random() * 128, 8, 2);
+        }
+      });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.6, 1, 24, 1, true), new THREE.MeshBasicMaterial({ map: beamT, color: 0x6dff90, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
       beam.visible = false;
       this.root.add(beam);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: 0xff3355, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
@@ -967,7 +979,8 @@ export class Extra3D {
       u.ring.visible = u.st >= 1;
       if (u.st >= 1) {
         const bm = u.beam.material as THREE.MeshBasicMaterial;
-        bm.opacity = u.st === 2 ? 0.42 + 0.1 * Math.sin(g.time * 20) : 0.1 + 0.05 * Math.sin(g.time * 14);
+        bm.opacity = u.st === 2 ? 0.2 + 0.05 * Math.sin(g.time * 20) : 0.06 + 0.03 * Math.sin(g.time * 14);
+        if (bm.map) bm.map.offset.y = (g.time * 0.6) % 1;
         const top = by - 0.4;
         u.beam.position.set((u.x + u.bx) / 2, top / 2, (u.z + u.bz) / 2);
         u.beam.scale.set(u.r, top, u.r);
