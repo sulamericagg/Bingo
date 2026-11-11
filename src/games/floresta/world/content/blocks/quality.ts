@@ -19,8 +19,8 @@ export interface BlockQuality {
 }
 
 export const BLOCK_QUALITY: Record<0 | 1 | 2 | 3, BlockQuality> = {
-  0: { mesh: { bevel: false, smooth: 1, ao: true, greedy: true }, texture: false, budgetMs: 2, worker: true, pointLights: 0, viewChunks: 3 },
-  1: { mesh: { bevel: true, smooth: 2, ao: true, greedy: true }, texture: true, budgetMs: 3, worker: true, pointLights: 2, viewChunks: 4 },
-  2: { mesh: { bevel: true, smooth: 3, ao: true, greedy: true }, texture: true, budgetMs: 4, worker: true, pointLights: 4, viewChunks: 5 },
-  3: { mesh: { bevel: true, smooth: 3, ao: true, greedy: true }, texture: true, budgetMs: 6, worker: true, pointLights: 8, viewChunks: 6 },
+  0: { mesh: { bevel: false, smooth: 2, ao: true, greedy: true }, texture: false, budgetMs: 2, worker: true, pointLights: 0, viewChunks: 3 },
+  1: { mesh: { bevel: true, smooth: 3, ao: true, greedy: true }, texture: true, budgetMs: 3, worker: true, pointLights: 2, viewChunks: 4 },
+  2: { mesh: { bevel: true, smooth: 4, ao: true, greedy: true }, texture: true, budgetMs: 4, worker: true, pointLights: 4, viewChunks: 5 },
+  3: { mesh: { bevel: true, smooth: 5, ao: true, greedy: true }, texture: true, budgetMs: 6, worker: true, pointLights: 8, viewChunks: 6 },
 };

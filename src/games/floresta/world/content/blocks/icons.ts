@@ -106,7 +106,7 @@ function cube(ctx: CanvasRenderingContext2D, d: BlockDef, img: HTMLCanvasElement
   ctx.beginPath();
   ctx.ellipse(32, 58, 24, 5, 0, 0, Math.PI * 2);
   ctx.fill();
-  const pts = ([[0, 1, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1], [0, 0, 1], [0, 0, 0]] as V3[]).map(proj);
+  const pts = ([[0, 1, 0], [1, 1, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1], [0, 1, 1]] as V3[]).map(proj);
   const outline = () => {
     ctx.beginPath();
     if (soft) {
@@ -203,7 +203,7 @@ function boxes(ctx: CanvasRenderingContext2D, d: BlockDef, img: HTMLCanvasElemen
     face(ctx, img, tTop, [x0, y1, z0], [x1 - x0, 0, 0], [0, 0, z1 - z0], 0, d.tint, glass, [x0, z0, x1, z1]);
     face(ctx, img, tFront, [x0, y1, z1], [x1 - x0, 0, 0], [0, y0 - y1, 0], 0.16, d.tint, glass, [x0, 1 - y1, x1, 1 - y0]);
     face(ctx, img, tSide, [x1, y1, z1], [0, 0, z0 - z1], [0, y0 - y1, 0], 0.32, d.tint, glass, [1 - z1, 1 - y1, 1 - z0, 1 - y0]);
-    const pts = ([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1], [x0, y0, z0]] as V3[]).map(proj);
+    const pts = ([[x0, y1, z0], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [x0, y1, z1]] as V3[]).map(proj);
     ctx.beginPath();
     pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
     ctx.closePath();

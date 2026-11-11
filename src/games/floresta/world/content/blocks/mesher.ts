@@ -43,6 +43,8 @@ export interface MeshOpts {
   ao: boolean;
   /** juntar faces iguais em quads grandes */
   greedy: boolean;
+  /** saia fina dos macios por cima do terreno do motor (emenda colorida; padrão desligada) */
+  skirt?: boolean;
 }
 
 export interface MeshJob {
@@ -599,26 +601,52 @@ function softPass(job: MeshJob, solid: Uint8Array, B: Buf): void {
   const sx1 = Math.min(NS - 1, (bx1 + 3) * 2 - 1);
   const sy1 = Math.min(NS - 1, (by1 + 3) * 2 - 1);
   const sz1 = Math.min(NS - 1, (bz1 + 3) * 2 - 1);
+  // densidade: ocupação (macio + duro opaco) interpolada trilinearmente dos centros
+  // dos blocos para as amostras 2× (separável: x → y → z). Degraus viram rampas
+  // arredondadas; amostra dentro de bloco sólido nunca fica "fora" (bloco sozinho
+  // vira um torrão redondo, não some).
+  const occ = new Float32Array(P3);
+  for (let i = 0; i < P3; i++) {
+    const n = ids[i];
+    if (R[n] === SOFT || OCC[n]) occ[i] = 1;
+  }
+  const ax = new Float32Array(NS * P * P);
+  for (let z = 0; z < P; z++)
+    for (let y = 0; y < P; y++)
+      for (let x = 0; x < NS; x++) {
+        const b = x >> 1;
+        const o = x & 1 ? (b + 1 < P ? b + 1 : b) : b > 0 ? b - 1 : b;
+        ax[x + NS * (y + P * z)] = occ[I(b, y, z)] * 0.75 + occ[I(o, y, z)] * 0.25;
+      }
+  const ay = new Float32Array(NS * NS * P);
+  for (let z = 0; z < P; z++)
+    for (let y = 0; y < NS; y++) {
+      const b = y >> 1;
+      const o = y & 1 ? (b + 1 < P ? b + 1 : b) : b > 0 ? b - 1 : b;
+      for (let x = 0; x < NS; x++) ay[x + NS * (y + NS * z)] = ax[x + NS * (b + P * z)] * 0.75 + ax[x + NS * (o + P * z)] * 0.25;
+    }
   const dens = new Float32Array(NS3).fill(-0.5);
   const typ = new Uint8Array(NS3);
   const sid = new Uint16Array(NS3);
-  for (let z = sz0; z <= sz1; z++)
+  for (let z = sz0; z <= sz1; z++) {
+    const bz = z >> 1;
+    const oz = z & 1 ? (bz + 1 < P ? bz + 1 : bz) : bz > 0 ? bz - 1 : bz;
     for (let y = sy0; y <= sy1; y++) {
       let s = sx0 + NS * (y + NS * z);
       for (let x = sx0; x <= sx1; x++, s++) {
         const c = I(x >> 1, y >> 1, z >> 1);
         const n = ids[c];
         const r = R[n];
-        let d = -0.5;
+        let d = ay[x + NS * (y + NS * bz)] * 0.75 + ay[x + NS * (y + NS * oz)] * 0.25 - 0.5;
         let t = T_AIR;
         if (r === SOFT) {
-          d = 0.5;
+          if (d < 0.06) d = 0.06;
           t = T_SOFT;
           sid[s] = n;
         } else if (OCC[n]) {
-          d = 0.5;
+          if (d < 0.06) d = 0.06;
           t = T_HARD;
-        }
+        } else if (d >= 0) d = -0.01;
         if (terr && t === T_AIR) {
           const td = terr[s];
           if (td > d) d = td > 0.5 ? 0.5 : td;
@@ -631,6 +659,7 @@ function softPass(job: MeshJob, solid: Uint8Array, B: Buf): void {
         typ[s] = t;
       }
     }
+  }
   // vértices por célula
   const vidx = new Int32Array(NC * NC * NC).fill(-1);
   let cap = 4096;
@@ -738,7 +767,7 @@ function softPass(job: MeshJob, solid: Uint8Array, B: Buf): void {
           const v2 = vidx[ci + qc[2]];
           const v3 = vidx[ci + qc[3]];
           if (v0 < 0 || v1 < 0 || v2 < 0 || v3 < 0) continue;
-          if (st === T_TERR && !((vf[v0] | vf[v1] | vf[v2] | vf[v3]) & 1)) continue; // terreno puro: é do motor
+          if (st === T_TERR && (!opt.skirt || !((vf[v0] | vf[v1] | vf[v2] | vf[v3]) & 1))) continue; // terreno: é do motor (saia opcional)
           const owned = x >= lo && x < hi && y >= lo && y < hi && z >= lo && z < hi ? 1 : 0;
           if (in0) quads.push(v0, v1, v2, v3, owned);
           else quads.push(v0, v3, v2, v1, owned);
@@ -751,7 +780,9 @@ function softPass(job: MeshJob, solid: Uint8Array, B: Buf): void {
     const acc = new Float32Array(nv * 3);
     const deg = new Uint16Array(nv);
     const tmp = new Float32Array(nv * 3);
-    for (let it = 0; it < opt.smooth; it++) {
+    for (let it = 0; it < opt.smooth * 2; it++) {
+      // Taubin: passo que alisa (λ) + passo que devolve volume (μ) — arredonda sem encolher
+      const k = it & 1 ? -0.34 : 0.62;
       acc.fill(0);
       deg.fill(0);
       for (let q = 0; q < nq; q++) {
@@ -773,7 +804,6 @@ function softPass(job: MeshJob, solid: Uint8Array, B: Buf): void {
       for (let i = 0; i < nv; i++) {
         const f = vf[i];
         if (!(f & 1) || f & 2 || !deg[i]) continue;
-        const k = 0.55;
         const d = deg[i];
         // não deixa escapar da própria célula (evita dobras)
         for (let c = 0; c < 3; c++) {

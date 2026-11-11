@@ -15,7 +15,7 @@ export interface BlockMaterials {
   glass: THREE.MeshLambertMaterial;
   /** por índice de Group */
   list: THREE.MeshLambertMaterial[];
-  texture: THREE.CanvasTexture;
+  texture: THREE.DataTexture;
   dispose(): void;
 }
 
@@ -69,7 +69,17 @@ const FRAG_BODY = /* glsl */ `
   vec2 bcell = vec2(mod(vBTile, ${ATLAS_COLS}.0), ${ATLAS_COLS - 1}.0 - floor(vBTile / ${ATLAS_COLS}.0));
   vec2 buvA = (bcell + 0.016 + bf * 0.968) / ${ATLAS_COLS}.0;
 #ifdef BLOCK_HQ
-  vec4 btx = textureGrad(uAtlas, buvA, dFdx(bp) * (0.968 / ${ATLAS_COLS}.0), dFdy(bp) * (0.968 / ${ATLAS_COLS}.0));
+  vec4 btx;
+  if (vBSoft > 0.5) {
+    // macios: triplanar (3 amostras misturadas pela normal) — sem costura na troca de eixo
+    vec3 bw = pow(abs(normalize(vBNrm)), vec3(4.0));
+    bw /= bw.x + bw.y + bw.z;
+    vec2 bo = (bcell + 0.016) / ${ATLAS_COLS}.0;
+    float bs = 0.968 / ${ATLAS_COLS}.0;
+    btx = textureGrad(uAtlas, bo + fract(vBPos.zy) * bs, dFdx(vBPos.zy) * bs, dFdy(vBPos.zy) * bs) * bw.x
+        + textureGrad(uAtlas, bo + fract(vBPos.xz) * bs, dFdx(vBPos.xz) * bs, dFdy(vBPos.xz) * bs) * bw.y
+        + textureGrad(uAtlas, bo + fract(vBPos.xy) * bs, dFdx(vBPos.xy) * bs, dFdy(vBPos.xy) * bs) * bw.z;
+  } else btx = textureGrad(uAtlas, buvA, dFdx(bp) * (0.968 / ${ATLAS_COLS}.0), dFdy(bp) * (0.968 / ${ATLAS_COLS}.0));
 #else
   vec4 btx = textureLod(uAtlas, buvA, 2.0);
 #endif
@@ -87,7 +97,8 @@ function patch(m: THREE.MeshLambertMaterial, tex: THREE.Texture, hq: boolean): v
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uAtlas = { value: tex };
     sh.vertexShader = VERT_HEAD + sh.vertexShader.replace('#include <project_vertex>', VERT_BODY);
-    sh.fragmentShader = (hq ? '#define BLOCK_HQ\n' : '') + FRAG_HEAD + sh.fragmentShader.replace('#include <color_fragment>', FRAG_BODY).replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += diffuseColor.rgb * vBEmit * 1.6;');
+    sh.fragmentShader = (hq ? '#define BLOCK_HQ\n' : '') + FRAG_HEAD + sh.fragmentShader.replace('#include <color_fragment>', FRAG_BODY).replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nif (vBUvMode > 0.5) normal = normalize(vNormal); // plantas: luz de cima dos dois lados')
+      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += diffuseColor.rgb * vBEmit * 1.6;');
   };
   m.customProgramCacheKey = () => 'bloop-blocks-' + (hq ? 'hq' : 'lq') + m.alphaTest;
 }
@@ -95,7 +106,8 @@ function patch(m: THREE.MeshLambertMaterial, tex: THREE.Texture, hq: boolean): v
 /** hq: textura completa (Médio/Alto); senão amostra reduzida sem derivadas (Mínimo/Baixo) */
 export function createBlockMaterials(hq = true): BlockMaterials {
   const atlas = buildAtlas();
-  const texture = new THREE.CanvasTexture(atlas.canvas);
+  const texture = new THREE.DataTexture(atlas.data as Uint8Array<ArrayBuffer>, atlas.canvas.width, atlas.canvas.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.needsUpdate = true;
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;

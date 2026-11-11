@@ -726,6 +726,8 @@ export interface Atlas {
   colorCanvas: HTMLCanvasElement;
   /** cor média de cada ladrilho (sRGB 0..255) e cobertura alfa */
   avg: Float32Array;
+  /** RGBA cru para a GPU (linha 0 = embaixo; mantém a cor dos pixels transparentes) */
+  data: Uint8Array;
   ms: number;
 }
 
@@ -748,11 +750,35 @@ export function buildAtlas(): Atlas {
   const cx = colorCanvas.getContext('2d')!;
   const gx = canvas.getContext('2d')!;
   const avg = new Float32Array(TILES.length * 4);
+  const data = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * 4);
   const img = cx.createImageData(TILE, TILE);
   const img2 = gx.createImageData(TILE, TILE);
   TILES.forEach((tx, i) => {
     const T = new Tile(i + 1);
     paint(T, tx, i + 1);
+    // pixels transparentes herdam a cor média (sem borda preta no mipmap/recorte)
+    {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let w = 0;
+      for (let p = 0; p < TILE * TILE; p++) {
+        const a = T.d[p * 4 + 3];
+        r += T.d[p * 4] * a;
+        g += T.d[p * 4 + 1] * a;
+        b += T.d[p * 4 + 2] * a;
+        w += a;
+      }
+      if (w > 0)
+        for (let p = 0; p < TILE * TILE; p++) {
+          const a = T.d[p * 4 + 3];
+          if (a >= 0.999) continue;
+          const k = 1 - a;
+          T.d[p * 4] = T.d[p * 4] * a + (r / w) * k;
+          T.d[p * 4 + 1] = T.d[p * 4 + 1] * a + (g / w) * k;
+          T.d[p * 4 + 2] = T.d[p * 4 + 2] * a + (b / w) * k;
+        }
+    }
     const base = rgb(tx.a).map((v) => Math.max(0.02, toLin(v / 255)));
     const det = TILE_DETAIL[i] === 1;
     let sr = 0;
@@ -788,6 +814,10 @@ export function buildAtlas(): Atlas {
     }
     const x = (i % ATLAS_COLS) * TILE;
     const y = Math.floor(i / ATLAS_COLS) * TILE;
+    for (let py = 0; py < TILE; py++) {
+      const row = ATLAS_SIZE - 1 - (y + py);
+      data.set(img2.data.subarray(py * TILE * 4, (py + 1) * TILE * 4), (row * ATLAS_SIZE + x) * 4);
+    }
     cx.putImageData(img, x, y);
     gx.putImageData(img2, x, y);
     avg[i * 4] = sa ? sr / sa : 0;
@@ -795,6 +825,6 @@ export function buildAtlas(): Atlas {
     avg[i * 4 + 2] = sa ? sb / sa : 0;
     avg[i * 4 + 3] = sa / (TILE * TILE);
   });
-  cached = { canvas, colorCanvas, avg, ms: performance.now() - t0 };
+  cached = { canvas, colorCanvas, avg, data, ms: performance.now() - t0 };
   return cached;
 }
