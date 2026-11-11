@@ -427,7 +427,11 @@ async function run(root: HTMLElement, opts: Open3DOpts): Promise<Close3DResult> 
     party.onToast = (s) => toast.show(s, 900);
     party.onHitMe = (k) => splatScreen(k);
   }
+  let lastLabel: string | null = null;
   fps.onLabel = (s) => {
+    // chamado todo quadro: só mexe no DOM quando o texto muda (evita recalcular estilo/layout)
+    if (s === lastLabel) return;
+    lastLabel = s;
     tgt.textContent = s;
     tgt.classList.toggle('on', !!s);
     ret.classList.toggle('hot', !!s);

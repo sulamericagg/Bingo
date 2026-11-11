@@ -20,6 +20,33 @@ import type { MessItem3D, RoomItem3D } from './types';
 /* ---------------- qualidade (compartilhada: src/3d/common/quality.ts) ---------------- */
 import { q3For, type Q3 } from '../3d/common/quality';
 import { roomEnv } from '../3d/common/pbr';
+/** objeto que nunca muda de lugar em relação ao pai: matriz local fixa (sem recompor a cada quadro) */
+function freeze(o: THREE.Object3D): void {
+  o.updateMatrix();
+  o.matrixAutoUpdate = false;
+}
+
+
+/**
+ * Aquecimento: um quadro com o culling desligado sobe TODAS as geometrias e texturas para a
+ * GPU e compila os shaders durante o carregamento — senão isso acontece aos poucos, na
+ * primeira vez que cada coisa entra na tela (engasgos ao andar/olhar em volta).
+ */
+function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): void {
+  const off: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.frustumCulled) {
+      o.frustumCulled = false;
+      off.push(o);
+    }
+  });
+  try {
+    r.compile(scene, cam);
+    r.render(scene, cam);
+  } finally {
+    for (const o of off) o.frustumCulled = true;
+  }
+}
 export { q3For, type Q3 };
 
 /* ---------------- grupos de colisão ---------------- */
@@ -390,7 +417,7 @@ export class Engine {
       this.scene.add(this.point);
     }
     // aquece shaders
-    this.renderer.compile(this.scene, this.camera);
+    warmUp(this.renderer, this.scene, this.camera);
     yield 'shaders';
   }
 
@@ -449,6 +476,7 @@ export class Engine {
     room.floor.receiveShadow = this.q.shadows;
     room.floor.userData = { type: 'floor', room };
     g.add(room.floor);
+    freeze(room.floor);
     // teto
     const cgeo = new THREE.PlaneGeometry(ROOM_W, ROOM_D);
     cgeo.rotateX(Math.PI / 2);
@@ -458,6 +486,7 @@ export class Engine {
     room.ceil = new THREE.Mesh(cgeo, cmat);
     room.ceil.position.set(ROOM_W / 2, WALL_H, ROOM_D / 2);
     g.add(room.ceil);
+    freeze(room.ceil);
     // paredes
     const sides: Side[] = ['n', 'e', 's', 'w'];
     sides.forEach((side, wi) => room.walls.push(this.buildWall(room, side, wi, this.doorsFor(rd.id, side))));
@@ -608,6 +637,8 @@ export class Engine {
     const body = new THREE.Mesh(bodyGeo, this.matWallBody);
     const holder = new THREE.Group();
     holder.add(face, body);
+    freeze(face);
+    freeze(body);
     room.group.add(holder);
     const normal = fr.n.clone().applyAxisAngle(UP, room.rotY);
     const w: WallRec = { room, side, len, holder, face, body, cv, cx, tex, wi, doors, normal, cut: 1, bodies: [] };
@@ -715,6 +746,7 @@ export class Engine {
       shadow.position.set(0, 0.006, 0);
       shadow.renderOrder = 1;
       obj.add(shadow);
+      freeze(shadow);
     }
     const rec: ItemRec = { room, data, kind, v, info, dims, obj, solid: null, shadow, body: null, homeP, homeQ, state: 'home', fromMess: false, fix: 0 };
     obj.traverse((o) => {
@@ -768,6 +800,8 @@ export class Engine {
       p.rotation.y = f.ry;
       obj.add(p);
     }
+    // peças fixas dentro do móvel: matriz local calculada uma vez (só o grupo se move)
+    for (const c of obj.children) freeze(c);
     return obj;
   }
   removeItem(it: ItemRec): void {

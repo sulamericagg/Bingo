@@ -38,6 +38,8 @@ const AIM_M = new THREE.Matrix4();
 const AIM_R = new THREE.Ray();
 const AIM_B = new THREE.Box3();
 const AIM_P = new THREE.Vector3();
+const CENTER = new THREE.Vector2(0, 0);
+const HITS: THREE.Intersection[] = [];
 
 export class Fps {
   yaw = 0;
@@ -50,6 +52,8 @@ export class Fps {
   /** tinta no formato do 2D: '<corIdx>:<acabamento>' */
   paintColor = '12:solid';
   private ray = new THREE.Raycaster();
+  /** mira: raio só até onde algo é usável (mais longe que isso não muda nada) e ~15 Hz */
+  private aimT = 0;
   private vel = new THREE.Vector2();
   private bob = 0;
   private stepT = 0;
@@ -231,8 +235,11 @@ export class Fps {
   /* ---------------- mira ---------------- */
   private aim(): void {
     const cam = this.eng.camera;
-    this.ray.setFromCamera(new THREE.Vector2(0, 0), cam);
-    const hits = this.ray.intersectObjects(this.eng.pickables, false);
+    this.aimT = 1 / 15;
+    this.ray.setFromCamera(CENTER, cam);
+    this.ray.far = 8;
+    HITS.length = 0;
+    const hits = this.ray.intersectObjects(this.eng.pickables, false, HITS);
     const tg = this.target;
     tg.type = 'none';
     tg.item = tg.decal = tg.food = tg.wall = undefined;
@@ -255,7 +262,8 @@ export class Fps {
       tg.point.copy(h.point);
       tg.dist = h.distance;
       if (h.face) tg.normal.copy(h.face.normal).transformDirection(h.object.matrixWorld);
-      tg.uv = h.uv?.clone();
+      if (h.uv) (tg.uv ??= new THREE.Vector2()).copy(h.uv);
+      else tg.uv = undefined;
       if (ud.type === 'wall') {
         // procura decal logo atrás/à frente na parede
         const dh = hits.find((x) => x.object.userData?.type === 'decal' && Math.abs(x.distance - h.distance) < 0.06);
@@ -353,6 +361,7 @@ export class Fps {
     return L;
   }
   private tap(id: string): void {
+    this.aim(); // mira fresca para a ação (a do quadro pode ter até 66 ms)
     if (this.ext?.tap(id)) return; // [casa-ativ]
     const tg = this.target;
     switch (id) {
@@ -698,11 +707,13 @@ export class Fps {
     // luz quente segue o cômodo atual
     const room = this.eng.roomAt(cam.position.x, cam.position.z);
     if (room && this.eng.point) this.eng.point.position.lerp(V.set(room.center.x, 2.3, room.center.z), Math.min(1, dt * 3));
-    this.aim();
+    // mira a ~15 Hz; todo quadro só enquanto limpa/pinta/move móvel (precisa do ponto exato)
+    this.aimT -= dt;
+    if (this.aimT <= 0 || this.acts.held.size > 0 || this.paint?.latched || this.decor?.mv || this.input.key('Space')) this.aim();
     this.updateHeld(dt);
     // fantasma segue a mira (centro da tela) no chão
     if (this.decor?.mv) {
-      this.ray.setFromCamera(new THREE.Vector2(0, 0), cam);
+      this.ray.setFromCamera(CENTER, cam);
       this.decor.aimRay(this.ray.ray, { minD: 1.1, maxD: 4.2, room: this.eng.roomAt(this.body.position.x, this.body.position.z) });
     }
     // limpar / pintar segurando
@@ -730,7 +741,8 @@ export class Fps {
     this.hand.scrub += (scrub - this.hand.scrub) * Math.min(1, dt * 12);
     this.hand.update(dt, speed, this.lastLook[0], this.lastLook[1]);
     // peças quebradas somem
-    for (const p of [...this.pieces]) {
+    for (let i = this.pieces.length - 1; i >= 0; i--) {
+      const p = this.pieces[i];
       p.life -= dt;
       p.m.position.set(p.b.position.x, p.b.position.y, p.b.position.z);
       p.m.quaternion.set(p.b.quaternion.x, p.b.quaternion.y, p.b.quaternion.z, p.b.quaternion.w);
@@ -739,7 +751,7 @@ export class Fps {
         this.eng.burst(p.m.position.x, p.m.position.y, p.m.position.z, 2, 'poof', '#ffffff', 0.4);
         this.eng.scene.remove(p.m);
         this.eng.world.removeBody(p.b);
-        this.pieces.splice(this.pieces.indexOf(p), 1);
+        this.pieces.splice(i, 1);
       }
     }
     // HUD

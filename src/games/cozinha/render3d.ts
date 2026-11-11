@@ -32,6 +32,27 @@ import { COOKERS, FX, IK, type FxEv, type Item, type Player, type Sim, type Stat
 import type { Renderer } from './game';
 
 /** ponte online (só existe com amigos conectados) */
+
+/**
+ * Aquecimento: um quadro com o culling desligado sobe TODAS as geometrias e texturas para a
+ * GPU e compila os shaders durante o carregamento — senão isso acontece aos poucos, na
+ * primeira vez que cada coisa entra na tela (engasgos ao andar/olhar em volta).
+ */
+function warmUp(r: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.Camera): void {
+  const off: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.frustumCulled) {
+      o.frustumCulled = false;
+      off.push(o);
+    }
+  });
+  try {
+    r.compile(scene, cam);
+    r.render(scene, cam);
+  } finally {
+    for (const o of off) o.frustumCulled = true;
+  }
+}
 export interface FpsNet {
   notePick(target: number): void;
   noteThrow(st: number, x: number, y: number): void;
@@ -349,7 +370,7 @@ class KitchenFps implements Renderer {
     }
     if (sim.theme === 'space') this.world.gravity.set(0, -2.6, 0);
     this.lastTips = sim.tips;
-    this.renderer.compile(this.scene, this.camera);
+    warmUp(this.renderer, this.scene, this.camera);
     if (qs.has('czdebug') || import.meta.env.DEV) this.debugApi();
   }
   /** depuração / screenshots (window.__czfps) */
