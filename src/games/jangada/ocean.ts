@@ -175,7 +175,7 @@ void main(){
   // sol: brilho largo + glints finos
   vec3 L = normalize(uSunDir);
   float sd = max(dot(R, L), 0.0);
-  float spec = pow(sd, 220.0) * 3.0 + pow(sd, 24.0) * 0.12;
+  float spec = pow(sd, 260.0) * 1.8 + pow(sd, 30.0) * 0.07;
   #if DETAIL
   float gl = vn(p * 3.0 + vec2(uTime * 0.7, -uTime * 0.5));
   spec += pow(sd, 60.0) * step(0.86, gl) * 2.2 * (1.0 - smoothstep(30.0, 140.0, dist));

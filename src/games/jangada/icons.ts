@@ -55,7 +55,7 @@ const P: Record<string, string> = {
   lamp: `<path d="M24 4v6" ${W}/><path d="M14 12h20l-3 20H17z" fill="#ffe45c" ${W}/><path d="M18 32h12v8H18z" fill="#8a94a8" ${W2}/><circle cx="24" cy="22" r="4" fill="#fff"/>`,
   flag: `<path d="M12 4v40" ${W}/><path d="M14 6h26l-6 8 6 8H14z" fill="#ff4fa3" ${W}/><circle cx="24" cy="14" r="3.4" fill="#fff"/><circle cx="25" cy="13.5" r="1.4" fill="${K}"/>`,
   /* ---------- interface ---------- */
-  sun: `<circle cx="24" cy="24" r="9" fill="#ffd34a" ${W}/><path d="M24 4v6M24 38v6M4 24h6M38 24h6M10 10l4 4M34 34l4 4M10 38l4-4M34 14l4-4" ${W}/>`,
+  sun: `<path d="M24 3v8M24 37v8M3 24h8M37 24h8M9 9l5 5M34 34l5 5M9 39l5-5M34 14l5-5" stroke="#ffd34a" stroke-width="4.5" stroke-linecap="round"/><circle cx="24" cy="24" r="10" fill="#ffd34a" ${W}/>`,
   moon: `<path d="M30 6a16 16 0 1 0 12 26A14 14 0 0 1 30 6z" fill="#fff3a8" ${W}/><circle cx="18" cy="20" r="2" fill="#e8d870"/><circle cx="22" cy="32" r="3" fill="#e8d870"/>`,
   island: `<path d="M4 38c6-6 34-6 40 0z" fill="#ffe0a0" ${W}/><path d="M24 36c0-10 2-18 4-22" fill="none" stroke="#8a5a32" stroke-width="4" ${W2}/><path d="M28 14c-6-4-14-2-16 4 6-2 10-2 16-4zM28 14c4-6 12-6 14 0-6-2-9-1-14 0zM28 14c2 6-2 12-6 12 2-4 3-8 6-12z" fill="#5cc85a" ${W2}/>`,
   ghost: `<path d="M10 40V20a14 14 0 0 1 28 0v20l-5-4-4 4-5-4-5 4-4-4z" fill="#d8fff4" ${W}/><circle cx="19" cy="21" r="3" fill="${K}"/><circle cx="29" cy="21" r="3" fill="${K}"/><path d="M8 12h32l-6-6H14z" fill="#3a3a5a" ${W2}/>`,

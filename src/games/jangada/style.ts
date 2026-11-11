@@ -73,8 +73,8 @@ const CSS = `
 .jg-dive{right:calc(var(--sr) + 86px);bottom:calc(var(--sb) + 10px);width:56px;height:56px;display:none}
 .jg-use{right:calc(var(--sr) + 92px);bottom:calc(var(--sb) + 110px);width:60px;height:60px;background:rgba(127,216,255,.55);display:none}
 .jg-use small,.jg-act small{position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);font:800 11px/1 inherit;white-space:nowrap;text-shadow:0 1px 2px #000}
-.jg-rot{right:calc(var(--sr) + 92px);bottom:calc(var(--sb) + 110px);width:50px;height:50px;display:none}
-.jg-x{right:calc(var(--sr) + 100px);bottom:calc(var(--sb) + 170px);width:40px;height:40px;display:none;background:rgba(255,90,110,.6)}
+.jg-rot{right:calc(var(--sr) + 20px);bottom:calc(var(--sb) + 172px);width:50px;height:50px;display:none}
+.jg-x{right:calc(var(--sr) + 90px);bottom:calc(var(--sb) + 16px);width:46px;height:46px;display:none;background:rgba(255,90,110,.6)}
 /* pesca */
 .jg-fish{position:absolute;left:50%;top:26%;transform:translateX(-50%);width:min(320px,60vw);height:26px;border-radius:13px;background:rgba(10,30,60,.7);box-shadow:0 0 0 3px #fff;display:none;overflow:hidden}
 .jg-fish .z{position:absolute;top:0;bottom:0;background:#3ec05a}
