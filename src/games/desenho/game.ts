@@ -12,7 +12,7 @@ import { fmt, t } from '../../i18n';
 import { clearNotify, notify, objective, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { ATELIER_MAP, Atelier } from './atelier';
 import { Challenge, type ChallengeResult } from './challenge';
-import { bumBurst, bumSound, codeOf, cook, flash, liftPaper } from './cook';
+import { bumBurst, bumSound, cook, flash, liftPaper } from './cook';
 import { DrawUI, matName } from './drawui';
 import { Engine } from './engine';
 import { dvIcon } from './icons';
@@ -71,7 +71,7 @@ class DesenhoGame implements MiniGameHandle {
   private busy = false;
 
   constructor(
-    private root: HTMLElement,
+    root: HTMLElement,
     private exit: () => void,
   ) {
     this.el = document.createElement('div');
@@ -469,8 +469,5 @@ class DesenhoGame implements MiniGameHandle {
     this.eng.destroy();
     disposeSfx();
     this.el.remove();
-    void this.root;
-    void codeOf;
-    void addToGallery;
   }
 }
