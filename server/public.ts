@@ -148,5 +148,7 @@ export async function challenges(_req: Request, env: Env): Promise<Response> {
   const list: PublicChallenge[] = (await listChallenges(env))
     .filter((c) => c.active && (!c.startsAt || c.startsAt <= now) && (!c.endsAt || c.endsAt > now))
     .map((c) => ({ id: c.id, title: c.title, description: c.description, link: c.link, startsAt: c.startsAt, endsAt: c.endsAt, reward: c.reward }));
-  return json({ challenges: list }, 200, { 'cache-control': 'public, max-age=60' });
+  // ajustes opcionais de anúncios (docs/ANUNCIOS.md): KV `cfg:ads` = JSON com os campos de AD_BREAKS
+  const ads = await env.DATA.get('cfg:ads', 'json').catch(() => null);
+  return json(ads ? { challenges: list, ads } : { challenges: list }, 200, { 'cache-control': 'public, max-age=60' });
 }

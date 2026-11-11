@@ -6110,5 +6110,11 @@ export default {
   "voo.z.cockpit": "조종실",
   "voo.z.eco": "일반석",
   "voo.z.first": "일등석",
-  "voo.z.galley": "갤리"
+  "voo.z.galley": "갤리",
+  "ads.capReached": "오늘 영상 한도에 도달했어요",
+  "ads.dbl.title": "보상 2배",
+  "ads.dbl.sub": "짧은 영상 보고 +{n} 코인",
+  "ads.dbl.watch": "보기",
+  "ads.dbl.no": "나중에",
+  "ads.dbl.done": "+{n} 코인! 보상 2배"
 } as Record<string, string>;

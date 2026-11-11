@@ -6110,5 +6110,11 @@ export default {
   "voo.z.cockpit": "Kokpit",
   "voo.z.eco": "Ekonomi sınıfı",
   "voo.z.first": "Birinci sınıf",
-  "voo.z.galley": "Mutfak"
+  "voo.z.galley": "Mutfak",
+  "ads.capReached": "Bugünkü video sınırına ulaşıldı",
+  "ads.dbl.title": "Ödülü ikiye katla",
+  "ads.dbl.sub": "Kısa bir videoyla +{n} jeton",
+  "ads.dbl.watch": "İzle",
+  "ads.dbl.no": "Şimdi değil",
+  "ads.dbl.done": "+{n} jeton! Ödül ikiye katlandı"
 } as Record<string, string>;

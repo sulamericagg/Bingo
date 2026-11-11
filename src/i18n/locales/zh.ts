@@ -6110,5 +6110,11 @@ export default {
   "voo.z.cockpit": "驾驶舱",
   "voo.z.eco": "经济舱",
   "voo.z.first": "头等舱",
-  "voo.z.galley": "厨房"
+  "voo.z.galley": "厨房",
+  "ads.capReached": "今天的视频次数已用完",
+  "ads.dbl.title": "奖励翻倍",
+  "ads.dbl.sub": "看个短视频 +{n} 金币",
+  "ads.dbl.watch": "观看",
+  "ads.dbl.no": "以后再说",
+  "ads.dbl.done": "+{n} 金币！奖励已翻倍"
 } as Record<string, string>;

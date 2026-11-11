@@ -6110,5 +6110,11 @@ export default {
   "voo.z.cockpit": "Cabina di pilotaggio",
   "voo.z.eco": "Classe economica",
   "voo.z.first": "Prima classe",
-  "voo.z.galley": "Cambusa"
+  "voo.z.galley": "Cambusa",
+  "ads.capReached": "Limite di video di oggi raggiunto",
+  "ads.dbl.title": "Raddoppia la ricompensa",
+  "ads.dbl.sub": "+{n} monete con un video breve",
+  "ads.dbl.watch": "Guarda",
+  "ads.dbl.no": "Non ora",
+  "ads.dbl.done": "+{n} monete! Ricompensa raddoppiata"
 } as Record<string, string>;

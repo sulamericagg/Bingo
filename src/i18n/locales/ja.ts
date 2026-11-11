@@ -6110,5 +6110,11 @@ export default {
   "voo.z.cockpit": "操縦室",
   "voo.z.eco": "エコノミー",
   "voo.z.first": "ファーストクラス",
-  "voo.z.galley": "ギャレー"
+  "voo.z.galley": "ギャレー",
+  "ads.capReached": "今日の動画の上限に達しました",
+  "ads.dbl.title": "報酬を2倍に",
+  "ads.dbl.sub": "短い動画で +{n} コイン",
+  "ads.dbl.watch": "見る",
+  "ads.dbl.no": "今はしない",
+  "ads.dbl.done": "+{n} コイン！報酬が2倍に"
 } as Record<string, string>;

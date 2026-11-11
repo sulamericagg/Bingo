@@ -10,25 +10,100 @@
  * (nunca clique nos seus próprios anúncios reais — dá banimento).
  */
 
+/**
+ * TODO(dono): deixe `true` até criar o app e os 3 blocos no AdMob (passo a passo: docs/ANUNCIOS.md).
+ * Com `true` o app SEMPRE pede anúncios de teste, mesmo que os IDs reais já estejam abaixo.
+ */
 export const ADS_TEST_MODE = true;
 
-export const ADMOB = {
-  // ID do APP fica em android/app/src/main/AndroidManifest.xml (APPLICATION_ID)
+/** IDs de teste oficiais do Google (funcionam em qualquer app; nunca geram receita). */
+const ADMOB_TEST = {
+  appId: 'ca-app-pub-3940256099942544~3347511713',
   banner: 'ca-app-pub-3940256099942544/6300978111',
   interstitial: 'ca-app-pub-3940256099942544/1033173712',
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
 };
 
+/**
+ * TODO(dono): cole aqui os IDs REAIS do AdMob (formato ca-app-pub-XXXXXXXXXXXXXXXX/NNNNNNNNNN)
+ * e depois troque ADS_TEST_MODE para false. Vazio = usa o ID de teste correspondente.
+ * O ID do APP (com "~") também vai em android/app/src/main/AndroidManifest.xml
+ * (meta-data com.google.android.gms.ads.APPLICATION_ID) — é lá que o SDK o lê.
+ */
+export const ADMOB_REAL = {
+  appId: '', // TODO(dono): ca-app-pub-XXXXXXXXXXXXXXXX~NNNNNNNNNN  (Apps → Configurações do app)
+  banner: '', // TODO(dono): bloco "Banner" (adaptativo, rodapé dos menus/resultados)
+  interstitial: '', // TODO(dono): bloco "Intersticial" (pausas entre partidas / volta ao hub)
+  rewarded: '', // TODO(dono): bloco "Premiado" (Dobrar recompensa, +1 vida, dicas, tempo sem anúncios)
+};
+
+/** IDs efetivos usados por src/services/ads.ts (teste enquanto ADS_TEST_MODE ou campo vazio). */
+export const ADMOB = {
+  appId: (!ADS_TEST_MODE && ADMOB_REAL.appId) || ADMOB_TEST.appId,
+  banner: (!ADS_TEST_MODE && ADMOB_REAL.banner) || ADMOB_TEST.banner,
+  interstitial: (!ADS_TEST_MODE && ADMOB_REAL.interstitial) || ADMOB_TEST.interstitial,
+  rewarded: (!ADS_TEST_MODE && ADMOB_REAL.rewarded) || ADMOB_TEST.rewarded,
+};
+
+/**
+ * PAUSAS PARA INTERSTICIAL em TODOS os jogos (src/services/adbreaks.ts + maybeInterstitial).
+ * Limites globais (valem para o Orbit e para os jogos do hub juntos). Podem ser ajustados
+ * remotamente pelo servidor (campo `ads` de GET /api/challenges — docs/ANUNCIOS.md).
+ */
+export const AD_BREAKS = {
+  /** intervalo mínimo entre dois intersticiais (qualquer jogo) */
+  minGapSec: 120,
+  /** depois de um vídeo premiado, sem intersticial por este tempo */
+  afterRewardedSec: 90,
+  /** nada de intersticial nos primeiros N segundos de cada sessão (abriu o app) */
+  sessionWarmupSec: 120,
+  /** jogador novo (primeira abertura do app há menos de N min): sem intersticial */
+  newPlayerGraceMin: 10,
+  /** teto por sessão e por hora corrida */
+  maxPerSession: 8,
+  maxPerHour: 6,
+  /** partidas (de qualquer jogo) entre um intersticial e outro */
+  runsBetween: 2,
+  /** primeiras partidas de CADA jogo sem intersticial (tutorial / primeira impressão) */
+  freeRunsPerGame: 2,
+  /** primeiras partidas no total (save.runs + jogos do hub) sem intersticial */
+  freeRunsTotal: 2,
+  /** depois de uma compra com dinheiro real */
+  afterPurchaseMin: 15,
+  /** espera depois do 'run-end' (tela de resultado aparecer) antes de decidir */
+  runEndDelayMs: 1300,
+  /** sair do jogo para o hub conta como pausa se jogou pelo menos isso (ou terminou 1 partida) */
+  exitMinPlaySec: 60,
+  /** jogos em que o 'run-end' NÃO é uma pausa segura (rodadas emendadas/online): só na saída */
+  exitOnlyGames: ['disaster'] as string[],
+};
+
+/** VÍDEOS PREMIADOS opcionais: tetos diários por tipo (offerRewarded) e o "Dobrar recompensa" central. */
+export const AD_REWARDED = {
+  /** teto diário por tipo (kind) de offerRewarded(); tipo sem entrada usa `default` */
+  dailyCaps: { double: 6, life: 8, continue: 8, hint: 10, default: 10 } as Record<string, number>,
+  /** "Dobrar recompensa" central: moedas extras = moedas da partida, entre min e max */
+  doubleMinCoins: 15,
+  doubleMaxCoins: 400,
+  /** quanto tempo o cartão fica na tela (s) */
+  doubleShowSec: 9,
+  /** jogos que já têm o próprio botão de dobrar/vídeo na tela de resultado (o central não aparece) */
+  ownDoubleGames: ['orbit', 'tubo', 'rally', 'cozinha', 'band', 'disaster', 'floresta', 'tycoon'] as string[],
+};
+
+/**
+ * Estatísticas de anúncios (impressões/recompensas por jogo, por dia) — sempre locais (localStorage).
+ * `endpoint` vazio = não envia. Quando existir um endpoint no servidor, ex.: '/ads/stats', o app
+ * manda um POST resumido por dia (veja docs/ANUNCIOS.md).
+ */
+export const AD_STATS = {
+  endpoint: '',
+  keepDays: 14,
+};
+
 /** Versão web: Google H5 Games Ads (AdSense). Deixe vazio para desativar. */
 export const WEB_ADS = {
   adsenseClient: '', // ex.: 'ca-pub-1234567890123456'
-};
-
-/** Regras de anúncio intersticial (equilíbrio entre receita e retenção). */
-export const AD_RULES = {
-  interstitialEveryNRuns: 3,
-  interstitialMinSeconds: 75,
-  freeRunsBeforeFirstInterstitial: 2,
 };
 
 export type ProductKind = 'gems' | 'noads' | 'starter' | 'vip' | 'cosmetic' | 'doubler' | 'boosts' | 'bundle' | 'flash' | 'club';

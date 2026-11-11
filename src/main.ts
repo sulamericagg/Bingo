@@ -15,6 +15,7 @@ import { restorePortrait } from './core/orientation';
 import { persistNow, save } from './core/storage';
 import { Game } from './game/game';
 import { initAds } from './services/ads';
+import { initAdBreaks } from './services/adbreaks';
 import { initBilling } from './services/billing';
 import { initOnline } from './services/online';
 import { playIntro } from './ui/intro';
@@ -186,6 +187,7 @@ async function boot(): Promise<void> {
   openFriendLink(location.href) || openSquadLink(location.href) || openVooLink(location.href);
   if (isNative) App.addListener('appUrlOpen', (e) => void (openFriendLink(e.url) || openSquadLink(e.url) || openVooLink(e.url)));
   initAds();
+  initAdBreaks();
   initBilling();
   registerPass();
   initBeta();
