@@ -1,12 +1,14 @@
 /* ============================================================
  *  BLOOP ESPELHO — Web Worker do rastreamento.
- *  Recebe quadros reduzidos (ImageBitmap transferido, sem cópia),
- *  roda o MediaPipe fora do thread principal e devolve só os números
- *  do Rig. O desenho do Bloop nunca espera a detecção.
+ *  Recebe quadros reduzidos (ImageData já desenhado no thread principal,
+ *  buffer transferido sem cópia), roda o MediaPipe fora do thread principal
+ *  e devolve só os números do Rig. O desenho do Bloop nunca espera a detecção.
+ *  Erros NÃO são engolidos: cada resposta leva o erro (se houve) para o
+ *  tracker.ts decidir trocar de delegate/caminho e para o painel de diagnóstico.
  * ============================================================ */
-import { FilesetResolver, type FaceLandmarker } from '@mediapipe/tasks-vision';
+import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { neutralRig, RIG_KEYS } from './rig';
-import { createLandmarker, mapResult, rigToArr } from './track-core';
+import { createLandmarker, mapResult, rigToArr, type Delegate } from './track-core';
 
 interface Scope {
   onmessage: ((ev: MessageEvent) => void) | null;
@@ -18,32 +20,34 @@ let lm: FaceLandmarker | null = null;
 let lastTs = 0;
 const rig = neutralRig();
 
+const errText = (e: unknown): string => String((e as Error)?.message ?? e).slice(0, 200);
+
 scope.onmessage = async (ev: MessageEvent) => {
-  const d = ev.data as { t: string; base?: string; cpu?: boolean; bmp?: ImageBitmap; ts?: number };
+  const d = ev.data as { t: string; base?: string; delegate?: Delegate; img?: ImageData; ts?: number };
   if (d.t === 'init') {
     try {
-      const r = await createLandmarker(d.base!, await FilesetResolver.isSimdSupported(), !!d.cpu);
-      lm = r.lm;
-      scope.postMessage({ t: 'ready', delegate: r.delegate });
+      // o MediaPipe sobe cada quadro por WebGL (até com CPU): sem WebGL no worker, nem tenta
+      const oc = new OffscreenCanvas(1, 1);
+      if (!oc.getContext('webgl2') && !new OffscreenCanvas(1, 1).getContext('webgl')) throw new Error('sem WebGL no worker');
+      lm = await createLandmarker(d.base!, d.delegate!);
+      scope.postMessage({ t: 'ready' });
     } catch (e) {
-      scope.postMessage({ t: 'fail', err: String((e as Error)?.message ?? e) });
+      scope.postMessage({ t: 'fail', err: errText(e) });
     }
   } else if (d.t === 'frame') {
-    const bmp = d.bmp!;
     const a = performance.now();
     let found = false;
+    let err = '';
     try {
-      if (lm) {
-        const ts = Math.max(lastTs + 1, Math.round(d.ts!));
-        lastTs = ts;
-        found = mapResult(lm.detectForVideo(bmp, ts), rig);
-      }
+      if (!lm) throw new Error('not-ready');
+      const ts = Math.max(lastTs + 1, Math.round(d.ts!));
+      lastTs = ts;
+      found = mapResult(lm.detectForVideo(d.img!, ts), rig);
     } catch (e) {
-      console.warn('[espelho] detect (worker)', e);
+      err = errText(e);
     }
-    bmp.close();
     const arr = rigToArr(rig, new Float64Array(RIG_KEYS.length));
-    scope.postMessage({ t: 'res', found, rig: arr, ms: performance.now() - a }, [arr.buffer]);
+    scope.postMessage({ t: 'res', found, rig: arr, ms: performance.now() - a, err }, [arr.buffer]);
   } else if (d.t === 'close') {
     try {
       lm?.close();

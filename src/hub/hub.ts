@@ -10,6 +10,7 @@
  * Tudo vive dentro de <section id="menu"> (index.html), então qualquer tela que
  * esconde o menu (partida do Orbit, Corrida) esconde o hub junto.
  */
+import { narrationOn, setNarration } from '../core/narration';
 import { ensureLandscape, restorePortrait, setPrefersPortrait } from '../core/orientation';
 import './hub.css';
 import { audio } from '../core/audio';
@@ -321,6 +322,11 @@ export function initHub(o: HubOptions): void {
   if (intro) {
     intro.checked = introEnabled();
     intro.onchange = () => setIntroEnabled(intro.checked);
+  }
+  const narr = document.getElementById('set-narration') as HTMLInputElement | null;
+  if (narr) {
+    narr.checked = narrationOn();
+    narr.onchange = () => setNarration(narr.checked);
   }
   window.addEventListener('keydown', (e) => {
     if (!hubVisible() || document.querySelector('.modal-screen.on')) return;

@@ -313,6 +313,23 @@ export class UI {
     const ver = `v${__APP_VERSION__} · ${isNative ? 'Android' : 'Web'}`;
     $('#version').textContent = ver;
     $('#credits-version').textContent = ver;
+    // linha escondida para suporte: tocar 5x na versão mostra "Diagnóstico do espelho"
+    let verTaps = 0;
+    let verAt = 0;
+    $('#version').onclick = () => {
+      const n = Date.now();
+      verTaps = n - verAt < 1500 ? verTaps + 1 : 1;
+      verAt = n;
+      if (verTaps >= 5) $('#btn-mirror-diag').classList.remove('hidden');
+    };
+    $('#btn-mirror-diag').onclick = () => {
+      try {
+        localStorage.setItem('bloop.mirror.diag', '1');
+      } catch {
+        /* sem storage */
+      }
+      void import('../mirror/register').then((m) => m.openMirror());
+    };
 
     $$('#shop .tabs button').forEach((b) => {
       b.onclick = () => {
