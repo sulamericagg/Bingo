@@ -33,7 +33,7 @@ if (qs.get('showcase')) {
   };
   loop();
 } else if (qs.get('hub')) {
-  W.handle = await def.launch(app, () => (location.href = location.pathname));
+  void def.launch(app, () => (location.href = location.pathname)).then((h) => (W.handle = h));
 } else {
   const { createWorld } = await import('../../src/games/floresta/world/worldgame');
   const { freshWorld } = await import('../../src/games/floresta/world/wsave');
