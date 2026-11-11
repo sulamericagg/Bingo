@@ -90,6 +90,8 @@ export const sfx = {
   catch: () => (tone(660, 0.07, 'triangle', 0.15, 1.3), tone(990, 0.09, 'triangle', 0.12, 1.2, 0.06)),
   swish: () => [784, 988, 1175].forEach((f, i) => tone(f, 0.12, 'triangle', 0.1, 1.1, i * 0.05)),
   fire: () => noise(0.5, 0.18, 300, 0.5, 2),
+  /** alarme de fumaça (dois bipes curtos, de desenho — não assusta) */
+  alarm: () => (tone(1320, 0.12, 'triangle', 0.07, 1), tone(1046, 0.12, 'triangle', 0.07, 1, 0.18)),
   bump: () => (tone(70, 0.25, 'sine', 0.3, 0.6), noise(0.2, 0.25, 200)),
   /* kit de interação (src/3d/common/interact) */
   ding: () => (tone(1568, 0.5, 'sine', 0.16, 1), tone(2093, 0.4, 'sine', 0.08, 1, 0.01)),
