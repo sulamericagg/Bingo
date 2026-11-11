@@ -549,11 +549,14 @@ export class DisasterGame implements MiniGameHandle {
     this.isNew = !loadPedia().seen[entry.key];
     // cópia: o combo dinâmico muda a lista de desastres desta rodada sem mexer no cenário salvo
     this.sc = { ...base, disasters: [...base.disasters] };
-    if (!this.sc.tune) this.sc.tune = { rate: 1, size: 1, speed: 1, grav: 1, slip: 1, night: false, wind: false, rain: false, fog: false, mini: false, giant: false, turbo: false };
+    if (!this.sc.tune) this.sc.tune = { rate: 1, size: 1, speed: 1, grav: 1, slip: 1, night: false, wind: false, rain: false, fog: false, mini: false, giant: false, turbo: false, cal: 1 };
     this.training = this.progress.played < 3 || /[?&]train=1/.test(location.search);
     this.mode = loadMode();
     const streak = this.benchStreak >= 0 ? this.benchStreak : this.streak;
     this.I = intensityOf(this.mode, this.sc.difficulty, streak, this.training);
+    // desastre duplo do catálogo: cada metade um pouco mais branda (os dois juntos já pesam)
+    if (this.sc.key && this.sc.disasters.length > 1) this.I *= 0.86;
+    this.I *= this.sc.tune?.cal ?? 1;
     this.tele = Math.max(0.75, Math.min(1.15, 1.25 - 0.25 * this.I));
     // desastre duplo dinâmico: com sequência alta, um 2º desastre (de outra família) entra no meio do 1º
     {
@@ -767,7 +770,7 @@ export class DisasterGame implements MiniGameHandle {
         this.setPhase('disaster', this.disasterDur());
         this.beginDisaster(this.sc.disasters[this.dIndex]);
         // desastre duplo: o 2º começa no meio do 1º (os dois juntos)
-        this.comboAt = this.sc.disasters.length > 1 ? this.phaseDur * 0.35 : -1;
+        this.comboAt = this.sc.disasters.length > 1 ? this.phaseDur * 0.45 : -1;
         break;
       case 'disaster':
         this.endRound();
@@ -872,8 +875,9 @@ export class DisasterGame implements MiniGameHandle {
   private waveH(d: DisasterId, k: number): number {
     const I = this.I;
     const duo = this.sc.disasters.length > 1 ? 0.85 : 1;
-    if (d === 'avalanche') return (60 + 30 * I) * (0.42 + 0.38 * k) * duo;
-    return (95 + 45 * I) * (0.7 + 0.3 * k) * duo;
+    const sz = Math.pow(this.tn?.size ?? 1, 0.35);
+    if (d === 'avalanche') return (60 + 30 * I) * (0.42 + 0.38 * k) * duo * 0.74 * sz;
+    return (95 + 45 * I) * (0.7 + 0.3 * k) * duo * sz;
   }
   /** nível final previsto do fluido (para a IA e para a seta do treino) */
   fluidPeak(d: DisasterId): number {
@@ -882,9 +886,9 @@ export class DisasterGame implements MiniGameHandle {
     switch (d) {
       case 'tsunami':
       case 'avalanche':
-        return this.waveH(d, this.waveCount(d) - 1) + (d === 'avalanche' ? 48 + 15 * I : 70 + 22 * I) * 0.8;
+        return this.waveH(d, this.waveCount(d) - 1) + (d === 'avalanche' ? (48 + 15 * I) * 0.74 : 70 + 22 * I) * 0.8;
       case 'enchente':
-        return (140 + 100 * I) * duo;
+        return (130 + 92 * I) * duo;
       case 'acido':
         return (36 + 36 * I) * duo;
       case 'vulcao':
@@ -906,7 +910,7 @@ export class DisasterGame implements MiniGameHandle {
     f.level = Math.max(f.base, 4);
     f.target = H;
     f.rate = 70;
-    f.crest = d === 'avalanche' ? 48 + 15 * this.I : 70 + 22 * this.I;
+    f.crest = (d === 'avalanche' ? (48 + 15 * this.I) * 0.74 : 70 + 22 * this.I) * Math.pow(this.tn?.size ?? 1, 0.35);
     f.speed = (d === 'avalanche' ? 175 + 35 * this.I : 225 + 45 * this.I) * (this.training ? 0.8 : 1);
     this.wave.warned = false;
     // destroços na frente da onda (troncos/caixas que já estavam soltos ganham um empurrão)
@@ -948,7 +952,7 @@ export class DisasterGame implements MiniGameHandle {
       case 'vulcao':
         // a lava DESCE da direita (frente lenta) e sobe em pulsos; bombas miradas deixam fogo.
         // "O chão é lava": sobe por igual desde já, sem bombas (pule de lugar alto em lugar alto)
-        if (this.tn.lavaFloor) this.fluid = fl({ kind: 'lava', target: this.fluidPeak('vulcao') / 3, rate: 1.4 + 0.6 * I });
+        if (this.tn.lavaFloor) this.fluid = fl({ kind: 'lava', target: (this.fluidPeak('vulcao') * 1.25) / 3, rate: 1.8 + 0.8 * I });
         else this.fluid = fl({ kind: 'lava', dir: -1, front: this.world.W + 60, speed: 18 + 12 * I, target: this.fluidPeak('vulcao') / 3, rate: 4, crest: 8, push: -160 });
         this.stage.k = 0;
         this.stage.next = dur * 0.28;
@@ -1250,7 +1254,7 @@ export class DisasterGame implements MiniGameHandle {
     // câmera lenta nos últimos instantes
     const slow = this.phase === 'disaster' && this.phaseDur - this.phaseT < 1.4 && this.dIndex === this.sc.disasters.length - 1;
     this.timeScale += ((slow ? 0.35 : 1) - this.timeScale) * Math.min(1, rdt * 6);
-    const dt = rdt * this.timeScale * ((this.sc.tune?.turbo || this.sc.mod === 'rapido') && this.phase === 'disaster' ? 1.2 : 1);
+    const dt = rdt * this.timeScale * ((this.sc.tune?.turbo || this.sc.mod === 'rapido') && this.phase === 'disaster' ? 1.12 : 1);
     if (this.phase !== 'end' && this.phase !== 'intro') this.roundT += rdt;
     if (this.phaseT >= this.phaseDur) this.nextPhase();
 
@@ -1399,8 +1403,12 @@ export class DisasterGame implements MiniGameHandle {
   }
 
   /** multiplicador de cadência dos golpes: intensidade × calor (acelera ao longo do desastre) */
+  /** no desastre duplo o 2º motor entra mais fraco (tempero, não outro desastre inteiro) */
+  kOf(d: DisasterId, k: number): number {
+    return this.sc.disasters.length > 1 && this.sc.disasters[1] === d ? k * 0.5 : k;
+  }
   private pace(): number {
-    return this.I * (1 + 0.55 * this.heat) * (this.training ? 0.7 : 1) * (this.sc.disasters.length > 1 ? 0.85 : 1);
+    return this.I * (1 + 0.55 * this.heat) * (this.training ? 0.7 : 1) * (this.sc.disasters.length > 1 ? 0.72 : 1);
   }
 
   private updateDisasters(dt: number): void {
@@ -1535,13 +1543,13 @@ export class DisasterGame implements MiniGameHandle {
             audio.crack();
           }
         }
-        if (inP) this.tick('terremoto', dt * k, () => this.spawnAimed('rock', 1.35 * this.tele, 26, 0.55), 1.0);
+        if (inP) this.tick('terremoto', dt * this.kOf('terremoto', k), () => this.spawnAimed('rock', 1.35 * this.tele, 26, 0.55), 1.0);
       }
       // sumidouro: o chão afunda em círculos que crescem e se juntam (sempre sobra chão firme)
       if (this.active.has('sumidouro')) {
         // gelo rachando: rachaduras que abrem e congelam de novo (mais vezes, menores)
-        if (this.tn.ice) this.tick('sumidouro', dt * k * this.tn.rate, () => this.crack(1 + (this.rng() < 0.4 * I ? 1 : 0)), 2.1 - 0.6 * this.heat);
-        else this.tick('sumidouro', dt * k * this.tn.rate, () => this.sink(), 4 - 1 * this.heat);
+        if (this.tn.ice) this.tick('sumidouro', dt * this.kOf('sumidouro', k) * this.tn.rate, () => this.crack(1 + (this.rng() < 0.3 * I ? 1 : 0)), 2.9 - 0.7 * this.heat);
+        else this.tick('sumidouro', dt * this.kOf('sumidouro', k) * this.tn.rate, () => this.sink(), 4.6 - 1 * this.heat);
       }
       this.ex.update(dt, k);
       // tornado(s): persegue os jogadores, arranca telhados, arremessa destroços
@@ -1557,41 +1565,41 @@ export class DisasterGame implements MiniGameHandle {
           tw.tgtT = 0;
           this.alert('tornado', side, 2, t('dz.al.tornado2', 'Outro tornado!'));
         }
-        this.twister(this.tornado, dt, k);
-        this.twister(this.tornado2, dt, k);
+        this.twister(this.tornado, dt, this.kOf('tornado', k));
+        this.twister(this.tornado2, dt, this.kOf('tornado', k));
       }
       if (this.active.has('meteoros')) {
         this.tick(
           'meteoros',
-          dt * k * this.tn.rate,
+          dt * this.kOf('meteoros', k) * this.tn.rate,
           () => {
             const sk = this.tn.strike;
             const s = this.spawnAimed('meteor', (sk === 'hail' ? 1.25 : sk === 'piano' ? 1.7 : 1.45) * this.tele * (this.tn.grav < 1 ? 1.15 : 1), (38 + 4 * I) * this.tn.size, sk === 'hail' ? 0.35 : 0.45);
             // no fim: rajadas de 3 em linha
             if (s && this.heat > 0.6 && this.rng() < 0.35) for (const o of [-1, 1]) this.spawnStrike('meteor', s.T + 0.25, s.r, s.x + o * s.r * 1.7);
           },
-          1.3 - 0.35 * this.heat,
+          1.12 - 0.3 * this.heat,
         );
       }
-      if (this.active.has('raios')) this.tick('raios', dt * k, () => this.spawnBolt(), 1.05 - 0.25 * this.heat);
+      if (this.active.has('raios')) this.tick('raios', dt * this.kOf('raios', k), () => this.spawnBolt(), 1.05 - 0.25 * this.heat);
       if (this.active.has('vulcao') && !this.tn.lavaFloor) {
-        this.tick('vulcao', dt * k, () => this.spawnAimed('bomb', 1.6 * this.tele, 28, 0.5), 2.4 - 0.6 * this.heat);
+        this.tick('vulcao', dt * this.kOf('vulcao', k), () => this.spawnAimed('bomb', 1.6 * this.tele, 32, 0.55), 1.8 - 0.5 * this.heat);
         this.haze = Math.min(0.5, this.haze + dt * 0.012 * I);
       }
-      if (this.active.has('acido')) this.tick('acido', dt * k, () => this.spawnAimed('drop', 1.2 * this.tele, 18, 0.5), 2.4 - 0.6 * this.heat);
+      if (this.active.has('acido')) this.tick('acido', dt * this.kOf('acido', k), () => this.spawnAimed('drop', 1.2 * this.tele, 18, 0.5), 2.4 - 0.6 * this.heat);
       if (this.active.has('avalanche')) {
-        this.tick('avalanche', dt * k, () => this.spawnBall(), 3.1 - 1.1 * this.heat);
+        this.tick('avalanche', dt * this.kOf('avalanche', k), () => this.spawnBall(), 3.1 - 1.1 * this.heat);
         // blocos de gelo caindo da montanha (miram quem fica parado, inclusive lá no alto)
-        this.tick('ice', dt * k, () => this.spawnAimed('rock', 1.5 * this.tele, 22, 0.7), 6 - 1.5 * this.heat);
+        this.tick('ice', dt * this.kOf('avalanche', k), () => this.spawnAimed('rock', 1.5 * this.tele, 22, 0.7), 6 - 1.5 * this.heat);
       }
       // enchente: a tempestade solta raios no ponto mais alto de vez em quando
-      if (this.active.has('enchente')) this.tick('stormbolt', dt * k, () => this.spawnBolt(true), 14 - 4 * this.heat);
-      if (this.active.has('areia')) this.sandstorm(dt, k);
+      if (this.active.has('enchente')) this.tick('stormbolt', dt * this.kOf('enchente', k), () => this.spawnBolt(true), 17 - 4 * this.heat);
+      if (this.active.has('areia')) this.sandstorm(dt, this.kOf('areia', k));
       // enchente: destroços boiando na correnteza (tiram fôlego de quem nada; derrubam quem está na beira)
       if (this.active.has('enchente') && f && f.level > 30)
         this.tick(
           'enchente',
-          dt * k,
+          dt * this.kOf('enchente', k),
           () => {
             const dir = this.rng() < 0.5 ? -1 : 1;
             const s = this.spawnStrike('gust', 1.2 * this.tele, 14, dir > 0 ? -40 : w.W + 40);
@@ -1981,7 +1989,7 @@ export class DisasterGame implements MiniGameHandle {
           s.vx = g.dir * (360 + 80 * I);
           s.ty = y;
         },
-        0.45 - 0.15 * this.heat,
+        (0.4 - 0.13 * this.heat) / this.tn.rate,
       );
       if (g.t <= 0) {
         g.dir = -g.dir;
@@ -2173,7 +2181,7 @@ export class DisasterGame implements MiniGameHandle {
       }
     } else if (p.swim && (depth < 4 || p.climbing)) p.swim = false;
     if (p.swim) {
-      const cap = RUN * (this.tn.fluid === 'choco' ? 0.42 : this.tn.fluid === 'jelly' ? 0.7 : 0.6);
+      const cap = RUN * (this.tn.fluid === 'choco' ? 0.5 : this.tn.fluid === 'jelly' ? 0.7 : 0.6);
       if (p.vx > cap) p.vx = cap;
       if (p.vx < -cap) p.vx = -cap;
       p.x += (this.sim ? this.sim.flow(p.x) : 0) * 0.45 * dt;
@@ -2404,7 +2412,7 @@ export class DisasterGame implements MiniGameHandle {
     if (p.hit > 0) p.hit -= dt;
     // água: nada com fôlego (não elimina na hora); lava, gosma e neve eliminam ao encostar
     if (p.swim) {
-      p.air -= (dt / this.airTime()) * (this.sim && p.y - 26 > this.sim.surf(p.x) ? 2.2 : 1) * (this.tn.fluid === 'choco' ? 1.35 : this.tn.fluid === 'bubble' ? 0.6 : 1);
+      p.air -= (dt / this.airTime()) * (this.sim && p.y - 26 > this.sim.surf(p.x) ? 2.2 : 1) * (this.tn.fluid === 'choco' ? 1.25 : this.tn.fluid === 'bubble' ? 0.6 : 1);
       if (p.air <= 0) {
         this.knockOut(p, 0, 'air');
         return;
@@ -2569,7 +2577,12 @@ export class DisasterGame implements MiniGameHandle {
       return;
     }
     // o desastre aparece no título do cenário: quem presta atenção já se prepara certo
-    const known = this.phase === 'disaster' || this.phase === 'warn' || (this.phase === 'prepare' && (p.self || b.skill > 0.6)) ? this.sc.disasters[this.dIndex] : null;
+    // no desastre duplo a estratégia segue a do 1º (ou a do fluido, se houver um subindo); o 2º só traz
+    // golpes extras para desviar (é assim que a criança joga: não troca de plano no meio)
+    const prim = this.sc.disasters[0];
+    const fl = this.fluidD();
+    const plan2 = this.sc.disasters.length > 1 && this.dIndex > 0 ? (fl && fl !== 'raios' ? fl : prim) : this.sc.disasters[this.dIndex];
+    const known = this.phase === 'disaster' || this.phase === 'warn' || (this.phase === 'prepare' && (p.self || b.skill > 0.6)) ? plan2 : null;
     // o lugar onde está começou a ceder/rachar: replaneja já (bots atentos)
     if (p.onSolid >= 0 && (w.solids[p.onSolid].crumble ?? 0) > 0 && this.rng() < b.skill) b.think = Math.min(b.think, 0);
     if (b.think <= 0) {

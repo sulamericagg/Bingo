@@ -130,6 +130,11 @@ export class Extra2D {
   private size(): number {
     return this.tn?.size ?? 1;
   }
+  /** este motor é o 2º do desastre duplo? (entra mais fraco) */
+  private sec(d: DisasterId): boolean {
+    const ds = this.g.sc.disasters;
+    return ds.length > 1 && ds[1] === d;
+  }
   private rate(): number {
     return this.tn?.rate ?? 1;
   }
@@ -188,7 +193,7 @@ export class Extra2D {
           u.vx = 0;
           u.st = 0;
           u.t = 1.5 + i * 1.2;
-          u.r = (this.tn?.mini ? 52 : 78) * sz;
+          u.r = (this.tn?.mini ? 58 : 90) * sz;
         }
         break;
       }
@@ -242,7 +247,7 @@ export class Extra2D {
         break;
       }
       case 'fantasma': {
-        const n = this.tn?.giant ? 1 : Math.round((1.1 + 0.9 * I) * (this.tn?.mini ? 1.8 : 1));
+        const n = this.sec('fantasma') ? 1 : this.tn?.giant ? 1 : Math.round((1.0 + 0.8 * I) * (this.tn?.mini ? 1.8 : 1));
         for (let i = 0; i < Math.min(n, this.ghosts.length); i++) this.spawnGhost(this.ghosts[i], i * 1.4);
         break;
       }
@@ -289,12 +294,12 @@ export class Extra2D {
   /* ------------------------------ consultas ------------------------------ */
 
   /** y da parte de baixo do que está logo acima da cabeça (−1e9 = céu aberto) */
-  ceilingAbove(px: number, py: number, maxUp = 900): number {
+  ceilingAbove(px: number, py: number, maxUp = 900, solidOnly = false): number {
     const w = this.g.world;
     const head = py - 24;
     let best = -1e9;
     for (const s of w.solids) {
-      if (s.kind === 'ground' || s.gone) continue;
+      if (s.kind === 'ground' || s.gone || (solidOnly && s.oneWay)) continue;
       if (px < s.x + 2 || px > s.x + s.w - 2) continue;
       const bot = s.y + s.h;
       if (bot <= head + 2 && bot > head - maxUp && bot > best) best = bot;
@@ -337,6 +342,10 @@ export class Extra2D {
   covered(p: Player, maxUp = 700): boolean {
     return this.g.world.insideHouse(p.x, p.y) || this.ceilingAbove(p.x, p.y, maxUp) > -1e8;
   }
+  /** teto de verdade (casa, laje, bloco de torre): plataforma de tábua/copa não segura quem flutua */
+  roofed(p: Player, maxUp = 900): boolean {
+    return this.g.world.insideHouse(p.x, p.y) || this.ceilingAbove(p.x, p.y, maxUp, true) > -1e8;
+  }
   private houseSafe(p: Player): boolean {
     const w = this.g.world;
     for (let i = 0; i < w.houses.length; i++) {
@@ -373,7 +382,7 @@ export class Extra2D {
   /** multiplicador da gravidade do Bloop */
   gravK(p: Player): number {
     const base = this.tn?.grav ?? 1;
-    if (this.grav.st === 2 && !p.climbing && !this.g.world.insideHouse(p.x, p.y)) return -0.55;
+    if (this.grav.st === 2 && !p.climbing && !this.g.world.insideHouse(p.x, p.y)) return -0.66;
     return this.g.active.has('gravidade') ? base * 0.82 : base;
   }
   /** atrito no chão (gelo/neve) */
@@ -400,7 +409,7 @@ export class Extra2D {
     // disco voador: o raio levanta quem está debaixo dele sem teto
     for (const u of this.ufos) {
       if (!u.on || u.st !== 2) continue;
-      if (Math.abs(p.x - u.bx) < u.r && !this.covered(p, 600)) {
+      if (Math.abs(p.x - u.bx) < u.r && !this.roofed(p, 600)) {
         p.vy -= 4300 * dt;
         if (p.vy < -420) p.vy = -420;
         p.vx += (u.bx - p.x) * 2 * dt;
@@ -415,15 +424,15 @@ export class Extra2D {
     const g = this.g;
     if (this.grav.st === 2 && p.vy < 0) {
       if (p.vy < -320) p.vy = -320;
-      const c = this.ceilingAbove(p.x, prevY, 900);
+      const c = this.ceilingAbove(p.x, prevY, 900, true);
       if (c > -1e8 && p.y - 24 < c) {
         p.y = c + 24;
         p.vy = 0;
       }
     }
     if (!p.alive || p.safe || p.shield > 0 || g.phase !== 'disaster') return;
-    // flutuou para longe / foi abduzido
-    if (p.y < -640) {
+    // flutuou para longe / foi abduzido (chegou no disco)
+    if (p.y < -640 || (p.y < -360 && this.ufos.some((u) => u.on && u.st === 2 && Math.abs(p.x - u.bx) < u.r))) {
       g.knockOut(p, 0, this.hole.on ? 'hole' : this.grav.st === 2 ? 'float' : 'ufo');
       if (p.self) g.hud.toast(this.ufos.some((u) => u.on) ? t('dz.out.ufo', 'Os alienígenas levaram você para passear!') : t('dz.out.float', 'Você flutuou para longe!'));
       return;
@@ -449,7 +458,7 @@ export class Extra2D {
       p.meter = cov ? Math.max(0, p.meter - dt * 0.3) : Math.min(1.05, p.meter + dt * k * (g.training ? 0.7 : 1));
     } else if (g.active.has('nevasca')) {
       const wm = this.warm(p);
-      const k = (0.045 + 0.02 * g.I + (this.cold.st === 2 ? 0.1 : 0)) * (g.training ? 0.7 : 1);
+      const k = (0.038 + 0.016 * g.I + (this.cold.st === 2 ? 0.09 : 0)) * (g.training ? 0.7 : 1);
       p.meter = wm >= 1 ? Math.max(0, p.meter - dt * 0.35) : Math.min(1.05, p.meter + dt * k * (wm > 0 ? 0.45 : 1));
     }
     if (p.meter >= 1) {
@@ -522,22 +531,39 @@ export class Extra2D {
       const G = this.grav;
       G.t += dt;
       if (G.st === 0) {
-        G.next -= dt * k;
-        if (G.next <= 1.7 * g.tele) {
+        G.next -= dt * g.kOf('gravidade', k);
+        if (G.next <= 1.9 * g.tele) {
           G.st = 1;
           G.t = 0;
-          g.alert('gravidade', 2, 1.7 * g.tele, t('dz.al.float', 'A gravidade vai sumir! Fique embaixo de um teto!'));
+          g.alert('gravidade', 2, 1.9 * g.tele, t('dz.al.float', 'A gravidade vai sumir! Fique embaixo de um teto!'));
+        // no aviso, a casa mais cheia perde o telhado (sai flutuando): dá tempo de correr para outro teto
+        if (g.rng() < 0.1 + 0.2 * g.heat && w.houses.filter((hh) => !hh.ripped).length >= 2) {
+          let best = -1;
+          let bn = 0;
+          for (let i = 0; i < w.houses.length; i++) {
+            const hs = w.houses[i];
+            if (hs.ripped) continue;
+            let n = 0;
+            for (const p of g.players) if (p.alive && p.x > hs.x && p.x < hs.x + hs.w && p.y > hs.top - 4 && p.y <= 2) n++;
+            if (n > bn) {
+              bn = n;
+              best = i;
+            }
+          }
+          if (best >= 0) g.ripRoof(best, 0);
         }
-      } else if (G.st === 1 && G.t >= 1.7 * g.tele) {
+        }
+      } else if (G.st === 1 && G.t >= 1.9 * g.tele) {
         G.st = 2;
         G.t = 0;
+
         audio.siren(0.6);
         for (const b of w.bodies) if (b.alive && b.kind === 'crate') w.push(b, (g.rng() - 0.5) * 80, -260);
       } else if (G.st === 2) {
         for (const b of w.bodies) if (b.alive && b.awake && b.kind === 'crate' && b.y > -500) b.vy -= 2100 * dt;
-        if (G.t >= 2.4 + 0.7 * I) {
+        if (G.t >= 2.8 + 0.8 * I) {
           G.st = 0;
-          G.next = Math.max(5, 9.5 - 2 * g.heat) / this.rate();
+          G.next = Math.max(4.5, 8 - 2 * g.heat) / this.rate();
           if (g.q.shake) g.shake = Math.max(g.shake, 0.3);
         }
       }
@@ -558,7 +584,7 @@ export class Extra2D {
       h.x = Math.max(160, Math.min(w.W - 160, h.x));
       if (h.st === 0) {
         h.pull = 40;
-        h.next -= dt * k;
+        h.next -= dt * g.kOf('buraco', k);
         if (h.next <= 1.8 * g.tele) {
           h.st = 1;
           h.t = 0;
@@ -571,7 +597,7 @@ export class Extra2D {
           h.t = 0;
         }
       } else {
-        h.pull = (235 + 90 * I) * (this.tn?.mini ? 0.7 : 1);
+        h.pull = (235 + 90 * I) * (this.tn?.mini || this.sec('buraco') ? 0.7 : 1);
         if (g.q.shake) g.shake = Math.max(g.shake, 0.15);
         // casas logo abaixo perdem o telhado (deixam de ser abrigo)
         for (let i = 0; i < w.houses.length; i++) {
@@ -603,7 +629,7 @@ export class Extra2D {
     // ---- discos voadores (abdução) ----
     for (const u of this.ufos) {
       if (!u.on) continue;
-      u.t -= dt * k;
+      u.t -= dt * g.kOf('abducao', k);
       if (u.st === 0) {
         // segue alguém (com inércia); quando chega perto, avisa
         let tx = w.W / 2;
@@ -615,7 +641,7 @@ export class Extra2D {
         u.x += u.vx * dt;
         if (u.t <= 0 && Math.abs(tx - u.x) < 140) {
           u.st = 1;
-          u.t = 1.05 * g.tele;
+          u.t = 0.95 * g.tele;
           u.bx = Math.max(40, Math.min(w.W - 40, tx));
           if (Math.abs(u.x - g.me.x) < 700) audio.siren(0.8);
         }
@@ -630,7 +656,7 @@ export class Extra2D {
       } else {
         // raio ligado: alarga e persegue devagar quem está sem teto embaixo
         const tg = this.ufoTarget(u);
-        if (tg && !this.covered(tg, 600)) u.bx += Math.max(-1, Math.min(1, (tg.x - u.bx) / 60)) * (165 + 45 * I) * dt;
+        if (tg && !this.roofed(tg, 600)) u.bx += Math.max(-1, Math.min(1, (tg.x - u.bx) / 60)) * (185 + 50 * I) * dt;
         // o raio trator leva telhados, plataformas e copas que estiverem embaixo (o abrigo não dura)
         for (let i = 0; i < w.houses.length; i++) {
           const hs = w.houses[i];
@@ -646,7 +672,17 @@ export class Extra2D {
         }
       }
     }
-    if (A.has('abducao') && !this.ufos[1].on && g.heat > 0.3 && I >= 0.95 && !this.tn?.mini) {
+    if (A.has('abducao') && !this.ufos[2].on && this.ufos[1].on && g.heat > 0.55 && I >= 0.95 && !this.tn?.mini) {
+      const u = this.ufos[2];
+      u.on = true;
+      u.x = w.W / 2;
+      u.y = -490;
+      u.st = 0;
+      u.t = 2;
+      u.vx = 0;
+      u.r = 90 * this.size();
+    }
+    if (A.has('abducao') && !this.ufos[1].on && g.heat > 0.22 && !this.tn?.mini && !this.sec('abducao')) {
       const u = this.ufos[1];
       u.on = true;
       u.x = g.me.x < w.W / 2 ? w.W + 200 : -200;
@@ -654,14 +690,14 @@ export class Extra2D {
       u.st = 0;
       u.t = 2;
       u.vx = 0;
-      u.r = 78 * this.size();
+      u.r = 90 * this.size();
       g.alert('abducao', u.x < 0 ? -1 : 1, 1.6, t('dz.al.ufo2', 'Outro disco voador!'));
     }
     // ---- lasers ----
     if (A.has('laser')) {
       g.tick(
         'laser',
-        dt * k,
+        dt * g.kOf('laser', k),
         () => {
           const l = this.lasers.find((o) => !o.on);
           const p = g.pickTarget();
@@ -703,7 +739,7 @@ export class Extra2D {
     if (A.has('pisao')) {
       g.tick(
         'pisao',
-        dt * k,
+        dt * g.kOf('pisao', k),
         () => {
           const s = this.stomps.find((o) => !o.on);
           const p = g.pickTarget();
@@ -769,7 +805,7 @@ export class Extra2D {
       S.t += dt;
       S.k += ((S.st === 2 ? 1 : 0.25) - S.k) * Math.min(1, dt * 1.5);
       if (S.st === 0) {
-        S.next -= dt * k;
+        S.next -= dt * g.kOf('calor', k);
         if (S.next <= 2 * g.tele) {
           S.st = 1;
           S.t = 0;
@@ -835,7 +871,7 @@ export class Extra2D {
       }
       g.tick(
         'ember',
-        dt * k,
+        dt * g.kOf('incendio', k),
         () => {
           const p = g.pickTarget();
           if (!p) return;
@@ -855,7 +891,7 @@ export class Extra2D {
       const C = this.cold;
       C.t += dt;
       if (C.st === 0) {
-        C.next -= dt * k;
+        C.next -= dt * g.kOf('nevasca', k);
         if (C.next <= 1.8 * g.tele) {
           C.st = 1;
           C.t = 0;
@@ -887,7 +923,7 @@ export class Extra2D {
           c.t = (9 + 3 * g.rng()) * (g.training ? 1.4 : 1);
           if (Math.abs(x - g.me.x) < 900) g.hud.toast(t('dz.al.camp', 'Uma fogueira acendeu! Vá se esquentar.'), 'dz-camp');
         },
-        6.5 / this.rate(),
+        5.8 / this.rate(),
       );
     }
     for (const c of this.camps) {
@@ -900,7 +936,7 @@ export class Extra2D {
     if (A.has('geiser') && this.vents.length) {
       g.tick(
         'geiser',
-        dt * k,
+        dt * g.kOf('geiser', k),
         () => {
           // prefere o gêiser mais perto de alguém (golpe "mirado"), às vezes um novo no pé de quem para
           const p = g.pickTarget();
@@ -981,7 +1017,7 @@ export class Extra2D {
         o.dash += dt;
         if (o.dash >= 0) o.dash = 1;
       } else if (o.dash > 0) o.dash = Math.max(0, o.dash - dt);
-      const sp = (52 + 12 * I + 18 * g.heat) * (o.dash > 0 ? 1.8 : o.dash < 0 ? 0.2 : 1) * (this.tn?.giant ? 0.8 : 1) * (this.tn?.turbo ? 1.15 : 1);
+      const sp = (48 + 11 * I + 16 * g.heat) * (this.sec('fantasma') ? 0.8 : 1) * (o.dash > 0 ? 1.8 : o.dash < 0 ? 0.2 : 1) * (this.tn?.giant ? 0.8 : 1) * (this.tn?.turbo ? 1.15 : 1);
       const dx = tx - o.x;
       const dy = ty - o.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -1023,7 +1059,7 @@ export class Extra2D {
       } else if (o.angry > 0) o.angry = Math.max(0, o.angry - dt);
       const tx = p && !hidden ? p.x : o.x + Math.sin(g.time) * 60;
       const ty = p && !hidden ? p.y - 14 : -160;
-      const sp = 150 * (0.92 + 0.12 * I + 0.15 * g.heat) * (o.angry > 0 ? 1.6 : o.angry < 0 ? 0.25 : 1) * (this.tn?.giant ? 0.85 : this.tn?.mini ? 1.05 : 1) * (this.tn?.turbo ? 1.15 : 1);
+      const sp = 150 * (this.sec('abelhas') ? 0.82 : 1) * (0.92 + 0.12 * I + 0.15 * g.heat) * (o.angry > 0 ? 1.6 : o.angry < 0 ? 0.25 : 1) * (this.tn?.giant ? 0.85 : this.tn?.mini ? 1.05 : 1) * (this.tn?.turbo ? 1.15 : 1);
       const dx = tx - o.x;
       const dy = ty - o.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -1036,7 +1072,7 @@ export class Extra2D {
     if (A.has('bolas')) {
       g.tick(
         'bolas',
-        dt * k,
+        dt * g.kOf('bolas', k),
         () => {
           const side = (this.ballSide = g.rng() < 0.65 ? -this.ballSide : this.ballSide);
           // metade vem das pontas; a outra metade cai do céu perto de alguém e sai rolando
@@ -1047,7 +1083,7 @@ export class Extra2D {
           s.vx = side * (250 + 60 * I) * (this.tn?.speed ?? 1) * (this.tn?.turbo ? 1.15 : 1);
           s.ty = GROUND_Y - s.r;
         },
-        (2.6 - 0.8 * g.heat) / this.rate(),
+        (2.9 - 0.8 * g.heat) / this.rate(),
       );
     }
   }
@@ -1058,7 +1094,7 @@ export class Extra2D {
     let bs = -1e9;
     for (const p of g.players) {
       if (!p.alive || p.safe) continue;
-      const s = -Math.abs(p.x - u.x) * 0.5 + p.idle * 120 + (this.covered(p, 600) ? -400 : 0);
+      const s = -Math.abs(p.x - u.x) * 0.5 + p.idle * 120 + (this.roofed(p, 600) ? -120 : 0);
       if (s > bs) {
         bs = s;
         best = p;
@@ -1134,7 +1170,7 @@ export class Extra2D {
   }
 
   /** lugar coberto mais perto no chão (casa, embaixo de plataforma, copa, laje) */
-  private coverX(p: Player, skill: number): number | null {
+  private coverX(p: Player, skill: number, roofOnly = false): number | null {
     const g = this.g;
     const w = g.world;
     let best: number | null = null;
@@ -1153,7 +1189,8 @@ export class Extra2D {
       if (!h.ripped && (this.haunt[i] ?? 0) <= 0 && w.insideHouse(h.x + h.w / 2, -2)) tryX(h.x + h.w * 0.5, 60);
     }
     const sl = this.g.active.has('calor') ? this.sunSlope() : 0;
-    for (const s of w.solids) if ((s.kind === 'plat' || s.kind === 'leaf') && !s.gone && !(s.crumble ?? 0) && s.y > -330) tryX(s.x + s.w / 2 + sl * (s.y + s.h), 0);
+    if (!roofOnly)
+      for (const s of w.solids) if ((s.kind === 'plat' || s.kind === 'leaf') && !s.gone && !(s.crumble ?? 0) && s.y > -330) tryX(s.x + s.w / 2 + sl * (s.y + s.h), 0);
     return best;
   }
 
@@ -1171,13 +1208,13 @@ export class Extra2D {
       case 'calor':
       case 'abducao': {
         const urgent = d === 'gravidade' ? this.grav.st > 0 : d === 'calor' ? this.sun.st > 0 || p.meter > 0.5 : this.ufos.some((u) => u.on && u.st > 0 && Math.abs(u.x - p.x) < u.r + 90);
-        if ((d === 'calor' ? this.shaded(p.x, p.y) || (this.houseAt(p) >= 0 && this.stuffy[this.houseAt(p)] >= 0) : this.covered(p, d === 'gravidade' ? 900 : 700)) && p.onGround) {
+        if ((d === 'calor' ? this.shaded(p.x, p.y) || (this.houseAt(p) >= 0 && this.stuffy[this.houseAt(p)] >= 0) : this.roofed(p, 900)) && p.onGround) {
           b.gx = p.x;
           b.gy = p.y;
           return true;
         }
         if (urgent || g.rng() < sk * 0.6) {
-          const x = this.coverX(p, sk);
+          const x = this.coverX(p, sk, d !== 'calor');
           if (x !== null) {
             b.gx = x;
             ground();
@@ -1320,7 +1357,7 @@ export class Extra2D {
     for (const v of this.vents) if ((v.warn > 0 || v.erupt > 0) && Math.abs(p.x - v.x) < 50 && g.rng() < sk + 0.35) flee = p.x >= v.x ? 1 : -1;
     for (const o of this.ghosts) if (o.on && o.fade <= 0 && Math.hypot(o.x - p.x, o.y - p.y) < 130 && g.rng() < sk + 0.3) flee = p.x >= o.x ? 1 : -1;
     for (const o of this.swarms) if (o.on && Math.hypot(o.x - p.x, o.y - p.y) < 120 && g.rng() < sk + 0.2) flee = p.x >= o.x ? 1 : -1;
-    for (const u of this.ufos) if (u.on && u.st > 0 && Math.abs(p.x - u.bx) < u.r + 30 && !this.covered(p, 600) && g.rng() < sk + 0.2) flee = p.x >= u.bx ? 1 : -1;
+    for (const u of this.ufos) if (u.on && u.st > 0 && Math.abs(p.x - u.bx) < u.r + 30 && !this.roofed(p, 600) && g.rng() < sk + 0.2) flee = p.x >= u.bx ? 1 : -1;
     let noJump = false;
     for (const l of this.lasers) {
       if (!l.on) continue;

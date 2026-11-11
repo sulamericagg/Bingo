@@ -218,7 +218,7 @@ const CSS = `
 .d3-jump.tc-pressed{background:rgba(255,176,58,.6);transform:scale(.94)}
 .d3-jump .ico{width:40px;height:40px}
 .d3-root.lefty .d3-jump{right:auto;left:calc(var(--edge-l,14px) + 6px)}
-.d3-warn{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 64px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:5px 16px 5px 10px;border-radius:22px;background:rgba(160,20,40,.8);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;opacity:0;transition:opacity .15s,transform .15s}
+.d3-warn{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 96px);transform:translate(-50%,-6px) scale(.9);display:flex;align-items:center;gap:10px;padding:5px 16px 5px 10px;border-radius:22px;background:rgba(160,20,40,.8);border:3px solid #2a0b5c;box-shadow:0 4px 0 #2a0b5c;opacity:0;transition:opacity .15s,transform .15s}
 .d3-warn.on{opacity:1;transform:translate(-50%,0) scale(1)}
 .d3-warn .di .ico{width:50px;height:50px}
 .d3-warn b{font-size:42px;line-height:1;color:#ffe14d;-webkit-text-stroke:2px #2a0b5c;min-width:.7em;text-align:center}
@@ -245,7 +245,7 @@ const CSS = `
 .d3-panel{background:linear-gradient(180deg,#2c3f7a,#1a2350);border:3px solid #2a0b5c;border-radius:22px;box-shadow:0 6px 0 #2a0b5c;padding:16px;width:min(88vw,340px);text-align:center;display:flex;flex-direction:column;gap:8px}
 .d3-big{font:inherit;font-weight:700;font-size:17px;border:3px solid #2a0b5c;border-radius:16px;padding:10px;cursor:pointer;color:#2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);box-shadow:0 4px 0 #2a0b5c;display:flex;align-items:center;justify-content:center;gap:6px}
 .d3-big.alt{background:linear-gradient(180deg,#d8e4ff,#9fb3e8)}
-@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 64px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
+@media (orientation:landscape) and (max-height:500px){.d3-jump{width:72px;height:72px}.d3-hint{top:calc(max(6px,env(safe-area-inset-top)) + 52px);font-size:13px}.d3-warn{top:calc(max(6px,env(safe-area-inset-top)) + 84px);padding:3px 12px 3px 8px}.d3-warn .di .ico{width:40px;height:40px}.d3-warn b{font-size:32px}}
 `;
 let cssDone = false;
 
@@ -745,9 +745,18 @@ export class Disaster3D implements MiniGameHandle {
     this.resize();
   }
 
+  /** retângulo do botão de pular (relativo à raiz) — as setas de borda desviam dele */
+  jumpRect: { l: number; t: number; r: number; b: number } | null = null;
   resize(): void {
     const w = this.root.clientWidth || window.innerWidth;
     const h = this.root.clientHeight || window.innerHeight;
+    requestAnimationFrame(() => {
+      const jb = this.hud?.querySelector('.d3-jump') as HTMLElement | null;
+      if (!jb) return;
+      const r = jb.getBoundingClientRect();
+      const rr = this.root.getBoundingClientRect();
+      this.jumpRect = { l: r.left - rr.left, t: r.top - rr.top, r: r.right - rr.left, b: r.bottom - rr.top };
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.dprCap));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
@@ -1229,11 +1238,13 @@ export class Disaster3D implements MiniGameHandle {
     this.isNew = !loadPedia().seen[this.entry.key];
     // cópia: o desastre duplo dinâmico mexe na lista desta rodada sem mudar o cenário salvo
     this.sc = { ...base, disasters: [...base.disasters] };
-    if (!this.sc.tune) this.sc.tune = { rate: 1, size: 1, speed: 1, grav: 1, slip: 1, night: false, wind: false, rain: false, fog: false, mini: false, giant: false, turbo: false };
+    if (!this.sc.tune) this.sc.tune = { rate: 1, size: 1, speed: 1, grav: 1, slip: 1, night: false, wind: false, rain: false, fog: false, mini: false, giant: false, turbo: false, cal: 1 };
     this.rng = mulberry(this.sc.seed + this.sessionRounds * 13);
     this.training = this.progress.played < 2 || /[?&]train=1/.test(location.search);
     this.mode = loadMode();
     this.I = intensityOf(this.mode, this.sc.difficulty, this.streak, this.training);
+    if (this.sc.key && this.sc.disasters.length > 1) this.I *= 0.86;
+    this.I *= this.sc.tune?.cal ?? 1;
     this.tele = Math.max(0.75, Math.min(1.15, 1.25 - 0.25 * this.I));
     {
       const cr = mulberry(this.sc.seed * 3 + this.sessionRounds * 7 + this.streak);
@@ -1319,7 +1330,7 @@ export class Disaster3D implements MiniGameHandle {
         this.setPhase('disaster', (this.sc.disasters.length > 1 ? 50 : 44) + this.sc.difficulty * 2);
         this.beginDisaster(this.sc.disasters[this.dIndex]);
         // desastre duplo: o 2º começa no meio do 1º (os dois juntos)
-        this.comboAt = this.sc.disasters.length > 1 ? this.phaseDur * 0.35 : -1;
+        this.comboAt = this.sc.disasters.length > 1 ? this.phaseDur * 0.45 : -1;
         break;
       case 'disaster':
         this.endRound();
@@ -1883,7 +1894,7 @@ export class Disaster3D implements MiniGameHandle {
     const f = this.fluid;
     const dis = this.phase === 'disaster';
     if (dis) this.heat = Math.min(1, this.phaseT / Math.max(1, this.phaseDur));
-    const k = I * (1 + 0.55 * this.heat) * (this.training ? 0.7 : 1) * (this.sc.disasters.length > 1 ? 0.85 : 1);
+    const k = I * (1 + 0.55 * this.heat) * (this.training ? 0.7 : 1) * (this.sc.disasters.length > 1 ? 0.72 : 1);
     if (this.ripGrace > 0) this.ripGrace -= dt;
     // desastre duplo: o 2º começa no meio do 1º (os dois juntos)
     if (dis && this.comboAt >= 0 && this.phaseT >= this.comboAt) {
@@ -2947,7 +2958,7 @@ export class Disaster3D implements MiniGameHandle {
   };
 
   update(rdt: number): void {
-    const dt = rdt * (this.tn?.turbo && this.phase === 'disaster' ? 1.2 : 1);
+    const dt = rdt * (this.tn?.turbo && this.phase === 'disaster' ? 1.12 : 1);
     this.time += dt;
     this.phaseT += dt;
     if (this.phase !== 'intro' && this.phase !== 'end') this.roundT += dt;
@@ -3326,8 +3337,13 @@ export class Disaster3D implements MiniGameHandle {
       const rx = W / 2 - 40;
       const ry = H / 2 - 46;
       const k = Math.min(rx / Math.max(1e-3, Math.abs(Math.cos(a)) * rx), ry / Math.max(1e-3, Math.abs(Math.sin(a)) * ry));
-      const px = W / 2 + Math.cos(a) * rx * Math.min(1, k);
-      const py = H / 2 + Math.sin(a) * ry * Math.min(1, k);
+      let px = W / 2 + Math.cos(a) * rx * Math.min(1, k);
+      let py = H / 2 + Math.sin(a) * ry * Math.min(1, k);
+      // nunca em cima do botão de pular nem da barra do topo (home, câmera, chips)
+      const jr = this.jumpRect;
+      if (jr && px > jr.l - 36 && px < jr.r + 36 && py > jr.t - 36) py = jr.t - 40;
+      if (py < 104 && (px < 120 || px > W - 170)) py = 104;
+      px = Math.max(34, Math.min(W - 34, px));
       const el = els[n];
       const key = ic + (urg > 0.66 ? '!' : '');
       if (this.edgeKey[n] !== key) {
