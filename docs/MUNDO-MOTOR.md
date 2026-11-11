@@ -54,3 +54,11 @@ registerModule({
 
 ## Eventos (`api.on`)
 `chunkLoad, chunkUnload, tick, dayChange, mined, boom, death, save, load` — assinaturas em `engine.ts`.
+
+## Sobrevivência, saves e rede (estado atual)
+
+- `survival.ts` (`Sandbox`) implementa a `MundoAPI`: inventário (`inv.ts`, 9 + 27 + 4 roupas), telas (`invui.ts`: arrastar/soltar, tocar-pegar/tocar-pôr, segurar = metade, toque duplo = mover rápido, grade 2×2/3×3, livro de receitas, fornalha, baú, catálogo criativo), construção com encaixe (`build.ts`), bichos (`mobs.ts`), trilhos/vagonete (`rails.ts`), dia/noite (12 min), vida/fome/fôlego, cama = casa.
+- Blocos (`content/blocks`): itens sem peça própria que têm `blockForItem` viram blocos; quebrar usa `breakInfo` (tempo por ferramenta/nível) e `rollDrops`; colisão via `World.extraSolid/extraFloor`; save em `sb.blk` (RLE base64 por pedaço de bloco).
+- Prioridade ao usar o item na mão: bicho na mira → bloco (colocar/quebrar) → peça/objeto (`place`) → kit de veículo → dinamite → estilingue/bumerangue → enchimento suave (`fill`) → enxada (canteiro) → árvore → cavar o terreno.
+- Saves: `worlds.ts` — índice `bw-mundo-idx` + um save por mundo `bw-mundo-w:<id>` (opções de criação em `save.gen`, diffs do subsolo por seção em `chunks[k].v`, peças/baús/inventário em `save.sb`). O save antigo `bw-floresta-mundo` continua como "Mundo dos Lenhadores (clássico)".
+- Rede (`net.ts` + `server/mundo.ts`): operações guardadas no DO e repetidas por quem entra — `{k:'e'}` terreno (x,y,z,r,f,h — idempotente, reaplicada quando o pedaço carrega), `{k:'b'}` bloco, `{k:'pa'|'pd'|'pu'}` peças/portas/baús. Estado do jogador ≤ 10/s; o anfitrião manda retratos dos bichos (5/s) e os convidados veem "fantasmas" (golpes viram `{t:'mg',k:'hitm'}`). Minijogos em `mini.ts` (mensagens `mg`).

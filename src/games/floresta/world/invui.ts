@@ -26,7 +26,7 @@ const CSS = `
 .mi-s.res.no{opacity:.45}
 .mi-s.drag{opacity:.35}
 .mi-s.ghost{position:fixed;z-index:60;pointer-events:none;background:none;border:none;transform:translate(-50%,-60%) scale(1.15)}
-.mi-hname{position:absolute;left:50%;bottom:calc(var(--edgeB,10px) + 52px);transform:translateX(-50%);font-weight:800;font-size:13px;color:#fff;text-shadow:0 1px 0 #2a0b5c,0 0 4px #2a0b5c;pointer-events:none;transition:opacity .4s;white-space:nowrap}
+.mi-hname{position:absolute;left:50%;bottom:calc(var(--edgeB,10px) + 72px);transform:translateX(-50%);font-weight:800;font-size:13px;color:#fff;text-shadow:0 1px 0 #2a0b5c,0 0 4px #2a0b5c;pointer-events:none;transition:opacity .4s;white-space:nowrap}
 .mi-bag-btn{position:absolute;left:calc(50% + 196px);bottom:calc(var(--edgeB,10px) + 2px);width:44px;height:44px}
 .mi-ov{position:absolute;inset:0;z-index:40;background:rgba(14,6,34,.8);display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;font-family:inherit;color:#fff}
 .mi-card{background:linear-gradient(#4a2a8a,#2e1660);border:3px solid #2a0b5c;border-radius:18px;box-shadow:0 6px 0 #1a0638;padding:6px 8px 8px;max-width:calc(100vw - 16px);max-height:calc(100vh - 12px);display:flex;flex-direction:column;gap:5px}
