@@ -423,7 +423,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
           b.appendChild(art);
           b.insertAdjacentHTML(
             'beforeend',
-            `<span class="sm-txt"><b>${esc(it.label)}</b>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span>${it.badge ? `<em class="sm-badge">${esc(it.badge)}</em>` : ''}${
+            `<span class="sm-txt"><b>${esc(it.label)}</b>${it.sub ? ` <small>${esc(it.sub)}</small>` : ''}</span>${it.badge ? `<em class="sm-badge">${esc(it.badge)}</em>` : ''}${
               it.lock ? `<em class="sm-lock">${icon('lock', { size: 16 })}${typeof it.lock === 'string' ? it.lock : ''}</em>` : ''
             }`,
           );
@@ -471,7 +471,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
           b.insertAdjacentHTML(
             'beforeend',
             `<span class="sm-stxt"><b>${esc(label)}</b>${
-              s.empty ? '' : `<small>${s.progressIcon ?? ''}${esc(s.progress ?? '')}</small>${s.last ? `<i>${icon('clock', { size: 12 })}${esc(smWhen(s.last))}</i>` : ''}`
+              s.empty ? '' : ` <small>${s.progressIcon ?? ''}${esc(s.progress ?? '')}</small>${s.last ? `<i>${icon('clock', { size: 12 })}${esc(smWhen(s.last))}</i>` : ''}`
             }</span>`,
           );
           if (!s.empty && o.onDelete && o.sel === i) {
@@ -539,7 +539,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
         const b = document.createElement('button');
         b.className = 'sm-play' + (o.tone === 'green' ? ' green' : '');
         const label = o.label ?? t('sm.play', 'JOGAR');
-        b.innerHTML = `<span class="sm-playi">${o.icon ?? SVG_PLAY}</span><span class="sm-playt"><b>${esc(label)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</span>`;
+        b.innerHTML = `<span class="sm-playi">${o.icon ?? SVG_PLAY}</span><span class="sm-playt"><b>${esc(label)}</b>${o.sub ? ` <small>${esc(o.sub)}</small>` : ''}</span>`;
         b.addEventListener('click', () => {
           fx(o.say ?? label);
           o.onTap();
@@ -572,7 +572,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
         const b = document.createElement('button');
         b.className = 'sm-servers';
         const label = o.label ?? t('sm.servers', 'Servidores');
-        b.innerHTML = `<span class="sm-srvi">${SVG_GLOBE}</span><span class="sm-txt"><b>${esc(label)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</span><span class="sm-go">${SVG_BACK}</span>`;
+        b.innerHTML = `<span class="sm-srvi">${SVG_GLOBE}</span><span class="sm-txt"><b>${esc(label)}</b>${o.sub ? ` <small>${esc(o.sub)}</small>` : ''}</span><span class="sm-go">${SVG_BACK}</span>`;
         b.addEventListener('click', () => {
           fx(label);
           o.onTap();
