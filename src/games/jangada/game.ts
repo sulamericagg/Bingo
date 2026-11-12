@@ -226,8 +226,8 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       notify(t('jangada.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
-    // abertura (docs/INTROS.md): só na primeira jangada nova, sozinho
-    if (fresh && !net) await introGate('jangada', () => import('./intro/cinematic').then((m) => m.playIntro(el)));
+    // abertura (docs/INTROS.md): toda jangada nova (sozinho); "Continuar" e online não tocam
+    if (fresh && !net) await introGate('jangada', () => import('./intro/cinematic').then((m) => m.playIntro(el)), { fresh: true });
     if (dead) return;
     endWorld();
     menuEl?.remove();

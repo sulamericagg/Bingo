@@ -54,7 +54,8 @@ export function launchTycoon(root: HTMLElement, exit: () => void): MiniGameHandl
         } });
         p.cards([{ id: 'idle', icon: icon('coins', { size: 44 }), label: t('tycoon.myFactory', 'Minha Fábrica'), badge: pend > 0 ? '+' + fmt(pend) : undefined, color: '#ffe08a', onTap: () => {
           close();
-          void tycoonIntro.once(root).then(() => {
+          // abertura (docs/INTROS.md): fábrica nova (ainda não inaugurada) toca sempre
+          void (tycoonSave().last ? tycoonIntro.once(root) : tycoonIntro.fresh(root)).then(() => {
             if (!dead) child = startIdle(root, showLobby, quality);
           });
         } }], { size: 'wide' });

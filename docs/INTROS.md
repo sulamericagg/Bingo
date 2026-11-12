@@ -1,8 +1,51 @@
 # Aberturas (intros) dos jogos
 
-Cada jogo pode ter uma **abertura cinematográfica** curta (30–45 s), procedural, pulável, que
-toca **na primeira partida nova** e pode ser **revista pelo menu** ("Abertura").
+Cada jogo pode ter uma **abertura cinematográfica** curta (30–45 s), procedural, pulável (**Pular**),
+e pode ser **revista pelo menu** ("Abertura") onde houver o botão.
 Referência de qualidade: Garimpo (`src/games/garimpo/start/cinematic.ts`).
+
+## Regra: quando a abertura toca sozinha
+
+1. **Jogos com jogo salvo** (espaços de save / "Novo jogo" / "Nova jangada" / "Novo mundo" /
+   "Nova partida"): **toda vez que um jogo NOVO começa** — espaço vazio, ou depois de apagar o save e
+   começar outro. **Continuar** um save **não** toca. (Pedido do dono: "toda vez que eu excluir e iniciar
+   um novo, tem que rodar as cutscenes".)
+2. **Jogos de fase/arcade** (sem save para continuar): só **na primeira vez** (+ "Abertura" no menu, onde houver).
+3. **Online/grupo**: quem **entra** no mundo de outro não vê. Para manter simples e robusto, os jogos com
+   save também **não** tocam quando o líder abre o mundo novo para o grupo (a sala já está esperando).
+4. Nunca toca sozinha com `?intro=0`, com a abertura desligada nos ajustes do hub
+   (`bw-intro = '0'`, "Animação de abertura dos jogos") nem em navegador automatizado
+   (`navigator.webdriver`: Playwright/QA). `?intro=1` (ou `?intro2=1`) força.
+   Tudo isso está num lugar só: `introAllowed()` em `src/3d/cine/gate.ts` (usado também por `_intro2/once.ts`).
+
+API (uma para cada base, mesma regra):
+
+```ts
+// base 3D/leve (src/3d/cine/gate.ts)
+await introGate(id, load);                    // 1ª vez (jogos de fase)
+await introGate(id, load, { fresh: true });   // jogo NOVO de um jogo com save (toca sempre)
+introWanted(id, { fresh: true });             // a pergunta, sem tocar
+
+// base 2D (src/games/_intro2/once.ts)
+await xxxIntro.once(root);                    // 1ª vez
+await xxxIntro.fresh(root);                   // jogo novo de um jogo com save
+```
+
+Quem chama decide o que é "jogo novo" (o gancho fica no caminho de começar do zero, nunca no "Continuar").
+
+> Por que a Jangada não tocava numa jangada nova: o gancho era `introGate('jangada', …)` (só a 1ª vez);
+> a marca `bloop-intro-jangada = '1'` fica no aparelho para sempre (é gravada ao tocar e também ao fim de
+> qualquer `Cine`, inclusive o "rever"), e apagar o save não a apaga. Agora o gancho usa `{ fresh: true }`.
+
+| jogo | save | o que é "jogo novo" | gancho |
+|---|---|---|---|
+| Jangada Bloop | 3 espaços | espaço vazio → "Nova jangada" (também depois de apagar) | `jangada/game.ts` → `start(true)`: `introGate('jangada', …, { fresh: true })` (só sozinho) |
+| Noites do Acampamento | 1 partida salva | JOGAR sem partida, ou "Nova partida" (descarta a salva) | `noites/game.ts` → `startSolo(intro = !runSave)`: `{ fresh: true }` |
+| Garimpo Bruto | 3 espaços | espaço vazio → "Novo jogo" | próprio: `camp.st.intro` vive **no save** (save novo = abertura de novo); `garimpo/game.ts` → `start()` |
+| Mundo Bloop (blocos) | mundos | "Novo mundo" | próprio: `save.vehPlaced` no save do mundo (`floresta/world/worldgame.ts` → `introPending`, fora do online) |
+| Fábrica Estelar | Minha Fábrica | fábrica ainda não inaugurada (`tycoon.last = 0`) | `tycoon/index.ts`: `tycoonIntro.fresh(root)`; senão `.once` |
+| Pouso Forçado (voo) | — | cada voo | próprio (cena de decolagem a cada voo, fora do online/rápido) |
+| Cava & Fala, Anomalias, Monta & Leva, Cozinha, Desastres, Caça, Rally, Queda, Banda, Lugar, Cor, Desenho | — (fases/rodadas) | — | 1ª vez (`introGate(id, load)` / `.once`) |
 
 ## Base compartilhada: `src/3d/cine/`
 
@@ -35,7 +78,7 @@ await c.play();                                       // resolve no fim, no Pula
   uniforms) e o renderizador é destruído com `forceContextLoss()`.
 - Narração: cada legenda é falada por `speak()` (respeita a configuração de narração/som).
 - `?debug` expõe `window.__cine = { id, seek(t), skip(), time, playing }` para testes.
-- `?intro=1` força tocar sempre; `?intro=0` nunca toca sozinha.
+- `?intro=1` força (passa por cima do navegador automatizado e do ajuste do hub); `?intro=0` nunca toca sozinha.
 - Chave de i18n do botão: `cine.skip` ("Pular").
 
 ## Aberturas e pontos de entrada
@@ -66,13 +109,14 @@ void import('./intro/cinematic').then((m) => m.playIntro(ROOT));
 
 ### Jogo novo (já ligado, sem mexer em código de menu)
 
-`introGate(id, load)` de `src/3d/cine/gate.ts` (sem three.js): toca só na primeira vez, marca
+`introGate(id, load, opts?)` de `src/3d/cine/gate.ts` (sem three.js): sem opções toca só na primeira vez;
+com `{ fresh: true }` toca a cada jogo novo (veja **Regra** acima). Marca
 `localStorage['bloop-intro-<id>'] = '1'` e nunca rejeita (se falhar, o jogo segue).
 
 | jogo | id | gancho |
 |---|---|---|
-| Jangada Bloop | `jangada` | `game.ts` → `start(fresh, net)`: só `fresh && !net` (nova jangada, sozinho) |
-| Noites do Acampamento | `noites` | `game.ts` → `startSolo()`: só sem partida salva (`!this.runSave`) |
+| Jangada Bloop | `jangada` | `game.ts` → `start(fresh, net)`: `fresh && !net`, com `{ fresh: true }` (TODA jangada nova, sozinho) |
+| Noites do Acampamento | `noites` | `game.ts` → `startSolo()`: sem partida salva, com `{ fresh: true }` (toda partida nova) |
 | Cava & Fala | `cavafala` | `game.ts` → `startRestore()` / `startArena()`: só sozinho (`!init && !online`) |
 | Anomalias & Cia | `anomalias` | `core/game.ts` → `play()` (modo Turno) |
 | Monta & Leva | `montaleva` | `game.ts` → `openLevel()` (fora do duelo) |
@@ -103,6 +147,9 @@ void import('./intro/cinematic').then((m) => m.playIntro(ROOT));
 
 ## Testes / capturas
 
+- `node scripts/dev/intros-fresh.mjs [jangada,noites,garimpo,tycoon]` (com `vite preview` em :5310, ou `QA_URL`):
+  prova a regra pelo menu de verdade — espaço novo → abertura; Continuar → nada; apagar + novo → abertura.
+
 - Página de dev: `scripts/dev/intros.html?play=<jogo>&debug` (só a abertura) e
   `?game=<jogo>&intro=1&debug` (o jogo de verdade, abertura no "jogo novo").
 - `NODE_PATH=$(npm root -g) node scripts/dev/intros-shots.mjs --port <vite> --only jangada,noites [--flow]`:
@@ -124,7 +171,7 @@ Garimpo — barras de cinema, gradação, legendas com ícones + narração por 
 | `_intro2/stage.ts` | `playFilm(root, spec)`: o palco (canvas 2D, coordenadas em % do lado menor, responsivo em pé/deitado) |
 | `_intro2/draw.ts` | pincéis: `bloop()` (Bloop do jogador ou amigos), nuvens, brilhos, raios, confete, `seg/ease/back/hop`, `dip()` |
 
-Regras de quando toca: só na 1ª vez; nunca com a abertura desligada nos ajustes (`bw-intro = '0'`) nem em
+Regras de quando toca: `.once` só na 1ª vez, `.fresh` a cada jogo novo de jogo com save (veja **Regra** no topo); nunca com a abertura desligada nos ajustes (`bw-intro = '0'`) nem em
 navegador automatizado (Playwright), salvo `?intro=1` (ou `?intro2=1`); `?intro=0` nunca toca.
 Com `?debug` (ou em Playwright) o palco fica em `window.__intro2` (`seek(t)`, `hold = true`, `finish()`).
 
@@ -141,7 +188,7 @@ void cozinhaIntro.play(rootDoJogo);              // Promise<void>: resolve ao ac
 | Sobreviva aos Desastres | `disaster` | ~27 s | `src/games/disaster/intro/film.ts` | `disasterIntro` de `src/games/disaster/intro` | `launch.ts` → `start(mode)` depois da escolha 2D/3D (fora do grupo) |
 | Caça Bloop | `caca` | ~29 s | `src/caca/intro/film.ts` | `cacaIntro` de `src/caca/intro` | `game.ts` → `flow()` (antes da tela de segurança) |
 | Rally Lunar | `rally` | ~13 s | `src/games/rally/intro/film.ts` | `rallyIntro` | `game.ts` → garagem "Jogar" antes de `startRun()` |
-| Fábrica Estelar | `tycoon` | ~13 s | `src/games/tycoon/intro/film.ts` | `tycoonIntro` | `index.ts` → `playMatch()` / "Minha Fábrica" |
+| Fábrica Estelar | `tycoon` | ~13 s | `src/games/tycoon/intro/film.ts` | `tycoonIntro` | `index.ts` → "Minha Fábrica": `.fresh` se a fábrica é nova (`last = 0`), senão `.once` |
 | Queda Giratória | `tubo` | ~12 s | `src/games/tubo/intro/film.ts` | `tuboIntro` | `game.ts` → 1º toque no estado `ready` (fora do duelo; o toque seguinte começa) |
 | Bloop Banda | `band` | ~13 s | `src/games/band/intro/film.ts` | `bandIntro` | `game.ts` → `startSong()` sozinho (sem rede) |
 | Bloop no Lugar | `lugar` | ~12 s | `src/games/lugar/intro/film.ts` | `lugarIntro` | `game.ts` → `begin()` (fora do duelo) |

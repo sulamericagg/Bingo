@@ -334,11 +334,11 @@ export class NoitesGame implements MiniGameHandle {
   }
 
   /* ------------------------------ início ------------------------------ */
-  private startSolo(): void {
-    // abertura (docs/INTROS.md): só na primeira partida nova
-    if (!this.runSave && introWanted('noites')) {
-      void introGate('noites', () => import('./intro/cinematic').then((m) => m.playIntro(this.wrap))).then(() => {
-        if (!this.destroyed && !this.sim) this.startSolo();
+  private startSolo(intro = !this.runSave): void {
+    // abertura (docs/INTROS.md): toda partida nova (sozinho); "Continuar" não toca
+    if (intro && introWanted('noites', { fresh: true })) {
+      void introGate('noites', () => import('./intro/cinematic').then((m) => m.playIntro(this.wrap)), { fresh: true }).then(() => {
+        if (!this.destroyed && !this.sim) this.startSolo(false);
       });
       return;
     }

@@ -5,11 +5,14 @@
  *    export const xxxIntro = defineIntro('xxx', () => import('./film'));
  *  e usa:
  *    await xxxIntro.once(root)    → 1ª partida (toca uma vez só; depois resolve na hora)
+ *    await xxxIntro.fresh(root)   → jogo NOVO de um jogo com save (toca a cada jogo novo; não no "Continuar")
  *    await xxxIntro.play(root)    → "Ver abertura" do menu (sempre toca)
  *
- *  Nunca toca: abertura desligada nos ajustes do hub (bw-intro = '0') ou navegador automatizado
+ *  Nunca toca sozinha (once/fresh): abertura desligada nos ajustes do hub (bw-intro = '0') ou navegador automatizado
  *  (Playwright/testes de outros jogos), a não ser com ?intro=1 (ou ?intro2=1) na URL; ?intro=0 nunca toca.
  * ============================================================ */
+
+import { introAllowed } from '../../3d/cine/gate';
 
 export interface IntroHandle {
   readonly id: string;
@@ -17,6 +20,8 @@ export interface IntroHandle {
   due(): boolean;
   /** toca só na primeira vez (marca como vista ANTES de tocar: um erro não vira laço) */
   once(parent: HTMLElement): Promise<void>;
+  /** jogo novo (save novo): toca sempre que permitido, mesmo já vista; marca como vista */
+  fresh(parent: HTMLElement): Promise<void>;
   /** toca sempre (botão "Ver abertura" do menu) */
   play(parent: HTMLElement): Promise<void>;
   /** esquece que já viu (testes) */
@@ -43,14 +48,8 @@ function lsSet(k: string, v: string | null): void {
   }
 }
 
-/** pode tocar a abertura automática? */
-function allowed(): boolean {
-  const q = typeof location !== 'undefined' ? location.search : '';
-  if (/[?&]intro2?=0/.test(q)) return false;
-  if (/[?&]intro2?=1/.test(q)) return true;
-  if (typeof navigator !== 'undefined' && navigator.webdriver) return false;
-  return lsGet('bw-intro') !== '0';
-}
+/** pode tocar a abertura automática? (mesma regra da base 3D: src/3d/cine/gate.ts) */
+const allowed = introAllowed;
 
 let running = false;
 
@@ -72,6 +71,11 @@ export function defineIntro(id: string, load: () => Promise<FilmMod>): IntroHand
     due: () => allowed() && lsGet(KEY(id)) !== '1',
     async once(parent) {
       if (!allowed() || lsGet(KEY(id)) === '1') return;
+      lsSet(KEY(id), '1');
+      await play(parent);
+    },
+    async fresh(parent) {
+      if (!allowed()) return;
       lsSet(KEY(id), '1');
       await play(parent);
     },
