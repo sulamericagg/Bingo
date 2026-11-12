@@ -6,7 +6,7 @@
  *  Nada de código do usuário: só dados validados pelo format.ts.
  * ============================================================ */
 import { t } from '../../i18n';
-import { SOUNDS, type Block, type BlockKind, type Cond, type Expr, type Script, type ScriptEventKind, type Vec3 } from '../format';
+import { SOUNDS, type Block, type BlockKind, type Cond, type Expr, type ExprQuery, type Script, type ScriptEventKind, type Vec3 } from '../format';
 import type { Editor } from '../editor/editor';
 import { esc } from '../studio';
 import { filterMessage } from '../../../shared/moderation';
@@ -22,7 +22,8 @@ export interface BlocksCtx {
 }
 
 type Cat = 'motion' | 'looks' | 'game' | 'control' | 'vars';
-const CAT: Record<BlockKind, Cat> = {
+// W0: só os blocos v3 têm categoria → a paleta continua igual; o W1 acrescenta os da v4
+const CAT: Partial<Record<BlockKind, Cat>> = {
   move: 'motion', rotate: 'motion', force: 'motion', teleport: 'motion',
   color: 'looks', light: 'looks', say: 'looks', door: 'looks', sound: 'looks',
   score: 'game', lives: 'game', checkpoint: 'game', team: 'game', match: 'game', spawn: 'game', destroy: 'game',
@@ -42,7 +43,7 @@ export const evName = (k: ScriptEventKind): string =>
     die: t('studio.ev.die', 'ao morrer'),
     button: t('studio.ev.button', 'ao apertar'),
     message: t('studio.ev.message', 'ao receber'),
-  })[k];
+  } as Partial<Record<ScriptEventKind, string>>)[k] ?? k;
 
 const blockName = (k: BlockKind): string =>
   ({
@@ -69,7 +70,7 @@ const blockName = (k: BlockKind): string =>
     motor: t('studio.bk.motor', 'liga/desliga motor'),
     set: t('studio.bk.set', 'definir'),
     change: t('studio.bk.change', 'somar em'),
-  })[k];
+  } as Partial<Record<BlockKind, string>>)[k] ?? k;
 
 const teamName = (n: number) => [t('studio.team0', 'sem time'), t('studio.team1', 'vermelho'), t('studio.team2', 'azul')][n] ?? '?';
 const matchName = (on: string) => (on === 'win' ? t('studio.match.win', 'vencer') : on === 'lose' ? t('studio.match.lose', 'perder') : t('studio.match.start', 'começar'));
@@ -103,7 +104,7 @@ function defaultBlock(k: BlockKind, ed: Editor): Block | null {
 const exprText = (e: Expr): string => {
   if (typeof e === 'number') return String(Math.round(e * 100) / 100);
   if ('v' in e) return e.v;
-  if ('q' in e) return ({ score: t('studio.q.score', 'pontos'), time: t('studio.q.time', 'tempo'), lives: t('studio.q.lives', 'vidas'), team: t('studio.q.team', 'time'), players: t('studio.q.players', 'jogadores') })[e.q];
+  if ('q' in e) return ({ score: t('studio.q.score', 'pontos'), time: t('studio.q.time', 'tempo'), lives: t('studio.q.lives', 'vidas'), team: t('studio.q.team', 'time'), players: t('studio.q.players', 'jogadores') } as Partial<Record<ExprQuery, string>>)[e.q] ?? e.q;
   if (e.op === 'rand') return `${t('studio.q.rand', 'sorteio')} ${exprText(e.a)}–${exprText(e.b)}`;
   return `(${exprText(e.a)} ${e.op} ${exprText(e.b)})`;
 };
@@ -325,6 +326,8 @@ export class BlocksEditor {
       case 'set':
       case 'change':
         return chip('v', esc(b.v)) + `<small>${b.k === 'set' ? '=' : '+'}</small>` + chip('e', esc(exprText(b.e)));
+      default:
+        return ''; // blocos v4: o W1 desenha
     }
   }
 

@@ -5,7 +5,7 @@
  *  por quadro há um orçamento de passos (global e por linha), então um
  *  "repetir" sem "esperar" nunca trava o jogo — só anda devagar.
  * ============================================================ */
-import { LIMITS, type Block, type Cond, type Expr, type Script, type ScriptEventKind } from '../format';
+import { LIMITS, type Block, type Cond, type Expr, type ExprQuery, type Script, type ScriptEventKind } from '../format';
 
 export interface VmHost {
   move(part: number, d: [number, number, number], t: number): void;
@@ -25,7 +25,8 @@ export interface VmHost {
   team(team: number): void;
   lives(n: number): void;
   match(on: 'start' | 'win' | 'lose'): void;
-  read(q: 'score' | 'time' | 'lives' | 'team' | 'players'): number;
+  /** v4 acrescentou 'it' | 'level' | 'alive' (W0: o PlaySession atual devolve 1 — a fase 1 — até o W1) */
+  read(q: ExprQuery): number;
 }
 
 interface Frame {

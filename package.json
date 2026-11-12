@@ -17,6 +17,7 @@
     "worker:dev": "wrangler dev --local",
     "worker:deploy": "npm run build && wrangler deploy",
     "test:server": "node scripts/test-server.mjs",
+    "test:format": "node scripts/test-format.mjs",
     "test:ai": "node scripts/test-ai-pet.mjs",
     "test:cava": "node scripts/test-cava-make.mjs",
     "qa": "node scripts/qa/run.mjs",

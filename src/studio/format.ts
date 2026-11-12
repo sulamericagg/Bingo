@@ -12,8 +12,11 @@
  * ============================================================ */
 
 /** v1: peças, juntas, fichas. v2: + `scripts` (Blocos de lógica), + `game` (Jogo da Comunidade), + papel 'collect'.
- *  v3: + `terrain` (relevo esculpido + água), + `gen` (mundo infinito personalizado), + `mission` (objetivos), + papel 'enemy'. */
-export const FORMAT_VERSION = 3;
+ *  v3: + `terrain` (relevo esculpido + água), + `gen` (mundo infinito personalizado), + `mission` (objetivos), + papel 'enemy'.
+ *  v4 (Bloop Engine, só aditivo): + `levels` (fases), `vars` (variáveis declaradas), `anims` (animações de peças),
+ *  `npcs`, `cutscenes`, `story` (Historinha), `game.modes/intro/cover/hud/controls`, novos eventos e blocos.
+ *  Leitores antigos ignoram os campos novos e jogam só a fase 1 (a raiz). docs/STUDIO-FORMATO.md §v4. */
+export const FORMAT_VERSION = 4;
 
 export type Vec3 = [number, number, number];
 export type CreationKind = 'object' | 'vehicle' | 'map';
@@ -150,7 +153,8 @@ export interface LogicRule {
  * um interpretador determinístico com limite de passos por quadro roda isso.
  * `part` ausente nos blocos = "esta peça" (a que disparou o evento). */
 
-export const SCRIPT_EVENTS = ['start', 'touch', 'zone', 'every', 'collect', 'die', 'button', 'message'] as const;
+/** v2: start…message. v4 (acrescentados no FIM): action, join, level, cutend, var, tag, defeat, timeup, talk. */
+export const SCRIPT_EVENTS = ['start', 'touch', 'zone', 'every', 'collect', 'die', 'button', 'message', 'action', 'join', 'level', 'cutend', 'var', 'tag', 'defeat', 'timeup', 'talk'] as const;
 export type ScriptEventKind = (typeof SCRIPT_EVENTS)[number];
 export interface ScriptEvent {
   k: ScriptEventKind;
@@ -160,10 +164,22 @@ export interface ScriptEvent {
   sec?: number;
   /** nome da mensagem (message) */
   msg?: string;
+  /** v4 `action`: botão de ação 'a' (padrão; tela / E / gamepad A) ou 'b' (F / gamepad B) */
+  key?: 'a' | 'b';
+  /** v4 `cutend`: id da cena (ausente = qualquer cena) */
+  id?: string;
+  /** v4 `var`: nome da variável observada */
+  v?: string;
+  /** v4 `talk`: id do NPC (da mesma fase) */
+  npc?: string;
 }
 
+/** Leituras do jogo em expressões. v4 acrescenta: it (1 se eu sou o pegador), level (nº da fase, 1..), alive (jogadores vivos). */
+export const EXPR_QUERIES = ['score', 'time', 'lives', 'team', 'players', 'it', 'level', 'alive'] as const;
+export type ExprQuery = (typeof EXPR_QUERIES)[number];
+
 /** Expressão numérica: número, variável, conta ou leitura do jogo. */
-export type Expr = number | { v: string } | { op: '+' | '-' | '*' | '/' | 'rand' | 'min' | 'max'; a: Expr; b: Expr } | { q: 'score' | 'time' | 'lives' | 'team' | 'players' };
+export type Expr = number | { v: string } | { op: '+' | '-' | '*' | '/' | 'rand' | 'min' | 'max'; a: Expr; b: Expr } | { q: ExprQuery };
 export interface Cond {
   op: '<' | '>' | '=' | '!=' | '<=' | '>=';
   a: Expr;
@@ -193,9 +209,38 @@ export type Block =
   | { k: 'team'; team: 0 | 1 | 2 }
   | { k: 'lives'; n: Expr }
   | { k: 'match'; on: 'start' | 'win' | 'lose' }
-  | { k: 'send'; msg: string };
+  | { k: 'send'; msg: string }
+  /* ---- v4 (Bloop Engine) ---- */
+  /** vai para a fase `to` (id de Level, ROOT_LEVEL ou 'next') */
+  | { k: 'level'; to: string }
+  /** toca a cena `id` e ESPERA ela acabar (ou ser pulada) */
+  | { k: 'cutscene'; id: string }
+  /** mostra falas (≤ LIMITS.dialogLines) e ESPERA; escolhas mudam variáveis / mandam mensagens */
+  | { k: 'dialog'; lines: DialogLine[] }
+  /** liga/desliga uma animação de peça (PartAnim.id da mesma fase) */
+  | { k: 'anim'; id: string; on: 'play' | 'stop' }
+  | { k: 'show'; part?: number }
+  | { k: 'hide'; part?: number }
+  /** câmera: tremer, focar numa peça, voltar ao normal */
+  | { k: 'camera'; cam: CameraAct; part?: number }
+  /** NPC da mesma fase: andar (pelo caminho ou até a peça), parar, virar para a peça */
+  | { k: 'npc'; id: string; act: NpcAct; part?: number }
+  /** pega-pega: quem vira o pegador */
+  | { k: 'it'; who: 'me' | 'toucher' | 'random' }
+  /** faixa de texto no alto da tela */
+  | { k: 'hud'; text: string }
+  /** checkpoint da Historinha (salva variáveis persistentes + passo) */
+  | { k: 'save' }
+  /** pose/emote do avatar do jogador */
+  | { k: 'emote'; pose: PoseId };
 export type BlockKind = Block['k'];
-export const BLOCK_KINDS: BlockKind[] = ['move', 'rotate', 'teleport', 'spawn', 'destroy', 'sound', 'say', 'score', 'color', 'force', 'door', 'light', 'motor', 'checkpoint', 'set', 'change', 'if', 'repeat', 'wait', 'team', 'lives', 'match', 'send'];
+export const BLOCK_KINDS: BlockKind[] = ['move', 'rotate', 'teleport', 'spawn', 'destroy', 'sound', 'say', 'score', 'color', 'force', 'door', 'light', 'motor', 'checkpoint', 'set', 'change', 'if', 'repeat', 'wait', 'team', 'lives', 'match', 'send', 'level', 'cutscene', 'dialog', 'anim', 'show', 'hide', 'camera', 'npc', 'it', 'hud', 'save', 'emote'];
+/** blocos que existiam até a v3 (paleta antiga / leitores antigos) */
+export const BLOCK_KINDS_V3: BlockKind[] = BLOCK_KINDS.slice(0, 23);
+export const CAMERA_ACTS = ['shake', 'focus', 'reset'] as const;
+export type CameraAct = (typeof CAMERA_ACTS)[number];
+export const NPC_ACTS = ['walk', 'stop', 'face'] as const;
+export type NpcAct = (typeof NPC_ACTS)[number];
 
 export interface Script {
   id: number;
@@ -209,8 +254,241 @@ export interface GameMeta {
   title: string;
   desc: string;
   tags: string[];
-  /** 1..16 (hoje o jogo é solo; o servidor usará isso para salas) */
+  /** 1..16 (legado v2/v3; salas online da v4 usam `modes.online.max`, teto LIMITS.onlineMax = 8) */
   maxPlayers: number;
+  /** v4: modos oferecidos (ausente = só solo) */
+  modes?: GameModes;
+  /** v4: id da cena de abertura (pulável) tocada ao começar */
+  intro?: string;
+  /** v4: capa = thumbs[0] da listagem (sempre 0; reservado) */
+  cover?: 0;
+  /** v4: variáveis mostradas no HUD com ícone (≤ LIMITS.hudVars; nomes de `Creation.vars`) */
+  hud?: { vars: string[] };
+  /** v4: quais botões existem na tela (ícones de GAME_ICONS) */
+  controls?: GameControls;
+}
+
+/* ============================ v4: Bloop Engine ============================ */
+
+/** id da fase 1 (a raiz da criação) quando referenciada por `Level.next`, blocos `level`, StoryFlow etc. */
+export const ROOT_LEVEL = 'main';
+
+/* Tipos de cinema (cópia literal de src/cinema/format.ts — este arquivo não pode importar nada;
+ * a igualdade é conferida em tempo de compilação em src/studio/play/hooks.ts). */
+export const EASES = ['linear', 'in', 'out', 'inout', 'back', 'bounce', 'step'] as const;
+export type Ease = (typeof EASES)[number];
+export const POSES = ['stand', 'walk', 'run', 'wave', 'point', 'sit', 'jump', 'dance', 'lie', 'hug', 'facepalm', 'think', 'cheer', 'shrug', 'bow', 'clap', 'scared', 'spin', 'flex', 'sneak'] as const;
+export type PoseId = (typeof POSES)[number];
+export const EXPRS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'sleepy', 'love', 'laughing', 'crying', 'thinking', 'scared', 'smug', 'wink', 'dizzy', 'shy', 'confused'] as const;
+export type ExprId = (typeof EXPRS)[number];
+export const BUBBLE_STYLES = ['speech', 'shout', 'think', 'whisper', 'subtitle', 'narration'] as const;
+export type BubbleStyle = (typeof BUBBLE_STYLES)[number];
+export const FX_KINDS = ['shake', 'sparkles', 'rain', 'hearts', 'sweat', 'zoomlines', 'confetti', 'snow', 'flash', 'poof', 'anger', 'notes', 'stars'] as const;
+export type FxKind = (typeof FX_KINDS)[number];
+
+/** Ícones que o JOGO pode usar (HUD de variáveis, botões de ação). Todos existem em src/studio/ui/sicons.ts. */
+export const GAME_ICONS = ['coin', 'heartl', 'star', 'gem', 'timer', 'flag', 'key', 'sword', 'trophy', 'bolt', 'apple', 'fish', 'ball', 'tap', 'hand', 'chat', 'tag', 'race', 'levels', 'skull', 'shield', 'jump'] as const;
+export type GameIconId = (typeof GAME_ICONS)[number];
+
+export const ONLINE_GOALS = ['free', 'coop', 'race', 'collect', 'survive', 'tag', 'push'] as const;
+export type OnlineGoal = (typeof ONLINE_GOALS)[number];
+export interface OnlineMode {
+  /** jogadores mínimos para começar sozinho (1..max) */
+  min: number;
+  /** 2..LIMITS.onlineMax (8 na v1) */
+  max: number;
+  /** 0 = sem times; 2 = vermelho × azul */
+  teams?: 0 | 2;
+  pvp?: boolean;
+  goal?: OnlineGoal;
+}
+export interface GameModes {
+  /** padrão true */
+  solo?: boolean;
+  /** Historinha (exige `Creation.story`) */
+  story?: boolean;
+  online?: OnlineMode;
+}
+export interface GameControls {
+  action?: GameIconId;
+  action2?: GameIconId;
+  /** mostra o botão de correr */
+  run?: boolean;
+}
+
+/** Fase extra (a fase 1 é a própria raiz da Creation). Ids de peça/junta são da fase (cada fase tem os seus). */
+export interface Level {
+  /** [A-Za-z0-9_-]{1,24}, único, ≠ ROOT_LEVEL */
+  id: string;
+  /** ≤ LIMITS.levelName */
+  name: string;
+  parts: Part[];
+  joints: Joint[];
+  logic: LogicRule[];
+  /** ausente = usa os materiais da raiz */
+  materials?: Material[];
+  scripts?: Script[];
+  terrain?: TerrainData;
+  worldKind?: WorldKind;
+  seed?: number;
+  gen?: WorldGenSettings;
+  mission?: Mission;
+  anims?: PartAnim[];
+  npcs?: Npc[];
+  /** próxima fase: id de Level ou ROOT_LEVEL; '' = fim do jogo; ausente = a seguinte na lista (a última → fim) */
+  next?: string;
+}
+
+export type VarScope = 'player' | 'game';
+/** Variável declarada. Variáveis só usadas em blocos (não declaradas) continuam valendo, com escopo 'player'. */
+export interface VarDef {
+  /** mesmo padrão dos nomes de variável dos blocos (≤ 16) */
+  name: string;
+  init: number;
+  /** 'player' = cada jogador tem a sua; 'game' = uma só (online: o anfitrião manda) */
+  scope: VarScope;
+  /** ícone no HUD (só aparece se estiver em game.hud.vars) */
+  hud?: GameIconId;
+  /** salva no progresso da Historinha */
+  persist?: boolean;
+}
+
+export const ANIM_LOOPS = ['once', 'loop', 'pingpong'] as const;
+export type AnimLoop = (typeof ANIM_LOOPS)[number];
+/** Quadro-chave: deslocamentos RELATIVOS à pose do editor. */
+export interface AnimKey {
+  /** segundos desde o início (0..LIMITS.animDur), em ordem crescente */
+  t: number;
+  /** deslocamento (m) */
+  p?: Vec3;
+  /** rotação extra (graus) */
+  r?: Vec3;
+  /** multiplicador de escala */
+  s?: Vec3;
+  /** suavização até ESTE quadro */
+  ease?: Ease;
+}
+/** Animação de uma peça (`part`) OU de um grupo (`g`) — exatamente um dos dois. */
+export interface PartAnim {
+  id: string;
+  name?: string;
+  part?: number;
+  g?: number;
+  loop: AnimLoop;
+  /** começa sozinha ao iniciar a fase */
+  auto?: boolean;
+  /** 1..LIMITS.animKeys */
+  keys: AnimKey[];
+}
+
+export const NPC_ROLES = ['friend', 'shop', 'enemy'] as const;
+export type NpcRole = (typeof NPC_ROLES)[number];
+/** Estrutura igual a AvatarData (src/game/avatar.ts), sem depender dele. */
+export interface NpcAvatar {
+  parts: Record<string, string>;
+  colors: { primary: string; secondary: string };
+}
+export interface NpcLook {
+  /** skin/visual pronto (id) */
+  skin?: string;
+  avatar?: NpcAvatar;
+  /** bichinho da coleção (id) */
+  creature?: string;
+}
+export interface Npc {
+  /** único no JOGO todo (falas citam NPCs de qualquer fase) */
+  id: string;
+  /** ≤ LIMITS.npcName */
+  name: string;
+  look: NpcLook;
+  at: Vec3;
+  /** graus */
+  yaw: number;
+  /** caminho (≤ LIMITS.npcPath pontos, posições absolutas da fase) */
+  path?: Vec3[];
+  /** m/s (0,2..8) */
+  speed?: number;
+  /** falas ao tocar no NPC */
+  talk?: DialogLine[];
+  role?: NpcRole;
+}
+
+export interface DialogChoice {
+  /** ≤ LIMITS.choiceText */
+  text: string;
+  /** muda uma variável ao escolher */
+  set?: { v: string; e: Expr };
+  /** manda a mensagem (evento `message`) ao escolher */
+  go?: string;
+}
+export interface DialogLine {
+  /** id de NPC, 'player' ou ausente (narrador) */
+  who?: string;
+  /** ≤ LIMITS.dialogText (filtrado no app e de novo no servidor) */
+  text: string;
+  /** ≤ LIMITS.choices */
+  choices?: DialogChoice[];
+}
+
+/** Para onde a câmera olha: ponto do mundo, um NPC ou uma peça da fase da cena. */
+export type CamLook = Vec3 | { npc: string } | { part: number };
+export interface CutCamKey {
+  t: number;
+  p: Vec3;
+  look: CamLook;
+  /** 20..120 */
+  fov?: number;
+  ease?: Ease;
+}
+export interface CutActorKey {
+  t: number;
+  p: Vec3;
+  /** graus */
+  yaw?: number;
+  pose?: PoseId;
+  expr?: ExprId;
+  ease?: Ease;
+}
+export interface CutActor {
+  /** 'player' | id de NPC | `part:<id da peça>` */
+  who: string;
+  keys: CutActorKey[];
+}
+export interface CutSub {
+  t: number;
+  /** fim (s); ausente = até a próxima legenda */
+  end?: number;
+  /** id de NPC, 'player' ou ausente (narrador) */
+  who?: string;
+  text: string;
+  style?: BubbleStyle;
+}
+/** Cena no mundo (metros), tocada sobre a fase viva. Sempre pulável. */
+export interface Cutscene {
+  id: string;
+  name: string;
+  /** 1..LIMITS.cutDur segundos */
+  dur: number;
+  /** fase onde a cena acontece (peças citadas são dessa fase); ausente = fase 1 */
+  level?: string;
+  /** sempre true (o validador força) */
+  skippable: true;
+  cam: CutCamKey[];
+  actors: CutActor[];
+  subs: CutSub[];
+  sfx?: { t: number; snd: SoundId }[];
+  fx?: { t: number; kind: FxKind; dur: number }[];
+  /** tema musical (id do player de música) */
+  music?: string;
+  title?: { text: string; at: number };
+  /** projeto do Bloop Cinema de onde veio (só informação) */
+  from?: string;
+}
+
+export type StoryStep = { k: 'cut'; id: string } | { k: 'level'; id: string } | { k: 'end'; text?: string };
+/** Ordem da Historinha (≤ LIMITS.storySteps passos). */
+export interface StoryFlow {
+  steps: StoryStep[];
 }
 
 /* ---------------------------- v3: terreno ---------------------------- */
@@ -332,6 +610,18 @@ export interface Creation {
   mission?: Mission;
   /** criações importadas embutidas (para o mapa abrir sem rede). Só 1 nível: deps não têm deps. */
   deps?: Creation[];
+  /** v4: fases extras (a raiz é a fase 1, id ROOT_LEVEL). Total de fases ≤ LIMITS.levels */
+  levels?: Level[];
+  /** v4: variáveis declaradas (≤ LIMITS.vars) */
+  vars?: VarDef[];
+  /** v4: animações de peças da fase 1 (cada Level tem as suas) */
+  anims?: PartAnim[];
+  /** v4: NPCs da fase 1 */
+  npcs?: Npc[];
+  /** v4: cenas (compartilhadas entre as fases) */
+  cutscenes?: Cutscene[];
+  /** v4: ordem da Historinha */
+  story?: StoryFlow;
   /** ms desde 1970 */
   created?: number;
   updated?: number;
@@ -373,6 +663,38 @@ export const LIMITS = {
   terrainSize: 512,
   water: 16,
   objectives: 8,
+  /* ---- v4 (Bloop Engine) ---- */
+  /** fases no TOTAL, contando a fase 1 (raiz) → `levels[]` tem no máximo 7. Peças somadas de todas ≤ `parts` */
+  levels: 8,
+  levelName: 24,
+  cutscenes: 12,
+  /** por fase */
+  anims: 32,
+  animKeys: 16,
+  /** duração máxima de uma animação de peça (s) */
+  animDur: 60,
+  /** por fase */
+  npcs: 16,
+  npcName: 16,
+  npcPath: 8,
+  dialogLines: 6,
+  dialogText: 80,
+  choices: 3,
+  choiceText: 24,
+  cutDur: 90,
+  cutCam: 24,
+  cutActors: 6,
+  cutActorKeys: 24,
+  cutSubs: 24,
+  cutSfx: 24,
+  cutFx: 12,
+  cutTitle: 40,
+  storySteps: 24,
+  hudVars: 4,
+  /** jogadores numa sala online (v1: WorldRoom MUNDO_MAX) */
+  onlineMax: 8,
+  /** bytes do JSON de um JOGO v4 (com fases/cenas/NPCs…) = UGC.maxGameBytes */
+  gameBytes: 1024 * 1024,
 } as const;
 
 /* -------------------------------- criação -------------------------------- */
@@ -460,22 +782,109 @@ export function validate(input: unknown, depth = 0): ValidateResult {
   const kind: CreationKind = o.kind === 'vehicle' || o.kind === 'map' ? o.kind : 'object';
   if (o.kind !== kind) errors.push('kind');
 
+  const materials = sanitizeMaterials(o.materials, errors) ?? DEFAULT_MATERIALS.map((m) => ({ ...m }));
+  const body = sanitizeBody(o, materials, errors, LIMITS.parts, id);
+  const { parts, joints, logic, ids, jids } = body;
+
+  // os blocos são validados no fim (precisam das fases/cenas/NPCs da v4), mas os erros
+  // entram nesta posição — a lista de erros de uma criação v1–v3 fica igual à de antes.
+  const scriptsAt = errors.length;
+
+  const c: Creation = {
+    v: FORMAT_VERSION,
+    id,
+    kind,
+    name: str(o.name, LIMITS.nameLen) || '?',
+    author: str(o.author, 24),
+    parts,
+    joints,
+    logic,
+    materials,
+  };
+  const aid = str(o.authorId, 64);
+  if (aid) c.authorId = aid;
+  if (typeof o.thumbnail === 'string' && /^data:image\/(webp|jpeg|png);base64,/.test(o.thumbnail) && o.thumbnail.length <= LIMITS.thumbBytes * 1.4) c.thumbnail = o.thumbnail;
+  const wk = worldKindOf(o.worldKind);
+  if (wk) c.worldKind = wk;
+  if (isNum(o.seed)) c.seed = Math.floor(o.seed) | 0;
+  if (typeof o.from === 'string' && ID_RE.test(o.from)) c.from = o.from;
+  if (isNum(o.created)) c.created = o.created;
+  if (isNum(o.updated)) c.updated = o.updated;
+  const gm = o.game as Record<string, unknown> | undefined;
+  if (gm && typeof gm === 'object') {
+    const title = str(gm.title, LIMITS.nameLen);
+    if (title)
+      c.game = {
+        title,
+        desc: str(gm.desc, LIMITS.gameDesc),
+        tags: Array.isArray(gm.tags) ? gm.tags.map((x) => str(x, 16)).filter(Boolean).slice(0, LIMITS.gameTags) : [],
+        maxPlayers: isNum(gm.maxPlayers) ? clamp(Math.round(gm.maxPlayers), 1, 16) : 1,
+      };
+  }
+  const tr = sanitizeTerrain(o.terrain, errors);
+  if (tr) c.terrain = tr;
+  const gen = sanitizeGen(o.gen);
+  if (gen) c.gen = gen;
+  const mi = sanitizeMission(o.mission, ids);
+  if (mi) c.mission = mi;
+  if (Array.isArray(o.deps) && depth === 0) {
+    const deps: Creation[] = [];
+    for (const d of o.deps.slice(0, LIMITS.deps)) {
+      const r = validate(d, depth + 1);
+      if (r.creation && r.creation.id !== id) {
+        delete r.creation.deps;
+        deps.push(r.creation);
+      } else errors.push('dep');
+    }
+    if (deps.length) c.deps = deps;
+  }
+
+  // v4 (Bloop Engine): só na criação principal — dependências importadas não carregam jogo.
+  const scriptErrors: string[] = [];
+  if (depth === 0) {
+    const root: LevelScope = { id: ROOT_LEVEL, ids, jids, groups: groupsOf(parts), anims: new Set(), npcs: new Set() };
+    sanitizeEngine(o, c, root, body.count, scriptErrors, errors);
+  } else {
+    const scripts = sanitizeScripts(o.scripts, ids, jids, scriptErrors);
+    if (scripts.length) c.scripts = scripts;
+  }
+  errors.splice(scriptsAt, 0, ...scriptErrors);
+  if (jsonBytes(c) > (hasEngine(c) ? LIMITS.gameBytes : LIMITS.bytes)) errors.push('bytes');
+  return { ok: errors.length === 0, errors, creation: c };
+}
+
+const worldKindOf = (x: unknown): WorldKind | null => (x === 'infinite' || x === 'flat' || x === 'void' ? x : null);
+
+function sanitizeMaterials(raw: unknown, errors: string[]): Material[] | null {
   const materials: Material[] = [];
-  if (Array.isArray(o.materials))
-    for (const m of o.materials.slice(0, LIMITS.materials)) {
+  if (Array.isArray(raw))
+    for (const m of raw.slice(0, LIMITS.materials)) {
       const mm = m as Partial<Material>;
       const c = typeof mm?.c === 'string' && HEX.test(mm.c) ? mm.c.toLowerCase() : null;
       const k = (FINISHES as readonly string[]).includes(mm?.k as string) ? (mm.k as Finish) : 'plastic';
       if (!c) errors.push('material');
       materials.push({ c: c ?? '#cccccc', k });
     }
-  if (!materials.length) materials.push(...DEFAULT_MATERIALS.map((m) => ({ ...m })));
+  return materials.length ? materials : null;
+}
 
+interface Body {
+  parts: Part[];
+  joints: Joint[];
+  logic: LogicRule[];
+  ids: Set<number>;
+  jids: Set<number>;
+  /** peças aceitas */
+  count: number;
+}
+
+/** peças, juntas e fichas de uma fase (raiz ou Level). `cap` = peças que ainda cabem. */
+function sanitizeBody(o: Record<string, unknown>, materials: Material[], errors: string[], cap: number, selfId = o.id): Body {
   const parts: Part[] = [];
   const ids = new Set<number>();
   const rawParts = Array.isArray(o.parts) ? o.parts : [];
-  if (rawParts.length > LIMITS.parts) errors.push('parts-limit');
-  for (const raw of rawParts.slice(0, LIMITS.parts)) {
+  if (rawParts.length > cap) errors.push('parts-limit');
+  for (const raw of rawParts.slice(0, Math.max(0, cap))) {
     const q = raw as Record<string, unknown>;
     if (!q || typeof q !== 'object') {
       errors.push('part');
@@ -515,7 +924,7 @@ export function validate(input: unknown, depth = 0): ValidateResult {
       parts.push({ ...base, t: 'stroke', pts: pts.slice(0, n).map((x) => clamp(x, -LIMITS.maxSize, LIMITS.maxSize)), w });
     } else if (q.t === 'ref') {
       const ref = typeof q.ref === 'string' && ID_RE.test(q.ref) ? q.ref : '';
-      if (!ref || ref === id) {
+      if (!ref || ref === selfId) {
         errors.push('ref');
         continue;
       }
@@ -595,59 +1004,7 @@ export function validate(input: unknown, depth = 0): ValidateResult {
       }
       logic.push({ id: Math.floor(L.id as number), on: trig, do: acts });
     }
-
-  const scripts = sanitizeScripts(o.scripts, ids, jids, errors);
-
-  const c: Creation = {
-    v: FORMAT_VERSION,
-    id,
-    kind,
-    name: str(o.name, LIMITS.nameLen) || '?',
-    author: str(o.author, 24),
-    parts,
-    joints,
-    logic,
-    materials,
-  };
-  const aid = str(o.authorId, 64);
-  if (aid) c.authorId = aid;
-  if (typeof o.thumbnail === 'string' && /^data:image\/(webp|jpeg|png);base64,/.test(o.thumbnail) && o.thumbnail.length <= LIMITS.thumbBytes * 1.4) c.thumbnail = o.thumbnail;
-  if (o.worldKind === 'infinite' || o.worldKind === 'flat' || o.worldKind === 'void') c.worldKind = o.worldKind;
-  if (isNum(o.seed)) c.seed = Math.floor(o.seed) | 0;
-  if (typeof o.from === 'string' && ID_RE.test(o.from)) c.from = o.from;
-  if (isNum(o.created)) c.created = o.created;
-  if (isNum(o.updated)) c.updated = o.updated;
-  if (scripts.length) c.scripts = scripts;
-  const gm = o.game as Record<string, unknown> | undefined;
-  if (gm && typeof gm === 'object') {
-    const title = str(gm.title, LIMITS.nameLen);
-    if (title)
-      c.game = {
-        title,
-        desc: str(gm.desc, LIMITS.gameDesc),
-        tags: Array.isArray(gm.tags) ? gm.tags.map((x) => str(x, 16)).filter(Boolean).slice(0, LIMITS.gameTags) : [],
-        maxPlayers: isNum(gm.maxPlayers) ? clamp(Math.round(gm.maxPlayers), 1, 16) : 1,
-      };
-  }
-  const tr = sanitizeTerrain(o.terrain, errors);
-  if (tr) c.terrain = tr;
-  const gen = sanitizeGen(o.gen);
-  if (gen) c.gen = gen;
-  const mi = sanitizeMission(o.mission, ids);
-  if (mi) c.mission = mi;
-  if (Array.isArray(o.deps) && depth === 0) {
-    const deps: Creation[] = [];
-    for (const d of o.deps.slice(0, LIMITS.deps)) {
-      const r = validate(d, depth + 1);
-      if (r.creation && r.creation.id !== id) {
-        delete r.creation.deps;
-        deps.push(r.creation);
-      } else errors.push('dep');
-    }
-    if (deps.length) c.deps = deps;
-  }
-  if (jsonBytes(c) > LIMITS.bytes) errors.push('bytes');
-  return { ok: errors.length === 0, errors, creation: c };
+  return { parts, joints, logic, ids, jids, count: parts.length };
 }
 
 /* ------------------------- validação v3 ------------------------- */
@@ -774,12 +1131,459 @@ function sanitizeMission(x: unknown, ids: Set<number>): Mission | null {
   return m;
 }
 
+/* ------------------------- validação v4 (Bloop Engine) ------------------------- */
+
+/** ids curtos de fases, cenas, animações e NPCs */
+const SID_RE = /^[A-Za-z0-9_-]{1,24}$/;
+const sid = (x: unknown): string | null => (typeof x === 'string' && SID_RE.test(x) ? x : null);
+const oneOf = <T extends string>(list: readonly T[], x: unknown): T | undefined => ((list as readonly unknown[]).includes(x) ? (x as T) : undefined);
+const arr = (x: unknown, max: number): unknown[] => (Array.isArray(x) ? x.slice(0, max) : []);
+const rec = (x: unknown): Record<string, unknown> | null => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : null);
+
+/** O que os blocos/cenas de uma fase podem citar. */
+interface LevelScope {
+  id: string;
+  ids: Set<number>;
+  jids: Set<number>;
+  groups: Set<number>;
+  anims: Set<string>;
+  npcs: Set<string>;
+}
+/** Referências do jogo inteiro (para os blocos). */
+interface ScriptCtx {
+  level: LevelScope;
+  /** ids de todas as fases, inclusive ROOT_LEVEL */
+  levels: Set<string>;
+  cuts: Set<string>;
+  /** NPCs de todas as fases (falas podem citar qualquer um) */
+  allNpcs: Set<string>;
+}
+
+function groupsOf(parts: Part[]): Set<number> {
+  const g = new Set<number>();
+  for (const p of parts) if (p.g) g.add(p.g);
+  return g;
+}
+
+/** A criação usa algo da v4 (fases, cenas, NPCs, variáveis declaradas, animações, Historinha)? Jogos v4 têm teto LIMITS.gameBytes. */
+export function hasEngine(c: Creation): boolean {
+  return !!(c.levels?.length || c.vars?.length || c.anims?.length || c.npcs?.length || c.cutscenes?.length || c.story);
+}
+
+function sanitizeEngine(o: Record<string, unknown>, c: Creation, root: LevelScope, rootCount: number, scriptErrors: string[], errors: string[]): void {
+  // 1. fases (corpo + mundo + missão), dentro do teto de peças somadas
+  const rawLevels: { raw: Record<string, unknown>; lv: Level; scope: LevelScope }[] = [];
+  const levelIds = new Set<string>([ROOT_LEVEL]);
+  let budget = LIMITS.parts - rootCount;
+  if (Array.isArray(o.levels)) {
+    if (o.levels.length > LIMITS.levels - 1) errors.push('levels-limit');
+    for (const r of o.levels.slice(0, LIMITS.levels - 1)) {
+      const q = rec(r);
+      const lid = sid(q?.id);
+      if (!q || !lid || levelIds.has(lid)) {
+        errors.push('level');
+        continue;
+      }
+      const mats = q.materials === undefined ? null : sanitizeMaterials(q.materials, errors);
+      const body = sanitizeBody(q, mats ?? c.materials, errors, budget, c.id);
+      budget -= body.count;
+      const lv: Level = { id: lid, name: str(q.name, LIMITS.levelName) || lid, parts: body.parts, joints: body.joints, logic: body.logic };
+      if (mats) lv.materials = mats;
+      const tr = sanitizeTerrain(q.terrain, errors);
+      if (tr) lv.terrain = tr;
+      const wk = worldKindOf(q.worldKind);
+      if (wk) lv.worldKind = wk;
+      if (isNum(q.seed)) lv.seed = Math.floor(q.seed) | 0;
+      const gen = sanitizeGen(q.gen);
+      if (gen) lv.gen = gen;
+      const mi = sanitizeMission(q.mission, body.ids);
+      if (mi) lv.mission = mi;
+      levelIds.add(lid);
+      rawLevels.push({ raw: q, lv, scope: { id: lid, ids: body.ids, jids: body.jids, groups: groupsOf(body.parts), anims: new Set(), npcs: new Set() } });
+    }
+  }
+  for (const L of rawLevels) {
+    if (L.raw.next === undefined) continue;
+    if (L.raw.next === '' || (typeof L.raw.next === 'string' && levelIds.has(L.raw.next))) L.lv.next = L.raw.next;
+    else errors.push('level-next');
+  }
+
+  // 2. animações e NPCs (sem falas) de cada fase; ids de NPC únicos no jogo todo
+  const allNpcs = new Set<string>();
+  const rootAnims = sanitizeAnims(o.anims, root, errors);
+  const rootNpcs = sanitizeNpcs(o.npcs, root, allNpcs, errors);
+  for (const L of rawLevels) {
+    const an = sanitizeAnims(L.raw.anims, L.scope, errors);
+    if (an.length) L.lv.anims = an;
+    const np = sanitizeNpcs(L.raw.npcs, L.scope, allNpcs, errors);
+    if (np.length) L.lv.npcs = np;
+  }
+  // 3. falas dos NPCs (podem citar NPCs de outras fases)
+  const talk = (list: Npc[] | undefined, rawList: unknown) => {
+    if (!list) return;
+    const raws = arr(rawList, Infinity).map(rec);
+    for (const n of list) {
+      const r = raws.find((x) => x?.id === n.id);
+      if (r?.talk === undefined) continue;
+      const lines = sanitizeLines(r.talk, allNpcs, errors);
+      if (lines.length) n.talk = lines;
+    }
+  };
+  talk(rootNpcs, o.npcs);
+  for (const L of rawLevels) talk(L.lv.npcs, L.raw.npcs);
+
+  // 4. cenas
+  const scopes = new Map<string, LevelScope>([[ROOT_LEVEL, root], ...rawLevels.map((L) => [L.lv.id, L.scope] as [string, LevelScope])]);
+  const cuts: Cutscene[] = [];
+  const cutIds = new Set<string>();
+  if (Array.isArray(o.cutscenes)) {
+    if (o.cutscenes.length > LIMITS.cutscenes) errors.push('cutscenes-limit');
+    for (const r of o.cutscenes.slice(0, LIMITS.cutscenes)) {
+      const cs = sanitizeCutscene(r, scopes, allNpcs, errors);
+      if (!cs || cutIds.has(cs.id)) {
+        errors.push('cutscene');
+        continue;
+      }
+      cutIds.add(cs.id);
+      cuts.push(cs);
+    }
+  }
+
+  // 5. Historinha
+  const st = rec(o.story);
+  let story: StoryFlow | undefined;
+  if (st) {
+    const steps: StoryStep[] = [];
+    for (const r of arr(st.steps, LIMITS.storySteps)) {
+      const q = rec(r);
+      if (q?.k === 'cut' && typeof q.id === 'string' && cutIds.has(q.id)) steps.push({ k: 'cut', id: q.id });
+      else if (q?.k === 'level' && typeof q.id === 'string' && levelIds.has(q.id)) steps.push({ k: 'level', id: q.id });
+      else if (q?.k === 'end') {
+        const text = str(q.text, LIMITS.textLen);
+        steps.push(text ? { k: 'end', text } : { k: 'end' });
+      } else errors.push('story-step');
+    }
+    if (steps.length) story = { steps };
+    else errors.push('story');
+  }
+
+  // 6. variáveis declaradas
+  const vars: VarDef[] = [];
+  const varNames = new Set<string>();
+  for (const r of arr(o.vars, LIMITS.vars)) {
+    const q = rec(r);
+    const name = typeof q?.name === 'string' && VAR_RE.test(q.name) ? q.name : null;
+    if (!q || !name || varNames.has(name)) {
+      errors.push('var');
+      continue;
+    }
+    const vd: VarDef = { name, init: isNum(q.init) ? clamp(q.init, -1e6, 1e6) : 0, scope: q.scope === 'game' ? 'game' : 'player' };
+    const hud = oneOf(GAME_ICONS, q.hud);
+    if (hud) vd.hud = hud;
+    if (q.persist === true) vd.persist = true;
+    varNames.add(name);
+    vars.push(vd);
+  }
+
+  // 7. blocos de cada fase (os erros vão para a posição antiga, ver validate)
+  const ctxOf = (level: LevelScope): ScriptCtx => ({ level, levels: levelIds, cuts: cutIds, allNpcs });
+  const scripts = sanitizeScripts(o.scripts, root.ids, root.jids, scriptErrors, ctxOf(root));
+  if (scripts.length) c.scripts = scripts;
+  for (const L of rawLevels) {
+    const sc = sanitizeScripts(L.raw.scripts, L.scope.ids, L.scope.jids, errors, ctxOf(L.scope));
+    if (sc.length) L.lv.scripts = sc;
+  }
+
+  // 8. extensões v4 do GameMeta
+  if (c.game && gmRaw(o)) {
+    const gm = gmRaw(o)!;
+    const md = rec(gm.modes);
+    if (md) {
+      const modes: GameModes = {};
+      if (typeof md.solo === 'boolean') modes.solo = md.solo;
+      if (md.story === true && story) modes.story = true;
+      const on = rec(md.online);
+      if (on) {
+        const max = isNum(on.max) ? clamp(Math.round(on.max), 2, LIMITS.onlineMax) : LIMITS.onlineMax;
+        const om: OnlineMode = { min: isNum(on.min) ? clamp(Math.round(on.min), 1, max) : 1, max };
+        if (on.teams === 2 || on.teams === 0) om.teams = on.teams;
+        if (typeof on.pvp === 'boolean') om.pvp = on.pvp;
+        const goal = oneOf(ONLINE_GOALS, on.goal);
+        if (goal) om.goal = goal;
+        modes.online = om;
+      }
+      c.game.modes = modes;
+    }
+    if (gm.intro !== undefined) {
+      if (typeof gm.intro === 'string' && cutIds.has(gm.intro)) c.game.intro = gm.intro;
+      else errors.push('game-intro');
+    }
+    if (gm.cover === 0) c.game.cover = 0;
+    const hud = rec(gm.hud);
+    if (hud) c.game.hud = { vars: arr(hud.vars, LIMITS.hudVars).filter((x): x is string => typeof x === 'string' && varNames.has(x)).filter((x, i, a) => a.indexOf(x) === i) };
+    const ct = rec(gm.controls);
+    if (ct) {
+      const controls: GameControls = {};
+      const a1 = oneOf(GAME_ICONS, ct.action);
+      if (a1) controls.action = a1;
+      const a2 = oneOf(GAME_ICONS, ct.action2);
+      if (a2) controls.action2 = a2;
+      if (typeof ct.run === 'boolean') controls.run = ct.run;
+      c.game.controls = controls;
+    }
+  }
+
+  if (rawLevels.length) c.levels = rawLevels.map((L) => L.lv);
+  if (vars.length) c.vars = vars;
+  if (rootAnims.length) c.anims = rootAnims;
+  if (rootNpcs.length) c.npcs = rootNpcs;
+  if (cuts.length) c.cutscenes = cuts;
+  if (story) c.story = story;
+}
+
+const gmRaw = (o: Record<string, unknown>) => rec(o.game);
+
+function sanitizeAnims(raw: unknown, sc: LevelScope, errors: string[]): PartAnim[] {
+  const out: PartAnim[] = [];
+  if (!Array.isArray(raw)) return out;
+  if (raw.length > LIMITS.anims) errors.push('anims-limit');
+  for (const r of raw.slice(0, LIMITS.anims)) {
+    const q = rec(r);
+    const aid = sid(q?.id);
+    if (!q || !aid || sc.anims.has(aid)) {
+      errors.push('anim');
+      continue;
+    }
+    const a: PartAnim = { id: aid, loop: oneOf(ANIM_LOOPS, q.loop) ?? 'once', keys: [] };
+    if (isNum(q.part) && sc.ids.has(q.part)) a.part = q.part;
+    else if (isNum(q.g) && sc.groups.has(q.g)) a.g = q.g;
+    else {
+      errors.push('anim-part');
+      continue;
+    }
+    const nm = str(q.name, LIMITS.nameLen);
+    if (nm) a.name = nm;
+    if (q.auto === true) a.auto = true;
+    for (const kr of arr(q.keys, LIMITS.animKeys)) {
+      const k = rec(kr);
+      if (!k || !isNum(k.t)) continue;
+      const key: AnimKey = { t: clamp(k.t, 0, LIMITS.animDur) };
+      const p = vec(k.p, 100, null);
+      if (p) key.p = p;
+      const rr = vec(k.r, 3600, null);
+      if (rr) key.r = rr;
+      const s = vec(k.s, 100, null);
+      if (s) key.s = [clamp(s[0], 0.01, 100), clamp(s[1], 0.01, 100), clamp(s[2], 0.01, 100)];
+      const e = oneOf(EASES, k.ease);
+      if (e) key.ease = e;
+      a.keys.push(key);
+    }
+    if (!a.keys.length) {
+      errors.push('anim-keys');
+      continue;
+    }
+    a.keys.sort((x, y) => x.t - y.t);
+    sc.anims.add(aid);
+    out.push(a);
+  }
+  return out;
+}
+
+function sanitizeNpcs(raw: unknown, sc: LevelScope, allNpcs: Set<string>, errors: string[]): Npc[] {
+  const out: Npc[] = [];
+  if (!Array.isArray(raw)) return out;
+  if (raw.length > LIMITS.npcs) errors.push('npcs-limit');
+  for (const r of raw.slice(0, LIMITS.npcs)) {
+    const q = rec(r);
+    const nid = sid(q?.id);
+    const at = vec(q?.at, LIMITS.extent, null);
+    if (!q || !nid || nid === 'player' || allNpcs.has(nid) || !at) {
+      errors.push('npc');
+      continue;
+    }
+    const lk = rec(q.look) ?? {};
+    const look: NpcLook = {};
+    if (typeof lk.skin === 'string' && ID_RE.test(lk.skin)) look.skin = lk.skin;
+    if (typeof lk.creature === 'string' && ID_RE.test(lk.creature)) look.creature = lk.creature;
+    const av = rec(lk.avatar);
+    const col = rec(av?.colors);
+    const ap = rec(av?.parts);
+    if (av && ap && col && typeof col.primary === 'string' && HEX.test(col.primary) && typeof col.secondary === 'string' && HEX.test(col.secondary)) {
+      const parts: Record<string, string> = {};
+      for (const [k, v] of Object.entries(ap).slice(0, 16)) if (/^[a-z_]{1,16}$/.test(k) && typeof v === 'string' && ID_RE.test(v)) parts[k] = v;
+      look.avatar = { parts, colors: { primary: col.primary.toLowerCase(), secondary: col.secondary.toLowerCase() } };
+    }
+    const n: Npc = { id: nid, name: str(q.name, LIMITS.npcName) || nid, look, at, yaw: isNum(q.yaw) ? clamp(q.yaw, -360, 360) : 0 };
+    if (Array.isArray(q.path)) {
+      const path = q.path
+        .slice(0, LIMITS.npcPath)
+        .map((x) => vec(x, LIMITS.extent, null))
+        .filter((x): x is Vec3 => !!x);
+      if (path.length) n.path = path;
+    }
+    if (isNum(q.speed)) n.speed = clamp(q.speed, 0.2, 8);
+    const role = oneOf(NPC_ROLES, q.role);
+    if (role) n.role = role;
+    allNpcs.add(nid);
+    sc.npcs.add(nid);
+    out.push(n);
+  }
+  return out;
+}
+
+/** quem fala: NPC conhecido, 'player' ou ninguém (narrador). Desconhecido → vira narrador. */
+function whoOf(x: unknown, npcs: Set<string>, errors: string[]): string | undefined {
+  if (x == null || x === '') return undefined;
+  if (x === 'player' || (typeof x === 'string' && npcs.has(x))) return x;
+  errors.push('who');
+  return undefined;
+}
+
+function sanitizeLines(raw: unknown, npcs: Set<string>, errors: string[]): DialogLine[] {
+  const out: DialogLine[] = [];
+  for (const r of arr(raw, LIMITS.dialogLines)) {
+    const q = rec(r);
+    const text = str(q?.text, LIMITS.dialogText);
+    if (!q || !text) {
+      errors.push('dialog');
+      continue;
+    }
+    const line: DialogLine = { text };
+    const who = whoOf(q.who, npcs, errors);
+    if (who) line.who = who;
+    if (Array.isArray(q.choices)) {
+      const ch: DialogChoice[] = [];
+      for (const cr of q.choices.slice(0, LIMITS.choices)) {
+        const cq = rec(cr);
+        const ct = str(cq?.text, LIMITS.choiceText);
+        if (!cq || !ct) {
+          errors.push('choice');
+          continue;
+        }
+        const choice: DialogChoice = { text: ct };
+        const set = rec(cq.set);
+        if (set && typeof set.v === 'string' && VAR_RE.test(set.v)) choice.set = { v: set.v, e: sanitizeExpr(set.e) };
+        const go = str(cq.go, LIMITS.varLen);
+        if (go) choice.go = go;
+        ch.push(choice);
+      }
+      if (ch.length) line.choices = ch;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function sanitizeCutscene(r: unknown, scopes: Map<string, LevelScope>, npcs: Set<string>, errors: string[]): Cutscene | null {
+  const q = rec(r);
+  const cid = sid(q?.id);
+  if (!q || !cid) return null;
+  const dur = isNum(q.dur) ? clamp(q.dur, 1, LIMITS.cutDur) : 5;
+  const T = (x: unknown) => (isNum(x) ? clamp(x, 0, dur) : null);
+  const lvl = typeof q.level === 'string' && scopes.has(q.level) ? q.level : undefined;
+  if (q.level !== undefined && !lvl) errors.push('cut-level');
+  const sc = scopes.get(lvl ?? ROOT_LEVEL)!;
+  const ease = (x: unknown) => oneOf(EASES, x);
+  const cs: Cutscene = { id: cid, name: str(q.name, LIMITS.nameLen) || cid, dur, skippable: true, cam: [], actors: [], subs: [] };
+  if (lvl) cs.level = lvl;
+  for (const kr of arr(q.cam, LIMITS.cutCam)) {
+    const k = rec(kr);
+    const t = T(k?.t);
+    const p = vec(k?.p, LIMITS.extent, null);
+    const lr = rec(k?.look);
+    const look: CamLook | null = vec(k?.look, LIMITS.extent, null) ?? (lr && typeof lr.npc === 'string' && npcs.has(lr.npc) ? { npc: lr.npc } : lr && isNum(lr.part) && sc.ids.has(lr.part) ? { part: lr.part } : null);
+    if (!k || t == null || !p || !look) {
+      errors.push('cut-cam');
+      continue;
+    }
+    const key: CutCamKey = { t, p, look };
+    if (isNum(k.fov)) key.fov = clamp(k.fov, 20, 120);
+    const e = ease(k.ease);
+    if (e) key.ease = e;
+    cs.cam.push(key);
+  }
+  cs.cam.sort((a, b) => a.t - b.t);
+  for (const ar of arr(q.actors, LIMITS.cutActors)) {
+    const a = rec(ar);
+    const w = a?.who;
+    const pm = typeof w === 'string' ? /^part:(\d{1,6})$/.exec(w) : null;
+    const ok = w === 'player' || (typeof w === 'string' && npcs.has(w)) || (pm && sc.ids.has(Number(pm[1])));
+    if (!a || !ok) {
+      errors.push('cut-actor');
+      continue;
+    }
+    const keys: CutActorKey[] = [];
+    for (const kr of arr(a.keys, LIMITS.cutActorKeys)) {
+      const k = rec(kr);
+      const t = T(k?.t);
+      const p = vec(k?.p, LIMITS.extent, null);
+      if (!k || t == null || !p) continue;
+      const key: CutActorKey = { t, p };
+      if (isNum(k.yaw)) key.yaw = clamp(k.yaw, -360, 360);
+      const pose = oneOf(POSES, k.pose);
+      if (pose) key.pose = pose;
+      const ex = oneOf(EXPRS, k.expr);
+      if (ex) key.expr = ex;
+      const e = ease(k.ease);
+      if (e) key.ease = e;
+      keys.push(key);
+    }
+    if (!keys.length) {
+      errors.push('cut-actor');
+      continue;
+    }
+    keys.sort((x, y) => x.t - y.t);
+    cs.actors.push({ who: w as string, keys });
+  }
+  for (const sr of arr(q.subs, LIMITS.cutSubs)) {
+    const s = rec(sr);
+    const t = T(s?.t);
+    const text = str(s?.text, LIMITS.dialogText);
+    if (!s || t == null || !text) {
+      errors.push('cut-sub');
+      continue;
+    }
+    const sub: CutSub = { t, text };
+    const end = T(s.end);
+    if (end != null && end > t) sub.end = end;
+    const who = whoOf(s.who, npcs, errors);
+    if (who) sub.who = who;
+    const style = oneOf(BUBBLE_STYLES, s.style);
+    if (style) sub.style = style;
+    cs.subs.push(sub);
+  }
+  cs.subs.sort((a, b) => a.t - b.t);
+  const sfx: { t: number; snd: SoundId }[] = [];
+  for (const xr of arr(q.sfx, LIMITS.cutSfx)) {
+    const x = rec(xr);
+    const t = T(x?.t);
+    const snd = oneOf(SOUNDS, x?.snd);
+    if (t != null && snd) sfx.push({ t, snd });
+  }
+  if (sfx.length) cs.sfx = sfx.sort((a, b) => a.t - b.t);
+  const fx: { t: number; kind: FxKind; dur: number }[] = [];
+  for (const xr of arr(q.fx, LIMITS.cutFx)) {
+    const x = rec(xr);
+    const t = T(x?.t);
+    const kind = oneOf(FX_KINDS, x?.kind);
+    if (t != null && kind) fx.push({ t, kind, dur: isNum(x!.dur) ? clamp(x!.dur, 0.1, 10) : 1 });
+  }
+  if (fx.length) cs.fx = fx.sort((a, b) => a.t - b.t);
+  const mu = sid(q.music);
+  if (mu) cs.music = mu;
+  const ti = rec(q.title);
+  const tt = str(ti?.text, LIMITS.cutTitle);
+  if (ti && tt) cs.title = { text: tt, at: T(ti.at) ?? 0 };
+  if (typeof q.from === 'string' && ID_RE.test(q.from)) cs.from = q.from;
+  return cs;
+}
+
 /* ------------------------- validação dos blocos ------------------------- */
 
 const VAR_RE = /^[A-Za-zÀ-ÿ0-9_ ]{1,16}$/;
 const OPS = ['+', '-', '*', '/', 'rand', 'min', 'max'];
 const CMP = ['<', '>', '=', '!=', '<=', '>='];
-const QS = ['score', 'time', 'lives', 'team', 'players'];
+const QS: readonly string[] = EXPR_QUERIES;
 
 function sanitizeExpr(x: unknown, depth = 0): Expr {
   if (isNum(x)) return clamp(x, -1e6, 1e6);
@@ -791,7 +1595,7 @@ function sanitizeExpr(x: unknown, depth = 0): Expr {
   return 0;
 }
 
-function sanitizeScripts(raw: unknown, ids: Set<number>, jids: Set<number>, errors: string[]): Script[] {
+function sanitizeScripts(raw: unknown, ids: Set<number>, jids: Set<number>, errors: string[], ctx?: ScriptCtx): Script[] {
   if (!Array.isArray(raw)) return [];
   let budget: number = LIMITS.blocks;
   const vars = new Set<string>();
@@ -890,6 +1694,50 @@ function sanitizeScripts(raw: unknown, ids: Set<number>, jids: Set<number>, erro
         const msg = str(b.msg, LIMITS.varLen);
         return msg ? { k: 'send', msg } : null;
       }
+      /* ---- v4: referências conferidas contra o jogo (sem ctx = criação importada → descarta) ---- */
+      case 'level': {
+        const to = b.to === 'next' ? 'next' : typeof b.to === 'string' && ctx?.levels.has(b.to) ? b.to : null;
+        return to ? { k: 'level', to } : null;
+      }
+      case 'cutscene':
+        return typeof b.id === 'string' && ctx?.cuts.has(b.id) ? { k: 'cutscene', id: b.id } : null;
+      case 'dialog': {
+        const lines = ctx ? sanitizeLines(b.lines, ctx.allNpcs, errors) : [];
+        return lines.length ? { k: 'dialog', lines } : null;
+      }
+      case 'anim':
+        return typeof b.id === 'string' && ctx?.level.anims.has(b.id) ? { k: 'anim', id: b.id, on: b.on === 'stop' ? 'stop' : 'play' } : null;
+      case 'show':
+      case 'hide': {
+        const part = okPart(b.part, true);
+        if (part === null) return null;
+        return part != null ? { k: b.k, part } : { k: b.k };
+      }
+      case 'camera': {
+        const part = okPart(b.part, true);
+        if (part === null) return null;
+        const out: Block = { k: 'camera', cam: oneOf(CAMERA_ACTS, b.cam) ?? 'shake' };
+        if (part != null) out.part = part;
+        return out;
+      }
+      case 'npc': {
+        if (typeof b.id !== 'string' || !ctx?.level.npcs.has(b.id)) return null;
+        const part = okPart(b.part, true);
+        if (part === null) return null;
+        const out: Block = { k: 'npc', id: b.id, act: oneOf(NPC_ACTS, b.act) ?? 'walk' };
+        if (part != null) out.part = part;
+        return out;
+      }
+      case 'it':
+        return { k: 'it', who: b.who === 'toucher' || b.who === 'random' ? b.who : 'me' };
+      case 'hud': {
+        const text = str(b.text, LIMITS.textLen);
+        return text ? { k: 'hud', text } : null;
+      }
+      case 'save':
+        return { k: 'save' };
+      case 'emote':
+        return { k: 'emote', pose: oneOf(POSES, b.pose) ?? 'wave' };
     }
     return null;
   };
@@ -912,6 +1760,29 @@ function sanitizeScripts(raw: unknown, ids: Set<number>, jids: Set<number>, erro
     }
     if (ev.k === 'every') ev.sec = clamp(isNum(on.sec) ? on.sec : 1, 0.1, 600);
     if (ev.k === 'message') ev.msg = str(on.msg, LIMITS.varLen) || 'oi';
+    // v4
+    if (ev.k === 'action') ev.key = on.key === 'b' ? 'b' : 'a';
+    if (ev.k === 'cutend' && on.id != null) {
+      if (typeof on.id !== 'string' || !ctx?.cuts.has(on.id)) {
+        errors.push('script-ref');
+        continue;
+      }
+      ev.id = on.id;
+    }
+    if (ev.k === 'var') {
+      if (typeof on.v !== 'string' || !VAR_RE.test(on.v)) {
+        errors.push('script-ref');
+        continue;
+      }
+      ev.v = on.v;
+    }
+    if (ev.k === 'talk') {
+      if (typeof on.npc !== 'string' || !ctx?.level.npcs.has(on.npc)) {
+        errors.push('script-ref');
+        continue;
+      }
+      ev.npc = on.npc;
+    }
     const sc: Script = { id: Math.floor(o.id as number), on: ev, body: list(o.body, 0) };
     const nm = str(o.name, LIMITS.nameLen);
     if (nm) sc.name = nm;
@@ -928,15 +1799,20 @@ function compactNumbers(c: Creation): Creation {
   const r3 = (x: number) => Math.round(x * 1000) / 1000;
   const r1 = (x: number) => Math.round(x * 10) / 10;
   const v3 = (v: Vec3, f: (x: number) => number): Vec3 => [f(v[0]), f(v[1]), f(v[2])];
-  const parts = c.parts.map((p) => {
-    const q = { ...p } as Part;
-    q.p = v3(p.p, r3);
-    if (p.r) q.r = v3(p.r, r1);
-    if (p.s) q.s = v3(p.s, r3);
-    if (q.t === 'stroke') (q as StrokePart).pts = (p as StrokePart).pts.map((x) => Math.round(x * 100) / 100);
-    return q;
-  });
-  return { ...c, parts, joints: c.joints.map((j) => ({ ...j, at: v3(j.at, r3) })) };
+  const cParts = (list: Part[]) =>
+    list.map((p) => {
+      const q = { ...p } as Part;
+      q.p = v3(p.p, r3);
+      if (p.r) q.r = v3(p.r, r1);
+      if (p.s) q.s = v3(p.s, r3);
+      if (q.t === 'stroke') (q as StrokePart).pts = (p as StrokePart).pts.map((x) => Math.round(x * 100) / 100);
+      return q;
+    });
+  const cJoints = (list: Joint[]) => list.map((j) => ({ ...j, at: v3(j.at, r3) }));
+  const out: Creation = { ...c, parts: cParts(c.parts), joints: cJoints(c.joints) };
+  // v4: fases extras com o mesmo arredondamento (só existe a chave se a criação tiver fases)
+  if (c.levels) out.levels = c.levels.map((l) => ({ ...l, parts: cParts(l.parts), joints: cJoints(l.joints) }));
+  return out;
 }
 
 export function jsonBytes(c: Creation): number {
@@ -993,10 +1869,10 @@ export async function deserialize(s: string): Promise<ValidateResult> {
   else if (txt.startsWith('B1.')) {
     if (!hasCompression()) throw new Error('format');
     const raw = b64urlDecode(txt.slice(3));
-    if (raw.length > LIMITS.bytes) throw new Error('format');
+    if (raw.length > LIMITS.gameBytes) throw new Error('format');
     json = new TextDecoder().decode(await pipe(raw, new DecompressionStream('deflate-raw')));
   } else throw new Error('format');
-  if (json.length > LIMITS.bytes * 1.2) throw new Error('format');
+  if (json.length > LIMITS.gameBytes * 1.2) throw new Error('format');
   let obj: unknown;
   try {
     obj = JSON.parse(json);
@@ -1006,24 +1882,31 @@ export async function deserialize(s: string): Promise<ValidateResult> {
   return validate(migrate(obj));
 }
 
-/** Atualiza versões antigas do formato. v1 → v2 → v3 são compatíveis (só campos novos opcionais). */
+/** Atualiza versões antigas do formato. v1 → v2 → v3 → v4 são compatíveis (só campos novos opcionais):
+ *  só o número da versão muda. Versões futuras (v5+) passam direto; validate() descarta o que não conhece. */
 export function migrate(o: unknown): unknown {
   const v = o && typeof o === 'object' ? (o as { v?: number }).v : undefined;
-  if (v === 1 || v === 2) return { ...(o as object), v: FORMAT_VERSION };
+  if (v === 1 || v === 2 || v === 3) return { ...(o as object), v: FORMAT_VERSION };
   return o;
 }
 
 /* -------------------------------- hash -------------------------------- */
 
-/** JSON canônico: chaves ordenadas, sem miniatura/datas/deps (o "conteúdo" da criação). */
+/**
+ * JSON canônico: chaves ordenadas, sem miniatura/datas/deps (o "conteúdo" da criação).
+ * CONGELADO (scripts/test-format.mjs): `v` acima de 3 entra como 3 — a v4 é só aditiva, então uma criação
+ * v1–v3 tem o MESMO hash antes e depois da migração; o que a v4 acrescenta muda o hash pelos próprios campos.
+ */
 export function canonical(c: Creation): string {
   const { thumbnail: _t, created: _c, updated: _u, deps: _d, ...rest } = compactNumbers(c);
   void _t;
   void _c;
   void _u;
   void _d;
+  if (isNum(rest.v) && rest.v > CANON_V) rest.v = CANON_V;
   return stableStringify(rest);
 }
+const CANON_V = 3;
 
 function stableStringify(x: unknown): string {
   if (x === null || typeof x !== 'object') return JSON.stringify(x) ?? 'null';
@@ -1076,6 +1959,94 @@ export function findDep(c: Creation, id: string): Creation | undefined {
 export function isVehicle(c: Creation): boolean {
   const seat = c.parts.some((p) => p.role === 'seat');
   return seat && c.parts.some((p) => p.role === 'wheel' || p.role === 'thruster');
+}
+
+/** v4: todas as fases em ordem — a fase 1 (raiz, id ROOT_LEVEL) vira um Level (mesmos arrays, sem cópia). */
+export function levelList(c: Creation): Level[] {
+  const root: Level = { id: ROOT_LEVEL, name: c.name, parts: c.parts, joints: c.joints, logic: c.logic, materials: c.materials };
+  if (c.scripts) root.scripts = c.scripts;
+  if (c.terrain) root.terrain = c.terrain;
+  if (c.worldKind) root.worldKind = c.worldKind;
+  if (c.seed != null) root.seed = c.seed;
+  if (c.gen) root.gen = c.gen;
+  if (c.mission) root.mission = c.mission;
+  if (c.anims) root.anims = c.anims;
+  if (c.npcs) root.npcs = c.npcs;
+  return [root, ...(c.levels ?? [])];
+}
+
+/** v4: próxima fase depois de `id` ('' = fim). Ausente = a seguinte na lista. */
+export function nextLevel(c: Creation, id: string): string {
+  const list = levelList(c);
+  const i = list.findIndex((l) => l.id === id);
+  if (i < 0) return '';
+  const nx = list[i].next;
+  if (nx !== undefined) return nx;
+  return list[i + 1]?.id ?? '';
+}
+
+/** v4: peças de todas as fases (sem resolver importadas). */
+export function totalParts(c: Creation): number {
+  return c.parts.length + (c.levels ?? []).reduce((n, l) => n + l.parts.length, 0);
+}
+
+/** Um texto escrito pelo autor e onde ele aparece (para filtrar no app e no servidor, e listar no painel admin). */
+export interface GameText {
+  /** ex.: 'name', 'game.title', 'level:L2.name', 'npc:bob.talk.0', 'cut:intro.sub.3', 'script:main.4.say' */
+  where: string;
+  text: string;
+}
+
+/** v4: TODOS os textos que um jogador pode ver (nomes, falas, escolhas, legendas, blocos…). */
+export function collectTexts(c: Creation): GameText[] {
+  const out: GameText[] = [];
+  const add = (where: string, text: string | undefined) => {
+    if (text) out.push({ where, text });
+  };
+  const lines = (where: string, ls: DialogLine[] | undefined) =>
+    ls?.forEach((l, i) => {
+      add(`${where}.${i}`, l.text);
+      l.choices?.forEach((ch, j) => add(`${where}.${i}.choice.${j}`, ch.text));
+    });
+  add('name', c.name);
+  add('game.title', c.game?.title);
+  add('game.desc', c.game?.desc);
+  c.game?.tags.forEach((g, i) => add(`game.tag.${i}`, g));
+  c.vars?.forEach((v) => add('var', v.name));
+  c.story?.steps.forEach((s, i) => s.k === 'end' && add(`story.${i}`, s.text));
+  for (const L of levelList(c)) {
+    if (L.id !== ROOT_LEVEL) add(`level:${L.id}.name`, L.name);
+    L.parts.forEach((p) => add(`level:${L.id}.part.${p.id}`, p.name));
+    add(`level:${L.id}.win`, L.mission?.win);
+    add(`level:${L.id}.lose`, L.mission?.lose);
+    L.npcs?.forEach((n) => {
+      add(`npc:${n.id}.name`, n.name);
+      lines(`npc:${n.id}.talk`, n.talk);
+    });
+    L.anims?.forEach((a) => add(`anim:${a.id}.name`, a.name));
+    L.scripts?.forEach((sc) => {
+      add(`script:${L.id}.${sc.id}.name`, sc.name);
+      add(`script:${L.id}.${sc.id}.msg`, sc.on.msg);
+      const walk = (list: Block[]) => {
+        for (const b of list) {
+          if (b.k === 'say' || b.k === 'hud') add(`script:${L.id}.${sc.id}.${b.k}`, b.text);
+          else if (b.k === 'send') add(`script:${L.id}.${sc.id}.send`, b.msg);
+          else if (b.k === 'dialog') lines(`script:${L.id}.${sc.id}.dialog`, b.lines);
+          else if (b.k === 'if') {
+            walk(b.then);
+            if (b.else) walk(b.else);
+          } else if (b.k === 'repeat') walk(b.body);
+        }
+      };
+      walk(sc.body);
+    });
+  }
+  c.cutscenes?.forEach((cs) => {
+    add(`cut:${cs.id}.name`, cs.name);
+    add(`cut:${cs.id}.title`, cs.title?.text);
+    cs.subs.forEach((s, i) => add(`cut:${cs.id}.sub.${i}`, s.text));
+  });
+  return out;
 }
 
 /** Contagem de peças "pesadas" (importadas contam pelo tamanho real). */

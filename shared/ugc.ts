@@ -5,12 +5,15 @@
  */
 
 export type UgcType = 'criacao' | 'filme';
-/** pending = na fila de revisão; hidden = escondida por denúncias (volta para a fila); rejected = recusada. */
-export type UgcStatus = 'pending' | 'approved' | 'rejected' | 'hidden';
+/** pending = na fila de revisão; hidden = escondida por denúncias (volta para a fila); rejected = recusada;
+ *  needs-changes = o admin pediu mudanças (Bloop Engine; o autor corrige e reenvia). */
+export type UgcStatus = 'pending' | 'approved' | 'rejected' | 'hidden' | 'needs-changes';
 
 export const UGC = {
   /** JSON da criação (sem compressão) — igual a LIMITS.bytes do formato */
   maxCreationBytes: 512 * 1024,
+  /** JSON de um JOGO v4 (fases/cenas/NPCs) — igual a LIMITS.gameBytes e ENGINE.maxGameBytes */
+  maxGameBytes: 1024 * 1024,
   /** cada miniatura (data URL JPEG/WebP) */
   maxThumbBytes: 60 * 1024,
   maxThumbs: 3,

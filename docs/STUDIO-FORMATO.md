@@ -1,4 +1,4 @@
-# Bloop Studio — formato das criações (v3)
+# Bloop Studio — formato das criações (v4)
 
 Contrato compartilhado em **`src/studio/format.ts`** (sem dependências; roda no app, no Worker e no
 servidor). Usado pelo Bloop Studio (editor/jogar/loja), pelo estúdio de machinima (`src/cinema`) e pelo
@@ -11,6 +11,9 @@ Comunidade), + papel `collect`. Toda criação v1 continua válida: `migrate()` 
 **v3** = + `terrain` (relevo esculpido e água), + `gen` (mundo Infinito personalizado), + `mission`
 (objetivos da partida), + papel `enemy`. `migrate()` troca `v: 1|2 → 3`; nada foi removido. Leitores
 v2 que ignorarem os campos novos continuam mostrando as peças (o relevo some, o chão fica plano).
+**v4** (Bloop Engine) = + `levels`, `vars`, `anims`, `npcs`, `cutscenes`, `story`, extensões de `game`,
+novos eventos/blocos/leituras. `migrate()` troca `v: 1|2|3 → 4`; nada foi removido. Leitores v3 ignoram
+os campos novos e jogam **só a fase 1** (a raiz). Detalhes em [§ v4](#v4--bloop-engine-jogos).
 
 ## Convenções
 
@@ -25,7 +28,7 @@ v2 que ignorarem os campos novos continuam mostrando as peças (o relevo some, o
 
 ```ts
 Creation {
-  v: 3                     // versão do formato (1 e 2 continuam válidos)
+  v: 4                     // versão do formato (1, 2 e 3 continuam válidos)
   id: string               // [A-Za-z0-9_-]{1,64}, estável; a loja usa o mesmo
   kind: 'object' | 'vehicle' | 'map'
   name: string             // ≤ 32
@@ -177,7 +180,8 @@ objetivos estão feitos; acabou o tempo ou as vidas ⇒ tela de derrota (Jogar d
 
 Teto do formato: 2000 peças, 64 juntas, 64 fichas, 32 materiais, 256 pontos por traço, 24 deps,
 512 KB de JSON, posições ±2000 m, peças 0,02–200 m, 3 níveis de `ref`; relevo até 129×129
-vértices e 512 m, 16 lagos, 8 objetivos. O editor aplica limites
+vértices e 512 m, 16 lagos, 8 objetivos. v4: 8 fases no total (peças somadas ≤ 2000), 12 cenas,
+32 animações e 16 NPCs por fase, 1 MB de JSON para jogos (ver § v4). O editor aplica limites
 **menores** por qualidade do aparelho e assinatura (ver `src/studio/pro.ts`).
 
 ## Funções
@@ -192,6 +196,77 @@ vértices e 512 m, 16 lagos, 8 objetivos. O editor aplica limites
 | `refIds(c)` · `findDep(c, id)` · `isVehicle(c)` · `partCount(c, resolve)` | utilidades |
 
 Números são arredondados ao serializar (mm, 0,1°, traços em cm).
+
+## v4 — Bloop Engine (jogos)
+
+Plano completo: `docs/ENGINE-PLANO.md`. Tudo é **opcional e aditivo**; a raiz da `Creation` continua
+um `kind: 'map'` e **é a fase 1** (id reservado `ROOT_LEVEL = 'main'`).
+
+```ts
+Creation {
+  ...v3
+  levels?: Level[]          // fases extras; TOTAL de fases ≤ 8 (raiz + 7)
+  vars?: VarDef[]           // ≤ 32 variáveis declaradas
+  anims?: PartAnim[]        // ≤ 32, da fase 1 (cada Level tem as suas)
+  npcs?: Npc[]              // ≤ 16, da fase 1
+  cutscenes?: Cutscene[]    // ≤ 12, do jogo todo
+  story?: StoryFlow         // ordem da Historinha (≤ 24 passos)
+}
+GameMeta += {
+  modes?: { solo?: boolean, story?: boolean /* exige story */,
+            online?: { min 1..max, max 2..8, teams?: 0|2, pvp?, goal?: free|coop|race|collect|survive|tag|push } }
+  intro?: cutsceneId        // cena de abertura (pulável)
+  cover?: 0                 // capa = thumbs[0] da listagem
+  hud?: { vars: string[] }  // ≤ 4 nomes de vars declaradas
+  controls?: { action?: GameIconId, action2?: GameIconId, run?: boolean }
+}
+Level { id [A-Za-z0-9_-]{1,24} ≠ 'main', name ≤ 24, parts, joints, logic, materials? (ausente = os da raiz),
+        scripts?, terrain?, worldKind?, seed?, gen?, mission?, anims?, npcs?,
+        next?: levelId | 'main' | '' /* fim */ }      // next ausente = a seguinte da lista (a última → fim)
+VarDef { name (regra das variáveis dos blocos, ≤ 16), init, scope: 'player'|'game', hud?: GameIconId, persist? }
+PartAnim { id, name?, part? | g? (exatamente um, da mesma fase), loop: once|loop|pingpong, auto?,
+           keys: { t 0..60 s, p?: deslocamento, r?: graus, s?: multiplicador, ease? }[] /* 1..16, ordenados */ }
+Npc { id (único no JOGO), name ≤ 16, look: { skin?, creature?, avatar?: {parts, colors} }, at, yaw,
+      path?: Vec3[] ≤ 8, speed? 0,2..8, talk?: DialogLine[], role?: friend|shop|enemy }
+DialogLine { who?: npcId|'player' (ausente = narrador), text ≤ 80, choices?: { text ≤ 24, set?: {v, e}, go?: msg }[] ≤ 3 }  // ≤ 6 falas
+Cutscene { id, name, dur 1..90 s, level?: fase onde acontece, skippable: true (forçado),
+           cam: { t, p, look: Vec3 | {npc} | {part}, fov? 20..120, ease? }[] ≤ 24,
+           actors: { who: 'player'|npcId|'part:<id>', keys: { t, p, yaw?, pose?, expr?, ease? }[] ≤ 24 }[] ≤ 6,
+           subs: { t, end?, who?, text ≤ 80, style? }[] ≤ 24, sfx? ≤ 24, fx? ≤ 12, music?, title?: {text ≤ 40, at}, from? }
+StoryFlow { steps: ({k:'cut', id} | {k:'level', id} | {k:'end', text?})[] }
+```
+
+`Ease`, `PoseId`, `ExprId`, `BubbleStyle`, `FxKind` são **cópias literais** dos tipos de `src/cinema/format.ts`
+(este arquivo não importa nada); `src/studio/play/hooks.ts` confere a igualdade na compilação.
+Ícones do jogo (`GAME_ICONS`) existem todos em `src/studio/ui/sicons.ts` (conferido em `scripts/test-format.mjs`).
+
+**Eventos novos** (no fim de `SCRIPT_EVENTS`): `action {key: 'a'|'b'}`, `join`, `level` (a fase começou),
+`cutend {id?}`, `var {v}`, `tag`, `defeat`, `timeup`, `talk {npc}` (NPC da mesma fase).
+**Blocos novos** (no fim de `BLOCK_KINDS`; `BLOCK_KINDS_V3` = os 23 antigos): `level {to: id|'main'|'next'}`,
+`cutscene {id}` (espera), `dialog {lines}` (espera), `anim {id, on: play|stop}`, `show/hide {part?}`,
+`camera {cam: shake|focus|reset, part?}`, `npc {id, act: walk|stop|face, part?}`, `it {who: me|toucher|random}`,
+`hud {text}`, `save`, `emote {pose}`. **Leituras novas** (`Expr.q`): `it`, `level`, `alive`.
+Variáveis não declaradas continuam valendo, com escopo `player`.
+
+**Validação estrita** (`validate()`): entradas inválidas são **removidas** (com um código em `errors`:
+`level`, `levels-limit`, `level-next`, `anim`, `anim-part`, `anim-keys`, `anims-limit`, `npc`, `npcs-limit`,
+`dialog`, `choice`, `who`, `cutscene`, `cutscenes-limit`, `cut-level`, `cut-cam`, `cut-actor`, `cut-sub`,
+`story`, `story-step`, `var`, `game-intro`, `script-ref`, `block`); números são limitados; referências
+(fase, cena, animação, NPC, peça, variável do HUD) precisam existir. As **peças somadas** de todas as fases
+respeitam `LIMITS.parts` (2000). Jogos v4 (`hasEngine(c)`) podem ter até **1 MB** de JSON
+(`LIMITS.gameBytes` = `UGC.maxGameBytes`); o resto continua com 512 KB. Dependências importadas
+(`deps`) nunca carregam campos v4. Campos desconhecidos (v5+) são descartados.
+
+**Hash:** `canonical()` inclui todos os campos v4 (e arredonda as peças das fases extras como as da raiz),
+mas grava `v` acima de 3 como **3** — por isso uma criação v1–v3 tem **o mesmo `hashCreation`** antes e depois
+da migração (congelado em `scripts/fixtures/format-v3.json`, conferido por `node scripts/test-format.mjs`).
+
+**Funções v4:** `levelList(c)` (fase 1 + extras como `Level[]`), `nextLevel(c, id)`, `totalParts(c)`,
+`hasEngine(c)`, `collectTexts(c)` (todo texto visível com onde aparece — o app filtra antes de enviar e o
+servidor refiltra).
+
+Contratos fora deste arquivo: `shared/engine.ts` (visibilidade, cards, envio, senhas, `ENGINE`),
+`src/studio/play/hooks.ts` (ganchos do jogo: entrada, cenas, diálogo, animações, NPCs, variáveis, rede).
 
 ## Link de compartilhar
 
