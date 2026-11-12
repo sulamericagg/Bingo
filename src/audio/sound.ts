@@ -196,7 +196,17 @@ async function renderVariant(def: SoundDef, seed: number, sr: number): Promise<A
     }
   } else def.r({ c: oc, out: oc.destination, t: 0.002, r: rng(seed), p: 0 });
   const buf = await oc.startRendering();
-  if (!def.loop) return buf;
+  if (!def.loop) {
+    // sem estalo: a receita pode passar da duração (cauda de eco/reverb cortada) → rampa curta no fim e no início
+    const fo = Math.min(Math.ceil(0.02 * sr), Math.floor(buf.length * 0.1));
+    const fi = Math.min(Math.ceil(0.0015 * sr), Math.floor(buf.length * 0.05));
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < fi; i++) d[i] *= i / fi;
+      for (let i = 0; i < fo; i++) d[buf.length - 1 - i] *= i / fo;
+    }
+    return buf;
+  }
   // loop sem emenda: o fim (cauda) cruza com o começo
   const L = Math.ceil(def.dur * sr);
   const X = Math.min(Math.ceil(XF * sr), buf.length - L);
