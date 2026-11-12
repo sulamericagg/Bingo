@@ -21,7 +21,8 @@ import { charSprite, drawPetIcon } from './art';
 import { Brain, CMDS, type Cmd } from './bots';
 import { HIRE_COST, MAX_CREW, PACKS, RECIPES, ROLES, UPGRADES, dayParams, roleDesc, roleName, specialName, themeName, type Role, type Special, type Theme } from './data';
 import { Tutorial, hintTarget } from './guide';
-import { ENDLESS_AT, HELPER_AT, LEVEL_COUNT, WORLDS, dailyLevel, dayKey, level, levelNews, levelOpen, totalStars, worldIndex, worldStart, type Level } from './levels';
+import { openStartMenu, type SmCard, type SmPage } from '../../ui/startmenu';
+import { ENDLESS_AT, HELPER_AT, LEVEL_COUNT, WORLDS, dailyLevel, dayKey, level, levelNews, levelOpen, totalStars, worldStart, type Level } from './levels';
 import { czIcon } from './icons';
 import { Net, type HostCfg } from './net';
 import { Render2D } from './render2d';
@@ -113,34 +114,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       }),
     );
 
-  /* ======================= 1) escolher gráficos ======================= */
+  /* ======================= 1) tela de início (2D/3D + fases) ======================= */
   function chooser(): void {
-    clear();
-    const tier = detectInitialTier();
-    const gl = webglOk();
-    const d = ov(true);
-    d.innerHTML = `
-      <div class="cz-title">${t('cozinha.name', 'Cozinha Maluca')}</div>
-      <div class="cz-sub">${t('cozinha.choose', 'Como você quer ver a cozinha?')}</div>
-      <div class="cz-modes">
-        <button class="cz-mode${sv.mode === '2d' ? ' cz-last' : ''}" data-m="2d"><b>2D</b>${czIcon('flat', 54)}<span>${t('cozinha.mode2d', 'Desenhado')}</span><small>${t('cozinha.mode2dD', 'Leve e rápido, roda em qualquer celular')}</small></button>
-        <button class="cz-mode cz-3d${sv.mode === '3d' ? ' cz-last' : ''}" data-m="3d"><b>3D</b>${czIcon('cube', 54)}<span>${t('cozinha.mode3dFps', 'Primeira pessoa — caos total!')}</span><small>${!gl ? t('cozinha.no3dShort', 'Indisponível neste aparelho') : tier <= 1 ? t('cozinha.mode3dWeak', 'Pode ficar lento neste aparelho') : t('cozinha.mode3dFpsD', 'Você é o chef: pegue, jogue e cozinhe com física de verdade')}</small></button>
-      </div>
-      <button class="cz-btn" data-a="exit">${icon('home', { size: 22 })}${t('cozinha.exit', 'Sair')}</button>`;
-    bind(d, '[data-m]', (b) => {
-      audio.unlock();
-      const m = b.dataset.m as '2d' | '3d';
-      if (m === '3d' && !gl) {
-        banner(t('cozinha.no3d', '3D não disponível neste aparelho. Abrindo em 2D.'));
-        mode = '2d';
-      } else mode = m;
-      sv.mode = mode;
-      persistCz();
-      if (sv.tutDone) map();
-      else playLevel(level(1));
-    });
-    bind(d, '[data-a=exit]', () => quit());
-    setBack(() => quit());
+    map();
   }
 
   /** aviso pequeno no topo (compartilhado: src/ui/notify) */
@@ -162,72 +138,77 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   function map(): void {
     clear();
     curLvN = 0;
-    const d = ov();
-    d.classList.add('cz-mapov');
+    const gl = webglOk();
+    const tier = detectInitialTier();
     const ts = totalStars(sv.lvStars);
     let next = 1;
     while (next < LEVEL_COUNT && (sv.lvStars[next] ?? 0) > 0) next++;
     const today = dayKey();
     const dDone = sv.daily.key === today ? sv.daily.stars : 0;
-    let worlds = '';
-    WORLDS.forEach((W, w) => {
-      const a = worldStart(w);
-      const b = w + 1 < WORLDS.length ? worldStart(w + 1) - 1 : LEVEL_COUNT;
-      const lockedW = ts < W.stars;
-      let cells = '';
-      for (let n = a; n <= b; n++) {
-        const st = sv.lvStars[n] ?? 0;
-        const open = levelOpen(n, sv.lvStars);
-        const isNext = open && st === 0;
-        cells += `<button class="cz-lvb${open ? '' : ' cz-lock'}${isNext ? ' cz-next' : ''}${st ? ' cz-done' : ''}" data-lv="${n}" ${open ? '' : 'aria-disabled="true"'}><b>${open ? n : icon('lock', { size: 18 })}</b><span class="cz-ministars">${starsRow(st, 11)}</span>${HELPER_AT.includes(n) && !SOLO() ? `<em>${icon('pet', { size: 14 })}</em>` : ''}</button>`;
+    const setMode = (m: '2d' | '3d') => {
+      if (m === '3d' && !gl) {
+        banner(t('cozinha.no3d', '3D não disponível neste aparelho. Abrindo em 2D.'));
+        m = '2d';
       }
-      worlds += `<div class="cz-world" style="--w1:${W.col[0]};--w2:${W.col[1]}"><div class="cz-wh"><b>${esc(W.name())}</b>${lockedW ? `<span class="cz-pill">${icon('lock', { size: 14 })}${icon('star', { size: 14 })}${W.stars}</span>` : ''}</div><div class="cz-lvgrid">${cells}</div></div>`;
+      mode = m;
+      sv.mode = mode;
+      persistCz();
+    };
+    const levels = (p: SmPage) => {
+      WORLDS.forEach((W, w) => {
+        const a = worldStart(w);
+        const b = w + 1 < WORLDS.length ? worldStart(w + 1) - 1 : LEVEL_COUNT;
+        const lockedW = ts < W.stars;
+        p.label(W.name() + (lockedW ? ` · ★ ${W.stars}` : ''), lockedW ? icon('lock', { size: 18 }) : icon('star', { size: 18 }));
+        const cards: SmCard[] = [];
+        for (let n = a; n <= b; n++) {
+          const st = sv.lvStars[n] ?? 0;
+          const open = levelOpen(n, sv.lvStars);
+          cards.push({
+            id: 'lv' + n,
+            icon: `<span class="sm-emoji">${n}</span>`,
+            color: W.col[0],
+            label: st ? '★'.repeat(st) + '☆'.repeat(3 - st) : open ? t('cozinha.newLv', 'Nova!') : '',
+            say: t('cozinha.playLv', 'Jogar fase {n}', { n }),
+            lock: !open,
+            hot: open && st === 0,
+            onTap: () => levelSheet(level(n)),
+          });
+        }
+        p.cards(cards, { scroll: true });
+      });
+    };
+    const sm = openStartMenu(el, {
+      game: 'cozinha',
+      chips: [
+        { icon: icon('star', { size: 20 }), text: `${ts}/${LEVEL_COUNT * 3}` },
+        { icon: icon('coin', { size: 20 }), text: fmt(sv.cash) },
+      ],
+      onBack: () => quit(),
+      settings: (p) => {
+        p.toggle({ icon: czIcon('robot', 30), label: t('cozinha.soloS', 'Sem ajudantes'), say: t('cozinha.solo', 'Jogar sozinho (sem ajudantes)'), value: SOLO(), onChange: (v) => setSolo('cozinha', v) });
+        p.cards([{ icon: czIcon('hat', 40), label: t('cozinha.tutorial', 'Treino'), color: '#ffe6a8', onTap: () => playLevel(level(1)) }], { size: 'small', cols: 1 });
+      },
+      build: (p) => {
+        p.cards([
+          { id: '2d', icon: czIcon('flat', 60), label: '2D', say: t('cozinha.mode2dD', 'Leve e rápido, roda em qualquer celular'), sub: t('cozinha.mode2d', 'Desenhado'), color: '#ffd9a8', sel: mode === '2d', onTap: () => (setMode('2d'), p.refresh()) },
+          { id: '3d', icon: czIcon('cube', 60), label: '3D', say: t('cozinha.mode3dFps', 'Primeira pessoa — caos total!'), sub: !gl ? t('cozinha.no3dShort', 'Indisponível neste aparelho') : tier <= 1 ? t('cozinha.mode3dWeakS', 'Pode pesar') : t('cozinha.mode3dS', 'Primeira pessoa'), color: '#c8b0ff', sel: mode === '3d', disabled: !gl, onTap: () => (setMode('3d'), p.refresh()) },
+        ]);
+        if (!sv.tutDone) p.play({ sub: t('cozinha.tutorial', 'Treino'), onTap: () => playLevel(level(1)) });
+        else p.play({ sub: t('cozinha.playLv', 'Jogar fase {n}', { n: next }), onTap: () => levelSheet(level(next)) });
+        p.friends({ game: 'cozinha', onTap: () => friends() });
+        p.cards(
+          [
+            { id: 'lv', icon: czIcon('book', 40), label: t('cozinha.levels', 'Fases'), color: '#ffe6a8', onTap: () => sm.push(levels, t('cozinha.levels', 'Fases')) },
+            { id: 'daily', icon: icon('calendar', { size: 40 }), label: t('cozinha.dailyS', 'Do dia'), say: t('cozinha.daily', 'Desafio do dia'), sub: dDone ? '★'.repeat(dDone) : '', color: '#ffc0d8', onTap: () => levelSheet(dailyLevel()) },
+            { id: 'endless', icon: icon('refresh', { size: 40 }), label: t('cozinha.endlessS', 'Sem fim'), say: endlessOpen() ? t('cozinha.endless', 'Modo sem fim') : t('cozinha.endlessLock', 'Termine a fase {n} para liberar', { n: ENDLESS_AT }), lock: !endlessOpen(), color: '#c0f0ff', onTap: () => lobby() },
+            { id: 'shop', icon: czIcon('cart', 40), label: t('cozinha.shopS', 'Loja'), say: t('cozinha.shop', 'Melhorias'), color: '#fff0a0', onTap: () => shop('up') },
+          ],
+          { size: 'small', cols: 2 },
+        );
+      },
     });
-    d.innerHTML = `
-      <div class="cz-maptop">
-        <button class="cz-btn cz-ic" data-a="exit">${icon('home', { size: 22 })}</button>
-        <div class="cz-title cz-grow">${t('cozinha.name', 'Cozinha Maluca')}</div>
-        <span class="cz-pill">${icon('star', { size: 18 })}${ts}/${LEVEL_COUNT * 3}</span>
-        <span class="cz-pill">${icon('coin', { size: 18 })}${fmt(sv.cash)}</span>
-      </div>
-      <div class="cz-modesrow">
-        <button class="cz-btn cz-green" data-a="play">${icon('play', { size: 20 })}${t('cozinha.playLv', 'Jogar fase {n}', { n: next })}</button>
-        <button class="cz-btn cz-orange" data-a="daily">${icon('calendar', { size: 20 })}${t('cozinha.daily', 'Desafio do dia')}${dDone ? `<span class="cz-ministars">${starsRow(dDone, 10)}</span>` : ''}</button>
-        <button class="cz-btn${endlessOpen() ? ' cz-pink' : ''}" data-a="endless">${endlessOpen() ? icon('refresh', { size: 20 }) : icon('lock', { size: 18 })}${t('cozinha.endless', 'Modo sem fim')}</button>
-      </div>
-      <div class="cz-worlds">${worlds}</div>
-      <div class="cz-modesrow cz-small">
-        <button class="cz-btn cz-toggle${SOLO() ? ' cz-on' : ''}" data-a="solo"><span class="cz-chk">${SOLO() ? icon('check', { size: 14 }) : ''}</span>${t('cozinha.solo', 'Jogar sozinho (sem ajudantes)')}</button>
-        <button class="cz-btn" data-a="tut">${czIcon('hat', 18)}${t('cozinha.tutorial', 'Treino')}</button>
-        <button class="cz-btn cz-gold" data-a="shop">${czIcon('cart', 18)}${t('cozinha.shop', 'Melhorias')}</button>
-        <button class="cz-btn" data-a="friends">${czIcon('friends', 18)}${t('cozinha.friends', 'Com amigos')}</button>
-        <button class="cz-btn" data-a="gfx">${mode === '3d' ? czIcon('cube', 18) : czIcon('flat', 18)}${mode.toUpperCase()}</button>
-      </div>`;
-    bind(d, '[data-lv]', (b) => {
-      const n = Number(b.dataset.lv);
-      if (!levelOpen(n, sv.lvStars)) {
-        const W = WORLDS[worldIndex(n)];
-        banner(totalStars(sv.lvStars) < W.stars ? t('cozinha.needStars', 'Junte {n} estrelas para abrir', { n: W.stars }) : t('cozinha.needPrev', 'Termine a fase anterior primeiro'));
-        return;
-      }
-      levelSheet(level(n));
-    });
-    bind(d, '[data-a=play]', () => levelSheet(level(next)));
-    bind(d, '[data-a=daily]', () => levelSheet(dailyLevel()));
-    bind(d, '[data-a=endless]', () => {
-      if (!endlessOpen()) return banner(t('cozinha.endlessLock', 'Termine a fase {n} para liberar', { n: ENDLESS_AT }));
-      lobby();
-    });
-    bind(d, '[data-a=solo]', () => {
-      setSolo('cozinha', !SOLO());
-      map();
-    });
-    bind(d, '[data-a=tut]', () => playLevel(level(1)));
-    bind(d, '[data-a=shop]', () => shop('up'));
-    bind(d, '[data-a=friends]', () => friends());
-    bind(d, '[data-a=gfx]', () => chooser());
-    bind(d, '[data-a=exit]', () => quit());
-    setBack(() => quit());
+    setBack(() => sm.back());
     if (net.ses) {
       let last = performance.now();
       const tick = (ms: number) => {
@@ -237,9 +218,6 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       };
       raf = requestAnimationFrame(tick);
     }
-    // rola até a próxima fase
-    const nx = d.querySelector<HTMLElement>('.cz-next');
-    if (nx) requestAnimationFrame(() => nx.scrollIntoView({ block: 'center' }));
   }
 
   /** ficha da fase: cardápio, novidades, metas de estrelas */

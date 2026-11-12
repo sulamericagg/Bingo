@@ -48,6 +48,7 @@ import {
 import { isUnlocked, levelRec, mlSave, persistML, starsOf, unlockedUpTo } from './save';
 import { DT, Sim, applyCmd, designCOM, driveCmd, norm, type DriveStep } from './sim';
 import { IC, injectMLCss } from './style';
+import { openStartMenu, type SmPage } from '../../ui/startmenu';
 import { resolveTrack, type Track, type TrackObj } from './track';
 import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
 import type { DuelCtl } from '../../party/duel';
@@ -430,7 +431,7 @@ export class MontaLeva implements MiniGameHandle {
 
   private update(dt: number): void {
     if (this.screen === 'test' && this.sim) this.updateTest(dt);
-    else if (this.screen === 'menu') this.updateDemo(dt);
+    else if (this.screen === 'menu' && !this.ui.querySelector('.sm')) this.updateDemo(dt);
     this.fx.update(dt);
     // câmera suave
     const k = 1 - Math.exp(-dt * (this.screen === 'test' ? 5 : 7));
@@ -484,27 +485,51 @@ export class MontaLeva implements MiniGameHandle {
     this.botVis = [];
     this.demo = null;
     this.demoT = 0;
+    this.startMenu(-1);
+  }
+
+  /** tela de início padrão (src/ui/startmenu): JOGAR, capítulos, duelo, oficina; `ch` ≥ 0 abre as fases do capítulo */
+  private startMenu(ch: number): void {
     const next = Math.min(LEVELS.length, unlockedUpTo());
     const stars = LEVELS.reduce((s, L) => s + starsOf(L.n), 0);
-    const d = document.createElement('div');
-    d.className = 'ml-menu';
-    d.innerHTML = `
-      <div class="ml-mcol ml-fade">
-        <div class="ml-logo">${logoSvg()}<div><b>${t('ml.name', 'Monta & Leva')}</b><small>${t('ml.tagline', 'Monte o veículo. Entregue a carga.')}</small></div></div>
-        <button class="ml-btn pri" data-a="play">${IC.play}${t('ml.play', 'Jogar')}<small>${t('ml.levelN', 'Fase {n}', { n: next })}</small></button>
-        <button class="ml-btn" data-a="duel"><svg viewBox="0 0 32 24" width="30" height="22" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg>${t('duel.menu', 'Duelo online')}<small>${t('ml.duelD', 'quem entrega primeiro?')}</small></button>
-        <button class="ml-btn" data-a="levels">${IC.map}${t('ml.levels', 'Fases')}<small>★ ${stars}/${LEVELS.length * 3}</small></button>
-        <button class="ml-btn" data-a="shop">${IC.wrench}${t('ml.shop', 'Oficina')}<small>⚙ ${fmt(this.sv.gears)}</small></button>
-        <button class="ml-btn" data-a="settings">${IC.sliders}${t('ml.settings', 'Configurações')}</button>
-        <button class="ml-btn ghost" data-a="exit">${IC.exit}${t('ml.exit', 'Sair')}</button>
-      </div>`;
-    this.ui.appendChild(d);
-    this.on(d, '[data-a=play]', () => this.openLevel(next));
-    this.on(d, '[data-a=levels]', () => this.levels(-1));
-    this.on(d, '[data-a=duel]', () => void this.onlineDuel(freshDuel('montaleva')));
-    this.on(d, '[data-a=shop]', () => this.shop());
-    this.on(d, '[data-a=settings]', () => this.settings());
-    this.on(d, '[data-a=exit]', () => this.exitFn());
+    const chapterPage = (c: number) => (p: SmPage) => {
+      const ls = LEVELS.slice(c * CHAPTER_SIZE, (c + 1) * CHAPTER_SIZE);
+      const cur = unlockedUpTo();
+      p.cards(
+        ls.map((L) => {
+          const rec = this.sv.levels[L.n];
+          const lock = !isUnlocked(L.n);
+          const sN = starsOf(L.n);
+          return { id: 'n' + L.n, icon: `<span class="sm-emoji">${L.n}</span>`, color: CHAPTER_ACCENT[c], label: lock ? '' : '★'.repeat(sN) + '☆'.repeat(3 - sN), say: t('ml.levelN', 'Fase {n}', { n: L.n }), lock, hot: L.n === cur && !rec?.done, onTap: () => this.openLevel(L.n) };
+        }),
+        { cols: 5 },
+      );
+    };
+    const sm = openStartMenu(this.ui, {
+      game: 'montaleva',
+      chips: [
+        { icon: '★', text: `${stars}/${LEVELS.length * 3}` },
+        { icon: '⚙', text: fmt(this.sv.gears) },
+      ],
+      onBack: () => this.exitFn(),
+      onSettings: () => this.settings(),
+      build: (p) => {
+        p.label(t('ml.chapters', 'Capítulos'));
+        p.cards(
+          Array.from({ length: CHAPTERS }, (_, c) => {
+            const ls = LEVELS.slice(c * CHAPTER_SIZE, (c + 1) * CHAPTER_SIZE);
+            const st = ls.reduce((s, L) => s + starsOf(L.n), 0);
+            const lock = !isUnlocked(ls[0].n);
+            return { id: 'c' + c, icon: `<span class="sm-emoji">${c + 1}</span>`, color: CHAPTER_ACCENT[c], label: chapterName(c), sub: `★ ${st}/${ls.length * 3}`, lock, hot: chapterOf(next) === c, onTap: () => sm.push(chapterPage(c), chapterName(c)) };
+          }),
+          { scroll: true },
+        );
+        p.play({ sub: t('ml.levelN', 'Fase {n}', { n: next }), onTap: () => this.openLevel(next) });
+        p.friends({ label: t('duel.menuS', 'Duelo com amigos'), say: t('ml.duelD', 'quem entrega primeiro?'), onTap: () => void this.onlineDuel(freshDuel('montaleva')) });
+        p.cards([{ id: 'shop', icon: IC.wrench, label: t('ml.shop', 'Oficina'), sub: `⚙ ${fmt(this.sv.gears)}`, color: '#ffd08a', onTap: () => this.shop() }], { size: 'small', cols: 1 });
+      },
+    });
+    if (ch >= 0) sm.push(chapterPage(ch), chapterName(ch));
     this.setBack(null);
   }
 
@@ -540,52 +565,7 @@ export class MontaLeva implements MiniGameHandle {
     this.screen = 'levels';
     this.au.mood = 'menu';
     this.chap = ch;
-    const total = LEVELS.reduce((s, L) => s + starsOf(L.n), 0);
-    const d = document.createElement('div');
-    d.className = 'ml-page ml-fade';
-    const back = `<button class="ml-btn ic round" data-a="back" aria-label="${t('ml.back', 'Voltar')}">${IC.back}</button>`;
-    let html: string;
-    if (ch < 0) {
-      html = `<div class="ml-head">${back}<h2>${t('ml.chapters', 'Capítulos')}</h2><span class="ml-chip">★ ${total}/${LEVELS.length * 3}</span></div><div class="ml-scroll"><div class="ml-chaps2">`;
-      for (let c = 0; c < CHAPTERS; c++) {
-        const ls = LEVELS.slice(c * CHAPTER_SIZE, (c + 1) * CHAPTER_SIZE);
-        const st = ls.reduce((s, L) => s + starsOf(L.n), 0);
-        const done = ls.filter((L) => this.sv.levels[L.n]?.done).length;
-        const lock = !isUnlocked(ls[0].n);
-        html += `<button class="ml-chcard ${lock ? 'lock' : ''}" data-c="${c}" style="--acc:${CHAPTER_ACCENT[c]};--tint:${CHAPTER_TINT[c]}">
-          <span class="ml-chn">${c + 1}</span>
-          <span class="ml-cht"><b>${esc(chapterName(c))}</b><small>${lock ? IC.lock : `★ ${st}/${ls.length * 3}`}</small></span>
-          <span class="ml-chbar"><i style="width:${Math.round((done / ls.length) * 100)}%"></i></span>
-        </button>`;
-      }
-      html += `</div></div>`;
-    } else {
-      const ls = LEVELS.slice(ch * CHAPTER_SIZE, (ch + 1) * CHAPTER_SIZE);
-      const st = ls.reduce((s, L) => s + starsOf(L.n), 0);
-      const cur = unlockedUpTo();
-      html = `<div class="ml-head">${back}<h2><small style="color:${CHAPTER_ACCENT[ch]}">${t('ml.chapterN', 'Capítulo {n}', { n: ch + 1 })}</small>${esc(chapterName(ch))}</h2><span class="ml-chip">★ ${st}/${ls.length * 3}</span></div><div class="ml-scroll"><div class="ml-tiles2">`;
-      for (const L of ls) {
-        const rec = this.sv.levels[L.n];
-        const lock = !isUnlocked(L.n);
-        const sN = starsOf(L.n);
-        const cls = lock ? 'lock' : L.n === cur && !rec?.done ? 'cur' : rec?.done ? 'done' : '';
-        const tag = L.cargo.some((c) => c.t === 'bot') ? '<span class="ml-tag bot"></span>' : L.wired ? '<span class="ml-tag wire"></span>' : '';
-        html += `<button class="ml-tile ${cls}" data-n="${L.n}">${lock ? IC.lock : L.n}${lock ? '' : `<span class="ml-stars">${[0, 1, 2].map((i) => `<i class="${i < sN ? 'on' : ''}"></i>`).join('')}</span>`}${lock ? '' : tag}</button>`;
-      }
-      html += `</div></div>`;
-    }
-    d.innerHTML = html;
-    this.ui.appendChild(d);
-    this.on(d, '[data-a=back]', () => (ch < 0 ? this.menu() : this.levels(-1)));
-    this.on(d, '[data-c]', (b) => {
-      if (b.classList.contains('lock')) {
-        this.au.bad();
-        return;
-      }
-      this.levels(+b.dataset.c!);
-    });
-    this.on(d, '[data-n]', (b) => this.openLevel(+b.dataset.n!));
-    this.setBack(() => (ch < 0 ? this.menu() : this.levels(-1)));
+    this.startMenu(ch);
   }
 
   /* ---------------------------- oficina ---------------------------- */
@@ -2028,6 +2008,8 @@ export class MontaLeva implements MiniGameHandle {
     const inLevel = this.L && (this.screen === 'build' || this.screen === 'test');
     drawBackground(x, v, inLevel ? CHAPTER_TINT[chapterOf(this.L!.n)] : undefined);
     if (this.screen === 'levels' || this.screen === 'shop' || this.screen === 'settings') return;
+    // a tela de início padrão cobre tudo: nada de demo por baixo
+    if (this.screen === 'menu' && this.ui.querySelector('.sm')) return;
     const tr = this.screen === 'menu' ? DEMO_TRACK : this.track;
     if (!tr) return;
     const sim = this.screen === 'menu' ? this.demo : this.screen === 'test' ? this.sim : null;
@@ -2736,8 +2718,5 @@ export class MontaLeva implements MiniGameHandle {
   }
 }
 
-function logoSvg(): string {
-  return `<svg class="ml-mark" viewBox="0 0 48 48"><rect x="6" y="20" width="12" height="10" rx="2.5" fill="#5b8def" stroke="#2f5bb8" stroke-width="2"/><rect x="18" y="20" width="12" height="10" rx="2.5" fill="#ef5d60" stroke="#b8333a" stroke-width="2"/><path d="M30 30V20h4l8 10z" fill="#f2a541" stroke="#c47a17" stroke-width="2" stroke-linejoin="round"/><rect x="17" y="8" width="11" height="11" rx="2" fill="#ffb547" stroke="#26303d" stroke-width="2"/><circle cx="12" cy="33" r="6" fill="#2d3340" stroke="#141820" stroke-width="2"/><circle cx="12" cy="33" r="2.4" fill="#e9edf2"/><circle cx="36" cy="33" r="6" fill="#2d3340" stroke="#141820" stroke-width="2"/><circle cx="36" cy="33" r="2.4" fill="#e9edf2"/></svg>`;
-}
 
 export { norm };

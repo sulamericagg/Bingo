@@ -4,6 +4,7 @@
 .bb-ui{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:auto}
 .bb-ui.bb-s-hud{pointer-events:none}
 .bb-ui.bb-s-home{background:linear-gradient(180deg,rgba(18,10,46,0) 30%,rgba(18,10,46,.85) 55%,#120a2e 70%)}
+.bb-ui.bb-s-home.bb-s-sm{background:none}
 .bb-ui.bb-s-select,.bb-ui.bb-s-custom,.bb-ui.bb-s-studio,.bb-ui.bb-s-calib{background:rgba(14,7,38,.93)}
 .bb-ui.bb-s-lobby{background:linear-gradient(180deg,rgba(14,7,38,0) 0%,rgba(14,7,38,0) 36%,rgba(14,7,38,.96) 50%)}
 .bb-ui.bb-s-pause,.bb-ui.bb-s-results{background:rgba(10,4,30,.72);align-items:center;justify-content:center}

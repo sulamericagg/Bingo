@@ -36,6 +36,7 @@ import { makeMinigame, gameName, gameHelp, EL_GAMES, GAME_KINDS, type Minigame, 
 import { WebArLite, type ArProvider } from './ar';
 import { elName, rarName, shapeName, matName, patName, weatherName } from './text';
 import { seedFrom } from './rng';
+import { openStartMenu } from '../ui/startmenu';
 
 const REACH_GPS = 40;
 const REACH_HOME = 160;
@@ -224,9 +225,49 @@ class CacaGame implements MiniGameHandle {
   /* ============================== fluxo inicial ============================== */
   private flow(): void {
     if (!this.sv.safetyOk) return this.showSafety(() => this.flow());
+    if (!this.startShown) return this.showStart();
     if (!this.sv.locMode) return this.showModeChoice(() => this.flow());
     if (!this.sv.starter) return this.showStarter(() => this.flow());
     this.startMap();
+  }
+
+  /** tela de início padrão (src/ui/startmenu): com GPS ou modo casa, JOGAR, amigos */
+  private startShown = false;
+  private showStart(): void {
+    const o = this.openOverlay('cc-smwrap');
+    o.style.cssText = 'position:absolute;inset:0;padding:0;background:none';
+    const n = this.sv.mons?.length ?? 0;
+    openStartMenu(o, {
+      game: 'caca',
+      chips: n ? [{ icon: icon('pet', { size: 20 }), text: String(n) }] : [],
+      onBack: () => this.exitFn(),
+      build: (p) => {
+        const mode = this.sv.locMode || 'casa';
+        p.cards([
+          { id: 'gps', icon: icon('target', { size: 56 }), label: t('caca.mode.gpsS', 'Na rua'), say: t('caca.mode.gpsP', 'Os bichinhos aparecem pelo mapa e mudam a cada 15 minutos. Ande até eles (uns 40 m) para encontrar. Os ovos chocam conforme você anda.'), color: '#a8f0b8', sel: mode === 'gps', onTap: () => {
+            this.sv.locMode = 'gps';
+            persistCaca();
+            p.refresh();
+          } },
+          { id: 'casa', icon: icon('home', { size: 56 }), label: t('caca.mode.home', 'Modo casa'), say: t('caca.mode.homeP', 'Um mapa de brincadeira em volta de você, com bichinhos por perto. Não usa sua localização.'), color: '#ffd8a8', sel: mode === 'casa', onTap: () => {
+            this.sv.locMode = 'casa';
+            persistCaca();
+            p.refresh();
+          } },
+        ]);
+        p.play({ sub: mode === 'gps' ? t('caca.mode.gpsS', 'Na rua') : t('caca.mode.home', 'Modo casa'), onTap: () => {
+          if (!this.sv.locMode) {
+            this.sv.locMode = 'casa';
+            persistCaca();
+          }
+          this.startShown = true;
+          this.closeOverlay();
+          this.flow();
+        } });
+        p.friends({ game: 'caca' });
+        p.cards([{ id: 'safe', icon: icon('shield', { size: 36 }), label: t('caca.safety.title', 'Antes de caçar'), color: '#c4e8ff', onTap: () => this.showSafety(() => this.flow()) }], { size: 'small', cols: 1 });
+      },
+    });
   }
 
   private openOverlay(cls = ''): HTMLDivElement {

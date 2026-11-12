@@ -3,6 +3,7 @@
  *  HUD, pausa, resultados, visual (customização) e calibração.
  *  O Estúdio fica em studio.ts.
  * ============================================================ */
+import { openStartMenu } from '../../ui/startmenu';
 import { t, fmt } from '../../i18n';
 import { addCoins } from '../../core/economy';
 import { spend, canAfford } from '../../core/economy';
@@ -133,27 +134,49 @@ export class Screens {
 
   private home(): void {
     this.g.setMenuBand();
-    this.el.innerHTML = `
-      ${this.top('', () => this.g.exit())}
-      <div class="bb-home">
-        <div class="bb-logo"><span>${esc(t('band.name', 'Bloop Banda'))}</span><small>${esc(t('band.tagline', 'Monte sua banda e toque no ritmo!'))}</small></div>
-        <div class="bb-menu">
-          <button class="bb-big bb-play" data-a="select">${bandIcon('play', 34)}<span>${esc(t('band.play', 'Tocar'))}</span></button>
-          <button class="bb-big" data-a="lobby">${bandIcon('band', 30)}<span>${esc(t('band.online', 'Banda com amigos'))}</span></button>
-          <button class="bb-big" data-a="studio">${bandIcon('mixer', 30)}<span>${esc(t('band.studio', 'Estúdio'))}</span></button>
-          <div class="bb-row2">
-            <button class="bb-mid" data-a="custom">${bandIcon('brush', 24)}<span>${esc(t('band.custom', 'Visual'))}</span></button>
-            <button class="bb-mid" data-a="calib">${bandIcon('metronome', 24)}<span>${esc(t('band.calib', 'Calibrar'))}</span></button>
-          </div>
-        </div>
-      </div>`;
-    this.el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) => {
-      b.onclick = () => {
-        tap('light');
-        this.g.ensureAudio();
-        this.pickCb = null;
-        this.show(b.dataset.a as ScreenName);
-      };
+    this.el.innerHTML = '';
+    this.el.classList.add('bb-s-sm');
+    const go = (name: ScreenName) => {
+      this.g.ensureAudio();
+      this.pickCb = null;
+      this.show(name);
+    };
+    openStartMenu(this.el, {
+      game: 'band',
+      seeThrough: true,
+      mascot: false,
+      onBack: () => this.g.exit(),
+      settings: (p) => {
+        p.cards(
+          [
+            { id: 'custom', icon: bandIcon('brush', 40), label: t('band.custom', 'Visual'), color: '#ffd0e0', onTap: () => go('custom') },
+            { id: 'calib', icon: bandIcon('metronome', 40), label: t('band.calib', 'Calibrar'), color: '#c4f0ff', onTap: () => go('calib') },
+          ],
+          { size: 'small', cols: 2 },
+        );
+      },
+      build: (p) => {
+        p.cards(
+          INSTRUMENTS.map((i) => ({ id: i, icon: bandIcon(INST_ICON[i], 44), label: instName(i), color: '#d8c8ff', sel: i === bs.inst, onTap: () => {
+            bs.inst = i;
+            persistBand();
+            this.g.setMenuBand();
+            p.refresh();
+          } })),
+          { cols: 5, size: 'big' },
+        );
+        p.faces(
+          DIFFS.map((d, k) => ({ id: d, level: k, label: diffName(d) })),
+          bs.diff,
+          (v) => {
+            bs.diff = v as Difficulty;
+            persistBand();
+          },
+        );
+        p.play({ say: t('band.play', 'Tocar'), sub: instName(bs.inst), onTap: () => go('select') });
+        p.friends({ label: t('band.online', 'Banda com amigos'), game: 'band', onTap: () => go('lobby') });
+        p.cards([{ id: 'studio', icon: bandIcon('mixer', 40), label: t('band.studio', 'Estúdio'), color: '#ffe6a8', onTap: () => go('studio') }], { size: 'small', cols: 1 });
+      },
     });
   }
 

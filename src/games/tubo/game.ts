@@ -45,6 +45,7 @@ import { RED, ZONES, ZONE_LEN, zoneAt } from './zones';
 import { gameFont } from '../../i18n/font';
 import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
 import type { DuelCtl } from '../../party/duel';
+import { openStartMenu } from '../../ui/startmenu';
 
 /** valor de cada moeda coletada no tubo */
 const COIN_VALUE = 3;
@@ -333,6 +334,24 @@ class TuboGame implements MiniGameHandle {
     this.raf = requestAnimationFrame(this.loop);
     const d = takeDuel('tubo');
     if (d) void this.onlineDuel(d);
+    else this.showStart();
+  }
+
+  /** tela de início padrão (src/ui/startmenu): a queda de verdade aparece pela janela */
+  private showStart(): void {
+    const sm = openStartMenu(this.el, {
+      game: 'tubo',
+      seeThrough: true,
+      chips: this.best ? [{ icon: icon('trophy', { size: 20 }), text: fmt(this.best) }] : [],
+      onBack: () => this.exitFn(),
+      build: (p) => {
+        p.play({ sub: t('tubo.hint.tap', 'Toque para mergulhar'), onTap: () => sm.destroy() });
+        p.friends({ label: t('duel.menuS', 'Duelo com amigos'), onTap: () => {
+          sm.destroy();
+          void this.onlineDuel(freshDuel('tubo'));
+        } });
+      },
+    });
   }
 
   /* ============================== duelo online ============================== */

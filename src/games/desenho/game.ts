@@ -21,6 +21,7 @@ import { renderThumb } from './paper';
 import { addToGallery, dvSave, persistDv, totalStars } from './save';
 import { cloneDrawing, emptyDrawing, parseShareCode, type Drawing, type Material } from './strokes';
 import { injectDvCss } from './style';
+import { openStartMenu, type SmPage } from '../../ui/startmenu';
 import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
 import type { DuelCtl } from '../../party/duel';
 
@@ -174,7 +175,7 @@ class DesenhoGame implements MiniGameHandle {
     return o;
   }
 
-  menu(): void {
+  menu(toLevels = false): void {
     this.leaveDuel();
     this.closeDraw();
     if (this.chal) {
@@ -186,28 +187,36 @@ class DesenhoGame implements MiniGameHandle {
     a.setMenuMode(true);
     objective(null);
     const stars = totalStars();
-    const o = this.overlay(
-      'dv-menu',
-      `<button class="dv-btn dv-ic dv-m-exit" aria-label="${t('dv.back', 'Voltar')}">${dvIcon('back', 24)}</button>
-      <div class="dv-logo"><span>${t('dv.logo1', 'Desenha')}</span><span class="dv-logo-e">${t('dv.logo2', 'e Vira!')}</span></div>
-      <div class="dv-tag">${t('dv.tagline2', 'Seu desenho vira um objeto 3D de verdade!')}</div>
-      <div class="dv-mbtns">
-        <button class="dv-mode dv-m1" data-go="atelier"><i>${dvIcon('draw', 34)}</i><b>${t('dv.atelier', 'Ateliê')}</b><small>${t('dv.atelier.d', 'Desenhe, faça BUM! e brinque')}</small></button>
-        <button class="dv-mode dv-m2" data-go="chal"><i>${dvIcon('flag', 34)}</i><b>${t('dv.chal', 'Desafios')}</b><small>${dvIcon('star', 14)} ${fmt(stars)}/${LEVELS.length * 3}</small></button>
-        <button class="dv-mode dv-m2" data-go="duel"><i><svg viewBox="0 0 32 24" width="40" height="30" aria-hidden="true"><circle cx="11" cy="8" r="5" fill="currentColor"/><path d="M1 23c0-6 4.5-9 10-9s10 3 10 9z" fill="currentColor"/><circle cx="23" cy="7" r="4" fill="currentColor" opacity=".75"/><path d="M19 13.5c1.2-.4 2.5-.5 4-.5 4.6 0 8 2.6 8 8h-8.5c-.3-3-1.6-5.7-3.5-7.5z" fill="currentColor" opacity=".75"/></svg></i><b>${t('duel.menu', 'Duelo online')}</b><small>${t('dv.duelD', 'Mesmo desafio, quem resolve primeiro?')}</small></button>
-        <button class="dv-mode dv-m3" data-go="gal"><i>${dvIcon('gallery', 34)}</i><b>${t('dv.gallery', 'Galeria')}</b><small>${t('dv.gallery.d', '{n} criações', { n: this.sv.gallery.length })}</small></button>
-      </div>`,
-    );
-    o.querySelector('.dv-m-exit')!.addEventListener('click', () => this.exit());
-    o.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const g = b.dataset.go;
-        if (g === 'atelier') this.enterAtelier();
-        else if (g === 'duel') void this.onlineDuel(freshDuel('desenho'));
-        else if (g === 'chal') this.levelSelect();
-        else this.gallery();
-      }),
-    );
+    const o = this.overlay('dv-smwrap', '');
+    o.style.cssText = 'position:absolute;inset:0;padding:0;background:transparent';
+    const levels = (p: SmPage) => {
+      const st = this.sv.stars;
+      p.cards(
+        LEVELS.map((lv, i) => {
+          const s = st[lv.id] ?? 0;
+          const open = i < 3 || (st[LEVELS[i - 1].id] ?? 0) > 0;
+          return { id: 'lv' + i, icon: dvIcon(levelIcon(lv.kind), 44), color: ['#ffd0e0', '#c4f0ff', '#fff0a0', '#d8f8c0'][i % 4], label: `${i + 1}. ${lv.name()}`, sub: '★'.repeat(s) + '☆'.repeat(3 - s), lock: !open, hot: open && !s, onTap: () => this.playLevel(i) };
+        }),
+        { cols: 3 },
+      );
+    };
+    const sm = openStartMenu(o, {
+      game: 'desenho',
+      seeThrough: true,
+      mascot: false,
+      chips: [{ icon: dvIcon('star', 20), text: `${fmt(stars)}/${LEVELS.length * 3}` }],
+      onBack: () => this.exit(),
+      build: (p) => {
+        p.cards([
+          { id: 'atelier', icon: dvIcon('draw', 54), label: t('dv.atelier', 'Ateliê'), say: t('dv.atelier.d', 'Desenhe, faça BUM! e brinque'), color: '#ffd0e0', onTap: () => this.enterAtelier() },
+          { id: 'chal', icon: dvIcon('flag', 54), label: t('dv.chal', 'Desafios'), sub: `★ ${fmt(stars)}/${LEVELS.length * 3}`, color: '#c4f0ff', onTap: () => sm.push(levels, t('dv.chal', 'Desafios')) },
+          { id: 'gal', icon: dvIcon('gallery', 54), label: t('dv.gallery', 'Galeria'), sub: String(this.sv.gallery.length), say: t('dv.gallery.d', '{n} criações', { n: this.sv.gallery.length }), color: '#fff0a0', onTap: () => this.gallery() },
+        ]);
+        p.play({ sub: t('dv.atelier', 'Ateliê'), say: t('dv.atelier.d', 'Desenhe, faça BUM! e brinque'), onTap: () => this.enterAtelier() });
+        p.friends({ label: t('duel.menuS', 'Duelo com amigos'), say: t('dv.duelD', 'Mesmo desafio, quem resolve primeiro?'), onTap: () => void this.onlineDuel(freshDuel('desenho')) });
+      },
+    });
+    if (toLevels) sm.push(levels, t('dv.chal', 'Desafios'));
   }
 
   private enterAtelier(): void {
@@ -413,29 +422,7 @@ class DesenhoGame implements MiniGameHandle {
 
   /* ----------------------------- desafios ----------------------------- */
   private levelSelect(): void {
-    if (this.chal) {
-      this.eng.setStage(null);
-      this.chal = null;
-      this.atelier = null;
-      this.ensureAtelier().setMenuMode(true);
-    }
-    this.closeDraw();
-    objective(null);
-    const st = this.sv.stars;
-    const cards = LEVELS.map((lv, i) => {
-      const s = st[lv.id] ?? 0;
-      const open = i < 3 || (st[LEVELS[i - 1].id] ?? 0) > 0;
-      return `<button class="dv-lv${open ? '' : ' dv-locked'}${s ? ' dv-done' : ''}" data-i="${i}" ${open ? '' : 'disabled'}>
-        <b>${i + 1}</b>${dvIcon(open ? levelIcon(lv.kind) : 'lock', 26)}<span>${esc(lv.name())}</span>
-        <em>${[0, 1, 2].map((k) => `<i class="${k < s ? 'on' : ''}">${dvIcon('star', 14)}</i>`).join('')}</em></button>`;
-    }).join('');
-    const o = this.overlay(
-      'dv-sel dv-dim',
-      `<div class="dv-ovtop"><button class="dv-btn dv-ic dv-s-back">${dvIcon('back', 24)}</button><h2>${t('dv.chal', 'Desafios')}</h2><div class="dv-grow"></div><div class="dv-pill">${dvIcon('star', 16)} ${fmt(totalStars())}/${LEVELS.length * 3}</div></div>
-      <div class="dv-lvgrid">${cards}</div>`,
-    );
-    o.querySelector('.dv-s-back')!.addEventListener('click', () => this.menu());
-    o.querySelectorAll<HTMLButtonElement>('.dv-lv').forEach((b) => b.addEventListener('click', () => this.playLevel(+b.dataset.i!)));
+    this.menu(true);
   }
 
   playLevel(i: number): void {

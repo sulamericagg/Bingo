@@ -5,6 +5,7 @@
  *  Fases da trilha e do dia são conferidas com a solução única: Bloop no lugar errado custa
  *  um coração. No Zen não há corações: conflitos só ficam destacados.
  * ============================================================ */
+import { openStartMenu } from '../../ui/startmenu';
 import { audio } from '../../core/audio';
 import { pushBack } from '../../core/back';
 import { addCoins } from '../../core/economy';
@@ -238,44 +239,34 @@ class LugarGame implements MiniGameHandle {
   /* ============================== início ============================== */
   private home(): void {
     this.running = false;
-    const d = this.ov('lg-home');
+    const d = this.clear();
+    d.style.cssText = 'position:absolute;inset:0';
     const s = this.sv;
     const next = Math.min(LEVELS - 1, s.unlocked);
     const today = dayNumber();
     const dailyDone = s.dailyDay === today;
     const streak = s.dailyDay >= today - 1 ? s.dailyStreak : 0;
     const resume = s.prog && s.prog.key === 'L' + next;
-    d.innerHTML = `
-      <div class="lg-hero"></div>
-      ${this.logo()}
-      <div class="lg-sub">${t('lugar.tagline', 'Um Bloop por linha, coluna e cor. E nada de encostar!')}</div>
-      <div class="lg-stats">
-        <span class="lg-pill">${icon('star', { size: 18 })}${fmt(totalStars())}</span>
-        <span class="lg-pill">${icon('check', { size: 18 })}${fmt(s.solved)}</span>
-        <span class="lg-pill">${icon('fire', { size: 18 })}${streak}</span>
-      </div>
-      <button class="lg-btn lg-green lg-big lg-play-btn" data-a="play">${icon('play', { size: 28 })}<span><b>${resume ? t('lugar.continue', 'Continuar') : t('lugar.play', 'Jogar')}</b><small>${t('lugar.levelN', 'Fase {n}', { n: next + 1 })} · ${chapterSize(Math.floor(next / PER_CHAPTER))}×${chapterSize(Math.floor(next / PER_CHAPTER))}</small></span></button>
-      <div class="lg-modes">
-        <button class="lg-mode lg-m1" data-a="daily"><span class="lg-mi">${icon('calendar', { size: 30 })}</span><span><b>${t('lugar.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('lugar.dailyDone', 'Feito! {t} · volte amanhã', { t: mmss(s.dailyTime) }) : t('lugar.dailyD', 'O mesmo para todo mundo hoje')}</small></span></button>
-        <button class="lg-mode lg-m1" data-a="duel"><span class="lg-mi">${icon('rocket', { size: 30 })}</span><span><b>${t('duel.menu', 'Duelo online')}</b><small>${t('lugar.duelD', 'Mesmo tabuleiro: quem resolve primeiro?')}</small></span></button>
-        <button class="lg-mode lg-m2" data-a="zen"><span class="lg-mi">${icon('sparkle', { size: 30 })}</span><span><b>${t('lugar.zen', 'Zen')}</b><small>${t('lugar.zenD', 'Sem corações, sem pressa')}</small></span></button>
-      </div>
-      <div class="lg-row">
-        <button class="lg-btn lg-grow" data-a="map">${icon('target', { size: 20 })}${t('lugar.map', 'Fases')}</button>
-        <button class="lg-btn lg-grow" data-a="how">${icon('lamp', { size: 20 })}${t('lugar.how', 'Como jogar')}</button>
-        <button class="lg-btn lg-ic" data-a="settings" aria-label="${t('lugar.settings', 'Ajustes')}">${icon('gear', { size: 22 })}</button>
-      </div>
-      <button class="lg-btn lg-ghost" data-a="exit">${icon('home', { size: 20 })}${t('lugar.exit', 'Sair')}</button>`;
-    const hero = d.querySelector('.lg-hero')!;
-    hero.appendChild(this.bloopImg(34, 'happy'));
-    this.bind(d, '[data-a=play]', () => this.startLevel(next));
-    this.bind(d, '[data-a=daily]', () => this.startDaily());
-    this.bind(d, '[data-a=zen]', () => this.zenPicker());
-    this.bind(d, '[data-a=duel]', () => void this.onlineDuel(freshDuel('lugar')));
-    this.bind(d, '[data-a=map]', () => this.map(Math.floor(next / PER_CHAPTER)));
-    this.bind(d, '[data-a=how]', () => this.howTo(() => this.home()));
-    this.bind(d, '[data-a=settings]', () => this.settings(() => this.home()));
-    this.bind(d, '[data-a=exit]', () => this.exitFn());
+    const sz = chapterSize(Math.floor(next / PER_CHAPTER));
+    openStartMenu(d, {
+      game: 'lugar',
+      chips: [
+        { icon: icon('star', { size: 20 }), text: fmt(totalStars()) },
+        { icon: icon('fire', { size: 20 }), text: String(streak) },
+      ],
+      onBack: () => this.exitFn(),
+      onSettings: () => this.settings(() => this.home()),
+      build: (p) => {
+        p.play({ label: resume ? t('lugar.continueS', 'CONTINUAR') : undefined, tone: resume ? 'green' : 'gold', sub: `${t('lugar.levelN', 'Fase {n}', { n: next + 1 })} · ${sz}×${sz}`, onTap: () => this.startLevel(next) });
+        p.cards([
+          { id: 'daily', icon: icon('calendar', { size: 52 }), label: t('lugar.dailyS', 'Do dia'), say: t('lugar.daily', 'Desafio do dia'), sub: dailyDone ? '✓ ' + mmss(s.dailyTime) : '', color: '#ffc4dc', onTap: () => this.startDaily() },
+          { id: 'zen', icon: icon('sparkle', { size: 52 }), label: t('lugar.zen', 'Zen'), say: t('lugar.zenD', 'Sem corações, sem pressa'), color: '#c8f0ff', onTap: () => this.zenPicker() },
+          { id: 'map', icon: icon('target', { size: 52 }), label: t('lugar.map', 'Fases'), color: '#fff0a0', onTap: () => this.map(Math.floor(next / PER_CHAPTER)) },
+        ]);
+        p.friends({ label: t('duel.menuS', 'Duelo com amigos'), say: t('lugar.duelD', 'Mesmo tabuleiro: quem resolve primeiro?'), onTap: () => void this.onlineDuel(freshDuel('lugar')) });
+        p.cards([{ id: 'how', icon: icon('lamp', { size: 36 }), label: t('lugar.how', 'Como jogar'), color: '#ffe6a8', onTap: () => this.howTo(() => this.home()) }], { size: 'small', cols: 1 });
+      },
+    });
   }
 
   /* ============================== mapa ============================== */

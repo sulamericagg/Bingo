@@ -36,6 +36,7 @@ import { Town } from './town';
 import { World } from './world';
 import { genArena, genTown, TOWN_WALK_R } from './worldgen';
 import { voiceKind } from './voice';
+import { openStartMenu } from '../../ui/startmenu';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -60,7 +61,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   let arena: ArenaMode | null = null;
   let popBack: (() => void) | null = null;
   let dead = false;
-  let menuEl: HTMLDivElement | null = null;
+  let menuEl: HTMLElement | null = null;
   let last: { kind: 'restore'; theme: ThemeId } | { kind: 'arena' } = { kind: 'restore', theme: sv.lastTheme };
   /** cada partida nova invalida a carga anterior (online: o anfitrião pode recomeçar no meio) */
   let gen = 0;
@@ -122,79 +123,78 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   };
 
   /* ------------------------------ menu ------------------------------ */
+  let menuMode: 'restore' | 'arena' = 'restore';
   function menu(): void {
     leaveOnline();
     endWorld();
     menuEl?.remove();
-    const d = document.createElement('div');
-    d.className = 'cf-menu';
-    menuEl = d;
-    const tb = (th: (typeof THEMES)[number]) => {
-      const st = sv.towns[th.id]?.stars ?? 0;
-      return `<button class="cf-town${sv.lastTheme === th.id ? ' on' : ''}" data-town="${th.id}" title="${esc(th.desc())}" style="--a:${th.card[0]};--b:${th.card[1]}"><b>${esc(th.name())}</b><small>${st ? '<span class="cf-st">' + '★'.repeat(st) + '</span>' : esc(t('cavafala.menu.new', 'nova!'))}</small></button>`;
-    };
-    const seg = (name: string, vals: [string, string][], cur: string) => `<span class="cf-seg" data-seg="${name}">${vals.map(([v, l]) => `<button data-v="${v}" class="${v === cur ? 'on' : ''}">${esc(l)}</button>`).join('')}</span>`;
     const vk = voiceKind();
-    d.innerHTML = `
-      <div class="cf-title">${esc(t('cavafala.name', 'Cava & Fala'))}</div>
-      <div class="cf-sub">${esc(t('cavafala.menu.sub', 'Cave a terra, junte materiais e FALE o que quer criar: a engenhoca é montada na hora!'))}${vk === 'none' ? '<br><small>' + esc(t('cavafala.menu.noVoice', 'Sem voz neste aparelho: você pode digitar ou escolher no círculo.')) + '</small>' : ''}</div>
-      <div class="cf-modes">
-        <button class="cf-mode" data-m="restore" style="--a:#5ec86a;--b:#2a7a4a"><b>${esc(t('cavafala.mode.restore', 'Restaurar a Vila'))}</b><small>${esc(t('cavafala.mode.restoreD', 'Desenterre uma vilinha soterrada e devolva a alegria aos moradores antes do anoitecer.'))}</small></button>
-        <button class="cf-mode" data-m="arena" style="--a:#ff8a3a;--b:#c8326a"><b>${esc(t('cavafala.mode.arena', 'Arena Cava-Cava'))}</b><small>${esc(t('cavafala.mode.arenaD', 'Ilha flutuante que encolhe! Empurre os rivais com espuma, bolhas e ventiladores.'))}</small>${sv.arenaWins ? `<span class="cf-star">🏆 ${sv.arenaWins}</span>` : ''}</button>
-      </div>
-      <div class="cf-towns"><span class="cf-lab">${esc(t('cavafala.menu.town', 'Vila:'))}</span>${THEMES.map(tb).join('')}</div>
-      <div class="cf-tdesc">${esc(themeById(sv.lastTheme).desc())}</div>
-      <div class="cf-opts">
-        <span>${esc(t('cavafala.opt.bots', 'Rivais'))}</span>${seg('bots', [['1', '1'], ['2', '2'], ['3', '3']], String(sv.bots))}
-        <span>${esc(t('cavafala.opt.diff', 'Bots'))}</span>${seg('diff', [['0', t('cavafala.diff.0', 'Fácil')], ['1', t('cavafala.diff.1', 'Normal')], ['2', t('cavafala.diff.2', 'Difícil')]], String(sv.diff))}
-        ${seg('practice', [['0', t('cavafala.opt.match', 'Partida')], ['1', t('cavafala.opt.practice', 'Treino')]], sv.practice ? '1' : '0')}
-      </div>
-      <div class="cf-row" style="margin-top:0">
-        <button class="cf-btn p" data-a="online">${icon('party', { size: 20 })}${esc(t('cavafala.net.title', 'Jogar com amigos'))}</button>
-        <span class="cf-solo-slot"></span>
-        <button class="cf-btn w" data-a="exit">${icon('home', { size: 20 })}${esc(t('cavafala.exit', 'Sair'))}</button>
-      </div>`;
-    el.appendChild(d);
-    d.querySelector('.cf-solo-slot')!.appendChild(soloToggle('cavafala', undefined, t('cavafala.solo.sub', 'sem ajudantes na vila')));
-    d.querySelectorAll<HTMLButtonElement>('[data-town]').forEach((b) =>
-      b.addEventListener('click', () => {
-        audio.click();
-        sv.lastTheme = b.dataset.town as ThemeId;
-        persist();
-        d.querySelectorAll('[data-town]').forEach((x) => x.classList.toggle('on', x === b));
-        d.querySelector('.cf-tdesc')!.textContent = themeById(sv.lastTheme).desc();
-      }),
-    );
-    d.querySelectorAll<HTMLElement>('[data-seg]').forEach((sg) =>
-      sg.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
-        b.addEventListener('click', () => {
-          audio.click();
-          sg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-          const v = +b.dataset.v!;
-          if (sg.dataset.seg === 'bots') sv.bots = v;
-          if (sg.dataset.seg === 'diff') sv.diff = v as Diff;
-          if (sg.dataset.seg === 'practice') sv.practice = v === 1;
-          persist();
-        }),
-      ),
-    );
-    d.querySelector('[data-m=restore]')!.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      void startRestore(sv.lastTheme);
+    const sm = openStartMenu(el, {
+      game: 'cavafala',
+      chips: sv.arenaWins ? [{ icon: icon('trophy', { size: 20 }), text: String(sv.arenaWins) }] : [],
+      onBack: quit,
+      settings: (p) => {
+        const solo = p.custom(soloToggle('cavafala', undefined, t('cavafala.solo.sub', 'sem ajudantes na vila')));
+        solo.style.alignSelf = 'stretch';
+        if (vk === 'none') p.hint(t('cavafala.menu.noVoiceS', 'Sem voz: digite ou use o círculo'), icon('mic', { size: 20 }));
+      },
+      build: (p) => {
+        p.cards([
+          { id: 'restore', icon: icon('home', { size: 56 }), label: t('cavafala.mode.restore', 'Restaurar a Vila'), say: t('cavafala.mode.restoreD', 'Desenterre uma vilinha soterrada e devolva a alegria aos moradores antes do anoitecer.'), color: '#7ee08a', sel: menuMode === 'restore', onTap: () => ((menuMode = 'restore'), p.refresh()) },
+          { id: 'arena', icon: icon('trophy', { size: 56 }), label: t('cavafala.mode.arenaS', 'Arena'), say: t('cavafala.mode.arenaD', 'Ilha flutuante que encolhe! Empurre os rivais com espuma, bolhas e ventiladores.'), color: '#ffa86a', sel: menuMode === 'arena', onTap: () => ((menuMode = 'arena'), p.refresh()) },
+        ]);
+        if (menuMode === 'restore') {
+          p.cards(
+            THEMES.map((th) => {
+              const st = sv.towns[th.id]?.stars ?? 0;
+              return { id: th.id, icon: icon('home', { size: 40 }), color: th.card[0], label: th.name(), say: th.desc(), sub: st ? '★'.repeat(st) : t('cavafala.menu.new', 'nova!'), sel: sv.lastTheme === th.id, onTap: () => {
+                sv.lastTheme = th.id as ThemeId;
+                persist();
+                p.refresh();
+              } };
+            }),
+            { scroll: true },
+          );
+          p.play({ sub: themeById(sv.lastTheme).name(), onTap: () => void startRestore(sv.lastTheme) });
+        } else {
+          p.faces(
+            [0, 1, 2].map((k) => ({ id: k, level: k, label: [t('cavafala.diff.0', 'Fácil'), t('cavafala.diff.1', 'Normal'), t('cavafala.diff.2', 'Difícil')][k] })),
+            sv.diff,
+            (v) => {
+              sv.diff = +v as Diff;
+              persist();
+            },
+          );
+          p.cards(
+            [
+              ...[1, 2, 3].map((n) => ({ id: 'b' + n, icon: icon('user', { size: 34 }), label: `${n} ${t('cavafala.opt.botsS', 'rivais')}`, say: `${n} ${t('cavafala.opt.bots', 'Rivais')}`, sel: !sv.practice && sv.bots === n, onTap: () => {
+                sv.bots = n;
+                sv.practice = false;
+                persist();
+                p.refresh();
+              } })),
+              { id: 'pr', icon: icon('target', { size: 34 }), label: t('cavafala.opt.practice', 'Treino'), sel: sv.practice, onTap: () => {
+                sv.practice = true;
+                persist();
+                p.refresh();
+              } },
+            ],
+            { size: 'small', cols: 4 },
+          );
+          p.play({ sub: t('cavafala.mode.arena', 'Arena Cava-Cava'), onTap: () => void startArena() });
+        }
+        p.friends({
+          game: 'cavafala',
+          onTap: () => {
+            callNext = true;
+            void connect(newCode(), 'create', false);
+          },
+        });
+        p.link(t('fp.code', 'Entrar com código / QR'), onlineStart);
+      },
     });
-    d.querySelector('[data-m=arena]')!.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      void startArena();
-    });
-    d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
-    d.querySelector('[data-a=online]')!.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      onlineStart();
-    });
-    setBack(quit);
+    menuEl = sm.el;
+    setBack(() => sm.back());
   }
 
   /* ------------------------------ carregando ------------------------------ */

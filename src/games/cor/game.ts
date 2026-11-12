@@ -20,6 +20,7 @@ import { Picker } from './picker';
 import { addRecord, corSave, levelOf, persistCor, type CorRecord } from './save';
 import { drawItem } from './shapes';
 import { injectPgCss } from './style';
+import { openStartMenu, type SmCard, type SmPage } from '../../ui/startmenu';
 import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
 import type { DuelCtl } from '../../party/duel';
 
@@ -271,131 +272,123 @@ class CorGame implements MiniGameHandle {
   private save(): void {
     persistCor();
   }
-  private logo(): string {
-    const cols = ['#ff5e8a', '#ffd166', '#3ee07a', '#3ac0e8', '#b388ff', '#ff9a3d'];
-    const word = t('cor.name', 'Pintou, Ganhou!');
-    let i = 0;
-    return `<div class="pg-logo">${[...word].map((ch) => (ch === ' ' ? ' ' : `<span style="color:${cols[i++ % cols.length]};animation-delay:${(i * 0.08).toFixed(2)}s">${esc(ch)}</span>`)).join('')}</div>`;
-  }
-
   /* ============================== menu ============================== */
   private menu(): void {
-    const d = this.ov();
+    const d = this.clear();
+    d.style.cssText = 'position:absolute;inset:0';
     const s = this.sv;
     const L = levelOf(s.xp);
     const today = dayNumber();
     const dailyDone = s.dailyDay === today;
-    d.innerHTML = `
-      ${this.logo()}
-      <div class="pg-sub pg-hide-land">${t('cor.tagline', 'Memorize a cor e pinte igualzinho!')}</div>
-      <div class="pg-card">
-        <div class="pg-row" style="justify-content:space-between"><span class="pg-pill">${icon('star', { size: 18 })}${t('cor.level', 'Nível {n}', { n: L.lv })}</span><span class="pg-pill">${icon('target', { size: 18 })}${s.bestAcc ? pct(s.bestAcc) + '%' : '—'}</span><span class="pg-pill">${icon('trophy', { size: 18 })}${s.wins}</span></div>
-        <div class="pg-xp"><i style="width:${Math.round((L.cur / L.need) * 100)}%"></i></div>
-      </div>
-      <div class="pg-modes">
-        <button class="pg-mode pg-m1" data-m="duel"><span class="pg-mi">${icon('crown', { size: 34 })}</span><span><b>${t('cor.duel', 'Duelo')}</b><small>${t('cor.duelD', 'Contra robôs e amigos no mesmo celular (até 5)')}</small></span></button>
-        <button class="pg-mode pg-m2" data-m="practice"><span class="pg-mi">${icon('paint', { size: 34 })}</span><span><b>${t('cor.practice', 'Treino')}</b><small>${t('cor.practiceD', 'Sozinho, escolha a categoria e o ritmo')}</small></span></button>
-        <button class="pg-mode pg-m1" data-m="online"><span class="pg-mi">${icon('rocket', { size: 34 })}</span><span><b>${t('duel.menu', 'Duelo online')}</b><small>${t('cor.onlineD', 'Mesmas cores para todos, cada um no seu celular')}</small></span></button>
-        <button class="pg-mode pg-m3" data-m="daily"><span class="pg-mi">${icon('calendar', { size: 34 })}</span><span><b>${t('cor.daily', 'Desafio do dia')}</b><small>${dailyDone ? t('cor.dailyDone', 'Hoje: {n} pts · dias seguidos: {d}', { n: fmt(s.dailyScore), d: s.dailyStreak }) : t('cor.dailyD', '10 itens iguais para todo mundo. Vale uma vez por dia!')}</small></span></button>
-      </div>
-      <div class="pg-row pg-bottom">
-        <button class="pg-btn pg-grow" data-a="album">${icon('bag', { size: 20 })}${t('cor.album', 'Álbum')}</button>
-        <button class="pg-btn pg-grow" data-a="records">${icon('trophy', { size: 20 })}${t('cor.records', 'Recordes')}</button>
-        <button class="pg-tog${s.hints ? ' on' : ''}" data-a="hints"><span>${t('cor.hints', 'Dicas em texto')}<small>${t('cor.hintsD', 'Descreve a cor (ajuda para daltonismo)')}</small></span><i></i></button>
-      </div>
-      <button class="pg-btn pg-ghost" data-a="exit">${icon('home', { size: 20 })}${t('cor.exit', 'Sair')}</button>`;
-    this.bind(d, '[data-m]', (b) => {
-      audio.unlock();
-      const m = b.dataset.m as Mode | 'online';
-      if (m === 'online') void this.onlineDuel(freshDuel('cor'));
-      else if (m === 'duel') this.duelLobby();
-      else if (m === 'practice') this.practiceLobby();
-      else this.startDaily();
+    const itemArt = (it: Item | undefined) => (x: CanvasRenderingContext2D, w: number, h: number) => {
+      if (it) drawItem(x, it.shape, it.hex, it.sec, w / 2, h / 2, Math.min(w, h) * 0.86);
+    };
+    const sm = openStartMenu(d, {
+      game: 'cor',
+      chips: [
+        { icon: icon('star', { size: 20 }), text: t('cor.level', 'Nível {n}', { n: L.lv }) },
+        { icon: icon('trophy', { size: 20 }), text: String(s.wins) },
+      ],
+      onBack: () => this.exitFn(),
+      settings: (p) => {
+        p.toggle({ icon: icon('paint', { size: 30 }), label: t('cor.hints', 'Dicas em texto'), say: t('cor.hintsD', 'Descreve a cor (ajuda para daltonismo)'), value: s.hints, onChange: (v) => {
+          s.hints = v;
+          this.save();
+        } });
+      },
+      build: (p) => {
+        p.cards([
+          { id: 'duel', icon: icon('crown', { size: 54 }), label: t('cor.duel', 'Duelo'), say: t('cor.duelD', 'Contra robôs e amigos no mesmo celular (até 5)'), color: '#ffd0e0', onTap: () => sm.push((q) => this.duelPage(q), t('cor.duel', 'Duelo')) },
+          { id: 'practice', icon: icon('paint', { size: 54 }), label: t('cor.practice', 'Treino'), say: t('cor.practiceD', 'Sozinho, escolha a categoria e o ritmo'), color: '#c4f0ff', onTap: () => sm.push((q) => this.practicePage(q), t('cor.practice', 'Treino')) },
+          { id: 'daily', icon: icon('calendar', { size: 54 }), label: t('cor.dailyS', 'Do dia'), say: t('cor.dailyD', '10 itens iguais para todo mundo. Vale uma vez por dia!'), sub: dailyDone ? `✓ ${fmt(s.dailyScore)}` : '', color: '#fff0a0', onTap: () => this.startDaily() },
+        ]);
+        p.play({ sub: `${t('cor.duel', 'Duelo')} · ${lvName(s.level)}`, onTap: () => {
+          this.save();
+          this.startDuel();
+        } });
+        p.friends({ label: t('duel.menuS', 'Duelo com amigos'), say: t('cor.onlineD', 'Mesmas cores para todos, cada um no seu celular'), onTap: () => void this.onlineDuel(freshDuel('cor')) });
+        p.cards(
+          [
+            { id: 'album', art: itemArt(ITEMS[3]), label: t('cor.album', 'Álbum'), color: '#ffe6c8', onTap: () => this.album() },
+            { id: 'rec', icon: icon('trophy', { size: 36 }), label: t('cor.records', 'Recordes'), color: '#fff0a0', onTap: () => this.records() },
+          ],
+          { size: 'small', cols: 2 },
+        );
+      },
     });
-    this.bind(d, '[data-a=album]', () => this.album());
-    this.bind(d, '[data-a=records]', () => this.records());
-    this.bind(d, '[data-a=hints]', (b) => {
-      s.hints = !s.hints;
-      b.classList.toggle('on', s.hints);
+  }
+
+  private duelPage(p: SmPage): void {
+    const s = this.sv;
+    s.humans = clamp(s.humans, 1, 5);
+    s.bots = clamp(s.bots, 0, 5 - s.humans);
+    if (s.humans + s.bots < 2) s.bots = 1;
+    const re = () => {
+      this.save();
+      p.refresh();
+    };
+    p.label(t('cor.humansS', 'Pessoas'), icon('user', { size: 20 }));
+    p.cards(
+      [1, 2, 3, 4, 5].map((n) => ({ id: 'h' + n, icon: `<span class="sm-emoji">${n}</span>`, color: '#ffd0e0', label: '', say: t('cor.humans', 'Pessoas (passa o celular)') + ' ' + n, sel: s.humans === n, onTap: () => {
+        s.humans = n;
+        if (s.humans + s.bots > 5) s.bots = 5 - n;
+        if (s.humans + s.bots < 2) s.bots = 1;
+        re();
+      } })),
+      { size: 'small', cols: 5 },
+    );
+    p.label(t('cor.bots', 'Robôs'), icon('rocket', { size: 20 }));
+    p.cards(
+      [0, 1, 2, 3, 4].map((n) => ({ id: 'b' + n, icon: `<span class="sm-emoji">${n}</span>`, color: '#c4f0ff', label: '', say: t('cor.bots', 'Robôs') + ' ' + n, sel: s.bots === n, disabled: n + s.humans > 5 || n + s.humans < 2, onTap: () => {
+        s.bots = n;
+        re();
+      } })),
+      { size: 'small', cols: 5 },
+    );
+    p.faces([0, 1, 2, 3].map((l) => ({ id: l, level: l, label: lvName(l) })), s.level, (v) => {
+      s.level = +v;
       this.save();
     });
-    this.bind(d, '[data-a=exit]', () => this.exitFn());
+    p.cards(
+      [
+        ...[5, 7, 10].map((n) => ({ id: 'i' + n, icon: `<span class="sm-emoji">${n}</span>`, label: '', color: '#fff0a0', say: t('cor.itemsPerSet', 'Itens por set') + ' ' + n, sel: s.items === n, onTap: () => ((s.items = n), re()) })),
+        ...[1, 3, 5].map((n) => ({ id: 's' + n, icon: `<span class="sm-emoji">×${n}</span>`, label: '', color: '#d8f8c0', say: n === 1 ? t('cor.oneSet', '1 set') : n === 3 ? t('cor.bo3', 'Melhor de 3') : t('cor.bo5', 'Melhor de 5'), sel: s.sets === n, onTap: () => ((s.sets = n), re()) })),
+      ],
+      { size: 'small', cols: 6 },
+    );
+    p.play({ say: t('cor.start', 'Começar'), onTap: () => {
+      this.save();
+      this.startDuel();
+    } });
   }
 
-  private duelLobby(): void {
-    const d = this.ov();
+  private practicePage(p: SmPage): void {
     const s = this.sv;
-    const render = () => {
-      s.humans = clamp(s.humans, 1, 5);
-      s.bots = clamp(s.bots, 0, 5 - s.humans);
-      if (s.humans + s.bots < 2) s.bots = 1;
-      d.innerHTML = `
-        <div class="pg-logo" style="font-size:30px"><span style="color:#ffd166">${t('cor.duel', 'Duelo')}</span></div>
-        <div class="pg-card">
-          <div class="pg-line"><span class="pg-lbl">${t('cor.humans', 'Pessoas (passa o celular)')}</span>
-            <span class="pg-step"><button class="pg-btn pg-ic" data-h="-1">−</button><b>${s.humans}</b><button class="pg-btn pg-ic" data-h="1">+</button></span></div>
-          <div class="pg-line"><span class="pg-lbl">${t('cor.bots', 'Robôs')}</span>
-            <span class="pg-step"><button class="pg-btn pg-ic" data-b="-1">−</button><b>${s.bots}</b><button class="pg-btn pg-ic" data-b="1">+</button></span></div>
-          <div class="pg-lbl">${t('cor.botLevel', 'Dificuldade dos robôs')}</div>
-          <div class="pg-seg">${[0, 1, 2, 3].map((l) => `<button data-l="${l}" class="${s.level === l ? 'on' : ''}">${lvName(l)}</button>`).join('')}</div>
-          <div class="pg-lbl">${t('cor.itemsPerSet', 'Itens por set')}</div>
-          <div class="pg-seg">${[5, 7, 10].map((n) => `<button data-i="${n}" class="${s.items === n ? 'on' : ''}">${n}</button>`).join('')}</div>
-          <div class="pg-lbl">${t('cor.format', 'Formato')}</div>
-          <div class="pg-seg"><button data-s="1" class="${s.sets === 1 ? 'on' : ''}">${t('cor.oneSet', '1 set')}</button><button data-s="3" class="${s.sets === 3 ? 'on' : ''}">${t('cor.bo3', 'Melhor de 3')}</button><button data-s="5" class="${s.sets === 5 ? 'on' : ''}">${t('cor.bo5', 'Melhor de 5')}</button></div>
-          <button class="pg-btn pg-green pg-big" data-a="go">${icon('play', { size: 26 })}${t('cor.start', 'Começar')}</button>
-        </div>
-        <button class="pg-btn pg-ghost" data-a="back">${t('cor.back', 'Voltar')}</button>`;
-      this.bind(d, '[data-h]', (b) => {
-        s.humans += +b.dataset.h!;
-        if (s.humans + s.bots > 5) s.bots = 5 - clamp(s.humans, 1, 5);
-        render();
-      });
-      this.bind(d, '[data-b]', (b) => {
-        s.bots += +b.dataset.b!;
-        render();
-      });
-      this.bind(d, '[data-l]', (b) => ((s.level = +b.dataset.l!), render()));
-      this.bind(d, '[data-i]', (b) => ((s.items = +b.dataset.i!), render()));
-      this.bind(d, '[data-s]', (b) => ((s.sets = +b.dataset.s!), render()));
-      this.bind(d, '[data-a=go]', () => {
-        this.save();
-        this.startDuel();
-      });
-      this.bind(d, '[data-a=back]', () => (this.save(), this.menu()));
+    const re = () => {
+      this.save();
+      p.refresh();
     };
-    render();
-  }
-
-  private practiceLobby(): void {
-    const d = this.ov();
-    const s = this.sv;
-    const render = () => {
-      const cats = [{ id: '', label: t('cor.allCats', 'Tudo misturado'), n: ITEMS.length }, ...CATS.map((c) => ({ id: c.id, label: catName(c), n: c.n }))];
-      d.innerHTML = `
-        <div class="pg-logo" style="font-size:30px"><span style="color:#3ac0e8">${t('cor.practice', 'Treino')}</span></div>
-        <div class="pg-card">
-          <div class="pg-lbl">${t('cor.category', 'Categoria')}</div>
-          <div class="pg-chips">${cats.map((c) => `<button data-c="${c.id}" class="${s.cat === c.id ? 'on' : ''}">${esc(c.label)} <small>${c.n}</small></button>`).join('')}</div>
-          <button class="pg-tog${s.showTarget ? ' on' : ''}" data-t="showTarget"><span>${t('cor.showTarget', 'Alvo visível')}<small>${t('cor.showTargetD', 'O item fica na tela enquanto você pinta')}</small></span><i></i></button>
-          <button class="pg-tog${s.noTimer ? ' on' : ''}" data-t="noTimer"><span>${t('cor.noTimer', 'Sem cronômetro')}<small>${t('cor.noTimerD', 'Pinte com calma')}</small></span><i></i></button>
-          <button class="pg-btn pg-green pg-big" data-a="go">${icon('play', { size: 26 })}${t('cor.start', 'Começar')}</button>
-        </div>
-        <button class="pg-btn pg-ghost" data-a="back">${t('cor.back', 'Voltar')}</button>`;
-      const on = d.querySelector<HTMLElement>('.pg-chips .on');
-      on?.scrollIntoView({ inline: 'center', block: 'nearest' });
-      this.bind(d, '[data-c]', (b) => ((s.cat = b.dataset.c!), render()));
-      this.bind(d, '[data-t]', (b) => {
-        const k = b.dataset.t as 'showTarget' | 'noTimer';
-        s[k] = !s[k];
-        render();
-      });
-      this.bind(d, '[data-a=go]', () => {
-        this.save();
-        this.startPractice();
-      });
-      this.bind(d, '[data-a=back]', () => (this.save(), this.menu()));
-    };
-    render();
+    const first = (id: string) => ITEMS.find((it) => it.cat.id === id);
+    p.cards(
+      [
+        { id: 'all', art: ((x: CanvasRenderingContext2D, w: number, h: number) => {
+          for (let k = 0; k < 3; k++) {
+            const it = ITEMS[(k * 37) % ITEMS.length];
+            drawItem(x, it.shape, it.hex, it.sec, w * (0.3 + k * 0.2), h * 0.55, Math.min(w, h) * 0.6);
+          }
+        }) as SmCard['art'], label: t('cor.allCats', 'Tudo misturado'), sub: String(ITEMS.length), color: '#fff0a0', sel: s.cat === '', onTap: () => ((s.cat = ''), re()) },
+        ...CATS.map((c) => ({ id: c.id, art: ((it: Item | undefined) => (x: CanvasRenderingContext2D, w: number, h: number) => {
+          if (it) drawItem(x, it.shape, it.hex, it.sec, w / 2, h / 2, Math.min(w, h) * 0.86);
+        })(first(c.id)), label: catName(c), sub: String(c.n), color: '#e8f4ff', sel: s.cat === c.id, onTap: () => ((s.cat = c.id), re()) })),
+      ],
+      { scroll: true },
+    );
+    p.toggle({ icon: icon('target', { size: 30 }), label: t('cor.showTarget', 'Alvo visível'), say: t('cor.showTargetD', 'O item fica na tela enquanto você pinta'), value: s.showTarget, onChange: (v) => ((s.showTarget = v), this.save()) });
+    p.toggle({ icon: icon('clock', { size: 30 }), label: t('cor.noTimer', 'Sem cronômetro'), say: t('cor.noTimerD', 'Pinte com calma'), value: s.noTimer, onChange: (v) => ((s.noTimer = v), this.save()) });
+    p.play({ say: t('cor.start', 'Começar'), onTap: () => {
+      this.save();
+      this.startPractice();
+    } });
   }
 
   /* ============================== início das partidas ============================== */
