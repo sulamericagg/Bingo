@@ -17,10 +17,12 @@ export function markIntroSeen(id: string): void {
     /* */
   }
 }
+/** já tocou nesta sessão (o ?intro=1 força só uma vez por carregamento) */
+const played = new Set<string>();
 /** deve tocar sozinha agora? (primeira vez, ou forçado por ?intro=1) */
 export function introWanted(id: string): boolean {
   const q = /[?&]intro=([01])/.exec(location.search);
-  if (q) return q[1] === '1';
+  if (q) return q[1] === '1' && !played.has(id);
   return !introSeen(id);
 }
 /**
@@ -30,6 +32,7 @@ export function introWanted(id: string): boolean {
  */
 export async function introGate(id: string, load: () => Promise<void>): Promise<void> {
   if (!introWanted(id)) return;
+  played.add(id);
   markIntroSeen(id);
   try {
     await load();

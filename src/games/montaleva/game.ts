@@ -51,6 +51,7 @@ import { IC, injectMLCss } from './style';
 import { resolveTrack, type Track, type TrackObj } from './track';
 import { freshDuel, takeDuel, type DuelEntry } from '../../party/duel-link';
 import type { DuelCtl } from '../../party/duel';
+import { introGate, introWanted } from '../../3d/cine/gate';
 
 type Screen = 'menu' | 'levels' | 'shop' | 'settings' | 'build' | 'test';
 
@@ -678,6 +679,13 @@ export class MontaLeva implements MiniGameHandle {
 
   /* ================================ montagem ================================ */
   openLevel(n: number, duel = false, over?: Partial<LevelDef>): void {
+    // abertura (docs/INTROS.md): só na primeira vez que abre uma fase
+    if (!duel && !over && introWanted('montaleva')) {
+      void introGate('montaleva', () => import('./intro/cinematic').then((m) => m.playIntro(this.el))).then(() => {
+        if (!this.dead) this.openLevel(n, duel, over);
+      });
+      return;
+    }
     const L0 = LEVELS[n - 1];
     if (!L0) return;
     // `over` só pelo modo debug (pistas de teste: quebra, suspensão)

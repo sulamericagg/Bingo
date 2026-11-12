@@ -16,7 +16,7 @@
  * ============================================================ */
 import './cine.css';
 import * as THREE from 'three';
-import { t as tr } from '../../i18n';
+import { t } from '../../i18n';
 import { pushBack } from '../../core/back';
 import { music } from '../../audio';
 import { THEMES } from '../../audio/music/themes';
@@ -145,7 +145,7 @@ export class Cine {
       ${ti ? `<div class="cine-title"><b data-t="${tt}">${tt}</b>${ti.tagline ? `<small>${esc(ti.tagline())}</small>` : ''}<i></i></div>` : ''}
       <div class="cine-sub"><span class="cine-ic"></span><span class="cine-tx"></span></div>
       <div class="cine-fade"></div>
-      <button class="cine-skip" data-touch-ignore>${esc(tr('cine.skip', 'Pular'))}${SKIP_SVG}</button>`;
+      <button class="cine-skip" data-touch-ignore>${esc(t('cine.skip', 'Pular'))}${SKIP_SVG}</button>`;
     this.el = el;
     this.layer = el.querySelector('.cine-layer') as HTMLDivElement;
     this.subEl = el.querySelector('.cine-sub') as HTMLElement;
@@ -261,7 +261,7 @@ export class Cine {
     if (location.search.includes('debug'))
       (window as unknown as { __cine: unknown }).__cine = {
         id: this.o.id,
-        seek: (t: number) => (this.time = t),
+        seek: (v: number) => (this.time = v),
         skip: () => this.skip(),
         get time() {
           return current?.time ?? -1;
@@ -411,7 +411,7 @@ export function glowTex(inner = 'rgba(255,255,255,1)', mid = 'rgba(255,255,255,.
   g.addColorStop(1, 'rgba(255,255,255,0)');
   x.fillStyle = g;
   x.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }

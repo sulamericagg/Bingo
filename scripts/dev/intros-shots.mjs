@@ -57,8 +57,9 @@ for (const g of process.argv.includes('--noshots') ? [] : ONLY) {
   const files = [];
   for (const [i, t] of times.entries()) {
     // chega um pouco antes e deixa rodar (estado contínuo: chuva, respingos...)
+    // a física do Monta & Leva roda em tempo real (sem pular)
     await p.evaluate((t) => window.__cine.seek(Math.max(0, t - 0.6)), t);
-    await p.waitForFunction((t) => window.__cine.time >= t || !window.__cine.playing, t, { timeout: 60000 });
+    await p.waitForFunction((t) => window.__cine.time >= t || !window.__cine.playing, t, { timeout: 120000 });
     const f = `${OUT}/${g}-${String(i + 1).padStart(2, '0')}-${String(t).replace('.', '_')}s.png`;
     await p.screenshot({ path: f });
     files.push(f);
