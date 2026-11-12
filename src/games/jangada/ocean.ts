@@ -283,7 +283,7 @@ export const SEA_FLOOR = -16.3;
 /** até onde desce a encosta das ilhas (passa um pouco do fundo: sem fresta entre ilha e fundo) */
 export const ISLE_DEEP = 16.6;
 /** cor da areia do fundo (a encosta das ilhas termina nela) */
-export const SEABED_SAND = '#6f9e94';
+export const SEABED_SAND = '#a8a47e';
 /** uniforms compartilhados com o fundo das ilhas (cáusticas e cor debaixo d'água) */
 export const SEABED_U = {
   uCaus: { value: null as THREE.Texture | null },
@@ -293,7 +293,7 @@ export const SEABED_U = {
   uCLevel: { value: 0 },
 };
 /** liga cáusticas + absorção da água num material Lambert do fundo (ilhas) */
-export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb = 0.22): void {
+export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb = 0.22, causFade = 0.16): void {
   SEABED_U.uCaus.value = causticTex();
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, SEABED_U);
@@ -311,7 +311,7 @@ export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb
     float c1 = texture2D(uCaus, cu + vec2(uCTime * 0.031, uCTime * 0.017)).r;
     float c2 = texture2D(uCaus, cu * 1.31 + vec2(-uCTime * 0.023, uCTime * 0.029)).r;
     float cs = min(c1, c2) * 1.6 + c1 * c2 * 0.6;` : `float cs = 0.3 + 0.3 * sin(vSbW.x * 1.7 + uCTime * 1.3) * sin(vSbW.z * 1.9 - uCTime * 1.1);`}
-    float fadeC = smoothstep(0.0, 0.5, sbD) * exp(-max(sbD, 0.0) * 0.16);
+    float fadeC = smoothstep(0.0, 0.5, sbD) * exp(-max(sbD, 0.0) * ${causFade.toFixed(3)});
     gl_FragColor.rgb += vec3(0.75, 0.95, 1.0) * cs * fadeC * uCSun * 0.55;
     float ab = 1.0 - exp(-max(sbD, 0.0) * ${absorb.toFixed(3)});
     gl_FragColor.rgb = mix(gl_FragColor.rgb, uCDeep, ab * 0.85);
@@ -320,7 +320,7 @@ export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb
   #include <fog_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => 'seabed' + tier + '_' + absorb;
+  mat.customProgramCacheKey = () => 'seabed' + tier + '_' + absorb + '_' + causFade;
 }
 
 /* ------------------------------ mar ------------------------------ */

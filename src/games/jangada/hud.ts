@@ -61,7 +61,8 @@ export class Hud {
   private pal: HTMLDivElement;
   private cost: HTMLDivElement;
   private objEl: HTMLDivElement;
-  private objT = 0;
+  /** quando o cartão de objetivos volta a ser só o chip (ms, performance.now) */
+  private objUntil = 0;
   private binds: BoundButton[] = [];
   overlay: HTMLDivElement | null = null;
   private hotKey = '';
@@ -153,7 +154,8 @@ export class Hud {
     this.objEl.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       this.objEl.classList.toggle('mini');
-      this.objT = this.objEl.classList.contains('mini') ? 0 : 7;
+      // aberto pelo toque: fecha sozinho de novo (o canto da tela fica livre)
+      this.objUntil = this.objEl.classList.contains('mini') ? 0 : performance.now() + 4500;
     });
     this.setBars(100, 100, 100, null);
   }
@@ -162,9 +164,10 @@ export class Hud {
     this.el.style.display = on ? '' : 'none';
   }
   update(dt: number): void {
-    if (this.objT > 0) {
-      this.objT -= dt;
-      if (this.objT <= 0) this.objEl.classList.add('mini');
+    // tempo real (com o jogo lento o dt é limitado e o cartão ficava aberto muito mais que o previsto)
+    if (this.objUntil && performance.now() > this.objUntil) {
+      this.objUntil = 0;
+      this.objEl.classList.add('mini');
     }
     if (this.bannerT > 0) {
       this.bannerT -= dt;
@@ -245,7 +248,7 @@ export class Hud {
       `</div>`;
     if (first || done) {
       this.objEl.classList.remove('mini');
-      this.objT = 7;
+      this.objUntil = performance.now() + 3500;
       if (done) {
         this.objEl.classList.remove('done');
         void this.objEl.offsetWidth;

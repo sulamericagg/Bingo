@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { box, clean, merge, paint } from './models';
 import { SEABED_SAND, SEA_FLOOR, patchSeabed } from './ocean';
+import { coralCluster } from './coral';
 
 const STEP = 24;
 const CELL = 12;
@@ -36,8 +37,8 @@ export class Seabed {
     this.half = tier <= 0 ? 60 : 84;
     this.seg = tier <= 0 ? 20 : 32;
     this.deco = [0.25, 0.45, 0.7, 0.8][tier] ?? 0.5;
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    patchSeabed(mat, tier, 0.1);
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    patchSeabed(mat, tier, 0.05, 0.05);
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
     this.mesh.frustumCulled = false;
     this.mesh.matrixAutoUpdate = false;
@@ -57,8 +58,8 @@ export class Seabed {
     const H = this.half;
     const n = this.seg;
     const sand = new THREE.Color(SEABED_SAND);
-    const sand2 = new THREE.Color('#86ab98');
-    const grit = new THREE.Color('#57817f');
+    const sand2 = new THREE.Color('#c4b890');
+    const grit = new THREE.Color('#7e8a7c');
     const c = new THREE.Color();
     const pos: number[] = [];
     const col: number[] = [];
@@ -97,8 +98,12 @@ export class Seabed {
         if (isl.some((q) => Math.hypot(q.x - x, q.z - z) < q.r)) continue;
         const y = seabedH(x, z);
         const k = hash(gx, gz, 4);
-        if (k < 0.45) L.push(rockGeo(x, y, z, 0.5 + hash(gx, gz, 5) * 1.1, hash(gx, gz, 6)));
-        else if (k < 0.85) L.push(weedGeo(x, y, z, hash(gx, gz, 7)));
+        if (k < 0.35) L.push(rockGeo(x, y, z, 0.5 + hash(gx, gz, 5) * 1.1, hash(gx, gz, 6)));
+        else if (k < 0.6) L.push(weedGeo(x, y, z, hash(gx, gz, 7)));
+        else if (k < 0.85) {
+          let sd = gx * 73 + gz * 151;
+          L.push(coralCluster(() => ((sd = (sd * 16807 + 11) % 2147483647) / 2147483647), x, y, z, 0.9 + hash(gx, gz, 9) * 0.6));
+        }
         else {
           L.push(rockGeo(x, y, z, 0.4 + hash(gx, gz, 5) * 0.5, hash(gx, gz, 6)));
           L.push(weedGeo(x + 0.9, seabedH(x + 0.9, z + 0.4), z + 0.4, hash(gx, gz, 8)));

@@ -71,6 +71,8 @@ import { CELL, DECK, FLOOR_H, MAT, debrisGeo, iconTexture, initMats, linkGeo, pi
 import type { JNet, NetEvent } from './net';
 import { Ocean, SEABED_U, Sky, Underwater, skyAt, waveH, type SkyCols } from './ocean';
 import { Seabed } from './seabed';
+import { FishSchools } from './fish';
+import { GrassField, natureQ, windTime, type GrassSource } from '../../3d/nature';
 import { Raft, RaftView, bagMove, cellOf, pieceBag, type RPiece } from './raft';
 import type { JgStats, JgWorld } from './save';
 
@@ -354,6 +356,20 @@ export class World {
     // fundo do mar (areia, pedras, algas): debaixo d'água nada de "vazio" embaixo das ilhas
     this.seabed = new Seabed(this.tier, () => this.map.map((q) => ({ x: q.x, z: q.z, r: q.r * 1.25 + 40 })));
     this.scene.add(this.seabed.mesh);
+    this.schools = new FishSchools(this.tier);
+    this.scene.add(this.schools.group);
+    // grama de lâminas nas ilhas (natureza compartilhada; nível mínimo = só a textura do chão)
+    const gsrc: GrassSource = {
+      height: (x, z) => {
+        const i = this.isleAt(x, z);
+        return i ? i.heightAt(x, z) : -50;
+      },
+      cell: (x, z, out) => {
+        const i = this.isleAt(x, z);
+        return i ? i.grassAt(x - i.x, z - i.z, out) : 0;
+      },
+    };
+    this.grass = new GrassField(this.scene, gsrc, natureQ(this.tier).grass, { width: 1.15, height: 0.75 });
     this.fx = new Particles(this.tier <= 0 ? 220 : 420);
     this.fx.floorY = -50;
     this.fx.budget = [0.4, 0.65, 0.9, 1][this.tier];
@@ -534,6 +550,7 @@ export class World {
     this.tier = tier;
     this.renderer.setPixelRatio(this.pr());
     this.fx.budget = [0.4, 0.65, 0.9, 1][tier];
+    this.grass.setQuality(natureQ(tier).grass);
     this.resize();
   }
   private resize(): void {
@@ -873,6 +890,8 @@ export class World {
     if (isl.def.owner !== 'none') this.owners.set(s.id, new Owners(isl));
     const f = this.far.get(s.id);
     if (f) f.visible = false;
+    const gr = isl.r * 1.4;
+    this.grass?.invalidate(isl.x - gr, isl.z - gr, isl.x + gr, isl.z + gr);
     return isl;
   }
   private dropIsle(id: number): void {
@@ -883,6 +902,8 @@ export class World {
     this.scene.remove(isl.group);
     isl.dispose();
     this.isles.delete(id);
+    const gr = isl.r * 1.4;
+    this.grass?.invalidate(isl.x - gr, isl.z - gr, isl.x + gr, isl.z + gr);
     const f = this.far.get(id);
     if (f) f.visible = true;
   }
@@ -2247,6 +2268,14 @@ export class World {
   /** fase da braçada (0..1) e "debaixo d'água" do som (com histerese) */
   private strokePh = 0;
   private seabed: Seabed;
+  private schools: FishSchools;
+  private grass: GrassField;
+  /** 0 = mar aberto … 1 = perto de ilha (água mais clara) */
+  private landK = 0;
+  private isleAt(x: number, z: number): Island | null {
+    for (const i of this.isles.values()) if (Math.abs(x - i.x) < i.r * 1.4 && Math.abs(z - i.z) < i.r * 1.4) return i;
+    return null;
+  }
   private auUnder = false;
   private camShake = 0;
   private uwCol = new THREE.Color();
@@ -3747,11 +3776,16 @@ export class World {
     const under = this.cam.position.y < wCam;
     const fog = this.scene.fog as THREE.FogExp2;
     const uwFog = this.uwCol.copy(c.shallow).lerp(c.deep, 0.55).multiplyScalar(0.62 + c.sunI * 0.12);
+    // perto das ilhas a água é clara (vê o fundo a 25–35 m); no mar aberto fica mais fechada e escura
+    let lk = 0;
+    for (const i of this.isles.values()) lk = Math.max(lk, 1 - Math.max(0, Math.hypot(i.x - this.cam.position.x, i.z - this.cam.position.z) - i.r * 1.25 - 25) / 70);
+    this.landK += (Math.max(0, Math.min(1, lk)) - this.landK) * Math.min(1, dt * 0.8);
     if (under) {
       // mais escuro quanto mais fundo
       const depth = Math.max(0, wCam - this.cam.position.y);
-      fog.color.copy(uwFog).multiplyScalar(Math.max(0.35, 1 - depth * 0.04));
-      fog.density = 0.055 + depth * 0.002;
+      const lkk = this.landK;
+      fog.color.copy(uwFog).multiplyScalar(Math.max(0.4, 1 - depth * (0.04 - lkk * 0.022)));
+      fog.density = 0.06 - lkk * 0.03 + depth * (0.0018 - lkk * 0.0008);
     } else if (this.caveK > 0.02) {
       fog.color.copy(c.fog).lerp(this.uwCol.set('#0a0a14'), this.caveK);
       fog.density = 0.0045 + this.caveK * 0.06;
@@ -3769,13 +3803,19 @@ export class World {
     for (const bt of this.boats) wake.push(...bt.wake.slice(0, 3));
     for (const bs of this.bosses) if (bs.fighting && bs.kind === 'mega' && bs.y > this.waterAt(bs.x, bs.z) - 2) wake.push([bs.x, bs.z, 4, 0.9]);
     this.ocean.setWake(wake.slice(0, 8));
-    this.seabed.update(this.cam.position.x, this.cam.position.z);
+    // o fundo aberto fica a 16 m: de cima d'água o mar já é opaco lá → nem desenha (economia nos tablets fracos)
+    this.seabed.mesh.visible = under;
+    if (under) this.seabed.update(this.cam.position.x, this.cam.position.z);
     SEABED_U.uCTime.value = this.time;
     SEABED_U.uCSun.value = (c.night > 0.5 ? 0.15 : c.sunI * 0.7) * (1 - this.storm * 0.6);
     SEABED_U.uCDeep.value.copy(uwFog);
     this.sky.update(this.cam, this.time, dt, c, this.storm);
     this.sky.group.visible = !under;
-    this.uw.update(this.cam, under, this.time, dt, ld, (c.night > 0.5 ? 0.2 : c.sunI * 0.6) * (1 - this.storm * 0.6), wCam);
+    this.uw.update(this.cam, under, this.time, dt, ld, (c.night > 0.5 ? 0.2 : c.sunI * (0.6 + this.landK * 0.35)) * (1 - this.storm * 0.6), wCam);
+    const fi = this.isleAt(this.cam.position.x, this.cam.position.z);
+    this.schools.update(this.cam, under, this.time, dt, wCam, Math.max(-16, fi ? fi.heightAt(this.cam.position.x, this.cam.position.z) : -16));
+    windTime.value = this.time;
+    this.grass.update(this.cam.position.x, this.cam.position.y, this.cam.position.z, this.me.x, this.me.z, this.me.swim ? 0 : 0.6);
     this.hud.underwater(under);
     // som abafado com histerese: nadando na superfície a câmera cruza a onda o tempo todo (não fica liga/desliga)
     const dUw = wCam - this.cam.position.y;
@@ -4589,6 +4629,8 @@ export class World {
     for (const b of this.boats) b.dispose();
     this.uw.dispose();
     this.seabed.dispose();
+    this.schools.dispose();
+    this.grass.dispose();
     for (const r of this.remotes.values()) r.label.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();

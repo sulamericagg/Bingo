@@ -13,6 +13,8 @@ import { BIOMES, chestLoot, mulberry, type Biome, type BiomeDef, type IsleSpec, 
 import { MAT, initMats, merge, palmGeo, rockGeo, seabedGeo } from './models';
 import { boulderGeo, caveCrystalsGeo, caveGeo, chestModel, fruitBushGeo, oreGeo, plantGeo, treeGeo, volcanoGeo } from './models2';
 import { ISLE_DEEP, SEABED_SAND, patchSeabed } from './ocean';
+import { groundDetail } from '../../3d/nature';
+import { coralCluster } from './coral';
 
 export type NK = 'palm' | 'tree' | 'bamboo' | 'rock' | 'ore' | 'bush' | 'chest' | 'seaweed' | 'clay' | 'scrap' | 'shell' | 'stone' | 'pearl';
 export interface INode {
@@ -97,12 +99,19 @@ const groundMats: THREE.MeshLambertMaterial[] = [];
 function groundMat(tier: number): THREE.MeshLambertMaterial {
   if (!groundMats[tier]) {
     const m = new THREE.MeshLambertMaterial({ vertexColors: true });
-    patchSeabed(m, tier);
+    // água mais clara perto da terra: absorção menor e cáusticas que chegam mais fundo
+    patchSeabed(m, tier, 0.12, 0.08);
+    // textura de detalhe da natureza (grama/areia com grão e manchas), projetada no mundo
+    groundDetail(m, { amount: tier <= 0 ? 0.45 : 0.75, scale: 0.55, macro: tier >= 1 });
     groundMats[tier] = m;
   }
   return groundMats[tier];
 }
 let crystalMat: THREE.MeshBasicMaterial | null = null;
+let coralMat: THREE.MeshLambertMaterial | null = null;
+const _gc = new THREE.Color();
+const _gc2 = new THREE.Color();
+const _dry = new THREE.Color('#b8b45a');
 
 export interface Cave {
   /** centro (local) */
@@ -153,6 +162,7 @@ export class Island {
     this.planCave();
     this.buildGround(tier);
     this.spawnNodes(tier);
+    this.buildCorals(tier);
     this.group.position.set(this.x, 0, this.z);
   }
   private shape(lx: number, lz: number): number {
@@ -218,6 +228,46 @@ export class Island {
   get meshR(): number {
     return this.r * 1.25 + 46;
   }
+  /** grama de lâminas (GrassField): densidade 0..1 e cor da raiz (a mesma do chão) em coordenadas locais */
+  grassAt(lx: number, lz: number, out: Float32Array): number {
+    if (this.biome === 'snowy' || this.biome === 'volcanic') return 0;
+    const h = this.hLocal(lx, lz);
+    if (h < 0.85) return 0;
+    const c = this.cave;
+    if (c && Math.hypot(lx - c.x, lz - c.z) < c.R + 1.2) return 0;
+    for (const n of this.nodes) if (n.alive && !underwaterNode(n.k) && Math.hypot(n.x - lx, n.z - lz) < (n.k === 'chest' ? 1.5 : n.k === 'rock' || n.k === 'ore' ? 1.4 : 0.6)) return 0;
+    const D = this.def;
+    const n = (Math.sin(lx * 1.3) * Math.cos(lz * 1.1) + 1) / 2;
+    _gc.set(D.grass).lerp(_gc2.set(D.grass2), n);
+    let dens = Math.min(1, (h - 0.85) / 0.2);
+    if (this.biome === 'rocky') dens *= Math.max(0, 1 - (h - this.peak * 0.5) / (this.peak * 0.3));
+    out[0] = _gc.r * 0.9;
+    out[1] = _gc.g * 0.9;
+    out[2] = _gc.b * 0.9;
+    out[3] = this.biome === 'jungle' ? 1.25 : this.biome === 'mangrove' ? 1.1 : 0.9;
+    return dens;
+  }
+  /** corais e algas na encosta submersa (enfeite, uma malha; sorteio próprio: não muda o resto da ilha) */
+  private buildCorals(tier: number): void {
+    const n = [8, 16, 26, 34][tier] ?? 16;
+    const r = mulberry(this.seed * 7919 + 101);
+    const L: THREE.BufferGeometry[] = [];
+    for (let i = 0, tries = 0; i < n && tries < n * 6; tries++) {
+      const a = r() * Math.PI * 2;
+      const d = this.r * (0.95 + r() * 0.5) + r() * 22;
+      const lx = Math.cos(a) * d;
+      const lz = Math.sin(a) * d;
+      const h = this.hLocal(lx, lz);
+      if (h > -1.8 || h < -14) continue;
+      if (this.nodes.some((q) => underwaterNode(q.k) && Math.hypot(q.x - lx, q.z - lz) < 1.6)) continue;
+      L.push(coralCluster(r, lx, h - 0.05, lz, 0.8 + r() * 0.7));
+      i++;
+    }
+    if (!L.length) return;
+    // cores vivas (sem a absorção do fundo: o coral é o "colorido" do mergulho; a neblina já esfria a distância)
+    coralMat ??= new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#1a1420' });
+    this.group.add(new THREE.Mesh(merge(L), coralMat));
+  }
   private buildGround(tier: number): void {
     const R = tier <= 0 ? 24 : 36;
     const S = tier <= 0 ? 40 : 64;
@@ -239,6 +289,10 @@ export class Island {
       const n = (Math.sin(lx * 1.3) * Math.cos(lz * 1.1) + 1) / 2;
       if (h > 0.75) {
         c.copy(grass).lerp(grass2, n);
+        // manchas de capim mais claro/escuro e trechos secos (o gramado não fica de uma cor só)
+        const m2 = Math.sin(lx * 0.43 + lz * 0.17 + this.ph[0]) * Math.cos(lz * 0.39 - lx * 0.21 + this.ph[1]);
+        c.multiplyScalar(0.86 + m2 * 0.14);
+        if (m2 > 0.55) c.lerp(_dry, (m2 - 0.55) * 0.9);
         const rk = this.biome === 'rocky' || this.biome === 'volcanic' || this.biome === 'snowy' ? Math.min(1, Math.max(0, (h - this.peak * 0.55) / (this.peak * 0.3))) : 0;
         if (rk > 0) c.lerp(rock, rk * (0.6 + n * 0.4));
       } else if (h > 0.45) c.copy(sand).lerp(grass, (h - 0.45) / 0.3);
