@@ -524,7 +524,7 @@ export class Factory {
         hicon = 'tape';
         if (st === 'none') {
           use = ['box', t('pink.f.fold', 'Montar caixa'), true];
-          hint = t('pink.f.table', 'Mesa de embalagem');
+          hint = t('pink.f.packTable', 'Mesa de embalagem');
         } else if (st === 'folded' || st === 'filled') {
           const can = this.basket.length > 0;
           const full = this.packComplete();

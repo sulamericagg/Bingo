@@ -431,9 +431,9 @@ export async function playIntro(root: HTMLElement): Promise<void> {
   ]);
   const camT2 = new Track3([
     [T_HOME, 60.9, 1.55, 0.55],
-    [T_SITE, 60.35, 1.32, -0.35],
-    [T_STAMP, 60.12, 1.16, -0.92],
-    [T_DARK, 60.6, 1.5, 0.5],
+    [T_SITE, 60.45, 1.3, -0.45],
+    [T_STAMP, 60.2, 1.18, -0.95],
+    [T_DARK, 60.9, 1.55, 0.6],
   ]);
   const camT3 = new Track3([
     [T_SHOP, 1.6, 1.1, 9.5],
@@ -503,9 +503,9 @@ export async function playIntro(root: HTMLElement): Promise<void> {
       cam.lookAt(60, 1.0, -1.72);
       // o Bloop sentado olhando o notebook (de costas para a câmera); pula no carimbo
       const jump = tt > T_STAMP ? Math.abs(Math.sin((tt - T_STAMP) * 6)) * 0.25 : 0;
-      bloop.root.position.set(60.02, 0.42 + jump, -0.92);
+      bloop.root.position.set(59.45, jump, -1.05);
       if (bloop.root.parent !== scene) scene.add(bloop.root);
-      bloop.update(dt, cam, { yaw: Math.PI, speed: 0, act: tt > T_CLICK - 0.3 && tt < T_CLICK + 0.2 ? 0.5 : -1, happy: tt > T_STAMP });
+      bloop.update(dt, cam, { yaw: 2.35, speed: 0, act: tt > T_CLICK - 0.3 && tt < T_CLICK + 0.2 ? 0.5 : -1, happy: tt > T_STAMP });
       if (tt > T_STAMP && !jumped) {
         jumped = true;
         c.flash(0.6, '#ffe0f0');

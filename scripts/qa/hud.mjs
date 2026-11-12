@@ -15,6 +15,7 @@ const ROUTES = {
   cozinha: ['^3d', '^jogar', '^(jogar|começar)'],
   voo: ['^voar', 'embarcar|pular'],
   jangada: ['nova jangada|^continuar', '^(jogar|continuar)'],
+  pink: ['^(jogar|continuar)'],
   cavafala: ['restaurar a vila', '^jogar'],
   anomalias: ['turno da noite', '^jogar'],
   disaster: ['^3d', '^jogar'],
