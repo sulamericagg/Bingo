@@ -84,8 +84,15 @@ function badge(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, c
  * Desenha o logo com o centro em (cx, cy) e altura h. Devolve a largura usada.
  * Selo à esquerda + nome em duas pesagens ("Bloop" fino, "Pink" forte).
  */
+/** Mercadinho usa a mesma família de marca, em verde */
+let MODE: 'beauty' | 'grocery' = 'beauty';
+export function setBrandMode(m: 'beauty' | 'grocery'): void {
+  MODE = m;
+}
+export const brandName = () => (MODE === 'grocery' ? 'Bloop Mercadinho' : BRAND_NAME);
 export function drawBrandLogo(x: CanvasRenderingContext2D, cx: number, cy: number, h: number, o: LogoOpts = {}): number {
-  const col = o.color ?? PINK.rose;
+  const gro = MODE === 'grocery';
+  const col = o.color ?? (gro ? '#4cb050' : PINK.rose);
   const light = !!o.light;
   const r = h * 0.42;
   if (o.badgeOnly) {
@@ -99,8 +106,9 @@ export function drawBrandLogo(x: CanvasRenderingContext2D, cx: number, cy: numbe
     badge(x, cx, cy, r, col, light);
     return r * 2;
   }
-  const parts = BRAND_NAME.split(' ');
-  const a = parts[0] ?? BRAND_NAME;
+  const name = brandName();
+  const parts = name.split(' ');
+  const a = parts[0] ?? name;
   const b = parts.slice(1).join(' ');
   const fa = gameFont(500, Math.round(h * 0.56));
   const fb = gameFont(700, Math.round(h * 0.62));
@@ -125,8 +133,8 @@ export function drawBrandLogo(x: CanvasRenderingContext2D, cx: number, cy: numbe
   if (b) {
     x.font = fb;
     const g = x.createLinearGradient(0, cy - h * 0.3, 0, cy + h * 0.3);
-    g.addColorStop(0, light ? '#ffd3e6' : '#ff74b0');
-    g.addColorStop(1, light ? '#ff8cc0' : PINK.deep);
+    g.addColorStop(0, light ? (gro ? '#d8f8c8' : '#ffd3e6') : gro ? '#6ad06a' : '#ff74b0');
+    g.addColorStop(1, light ? (gro ? '#8fd16a' : '#ff8cc0') : gro ? '#2f8a3a' : PINK.deep);
     x.fillStyle = g;
     x.fillText(b, tx + wa, cy + h * 0.04);
   }

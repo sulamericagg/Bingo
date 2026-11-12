@@ -27,13 +27,14 @@ import { BUILDING_LVL, BUILDING_PRICE, nextStage, pendingWall, rentOf, salesArea
 import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { Security, guardSpec } from './security';
 import { Office } from './office';
+import { GENERATOR, NOBREAK, Power } from './power';
 import { Home, showerGame } from './home';
 import { makeReview, publishWeek, rating, reviewsHtml, storefrontPhoto } from './reviews';
 import { FAMS, NAIL_COLS, nailsGame, perfumeGame, type TestResult } from './testers';
 import { CheckoutUI, type CheckoutResult, type PayKind } from './checkout';
 import { addTo, robberyRisk, SECURITY, CHANGE_KIT, CHANGE_KIT_VALUE, customerNote, drawerTotal, makeChange, takeBag } from './money';
 import { Builder, rbox } from './shapes';
-import { BRAND_NAME, brandCanvas } from './brand';
+import { BRAND_NAME, brandCanvas, brandName } from './brand';
 import { BoxViews, boxRow, chunks, Ghosts, r2, Remotes, type BoxRow, type GhostRow, type ShopNet } from './coop';
 import type { NetEvent } from '../jangada/net';
 
@@ -152,6 +153,7 @@ export class Shop implements TabletHost {
   readonly sec: Security;
   readonly office: Office;
   readonly home: Home;
+  readonly power: Power;
   get stageZB(): number {
     return stageOf(this.s.renov).zB;
   }
@@ -194,6 +196,7 @@ export class Shop implements TabletHost {
     this.net = o.net ?? null;
     this.sec = new Security(this);
     this.office = new Office(this);
+    this.power = new Power(this);
     const e = new Engine(o.root, o.tier, 'pink');
     this.e = e;
     this.store = new Store3D(e.kit);
@@ -260,7 +263,10 @@ export class Shop implements TabletHost {
     this.updateHudStatic();
     if (this.net) this.netInit();
     e.start();
-    if (location.search.includes('debug')) (window as unknown as Record<string, unknown>).__pink = this.debugApi();
+    if (location.search.includes('debug')) {
+      (window as unknown as Record<string, unknown>).__pink = this.debugApi();
+      (window as unknown as Record<string, unknown>).__pinkCat = PRODUCTS;
+    }
   }
 
   /* =============================== mundo / colisão =============================== */
@@ -619,7 +625,7 @@ export class Shop implements TabletHost {
         this.photo = { key, url: '' };
       }
     }
-    return reviewsHtml(this.s.rev, this.o.name ?? BRAND_NAME, this.photo.url, this.s.day);
+    return reviewsHtml(this.s.rev, this.o.name ?? brandName(), this.photo.url, this.s.day, this.s.kind === 'grocery' ? t('pink.rv.catG', 'Mercadinho') : t('pink.rv.cat', 'Loja de cosméticos'));
   }
   upgradeTablet(): boolean {
     const nx = TABLET_UP[this.s.tab + 1];
@@ -1154,6 +1160,11 @@ export class Shop implements TabletHost {
       sfx.play('wrong');
       return;
     }
+    if (!coldOk(p, f.def)) {
+      sfx.play('wrong');
+      this.hud.banner('fridge', p.cold === 2 ? t('pink.coldNeed2', 'Carne só no freezer ou no balcão do açougue!') : t('pink.coldNeed', 'Isso precisa de geladeira!'), 1800);
+      return;
+    }
     const cap = capOf(p.shape);
     const have = v && v[0] === pid ? v[1] : 0;
     // produto voando + contagem (a vaga reserva já)
@@ -1400,6 +1411,10 @@ export class Shop implements TabletHost {
           } else if (n <= 0) {
             hint = t('pink.h.empty', 'Caixa vazia! Jogue no lixo dos fundos');
             hicon = 'bin';
+            use = ['boxOpen', t('pink.u.stock', 'Repor'), false];
+          } else if (!coldOk(p, best.f.def)) {
+            hint = p.cold === 2 ? t('pink.coldNeed2', 'Carne só no freezer ou no balcão do açougue!') : t('pink.coldNeed', 'Isso precisa de geladeira!');
+            hicon = 'fridge';
             use = ['boxOpen', t('pink.u.stock', 'Repor'), false];
           } else {
             const have = v ? v[1] : 0;
@@ -1663,7 +1678,10 @@ export class Shop implements TabletHost {
         return;
       }
       this.phase = 'open';
-      if (!this.guest) this.sec.rollDay();
+      if (!this.guest) {
+        this.sec.rollDay();
+        this.power.rollDay();
+      }
       sfx.play('door');
       music.setState('calm');
       this.hud.banner('open', t('pink.opened', 'Loja aberta!'), 1600);
@@ -1695,10 +1713,11 @@ export class Shop implements TabletHost {
     e.sun.color.copy(sunC);
     const lv = this.s.renov.light;
     const night = Math.max(0, k - 0.8) * 5;
+    const pw = this.power.on ? 1 : 0.28;
     e.sun.intensity = 1.6 * (1 - night * 0.7);
-    e.hemi.intensity = (0.32 + lv * 0.06) * (1 - night * 0.3);
-    e.amb.intensity = 0.04 + lv * 0.03;
-    e.r.toneMappingExposure = 0.9 + lv * 0.03;
+    e.hemi.intensity = (0.32 + lv * 0.06) * (1 - night * 0.3) * pw;
+    e.amb.intensity = (0.04 + lv * 0.03) * pw;
+    e.r.toneMappingExposure = (0.9 + lv * 0.03) * (this.power.on ? 1 : 0.7);
   }
   private dayTick(dt: number): void {
     if (this.phase === 'open') {
@@ -2450,6 +2469,20 @@ export class Shop implements TabletHost {
     this.e.phys.world.addBody(l.body);
     this.e.phys.items.push(l);
   }
+  spawnTrashAt(x: number, z: number): void {
+    this.trashL.push(this.e.spawnTrash(x, z));
+  }
+  /** Mercadinho: no-break / gerador */
+  buyPower(k: 'nb' | 'gen'): boolean {
+    const d = k === 'nb' ? NOBREAK : GENERATOR;
+    const pw = (this.s.pw ??= { nb: false, gen: false });
+    if (pw[k] || this.s.lvl < d.lvl || this.guest || !this.pay(d.price)) return false;
+    pw[k] = true;
+    sfx.play('powerUp');
+    this.hud.banner(k === 'nb' ? 'bolt' : 'generator', k === 'nb' ? t('pink.pw.nbOk', 'No-break instalado!') : t('pink.pw.genOk', 'Gerador instalado!'), 2200);
+    this.save();
+    return true;
+  }
   /** canto dos fundos (estoque, ou o fundo da garagem) */
   backSpot(): [number, number] {
     const fb = floorBounds(this.s.renov);
@@ -2528,7 +2561,8 @@ export class Shop implements TabletHost {
           const has = this.furn.some((f) => f.sv.s.some((v) => v && v[0] === l.data.p));
           if (has) continue;
           for (const f of this.furn) {
-            const sl = f.slots.find((x) => !f.sv.s[x.i]);
+            const lp = PROD[l.data.p as string];
+            const sl = lp && coldOk(lp, f.def) ? f.slots.find((x) => !f.sv.s[x.i]) : undefined;
             if (sl) {
               pick = { l, f, si: sl.i };
               break;
@@ -2900,6 +2934,7 @@ export class Shop implements TabletHost {
       this.dayTick(dt);
       this.truckUpdate(dt);
       this.sec.tick(dt, this.hour);
+      this.power.tick(this.hour);
     }
     if (this.net) this.netTick(dt);
     // sujeira trazida pelos clientes (pegadas)
@@ -3401,6 +3436,11 @@ export class Shop implements TabletHost {
 }
 
 /* ------------------------------ util ------------------------------ */
+/** produto gelado só em móvel frio (carne: freezer/açougue; laticínio: qualquer frio) */
+function coldOk(p: Product, d: FurnDef): boolean {
+  if (!p.cold) return !d.cold || d.kind !== 'butcher';
+  return (d.cold ?? 0) >= p.cold;
+}
 function payKind(): PayKind {
   const r = Math.random();
   return r < 0.42 ? 'cash' : r < 0.78 ? 'card' : 'pix';

@@ -7,8 +7,8 @@
  * ============================================================ */
 import { t } from '../../i18n';
 
-export type CatId = 'splash' | 'perfume' | 'lips' | 'face' | 'nails' | 'skin' | 'hair' | 'supl' | 'acc' | 'gift';
-export type Shape = 'splash' | 'perfume' | 'lipstick' | 'gloss' | 'compact' | 'mascara' | 'polish' | 'tube' | 'dropper' | 'jar' | 'pump' | 'tub' | 'pills' | 'pouch' | 'brush' | 'giftbox';
+export type CatId = 'splash' | 'perfume' | 'lips' | 'face' | 'nails' | 'skin' | 'hair' | 'supl' | 'acc' | 'gift' | 'fruit' | 'veg' | 'meat' | 'dairy' | 'bakery' | 'drinks' | 'pantry' | 'clean';
+export type Shape = 'splash' | 'perfume' | 'lipstick' | 'gloss' | 'compact' | 'mascara' | 'polish' | 'tube' | 'dropper' | 'jar' | 'pump' | 'tub' | 'pills' | 'pouch' | 'brush' | 'giftbox' | 'fruit' | 'veg' | 'tray' | 'carton' | 'bottle' | 'sack' | 'can' | 'loaf';
 export type SeasonId = 'maes' | 'namorados' | 'verao' | 'black' | 'natal';
 
 export interface Category {
@@ -90,11 +90,13 @@ export interface Product {
   width: number;
   /** estação favorita (extra) */
   season?: SeasonId;
+  /** precisa de frio: 1 geladeira, 2 freezer/açougue (Mercadinho) */
+  cold?: 1 | 2;
 }
 
 /* [nome, tier, custo, cor, tampa, estação?] — por categoria; forma escolhida por linha */
 type Row = [string, 1 | 2 | 3, number, string, string, SeasonId?];
-const ROWS: { cat: CatId; shape: Shape; glass?: boolean; box: number; rows: Row[] }[] = [
+const ROWS: { cat: CatId; shape: Shape; glass?: boolean; box: number; cold?: 1 | 2; rows: Row[] }[] = [
   { cat: 'splash', shape: 'splash', box: 12, rows: [
     ['Nuvem de Algodão', 1, 9, '#ffd6ec', '#ffffff'],
     ['Chuva de Morango', 1, 9, '#ff6b8f', '#ffffff', 'verao'],
@@ -277,9 +279,10 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
-export const PRODUCTS: Product[] = [];
-for (const grp of ROWS) {
-  const cat = CATS.find((c) => c.id === grp.cat)!;
+function buildRows(rows: typeof ROWS, cats: Category[]): Product[] {
+  const PRODUCTS: Product[] = [];
+for (const grp of rows) {
+  const cat = cats.find((c) => c.id === grp.cat)!;
   for (const [name, tier, cost, color, cap, season] of grp.rows) {
     const id = slug(name);
     const markup = 1.6 + h(id, 1) * 0.6;
@@ -301,10 +304,103 @@ for (const grp of ROWS) {
       peak: Math.floor(h(id, 3) * YEAR),
       width: 10 + h(id, 4) * 25,
       season,
+      cold: grp.cold,
     });
   }
 }
+  return PRODUCTS;
+}
+const BEAUTY = buildRows(ROWS, CATS);
+const BEAUTY_CATS = [...CATS];
+export const PRODUCTS: Product[] = [...BEAUTY];
 export const PROD: Record<string, Product> = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
+
+/* ------------------------------ MERCADINHO (mesmo motor, outro catálogo) ------------------------------ */
+export const G_CATS: Category[] = [
+  { id: 'fruit', get name() { return t('pink.cat.fruit', 'Frutas'); }, lvl: 1, price: 0, color: '#ff6b6b', icon: 'apple' },
+  { id: 'veg', get name() { return t('pink.cat.veg', 'Verduras e legumes'); }, lvl: 1, price: 0, color: '#5aa056', icon: 'carrot' },
+  { id: 'pantry', get name() { return t('pink.cat.pantry', 'Mercearia'); }, lvl: 1, price: 0, color: '#e8b46a', icon: 'box' },
+  { id: 'drinks', get name() { return t('pink.cat.drinks', 'Bebidas'); }, lvl: 1, price: 0, color: '#6aa8ff', icon: 'splash' },
+  { id: 'dairy', get name() { return t('pink.cat.dairy', 'Laticínios'); }, lvl: 2, price: 300, color: '#8fdcff', icon: 'milk' },
+  { id: 'bakery', get name() { return t('pink.cat.bakery', 'Padaria'); }, lvl: 4, price: 700, color: '#e8b46a', icon: 'bread' },
+  { id: 'meat', get name() { return t('pink.cat.meat', 'Açougue'); }, lvl: 5, price: 1200, color: '#ff7a7a', icon: 'meat' },
+  { id: 'clean', get name() { return t('pink.cat.clean', 'Limpeza'); }, lvl: 8, price: 1800, color: '#9fe6c8', icon: 'mop' },
+];
+const G_ROWS: { cat: CatId; shape: Shape; glass?: boolean; box: number; cold?: 1 | 2; rows: Row[] }[] = [
+  { cat: 'fruit', shape: 'fruit', box: 20, rows: [
+    ['Maçã Vermelhinha', 1, 0.6, '#e8343a', '#5aa056'],
+    ['Laranja Suco Bom', 1, 0.5, '#ff9a2a', '#5aa056', 'verao'],
+    ['Limão Azedinho', 1, 0.4, '#8fd13a', '#4a8a2a', 'verao'],
+    ['Pêssego Aveludado', 2, 1.2, '#ffb27a', '#5aa056'],
+    ['Maçã Verde Crocante', 1, 0.7, '#9fd84a', '#5a3a2a'],
+    ['Tomate Rubi', 1, 0.5, '#e8302a', '#4a8a2a'],
+  ] },
+  { cat: 'veg', shape: 'veg', box: 16, rows: [
+    ['Cenoura Laranjinha', 1, 0.4, '#ff8a2a', '#5aa056'],
+    ['Pepino Fresquinho', 1, 0.5, '#4a8a3a', '#6ab04a', 'verao'],
+    ['Abobrinha da Horta', 1, 0.6, '#6ab04a', '#3a6a2a'],
+    ['Milho Dourado', 2, 0.9, '#ffd34a', '#7ab04a'],
+    ['Berinjela Roxinha', 2, 1.0, '#5a2a6a', '#5aa056'],
+  ] },
+  { cat: 'pantry', shape: 'sack', box: 8, rows: [
+    ['Arroz Soltinho 1kg', 1, 3, '#f4efe6', '#e8343a'],
+    ['Feijão Caseiro 1kg', 1, 4, '#7a4a3a', '#ffd34a'],
+    ['Farinha Nuvem', 1, 2.5, '#ffffff', '#6aa8ff'],
+    ['Açúcar Cristalzinho', 1, 2.8, '#ffffff', '#ff5fa2'],
+    ['Macarrão Parafuso', 1, 2.2, '#ffe14a', '#2a5aa8'],
+  ] },
+  { cat: 'pantry', shape: 'can', box: 12, rows: [
+    ['Milho em Lata Sol', 1, 1.8, '#ffd34a', '#c0c0c8'],
+    ['Ervilha Verdinha', 1, 1.8, '#5aa056', '#c0c0c8'],
+    ['Molho de Tomate Nona', 1, 2.0, '#e8302a', '#c0c0c8'],
+    ['Sardinha do Mar', 2, 3.2, '#2a5aa8', '#c0c0c8'],
+  ] },
+  { cat: 'drinks', shape: 'bottle', box: 6, rows: [
+    ['Água Cristalina 1,5L', 1, 1.2, '#bfe8ff', '#2a5aa8'],
+    ['Refri Guaraná Bloop', 1, 2.8, '#2fa35a', '#e8343a', 'verao'],
+    ['Refri Cola Bolha', 1, 2.8, '#3a1a14', '#e8343a', 'verao'],
+    ['Suco de Uva Vinhedo', 2, 4.5, '#5a2a6a', '#ffd34a'],
+    ['Chá Gelado Pêssego', 2, 3.6, '#ffb27a', '#ffffff', 'verao'],
+  ] },
+  { cat: 'dairy', shape: 'carton', box: 12, cold: 1, rows: [
+    ['Leite Vaquinha 1L', 1, 1.8, '#ffffff', '#6aa8ff'],
+    ['Leite Chocolate Mu', 1, 2.4, '#7a4a3a', '#ffffff'],
+    ['Iogurte Morango Pote', 2, 3.0, '#ffb3d1', '#ff5fa2'],
+    ['Requeijão Cremosinho', 2, 3.8, '#fff3c4', '#2a5aa8'],
+  ] },
+  { cat: 'bakery', shape: 'loaf', box: 10, rows: [
+    ['Pão de Forma Fofinho', 1, 3.2, '#e8b46a', '#ffffff'],
+    ['Bolo de Cenoura Vovó', 2, 6.5, '#ff9a2a', '#7a4a3a'],
+    ['Pão Integral Grãos', 2, 4.2, '#a8743a', '#ffffff'],
+  ] },
+  { cat: 'meat', shape: 'tray', box: 8, cold: 2, rows: [
+    ['Bife Bovino Macio', 1, 9, '#c8343a', '#f4f4f4'],
+    ['Frango Coxinha', 1, 6, '#f2b8a0', '#f4f4f4'],
+    ['Linguiça Caipira', 1, 7, '#b04a3a', '#f4f4f4'],
+    ['Picanha de Domingo', 3, 22, '#b8303a', '#f4f4f4'],
+    ['Peixe Fresco Filé', 2, 12, '#f4e0d8', '#f4f4f4'],
+    ['Carne Moída Fina', 1, 8, '#c84a4a', '#f4f4f4'],
+  ] },
+  { cat: 'clean', shape: 'bottle', box: 8, rows: [
+    ['Detergente Brilha Prato', 1, 1.6, '#9fe6a8', '#ffffff'],
+    ['Amaciante Nuvem Azul', 2, 5.5, '#8ccfff', '#ffffff'],
+    ['Desinfetante Lavanda', 1, 3.2, '#c3a6ff', '#ffffff'],
+  ] },
+];
+const GROCERY = buildRows(G_ROWS, G_CATS);
+/** troca o catálogo ativo (Minha Loja/Fábrica = beleza; Mercadinho = mercado) — mesmos arrays/mapas */
+export function useCatalog(kind: 'beauty' | 'grocery'): void {
+  const list = kind === 'grocery' ? GROCERY : BEAUTY;
+  const cats = kind === 'grocery' ? G_CATS : BEAUTY_CATS;
+  PRODUCTS.length = 0;
+  PRODUCTS.push(...list);
+  for (const k of Object.keys(PROD)) delete PROD[k];
+  for (const p of list) PROD[p.id] = p;
+  CATS.length = 0;
+  CATS.push(...cats);
+  for (const k of Object.keys(CAT)) delete (CAT as Record<string, Category>)[k];
+  for (const c of cats) (CAT as Record<string, Category>)[c.id] = c;
+}
 
 /** procura relativa do produto num dia (0.15..~5) */
 export function demand(p: Product, day: number): number {

@@ -7,12 +7,13 @@ import { fmt, t } from '../../i18n';
 import { sfx } from '../../audio';
 import { brandCanvas, BRAND_SITE } from './brand';
 import { CAT, CATS, demand, money, PRODUCTS, PROD, seasonAt, SEASONS, unlocked, YEAR, type CatId, type Product } from './catalog';
-import { FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, SHOP_FURN, SIGNS, STAFF, TABLET_UP, type FurnKind, type StaffKind } from './data';
+import { GROCERY_FURN, FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, SHOP_FURN, SIGNS, STAFF, TABLET_UP, type FurnKind, type StaffKind } from './data';
 import { ic } from './icons';
 import type { ShopSave } from './save';
 import { BUILDING_LVL, BUILDING_PRICE, nextStage, ownedStage, pendingWall, rentOf, salesArea, stagePrice } from './grow';
 import type { RenovAct } from './shop';
 import { SECURITY } from './money';
+import { GENERATOR, NOBREAK } from './power';
 import { thumbUrl } from './thumb';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -29,6 +30,7 @@ export interface TabletHost {
   upgradeTablet(): boolean;
   upgradeSec(): boolean;
   reviewsPage(): string;
+  buyPower(k: 'nb' | 'gen'): boolean;
   setPrice(id: string, mult: number): void;
   setAuto(on: boolean): void;
   stockOf(id: string): number;
@@ -202,7 +204,7 @@ export class Tablet {
       case 'furn': {
         html += this.hero(t('pink.t.furnT', 'Móveis e decoração'));
         html += '<div class="pk-grid">';
-        for (const k of SHOP_FURN) {
+        for (const k of s.kind === 'grocery' ? GROCERY_FURN : SHOP_FURN) {
           const f = FURN[k];
           const ok = lv >= f.lvl;
           html += `<div class="pk-it${ok ? '' : ' lock'}" data-lv="★${f.lvl}" data-f="${k}">${this.h.furnCount(k) ? `<span class="tg">${this.h.furnCount(k)}</span>` : ''}${ic(f.icon, 54)}<div class="nm">${esc(f.name)}</div><div class="pr">${ic('coin', 14)}${esc(money(f.price))}</div>
@@ -346,6 +348,15 @@ export class Tablet {
           const what = s.sec >= 8 ? t('pink.t.secArmored', 'carro-forte todo dia') : s.sec >= 5 ? t('pink.t.secAlarm', 'alarme automático') : s.sec >= 1 ? t('pink.t.secCams', 'câmeras') : t('pink.t.secNone', 'nenhuma');
           html += `<div class="pk-line">${ic('cctv', 34)}<span class="grow"><b>${esc(t('pink.t.sec', 'Segurança'))} ${s.sec}/10</b><br><small>${esc(what)} · ${esc(t('pink.t.secHelp', 'menos furtos e assaltos'))}</small></span>${nx2 ? (s.lvl < nx2.lvl ? `<b>★${nx2.lvl}</b>` : `<button class="pk-b g" data-a="sec" ${s.money >= nx2.price ? '' : 'disabled'}>${ic('up', 20)}${esc(money(nx2.price))}</button>`) : ic('check', 26)}</div>`;
         }
+        if (s.kind === 'grocery') {
+          // energia: no-break e gerador
+          const pw = s.pw ?? { nb: false, gen: false };
+          for (const [k, d, icon, name, help] of [
+            ['nb', NOBREAK, 'bolt', t('pink.t.nobreak', 'No-break'), t('pink.t.nobreakH', 'Segura as geladeiras uns 45 minutos sem luz')],
+            ['gen', GENERATOR, 'generator', t('pink.t.generator', 'Gerador'), t('pink.t.generatorH', 'Liga sozinho quando a luz cai: nada estraga')],
+          ] as const)
+            html += `<div class="pk-line">${ic(icon, 34)}<span class="grow"><b>${esc(name)}</b><br><small>${esc(help)}</small></span>${pw[k] ? ic('check', 26) : lv < d.lvl ? `<b>★${d.lvl}</b>` : `<button class="pk-b g" data-pw="${k}" ${s.money >= d.price ? '' : 'disabled'}>${ic('coin', 18)}${esc(money(d.price))}</button>`}</div>`;
+        }
         if (s.coupons > 0) html += `<div class="pk-line">${ic('gift', 34)}<span class="grow"><b>${esc(t('pink.t.coupons', 'Cupons de desconto'))}</b></span><b>${esc(money(s.coupons))}</b></div>`;
         break;
       }
@@ -450,6 +461,7 @@ export class Tablet {
     on('[data-lic]', (e) => h.buyLicense(e.dataset.lic as CatId) && this.refresh());
     on('[data-a=tab]', () => h.upgradeTablet() && this.refresh());
     on('[data-a=sec]', () => h.upgradeSec() && this.refresh());
+    on('[data-pw]', (e) => h.buyPower(e.dataset.pw as 'nb' | 'gen') && this.refresh());
     on('[data-a=auto]', () => {
       h.setAuto(!h.s.auto);
       this.refresh();

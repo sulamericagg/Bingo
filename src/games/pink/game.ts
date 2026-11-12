@@ -22,10 +22,10 @@ import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
 import { CODE_ALPHA, CODE_OK, MAX_PLAYERS, createNet, newCode, type JNet, type Me, type NetEvent } from '../jangada/net';
 import { PINK_NET_PATH } from './coop';
 import { enterGame } from '../../audio';
-import { BRAND_NAME, drawBrandLogo } from './brand';
+import { BRAND_NAME, drawBrandLogo, setBrandMode } from './brand';
 import { money } from './catalog';
 import { ic } from './icons';
-import { dropSlot, getFactory, getShop, newFactory, newShop, putFactory, putShop, selSlot, setSel, slots, type FactorySave, type Mode, type ShopSave } from './save';
+import { dropSlot, getFactory, getShop, newFactory, newGrocery, newShop, putFactory, putShop, selSlot, setSel, slots, type FactorySave, type Mode, type ShopSave } from './save';
 import { injectCss } from './style';
 import './audio';
 import type { Shop } from './shop';
@@ -90,7 +90,10 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         throw e;
       }));
   /** nome do espaço: o que a criança escolheu (lápis) ou "Loja 2" */
-  const slotLabel = (m: Mode, i: number) => smSlotName('pink', i, m) ?? (m === 'shop' ? t('pink.slot', 'Loja {n}', { n: i + 1 }) : t('pink.slotF', 'Fábrica {n}', { n: i + 1 }));
+  const defName = (m: Mode, i: number) => (m === 'shop' ? t('pink.slot', 'Loja {n}', { n: i + 1 }) : m === 'grocery' ? t('pink.slotG', 'Mercadinho {n}', { n: i + 1 }) : t('pink.slotF', 'Fábrica {n}', { n: i + 1 }));
+  const newLbl = (m: Mode) => (m === 'shop' ? t('pink.newShop', 'Nova loja') : m === 'grocery' ? t('pink.newGrocery', 'Novo mercadinho') : t('pink.newFactory', 'Nova fábrica'));
+  const isStore = (m: Mode) => m === 'shop' || m === 'grocery';
+  const slotLabel = (m: Mode, i: number) => smSlotName('pink', i, m) ?? defName(m, i);
 
   const setBack = (fn: (() => void) | null) => {
     popBack?.();
@@ -99,8 +102,8 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   const saveGame = () => {
     const g = game;
     if (!g) return;
-    if (mode === 'shop' && (g as Shop).guest) return;
-    if (mode === 'shop') putShop(slot, (g as Shop).toSave());
+    if (isStore(mode) && (g as Shop).guest) return;
+    if (isStore(mode)) putShop(slot, (g as Shop).toSave(), mode as 'shop' | 'grocery');
     else putFactory(slot, (g as Factory).toSave());
   };
   const endGame = () => {
@@ -122,6 +125,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   function menu(): void {
     leaveOnline();
     endGame();
+    setBrandMode('beauty');
     menuEl?.remove();
     audio.applySettings();
     enterGame('pink');
@@ -133,7 +137,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           [
             { id: 'shop', icon: ic('store', 56), label: t('pink.mode.shop', 'Minha Loja'), color: '#ffd3e6', sel: mode === 'shop', onTap: () => ((mode = 'shop'), sm.refresh()) },
             { id: 'factory', icon: ic('factory', 56), label: t('pink.mode.factory', 'Fábrica'), color: '#e3d6ff', sel: mode === 'factory', onTap: () => ((mode = 'factory'), sm.refresh()) },
-            { id: 'grocery', icon: ic('grocery', 56), label: t('pink.mode.grocery', 'Mercadinho'), color: '#d9f5c8', badge: t('pink.soon', 'em breve'), lock: true, disabled: true },
+            { id: 'grocery', icon: ic('grocery', 56), label: t('pink.mode.grocery', 'Mercadinho'), color: '#d9f5c8', sel: mode === 'grocery', onTap: () => ((mode = 'grocery'), sm.refresh()) },
           ],
           { size: 'small' },
         );
@@ -145,17 +149,17 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
             const d = s.data as (ShopSave & FactorySave) | null;
             return {
               empty: !d,
-              name: d ? (mode === 'shop' ? t('pink.slot', 'Loja {n}', { n: i + 1 }) : t('pink.slotF', 'Fábrica {n}', { n: i + 1 })) : undefined,
+              name: d ? defName(mode, i) : undefined,
               progress: d ? `${t('pink.dayShort', 'Dia {n}', { n: d.day })} · ★${d.lvl}` : undefined,
               progressIcon: ic('sun', 16),
               last: s.last,
               thumb: d ? slotThumb(mode, d.lvl, d.money) : undefined,
-              color: mode === 'shop' ? '#ffc6de' : '#d6c6ff',
+              color: mode === 'shop' ? '#ffc6de' : mode === 'grocery' ? '#c8f0b0' : '#d6c6ff',
             };
           }),
           {
             sel: cur,
-            newLabel: mode === 'shop' ? t('pink.newShop', 'Nova loja') : t('pink.newFactory', 'Nova fábrica'),
+            newLabel: newLbl(mode),
             key: mode,
             nameIdeas: nameIdeas(mode),
             onSelect: (i) => {
@@ -175,7 +179,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         const has = !!list[cur]?.data;
         const d = list[cur]?.data as (ShopSave & FactorySave) | null;
         if (has && d) p.play({ label: t('pink.cont', 'Continuar'), sub: `${t('pink.dayShort', 'Dia {n}', { n: d.day })} · ★${d.lvl}`, tone: 'green', onTap: () => void start(cur, false) });
-        else p.play({ say: mode === 'shop' ? t('pink.newShop', 'Nova loja') : t('pink.newFactory', 'Nova fábrica'), onTap: () => void start(cur, true) });
+        else p.play({ say: newLbl(mode), onTap: () => void start(cur, true) });
         // com amigos: a Minha Loja recebe até 4 Bloops (a Fábrica ainda é solo)
         p.friends({
           game: 'pink',
@@ -193,6 +197,17 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   }
 
   function nameIdeas(m: Mode) {
+    if (m === 'grocery')
+      return [
+        { text: t('pink.ideaG.1', 'Mercadinho da Vila'), icon: ic('grocery', 20) },
+        { text: t('pink.ideaG.2', 'Hortifruti Feliz'), icon: ic('apple', 20) },
+        { text: t('pink.ideaG.3', 'Empório Bloop'), icon: ic('bread', 20) },
+        { text: t('pink.ideaG.4', 'Açougue Top'), icon: ic('meat', 20) },
+        { text: t('pink.ideaG.5', 'Mercado da Esquina'), icon: ic('store', 20) },
+        { text: t('pink.ideaG.6', 'Super Fresquinho'), icon: ic('carrot', 20) },
+        { text: t('pink.ideaG.7', 'Cantinho do Pão'), icon: ic('bread', 20) },
+        { text: t('pink.ideaG.8', 'Mercado dos Sonhos'), icon: ic('star', 20) },
+      ];
     return m === 'shop'
       ? [
           { text: t('pink.idea.1', 'Minha Loja Linda'), icon: ic('heart', 20) },
@@ -242,7 +257,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   function slotThumb(m: Mode, lvl: number, cash: number): SmDraw {
     return (x, w, h, time) => {
       const g = x.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, m === 'shop' ? '#ffe3ef' : '#ece4ff');
+      g.addColorStop(0, m === 'shop' ? '#ffe3ef' : m === 'grocery' ? '#dff5d0' : '#ece4ff');
       g.addColorStop(1, '#ffffff');
       x.fillStyle = g;
       x.fillRect(0, 0, w, h);
@@ -274,7 +289,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     if (net) mode = 'shop';
     slot = i;
     if (!guestSave) setSel(mode, i);
-    if (fresh && introAllowed() && !net) {
+    if (fresh && introAllowed() && !net && mode === 'shop') {
       menuEl?.remove();
       menuEl = null;
       setBack(null);
@@ -295,9 +310,15 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     await frame();
     if (dead) return;
     try {
-      if (mode === 'shop') {
-        const sv = guestSave ?? (fresh ? newShop() : getShop(i) ?? newShop());
-        if (fresh && !guestSave) putShop(i, sv);
+      const cat = await import('./catalog');
+      const gro = mode === 'grocery' || guestSave?.kind === 'grocery';
+      cat.useCatalog(gro ? 'grocery' : 'beauty');
+      (await import('./brand')).setBrandMode(gro ? 'grocery' : 'beauty');
+      if (isStore(mode)) {
+        const gm = mode as 'shop' | 'grocery';
+        const mk = () => (gm === 'grocery' ? newGrocery() : newShop());
+        const sv = guestSave ?? (fresh ? mk() : getShop(i, gm) ?? mk());
+        if (fresh && !guestSave) putShop(i, sv, gm);
         const { Shop } = await import('./shop');
         ld.set(0.5);
         await frame();
@@ -306,14 +327,14 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           tier,
           save: sv,
           onPause: pause,
-          onSave: (s) => !guestSave && putShop(slot, s),
+          onSave: (s) => !guestSave && putShop(slot, s, gm),
           onCoins: (n) => {
             addCoins(n);
             reportRun({ game: 'pink', score: Math.round(sv.money), coins: n, durationSec: Math.round((performance.now() - runStart) / 1000), won: true, stats: { day: sv.day, level: sv.lvl, customers: sv.totalCust } });
             runStart = performance.now();
           },
           net: net ? { net, host: !guestSave } : null,
-          name: smSlotName('pink', i, 'shop') ?? undefined,
+          name: smSlotName('pink', i, gm) ?? undefined,
         });
       } else {
         const sv = fresh ? newFactory() : getFactory(i) ?? newFactory();
@@ -363,7 +384,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       return;
     }
     // em grupo a loja não para (os outros continuam): a pausa só abre o painel
-    const guest = mode === 'shop' && (g as Shop).guest;
+    const guest = isStore(mode) && (g as Shop).guest;
     if (!online) g.setPaused(true);
     const d = g.hud.panel(`
       <h2>${ic('pause', 30)}${esc(t('pink.paused', 'Pausa'))}</h2>

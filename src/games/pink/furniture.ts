@@ -425,6 +425,56 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
       b.add(CYL(0.13, 0.2, 0.26, 24, ), kit.plain('shade', '#fff3f6', 0.8, 0, { emissive: '#ffe2c8', ei: 0.7, side: THREE.DoubleSide }), 0, 1.5, 0);
       break;
     }
+    case 'crate': {
+      // banca de feira: estrutura de madeira com caixotes inclinados
+      const crateW = kit.surf('crateWood', 'wood', { rough: 1, color: '#d8a868' });
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(rbox(0.06, sz > 0 ? 0.62 : 0.9, 0.06, 0.01, 1), crateW, sx * (W / 2 - 0.05), (sz > 0 ? 0.62 : 0.9) / 2, sz * (D / 2 - 0.05));
+      for (let r = 0; r < 2; r++)
+        for (let i = 0; i < 3; i++) {
+          const x = -0.44 + i * 0.44;
+          const y = 0.56 + r * 0.26;
+          const z = 0.2 - r * 0.32;
+          b.add(rbox(0.42, 0.04, 0.34, 0.01, 1), crateW, x, y - 0.02, z, -0.25, 0, 0);
+          for (const sx of [-1, 1]) b.add(rbox(0.02, 0.12, 0.34, 0.005, 1), crateW, x + sx * 0.2, y + 0.04, z, -0.25, 0, 0);
+          b.add(rbox(0.42, 0.1, 0.02, 0.005, 1), crateW, x, y + 0.02, z + 0.17, -0.25, 0, 0);
+        }
+      b.add(rbox(W, 0.04, 0.2, 0.01, 1), kit.plain('crateSign', '#5aa056', 0.6), 0, 0.98, -D / 2 + 0.1);
+      break;
+    }
+    case 'fridge': {
+      // geladeira vertical com porta de vidro e luz interna
+      const body = kit.plain('fridgeBody', '#f4f6f8', 0.3, 0.2, { envK: 0.9 });
+      b.add(rbox(W, H, 0.06, 0.02, 2), body, 0, H / 2, -D / 2 + 0.03);
+      for (const sx of [-1, 1]) b.add(rbox(0.06, H, D, 0.02, 2), body, sx * (W / 2 - 0.03), H / 2, 0);
+      b.add(rbox(W, 0.12, D, 0.02, 2), body, 0, H - 0.06, 0);
+      b.add(rbox(W, 0.16, D, 0.02, 2), kit.plain('fridgeBase', '#3a3a44', 0.5), 0, 0.08, 0);
+      for (const y of [0.2, 0.62, 1.04, 1.46]) b.add(rbox(W - 0.14, 0.02, D - 0.12, 0.004, 1), kit.plain('wire', '#c8ccd4', 0.3, 0.8), 0, y, 0);
+      b.add(new THREE.PlaneGeometry(W - 0.14, H - 0.3), kit.plain('fridgeLight', '#eaf6ff', 0.4, 0, { emissive: '#dff2ff', ei: 0.45 }), 0, H / 2, -D / 2 + 0.065);
+      b.add(rbox(W - 0.04, H - 0.26, 0.03, 0.02, 2), kit.glass('fridgeGlass', '#e6f6ff', 0.18), 0, H / 2 + 0.02, D / 2 - 0.02);
+      b.add(rbox(0.03, 0.6, 0.04, 0.01, 1), chrome, W / 2 - 0.12, H / 2, D / 2 + 0.01);
+      b.add(new THREE.PlaneGeometry(W - 0.2, 0.08), kit.canvasMat('shelfHead', headerCanvas(), { emissive: 0.3 }), 0, H - 0.06, D / 2 + 0.002);
+      break;
+    }
+    case 'freezer': {
+      const body = kit.plain('fridgeBody', '#f4f6f8', 0.3, 0.2, { envK: 0.9 });
+      b.add(rbox(W, H - 0.1, D, 0.04, 2), body, 0, (H - 0.1) / 2, 0);
+      b.add(new THREE.PlaneGeometry(W - 0.1, D - 0.1).rotateX(-Math.PI / 2), kit.plain('freezerIn', '#cfe8f8', 0.5, 0, { emissive: '#bfe4ff', ei: 0.3 }), 0, H - 0.1, 0);
+      b.add(rbox(W - 0.06, 0.03, D - 0.06, 0.01, 1), kit.glass('fridgeGlass', '#e6f6ff', 0.18), 0, H - 0.06, 0);
+      b.add(rbox(W, 0.05, 0.06, 0.02, 1), kit.plain('freezerRim', '#6aa8ff', 0.4), 0, H - 0.08, D / 2 - 0.03);
+      break;
+    }
+    case 'butcher': {
+      // balcão refrigerado: base, vitrine curva de vidro, bandejas
+      const body = kit.plain('butcherBody', '#f7f1ef', 0.35, 0.1, { envK: 0.7 });
+      b.add(rbox(W, 0.78, D, 0.03, 2), body, 0, 0.39, 0);
+      b.add(rbox(W, 0.1, D + 0.02, 0.02, 1), kit.plain('butcherRed', '#c8343a', 0.5), 0, 0.73, 0);
+      b.add(new THREE.PlaneGeometry(W - 0.08, D - 0.08).rotateX(-Math.PI / 2), kit.plain('butcherIce', '#f4fbff', 0.4, 0, { emissive: '#e8f6ff', ei: 0.25 }), 0, 0.79, 0);
+      const gl = new THREE.CylinderGeometry(0.45, 0.45, W - 0.06, 18, 1, true, 0, Math.PI / 2);
+      gl.rotateZ(Math.PI / 2).rotateX(Math.PI);
+      b.add(gl, kit.glass('fridgeGlass', '#e6f6ff', 0.18), 0, 0.8, -D / 2 + 0.06);
+      b.add(rbox(W, 0.03, 0.2, 0.01, 1), body, 0, 1.24, -D / 2 + 0.1);
+      break;
+    }
     case 'desk': {
       // mesa de escritório + computador (tela com gráfico) + cadeira
       b.add(rbox(W, 0.05, D, 0.015, 2), wood, 0, 0.74, 0);

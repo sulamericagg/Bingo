@@ -102,7 +102,7 @@ function faceUrl(look: string): string {
   return u;
 }
 /** página do perfil (dentro do tablet) */
-export function reviewsHtml(r: RevState, name: string, photo: string, day: number): string {
+export function reviewsHtml(r: RevState, name: string, photo: string, day: number, cat: string): string {
   const avg = rating(r);
   const list = [...r.pub].reverse().slice(0, 30);
   const dist = [5, 4, 3, 2, 1].map((s) => r.pub.filter((x) => x.st === s).length);
@@ -111,7 +111,7 @@ export function reviewsHtml(r: RevState, name: string, photo: string, day: numbe
   return `<div class="pk-rv">
     <div class="rv-head">${photo ? `<img class="rv-photo" src="${photo}" alt="">` : `<div class="rv-photo"></div>`}
       <div class="rv-id"><b class="rv-name">${esc(name)}</b><div class="rv-avg"><b>${avg ? avg.toFixed(1).replace('.', ',') : '—'}</b>${stars(avg, 18)}<small>(${r.pub.length})</small></div>
-      <div class="rv-cat">${ic('store', 16)}${esc(t('pink.rv.cat', 'Loja de cosméticos'))} · ${ic('clock', 14)}8h–20h</div>
+      <div class="rv-cat">${ic('store', 16)}${esc(cat)} · ${ic('clock', 14)}8h–20h</div>
       <div class="rv-next">${ic('review', 16)}${esc(r.pend.length ? t('pink.rv.pending', '{n} novas avaliações em {d} dias', { n: r.pend.length, d: nextIn }) : t('pink.rv.weekly', 'Atualiza toda semana'))}</div></div></div>
     <div class="rv-dist">${dist.map((n, i) => `<div><span>${5 - i}</span><i><b style="width:${(n / max) * 100}%"></b></i></div>`).join('')}</div>
     ${list.length ? list.map((x) => `<div class="rv-it"><img src="${faceUrl(x.lk)}" alt=""><div><div class="rv-who"><b>${esc(x.n)}</b><small>${esc(day - x.d <= 0 ? t('pink.rv.today', 'hoje') : t('pink.rv.ago', 'há {n} dias', { n: day - x.d }))}</small></div><div class="rv-st">${stars(x.st, 14)}</div><div class="rv-tx">${esc((TXT[x.k] ?? TXT.ok)())}</div></div></div>`).join('') : `<div class="pk-note">${ic('review', 22)}${esc(t('pink.rv.none', 'Ainda sem avaliações. Atenda bem e espere a semana!'))}</div>`}

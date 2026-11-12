@@ -1304,6 +1304,14 @@ export class Store3D {
   get backOpen(): boolean {
     return this.shutterOpen > 0.8;
   }
+  /** luz caiu (Mercadinho): apaga luminárias, teto e luz das geladeiras */
+  setPower(on: boolean): void {
+    this.lightsG.visible = on;
+    const k = this.kit;
+    const ceil = k.surf('ceiling', 'ceiling', { rough: 1, envK: 0.2 });
+    ceil.emissiveIntensity = on ? (this.r.light >= 1 ? 0.32 : 0.12) : 0.02;
+    for (const [key, col, ei] of [['fridgeLight', '#eaf6ff', 0.45], ['freezerIn', '#cfe8f8', 0.3], ['butcherIce', '#f4fbff', 0.25]] as const) k.plain(key, col, 0.4).emissiveIntensity = on ? ei : 0;
+  }
   get isGarage(): boolean {
     return !!this.garage;
   }

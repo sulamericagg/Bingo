@@ -8,7 +8,7 @@ import { startFloat, type Drawer } from './money';
 import { HOME0, type HomeSave } from './home';
 import { REV0, type RevState } from './reviews';
 
-export type Mode = 'shop' | 'factory';
+export type Mode = 'shop' | 'factory' | 'grocery';
 
 export interface FurnSave {
   id: number;
@@ -65,6 +65,10 @@ export interface ShopSave {
   home: HomeSave;
   /** avaliações (publicadas por semana) */
   rev: RevState;
+  /** Mercadinho (catálogo de mercado, energia) */
+  kind?: 'grocery';
+  /** energia: no-break e gerador comprados */
+  pw?: { nb: boolean; gen: boolean };
 }
 export interface FactorySave {
   v: 1;
@@ -86,6 +90,7 @@ interface Slot<T> {
 interface Root {
   shop: Slot<ShopSave>[];
   factory: Slot<FactorySave>[];
+  grocery: Slot<ShopSave>[];
   sel: Record<Mode, number>;
 }
 
@@ -100,10 +105,13 @@ function load(): Root {
   } catch {
     r = null;
   }
-  if (!r || !Array.isArray(r.shop)) r = { shop: [], factory: [], sel: { shop: 0, factory: 0 } };
+  if (!r || !Array.isArray(r.shop)) r = { shop: [], factory: [], grocery: [], sel: { shop: 0, factory: 0, grocery: 0 } };
+  r.grocery ??= [];
   while (r.shop.length < 3) r.shop.push({ data: null });
   while (r.factory.length < 3) r.factory.push({ data: null });
-  r.sel ??= { shop: 0, factory: 0 };
+  while (r.grocery.length < 3) r.grocery.push({ data: null });
+  r.sel ??= { shop: 0, factory: 0, grocery: 0 };
+  r.sel.grocery ??= 0;
   root = r;
   return r;
 }
@@ -124,8 +132,8 @@ export function setSel(m: Mode, i: number): void {
   load().sel[m] = i;
   persist();
 }
-export function getShop(i: number): ShopSave | null {
-  const d = load().shop[i]?.data ?? null;
+export function getShop(i: number, m: 'shop' | 'grocery' = 'shop'): ShopSave | null {
+  const d = load()[m][i]?.data ?? null;
   if (d) {
     // migração leve: campos novos
     const r = (d.renov ?? {}) as Renov;
@@ -137,13 +145,17 @@ export function getShop(i: number): ShopSave | null {
     d.bags ??= [];
     d.home = { ...HOME0, ...(d.home ?? {}) };
     d.rev ??= { pub: [], pend: [], last: d.day ?? 0 };
+    if (m === 'grocery') {
+      d.kind = 'grocery';
+      d.pw ??= { nb: false, gen: false };
+    }
     d.nextId ??= 1000;
   }
   return d;
 }
-export function putShop(i: number, s: ShopSave): void {
+export function putShop(i: number, s: ShopSave, m: 'shop' | 'grocery' = 'shop'): void {
   const r = load();
-  r.shop[i] = { data: s, last: Date.now() };
+  r[m][i] = { data: s, last: Date.now() };
   persist();
 }
 export function getFactory(i: number): FactorySave | null {
@@ -199,6 +211,9 @@ export function newShop(): ShopSave {
     home: { ...HOME0 },
     rev: { ...REV0, pub: [], pend: [] },
   };
+}
+export function newGrocery(): ShopSave {
+  return { ...newShop(), kind: 'grocery', pw: { nb: false, gen: false } };
 }
 export function newFactory(): FactorySave {
   return { v: 1, money: 600, xp: 0, lvl: 1, day: 1, truck: 0, ups: [], shipped: 0, dirt: [], tut: 0, created: Date.now() };

@@ -23,6 +23,14 @@ export const SHAPE_DIM: Record<Shape, [number, number, number]> = {
   pouch: [0.18, 0.12, 0.08],
   brush: [0.04, 0.18, 0.04],
   giftbox: [0.22, 0.12, 0.16],
+  fruit: [0.085, 0.08, 0.085],
+  veg: [0.06, 0.2, 0.06],
+  tray: [0.2, 0.05, 0.15],
+  carton: [0.08, 0.2, 0.08],
+  bottle: [0.085, 0.29, 0.085],
+  sack: [0.17, 0.25, 0.08],
+  can: [0.07, 0.11, 0.07],
+  loaf: [0.22, 0.11, 0.12],
 };
 export const SLOT_W = 0.3;
 export const SLOT_D = 0.36;
@@ -66,6 +74,10 @@ export type FurnKind =
   | 'flowers'
   | 'balloons'
   | 'lamp'
+  | 'crate'
+  | 'fridge'
+  | 'freezer'
+  | 'butcher'
   | 'desk'
   | 'rack'
   | 'safe'
@@ -91,6 +103,8 @@ export interface FurnDef {
   group: 'shelf' | 'checkout' | 'tester' | 'decor' | 'office';
   /** pode ficar no estoque (fundos) */
   stock?: boolean;
+  /** frio: 1 geladeira (laticínios), 2 freezer/açougue (carnes, aceita também 1) */
+  cold?: 1 | 2;
   icon: string;
 }
 export const FURN: Record<FurnKind, FurnDef> = {
@@ -113,6 +127,10 @@ export const FURN: Record<FurnKind, FurnDef> = {
   neon: { kind: 'neon', get name() { return t('pink.f.neon', 'Neon de coração'); }, price: 420, lvl: 10, w: 1.0, d: 0.15, h: 1.0, beauty: 9, wall: true, group: 'decor', icon: 'heart' },
   balloons: { kind: 'balloons', get name() { return t('pink.f.balloons', 'Arco de balões'); }, price: 300, lvl: 12, w: 1.6, d: 0.5, h: 2.3, beauty: 8, group: 'decor', icon: 'balloon' },
   lamp: { kind: 'lamp', get name() { return t('pink.f.lamp', 'Luminária de chão'); }, price: 180, lvl: 8, w: 0.45, d: 0.45, h: 1.7, beauty: 5, group: 'decor', icon: 'lamp' },
+  crate: { kind: 'crate', get name() { return t('pink.f.crate', 'Banca de hortifruti'); }, price: 200, lvl: 1, w: 1.4, d: 0.9, h: 1.0, beauty: 3, group: 'shelf', icon: 'apple' },
+  fridge: { kind: 'fridge', get name() { return t('pink.f.fridge', 'Geladeira de porta de vidro'); }, price: 900, lvl: 2, w: 1.2, d: 0.7, h: 2.0, beauty: 3, group: 'shelf', icon: 'fridge', cold: 1 },
+  freezer: { kind: 'freezer', get name() { return t('pink.f.freezer', 'Freezer horizontal'); }, price: 1100, lvl: 5, w: 1.6, d: 0.8, h: 0.9, beauty: 2, group: 'shelf', icon: 'fridge', cold: 2 },
+  butcher: { kind: 'butcher', get name() { return t('pink.f.butcher', 'Balcão do açougue'); }, price: 1600, lvl: 5, w: 1.8, d: 0.9, h: 1.25, beauty: 5, group: 'shelf', icon: 'meat', cold: 2 },
   desk: { kind: 'desk', get name() { return t('pink.f.desk', 'Escritório (mesa e computador)'); }, price: 650, lvl: 4, w: 1.4, d: 0.75, h: 1.2, beauty: 2, group: 'office', icon: 'office', stock: true },
   rack: { kind: 'rack', get name() { return t('pink.f.rack', 'Porta-pallet do estoque'); }, price: 380, lvl: 5, w: 2.0, d: 0.8, h: 2.4, beauty: 0, group: 'office', icon: 'pallet', stock: true },
   safe: { kind: 'safe', get name() { return t('pink.f.safe', 'Cofre'); }, price: 1500, lvl: 8, w: 0.7, d: 0.65, h: 1.0, beauty: 0, group: 'office', icon: 'safe', stock: true },
@@ -120,6 +138,8 @@ export const FURN: Record<FurnKind, FurnDef> = {
   art: { kind: 'art', get name() { return t('pink.f.art', 'Quadro na parede'); }, price: 160, lvl: 2, w: 0.9, d: 0.12, h: 1.0, beauty: 4, wall: true, group: 'decor', icon: 'album' },
   bin: { kind: 'bin', get name() { return t('pink.f.bin', 'Lixeira de caixas'); }, price: 0, lvl: 99, w: 0.7, d: 0.7, h: 1.0, beauty: 0, group: 'decor', icon: 'bin' },
 };
+/** móveis do Mercadinho */
+export const GROCERY_FURN: FurnKind[] = ['shelf', 'gondola', 'crate', 'fridge', 'freezer', 'butcher', 'table', 'checkout', 'checkout2', 'selfcheck', 'desk', 'rack', 'safe', 'plant', 'art', 'rug', 'flowers', 'lamp'];
 export const SHOP_FURN: FurnKind[] = ['shelf', 'table', 'gondola', 'shelfLux', 'tableRound', 'checkout', 'checkout2', 'selfcheck', 'testPerfume', 'testMakeup', 'testNails', 'desk', 'rack', 'safe', 'plant', 'pouf', 'sofa', 'art', 'rug', 'flowers', 'mirror', 'lamp', 'neon', 'balloons'];
 
 /** vagas de produto de cada móvel (no espaço local do móvel, frente = +z) */
@@ -137,6 +157,15 @@ export function slotSpecs(kind: FurnKind): SlotSpec[] {
     for (const y of ys) for (let i = 0; i < 4; i++) out.push({ x: -0.45 + i * 0.3, y: y + 0.025, z: 0.02, face: 1 });
   } else if (kind === 'gondola') {
     for (const y of [0.14, 0.52, 0.9]) for (const f of [1, -1] as const) for (let i = 0; i < 4; i++) out.push({ x: -0.45 + i * 0.3, y: y + 0.025, z: f * 0.22, face: f });
+  } else if (kind === 'crate') {
+    // caixotes inclinados: 2 fileiras × 3
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 3; i++) out.push({ x: -0.44 + i * 0.44, y: 0.62 + r * 0.26, z: 0.2 - r * 0.32, face: 1 });
+  } else if (kind === 'fridge') {
+    for (const y of [0.2, 0.62, 1.04, 1.46]) for (let i = 0; i < 3; i++) out.push({ x: -0.36 + i * 0.36, y: y + 0.02, z: 0.02, face: 1 });
+  } else if (kind === 'freezer') {
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) out.push({ x: -0.54 + i * 0.36, y: 0.42, z: 0.17 - r * 0.34, face: 1 });
+  } else if (kind === 'butcher') {
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) out.push({ x: -0.6 + i * 0.4, y: 0.82 + r * 0.06, z: 0.16 - r * 0.26, face: 1 });
   } else if (kind === 'table') {
     for (const f of [1, -1] as const) for (let i = 0; i < 4; i++) out.push({ x: -0.48 + i * 0.32, y: 0.82, z: f * 0.18, face: f });
   } else if (kind === 'tableRound') {

@@ -9,7 +9,7 @@ import type { Product, Shape } from './catalog';
 import type { Kit } from './mats';
 import { productPartsMerged, type PartKind } from './shapes';
 
-const SHAPES: Shape[] = ['splash', 'perfume', 'lipstick', 'gloss', 'compact', 'mascara', 'polish', 'tube', 'dropper', 'jar', 'pump', 'tub', 'pills', 'pouch', 'brush', 'giftbox'];
+const SHAPES: Shape[] = ['splash', 'perfume', 'lipstick', 'gloss', 'compact', 'mascara', 'polish', 'tube', 'dropper', 'jar', 'pump', 'tub', 'pills', 'pouch', 'brush', 'giftbox', 'fruit', 'veg', 'tray', 'carton', 'bottle', 'sack', 'can', 'loaf'];
 const GEO = new Map<Shape, Map<PartKind, THREE.BufferGeometry>>();
 /** geometrias das formas (compartilhadas por todo o jogo; nunca liberadas — são pequenas) */
 export function shapeGeo(s: Shape): Map<PartKind, THREE.BufferGeometry> {

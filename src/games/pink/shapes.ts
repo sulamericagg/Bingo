@@ -247,6 +247,61 @@ export function productParts(s: Shape): ProductPart[] {
         P('cap', new THREE.TorusGeometry(0.022, 0.009, 6, 10).rotateY(-0.6).translate(0.02, h * 0.92 + 0.012, 0)),
         P('label', label(w * 0.32, h * 0.32, h * 0.42, d * 0.515 + 0.001).translate(w * 0.27, 0, 0)),
       ];
+    /* ---------- mercadinho ---------- */
+    case 'fruit': {
+      const g = new THREE.SphereGeometry(w * 0.5, 14, 10);
+      g.scale(1, (h / w) * 0.95, 1);
+      g.translate(0, h * 0.5, 0);
+      // covinha em cima
+      const p = g.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const y = p.getY(i);
+        const r = Math.hypot(p.getX(i), p.getZ(i));
+        if (y > h * 0.85 && r < w * 0.18) p.setY(i, y - (w * 0.18 - r) * 0.5);
+      }
+      g.computeVertexNormals();
+      return [P('body', g), P('cap', cyl(0.004, 0.02, h * 0.88, 5)), P('cap', new THREE.SphereGeometry(0.012, 6, 4).scale(1.6, 0.4, 1).translate(0.012, h * 0.95, 0))];
+    }
+    case 'veg': {
+      const body = lathe([[0, 0], [w * 0.2, h * 0.04], [w * 0.42, h * 0.3], [w * 0.5, h * 0.7], [w * 0.4, h * 0.82], [0, h * 0.84]], 12);
+      return [P('body', body), P('cap', lathe([[w * 0.25, h * 0.8], [w * 0.4, h * 0.92], [w * 0.15, h], [0, h]], 8))];
+    }
+    case 'tray': {
+      // bandeja de isopor + carne + filme plástico
+      return [P('cap', box(w, h * 0.35, d, 0, 0.008)), P('body', box(w * 0.82, h * 0.45, d * 0.78, h * 0.3, 0.02)), P('glass', box(w * 0.98, h * 0.08, d * 0.98, h * 0.75, 0.01)), P('label', label(w * 0.3, d * 0.3, 0, 0).rotateX(-Math.PI / 2).translate(w * 0.25, h * 0.84, d * 0.1))];
+    }
+    case 'carton': {
+      const g = new THREE.BufferGeometry();
+      const bh = h * 0.8;
+      const b0 = box(w, bh, d, 0, 0.003);
+      // telhadinho da caixa de leite
+      const roof = new THREE.CylinderGeometry(w * 0.5, w * 0.5, d, 3, 1);
+      roof.rotateZ(Math.PI / 2).rotateY(Math.PI / 2).scale(1, 0.55, 1).translate(0, bh + h * 0.07, 0);
+      void g;
+      return [P('body', b0), P('body', roof), P('cap', cyl(w * 0.12, h * 0.05, bh + h * 0.08, 10)), P('label', label(w * 0.8, bh * 0.5, bh * 0.45, d / 2 + 0.0012))];
+    }
+    case 'bottle': {
+      const body = lathe([[0, 0], [w * 0.46, 0], [w * 0.5, h * 0.05], [w * 0.5, h * 0.55], [w * 0.36, h * 0.7], [w * 0.17, h * 0.85], [w * 0.16, h * 0.9], [0, h * 0.9]], 16);
+      return [P('body', body), P('cap', cyl(w * 0.18, h * 0.1, h * 0.9, 10)), P('label', label(w * 0.9, h * 0.25, h * 0.3, w * 0.5 + 0.0015, 0.02))];
+    }
+    case 'sack': {
+      const g = rbox(w, h, d, Math.min(d * 0.45, 0.03), 3);
+      g.translate(0, h / 2, 0);
+      const p = g.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const y = p.getY(i) / h;
+        p.setZ(i, p.getZ(i) * (0.8 + Math.sin(y * Math.PI) * 0.3));
+      }
+      g.computeVertexNormals();
+      return [P('body', g), P('label', label(w * 0.7, h * 0.4, h * 0.5, d * 0.62 + 0.002)), P('cap', box(w * 0.9, h * 0.06, d * 0.5, h * 0.92, 0.004))];
+    }
+    case 'can':
+      return [P('label', cyl(w * 0.5, h * 0.84, h * 0.08, 16)), P('metal', cyl(w * 0.47, h * 0.08, 0, 16)), P('metal', cyl(w * 0.47, h * 0.08, h * 0.92, 16)), P('body', cyl(w * 0.505, h * 0.3, h * 0.35, 16))];
+    case 'loaf': {
+      const g = rbox(w, h, d, Math.min(h * 0.45, 0.045), 4);
+      g.translate(0, h / 2, 0);
+      return [P('body', g), P('glass', box(w * 1.04, h * 1.04, d * 1.04, -0.002, 0.03)), P('cap', box(0.02, 0.02, d * 0.5, h * 0.5, 0.004).translate(w * 0.5, 0, 0))];
+    }
   }
 }
 
