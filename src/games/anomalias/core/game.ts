@@ -9,7 +9,6 @@ import '../modes/modes.css';
 import * as THREE from 'three';
 import { t } from '../../../i18n';
 import { addCoins } from '../../../core/economy';
-import { tap } from '../../../core/haptics';
 import { pushBack } from '../../../core/back';
 import { detectInitialTier, deviceCeiling, loadMode, type Tier } from '../../../core/quality';
 import { reportRun, type MiniGameHandle } from '../../../hub/registry';
@@ -28,6 +27,7 @@ import { Shift } from './shift';
 import { esc, hashStr } from './util';
 import { setVoiceOn, stopVoice } from './voice';
 import { introGate } from '../../../3d/cine/gate';
+import { openStartMenu, type SmCard, type SmPage, type StartMenu } from '../../../ui/startmenu';
 
 export async function launch(root: HTMLElement, exit: () => void): Promise<MiniGameHandle> {
   const g = new AnomaliasGame(root, exit);
@@ -53,7 +53,6 @@ export function mapName(id: string): string {
 function diffName(d: Diff): string {
   return d === 'facil' ? t('ano.diff.facil', 'Fácil') : d === 'normal' ? t('ano.diff.normal', 'Normal') : t('ano.diff.dificil', 'Difícil');
 }
-const DIFF_EMOJI: Record<Diff, string> = { facil: '🙂', normal: '😐', dificil: '😈' };
 
 /** cena 3D do menu: o Bocudo balançando num corredor escuro (mantém a tela deitada) */
 class MenuScene {
@@ -135,7 +134,7 @@ class MenuScene {
 export class AnomaliasGame implements MiniGameHandle {
   readonly wrap: HTMLDivElement;
   shift: Shift | null = null;
-  private menu: HTMLDivElement | null = null;
+  private menu: HTMLElement | null = null;
   private menuScene: MenuScene | null = null;
   private sv = anoSave();
   /** modo extra rodando (Recepção / Corredor) */
@@ -167,203 +166,140 @@ export class AnomaliasGame implements MiniGameHandle {
   }
 
   /* ------------------------------ menu ------------------------------ */
+  private sm: StartMenu | null = null;
   showMenu(): void {
     this.endShift();
     this.menu?.remove();
-    if (!this.menuScene) this.menuScene = new MenuScene(this.wrap);
-    const m = document.createElement('div');
-    m.className = 'ano-menu';
-    m.style.background = 'transparent';
-    this.wrap.appendChild(m);
-    this.menu = m;
-    this.renderAny();
-  }
-
-  private renderAny(): void {
-    if (this.menuMode === 'turno') this.renderMenu();
-    else if (this.menuMode === 'recepcao') this.renderRecMenu();
-    else if (this.menuMode === 'corredor') this.renderCorMenu();
-    else this.renderModes();
-    this.setBack(this.menuMode ? () => this.goModes() : null);
-  }
-  private goModes(): void {
-    this.menuMode = '';
-    this.renderAny();
-  }
-
-  /** escolha de modo: 3 cartões grandes */
-  private renderModes(): void {
-    const m = this.menu;
-    if (!m) return;
+    const host = document.createElement('div');
+    this.menuScene?.dispose();
+    this.menuScene = new MenuScene(host);
     const totT = MAP_META.length * NIGHTS * 3;
-    const card = (id: string, art: string, name: string, sub: string, stars: string, col: string) =>
-      `<button class="ano-mode${lastMode() === id ? ' last' : ''}" data-mode="${id}" style="--c:${col}"><span class="art">${art}</span><b>${esc(name)}</b><small>${esc(sub)}</small><span class="st"><i>${IC.star()}</i>${stars}</span></button>`;
-    m.innerHTML = `
-<div class="top"><div class="ano-title"><i>${IC.bocudo()}</i><div>${esc(t('ano.name', 'Anomalias & Cia'))}<small>${esc(t('ano.modes.pick', 'Escolha um jeito de jogar'))}</small></div></div>
-<button class="ano-btn sm" data-voice aria-label="voz">${IC.speaker(this.sv.voice)}</button>
-<button class="ano-btn sm" data-exit aria-label="${esc(t('ano.exit', 'Sair'))}" style="background:#ff4f6a">${IC.close()}</button></div>
-<div class="ano-modes">
-${card('turno', `<i>${IC.camera()}</i><em>${IC.moon()}</em>`, t('ano.mode.turno', 'Turno da noite'), t('ano.mode.turnoSub', 'Ache o que mudou e tire foto'), `${allMapStars()}/${totT}`, '#7b5cff')}
-${card('recepcao', `<i>${MI.card()}</i><em>${MI.door(false)}</em>`, t('ano.mode.recepcao', 'Recepção'), t('ano.mode.recepcaoSub', 'Abra só para quem é de verdade'), `${recStars()}/${NIGHTS * 3}`, '#ff8a4a')}
-${card('corredor', `<i>${MI.exit()}</i><em>${MI.uturn()}</em>`, t('ano.mode.corredor', 'Corredor'), t('ano.mode.corredorSub', 'Algo diferente? Volte!'), `${corStars()}/12`, '#2fbf8f')}
-</div>`;
-    this.wireTop(m);
-    m.querySelectorAll<HTMLElement>('[data-mode]').forEach((b) =>
-      b.addEventListener('click', () => {
-        tap('light');
-        this.menuMode = b.dataset.mode as 'turno';
-        this.renderAny();
-      }),
-    );
+    const sm = openStartMenu(this.wrap, {
+      game: 'anomalias',
+      stageEl: host,
+      onBack: () => this.exitCb(),
+      settings: (p) => {
+        p.toggle({ icon: IC.speaker(this.sv.voice), label: t('ano.voice', 'Voz'), value: this.sv.voice, onChange: (v) => {
+          this.sv.voice = v;
+          setVoiceOn(v);
+          persist();
+        } });
+      },
+      build: (p) => {
+        const card = (id: 'turno' | 'recepcao' | 'corredor', art: string, name: string, say: string, stars: string, col: string): SmCard => ({
+          id,
+          icon: art,
+          label: name,
+          say: `${name}: ${say}`,
+          sub: '★ ' + stars,
+          color: col,
+          hot: lastMode() === id,
+          onTap: () => this.openMode(id),
+        });
+        p.cards([
+          card('turno', IC.camera(), t('ano.mode.turnoS', 'Turno'), t('ano.mode.turnoSub', 'Ache o que mudou e tire foto'), `${allMapStars()}/${totT}`, '#a08cff'),
+          card('recepcao', MI.card(), t('ano.mode.recepcao', 'Recepção'), t('ano.mode.recepcaoSub', 'Abra só para quem é de verdade'), `${recStars()}/${NIGHTS * 3}`, '#ffaa7a'),
+          card('corredor', MI.exit(), t('ano.mode.corredor', 'Corredor'), t('ano.mode.corredorSub', 'Algo diferente? Volte!'), `${corStars()}/12`, '#6ee0b8'),
+        ]);
+        const lm = lastMode() as 'turno' | 'recepcao' | 'corredor' | '';
+        const id = lm === 'recepcao' || lm === 'corredor' ? lm : 'turno';
+        p.play({ sub: id === 'turno' ? t('ano.mode.turno', 'Turno da noite') : id === 'recepcao' ? t('ano.mode.recepcao', 'Recepção') : t('ano.mode.corredor', 'Corredor'), onTap: () => this.openMode(id) });
+      },
+    });
+    this.sm = sm;
+    this.menu = sm.el;
+    this.setBack(null);
+    if (this.menuMode) this.openMode(this.menuMode);
   }
 
-  private wireTop(m: HTMLElement): void {
-    m.querySelector('[data-voice]')?.addEventListener('click', () => {
-      tap('light');
-      this.sv.voice = !this.sv.voice;
-      setVoiceOn(this.sv.voice);
-      persist();
-      this.renderAny();
-    });
-    m.querySelector('[data-exit]')?.addEventListener('click', () => this.exitCb());
-    m.querySelector('[data-back]')?.addEventListener('click', () => {
-      tap('light');
-      this.goModes();
-    });
-  }
-  private subTop(title: string, sub: string, icon: string): string {
-    return `<div class="top"><button class="ano-btn sm ano-back" data-back aria-label="${esc(t('ano.back', 'Voltar'))}">${IC.left()}</button><div class="ano-title"><i>${icon}</i><div>${esc(title)}<small>${esc(sub)}</small></div></div>
-<button class="ano-btn sm" data-voice aria-label="voz">${IC.speaker(this.sv.voice)}</button></div>`;
+  private openMode(id: 'turno' | 'recepcao' | 'corredor'): void {
+    const sm = this.sm;
+    if (!sm) return;
+    this.menuMode = id;
+    if (id === 'turno') sm.push((p) => this.turnoPage(p), t('ano.mode.turno', 'Turno da noite'));
+    else if (id === 'recepcao') sm.push((p) => this.recPage(p), t('ano.mode.recepcao', 'Recepção'));
+    else sm.push((p) => this.corPage(p), t('ano.mode.corredor', 'Corredor'));
   }
 
-  /** submenu da Recepção: noites 1–5 */
-  private renderRecMenu(): void {
-    const m = this.menu;
-    if (!m) return;
-    const rec = recRec();
-    const nights = Array.from({ length: NIGHTS }, (_, k) => {
+  private nightCards(n0: number, sel: number, ok: (n: number) => boolean, stars: (n: number) => number, pick: (n: number) => void): SmCard[] {
+    return Array.from({ length: n0 }, (_, k) => {
       const n = k + 1;
-      const ok = recNightUnlocked(n);
-      const s = rec.stars[n] ?? 0;
-      return `<button class="ano-night${n === this.selRecNight ? ' on' : ''}${ok ? '' : ' lock'}" data-n="${n}">${ok ? n : `<i class="lki">${IC.lock()}</i>`}<span class="ss">${ok ? [1, 2, 3].map((j) => `<i>${IC.star(j <= s)}</i>`).join('') : ''}</span></button>`;
-    }).join('');
-    const tools = ['card', 'list', 'light', 'zoom', 'ask', 'uv'];
-    const toolIc = (k: string) => (k === 'card' ? MI.card() : k === 'list' ? MI.list() : k === 'light' ? MI.light(true) : k === 'zoom' ? MI.zoom() : k === 'ask' ? MI.ask() : MI.uv(true));
-    const unlockAt: Record<string, number> = { card: 1, list: 1, light: 1, zoom: 1, ask: 2, uv: 3 };
-    m.innerHTML = `${this.subTop(t('ano.mode.recepcao', 'Recepção'), t('ano.mode.recepcaoSub', 'Abra só para quem é de verdade'), MI.card())}
-<div class="ano-rec-how"><span class="st"><i>${MI.card()}</i>=<i>${IC.eye()}</i>➜<i class="g">${MI.door(true)}</i></span><span class="st"><i>${MI.card()}</i>≠<i>${IC.eye()}</i>➜<i class="r">${MI.stop()}</i></span>
-<span class="tools">${tools.map((k) => `<i class="${unlockAt[k] <= this.selRecNight ? '' : 'off'}">${toolIc(k)}</i>`).join('')}</span></div>
-<div class="ano-row"><div class="ano-nights">${nights}</div></div>
-<div class="ano-row last"><button class="ano-play" data-play><i>${MI.door(true)}</i>${esc(t('rec.play', 'Abrir a portaria'))}</button></div>`;
-    this.wireTop(m);
-    m.querySelectorAll<HTMLElement>('[data-n]').forEach((b) =>
-      b.addEventListener('click', () => {
-        tap('light');
-        const n = Number(b.dataset.n);
-        if (!recNightUnlocked(n)) return this.flashMsg(b, t('ano.nightLocked', 'Termine a noite anterior primeiro!'));
-        this.selRecNight = n;
-        this.renderRecMenu();
-      }),
-    );
-    m.querySelector('[data-play]')!.addEventListener('click', () => {
-      tap('light');
-      void this.playRec(this.selRecNight);
+      const open = ok(n);
+      const s = stars(n);
+      return { id: 'n' + n, icon: `<span class="sm-emoji">${open ? n : ''}</span>`, color: '#3a2a7a', label: t('ano.nightN', 'Noite {n}', { n }), sub: open ? '★'.repeat(s) + '☆'.repeat(3 - s) : '', lock: !open, sel: n === sel, onTap: () => pick(n) };
     });
   }
 
-  /** submenu do Corredor: 4 temas */
-  private renderCorMenu(): void {
-    const m = this.menu;
-    if (!m) return;
-    const cards = THEMES.map((id) => {
-      const r = corRec(id);
-      const meta = THEME_META[id];
-      return `<button class="ano-map${id === this.selTheme ? ' on' : ''}" data-th="${id}" style="--c:${meta.color}"><span class="em">${meta.icon}</span>${esc(themeName(id))}<span class="st">${r.wins ? `<i>${IC.star()}</i>${r.stars}/3` : `${MI.fwd().replace('#fff', '#1d0b3a')}${r.best}/10`}</span></button>`;
-    }).join('');
-    m.innerHTML = `${this.subTop(t('ano.mode.corredor', 'Corredor'), t('ano.mode.corredorSub', 'Algo diferente? Volte!'), MI.exit())}
-<div class="ano-maps">${cards}</div>
-<div class="ano-cor-how"><span><i class="g">${IC.check()}</i>➜<i class="ar">${MI.fwd()}</i></span><span><i>${IC.bocudo()}</i>➜<i class="ar r">${MI.uturn()}</i></span><span class="lv">0 ➜ 10 ➜ <i>${MI.exit()}</i></span></div>
-<div class="ano-row last"><button class="ano-play" data-play><i>${IC.play()}</i>${esc(t('cor.play', 'Entrar no corredor'))}</button></div>`;
-    this.wireTop(m);
-    m.querySelectorAll<HTMLElement>('[data-th]').forEach((b) =>
-      b.addEventListener('click', () => {
-        tap('light');
-        this.selTheme = b.dataset.th as ThemeId;
-        this.renderCorMenu();
-      }),
-    );
-    m.querySelector('[data-play]')!.addEventListener('click', () => {
-      tap('light');
-      void this.playCor(this.selTheme);
-    });
-  }
-
-  private renderMenu(): void {
-    const m = this.menu;
-    if (!m) return;
+  private turnoPage(p: SmPage): void {
     const sv = this.sv;
-    const maps = MAP_META.map((mm, i) => {
-      const avail = mapAvailable(mm.id);
-      const unl = mapUnlocked(i);
-      const stars = totalStars(mm.id);
-      const lock = !avail ? `<span class="soon">${esc(t('ano.soon', 'Em breve'))}</span>` : !unl ? `<span class="lk"><i>${IC.lock()}</i>${esc(t('ano.unlockAt', '{n} noites', { n: i * 2 }))}</span>` : '';
-      return `<button class="ano-map${mm.id === this.selMap ? ' on' : ''}${!avail || !unl ? ' off' : ''}" data-map="${mm.id}" style="--c:${avail && unl ? mm.color : '#4a4466'}"><span class="em">${mm.icon}</span>${esc(mapName(mm.id))}<span class="st"><i>${IC.star()}</i>${stars}/${NIGHTS * 3}</span>${lock}</button>`;
-    }).join('');
+    p.cards(
+      MAP_META.map((mm, i) => {
+        const avail = mapAvailable(mm.id);
+        const unl = mapUnlocked(i);
+        return {
+          id: mm.id,
+          icon: `<span class="sm-emoji">${mm.icon}</span>`,
+          color: mm.color,
+          label: mapName(mm.id),
+          sub: avail ? `★ ${totalStars(mm.id)}/${NIGHTS * 3}` : t('ano.soon', 'Em breve'),
+          lock: !avail ? true : !unl ? t('ano.unlockAt', '{n} noites', { n: i * 2 }) : false,
+          say: !avail ? t('ano.soonMsg', 'Esse lugar ainda está sendo construído!') : !unl ? t('ano.lockedMsg', 'Complete mais noites para abrir!') : mapName(mm.id),
+          sel: mm.id === this.selMap,
+          onTap: () => {
+            this.selMap = mm.id;
+            this.selNight = Math.min(NIGHTS, mapRec(mm.id).done + 1);
+            p.refresh();
+          },
+        };
+      }),
+      { scroll: true },
+    );
     const rec = mapRec(this.selMap);
-    const nights = Array.from({ length: NIGHTS }, (_, k) => {
-      const n = k + 1;
-      const ok = nightUnlocked(this.selMap, n);
-      const s = rec.stars[n] ?? 0;
-      return `<button class="ano-night${n === this.selNight ? ' on' : ''}${ok ? '' : ' lock'}" data-n="${n}">${ok ? n : `<i class="lki">${IC.lock()}</i>`}<span class="ss">${ok ? [1, 2, 3].map((j) => `<i>${IC.star(j <= s)}</i>`).join('') : ''}</span></button>`;
-    }).join('');
-    const diffs = DIFFS.map((d) => `<button class="ano-diff${d === sv.diff ? ' on' : ''}" data-d="${d}">${DIFF_EMOJI[d]} ${esc(diffName(d))}</button>`).join('');
-    m.innerHTML = `
-${this.subTop(t('ano.mode.turno', 'Turno da noite'), t('ano.mode.turnoSub', 'Ache o que mudou e tire foto'), IC.camera())}
-<div class="ano-maps">${maps}</div>
-<div class="ano-row"><div class="ano-nights">${nights}</div></div>
-<div class="ano-row last"><div class="ano-diffs">${diffs}</div>
-<button class="ano-play" data-play><i>${IC.moon()}</i>${esc(t('ano.play', 'Começar turno'))}</button></div>`;
-    const on = (sel: string, f: (b: HTMLElement) => void) =>
-      m.querySelectorAll<HTMLElement>(sel).forEach((b) =>
-        b.addEventListener('click', () => {
-          tap('light');
-          f(b);
-        }),
-      );
-    on('[data-map]', (b) => {
-      const id = b.dataset.map!;
-      const i = MAP_META.findIndex((x) => x.id === id);
-      if (!mapAvailable(id)) return this.flashMsg(b, t('ano.soonMsg', 'Esse lugar ainda está sendo construído!'));
-      if (!mapUnlocked(i)) return this.flashMsg(b, t('ano.lockedMsg', 'Complete mais noites para abrir!'));
-      this.selMap = id;
-      this.selNight = Math.min(NIGHTS, mapRec(id).done + 1);
-      this.renderMenu();
-    });
-    on('[data-n]', (b) => {
-      const n = Number(b.dataset.n);
-      if (!nightUnlocked(this.selMap, n)) return this.flashMsg(b, t('ano.nightLocked', 'Termine a noite anterior primeiro!'));
-      this.selNight = n;
-      this.renderMenu();
-    });
-    on('[data-d]', (b) => {
-      sv.diff = b.dataset.d as Diff;
-      persist();
-      this.renderMenu();
-    });
-    this.wireTop(m);
-    on('[data-play]', () => void this.play(this.selMap, this.selNight));
+    p.cards(
+      this.nightCards(NIGHTS, this.selNight, (n) => nightUnlocked(this.selMap, n), (n) => rec.stars[n] ?? 0, (n) => {
+        this.selNight = n;
+        p.refresh();
+      }),
+      { size: 'small', scroll: true },
+    );
+    p.faces(
+      DIFFS.map((d, k) => ({ id: d, level: k, label: diffName(d) })),
+      sv.diff,
+      (d) => {
+        sv.diff = d as Diff;
+        persist();
+      },
+    );
+    p.play({ sub: `${mapName(this.selMap)} · ${t('ano.nightN', 'Noite {n}', { n: this.selNight })}`, say: t('ano.play', 'Começar turno'), onTap: () => void this.play(this.selMap, this.selNight) });
   }
 
-  private flashMsg(anchor: HTMLElement, text: string): void {
-    this.menu?.querySelectorAll('.ano-toast').forEach((e) => e.remove());
-    const s = document.createElement('div');
-    s.className = 'ano-toast';
-    s.innerHTML = `<span class="ic">🔒</span><span>${esc(text)}</span>`;
-    s.style.top = 'auto';
-    s.style.bottom = 'calc(var(--ano-b) + 80px)';
-    this.menu?.appendChild(s);
-    anchor.classList.add('bad');
-    setTimeout(() => s.remove(), 3300);
+  private recPage(p: SmPage): void {
+    const rec = recRec();
+    p.cards(
+      this.nightCards(NIGHTS, this.selRecNight, (n) => recNightUnlocked(n), (n) => rec.stars[n] ?? 0, (n) => {
+        this.selRecNight = n;
+        p.refresh();
+      }),
+      { size: 'small', scroll: true },
+    );
+    p.hint(t('rec.howS', 'Crachá igual ao rosto? Abra a porta!'), MI.card());
+    p.play({ icon: `<span style="display:flex;width:44px;height:44px">${MI.door(true)}</span>`, sub: t('ano.nightN', 'Noite {n}', { n: this.selRecNight }), say: t('rec.play', 'Abrir a portaria'), onTap: () => void this.playRec(this.selRecNight) });
+  }
+
+  private corPage(p: SmPage): void {
+    p.cards(
+      THEMES.map((id) => {
+        const r = corRec(id);
+        const meta = THEME_META[id];
+        return { id, icon: `<span class="sm-emoji">${meta.icon}</span>`, color: meta.color, label: themeName(id), sub: r.wins ? `★ ${r.stars}/3` : `${r.best}/10`, sel: id === this.selTheme, onTap: () => {
+          this.selTheme = id;
+          p.refresh();
+        } };
+      }),
+      { cols: 4 },
+    );
+    p.hint(t('cor.howS', 'Algo diferente? Volte!'), `<span style="display:flex;width:22px;height:22px">${MI.uturn().replace('#fff', '#ffd34a')}</span>`);
+    p.play({ sub: themeName(this.selTheme), say: t('cor.play', 'Entrar no corredor'), onTap: () => void this.playCor(this.selTheme) });
   }
 
   /* ------------------------------ turno ------------------------------ */

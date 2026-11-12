@@ -2,6 +2,7 @@
  *  BLOOP CINEMA — app: lista de filmes (início), editor (prévia,
  *  linha do tempo, faixa de planos, painéis), reprodução e exportação.
  * ============================================================ */
+import { openStartMenu, type SmPage } from '../ui/startmenu';
 import './cinema.css';
 import type { MiniGameHandle } from '../hub/registry';
 import { pushBack } from '../core/back';
@@ -100,18 +101,12 @@ class CinemaApp {
     if (!this.alive) return;
     const pro = isPro();
     const free = !pro;
-    this.el.innerHTML = `
-      <div class="cin-top">
-        <button class="cin-btn cin-ico" data-a="exit" aria-label="${t('cin.back', 'Voltar')}">←</button>
-        <div class="cin-brand">🎬 ${t('cin.name', 'Bloop Cinema')}</div>
-        ${pro ? '<span class="cin-chip on" style="display:inline-flex;align-items:center">★ PRO</span>' : `<button class="cin-btn sm" data-a="pro">★ Pro</button>`}
-      </div>
-      <div class="cin-home">
-        <div class="cin-hero">
-          <button class="cin-herobtn story" data-a="easy"><b>🎬</b><span>${t('cin.home.easy', 'Criar filme')}<small>${t('cin.home.easySub', 'Cena por cena, com a sua voz!')}</small></span></button>
-          <button class="cin-herobtn magic" data-a="magic"><b>🪄</b><span>${t('cin.home.magic', 'História Mágica')}<small>${t('cin.home.magicSub', 'Conte uma ideia e a mágica faz o filme')}</small></span></button>
-        </div>
-        <button class="cin-tvbtn" data-a="tv"><b>📺</b><span>${t('tv.name', 'TV Bloop')}<small>${t('tv.homeSub', 'Assista ao vivo os filmes da galera — e envie o seu!')}</small></span></button>
+    // tela de início padrão (src/ui/startmenu); "Mais" mostra tudo (histórias prontas, meus filmes, avançado)
+    const more = (pg: SmPage) => {
+      const box = pg.custom(document.createElement('div'));
+      box.innerHTML = `
+      <div class="cin-home" style="padding:0;overflow:visible">
+        <div class="cin-row c" style="justify-content:flex-end">${pro ? '<span class="cin-chip on" style="display:inline-flex;align-items:center">★ PRO</span>' : `<button class="cin-btn sm" data-a="pro">★ Pro</button>`}</div>
         <h4>📚 ${t('cin.home.tpls', 'Histórias prontas para remixar')}</h4>
         <div class="cin-tpls">${TEMPLATES.map((tp) => `<button class="cin-tpl" data-a="tpl" data-v="${tp.id}"><canvas width="344" height="194" data-tpl="${tp.id}"></canvas><div><b>${esc(tp.name)}${tp.pro && free ? ' <span class="cin-pro">PRO</span>' : ''}</b><small>${esc(tp.desc)}</small></div></button>`).join('')}</div>
         <h4>🎞️ ${t('cin.home.mine', 'Meus filmes')} ${free ? `<span class="cin-hint">(${list.length}/${maxProjects()})</span>` : ''}</h4>
@@ -129,20 +124,49 @@ class CinemaApp {
         </details>
         <p class="cin-foot">🔒 ${t('cin.home.local2', 'Seus filmes ficam salvos só neste aparelho — só vão para a TV Bloop se você enviar.')}</p>
       </div>`;
-    // miniaturas das histórias
-    this.el.querySelectorAll<HTMLCanvasElement>('canvas[data-tpl]').forEach((cv) => {
-      const tp = TEMPLATES.find((x) => x.id === cv.dataset.tpl)!;
-      try {
-        const p = tp.build();
-        p.mode = '2d';
-        const r = new Renderer(p);
-        r.draw(cv.getContext('2d')!, cv.width, cv.height, Math.min(r.duration() - 0.1, tp.id === 'show' ? 13.5 : tp.id === 'castelo' ? 11 : 2.8), { budget: 0.4, bgScale: 1 });
-      } catch (e) {
-        console.warn('[cinema] tpl thumb', e);
-      }
+      // miniaturas das histórias
+      box.querySelectorAll<HTMLCanvasElement>('canvas[data-tpl]').forEach((cv) => {
+        const tp = TEMPLATES.find((x) => x.id === cv.dataset.tpl)!;
+        try {
+          const p = tp.build();
+          p.mode = '2d';
+          const r = new Renderer(p);
+          r.draw(cv.getContext('2d')!, cv.width, cv.height, Math.min(r.duration() - 0.1, tp.id === 'show' ? 13.5 : tp.id === 'castelo' ? 11 : 2.8), { budget: 0.4, bgScale: 1 });
+        } catch (e) {
+          console.warn('[cinema] tpl thumb', e);
+        }
+      });
+    };
+    /** reaproveita o "clique delegado" (data-a) abaixo para as ações dos cartões */
+    const act = (a: string, v = '') => {
+      const b = document.createElement('i');
+      b.dataset.a = a;
+      b.dataset.v = v;
+      this.el.appendChild(b);
+      b.click();
+      b.remove();
+    };
+    this.el.innerHTML = '';
+    const sm = openStartMenu(this.el, {
+      game: 'cinema',
+      chips: pro ? [{ icon: '★', text: 'PRO' }] : [],
+      onBack: () => this.exit(),
+      build: (pg) => {
+        pg.cards([
+          { id: 'easy', icon: '<span class="sm-emoji">🎬</span>', label: t('cin.home.easy', 'Criar filme'), say: t('cin.home.easySub', 'Cena por cena, com a sua voz!'), color: '#ffd0e0', onTap: () => act('easy') },
+          { id: 'magic', icon: '<span class="sm-emoji">🪄</span>', label: t('cin.home.magicS', 'Mágica'), say: t('cin.home.magicSub', 'Conte uma ideia e a mágica faz o filme'), color: '#d8c8ff', onTap: () => act('magic') },
+          { id: 'tv', icon: '<span class="sm-emoji">📺</span>', label: t('tv.name', 'TV Bloop'), say: t('tv.homeSub', 'Assista ao vivo os filmes da galera — e envie o seu!'), color: '#c4f0ff', onTap: () => act('tv') },
+        ]);
+        if (list.length)
+          pg.slots(
+            list.slice(0, 3).map((m) => ({ empty: false, name: m.title, progress: fmtT(m.dur), last: m.updated, thumb: m.thumb || undefined, icon: '<span class="sm-emoji">🎬</span>', color: '#ffb3d0' })),
+            { onOpen: (i) => act('open', list[i].id) },
+          );
+        pg.play({ label: t('cin.home.createS', 'CRIAR'), sub: t('cin.home.easy', 'Criar filme'), onTap: () => act('easy') });
+        pg.friends({ game: 'cinema' });
+        pg.cards([{ id: 'more', icon: '<span class="sm-emoji">📚</span>', label: t('cin.home.moreS', 'Mais'), say: t('cin.home.tpls', 'Histórias prontas para remixar'), color: '#fff0a0', onTap: () => sm.push(more, t('cin.home.mine', 'Meus filmes')) }], { size: 'small', cols: 1 });
+      },
     });
-    const exitBtn = this.el.querySelector<HTMLElement>('[data-a="exit"]')!;
-    bindButton(exitBtn, { onPress: () => this.exit() });
     this.el.onclick = async (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-a]');
       if (!b) return;

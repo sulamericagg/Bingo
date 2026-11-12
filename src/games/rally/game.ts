@@ -50,6 +50,7 @@ import { gameFont } from '../../i18n/font';
 import { clearNotify, notify, resetNotifyTop, setNotifyTop } from '../../ui/notify';
 import { controls, edges, isSolo, soloToggle } from '../../ui/touch';
 import { partyRoomFor } from '../../party/contract';
+import { openStartMenu, type SmPage, type StartMenu } from '../../ui/startmenu';
 import type { LiveBar } from '../../party/duel';
 
 type State = 'garage' | 'play' | 'over' | 'results';
@@ -169,6 +170,7 @@ class RallyGame {
 
   // DOM
   private garageEl!: HTMLDivElement;
+  private garageSm: StartMenu | null = null;
   private hudEl!: HTMLDivElement;
   private resultsEl!: HTMLDivElement;
   private pauseEl!: HTMLDivElement;
@@ -400,54 +402,96 @@ class RallyGame {
   }
 
   private renderGarage(): void {
-    const v = VEHICLES[this.garageIdx];
+    const keep = this.garageEl.querySelector<HTMLElement>('.sm-panel')?.scrollTop ?? 0;
+    const deep = this.garageSm && this.garageSm.el.isConnected ? this.garageSm.depth() > 1 : false;
+    this.garageEl.innerHTML = '';
+    this.garageEl.style.padding = '0';
+    this.garageEl.onclick = null;
     const r = rallySave();
-    const have = owns(v.id);
-    const rows = UPGRADE_KEYS.map((k) => {
-      const lv = upLevel(v.id, k);
-      const c = upCost(v.id, k);
-      let pips = '';
-      for (let i = 0; i < MAX_UP; i++) pips += `<b class="${i < lv ? 'on' : ''}"></b>`;
-      const btn = !have
-        ? ''
-        : c === null
-          ? `<span class="rl-max">${t('rally.max', 'MÁX')}</span>`
-          : `<button class="rl-up ${save.coins >= c ? '' : 'poor'}" data-up="${k}">${icon('coin', { size: 18 })}${fmt(c)}</button>`;
-      return `<div class="rl-row"><span class="rl-lbl">${upIcon(k)}${upgradeName(k)}</span><span class="rl-pips">${pips}</span>${btn}</div>`;
-    }).join('');
-    let action: string;
-    if (have) {
-      action = `<button class="rl-btn rl-go rl-big" data-a="play">${icon('play', { size: 30 })}<span>${t('rally.go', 'Acelerar!')}</span></button>`;
-    } else if (v.price.ads) {
-      const n = r.ads[v.id] ?? 0;
-      action = `<button class="rl-btn rl-ad rl-big" data-a="ad">${icon('video', { size: 28 })}<span>${t('rally.watchUnlock', 'Ver vídeo {n}/{m}', { n, m: v.price.ads })}</span></button>`;
-    } else if (v.price.gems) {
-      action = `<button class="rl-btn rl-gem rl-big" data-a="buy">${icon('gem', { size: 26 })}<span>${fmt(v.price.gems)}</span></button>`;
-    } else {
-      action = `<button class="rl-btn rl-buy rl-big" data-a="buy">${icon('coin', { size: 26 })}<span>${fmt(v.price.coins ?? 0)}</span></button>`;
-    }
-    const dots = VEHICLES.map((_v, i) => `<b class="${i === this.garageIdx ? 'on' : ''}"></b>`).join('');
-    this.garageEl.innerHTML = `
-      <div class="rl-top">
-        <button class="rl-ibtn" data-a="exit" aria-label="${t('rally.exit', 'Sair')}">${icon('home', { size: 26 })}</button>
-        <div class="rl-title">${t('rally.title', 'Rally Lunar')}<small>${t('rally.daily', 'Pista do dia')}</small></div>
-        <div class="rl-wallet"><span>${icon('coin', { size: 20 })}${fmt(save.coins)}</span><span>${icon('gem', { size: 20 })}${fmt(save.gems)}</span></div>
-      </div>
-      <div class="rl-best">${icon('trophy', { size: 22 })}<span>${t('rally.best', 'Recorde: {n} m', { n: fmt(r.best) })}</span></div>
-      <div class="rl-panel">
-        <div class="rl-carsel">
-          <button class="rl-ibtn rl-arrow" data-a="prev" aria-label="${t('rally.prev', 'Anterior')}">${icon('arrow-up', { size: 24 })}</button>
-          <div class="rl-carname"><h3>${vehicleName(v.id)}${have ? '' : icon('lock', { size: 20 })}</h3><p>${vehicleDesc(v.id)}</p><div class="rl-dots">${dots}</div></div>
-          <button class="rl-ibtn rl-arrow rl-next" data-a="next" aria-label="${t('rally.next', 'Próximo')}">${icon('arrow-up', { size: 24 })}</button>
-        </div>
-        <div class="rl-ups ${have ? '' : 'locked'}">${rows}</div>
-        ${action}
-      </div>`;
-    const solo = document.createElement('div');
-    solo.className = 'rl-solo';
-    solo.appendChild(soloToggle('rally', (on) => this.lobby.setSolo(on), t('rally.solo.sub', 'sem carros-fantasma')));
-    this.garageEl.appendChild(solo);
-    this.garageEl.onclick = (e) => this.garageClick(e);
+    const carArt = (vid: string) => {
+      const def = VEHICLES.find((q) => q.id === vid)!;
+      return (x: CanvasRenderingContext2D, w: number, h: number, tm: number) => {
+        const S = Math.min(w / (def.wheelBase * 2 + 1.6), h / 2.1);
+        const p = this.pose;
+        const L = def.wheelBase * S;
+        p.w0x = -L;
+        p.w1x = L;
+        p.w0y = p.w1y = ((def.shape === 'monster' ? 0.6 : 0.45) + def.wheelR * 0.3) * S;
+        p.spin0 = p.spin1 = tm * 2;
+        p.gas = false;
+        p.t = tm;
+        p.mood = 'happy';
+        x.save();
+        x.translate(w / 2, h * 0.5 - S * 0.2);
+        try {
+          drawCar(x, def, S, p, this.skin);
+        } catch {
+          /* */
+        }
+        x.restore();
+      };
+    };
+    const act = (a: string) => {
+      const tg = document.createElement('i');
+      tg.dataset.a = a;
+      void this.garageClick({ target: tg } as unknown as MouseEvent);
+    };
+    const shop = (p: SmPage) => {
+      const v = VEHICLES[this.garageIdx];
+      p.cards(
+        UPGRADE_KEYS.map((k) => {
+          const lv = upLevel(v.id, k);
+          const c = upCost(v.id, k);
+          return { id: k, icon: upIcon(k).replace(/width="\d+" height="\d+"/, 'width="44" height="44"'), color: '#c4e8ff', label: upgradeName(k), sub: '●'.repeat(lv) + '○'.repeat(MAX_UP - lv), badge: c === null ? t('rally.max', 'MÁX') : '🪙' + fmt(c), disabled: c !== null && save.coins < c, onTap: () => {
+            if (buyUpgrade(v.id, k)) {
+              audio.cash();
+              success();
+              this.car.st = effectiveStats(v.id);
+            } else audio.hit();
+            p.refresh();
+            this.garageSm?.setChips(chips());
+          } };
+        }),
+        { cols: UPGRADE_KEYS.length > 4 ? 3 : 2 },
+      );
+    };
+    const chips = () => [
+      { icon: icon('coin', { size: 20 }), text: fmt(save.coins) },
+      { icon: icon('trophy', { size: 20 }), text: fmt(r.best) + ' m' },
+    ];
+    const sm = openStartMenu(this.garageEl, {
+      game: 'rally',
+      chips: chips(),
+      onBack: () => this.exit(),
+      settings: (p) => {
+        p.custom(soloToggle('rally', (on) => this.lobby.setSolo(on), t('rally.solo.sub', 'sem carros-fantasma')));
+      },
+      build: (p) => {
+        p.cards(
+          VEHICLES.map((v, i) => {
+            const have = owns(v.id);
+            const price = v.price.ads ? '▶ ' + (r.ads[v.id] ?? 0) + '/' + v.price.ads : v.price.gems ? '💎 ' + fmt(v.price.gems) : v.price.coins ? '🪙 ' + fmt(v.price.coins) : '';
+            return { id: v.id, art: carArt(v.id), live: i === this.garageIdx, color: v.body2, label: vehicleName(v.id), say: vehicleName(v.id) + '. ' + vehicleDesc(v.id), sub: have ? '' : price, sel: i === this.garageIdx, onTap: () => {
+              this.garageIdx = i;
+              if (owns(v.id)) selectVehicle(v.id);
+              this.makeCar(v.id);
+              p.refresh();
+            } };
+          }),
+          { scroll: true },
+        );
+        const v = VEHICLES[this.garageIdx];
+        if (owns(v.id)) p.play({ say: t('rally.go', 'Acelerar!'), sub: vehicleName(v.id), onTap: () => act('play') });
+        else if (v.price.ads) p.play({ label: `${r.ads[v.id] ?? 0}/${v.price.ads}`, sub: t('rally.watchUnlock', 'Ver vídeo {n}/{m}', { n: r.ads[v.id] ?? 0, m: v.price.ads }), icon: icon('video', { size: 44 }), onTap: () => act('ad') });
+        else p.play({ label: fmt(v.price.gems ?? v.price.coins ?? 0), sub: vehicleName(v.id), icon: icon(v.price.gems ? 'gem' : 'coin', { size: 44 }), tone: 'green', onTap: () => act('buy') });
+        p.friends({ game: 'rally' });
+        if (owns(v.id)) p.cards([{ id: 'shop', icon: icon('gear', { size: 40 }), label: t('rally.upgrades', 'Melhorias'), color: '#c4e8ff', onTap: () => sm.push(shop, vehicleName(v.id)) }], { size: 'small', cols: 1 });
+      },
+    });
+    this.garageSm = sm;
+    if (deep && owns(VEHICLES[this.garageIdx].id)) sm.push(shop, vehicleName(VEHICLES[this.garageIdx].id));
+    const pn = sm.el.querySelector<HTMLElement>('.sm-panel');
+    if (pn) pn.scrollTop = keep;
   }
 
   private async garageClick(e: MouseEvent): Promise<void> {

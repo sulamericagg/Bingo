@@ -13,12 +13,13 @@ import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import type { PeerState, PresenceSession } from '../../services/presence-api';
 import { SKINS } from '../../game/skins';
 import { BIOMES, BUILDS, SPECIES } from './data';
-import { flIcon, removeFlIconDefs } from './icons';
+import { removeFlIconDefs } from './icons';
 import { loadSave, writeSave } from './save';
 import { Sim, TS, type Agent, type Remote, type Tree } from './sim';
 import { Draw2D, drawTree } from './draw2d';
 import { Hud, type CtxKind, type HudHost } from './hud';
 import { forestSolo } from './touchcfg';
+import { openStartMenu, smCanvasArt } from '../../ui/startmenu';
 
 /** visão (2D ou 3D) */
 export interface View {
@@ -152,29 +153,28 @@ export class FlorestaGame implements MiniGameHandle, HudHost {
   private chooseMode(): Promise<'2d' | '3d'> {
     return new Promise((resolve) => {
       const gl = webglOk();
-      const m = document.createElement('div');
-      m.className = 'fl-modal';
-      m.innerHTML = `<div class="fl-card"><h2>${flIcon('tree', 32)}<span>${t('floresta.name', 'Lenhadores do Bosque')}</span><button class="fl-btn round red" data-x="1">${flIcon('close', 24)}</button></h2>
-        <div style="padding:0 16px;font-weight:700">${t('floresta.chooseMode', 'Como você quer jogar?')}</div>
-        <div class="fl-modes">
-          <button class="fl-mode" data-m="2d"><canvas width="320" height="150"></canvas><b>${flIcon('square', 22)} 2D</b><span>${t('floresta.mode2d', 'Visão de lado, leve e rapidinho')}</span></button>
-          <button class="fl-mode" data-m="3d" ${gl ? '' : 'disabled'}><canvas width="320" height="150"></canvas><b>${flIcon('cube', 22)} 3D · ${t('floresta.firstPerson', 'Primeira pessoa')}</b><span>${gl ? t('floresta.mode3dFps', 'Corte, carregue, jogue toras e dirija o caminhão!') : t('floresta.no3d', '3D indisponível neste aparelho')}</span></button>
-        </div></div>`;
-      this.wrap.appendChild(m);
-      const cvs = m.querySelectorAll('canvas');
-      previewCard(cvs[0], false, this.sim.s.mode === '2d');
-      previewCard(cvs[1], true, this.sim.s.mode === '3d');
-      m.addEventListener('click', (e) => {
-        const el = e.target as HTMLElement;
-        if (el.closest('[data-x]')) {
-          m.remove();
+      let mode: '2d' | '3d' = this.sim.s.mode === '2d' || !gl ? '2d' : '3d';
+      const arts = { '2d': smCanvasArt((c) => previewCard(c, false, false), 320, 150), '3d': smCanvasArt((c) => previewCard(c, true, false), 320, 150) };
+      const sm = openStartMenu(this.wrap, {
+        game: 'floresta',
+        onBack: () => {
+          sm.destroy();
           this.finish();
-          return;
-        }
-        const b = el.closest('[data-m]') as HTMLButtonElement | null;
-        if (!b || b.disabled) return;
-        m.remove();
-        resolve(b.dataset.m as '2d' | '3d');
+        },
+        build: (p) => {
+          p.cards([
+            { id: '2d', art: arts['2d'], label: '2D', say: t('floresta.mode2d', 'Visão de lado, leve e rapidinho'), sel: mode === '2d', onTap: () => ((mode = '2d'), p.refresh()) },
+            { id: '3d', art: arts['3d'], label: '3D', say: t('floresta.firstPerson', 'Primeira pessoa'), sel: mode === '3d', disabled: !gl, onTap: () => ((mode = '3d'), p.refresh()) },
+          ]);
+          p.play({
+            sub: mode === '3d' ? t('floresta.firstPerson', 'Primeira pessoa') : t('floresta.mode2dS', 'Visão de lado'),
+            onTap: () => {
+              sm.destroy();
+              resolve(mode);
+            },
+          });
+          p.friends({ game: 'floresta' });
+        },
       });
     });
   }

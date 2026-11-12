@@ -15,6 +15,7 @@ import { save as globalSave } from '../../core/storage';
 import { drawPlayer, type PlayerPose } from '../../game/character';
 import { SKINS, type Skin } from '../../game/skins';
 import { icon } from '../../ui/icons';
+import { openStartMenu } from '../../ui/startmenu';
 import { BOT_SKINS, CABINS, LIVERIES, roleName, type Cabin, type Livery } from './data';
 import { hatIcon, vIcon } from './icons';
 import { cabinOf, dayIndex, liveryOf, writeSave, type VooSave } from './save';
@@ -386,128 +387,16 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
   let closed = false;
   let leaving = 0; // >0: avião taxiando para fora
   let repaint = 0; // brilho da troca de pintura
-
-  const el = document.createElement('div');
-  el.className = 'voo-scr vh';
-  el.innerHTML = `<canvas class="vh-cv"></canvas>
-    <div class="vh-ui">
-      <header class="vh-top">
-        <button class="vh-icb" data-x aria-label="${esc(t('voo.hg.exit', 'Sair'))}">${vIcon('close', 30)}</button>
-        <div class="vh-ttl"><b>${esc(t('voo.name', 'Pouso Forçado'))}</b><small>${esc(t('voo.lobby.sub', 'O comandante desmaiou. Pousem esse avião!'))}</small></div>
-        <div class="vh-chips"><span>${vIcon('star', 18)}${sv.stars}</span><span>${vIcon('trophy', 18)}${sv.best}</span></div>
-      </header>
-      <div class="vh-stagebox"></div>
-      <div class="vh-panel">
-        <div class="vh-lbl">${esc(t('voo.lobby.role', 'Seu papel'))}</div>
-        <div class="vh-roles" role="radiogroup">${[0, 1, 2, 3]
-          .map(
-            (r) =>
-              `<button class="vh-role" data-r="${r}" role="radio"><canvas width="160" height="150"></canvas><b>${esc(roleName(r))}</b><small>${esc(ROLE_DESC(r))}</small></button>`,
-          )
-          .join('')}</div>
-        <button class="vh-fly" data-fly><span class="vh-flyi">${vIcon('plane', 40)}</span><span class="vh-flyt"><b>${esc(t('voo.hg.fly', 'VOAR'))}</b><small class="vh-sum"></small></span></button>
-        <button class="vh-friends" data-friends>${vIcon('crew', 28)}<span>${esc(t('voo.hg.friends', 'Voar com amigos'))}</span></button>
-        <div class="vh-playing"></div>
-        <div class="vh-row">
-          <button class="vh-card daily ${dailyDone ? 'done' : ''}" data-daily>${vIcon('calendar', 30)}<span><b>${esc(t('voo.mode.daily', 'Voo do dia'))}</b><small>${
-            dailyDone
-              ? esc(t('voo.lobby.dailyDone', 'Feito hoje: {s} estrela(s)', { s: sv.daily.stars }))
-              : `${icon('coin', { size: 14 })} ${esc(t('voo.hg.bonus', '+{n} bônus', { n: o.dailyBonus }))}`
-          }</small></span></button>
-          <button class="vh-card" data-train>${vIcon('school', 30)}<span><b>${esc(t('voo.mode.training', 'Treino de pouso'))}</b><small>${esc(t('voo.hg.trainSub', 'Só a final'))}</small></span></button>
-          <button class="vh-card set" data-set aria-label="${esc(t('voo.hg.settings', 'Ajustes'))}">${icon('gear', { size: 30 })}<span><b>${esc(t('voo.hg.settings', 'Ajustes'))}</b></span></button>
-        </div>
-      </div>
-    </div>`;
-  root.appendChild(el);
-  // amigos voando agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
-  void import('../../party/friends-play').then((f) => {
-    const pe = el.querySelector<HTMLElement>('.vh-playing');
-    if (pe) f.playingStrip(pe, 'voo');
-  });
-  requestAnimationFrame(() => el.classList.add('in'));
-
-  const cv = el.querySelector('.vh-cv') as HTMLCanvasElement;
-  const stageBox = el.querySelector('.vh-stagebox') as HTMLElement;
-  const roleBtns = Array.from(el.querySelectorAll<HTMLButtonElement>('.vh-role'));
-  const sumEl = el.querySelector('.vh-sum') as HTMLElement;
-
-  const summary = () => {
-    const parts = [mode === '3d' ? '3D' : '2D', sv.bots === 0 ? t('voo.lobby.solo', 'Sozinho') : t('voo.hg.helpersN', '{n} ajudantes', { n: sv.bots }), liveryOf(sv).name()];
-    sumEl.textContent = parts.join(' · ');
-  };
-  const selRole = (r: number, user = false) => {
-    sv.role = r;
-    roleBtns.forEach((b, i) => {
-      b.classList.toggle('sel', i === r);
-      b.setAttribute('aria-checked', String(i === r));
-    });
-    if (user) {
-      writeSave(sv);
-      const rs = roleBtns[r].parentElement!;
-      if (rs.scrollWidth > rs.clientWidth + 2) rs.scrollTo({ left: roleBtns[r].offsetLeft - (rs.clientWidth - roleBtns[r].offsetWidth) / 2, behavior: 'smooth' });
-    }
-  };
-  selRole(Math.max(0, Math.min(3, sv.role | 0)));
-  summary();
-
-  /* ---------- desenho: cartões de papel ---------- */
-  const drawCards = (time: number) => {
-    roleBtns.forEach((b, r) => {
-      const c = b.querySelector('canvas') as HTMLCanvasElement | null;
-      // o navegador pode negar o contexto 2D (memória/GPU sob pressão): sem erro a cada quadro (QA)
-      const x = c?.getContext('2d');
-      if (!c || !x) return;
-      x.clearRect(0, 0, c.width, c.height);
-      const sel = r === sv.role;
-      const hop = sel ? Math.abs(Math.sin(time * 3.2)) * 8 : 0;
-      // sombra
-      x.fillStyle = 'rgba(42,11,92,.18)';
-      x.beginPath();
-      x.ellipse(80, 132, 34 - hop * 0.8, 7, 0, 0, TAU);
-      x.fill();
-      drawBloopHat(x, globalSave.skin, r, 80, 92 - hop, 36, sel ? time : 0, sel ? 1 : 0, () => drawCards(time));
-    });
-  };
-
-  /* ---------- palco do hangar (canvas) ---------- */
-  const x = cv.getContext('2d')!;
-  const dprCap = o.weak ? 1 : 1.75;
-  let W = 0;
-  let H = 0;
-  let dpr = 1;
-  const resize = () => {
-    dpr = Math.min(dprCap, window.devicePixelRatio || 1);
-    W = el.clientWidth;
-    H = el.clientHeight;
-    cv.width = Math.max(1, Math.round(W * dpr));
-    cv.height = Math.max(1, Math.round(H * dpr));
-  };
-  resize();
   const motes = Array.from({ length: o.weak ? 14 : 34 }, (_, i) => ({ x: (i * 0.618) % 1, y: ((i * 0.377) % 1) * 0.8, s: 0.6 + ((i * 7) % 5) / 4, p: i }));
-  let raf = 0;
-  let last = performance.now();
-  let time = 0;
-  let cardT = 0;
+  let lastT = 0;
 
-  // menu: 30 quadros/s bastam (24 em aparelho fraco) — o palco inteiro é redesenhado em canvas 2D (QA: 9 fps com CPU 4×)
-  const minFrame = o.weak ? 1000 / 24 : 1000 / 30;
-  const frame = (now: number) => {
-    raf = requestAnimationFrame(frame);
-    if (document.hidden) return;
-    if (now - last < minFrame - 2) return;
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    time += dt;
+  /* ---------- palco do hangar (fundo do menu padrão) ---------- */
+  const stage = (x: CanvasRenderingContext2D, W: number, H: number, time: number, box: { x: number; y: number; w: number; h: number }) => {
+    const dt = Math.min(0.05, Math.max(0, time - lastT));
+    lastT = time;
     if (repaint > 0) repaint = Math.max(0, repaint - dt * 1.6);
     if (leaving > 0) leaving += dt;
-    const sb = stageBox.getBoundingClientRect();
-    const er = el.getBoundingClientRect();
-    const bx = sb.left - er.left;
-    const by = sb.top - er.top;
-    const bw = sb.width;
-    const bh = sb.height;
-    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const { x: bx, y: by, w: bw, h: bh } = box;
     drawHangar(x, W, H, time, bx, by, bw, bh);
     // avião
     const liv = liveryOf(sv);
@@ -516,15 +405,13 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     const cy = floorY - L * 0.148 + Math.sin(time * 1.6) * L * 0.004;
     let pcx = bx + bw * 0.5;
     if (leaving > 0) pcx += Math.pow(leaving * 1.7, 2) * W;
-    // reflexo no piso (some no aparelho fraco: desenhar o avião 2× é o mais caro do quadro)
-    if (!o.weak) {
-      x.save();
-      x.globalAlpha = 0.1;
-      x.translate(0, floorY * 2 + L * 0.02);
-      x.scale(1, -1);
-      drawPlane(x, pcx, cy, L, liv, time, { lights: true, cabin: cabinOf(sv) });
-      x.restore();
-    }
+    // reflexo no piso
+    x.save();
+    x.globalAlpha = 0.1;
+    x.translate(0, floorY * 2 + L * 0.02);
+    x.scale(1, -1);
+    drawPlane(x, pcx, cy, L, liv, time, { lights: true, cabin: cabinOf(sv) });
+    x.restore();
     // sombra
     const sh = x.createRadialGradient(pcx, floorY, 0, pcx, floorY, L * 0.45);
     sh.addColorStop(0, 'rgba(20,6,50,.45)');
@@ -563,9 +450,6 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
       x.ellipse(bxp, fy, R * 0.9, R * 0.2, 0, 0, TAU);
       x.fill();
       drawBloopHat(x, globalSave.skin, sv.role, bxp, fy - R * 0.95 - hop, R, time, 1);
-    }
-    // cones e calços
-    if (leaving === 0) {
       for (const k of [-0.42, 0.3]) cone(x, pcx + L * k, floorY, L * 0.035);
     }
     // poeira na luz
@@ -573,7 +457,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     x.globalCompositeOperation = 'lighter';
     for (const m of motes) {
       const mx = ((m.x + Math.sin(time * 0.2 + m.p) * 0.02 + time * 0.004 * m.s) % 1) * W;
-      const my = (((m.y - time * 0.01 * m.s) % 0.8) + 0.8) % 0.8 * H;
+      const my = ((((m.y - time * 0.01 * m.s) % 0.8) + 0.8) % 0.8) * H;
       const a = 0.18 + 0.18 * Math.sin(time * 1.3 + m.p);
       x.fillStyle = `rgba(255,236,200,${a})`;
       x.beginPath();
@@ -585,15 +469,66 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
       x.fillStyle = `rgba(20,8,48,${Math.min(1, leaving * 1.8)})`;
       x.fillRect(0, 0, W, H);
     }
-    cardT += dt;
-    if (cardT > 1 / 24) {
-      cardT = 0;
-      drawCards(time);
-    }
   };
-  raf = requestAnimationFrame(frame);
-  const ro = () => resize();
-  window.addEventListener('resize', ro);
+
+  const summary = () => [mode === '3d' ? '3D' : '2D', sv.bots === 0 ? t('voo.lobby.solo', 'Sozinho') : t('voo.hg.helpersN', '{n} ajudantes', { n: sv.bots }), liveryOf(sv).name()].join(' · ');
+  const roleArt =
+    (r: number) =>
+    (x: CanvasRenderingContext2D, w: number, h: number, time: number): void => {
+      const sel = r === sv.role;
+      const R = Math.min(w * 0.3, h * 0.34);
+      const hop = sel ? Math.abs(Math.sin(time * 3.2)) * R * 0.22 : 0;
+      x.fillStyle = 'rgba(42,11,92,.18)';
+      x.beginPath();
+      x.ellipse(w / 2, h * 0.88, R * 0.95 - hop * 0.8, R * 0.2, 0, 0, TAU);
+      x.fill();
+      drawBloopHat(x, globalSave.skin, r, w / 2, h * 0.88 - R * 1.05 - hop, R, sel ? time : 0, sel ? 1 : 0);
+    };
+
+  const sm = openStartMenu(root, {
+    game: 'voo',
+    className: 'vh',
+    title: t('voo.name', 'Pouso Forçado'),
+    sub: t('voo.lobby.sub', 'O comandante desmaiou. Pousem esse avião!'),
+    backdrop: stage,
+    chips: [
+      { icon: vIcon('star', 18), text: String(sv.stars) },
+      { icon: vIcon('trophy', 18), text: String(sv.best) },
+    ],
+    weak: o.weak,
+    onBack: () => finish({ kind: 'exit' }, false),
+    onSettings: () => openSheet(),
+    build: (p) => {
+      p.label(t('voo.lobby.role', 'Seu papel'));
+      p.cards(
+        [0, 1, 2, 3].map((r) => ({
+          id: 'r' + r,
+          art: roleArt(r),
+          live: true,
+          label: roleName(r),
+          say: `${roleName(r)}. ${ROLE_DESC(r)}`,
+          color: '#fff3d6',
+          sel: sv.role === r,
+          onTap: () => {
+            sv.role = r;
+            writeSave(sv);
+            p.refresh();
+          },
+        })),
+        { cols: 4 },
+      );
+      p.play({ label: t('voo.hg.fly', 'VOAR'), icon: vIcon('plane', 44), sub: summary(), onTap: () => finish({ kind: 'fly', flight: 'normal', mode }, true) });
+      p.friends({ label: t('voo.hg.friends', 'Voar com amigos'), game: 'voo', onTap: () => finish({ kind: 'friends', mode }, false) });
+      p.cards(
+        [
+          { id: 'daily', icon: vIcon('calendar', 34), label: t('voo.mode.daily', 'Voo do dia'), sub: dailyDone ? '★ ' + sv.daily.stars : '+' + o.dailyBonus, color: '#ffc8e4', onTap: () => finish({ kind: 'fly', flight: 'daily', mode }, true) },
+          { id: 'train', icon: vIcon('school', 34), label: t('voo.mode.training', 'Treino de pouso'), sub: t('voo.hg.trainSub', 'Só a final'), color: '#d8ecff', onTap: () => finish({ kind: 'fly', flight: 'training', mode }, true) },
+        ],
+        { size: 'small', cols: 2 },
+      );
+    },
+  });
+  const el = sm.el;
 
   /* ---------- folha de Ajustes ---------- */
   let sheet: HTMLElement | null = null;
@@ -603,7 +538,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     sheet = null;
     s.classList.remove('in');
     setTimeout(() => s.remove(), 260);
-    summary();
+    sm.refresh();
     o.onSheet?.(false);
   };
   const openSheet = () => {
@@ -700,7 +635,6 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
       group.querySelectorAll('.vh-tile').forEach((q) => q.classList.toggle('sel', q === b));
       tap('light');
       writeSave(sv);
-      summary();
     });
   };
 
@@ -723,44 +657,8 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     } else end();
   };
 
-  el.addEventListener('click', (e) => {
-    if (closed) return;
-    const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-    if (!b || b.closest('.vh-sheetwrap')) return;
-    audio.click();
-    if (b.dataset.x !== undefined) return finish({ kind: 'exit' }, false);
-    if (b.dataset.r) {
-      selRole(+b.dataset.r, true);
-      tap('light');
-      return;
-    }
-    if (b.dataset.set !== undefined) return openSheet();
-    if (b.dataset.fly !== undefined) return finish({ kind: 'fly', flight: 'normal', mode }, true);
-    if (b.dataset.daily !== undefined) return finish({ kind: 'fly', flight: 'daily', mode }, true);
-    if (b.dataset.train !== undefined) return finish({ kind: 'fly', flight: 'training', mode }, true);
-    if (b.dataset.friends !== undefined) return finish({ kind: 'friends', mode }, false);
-  });
-
-  // deslizar nos cartões troca de papel (além do toque)
-  const rolesEl = el.querySelector('.vh-roles') as HTMLElement;
-  let sx0 = 0;
-  let sy0 = 0;
-  rolesEl.addEventListener('pointerdown', (e) => {
-    sx0 = e.clientX;
-    sy0 = e.clientY;
-  });
-  rolesEl.addEventListener('pointerup', (e) => {
-    const dx = e.clientX - sx0;
-    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(e.clientY - sy0) * 1.5 && rolesEl.scrollWidth <= rolesEl.clientWidth + 2) {
-      selRole(Math.max(0, Math.min(3, sv.role + (dx < 0 ? 1 : -1))), true);
-      tap('light');
-    }
-  });
-
   function destroy(): void {
-    cancelAnimationFrame(raf);
-    window.removeEventListener('resize', ro);
-    el.remove();
+    sm.destroy();
   }
 
   return {
@@ -768,7 +666,7 @@ export function openHangar(root: HTMLElement, o: HangarOpts): HangarHandle {
     done,
     back() {
       if (sheet) closeSheet();
-      else finish({ kind: 'exit' }, false);
+      else sm.back();
     },
     destroy() {
       if (!closed) {

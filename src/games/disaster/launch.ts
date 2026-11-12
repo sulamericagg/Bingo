@@ -4,8 +4,6 @@
  * ============================================================ */
 import type { MiniGameHandle } from '../../hub/registry';
 import { t } from '../../i18n';
-import { audio } from '../../core/audio';
-import { icon } from '../../ui/icons';
 import { notify } from '../../ui/notify';
 import { detectInitialTier } from '../../core/quality';
 import { dzIcon } from './icons';
@@ -13,30 +11,10 @@ import { partyRoomFor } from '../../party/contract';
 import { loadMode, MODE_KEY as DIFF_KEY, type DzMode } from './tuning';
 import { openPedia, pediaCount } from './roulette';
 import { disasterIntro } from './intro';
+import { openStartMenu } from '../../ui/startmenu';
 
 const MODE_KEY = 'bo-disaster-mode';
 
-const CSS = `
-.dz-pick{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:max(14px,env(safe-area-inset-top)) 16px max(14px,var(--safe-bot,0px));background:radial-gradient(circle at 50% 30%,#3a5aa8,#0d1830);font-family:'Fredoka',system-ui,sans-serif;color:#fff;touch-action:manipulation;z-index:5}
-.dz-pick h2{margin:0;font-size:26px;color:#ffe14d;-webkit-text-stroke:1.5px #2a0b5c;text-align:center}
-.dz-pick .row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
-.dz-pick .m{font:inherit;color:#2a0b5c;cursor:pointer;width:min(42vw,190px);min-height:150px;border:3px solid #2a0b5c;border-radius:22px;box-shadow:0 5px 0 #2a0b5c;background:linear-gradient(180deg,#ffe680,#ffb03a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px}
-.dz-pick .m.d3{background:linear-gradient(180deg,#9be8ff,#4fa6ff)}
-.dz-pick .m.last{outline:4px solid #fff;outline-offset:2px}
-.dz-pick .m b{font-size:34px;line-height:1}
-.dz-pick .m small{font-size:13px;font-weight:600;opacity:.85;text-align:center}
-.dz-pick .m:active{transform:translateY(3px);box-shadow:0 2px 0 #2a0b5c}
-.dz-pick .dif{display:flex;gap:6px;background:rgba(30,15,70,.6);border-radius:16px;padding:4px}
-.dz-pick .dif button{font:inherit;font-weight:700;font-size:15px;color:#fff;background:transparent;border:0;border-radius:12px;padding:6px 12px;cursor:pointer}
-.dz-pick .dif button.on{background:linear-gradient(180deg,#ffe680,#ffb03a);color:#2a0b5c;box-shadow:0 3px 0 #2a0b5c}
-.dz-pick .ped{font:inherit;font-weight:700;color:#2a0b5c;background:linear-gradient(180deg,#d9f6ff,#8fd3ff);border:3px solid #2a0b5c;border-radius:16px;box-shadow:0 4px 0 #2a0b5c;padding:6px 14px;display:flex;align-items:center;gap:8px;cursor:pointer}
-.dz-pick .ped .ico{width:30px;height:30px}
-.dz-pick .ped small{font-weight:600;opacity:.75}
-.dz-pick .bot{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
-.dz-pick .out{font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.3);border-radius:14px;padding:8px 16px;display:flex;align-items:center;gap:6px;cursor:pointer}
-@media (orientation:landscape) and (max-height:500px){.dz-pick .m{min-height:120px}.dz-pick h2{font-size:22px}}
-`;
-let cssDone = false;
 
 function webglOk(): boolean {
   try {
@@ -120,69 +98,42 @@ export function launchDisaster(root: HTMLElement, exit: () => void): MiniGameHan
     void start(q[1] === '1' ? '3d' : '2d');
     return handle;
   }
-  if (!cssDone) {
-    cssDone = true;
-    const st = document.createElement('style');
-    st.textContent = CSS;
-    document.head.appendChild(st);
-  }
-  let last = '2d';
+  let last: '2d' | '3d' = '2d';
   try {
-    last = localStorage.getItem(MODE_KEY) || '2d';
+    last = localStorage.getItem(MODE_KEY) === '3d' ? '3d' : '2d';
   } catch {
     /* */
   }
   const gl = webglOk();
   const weak = detectInitialTier() <= 1;
-  pick = document.createElement('div');
-  pick.className = 'dz-pick';
-  pick.innerHTML = `
-    <h2>${t('dz.name', 'Sobreviva aos Desastres')}</h2>
-    <div class="row">
-      <button class="m d2${last === '2d' ? ' last' : ''}" data-m="2d"><b>2D</b>${dzIcon('house', 54)}<small>${t('dz.mode2dD', 'Leve, roda em qualquer celular')}</small></button>
-      <button class="m d3${last === '3d' ? ' last' : ''}" data-m="3d"${gl ? '' : ' disabled'}><b>3D</b>${dzIcon('tornado', 54)}<small>${!gl ? t('dz.no3dShort', 'Indisponível neste aparelho') : weak ? t('dz.mode3dWeak', 'Pode ficar lento neste aparelho') : t('dz.mode3dD', 'Ilha 3D com física de verdade')}</small></button>
-    </div>
-    <div class="dif" role="radiogroup" aria-label="${t('dz.diff', 'Dificuldade')}">
-      <button data-d="facil">${t('dz.diff.easy', 'Fácil')}</button><button data-d="normal">${t('dz.diff.normal', 'Normal')}</button><button data-d="dificil">${t('dz.diff.hard', 'Difícil')}</button>
-    </div>
-    <div class="bot"><button class="ped">${dzIcon('book', 30)}<span>${t('dz.pedia', 'Desastrepédia')} <small>${pediaCount().seen}/${pediaCount().total}</small></span></button>
-    <button class="out">${icon('home', { size: 22 })}${t('dz.exit', 'Sair')}</button></div>`;
-  root.appendChild(pick);
-  // dificuldade (lembrada; vale no 2D e no 3D — docs/DISASTER-DESIGN.md §3)
-  const paint = (m: DzMode) => pick!.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => {
-    b.classList.toggle('on', b.dataset.d === m);
-    b.setAttribute('aria-pressed', String(b.dataset.d === m));
-  });
-  paint(loadMode());
-  pick.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) =>
-    b.addEventListener('click', () => {
-      audio.click();
-      try {
-        localStorage.setItem(DIFF_KEY, b.dataset.d || 'normal');
-      } catch {
-        /* */
-      }
-      paint(loadMode());
-    }),
-  );
-  pick.querySelectorAll<HTMLButtonElement>('[data-m]').forEach((b) =>
-    b.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      void start(b.dataset.m === '3d' && gl ? '3d' : '2d');
-    }),
-  );
-  pick.querySelector('.ped')!.addEventListener('click', () => {
-    audio.click();
-    openPedia(root, () => {
+  if (!gl) last = '2d';
+  const diffs: DzMode[] = ['facil', 'normal', 'dificil'];
+  const sm = openStartMenu(root, {
+    game: 'disaster',
+    onBack: () => exit(),
+    build: (p) => {
+      p.cards([
+        { id: '2d', icon: dzIcon('house', 60), label: '2D', say: t('dz.mode2dD', 'Leve, roda em qualquer celular'), color: '#ffe08a', sel: last === '2d', onTap: () => ((last = '2d'), p.refresh()) },
+        { id: '3d', icon: dzIcon('tornado', 60), label: '3D', say: t('dz.mode3dD', 'Ilha 3D com física de verdade'), sub: !gl ? t('dz.no3dShort', 'Indisponível neste aparelho') : weak ? t('dz.mode3dWeakS', 'Pode pesar') : '', color: '#9be0ff', sel: last === '3d', disabled: !gl, onTap: () => ((last = '3d'), p.refresh()) },
+      ]);
+      // dificuldade (lembrada; vale no 2D e no 3D — docs/DISASTER-DESIGN.md §3)
+      p.faces(
+        [t('dz.diff.easy', 'Fácil'), t('dz.diff.normal', 'Normal'), t('dz.diff.hard', 'Difícil')].map((n, k) => ({ id: diffs[k], level: k, label: n })),
+        loadMode(),
+        (v) => {
+          try {
+            localStorage.setItem(DIFF_KEY, String(v));
+          } catch {
+            /* */
+          }
+        },
+      );
+      p.play({ sub: last.toUpperCase(), onTap: () => void start(last === '3d' && gl ? '3d' : '2d') });
+      p.friends({ game: 'disaster' });
       const c = pediaCount();
-      const sm = pick?.querySelector('.ped small');
-      if (sm) sm.textContent = c.seen + '/' + c.total;
-    });
+      p.cards([{ id: 'ped', icon: dzIcon('book', 40), label: t('dz.pedia', 'Desastrepédia'), sub: `${c.seen}/${c.total}`, color: '#bfe8ff', onTap: () => openPedia(root, () => sm.refresh()) }], { size: 'small', cols: 1 });
+    },
   });
-  pick.querySelector('.out')!.addEventListener('click', () => {
-    audio.click();
-    exit();
-  });
+  pick = sm.el;
   return handle;
 }
