@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "Робот",
   "cin.watermark": "Сделано в Bloop World",
   "cin.you": "Ты",
+  "cine.replay": "Заставка",
   "cine.skip": "Пропустить",
   "club.activeUntil": "Активен · продление через {t}",
   "club.android": "Подписка доступна в приложении для Android",

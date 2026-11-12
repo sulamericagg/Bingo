@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "로봇",
   "cin.watermark": "Bloop World에서 제작",
   "cin.you": "나",
+  "cine.replay": "오프닝",
   "cine.skip": "건너뛰기",
   "club.activeUntil": "활성 · {t} 후 갱신",
   "club.android": "구독은 Android 앱에서 이용할 수 있어요",

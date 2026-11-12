@@ -40,26 +40,71 @@ await c.play();                                       // resolve no fim, no Pula
 
 ## Aberturas e pontos de entrada
 
-Cada abertura vive em `src/games/<jogo>/intro/cinematic.ts` e exporta:
+Cada abertura vive em `src/games/<jogo>/intro/cinematic.ts` e exporta **uma função**:
 
 ```ts
-export function playIntro(root: HTMLElement): Promise<void>   // toca (resolve ao acabar/pular)
+export function playIntro(root: HTMLElement): Promise<void>   // toca por cima de root; resolve no fim, no Pular ou no voltar
 ```
 
-**Para o menu ("Abertura" / rever)** — importe sob demanda e toque por cima do menu:
+### Botão "Abertura" (rever) no menu — para quem mexe nos menus
+
+Importe sob demanda (fica fora do chunk do menu) e toque por cima do menu; quando a promessa
+resolve, o menu continua lá, intacto (a abertura cobre tudo com `z-index: 90`, pega o voltar do
+aparelho e libera o próprio renderizador):
 
 ```ts
-void import('./intro/cinematic').then((m) => m.playIntro(rootDoJogo));
+void import('./intro/cinematic').then((m) => m.playIntro(ROOT));
 ```
 
-**Jogo novo** (já ligado): `introGate('<id>', () => import('./intro/cinematic').then((m) => m.playIntro(root)))`
-antes de montar a partida — só toca na primeira vez.
+| jogo | `ROOT` dentro de `launch()` / da classe do jogo | rótulo do botão (já traduzido) |
+|---|---|---|
+| Jangada Bloop (`src/games/jangada/game.ts`) | `el` (o `.jg-root`) | `introLabel()` de `src/3d/cine/gate.ts` ("Abertura", chave `cine.replay`) |
+| Noites do Acampamento (`src/games/noites/game.ts`) | `this.wrap` | idem |
+| Cava & Fala (`src/games/cavafala/game.ts`) | `el` (o `.cf-root`) | idem |
+| Anomalias & Cia (`src/games/anomalias/core/game.ts`) | `this.wrap` (caminho: `'../intro/cinematic'`) | idem |
+| Monta & Leva (`src/games/montaleva/game.ts`) | `this.el` (o `.ml-root`) | idem |
 
-| jogo | id | arquivo | gancho (jogo novo) |
-|---|---|---|---|
-| Jangada Bloop | `jangada` | `src/games/jangada/intro/cinematic.ts` | `game.ts` → `start(fresh)` (nova jangada, sozinho) |
-| Noites do Acampamento | `noites` | `src/games/noites/intro/cinematic.ts` | `game.ts` → botão Sozinho / nova partida |
-| Cava & Fala | `cavafala` | `src/games/cavafala/intro/cinematic.ts` | `game.ts` → `startRestore` / `startArena` (sozinho) |
-| Anomalias & Cia | `anomalias` | `src/games/anomalias/intro/cinematic.ts` | `core/game.ts` → `play()` (turno) |
-| Monta & Leva | `montaleva` | `src/games/montaleva/intro/cinematic.ts` | `game.ts` → `openLevel()` (1ª fase) |
-| Garimpo Bruto | `garimpo` | `src/games/garimpo/start/cinematic.ts` | (próprio, anterior à base) |
+### Jogo novo (já ligado, sem mexer em código de menu)
+
+`introGate(id, load)` de `src/3d/cine/gate.ts` (sem three.js): toca só na primeira vez, marca
+`localStorage['bloop-intro-<id>'] = '1'` e nunca rejeita (se falhar, o jogo segue).
+
+| jogo | id | gancho |
+|---|---|---|
+| Jangada Bloop | `jangada` | `game.ts` → `start(fresh, net)`: só `fresh && !net` (nova jangada, sozinho) |
+| Noites do Acampamento | `noites` | `game.ts` → `startSolo()`: só sem partida salva (`!this.runSave`) |
+| Cava & Fala | `cavafala` | `game.ts` → `startRestore()` / `startArena()`: só sozinho (`!init && !online`) |
+| Anomalias & Cia | `anomalias` | `core/game.ts` → `play()` (modo Turno) |
+| Monta & Leva | `montaleva` | `game.ts` → `openLevel()` (fora do duelo) |
+| Garimpo Bruto | `garimpo` | (próprio, anterior à base: `src/games/garimpo/start/cinematic.ts`) |
+
+### Roteiros (resumo)
+
+- **Jangada (≈45 s)** — cargueiro de contêineres ao pôr do sol (mar/céu do jogo: `Ocean`/`Sky`/`skyAt`),
+  o Bloop na proa; tempestade (ondas maiores, chuva, raios); o navio aderna e afunda de desenho
+  animado (contêineres caem e boiam, a tripulação desce no bote acenando — todos a salvo), o Bloop
+  pula num caixote; "Horas depois..."; amanhecer turquesa, jangadinha de 4 pisos, gaivota pousa,
+  o gancho é lançado num barril; grua revela ilhas → título. Som: `JAudio` do jogo (dia/tempestade).
+- **Noites (≈43 s)** — ônibus escolar amarelo cantando (notinhas), chegada ao entardecer, a monitora
+  acende a fogueira ("Não deixe o fogo apagar!"), noite estrelada, olhinhos das Sombrinhas nas
+  árvores, o Bloop ergue a lanterna (feixe) e elas se escondem; grua → título. Tema `noitesIntro`.
+- **Cava & Fala (≈41 s)** — livro de histórias na mesa com a página viva (vila feliz → tempestade de
+  areia → dunas com um cata-vento); mergulho na página; morro de blocos, o Bloop com pá e megafone
+  cava (blocos pulam fora) e a casinha aparece; grita "TRAMPOLIM!" e a engenhoca do jogo se monta;
+  pulos; moradores saem comemorando; grua → título. Tema `cavafalaIntro`.
+- **Anomalias (≈41 s)** — noite de chuva, prédio com letreiro de neon piscando; crachá; o chefe entrega
+  chaves e polaroide; corredor com luzes piscando e quadro que entorta; FLASH e a polaroide com a foto
+  real da cena; a sombra do Bocudo passa na parede; lá fora o Bocudo espia do telhado → título.
+  Tema `anomaliasIntro` (+ sons do `AnoAudio`).
+- **Monta & Leva (≈38 s, 2D)** — papel azul de projeto (grade, carimbo, contornos e cotas), as peças
+  voam e encaixam, passageiro e caixa caem no carrinho, cortina para o mundo branco, a física do
+  próprio jogo (`Sim`) leva o carrinho por lombada, gangorra, rampas e ponte até a entrega;
+  estrelas, o robô acena → título (o fim segue a chegada).
+
+## Testes / capturas
+
+- Página de dev: `scripts/dev/intros.html?play=<jogo>&debug` (só a abertura) e
+  `?game=<jogo>&intro=1&debug` (o jogo de verdade, abertura no "jogo novo").
+- `NODE_PATH=$(npm root -g) node scripts/dev/intros-shots.mjs --port <vite> --only jangada,noites [--flow]`:
+  ~10 quadros por abertura (844×390, dpr 1) + folha de contato em `shots-intros1/`; `--flow` abre o
+  jogo, toca a abertura, aperta **Pular** e confere que a partida começou e que nada ficou para trás.

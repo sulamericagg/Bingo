@@ -2,6 +2,11 @@
  *  CINE — gancho leve de "jogo novo" (sem three.js: pode ser importado por jogos 2D).
  *  Marca "já viu" em localStorage ('bloop-intro-<id>'). ?intro=1 sempre toca; ?intro=0 nunca.
  * ============================================================ */
+import { t } from '../../i18n';
+
+/** rótulo do botão de rever a abertura nos menus ("Abertura") */
+export const introLabel = (): string => t('cine.replay', 'Abertura');
+
 const SEEN = (id: string) => 'bloop-intro-' + id;
 export function introSeen(id: string): boolean {
   try {

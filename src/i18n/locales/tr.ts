@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "Robot",
   "cin.watermark": "Bloop World'de yapıldı",
   "cin.you": "Sen",
+  "cine.replay": "Açılış",
   "cine.skip": "Geç",
   "club.activeUntil": "Aktif · {t} sonra yenilenir",
   "club.android": "Abonelik Android uygulamasında",

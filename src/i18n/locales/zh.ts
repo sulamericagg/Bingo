@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "机器人",
   "cin.watermark": "制作于 Bloop World",
   "cin.you": "你",
+  "cine.replay": "开场动画",
   "cine.skip": "跳过",
   "club.activeUntil": "生效中 · {t}后续订",
   "club.android": "订阅仅在安卓应用中提供",

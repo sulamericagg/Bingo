@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "ロボット",
   "cin.watermark": "Bloop Worldで作成",
   "cin.you": "あなた",
+  "cine.replay": "オープニング",
   "cine.skip": "スキップ",
   "club.activeUntil": "有効・あと{t}で更新",
   "club.android": "サブスクはAndroidアプリで利用できます",

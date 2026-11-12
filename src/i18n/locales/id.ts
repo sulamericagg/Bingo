@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "Robot",
   "cin.watermark": "Dibuat di Bloop World",
   "cin.you": "Kamu",
+  "cine.replay": "Pembukaan",
   "cine.skip": "Lewati",
   "club.activeUntil": "Aktif · diperpanjang dalam {t}",
   "club.android": "Langganan tersedia di aplikasi Android",

@@ -2145,6 +2145,7 @@ export default {
   "cin.voice.robot": "Robot",
   "cin.watermark": "Hecho en Bloop World",
   "cin.you": "Tú",
+  "cine.replay": "Intro",
   "cine.skip": "Saltar",
   "club.activeUntil": "Activo · se renueva en {t}",
   "club.android": "Suscripción disponible en la app de Android",
