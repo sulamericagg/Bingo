@@ -297,6 +297,27 @@ const CSS = `
 .pk-rv .rv-it img{width:36px;height:36px;border-radius:50%;flex:none}
 .pk-rv .rv-who{display:flex;gap:8px;align-items:baseline;font-size:13px;color:#202124}.pk-rv .rv-who small{color:#5f6368}
 .pk-rv .rv-tx{font-size:13px;color:#3c4043;font-weight:600}
+.pk-box{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:min(86vw,380px)}
+.pk-box h2{margin:0}
+.pk-box .ask{display:flex;align-items:center;gap:6px;font-weight:800;font-size:14px}
+.pk-box .flat{position:relative;width:210px;height:170px;perspective:500px}
+.pk-box .flat i{position:absolute;background:#d9a865;box-shadow:inset 0 0 0 3px #a8743a;border-radius:4px;transition:transform .35s cubic-bezier(.3,1.4,.5,1),filter .35s}
+.pk-box .flat .mid{left:65px;top:45px;width:80px;height:80px;background:#c99a62}
+.pk-box .flat .flap{cursor:pointer;animation:pkPulse 1.2s infinite}
+.pk-box .flat .flap.t{left:65px;top:0;width:80px;height:45px;transform-origin:50% 100%}
+.pk-box .flat .flap.b{left:65px;top:125px;width:80px;height:45px;transform-origin:50% 0}
+.pk-box .flat .flap.l{left:20px;top:45px;width:45px;height:80px;transform-origin:100% 50%}
+.pk-box .flat .flap.r{left:145px;top:45px;width:45px;height:80px;transform-origin:0 50%}
+.pk-box .flat .flap.up{animation:none;filter:brightness(.82)}
+.pk-box .flat .flap.t.up{transform:rotateX(-80deg)}.pk-box .flat .flap.b.up{transform:rotateX(80deg)}
+.pk-box .flat .flap.l.up{transform:rotateY(80deg)}.pk-box .flat .flap.r.up{transform:rotateY(-80deg)}
+.pk-box .flat.done{animation:pkBump .4s}
+.pk-box .lid{position:relative;width:min(70vw,300px);height:120px;border-radius:10px;background:linear-gradient(#d9a865,#c99a62);box-shadow:inset 0 0 0 3px #a8743a;touch-action:none}
+.pk-box .lid .seam{position:absolute;left:4%;right:4%;top:50%;height:3px;margin-top:-1px;background:#8a5a2a;opacity:.6}
+.pk-box .lid .strip{position:absolute;left:0;top:50%;height:26px;margin-top:-13px;width:0;background:linear-gradient(rgba(240,230,200,.9),rgba(220,205,170,.9));box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.pk-box .lid .roll{position:absolute;left:0;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:radial-gradient(#fff 0 30%,#e8dcb8 31% 70%,#c8b890 71%);box-shadow:0 2px 4px rgba(0,0,0,.3);pointer-events:none}
+.pk-box .lid .label{position:absolute;right:12%;top:12%;width:70px;height:42px;border-radius:6px;background:#fff;border:3px dashed #ff5fa2;cursor:pointer;animation:pkPulse 1s infinite}
+.pk-box .lid .label.on{border-style:solid;animation:pkBump .4s;background:#fff url() center/contain no-repeat}
 .pk-ck .chg{font-weight:800;font-size:15px;display:flex;gap:10px;align-items:center;justify-content:center}
 .pk-ck .chg b{font-size:18px}
 .pk-ck .chg .ok{color:#2fa35a}

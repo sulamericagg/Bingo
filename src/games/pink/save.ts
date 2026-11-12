@@ -82,6 +82,12 @@ export interface FactorySave {
   dirt: { x: number; z: number; a: number; k: 'dirt' | 'spill' | 'glass' | 'mud' }[];
   tut: number;
   created: number;
+  /** galpão: etapa aberta, comprada e marretadas na parede */
+  fsz?: number;
+  fbuy?: number;
+  fhits?: number;
+  /** estoque das estantes (produto → unidades) */
+  fst?: Record<string, number>;
 }
 interface Slot<T> {
   data: T | null;
@@ -159,7 +165,15 @@ export function putShop(i: number, s: ShopSave, m: 'shop' | 'grocery' = 'shop'):
   persist();
 }
 export function getFactory(i: number): FactorySave | null {
-  return load().factory[i]?.data ?? null;
+  const d = load().factory[i]?.data ?? null;
+  if (d) {
+    // saves antigos: galpão inteiro
+    d.fsz ??= 2;
+    d.fbuy ??= d.fsz;
+    d.fhits ??= 0;
+    d.fst ??= {};
+  }
+  return d;
 }
 export function putFactory(i: number, s: FactorySave): void {
   const r = load();
@@ -216,5 +230,5 @@ export function newGrocery(): ShopSave {
   return { ...newShop(), kind: 'grocery', pw: { nb: false, gen: false } };
 }
 export function newFactory(): FactorySave {
-  return { v: 1, money: 600, xp: 0, lvl: 1, day: 1, truck: 0, ups: [], shipped: 0, dirt: [], tut: 0, created: Date.now() };
+  return { v: 1, money: 600, xp: 0, lvl: 1, day: 1, truck: 0, ups: [], shipped: 0, dirt: [], tut: 0, created: Date.now(), fsz: 0, fbuy: 0, fhits: 0, fst: {} };
 }

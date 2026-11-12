@@ -13,7 +13,7 @@ import { music, sfx } from '../../audio';
 import { HeightGround, type FpBox } from '../../3d/fpkit';
 import { npcSpec } from '../../3d/paper';
 import type { Tier } from '../../core/quality';
-import { brandCanvas } from './brand';
+import { brandCanvas, BRAND_SITE } from './brand';
 import { money, PRODUCTS, PROD, type Product } from './catalog';
 import { capOf, FACTORY_UPS, SHAPE_DIM, slotCap, SLOT_D, TRUCKS, xpNeed, type FactoryUp } from './data';
 import { Engine } from './engine';
@@ -27,11 +27,21 @@ import type { FactorySave } from './save';
 import { Builder, rbox } from './shapes';
 import { thumbUrl } from './thumb';
 import { confetti } from './shop';
+import { drawCracks } from './store3d';
+import { boxGame } from './boxgame';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /* planta (m): galpão x∈[-10,10] z∈[-14,0]; doca na parede x=10, vão z∈[-6,-2] */
-const X0 = -10;
+/** galpão cresce para a esquerda: etapas abertas */
+const FX0 = [-3, -6.5, -10];
+const FSTAGE = [
+  { price: 0, lvl: 1, hits: 0 },
+  { price: 3500, lvl: 4, hits: 10 },
+  { price: 9000, lvl: 9, hits: 14 },
+];
+const RACK_MAX = 10;
+let X0 = -10;
 const X1 = 10;
 const Z0 = -14;
 const Z1 = 0;
@@ -83,6 +93,8 @@ export interface FactoryOpts {
   onPause(): void;
   onSave(s: FactorySave): void;
   onCoins(n: number): void;
+  /** galpão mudou de tamanho: recarrega a cena */
+  onReload?(): void;
 }
 
 export class Factory {
@@ -114,9 +126,117 @@ export class Factory {
   private comboT = 0;
   private destroyed = false;
   private lastLock = false;
+  private crackCv: HTMLCanvasElement | null = null;
+  private crackTex: THREE.CanvasTexture | null = null;
+  private brkBox: THREE.Box3 | null = null;
+  private smashCd = 0;
+  private hammer: THREE.Object3D | null = null;
+  private setCracks(): void {
+    const st = FSTAGE[(this.s.fsz ?? 0) + 1];
+    if (!this.crackCv || !this.crackTex || !st) return;
+    drawCracks(this.crackCv, Math.min(1, (this.s.fhits ?? 0) / st.hits));
+    this.crackTex.needsUpdate = true;
+  }
+  private get pendingWall(): boolean {
+    return (this.s.fbuy ?? 0) > (this.s.fsz ?? 0);
+  }
+  /** marreta na parede do galpão (como na loja) */
+  private smash(): void {
+    if (this.smashCd > 0 || !this.brkBox) return;
+    this.smashCd = 0.5;
+    this.e.swingTool();
+    const hit = this.e.ray.intersectBox(this.brkBox, new THREE.Vector3());
+    window.setTimeout(() => {
+      if (this.destroyed) return;
+      sfx.play('smash');
+      this.e.fpc.addShake(0.35);
+      this.e.fpc.kick(0.6);
+      if (hit) {
+        this.e.chips(hit.x + 0.15, hit.y, hit.z, '#d8cfc4', 5);
+        this.e.chips(hit.x + 0.15, hit.y, hit.z, '#b0644a', 3);
+      }
+      const st = FSTAGE[(this.s.fsz ?? 0) + 1];
+      this.s.fhits = (this.s.fhits ?? 0) + 1;
+      this.setCracks();
+      if (st && this.s.fhits >= st.hits) {
+        sfx.play('crumble');
+        sfx.play('sparkle');
+        this.e.fpc.addShake(1.2);
+        this.s.fsz = (this.s.fsz ?? 0) + 1;
+        this.s.fhits = 0;
+        this.addXp(60);
+        this.hud.banner('sparkle', t('pink.fg.grew', 'O galpão cresceu! Mais estantes e produtos.'), 2600);
+        this.hud.fade(true);
+        this.save();
+        window.setTimeout(() => this.o.onReload?.(), 900);
+      }
+    }, 150);
+  }
+  private syncTool(): void {
+    if (this.tool === 2 && !this.pendingWall) this.tool = 0;
+    if (this.tool === 2) {
+      if (!this.hammer) {
+        const k = this.e.kit;
+        const b = new Builder();
+        b.add(new THREE.CylinderGeometry(0.022, 0.026, 0.62, 10), k.surf('hammerWood', 'wood', { rough: 0.7, color: '#c8905a' }), 0, 0, 0);
+        b.add(rbox(0.2, 0.09, 0.09, 0.015, 2), k.plain('hammerHead', '#5a6070', 0.35, 0.8, { envK: 1.2 }), 0, 0.3, 0);
+        b.add(new THREE.CylinderGeometry(0.03, 0.03, 0.14, 10), k.plain('hammerGrip', '#ff5fa2', 0.6), 0, -0.24, 0);
+        const g = b.build();
+        g.rotation.set(-0.5, 0, 0.35);
+        const w = new THREE.Group();
+        w.add(g);
+        this.hammer = w;
+      }
+      this.e.setTool(this.hammer);
+    } else this.e.setTool(null);
+  }
+  /** comprar mais galpão (etapa seguinte) */
+  private buyStage(): void {
+    const s = this.s;
+    const nx = FSTAGE[(s.fsz ?? 0) + 1];
+    if (!nx || this.pendingWall || s.lvl < nx.lvl || s.money < nx.price) return;
+    s.money -= nx.price;
+    s.fbuy = (s.fsz ?? 0) + 1;
+    s.fhits = 0;
+    sfx.play('levelup');
+    this.hud.closePanel();
+    this.save();
+    this.hud.banner('hammer', t('pink.grow.smash', 'Sala comprada! Pegue a marreta e quebre a parede!'), 2600);
+    this.hud.fade(true);
+    window.setTimeout(() => this.o.onReload?.(), 700);
+  }
+  /** fornecedor: completa o estoque das estantes */
+  private restock(): void {
+    const s = this.s;
+    const cost = this.restockCost();
+    if (cost <= 0 || s.money < cost) return;
+    s.money -= cost;
+    for (const rk of this.racks) s.fst![rk.p.id] = RACK_MAX;
+    this.refreshRackItems();
+    sfx.play('truck');
+    this.hud.closePanel();
+    this.hud.banner('pallet', t('pink.fg.restocked', 'Chegou o estoque do fornecedor!'), 2200);
+    this.refreshHud();
+    this.save();
+  }
+  private restockCost(): number {
+    const seen = new Set<string>();
+    let c = 0;
+    for (const rk of this.racks) {
+      if (seen.has(rk.p.id)) continue;
+      seen.add(rk.p.id);
+      c += (RACK_MAX - (this.s.fst![rk.p.id] ?? RACK_MAX)) * rk.p.cost * 0.5;
+    }
+    return Math.round(c);
+  }
 
   constructor(private o: FactoryOpts) {
     this.s = o.save;
+    this.s.fsz ??= 2;
+    this.s.fbuy ??= this.s.fsz;
+    this.s.fhits ??= 0;
+    this.s.fst ??= {};
+    X0 = FX0[Math.max(0, Math.min(2, this.s.fsz))];
     const e = new Engine(o.root, o.tier, 'pink-factory');
     this.e = e;
     this.field = new ProductField(e.kit, false);
@@ -131,7 +251,7 @@ export class Factory {
     // chão: rampa + carroceria (sobe andando)
     e.fp.tune.gravity = 18;
     e.fp.ground = new HeightGround((x, z) => this.heightAt(x, z), { stepUp: 0.25, maxSlope: 0.75 });
-    e.fp.place(-2, -1.5);
+    e.fp.place(1.5, -1.5);
     e.fpc.yaw = -0.35;
     e.onTrip = (l) => this.onTrip(l);
     e.phys.onHit = (l, v) => {
@@ -154,9 +274,11 @@ export class Factory {
       rotate() {},
       cancel() {},
       slot: (i) => {
-        if (i === 1 && (e.carry || this.basket.length)) return;
+        if ((i === 1 || i === 2) && (e.carry || this.basket.length)) return;
+        if (i === 2 && !this.pendingWall) return;
         this.tool = i;
         sfx.play('tap');
+        this.syncTool();
       },
       goals: () => this.showTickets(true),
     });
@@ -207,17 +329,34 @@ export class Factory {
     wallBox(X1, DOCK_Z[1], X1 + 0.2, Z1 + 0.2, wall);
     b.addW(new THREE.BoxGeometry(0.2, H - 3.2, DOCK_Z[1] - DOCK_Z[0]), wall, X1 + 0.1, 3.2 + (H - 3.2) / 2, (DOCK_Z[0] + DOCK_Z[1]) / 2);
     // barrado rosa embaixo das paredes
-    b.addW(new THREE.BoxGeometry(X1 - X0, 1.2, 0.02), wallLow, 0, 0.6, Z0 + 0.012);
+    b.addW(new THREE.BoxGeometry(X1 - X0, 1.2, 0.02), wallLow, (X0 + X1) / 2, 0.6, Z0 + 0.012);
     b.addW(new THREE.BoxGeometry(0.02, 1.2, Z1 - Z0), wallLow, X0 + 0.012, 0.6, (Z0 + Z1) / 2);
     // logo grande na parede do fundo
-    b.add(new THREE.PlaneGeometry(6, 1.5), k.canvasMat('fLogo', brandCanvas(1024, 256), { emissive: 0.15 }), 0, 3.4, Z0 + 0.02);
+    b.add(new THREE.PlaneGeometry(6, 1.5), k.canvasMat('fLogo', brandCanvas(1024, 256), { emissive: 0.15 }), Math.max(0, X0 + 3.4), 3.4, Z0 + 0.02);
+    // parede para quebrar (comprou mais galpão)
+    if ((this.s.fbuy ?? 0) > (this.s.fsz ?? 0)) {
+      this.crackCv = document.createElement('canvas');
+      this.crackCv.width = 512;
+      this.crackCv.height = 256;
+      this.crackTex = new THREE.CanvasTexture(this.crackCv);
+      this.crackTex.colorSpace = THREE.SRGBColorSpace;
+      const cm = new THREE.MeshStandardMaterial({ map: this.crackTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(10, 3.2), cm);
+      pl.position.set(X0 + 0.03, 1.7, (Z0 + Z1) / 2);
+      pl.rotation.y = Math.PI / 2;
+      pl.renderOrder = 2;
+      e.scene.add(pl);
+      this.brkBox = new THREE.Box3(new THREE.Vector3(X0 - 0.3, 0, Z0), new THREE.Vector3(X0 + 0.15, 3.5, Z1));
+      this.setCracks();
+    }
     // teto com treliça + luminárias industriais
     const metal = k.plain('truss', '#8a8f9a', 0.5, 0.7);
-    b.addW(new THREE.PlaneGeometry(X1 - X0, Z1 - Z0).rotateX(Math.PI / 2), k.surf('fRoof', 'metal', { rough: 1, color: '#b8bcc4' }), 0, H, (Z0 + Z1) / 2);
-    for (let z = Z0 + 2; z < Z1; z += 3) b.add(new THREE.BoxGeometry(X1 - X0, 0.12, 0.12), metal, 0, H - 0.3, z);
+    b.addW(new THREE.PlaneGeometry(X1 - X0, Z1 - Z0).rotateX(Math.PI / 2), k.surf('fRoof', 'metal', { rough: 1, color: '#b8bcc4' }), (X0 + X1) / 2, H, (Z0 + Z1) / 2);
+    for (let z = Z0 + 2; z < Z1; z += 3) b.add(new THREE.BoxGeometry(X1 - X0, 0.12, 0.12), metal, (X0 + X1) / 2, H - 0.3, z);
     const lampM = k.plain('fLamp', '#ffffff', 0.4, 0, { emissive: '#fff6ea', ei: 1.4 });
     for (let x = -6; x <= 6; x += 6)
       for (let z = -3; z >= -12; z -= 4.5) {
+        if (x < X0 + 0.5) continue;
         b.add(new THREE.CylinderGeometry(0.3, 0.45, 0.25, 18, 1, true), k.plain('fLampShade', '#3a3d44', 0.5, 0.6, { side: THREE.DoubleSide }), x, H - 1.1, z);
         b.add(new THREE.CircleGeometry(0.28, 16).rotateX(Math.PI / 2), lampM, x, H - 1.2, z);
         b.add(new THREE.CylinderGeometry(0.01, 0.01, 1, 4), metal, x, H - 0.5, z);
@@ -340,19 +479,29 @@ export class Factory {
       this.colliders.push({ x0: x - w / 2, z0: z - d / 2, x1: x + w / 2, z1: z + d / 2 });
       this.e.phys.addStatic(x, 0.9, z, w / 2, 0.9, d / 2);
     };
-    for (let k = 0; k < 7; k++) put(-8.2 + k * 1.25, Z0 + 0.3, 0);
-    for (let k = 0; k < 7; k++) put(X0 + 0.3, -11.6 + k * 1.3, 1);
-    for (let k = 0; k < 4; k++) put(-4.6 + k * 1.25, -7.5, 0);
-    for (let k = 0; k < 4; k++) put(-4.6 + k * 1.25, -8.0, 2);
+    // só as estantes que cabem no galpão aberto (galpão pequeno = poucos produtos)
+    for (let k = 0; k < 7; k++) if (-8.2 + k * 1.25 - 0.6 > X0 + 0.1) put(-8.2 + k * 1.25, Z0 + 0.3, 0);
+    if ((this.s.fsz ?? 2) >= 1) for (let k = 0; k < 7; k++) put(X0 + 0.3, -11.6 + k * 1.3, 1);
+    for (let k = 0; k < 4; k++) if (-4.6 + k * 1.25 - 0.6 > X0 + 0.6) put(-4.6 + k * 1.25, -7.5, 0);
+    for (let k = 0; k < 4; k++) if (-4.6 + k * 1.25 - 0.6 > X0 + 0.6) put(-4.6 + k * 1.25, -8.0, 2);
+    for (const rk of this.racks) this.s.fst![rk.p.id] ??= RACK_MAX;
+    this.refreshRackItems();
+  }
+  /** produtos nas estantes conforme o estoque (acaba!) */
+  private refreshRackItems(): void {
     // produtos nas estantes (estoque infinito do fornecedor)
     const items: PlacedItem[] = [];
     const q = new THREE.Quaternion();
     const one = new THREE.Vector3(1, 1, 1);
     for (const rk of this.racks) {
       const [w, hh, d] = SHAPE_DIM[rk.p.shape];
+      const left = this.s.fst![rk.p.id] ?? RACK_MAX;
+      let shown = 0;
+      const maxShow = Math.ceil((left / RACK_MAX) * 16);
       const c = slotCap(rk.p.shape);
       for (const y of [0.165, 0.545, 0.925, 1.305])
         for (let sx = 0; sx < 4; sx++) {
+          if (shown++ >= maxShow) continue;
           const yaw = (rk.r * Math.PI) / 2;
           q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
           for (let n = 0; n < Math.min(capOf(rk.p.shape), c.nx * c.nz); n++) {
@@ -537,6 +686,7 @@ export class Factory {
     const pay = Math.round(lines.reduce((a, l) => a + l.p.mkt * 0.35 * l.n, 0) + 8 + lv * 2);
     this.tickets.push({ id: this.nextTicket++, lines, pay, age: 0 });
     sfx.play('ding', { db: -6 });
+    if (this.tickets.length === 1 && this.nextTicket > 3) this.hud.banner('laptop', t('pink.fg.order', 'Novo pedido no site!'), 1500);
     this.showTickets(true);
   }
   private get cur(): Ticket | null {
@@ -547,7 +697,7 @@ export class Factory {
     let html = '';
     if (this.s.tut < 1) html += `<div class="row tut">${ic('ticket', 22)}<span>${esc(t('pink.f.tut', 'Pegue os produtos do bilhete nas estantes e leve à mesa de embalagem'))}</span></div>`;
     if (tk) {
-      html += `<div class="row">${ic('ticket', 22)}<b style="margin:0;color:#3a0d2a">#${tk.id}</b><span style="margin-left:auto">${ic('coin', 16)}${esc(money(tk.pay))}</span></div>`;
+      html += `<div class="row">${ic('laptop', 22)}<b style="margin:0;color:#3a0d2a">${esc(BRAND_SITE.split('/')[0])} #${tk.id}</b><span style="margin-left:auto">${ic('coin', 16)}${esc(money(tk.pay))}</span></div>`;
       for (const l of tk.lines) {
         const have = Math.min(l.n, this.basket.filter((p) => p === l.p).length + this.pack.items.filter((p) => p === l.p).length);
         html += `<div class="row${have >= l.n ? ' done' : ''}"><img src="${thumbUrl(l.p)}" width="28" height="23" alt=""><span>${esc(l.p.name)}</span><b>${have}/${l.n}</b></div>`;
@@ -566,7 +716,15 @@ export class Factory {
     let hicon = '';
     let use: [string, string, boolean] = ['hand', '', false];
     let act2: [string | null, string] = [null, ''];
-    if (this.tool === 1) {
+    if (this.tool === 2) {
+      const hp = this.brkBox ? e.ray.intersectBox(this.brkBox, new THREE.Vector3()) : null;
+      const ok = !!hp && hp.distanceTo(e.ray.origin) < 2.8;
+      if (ok) info = { kind: 'smash' };
+      const st = FSTAGE[(this.s.fsz ?? 0) + 1];
+      hint = ok && st ? `${this.s.fhits}/${st.hits}` : t('pink.h.smashAim', 'Mire na parede rachada');
+      hicon = 'hammer';
+      use = ['hammer', t('pink.u.smash', 'Quebrar'), ok];
+    } else if (this.tool === 1) {
       const h = e.floorHit(3);
       const d = h ? e.dirtAt(h.x, h.z) : null;
       if (h && d) {
@@ -659,8 +817,17 @@ export class Factory {
     const a = this.aim;
     const e = this.e;
     if (!a) return;
+    if (a.kind === 'smash') return this.smash();
     if (a.kind === 'rack' && a.rack) {
       if (this.basket.length >= 8) return;
+      const st = this.s.fst!;
+      if ((st[a.rack.p.id] ?? RACK_MAX) <= 0) {
+        sfx.play('wrong');
+        this.hud.banner('pallet', t('pink.fg.empty', 'Acabou! Peça mais ao fornecedor (botão do topo).'), 2000);
+        return;
+      }
+      st[a.rack.p.id] = (st[a.rack.p.id] ?? RACK_MAX) - 1;
+      this.refreshRackItems();
       this.basket.push(a.rack.p);
       sfx.play('pick');
       this.refreshBasket();
@@ -689,16 +856,30 @@ export class Factory {
         this.hud.banner('ticket', t('pink.f.noTicket', 'Sem bilhete agora — espere o próximo!'), 1500);
         return;
       }
-      p.stage = 'folded';
-      p.ticket = this.tickets[0];
-      sfx.play('fold');
-      this.e.fpc.kick(0.3);
+      const go = () => {
+        p.stage = 'folded';
+        p.ticket = this.tickets[0];
+        sfx.play('fold');
+        this.e.fpc.kick(0.3);
+        this.refreshPackMesh();
+        this.showTickets(false);
+      };
+      if (this.has('packer')) go();
+      else boxGame(this.hud, 'fold', (ok) => ok && go());
+      return;
     } else if (p.stage === 'folded' || p.stage === 'filled') {
       if (this.packComplete()) {
-        p.stage = 'taped';
-        sfx.play('tape');
-        this.e.fpc.kick(0.4);
-        if (this.has('packer')) this.takeParcel(true);
+        const go = () => {
+          p.stage = 'taped';
+          sfx.play('tape');
+          this.e.fpc.kick(0.4);
+          if (this.has('packer')) this.takeParcel(true);
+          this.refreshPackMesh();
+          this.showTickets(false);
+        };
+        if (this.has('packer')) go();
+        else boxGame(this.hud, 'tape', (ok) => ok && go());
+        return;
       } else {
         // coloca na caixa o que é do bilhete
         const tk = p.ticket!;
@@ -846,6 +1027,14 @@ export class Factory {
     const row = (icon: string, name: string, sub: string, btn: string) => `<div class="pk-line">${ic(icon, 30)}<span class="grow"><b>${esc(name)}</b><br><small>${sub}</small></span>${btn}</div>`;
     let html = `<h2>${ic('factory', 30)}${esc(t('pink.f.title', 'Centro de distribuição'))}</h2>`;
     html += `<div class="pk-stats"><div class="pk-stat">${ic('coin', 28)}<span>${esc(t('pink.f.cash', 'Caixa'))}<b>${esc(money(s.money))}</b></span></div><div class="pk-stat">${ic('box', 28)}<span>${esc(t('pink.f.shipped', 'Enviadas'))}<b>${s.shipped}</b></span></div><div class="pk-stat">${ic('star', 28)}<span>${esc(t('pink.f.level', 'Nível'))}<b>${s.lvl}</b></span></div></div>`;
+    {
+      const nx = FSTAGE[(s.fsz ?? 0) + 1];
+      html += `<div class="pk-sec">${ic('expand', 22)}${esc(t('pink.fg.hall', 'Galpão'))} ${(s.fsz ?? 0) + 1}/3</div>`;
+      if (this.pendingWall) html += row('hammer', t('pink.t.smash', 'Quebre a parede com a marreta!'), `${s.fhits}/${nx?.hits ?? 0}`, '');
+      else if (nx) html += row('expand', t('pink.fg.bigger', 'Galpão maior (mais estantes)'), `★${nx.lvl}`, s.lvl < nx.lvl ? `<b>★${nx.lvl}</b>` : `<button class="pk-b g" data-a="grow" ${s.money >= nx.price ? '' : 'disabled'}>${ic('coin', 16)}${esc(money(nx.price))}</button>`);
+      const rc = this.restockCost();
+      html += row('pallet', t('pink.fg.supplier', 'Fornecedor: completar estoque'), rc ? esc(money(rc)) : esc(t('pink.fg.full', 'estantes cheias')), rc ? `<button class="pk-b g" data-a="restock" ${s.money >= rc ? '' : 'disabled'}>${ic('truck', 16)}${esc(money(rc))}</button>` : ic('check', 26));
+    }
     html += `<div class="pk-sec">${ic('truck', 22)}${esc(t('pink.f.fleet', 'Frota'))}</div>`;
     TRUCKS.forEach((tr, i) => {
       const own = s.truck >= i;
@@ -860,6 +1049,8 @@ export class Factory {
     html += `<div class="pk-row"><button class="pk-b w" data-a="x">${ic('close', 22)}${esc(t('pink.close', 'Fechar'))}</button></div>`;
     const d = this.hud.panel(html);
     d.querySelector('[data-a=x]')!.addEventListener('click', () => this.hud.closePanel());
+    d.querySelector('[data-a=grow]')?.addEventListener('click', () => this.buyStage());
+    d.querySelector('[data-a=restock]')?.addEventListener('click', () => this.restock());
     d.querySelectorAll<HTMLElement>('[data-tr]').forEach((b) =>
       b.addEventListener('click', () => {
         const i = +b.dataset.tr!;
@@ -919,7 +1110,9 @@ export class Factory {
     }
     const c = e.carry;
     const slot0 = c ? { icon: 'box', label: t('pink.hand', 'Mãos') } : this.basket.length ? { icon: 'bag', n: this.basket.length, label: t('pink.hand', 'Mãos') } : { icon: 'hand', label: t('pink.hand', 'Mãos') };
-    this.hud.hot([slot0, { icon: 'mop', label: t('pink.mop', 'Esfregão') }], this.tool);
+    const hot = [slot0, { icon: 'mop', label: t('pink.mop', 'Esfregão') }];
+    if (this.pendingWall) hot.push({ icon: 'hammer', label: t('pink.hammer', 'Marreta') });
+    this.hud.hot(hot, this.tool);
     this.hud.carrying(!!c);
     // medidores: limpeza / bilhetes / caminhão
     let dirt = 0;
@@ -931,6 +1124,8 @@ export class Factory {
   private frame(dt: number): void {
     const e = this.e;
     const lock = !!this.hud.overlay;
+    if (this.smashCd > 0) this.smashCd -= dt;
+    if (this.useHeld && !lock && this.aim?.kind === 'smash') this.smash();
     if (lock !== this.lastLock) {
       this.lastLock = lock;
       e.input.show(!lock);

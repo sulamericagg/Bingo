@@ -265,7 +265,7 @@ function crackCanvas(seed: number): HTMLCanvasElement {
   return c;
 }
 /** desenha rachaduras proporcionais a k (0..1) — sempre as mesmas (semente fixa) */
-function drawCracks(c: HTMLCanvasElement, k: number): void {
+export function drawCracks(c: HTMLCanvasElement, k: number): void {
   const x = c.getContext('2d')!;
   x.clearRect(0, 0, c.width, c.height);
   if (k <= 0) return;

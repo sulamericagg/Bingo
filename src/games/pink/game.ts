@@ -348,6 +348,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           save: sv,
           onPause: pause,
           onSave: (s) => putFactory(slot, s),
+          onReload: () => void start(slot, false),
           onCoins: (n) => {
             addCoins(n);
             reportRun({ game: 'pink', score: sv.shipped, coins: n, durationSec: Math.round((performance.now() - runStart) / 1000), won: true, stats: { day: sv.day, level: sv.lvl, shipped: sv.shipped } });
