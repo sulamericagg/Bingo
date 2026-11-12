@@ -18,7 +18,9 @@ async function startButtons(page, id, tag) {
       const vis = (el) => { const r = el.getBoundingClientRect(); if (r.width < 20 || r.height < 16 || r.bottom > innerHeight || r.right > innerWidth) return false; let p = el; while (p) { const c = getComputedStyle(p); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < 0.1) return false; p = p.parentElement; } return true; };
       const bs = [...document.querySelectorAll('#game-host .gh-root button, #game-host .gh-root [role=button]')].filter(vis).filter((x) => !x.closest('.gh-confirm'));
       const txt = (x) => (x.textContent || x.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
-      return bs.find((x) => S.test(txt(x)) && !A.test(txt(x))) || null;
+      const ok = bs.filter((x) => S.test(txt(x)) && !A.test(txt(x)));
+      // telas de início padrão: o JOGAR grande vem antes dos cartões de escolha (2D/3D)
+      return ok.find((x) => x.classList.contains('sm-play')) || ok[0] || null;
     }, { s: START.source, a: AVOID.source });
     if (!(await b.evaluate((x) => !!x))) break;
     const label = await b.evaluate((x) => (x.textContent || x.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 30));
