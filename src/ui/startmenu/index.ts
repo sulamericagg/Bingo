@@ -50,6 +50,7 @@ const SVG_PLUS = `<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="t
 const SVG_TRASH = `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M5 7h14l-1.2 13H6.2z" fill="#fff" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><path d="M3.5 7h17M9 7V4h6v3M10 11v6M14 11v6" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/></svg>`;
 const SVG_OK = `<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const SVG_GLOBE = `<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="#7ad8ff" stroke="${INK}" stroke-width="3.5"/><path d="M12 14c5 2 6 6 3 9s0 7 4 8-1 7-3 8M30 7c-2 4 1 6 4 6s6 4 3 8-1 7 2 8" fill="#5ee08a" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><ellipse cx="17" cy="14" rx="5" ry="2.5" fill="#fff" opacity=".5" transform="rotate(-30 17 14)"/></svg>`;
+const SVG_PENCIL = `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20l1.2-4.6L15.6 5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z" fill="#ffd34a" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><path d="M13.8 6.8l3.4 3.4M4 20l4.6-1.2" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M5.2 15.4l3.4 3.4" stroke="#ff8ab8" stroke-width="2"/></svg>`;
 export const SM_ICONS = { play: SVG_PLAY, plus: SVG_PLUS, trash: SVG_TRASH, globe: SVG_GLOBE, friends: FRIENDS_SVG };
 
 /* ------------------------------ tipos ------------------------------ */
@@ -90,6 +91,8 @@ export interface SmSlot {
   /** vazio = "Novo" */
   empty: boolean;
   name?: string;
+  /** id estável do save (quando a ordem dos espaços muda, ex.: mais recente primeiro): o nome personalizado segue o save */
+  id?: string;
   /** "Dia 3", "Fase 12"... */
   progress?: string;
   progressIcon?: string;
@@ -111,7 +114,14 @@ export interface SmSlotsOpts {
   /** lixeira (com confirmação) */
   onDelete?(i: number): void;
   newLabel?: string;
+  /** lápis de renomear no espaço selecionado (padrão: sim). O nome fica no aparelho (smSlotName). */
+  rename?: boolean;
+  /** separa os nomes por modo do jogo (ex.: 'shop' / 'factory') */
+  key?: string;
+  /** sugestões de nome (chips com ícone) na folha de renomear */
+  nameIdeas?: SmNameIdea[];
 }
+export type SmNameIdea = string | { text: string; icon?: string };
 export interface SmFace {
   id: string | number;
   /** 0 fácil · 1 normal · 2 difícil · 3 muito difícil */
@@ -300,6 +310,59 @@ function fallbackShowcase(theme: HubTheme): SmDraw {
   };
 }
 
+/* ------------------------------ nomes dos espaços salvos ------------------------------ */
+/** nome personalizado de um espaço salvo: localStorage['bw-slotnames'] = { "jogo|modo|i": "nome" } (ou "#id") */
+const NAMES_KEY = 'bw-slotnames';
+export const SM_NAME_MAX = 18;
+const nameId = (game: string, key: string | undefined, i: number | string) => `${game}|${key ?? ''}|${typeof i === 'string' ? '#' + i : i}`;
+function readNames(): Record<string, string> {
+  try {
+    const o = JSON.parse(localStorage.getItem(NAMES_KEY) ?? '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch {
+    return {};
+  }
+}
+function writeNames(o: Record<string, string>): void {
+  try {
+    localStorage.setItem(NAMES_KEY, JSON.stringify(o));
+  } catch {
+    /* sem espaço / bloqueado */
+  }
+}
+/** limpa o texto digitado: uma linha, sem controles, no máximo SM_NAME_MAX letras */
+export function smCleanName(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return Array.from(s.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim())
+    .slice(0, SM_NAME_MAX)
+    .join('')
+    .trim();
+}
+/** nome que a criança deu ao espaço (ou null) — os jogos podem mostrar no jogo */
+export function smSlotName(game: string, i: number | string, key?: string): string | null {
+  const v = readNames()[nameId(game, key, i)];
+  return typeof v === 'string' && v ? v : null;
+}
+export function smSetSlotName(game: string, i: number | string, name: string | null, key?: string): void {
+  const o = readNames();
+  const id = nameId(game, key, i);
+  const v = name ? smCleanName(name) : '';
+  if (v) o[id] = v;
+  else if (id in o) delete o[id];
+  else return;
+  writeNames(o);
+}
+const DEFAULT_IDEAS = (): SmNameIdea[] => [
+  { text: t('sm.idea.1', 'Meu Favorito'), icon: icon('heart', { size: 20 }) },
+  { text: t('sm.idea.2', 'Super Aventura'), icon: icon('rocket', { size: 20 }) },
+  { text: t('sm.idea.3', 'Jogo Campeão'), icon: icon('trophy', { size: 20 }) },
+  { text: t('sm.idea.4', 'Mundo Mágico'), icon: icon('sparkle', { size: 20 }) },
+  { text: t('sm.idea.5', 'Missão Secreta'), icon: icon('target', { size: 20 }) },
+  { text: t('sm.idea.6', 'Tesouro Brilhante'), icon: icon('gem', { size: 20 }) },
+  { text: t('sm.idea.7', 'Festa Bloop'), icon: icon('party', { size: 20 }) },
+  { text: t('sm.idea.8', 'Rei da Diversão'), icon: icon('crown', { size: 20 }) },
+];
+
 /* ------------------------------ abertura ------------------------------ */
 export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
   const def = listGames().find((g) => g.id === spec.game);
@@ -458,7 +521,11 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
           b.className = 'sm-slot' + (s.empty ? ' empty' : '') + (o.sel === i ? ' sel' : '');
           b.setAttribute('role', 'button');
           b.tabIndex = 0;
-          const label = s.empty ? (o.newLabel ?? t('sm.new', 'Novo')) : (s.name ?? t('sm.slotN', 'Jogo {n}', { n: i + 1 }));
+          // espaço vazio: o nome antigo (apagado ou save novo) não vale mais
+          const nid = s.id ?? i;
+          if (s.empty) smSetSlotName(spec.game, i, null, o.key);
+          const custom = s.empty ? null : smSlotName(spec.game, nid, o.key);
+          const label = s.empty ? (o.newLabel ?? t('sm.new', 'Novo')) : (custom ?? s.name ?? t('sm.slotN', 'Jogo {n}', { n: i + 1 }));
           b.setAttribute('aria-label', label);
           const th = document.createElement('span');
           th.className = 'sm-thumb';
@@ -470,7 +537,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
           b.appendChild(th);
           b.insertAdjacentHTML(
             'beforeend',
-            `<span class="sm-stxt"><b>${esc(label)}</b>${
+            `<span class="sm-stxt"><b${Array.from(label).length > 11 ? ' class="sm-long"' : ''}>${esc(label)}</b>${
               s.empty ? '' : ` <small>${s.progressIcon ?? ''}${esc(s.progress ?? '')}</small>${s.last ? `<i>${icon('clock', { size: 12 })}${esc(smWhen(s.last))}</i>` : ''}`
             }</span>`,
           );
@@ -482,9 +549,30 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
             del.addEventListener('click', (e) => {
               e.stopPropagation();
               fx(t('sm.delete.say', 'Apagar este jogo?'));
-              void api.confirm({ text: t('sm.delete.q', 'Apagar {n}?', { n: label }), thumb: typeof s.thumb === 'function' || typeof s.thumb === 'string' ? s.thumb : undefined, icon: s.icon, yes: t('sm.delete', 'Apagar'), danger: true }).then((ok) => ok && o.onDelete!(i));
+              void api.confirm({ text: t('sm.delete.q', 'Apagar {n}?', { n: label }), thumb: typeof s.thumb === 'function' || typeof s.thumb === 'string' ? s.thumb : undefined, icon: s.icon, yes: t('sm.delete', 'Apagar'), danger: true }).then((ok) => {
+                if (!ok) return;
+                smSetSlotName(spec.game, nid, null, o.key);
+                o.onDelete!(i);
+              });
             });
             b.appendChild(del);
+          }
+          if (!s.empty && o.sel === i && o.rename !== false) {
+            const ren = document.createElement('button');
+            ren.className = 'sm-ren' + (o.onDelete ? '' : ' solo');
+            ren.setAttribute('aria-label', t('sm.rename', 'Mudar o nome'));
+            ren.innerHTML = SVG_PENCIL;
+            ren.addEventListener('click', (e) => {
+              e.stopPropagation();
+              fx(t('sm.rename.say', 'Que nome você quer?'));
+              void renameDlg({ cur: custom ?? '', ph: s.name ?? t('sm.slotN', 'Jogo {n}', { n: i + 1 }), ideas: o.nameIdeas ?? DEFAULT_IDEAS(), thumb: s.thumb, icon: s.icon }).then((v) => {
+                if (v === null) return;
+                smSetSlotName(spec.game, nid, v, o.key);
+                if (v) smSay(v);
+                rerender();
+              });
+            });
+            b.appendChild(ren);
           }
           let lastTap = 0;
           const act = () => {
@@ -695,6 +783,87 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
       }
     });
   };
+
+  /* ---------- renomear espaço salvo ---------- */
+  /** folha "qual o nome?" — resolve o nome novo ('' = voltar ao nome padrão) ou null (cancelou) */
+  const renameDlg = (o: { cur: string; ph: string; ideas: SmNameIdea[]; thumb?: string | SmDraw; icon?: string }): Promise<string | null> =>
+    new Promise<string | null>((resolve) => {
+      dialog?.done(false);
+      const d = document.createElement('div');
+      d.className = 'sm-dlg sm-rendlg';
+      const chips = o.ideas
+        .slice(0, 8)
+        .map((it) => (typeof it === 'string' ? { text: it, icon: '' } : { text: it.text, icon: it.icon ?? '' }))
+        .map((it) => `<button class="sm-idea" data-v="${esc(smCleanName(it.text))}">${it.icon}<span>${esc(smCleanName(it.text))}</span></button>`)
+        .join('');
+      d.innerHTML = `<div class="sm-dlgcard sm-rencard" role="dialog" aria-label="${esc(t('sm.rename', 'Mudar o nome'))}">
+        <div class="sm-renhd"><span class="sm-renart"></span><b>${esc(t('sm.rename.q', 'Qual o nome?'))}</b></div>
+        <div class="sm-renin"><input type="text" maxlength="${SM_NAME_MAX}" enterkeyhint="done" autocomplete="off" spellcheck="false" aria-label="${esc(t('sm.rename', 'Mudar o nome'))}"><button class="sm-renclr" aria-label="${esc(t('sm.rename.clear', 'Apagar o texto'))}">${SVG_X}</button></div>
+        <div class="sm-ideas">${chips}</div>
+        <div class="sm-dlgbtns"><button class="sm-no" aria-label="${esc(t('sm.no', 'Não'))}">${SVG_X}</button><button class="sm-yes" aria-label="${esc(t('sm.done', 'Pronto'))}">${SVG_OK}</button></div></div>`;
+      const art = d.querySelector('.sm-renart') as HTMLElement;
+      if (typeof o.thumb === 'function') {
+        const c = document.createElement('canvas');
+        art.appendChild(c);
+        requestAnimationFrame(() => paintArt({ cv: c, draw: o.thumb as SmDraw, live: false, drawn: false }, time));
+      } else if (o.thumb) art.innerHTML = `<img src="${esc(o.thumb)}" alt="">`;
+      else if (o.icon) art.innerHTML = o.icon;
+      else art.innerHTML = SVG_PENCIL;
+      const inp = d.querySelector('input') as HTMLInputElement;
+      inp.value = o.cur;
+      inp.placeholder = o.ph;
+      const mark = () => d.querySelectorAll<HTMLElement>('.sm-idea').forEach((b) => b.classList.toggle('sel', b.dataset.v === smCleanName(inp.value)));
+      mark();
+      inp.addEventListener('input', () => {
+        if (Array.from(inp.value).length > SM_NAME_MAX) inp.value = Array.from(inp.value).slice(0, SM_NAME_MAX).join('');
+        mark();
+      });
+      el.appendChild(d);
+      requestAnimationFrame(() => d.classList.add('in'));
+      // em tela de toque o teclado só abre se a criança tocar no campo (as sugestões já bastam); no PC, foco direto
+      if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => inp.isConnected && inp.focus(), 60);
+      let fin: (v: string | null) => void = () => {};
+      const done = (v: boolean) => fin(v ? smCleanName(inp.value) : null);
+      fin = (v) => {
+        if (!dialog || dialog.el !== d) return;
+        dialog.pop();
+        dialog = null;
+        inp.blur();
+        d.remove();
+        resolve(v);
+      };
+      dialog = { el: d, done, pop: pushBack(() => done(false)) };
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          fx();
+          done(true);
+        } else if (e.key === 'Escape') done(false);
+      });
+      d.addEventListener('click', (e) => {
+        const tg = e.target as HTMLElement;
+        const idea = tg.closest('.sm-idea') as HTMLElement | null;
+        if (idea) {
+          inp.value = idea.dataset.v ?? '';
+          fx(inp.value);
+          mark();
+          return;
+        }
+        if (tg.closest('.sm-renclr')) {
+          fx();
+          inp.value = '';
+          mark();
+          inp.focus();
+        } else if (tg.closest('.sm-yes')) {
+          fx();
+          done(true);
+        } else if (tg === d || tg.closest('.sm-no')) {
+          fx();
+          done(false);
+        }
+      });
+    });
 
   /* ---------- confirmação ---------- */
   const confirm: StartMenu['confirm'] = (o) =>

@@ -38,6 +38,7 @@ import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, myAvatar, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
 import { openStartMenu } from '../../ui/startmenu';
+import { icon } from '../../ui/icons';
 import { takePendingGarimpo } from './pending';
 import { BAG, CAMP_MONEY, CampBuild, freshCamp } from './start/camp'; // CAMP: começo do zero + obras
 import { consumePartySeat, partySeat } from '../../party/contract';
@@ -296,6 +297,16 @@ export class Garimpo implements MiniGameHandle, BotHost {
           {
             sel,
             newLabel: t('gb.newGame', 'Novo jogo'),
+            nameIdeas: [
+              { text: t('gb.idea.1', 'Mina de Ouro'), icon: icon('coin', { size: 20 }) },
+              { text: t('gb.idea.2', 'Garimpo da Sorte'), icon: icon('star', { size: 20 }) },
+              { text: t('gb.idea.3', 'Pepita Gigante'), icon: icon('coins', { size: 20 }) },
+              { text: t('gb.idea.4', 'Caverna do Tesouro'), icon: icon('chest', { size: 20 }) },
+              { text: t('gb.idea.5', 'Rei do Ouro'), icon: icon('crown', { size: 20 }) },
+              { text: t('gb.idea.6', 'Escavação Mágica'), icon: icon('sparkle', { size: 20 }) },
+              { text: t('gb.idea.7', 'Diamante Raro'), icon: icon('gem', { size: 20 }) },
+              { text: t('gb.idea.8', 'Máquina Turbo'), icon: icon('bolt', { size: 20 }) },
+            ],
             onSelect: (i) => {
               sel = i;
               sm.refresh();
