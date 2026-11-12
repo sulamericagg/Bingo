@@ -10,11 +10,12 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BlobShadows, GrassField, natureBush, natureFlowers, natureMat, natureQ, natureRock, natureTree, natureTexture, splatAttributes, setSplat, terrainMaterial, TL, NL, windTime, natureAnisotropy, type GrassSource, type TreeKind } from '../../../3d/nature';
+import { BlobShadows, GrassField, natureLeafCards, leafCardMat, natureBush, natureFlowers, natureMat, natureQ, natureRock, natureTree, natureTexture, splatAttributes, setSplat, terrainMaterial, TL, NL, windTime, natureAnisotropy, type GrassSource, type TreeKind } from '../../../3d/nature';
 import { Ocean, Sky, skyAt, waterTex, type SkyCols } from '../../jangada/ocean';
 import type { Tier } from '../../../core/quality';
 import type { MapId, Scenario } from '../scenarios';
 import { softSprite, flameSprite } from './extra3d';
+import { segDist, type TownPlan } from './town';
 
 const TAU = Math.PI * 2;
 
@@ -264,6 +265,31 @@ const G = {
   tor: new THREE.TorusGeometry(0.4, 0.12, 6, 14),
 };
 /** monta um adereço (geometria em coordenadas locais, base no chão) */
+/** placa de rua (poste + 2 lâminas) ou placa de boas-vindas (2 postes + tábua com faixas) */
+function signGeo(kind: 'street' | 'welcome', b: Biome): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const P = (g: THREE.BufferGeometry, col: string, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0) => parts.push(colored(g, col, mtx(x, y, z, ry, sx, sy, sz)));
+  if (kind === 'street') {
+    P(G.cyl6, '#5a5e6e', 0, 1.25, 0, 0.09, 2.5, 0.09);
+    P(G.box, '#2f7a4a', 0.45, 2.3, 0, 1.0, 0.24, 0.04);
+    P(G.box, '#ffffff', 0.45, 2.3, 0.025, 0.8, 0.05, 0.01);
+    P(G.box, '#2f7a4a', 0, 2.02, 0.45, 0.04, 0.24, 1.0);
+    P(G.box, '#ffffff', 0.025, 2.02, 0.45, 0.01, 0.05, 0.8);
+  } else {
+    const wood = b.fence === 'rail' ? '#8a92a8' : '#8a5a33';
+    P(G.box, wood, -1.1, 0.9, 0, 0.16, 1.8, 0.16);
+    P(G.box, wood, 1.1, 0.9, 0, 0.16, 1.8, 0.16);
+    P(G.box, '#f6eedc', 0, 1.45, 0, 2.6, 0.9, 0.1);
+    P(G.box, wood, 0, 1.92, 0, 2.8, 0.12, 0.16);
+    P(G.box, '#e2574c', -0.75, 1.5, 0.06, 0.5, 0.42, 0.02);
+    P(G.box, '#e2574c', -0.75, 1.78, 0.06, 0.62, 0.16, 0.02);
+    for (let i = 0; i < 3; i++) P(G.box, '#3a3a5a', 0.35, 1.68 - i * 0.2, 0.06, 1.2 - i * 0.25, 0.08, 0.02);
+    for (let i = 0; i < 5; i++) P(G.sph, ['#ff7ac8', '#ffe14d', '#ffffff'][i % 3], -1 + i * 0.5, 0.15, 0.3, 0.3, 0.24, 0.3);
+  }
+  const m = mergeGeometries(parts, false)!;
+  for (const p of parts) p.dispose();
+  return m;
+}
 function propGeo(kind: string, r: () => number, accent: string): THREE.BufferGeometry | null {
   const parts: THREE.BufferGeometry[] = [];
   const P = (g: THREE.BufferGeometry, col: string, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0, rx = 0, rz = 0) => parts.push(colored(g, col, mtx(x, y, z, ry, sx, sy, sz, rx, rz)));
@@ -484,7 +510,8 @@ void main(){
   col += uShal * uEmis;
   float fd = length(cameraPosition - vW) * uFogD;
   col = mix(col, uFog, clamp(1.0 - exp(-fd * fd), 0.0, 1.0));
-  gl_FragColor = vec4(col, clamp(uOpa + F * 0.3 + foam * 0.5, 0.0, 1.0));
+  // borda do plano (verde) some: a água "entra" no barranco/mar sem quina
+  gl_FragColor = vec4(col, clamp(uOpa + F * 0.3 + foam * 0.5, 0.0, 1.0) * (1.0 - clamp(vC.g, 0.0, 1.0)));
   #include <colorspace_fragment>
 }`;
 
@@ -607,6 +634,8 @@ export interface EnvHost {
   statics: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; oneWay?: boolean; ground?: boolean }[];
   solid(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string | number, oneWay?: boolean, visible?: boolean): void;
   houses: { x: number; z: number; w: number; d: number }[];
+  /** planta da vila (ruas, árvores, postes, placas...) */
+  town?: TownPlan | null;
 }
 
 export class Env3D {
@@ -680,6 +709,12 @@ export class Env3D {
   }
   stoneMat: THREE.MeshStandardMaterial;
   grassMat: THREE.MeshStandardMaterial;
+  /** altura do chão (terreno) em (x,z) — o mesmo relevo do build */
+  hAt: (x: number, z: number) => number = () => 0;
+  /** vento forte (árvores inclinam): x,z inclinação, y ganho do balanço */
+  gust = { value: new THREE.Vector3() };
+  /** nível da enchente (o mar sobe junto nos mapas de ilha) */
+  floodY = -99;
 
   /** visual do fluido (água, lava...) para o material da superfície */
   setFluid(skin: string): void {
@@ -733,20 +768,23 @@ export class Env3D {
       this.ocean = new Ocean(this.tier, this.sky.cloudTex);
       this.scene.add(this.ocean.mesh);
       this.ocean.setIsles([{ x: 0, z: 0, r: (R + 3) / 0.82, ph0: r() * 6, ph1: r() * 6, peak: 1.2 }]);
+      // mar manso na praia: as ondas não sobem acima do chão da ilha
+      (this.ocean.mat.uniforms.uCalm.value as THREE.Vector4).set(0, 0, R + 3, R + 26);
     }
-    const blocked = (x: number, z: number, m = 0.6) => host.statics.some((s) => s.y1 > 0.05 && !s.ground && x > s.x0 - m && x < s.x1 + m && z > s.z0 - m && z < s.z1 + m);
-    // ---- caminhos/ruas: do centro até cada casa (pintados no terreno por vértice) ----
-    const paths: [number, number, number, number][] = [];
-    if (b.paths !== 'none') for (const h of host.houses) paths.push([0, 0, h.x, h.z - h.d / 2 - 1.2]);
+    const blocked = (x: number, z: number, m = 0.6) =>
+      host.houses.some((h) => Math.abs(x - h.x) < h.w / 2 + m + 0.3 && Math.abs(z - h.z) < h.d / 2 + m + 0.3) || host.statics.some((s) => s.y1 > 0.05 && !s.ground && x > s.x0 - m && x < s.x1 + m && z > s.z0 - m && z < s.z1 + m);
+    // ---- ruas da planta (town.ts); sem planta: do centro até cada casa ----
+    const town = host.town ?? null;
+    const paths: { x0: number; z0: number; x1: number; z1: number; hw: number }[] = [];
+    if (b.paths !== 'none') {
+      if (town) paths.push(...town.streets);
+      else for (const h of host.houses) paths.push({ x0: 0, z0: 0, x1: h.x, z1: h.z - h.d / 2 - 1.2, hw: 1.1 });
+    }
+    const pathW0 = b.paths === 'road' ? 2.2 : 1.1;
+    /** distância "normalizada": < pathW = em cima da rua */
     const pathD = (x: number, z: number) => {
       let best = 99;
-      for (const [ax, az, bx, bz] of paths) {
-        const vx = bx - ax;
-        const vz = bz - az;
-        const l2 = vx * vx + vz * vz || 1;
-        const tt = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / l2));
-        best = Math.min(best, Math.hypot(x - ax - vx * tt, z - az - vz * tt));
-      }
+      for (const sg of paths) best = Math.min(best, segDist(x, z, sg) - sg.hw + pathW0);
       return best;
     };
     const pathW = b.paths === 'road' ? 2.2 : 1.1;
@@ -788,6 +826,7 @@ export class Env3D {
       const amp = b.ring === 'mountains' ? 0.32 : b.ring === 'dunes' ? 0.1 : b.ring === 'forest' ? 0.08 : b.ring === 'space' ? 0 : 0.12;
       return bank + far * (0.05 + amp * (0.9 + n)) + (b.ring === 'dunes' ? Math.sin(rr * 0.12 + a * 3) * Math.min(6, far * 0.2) : 0);
     };
+    this.hAt = (x: number, z: number) => hAt(x, z, Math.hypot(x, z));
     for (let i = 0; i < rings.length; i++) {
       const rr = rings[i];
       for (let s = 0; s < segs; s++) {
@@ -930,44 +969,76 @@ export class Env3D {
     const nq = natureQ(this.tier);
     this.blobs = new BlobShadows(this.group, 128, nq.blobAlpha);
     this.blobs.begin();
-    const tmat = natureMat({ amp: 0.003, y0: 1.2, rustle: 0.02, wrap: 0.45 });
+    const tmat = natureMat({ amp: 0.003, y0: 1.2, rustle: 0.02, wrap: 0.45, gust: this.gust });
+    const cmat = this.tier >= 2 ? leafCardMat({ amp: 0.003, y0: 1.2, rustle: 0.03, gust: this.gust }) : null;
     const treeK = this.tier <= 0 ? 0.55 : this.tier === 1 ? 0.75 : 1;
-    for (const sp of b.trees) {
-      const g = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed: Math.floor(r() * 99), lod: this.tier <= 1 ? 1 : 0 });
-      const xf: [number, number, number, number][] = [];
-      // dentro da ilha (poucas, com tronco que colide) + muitas fora (horizonte)
-      const nIn = Math.round(sp.n * 0.35 * treeK);
-      const nOut = Math.round(sp.n * (b.sea ? 0.4 : 2.2) * treeK);
-      for (let k = 0, guard = 0; k < nIn && guard < 300; guard++) {
-        const a = r() * TAU;
-        const rr = 6 + Math.sqrt(r()) * (R - 9);
-        const x = Math.cos(a) * rr;
-        const z = Math.sin(a) * rr;
-        if (blocked(x, z, 2.2) || pathD(x, z) < pathW + 1 || Math.hypot(x, z) < 5) continue;
-        xf.push([x, z, 0.8 + r() * 0.4, r() * TAU]);
-        host.solid(x - 0.3, 0, z - 0.3, x + 0.3, sp.h * 0.5, z + 0.3, 0, false, false);
-        k++;
+    // árvores da vila (planta): espécies em rodízio; o resto aleatório no parque
+    const spots: [number, number, number][] = [];
+    if (town) for (const t2 of town.trees) if (!blocked(t2.x, t2.z, 1.6) && pathD(t2.x, t2.z) > pathW + 0.4 && Math.hypot(t2.x, t2.z) < R - 3) spots.push([t2.x, t2.z, t2.s]);
+    const nb = Math.max(1, b.trees.length);
+    b.trees.forEach((sp, si) => {
+      // perto: malha completa (lod 0) + tufos de folhas (Médio/Alto); longe: lod 1
+      const seed = Math.floor(r() * 99);
+      const gN = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed, lod: 0 });
+      const gF = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed, lod: 1 });
+      const near: [number, number, number, number][] = [];
+      const far: [number, number, number, number][] = [];
+      if (town) {
+        for (let k = si; k < spots.length; k += nb) near.push([spots[k][0], spots[k][1], spots[k][2] * (0.95 + r() * 0.15), r() * TAU]);
+      } else {
+        const nIn = Math.round(sp.n * 0.35 * treeK);
+        for (let k = 0, guard = 0; k < nIn && guard < 300; guard++) {
+          const a = r() * TAU;
+          const rr = 6 + Math.sqrt(r()) * (R - 9);
+          const x = Math.cos(a) * rr;
+          const z = Math.sin(a) * rr;
+          if (blocked(x, z, 2.2) || pathD(x, z) < pathW + 1 || Math.hypot(x, z) < 5) continue;
+          near.push([x, z, 0.8 + r() * 0.4, r() * TAU]);
+          k++;
+        }
       }
+      // tronco que colide
+      for (const [x, z, sc2] of near) host.solid(x - 0.28 * sc2, 0, z - 0.28 * sc2, x + 0.28 * sc2, sp.h * 0.45, z + 0.28 * sc2, 0, false, false);
+      // fora da cerca: praia (ilha) ou mata (terra) — sempre sobre o chão
+      const nOut = Math.round(sp.n * (b.sea ? 0.5 : 2.2) * treeK);
       for (let k = 0; k < nOut; k++) {
         const a = r() * TAU;
-        const rr = b.sea ? R + 1.5 + r() * 4 : R + 3 + r() * (b.ring === 'forest' ? 50 : 30);
+        const rr = b.sea ? R + 1.5 + r() * 3 : R + 3 + r() * (b.ring === 'forest' ? 50 : 30);
         const x = Math.cos(a) * rr;
         const z = Math.sin(a) * rr;
-        xf.push([x, z, 0.9 + r() * 0.6, r() * TAU]);
+        (rr < R + 7 ? near : far).push([x, z, 0.9 + r() * 0.5, r() * TAU]);
       }
-      const im = new THREE.InstancedMesh(g, tmat, Math.max(1, xf.length));
-      xf.forEach(([x, z, s, ry], i) => {
-        const rr = Math.hypot(x, z);
-        const y = hAt(x, z, rr);
-        im.setMatrixAt(i, mtx(x, y, z, ry, s, s, s));
-        if (rr < R + 6) this.blobs!.push(x, y, z, 1.6 * s);
-      });
-      im.count = xf.length;
-      im.computeBoundingSphere();
-      im.castShadow = this.tier >= 2;
-      im.receiveShadow = true;
-      this.group.add(im);
-    }
+      const put = (g: THREE.BufferGeometry, xf: [number, number, number, number][], mat: THREE.Material, shadow: boolean) => {
+        if (!xf.length) return;
+        const im = new THREE.InstancedMesh(g, mat, xf.length);
+        xf.forEach(([x, z, s2, ry], i) => {
+          const rr = Math.hypot(x, z);
+          // pé enterrado um pouco (encosta/praia): nunca flutua
+          const y = Math.min(hAt(x, z, rr), hAt(x + 0.5, z, Math.hypot(x + 0.5, z)), hAt(x, z + 0.5, Math.hypot(x, z + 0.5))) - 0.08;
+          im.setMatrixAt(i, mtx(x, y, z, ry, s2, s2, s2));
+          if (rr < R + 6) this.blobs!.push(x, y, z, 1.6 * s2);
+        });
+        im.computeBoundingSphere();
+        im.castShadow = shadow && this.tier >= 2;
+        im.receiveShadow = true;
+        this.group.add(im);
+        return im;
+      };
+      const imN = put(gN, near, tmat, true);
+      put(gF, far, tmat, false);
+      if (cmat && imN) {
+        const cards = natureLeafCards(gN, 5, seed);
+        if (cards) {
+          const ic = new THREE.InstancedMesh(cards, cmat, near.length);
+          for (let i = 0; i < near.length; i++) {
+            imN.getMatrixAt(i, M4);
+            ic.setMatrixAt(i, M4);
+          }
+          ic.computeBoundingSphere();
+          this.group.add(ic);
+        }
+      }
+    });
     // arbustos, flores e pedras (instanciados, tingidos)
     const dmat = natureMat({ amp: 0.004, y0: 0.05, rustle: 0.01, wrap: 0.5, tintGray: true });
     const deco = (g: THREE.BufferGeometry, n: number, cols: string[], sc2: number, inside: boolean) => {
@@ -1035,7 +1106,166 @@ export class Env3D {
     return mesh;
   }
 
+  /** adereços da vila (planta): ruas asfaltadas, postes, carros estacionados, placas, caixas de correio, cercas */
+  private townProps(b: Biome, r: () => number, host: EnvHost, town: TownPlan, R: number, blocked: (x: number, z: number, m?: number) => boolean, pathD: (x: number, z: number) => number, pathW: number): void {
+    const parts: THREE.BufferGeometry[] = [];
+    const lamps: THREE.BufferGeometry[] = [];
+    const accents = ['#ff5a5a', '#3f8cff', '#ffd23f', '#4fc36f', '#9b5de5', '#ff9a3a'];
+    const put = (kind: string, x: number, z: number, ry: number, into = parts) => {
+      const g = propGeo(kind, r, accents[Math.floor(r() * accents.length)]);
+      if (!g) return false;
+      g.applyMatrix4(mtx(x, this.hAt(x, z), z, ry));
+      into.push(g);
+      return true;
+    };
+    // ---- ruas: faixa de asfalto com meio-fio e faixa central tracejada (sem brigar no cruzamento) ----
+    if (b.paths === 'road' || b.paths === 'candy') {
+      const road = b.paths === 'road';
+      const tex = canvasTex(64, 256, (x) => {
+        x.fillStyle = road ? '#4a4d57' : '#ffd0e6';
+        x.fillRect(0, 0, 64, 256);
+        for (let i = 0; i < 700; i++) {
+          const v = road ? 60 + Math.random() * 40 : 220 + Math.random() * 30;
+          x.fillStyle = road ? `rgba(${v},${v},${v + 6},.35)` : `rgba(255,${v},${v},.3)`;
+          x.fillRect(Math.random() * 64, Math.random() * 256, 2, 2);
+        }
+        x.fillStyle = road ? '#f2d24a' : '#ffffff';
+        x.fillRect(29, 20, 6, 96);
+        x.fillRect(29, 148, 6, 96);
+      });
+      const rm = new THREE.MeshStandardMaterial({ map: tex, roughness: road ? 0.88 : 0.6 });
+      const curb: THREE.BufferGeometry[] = [];
+      const hor = town.streets.filter((s) => s.z0 === s.z1);
+      for (const s of town.streets) {
+        const alongX = s.z0 === s.z1;
+        const a0 = alongX ? Math.min(s.x0, s.x1) : Math.min(s.z0, s.z1);
+        const a1 = alongX ? Math.max(s.x0, s.x1) : Math.max(s.z0, s.z1);
+        // trechos: a avenida (norte–sul) para nas ruas leste–oeste
+        let cuts: [number, number][] = [[a0, a1]];
+        if (!alongX)
+          for (const h of hor) {
+            if (s.x0 < Math.min(h.x0, h.x1) || s.x0 > Math.max(h.x0, h.x1)) continue;
+            const c0 = h.z0 - h.hw;
+            const c1 = h.z0 + h.hw;
+            cuts = cuts.flatMap(([u0, u1]): [number, number][] => (c1 <= u0 || c0 >= u1 ? [[u0, u1]] : ([[u0, c0], [c1, u1]] as [number, number][]).filter(([p, q]) => q - p > 0.2)));
+          }
+        for (const [u0, u1] of cuts) {
+          // corta onde sai da ilha
+          const L = u1 - u0;
+          const g = new THREE.PlaneGeometry(s.hw * 2, L);
+          g.rotateX(-Math.PI / 2);
+          const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+          for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * (L / 6));
+          if (alongX) g.rotateY(Math.PI / 2);
+          const cx = alongX ? (u0 + u1) / 2 : s.x0;
+          const cz = alongX ? s.z0 : (u0 + u1) / 2;
+          g.translate(cx, 0.015, cz);
+          const mesh = new THREE.Mesh(g, rm);
+          mesh.receiveShadow = true;
+          this.group.add(mesh);
+          if (road)
+            for (const sd of [-1, 1]) {
+              const ox = alongX ? 0 : sd * (s.hw + 0.09);
+              const oz = alongX ? sd * (s.hw + 0.09) : 0;
+              curb.push(colored(G.box, '#c9c6c0', mtx(cx + ox, 0.05, cz + oz, 0, alongX ? L : 0.18, 0.1, alongX ? 0.18 : L)));
+            }
+        }
+      }
+      // tira o meio-fio que passa dentro da outra rua / fora da ilha
+      if (curb.length) this.addMerged(curb, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), false);
+    }
+    // ---- postes ----
+    for (const L of town.lamps) if (Math.hypot(L.x, L.z) < R - 2 && !blocked(L.x, L.z, 0.4)) {
+      // braço do poste aponta para a rua
+      const ry = L.ry === 0 ? -Math.PI / 2 : Math.PI;
+      if (put('lamp', L.x, L.z, ry, lamps)) host.solid(L.x - 0.1, 0, L.z - 0.1, L.x + 0.1, 3.2, L.z + 0.1, 0, false, false);
+    }
+    // ---- carros estacionados (cidade/vila/porto) ----
+    if (b.props.includes('car'))
+      for (const P of town.parking) {
+        if (r() < 0.25 || blocked(P.x, P.z, 1.2)) continue;
+        if (put('car', P.x, P.z, P.ry + (r() < 0.5 ? 0 : Math.PI))) host.solid(P.x - 1.8, 0, P.z - 0.85, P.x + 1.8, 1.3, P.z + 0.85, 0, false, false);
+      }
+    // ---- caixas de correio e placas ----
+    if (b.paths !== 'metal') for (const M of town.mail) if (!blocked(M.x, M.z, 0.2)) put('mailbox', M.x, M.z, M.ry);
+    for (const S of town.signs) {
+      if (blocked(S.x, S.z, 0.3) || Math.hypot(S.x, S.z) > R - 2) continue;
+      const g = signGeo(S.kind, b);
+      g.applyMatrix4(mtx(S.x, this.hAt(S.x, S.z), S.z, S.ry));
+      parts.push(g);
+      host.solid(S.x - 0.12, 0, S.z - 0.12, S.x + 0.12, 2.4, S.z + 0.12, 0, false, false);
+    }
+    // ---- praça: bancos + canteiro redondo de flores no meio ----
+    for (const B of town.benches) if (!blocked(B.x, B.z, 0.5)) put('bench', B.x, B.z, B.ry);
+    {
+      const pz = town.plaza;
+      parts.push(colored(G.cyl, '#c9c2b4', mtx(pz.x, 0.12, pz.z, 0, 3.2, 0.24, 3.2)));
+      parts.push(colored(G.cyl, '#5a3a26', mtx(pz.x, 0.25, pz.z, 0, 2.8, 0.06, 2.8)));
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * TAU;
+        parts.push(colored(G.sph, ['#ff7ac8', '#ffe14d', '#ffffff', '#ff5a5a'][i % 4], mtx(pz.x + Math.cos(a) * 1.05, 0.38, pz.z + Math.sin(a) * 1.05, 0, 0.32, 0.26, 0.32)));
+      }
+      parts.push(colored(G.cyl6, '#f4f0ea', mtx(pz.x, 0.9, pz.z, 0, 0.26, 1.5, 0.26)));
+      parts.push(colored(G.sph, '#ffd23f', mtx(pz.x, 1.75, pz.z, 0, 0.55, 0.55, 0.55)));
+      host.solid(pz.x - 1.5, 0, pz.z - 1.5, pz.x + 1.5, 0.24, pz.z + 1.5, 0, false, false);
+    }
+    // ---- cercas dos quintais (com colisão baixa: dá para pular) ----
+    if (b.fence !== 'none') {
+      const fc = b.fence === 'candy' ? '#ff7ac8' : b.fence === 'rail' ? '#d8dce8' : b.fence === 'rock' ? '#a8a49a' : b.facade === 'plaster' ? '#f6f2ea' : '#c8a070';
+      const fparts: THREE.BufferGeometry[] = [];
+      for (const F of town.fences) {
+        const L = Math.hypot(F.x1 - F.x0, F.z1 - F.z0);
+        if (L < 0.5) continue;
+        const ux = (F.x1 - F.x0) / L;
+        const uz = (F.z1 - F.z0) / L;
+        const ry = Math.atan2(-uz, ux);
+        const mx = (F.x0 + F.x1) / 2;
+        const mz = (F.z0 + F.z1) / 2;
+        if (b.fence === 'rock' || b.fence === 'hedge') {
+          fparts.push(colored(G.box, b.fence === 'hedge' ? '#4a8a3a' : fc, mtx(mx, 0.35, mz, ry, L, 0.7, 0.4)));
+        } else {
+          // tábuas verticais (pontudas pela altura alternada) + 2 travessas + mourões
+          const n = Math.max(2, Math.round(L / 0.24));
+          for (let k = 0; k <= n; k++) {
+            const t2 = k / n;
+            const post = k % 5 === 0;
+            fparts.push(colored(G.box, b.fence === 'candy' && k % 2 ? '#ffffff' : fc, mtx(F.x0 + ux * L * t2, post ? 0.5 : 0.42 + (k % 2) * 0.04, F.z0 + uz * L * t2, ry, post ? 0.11 : 0.09, post ? 1.0 : 0.84 + (k % 2) * 0.08, post ? 0.11 : 0.035)));
+          }
+          for (const y of [0.3, 0.68]) fparts.push(colored(G.box, fc, mtx(mx, y, mz, ry, L, 0.07, 0.05)));
+        }
+        const hx = Math.abs(ux) * L * 0.5 + 0.08;
+        const hz = Math.abs(uz) * L * 0.5 + 0.08;
+        host.solid(mx - hx, 0, mz - hz, mx + hx, 0.9, mz + hz, 0, false, false);
+      }
+      const fmat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+      this.addMerged(fparts, fmat, true);
+    }
+    // ---- adereços do bioma (feno, caixotes, guarda-sol...) no parque e nos cantos ----
+    const extra = b.props.filter((k) => k !== 'car' && k !== 'lamp' && k !== 'bench' && k !== 'mailbox' && k !== 'fence');
+    const n = extra.length ? (this.tier <= 0 ? 6 : 10) : 0;
+    for (let i = 0, guard = 0; i < n && guard < 300; guard++) {
+      const kind = extra[Math.floor(r() * extra.length)];
+      const a = r() * TAU;
+      const rr = 6 + Math.sqrt(r()) * (R - 9);
+      const x = Math.cos(a) * rr;
+      const z = Math.sin(a) * rr;
+      const big = kind === 'igloo' || kind === 'crates';
+      if (blocked(x, z, big ? 2.2 : 1.1) || pathD(x, z) < pathW + 0.8) continue;
+      if (Math.hypot(x - town.plaza.x, z - town.plaza.z) < town.plaza.r + 1) continue;
+      if (!put(kind, x, z, r() * TAU, kind === 'light' ? lamps : parts)) continue;
+      if (kind === 'crates' || kind === 'hay' || kind === 'igloo' || kind === 'gumdrop') host.solid(x - 0.6, 0, z - 0.6, x + 0.6, kind === 'gumdrop' ? 0.7 : 0.9, z + 0.6, 0, false, false);
+      i++;
+    }
+    this.addMerged(parts, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05 }), true);
+    if (lamps.length) {
+      const lm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, emissive: 0xffd88a, emissiveIntensity: 0 });
+      this.litMats.push(lm);
+      this.addMerged(lamps, lm, true);
+    }
+  }
+
   private props(b: Biome, r: () => number, host: EnvHost, R: number, blocked: (x: number, z: number, m?: number) => boolean, pathD: (x: number, z: number) => number, pathW: number): void {
+    if (host.town) return this.townProps(b, r, host, host.town, R, blocked, pathD, pathW);
     const parts: THREE.BufferGeometry[] = [];
     const lamps: THREE.BufferGeometry[] = [];
     const accents = ['#ff5a5a', '#3f8cff', '#ffd23f', '#4fc36f', '#9b5de5', '#ff9a3a'];
@@ -1186,7 +1416,41 @@ export class Env3D {
       this.planet = pt;
     } else if (b.ring === 'forest' || b.ring === 'hills' || b.ring === 'dunes') {
       // horizonte de colinas/árvores baixas (silhueta suave na névoa)
-      if (b.ring === 'forest' || b.ring === 'hills') {
+      if (b.sea) {
+        // ilha cercada de mar: ilhotas no horizonte, cada árvore em cima do morrinho (nada flutua no mar)
+        const parts: THREE.BufferGeometry[] = [];
+        const isl: [number, number, number, number][] = [];
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * TAU + r() * 0.6;
+          const rr = 105 + r() * 70;
+          const rad = 12 + r() * 14;
+          const hh = 3 + r() * 5;
+          isl.push([Math.cos(a) * rr, Math.sin(a) * rr, rad, hh]);
+          const g = new THREE.SphereGeometry(1, 18, 8, 0, TAU, 0, Math.PI / 2);
+          parts.push(colored(g, b.ringTint, mtx(Math.cos(a) * rr, -1.2, Math.sin(a) * rr, r() * 6, rad, hh, rad * (0.7 + r() * 0.3))));
+          g.dispose();
+          const sg = new THREE.CylinderGeometry(1, 1, 1, 18);
+          parts.push(colored(sg, b.edgeTint, mtx(Math.cos(a) * rr, -1.4, Math.sin(a) * rr, 0, rad * 1.08, 1, rad * 0.78)));
+          sg.dispose();
+        }
+        this.addMerged(parts, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), false);
+        const g = natureTree({ kind: b.trees[0]?.kind ?? 'oak', h: 9, trunk: '#5a3a26', leaf: '#3f7a4a', leaf2: '#1f4a32', seed: 9, lod: 1 });
+        const xf: THREE.Matrix4[] = [];
+        for (const [ix, iz, rad, hh] of isl)
+          for (let k = 0; k < 9; k++) {
+            const u = Math.sqrt(r()) * 0.62;
+            const a = r() * TAU;
+            const x = ix + Math.cos(a) * u * rad;
+            const z = iz + Math.sin(a) * u * rad * 0.75;
+            const y = -1.2 + hh * Math.sqrt(Math.max(0, 1 - u * u)) - 0.4;
+            const s = 1 + r() * 0.7;
+            xf.push(mtx(x, y, z, r() * 6, s, s, s));
+          }
+        const im = new THREE.InstancedMesh(g, natureMat({ amp: 0.002, y0: 2, wrap: 0.4 }), xf.length);
+        xf.forEach((m2, i) => im.setMatrixAt(i, m2));
+        im.computeBoundingSphere();
+        this.group.add(im);
+      } else if (b.ring === 'forest' || b.ring === 'hills') {
         const g = natureTree({ kind: b.ring === 'forest' ? 'pine' : 'oak', h: 10, trunk: '#5a3a26', leaf: '#3f7a4a', leaf2: '#1f4a32', seed: 9, lod: 1 });
         const n = this.tier <= 0 ? 60 : 140;
         const im = new THREE.InstancedMesh(g, natureMat({ amp: 0.002, y0: 2, wrap: 0.4 }), n);
@@ -1194,7 +1458,8 @@ export class Env3D {
           const a = r() * TAU;
           const rr = R + 30 + r() * 90;
           const s = 1 + r() * 0.8;
-          im.setMatrixAt(i, mtx(Math.cos(a) * rr, Math.max(0, (rr - R - 6) * 0.08), Math.sin(a) * rr, r() * 6, s, s, s));
+          // em cima do relevo de fora (a mesma conta do terreno), pé enterrado
+          im.setMatrixAt(i, mtx(Math.cos(a) * rr, this.hAt(Math.cos(a) * rr, Math.sin(a) * rr) - 0.3, Math.sin(a) * rr, r() * 6, s, s, s));
         }
         im.computeBoundingSphere();
         this.group.add(im);
@@ -1215,7 +1480,8 @@ export class Env3D {
     this.sky.update(cam, time, dt, c, o.storm);
     if (this.ocean) {
       this.ocean.update(cam, time, 0.8 + o.storm * 0.9, 0, 0, c, fogObj.density, o.storm, c.deep);
-      this.ocean.mesh.position.y = this.seaY + this.seaLift;
+      // enchente nos mapas de ilha: o mar sobe junto (a água da ilha emenda no mar, sem borda)
+      this.ocean.mesh.position.y = Math.max(this.seaY + this.seaLift, this.floodY - 0.04);
       if (this.biome.seaTint) {
         const u = this.ocean.mat.uniforms;
         u.uShallow.value.set(this.biome.seaTint[0]);

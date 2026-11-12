@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "¡Va a subir más!",
   "dz.al.roof": "¡El tornado arrancó el techo! ¡Corre!",
   "dz.al.roofGone": "¡El techo salió volando! ¡Busca otro refugio!",
+  "dz3.bonk": "¡Cuidado con los pedazos de la casa!",
   "dz.al.stuffy": "¡La casa se puso sofocante! Busca otra sombra.",
   "dz.al.sun": "¡Sol abrasador! ¡Corre a la sombra!",
   "dz.al.tornado2": "¡Otro tornado!",

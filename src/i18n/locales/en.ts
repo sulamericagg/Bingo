@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "It will rise more!",
   "dz.al.roof": "The tornado ripped off the roof! Run!",
   "dz.al.roofGone": "The roof flew off! Find another shelter!",
+  "dz3.bonk": "Watch out for falling house pieces!",
   "dz.al.stuffy": "The house got too stuffy! Find another shade.",
   "dz.al.sun": "Scorching sun! Run to the shade!",
   "dz.al.tornado2": "Another tornado!",

@@ -22,6 +22,8 @@ export interface WindOpts {
   wrap?: number;
   /** dois lados sem inverter a normal no verso (cartões de folhas) */
   noFlip?: boolean;
+  /** vento forte do jogo (opcional): x,z = inclinação na direção do vento (m por m² de altura), y = ganho do balanço */
+  gust?: { value: THREE.Vector3 };
 }
 
 /**
@@ -35,6 +37,7 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
   const tint = !!o.tintGray;
   const wrap = o.wrap ?? 0;
   const noFlip = !!o.noFlip;
+  const gust = o.gust;
   mat.onBeforeCompile = (sh) => {
     if (wrap > 0)
       sh.fragmentShader = sh.fragmentShader.replace(
@@ -47,7 +50,8 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
     if (noFlip) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''));
     sh.uniforms.uWindT = windTime;
     sh.uniforms.uHit = natureHit;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWindT;\nuniform vec4 uHit;');
+    if (gust) sh.uniforms.uGust = gust;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWindT;\nuniform vec4 uHit;' + (gust ? '\nuniform vec3 uGust;' : ''));
     if (tint)
       sh.vertexShader = sh.vertexShader.replace(
         '#include <color_vertex>',
@@ -77,6 +81,7 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
   float h = max(0.0, transformed.y - ${y0.toFixed(3)});
   float w = h * h * ${amp.toFixed(5)};
   float g = sin(uWindT * 1.7 + ph) + 0.35 * sin(uWindT * 4.3 + ph * 2.1);
+  ${gust ? 'w *= 1.0 + uGust.y; transformed.xz += uGust.xz * h * h * (0.85 + 0.15 * sin(uWindT * 3.1 + ph));' : ''}
   transformed.x += g * w;
   transformed.z += cos(uWindT * 1.3 + ph) * w * 0.6;
   // golpe de machado: a copa da árvore atingida chacoalha
@@ -90,7 +95,7 @@ export function natureWind(mat: THREE.Material, o: WindOpts = {}): THREE.Materia
 }`,
     );
   };
-  mat.customProgramCacheKey = () => `nwindH${amp}_${y0}_${rus}_${tint ? 1 : 0}_${wrap}_${noFlip ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `nwindH${amp}_${y0}_${rus}_${tint ? 1 : 0}_${wrap}_${noFlip ? 1 : 0}_${gust ? 1 : 0}`;
   return mat;
 }
 

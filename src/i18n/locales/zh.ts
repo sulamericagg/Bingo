@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "还会再涨！",
   "dz.al.roof": "龙卷风掀掉了屋顶！快跑！",
   "dz.al.roofGone": "屋顶飞走了！快找别的地方躲！",
+  "dz3.bonk": "小心房子的碎片！",
   "dz.al.stuffy": "屋里太闷了！再找一个阴凉处。",
   "dz.al.sun": "烈日当头！快跑到阴凉处！",
   "dz.al.tornado2": "又一个龙卷风！",

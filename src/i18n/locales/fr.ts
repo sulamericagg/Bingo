@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "Ça va encore monter !",
   "dz.al.roof": "La tornade a arraché le toit ! Cours !",
   "dz.al.roofGone": "Le toit s'est envolé ! Trouve un autre abri !",
+  "dz3.bonk": "Attention aux morceaux de maison !",
   "dz.al.stuffy": "Il fait trop chaud dans la maison ! Trouve une autre ombre.",
   "dz.al.sun": "Soleil brûlant ! Cours à l'ombre !",
   "dz.al.tornado2": "Une autre tornade !",

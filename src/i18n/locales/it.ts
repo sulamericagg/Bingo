@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "Salirà ancora!",
   "dz.al.roof": "Il tornado ha strappato il tetto! Corri!",
   "dz.al.roofGone": "Il tetto è volato via! Cerca un altro riparo!",
+  "dz3.bonk": "Attento ai pezzi della casa!",
   "dz.al.stuffy": "In casa si soffoca! Cerca un'altra ombra.",
   "dz.al.sun": "Sole cocente! Corri all'ombra!",
   "dz.al.tornado2": "Un altro tornado!",
