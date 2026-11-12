@@ -400,7 +400,7 @@ export class Engine {
     if (this.camv.mode === 'fp') {
       const box = this.carry?.kind === 'box' || this.carry?.kind === 'parcel';
       this.heldPivot.add(m);
-      this.held = new HeldItem(m, { base: box ? [0.05, -0.42, -0.62] : this.carry?.kind === 'trash' ? [0.18, -0.45, -0.6] : [0.2, -0.24, -0.42], rot: box ? [0.12, 0.25, 0] : [0, 0.3, 0], lag: 0.7, bob: 1.2 });
+      this.held = new HeldItem(m, { base: box ? [0.02, -0.5, -0.78] : this.carry?.kind === 'trash' ? [0.18, -0.45, -0.6] : [0.2, -0.24, -0.42], rot: box ? [0.12, 0.25, 0] : [0, 0.3, 0], lag: 0.7, bob: 1.2 });
     } else {
       this.held = null;
       this.scene.add(m);

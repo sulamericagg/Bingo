@@ -112,7 +112,7 @@ export class Factory {
     e.fp.tune.gravity = 18;
     e.fp.ground = new HeightGround((x, z) => this.heightAt(x, z), { stepUp: 0.25, maxSlope: 0.75 });
     e.fp.place(-2, -1.5);
-    e.fpc.yaw = Math.PI * 0.9;
+    e.fpc.yaw = -0.35;
     e.onTrip = (l) => this.onTrip(l);
     e.phys.onHit = (l, v) => {
       if (v > 3 && l.kind === 'parcel') sfx.play('drop', { db: -4 });
@@ -166,7 +166,7 @@ export class Factory {
     const e = this.e;
     const b = new Builder();
     const floor = k.surf('fFloor', 'concrete', { rough: 1, envK: 0.8, normalK: 0.6, color: '#d8d4d0' });
-    const wall = k.surf('fWall', 'shutter', { rough: 1, envK: 0.5, color: '#f0e6ec' });
+    const wall = k.surf('fWall', 'plaster', { rough: 1, envK: 0.4, color: '#f3edf0' });
     const wallLow = k.surf('fWallLow', 'plaster', { color: '#ffd3e6', rough: 1 });
     b.addW(new THREE.PlaneGeometry(X1 - X0 + 14, Z1 - Z0 + 8).rotateX(-Math.PI / 2), floor, 3.5, 0, (Z0 + Z1) / 2 + 2);
     // faixas amarelas de segurança
