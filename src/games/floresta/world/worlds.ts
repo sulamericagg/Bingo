@@ -11,6 +11,7 @@ import { WBIOMES } from './biomes';
 import type { GenOpts } from './gen';
 import type { GameMode } from './engine';
 import { freshWorld, parseWorld, type WorldSave } from './wsave';
+import { openStartMenu, SM_ICONS, type SmCard, type SmPage, type StartMenu } from '../../../ui/startmenu';
 
 export interface WorldMeta {
   id: string;
@@ -136,9 +137,20 @@ const CSS = `
 
 export type WorldPick = { kind: 'world'; meta: WorldMeta; save: WorldSave; fresh: boolean } | { kind: 'classic' } | { kind: 'servers' } | null;
 
-/** mostra a lista de mundos; resolve com a escolha (ou null = voltar) */
+/** capa do mundo salvo (miniatura do espaço) */
+function coverOf(w: WorldMeta): string {
+  return coverFor(w.type === 'flutuantes' ? 'ceu' : w.mode === 'criativo' ? 'build' : 'sobrev', (w.seed % 97) + 1);
+}
+const MODE_ICON: Record<string, string> = {
+  sobrevivencia: `<svg viewBox="0 0 48 48" width="48" height="48"><path d="M24 5l15 6v11c0 10-6 17-15 21C15 39 9 32 9 22V11z" fill="#ff8a5c" stroke="#2a0b5c" stroke-width="3.5" stroke-linejoin="round"/><path d="M24 15l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z" fill="#fff6b0" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg>`,
+  criativo: `<svg viewBox="0 0 48 48" width="48" height="48"><path d="M8 18l16-9 16 9v18l-16 9-16-9z" fill="#8fe06a" stroke="#2a0b5c" stroke-width="3.5" stroke-linejoin="round"/><path d="M8 18l16 9 16-9M24 27v18" fill="none" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/><path d="M8 18l16-9 16 9-16 9z" fill="#c9ffb0"/><path d="M8 18l16-9 16 9-16 9z" fill="none" stroke="#2a0b5c" stroke-width="3" stroke-linejoin="round"/><path d="M36 4l2 4 4 2-4 2-2 4-2-4-4-2 4-2z" fill="#ffd34a" stroke="#2a0b5c" stroke-width="1.6"/></svg>`,
+  pacifico: `<svg viewBox="0 0 48 48" width="48" height="48"><path d="M24 41s-15-9-15-20a8 8 0 0115-4 8 8 0 0115 4c0 11-15 20-15 20z" fill="#ff8ab8" stroke="#2a0b5c" stroke-width="3.5" stroke-linejoin="round"/><ellipse cx="17" cy="18" rx="3.5" ry="2" fill="#fff" opacity=".7" transform="rotate(-30 17 18)"/></svg>`,
+};
+const TYPE_DRAW: Record<string, string> = { normal: 'sobrev', plano: 'build', ilhas: 'esconde', flutuantes: 'ceu' };
+
+/** mostra os mundos salvos (como espaços de jogo) + "Servidores"; resolve com a escolha (ou null = voltar) */
 /** `classic`: mostra o atalho para o mundo antigo dos Lenhadores (o Mundo Bloop não mostra: HUD antigo; o Lenhadores tem a carta própria no hub) */
-export function pickWorld(root: HTMLElement, opts: { servers?: boolean; classic?: boolean } = {}): Promise<WorldPick> {
+export function pickWorld(root: HTMLElement, opts: { servers?: boolean; classic?: boolean; gameId?: string } = {}): Promise<WorldPick> {
   if (!document.getElementById('mw-css')) {
     const s = document.createElement('style');
     s.id = 'mw-css';
@@ -146,99 +158,127 @@ export function pickWorld(root: HTMLElement, opts: { servers?: boolean; classic?
     document.head.appendChild(s);
   }
   return new Promise((resolve) => {
-    const m = document.createElement('div');
-    m.className = 'fl-modal';
-    root.appendChild(m);
+    let sm: StartMenu | null = null;
     const done = (v: WorldPick) => {
-      m.remove();
+      sm?.destroy();
+      sm = null;
       resolve(v);
     };
-    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-    const list = () => {
-      const ws = listWorlds();
-      const rows = ws
-        .map(
-          (w) => `<div class="mw-row"><div class="sp"><b>${esc(w.name)}</b><span class="mw-tag">${modeName(w.mode)}</span><small>${TYPES.find((x) => x[0] === w.type)?.[1]() ?? ''} · ${t('mundo.seed', 'Semente')} ${w.seed} · ${new Date(w.at).toLocaleDateString()} · ${w.kb} KB</small></div>
-          <button class="fl-btn red round" data-del="${w.id}" aria-label="${t('mundo.del', 'Apagar')}" style="width:36px;height:36px">✕</button><button class="fl-btn green" data-play="${w.id}">${t('mundo.play', 'Jogar')}</button></div>`,
-        )
-        .join('');
-      m.innerHTML = `<div class="fl-card"><h2><span>${t('mundo.worlds', 'Meus Mundos')}</span><button class="fl-btn round red" data-x="1">✕</button></h2>
-        <div class="mw-list">
-          ${opts.servers ? `<button class="mw-online" data-srv="1" style="background-image:linear-gradient(90deg,rgba(42,11,92,.92) 30%,rgba(42,11,92,.15)),url('${coverFor('pvp')}')"><b>🌐 ${t('mundo.playOnline', 'Jogar online')}</b><small>${t('mundo.playOnlineD', 'Servidores com amigos, PvP e minigames — toque e entre!')}</small></button>` : ''}
-          <div class="mw-row2"><button class="fl-btn gold" data-new="1" style="flex:1">+ ${t('mundo.newWorld', 'Novo mundo')}</button></div>
-          ${rows || `<div style="font-weight:700;opacity:.7;padding:6px">${t('mundo.noWorlds', 'Nenhum mundo ainda — crie o primeiro!')}</div>`}
-          ${opts.classic ? `<button class="fl-btn wood" data-classic="1">${t('mundo.classic', 'Mundo dos Lenhadores (clássico)')}</button>` : ''}
-        </div></div>`;
-    };
+    let sel = 0;
     let mode: GameMode = 'sobrevivencia';
     let type: GenOpts['type'] = 'normal';
     let hk = 1;
+    let name = '';
+    let seedTxt = String(Math.floor(Math.random() * 1e9));
     const off = new Set<number>();
-    const form = () => {
-      const n = listWorlds().length + 1;
-      m.innerHTML = `<div class="fl-card"><h2><span>${t('mundo.newWorld', 'Novo mundo')}</span><button class="fl-btn round red" data-back="1">✕</button></h2>
-        <div class="mw-form">
-          <div class="mw-row2"><label style="flex:1">${t('mundo.name', 'Nome')}<input type="text" maxlength="24" id="mw-name" value="${esc(t('mundo.defName', 'Meu Mundo {n}', { n }))}"></label>
-          <label style="flex:1">${t('mundo.seed', 'Semente')}<input type="text" maxlength="24" id="mw-seed" value="${Math.floor(Math.random() * 1e9)}"></label></div>
-          <div class="mw-modes">${MODES.map(([k, nm, d]) => `<button class="mw-mode ${mode === k ? 'on' : ''}" data-mode="${k}"><b>${nm()}</b><span>${d()}</span></button>`).join('')}</div>
-          <label>${t('mundo.type', 'Tipo de mundo')}<div class="mw-chips">${TYPES.map(([k, nm]) => `<button class="mw-chip ${type === k ? 'on' : ''}" data-type="${k}">${nm()}</button>`).join('')}</div></label>
+    const play = (w: WorldMeta) => {
+      const save = loadWorldById(w.id);
+      if (save) done({ kind: 'world', meta: w, save, fresh: false });
+    };
+    const create = () => {
+      const seed = seedOf(seedTxt || '1');
+      const nm = (name || t('mundo.defName', 'Meu Mundo {n}', { n: listWorlds().length + 1 })).slice(0, 24);
+      const { meta, save } = createWorld(nm, seed, mode, { type, h: hk, off: [...off] });
+      done({ kind: 'world', meta, save, fresh: true });
+    };
+    const advanced = (p: SmPage) => {
+      const box = p.custom(document.createElement('div'));
+      box.className = 'mw-form';
+      box.innerHTML = `<div class="mw-row2"><label style="flex:1">${t('mundo.name', 'Nome')}<input type="text" maxlength="24" id="mw-name"></label>
+          <label style="flex:1">${t('mundo.seed', 'Semente')}<input type="text" maxlength="24" id="mw-seed"></label></div>
           <label>${t('mundo.relief', 'Altura do relevo')}: <span id="mw-hv">${Math.round(hk * 100)}%</span><input type="range" id="mw-h" min="40" max="180" step="10" value="${Math.round(hk * 100)}"></label>
-          <label>${t('mundo.biomes', 'Biomas (toque para ligar/desligar)')}<div class="mw-chips">${WBIOMES.map((b, i) => `<button class="mw-chip ${off.has(i) ? 'off' : 'on'}" data-bio="${i}">${b.name()}</button>`).join('')}</div></label>
-          <button class="fl-btn green" data-create="1">${t('mundo.create', 'Criar e jogar')}</button>
-        </div></div>`;
-      const h = m.querySelector('#mw-h') as HTMLInputElement;
+          <label>${t('mundo.biomes', 'Biomas (toque para ligar/desligar)')}<div class="mw-chips">${WBIOMES.map((b, i) => `<button class="mw-chip ${off.has(i) ? 'off' : 'on'}" data-bio="${i}">${b.name()}</button>`).join('')}</div></label>`;
+      const ni = box.querySelector('#mw-name') as HTMLInputElement;
+      const si = box.querySelector('#mw-seed') as HTMLInputElement;
+      ni.value = name || t('mundo.defName', 'Meu Mundo {n}', { n: listWorlds().length + 1 });
+      si.value = seedTxt;
+      ni.addEventListener('input', () => (name = ni.value));
+      si.addEventListener('input', () => (seedTxt = si.value));
+      for (const i of [ni, si]) i.addEventListener('keydown', (e) => e.stopPropagation());
+      const h = box.querySelector('#mw-h') as HTMLInputElement;
       h.addEventListener('input', () => {
         hk = +h.value / 100;
-        (m.querySelector('#mw-hv') as HTMLElement).textContent = h.value + '%';
+        (box.querySelector('#mw-hv') as HTMLElement).textContent = h.value + '%';
       });
-    };
-    m.addEventListener('click', (e) => {
-      const el = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (!el) return;
-      const d = el.dataset;
-      if (d.x) return done(null);
-      if (d.classic) return done({ kind: 'classic' });
-      if (d.srv) return done({ kind: 'servers' });
-      if (d.new) return form();
-      if (d.back) return list();
-      if (d.del) {
-        if (el.dataset.sure) {
-          deleteWorld(d.del);
-          return list();
-        }
-        el.dataset.sure = '1';
-        el.textContent = '?';
-        el.style.width = 'auto';
-        return;
-      }
-      if (d.play) {
-        const meta = listWorlds().find((w) => w.id === d.play);
-        const save = meta ? loadWorldById(meta.id) : null;
-        if (meta && save) return done({ kind: 'world', meta, save, fresh: false });
-        return;
-      }
-      const name = (m.querySelector('#mw-name') as HTMLInputElement | null)?.value;
-      if (d.mode) mode = d.mode as GameMode;
-      if (d.type) type = d.type as GenOpts['type'];
-      if (d.bio) {
-        const i = +d.bio;
+      box.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-bio]');
+        if (!b) return;
+        const i = +b.dataset.bio!;
         if (off.has(i)) off.delete(i);
         else if (off.size < WBIOMES.length - 1) off.add(i);
-      }
-      if (d.mode || d.type || d.bio) {
-        const nm = name;
-        const sd = (m.querySelector('#mw-seed') as HTMLInputElement).value;
-        form();
-        (m.querySelector('#mw-name') as HTMLInputElement).value = nm ?? '';
-        (m.querySelector('#mw-seed') as HTMLInputElement).value = sd;
-        return;
-      }
-      if (d.create) {
-        const seed = seedOf((m.querySelector('#mw-seed') as HTMLInputElement).value || '1');
-        const { meta, save } = createWorld((name || 'Mundo').slice(0, 24), seed, mode, { type, h: hk, off: [...off] });
-        return done({ kind: 'world', meta, save, fresh: true });
-      }
+        b.classList.toggle('off', off.has(i));
+        b.classList.toggle('on', !off.has(i));
+      });
+    };
+    const newWorld = (p: SmPage) => {
+      p.cards(
+        MODES.map(([k, nm, d]) => ({ id: k, icon: MODE_ICON[k], label: nm(), say: `${nm()}: ${d()}`, sel: mode === k, color: k === 'sobrevivencia' ? '#ffb38a' : k === 'criativo' ? '#a8f08a' : '#ffc0dc', onTap: () => ((mode = k), p.refresh()) })),
+      );
+      p.cards(
+        TYPES.map(([k, nm]) => ({ id: k, art: ((src: string) => (x: CanvasRenderingContext2D, w: number, h: number) => drawCover(x, src, w, h))(coverFor(TYPE_DRAW[k] ?? 'sobrev', 3)), label: nm(), sel: type === k, onTap: () => ((type = k), p.refresh()) })),
+        { cols: 4 },
+      );
+      p.play({ sub: t('mundo.newWorld', 'Novo mundo'), say: t('mundo.create', 'Criar e jogar'), onTap: create });
+      p.link(t('mundo.more', 'Mais opções'), () => sm?.openSheet(advanced, t('mundo.more', 'Mais opções')));
+    };
+    const all = (p: SmPage) => {
+      const ws = listWorlds();
+      p.cards(
+        ws.map((w) => ({ id: w.id, art: ((src: string) => (x: CanvasRenderingContext2D, ww: number, hh: number) => drawCover(x, src, ww, hh))(coverOf(w)), label: w.name, sub: modeName(w.mode), onTap: () => play(w) })),
+        { size: 'wide' },
+      );
+      p.play({ label: t('mundo.newWorldS', 'NOVO'), sub: t('mundo.newWorld', 'Novo mundo'), icon: SM_ICONS.plus, onTap: () => sm?.push(newWorld, t('mundo.newWorld', 'Novo mundo')) });
+    };
+    sm = openStartMenu(root, {
+      game: opts.gameId ?? 'mundo',
+      onBack: () => done(null),
+      build: (p) => {
+        const ws = listWorlds()
+          .slice()
+          .sort((a, b) => b.at - a.at);
+        const top = ws.slice(0, 3);
+        const slots = [0, 1, 2].map((i) => top[i]);
+        if (sel > 2) sel = 0;
+        p.slots(
+          slots.map((w) => (w ? { empty: false, name: w.name, progress: modeName(w.mode), last: w.at, thumb: coverOf(w) } : { empty: true })),
+          {
+            sel,
+            newLabel: t('mundo.newWorld', 'Novo mundo'),
+            onSelect: (i) => {
+              sel = i;
+              sm?.refresh();
+            },
+            onOpen: (i) => (slots[i] ? play(slots[i]!) : sm?.push(newWorld, t('mundo.newWorld', 'Novo mundo'))),
+            onDelete: (i) => {
+              const w = slots[i];
+              if (w) deleteWorld(w.id);
+              sm?.refresh();
+            },
+          },
+        );
+        const w = slots[sel];
+        if (w) p.play({ tone: 'green', sub: w.name, onTap: () => play(w) });
+        else p.play({ sub: t('mundo.newWorld', 'Novo mundo'), onTap: () => sm?.push(newWorld, t('mundo.newWorld', 'Novo mundo')) });
+        if (opts.servers) p.servers({ sub: t('mundo.serversS', 'Online, PvP e minigames'), onTap: () => done({ kind: 'servers' }) });
+        const more: SmCard[] = [];
+        if (ws.length > 3) more.push({ icon: SM_ICONS.globe, label: t('mundo.allWorlds', 'Todos ({n})', { n: ws.length }), say: t('mundo.worlds', 'Meus Mundos'), onTap: () => sm?.push(all, t('mundo.worlds', 'Meus Mundos')) });
+        if (opts.classic) more.push({ icon: SM_ICONS.play, label: t('mundo.classicS', 'Clássico'), say: t('mundo.classic', 'Mundo dos Lenhadores (clássico)'), onTap: () => done({ kind: 'classic' }) });
+        if (more.length) p.cards(more, { size: 'small', cols: more.length });
+      },
     });
-    list();
   });
+}
+
+const coverImgs = new Map<string, HTMLImageElement>();
+function drawCover(x: CanvasRenderingContext2D, src: string, w: number, h: number): boolean {
+  let img = coverImgs.get(src);
+  if (!img) {
+    img = new Image();
+    img.src = src;
+    coverImgs.set(src, img);
+  }
+  if (!img.complete || !img.naturalWidth) return false;
+  const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  x.drawImage(img, (w - img.naturalWidth * k) / 2, (h - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+  return true;
 }

@@ -17,10 +17,10 @@ import { consumePartySeat, partySeat } from '../../party/contract';
 import { reportPlaying, stopPlaying } from '../../party/join';
 import { diffName, type Diff } from './data';
 import { jIcon } from './icons';
-import { icon } from '../../ui/icons';
 import { fillRoom, fillStart, type RoomHandle } from './lobby';
 import { CODE_ALPHA, MAX_PLAYERS, codeFromRoom, createNet, newCode, type JNet, type Me } from './net';
-import { jgSave, persist } from './save';
+import { dropSlot, jgSave, persist, slotList, useSlot } from './save';
+import { openStartMenu, smDrawBloop, type SmDraw, type SmPage } from '../../ui/startmenu';
 import { injectCss } from './style';
 import { enterGame } from '../../audio';
 import './audio';
@@ -49,7 +49,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
   let world: World | null = null;
   let popBack: (() => void) | null = null;
   let dead = false;
-  let menuEl: HTMLDivElement | null = null;
+  let menuEl: HTMLElement | null = null;
   let pending = 0;
   let runStart = performance.now();
   const forced = /[?&]jgtier=(\d)/.exec(location.search);
@@ -121,49 +121,95 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     endWorld();
     menuEl?.remove();
     audio.applySettings();
-    const d = document.createElement('div');
-    d.className = 'jg-menu';
-    menuEl = d;
-    const w = sv.world;
-    d.innerHTML = `
-      <div class="ttl">${jIcon('sail', 46)}${esc(t('jangada.name', 'Jangada Bloop'))}</div>
-      <div class="sub">${esc(t('jangada.menu.sub', 'Pesque o que passa boiando com o gancho, aumente a jangada, cozinhe, purifique água e descubra ilhas. Cuidado com o Mordelão!'))}</div>
-      <div class="jg-modes">
-        ${w ? `<button class="jg-mode big" data-m="cont">${jIcon('found', 44)}${esc(t('jangada.menu.cont', 'Continuar'))}<small>${esc(t('jangada.day', 'Dia {n}', { n: w.day }))} · ${esc(diffName(sv.diff))}</small></button>` : ''}
-        <button class="jg-mode${w ? '' : ' big'}" data-m="new">${jIcon('build', 44)}${esc(t('jangada.menu.new', 'Nova jangada'))}<small>${esc(w ? t('jangada.menu.newWarn', 'Começa do zero (apaga a atual)') : t('jangada.menu.newD', 'Só 4 pisos e um gancho…'))}</small></button>
-        <button class="jg-mode" data-m="online">${jIcon('people', 44)}${esc(t('jangada.net.title', 'Jogar com amigos'))}<small>${esc(t('jangada.menu.onlineD', 'Até 4 na mesma jangada'))}</small></button>
-      </div>
-      <span class="jg-seg" data-seg="diff">${([0, 1, 2] as Diff[]).map((v) => `<button data-v="${v}" class="${sv.diff === v ? 'on' : ''}">${jIcon(['heart', 'shark', 'storm'][v], 20)}${esc(diffName(v))}</button>`).join('')}</span>
-      <div class="jg-row" style="margin-top:2px">
-        ${sv.bestDay ? `<span class="jg-cost">${jIcon('sun', 20)}${esc(t('jangada.best', 'Recorde: dia {n}', { n: sv.bestDay }))}</span>` : ''}
-        <button class="jg-b w" data-a="exit">${icon('home', { size: 20 })}${esc(t('jangada.exit', 'Sair'))}</button>
-      </div>`;
-    el.appendChild(d);
-    d.querySelectorAll<HTMLButtonElement>('[data-seg] button').forEach((b) =>
-      b.addEventListener('click', () => {
-        audio.click();
-        sv.diff = +b.dataset.v! as Diff;
+    const diffs = ([0, 1, 2] as Diff[]).map((v) => ({ id: v, level: v, label: diffName(v) }));
+    const newGame = (p: SmPage) => {
+      p.faces(diffs, sv.diff, (v) => {
+        sv.diff = +v as Diff;
         persist();
-        d.querySelectorAll('[data-seg] button').forEach((x) => x.classList.toggle('on', x === b));
-      }),
-    );
-    d.querySelector('[data-m=cont]')?.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      void start(false);
+      });
+      p.play({ sub: t('jangada.menu.new', 'Nova jangada'), say: t('jangada.menu.new', 'Nova jangada'), onTap: () => void start(true) });
+    };
+    const sm = openStartMenu(el, {
+      game: 'jangada',
+      chips: sv.bestDay ? [{ icon: jIcon('sun', 20), text: String(sv.bestDay) }] : [],
+      onBack: quit,
+      build: (p) => {
+        const list = slotList();
+        const cur = sv.slot ?? 0;
+        p.slots(
+          list.map((s) => ({
+            empty: !s.world,
+            name: s.world ? t('jangada.slot', 'Jangada {n}', { n: list.indexOf(s) + 1 }) : undefined,
+            progress: s.world ? t('jangada.day', 'Dia {n}', { n: s.world.day }) : undefined,
+            progressIcon: jIcon('sun', 16),
+            last: s.meta?.last,
+            diff: s.meta?.diff,
+            thumb: s.world ? raftThumb(s.world.raft.length, s.world.tod) : undefined,
+            color: '#5ec8f0',
+          })),
+          {
+            sel: cur,
+            newLabel: t('jangada.menu.new', 'Nova jangada'),
+            onSelect: (i) => {
+              useSlot(i);
+              sm.refresh();
+            },
+            onOpen: (i) => {
+              useSlot(i);
+              if (sv.world) void start(false);
+              else sm.push(newGame, t('jangada.menu.new', 'Nova jangada'));
+            },
+            onDelete: (i) => {
+              dropSlot(i);
+              sm.refresh();
+            },
+          },
+        );
+        const w = sv.world;
+        if (w) p.play({ label: t('jangada.menu.cont', 'Continuar'), sub: `${t('jangada.day', 'Dia {n}', { n: w.day })} · ${diffName(sv.diff)}`, tone: 'green', onTap: () => void start(false) });
+        else p.play({ sub: t('jangada.menu.new', 'Nova jangada'), onTap: () => sm.push(newGame, t('jangada.menu.new', 'Nova jangada')) });
+        p.friends({
+          game: 'jangada',
+          onTap: () => {
+            callNext = true;
+            void connect(newCode(), 'create', false);
+          },
+        });
+        p.link(t('fp.code', 'Entrar com código / QR'), onlineStart);
+      },
     });
-    d.querySelector('[data-m=new]')!.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      void start(true);
-    });
-    d.querySelector('[data-m=online]')!.addEventListener('click', () => {
-      audio.unlock();
-      audio.click();
-      onlineStart();
-    });
-    d.querySelector('[data-a=exit]')!.addEventListener('click', quit);
-    setBack(quit);
+    menuEl = sm.el;
+    setBack(() => sm.back());
+  }
+
+  /** miniatura do espaço salvo: mar, jangada do tamanho certo e o Bloop */
+  function raftThumb(tiles: number, tod: number): SmDraw {
+    return (x, w, h, time) => {
+      const night = tod > 0.74 && tod < 0.96;
+      const g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, night ? '#1a2a6a' : '#8fdcff');
+      g.addColorStop(0.5, night ? '#24407a' : '#bdf0ff');
+      g.addColorStop(0.52, night ? '#123a6a' : '#2fa6e0');
+      g.addColorStop(1, night ? '#0a2448' : '#1670b8');
+      x.fillStyle = g;
+      x.fillRect(0, 0, w, h);
+      x.fillStyle = night ? '#fff6c8' : '#ffe066';
+      x.beginPath();
+      x.arc(w * 0.8, h * 0.22, h * 0.1, 0, Math.PI * 2);
+      x.fill();
+      const n = Math.max(1, Math.min(9, Math.round(Math.sqrt(tiles))));
+      const s = Math.min(w * 0.6, h * 0.5) / n;
+      const ox = w / 2 - (n * s) / 2;
+      const oy = h * 0.62;
+      for (let i = 0; i < n; i++) {
+        x.fillStyle = i % 2 ? '#c8894a' : '#b3743a';
+        x.fillRect(ox + i * s, oy, s - 1, s * 0.45);
+      }
+      x.strokeStyle = '#4a2a10';
+      x.lineWidth = 2;
+      x.strokeRect(ox, oy, n * s, s * 0.45);
+      smDrawBloop(x, w / 2, oy - h * 0.1 + Math.sin(time * 2) * 2, h * 0.13, time, 0);
+    };
   }
 
   function loading(): { el: HTMLDivElement; set(v: number): void } {

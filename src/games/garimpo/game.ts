@@ -37,6 +37,7 @@ import { Repairs } from './repair'; // CONSERTOS: quebras raras + minijogos de o
 import { GbNet, newCode, type Me } from './net';
 import { awaitInit, KINDS, MpGuest, MpHost, myAvatar, PCOL, type GuestInit } from './mp';
 import { fillJoin, fillLobby, inviteCard, pollInvites, type LobbyHandle } from './lobby';
+import { openStartMenu } from '../../ui/startmenu';
 import { takePendingGarimpo } from './pending';
 import { BAG, CAMP_MONEY, CampBuild, freshCamp } from './start/camp'; // CAMP: começo do zero + obras
 import { consumePartySeat, partySeat } from '../../party/contract';
@@ -245,147 +246,93 @@ export class Garimpo implements MiniGameHandle, BotHost {
   /* ============================== menu de saves ============================== */
   menu(online = false): void {
     this.closeOverlays();
-    const meta = loadMeta();
-    const d = document.createElement('div');
-    d.className = 'gb-scr gb-menu';
-    const cards = meta
-      .map((m, i) => {
-        if (!m)
-          return `<button class="gb-card empty" data-new="${i}">${IC.plus}<span>${esc(t('gb.newGame', 'Novo jogo'))}</span><small>${esc(t('gb.slot', 'Espaço {n}', { n: i + 1 }))}</small></button>`;
-        const mins = Math.round(m.played / 60);
-        return `<div class="gb-card" data-go="${i}" role="button">${IC.bar}<span>${esc(t('gb.slot', 'Espaço {n}', { n: i + 1 }))} · ${esc(DIFF_NAMES()[m.diff])}</span><small>${IC.coin.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} ${Math.floor(m.money).toLocaleString('pt-BR')} · ${mins} min</small><button class="gb-del" data-del="${i}" aria-label="${esc(t('gb.delete', 'Apagar'))}">${IC.trash}</button></div>`;
-      })
-      .join('');
-    d.innerHTML = online
-      ? `<h1>${IC.friends}${esc(t('gb.mp.title', 'Garimpar com amigos'))}</h1><div class="gb-sub">${esc(t('gb.mp.pick', 'Escolha o garimpo: seus amigos jogam nele com você'))}</div><div class="gb-row">${cards}</div><button class="gb-btn ghost" data-solo>${esc(t('gb.back', 'Voltar'))}</button>`
-      : `<h1>${esc(t('gb.name', 'Garimpo Bruto'))}</h1><div class="gb-row">${cards}</div><div class="gb-row"><button class="gb-btn ghost" data-exit>${IC.home}${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn ghost" data-intro>${IC.film}${esc(t('gb.c.intro', 'Abertura'))}</button><button class="gb-btn blue" data-online>${IC.friends}${esc(t('gb.mp.withFriends', 'Com amigos'))}</button></div><div class="gb-menuinv"></div><button class="gb-codelink" data-joinui>${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
-    this.wrap.appendChild(d);
-    // convites de amigos chegam aqui também
-    if (!online) {
-      const box = d.querySelector('.gb-menuinv') as HTMLElement;
-      // amigos garimpando agora: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
-      const pl = document.createElement('div');
-      box.before(pl);
-      void import('../../party/friends-play').then((f) => f.playingStrip(pl, 'garimpo'));
-      pollInvites(
-        () => this.myself().catch(() => null),
-        (inv) =>
-          inviteCard(box, inv, () => {
-            d.remove();
-            this.joinRoom(inv.code);
-          }),
-        () => d.isConnected && !this.sv,
-      );
-    }
-    d.addEventListener('click', (e) => {
-      const el = e.target as HTMLElement;
-      const del = el.closest<HTMLElement>('[data-del]');
-      if (del) {
-        e.stopPropagation();
-        const i = Number(del.dataset.del);
-        if (del.dataset.armed) {
-          deleteSlot(i);
-          d.remove();
-          this.menu();
-        } else {
-          del.dataset.armed = '1';
-          del.style.background = '#c21d1d';
-          notify(t('gb.delConfirm', 'Toque de novo para apagar'), { icon: 'warning', kind: 'warn' });
-        }
-        return;
-      }
-      const go = el.closest<HTMLElement>('[data-go]');
-      if (go) {
-        sfx.click();
-        const i = Number(go.dataset.go);
-        const s = loadSlot(i);
-        d.remove();
-        if (s) void this.start(i, s).then(() => {
-          if (online) void this.goOnline();
-        });
-        else this.menu(online);
-        return;
-      }
-      const nw = el.closest<HTMLElement>('[data-new]');
-      if (nw) {
-        sfx.click();
-        d.remove();
-        this.newGame(Number(nw.dataset.new), online);
-        return;
-      }
-      if (el.closest('[data-online]')) {
-        sfx.click();
-        d.remove();
-        this.menu(true);
-        return;
-      }
-      if (el.closest('[data-solo]')) {
-        sfx.click();
-        d.remove();
-        this.menu();
-        return;
-      }
-      if (el.closest('[data-intro]')) {
-        // CAMP: rever a abertura (mundo de exemplo)
-        sfx.click();
-        d.remove();
-        void import('./start/cinematic').then((c) => c.playStandalone(this.wrap, this.gov.tier, () => this.menu()));
-        return;
-      }
-      if (el.closest('[data-joinui]')) {
-        sfx.click();
-        d.remove();
-        this.joinUi();
-        return;
-      }
-      if (el.closest('[data-exit]')) this.finish();
-    });
-  }
-
-  private newGame(i: number, online = false): void {
-    const d = document.createElement('div');
-    d.className = 'gb-scr';
-    let diff: Diff = 1;
+    this.wrap.querySelectorAll(':scope > .sm').forEach((e) => e.remove());
     const subs = [t('gb.d0s', 'mais dinheiro'), t('gb.d1s', 'o jeito certo'), t('gb.d2s', 'ouro barato'), t('gb.d3s', 'fogo e pouco dinheiro')];
-    const draw = () => {
-      d.innerHTML = `<h1>${esc(t('gb.newGame', 'Novo jogo'))}</h1><div class="gb-diffs">${DIFF_NAMES()
-        .map((n, k) => `<button data-d="${k}" class="${k === diff ? 'on' : ''}">${esc(n)}<small>${esc(subs[k])}</small></button>`)
-        .join('')}</div><div class="gb-row"><button class="gb-btn ghost" data-back>${esc(t('gb.back', 'Voltar'))}</button><button class="gb-btn" data-start>${IC.play}${esc(t('gb.start', 'Começar'))}</button></div>`;
+    let diff: Diff = 1;
+    const meta0 = loadMeta();
+    let sel = Math.max(0, meta0.findIndex((m) => !!m));
+    const go = (i: number, s: SlotSave, net: boolean) => {
+      sm.destroy();
+      void this.start(i, s).then(() => {
+        if (net) void this.goOnline();
+      });
     };
-    draw();
-    this.wrap.appendChild(d);
-    this.popOv = pushBack(() => {
-      d.remove();
-      this.menu(online);
-    });
-    d.addEventListener('click', (e) => {
-      const el = e.target as HTMLElement;
-      const b = el.closest<HTMLElement>('[data-d]');
-      if (b) {
-        diff = Number(b.dataset.d) as Diff;
-        sfx.click();
-        draw();
-        return;
-      }
-      if (el.closest('[data-back]')) {
-        this.popOv?.();
-        this.popOv = null;
-        d.remove();
-        this.menu(online);
-      }
-      if (el.closest('[data-start]')) {
-        this.popOv?.();
-        this.popOv = null;
-        d.remove();
-        const s = freshSlot((Math.random() * 1e9) | 0, diff);
-        // CAMP: começo do zero — acampamento vazio, pouco dinheiro
-        s.camp = freshCamp();
-        s.money = CAMP_MONEY[diff];
-        writeSlot(i, s);
-        void this.start(i, s).then(() => {
-          if (online) void this.goOnline();
+    const newPage = (i: number, net: boolean) =>
+      sm.push((p) => {
+        p.faces(
+          DIFF_NAMES().map((n, k) => ({ id: k, level: k, label: n, say: `${n}: ${subs[k]}` })),
+          diff,
+          (v) => (diff = +v as Diff),
+        );
+        p.play({
+          sub: net ? t('gb.mp.withFriends', 'Com amigos') : undefined,
+          onTap: () => {
+            const s = freshSlot((Math.random() * 1e9) | 0, diff);
+            // CAMP: começo do zero — acampamento vazio, pouco dinheiro
+            s.camp = freshCamp();
+            s.money = CAMP_MONEY[diff];
+            writeSlot(i, s);
+            go(i, s, net);
+          },
         });
-      }
+      }, t('gb.newGame', 'Novo jogo'));
+    const open = (i: number, net: boolean) => {
+      const s = loadSlot(i);
+      if (s) go(i, s, net);
+      else newPage(i, net);
+    };
+    const sm = openStartMenu(this.wrap, {
+      game: 'garimpo',
+      sub: online ? t('gb.mp.pick', 'Escolha o garimpo: seus amigos jogam nele com você') : undefined,
+      onBack: online ? () => (sm.destroy(), this.menu()) : () => this.finish(),
+      build: (p) => {
+        const meta = loadMeta();
+        p.slots(
+          meta.map((m) =>
+            m
+              ? { empty: false, name: t('gb.slotS', 'Garimpo {n}', { n: meta.indexOf(m) + 1 }), progress: Math.floor(m.money).toLocaleString('pt-BR'), progressIcon: IC.coin, last: m.at, diff: m.diff, icon: IC.bar, color: '#e0a040' }
+              : { empty: true },
+          ),
+          {
+            sel,
+            newLabel: t('gb.newGame', 'Novo jogo'),
+            onSelect: (i) => {
+              sel = i;
+              sm.refresh();
+            },
+            onOpen: (i) => open(i, online),
+            onDelete: (i) => {
+              deleteSlot(i);
+              sm.refresh();
+            },
+          },
+        );
+        const m = meta[sel];
+        if (m) p.play({ label: online ? t('gb.mp.withFriends', 'Com amigos') : t('gb.cont', 'Continuar'), sub: `${DIFF_NAMES()[m.diff]} · ${Math.round(m.played / 60)} min`, tone: 'green', onTap: () => open(sel, online) });
+        else p.play({ sub: t('gb.newGame', 'Novo jogo'), onTap: () => newPage(sel, online) });
+        if (online) return;
+        p.friends({ game: 'garimpo', onTap: () => open(sel, true) });
+        p.cards([{ icon: IC.film, label: t('gb.c.intro', 'Abertura'), color: '#ffd08a', onTap: () => {
+          sm.destroy();
+          void import('./start/cinematic').then((c) => c.playStandalone(this.wrap, this.gov.tier, () => this.menu()));
+        } }], { size: 'small', cols: 1 });
+        // convites de amigos chegam aqui também
+        const box = p.custom(document.createElement('div'));
+        box.className = 'gb-menuinv';
+        pollInvites(
+          () => this.myself().catch(() => null),
+          (inv) =>
+            inviteCard(box, inv, () => {
+              sm.destroy();
+              this.joinRoom(inv.code);
+            }),
+          () => box.isConnected && !this.sv,
+        );
+        p.link(t('fp.code', 'Entrar com código / QR'), () => {
+          sm.destroy();
+          this.joinUi();
+        });
+      },
     });
   }
 

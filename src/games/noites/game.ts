@@ -35,6 +35,7 @@ import { CamView } from '../../3d/camview';
 import { PIECE } from './build/pieces'; // BUILD
 import { consumePartySeat, partyRoomFor, partySeat } from '../../party/contract';
 import { joinStr, reportPlaying, stopPlaying } from '../../party/join';
+import { openStartMenu, type SmPage } from '../../ui/startmenu';
 
 /* ------------------------------ save ------------------------------ */
 interface NSave {
@@ -149,7 +150,7 @@ export class NoitesGame implements MiniGameHandle {
   private objT = 0;
   private resultShown = false;
   private started = 0;
-  private menuEl: HTMLDivElement | null = null;
+  private menuEl: HTMLElement | null = null;
   private offs: (() => void)[] = [];
   private keys = new Set<string>();
   private craftKey = '';
@@ -209,77 +210,87 @@ export class NoitesGame implements MiniGameHandle {
   /* ------------------------------ menu ------------------------------ */
   showMenu(): void {
     this.menuEl?.remove();
-    const m = document.createElement('div');
-    m.className = 'nc-menu';
-    this.menuEl = m;
     const run = loadRun();
-    const hats = HATS.map((h) => {
-      const lock = this.save.best < h.need;
-      return `<button class="nc-btn ${this.save.hat === h.id ? 'gold on' : ''}" data-hat="${h.id}" ${lock ? 'disabled' : ''} data-say="${esc(h.n())}">${lock ? ic('lock', 26) : h.id === 'none' ? ic('close', 26, '#2a0b5c') : ic(HAT_ICON[h.id] ?? 'star', 30, h.col)}${lock ? `<small>${h.need}</small>` : ''}</button>`;
-    }).join('');
-    const H = this.save.helpers;
-    const diffs = [
-      ['star', t('noites.diff.easy', 'Fácil')],
-      ['moon', t('noites.diff.normal', 'Normal')],
-      ['shadow', t('noites.diff.hard', 'Difícil')],
-    ];
-    m.innerHTML = `
-      <button class="nc-btn round red tl" data-m="exit" data-say="${esc(t('noites.say.exit', 'Sair'))}">${ic('exit', 26)}</button>
-      <h1>${ic('fire', 40)}${esc(t('noites.name', 'Noites do Acampamento'))}${ic('moon', 34)}</h1>
-      <div class="toprow"><div class="rec">${ic('moon', 26)}${ic('star', 22)} ${this.save.best} / ${GOAL_NIGHTS}</div><div class="hats">${hats}</div></div>
-      <div class="big">
-        ${run ? `<button class="nc-btn green" data-m="cont" data-say="${esc(t('noites.menu.cont', 'Continuar a partida'))}">${ic('play', 46, '#0a3a1a')}<span>${esc(t('noites.menu.contS', 'Continuar'))} ${ic('moon', 18)}${run.night}</span></button>` : ''}
-        <button class="nc-btn gold" data-m="solo" data-say="${esc(t('noites.menu.solo', 'Jogar sozinho'))}">${ic(run ? 'plus' : 'play', 52)}<span>${esc(run ? t('noites.menu.newS', 'Nova partida') : t('noites.menu.soloS', 'Sozinho'))}</span></button>
-        <button class="nc-btn" data-m="host" data-say="${esc(t('noites.menu.friends', 'Jogar com amigos'))}">${ic('people', 52)}<span>${esc(t('noites.menu.friendsS', 'Com amigos'))}</span></button>
-      </div>
-      <div class="nc-playing"></div>
-      <div class="opts">
-        <div class="helpers">
-          <button class="nc-btn ${H === 0 ? 'gold on' : ''}" data-h="0" data-say="${esc(t('noites.menu.alone', 'Sozinho, sem ajudantes'))}">${ic('person', 26)}<span>${esc(t('noites.menu.aloneS', 'Sozinho'))}</span></button>
-          <span class="lab">${ic('baby', 22, '#8ad8ff')}${esc(t('noites.menu.helpers', 'Com ajudantes'))}</span>
-          ${[1, 2, 3, 4].map((n) => `<button class="nc-btn ${H === n ? 'gold on' : ''}" data-h="${n}" data-say="${esc(t('noites.menu.bots', '{n} ajudantes', { n }))}">${n}</button>`).join('')}
-        </div>
-        <div class="helpers">
-          ${diffs.map(([i, n], k) => `<button class="nc-btn ${this.save.diff === k ? 'gold on' : ''}" data-d="${k}" data-say="${esc(n)}">${ic(i, 22, k === 2 ? '#5a3a9a' : '')}<span>${esc(n)}</span></button>`).join('')}
-        </div>
-      </div>
-      <button class="nc-codelink" data-m="join">${esc(t('fp.code', 'Entrar com código / QR'))}</button>`;
-    this.wrap.appendChild(m);
-    // amigos com sala aberta: "Fulano está jogando — ENTRAR" (src/party/friends-play.ts)
-    void import('../../party/friends-play').then((f) => {
-      const el = m.querySelector<HTMLElement>('.nc-playing');
-      if (el) f.playingStrip(el, 'noites');
-    });
-    speak(t('noites.say.welcome', 'Noites do Acampamento! Toque no botão amarelo para jogar.'), { cool: 60000 });
-    m.querySelectorAll<HTMLElement>('button').forEach((b) =>
-      b.addEventListener('click', () => {
-        audio.unlock();
-        sfx.click();
-        const say = b.dataset.say;
-        if (say) speak(say, { cool: 500, urgent: true });
-        if (b.dataset.hat) {
-          this.save.hat = b.dataset.hat;
-          writeSave(this.save);
-          this.showMenu();
-        } else if (b.dataset.h) {
-          this.save.helpers = +b.dataset.h;
-          writeSave(this.save);
-          this.showMenu();
-        } else if (b.dataset.d) {
-          this.save.diff = +b.dataset.d;
-          writeSave(this.save);
-          this.showMenu();
-        } else if (b.dataset.m === 'exit') this.exitCb();
-        else if (b.dataset.m === 'cont') {
-          this.runSave = loadRun();
-          this.startSolo();
-        } else if (b.dataset.m === 'solo') {
+    const diffs = [t('noites.diff.easy', 'Fácil'), t('noites.diff.normal', 'Normal'), t('noites.diff.hard', 'Difícil')];
+    const sm = openStartMenu(this.wrap, {
+      game: 'noites',
+      chips: [{ icon: ic('moon', 20), text: `${this.save.best}/${GOAL_NIGHTS}` }],
+      onBack: () => this.exitCb(),
+      settings: (p) => this.menuSettings(p, () => sm.refresh()),
+      build: (p) => {
+        const H = this.save.helpers;
+        const sum = [diffs[this.save.diff] ?? '', H ? t('noites.menu.bots', '{n} ajudantes', { n: H }) : t('noites.menu.aloneS', 'Sozinho')].join(' · ');
+        if (run)
+          p.play({
+            label: t('noites.menu.contS', 'Continuar'),
+            sub: t('noites.menu.nightN', 'Noite {n}', { n: run.night }) + ' · ' + sum,
+            tone: 'green',
+            say: t('noites.menu.cont', 'Continuar a partida'),
+            onTap: () => {
+              this.runSave = loadRun();
+              this.startSolo();
+            },
+          });
+        p.faces(
+          diffs.map((n, k) => ({ id: k, level: k, label: n })),
+          this.save.diff,
+          (id) => {
+            this.save.diff = +id;
+            writeSave(this.save);
+            sm.refresh();
+          },
+        );
+        const fresh = () => {
           clearRun();
           this.runSave = null;
           this.startSolo();
-        } else if (b.dataset.m === 'host') void this.startHost();
-        else if (b.dataset.m === 'join') this.showJoin();
+        };
+        if (run) p.cards([{ icon: ic('plus', 40), label: t('noites.menu.newS', 'Nova partida'), say: t('noites.menu.solo', 'Jogar sozinho'), color: '#ffcf6b', onTap: fresh }], { size: 'small', cols: 1 });
+        else p.play({ sub: sum, say: t('noites.menu.solo', 'Jogar sozinho'), onTap: fresh });
+        p.friends({ game: 'noites', say: t('noites.menu.friends', 'Jogar com amigos'), onTap: () => void this.startHost() });
+        p.link(t('fp.code', 'Entrar com código / QR'), () => this.showJoin());
+      },
+    });
+    this.menuEl = sm.el;
+    speak(t('noites.say.welcome', 'Noites do Acampamento! Toque no botão amarelo para jogar.'), { cool: 60000 });
+  }
+
+  /** folha de ajustes do menu: ajudantes e chapéu */
+  private menuSettings(p: SmPage, again: () => void): void {
+    const H = this.save.helpers;
+    p.label(t('noites.menu.helpers', 'Com ajudantes'), ic('baby', 20, '#8ad8ff'));
+    p.cards(
+      [0, 1, 2, 3, 4].map((n) => ({
+        label: n ? String(n) : t('noites.menu.aloneS', 'Sozinho'),
+        icon: n ? ic('baby', 40, '#8ad8ff') : ic('person', 40),
+        say: n ? t('noites.menu.bots', '{n} ajudantes', { n }) : t('noites.menu.alone', 'Sozinho, sem ajudantes'),
+        sel: H === n,
+        onTap: () => {
+          this.save.helpers = n;
+          writeSave(this.save);
+          p.refresh();
+          again();
+        },
+      })),
+      { cols: 5 },
+    );
+    p.label(t('noites.menu.hat', 'Chapéu'), ic('star', 20));
+    p.cards(
+      HATS.map((h) => {
+        const lock = this.save.best < h.need;
+        return {
+          label: h.n(),
+          icon: h.id === 'none' ? ic('close', 40, '#2a0b5c') : ic(HAT_ICON[h.id] ?? 'star', 44, h.col),
+          lock: lock ? ic('moon', 14) + h.need : false,
+          sel: this.save.hat === h.id,
+          onTap: () => {
+            this.save.hat = h.id;
+            writeSave(this.save);
+            p.refresh();
+          },
+        };
       }),
+      { cols: 4 },
     );
   }
 
