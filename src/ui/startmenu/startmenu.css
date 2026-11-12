@@ -272,5 +272,19 @@
 }
 
 
+
+/* telas baixas (740×360): tudo cabe sem rolar — saves mais baixos, botões mais finos */
+@media (orientation:landscape) and (max-height:380px){
+.sm .sm-body{gap:6px}
+.sm .sm-panel{padding-top:8px}
+.sm .sm-slots{gap:7px;padding-top:4px}
+.sm .sm-slot{padding:3px 4px 4px}
+.sm .sm-slot .sm-thumb{aspect-ratio:2/1}
+.sm .sm-slot.sel{transform:translateY(-4px) scale(1.03)}
+.sm .sm-play{min-height:48px}
+.sm .sm-playt b{font-size:24px}
+.sm .sm-friends{min-height:38px;font-size:15px}
+}
+
 /* abertura de cinema tocando: o menu por baixo some */
 .cine-on .sm-root{visibility:hidden}
