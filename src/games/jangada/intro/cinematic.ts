@@ -86,15 +86,156 @@ function hullBand(y0: number, y1: number, col: string): THREE.BufferGeometry {
   g.computeVertexNormals();
   return clean(paint(g, col, 0.03));
 }
+/* ---- texturas procedurais do navio (canvas; cinza/branco: a cor vem da cor do vértice) ---- */
+function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void, aniso = 4): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d')!);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = aniso;
+  return t;
+}
+let prng = 99;
+const pr = () => ((prng = (prng * 16807) % 2147483647) / 2147483647);
+/** contêiner: metade esquerda = chapa corrugada (com moldura, ferrugem e sujeira); metade direita = portas com barras */
+function containerTex(): THREE.CanvasTexture {
+  return canvasTex(512, 256, (x) => {
+    x.fillStyle = '#f2f2f2';
+    x.fillRect(0, 0, 512, 256);
+    // corrugado: faixas verticais claro/escuro com degradê (parece ondulado)
+    for (let i = 0; i < 256; i += 10) {
+      const g = x.createLinearGradient(i, 0, i + 10, 0);
+      g.addColorStop(0, '#d0d0d0');
+      g.addColorStop(0.35, '#ffffff');
+      g.addColorStop(0.7, '#e6e6e6');
+      g.addColorStop(1, '#bcbcbc');
+      x.fillStyle = g;
+      x.fillRect(i, 0, 10, 256);
+    }
+    // portas: dois painéis, 4 barras de trava com alças, dobradiças
+    x.fillStyle = '#e8e8e8';
+    x.fillRect(256, 0, 256, 256);
+    for (let i = 256; i < 512; i += 16) {
+      x.fillStyle = i % 32 ? '#f4f4f4' : '#dadada';
+      x.fillRect(i, 0, 16, 256);
+    }
+    x.fillStyle = '#6a6a6a';
+    x.fillRect(382, 10, 4, 236);
+    for (const bx of [300, 352, 414, 466]) {
+      x.fillStyle = '#5a5a5a';
+      x.fillRect(bx, 8, 6, 240);
+      x.fillStyle = '#7a7a7a';
+      for (const by of [40, 128, 216]) x.fillRect(bx - 4, by, 14, 6);
+      x.fillStyle = '#4a4a4a';
+      x.fillRect(bx + 6, 120, 18, 8);
+    }
+    for (const hy of [30, 120, 210]) {
+      x.fillStyle = '#6a6a6a';
+      x.fillRect(258, hy, 10, 16);
+      x.fillRect(502, hy, 10, 16);
+    }
+    // moldura (chanfro escuro + filete claro) nas duas metades
+    for (const ox of [0, 256]) {
+      x.strokeStyle = 'rgba(40,40,40,.75)';
+      x.lineWidth = 10;
+      x.strokeRect(ox + 5, 5, 246, 246);
+      x.strokeStyle = 'rgba(255,255,255,.55)';
+      x.lineWidth = 3;
+      x.strokeRect(ox + 12, 12, 232, 232);
+    }
+    // ferrugem e sujeira (escorrendo de cima)
+    for (let i = 0; i < 26; i++) {
+      const rx = pr() * 512;
+      const len = 30 + pr() * 120;
+      const g = x.createLinearGradient(0, 8, 0, 8 + len);
+      g.addColorStop(0, 'rgba(120,60,20,.55)');
+      g.addColorStop(1, 'rgba(120,60,20,0)');
+      x.fillStyle = g;
+      x.fillRect(rx, 8, 2 + pr() * 4, len);
+    }
+    for (let i = 0; i < 70; i++) {
+      x.fillStyle = `rgba(${pr() < 0.5 ? '110,70,40' : '60,60,60'},${0.08 + pr() * 0.18})`;
+      x.beginPath();
+      x.arc(pr() * 512, 200 + pr() * 56, 3 + pr() * 9, 0, 6.28);
+      x.fill();
+    }
+  });
+}
+/** casco: chapas (emendas), escorridos de ferrugem e linha d'água suja */
+function hullTex(): THREE.CanvasTexture {
+  return canvasTex(1024, 128, (x) => {
+    x.fillStyle = '#ffffff';
+    x.fillRect(0, 0, 1024, 128);
+    x.fillStyle = 'rgba(0,0,0,.12)';
+    for (let i = 0; i < 1024; i += 43) x.fillRect(i, 0, 2, 128);
+    x.fillRect(0, 63, 1024, 2);
+    for (let i = 0; i < 40; i++) {
+      const rx = pr() * 1024;
+      const len = 30 + pr() * 90;
+      const g = x.createLinearGradient(0, 0, 0, len);
+      g.addColorStop(0, 'rgba(150,70,25,.7)');
+      g.addColorStop(1, 'rgba(150,70,25,0)');
+      x.fillStyle = g;
+      x.fillRect(rx, 0, 2 + pr() * 5, len);
+    }
+    const g = x.createLinearGradient(0, 96, 0, 128);
+    g.addColorStop(0, 'rgba(60,70,40,0)');
+    g.addColorStop(1, 'rgba(60,70,40,.35)');
+    x.fillStyle = g;
+    x.fillRect(0, 96, 1024, 32);
+  });
+}
+/** superestrutura: fileiras de janelas com caixilho (a faixa da direita fica lisa: tetos).
+ *  Devolve também o mapa de brilho (só as janelas acesas: brilham na tempestade). */
+function cabinTex(): { map: THREE.CanvasTexture; glow: THREE.CanvasTexture } {
+  const lit: [number, number][] = [];
+  const map = canvasTex(256, 256, (x) => {
+    x.fillStyle = '#ffffff';
+    x.fillRect(0, 0, 256, 256);
+    x.fillStyle = 'rgba(0,0,0,.08)';
+    for (let r = 0; r < 4; r++) x.fillRect(0, r * 56 + 50, 224, 3);
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 5; c++) {
+        const wx = 14 + c * 42;
+        const wy = 18 + r * 56;
+        x.fillStyle = '#5a6070';
+        x.fillRect(wx - 3, wy - 3, 30, 26);
+        const on = pr() < 0.6;
+        if (on) lit.push([wx, wy]);
+        x.fillStyle = on ? '#ffe2a0' : '#2a3a52';
+        x.fillRect(wx, wy, 24, 20);
+        x.fillStyle = 'rgba(255,255,255,.35)';
+        x.fillRect(wx + 2, wy + 2, 6, 16);
+      }
+  });
+  const glow = canvasTex(256, 256, (x) => {
+    x.fillStyle = '#000000';
+    x.fillRect(0, 0, 256, 256);
+    x.fillStyle = '#c89a50';
+    for (const [wx, wy] of lit) x.fillRect(wx, wy, 24, 20);
+  });
+  return { map, glow };
+}
+/** remapeia o u das faces de uma BoxGeometry (ordem: +x, −x, +y, −y, +z, −z) para [u0, u1] */
+function boxU(g: THREE.BufferGeometry, faces: [number, number][]): THREE.BufferGeometry {
+  const uv = g.getAttribute('uv');
+  const per = uv.count / 6;
+  for (let f = 0; f < 6; f++) {
+    const [u0, u1] = faces[f];
+    for (let i = f * per; i < (f + 1) * per; i++) uv.setX(i, u0 + uv.getX(i) * (u1 - u0));
+  }
+  return g;
+}
 /** altura de cada contêiner empilhado (maior que a nervura de 1,15: pilhas não se sobrepõem) */
 const STACK = 1.18;
 function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; windows: THREE.Mesh; lifeboat: THREE.Group; mastTip: THREE.Vector3 } {
   const ship = new THREE.Group();
   const L: THREE.BufferGeometry[] = [];
-  L.push(hullBand(-1.7, 0.1, '#c8402e'));
-  L.push(hullBand(0.1, 0.36, '#f4f2ea'));
-  L.push(hullBand(0.36, 1.75, '#24406e'));
-  L.push(hullBand(1.75, 2.05, '#f4f2ea'));
+  // casco com textura (chapas, ferrugem, linha d'água); superestrutura com janelas
+  const H: THREE.BufferGeometry[] = [hullBand(-1.7, 0.1, '#c8402e'), hullBand(0.1, 0.36, '#f4f2ea'), hullBand(0.36, 1.75, '#3a5a8e'), hullBand(1.75, 2.05, '#f4f2ea')];
+  const K: THREE.BufferGeometry[] = [];
   // convés
   // (o topo do convés fica 6 cm acima da faixa branca: antes era coplanar e piscava)
   const dk = new THREE.BoxGeometry(24, 0.1, 2, 24, 1, 1);
@@ -108,8 +249,15 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
   dk.computeVertexNormals();
   L.push(clean(paint(dk, '#4f7a62', 0.02)));
   // ponte de comando (popa) + chaminé + mastro
-  L.push(box(4, 4.2, 5, '#f4f2ea', 9, 4.1, 0, 0, 0, 0, 0.02));
-  L.push(box(3, 1.2, 4, '#f4f2ea', 9.3, 6.8, 0, 0, 0, 0, 0.02));
+  const cab = (w: number, h: number, d: number, x: number, y: number) => K.push(clean(paint(boxU(new THREE.BoxGeometry(w, h, d).translate(x, y, 0), [[0, 0.875], [0, 0.875], [0.9, 1], [0.9, 1], [0, 0.875], [0, 0.875]]), '#f4f2ea', 0.02)));
+  cab(4, 4.2, 5, 9, 4.1);
+  cab(3, 1.2, 4, 9.3, 6.8);
+  // corrimão das asas da ponte + boias
+  for (const sz of [-1, 1]) {
+    L.push(box(1, 0.05, 0.05, '#ffffff', 7.6, 6.75, sz * 3.25, 0, 0, 0, 0));
+    for (const px of [7.15, 7.6, 8.05]) L.push(box(0.05, 0.5, 0.05, '#ffffff', px, 6.5, sz * 3.25, 0, 0, 0, 0));
+    L.push(clean(paint(new THREE.TorusGeometry(0.22, 0.06, 6, 12), '#ff6a2a', 0)).rotateY(Math.PI / 2).translate(6.95, 3.4, sz * 1.6));
+  }
   L.push(box(1, 0.25, 6.6, '#e8e4da', 7.6, 6.15, 0, 0, 0, 0, 0));
   L.push(cyl(0.75, 0.85, 2.6, '#d84a2e', 10.6, 7.9, 0, 0, 0, 0, 12));
   L.push(cyl(0.82, 0.82, 0.4, '#f4f2ea', 10.6, 8.2, 0, 0, 0, 0, 12));
@@ -131,7 +279,8 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
   }
   // contêineres (empilhados; os do topo soltam no naufrágio)
   const loose: THREE.Mesh[] = [];
-  const contMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const contMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: containerTex() });
+  const C: THREE.BufferGeometry[] = [];
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const looseG: THREE.BufferGeometry[] = [];
@@ -143,9 +292,11 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
       for (let h = 0; h < hN; h++) {
         const col = CONT[Math.floor(rnd() * CONT.length)];
         const top = h === hN - 1 && (iz === 0 || iz === 3) && h >= 1;
-        // corpo + molduras grossas nas pontas (as nervuras finas de 6 cm viravam listras tremendo de longe)
-        const parts = [box(2.2, 1.1, 1.1, col, 0, 0, 0, 0, 0, 0, 0.1), box(0.06, 0.9, 0.9, '#ffffff', 1.13, 0, 0, 0, 0, 0, 0)];
-        for (const r of [-1.04, 1.04]) parts.push(box(0.14, 1.15, 1.15, col, r, 0, 0, 0, 0, 0, 0.3));
+        // corpo com chapa corrugada/portas (textura) + 8 cantoneiras saltadas 2 cm (sem nervuras finas: tremiam de longe)
+        const body = boxU(new THREE.BoxGeometry(2.2, 1.1, 1.1), [[0.5, 1], [0, 0.5], [0, 0.5], [0, 0.5], [0, 0.5], [0, 0.5]]);
+        const parts = [clean(paint(body, col, 0.18))];
+        for (const cx of [-1.07, 1.07]) for (const cy of [-0.53, 0.53]) for (const cz of [-0.53, 0.53]) parts.push(box(0.1, 0.1, 0.1, col, cx, cy, cz, 0, 0, 0, 0.4));
+        for (const cx of [-1.07, 1.07]) for (const cz of [-0.53, 0.53]) parts.push(box(0.08, 1.16, 0.08, col, cx, 0, cz, 0, 0, 0, 0.35));
         const g = merge(parts);
         if (top && loose.length < 6) {
           const m = new THREE.Mesh(g, contMat);
@@ -154,17 +305,20 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
           loose.push(m);
           ship.add(m);
           looseG.push(g);
-        } else L.push(g.translate(x, 2.66 + h * STACK, z));
+        } else C.push(g.translate(x, 2.66 + h * STACK, z));
       }
     }
   const hull = new THREE.Mesh(merge(L), new THREE.MeshLambertMaterial({ vertexColors: true }));
   ship.add(hull);
+  ship.add(new THREE.Mesh(merge(C), contMat));
+  ship.add(new THREE.Mesh(merge(H), new THREE.MeshLambertMaterial({ vertexColors: true, map: hullTex() })));
+  const ct = cabinTex();
+  ship.add(new THREE.Mesh(merge(K), new THREE.MeshLambertMaterial({ vertexColors: true, map: ct.map, emissive: '#ffffff', emissiveMap: ct.glow })));
   // janelas acesas (sempre brilham: lindo na tempestade)
   const W: THREE.BufferGeometry[] = [];
   // janelas saltadas 6 cm das paredes (4 cm piscavam em GPU com depth de 16 bits)
-  for (let i = 0; i < 6; i++) W.push(box(0.08, 0.42, 0.55, '#ffd890', 6.98, 5.6, -2 + i * 0.8, 0, 0, 0, 0));
-  for (let i = 0; i < 4; i++) W.push(box(0.08, 0.32, 0.5, '#ffd890', 7.78, 6.9, -1.2 + i * 0.8, 0, 0, 0, 0));
-  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) W.push(box(0.5, 0.36, 0.08, '#ffd890', 7.8 + i * 1.1, 4.5, s * 2.52, 0, 0, 0, 0));
+  // passadiço: faixa larga de vidro na frente da ponte (as outras janelas vêm da textura, com brilho próprio)
+  W.push(box(0.06, 0.34, 3.4, '#ffd890', 7.77, 7.0, 0, 0, 0, 0, 0));
   W.push(sph(0.14, '#fff2c0', -10.2, 6.05, 0));
   const windows = new THREE.Mesh(merge(W), new THREE.MeshBasicMaterial({ vertexColors: true }));
   ship.add(windows);
