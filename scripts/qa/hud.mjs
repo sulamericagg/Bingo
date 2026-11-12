@@ -7,16 +7,17 @@ import * as q from './lib.mjs';
 const SIZES = [[740, 360], [844, 390], [915, 412]];
 // caminho de toques até a partida (regex do texto do botão, na ordem; os que não aparecem são pulados)
 const ROUTES = {
-  noites: ['^sozinho'],
-  mundo: ['novo mundo', 'criar e jogar'],
-  floresta: ['primeira pessoa'],
+  // telas de início padrão (src/ui/startmenu): cartões só escolhem; o JOGAR grande começa
+  noites: ['^jogar'],
+  mundo: ['novo mundo', '^jogar'],
+  floresta: ['^3d', '^jogar'],
   garimpo: ['novo jogo', '^(começar|jogar|pular|ok)', '^(começar|jogar|pular|ok)'],
-  cozinha: ['primeira pessoa'],
+  cozinha: ['^3d', '^jogar', '^(jogar|começar)'],
   voo: ['^voar', 'embarcar|pular'],
-  jangada: ['nova jangada|^continuar', '^(tranquilo|normal)'],
-  cavafala: ['restaurar a vila'],
-  anomalias: ['turno da noite', '^(hospital|jogar|noite 1|1)'],
-  disaster: ['^3d'],
+  jangada: ['nova jangada|^continuar', '^(jogar|continuar)'],
+  cavafala: ['restaurar a vila', '^jogar'],
+  anomalias: ['turno da noite', '^jogar'],
+  disaster: ['^3d', '^jogar'],
   desenho: [],
   studio: [],
 };
