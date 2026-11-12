@@ -23,7 +23,7 @@ import { CODE_ALPHA, CODE_OK, MAX_PLAYERS, createNet, newCode, type JNet, type M
 import { PINK_NET_PATH } from './coop';
 import { enterGame } from '../../audio';
 import { BRAND_NAME, drawBrandLogo, setBrandMode } from './brand';
-import { money } from './catalog';
+import { money, useCatalog } from './catalog';
 import { ic } from './icons';
 import { dropSlot, getFactory, getShop, newFactory, newGrocery, newShop, putFactory, putShop, selSlot, setSel, slots, type FactorySave, type Mode, type ShopSave } from './save';
 import { injectCss } from './style';
@@ -310,10 +310,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
     await frame();
     if (dead) return;
     try {
-      const cat = await import('./catalog');
       const gro = mode === 'grocery' || guestSave?.kind === 'grocery';
-      cat.useCatalog(gro ? 'grocery' : 'beauty');
-      (await import('./brand')).setBrandMode(gro ? 'grocery' : 'beauty');
+      useCatalog(gro ? 'grocery' : 'beauty');
+      setBrandMode(gro ? 'grocery' : 'beauty');
       if (isStore(mode)) {
         const gm = mode as 'shop' | 'grocery';
         const mk = () => (gm === 'grocery' ? newGrocery() : newShop());

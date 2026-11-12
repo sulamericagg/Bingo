@@ -27,7 +27,7 @@ precisa ser fácil de usar).
 |---|---|
 | **Minha Loja** (franquia) | completo — prioridade |
 | **Fábrica** (centro de distribuição) | jogável: bilhetes → separar → montar caixa → carregar caminhão → despachar; frota; limpeza; esteira |
-| **Mercadinho** | cartão "em breve" (mesmo motor: catálogo/tablet/carregar/limpeza/equipe) |
+| **Mercadinho** | jogável (mesmo motor da loja, catálogo de mercado, frio e energia) — 3 espaços salvos |
 
 Abertura (`intro/cinematic.ts`, `Cine`): toca **em todo save novo** (pulável): Bloop pulando na frente de
 uma loja Bloop Pink linda, olha, balão "eu quero ter a minha!"; corte para casa: notebook, site da marca,
@@ -164,6 +164,15 @@ dinheiro, dia/relógio, nível, câmera, tablet. Nada embaixo de `var(--safe-bot
 | `audio.ts` | pacote de sons + música da loja |
 | `intro/cinematic.ts` | abertura |
 | `coop.ts` | Minha Loja em grupo: jogadores remotos, clientes/equipe/caixas vistos pelo convidado, protocolo |
+| `grow.ts` | etapas da loja (garagem → salão), preços, aluguel, comprar o prédio, migração de saves |
+| `money.ts` | gaveta do caixa em centavos (notas/moedas contadas), troco (DP), malote, kit de troco, risco de assalto, níveis de segurança |
+| `security.ts` | furto (ladrão), segurança (funcionário), assalto + minigames, arrombamento noturno |
+| `office.ts` | escritório (tela de finanças + pedidos), financeiro (alertas), gestor de estoque |
+| `testers.ts` | minigames dos provadores: perfume (famílias de cheiro) e unhas (pintar) |
+| `home.ts` | apartamento do dono: escada, corredor, quarto, banho (minigame), louça, cama, lixo |
+| `reviews.ts` | avaliações estilo perfil de empresa (semanal) + foto da fachada renderizada |
+| `power.ts` | energia do Mercadinho: quedas de luz, no-break, gerador, carnes estragando |
+| `boxgame.ts` | Fábrica: minigames de montar caixa (abas) e fechar com fita + etiqueta |
 
 ## Nomes dos saves
 
@@ -199,6 +208,104 @@ Falta no grupo: convidado ainda não **carrega caixas/repõe prateleiras**, não
 (caixas e clientes são só a vista do dono; precisaria de pedidos `pegar/soltar/repor/atender` com dono de cada
 caixa); balões de fala dos clientes e o resumo completo do dia só aparecem para o dono; a **Fábrica** ainda é solo.
 
+## Fase 3 (wip/pink3) — pedidos do dono (docs/PINK-DONO.md)
+
+Princípio: **recompensa com peso** — tudo custa esforço (comprar a sala não abre: tem que quebrar a parede; o
+dinheiro vivo tem que ir ao banco; a casa tem que ser cuidada). Tela limpa: só faixas curtas (2–3 s) e a dica da mira.
+
+### Crescer do pequeno (`grow.ts`, `store3d.ts`)
+| etapa | área | como abre | aluguel base |
+|---|---|---|---|
+| 0 Garagem | x −2,5..2,5 · z −6..0 (portão de enrolar inteiro na frente; caminhão encosta na rua e joga as caixas na calçada) | início | 20 |
+| 1 Sala dos fundos | z até −12 | ★3 · B$ 1.400 · parede z=−6 (8 marretadas) | 40 |
+| 2 Sala da esquerda | x até −5 (vitrines e porta de vidro aparecem na fachada) | ★5 · B$ 3.200 · parede x=−2,5 | 65 |
+| 3 Sala da direita | x até 5 | ★7 · B$ 5.200 · parede x=2,5 | 90 |
+| 4 Estoque com doca | estoque z −16..−12, caminhão passa a usar o beco | ★9 · B$ 7.500 · vão da divisória | 120 |
+| 5 Ampliação lateral | x até 9 | ★12 · B$ 14.000 · parede x=5 | 170 |
+| 6 Salão gigante | x −9..9 | ★20 · B$ 28.000 · parede x=−5 | 240 |
+
+Aluguel/dia = base + 3×nível. **Comprar o prédio** (★15, B$ 250.000): aluguel zero e as próximas salas de graça
+(só quebrar). Comprou a sala → marreta no 3º espaço da barra; cada golpe racha mais a parede (canvas de rachaduras,
+lascas e poeira); na última a parede cai (estrondo, confete) e sobra **entulho** + sujeira para levar à lixeira
+(a lixeira fica no canto livre do fundo até existir estoque). Onde havia parede ficam viga e coluna. Salas que não são
+da loja aparecem na rua com porta de aço + "aluga-se". Saves antigos: `exp` 0/1/2 → etapa 4/5/6.
+
+### Caixa e dinheiro (`money.ts`, `checkout.ts`)
+- Gaveta de verdade em centavos: 100, 50, 20, 10, 5, 2 (notas) · 1, 0,50, 0,25, 0,10 (moedas), com contagem.
+  Loja nova começa com um fundo de troco. Pagamento: dinheiro 42 %, cartão 36 %, Pix 22 %.
+- Dinheiro: a nota do cliente entra na gaveta; você toca nas peças e elas **voam e empilham no balcão** (moedas em torre,
+  notas em leque); `Entregar` quando bate. Se a gaveta não consegue formar o troco aparece **"Sem troco! Tem trocado?"**
+  (metade das vezes o cliente paga certinho, senão passa no cartão/Pix). Cartão: maquininha "aproxime"; Pix: QR.
+- **Cartão/Pix vão para a conta (banco); dinheiro vivo fica no caixa** (chip do dinheiro mostra conta | caixa).
+- **Fechar o caixa** (mirar no caixa sem fila): notas ≥ 10 vão num **malote** (fica um fundo de troco) → atravessar a rua
+  até o **Banco Bloop** (prédio com colunas em frente) → Depositar. No banco também **Pegar troco** (kit de moedas e notas
+  pequenas que se guarda na gaveta tocando no caixa).
+- **Plaquinha ABERTO/FECHADO** na porta (ou num pedestal na garagem): mirar e virar abre/fecha a loja (o botão do topo segue).
+  Às 20h a loja pode **ficar aberta até as 23h** (menos clientes, mais risco).
+
+### Segurança (`security.ts`)
+- **Furto**: a partir do dia 2, ~9 % dos clientes (menos com câmeras) são ladrões (gorro, sorrisinho, olhar desconfiado):
+  pegam o produto, olham para os lados, escondem e saem **reto pelo meio da loja até a porta**. O **segurança**
+  (uniforme azul-marinho, quepe, óculos escuros) barra a 2 m ("Opa!") a não ser que esteja distraído assobiando (♪).
+  O jogador barra mirando no ladrão (botão "Barrar"). Barrado = produto volta numa caixinha; escapou = prejuízo.
+- **Assalto**: risco = dinheiro no caixa + loja aberta até tarde, reduzido por segurança (nível) e por seguranças;
+  nunca nos 3 primeiros dias. O assaltante (máscara) vai ao caixa → minigame **alarme escondido** (aperte quando ele
+  não olha, 3×) ou **borrifar perfume** (14 toques em 5 s). Perdeu = leva as notas do caixa. De noite, caixa cheio pode ser
+  **arrombado**. Níveis 0–10 (tablet → Upgrades): câmeras visíveis no teto (1+, 3+), alarme automático (5+), carro-forte
+  leva o dinheiro ao banco toda noite (8+).
+
+### Equipe (`data.ts STAFF`, `office.ts`)
+Contrata quantos quiser; todos chegam **pela calçada e entram pela porta**. Funções: faxineira, caixa, repositora,
+**segurança**, **financeiro** (senta no escritório, a cada ~1 min dá um alerta curto: compre X, dinheiro demais no caixa,
+loja suja, preço alto, prejuízo, instale câmeras), **gestor de estoque** (leva caixas largadas para os fundos e pede de
+manhã o que está acabando), robôs.
+
+### Áreas e decoração
+Novos móveis: **escritório** (mesa + computador: tela de Finanças com conta, caixa, vendas, lucro 7 dias, aluguel,
+salários, furtos, gráfico e dicas, botão Pedidos), **porta-pallet**, **cofre**, **sofá**, **quadro**; móveis de
+escritório/estoque podem ir **no estoque** (fundos). Paredes (10 cores), pisos (5), móveis livres em grade de 25 cm.
+
+### Provadores (`testers.ts`)
+- Perfume: 4 frascos (os perfumes/body splash que a loja vende); borrifar na fitinha revela a família (florido, frutado,
+  docinho, fresquinho). Cliente que pede ajuda ("Quero um cheiro… 🍎") → entregue a fitinha certa → ama e leva o produto.
+  Sem ajuda, a cliente borrifa dois: "esse não…" e depois "que cheiro bom!".
+- Unhas: mão com 5 unhas, 8 esmaltes; pintar da cor pedida → ela leva o esmalte mais parecido.
+
+### Vida do dono (`home.ts`)
+Prédio de apartamentos ao lado (portaria nº 42, x≈10,6). Entrar → corredor do 2º andar (portas dos vizinhos, lixeira do
+prédio, escada) → apartamento: cama, banheiro com chuveiro, pia com louça, guarda-roupa, janela. O fim do dia agora tem
+**Ir pra casa** (anda até a cama: **Dormir** encerra o dia) ou **Dormir já**; acorda no quarto, com louça do jantar, cama
+desarrumada e lixinho do dia. **Banho** = minigame (esfregar até a espuma, segurar para enxaguar). Sem banho o cheirinho
+cai durante o expediente; abaixo de 35 % os clientes perto reclamam **"Tá fedendo!"** (humor −10, avaliações citam).
+
+### Avaliações (`reviews.ts`, tablet → Avaliações)
+Perfil de empresa: foto = **fachada atual renderizada** (muda quando a frente muda), nome do save, nota média com
+estrelas, distribuição 5→1, categoria/horário e lista com carinha (cores do cliente), nome, "há N dias" e comentário que
+vem do que o cliente viveu (linda, ajudou no provador, barato, rápido / suja, cara, fila, cadê, fedendo, feia). ~35 % dos
+clientes deixam nota; as pendentes são publicadas **uma vez por semana** (faixa "N novas avaliações! Nota 4,3").
+
+### Mercadinho (`catalog.ts G_ROWS`, `power.ts`)
+Modo liberado na tela de início com 3 espaços (lápis/nomes `pink|grocery|i`, ideias "Mercadinho da Vila"…). Mesmo motor
+da loja com `useCatalog('grocery')` (troca PRODUCTS/CATS/PROD/CAT no lugar) e marca verde "Bloop Mercadinho".
+44 produtos com nomes originais em 8 categorias (frutas, verduras, mercearia, bebidas, laticínios ★2, padaria ★4,
+açougue ★5, limpeza ★8) e 8 formas novas (fruta, legume, bandeja de carne, caixa de leite, garrafa, saco, lata, pão).
+Móveis: banca de hortifruti, geladeira de porta de vidro (frio 1), freezer horizontal e balcão do açougue (frio 2).
+Laticínio só em móvel frio; carne só em freezer/açougue. **Energia**: a partir do dia 2, 35 %/dia de queda de luz
+(1–2,7 h do jogo): apaga luzes e geladeiras; > 1 h sem frio → carnes e laticínios estragam (somem, viram saco de lixo +
+poça, prejuízo). Upgrades: **no-break** (★4, segura 45 min) e **gerador** (★8, liga sozinho).
+
+### Fábrica (`factory.ts`, `boxgame.ts`)
+Galpão cresce para a esquerda em 3 etapas (x0 = −3 / −6,5 / −10; ★4 B$ 3.500, ★9 B$ 9.000) quebrando a parede com a
+marreta; galpão pequeno = poucas estantes = poucos produtos nos pedidos. Estoque das estantes **acaba** (10 por produto,
+os produtos somem das prateleiras) → painel do topo: "Fornecedor: completar estoque". Mesa de embalagem com minigames:
+**montar** (tocar nas 4 abas) e **fita** (arrastar o dedo pela linha, depois colar a etiqueta); a embaladora automática
+pula os minigames. Pedidos chegam "pelo site" (bloop.pink #n). Saves antigos: galpão inteiro.
+
+### Grupo
+Novos estados vão para o convidado no `mt` (reforma/etapas/marretadas, segurança) e no `st` (total do caixa `tl`,
+assaltante como fantasma `r0`); o convidado pode dar marretadas (`act hit`) e comprar segurança (`act sec`).
+Minigames (provadores com cliente, assalto), banco e casa são do dono (convidado anda e vê).
+
 ## Estado (entrega wip/pink)
 
 Feito:
@@ -222,7 +329,6 @@ Feito:
 
 Falta / próximos passos:
 - Grupo: ver "Falta no grupo" acima (convidado repor/atender o caixa; Fábrica em grupo).
-- Mercadinho: só o cartão "em breve" (o motor — catálogo/tablet/carregar/limpeza/equipe — já serve).
 - Fábrica: sem resumo de dia/metas próprias; produtos das estantes são estoque infinito (sem pedido ao fornecedor);
   robôs não desviam de tudo; esteira é reta.
 - Loja: expansões abrem a área mas a parte nova ainda usa a mesma iluminação; repositora não abre caixas fechadas
