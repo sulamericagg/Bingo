@@ -25,16 +25,21 @@ import type { FurnSave, ShopSave } from './save';
 import { floorBounds, LAY, Store3D } from './store3d';
 import { BUILDING_LVL, BUILDING_PRICE, nextStage, pendingWall, rentOf, salesArea, stageOf, stagePrice } from './grow';
 import { Tablet, type TabletHost, type TabletTab } from './tablet';
-import { CheckoutUI } from './checkout';
+import { Security, guardSpec } from './security';
+import { Office } from './office';
+import { CheckoutUI, type CheckoutResult, type PayKind } from './checkout';
+import { addTo, robberyRisk, SECURITY, CHANGE_KIT, CHANGE_KIT_VALUE, customerNote, drawerTotal, makeChange, takeBag } from './money';
 import { Builder, rbox } from './shapes';
 import { BRAND_NAME, brandCanvas } from './brand';
 import { BoxViews, boxRow, chunks, Ghosts, r2, Remotes, type BoxRow, type GhostRow, type ShopNet } from './coop';
 import type { NetEvent } from '../jangada/net';
 
+const BANK = { x: 0, z: 15.2 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const DAY_LEN = 300; // s de 8h às 20h
 const OPEN_H = 8;
 const CLOSE_H = 20;
+const LATE_H = 23;
 const DIRT_K = ['dirt', 'spill', 'glass', 'mud'] as const;
 
 interface SlotW {
@@ -42,7 +47,7 @@ interface SlotW {
   yaw: number;
   i: number;
 }
-interface Furn {
+export interface Furn {
   sv: FurnSave;
   def: FurnDef;
   model: FurnModel;
@@ -54,8 +59,8 @@ interface Furn {
   staff: Staff | null;
   busy: number;
 }
-type CustSt = 'walkIn' | 'enter' | 'shop' | 'look' | 'tester' | 'testing' | 'toQueue' | 'queue' | 'paying' | 'leave' | 'gone';
-interface Cust {
+type CustSt = 'walkIn' | 'enter' | 'shop' | 'look' | 'tester' | 'testing' | 'toQueue' | 'queue' | 'paying' | 'leave' | 'gone' | 'sneak' | 'escape' | 'caught';
+export interface Cust {
   id: number;
   w: Walker;
   st: CustSt;
@@ -69,10 +74,13 @@ interface Cust {
   ck: Furn | null;
   tried: boolean;
   said: Set<string>;
-  pay: 'card' | 'cash';
+  pay: PayKind;
   exitX: number;
+  /** ladrãozinho (esconde um produto e sai andando reto pelo meio) */
+  thief?: boolean;
+  loot?: Product | null;
 }
-interface Staff {
+export interface Staff {
   i: number;
   k: StaffKind;
   name: string;
@@ -103,24 +111,24 @@ export interface ShopOpts {
   net?: ShopNet | null;
 }
 export type RenovAct = 'walls' | 'window' | 'door' | 'paint' | 'floor' | 'sign' | 'light' | 'grow' | 'own';
-type ActO = 'order' | 'renov' | 'hit' | 'hire' | 'fire' | 'lic' | 'tab' | 'price' | 'auto' | 'open' | 'place' | 'move' | 'mop';
+type ActO = 'order' | 'renov' | 'hit' | 'sec' | 'hire' | 'fire' | 'lic' | 'tab' | 'price' | 'auto' | 'open' | 'place' | 'move' | 'mop';
 
 export class Shop implements TabletHost {
   readonly e: Engine;
   readonly hud: Hud;
   readonly s: ShopSave;
-  private store: Store3D;
+  store: Store3D;
   private field: ProductField;
-  private nav: Nav;
-  private furn: Furn[] = [];
-  private custs: Cust[] = [];
-  private staff: Staff[] = [];
+  nav: Nav;
+  furn: Furn[] = [];
+  custs: Cust[] = [];
+  staff: Staff[] = [];
   private flies: Fly[] = [];
-  private tablet: Tablet | null = null;
+  tablet: Tablet | null = null;
   private ck: CheckoutUI | null = null;
   private ckCust: Cust | null = null;
   private build: { k: FurnKind; ghost: THREE.Group; r: number; move: Furn | null; ok: boolean; x: number; z: number; paid: number } | null = null;
-  private fieldDirty = true;
+  fieldDirty = true;
   private navDirty = true;
   private wallBodies: CANNON.Body[] = [];
   /** hora do dia (h) */
@@ -132,21 +140,26 @@ export class Shop implements TabletHost {
   private useRep = 0;
   private tool = 0; // 0 mãos/caixa · 1 esfregão
   private mopT = 0;
-  private aimInfo: { kind: string; f?: Furn; si?: number; l?: Loose; d?: { x: number; z: number } } | null = null;
-  private day = { rev: 0, cost: 0, cust: 0, happy: 0, sold: 0 };
-  private combo = 0;
+  private aimInfo: { kind: string; f?: Furn; si?: number; l?: Loose; d?: { x: number; z: number }; cu?: Cust } | null = null;
+  day = { rev: 0, cost: 0, cust: 0, happy: 0, sold: 0, cash: 0, card: 0, stolen: 0, caught: 0, robbed: 0 };
+  readonly sec: Security;
+  readonly office: Office;
+  get stageZB(): number {
+    return stageOf(this.s.renov).zB;
+  }
+  combo = 0;
   private comboT = 0;
   private truck: { g: THREE.Group; t: number; boxes: [string, number][]; wrong: boolean; phase: number; dropped: number } | null = null;
   private pendingOrders: { boxes: [string, number][]; eta: number; wrong: boolean }[] = [];
   private saveT = 0;
-  private scores = { beauty: 0, clean: 100, stock: 0 };
+  scores = { beauty: 0, clean: 100, stock: 0 };
   private trashL: Loose[] = [];
   private dirtT = 0;
   private bin: THREE.Group;
   private binBody: CANNON.Body | null = null;
   /** lixeira de caixas: no estoque (com doca) ou no canto do fundo da garagem */
   readonly binPos = new THREE.Vector2(4.35, -15.3);
-  private destroyed = false;
+  destroyed = false;
   /* grupo */
   private net: ShopNet | null;
   private remotes: Remotes | null = null;
@@ -171,6 +184,8 @@ export class Shop implements TabletHost {
   constructor(private o: ShopOpts) {
     this.s = o.save;
     this.net = o.net ?? null;
+    this.sec = new Security(this);
+    this.office = new Office(this);
     const e = new Engine(o.root, o.tier, 'pink');
     this.e = e;
     this.store = new Store3D(e.kit);
@@ -187,7 +202,8 @@ export class Shop implements TabletHost {
     for (const f of this.s.furn) this.addFurn(f, false);
     // caixas salvas e sacos de lixo
     for (const b of this.s.boxes) e.spawnBox(b.p, b.n, b.x, Math.max(0.2, b.y), b.z, { open: b.open });
-    for (const tr of this.s.trash) this.trashL.push(e.spawnTrash(tr.x, tr.z));
+    for (const tr of this.s.trash) this.trashL.push(tr.r ? e.spawnRubble(tr.x, tr.z) : e.spawnTrash(tr.x, tr.z));
+    for (const b of this.s.bags) e.spawnBag(b.k, b.v, b.x, 0.4, b.z);
     for (const d of this.s.dirt) e.addDirt(d.x, d.z, d.k, d.a);
     if (this.guest) {
       /* convidado: sujeira, equipe e caixas vêm do anfitrião */
@@ -235,6 +251,7 @@ export class Shop implements TabletHost {
   /* =============================== mundo / colisão =============================== */
   private rebuildColliders(): void {
     const e = this.e;
+    this.syncCams();
     // lixeira acompanha o tamanho da loja
     const fb = floorBounds(this.s.renov);
     if (fb.stock) this.binPos.set(4.35, -15.3);
@@ -355,7 +372,7 @@ export class Shop implements TabletHost {
   price(p: Product): number {
     return Math.max(0.5, Math.round(p.mkt * (this.s.prices[p.id] ?? 1) * 10) / 10);
   }
-  private pay(n: number): boolean {
+  pay(n: number): boolean {
     if (this.s.money < n) {
       sfx.play('wrong');
       this.hud.banner('coin', t('pink.noMoney', 'Dinheiro insuficiente!'), 1500);
@@ -532,6 +549,48 @@ export class Shop implements TabletHost {
     this.save();
     return true;
   }
+  upgradeSec(): boolean {
+    const nx = SECURITY[this.s.sec + 1];
+    if (!nx || this.s.lvl < nx.lvl) return false;
+    if (this.guest) {
+      if (!this.ask('sec', [], nx.price, 'cctv')) return false;
+      this.s.sec++;
+      return true;
+    }
+    if (!this.pay(nx.price)) return false;
+    this.s.sec++;
+    sfx.play('sparkle');
+    this.hud.banner('cctv', t('pink.secUp', 'Segurança nível {n}!', { n: this.s.sec }), 2000);
+    this.syncCams();
+    this.save();
+    return true;
+  }
+  private cams: THREE.Group | null = null;
+  /** câmeras de segurança nos cantos do teto (nível ≥ 1) */
+  syncCams(): void {
+    this.cams?.removeFromParent();
+    this.cams = null;
+    if (this.s.sec < 1) return;
+    const k = this.e.kit;
+    const fb = floorBounds(this.s.renov);
+    const b = new Builder();
+    const body = k.plain('cctv', '#f0f0f4', 0.35, 0.2);
+    const lens = k.plain('cctvLens', '#202028', 0.2, 0.5, { envK: 1.4 });
+    const red = k.plain('cctvRed', '#ff3050', 0.4, 0, { emissive: '#ff2040', ei: 2 });
+    const spots: [number, number, number][] = [
+      [fb.x0 + 0.3, -0.4, -0.7],
+      [fb.x1 - 0.3, fb.zB + 0.4, 2.4],
+    ];
+    if (this.s.sec >= 3) spots.push([fb.x1 - 0.3, -0.4, 0.7], [fb.x0 + 0.3, fb.zB + 0.4, -2.4]);
+    for (const [x, z, ry] of spots) {
+      b.add(rbox(0.1, 0.1, 0.24, 0.03, 2), body, x, LAY.H - 0.22, z, -0.4, ry, 0);
+      b.add(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12).rotateX(Math.PI / 2), lens, x - Math.sin(ry) * 0.12, LAY.H - 0.27, z - Math.cos(ry) * 0.12, -0.4, ry, 0);
+      b.add(new THREE.SphereGeometry(0.012, 6, 4), red, x, LAY.H - 0.15, z);
+      b.add(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 6), body, x, LAY.H - 0.07, z);
+    }
+    this.cams = b.build();
+    this.e.scene.add(this.cams);
+  }
   upgradeTablet(): boolean {
     const nx = TABLET_UP[this.s.tab + 1];
     if (this.guest) {
@@ -628,7 +687,10 @@ export class Shop implements TabletHost {
     z = Math.round(z / sn) * sn;
     const box = this.furnBox(b.k, x, z, b.r);
     const fb = floorBounds(this.s.renov);
-    let ok = box.x0 >= fb.x0 + 0.05 && box.x1 <= fb.x1 - 0.05 && box.z0 >= fb.zB + 0.05 && box.z1 <= -0.3;
+    // escritório/estoque (mesa, porta-pallet, cofre) podem ir nos fundos
+    const inStock = !!FURN[b.k].stock && fb.stock && z < fb.zB;
+    let ok = box.x0 >= fb.x0 + 0.05 && box.x1 <= fb.x1 - 0.05 && (inStock ? box.z0 >= LAY.zBack + 0.05 && box.z1 <= fb.zB - 0.15 : box.z0 >= fb.zB + 0.05 && box.z1 <= -0.3);
+    if (ok && inStock && box.z0 < LAY.zBack + 2.8 && box.x1 > -2.2 && box.x0 < 2.2) ok = false;
     // não tapa a porta (portão inteiro na garagem) nem o vão do estoque
     const dw = fb.garage ? 2.4 : LAY.door + 0.4;
     if (ok && box.z1 > -1.6 && box.x1 > -dw && box.x0 < dw) ok = false;
@@ -904,16 +966,94 @@ export class Shop implements TabletHost {
       case 'sign':
         if (first) this.toggleOpen();
         break;
+      case 'closeTill':
+        if (first) this.closeTill();
+        break;
+      case 'putChange':
+        if (first && c?.data.bag === 'change') {
+          for (const [k, n] of CHANGE_KIT) addTo(this.s.till, k, n);
+          e.consumeCarry();
+          sfx.play('drawer');
+          sfx.play('coinDrop');
+          this.hud.banner('coin', t('pink.changeIn', 'Troco na gaveta!'), 1600);
+          this.updateHudStatic(true);
+          this.save();
+        }
+        break;
+      case 'bank':
+        if (first) this.openBank();
+        break;
+      case 'office':
+        if (first) this.office.openPanel();
+        break;
+      case 'catch':
+        if (first && a.cu) this.sec.catchThief(a.cu, null);
+        break;
     }
   }
   private act2(): void {
     const a = this.aimInfo;
-    if (a?.kind === 'move-ok' && a.f) {
-      // mover móvel (mãos vazias)
-      this.startBuild(a.f.sv.k, a.f, 0);
-      return;
-    }
-    if (a?.kind === 'take' && a.f && a.si !== undefined) this.takeOne(a.f, a.si);
+    if (a?.kind === 'take' && a.f && a.si !== undefined) return this.takeOne(a.f, a.si);
+    // mover móvel (mãos vazias, loja fechada)
+    const f = a?.kind === 'move-ok' ? a.f : this.moveTarget;
+    if (f && !this.e.carry && this.phase !== 'open') this.startBuild(f.sv.k, f, 0);
+  }
+  /** notas que vão no malote (fica o fundo de troco) */
+  private bagValue(): number {
+    const d = { ...this.s.till };
+    return takeBag(d);
+  }
+  private closeTill(): void {
+    const v = takeBag(this.s.till);
+    if (v <= 0 || this.e.carry) return;
+    const l = this.e.spawnBag('cash', v, this.e.fp.x, 1, this.e.fp.z);
+    this.e.pickUp(l);
+    sfx.play('drawer');
+    sfx.play('note');
+    this.hud.banner('bank', t('pink.tillClosed', 'Malote com {v}! Leve ao banco.', { v: money(v / 100) }), 2400);
+    this.updateHudStatic();
+  }
+  /** banco: depositar o malote, pegar kit de troco */
+  private openBank(): void {
+    sfx.play('door');
+    const c = this.e.carry;
+    const bagV = c?.data.bag === 'cash' ? (c.data.v as number) : 0;
+    const till = drawerTotal(this.s.till);
+    const d = this.hud.panel(`<h2>${ic('bank', 34)}${esc(t('pink.bank.title', 'Banco Bloop'))}</h2>
+      <div class="pk-stats">
+        <div class="pk-stat">${ic('card', 30)}<span>${esc(t('pink.bank.acc', 'Conta da loja'))}<b>${esc(money(this.s.money))}</b></span></div>
+        <div class="pk-stat">${ic('register', 30)}<span>${esc(t('pink.bank.till', 'No caixa da loja'))}<b>${esc(money(till / 100))}</b></span></div>
+      </div>
+      <div class="pk-row">
+        ${bagV ? `<button class="pk-b g" data-a="dep">${ic('safe', 26)}${esc(t('pink.bank.deposit', 'Depositar'))} ${esc(money(bagV / 100))}</button>` : `<div class="pk-note">${ic('safe', 22)}${esc(t('pink.bank.noBag', 'Feche o caixa e traga o malote para depositar'))}</div>`}
+      </div>
+      <div class="pk-row">
+        <button class="pk-b o" data-a="kit" ${!c && this.s.money >= CHANGE_KIT_VALUE / 100 ? '' : 'disabled'}>${ic('coin', 26)}${esc(t('pink.bank.kit', 'Pegar troco'))} ${esc(money(CHANGE_KIT_VALUE / 100))}</button>
+        <button class="pk-b w" data-a="x">${ic('close', 22)}</button>
+      </div>`);
+    d.querySelector('[data-a=x]')!.addEventListener('click', () => this.hud.closePanel());
+    d.querySelector('[data-a=dep]')?.addEventListener('click', () => {
+      const cc = this.e.carry;
+      if (cc?.data.bag !== 'cash') return;
+      this.e.consumeCarry();
+      this.s.money += (cc.data.v as number) / 100;
+      sfx.play('cash');
+      sfx.play('sparkle');
+      this.addXp(5);
+      this.hud.closePanel();
+      this.hud.banner('bank', t('pink.deposited', 'Depositado! Dinheiro seguro no banco.'), 2200);
+      this.updateHudStatic(true);
+      this.save();
+    });
+    d.querySelector('[data-a=kit]')?.addEventListener('click', () => {
+      if (this.e.carry || !this.pay(CHANGE_KIT_VALUE / 100)) return;
+      this.day.cost -= CHANGE_KIT_VALUE / 100;
+      const l = this.e.spawnBag('change', CHANGE_KIT_VALUE, this.e.fp.x, 1, this.e.fp.z);
+      this.e.pickUp(l);
+      sfx.play('coinDrop');
+      this.hud.closePanel();
+      this.hud.banner('coin', t('pink.gotKit', 'Troco na mão! Guarde na gaveta do caixa.'), 2200);
+    });
   }
   private drop(): void {
     const c = this.e.carry;
@@ -1039,7 +1179,7 @@ export class Shop implements TabletHost {
       this.fx.push(tick);
     }
   }
-  private fx: ((dt: number) => boolean)[] = [];
+  fx: ((dt: number) => boolean)[] = [];
 
   /* =============================== tropeço / vidro =============================== */
   private spill(l: Loose, vx: number, vz: number): void {
@@ -1085,6 +1225,7 @@ export class Shop implements TabletHost {
   /* =============================== mira / dica =============================== */
   private aimUpdate(): void {
     const e = this.e;
+    this.moveTarget = null;
     const ray = e.ray;
     const c = e.carry;
     let info: Shop['aimInfo'] = null;
@@ -1173,7 +1314,7 @@ export class Shop implements TabletHost {
       } else if (l && !c) {
         info = { kind: 'pick', l };
         const lp = l.data.p ? PROD[l.data.p as string] : null;
-        hint = l.kind === 'trash' ? t('pink.h.trash', 'Saco de lixo') : lp ? `${lp.name}${l.kind === 'box' ? ` · ${l.data.n}` : ''}` : t('pink.h.box', 'Caixa');
+        hint = l.data.bag ? (l.data.bag === 'cash' ? t('pink.h.cashBag', 'Malote') : t('pink.h.changeBag', 'Troco')) : l.data.rubble ? t('pink.h.rubble', 'Entulho') : l.kind === 'trash' ? t('pink.h.trash', 'Saco de lixo') : lp ? `${lp.name}${l.kind === 'box' ? ` · ${l.data.n}` : ''}` : t('pink.h.box', 'Caixa');
         hicon = l.kind === 'trash' ? 'trash' : l.kind === 'item' ? 'hand' : 'box';
         use = ['hand', t('pink.u.pick', 'Pegar'), true];
       } else if (l && c && c.data.open && l.kind === 'item' && (!c.data.p || c.data.p === l.data.p) && c.kind === 'box') {
@@ -1183,11 +1324,28 @@ export class Shop implements TabletHost {
         use = ['boxOpen', t('pink.u.putBack', 'Guardar'), true];
       }
       // 4) lixeira
-      if (!info && c && Math.hypot(e.fp.x - this.binPos.x, e.fp.z - this.binPos.y) < 1.8) {
+      if (!info && c && !c.data.bag && Math.hypot(e.fp.x - this.binPos.x, e.fp.z - this.binPos.y) < 1.8) {
         info = { kind: 'bin' };
         hint = t('pink.h.bin', 'Lixeira de caixas');
         hicon = 'bin';
         use = ['bin', t('pink.u.bin', 'Jogar fora'), true];
+      }
+      // 4-) ladrão escapando: pegar!
+      if (!info && !c) {
+        const th = this.sec.aimThief(ray);
+        if (th) {
+          info = { kind: 'catch', cu: th };
+          hint = t('pink.h.thief', 'Ladrão! Toque para barrar');
+          hicon = 'thief';
+          use = ['guard', t('pink.u.catch', 'Barrar'), true];
+        }
+      }
+      // 4a) banco do outro lado da rua
+      if (!info && Math.hypot(e.fp.x - BANK.x, e.fp.z - BANK.z) < 3.2 && ray.direction.z > 0.3) {
+        info = { kind: 'bank' };
+        hint = t('pink.h.bank', 'Banco Bloop');
+        hicon = 'bank';
+        use = ['bank', t('pink.u.bank', 'Banco'), true];
       }
       // 4b) plaquinha da porta: virar = abrir/fechar a loja
       if (!info && !c) {
@@ -1207,10 +1365,22 @@ export class Shop implements TabletHost {
         const fb = this.aimFurn(R);
         if (fb) {
           const g = fb.def.group;
-          if (g === 'checkout' && fb.sv.k !== 'selfcheck' && !c) {
+          if (g === 'checkout' && fb.sv.k !== 'selfcheck' && c?.data.bag === 'change') {
+            info = { kind: 'putChange', f: fb };
+            hint = t('pink.h.putChange', 'Guardar o troco na gaveta');
+            hicon = 'coin';
+            use = ['coin', t('pink.u.putChange', 'Guardar'), true];
+          } else if (g === 'checkout' && fb.sv.k !== 'selfcheck' && !c) {
             const head = fb.queue[0];
             const waiting = head && head.st === 'queue' && head.w.arrived;
-            if (fb.staff) {
+            const bagV = this.bagValue();
+            if (!waiting && bagV >= 1000 && !this.ck) {
+              // fechar o caixa: notas grandes vão num malote para o banco
+              info = { kind: 'closeTill', f: fb };
+              hint = t('pink.h.closeTill', 'Fechar o caixa: {v} no malote', { v: money(bagV / 100) });
+              hicon = 'safe';
+              use = ['safe', t('pink.u.closeTill', 'Fechar caixa'), true];
+            } else if (fb.staff) {
               hint = t('pink.h.staffed', '{n} está no caixa', { n: fb.staff.name });
               hicon = 'register';
             } else if (waiting) {
@@ -1222,6 +1392,11 @@ export class Shop implements TabletHost {
               hint = t('pink.h.noCust', 'Nenhum cliente na fila');
               hicon = 'register';
             }
+          } else if (g === 'office' && fb.sv.k === 'desk' && !c) {
+            info = { kind: 'office', f: fb };
+            hint = t('pink.h.office', 'Computador do escritório');
+            hicon = 'office';
+            use = ['office', t('pink.u.office', 'Finanças'), true];
           } else if (g === 'tester' && !c) {
             info = { kind: 'tester', f: fb };
             hint = fb.def.name;
@@ -1244,6 +1419,14 @@ export class Shop implements TabletHost {
           use = ['boxOpen', t('pink.u.open', 'Abrir'), true];
           hint = PROD[c.data.p as string]?.name ?? '';
           hicon = 'box';
+        } else if (c.data.bag === 'cash') {
+          hint = t('pink.h.toBank', 'Leve o malote ao banco (do outro lado da rua)');
+          hicon = 'bank';
+          use = ['bank', t('pink.u.bank', 'Banco'), false];
+        } else if (c.data.bag === 'change') {
+          hint = t('pink.h.toRegister', 'Leve o troco para o caixa');
+          hicon = 'register';
+          use = ['coin', t('pink.u.putChange', 'Guardar'), false];
         } else if (c.kind === 'trash') {
           hint = t('pink.h.toBin', 'Leve para a lixeira dos fundos');
           hicon = 'bin';
@@ -1312,6 +1495,7 @@ export class Shop implements TabletHost {
         return;
       }
       this.phase = 'open';
+      if (!this.guest) this.sec.rollDay();
       sfx.play('door');
       music.setState('calm');
       this.hud.banner('open', t('pink.opened', 'Loja aberta!'), 1600);
@@ -1350,11 +1534,16 @@ export class Shop implements TabletHost {
   }
   private dayTick(dt: number): void {
     if (this.phase === 'open') {
+      const was = this.hour;
       this.hour += (dt / DAY_LEN) * (CLOSE_H - OPEN_H);
-      if (this.hour >= CLOSE_H) {
-        this.hour = CLOSE_H;
+      if (was < CLOSE_H && this.hour >= CLOSE_H) {
+        // pode ficar aberto até tarde (mais vendas, mais risco de assalto)
+        this.hud.banner('moon', t('pink.lateClose', 'Hora de fechar! Vire a plaquinha (aberto até tarde é arriscado)'), 3000);
+        if (!this.guest && this.sec.robAt < 0 && Math.random() < robberyRisk(drawerTotal(this.s.till), this.s.day, this.s.sec, this.sec.guards, 1)) this.sec.robAt = CLOSE_H + 0.5 + Math.random() * 2;
+      }
+      if (this.hour >= LATE_H) {
+        this.hour = LATE_H;
         this.phase = 'closing';
-        this.hud.banner('moon', t('pink.lateClose', 'Hora de fechar!'), 1800);
         this.updateHudStatic();
       }
       // clientes
@@ -1363,7 +1552,7 @@ export class Shop implements TabletHost {
         const beauty = this.scores.beauty;
         const base = 16 - this.s.rep * 0.06 - beauty * 0.05 - Math.min(20, this.s.lvl) * 0.2;
         const s = seasonAt(this.s.day);
-        this.spawnT = Math.max(3.2, base) * (s?.all ? 0.6 : s ? 0.8 : 1) * (0.7 + Math.random() * 0.6);
+        this.spawnT = Math.max(3.2, base) * (s?.all ? 0.6 : s ? 0.8 : 1) * (0.7 + Math.random() * 0.6) * (this.hour >= CLOSE_H ? 2.2 : 1);
         const maxC = Math.min(4 + Math.min(10, Math.floor(this.s.lvl / 2)), 2 + Math.floor(salesArea(this.s.renov) / 9));
         if (this.custs.length < maxC) this.spawnCust();
       }
@@ -1395,6 +1584,9 @@ export class Shop implements TabletHost {
         <div class="pk-stat">${ic('cash', 30)}<span>${esc(t('pink.sum.rev', 'Vendas'))}<b>${esc(money(this.day.rev))}</b></span></div>
         <div class="pk-stat">${ic('people', 30)}<span>${esc(t('pink.sum.cust', 'Clientes'))}<b>${this.day.cust} · ${ic('smile', 16)}${this.day.happy}</b></span></div>
         <div class="pk-stat">${ic('house', 30)}<span>${esc(t('pink.sum.rent', 'Aluguel + equipe'))}<b>−${esc(money(wages + rent))}</b></span></div>
+        <div class="pk-stat">${ic('card', 30)}<span>${esc(t('pink.sum.card', 'Cartão e Pix (conta)'))}<b>${esc(money(this.day.card))}</b></span></div>
+        <div class="pk-stat">${ic('note', 30)}<span>${esc(t('pink.sum.cash', 'Dinheiro no caixa'))}<b style="color:${drawerTotal(s.till) > 80000 ? '#e8336f' : 'inherit'}">${esc(money(drawerTotal(s.till) / 100))}</b></span></div>
+        ${this.day.stolen || this.day.caught || this.day.robbed ? `<div class="pk-stat">${ic('thief', 30)}<span>${esc(t('pink.sum.sec', 'Furtos / barrados'))}<b>${this.day.stolen} / ${this.day.caught}${this.day.robbed ? ` · −${esc(money(this.day.robbed))}` : ''}</b></span></div>` : ''}
         <div class="pk-stat">${ic(prof >= 0 ? 'up' : 'sad', 30)}<span>${esc(t('pink.sum.profit', 'Lucro'))}<b style="color:${prof >= 0 ? '#2fa35a' : '#e8336f'}">${esc(money(prof))}</b></span></div>
         <div class="pk-stat">${ic('coin', 30)}<span>${esc(t('pink.sum.coins', 'Moedas Bloop'))}<b>+${coins}</b></span></div>
         <div class="pk-stat">${ic('heart', 30)}<span>${esc(t('pink.t.rep', 'Reputação'))}<b>${Math.round(s.rep)}%</b></span></div>
@@ -1408,13 +1600,15 @@ export class Shop implements TabletHost {
     this.hud.fade(true);
     window.setTimeout(() => {
       if (this.destroyed) return;
+      this.sec.overnight();
       s.day++;
-      this.day = { rev: 0, cost: 0, cust: 0, happy: 0, sold: 0 };
+      this.day = { rev: 0, cost: 0, cust: 0, happy: 0, sold: 0, cash: 0, card: 0, stolen: 0, caught: 0, robbed: 0 };
       this.phase = 'prep';
       this.hour = OPEN_H;
       this.combo = 0;
       this.hud.combo(0);
       this.newGoals();
+      this.office.morningOrder();
       // pedido automático: repõe o que vendeu e acabou
       if (s.auto && s.lvl >= 22) {
         const cart: Record<string, number> = {};
@@ -1470,7 +1664,7 @@ export class Shop implements TabletHost {
         return '';
     }
   }
-  private goalProgress(k: Goal['k'], add: number, cat?: string): void {
+  goalProgress(k: Goal['k'], add: number, cat?: string): void {
     for (const g of this.s.goals) {
       if (g.done || g.k !== k || (g.cat && g.cat !== cat)) continue;
       if (k === 'combo') g.have = Math.max(g.have, add);
@@ -1523,7 +1717,7 @@ export class Shop implements TabletHost {
   }
 
   /* =============================== XP / nível =============================== */
-  private addXp(n: number): void {
+  addXp(n: number): void {
     const s = this.s;
     s.xp += n;
     while (s.lvl < 100 && s.xp >= xpNeed(s.lvl)) {
@@ -1553,7 +1747,9 @@ export class Shop implements TabletHost {
     const pri = cols[Math.floor(Math.random() * cols.length)];
     const sec = cols[Math.floor(Math.random() * cols.length)];
     const heads = ['h_none', 'h_bow', 'h_flower', 'h_crown', 'h_cap', 'h_bunny'];
-    const spec = npcSpec(pri, sec, { head: heads[Math.floor(Math.random() * heads.length)] as never });
+    const thief = Math.random() < this.sec.thiefChance();
+    // ladrão: sorrisinho de canto e olhar desconfiado (dá para reparar!)
+    const spec = npcSpec(pri, sec, thief ? { head: 'h_beanie' as never, mouth: 'mo_grin' as never, eyes: 'e_sleepy' as never } : { head: heads[Math.floor(Math.random() * heads.length)] as never });
     const w = new Walker(spec, side * 10, 2.4 + Math.random() * 1.2, 0.36);
     w.look = `${pri}|${sec}|${(spec.avatar as { parts: { head: string } }).parts.head}`;
     w.speed = 1.1 + Math.random() * 0.4;
@@ -1574,11 +1770,11 @@ export class Shop implements TabletHost {
       } else p = pickW(avail, weights);
       if (p && !wants.includes(p)) wants.push(p);
     }
-    const c: Cust = { id: this.nextCust++, w, st: 'walkIn', wants, basket: [], mood: 60, patience: 55 + Math.random() * 20, t: 0, target: null, tester: null, ck: null, tried: false, said: new Set(), pay: Math.random() < 0.55 ? 'card' : 'cash', exitX: -side * 11 };
+    const c: Cust = { id: this.nextCust++, w, st: 'walkIn', wants, basket: [], mood: 60, patience: 55 + Math.random() * 20, t: 0, target: null, tester: null, ck: null, tried: false, said: new Set(), pay: payKind(), exitX: -side * 11, thief };
     w.go(this.nav, 0.3 * side, 1.3);
     this.custs.push(c);
   }
-  private say(c: Cust | Staff, key: string, icon: string, txt: string, kind: '' | 'good' | 'bad' = '', ms = 2600): void {
+  say(c: Cust | Staff, key: string, icon: string, txt: string, kind: '' | 'good' | 'bad' = '', ms = 2600): void {
     const id = 'id' in c ? 'c' + c.id : 's' + c.i;
     if ('said' in c) {
       if (c.said.has(key)) return;
@@ -1586,7 +1782,7 @@ export class Shop implements TabletHost {
     }
     this.hud.bubble(id, icon, txt, kind, ms);
   }
-  private findProduct(p: Product, near: Walker): { f: Furn; si: number } | null {
+  findProduct(p: Product, near: Walker): { f: Furn; si: number } | null {
     let best: { f: Furn; si: number } | null = null;
     let bd = 1e9;
     for (const f of this.furn)
@@ -1601,12 +1797,12 @@ export class Shop implements TabletHost {
       }
     return best;
   }
-  private approach(f: Furn, si: number): [number, number] {
+  approach(f: Furn, si: number): [number, number] {
     const sl = f.slots[si];
     const off = f.sv.k === 'tableRound' ? 0.75 : f.sv.k === 'table' ? 0.65 : 0.6;
     return [sl.pos.x + Math.sin(sl.yaw) * off, sl.pos.z + Math.cos(sl.yaw) * off];
   }
-  private frontOf(f: Furn, d: number): [number, number] {
+  frontOf(f: Furn, d: number): [number, number] {
     const yaw = (f.sv.r * Math.PI) / 2;
     return [f.sv.x + Math.sin(yaw) * d, f.sv.z + Math.cos(yaw) * d];
   }
@@ -1619,6 +1815,7 @@ export class Shop implements TabletHost {
   private custUpdate(c: Cust, dt: number): void {
     const w = c.w;
     c.t += dt;
+    if (c.thief && this.sec.update(c, dt)) return;
     const nav = this.nav;
     switch (c.st) {
       case 'walkIn':
@@ -1732,6 +1929,14 @@ export class Shop implements TabletHost {
           c.mood -= 8;
           prob = Math.min(prob, 0.12);
         }
+        if (c.thief && !c.loot) {
+          // ladrão: pega, esconde e vai embora sem pagar
+          v[1]--;
+          if (v[1] <= 0) f.sv.s[si] = null;
+          this.fieldDirty = true;
+          this.sec.startSneak(c, p);
+          return;
+        }
         if (Math.random() < prob) {
           v[1]--;
           if (v[1] <= 0) f.sv.s[si] = null;
@@ -1775,7 +1980,7 @@ export class Shop implements TabletHost {
             if (ck.busy > 1.5 + c.basket.length * per) {
               ck.busy = 0;
               sfx.play('beep');
-              this.finishSale(c, { wrongChange: 0, secs: 6 });
+              this.autoPay(c, ck);
             }
           }
         }
@@ -1807,7 +2012,7 @@ export class Shop implements TabletHost {
     const [ci, cj] = this.nav.nearestFree(x, z);
     return [this.nav.x0 + (ci + 0.5) * this.nav.cell, this.nav.z0 + (cj + 0.5) * this.nav.cell];
   }
-  private cashierSpot(ck: Furn): [number, number] {
+  cashierSpot(ck: Furn): [number, number] {
     return this.frontOf(ck, -0.78);
   }
   private goQueue(c: Cust): void {
@@ -1828,7 +2033,7 @@ export class Shop implements TabletHost {
     c.w.go(this.nav, x, z);
     if (ck.queue.length >= 4) this.say(c, 'line', 'queue', t('pink.say.line', 'Que fila!'), 'bad');
   }
-  private returnBasket(c: Cust): void {
+  returnBasket(c: Cust): void {
     if (!c.basket.length) return;
     // devolução: os itens voltam numa caixinha perto do caixa
     const p = c.basket[0];
@@ -1837,7 +2042,7 @@ export class Shop implements TabletHost {
     this.e.spawnBox(p.id, same, at[0], 0.4, at[1], { open: true });
     c.basket = [];
   }
-  private custLeave(c: Cust, served: boolean): void {
+  custLeave(c: Cust, served: boolean): void {
     if (c.ck) {
       const i = c.ck.queue.indexOf(c);
       if (i >= 0) c.ck.queue.splice(i, 1);
@@ -1866,6 +2071,7 @@ export class Shop implements TabletHost {
     this.ck = new CheckoutUI(this.o.root, {
       items: c.basket.map((p) => ({ p, price: this.price(p) })),
       pay: c.pay,
+      drawer: this.s.till,
       auto: ck.sv.k === 'checkout2',
       onDone: (r) => {
         this.ck = null;
@@ -1879,7 +2085,26 @@ export class Shop implements TabletHost {
       },
     });
   }
-  private finishSale(c: Cust, r: { wrongChange: number; secs: number }): void {
+  /** funcionária / autoatendimento: dinheiro entra na gaveta e o troco sai dela (sem troco → cartão) */
+  private autoPay(c: Cust, ck: Furn): void {
+    let pay = c.pay;
+    if (ck.sv.k === 'selfcheck' && pay === 'cash') pay = Math.random() < 0.6 ? 'card' : 'pix';
+    if (pay === 'cash') {
+      const tot = Math.round(c.basket.reduce((a, p) => a + this.price(p), 0) * 100);
+      const paid = customerNote(tot);
+      const d = this.s.till;
+      for (const n of paid) addTo(d, n);
+      const ch = makeChange(d, paid.reduce((a, b) => a + b, 0) - tot);
+      if (ch) for (const k of ch) d[k]--;
+      else {
+        for (const n of paid) d[n]--;
+        pay = 'card';
+        if (Math.random() < 0.5) this.say(c, 'nochg', 'card', t('pink.say.noChange', 'Sem troco? Passa no cartão!'));
+      }
+    }
+    this.finishSale(c, { wrongChange: 0, secs: 6, pay });
+  }
+  private finishSale(c: Cust, r: CheckoutResult): void {
     let tot = 0;
     let cost = 0;
     for (const p of c.basket) {
@@ -1901,7 +2126,12 @@ export class Shop implements TabletHost {
     this.hud.combo(this.combo);
     if (this.combo >= 2) sfx.play('combo', { rate: 1 + Math.min(10, this.combo) * 0.04 });
     const mult = 1 + Math.min(1, Math.max(0, this.combo - 1) * 0.1);
-    this.s.money += tot;
+    // cartão/Pix caem na conta; dinheiro vivo ficou na gaveta
+    if (r.pay === 'cash') this.day.cash += tot;
+    else {
+      this.s.money += tot;
+      this.day.card += tot;
+    }
     this.day.rev += tot;
     this.updateHudStatic(true);
     const xp = Math.round(c.basket.reduce((a, p) => a + 1 + this.price(p) / 10, 0) * mult);
@@ -1920,18 +2150,18 @@ export class Shop implements TabletHost {
   }
 
   /* =============================== equipe =============================== */
-  private spawnStaff(k: StaffKind, name: string, color: string): void {
+  spawnStaff(k: StaffKind, name: string, color: string): void {
     const d = STAFF[k];
-    const spec = d.robot ? npcSpec('#c0c8d8', '#6a7a8a', { eyes: 'e_cute' as never }) : npcSpec(color, '#ffffff', { head: 'h_bow' as never });
+    const spec = d.robot ? npcSpec('#c0c8d8', '#6a7a8a', { eyes: 'e_cute' as never }) : k === 'guard' ? guardSpec() : npcSpec(color, '#ffffff', { head: (k === 'finance' ? 'h_none' : k === 'stockMgr' ? 'h_cap' : 'h_bow') as never, face: (k === 'finance' ? 'f_glasses' : 'f_blush') as never });
     // chega pela calçada e entra pela porta
     const side = Math.random() < 0.5 ? -1 : 1;
     const w = new Walker(spec, side * (8 + Math.random() * 2), 2.6 + Math.random() * 0.8, 0.36);
-    w.look = d.robot ? '#c0c8d8|#6a7a8a|r' : `${color}|#ffffff|h_bow`;
+    w.look = d.robot ? '#c0c8d8|#6a7a8a|r' : k === 'guard' ? '#2c3e6a|#1a2440|h_cap' : `${color}|#ffffff|h_bow`;
     w.speed = d.robot ? 1.9 : 1.45;
     this.e.scene.add(w.char.root);
     this.staff.push({ i: this.staff.length + 100, k, name, w, st: 'idle', t: 0, box: null, task: null, ck: null });
   }
-  private staffDropBox(st: Staff): void {
+  staffDropBox(st: Staff): void {
     if (!st.box) return;
     const l = st.box;
     st.box = null;
@@ -1952,6 +2182,8 @@ export class Shop implements TabletHost {
     const w = st.w;
     st.t += dt;
     const nav = this.nav;
+    if (st.k === 'guard') return this.sec.guardUpdate(st, dt, this.staff.filter((x) => x.k === 'guard').indexOf(st));
+    if (st.k === 'finance' || st.k === 'stockMgr') return this.office.staffUpdate(st, dt);
     if (st.k === 'cashier') {
       if (!st.ck || !this.furn.includes(st.ck)) {
         st.ck = this.furn.find((f) => (f.sv.k === 'checkout' || f.sv.k === 'checkout2') && !f.staff) ?? null;
@@ -2235,9 +2467,10 @@ export class Shop implements TabletHost {
   }
 
   /* =============================== HUD =============================== */
-  private updateHudStatic(bump = false): void {
+  updateHudStatic(bump = false): void {
     const s = this.s;
-    this.hud.money(money(s.money), bump);
+    const till = drawerTotal(s.till) / 100;
+    this.hud.money(money(s.money), bump, till >= 1 ? money(till) : '');
     const hh = Math.floor(this.hour);
     const mm = Math.floor((this.hour - hh) * 6) * 10;
     const night = this.hour >= 18.5;
@@ -2246,7 +2479,7 @@ export class Shop implements TabletHost {
     this.hud.level(s.lvl, s.xp / xpNeed(s.lvl));
     this.hud.open(this.phase === 'open', this.phase === 'prep' && s.tut >= 5);
     const c = this.e.carry;
-    const slot0 = c ? { icon: c.kind === 'trash' ? 'trash' : c.data.open ? 'boxOpen' : 'box', n: c.kind === 'box' ? ((c.data.n as number) ?? 0) : undefined, label: t('pink.hand', 'Mãos') } : { icon: 'hand', label: t('pink.hand', 'Mãos') };
+    const slot0 = c ? { icon: c.data.bag ? (c.data.bag === 'cash' ? 'safe' : 'coin') : c.kind === 'trash' ? 'trash' : c.data.open ? 'boxOpen' : 'box', n: c.kind === 'box' ? ((c.data.n as number) ?? 0) : undefined, label: t('pink.hand', 'Mãos') } : { icon: 'hand', label: t('pink.hand', 'Mãos') };
     const hot = [slot0, { icon: 'mop', label: t('pink.mop', 'Esfregão') }];
     if (pendingWall(s.renov)) hot.push({ icon: 'hammer', label: t('pink.hammer', 'Marreta') });
     this.hud.hot(hot, this.tool);
@@ -2386,6 +2619,7 @@ export class Shop implements TabletHost {
     if (!this.guest) {
       this.dayTick(dt);
       this.truckUpdate(dt);
+      this.sec.tick(dt, this.hour);
     }
     if (this.net) this.netTick(dt);
     // sujeira trazida pelos clientes (pegadas)
@@ -2522,6 +2756,9 @@ export class Shop implements TabletHost {
       case 'tab':
         this.upgradeTablet();
         break;
+      case 'sec':
+        this.upgradeSec();
+        break;
       case 'price':
         if (PROD[String(a[0])] && Number.isFinite(num(a[1]))) this.setPrice(String(a[0]), Math.max(0.5, Math.min(1.5, num(a[1]))));
         break;
@@ -2573,6 +2810,9 @@ export class Shop implements TabletHost {
     const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
     const before = s.money;
     s.money = num(ev.m, s.money);
+    // convidado só mostra o total do caixa (a gaveta é do anfitrião)
+    const tl = num(ev.tl, -1);
+    if (tl >= 0) s.till = { 10: tl / 10 };
     s.xp = num(ev.xp, s.xp);
     const lv = num(ev.lv, s.lvl);
     if (lv > s.lvl && s.lvl > 0) {
@@ -2664,6 +2904,10 @@ export class Shop implements TabletHost {
     if (Array.isArray(m.goals)) s.goals = m.goals;
     if (typeof m.coupons === 'number') s.coupons = m.coupons;
     if (typeof m.tut === 'number') s.tut = m.tut;
+    if (typeof m.sec === 'number' && m.sec !== s.sec) {
+      s.sec = m.sec;
+      this.syncCams();
+    }
     this.refreshGoals(false);
     this.updateHudStatic();
   }
@@ -2704,7 +2948,9 @@ export class Shop implements TabletHost {
       const w: GhostRow[] = [];
       for (const c of this.custs) w.push(['c' + c.id, r2(c.w.x), r2(c.w.z), r2(c.w.yaw), r2(c.w.vel), c.w.look]);
       for (const st of this.staff) w.push(['s' + st.i, r2(st.w.x), r2(st.w.z), r2(st.w.yaw), r2(st.w.vel), st.w.look]);
-      const msg: NetEvent = { t: 'st', m: r2(s.money), xp: s.xp, lv: s.lvl, d: s.day, h: r2(this.hour), ph: this.phase, r: r2(s.rep), w };
+      const rb = this.sec.robber;
+      if (rb) w.push(['r0', r2(rb.w.x), r2(rb.w.z), r2(rb.w.yaw), r2(rb.w.vel), rb.w.look]);
+      const msg: NetEvent = { t: 'st', m: r2(s.money), xp: s.xp, lv: s.lvl, d: s.day, h: r2(this.hour), ph: this.phase, r: r2(s.rep), w, tl: drawerTotal(s.till) };
       if (this.phase === 'summary') msg.cn = this.lastCoins;
       T.dirt += 0.2;
       if (T.dirt >= 1) {
@@ -2723,7 +2969,7 @@ export class Shop implements TabletHost {
         const parts = chunks(s.furn, 10);
         parts.forEach((l, i) => net.send({ t: 'fu', q, i, n: parts.length, l }));
       }
-      const mt = { renov: s.renov, lic: s.lic, staff: s.staff, prices: s.prices, tab: s.tab, auto: s.auto, goals: s.goals, coupons: s.coupons, tut: s.tut };
+      const mt = { renov: s.renov, lic: s.lic, staff: s.staff, prices: s.prices, tab: s.tab, auto: s.auto, goals: s.goals, coupons: s.coupons, tut: s.tut, sec: s.sec };
       const ms = JSON.stringify(mt);
       if (ms !== this.lastMt) {
         this.lastMt = ms;
@@ -2753,7 +2999,10 @@ export class Shop implements TabletHost {
     for (const st of this.staff) if (st.box && st.box.data.p) s.boxes.push({ p: st.box.data.p as string, n: (st.box.data.n as number) ?? 0, x: st.w.x, y: 0.5, z: st.w.z, open: true });
     // produtos soltos voltam numa caixa aberta (não some estoque)
     for (const l of this.e.phys.items) if (l.kind === 'item' && l.data.p) s.boxes.push({ p: l.data.p as string, n: 1, x: l.body.position.x, y: 0.3, z: l.body.position.z, open: true });
-    s.trash = this.trashL.map((l) => ({ x: l.body.position.x, z: l.body.position.z }));
+    s.trash = this.trashL.map((l) => ({ x: l.body.position.x, z: l.body.position.z, r: l.data.rubble ? 1 : 0 }));
+    s.bags = [];
+    for (const l of this.e.phys.items) if (l.data.bag) s.bags.push({ k: l.data.bag as 'cash' | 'change', v: l.data.v as number, x: l.body.position.x, z: l.body.position.z });
+    if (c?.data.bag) s.bags.push({ k: c.data.bag as 'cash' | 'change', v: c.data.v as number, x: this.e.fp.x, z: this.e.fp.z });
     if (c?.kind === 'trash') s.trash.push({ x: this.e.fp.x, z: this.e.fp.z });
     s.dirt = this.e.dirt.map((d) => ({ x: d.x, z: d.z, a: d.a, k: d.k }));
     // pedidos ainda não entregues viram caixas na próxima vez
@@ -2862,6 +3111,7 @@ export class Shop implements TabletHost {
     this.endBuild();
     for (const c of this.custs) c.w.dispose();
     for (const s of this.staff) s.w.dispose();
+    this.sec.dispose();
     this.hud.dispose();
     this.field.dispose();
     this.store.dispose();
@@ -2870,6 +3120,10 @@ export class Shop implements TabletHost {
 }
 
 /* ------------------------------ util ------------------------------ */
+function payKind(): PayKind {
+  const r = Math.random();
+  return r < 0.42 ? 'cash' : r < 0.78 ? 'card' : 'pix';
+}
 function pickW<T>(list: T[], w: number[]): T | null {
   if (!list.length) return null;
   const tot = w.reduce((a, b) => a + b, 0);

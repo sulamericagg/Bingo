@@ -66,6 +66,11 @@ export type FurnKind =
   | 'flowers'
   | 'balloons'
   | 'lamp'
+  | 'desk'
+  | 'rack'
+  | 'safe'
+  | 'sofa'
+  | 'art'
   | 'bin';
 
 export interface FurnDef {
@@ -83,7 +88,9 @@ export interface FurnDef {
   wall?: boolean;
   /** não bloqueia o caminho (tapete) */
   flat?: boolean;
-  group: 'shelf' | 'checkout' | 'tester' | 'decor';
+  group: 'shelf' | 'checkout' | 'tester' | 'decor' | 'office';
+  /** pode ficar no estoque (fundos) */
+  stock?: boolean;
   icon: string;
 }
 export const FURN: Record<FurnKind, FurnDef> = {
@@ -106,9 +113,14 @@ export const FURN: Record<FurnKind, FurnDef> = {
   neon: { kind: 'neon', get name() { return t('pink.f.neon', 'Neon de coração'); }, price: 420, lvl: 10, w: 1.0, d: 0.15, h: 1.0, beauty: 9, wall: true, group: 'decor', icon: 'heart' },
   balloons: { kind: 'balloons', get name() { return t('pink.f.balloons', 'Arco de balões'); }, price: 300, lvl: 12, w: 1.6, d: 0.5, h: 2.3, beauty: 8, group: 'decor', icon: 'balloon' },
   lamp: { kind: 'lamp', get name() { return t('pink.f.lamp', 'Luminária de chão'); }, price: 180, lvl: 8, w: 0.45, d: 0.45, h: 1.7, beauty: 5, group: 'decor', icon: 'lamp' },
+  desk: { kind: 'desk', get name() { return t('pink.f.desk', 'Escritório (mesa e computador)'); }, price: 650, lvl: 4, w: 1.4, d: 0.75, h: 1.2, beauty: 2, group: 'office', icon: 'office', stock: true },
+  rack: { kind: 'rack', get name() { return t('pink.f.rack', 'Porta-pallet do estoque'); }, price: 380, lvl: 5, w: 2.0, d: 0.8, h: 2.4, beauty: 0, group: 'office', icon: 'pallet', stock: true },
+  safe: { kind: 'safe', get name() { return t('pink.f.safe', 'Cofre'); }, price: 1500, lvl: 8, w: 0.7, d: 0.65, h: 1.0, beauty: 0, group: 'office', icon: 'safe', stock: true },
+  sofa: { kind: 'sofa', get name() { return t('pink.f.sofa', 'Sofá de espera'); }, price: 520, lvl: 4, w: 1.7, d: 0.8, h: 0.85, beauty: 6, group: 'decor', icon: 'sofa' },
+  art: { kind: 'art', get name() { return t('pink.f.art', 'Quadro na parede'); }, price: 160, lvl: 2, w: 0.9, d: 0.12, h: 1.0, beauty: 4, wall: true, group: 'decor', icon: 'album' },
   bin: { kind: 'bin', get name() { return t('pink.f.bin', 'Lixeira de caixas'); }, price: 0, lvl: 99, w: 0.7, d: 0.7, h: 1.0, beauty: 0, group: 'decor', icon: 'bin' },
 };
-export const SHOP_FURN: FurnKind[] = ['shelf', 'table', 'gondola', 'shelfLux', 'tableRound', 'checkout', 'checkout2', 'selfcheck', 'testPerfume', 'testMakeup', 'testNails', 'plant', 'pouf', 'rug', 'flowers', 'mirror', 'lamp', 'neon', 'balloons'];
+export const SHOP_FURN: FurnKind[] = ['shelf', 'table', 'gondola', 'shelfLux', 'tableRound', 'checkout', 'checkout2', 'selfcheck', 'testPerfume', 'testMakeup', 'testNails', 'desk', 'rack', 'safe', 'plant', 'pouf', 'sofa', 'art', 'rug', 'flowers', 'mirror', 'lamp', 'neon', 'balloons'];
 
 /** vagas de produto de cada móvel (no espaço local do móvel, frente = +z) */
 export interface SlotSpec {
@@ -182,10 +194,13 @@ export const FIX_WINDOW = 350;
 export const FIX_DOOR = 200;
 
 /* ------------------------------ equipe ------------------------------ */
-export type StaffKind = 'cleaner' | 'cashier' | 'stocker' | 'robotStock' | 'robotClean';
-export const STAFF: Record<StaffKind, { kind: StaffKind; name: string; lvl: number; hire: number; wage: number; color: string; robot?: boolean; icon: string }> = {
+export type StaffKind = 'cleaner' | 'cashier' | 'stocker' | 'guard' | 'finance' | 'stockMgr' | 'robotStock' | 'robotClean';
+export const STAFF: Record<StaffKind, { kind: StaffKind; name: string; lvl: number; hire: number; wage: number; color: string; robot?: boolean; icon: string; help?: string }> = {
   cleaner: { kind: 'cleaner', get name() { return t('pink.st.cleaner', 'Faxineira'); }, lvl: 2, hire: 150, wage: 40, color: '#7fd1c7', icon: 'mop' },
   cashier: { kind: 'cashier', get name() { return t('pink.st.cashier', 'Caixa'); }, lvl: 3, hire: 200, wage: 60, color: '#ff8cc0', icon: 'register' },
+  guard: { kind: 'guard', get name() { return t('pink.st.guard', 'Segurança'); }, get help() { return t('pink.st.guardH', 'Barra ladrões e assustam assaltantes (às vezes se distrai)'); }, lvl: 3, hire: 260, wage: 70, color: '#2c3e6a', icon: 'guard' },
+  finance: { kind: 'finance', get name() { return t('pink.st.finance', 'Financeiro'); }, get help() { return t('pink.st.financeH', 'Fica no escritório e dá alertas e dicas'); }, lvl: 6, hire: 420, wage: 110, color: '#7fd1a0', icon: 'office' },
+  stockMgr: { kind: 'stockMgr', get name() { return t('pink.st.stockMgr', 'Gestor de estoque'); }, get help() { return t('pink.st.stockMgrH', 'Pede o que está acabando e leva caixas para os fundos'); }, lvl: 9, hire: 520, wage: 120, color: '#ffb27a', icon: 'pallet' },
   stocker: { kind: 'stocker', get name() { return t('pink.st.stocker', 'Repositora'); }, lvl: 7, hire: 260, wage: 70, color: '#b48cff', icon: 'box' },
   robotStock: { kind: 'robotStock', get name() { return t('pink.st.robotStock', 'Robô repositor'); }, lvl: 40, hire: 9000, wage: 0, color: '#c0c8d8', robot: true, icon: 'robot' },
   robotClean: { kind: 'robotClean', get name() { return t('pink.st.robotClean', 'Robô faxineiro'); }, lvl: 45, hire: 7000, wage: 0, color: '#c0c8d8', robot: true, icon: 'robot' },

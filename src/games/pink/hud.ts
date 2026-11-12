@@ -125,10 +125,21 @@ export class Hud {
     c.innerHTML = `${ic('people', 22)}<span>${n}</span>`;
     c.setAttribute('aria-label', t('pink.net.inStore', '{n} na loja', { n }));
   }
-  money(txt: string, bump = false): void {
-    this.once('money', txt, () => {
+  /** conta no banco + dinheiro vivo no caixa (só aparece quando tem) */
+  money(txt: string, bump = false, till = ''): void {
+    this.once('money', txt + '|' + till, () => {
       const c = this.q('.pk-chip.money');
       (c.querySelector('span') as HTMLElement).textContent = txt;
+      let tl = c.querySelector('.till') as HTMLElement | null;
+      if (!till) tl?.remove();
+      else {
+        if (!tl) {
+          tl = document.createElement('em');
+          tl.className = 'till';
+          c.appendChild(tl);
+        }
+        tl.innerHTML = `${ic('note', 18)}${esc(till)}`;
+      }
       if (bump) {
         c.classList.remove('bump');
         void c.offsetWidth;

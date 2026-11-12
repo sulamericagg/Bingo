@@ -12,6 +12,7 @@ import { ic } from './icons';
 import type { ShopSave } from './save';
 import { BUILDING_LVL, BUILDING_PRICE, nextStage, ownedStage, pendingWall, rentOf, salesArea, stagePrice } from './grow';
 import type { RenovAct } from './shop';
+import { SECURITY } from './money';
 import { thumbUrl } from './thumb';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -26,6 +27,7 @@ export interface TabletHost {
   fire(i: number): void;
   buyLicense(c: CatId): boolean;
   upgradeTablet(): boolean;
+  upgradeSec(): boolean;
   setPrice(id: string, mult: number): void;
   setAuto(on: boolean): void;
   stockOf(id: string): number;
@@ -253,7 +255,7 @@ export class Tablet {
         for (const k of Object.keys(STAFF) as StaffKind[]) {
           const d = STAFF[k];
           const ok = lv >= d.lvl;
-          html += `<div class="pk-it${ok ? '' : ' lock'}" data-lv="★${d.lvl}" data-hire="${k}">${ic(d.icon, 48)}<div class="nm">${esc(d.name)}</div><div class="pr">${ic('coin', 14)}${esc(money(d.hire))}</div><div style="font-size:11px">${esc(money(d.wage))}/${esc(t('pink.t.dayShort', 'dia'))}</div></div>`;
+          html += `<div class="pk-it${ok ? '' : ' lock'}" data-lv="★${d.lvl}" data-hire="${k}">${ic(d.icon, 48)}<div class="nm">${esc(d.name)}</div>${d.help ? `<div style="font-size:10px;line-height:1.15;color:#7a5a6a">${esc(d.help)}</div>` : ''}<div class="pr">${ic('coin', 14)}${esc(money(d.hire))}</div><div style="font-size:11px">${esc(money(d.wage))}/${esc(t('pink.t.dayShort', 'dia'))}</div></div>`;
         }
         html += '</div>';
         break;
@@ -333,6 +335,12 @@ export class Tablet {
         const nx = TABLET_UP[s.tab + 1];
         html += `<div class="pk-line">${ic('tablet', 34)}<span class="grow"><b>${esc(cur.name)}</b><br><small>${ic('speed', 14)} ${cur.load}s · ${ic('bug', 14)} ${Math.round(cur.bo * 100)}%</small></span>${nx ? `<button class="pk-b g" data-a="tab" ${s.money >= nx.price ? '' : 'disabled'}>${ic('up', 20)}${esc(nx.name)} · ${esc(money(nx.price))}</button>` : ic('check', 26)}</div>`;
         html += `<div class="pk-line">${ic('truck', 34)}<span class="grow"><b>${esc(t('pink.t.auto', 'Pedido automático'))}</b><br><small>${esc(t('pink.t.autoHelp', 'Repõe sozinho o que acabou, no fim do dia'))}</small></span>${lv >= 22 ? `<button class="pk-b ${s.auto ? 'g' : 'w'}" data-a="auto">${s.auto ? ic('check', 20) : ic('close', 20)}</button>` : `<b>★22</b>`}</div>`;
+        {
+          // segurança: câmeras → alarme automático → carro-forte → risco ~0
+          const nx2 = SECURITY[s.sec + 1];
+          const what = s.sec >= 8 ? t('pink.t.secArmored', 'carro-forte todo dia') : s.sec >= 5 ? t('pink.t.secAlarm', 'alarme automático') : s.sec >= 1 ? t('pink.t.secCams', 'câmeras') : t('pink.t.secNone', 'nenhuma');
+          html += `<div class="pk-line">${ic('cctv', 34)}<span class="grow"><b>${esc(t('pink.t.sec', 'Segurança'))} ${s.sec}/10</b><br><small>${esc(what)} · ${esc(t('pink.t.secHelp', 'menos furtos e assaltos'))}</small></span>${nx2 ? (s.lvl < nx2.lvl ? `<b>★${nx2.lvl}</b>` : `<button class="pk-b g" data-a="sec" ${s.money >= nx2.price ? '' : 'disabled'}>${ic('up', 20)}${esc(money(nx2.price))}</button>`) : ic('check', 26)}</div>`;
+        }
         if (s.coupons > 0) html += `<div class="pk-line">${ic('gift', 34)}<span class="grow"><b>${esc(t('pink.t.coupons', 'Cupons de desconto'))}</b></span><b>${esc(money(s.coupons))}</b></div>`;
         break;
       }
@@ -436,6 +444,7 @@ export class Tablet {
     });
     on('[data-lic]', (e) => h.buyLicense(e.dataset.lic as CatId) && this.refresh());
     on('[data-a=tab]', () => h.upgradeTablet() && this.refresh());
+    on('[data-a=sec]', () => h.upgradeSec() && this.refresh());
     on('[data-a=auto]', () => {
       h.setAuto(!h.s.auto);
       this.refresh();

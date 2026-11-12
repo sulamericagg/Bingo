@@ -359,6 +359,32 @@ export class Engine {
     this.scene.add(g);
     return this.phys.add('trash', g, new THREE.Vector3(0.27, 0.28, 0.24), new THREE.Vector3(x, 0.3, z), { mass: 1.5 });
   }
+  /** malote (dinheiro para o banco: azul com cadeado) / saquinho de troco (amarelo com moedinhas) */
+  bagMesh(k: 'cash' | 'change'): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(rbox(0.34, 0.2, 0.12, 0.05, 3), this.kit.plain('bag-' + k, k === 'cash' ? '#2f5aa8' : '#f2c21a', 0.7, 0, { envK: 0.6 }));
+    body.castShadow = true;
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.018, 0.125), this.kit.plain('bagZip', '#d8d8e0', 0.3, 0.8));
+    zip.position.y = 0.08;
+    const lock = new THREE.Mesh(rbox(0.05, 0.06, 0.03, 0.01, 1), this.kit.plain('gold', '#d6ad6a', 0.26, 1, { envK: 1.2 }));
+    lock.position.set(0.1, 0.06, 0.07);
+    g.add(body, zip, lock);
+    if (k === 'change') {
+      const cm = this.kit.plain('coinGold', '#e8b830', 0.3, 0.9, { envK: 1.3 });
+      for (let i = 0; i < 4; i++) {
+        const c = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.006, 14), cm);
+        c.position.set(-0.08 + i * 0.05, 0.105 + (i % 2) * 0.004, -0.02 + (i % 3) * 0.015);
+        c.rotation.set(0.2 * i, 0, 0.15);
+        g.add(c);
+      }
+    }
+    return g;
+  }
+  spawnBag(k: 'cash' | 'change', v: number, x: number, y: number, z: number): Loose {
+    const m = this.bagMesh(k);
+    this.scene.add(m);
+    return this.phys.add('parcel', m, new THREE.Vector3(0.17, 0.1, 0.06), new THREE.Vector3(x, y, z), { mass: 0.8, data: { bag: k, v, open: false } });
+  }
   /** entulho da parede quebrada (vai para a lixeira como lixo) */
   spawnRubble(x: number, z: number, vel?: THREE.Vector3): Loose {
     const g = new THREE.Group();

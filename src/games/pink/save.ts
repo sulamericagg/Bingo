@@ -4,6 +4,7 @@
 import type { FurnKind, Goal, StaffKind } from './data';
 import { RENOV0, type Renov } from './store3d';
 import { migrateGrow } from './grow';
+import { startFloat, type Drawer } from './money';
 
 export type Mode = 'shop' | 'factory';
 
@@ -36,7 +37,7 @@ export interface ShopSave {
   lic: string[];
   furn: FurnSave[];
   boxes: BoxSave[];
-  trash: { x: number; z: number }[];
+  trash: { x: number; z: number; r?: number }[];
   dirt: { x: number; z: number; a: number; k: 'dirt' | 'spill' | 'glass' | 'mud' }[];
   staff: { k: StaffKind; name: string; c: string }[];
   prices: Record<string, number>;
@@ -52,6 +53,12 @@ export interface ShopSave {
   nextId: number;
   coupons: number;
   created: number;
+  /** gaveta do caixa (centavos → quantidade) */
+  till: Drawer;
+  /** nível de segurança (0..10) */
+  sec: number;
+  /** malotes soltos (dinheiro para o banco / kit de troco) */
+  bags: { k: 'cash' | 'change'; v: number; x: number; z: number }[];
 }
 export interface FactorySave {
   v: 1;
@@ -119,6 +126,9 @@ export function getShop(i: number): ShopSave | null {
     migrateGrow(r);
     d.renov = { ...RENOV0, ...r };
     d.coupons ??= 0;
+    d.till ??= startFloat();
+    d.sec ??= 0;
+    d.bags ??= [];
     d.nextId ??= 1000;
   }
   return d;
@@ -175,6 +185,9 @@ export function newShop(): ShopSave {
     nextId: 1,
     coupons: 0,
     created: Date.now(),
+    till: startFloat(),
+    sec: 0,
+    bags: [],
   };
 }
 export function newFactory(): FactorySave {

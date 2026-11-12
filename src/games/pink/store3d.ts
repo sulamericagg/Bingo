@@ -461,6 +461,10 @@ export class Store3D {
     const cols = ['#e8d0b8', '#c8d8e0', '#f0e0d0', '#d8c8e8', '#e0e8d0'];
     for (let i = 0; i < 5; i++) {
       const cx = -18 + i * 9;
+      if (i === 2) {
+        this.buildBank(b, cx);
+        continue;
+      }
       const plaster = k.surf('far' + i, 'plaster', { color: cols[i], rough: 1, envK: 0.2 });
       b.addW(new THREE.BoxGeometry(8.6, 9, 6), plaster, cx, 4.5, 18.4);
       b.add(new THREE.PlaneGeometry(8, 6), k.canvasMat('farw' + i, windowsCanvas(cols[i], i + 7), { rough: 0.6 }), cx, 5.6, 15.39, 0, Math.PI, 0);
@@ -505,18 +509,62 @@ export class Store3D {
     const g = b.build({ receive: true });
     this.outside.add(g);
     // colisão da rua: não sair do mapa
+    // a rua é atravessável (banco do outro lado); limites: prédios da frente, carros, laterais
     this.outsideColliders = [
-      { x0: -24, z0: 4.3, x1: 24, z1: 6 },
+      { x0: -24, z0: 15.3, x1: 24, z1: 16 },
+      { x0: -14.1, z0: 8.7, x1: -9.9, z1: 10.5 },
+      { x0: 10.9, z0: 8.7, x1: 15.1, z1: 10.5 },
       { x0: -24, z0: -0.4, x1: -9, z1: 0.2 },
       { x0: 9, z0: -0.4, x1: 24, z1: 0.2 },
-      { x0: -16, z0: -6, x1: -15.8, z1: 6 },
-      { x0: 15.8, z0: -6, x1: 16, z1: 6 },
+      { x0: -16, z0: -6, x1: -15.8, z1: 16 },
+      { x0: 15.8, z0: -6, x1: 16, z1: 16 },
       { x0: -15, z0: -28, x1: 15, z1: -27 },
       { x0: -15.2, z0: -28, x1: -15, z1: -16 },
       { x0: 15, z0: -28, x1: 15.2, z1: -16 },
     ];
   }
   outsideColliders: FpBox[] = [];
+
+  /** BANCO do outro lado da rua (depositar malote, pegar troco) */
+  private buildBank(b: Builder, cx: number): void {
+    const k = this.kit;
+    const stone = k.surf('bankStone', 'plaster', { color: '#e8e4dc', rough: 1, envK: 0.3 });
+    const marble = k.surf('bankMarble', 'marble', { rough: 0.6, envK: 1 });
+    const dark = k.plain('bankDark', '#2a3a5a', 0.4, 0.3);
+    b.addW(new THREE.BoxGeometry(8.6, 9, 6), stone, cx, 4.5, 18.4);
+    b.add(new THREE.PlaneGeometry(8, 3.4), k.canvasMat('bankw', windowsCanvas('#e8e4dc', 31), { rough: 0.6 }), cx, 6.6, 15.39, 0, Math.PI, 0);
+    // pórtico com colunas
+    b.addW(new THREE.BoxGeometry(8.2, 0.5, 1.2), marble, cx, 4.25, 15.0);
+    b.addW(new THREE.BoxGeometry(8.4, 0.25, 1.6), marble, cx, 0.12, 15.0);
+    for (const x of [-3.4, -1.7, 1.7, 3.4]) {
+      b.add(new THREE.CylinderGeometry(0.22, 0.26, 3.8, 16), marble, cx + x, 2.15, 14.75);
+      b.add(new THREE.BoxGeometry(0.6, 0.18, 0.6), marble, cx + x, 4.0, 14.75);
+    }
+    // porta de vidro escura + caixa eletrônico
+    b.add(new THREE.PlaneGeometry(2.4, 2.8), k.glass('bankGlass', '#3a5070', 0.8), cx, 1.65, 15.38, 0, Math.PI, 0);
+    b.add(rbox(2.6, 0.12, 0.12, 0.03, 1), dark, cx, 3.08, 15.33);
+    b.add(rbox(0.9, 1.7, 0.4, 0.06, 2), k.plain('atm', '#d8dce4', 0.35, 0.5, { envK: 1 }), cx + 2.55, 1.0, 15.2);
+    b.add(new THREE.PlaneGeometry(0.5, 0.36), k.plain('atmScr', '#3ec9b4', 0.3, 0, { emissive: '#3ec9b4', ei: 0.6 }), cx + 2.55, 1.35, 14.99, 0, Math.PI, 0);
+    // placa: prédio clássico + moeda (ícone, sem precisar ler) e nome
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 160;
+    const x = c.getContext('2d')!;
+    x.fillStyle = '#2a3a5a';
+    x.fillRect(0, 0, 1024, 160);
+    x.fillStyle = '#ffd34a';
+    x.beginPath();
+    x.moveTo(60, 70);
+    x.lineTo(130, 30);
+    x.lineTo(200, 70);
+    x.fill();
+    for (let i = 0; i < 4; i++) x.fillRect(72 + i * 34, 76, 16, 46);
+    x.fillRect(60, 124, 140, 12);
+    x.font = '800 92px sans-serif';
+    x.textBaseline = 'middle';
+    x.fillText('BANCO BLOOP', 240, 84);
+    b.add(new THREE.PlaneGeometry(6, 0.94), k.canvasMat('bankSign', c, { emissive: 0.25, rough: 0.5 }), cx, 4.25, 14.39, 0, Math.PI, 0);
+  }
 
   /* ------------------------------ paredes / teto / estoque ------------------------------ */
   private buildShell(): void {

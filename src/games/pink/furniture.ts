@@ -52,6 +52,47 @@ function screenCanvas(kind: 'pos' | 'self'): HTMLCanvasElement {
   }
   return c;
 }
+function officeScreenCanvas(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 160;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#fff6fa';
+  x.fillRect(0, 0, 256, 160);
+  drawBrandLogo(x, 60, 18, 18);
+  const vals = [40, 62, 50, 80, 72, 96, 110];
+  vals.forEach((v, i) => {
+    x.fillStyle = i % 2 ? '#ff5fa2' : '#ffc6de';
+    x.fillRect(20 + i * 32, 150 - v, 22, v);
+  });
+  x.strokeStyle = '#2fa35a';
+  x.lineWidth = 4;
+  x.beginPath();
+  vals.forEach((v, i) => x.lineTo(31 + i * 32, 130 - v * 0.8));
+  x.stroke();
+  return c;
+}
+function artCanvas(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const x = c.getContext('2d')!;
+  const g = x.createLinearGradient(0, 0, 256, 256);
+  g.addColorStop(0, '#ffe3ef');
+  g.addColorStop(1, '#d6c6ff');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 256, 256);
+  const cols = ['#ff8cc0', '#ffd34a', '#8fdcff', '#ff5fa2', '#b48cff'];
+  for (let i = 0; i < 7; i++) {
+    x.fillStyle = cols[i % 5];
+    x.globalAlpha = 0.75;
+    x.beginPath();
+    x.arc(40 + ((i * 71) % 180), 50 + ((i * 53) % 170), 24 + (i % 3) * 14, 0, 7);
+    x.fill();
+  }
+  x.globalAlpha = 1;
+  return c;
+}
 function posterCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = 256;
@@ -384,6 +425,60 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
       b.add(CYL(0.13, 0.2, 0.26, 24, ), kit.plain('shade', '#fff3f6', 0.8, 0, { emissive: '#ffe2c8', ei: 0.7, side: THREE.DoubleSide }), 0, 1.5, 0);
       break;
     }
+    case 'desk': {
+      // mesa de escritório + computador (tela com gráfico) + cadeira
+      b.add(rbox(W, 0.05, D, 0.015, 2), wood, 0, 0.74, 0);
+      for (const sx of [-1, 1]) b.add(rbox(0.05, 0.72, D - 0.08, 0.01, 2), lac, sx * (W / 2 - 0.05), 0.36, 0);
+      b.add(rbox(W - 0.2, 0.3, 0.03, 0.01, 1), lac, 0, 0.55, -D / 2 + 0.06);
+      b.add(rbox(0.62, 0.4, 0.04, 0.02, 2), black, 0, 1.06, -0.18);
+      b.add(new THREE.PlaneGeometry(0.56, 0.34), kit.canvasMat('deskScr', officeScreenCanvas(), { emissive: 0.6 }), 0, 1.06, -0.157);
+      b.add(CYL(0.02, 0.02, 0.14, 8), black, 0, 0.83, -0.2);
+      b.add(rbox(0.2, 0.012, 0.14, 0.004, 1), black, 0, 0.766, -0.2);
+      b.add(rbox(0.42, 0.015, 0.14, 0.005, 1), kit.plain('keyb', '#e8e8ee', 0.4), 0, 0.773, 0.05);
+      b.add(rbox(0.22, 0.01, 0.3, 0.004, 1), kit.plain('paper', '#ffffff', 0.8), 0.45, 0.77, 0.05, 0, 0.2, 0);
+      // cadeira na frente (+z)
+      b.add(rbox(0.46, 0.08, 0.44, 0.03, 2), kit.plain('chair', '#ff8cc0', 0.6), 0, 0.46, 0.55);
+      b.add(rbox(0.46, 0.5, 0.06, 0.03, 2), kit.plain('chair', '#ff8cc0', 0.6), 0, 0.76, 0.78);
+      b.add(CYL(0.03, 0.03, 0.4, 8), chrome, 0, 0.22, 0.55);
+      b.add(CYL(0.22, 0.22, 0.02, 10), chrome, 0, 0.02, 0.55);
+      break;
+    }
+    case 'rack': {
+      // porta-pallet: montantes laranja, longarinas azuis, caixas e pallets
+      const up = kit.plain('rackUp', '#3a6ab8', 0.5, 0.5);
+      const beam = kit.plain('rackBeam', '#f28a2a', 0.5, 0.4);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(rbox(0.07, H, 0.07, 0.01, 1), up, sx * (W / 2 - 0.04), H / 2, sz * (D / 2 - 0.04));
+      const pal = kit.surf('pallet', 'wood', { rough: 1, color: '#c8a070' });
+      const card = kit.surf('cardboard', 'cardboard', { rough: 1, envK: 0.2, uvMeters: false });
+      for (const y of [0.12, 1.2]) {
+        for (const sz of [-1, 1]) b.add(rbox(W, 0.1, 0.06, 0.01, 1), beam, 0, y, sz * (D / 2 - 0.04));
+        b.add(rbox(W - 0.3, 0.12, D - 0.1, 0.01, 1), pal, 0, y + 0.11, 0);
+        for (let i = 0; i < 3; i++) b.add(rbox(0.48, 0.38, 0.5, 0.02, 2), card, -0.6 + i * 0.6, y + 0.36, 0.0 + (i % 2) * 0.05);
+      }
+      b.add(rbox(W, 0.1, 0.06, 0.01, 1), beam, 0, 2.3, D / 2 - 0.04);
+      break;
+    }
+    case 'safe': {
+      const st = kit.plain('safeBody', '#5a6070', 0.35, 0.7, { envK: 1.1 });
+      b.add(rbox(W, H, D, 0.04, 3), st, 0, H / 2, 0);
+      b.add(rbox(W - 0.12, H - 0.12, 0.03, 0.02, 2), kit.plain('safeDoor', '#6a7284', 0.3, 0.8, { envK: 1.2 }), 0, H / 2, D / 2);
+      b.add(CYL(0.09, 0.09, 0.04, 24).rotateX(Math.PI / 2), chrome, 0.05, H / 2 + 0.08, D / 2 + 0.03);
+      b.add(rbox(0.04, 0.22, 0.04, 0.01, 1), chrome, 0.22, H / 2 - 0.1, D / 2 + 0.03);
+      break;
+    }
+    case 'sofa': {
+      const fab = kit.surf('fabricPink', 'fabric', { color: '#f7c3d6' });
+      b.add(rbox(W, 0.42, D, 0.1, 3), fab, 0, 0.25, 0);
+      b.add(rbox(W, 0.45, 0.2, 0.08, 3), fab, 0, 0.62, -D / 2 + 0.1);
+      for (const sx of [-1, 1]) b.add(rbox(0.18, 0.3, D, 0.08, 3), fab, sx * (W / 2 - 0.09), 0.55, 0);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(CYL(0.025, 0.02, 0.06, 8), gold, sx * (W / 2 - 0.1), 0.03, sz * (D / 2 - 0.1));
+      break;
+    }
+    case 'art': {
+      b.add(rbox(W, H * 0.8, 0.04, 0.01, 1), gold, 0, 1.75, -D / 2 + 0.03);
+      b.add(new THREE.PlaneGeometry(W - 0.1, H * 0.8 - 0.1), kit.canvasMat('artPic', artCanvas(), { rough: 0.6 }), 0, 1.75, -D / 2 + 0.056);
+      break;
+    }
     case 'bin': {
       const green = kit.plain('binBlue', '#3a7ad8', 0.5);
       b.add(rbox(W, H, D, 0.05, 3), green, 0, H / 2, 0);
@@ -411,6 +506,7 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
     const sh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), kit.shadowMat());
     sh.rotation.x = -Math.PI / 2;
     sh.position.y = 0.004;
+    if (kind === 'art') sh.visible = false;
     const round = kind === 'tableRound' || kind === 'plant' || kind === 'pouf' || kind === 'flowers' || kind === 'lamp';
     sh.scale.set(W * (round ? 1.5 : 1.35) + 0.15, D * (round ? 1.5 : 1.5) + 0.15, 1);
     sh.renderOrder = -1;
