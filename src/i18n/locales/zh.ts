@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "暂停",
   "jangada.paused": "暂停",
   "jangada.putAll": "全部放入",
+  "jangada.moveStack": "整组",
+  "jangada.keepHook": "手里留一个钩子！",
   "jangada.q.crab": "带 5 个贝壳给我，我就告诉你中间的岛在哪里！",
   "jangada.q.penguin": "带 2 条烤大鱼给我，我就给你看传说之岛！",
   "jangada.qte.hold": "按住！",

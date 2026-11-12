@@ -278,6 +278,12 @@ export function causticTex(): THREE.DataTexture {
   return t;
 }
 
+/** fundo do mar aberto (m): o mergulho para em −16 (world.ts); a areia fica logo abaixo */
+export const SEA_FLOOR = -16.3;
+/** até onde desce a encosta das ilhas (passa um pouco do fundo: sem fresta entre ilha e fundo) */
+export const ISLE_DEEP = 16.6;
+/** cor da areia do fundo (a encosta das ilhas termina nela) */
+export const SEABED_SAND = '#6f9e94';
 /** uniforms compartilhados com o fundo das ilhas (cáusticas e cor debaixo d'água) */
 export const SEABED_U = {
   uCaus: { value: null as THREE.Texture | null },
@@ -287,7 +293,7 @@ export const SEABED_U = {
   uCLevel: { value: 0 },
 };
 /** liga cáusticas + absorção da água num material Lambert do fundo (ilhas) */
-export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number): void {
+export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb = 0.22): void {
   SEABED_U.uCaus.value = causticTex();
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, SEABED_U);
@@ -295,9 +301,9 @@ export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number): void 
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vSbW;\nuniform sampler2D uCaus; uniform float uCTime; uniform float uCSun; uniform vec3 uCDeep; uniform float uCLevel;')
       .replace(
-        '#include <dithering_fragment>',
-        `#include <dithering_fragment>
-  float sbD = uCLevel - vSbW.y;
+        // antes da neblina (era depois do dithering: o fundo/encosta nunca sumia na neblina e virava uma "mancha" escura ao longe)
+        '#include <fog_fragment>',
+        `float sbD = uCLevel - vSbW.y;
   if (sbD > -0.25) {
     float wet = smoothstep(-0.25, 0.15, sbD);
     gl_FragColor.rgb *= mix(1.0, 0.78, wet);
@@ -307,13 +313,14 @@ export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number): void 
     float cs = min(c1, c2) * 1.6 + c1 * c2 * 0.6;` : `float cs = 0.3 + 0.3 * sin(vSbW.x * 1.7 + uCTime * 1.3) * sin(vSbW.z * 1.9 - uCTime * 1.1);`}
     float fadeC = smoothstep(0.0, 0.5, sbD) * exp(-max(sbD, 0.0) * 0.16);
     gl_FragColor.rgb += vec3(0.75, 0.95, 1.0) * cs * fadeC * uCSun * 0.55;
-    float ab = 1.0 - exp(-max(sbD, 0.0) * 0.22);
+    float ab = 1.0 - exp(-max(sbD, 0.0) * ${absorb.toFixed(3)});
     gl_FragColor.rgb = mix(gl_FragColor.rgb, uCDeep, ab * 0.85);
     gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(0.7, 0.95, 1.0), wet);
-  }`,
+  }
+  #include <fog_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => 'seabed' + tier;
+  mat.customProgramCacheKey = () => 'seabed' + tier + '_' + absorb;
 }
 
 /* ------------------------------ mar ------------------------------ */
@@ -370,11 +377,11 @@ float seabed(vec2 w){
     if (A.w < 0.5) continue;
     vec4 B = uIsB[i];
     vec2 q = w - A.xy; float r = length(q);
-    if (r > A.z * 1.25 + 26.0) continue;
+    if (r > A.z * 1.25 + 46.0) continue;
     float a = atan(q.y, q.x);
     float re = A.z * (1.0 + 0.14 * sin(3.0 * a + B.x) + 0.07 * sin(5.0 * a + B.y));
     float f = r / re;
-    float h = f < 1.0 ? B.z * pow(max(1.0 - f * f, 0.0), 1.25) - 0.05 : -min(9.0, (f - 1.0) * A.z * 0.42) - 0.05;
+    float h = f < 1.0 ? B.z * pow(max(1.0 - f * f, 0.0), 1.25) - 0.05 : -min(ISLE_DEEP, (f - 1.0) * A.z * 0.42) - 0.05;
     dep = min(dep, -h);
   }
   return dep;
@@ -417,7 +424,7 @@ void main(){
     float sunUp = pow(max(dot(-V, L), 0.0), 40.0) * (1.0 - uNight);
     vec3 col = mix(uUwFog * 1.25, sky + uSunCol * sunUp * 1.5, win);
     col += vec3(0.6, 0.9, 1.0) * smoothstep(0.55, 0.62, c) * (1.0 - smoothstep(0.62, 0.75, c)) * 0.25;
-    float fo = 1.0 - exp(-dist * 0.055);
+    float fo = 1.0 - exp(-dist * max(0.055, uFogD));
     col = mix(col, uUwFog, clamp(fo, 0.0, 1.0));
     gl_FragColor = vec4(col, 1.0);
     return;
@@ -555,7 +562,7 @@ export class Ocean {
     const uW2 = WK.slice(0, nw).map((v) => new THREE.Vector4(v.A, v.Q, v.L, 0));
     this.nrm = waterTex(tier <= 1 ? 128 : 256);
     this.mat = new THREE.ShaderMaterial({
-      defines: { NW: nw, DETAIL: Math.min(2, tier) },
+      defines: { NW: nw, DETAIL: Math.min(2, tier), ISLE_DEEP: ISLE_DEEP.toFixed(2) },
       uniforms: {
         uTime: { value: 0 },
         uAmp: { value: 1 },

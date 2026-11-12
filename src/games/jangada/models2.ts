@@ -8,7 +8,7 @@
  *  Gigante (8 tentáculos com 10 ossos cada).
  * ============================================================ */
 import * as THREE from 'three';
-import { MAT, box, clean, cone, cyl, initMats, merge, paint, place, sph } from './models';
+import { CHEST, MAT, box, chestGeos, clean, cone, cyl, initMats, merge, paint, place, sph } from './models';
 import { RARITY_COL, type Biome, type Faction, type Rarity, type TreeK } from './biomes';
 
 const _c = new THREE.Color();
@@ -142,22 +142,16 @@ export function chestModel(r: Rarity): { root: THREE.Group; lid: THREE.Object3D;
   const root = new THREE.Group();
   const wood = ['#a8682e', '#5a6a8a', '#5a2a8a', '#c8902a'][r];
   const band = ['#6a4a2a', '#5ab0ff', '#d88aff', '#fff0a0'][r];
-  const body = merge([
-    box(0.9, 0.5, 0.6, wood, 0, 0.25, 0),
-    box(0.94, 0.08, 0.64, band, 0, 0.05, 0),
-    box(0.08, 0.52, 0.64, band, -0.3, 0.26, 0),
-    box(0.08, 0.52, 0.64, band, 0.3, 0.26, 0),
-    box(0.16, 0.16, 0.06, '#ffd34a', 0, 0.42, 0.31),
-    ...(r >= 2 ? [sph(0.07, r === 3 ? '#ff4f8a' : '#7af0ff', -0.3, 0.3, 0.33), sph(0.07, r === 3 ? '#4fd8ff' : '#ff9ad8', 0.3, 0.3, 0.33)] : []),
-  ]);
-  root.add(new THREE.Mesh(body, MAT.vc));
+  const inner = ['#4a2c16', '#2a3048', '#2a1446', '#5a3a12'][r];
+  const gems: [string, string] | null = r >= 2 ? [r === 3 ? '#ff4f8a' : '#7af0ff', r === 3 ? '#4fd8ff' : '#ff9ad8'] : null;
+  const g = chestGeos({ wood, band, inner, gems });
+  const body = new THREE.Mesh(g.body, MAT.vc);
+  body.position.y = 0.035;
+  root.add(body);
+  // dobradiça na borda de trás em cima; a tampa gira em x (abrir = rotation.x negativo)
   const lid = new THREE.Group();
-  const lg = clean(paint(new THREE.CylinderGeometry(0.3, 0.3, 0.9, 10, 1, false, 0, Math.PI), wood, 0.08));
-  lg.rotateZ(Math.PI / 2);
-  lg.rotateX(-Math.PI / 2);
-  lid.add(new THREE.Mesh(merge([lg, box(0.94, 0.06, 0.06, band, 0, 0.0, 0.3), box(0.08, 0.32, 0.62, band, -0.3, 0.12, 0), box(0.08, 0.32, 0.62, band, 0.3, 0.12, 0)]), MAT.vc));
-  lid.position.set(0, 0.5, -0.3);
-  lid.children[0].position.z = 0.3;
+  lid.position.set(0, 0.035 + CHEST.H, -CHEST.D / 2);
+  lid.add(new THREE.Mesh(g.lid, MAT.vc));
   root.add(lid);
   let glow: THREE.Object3D | null = null;
   if (r >= 1) {

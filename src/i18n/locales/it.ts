@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Pausa",
   "jangada.paused": "Pausa",
   "jangada.putAll": "Metti via tutto",
+  "jangada.moveStack": "Pila",
+  "jangada.keepHook": "Tieni un gancio in mano!",
   "jangada.q.crab": "Portami 5 conchiglie e ti dico dove sono le isole di mezzo!",
   "jangada.q.penguin": "Portami 2 pesci grandi arrostiti e ti mostro le isole leggendarie!",
   "jangada.qte.hold": "TIENI PREMUTO!",

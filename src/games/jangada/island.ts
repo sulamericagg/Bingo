@@ -12,7 +12,7 @@ import type { Bag, ItemId } from './data';
 import { BIOMES, chestLoot, mulberry, type Biome, type BiomeDef, type IsleSpec, type Rarity, type TreeK } from './biomes';
 import { MAT, initMats, merge, palmGeo, rockGeo, seabedGeo } from './models';
 import { boulderGeo, caveCrystalsGeo, caveGeo, chestModel, fruitBushGeo, oreGeo, plantGeo, treeGeo, volcanoGeo } from './models2';
-import { patchSeabed } from './ocean';
+import { ISLE_DEEP, SEABED_SAND, patchSeabed } from './ocean';
 
 export type NK = 'palm' | 'tree' | 'bamboo' | 'rock' | 'ore' | 'bush' | 'chest' | 'seaweed' | 'clay' | 'scrap' | 'shell' | 'stone' | 'pearl';
 export interface INode {
@@ -167,7 +167,7 @@ export class Island {
       const b = Math.pow(1 - f * f, 1.25);
       return this.peak * b + Math.sin(lx * 0.7 + this.ph[2]) * Math.cos(lz * 0.6) * 0.25 * b - 0.05;
     }
-    return -Math.min(9, (f - 1) * this.r * 0.42) - 0.05;
+    return -Math.min(ISLE_DEEP, (f - 1) * this.r * 0.42) - 0.05;
   }
   heightAt(wx: number, wz: number): number {
     return this.hLocal(wx - this.x, wz - this.z);
@@ -214,10 +214,14 @@ export class Island {
     if (v && Math.hypot(lx - v.x, lz - v.z) < v.r + rad) return true;
     return false;
   }
+  /** raio da malha do chão: a encosta desce até passar do fundo do mar (vista de baixo d'água: ilha sólida, sem "tampa" boiando) */
+  get meshR(): number {
+    return this.r * 1.25 + 46;
+  }
   private buildGround(tier: number): void {
-    const R = tier <= 0 ? 22 : 32;
+    const R = tier <= 0 ? 24 : 36;
     const S = tier <= 0 ? 40 : 64;
-    const maxR = this.outer;
+    const maxR = this.meshR;
     const pos: number[] = [];
     const col: number[] = [];
     const c = new THREE.Color();
@@ -228,6 +232,7 @@ export class Island {
     const grass2 = new THREE.Color(D.grass2);
     const rock = new THREE.Color(D.rock);
     const deep = new THREE.Color('#3a8a98');
+    const seabed = new THREE.Color(SEABED_SAND);
     const push = (lx: number, lz: number) => {
       const h = this.hLocal(lx, lz);
       pos.push(lx, h, lz);
@@ -239,7 +244,8 @@ export class Island {
       } else if (h > 0.45) c.copy(sand).lerp(grass, (h - 0.45) / 0.3);
       else if (h > -0.1) c.copy(sand);
       else if (h > -1.2) c.copy(wet).lerp(sand, 0.3);
-      else c.copy(wet).lerp(deep, Math.min(1, (-h - 1.2) / 7));
+      else if (h > -9) c.copy(wet).lerp(deep, Math.min(1, (-h - 1.2) / 7));
+      else c.copy(deep).lerp(seabed, Math.min(1, (-h - 9) / 6));
       // manchinhas
       const sp = Math.sin(lx * 3.7 + lz * 2.3) * Math.sin(lz * 4.1 - lx * 1.7);
       c.multiplyScalar(0.94 + sp * 0.06);
@@ -253,9 +259,17 @@ export class Island {
         push(Math.cos(a) * rr, Math.sin(a) * rr);
       }
     }
+    // aba final: desce reto abaixo do fundo (nenhuma fresta onde a encosta encontra a areia)
+    for (let s = 0; s < S; s++) {
+      const a = (s / S) * Math.PI * 2;
+      const lx = Math.cos(a) * maxR * 1.01;
+      const lz = Math.sin(a) * maxR * 1.01;
+      pos.push(lx, -ISLE_DEEP - 2.5, lz);
+      col.push(seabed.r * 0.9, seabed.g * 0.9, seabed.b * 0.9);
+    }
     const idx: number[] = [];
     for (let s = 0; s < S; s++) idx.push(0, 1 + ((s + 1) % S), 1 + s);
-    for (let i = 1; i < R; i++) {
+    for (let i = 1; i <= R; i++) {
       const a0 = 1 + (i - 1) * S;
       const b0 = 1 + i * S;
       for (let s = 0; s < S; s++) {

@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Jeda",
   "jangada.paused": "Jeda",
   "jangada.putAll": "Simpan semua",
+  "jangada.moveStack": "Tumpukan",
+  "jangada.keepHook": "Simpan satu kail di tanganmu!",
   "jangada.q.crab": "Bawa 5 kerang dan kuberi tahu letak pulau tengah!",
   "jangada.q.penguin": "Bawa 2 ikan besar panggang dan kutunjukkan pulau legendaris!",
   "jangada.qte.hold": "TAHAN!",

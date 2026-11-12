@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "일시정지",
   "jangada.paused": "일시정지",
   "jangada.putAll": "모두 넣기",
+  "jangada.moveStack": "묶음",
+  "jangada.keepHook": "갈고리 하나는 손에 들고 있어요!",
   "jangada.q.crab": "조개껍데기 5개를 가져오면 중간 섬 위치를 알려 줄게!",
   "jangada.q.penguin": "구운 큰 물고기 2마리를 가져오면 전설의 섬을 보여 줄게!",
   "jangada.qte.hold": "꾹 눌러요!",

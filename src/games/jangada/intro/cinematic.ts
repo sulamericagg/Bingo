@@ -65,6 +65,11 @@ function halfBeam(x: number, y: number): number {
   if (y < 0) w *= 1 - clamp(-y / 1.8) * 0.28;
   return w;
 }
+/** tosamento da proa: quanto o casco sobe em (x, y) — contínuo em y (as faixas do casco se encaixam) */
+function sheer(x: number, y: number): number {
+  const u = clamp((-6 - x) / 6);
+  return u * u * 0.9 * clamp((y + 1.7) / 3.75);
+}
 /** faixa do casco entre y0 e y1 (afinada pela função acima) */
 function hullBand(y0: number, y1: number, col: string): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(24, y1 - y0, 2, 24, 2, 1);
@@ -75,28 +80,30 @@ function hullBand(y0: number, y1: number, col: string): THREE.BufferGeometry {
     const y = p.getY(i);
     const s = Math.sign(p.getZ(i));
     p.setZ(i, s * halfBeam(x, y));
-    // proa sobe um pouco (tosamento)
-    const u = clamp((-6 - x) / 6);
-    if (y > y0 + 0.01) p.setY(i, y + u * u * 0.9 * clamp((y - y0) / Math.max(0.01, 2 - y0)));
+    // proa sobe um pouco (tosamento) — função só de (x, y): faixas vizinhas seguem juntas (sem faces sobrepostas = sem z-fighting)
+    p.setY(i, y + sheer(x, y));
   }
   g.computeVertexNormals();
   return clean(paint(g, col, 0.03));
 }
+/** altura de cada contêiner empilhado (maior que a nervura de 1,15: pilhas não se sobrepõem) */
+const STACK = 1.18;
 function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; windows: THREE.Mesh; lifeboat: THREE.Group; mastTip: THREE.Vector3 } {
   const ship = new THREE.Group();
   const L: THREE.BufferGeometry[] = [];
-  L.push(hullBand(-1.7, 0.15, '#c8402e'));
-  L.push(hullBand(0.15, 0.3, '#f4f2ea'));
-  L.push(hullBand(0.3, 1.75, '#24406e'));
+  L.push(hullBand(-1.7, 0.1, '#c8402e'));
+  L.push(hullBand(0.1, 0.36, '#f4f2ea'));
+  L.push(hullBand(0.36, 1.75, '#24406e'));
   L.push(hullBand(1.75, 2.05, '#f4f2ea'));
   // convés
+  // (o topo do convés fica 6 cm acima da faixa branca: antes era coplanar e piscava)
   const dk = new THREE.BoxGeometry(24, 0.1, 2, 24, 1, 1);
   const dp = dk.getAttribute('position');
   for (let i = 0; i < dp.count; i++) {
     const x = dp.getX(i);
     const u = clamp((-6 - x) / 6);
     dp.setZ(i, Math.sign(dp.getZ(i)) * (halfBeam(x, 2) - 0.12));
-    dp.setY(i, dp.getY(i) + 2 + u * u * 0.9);
+    dp.setY(i, dp.getY(i) + 2.06 + u * u * 0.9);
   }
   dk.computeVertexNormals();
   L.push(clean(paint(dk, '#4f7a62', 0.02)));
@@ -105,8 +112,8 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
   L.push(box(3, 1.2, 4, '#f4f2ea', 9.3, 6.8, 0, 0, 0, 0, 0.02));
   L.push(box(1, 0.25, 6.6, '#e8e4da', 7.6, 6.15, 0, 0, 0, 0, 0));
   L.push(cyl(0.75, 0.85, 2.6, '#d84a2e', 10.6, 7.9, 0, 0, 0, 0, 12));
-  L.push(cyl(0.79, 0.79, 0.4, '#f4f2ea', 10.6, 8.2, 0, 0, 0, 0, 12));
-  L.push(cyl(0.77, 0.77, 0.35, '#2a2a32', 10.6, 9.15, 0, 0, 0, 0, 12));
+  L.push(cyl(0.82, 0.82, 0.4, '#f4f2ea', 10.6, 8.2, 0, 0, 0, 0, 12));
+  L.push(cyl(0.785, 0.785, 0.35, '#2a2a32', 10.6, 9.15, 0, 0, 0, 0, 12));
   L.push(cyl(0.06, 0.08, 3.2, '#e8e4da', -10.2, 4.4, 0, 0, 0, 0, 6));
   L.push(box(0.08, 0.08, 1.6, '#e8e4da', -10.2, 5.4, 0, 0, 0, 0, 0));
   L.push(cyl(0.05, 0.06, 2.4, '#e8e4da', 9.3, 8.6, 0, 0, 0, 0, 6));
@@ -136,27 +143,28 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
       for (let h = 0; h < hN; h++) {
         const col = CONT[Math.floor(rnd() * CONT.length)];
         const top = h === hN - 1 && (iz === 0 || iz === 3) && h >= 1;
-        const parts = [box(2.2, 1.1, 1.1, col, 0, 0, 0, 0, 0, 0, 0.1), box(0.06, 1.0, 1.0, '#ffffff', 1.1, 0, 0, 0, 0, 0, 0)];
-        // nervuras
-        for (let r = -0.8; r <= 0.81; r += 0.4) parts.push(box(0.06, 1.12, 1.12, col, r, 0, 0, 0, 0, 0, 0.25));
+        // corpo + molduras grossas nas pontas (as nervuras finas de 6 cm viravam listras tremendo de longe)
+        const parts = [box(2.2, 1.1, 1.1, col, 0, 0, 0, 0, 0, 0, 0.1), box(0.06, 0.9, 0.9, '#ffffff', 1.13, 0, 0, 0, 0, 0, 0)];
+        for (const r of [-1.04, 1.04]) parts.push(box(0.14, 1.15, 1.15, col, r, 0, 0, 0, 0, 0, 0.3));
         const g = merge(parts);
         if (top && loose.length < 6) {
           const m = new THREE.Mesh(g, contMat);
-          m.position.set(x, 2.6 + h * 1.12, z);
+          m.position.set(x, 2.66 + h * STACK, z);
           m.userData.home = m.position.clone();
           loose.push(m);
           ship.add(m);
           looseG.push(g);
-        } else L.push(g.translate(x, 2.6 + h * 1.12, z));
+        } else L.push(g.translate(x, 2.66 + h * STACK, z));
       }
     }
   const hull = new THREE.Mesh(merge(L), new THREE.MeshLambertMaterial({ vertexColors: true }));
   ship.add(hull);
   // janelas acesas (sempre brilham: lindo na tempestade)
   const W: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 6; i++) W.push(box(0.04, 0.42, 0.55, '#ffd890', 6.98, 5.6, -2 + i * 0.8, 0, 0, 0, 0));
-  for (let i = 0; i < 4; i++) W.push(box(0.04, 0.32, 0.5, '#ffd890', 7.78, 6.9, -1.2 + i * 0.8, 0, 0, 0, 0));
-  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) W.push(box(0.5, 0.36, 0.04, '#ffd890', 7.8 + i * 1.1, 4.5, s * 2.52, 0, 0, 0, 0));
+  // janelas saltadas 6 cm das paredes (4 cm piscavam em GPU com depth de 16 bits)
+  for (let i = 0; i < 6; i++) W.push(box(0.08, 0.42, 0.55, '#ffd890', 6.98, 5.6, -2 + i * 0.8, 0, 0, 0, 0));
+  for (let i = 0; i < 4; i++) W.push(box(0.08, 0.32, 0.5, '#ffd890', 7.78, 6.9, -1.2 + i * 0.8, 0, 0, 0, 0));
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) W.push(box(0.5, 0.36, 0.08, '#ffd890', 7.8 + i * 1.1, 4.5, s * 2.52, 0, 0, 0, 0));
   W.push(sph(0.14, '#fff2c0', -10.2, 6.05, 0));
   const windows = new THREE.Mesh(merge(W), new THREE.MeshBasicMaterial({ vertexColors: true }));
   ship.add(windows);
@@ -164,7 +172,7 @@ function shipModel(tier: number): { ship: THREE.Group; loose: THREE.Mesh[]; wind
   const lifeboat = new THREE.Group();
   const lb = merge([
     sph(1, '#ff7a1a', 0, 0, 0, 1.5, 0.42, 0.62, 12),
-    box(2.4, 0.16, 1.05, '#ffffff', 0, 0.22, 0, 0, 0, 0, 0),
+    box(2.2, 0.16, 0.96, '#ffffff', 0, 0.22, 0, 0, 0, 0, 0),
     box(0.9, 0.5, 0.9, '#ff7a1a', 0.8, 0.45, 0, 0, 0, 0, 0),
   ]);
   lifeboat.add(new THREE.Mesh(lb, new THREE.MeshLambertMaterial({ vertexColors: true })));
@@ -283,7 +291,8 @@ class JangadaIntro {
         sting: null,
       },
     });
-    const st = this.c.stage3d(this.tier, { fov: 50, far: 1400 });
+    // near 0,25 (era 0,1): 2,5× mais precisão de profundidade no navio (sem tremedeira)
+    const st = this.c.stage3d(this.tier, { fov: 50, near: 0.25, far: 1400 });
     this.st = st;
     const S = st.scene;
     S.fog = new THREE.FogExp2('#ffb58e', 0.004);

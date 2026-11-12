@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Pause",
   "jangada.paused": "Pause",
   "jangada.putAll": "Tout ranger",
+  "jangada.moveStack": "Pile",
+  "jangada.keepHook": "Garde un crochet dans ta main !",
   "jangada.q.crab": "Apporte-moi 5 coquillages et je te dirai où sont les îles du milieu !",
   "jangada.q.penguin": "Apporte-moi 2 gros poissons grillés et je te montrerai les îles légendaires !",
   "jangada.qte.hold": "MAINTIENS !",

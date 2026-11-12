@@ -183,6 +183,8 @@ class JSynth {
       this.songG[k] = g;
     }
     this.buffers();
+    // filtro "debaixo d'água" já no lugar desde o início (religar o grafo com som tocando dá estalo)
+    this.muffle(false);
     this.startAmbience();
     this.next = ctx.currentTime + 0.15;
     this.timer = window.setInterval(() => this.tick(), 50);
@@ -377,7 +379,8 @@ class JSynth {
     const o = this.ctx!.createOscillator();
     if (typeof type === 'number') o.setPeriodicWave(this.waves[type]);
     else o.type = type;
-    o.frequency.value = f;
+    // harmônicos acima de Nyquist viram chiado/aliasing: limita
+    o.frequency.value = Math.min(f, this.ctx!.sampleRate * 0.45);
     o.detune.value = detune;
     o.connect(to);
     o.start(t);
@@ -653,7 +656,7 @@ class JSynth {
     if (!ctx || this.offline) return;
     const eng = engine as unknown as { sfxGain?: GainNode; master?: GainNode };
     if (!eng.sfxGain || !eng.master) return;
-    if (on && !this.muf) {
+    if (!this.muf) {
       try {
         const f = ctx.createBiquadFilter();
         f.type = 'lowpass';
@@ -870,23 +873,65 @@ class JSynth {
     this.splash(null, 0.9);
     this.bubbles(8);
   }
+  /** bolhas macias (sem "tic": ataque e queda suaves, glissando curto) */
   bubbles(n = 4): void {
     if (!this.okFx) return;
     const t = this.now();
+    const ctx = this.ctx!;
     for (let i = 0; i < n; i++) {
-      const tt = t + Math.random() * 0.6;
-      const g = this.ctx!.createGain();
-      this.env(g, tt, 0.04, 0.003, 0.06);
-      g.connect(this.ui!);
-      const f = rnd(300, 900);
-      const o = this.osc('sine', f, tt, tt + 0.08, g);
-      o.frequency.exponentialRampToValueAtTime(f * 2.2, tt + 0.06);
+      const tt = t + 0.02 + Math.random() * 0.5;
+      const f = rnd(240, 520);
+      const d = rnd(0.09, 0.15);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, tt);
+      g.gain.linearRampToValueAtTime(rnd(0.018, 0.03), tt + 0.018);
+      g.gain.setTargetAtTime(0, tt + 0.03, d / 3);
+      g.gain.linearRampToValueAtTime(0, tt + d + 0.08);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1400;
+      g.connect(lp).connect(this.ui!);
+      const o = this.osc('sine', f, tt, tt + d + 0.1, g);
+      o.frequency.setValueAtTime(f, tt);
+      o.frequency.exponentialRampToValueAtTime(f * 1.7, tt + d);
     }
   }
-  /** nadar (braçada) */
-  stroke(): void {
+  /** ruído com envelope macio (ataque linear do zero, queda exponencial, termina em zero antes de parar) */
+  private softNoise(out: AudioNode, t: number, vol: number, a: number, rel: number, type: BiquadFilterType, f0: number, fMid: number, f1: number, q = 0.8): void {
+    const ctx = this.ctx!;
+    if (!this.noise) return;
+    const s = ctx.createBufferSource();
+    s.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t);
+    f.frequency.exponentialRampToValueAtTime(fMid, t + a);
+    f.frequency.exponentialRampToValueAtTime(f1, t + a + rel);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + a);
+    g.gain.setTargetAtTime(0, t + a, rel / 3.5);
+    g.gain.linearRampToValueAtTime(0, t + a + rel + 0.05);
+    s.connect(f).connect(g).connect(out);
+    s.start(t, Math.random() * 1.2, a + rel + 0.12);
+  }
+  /** nadar (braçada): "chuá" macio de água empurrada + marolinha; debaixo d'água, um "vuuu" abafado */
+  stroke(under = false): void {
     if (!this.okFx) return;
-    this.noiseHit(this.world!, this.now(), 0.05, 0.3, 'bandpass', 900, 500, 0.9);
+    const t = this.now();
+    const out = this.world!;
+    if (under) {
+      this.softNoise(out, t, 0.11, 0.16, 0.55, 'lowpass', 220, 620, 200, 0.7);
+      this.softNoise(out, t + 0.08, 0.04, 0.12, 0.4, 'bandpass', 300, 480, 260, 1.2);
+      return;
+    }
+    // mão entrando (macio, não estala)
+    this.softNoise(out, t, 0.06, 0.05, 0.22, 'bandpass', 900, 1700, 700, 0.9);
+    // água empurrada
+    this.softNoise(out, t + 0.06, 0.1, 0.13, 0.42, 'lowpass', 500, 1300, 380, 0.7);
+    // marolinha voltando
+    this.softNoise(out, t + 0.32, 0.05, 0.12, 0.38, 'bandpass', 700, 1000, 520, 1);
   }
   /** golpe no ar (lança / machado) */
   swing(): void {
@@ -1800,8 +1845,9 @@ definePack({
     jump: D((s) => s.jump(), 0.2, { db: -6 }),
     land: D((s) => s.land(0.6), 0.25, { db: -4 }),
     plunge: D((s) => s.plunge(), 1.4),
-    bubbles: D((s) => s.bubbles(4), 0.8, { bus: 'ui', db: -8 }),
-    stroke: D((s) => s.stroke(), 0.35, { db: -8 }),
+    bubbles: D((s) => s.bubbles(3), 0.8, { bus: 'ui', db: -13, max: 2, cool: 0.3 }),
+    stroke: D((s) => s.stroke(), 0.95, { db: -11, max: 2, cool: 0.35, pitch: 60 }),
+    strokeU: D((s) => s.stroke(true), 0.85, { db: -12, max: 2, cool: 0.35, pitch: 60 }),
     swing: D((s) => s.swing(), 0.25, { bus: 'ui', db: -3 }),
     chop: D((s) => s.chop(null, false), 0.35, { pitch: 60 }),
     chopStone: D((s) => s.chop(null, true), 0.4, { pitch: 60 }),
@@ -1939,10 +1985,11 @@ export class JAudio {
     this.play('plunge');
   }
   bubbles(n = 4): void {
-    this.play('bubbles', null, { db: n > 4 ? 2 : -3 });
+    this.play('bubbles', null, { db: n > 4 ? 0 : -4 });
   }
-  stroke(): void {
-    this.play('stroke');
+  /** braçada (k = força 0..1); debaixo d'água o "vuuu" abafado */
+  stroke(k = 1, under = false): void {
+    this.play(under ? 'strokeU' : 'stroke', null, { db: -6 + Math.min(1, k) * 6, rate: 0.92 + Math.random() * 0.14 });
   }
   swing(): void {
     this.play('swing');
