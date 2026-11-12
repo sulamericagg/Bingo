@@ -1,7 +1,7 @@
 /* ============================================================
  *  SOBREVIVA AOS DESASTRES — MODO 3D (three.js + cannon-es).
- *  Ilha low-poly com casas (abrigo + telhado com escada), morro em degraus com rampa, torres que
- *  desabam em blocos, caixas; mesmas regras de cenário do 2D (scenarios.ts): terremoto, enchente,
+ *  Vila numa ilha (town.ts: ruas, lotes, praça, morro) com casas PRÉ-MOLDADAS destrutíveis (prefab.ts:
+ *  peças com HP, apoio e física), torres que desabam em blocos, caixas; mesmas regras do 2D (scenarios.ts): terremoto, enchente,
  *  tsunami, tornado, chuva de meteoros, vulcão, nevasca (avalanche) e tempestade de raios.
  *
  *  Física do Bloop: controlador próprio contra caixas (AABB) estáticas e as caixas atuais dos corpos
@@ -29,7 +29,9 @@ import { DISASTERS, mulberry, type DisasterId, type Scenario } from '../scenario
 import { buildScenario, drawNext, entries, entryByKey, HAZARDS, loadPedia, markSeen, starsFor, type DzEntry, type Tune } from '../catalog';
 import { showRoulette, openPedia } from '../roulette';
 import { Extra3D, softSprite, flameSprite } from './extra3d';
-import { Env3D, boxUV } from './env3d';
+import { Env3D, boxUV, biomeOf, facadeTex } from './env3d';
+import { Prefab } from './prefab';
+import { planTown, type TownPlan } from './town';
 import { dzIcon, type DzIcon } from '../icons';
 import { CamView } from '../../../3d/camview';
 import { FpCamera, FpController, fpTuning } from '../../../3d/fpkit';
@@ -145,6 +147,8 @@ export interface P3 {
   mesh: THREE.Group;
   bodyMesh: THREE.Mesh;
   bonk: number;
+  /** atingido por pedaço de casa (s) */
+  chunk?: number;
   /** PAPER: personagem 2D (null = esfera 3D) */
   paper: PaperChar | null;
   /** medidor de calor/frio (0..1) */
@@ -201,7 +205,14 @@ const CSS = `
 .d3-hint.good{background:rgba(24,120,70,.9);border-color:#c8ffd8}
 .d3-air.heat i{background:linear-gradient(90deg,#ffd23f,#ff6a1e)}
 .d3-air.cold i{background:linear-gradient(90deg,#d8f4ff,#5ac8ff)}
-.d3-root canvas.d3-cv{position:absolute;inset:0;display:block;width:100%;height:100%}
+.d3-root canvas.d3-cv{position:absolute;left:0;top:0;right:0;bottom:0;display:block;width:100%!important;height:100%!important;max-width:none!important}
+.d3-cine{position:absolute;left:0;right:0;height:0;background:#05040c;pointer-events:none;transition:height .7s ease}
+.d3-cine.t{top:0}.d3-cine.b{bottom:0}
+.d3-root.cine .d3-cine{height:7.5vh}
+.d3-vig{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .9s;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 52%,rgba(40,0,16,.5) 100%)}
+.d3-root.cine .d3-vig{opacity:1}
+.d3-fade{position:absolute;inset:0;pointer-events:none;background:#0e1a33;opacity:0;transition:opacity .55s ease}
+.d3-fade.on{opacity:1}
 .d3-hud{position:absolute;inset:0;pointer-events:none}
 .d3-top{position:absolute;left:0;right:0;top:0;padding:max(8px,env(safe-area-inset-top)) var(--edge-r,10px) 0 var(--edge-l,10px);display:flex;align-items:flex-start;gap:8px}
 .d3-btn{pointer-events:auto;border:0;cursor:pointer;font:inherit;color:#fff;background:rgba(30,15,70,.72);border:2px solid rgba(255,255,255,.25);border-radius:14px;display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;touch-action:none}
@@ -259,6 +270,9 @@ export class Disaster3D implements MiniGameHandle {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1400);
   env!: Env3D;
+  /** casas pré-moldadas destrutíveis (prefab.ts) e a planta da vila (town.ts) */
+  prefab!: Prefab;
+  town: TownPlan | null = null;
   sun: THREE.DirectionalLight;
   world = new CANNON.World({ gravity: new CANNON.Vec3(0, -GRAV, 0) });
   gov: QualityGovernor;
@@ -322,6 +336,8 @@ export class Disaster3D implements MiniGameHandle {
   hemi!: THREE.HemisphereLight;
   sky!: THREE.Mesh;
   storm = 0;
+  /** clima suavizado (céu, chuva, neve, brasas, neblina, vento visual, rajada) */
+  wx = { storm: 0, rain: 0, snow: 0, embers: 0, fog: 0, wind: 0, gust: 0 };
   fogCalm = new THREE.Color();
   fogStorm = new THREE.Color(0x4a5068);
   strikes: Strike[] = [];
@@ -435,6 +451,14 @@ export class Disaster3D implements MiniGameHandle {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     root.appendChild(this.renderer.domElement);
+    // faixas de cinema (aviso), vinheta e cortina entre rodadas: por baixo do HUD
+    for (const c of ['d3-cine t', 'd3-cine b', 'd3-vig', 'd3-fade']) {
+      const el = document.createElement('div');
+      el.className = c;
+      el.setAttribute('aria-hidden', 'true');
+      root.appendChild(el);
+      if (c === 'd3-fade') this.fadeEl = el;
+    }
     const lost = (e: Event) => e.preventDefault();
     this.renderer.domElement.addEventListener('webglcontextlost', lost);
 
@@ -450,6 +474,33 @@ export class Disaster3D implements MiniGameHandle {
     this.scene.add(this.sky);
     this.scene.fog = new THREE.FogExp2(0xcfe8ff, 0.006);
     this.env = new Env3D(this.scene, this.renderer, this.tier);
+    {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      const g = this;
+      this.prefab = new Prefab(
+        this.scene,
+        {
+          world: this.world,
+          get statics() {
+            return g.statics;
+          },
+          tier: this.tier,
+          puff: (x, y, z, n, sp) => g.puff(g.tmpV.set(x, y, z), n, sp),
+          crack: (x, z, big) => {
+            const d = Math.hypot(x - (g.me?.pos.x ?? 0), z - (g.me?.pos.z ?? 0));
+            if (d > 26) return;
+            const now = performance.now();
+            if (now - g.crackT < (big ? 90 : 160)) return;
+            g.crackT = now;
+            if (big) audio.crack();
+            else audio.hit();
+            if (big && d < 10) g.fpcam.addShake(0.12);
+          },
+          roofLost: (i) => g.ripRoof(i),
+        },
+        this.env.glassMat,
+      );
+    }
     this.sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
     this.sun.position.set(20, 40, 14);
     this.sun.castShadow = this.tier >= 2;
@@ -465,13 +516,36 @@ export class Disaster3D implements MiniGameHandle {
 
     // fluido / mar
     this.fluidMat = new THREE.MeshStandardMaterial({ color: 0x3aa0ff, transparent: true, opacity: 0.78, roughness: 0.3 });
-    this.fluidMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fluidMat);
+    {
+      // "parede" da frente da onda (tsunami/lava que avança): só a face vertical, pontas somem (nada de caixa no mar)
+      const fg = new THREE.PlaneGeometry(1, 1, 16, 1);
+      fg.rotateY(Math.PI / 2);
+      const pa = fg.getAttribute('position') as THREE.BufferAttribute;
+      const cf = new Float32Array(pa.count * 3);
+      for (let i = 0; i < pa.count; i++) {
+        cf[i * 3] = 0.55;
+        cf[i * 3 + 1] = Math.min(1, Math.max(0, (Math.abs(pa.getZ(i)) - 0.32) / 0.18));
+      }
+      fg.setAttribute('color', new THREE.BufferAttribute(cf, 3));
+      this.fluidMesh = new THREE.Mesh(fg, this.env.fluidMat);
+      this.fluidMesh.renderOrder = 2;
+    }
     this.fluidMesh.visible = false;
     this.scene.add(this.fluidMesh);
-    this.baseMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fluidMat);
-    this.baseMesh.visible = false;
-    this.scene.add(this.baseMesh);
-    this.fluidSeg = [20, 28, 36, 44][this.tier];
+    this.fluidSeg = [28, 36, 48, 60][this.tier];
+    {
+      // lâmina d'água que fica entre as ondas: plano largo com a borda sumindo (sem caixa aparecendo pelo chão)
+      const bg = new THREE.PlaneGeometry(1, 1, 12, 12);
+      bg.rotateX(-Math.PI / 2);
+      const pa = bg.getAttribute('position') as THREE.BufferAttribute;
+      const cb = new Float32Array(pa.count * 3);
+      for (let i = 0; i < pa.count; i++) cb[i * 3 + 1] = Math.min(1, Math.max(0, (Math.max(Math.abs(pa.getX(i)), Math.abs(pa.getZ(i))) - 0.36) / 0.14));
+      bg.setAttribute('color', new THREE.BufferAttribute(cb, 3));
+      this.baseMesh = new THREE.Mesh(bg, this.env.fluidMat);
+      this.baseMesh.renderOrder = 2;
+      this.baseMesh.visible = false;
+      this.scene.add(this.baseMesh);
+    }
     const ftG = new THREE.PlaneGeometry(1, 1, this.fluidSeg, this.fluidSeg);
     ftG.rotateX(-Math.PI / 2);
     ftG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ftG.getAttribute('position').count * 3), 3));
@@ -708,8 +782,23 @@ export class Disaster3D implements MiniGameHandle {
     window.addEventListener('keyup', ku);
     window.addEventListener('blur', rel);
     document.addEventListener('visibilitychange', vis);
-    const rs = () => this.resize();
+    // tela cheia sempre: girar o aparelho, barra do navegador, janela dividida — mede de novo no próximo quadro
+    let rsQ = 0;
+    const rs = () => {
+      cancelAnimationFrame(rsQ);
+      rsQ = requestAnimationFrame(() => this.resize());
+    };
     window.addEventListener('resize', rs);
+    window.addEventListener('orientationchange', rs);
+    window.visualViewport?.addEventListener('resize', rs);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(rs) : null;
+    ro?.observe(root);
+    this.offs.push(() => {
+      window.removeEventListener('orientationchange', rs);
+      window.visualViewport?.removeEventListener('resize', rs);
+      ro?.disconnect();
+      cancelAnimationFrame(rsQ);
+    });
     this.offs.push(() => {
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
@@ -750,9 +839,18 @@ export class Disaster3D implements MiniGameHandle {
 
   /** retângulo do botão de pular (relativo à raiz) — as setas de borda desviam dele */
   jumpRect: { l: number; t: number; r: number; b: number } | null = null;
+  fadeEl: HTMLElement | null = null;
+  baseFov = 60;
+  cineK = 0;
+  sizeW = 0;
+  sizeH = 0;
+  sizeCheck = 0;
   resize(): void {
-    const w = this.root.clientWidth || window.innerWidth;
-    const h = this.root.clientHeight || window.innerHeight;
+    const rc = this.root.getBoundingClientRect();
+    const w = Math.round(rc.width) || this.root.clientWidth || window.innerWidth;
+    const h = Math.round(rc.height) || this.root.clientHeight || window.innerHeight;
+    this.sizeW = w;
+    this.sizeH = h;
     requestAnimationFrame(() => {
       const jb = this.hud?.querySelector('.d3-jump') as HTMLElement | null;
       if (!jb) return;
@@ -763,7 +861,8 @@ export class Disaster3D implements MiniGameHandle {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.dprCap));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
-    this.camera.fov = w < h ? 74 : 60;
+    this.baseFov = w < h ? 74 : 60;
+    this.camera.fov = this.baseFov - 6 * this.cineK;
     this.camera.updateProjectionMatrix();
   }
 
@@ -927,218 +1026,77 @@ export class Disaster3D implements MiniGameHandle {
     const r = mulberry(sc.seed * 7 + 3);
     this.scene.background = null;
     this.fogCalm.set(m.sky[2]);
-    if (false) {
-      const top = new THREE.Color(m.sky[0]);
-      const mid = new THREE.Color(m.sky[1]);
-      const hor = new THREE.Color(m.sky[2]);
-      const pos = this.sky.geometry.getAttribute('position');
-      const col = this.sky.geometry.getAttribute('color') as THREE.BufferAttribute;
-      const c = new THREE.Color();
-      for (let i = 0; i < pos.count; i++) {
-        const y = pos.getY(i) / 320;
-        if (y > 0.35) c.copy(mid).lerp(top, Math.min(1, (y - 0.35) / 0.65));
-        else c.copy(hor).lerp(mid, Math.max(0, y / 0.35));
-        col.setXYZ(i, c.r, c.g, c.b);
-      }
-      col.needsUpdate = true;
-    }
-    // chão da ilha (colisão: caixa grande; visual: cilindro de areia + disco de grama)
-    const sandCol = m.id === 'polo' ? '#e8f1ff' : m.id === 'estacao' ? '#7b86b0' : '#e9d29a';
-    void sandCol;
+    // chão da ilha (colisão: caixa grande; visual: terreno do env3d)
     this.statics.push({ x0: -ISLAND_R, y0: -6, z0: -ISLAND_R, x1: ISLAND_R, y1: 0, z1: ISLAND_R, ground: true });
     const gp = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     gp.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     this.world.addBody(gp);
-    // casas: anel ao redor do centro
+    // planta da vila: ruas, lotes, praça, morro (town.ts)
     const nH = 5 + Math.min(2, Math.floor(sc.difficulty / 2));
-    for (let i = 0; i < nH; i++) {
-      const a = (i / nH) * Math.PI * 2 + r() * 0.3;
-      const rad = 15 + r() * 8;
-      const x = Math.cos(a) * rad;
-      const z = Math.sin(a) * rad;
-      const w = 5 + Math.floor(r() * 2);
-      const d = 5;
-      const h = 3.2 + (r() < 0.3 ? 1 : 0);
-      const wall = m.wall[Math.floor(r() * m.wall.length)];
-      const roof = m.roof[Math.floor(r() * m.roof.length)];
+    const biome = biomeOf(m.id);
+    const plan = planTown(r, ISLAND_R, nH, m.wall, m.roof, biome.paths === 'road' || biome.paths === 'metal');
+    this.town = plan;
+    // casas pré-moldadas (prefab.ts): peças com HP, colisão própria e física quando soltam
+    this.prefab.begin(facadeTex(biome.facade));
+    for (const L of plan.lots) {
+      const { x, z, w, d, h, side } = L;
       const x0 = x - w / 2;
       const x1 = x + w / 2;
       const z0 = z - d / 2;
-      const z1 = z + d / 2;
-      const th = 0.35;
-      // paredes texturizadas (porta larga no lado -z)
-      this.solid(x0, 0, z1 - th, x1, h, z1, wall, false, true, 'wall'); // fundo
-      this.solid(x0, 0, z0, x0 + th, h, z1, wall, false, true, 'wall');
-      this.solid(x1 - th, 0, z0, x1, h, z1, wall, false, true, 'wall');
-      const door = 1.8;
-      this.solid(x0, 0, z0, x - door / 2, h, z0 + th, wall, false, true, 'wall');
-      this.solid(x + door / 2, 0, z0, x1, h, z0 + th, wall, false, true, 'wall');
-      this.solid(x - door / 2, 2.2, z0, x + door / 2, h, z0 + th, wall, false, true, 'wall');
-      // telhado plano com mureta (lugar alto, mas o tornado arranca): malha e caixas próprias
-      const mainBatch = this.batch;
-      this.batch = [];
-      const st0 = this.statics.length;
-      this.solid(x0 - 0.2, h, z0 - 0.2, x1 + 0.2, h + 0.35, z1 + 0.2, roof);
-      // escada do lado
-      const side = r() < 0.5 ? -1 : 1;
-      // acabamento (só visual): base, janelas com moldura, batente da porta, mureta e chaminé
-      const frame = '#fff7ea';
-      const trim = new THREE.Color(roof).offsetHSL(0, 0, -0.12).getStyle();
-      this.batchBox(x, 0.09, z, w + 0.3, 0.18, d + 0.3, '#8d8a93');
-      const win = (cx: number, cy: number, cz: number, alongX: boolean) => {
-        this.batchBox(cx, cy, cz, alongX ? 1.0 : 0.07, 0.9, alongX ? 0.07 : 1.0, frame);
-        this.glassBox(cx, cy, cz, alongX ? 0.78 : 0.09, 0.68, alongX ? 0.09 : 0.78);
-        // floreira embaixo da janela
-        this.batchBox(cx + (alongX ? 0 : Math.sign(cx - x) * 0.12), cy - 0.52, cz + (alongX ? Math.sign(cz - z) * 0.12 : 0), alongX ? 0.9 : 0.22, 0.16, alongX ? 0.22 : 0.9, '#8a5a3a');
-        this.batchBox(cx + (alongX ? 0 : Math.sign(cx - x) * 0.12), cy - 0.4, cz + (alongX ? Math.sign(cz - z) * 0.12 : 0), alongX ? 0.8 : 0.18, 0.12, alongX ? 0.18 : 0.8, ['#ff7ac8', '#ffe14d', '#ff5a5a'][Math.floor(r() * 3)]);
-        this.batchBox(cx, cy, cz, alongX ? 0.08 : 0.1, 0.68, alongX ? 0.1 : 0.08, frame);
-      };
-      const wy = Math.min(1.7, h - 1.1);
-      win(x - w / 4, wy, z1 + 0.02, true);
-      win(x + w / 4, wy, z1 + 0.02, true);
-      if (w >= 5) {
-        win(x0 + 0.85, wy, z0 - 0.02, true);
-        win(x1 - 0.85, wy, z0 - 0.02, true);
-      }
-      win(x0 - 0.02, wy, z + d * 0.28, false);
-      win(x1 + 0.02, wy, z + d * 0.28, false);
-      this.batchBox(x - door / 2 - 0.07, 1.15, z0 - 0.03, 0.14, 2.3, 0.1, trim);
-      this.batchBox(x + door / 2 + 0.07, 1.15, z0 - 0.03, 0.14, 2.3, 0.1, trim);
-      this.batchBox(x, 2.27, z0 - 0.03, door + 0.28, 0.14, 0.1, trim);
-      this.batchBox(x, 0.02, z0 - 0.6, door + 0.4, 0.04, 1.0, '#b9a58a');
-      // toldo listrado em cima da porta + luminária
-      for (let k = 0; k < 5; k++) this.batchBox(x - door / 2 - 0.2 + (k + 0.5) * ((door + 0.4) / 5), 2.62, z0 - 0.38, (door + 0.4) / 5, 0.08, 0.8, k % 2 ? '#ffffff' : roof, 0);
-      this.glassBox(x + door / 2 + 0.35, 2.35, z0 - 0.08, 0.16, 0.22, 0.12);
-      const rt = h + 0.35;
-      this.batchBox(x, rt + 0.12, z0 - 0.15, w + 0.4, 0.24, 0.12, trim);
-      this.batchBox(x, rt + 0.12, z1 + 0.15, w + 0.4, 0.24, 0.12, trim);
-      if (side > 0) this.batchBox(x0 - 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
-      else this.batchBox(x1 + 0.15, rt + 0.12, z, 0.12, 0.24, d + 0.4, trim);
-      if (m.id === 'doces') {
-        // casa de doce: glacê escorrendo na beira do telhado, quinas de bengala listrada, jujubas e pirulito
-        for (let k = 0; k <= Math.round(w / 0.5); k++) {
-          const gx = x0 - 0.1 + k * 0.5;
-          this.batchBox(gx, h - 0.12 - (k % 3) * 0.08, z0 - 0.05, 0.42, 0.3 + (k % 3) * 0.16, 0.14, '#fff6fb');
-          this.batchBox(gx, h - 0.12 - ((k + 1) % 3) * 0.08, z1 + 0.05, 0.42, 0.3 + ((k + 1) % 3) * 0.16, 0.14, '#fff6fb');
-        }
-        for (const [cx2, cz2] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]])
-          for (let k = 0; k < Math.ceil(h / 0.4); k++) this.batchBox(cx2, 0.2 + k * 0.4, cz2, 0.3, 0.4, 0.3, k % 2 ? '#ffffff' : '#ff3d6a');
-        const gum = ['#ff5aa5', '#7ad8ff', '#ffe14d', '#5ee08a', '#9b5de5'];
-        const sg = new THREE.SphereGeometry(0.28, 10, 7);
-        for (let k = 0; k < 5; k++) this.batchGeo(sg, x0 + 0.6 + r() * (w - 1.2), h + 0.6, z0 + 0.6 + r() * (d - 1.2), 1, 0.8, 1, 0, gum[k % gum.length]);
-        sg.dispose();
-        const lx2 = x + door / 2 + 0.9;
-        this.batchBox(lx2, 0.9, z0 - 0.7, 0.08, 1.8, 0.08, '#ffffff');
-        const disc = new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16);
-        disc.rotateX(Math.PI / 2);
-        this.batchGeo(disc, lx2, 1.95, z0 - 0.7, 1, 1, 1, 0, gum[Math.floor(r() * gum.length)]);
-        disc.dispose();
-      }
-      const chx = side < 0 ? x1 - 0.8 : x0 + 0.8;
-      this.solid(chx - 0.3, rt, z1 - 1.1, chx + 0.3, rt + 1.0, z1 - 0.5, '#a0523d');
-      const roofBoxes = this.statics.slice(st0);
-      let roofMesh: THREE.Mesh | null = null;
-      {
-        const merged = this.batch.length ? mergeGeometries(this.batch, false) : null;
-        for (const g of this.batch) g.dispose();
-        if (merged) {
-          roofMesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85 }));
-          roofMesh.castShadow = roofMesh.receiveShadow = true;
-          this.level.add(roofMesh);
-        }
-      }
-      this.batch = mainBatch;
+      const th = 0.24;
+      this.prefab.addHouse({ x, z, w, d, h, side, wall: L.wall, roof: L.roof, facade: facadeTex(biome.facade) });
+      // escada de madeira do lado (fixa no chão: não quebra)
       const lx = side < 0 ? x0 - 0.15 : x1 + 0.15;
       this.batchBox(lx, (h + 0.4) / 2, z - 0.5, 0.2, h + 0.4, 0.1, '#c98a4a');
       this.batchBox(lx, (h + 0.4) / 2, z + 0.5, 0.2, h + 0.4, 0.1, '#c98a4a');
       for (let k = 0; k < Math.floor(h / 0.5); k++) this.batchBox(lx + side * 0.06, 0.4 + k * 0.5, z, 0.14, 0.09, 1.0, '#8a5a2a');
       const ladder: Box = side < 0 ? { x0: x0 - 1.0, y0: -0.1, z0: z - 0.9, x1: x0 + 0.05, y1: h + 0.4, z1: z + 0.9 } : { x0: x1 - 0.05, y0: -0.1, z0: z - 0.9, x1: x1 + 1.0, y1: h + 0.4, z1: z + 0.9 };
-      const inner: Box = { x0: x0 + th, y0: 0, z0: z0 + th, x1: x1 - th, y1: h, z1: z1 - th };
-      this.houses.push({ x, z, w, d, h, inner, ladder, side, roof: roofMesh, roofBoxes, ripped: false });
-      this.highSpots.push({ x, z, y: h + 0.35, house: this.houses.length - 1 });
-      // caixas leves ao lado
-      if (r() < 0.6) this.addDyn(x1 + 1.2, 0.45, z0 + 0.8, 0.45, 0.45, 0.45, '#c98a4a', false);
+      const inner: Box = { x0: x0 + th, y0: 0, z0: z0 + th, x1: x1 - th, y1: h, z1: z + d / 2 - th };
+      this.houses.push({ x, z, w, d, h, inner, ladder, side, roof: null, roofBoxes: [], ripped: false });
+      this.highSpots.push({ x, z, y: h + 0.3, house: this.houses.length - 1 });
     }
-    // morro em degraus + rampa (lugar alto sem escada)
-    const hx = -4 + r() * 8;
-    const hz = -4 + r() * 8;
-    const steps = [0.9, 1.8, 2.7];
-    steps.forEach((y, i) => {
+    this.prefab.finish();
+    // morro em degraus + rampa (lugar alto sem escada), ao sul da rua principal
+    const hx = plan.hill.x;
+    const hz = plan.hill.z;
+    const hillCol = m.id === 'doces' ? '#ffb4dc' : m.id === 'polo' ? '#f4f8ff' : m.id === 'deserto' ? '#f0c27a' : '#9ad35a';
+    [0.9, 1.8, 2.7].forEach((y, i) => {
       const s = 4.5 - i * 1.2;
-      // morro de pedra em degraus (o último com tufo de grama por cima)
-      this.solid(hx - s, 0, hz - s, hx + s, y, hz + s, m.id === 'doces' ? '#ffb4dc' : m.id === 'polo' ? '#f4f8ff' : m.id === 'deserto' ? '#f0c27a' : '#9ad35a', false, true, 'stone');
+      this.solid(hx - s, 0, hz - s, hx + s, y, hz + s, hillCol, false, true, 'stone');
     });
     this.highSpots.push({ x: hx, z: hz, y: 2.7, house: -1 });
-    // rampa até o 1º degrau (encosta)
     const ramp: Ramp = { x0: hx + 4.5, x1: hx + 8, z0: hz - 1.2, z1: hz + 1.2, h0: 0.9, h1: 0 };
     this.ramps.push(ramp);
-    const len = Math.hypot(ramp.x1 - ramp.x0, ramp.h0);
     {
-      // rampa de pedra (mesma textura do morro)
-      const rg = boxUV(0, 0, 0, len, 0.2, 2.4, new THREE.Color(m.id === 'doces' ? '#ffb4dc' : m.id === 'polo' ? '#f4f8ff' : m.id === 'deserto' ? '#f0c27a' : '#9ad35a'), 2.5);
+      const len = Math.hypot(ramp.x1 - ramp.x0, ramp.h0);
+      const rg = boxUV(0, 0, 0, len, 0.2, 2.4, new THREE.Color(hillCol), 2.5);
       rg.rotateZ(-Math.atan2(ramp.h0, ramp.x1 - ramp.x0));
       rg.translate((ramp.x0 + ramp.x1) / 2, ramp.h0 / 2 - 0.1, hz);
       this.stoneBatch.push(rg);
     }
-    // plataforma de mão única por cima do morro
+    // plataforma de mão única por cima do morro (mirante de madeira)
     this.solid(hx - 1.5, 4.0, hz + 5.2, hx + 1.5, 4.2, hz + 6.4, '#b8864f', true);
     this.solid(hx - 0.2, 0, hz + 5.6, hx + 0.2, 4.0, hz + 6.0, '#8a5a2a', false, true);
     // torres de blocos (desabam no terremoto/tornado)
     const nT = 2 + Math.min(3, m.towers);
-    for (let i = 0; i < nT; i++) {
-      const a = r() * Math.PI * 2;
-      const rad = 8 + r() * 22;
-      const x = Math.cos(a) * rad;
-      const z = Math.sin(a) * rad;
-      if (this.houses.some((h) => Math.abs(h.x - x) < 5 && Math.abs(h.z - z) < 5) || Math.hypot(x - hx, z - hz) < 7) continue;
+    for (let i = 0; i < nT && i < plan.towers.length; i++) {
+      const { x, z } = plan.towers[i];
       const col = m.wall[i % m.wall.length];
       for (let k = 0; k < 4; k++) this.addDyn(x, 0.6 + k * 1.2, z, 0.75, 0.6, 0.75, k % 2 ? col : '#d9dde8', true);
     }
-    // árvores: agora no ambiente (env3d: natureza instanciada com tronco que colide)
-    for (let i = 0; i < 0; i++) {
-      const a = r() * Math.PI * 2;
-      const rad = 6 + r() * 25;
-      const x = Math.cos(a) * rad;
-      const z = Math.sin(a) * rad;
-      if (this.houses.some((h) => Math.abs(h.x - x) < 4.5 && Math.abs(h.z - z) < 4.5) || Math.hypot(x - hx, z - hz) < 6) continue;
-      this.solid(x - 0.25, 0, z - 0.25, x + 0.25, 2.2, z + 0.25, m.trunk);
-      this.batchBox(x, 3, z, 2.2, 1.8, 2.2, m.leaf);
-      this.batchBox(x, 3.9, z, 1.4, 0.8, 1.4, m.leaf);
+    // caixotes leves soltos (o vento leva)
+    for (let i = 0; i < 3; i++) {
+      const a = 0.6 + i * 0.5;
+      this.addDyn(plan.plaza.x + Math.cos(a) * (plan.plaza.r + 0.8), 0.45, plan.plaza.z - Math.sin(a) * (plan.plaza.r + 0.8), 0.45, 0.45, 0.45, '#c98a4a', false);
     }
     // lugares abertos (longe de casas e torres)
-    for (let i = 0; i < 40 && this.openSpots.length < 8; i++) {
-      const a = r() * Math.PI * 2;
-      const rad = 4 + r() * 24;
-      const x = Math.cos(a) * rad;
-      const z = Math.sin(a) * rad;
-      if (this.houses.some((h) => Math.abs(h.x - x) < 6 && Math.abs(h.z - z) < 6)) continue;
-      if (this.dyn.some((d) => Math.hypot(d.body.position.x - x, d.body.position.z - z) < 6)) continue;
-      if (Math.hypot(x - hx, z - hz) < 7) continue;
-      this.openSpots.push({ x, z });
+    for (const s of plan.open) {
+      if (this.houses.some((h) => Math.abs(h.x - s.x) < h.w / 2 + 1.5 && Math.abs(h.z - s.z) < h.d / 2 + 1.5)) continue;
+      if (this.dyn.some((d) => Math.hypot(d.body.position.x - s.x, d.body.position.z - s.z) < 3)) continue;
+      if (Math.hypot(s.x - hx, s.z - hz) < 7) continue;
+      this.openSpots.push({ x: s.x, z: s.z });
     }
-    if (!this.openSpots.length) this.openSpots.push({ x: 0, z: -12 });
-    // detalhes do chão: tufos de grama, flores e pedrinhas (tudo no mesmo lote: 1 desenho)
-    const tuft = new THREE.ConeGeometry(0.13, 0.4, 3);
-    const rock = new THREE.IcosahedronGeometry(0.3, 0);
-    const leaf = new THREE.Color(m.leaf);
-    const nd = 0;
-    for (let i = 0; i < nd; i++) {
-      const a = r() * Math.PI * 2;
-      const rad = Math.sqrt(r()) * (ISLAND_R - 2.5);
-      const x = Math.cos(a) * rad;
-      const z = Math.sin(a) * rad;
-      if (this.statics.some((b) => b.y1 > 0.01 && x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3)) continue;
-      const k = r();
-      if (k < 0.62) {
-        const c = leaf.clone().offsetHSL(0, 0, (r() - 0.5) * 0.15);
-        for (let j = 0; j < 3; j++) this.batchGeo(tuft, x + (r() - 0.5) * 0.3, 0.18, z + (r() - 0.5) * 0.3, 1, 0.7 + r() * 0.6, 1, r() * 3, c);
-      } else if (k < 0.85) {
-        this.batchBox(x, 0.18, z, 0.04, 0.36, 0.04, '#3f8f3a');
-        this.batchBox(x, 0.4, z, 0.2, 0.12, 0.2, m.roof[Math.floor(r() * m.roof.length)]);
-      } else this.batchGeo(rock, x, 0.1, z, 1 + r(), 0.6 + r() * 0.5, 1 + r(), r() * 3, '#9a9aa5');
-    }
-    tuft.dispose();
-    rock.dispose();
+    if (!this.openSpots.length) this.openSpots.push({ x: 0, z: -8 });
     this.flushBatch();
     this.env.build(sc, r, this, ISLAND_R);
     this.volcano.visible = m.id === 'ilha' || sc.disasters.includes('vulcao');
@@ -1282,6 +1240,7 @@ export class Disaster3D implements MiniGameHandle {
     this.fluid = null;
     this.fluidMesh.visible = false;
     this.baseMesh.visible = false;
+    this.env.floodY = -99;
     this.quake = 0;
     this.wind = 0;
     this.tornado.on = false;
@@ -1659,21 +1618,25 @@ export class Disaster3D implements MiniGameHandle {
   /** o tornado arranca o telhado: some a malha e a colisão, voam pedaços; a casa deixa de ser abrigo */
   ripRoof(i: number): void {
     const h = this.houses[i];
-    if (h.ripped) return;
+    if (!h || h.ripped) return;
     h.ripped = true;
-    if (h.roof) h.roof.visible = false;
-    for (const b of h.roofBoxes) {
-      b.y0 = -60;
-      b.y1 = -59;
+    // as placas do telhado (prefab) voam na direção do vento/do funil
+    let dx = this.wind ? Math.sign(this.wind) : 0;
+    let dz = 0;
+    if (this.tornado.on) {
+      const l = Math.hypot(h.x - this.tornado.x, h.z - this.tornado.z) || 1;
+      dx = -(h.z - this.tornado.z) / l;
+      dz = (h.x - this.tornado.x) / l;
+    } else if (this.gust.t > 0 || this.active.has('areia')) {
+      dx = Math.cos(this.gust.a);
+      dz = Math.sin(this.gust.a);
     }
-    const roofCol = this.sc.map.roof[0];
-    for (let k = 0; k < 3; k++) {
-      const d = this.addDyn(h.x + (this.rng() - 0.5) * h.w, h.h + 0.6, h.z + (this.rng() - 0.5) * h.d, 0.5 + this.rng() * 0.4, 0.12, 0.5 + this.rng() * 0.4, roofCol, false);
-      if (d) {
-        d.body.wakeUp();
-        d.body.velocity.set((this.rng() - 0.5) * 6, 9 + this.rng() * 4, (this.rng() - 0.5) * 6);
-      }
+    if (!dx && !dz) {
+      const a = this.rng() * Math.PI * 2;
+      dx = Math.cos(a);
+      dz = Math.sin(a);
     }
+    this.prefab.blowRoof(i, dx, dz);
     this.puff(new THREE.Vector3(h.x, h.h + 0.5, h.z), 10, 6);
     audio.crack();
     this.ripGrace = 1.6;
@@ -1682,6 +1645,7 @@ export class Disaster3D implements MiniGameHandle {
   }
   ripGrace = 0;
   ripHouse = -1;
+  crackT = 0;
 
   insideHouseIdx(p: P3): number {
     for (let i = 0; i < this.houses.length; i++) {
@@ -1869,6 +1833,12 @@ export class Disaster3D implements MiniGameHandle {
         fi.mesh.visible = true;
       }
     }
+    // casas: o impacto arrebenta as peças em volta (perto explode em lascas, longe solta e voa)
+    {
+      const sk = s.kind === 'meteor' ? this.tn.strike : undefined;
+      const pw = s.kind === 'bomb' ? 240 : s.kind === 'meteor' ? (sk === 'hail' ? 14 : sk === 'melon' || sk === 'candy' ? 110 : 230) : s.kind === 'rock' ? 95 : s.kind === 'debris' ? 9 : s.kind === 'bolt' ? 20 : 8;
+      this.prefab.blast(s.x, s.y + 0.4, s.z, s.r, pw * Math.min(1.3, 0.75 + 0.25 * this.I));
+    }
     // escombros voam
     for (const d of this.dyn) {
       const b = d.body;
@@ -1944,19 +1914,23 @@ export class Disaster3D implements MiniGameHandle {
       const lv = Math.max(0.02, f.level);
       // água que ficou das ondas anteriores: lâmina na ilha toda
       const bm = this.baseMesh;
+      const SPAN = ISLAND_R * 2 + 90;
       if (f.dir && f.base > 0.05) {
         bm.visible = true;
-        bm.scale.set(ISLAND_R * 2 + 6, f.base + 0.45, ISLAND_R * 2 + 6);
-        bm.position.set(0, (f.base - 0.6) / 2, 0);
+        bm.scale.set(SPAN, 1, SPAN);
+        bm.position.set(0, f.base, 0);
       } else bm.visible = false;
+      // mapas de ilha: o mar sobe junto com a enchente (a borda da água emenda no mar)
+      this.env.floodY = f.kind === 'water' ? (f.dir ? f.base : lv) : -99;
       if (f.dir) {
         // região coberta: atrás da frente (tsunami vem de −x; lava vem de +x) + o nível que ficou no resto
-        const x0 = f.dir > 0 ? -ISLAND_R - 40 : f.front;
-        const x1 = f.dir > 0 ? f.front : ISLAND_R + 40;
+        const x0 = f.dir > 0 ? -SPAN / 2 : f.front;
+        const x1 = f.dir > 0 ? f.front : SPAN / 2;
         const w = Math.max(0.1, x1 - x0);
-        this.fluidMesh.scale.set(w, lv + 0.45, ISLAND_R * 2 + 30);
-        this.fluidMesh.position.set(x0 + w / 2, (lv - 0.15 - 0.6) / 2, 0);
-        this.fluidTop.scale.set(w, 1, ISLAND_R * 2 + 30);
+        // caixa só para a "parede" da frente da onda (fundo enterrado, laterais bem longe)
+        this.fluidMesh.scale.set(1, lv + 0.7, ISLAND_R * 2 + 36);
+        this.fluidMesh.position.set(f.front, (lv - 0.7) / 2, 0);
+        this.fluidTop.scale.set(w, 1, SPAN);
         this.fluidTop.position.set(x0 + w / 2, lv, 0);
         for (const d of this.dyn) {
           const b = d.body;
@@ -1966,6 +1940,8 @@ export class Disaster3D implements MiniGameHandle {
             b.applyForce(new CANNON.Vec3(f.dir * b.mass * 14, b.mass * 4, 0));
           }
         }
+        // a frente da onda arrebenta paredes/janelas baixas
+        if (dis) this.prefab.wave(dt, f.front, f.dir, lv, (f.kind === 'lava' ? 35 : 75) * I);
         // caldo: a frente da onda pega quem está embaixo (perde fôlego e é arrastado)
         if (dis && f.kind === 'water')
           for (const p of this.players) {
@@ -1982,15 +1958,17 @@ export class Disaster3D implements MiniGameHandle {
             }
           }
       } else {
-        this.fluidMesh.scale.set(ISLAND_R * 2 + 6, lv + 0.45, ISLAND_R * 2 + 6);
-        this.fluidMesh.position.set(0, (lv - 0.15 - 0.6) / 2, 0);
-        this.fluidTop.scale.set(ISLAND_R * 2 + 6, 1, ISLAND_R * 2 + 6);
+        // enchente parada: só a superfície (o chão/barranco esconde a borda; no mar ela some no mar que subiu)
+        this.fluidMesh.scale.set(SPAN, lv + 0.45, SPAN);
+        this.fluidMesh.position.set(0, -50, 0);
+        this.fluidTop.scale.set(SPAN, 1, SPAN);
         this.fluidTop.position.set(0, lv, 0);
       }
       if (f.level <= 0.01 && f.target <= 0 && f.base <= 0 && !this.wave.n) {
         this.fluid = null;
         this.fluidMesh.visible = false;
         this.baseMesh.visible = false;
+        this.env.floodY = -99;
       }
     }
     if (dis) {
@@ -2058,6 +2036,8 @@ export class Disaster3D implements MiniGameHandle {
         }
         const qt = inP ? (kk === 0 ? 1 : 0.85) : 0.05;
         this.quake += (qt - this.quake) * Math.min(1, dt * 3);
+        // tremor quebra as casas peça por peça (as altas e soltinhas primeiro)
+        if (inP) this.prefab.quake(dt, this.quake * I);
         this.shake = Math.max(this.shake, inP ? this.quake * 0.25 : 0);
         if (inP) {
           for (const d of this.dyn) {
@@ -2092,6 +2072,8 @@ export class Disaster3D implements MiniGameHandle {
         const g = this.gust;
         if (g.t > 0) {
           g.t -= dt;
+          // a rajada bate nas casas: vidros estouram, mureta/toldo/placas do telhado do lado do vento soltam
+          this.prefab.wind(dt, Math.cos(g.a), Math.sin(g.a), Math.min(1, 0.55 + 0.3 * I) * (this.tn.gust === 'wind' ? 1.15 : 0.9));
           this.tick('areia', dt * k * this.tn.rate * (this.tn.gust === 'wind' ? 1.3 : 1), () => this.spawnStrike('debris'), 0.32 - 0.08 * this.heat);
           if (g.t <= 0) {
             g.a += Math.PI * (0.6 + this.rng() * 0.8);
@@ -2195,6 +2177,10 @@ export class Disaster3D implements MiniGameHandle {
       this.alert3('tornado', t('dz.al.tornado2', 'Outro tornado!'));
     }
     const tn = this.tornado;
+    if (tn.on && dis) this.prefab.vortex(dt, tn.x, tn.z, tn.r * this.tn.size, I);
+    if (this.tornado2.on && dis) this.prefab.vortex(dt, this.tornado2.x, this.tornado2.z, tn.r * this.tn.size, I);
+    // vento lateral (furacão, avalanche, nevasca): empurra as soltas e castiga as fachadas
+    if (this.wind && dis) this.prefab.wind(dt, Math.sign(this.wind), 0, Math.min(1, Math.abs(this.wind) / 3.2));
     if (tn.on) {
       this.twister3(tn, dt, false);
       this.tornadoMesh.position.set(tn.x, 0, tn.z);
@@ -2359,8 +2345,10 @@ export class Disaster3D implements MiniGameHandle {
   }
 
   insideHouse(p: P3): boolean {
-    for (const h of this.houses) {
-      if (h.ripped) continue;
+    for (let i = 0; i < this.houses.length; i++) {
+      const h = this.houses[i];
+      // sem telhado ou com as paredes no chão a casa não abriga mais
+      if (h.ripped || this.prefab.wallsLeft(i) < 0.5) continue;
       const b = h.inner;
       if (p.pos.x > b.x0 && p.pos.x < b.x1 && p.pos.z > b.z0 && p.pos.z < b.z1 && p.pos.y < b.y1 - 0.5) return true;
     }
@@ -2617,6 +2605,25 @@ export class Disaster3D implements MiniGameHandle {
   checkHazards(p: P3, dt: number): void {
     if (!p.alive || this.phase === 'end' || this.phase === 'intro') return;
     const f = this.fluid;
+    // pedaço de casa voando/caindo em cima: 1º golpe derruba e empurra; outro logo em seguida elimina
+    if (this.phase === 'disaster' && this.prefab.hitsAt(p.pos.x, p.pos.y, p.pos.z, PH)) {
+      const ck = p.chunk ?? 0;
+      if (ck > 0 && ck < 1.3) this.knockOut(p);
+      else if (ck <= 0) {
+        p.chunk = 1.6;
+        p.vel.x += (Math.random() - 0.5) * 7;
+        p.vel.z += (Math.random() - 0.5) * 7;
+        p.vel.y = Math.max(p.vel.y, 3.5);
+        p.sq = 0.6;
+        if (p.self) {
+          audio.hit();
+          tap('heavy');
+          this.fpcam.addShake(0.7);
+          this.hint(t('dz3.bonk', 'Cuidado com os pedaços da casa!'), 'alert');
+        }
+      }
+    }
+    if (p.chunk) p.chunk = Math.max(0, p.chunk - dt);
     if (p.hit > 0) p.hit -= dt;
     // nadando: fôlego acaba = eliminado
     if (p.swim) {
@@ -2789,6 +2796,20 @@ export class Disaster3D implements MiniGameHandle {
         tx = (h.ladder.x0 + h.ladder.x1) / 2;
         tz = h.z;
         if (this.onLadder(p)) c.j = true;
+        else {
+          // a escada fica na lateral: quem está dentro sai pela porta; quem está na frente/atrás contorna pela quina
+          const hw = h.w / 2;
+          const hd = h.d / 2;
+          const inside = Math.abs(p.pos.x - h.x) < hw && Math.abs(p.pos.z - h.z) < hd;
+          const sideOk = (p.pos.x - h.x) * h.side > hw + 0.2;
+          if (inside) {
+            tx = h.x;
+            tz = h.z - hd - 1.4;
+          } else if (!sideOk) {
+            tx = h.x + h.side * (hw + 0.8);
+            tz = p.pos.z < h.z ? h.z - hd - 0.9 : h.z + hd + 0.9;
+          }
+        }
       }
     } else if (b.house <= -2) {
       // abrigo: vai até a frente da porta (lado z0) e depois entra
@@ -2936,6 +2957,13 @@ export class Disaster3D implements MiniGameHandle {
     if (this.acc < minFrame) return;
     const dt = Math.min(this.acc, MAX_FRAME);
     this.acc = 0;
+    // a raiz mudou de tamanho sem evento (WebView girando, teclado, barra): confere 2× por segundo
+    if (++this.sizeCheck >= 30) {
+      this.sizeCheck = 0;
+      const cw = this.root.clientWidth;
+      const ch = this.root.clientHeight;
+      if (cw && ch && (Math.abs(cw - this.sizeW) > 1 || Math.abs(ch - this.sizeH) > 1)) this.resize();
+    }
     const t0 = performance.now();
     try {
       this.update(dt);
@@ -3030,6 +3058,7 @@ export class Disaster3D implements MiniGameHandle {
       d.mesh.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
     }
     this.refreshDynBoxes();
+    this.prefab.update(dt);
     // Bloops em subpassos de 1/120 s (sem atravessar lajes)
     const n = Math.min(MAX_SUB, Math.max(1, Math.ceil(dt / STEP - 1e-6)));
     const h = dt / n;
@@ -3116,6 +3145,15 @@ export class Disaster3D implements MiniGameHandle {
         cam.position.y += (Math.random() - 0.5) * this.shake;
       }
     }
+    {
+      const want = this.root.classList.contains('cine') ? 1 : 0;
+      const k = this.cineK + (want - this.cineK) * Math.min(1, dt * 1.6);
+      if (Math.abs(k - this.cineK) > 1e-4) {
+        this.cineK = k;
+        cam.fov = this.baseFov - 6 * k;
+        cam.updateProjectionMatrix();
+      }
+    }
     this.sun.position.set(m.pos.x + 20, 40, m.pos.z + 14);
     this.sun.target.position.copy(m.pos);
     if (this.snow?.visible) {
@@ -3170,9 +3208,11 @@ export class Disaster3D implements MiniGameHandle {
           }
         }
         pa[i * 3 + 1] = y;
-        // espuma no canal vermelho (o shader do fluido mistura a cor da pele)
+        // espuma no canal vermelho (o shader do fluido mistura a cor da pele); borda some no verde
         ca[i * 3] = Math.min(1, foam);
-        ca[i * 3 + 1] = 0;
+        // onda: some logo depois da praia nas laterais (não vira uma "laje" sobre o mar)
+        const ed = f.dir ? Math.max((Math.abs(wz) - ISLAND_R - 4) / 14, ((f.dir > 0 ? -wx : wx) - ISLAND_R - 16) / 26) : (Math.max(Math.abs(wx), Math.abs(wz)) - ISLAND_R - 16) / 26;
+        ca[i * 3 + 1] = Math.min(1, Math.max(0, ed));
         ca[i * 3 + 2] = 0;
       }
       void base;
@@ -3228,28 +3268,50 @@ export class Disaster3D implements MiniGameHandle {
       }
     }
     // luz de tempestade: escurece no alerta/desastre; nevasca fecha a neblina; raio clareia
-    const target = this.phase === 'warn' || this.phase === 'disaster' ? 1 : 0;
-    this.storm += (target - this.storm) * Math.min(1, dt * 0.8);
+    // ---- clima com transição suave (nada liga/desliga de uma vez) ----
+    // o aviso já puxa o céu para o desastre que vem; no fim tudo volta devagar ao céu calmo
     const flash = this.boltT > 0 ? 1 : 0;
     const A = this.active;
     const tn = this.sc.tune;
-    const dis = this.phase === 'disaster' || this.phase === 'warn';
-    // tempestade "de verdade" só nos desastres de clima; calor/espaço ficam com céu limpo
-    const stormy = A.has('raios') || A.has('enchente') || A.has('tornado') || A.has('acido') || A.has('vulcao') || A.has('areia') || A.has('avalanche') || A.has('nevasca') || A.has('meteoros') || A.has('tsunami') || A.has('fantasma');
+    const warn = this.phase === 'warn';
+    const dis = this.phase === 'disaster' || warn;
+    const C = new Set<DisasterId>(A);
+    if (warn) C.add(this.sc.disasters[Math.min(this.dIndex, this.sc.disasters.length - 1)]);
+    // no aviso a intensidade sobe em rampa (0,35 → 1) junto com a contagem
+    const pre = warn ? 0.35 + 0.65 * Math.min(1, this.phaseT / Math.max(0.5, this.phaseDur)) : 1;
+    const stormy = C.has('raios') || C.has('enchente') || C.has('tornado') || C.has('acido') || C.has('vulcao') || C.has('areia') || C.has('avalanche') || C.has('nevasca') || C.has('meteoros') || C.has('tsunami') || C.has('fantasma');
+    const kStorm = stormy ? (C.has('meteoros') && !C.has('raios') ? 0.45 : tn?.gust === 'wind' && !C.has('raios') ? 0.55 : 0.9) : 0.15;
+    const W = this.wx;
+    const ease = (cur: number, to: number, tauUp: number, tauDown: number) => cur + (to - cur) * (1 - Math.exp(-dt / (to > cur ? tauUp : tauDown)));
+    const sT = dis ? kStorm * pre * (this.sc.map.id === 'doces' ? 0.35 : 1) : 0;
+    W.storm = ease(W.storm, sT, 2.6, 4.5);
+    this.storm = ease(this.storm, dis ? 1 : 0, 2.2, 4);
+    const rainOn = C.has('raios') || C.has('enchente') || (C.has('tornado') && !!tn?.hurricane) || !!tn?.rain;
+    W.rain = ease(W.rain, dis && rainOn ? pre : 0, 2.2, 3.2);
+    W.snow = ease(W.snow, dis && (C.has('avalanche') || C.has('nevasca')) ? pre : this.sc.map.id === 'polo' ? 0.3 : 0, 2.2, 3.2);
+    W.embers = ease(W.embers, dis && (C.has('vulcao') || C.has('incendio')) ? pre : 0, 1.6, 3);
+    W.fog = ease(W.fog, tn?.fog || C.has('fantasma') ? 1 : C.has('areia') ? (this.gust.t > 0 ? 0.8 : 0.3) : 0, 1.8, 3);
+    W.wind = ease(W.wind, this.wind + (C.has('tornado') && this.tornado.on ? 2 : 0), 0.9, 2.2);
+    // rajada (areia/ventania) e vento: árvores inclinam e balançam mais (src/3d/nature/wind.ts uGust)
+    const g = this.gust;
+    const gk = g.t > 0 && A.has('areia') ? 1 : 0;
+    W.gust = ease(W.gust, gk, 0.5, 1.6);
+    const gv = this.env.gust.value;
+    gv.set(Math.cos(g.a) * 0.012 * W.gust + W.wind * 0.0035, Math.min(4, Math.abs(W.wind) * 0.9 + W.gust * 2.5 + (A.has('tornado') ? 1.5 : 0)), Math.sin(g.a) * 0.012 * W.gust);
     const me = this.me;
     this.env.update(
       dt,
       this.time,
       this.camera,
       {
-        storm: this.storm * (stormy ? (A.has('meteoros') && !A.has('raios') ? 0.45 : 0.9) : 0.15) * (this.sc.map.id === 'doces' ? 0.35 : 1),
+        storm: W.storm,
         flash,
-        wind: this.wind + (A.has('tornado') ? 2 : 0),
-        rain: dis && (A.has('raios') || A.has('enchente') || (A.has('tornado') && !!tn?.hurricane) || !!tn?.rain) ? 1 : 0,
-        snow: dis && (A.has('avalanche') || A.has('nevasca')) ? 1 : this.sc.map.id === 'polo' ? 0.3 : 0,
-        embers: dis && (A.has('vulcao') || A.has('incendio')) ? 1 : 0,
+        wind: W.wind + W.gust * 3 * Math.cos(g.a),
+        rain: W.rain,
+        snow: W.snow,
+        embers: W.embers,
         heat: A.has('calor') ? this.ex.sun.k : 0,
-        fog: tn?.fog || A.has('fantasma') ? 1 : A.has('areia') ? (this.gust.t > 0 ? 0.8 : 0.3) : 0,
+        fog: W.fog,
         pushX: me.pos.x,
         pushZ: me.pos.z,
       },
@@ -3266,6 +3328,11 @@ export class Disaster3D implements MiniGameHandle {
   /* ------------------------------ HUD ------------------------------ */
 
   hudTick(): void {
+    // aviso = cena de cinema (faixas, vinheta, câmera fecha um pouco); fim da rodada = cortina
+    const cine = this.phase === 'warn' || (this.phase === 'disaster' && this.phaseT < 1.4);
+    if (cine !== this.root.classList.contains('cine')) this.root.classList.toggle('cine', cine);
+    const fade = this.phase === 'end' && this.phaseT > this.phaseDur - 0.6;
+    if (this.fadeEl && fade !== this.fadeEl.classList.contains('on')) this.fadeEl.classList.toggle('on', fade);
     const n = Math.max(0, Math.ceil(this.phaseDur - this.phaseT));
     if (n !== this.lastN) {
       this.lastN = n;
@@ -3459,7 +3526,10 @@ export class Disaster3D implements MiniGameHandle {
     resetNotifyTop();
     this.rouletteClose?.();
     this.hud.remove();
+    this.root.querySelectorAll('.d3-cine,.d3-vig,.d3-fade').forEach((e) => e.remove());
+    this.root.classList.remove('cine');
     this.clearLevel();
+    this.prefab.dispose();
     this.scene.traverse((o) => {
       const mm = o as THREE.Mesh;
       if (mm.isMesh) {

@@ -2949,6 +2949,7 @@ export default {
   "dz.al.rise": "더 올라와요!",
   "dz.al.roof": "토네이도가 지붕을 날려 버렸어요! 달려요!",
   "dz.al.roofGone": "지붕이 날아갔어요! 다른 대피소를 찾아요!",
+  "dz3.bonk": "집 조각을 조심해!",
   "dz.al.stuffy": "집 안이 너무 답답해요! 다른 그늘을 찾아요.",
   "dz.al.sun": "뜨거운 햇볕! 그늘로 달려요!",
   "dz.al.tornado2": "토네이도가 하나 더!",

@@ -326,16 +326,18 @@ export function patchSeabed(mat: THREE.MeshLambertMaterial, tier: number, absorb
 /* ------------------------------ mar ------------------------------ */
 const OCEAN_VS = /* glsl */ `
 uniform float uTime; uniform float uAmp; uniform vec2 uOff;
-uniform vec4 uW[NW]; uniform vec4 uW2[NW];
+uniform vec4 uW[NW]; uniform vec4 uW2[NW]; uniform vec4 uCalm;
 varying vec3 vW; varying vec3 vN; varying float vFoam; varying float vH;
 void main(){
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vec2 p = wp.xz + uOff;
   float dist = length(wp.xz - cameraPosition.xz);
+  // água mansa perto de uma ilha (uCalm: centro xz, raio calmo, raio de volta às ondas): sem onda furando o chão
+  float calm = uCalm.w > 0.0 ? smoothstep(uCalm.z, uCalm.w, length(wp.xz - uCalm.xy)) * 0.9 + 0.1 : 1.0;
   vec3 d = vec3(0.0); vec3 n = vec3(0.0, 1.0, 0.0); float j = 0.0;
   for (int i = 0; i < NW; i++) {
     vec4 a = uW[i]; vec4 b = uW2[i];
-    float fade = 1.0 - smoothstep(b.z * 6.0, b.z * 16.0, dist);
+    float fade = (1.0 - smoothstep(b.z * 6.0, b.z * 16.0, dist)) * calm;
     float A = b.x * uAmp * fade; float k = a.z;
     float Q = min(b.y, 0.9 / (k * max(A, 1e-4) * float(NW)));
     float th = k * dot(a.xy, p) - a.w * uTime;
@@ -581,6 +583,7 @@ export class Ocean {
         uUwFog: { value: new THREE.Color() },
         uFogD: { value: 0.0042 },
         uRaft: { value: new THREE.Vector4(-2, -2, 2, 2) },
+        uCalm: { value: new THREE.Vector4(0, 0, 0, 0) },
         uNight: { value: 0 },
         uStorm: { value: 0 },
         uCover: { value: 0.55 },
