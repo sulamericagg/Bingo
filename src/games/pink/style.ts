@@ -267,6 +267,21 @@ const CSS = `
 .pk-tg .bot.on{box-shadow:inset 0 0 0 3px #3ac48a;background:#e4ffe9}
 .pk-tg .hand .nail{stroke-width:3}
 @media (max-height:400px){.pk-tg h2{font-size:18px}.pk-tg .hand{width:158px;height:183px;margin:-6px 0}.pk-tg .glass{height:48px}.pk-tg .strip{height:40px}.pk-tg .bt .nm{display:none}}
+.pk-shower{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:min(86vw,380px)}
+.pk-shower h2{margin:0}
+.pk-shower .ask{display:flex;align-items:center;gap:6px;font-weight:800;font-size:14px}
+.pk-shower .stall{position:relative;width:220px;height:200px;border-radius:16px;background:linear-gradient(#d6f0ff,#eaf8ff);overflow:hidden;touch-action:none;box-shadow:inset 0 0 0 3px #a8d8f0}
+.pk-shower .stall canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.pk-shower .foam{position:absolute;inset:0;pointer-events:none;transition:opacity .2s}
+.pk-shower .foam i{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#f4fbff 55%,#bfe2f6);box-shadow:inset 0 0 0 1.5px rgba(120,180,220,.6);animation:pkPop .2s}
+.pk-shower .water{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s;background:repeating-linear-gradient(100deg,rgba(120,190,255,0) 0 10px,rgba(120,190,255,.45) 10px 12px);animation:pkRain .4s linear infinite}
+@keyframes pkRain{from{background-position:0 0}to{background-position:-6px 40px}}
+.pk-shower .meter{width:110px;height:12px;border-radius:6px;background:#f3d9e4;overflow:hidden}
+.pk-shower .meter b{display:block;height:100%;width:0;background:#8fdcff;transition:width .15s}
+.pk-shower .rinse{touch-action:none}
+.pk-sum{grid-template-columns:repeat(3,1fr)!important;gap:4px!important}
+.pk-sum .pk-stat{padding:4px 6px!important;font-size:12px}
+@media (max-height:420px){.pk-shower .stall{width:180px;height:150px}.pk-shower h2{font-size:18px}}
 .pk-ck .chg{font-weight:800;font-size:15px;display:flex;gap:10px;align-items:center;justify-content:center}
 .pk-ck .chg b{font-size:18px}
 .pk-ck .chg .ok{color:#2fa35a}

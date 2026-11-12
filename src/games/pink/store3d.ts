@@ -55,6 +55,8 @@ function diffRect(S: Stage, O: Stage): { x0: number; x1: number; z0: number; z1:
 }
 
 const T = 0.2; // espessura das paredes
+/** portaria do prédio onde o dono mora */
+export const APT_DOOR = { x: 10.6, z: 0 };
 
 function signCanvas(kind: SignId, w: number, h: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -456,7 +458,43 @@ export class Store3D {
       b.add(new THREE.PlaneGeometry(1.6, 0.4), k.canvasMat('nbs' + seed, iconSignCanvas(icon, awn)), cx, 3.5, 0.012);
     };
     nb(-21, -9, '#e9d8c4', 'cup', '#3a7a5a', 1);
-    nb(9, 21, '#d9e4ea', 'flower', '#c85a6a', 2);
+    // prédio de apartamentos do dono (mesma quadra): portaria à esquerda, floricultura à direita
+    {
+      const x0 = 9;
+      const x1 = 21;
+      const w = x1 - x0;
+      const cx = (x0 + x1) / 2;
+      const col = '#d9e4ea';
+      const plaster = k.surf('nb2', 'plaster', { color: col, rough: 1, envK: 0.2 });
+      b.addW(new THREE.BoxGeometry(w, 10.5, 0.3), plaster, cx, 5.25, -0.15);
+      b.addW(new THREE.BoxGeometry(w, 10.5, 16), brick, cx, 5.25, -8.3);
+      b.add(new THREE.PlaneGeometry(w - 0.6, 6.4), k.canvasMat('aptw', windowsCanvas(col, 22), { rough: 0.6 }), cx, 6.9, 0.011);
+      // portaria: porta de madeira com vidro, marquise e número
+      const dx = APT_DOOR.x;
+      b.add(rbox(1.5, 2.5, 0.14, 0.03, 2), k.plain('aptFrame', '#5a4636', 0.5), dx, 1.25, 0.05);
+      b.add(rbox(1.2, 2.3, 0.06, 0.02, 2), k.surf('aptDoor', 'wood', { rough: 0.7, color: '#a8744a' }), dx, 1.17, 0.11);
+      b.add(new THREE.PlaneGeometry(0.7, 1.0), k.glass('aptGlass', '#cfe4f0', 0.5), dx, 1.55, 0.145);
+      b.add(rbox(0.05, 0.3, 0.05, 0.02, 1), k.plain('chrome', '#e9e9ef', 0.12, 1, { envK: 1.4 }), dx + 0.45, 1.1, 0.16);
+      b.add(rbox(2.0, 0.12, 0.9, 0.03, 2), k.plain('aptCanopy', '#2c2a30', 0.4, 0.4), dx, 2.7, 0.45);
+      const nc = document.createElement('canvas');
+      nc.width = 128;
+      nc.height = 64;
+      const nx = nc.getContext('2d')!;
+      nx.fillStyle = '#2a3a5a';
+      nx.fillRect(0, 0, 128, 64);
+      nx.fillStyle = '#fff';
+      nx.font = '800 44px sans-serif';
+      nx.textAlign = 'center';
+      nx.fillText('42', 64, 48);
+      b.add(new THREE.PlaneGeometry(0.4, 0.2), k.canvasMat('aptNum', nc), dx, 2.95, 0.13);
+      b.add(rbox(0.18, 0.28, 0.04, 0.02, 1), k.plain('intercom', '#c8ccd4', 0.35, 0.6), dx + 0.95, 1.35, 0.06);
+      // floricultura no térreo
+      b.add(new THREE.PlaneGeometry(w - 4, 2.2), k.glass('nbGlass', '#4a6070', 0.85), cx + 1.5, 1.4, 0.02);
+      b.add(rbox(w - 3.8, 0.12, 0.12, 0.03, 1), k.plain('nbFrame', '#3a3a40', 0.5), cx + 1.5, 2.55, 0.06);
+      const awM = k.plain('awn2', '#c85a6a', 0.8, 0, { side: THREE.DoubleSide });
+      b.add(new THREE.PlaneGeometry(w - 3.6, 1.3, 1, 1), awM, cx + 1.5, 2.95, 0.6, -1.05);
+      b.add(new THREE.PlaneGeometry(1.6, 0.4), k.canvasMat('nbs2', iconSignCanvas('flower', '#c85a6a')), cx + 1.5, 3.5, 0.012);
+    }
     // prédios do outro lado da rua
     const cols = ['#e8d0b8', '#c8d8e0', '#f0e0d0', '#d8c8e8', '#e0e8d0'];
     for (let i = 0; i < 5; i++) {

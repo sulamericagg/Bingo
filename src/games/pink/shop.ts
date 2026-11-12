@@ -22,11 +22,12 @@ import { Nav, Walker } from './npc';
 import type { Loose } from './phys';
 import { ProductField, type PlacedItem } from './products';
 import type { FurnSave, ShopSave } from './save';
-import { floorBounds, LAY, Store3D } from './store3d';
+import { APT_DOOR, floorBounds, LAY, Store3D } from './store3d';
 import { BUILDING_LVL, BUILDING_PRICE, nextStage, pendingWall, rentOf, salesArea, stageOf, stagePrice } from './grow';
 import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { Security, guardSpec } from './security';
 import { Office } from './office';
+import { Home, showerGame } from './home';
 import { FAMS, NAIL_COLS, nailsGame, perfumeGame, type TestResult } from './testers';
 import { CheckoutUI, type CheckoutResult, type PayKind } from './checkout';
 import { addTo, robberyRisk, SECURITY, CHANGE_KIT, CHANGE_KIT_VALUE, customerNote, drawerTotal, makeChange, takeBag } from './money';
@@ -147,6 +148,7 @@ export class Shop implements TabletHost {
   day = { rev: 0, cost: 0, cust: 0, happy: 0, sold: 0, cash: 0, card: 0, stolen: 0, caught: 0, robbed: 0 };
   readonly sec: Security;
   readonly office: Office;
+  readonly home: Home;
   get stageZB(): number {
     return stageOf(this.s.renov).zB;
   }
@@ -193,6 +195,9 @@ export class Shop implements TabletHost {
     this.e = e;
     this.store = new Store3D(e.kit);
     e.scene.add(this.store.root);
+    this.home = new Home(e.kit);
+    e.scene.add(this.home.root);
+    this.home.sync(this.s.home);
     this.field = new ProductField(e.kit, o.tier >= 3);
     e.scene.add(this.field.group);
     this.nav = new Nav(-16, -17, 16, 4.2);
@@ -205,7 +210,11 @@ export class Shop implements TabletHost {
     for (const f of this.s.furn) this.addFurn(f, false);
     // caixas salvas e sacos de lixo
     for (const b of this.s.boxes) e.spawnBox(b.p, b.n, b.x, Math.max(0.2, b.y), b.z, { open: b.open });
-    for (const tr of this.s.trash) this.trashL.push(tr.r ? e.spawnRubble(tr.x, tr.z) : e.spawnTrash(tr.x, tr.z));
+    for (const tr of this.s.trash) {
+      const l = tr.r ? e.spawnRubble(tr.x, tr.z) : e.spawnTrash(tr.x, tr.z);
+      if (this.home.inside(tr.x, tr.z)) l.data.home = true;
+      this.trashL.push(l);
+    }
     for (const b of this.s.bags) e.spawnBag(b.k, b.v, b.x, 0.4, b.z);
     for (const d of this.s.dirt) e.addDirt(d.x, d.z, d.k, d.a);
     if (this.guest) {
@@ -279,7 +288,7 @@ export class Shop implements TabletHost {
     this.navDirty = true;
   }
   private colliders(): FpBox[] {
-    const out = [...this.store.colliders, ...this.store.outsideColliders];
+    const out = [...this.store.colliders, ...this.store.outsideColliders, ...this.home.colliders];
     for (const f of this.furn) if (!f.def.flat) out.push(f.box);
     out.push({ x0: this.binPos.x - 0.4, z0: this.binPos.y - 0.4, x1: this.binPos.x + 0.4, z1: this.binPos.y + 0.4 });
     // porta de enrolar fechada
@@ -992,6 +1001,48 @@ export class Shop implements TabletHost {
       case 'office':
         if (first) this.office.openPanel();
         break;
+      case 'homeEnter':
+        if (first) this.goHome(false);
+        break;
+      case 'homeExit':
+        if (first) this.leaveHome();
+        break;
+      case 'sleep':
+        if (first) this.sleep();
+        break;
+      case 'makeBed':
+        if (first) {
+          this.s.home.bed = true;
+          this.home.sync(this.s.home);
+          sfx.play('sparkle');
+          this.addXp(3);
+        }
+        break;
+      case 'shower':
+        if (first)
+          showerGame(this.hud, (ok) => {
+            if (!ok) return;
+            this.s.home.fresh = 100;
+            this.stinkSaid = false;
+            this.addXp(5);
+            this.hud.banner('sparkle', t('pink.home.clean', 'Cheirosa! Pronta para a loja.'), 2000);
+            this.save();
+          });
+        break;
+      case 'dishes':
+        if (this.dishT <= 0) {
+          this.dishT = 0.7;
+          sfx.play('splat');
+          e.fpc.kick(0.2);
+          this.puff(this.home.spots.find((x) => x.k === 'sink')!.p.x, 1.05, this.home.spots.find((x) => x.k === 'sink')!.p.z, '#ffffff', 4, 0.06);
+          this.s.home.dishes = Math.max(0, this.s.home.dishes - 1);
+          this.home.sync(this.s.home);
+          if (!this.s.home.dishes) {
+            sfx.play('sparkle');
+            this.addXp(4);
+          }
+        }
+        break;
       case 'catch':
         if (first && a.cu) this.sec.catchThief(a.cu, null);
         break;
@@ -1147,6 +1198,7 @@ export class Shop implements TabletHost {
     const c = this.e.carry;
     if (!c) return;
     const wasTrash = c.kind === 'trash';
+    if (c.data.home) this.s.home.trash = false;
     const leftover = (c.data.n as number) ?? 0;
     this.e.consumeCarry();
     sfx.play('drop');
@@ -1376,6 +1428,58 @@ export class Shop implements TabletHost {
           hint = t('pink.h.thief', 'Ladrão! Toque para barrar');
           hicon = 'thief';
           use = ['guard', t('pink.u.catch', 'Barrar'), true];
+        }
+      }
+      // 4h) casa: portaria do prédio, escada, cama, chuveiro, pia, lixeira do prédio
+      if (!info && Math.hypot(e.fp.x - APT_DOOR.x, e.fp.z - APT_DOOR.z) < 2.4 && ray.direction.z < -0.2 && !c) {
+        info = { kind: 'homeEnter' };
+        hint = t('pink.h.home', 'Minha casa (prédio)');
+        hicon = 'house';
+        use = ['stairs', t('pink.u.enter', 'Entrar'), true];
+      }
+      if (!info && this.home.inside(e.fp.x, e.fp.z)) {
+        const sp = this.home.aim(ray, e.fp.x, e.fp.z);
+        const h = this.s.home;
+        if (sp === 'stairs' && !c) {
+          info = { kind: 'homeExit' };
+          hint = t('pink.h.stairs', 'Descer para a rua');
+          hicon = 'stairs';
+          use = ['stairs', t('pink.u.down', 'Descer'), true];
+        } else if (sp === 'bed' && !c) {
+          if (this.phase === 'summary' && !this.guest) {
+            info = { kind: 'sleep' };
+            hint = t('pink.h.sleep', 'Dormir (termina o dia)');
+            hicon = 'zzz';
+            use = ['zzz', t('pink.u.sleep', 'Dormir'), true];
+          } else if (!h.bed) {
+            info = { kind: 'makeBed' };
+            hint = t('pink.h.makeBed', 'Arrumar a cama');
+            hicon = 'bed';
+            use = ['bed', t('pink.u.makeBed', 'Arrumar'), true];
+          } else {
+            hint = t('pink.h.bedLater', 'Dormir só depois de fechar a loja');
+            hicon = 'bed';
+          }
+        } else if (sp === 'shower' && !c) {
+          info = { kind: 'shower' };
+          hint = t('pink.h.shower', 'Tomar banho');
+          hicon = 'shower';
+          use = ['shower', t('pink.u.shower', 'Banho'), true];
+        } else if (sp === 'sink' && !c) {
+          if (h.dishes > 0) {
+            info = { kind: 'dishes' };
+            hint = t('pink.h.dishes', 'Lavar a louça ({n})', { n: h.dishes });
+            hicon = 'chores';
+            use = ['chores', t('pink.u.wash', 'Lavar'), true];
+          } else {
+            hint = t('pink.h.dishesDone', 'Louça limpinha!');
+            hicon = 'check';
+          }
+        } else if (sp === 'chute' && c?.kind === 'trash') {
+          info = { kind: 'bin' };
+          hint = t('pink.h.chute', 'Lixeira do prédio');
+          hicon = 'bin';
+          use = ['bin', t('pink.u.bin', 'Jogar fora'), true];
         }
       }
       // 4a) banco do outro lado da rua
@@ -1626,7 +1730,7 @@ export class Shop implements TabletHost {
     const goals = s.goals;
     const g = goals.map((x) => `<div class="pk-stat">${ic(x.done ? 'check' : 'goal', 26)}<span>${esc(this.goalText(x))}</span></div>`).join('');
     const d = this.hud.panel(`<h2>${ic('moon', 30)}${esc(t('pink.dayEnd', 'Fim do dia {n}', { n: s.day }))}</h2>
-      <div class="pk-stats">
+      <div class="pk-stats pk-sum">
         <div class="pk-stat">${ic('cash', 30)}<span>${esc(t('pink.sum.rev', 'Vendas'))}<b>${esc(money(this.day.rev))}</b></span></div>
         <div class="pk-stat">${ic('people', 30)}<span>${esc(t('pink.sum.cust', 'Clientes'))}<b>${this.day.cust} · ${ic('smile', 16)}${this.day.happy}</b></span></div>
         <div class="pk-stat">${ic('house', 30)}<span>${esc(t('pink.sum.rent', 'Aluguel + equipe'))}<b>−${esc(money(wages + rent))}</b></span></div>
@@ -1636,11 +1740,72 @@ export class Shop implements TabletHost {
         <div class="pk-stat">${ic(prof >= 0 ? 'up' : 'sad', 30)}<span>${esc(t('pink.sum.profit', 'Lucro'))}<b style="color:${prof >= 0 ? '#2fa35a' : '#e8336f'}">${esc(money(prof))}</b></span></div>
         <div class="pk-stat">${ic('coin', 30)}<span>${esc(t('pink.sum.coins', 'Moedas Bloop'))}<b>+${coins}</b></span></div>
         <div class="pk-stat">${ic('heart', 30)}<span>${esc(t('pink.t.rep', 'Reputação'))}<b>${Math.round(s.rep)}%</b></span></div>
-      </div><div class="pk-sec">${ic('goal', 22)}${esc(t('pink.goals', 'Metas'))}</div><div class="pk-stats">${g}</div>
-      <div class="pk-row"><button class="pk-b g" data-a="next">${ic('sun', 26)}${esc(t('pink.nextDay', 'Próximo dia'))}</button></div>`);
-    d.querySelector('[data-a=next]')!.addEventListener('click', () => this.nextDay());
+      </div>
+      <div class="pk-row"><button class="pk-b g" data-a="home">${ic('house', 26)}${esc(t('pink.goHome', 'Ir pra casa'))}</button><button class="pk-b w" data-a="next">${ic('zzz', 26)}${esc(t('pink.sleepNow', 'Dormir já'))}</button></div>
+      <div class="pk-sec">${ic('goal', 22)}${esc(t('pink.goals', 'Metas'))}</div><div class="pk-stats pk-sum">${g}</div>`);
+    d.querySelector('[data-a=next]')!.addEventListener('click', () => this.sleep());
+    d.querySelector('[data-a=home]')!.addEventListener('click', () => {
+      this.hud.closePanel();
+      this.goHome(true);
+    });
   }
-  private nextDay(): void {
+  stinkSaid = false;
+  /** sem banho o cheirinho cai (loja aberta); abaixo de 35 os clientes perto reclamam */
+  private stinkTick(): void {
+    const h = this.s.home;
+    if (this.guest) return;
+    if (this.phase === 'open' || this.phase === 'closing') h.fresh = Math.max(0, h.fresh - (0.25 * 100) / (DAY_LEN * 1.5));
+    if (h.fresh >= 35) return;
+    if (!this.stinkSaid) {
+      this.stinkSaid = true;
+      this.hud.banner('stink', t('pink.home.stinky', 'Eca! Você precisa de um banho (em casa).'), 2600);
+    }
+    const e = this.e;
+    if (e.camv.mode !== 'fp' && Math.random() < 0.5) this.puff(e.fp.x + (Math.random() - 0.5) * 0.4, 1.6 + Math.random() * 0.4, e.fp.z + (Math.random() - 0.5) * 0.4, '#9ac84a', 1, 0.12);
+    for (const c of this.custs) {
+      if (c.said.has('stink') || Math.hypot(c.w.x - e.fp.x, c.w.z - e.fp.z) > 2.2) continue;
+      this.say(c, 'stink', 'stink', t('pink.say.stink', 'Tá fedendo!'), 'bad', 2400);
+      c.mood -= 10;
+    }
+  }
+  private dishT = 0;
+  /** vai para o apartamento (fade): sobe a escada e chega no corredor */
+  goHome(night: boolean): void {
+    if (this.e.carry && this.e.carry.kind !== 'trash') {
+      this.hud.banner('drop', t('pink.handsFull', 'Solte o que está carregando primeiro'), 1500);
+      return;
+    }
+    this.hud.fade(true);
+    sfx.play('door');
+    window.setTimeout(() => {
+      if (this.destroyed) return;
+      const a = this.home.arrive;
+      this.e.fp.place(a.x, a.z);
+      this.e.fpc.yaw = a.yaw;
+      this.e.fpc.pitch = 0;
+      this.hud.fade(false);
+      if (night) this.hud.banner('zzz', t('pink.home.night', 'Hora de dormir: vá até a cama!'), 2600);
+    }, 450);
+  }
+  /** desce a escada e sai na portaria (rua) */
+  leaveHome(): void {
+    this.hud.fade(true);
+    sfx.play('door');
+    window.setTimeout(() => {
+      if (this.destroyed) return;
+      this.e.fp.place(APT_DOOR.x, 0.9);
+      this.e.fpc.yaw = Math.PI / 2;
+      this.e.fpc.pitch = 0;
+      this.hud.fade(false);
+    }, 450);
+  }
+  /** dormir: termina o dia (só o dono do save) e acorda no quarto */
+  sleep(): void {
+    if (this.guest || this.phase !== 'summary') return;
+    sfx.play('snore');
+    this.nextDay(true);
+  }
+  private nextDay(wakeHome = false): void {
     const s = this.s;
     this.hud.closePanel();
     this.hud.fade(true);
@@ -1655,6 +1820,23 @@ export class Shop implements TabletHost {
       this.hud.combo(0);
       this.newGoals();
       this.office.morningOrder();
+      // casa: louça do jantar, cama desarrumada, lixinho do dia
+      const h = s.home;
+      h.dishes = Math.min(4, h.dishes + 2);
+      h.bed = false;
+      if (!h.trash) {
+        h.trash = true;
+        const tl = this.e.spawnTrash(this.home.trashAt.x, this.home.trashAt.z);
+        tl.data.home = true;
+        this.trashL.push(tl);
+      }
+      this.home.sync(h);
+      if (wakeHome) {
+        const w = this.home.wake;
+        this.e.fp.place(w.x, w.z);
+        this.e.fpc.yaw = w.yaw;
+        this.e.fpc.pitch = 0;
+      }
       // pedido automático: repõe o que vendeu e acabou
       if (s.auto && s.lvl >= 22) {
         const cart: Record<string, number> = {};
@@ -2600,6 +2782,7 @@ export class Shop implements TabletHost {
             this.useHeld = false;
           }
         } else if (a?.kind === 'smash') this.smash();
+        else if (a?.kind === 'dishes') this.doUse(false);
         else if (a?.kind === 'stock') {
           this.useRep -= dt;
           if (this.useRep <= 0) {
@@ -2610,6 +2793,7 @@ export class Shop implements TabletHost {
       }
     }
     if (this.smashCd > 0) this.smashCd -= dt;
+    if (this.dishT > 0) this.dishT -= dt;
     // produtos voando para a prateleira
     for (let i = this.flies.length - 1; i >= 0; i--) {
       const f = this.flies[i];
@@ -2717,6 +2901,7 @@ export class Shop implements TabletHost {
       this.fpsT = 0;
       this.skyAt(this.hour);
       this.computeScores();
+      this.stinkTick();
       this.updateHudStatic();
       if (this.phase === 'open' && this.custs.length > 5) music.setState('tension');
       else if (this.phase === 'open') music.setState('calm');

@@ -5,6 +5,7 @@ import type { FurnKind, Goal, StaffKind } from './data';
 import { RENOV0, type Renov } from './store3d';
 import { migrateGrow } from './grow';
 import { startFloat, type Drawer } from './money';
+import { HOME0, type HomeSave } from './home';
 
 export type Mode = 'shop' | 'factory';
 
@@ -59,6 +60,8 @@ export interface ShopSave {
   sec: number;
   /** malotes soltos (dinheiro para o banco / kit de troco) */
   bags: { k: 'cash' | 'change'; v: number; x: number; z: number }[];
+  /** apartamento do dono (banho, louça, cama) */
+  home: HomeSave;
 }
 export interface FactorySave {
   v: 1;
@@ -129,6 +132,7 @@ export function getShop(i: number): ShopSave | null {
     d.till ??= startFloat();
     d.sec ??= 0;
     d.bags ??= [];
+    d.home = { ...HOME0, ...(d.home ?? {}) };
     d.nextId ??= 1000;
   }
   return d;
@@ -188,6 +192,7 @@ export function newShop(): ShopSave {
     till: startFloat(),
     sec: 0,
     bags: [],
+    home: { ...HOME0 },
   };
 }
 export function newFactory(): FactorySave {
