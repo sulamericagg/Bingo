@@ -28,6 +28,7 @@ import { takePendingCava } from './pending';
 import { consumePartySeat, partySeat } from '../../party/contract';
 import { reportPlaying, stopPlaying } from '../../party/join';
 import { parseBest } from './parser';
+import { introGate } from '../../3d/cine/gate';
 import { GADGETS } from './gadgets';
 import { RestoreMode, type RestoreOnline, type RestoreResult } from './restore';
 import { cavaSave, persist, type Diff } from './save';
@@ -220,6 +221,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       notify(t('cavafala.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
+    // abertura (docs/INTROS.md): só na primeira partida, sozinho
+    if (!init && !online) await introGate('cavafala', () => import('./intro/cinematic').then((m) => m.playIntro(el)));
+    if (dead) return;
     last = { kind: 'restore', theme: themeId };
     const g = ++gen;
     endWorld();
@@ -265,6 +269,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
       notify(t('cavafala.noGl', 'Este aparelho não tem 3D (WebGL).'), { kind: 'bad' });
       return;
     }
+    // abertura (docs/INTROS.md): só na primeira partida, sozinho
+    if (!init && !online) await introGate('cavafala', () => import('./intro/cinematic').then((m) => m.playIntro(el)));
+    if (dead) return;
     last = { kind: 'arena' };
     const g = ++gen;
     endWorld();
