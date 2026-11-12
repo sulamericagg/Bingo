@@ -29,6 +29,7 @@ const CSS = `
 .pk-chip svg{flex:none}
 .pk-chip.money{background:linear-gradient(#ffeaa0,#ffd34a);color:#5a3a00;box-shadow:0 2px 0 #c08a10}
 .pk-chip.money.bump{animation:pkBump .4s}
+@media (max-width:780px){.pk-chip .season{display:none}.pk-chip{font-size:14px}.pk-chip.money .till{font-size:12px}}
 .pk-chip.money .till{font-style:normal;display:flex;align-items:center;gap:2px;margin-left:4px;padding-left:5px;border-left:2px solid rgba(90,58,0,.25);font-size:13px}
 @keyframes pkBump{40%{transform:scale(1.18)}}
 .pk-chip .season{font-size:11px;background:#ff5fa2;border-radius:8px;padding:1px 6px;margin-left:4px}
