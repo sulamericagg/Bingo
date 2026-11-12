@@ -319,6 +319,8 @@ const CSS = `
 .pk-box .lid .roll{position:absolute;left:0;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:radial-gradient(#fff 0 30%,#e8dcb8 31% 70%,#c8b890 71%);box-shadow:0 2px 4px rgba(0,0,0,.3);pointer-events:none}
 .pk-box .lid .label{position:absolute;right:12%;top:12%;width:70px;height:42px;border-radius:6px;background:#fff;border:3px dashed #ff5fa2;cursor:pointer;animation:pkPulse 1s infinite}
 .pk-box .lid .label.on{border-style:solid;animation:pkBump .4s;background:#fff url() center/contain no-repeat}
+.pk-hud.pk-dark:before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(10,10,30,.15) 30%,rgba(10,10,30,.6));animation:pkFlick 1.2s}
+@keyframes pkFlick{0%,20%,40%{opacity:1}10%,30%{opacity:.2}}
 .pk-ck .chg{font-weight:800;font-size:15px;display:flex;gap:10px;align-items:center;justify-content:center}
 .pk-ck .chg b{font-size:18px}
 .pk-ck .chg .ok{color:#2fa35a}
