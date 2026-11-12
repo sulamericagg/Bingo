@@ -6,6 +6,7 @@ import { RENOV0, type Renov } from './store3d';
 import { migrateGrow } from './grow';
 import { startFloat, type Drawer } from './money';
 import { HOME0, type HomeSave } from './home';
+import { REV0, type RevState } from './reviews';
 
 export type Mode = 'shop' | 'factory';
 
@@ -62,6 +63,8 @@ export interface ShopSave {
   bags: { k: 'cash' | 'change'; v: number; x: number; z: number }[];
   /** apartamento do dono (banho, louça, cama) */
   home: HomeSave;
+  /** avaliações (publicadas por semana) */
+  rev: RevState;
 }
 export interface FactorySave {
   v: 1;
@@ -133,6 +136,7 @@ export function getShop(i: number): ShopSave | null {
     d.sec ??= 0;
     d.bags ??= [];
     d.home = { ...HOME0, ...(d.home ?? {}) };
+    d.rev ??= { pub: [], pend: [], last: d.day ?? 0 };
     d.nextId ??= 1000;
   }
   return d;
@@ -193,6 +197,7 @@ export function newShop(): ShopSave {
     sec: 0,
     bags: [],
     home: { ...HOME0 },
+    rev: { ...REV0, pub: [], pend: [] },
   };
 }
 export function newFactory(): FactorySave {

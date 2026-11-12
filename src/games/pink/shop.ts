@@ -28,6 +28,7 @@ import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { Security, guardSpec } from './security';
 import { Office } from './office';
 import { Home, showerGame } from './home';
+import { makeReview, publishWeek, rating, reviewsHtml, storefrontPhoto } from './reviews';
 import { FAMS, NAIL_COLS, nailsGame, perfumeGame, type TestResult } from './testers';
 import { CheckoutUI, type CheckoutResult, type PayKind } from './checkout';
 import { addTo, robberyRisk, SECURITY, CHANGE_KIT, CHANGE_KIT_VALUE, customerNote, drawerTotal, makeChange, takeBag } from './money';
@@ -111,6 +112,8 @@ export interface ShopOpts {
   onPause(): void;
   onSave(s: ShopSave): void;
   onCoins(n: number): void;
+  /** nome que a criança deu ao save (perfil de avaliações) */
+  name?: string;
   /** loja em grupo (coop.ts): anfitrião = dono do save; convidado = só a vista + pedidos ao anfitrião */
   net?: ShopNet | null;
 }
@@ -602,6 +605,21 @@ export class Shop implements TabletHost {
     }
     this.cams = b.build();
     this.e.scene.add(this.cams);
+  }
+  private photo = { key: '', url: '' };
+  /** página de avaliações para o tablet (foto da fachada atual) */
+  reviewsPage(): string {
+    const r = this.s.renov;
+    const key = JSON.stringify({ ...r, hits: 0 }) + Math.floor(this.hour);
+    if (key !== this.photo.key) {
+      try {
+        const fx = this.store.front;
+        this.photo = { key, url: storefrontPhoto(this.e.r, this.e.scene, (Math.max(-5, fx.x0) + Math.min(5, fx.x1)) / 2, Math.min(10, fx.x1 - fx.x0)) };
+      } catch {
+        this.photo = { key, url: '' };
+      }
+    }
+    return reviewsHtml(this.s.rev, this.o.name ?? BRAND_NAME, this.photo.url, this.s.day);
   }
   upgradeTablet(): boolean {
     const nx = TABLET_UP[this.s.tab + 1];
@@ -1820,6 +1838,8 @@ export class Shop implements TabletHost {
       this.hud.combo(0);
       this.newGoals();
       this.office.morningOrder();
+      const nr = publishWeek(s.rev, s.day);
+      if (nr) window.setTimeout(() => this.hud.banner('review', t('pink.rv.new', '{n} novas avaliações! Nota {r}', { n: nr, r: rating(s.rev).toFixed(1).replace('.', ',') }), 3200), 2600);
       // casa: louça do jantar, cama desarrumada, lixinho do dia
       const h = s.home;
       h.dishes = Math.min(4, h.dishes + 2);
@@ -2306,6 +2326,8 @@ export class Shop implements TabletHost {
     }
     if (this.ckCust === c) this.ck?.cancel();
     if (served) {
+      // às vezes deixa uma avaliação (sai na atualização da semana)
+      if (Math.random() < 0.35 && !this.guest) this.s.rev.pend.push(makeReview(this.s.day, c.mood, c.said, c.w.look));
       this.day.cust++;
       this.s.totalCust++;
       if (c.mood >= 55) this.day.happy++;

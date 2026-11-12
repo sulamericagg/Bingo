@@ -313,6 +313,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
             runStart = performance.now();
           },
           net: net ? { net, host: !guestSave } : null,
+          name: smSlotName('pink', i, 'shop') ?? undefined,
         });
       } else {
         const sv = fresh ? newFactory() : getFactory(i) ?? newFactory();

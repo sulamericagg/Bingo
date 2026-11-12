@@ -28,6 +28,7 @@ export interface TabletHost {
   buyLicense(c: CatId): boolean;
   upgradeTablet(): boolean;
   upgradeSec(): boolean;
+  reviewsPage(): string;
   setPrice(id: string, mult: number): void;
   setAuto(on: boolean): void;
   stockOf(id: string): number;
@@ -35,7 +36,7 @@ export interface TabletHost {
   close(): void;
 }
 
-type Tab = 'shop' | 'furn' | 'renov' | 'staff' | 'prices' | 'stats' | 'lic' | 'album' | 'up';
+type Tab = 'shop' | 'furn' | 'renov' | 'staff' | 'prices' | 'stats' | 'rev' | 'lic' | 'album' | 'up';
 const TABS: { id: Tab; icon: string; name: () => string }[] = [
   { id: 'shop', icon: 'cart', name: () => t('pink.t.shop', 'Pedidos') },
   { id: 'furn', icon: 'sofa', name: () => t('pink.t.furn', 'Móveis') },
@@ -43,6 +44,7 @@ const TABS: { id: Tab; icon: string; name: () => string }[] = [
   { id: 'staff', icon: 'people', name: () => t('pink.t.staff', 'Equipe') },
   { id: 'prices', icon: 'tag', name: () => t('pink.t.prices', 'Preços') },
   { id: 'stats', icon: 'chart', name: () => t('pink.t.stats', 'Relatórios') },
+  { id: 'rev', icon: 'review', name: () => t('pink.t.rev', 'Avaliações') },
   { id: 'lic', icon: 'lock', name: () => t('pink.t.lic', 'Licenças') },
   { id: 'album', icon: 'album', name: () => t('pink.t.album', 'Coleção') },
   { id: 'up', icon: 'up', name: () => t('pink.t.up', 'Upgrades') },
@@ -307,6 +309,9 @@ export class Tablet {
         this.bind();
         return;
       }
+      case 'rev':
+        html += this.h.reviewsPage();
+        break;
       case 'lic': {
         html += this.hero(t('pink.t.licT', 'Licenças de produtos'));
         html += '<div class="pk-grid">';
