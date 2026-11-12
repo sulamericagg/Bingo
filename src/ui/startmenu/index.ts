@@ -924,6 +924,8 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
     }
     raf = requestAnimationFrame(frame);
     if (document.hidden) return;
+    // palco a ~30 qps (20 em aparelho fraco): é enfeite, não precisa de 60
+    if (now - last < (weak ? 48 : 31)) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     time += dt;
@@ -944,7 +946,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
       drawWindow(x, box);
     }
     artT += dt;
-    if (artT > 1 / 20) {
+    if (artT > 1 / 15) {
       artT = 0;
       drawArts(time);
     }

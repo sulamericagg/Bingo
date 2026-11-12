@@ -61,7 +61,7 @@
 .sm .sm-txt b:empty{display:none}
 .sm .sm-txt b{font-size:clamp(13px,3.7vw,16px);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .sm .sm-txt small{font-size:11.5px;font-weight:800;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}
-.sm .sm-cards.sm-big.sm-n4 .sm-txt b,.sm .sm-cards.sm-big.sm-n5 .sm-txt b{font-size:12px;letter-spacing:-.2px}
+.sm .sm-cards.sm-big.sm-n4 .sm-txt b,.sm .sm-cards.sm-big.sm-n5 .sm-txt b{font-size:12px;letter-spacing:-.2px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.05;overflow-wrap:anywhere}
 .sm .sm-cards.sm-big.sm-n4 .sm-txt small,.sm .sm-cards.sm-big.sm-n5 .sm-txt small{font-size:10px}
 .sm .sm-cards.sm-big.sm-n5 .sm-card{padding:4px 3px 6px;border-radius:16px}
 .sm .sm-card.sel{transform:translateY(-6px) scale(1.03);background:linear-gradient(#fffbe0,#ffd34a);box-shadow:0 7px 0 var(--ink),0 12px 24px rgba(255,211,74,.45);z-index:1}
