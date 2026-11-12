@@ -1706,7 +1706,7 @@ export class Shop implements TabletHost {
       this.hour += (dt / DAY_LEN) * (CLOSE_H - OPEN_H);
       if (was < CLOSE_H && this.hour >= CLOSE_H) {
         // pode ficar aberto até tarde (mais vendas, mais risco de assalto)
-        this.hud.banner('moon', t('pink.lateClose', 'Hora de fechar! Vire a plaquinha (aberto até tarde é arriscado)'), 3000);
+        this.hud.banner('moon', t('pink.lateClose2', 'Hora de fechar! Vire a plaquinha (aberto até tarde é arriscado)'), 3000);
         if (!this.guest && this.sec.robAt < 0 && Math.random() < robberyRisk(drawerTotal(this.s.till), this.s.day, this.s.sec, this.sec.guards, 1)) this.sec.robAt = CLOSE_H + 0.5 + Math.random() * 2;
       }
       if (this.hour >= LATE_H) {
