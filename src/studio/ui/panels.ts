@@ -25,7 +25,41 @@ import { openWorldSheet } from './worldsheet';
 import { GAME_TAGS } from '../store-api';
 import { linkFor, MAX_INLINE, shareUrl } from '../share';
 
-export type PanelId = 'add' | 'paint' | 'pen' | 'mech' | 'logic' | 'layers' | 'world' | 'library' | 'store' | 'info' | 'publish' | 'terrain' | 'mission';
+export type PanelId = 'add' | 'paint' | 'pen' | 'mech' | 'logic' | 'layers' | 'world' | 'library' | 'store' | 'info' | 'publish' | 'terrain' | 'mission' | EnginePanelId;
+
+/* ---------------- Bloop Engine (W0): painéis carregados sob demanda ----------------
+ * Cada módulo exporta `renderPanel(ctx)` e é de UMA frente (docs/ENGINE-PLANO.md §3):
+ *   game → ui/gamesheet.ts (W1) · cutscenes → ui/cutscenes.ts (W2) · anims → ui/anims.ts (W2)
+ *   photo → photo/mode.ts (W5) · templates → templates/picker.ts (W6)
+ * O módulo escreve o título com ctx.setTitle (as chaves de texto ficam com a frente dona). */
+export type EnginePanelId = 'game' | 'cutscenes' | 'anims' | 'photo' | 'templates';
+export interface PanelCtx {
+  s: Studio;
+  /** corpo do painel (já vazio) */
+  body: HTMLElement;
+  setTitle(text: string): void;
+  /** acrescenta HTML ao corpo e devolve o elemento */
+  h(html: string): HTMLElement;
+  /** clique delegado */
+  on(el: HTMLElement, sel: string, fn: (b: HTMLElement) => void): void;
+  /** redesenha este painel */
+  rerender(): void;
+  openSheet(html: string): HTMLElement;
+  closeSheet(): void;
+  open(id: PanelId): void;
+  /** ainda é o painel aberto? (checar depois de await) */
+  alive(): boolean;
+}
+export interface PanelModule {
+  renderPanel(ctx: PanelCtx): void | Promise<void>;
+}
+const ENGINE_PANELS: Record<EnginePanelId, () => Promise<PanelModule>> = {
+  game: () => import('./gamesheet'),
+  cutscenes: () => import('./cutscenes'),
+  anims: () => import('./anims'),
+  photo: () => import('../photo/mode'),
+  templates: () => import('../templates/picker'),
+};
 
 const COLORS = ['#ff5cc8', '#ff4f6a', '#ff9a2e', '#ffd34a', '#4fd67a', '#2ec4a0', '#5ec8ff', '#3f6aff', '#8a5cff', '#c8a8ff', '#ffffff', '#c8ccd8', '#6a6a7a', '#2e2440', '#a8742e', '#f0d494'];
 
@@ -202,6 +236,12 @@ export class Panels {
       publish: () => t('studio.publish', 'Publicar'),
       terrain: () => t('studio.tool.terrain', 'Terreno'),
       mission: () => t('studio.tool.mission', 'Missão'),
+      // Bloop Engine: o módulo do painel põe o título (ctx.setTitle)
+      game: () => '',
+      cutscenes: () => '',
+      anims: () => '',
+      photo: () => '',
+      templates: () => '',
     };
     this.title.textContent = T[id]();
     const scroll = this.body.scrollTop;
@@ -244,8 +284,43 @@ export class Panels {
       case 'mission':
         this.renderMission();
         break;
+      case 'game':
+      case 'cutscenes':
+      case 'anims':
+      case 'photo':
+      case 'templates':
+        void this.renderEngine(id);
+        break;
     }
     this.body.scrollTop = scroll;
+  }
+
+  /** painéis da Bloop Engine (módulos de outras frentes, carregados sob demanda) */
+  private async renderEngine(id: EnginePanelId): Promise<void> {
+    const body = this.body;
+    const alive = () => this.current === id && this.body === body && body.isConnected;
+    try {
+      const m = await ENGINE_PANELS[id]();
+      if (!alive()) return;
+      await m.renderPanel({
+        s: this.s,
+        body,
+        setTitle: (text) => {
+          if (alive()) this.title.textContent = text;
+        },
+        h: (html) => this.h(html),
+        on: (el, sel, fn) => this.on(el, sel, fn),
+        rerender: () => {
+          if (alive()) this.render();
+        },
+        openSheet: (html) => this.openSheet(html),
+        closeSheet: () => this.closeSheet(),
+        open: (p) => this.open(p),
+        alive,
+      });
+    } catch (e) {
+      console.warn('[studio] painel', id, e);
+    }
   }
 
   private h(html: string): HTMLElement {

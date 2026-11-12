@@ -30,6 +30,8 @@ import { Panels, type PanelId } from './ui/panels';
 import { CarGuide, guideDone } from './ui/guide';
 import { Sculptor } from './editor/sculpt';
 import type { PlaySession } from './play/session';
+import type { InputSource, PlayMode } from './play/hooks';
+import { createStudioInput } from '../ui/input';
 import type { ShareLink } from './share';
 import { deserialize } from './format';
 
@@ -86,6 +88,8 @@ export class Studio {
   private nameEl!: HTMLButtonElement;
   private disposed = false;
   private playingListing: string | null = null;
+  /** Bloop Engine: entrada unificada (teclado/mouse/controle/toque). W0: stub vazio (W3 implementa). */
+  readonly input: InputSource;
 
   constructor(
     root: HTMLElement,
@@ -154,6 +158,7 @@ export class Studio {
       radial: (x, y) => this.panels.radial(x, y),
       reserved: (x, y) => this.editor.cam.mode === 'fly' && this.inFlyZone(x, y),
     });
+    this.input = createStudioInput({ root: this.el, canvas: this.canvas });
     this.panels = new Panels(this);
     this.buildChrome();
     this.guide = new CarGuide(this);
@@ -425,6 +430,29 @@ export class Studio {
       this.panels.open('store');
     } else this.editor.setEnabled(true);
     this.refreshChrome();
+  }
+
+  /* ------------------- Bloop Engine: costuras (W0; ver docs/ENGINE-PLANO.md §3) ------------------- */
+
+  /** "Criar jogo": escolha de modelos (templates/picker, W6). Sem modelos → novo mapa de sempre. */
+  async openNewGame(): Promise<void> {
+    const { openPicker } = await import('./templates/picker');
+    if (this.disposed) return;
+    if (!(await openPicker(this))) this.newDoc('map');
+  }
+
+  /** Jogar um JOGO v4 num modo (play/director, W1). Sem diretor → o "Testar" de sempre. */
+  async startGame(mode: PlayMode = 'solo', doc = this.editor.doc): Promise<void> {
+    const { startGame } = await import('./play/director');
+    if (this.disposed) return;
+    if (!(await startGame(this, doc, mode))) await this.startPlay(doc);
+  }
+
+  /** Modo foto (📷 / P) no editor ou jogando (photo/mode, W5). */
+  async openPhoto(): Promise<void> {
+    const { openPhotoMode } = await import('./photo/mode');
+    if (this.disposed) return;
+    await openPhotoMode(this, this.mode);
   }
 
   /** "Jogar mapa" da loja: joga sem mexer no que está editando */
@@ -783,6 +811,7 @@ export class Studio {
     this.online?.close();
     this.online = null;
     this.play?.dispose();
+    this.input.dispose();
     this.stopFly();
     this.guide.dispose();
     this.sculptor.dispose();
@@ -812,6 +841,14 @@ export class Studio {
       validate,
       edges,
       guide: this.guide,
+      // Bloop Engine (QA: scripts/qa/{engine,input,photo,templates}.mjs)
+      engine: {
+        openNewGame: () => this.openNewGame(),
+        startGame: (mode: PlayMode = 'solo') => this.startGame(mode),
+        openPhoto: () => this.openPhoto(),
+        openPanel: (id: PanelId) => this.panels.open(id),
+        input: this.input,
+      },
     };
   }
 }

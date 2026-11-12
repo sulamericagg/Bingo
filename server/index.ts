@@ -38,6 +38,7 @@ import { purchaseReport } from './purchases';
 import { tvFilm, tvNow, tvSubmit, tvVote, tvVoted, ugcBoard, ugcBrowse, ugcEarnings, ugcFav, ugcGet, ugcLike, ugcMine, ugcPublish, ugcReport, ugcScore, ugcThumb, ugcUnpublish, ugcUse } from './ugc';
 import { handleUgcAdmin } from './ugc-admin';
 import { cacaTile } from './caca-tiles';
+import { handleGames } from './games';
 
 /** Origens do app Android (Capacitor) e desenvolvimento local. */
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
@@ -405,6 +406,20 @@ export default {
         return withHeaders(errorResponse(e), cors);
       }
     }
+
+    // ---- Bloop Engine: Jogos da Comunidade (/api/games/*) → server/games.ts (dono: W4; não mexa neste bloco) ----
+    if (path.startsWith('/api/games/')) {
+      const cors = corsHeaders(req, url);
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+      let res: Response;
+      try {
+        res = await handleGames(req, env, ctx, url);
+      } catch (e) {
+        res = errorResponse(e);
+      }
+      return withHeaders(res, cors);
+    }
+    // ---- fim Bloop Engine ----
 
     if (path.startsWith('/api/')) {
       const cors = corsHeaders(req, url);

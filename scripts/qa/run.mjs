@@ -1,5 +1,5 @@
 // Suíte de QA do Bloop World.  npm run qa  [-- partes]
-//   partes: hub, small, en, games, hud, deep, leaks, online, perf   (padrão: hub small games hud deep leaks online)
+//   partes: hub, small, en, games, hud, deep, leaks, online, perf, engine, input, photo, tpl   (padrão: hub small games hud deep leaks online)
 //   QA_NOBUILD=1  pula o `vite build`;  QA_URL=http://...  usa um servidor já aberto
 // Capturas e relatórios JSON: shots-qa/   (fora do git)
 import { spawn, spawnSync } from 'node:child_process';
@@ -22,6 +22,11 @@ const steps = {
   perf: ['perf.mjs'],
   hud: ['hud.mjs'],
   deep: ['deep.mjs'],
+  // Bloop Engine (docs/ENGINE-PLANO.md §3): W1, W3, W5, W6
+  engine: ['engine.mjs'],
+  input: ['input.mjs'],
+  photo: ['photo.mjs'],
+  tpl: ['templates.mjs'],
 };
 
 (async () => {

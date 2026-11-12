@@ -443,6 +443,27 @@ The goal is that after W0 nobody touches another stream's files. W0 freezes the 
 - Existing creations v1–v3 round-trip unchanged through `validate`/`serialize` (add `scripts/test-format.mjs`, run with node, using fixtures from `starters()`).
 - `hashCreation` is stable for v3 docs.
 
+#### i18n key-prefix policy (all streams)
+
+- Every new `t('key', 'Português')` string uses its stream's prefix: **W1** `eng.run.*` (runtime, HUD, director, game sheet, blocks), **W1b** `eng.net.*`, **W2** `eng.cut.*` (cutscenes and anims panels), **W3** `eng.in.*`, **W5** `eng.pub.*` (publish, photo, discovery), **W6** `eng.tpl.*`. W4 strings live only in `server/admin.html` (`adm`), which is not extracted.
+- Do not reuse or edit another stream's keys. Do not edit existing `studio.*` keys in files you do not own.
+- `src/i18n/locales/*.ts` and `scripts/i18n/*.json` are generated: never hand-merge them. On conflict, take either side, then run `npm run i18n:extract && npm run i18n:apply`, and make sure `npm run i18n:check` passes before merging.
+- W0 adds **no** new strings: the new panels get their title from their own module (`ctx.setTitle`).
+
+#### W0 decisions and frozen details (landed on `wip/eng0`)
+
+Lead decisions: online rooms cap at **8** players in v1 (`LIMITS.onlineMax`, `ENGINE.maxPlayersOnline`); **private** = only people in the author's *current* party/squad; **every non-author path requires admin approval**, including private and unlisted; **unlisted** opens with a picture code (4 of 12 icons, `PICTURE_CODE_ICONS`) or a text password.
+
+Details fixed while implementing W0 (they refine §2.1):
+
+- `LIMITS.levels = 8` counts **all** levels, so `levels[]` holds at most 7. Level 1 is the root, with the reserved id `ROOT_LEVEL = 'main'`. `Level.next` absent = the following level in the list; `''` = end.
+- Part/joint ids are per level. NPC ids are unique across the whole game (dialog `who` can name an NPC from any level).
+- The `camera` and `npc` blocks use `cam` / `act` for their sub-kind (the plan's `k` collides with the block discriminant): `{k:'camera', cam:'shake'|'focus'|'reset', part?}`, `{k:'npc', id, act:'walk'|'stop'|'face', part?}`.
+- `GameMeta.maxPlayers` keeps its v3 clamp (1..16) so v3 output is unchanged; online rooms use `modes.online.max` (2..8).
+- `canonical()` writes `v` above 3 as 3, so v1–v3 hashes are unchanged (frozen in `scripts/fixtures/format-v3.json`; never regenerate it).
+- `format.ts` cannot import anything, so the cinema types (`Ease`, `PoseId`, `ExprId`, `BubbleStyle`, `FxKind`) are literal copies; `play/hooks.ts` asserts at compile time that they still match `src/cinema/format.ts`.
+- Minimal compile fixes outside W0's own files: `play/vm.ts` (`VmHost.read(q: ExprQuery)`) and `ui/blocks.ts` (name lookups tolerate the new kinds; the palette still shows only v3 blocks). The current `PlaySession.read` returns 1 for the new queries until W1.
+
 ### W1: Game runtime and logic (owns `format.ts` after W0, `play/*` except `online.ts`, `ui/blocks.ts`, new `ui/gamesheet.ts`, `studio.ts`)
 
 - **Files**:
