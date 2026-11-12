@@ -2,7 +2,7 @@
    TELA DE INÍCIO PADRÃO (src/ui/startmenu) — visual do hangar do Pouso Forçado:
    papel creme com contorno de tinta,botão JOGAR dourado,"Com amigos" roxo.
    ============================================================ */
-.sm{--ink:#2a0b5c;--paper1:#fff9ec;--paper2:#ffe6c6;position:absolute;inset:0;z-index:20;overflow:hidden;background:var(--sm-bg2,#1d0f4a);color:#fff;font-family:var(--font,'Fredoka',system-ui,sans-serif);pointer-events:auto;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.sm.sm-root{--ink:#2a0b5c;--paper1:#fff9ec;--paper2:#ffe6c6;position:absolute;inset:0;z-index:20;overflow:hidden;background:var(--sm-bg2,#1d0f4a);color:#fff;font-family:var(--font,'Fredoka',system-ui,sans-serif);pointer-events:auto;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .sm *{box-sizing:border-box}
 .sm button{font-family:inherit}
 .sm .sm-cv{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -241,4 +241,4 @@
 
 
 /* abertura de cinema tocando: o menu por baixo some */
-.cine-on .sm{visibility:hidden}
+.cine-on .sm-root{visibility:hidden}

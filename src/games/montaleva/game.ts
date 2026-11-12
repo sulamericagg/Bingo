@@ -432,7 +432,7 @@ export class MontaLeva implements MiniGameHandle {
 
   private update(dt: number): void {
     if (this.screen === 'test' && this.sim) this.updateTest(dt);
-    else if (this.screen === 'menu' && !this.ui.querySelector('.sm')) this.updateDemo(dt);
+    else if (this.screen === 'menu' && !this.ui.querySelector('.sm-root')) this.updateDemo(dt);
     this.fx.update(dt);
     // câmera suave
     const k = 1 - Math.exp(-dt * (this.screen === 'test' ? 5 : 7));
@@ -2017,7 +2017,7 @@ export class MontaLeva implements MiniGameHandle {
     drawBackground(x, v, inLevel ? CHAPTER_TINT[chapterOf(this.L!.n)] : undefined);
     if (this.screen === 'levels' || this.screen === 'shop' || this.screen === 'settings') return;
     // a tela de início padrão cobre tudo: nada de demo por baixo
-    if (this.screen === 'menu' && this.ui.querySelector('.sm')) return;
+    if (this.screen === 'menu' && this.ui.querySelector('.sm-root')) return;
     const tr = this.screen === 'menu' ? DEMO_TRACK : this.track;
     if (!tr) return;
     const sim = this.screen === 'menu' ? this.demo : this.screen === 'test' ? this.sim : null;

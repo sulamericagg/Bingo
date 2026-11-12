@@ -313,7 +313,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
   const weak = !!spec.weak || (navigator.hardwareConcurrency || 4) <= 2;
 
   const el = document.createElement('div');
-  el.className = 'sm' + (spec.className ? ' ' + spec.className : '');
+  el.className = 'sm sm-root' + (spec.className ? ' ' + spec.className : '');
   el.dataset.game = spec.game;
   if (spec.seeThrough) el.style.background = 'transparent';
   el.style.setProperty('--sm-bg1', theme.bg[0]);

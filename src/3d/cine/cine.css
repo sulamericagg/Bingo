@@ -32,4 +32,4 @@
 .cine-skip svg{width:20px;height:20px}
 
 /* durante a abertura, a tela de início por baixo some (o "Pular" nunca fica sob a engrenagem) */
-.cine-on .sm{visibility:hidden}
+.cine-on .sm-root{visibility:hidden}
