@@ -103,7 +103,7 @@ export class Phys {
       }
       // caiu do mundo
       if (l.body.position.y < -5) {
-        l.body.position.set(0, 1, -14);
+        l.body.position.set(0, 1, -2);
         l.body.velocity.setZero();
       }
     }

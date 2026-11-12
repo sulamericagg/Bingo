@@ -339,7 +339,7 @@ export async function playIntro(root: HTMLElement): Promise<void> {
   const street = new THREE.Group();
   scene.add(street);
   const store = new Store3D(kit);
-  store.apply({ walls: true, paint: 'blush', window: true, door: true, floor: 'marble', sign: 'neon', light: 3, exp: 0 });
+  store.apply({ walls: true, paint: 'blush', window: true, door: true, floor: 'marble', sign: 'neon', light: 3, sz: 4, op: 4, hits: 0, own: false });
   street.add(store.root);
   const field = new ProductField(kit, false);
   street.add(field.group);

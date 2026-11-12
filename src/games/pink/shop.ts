@@ -13,7 +13,7 @@ import { npcSpec } from '../../3d/paper';
 import type { FpBox } from '../../3d/fpkit';
 import type { Tier } from '../../core/quality';
 import { CAT, CATS, demand, money, PRODUCTS, PROD, seasonAt, unlocked, type CatId, type Product } from './catalog';
-import { capOf, EXPANSIONS, FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, RENT, SHAPE_DIM, SIGNS, SLOT_D, SLOT_W, slotCap, STAFF, STAFF_NAMES, TABLET_UP, xpNeed, type FurnDef, type FurnKind, type Goal, type StaffKind } from './data';
+import { capOf, FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, SHAPE_DIM, SIGNS, SLOT_D, SLOT_W, slotCap, STAFF, STAFF_NAMES, TABLET_UP, xpNeed, type FurnDef, type FurnKind, type Goal, type StaffKind } from './data';
 import { Engine } from './engine';
 import { buildFurniture, type FurnModel } from './furniture';
 import { Hud } from './hud';
@@ -23,6 +23,7 @@ import type { Loose } from './phys';
 import { ProductField, type PlacedItem } from './products';
 import type { FurnSave, ShopSave } from './save';
 import { floorBounds, LAY, Store3D } from './store3d';
+import { BUILDING_LVL, BUILDING_PRICE, nextStage, pendingWall, rentOf, salesArea, stageOf, stagePrice } from './grow';
 import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { CheckoutUI } from './checkout';
 import { Builder, rbox } from './shapes';
@@ -34,9 +35,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const DAY_LEN = 300; // s de 8h às 20h
 const OPEN_H = 8;
 const CLOSE_H = 20;
-const BIN_POS = new THREE.Vector2(4.35, -15.3);
 const DIRT_K = ['dirt', 'spill', 'glass', 'mud'] as const;
-const DROP_ZONE = { x0: -1.3, x1: 1.3, z0: -15.3, z1: -13.0 };
 
 interface SlotW {
   pos: THREE.Vector3;
@@ -103,7 +102,8 @@ export interface ShopOpts {
   /** loja em grupo (coop.ts): anfitrião = dono do save; convidado = só a vista + pedidos ao anfitrião */
   net?: ShopNet | null;
 }
-type ActO = 'order' | 'renov' | 'hire' | 'fire' | 'lic' | 'tab' | 'price' | 'auto' | 'open' | 'place' | 'move' | 'mop';
+export type RenovAct = 'walls' | 'window' | 'door' | 'paint' | 'floor' | 'sign' | 'light' | 'grow' | 'own';
+type ActO = 'order' | 'renov' | 'hit' | 'hire' | 'fire' | 'lic' | 'tab' | 'price' | 'auto' | 'open' | 'place' | 'move' | 'mop';
 
 export class Shop implements TabletHost {
   readonly e: Engine;
@@ -143,6 +143,9 @@ export class Shop implements TabletHost {
   private trashL: Loose[] = [];
   private dirtT = 0;
   private bin: THREE.Group;
+  private binBody: CANNON.Body | null = null;
+  /** lixeira de caixas: no estoque (com doca) ou no canto do fundo da garagem */
+  readonly binPos = new THREE.Vector2(4.35, -15.3);
   private destroyed = false;
   /* grupo */
   private net: ShopNet | null;
@@ -175,13 +178,11 @@ export class Shop implements TabletHost {
     this.field = new ProductField(e.kit, o.tier >= 3);
     e.scene.add(this.field.group);
     this.nav = new Nav(-16, -17, 16, 4.2);
+    // lixeira de caixas (no estoque, ou no fundo da garagem enquanto não tem estoque)
+    this.bin = buildFurniture(e.kit, 'bin').group;
+    e.scene.add(this.bin);
     this.store.onRebuilt = () => this.rebuildColliders();
     this.store.apply(this.s.renov);
-    // lixeira de caixas (fixa no estoque)
-    this.bin = buildFurniture(e.kit, 'bin').group;
-    this.bin.position.set(BIN_POS.x, 0, BIN_POS.y);
-    e.scene.add(this.bin);
-    e.phys.addStatic(BIN_POS.x, 0.5, BIN_POS.y, 0.35, 0.5, 0.35);
     // móveis salvos
     for (const f of this.s.furn) this.addFurn(f, false);
     // caixas salvas e sacos de lixo
@@ -192,12 +193,13 @@ export class Shop implements TabletHost {
       /* convidado: sujeira, equipe e caixas vêm do anfitrião */
     } else if (!this.s.dirt.length && !this.s.renov.walls && this.s.day === 1) {
       // loja abandonada: poeira e pegadas
-      for (let i = 0; i < 9; i++) e.addDirt(-4 + Math.random() * 8, -1.5 - Math.random() * 9.5, i % 3 ? 'dirt' : 'mud', 0.5 + Math.random() * 0.6);
+      const fb = floorBounds(this.s.renov);
+      for (let i = 0; i < 7; i++) e.addDirt(fb.x0 + 0.6 + Math.random() * (fb.x1 - fb.x0 - 1.2), -1.2 - Math.random() * (-fb.zB - 2), i % 3 ? 'dirt' : 'mud', 0.5 + Math.random() * 0.6);
     }
     if (!this.guest) for (const m of this.s.staff) this.spawnStaff(m.k, m.name, m.c);
     if (!this.s.goals.length && !this.guest) this.newGoals();
     // jogador: na calçada olhando a loja
-    e.fp.place(0.4, 2.6);
+    e.fp.place(0.4, 4.0);
     e.fpc.yaw = 0;
     e.fpc.pitch = 0.08;
     e.onTrip = (l, vx, vz) => this.spill(l, vx, vz);
@@ -233,6 +235,24 @@ export class Shop implements TabletHost {
   /* =============================== mundo / colisão =============================== */
   private rebuildColliders(): void {
     const e = this.e;
+    // lixeira acompanha o tamanho da loja
+    const fb = floorBounds(this.s.renov);
+    if (fb.stock) this.binPos.set(4.35, -15.3);
+    else {
+      // canto do fundo que não atrapalha a próxima parede a quebrar
+      const pw = pendingWall(this.s.renov)?.wall ?? nextStage(this.s.renov)?.wall ?? null;
+      const far = (x: number, z: number) => !pw || Math.hypot(x - Math.max(pw.x0, Math.min(pw.x1, x)), z - Math.max(Math.min(pw.z0, pw.z1), Math.min(Math.max(pw.z0, pw.z1), z))) > 1.2;
+      const cand: [number, number][] = [
+        [fb.x1 - 0.5, fb.zB + 0.5],
+        [fb.x0 + 0.5, fb.zB + 0.5],
+      ];
+      const [bx, bz] = cand.find(([x, z]) => far(x, z)) ?? cand[0];
+      this.binPos.set(bx, bz);
+    }
+    this.bin.position.set(this.binPos.x, 0, this.binPos.y);
+    if (this.binBody) e.phys.removeStatic(this.binBody);
+    this.binBody = e.phys.addStatic(this.binPos.x, 0.5, this.binPos.y, 0.35, 0.5, 0.35);
+    // caixas/lixo que ficaram dentro da parede nova não existem (a parede só some)
     for (const b of this.wallBodies) e.phys.removeStatic(b);
     this.wallBodies = [];
     for (const [x, y, z, hx, hy, hz] of this.store.physBoxes) this.wallBodies.push(e.phys.addStatic(x, y, z, hx, hy, hz));
@@ -241,9 +261,9 @@ export class Shop implements TabletHost {
   private colliders(): FpBox[] {
     const out = [...this.store.colliders, ...this.store.outsideColliders];
     for (const f of this.furn) if (!f.def.flat) out.push(f.box);
-    out.push({ x0: BIN_POS.x - 0.4, z0: BIN_POS.y - 0.4, x1: BIN_POS.x + 0.4, z1: BIN_POS.y + 0.4 });
+    out.push({ x0: this.binPos.x - 0.4, z0: this.binPos.y - 0.4, x1: this.binPos.x + 0.4, z1: this.binPos.y + 0.4 });
     // porta de enrolar fechada
-    if (!this.store.backOpen) out.push({ x0: -LAY.backDoor, z0: LAY.zBack - 0.15, x1: LAY.backDoor, z1: LAY.zBack + 0.05 });
+    if (!this.store.backOpen && floorBounds(this.s.renov).stock) out.push({ x0: -LAY.backDoor, z0: LAY.zBack - 0.15, x1: LAY.backDoor, z1: LAY.zBack + 0.05 });
     return out;
   }
   private refreshCollision(): void {
@@ -385,7 +405,7 @@ export class Shop implements TabletHost {
     this.closeTablet();
     this.startBuild(k, null, d.price);
   }
-  renov(action: 'walls' | 'window' | 'door' | 'paint' | 'floor' | 'sign' | 'light' | 'exp', v?: string | number): boolean {
+  renov(action: RenovAct, v?: string | number): boolean {
     if (this.guest) return this.ask('renov', [action, v ?? null], 0, 'paint', t('pink.net.sent', 'Feito! A loja é de todo mundo.'));
     const r = this.s.renov;
     let price = 0;
@@ -422,12 +442,17 @@ export class Shop implements TabletHost {
         price = f.price;
         break;
       }
-      case 'exp': {
-        const ex = EXPANSIONS[(v as number) - 1];
-        if (!ex || lv < ex.lvl || r.exp !== (v as number) - 1) return false;
-        price = ex.price;
+      case 'grow': {
+        // comprar a sala do lado: depois é quebrar a parede com a marreta
+        const st = nextStage(r);
+        if (!st || lv < st.lvl) return false;
+        price = stagePrice(r, st);
         break;
       }
+      case 'own':
+        if (r.own || lv < BUILDING_LVL) return false;
+        price = BUILDING_PRICE;
+        break;
     }
     if (!this.pay(price)) return false;
     if (action === 'walls') r.walls = true;
@@ -437,11 +462,26 @@ export class Shop implements TabletHost {
     else if (action === 'floor') r.floor = v as typeof r.floor;
     else if (action === 'sign') r.sign = v as typeof r.sign;
     else if (action === 'light') r.light = v as number;
-    else if (action === 'exp') r.exp = v as number;
+    else if (action === 'grow') {
+      r.sz++;
+      r.hits = 0;
+    } else if (action === 'own') r.own = true;
     this.store.apply(r);
     sfx.play('sparkle');
     this.hud.flash();
     this.addXp(Math.round(price / 25));
+    if (action === 'grow') {
+      this.closeTablet();
+      this.tool = 2;
+      this.syncTool();
+      this.updateHudStatic();
+      this.hud.banner('hammer', t('pink.grow.smash', 'Sala comprada! Pegue a marreta e quebre a parede!'), 3200);
+    } else if (action === 'own') {
+      this.closeTablet();
+      sfx.play('levelup');
+      confetti(this.hud.el);
+      this.hud.banner('key', t('pink.grow.owned', 'O prédio é seu! Acabou o aluguel.'), 3600);
+    }
     this.save();
     return true;
   }
@@ -587,11 +627,16 @@ export class Shop implements TabletHost {
     x = Math.round(x / sn) * sn;
     z = Math.round(z / sn) * sn;
     const box = this.furnBox(b.k, x, z, b.r);
-    const { x0, x1 } = floorBounds(this.s.renov.exp);
-    let ok = box.x0 >= x0 + 0.05 && box.x1 <= x1 - 0.05 && box.z0 >= LAY.zB + 0.05 && box.z1 <= -0.3;
-    // não tapa a porta nem o vão do estoque
-    if (ok && box.z1 > -1.6 && box.x1 > -LAY.door - 0.4 && box.x0 < LAY.door + 0.4) ok = false;
-    if (ok && box.z0 < LAY.zB + 1.3 && box.x1 > LAY.part[0] - 0.2 && box.x0 < LAY.part[1] + 0.2) ok = false;
+    const fb = floorBounds(this.s.renov);
+    let ok = box.x0 >= fb.x0 + 0.05 && box.x1 <= fb.x1 - 0.05 && box.z0 >= fb.zB + 0.05 && box.z1 <= -0.3;
+    // não tapa a porta (portão inteiro na garagem) nem o vão do estoque
+    const dw = fb.garage ? 2.4 : LAY.door + 0.4;
+    if (ok && box.z1 > -1.6 && box.x1 > -dw && box.x0 < dw) ok = false;
+    if (ok && fb.stock && box.z0 < fb.zB + 1.3 && box.x1 > LAY.part[0] - 0.2 && box.x0 < LAY.part[1] + 0.2) ok = false;
+    // nem a parede que vai ser quebrada / a lixeira
+    const bw = this.store.brk?.box;
+    if (ok && bw && box.x0 < bw.max.x + 0.3 && box.x1 > bw.min.x - 0.3 && box.z0 < bw.max.z + 0.3 && box.z1 > bw.min.z - 0.3) ok = false;
+    if (ok && box.x0 < this.binPos.x + 0.5 && box.x1 > this.binPos.x - 0.5 && box.z0 < this.binPos.y + 0.5 && box.z1 > this.binPos.y - 0.5) ok = false;
     if (ok && !FURN[b.k].flat)
       for (const f of this.furn) {
         if (f === b.move || f.def.flat) continue;
@@ -675,12 +720,138 @@ export class Shop implements TabletHost {
   /* =============================== ações do jogador =============================== */
   private selTool(i: number): void {
     if (i === this.tool) return;
+    if (i === 2 && !pendingWall(this.s.renov)) return;
     if (i === 1 && this.e.carry) {
       this.hud.banner('drop', t('pink.handsFull', 'Solte o que está carregando primeiro'), 1500);
       return;
     }
     this.tool = i;
     sfx.play('tap');
+    this.syncTool();
+  }
+  private hammer: THREE.Object3D | null = null;
+  /** marreta na mão (1ª pessoa) quando a ferramenta 2 está escolhida */
+  private syncTool(): void {
+    if (this.tool === 2 && !pendingWall(this.s.renov)) this.tool = 0;
+    if (this.tool === 2) {
+      if (!this.hammer) {
+        const k = this.e.kit;
+        const b = new Builder();
+        b.add(new THREE.CylinderGeometry(0.022, 0.026, 0.62, 10), k.surf('hammerWood', 'wood', { rough: 0.7, color: '#c8905a' }), 0, 0, 0);
+        b.add(rbox(0.2, 0.09, 0.09, 0.015, 2), k.plain('hammerHead', '#5a6070', 0.35, 0.8, { envK: 1.2 }), 0, 0.3, 0);
+        b.add(new THREE.CylinderGeometry(0.03, 0.03, 0.14, 10), k.plain('hammerGrip', '#ff5fa2', 0.6), 0, -0.24, 0);
+        const g = b.build();
+        g.rotation.set(-0.5, 0, 0.35);
+        const w = new THREE.Group();
+        w.add(g);
+        this.hammer = w;
+      }
+      this.e.setTool(this.hammer);
+    } else this.e.setTool(null);
+  }
+  private smashCd = 0;
+  /** uma marretada na parede: rachadura, lascas, poeira; na última a parede cai */
+  private smash(): void {
+    if (this.smashCd > 0) return;
+    const r = this.s.renov;
+    const P = pendingWall(r);
+    const w = this.store.brk;
+    if (!P || !w) return;
+    this.smashCd = 0.5;
+    this.e.swingTool();
+    const hit = this.e.ray.intersectBox(w.box, new THREE.Vector3()) ?? w.box.getCenter(new THREE.Vector3());
+    window.setTimeout(() => {
+      if (this.destroyed) return;
+      sfx.play('smash');
+      this.e.fpc.addShake(0.35);
+      this.e.fpc.kick(0.6);
+      const back = this.e.ray.direction.clone().multiplyScalar(-0.15);
+      this.e.chips(hit.x + back.x, hit.y, hit.z + back.z, '#d8cfc4', 5);
+      this.e.chips(hit.x + back.x, hit.y, hit.z + back.z, '#b0644a', 3);
+      this.puff(hit.x + back.x, hit.y, hit.z + back.z, '#e8e0d4', 6, 0.12);
+      if (this.guest) {
+        this.ask('hit', [], 0);
+        return;
+      }
+      this.wallHit();
+    }, 150);
+  }
+  /** anfitrião: conta a marretada (do dono ou de um amigo) */
+  private wallHit(): void {
+    const r = this.s.renov;
+    const P = pendingWall(r);
+    if (!P) return;
+    r.hits++;
+    if (r.hits < P.hits) {
+      this.store.apply(r);
+      if (r.hits === Math.ceil(P.hits / 2)) this.hud.banner('hammer', t('pink.grow.half', 'Tá quase! Continua!'), 1400);
+      return;
+    }
+    // caiu!
+    const w = this.store.brk!;
+    const seg = w.seg;
+    r.op++;
+    r.hits = 0;
+    this.store.apply(r);
+    this.syncTool();
+    sfx.play('crumble');
+    sfx.play('sparkle');
+    this.e.fpc.addShake(1.2);
+    this.hud.flash();
+    confetti(this.hud.el);
+    const len = Math.hypot(seg.x1 - seg.x0, seg.z1 - seg.z0);
+    const n = Math.min(9, 3 + Math.floor(len / 2));
+    for (let i = 0; i < n; i++) {
+      const k = (i + 0.5) / n;
+      const x = seg.x0 + (seg.x1 - seg.x0) * k + (Math.random() - 0.5) * 0.6;
+      const z = seg.z0 + (seg.z1 - seg.z0) * k + (Math.random() - 0.5) * 0.6;
+      this.trashL.push(this.e.spawnRubble(x, z, new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2)));
+      this.e.addDirt(x + (Math.random() - 0.5), z + (Math.random() - 0.5), 'dirt', 0.8);
+      this.puff(x, 1 + Math.random() * 1.5, z, '#e8e0d4', 10, 0.3);
+    }
+    this.addXp(40 + r.op * 20);
+    this.hud.banner('sparkle', t('pink.grow.done', 'A loja cresceu! Leve o entulho para a lixeira.'), 3600);
+    this.save();
+  }
+  /** poeira (bolinhas que crescem e somem) */
+  private dustTex: THREE.Texture | null = null;
+  puff(x: number, y: number, z: number, color: string, n: number, sz: number): void {
+    if (!this.dustTex) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d')!;
+      const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,.9)');
+      gr.addColorStop(0.5, 'rgba(255,255,255,.35)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 64, 64);
+      this.dustTex = new THREE.CanvasTexture(c);
+    }
+    for (let i = 0; i < n; i++) {
+      const mat = new THREE.SpriteMaterial({ map: this.dustTex, color, transparent: true, depthWrite: false, opacity: 0.55 });
+      const m = new THREE.Sprite(mat);
+      const s0 = sz * (1.2 + Math.random() * 1.2);
+      m.scale.setScalar(s0);
+      m.position.set(x + (Math.random() - 0.5) * sz, y + (Math.random() - 0.5) * sz, z + (Math.random() - 0.5) * sz);
+      this.e.scene.add(m);
+      const v = new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 0.5 - 0.1, (Math.random() - 0.5) * 1.2);
+      const life0 = 1.2 + Math.random() * 0.8;
+      let life = life0;
+      this.fx.push((dt) => {
+        life -= dt;
+        m.position.addScaledVector(v, dt);
+        v.multiplyScalar(1 - dt * 1.5);
+        m.scale.setScalar(s0 * (1 + (1 - life / life0) * 1.6));
+        mat.opacity = 0.55 * Math.min(1, life / life0 * 1.5);
+        if (life <= 0) {
+          m.removeFromParent();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      });
+    }
   }
   private use(down: boolean): void {
     this.useHeld = down;
@@ -726,6 +897,12 @@ export class Shop implements TabletHost {
         break;
       case 'tester':
         if (first && a.f) this.playerTest(a.f);
+        break;
+      case 'smash':
+        this.smash();
+        break;
+      case 'sign':
+        if (first) this.toggleOpen();
         break;
     }
   }
@@ -916,8 +1093,22 @@ export class Shop implements TabletHost {
     let use: [string, string, boolean] = ['hand', '', false];
     let act2: [string | null, string] = [null, ''];
     const R = 2.6;
-    // 1) esfregão: mancha no chão
-    if (this.tool === 1 && !c) {
+    // 0) marreta: parede rachada
+    if (this.tool === 2 && !c) {
+      const w = this.store.brk;
+      const P = pendingWall(this.s.renov);
+      const hp = w ? ray.intersectBox(w.box, new THREE.Vector3()) : null;
+      if (w && P && hp && hp.distanceTo(ray.origin) < 2.8) {
+        info = { kind: 'smash' };
+        hint = `${P.name} ${this.s.renov.hits}/${P.hits}`;
+        hicon = 'hammer';
+        use = ['hammer', t('pink.u.smash', 'Quebrar'), true];
+      } else {
+        hint = t('pink.h.smashAim', 'Mire na parede rachada');
+        hicon = 'hammer';
+        use = ['hammer', t('pink.u.smash', 'Quebrar'), false];
+      }
+    } else if (this.tool === 1 && !c) {
       const h = e.floorHit(3);
       const d = h ? e.dirtAt(h.x, h.z) ?? this.nearDirt(h.x, h.z) : null;
       if (h && d) {
@@ -992,11 +1183,24 @@ export class Shop implements TabletHost {
         use = ['boxOpen', t('pink.u.putBack', 'Guardar'), true];
       }
       // 4) lixeira
-      if (!info && c && Math.hypot(e.fp.x - BIN_POS.x, e.fp.z - BIN_POS.y) < 1.8) {
+      if (!info && c && Math.hypot(e.fp.x - this.binPos.x, e.fp.z - this.binPos.y) < 1.8) {
         info = { kind: 'bin' };
         hint = t('pink.h.bin', 'Lixeira de caixas');
         hicon = 'bin';
         use = ['bin', t('pink.u.bin', 'Jogar fora'), true];
+      }
+      // 4b) plaquinha da porta: virar = abrir/fechar a loja
+      if (!info && !c) {
+        const sp = this.store.doorSignPos;
+        const v = sp.clone().sub(ray.origin);
+        const along = v.dot(ray.direction);
+        if (along > 0.2 && along < 2.6 && v.lengthSq() - along * along < 0.3 * 0.3) {
+          info = { kind: 'sign' };
+          const open = this.phase === 'open';
+          hint = open ? t('pink.h.signClose', 'Virar para FECHADO') : t('pink.h.signOpen', 'Virar para ABERTO');
+          hicon = open ? 'closed' : 'open';
+          use = [open ? 'closed' : 'open', t('pink.u.flip', 'Virar'), this.phase === 'prep' || this.phase === 'open'];
+        }
       }
       // 5) caixa (atender) / provador / mover móvel
       if (!info) {
@@ -1160,7 +1364,7 @@ export class Shop implements TabletHost {
         const base = 16 - this.s.rep * 0.06 - beauty * 0.05 - Math.min(20, this.s.lvl) * 0.2;
         const s = seasonAt(this.s.day);
         this.spawnT = Math.max(3.2, base) * (s?.all ? 0.6 : s ? 0.8 : 1) * (0.7 + Math.random() * 0.6);
-        const maxC = 4 + Math.min(10, Math.floor(this.s.lvl / 2)) + this.s.renov.exp * 3;
+        const maxC = Math.min(4 + Math.min(10, Math.floor(this.s.lvl / 2)), 2 + Math.floor(salesArea(this.s.renov) / 9));
         if (this.custs.length < maxC) this.spawnCust();
       }
     } else if (this.phase === 'closing') {
@@ -1172,7 +1376,7 @@ export class Shop implements TabletHost {
     this.phase = 'summary';
     const s = this.s;
     const wages = s.staff.reduce((a, m) => a + STAFF[m.k].wage, 0);
-    const rent = RENT(s.lvl, s.renov.exp);
+    const rent = rentOf(s.renov, s.lvl);
     s.money -= wages + rent;
     this.day.cost += wages + rent;
     const prof = this.day.rev - this.day.cost;
@@ -1293,7 +1497,7 @@ export class Shop implements TabletHost {
       case 3:
         return ['cart', t('pink.tut.3', 'Peça produtos no tablet (Pedidos)')];
       case 4:
-        return ['box', t('pink.tut.4', 'Pegue a caixa nos fundos, abra e reponha a prateleira')];
+        return ['box', floorBounds(this.s.renov).stock ? t('pink.tut.4', 'Pegue a caixa nos fundos, abra e reponha a prateleira') : t('pink.tut.4f', 'Pegue a caixa na calçada, abra e reponha a prateleira')];
       case 5:
         return ['open', t('pink.tut.5', 'Toque em ABRIR a loja!')];
       default:
@@ -1719,7 +1923,9 @@ export class Shop implements TabletHost {
   private spawnStaff(k: StaffKind, name: string, color: string): void {
     const d = STAFF[k];
     const spec = d.robot ? npcSpec('#c0c8d8', '#6a7a8a', { eyes: 'e_cute' as never }) : npcSpec(color, '#ffffff', { head: 'h_bow' as never });
-    const w = new Walker(spec, 2 + Math.random(), -13.5, 0.36);
+    // chega pela calçada e entra pela porta
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const w = new Walker(spec, side * (8 + Math.random() * 2), 2.6 + Math.random() * 0.8, 0.36);
     w.look = d.robot ? '#c0c8d8|#6a7a8a|r' : `${color}|#ffffff|h_bow`;
     w.speed = d.robot ? 1.9 : 1.45;
     this.e.scene.add(w.char.root);
@@ -1735,6 +1941,12 @@ export class Shop implements TabletHost {
     l.body.velocity.setZero();
     this.e.phys.world.addBody(l.body);
     this.e.phys.items.push(l);
+  }
+  /** canto dos fundos (estoque, ou o fundo da garagem) */
+  backSpot(): [number, number] {
+    const fb = floorBounds(this.s.renov);
+    if (fb.stock) return [-1.5 + Math.random() * 3, -13.8];
+    return [fb.x0 + 0.8 + Math.random() * 1.2, fb.zB + 0.9];
   }
   private staffUpdate(st: Staff, dt: number): void {
     const w = st.w;
@@ -1765,7 +1977,7 @@ export class Shop implements TabletHost {
           st.st = 'go';
         } else if (!d && st.t > 4) {
           st.t = 0;
-          w.go(nav, -3 + Math.random() * 6, -13.5);
+          w.go(nav, ...this.backSpot());
         } else if (st.st === 'go') st.st = 'idle';
       }
       if (st.st === 'clean') {
@@ -1862,7 +2074,7 @@ export class Shop implements TabletHost {
             st.box = null;
           } else {
             st.st = 'return';
-            w.go(nav, -1 + Math.random() * 2, -14);
+            w.go(nav, ...this.backSpot());
             return;
           }
           st.st = 'idle';
@@ -1914,11 +2126,14 @@ export class Shop implements TabletHost {
     if (!tr) return;
     tr.t += dt;
     const g = tr.g;
-    // 0: chega pelo beco (x de -20 a 0), 1: dá ré até a porta, 2: descarrega, 3: vai embora
+    const dock = floorBounds(this.s.renov).stock;
+    // COM ESTOQUE (beco): 0 chega pelo beco, 1 dá ré até a porta de enrolar, 2 descarrega, 3 vai embora
+    // GARAGEM/SEM ESTOQUE (rua): 0 vem pela rua, 1 encosta de ré no meio-fio, 2 joga as caixas na calçada, 3 vai embora
     if (tr.phase === 0) {
       const k = Math.min(1, tr.t / 3.2);
       const e = 1 - Math.pow(1 - k, 3);
-      g.position.set(-22 + e * 22, 0, -21.5);
+      if (dock) g.position.set(-22 + e * 22, 0, -21.5);
+      else g.position.set(-24 + e * 22, 0, 6.4);
       g.rotation.y = Math.PI / 2;
       if (k >= 1) {
         tr.phase = 1;
@@ -1928,15 +2143,20 @@ export class Shop implements TabletHost {
     } else if (tr.phase === 1) {
       const k = Math.min(1, tr.t / 2.4);
       const e = k * k * (3 - 2 * k);
-      g.rotation.y = Math.PI / 2 * (1 - Math.min(1, k * 1.4)) + Math.PI * Math.min(1, k * 1.4);
-      g.position.set(0, 0, -21.5 + e * 2.3);
+      if (dock) {
+        g.rotation.y = (Math.PI / 2) * (1 - Math.min(1, k * 1.4)) + Math.PI * Math.min(1, k * 1.4);
+        g.position.set(0, 0, -21.5 + e * 2.3);
+      } else {
+        g.rotation.y = (Math.PI / 2) * (1 - Math.min(1, k * 1.3));
+        g.position.set(-2 + e * 2, 0, 6.4 + Math.sin(e * Math.PI) * 0.6 + e * 0.5);
+      }
       if (k >= 1) {
         tr.phase = 2;
         tr.t = 0;
         sfx.play('shutter');
       }
     } else if (tr.phase === 2) {
-      // porta abre, caixas "pulam" para dentro com física
+      // porta abre, caixas "pulam" para fora com física
       const due = Math.floor((tr.t - 1.0) / 0.35);
       if (due >= tr.dropped && tr.boxes.length) {
         tr.dropped++;
@@ -1950,8 +2170,9 @@ export class Shop implements TabletHost {
           cnt = alt.box;
           this.hud.banner('bug', t('pink.wrongItem', 'Deu BO! Veio produto errado. Ganhou cupom de desconto.'), 3200);
         }
-        const x = DROP_ZONE.x0 + Math.random() * (DROP_ZONE.x1 - DROP_ZONE.x0);
-        this.e.spawnBox(pid, cnt, x * 0.6, 1.2 + Math.random() * 0.4, LAY.zBack + 0.3, { vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2, 2.2 + Math.random() * 1.6) });
+        const x = (Math.random() - 0.5) * 1.6;
+        if (dock) this.e.spawnBox(pid, cnt, x, 1.2 + Math.random() * 0.4, LAY.zBack + 0.3, { vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2, 2.2 + Math.random() * 1.6) });
+        else this.e.spawnBox(pid, cnt, x, 1.3 + Math.random() * 0.3, 4.4, { vel: new THREE.Vector3(x * 1.4 + (Math.random() - 0.5), 1.4, -2.4 - Math.random() * 1.2) });
         sfx.play('drop', { db: -4 });
       }
       if (!tr.boxes.length && tr.t > 2.5) {
@@ -1959,13 +2180,18 @@ export class Shop implements TabletHost {
         tr.t = 0;
         sfx.play('truck');
         sfx.play('shutter');
-        this.hud.banner('box', t('pink.arrived', 'Chegou o estoque! Caixas nos fundos.'), 2200);
+        this.hud.banner('box', dock ? t('pink.arrived', 'Chegou o estoque! Caixas nos fundos.') : t('pink.arrivedFront', 'Chegou o estoque! Caixas na calçada.'), 2200);
         if (this.s.tut === 3) this.setTut(4);
       }
     } else if (tr.phase === 3) {
       const k = Math.min(1, tr.t / 3);
-      g.position.set(-k * k * 24, 0, -19.2 - k * 2.3);
-      g.rotation.y = Math.PI + Math.min(1, k * 2) * (Math.PI / 2);
+      if (dock) {
+        g.position.set(-k * k * 24, 0, -19.2 - k * 2.3);
+        g.rotation.y = Math.PI + Math.min(1, k * 2) * (Math.PI / 2);
+      } else {
+        g.position.set(k * k * 26, 0, 6.9 - Math.min(1, k * 2) * 0.5);
+        g.rotation.y = Math.min(1, k * 2) * (Math.PI / 2);
+      }
       if (k >= 1) {
         g.removeFromParent();
         g.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
@@ -1987,11 +2213,12 @@ export class Shop implements TabletHost {
     b += LIGHTS[r.light]?.beauty ?? 0;
     let fb = 0;
     for (const f of this.furn) fb += f.def.beauty;
-    const area = (floorBounds(r.exp).x1 - floorBounds(r.exp).x0) * 12;
+    const area = salesArea(r);
+    const zB = stageOf(r).zB;
     b += Math.min(40, fb * (120 / area) * 0.9);
     b -= this.trashL.length * 5;
     // caixas largadas no salão
-    for (const l of this.e.phys.items) if ((l.kind === 'box' || l.kind === 'item') && l.mesh.position.z > LAY.zB) b -= 1.5;
+    for (const l of this.e.phys.items) if ((l.kind === 'box' || l.kind === 'item') && l.mesh.position.z > zB && l.mesh.position.z < 0) b -= 1.5;
     this.scores.beauty = Math.max(0, Math.min(100, b));
     let dirt = 0;
     for (const d of this.e.dirt) dirt += d.a * (d.k === 'spill' || d.k === 'glass' ? 2.5 : 1);
@@ -2020,7 +2247,9 @@ export class Shop implements TabletHost {
     this.hud.open(this.phase === 'open', this.phase === 'prep' && s.tut >= 5);
     const c = this.e.carry;
     const slot0 = c ? { icon: c.kind === 'trash' ? 'trash' : c.data.open ? 'boxOpen' : 'box', n: c.kind === 'box' ? ((c.data.n as number) ?? 0) : undefined, label: t('pink.hand', 'Mãos') } : { icon: 'hand', label: t('pink.hand', 'Mãos') };
-    this.hud.hot([slot0, { icon: 'mop', label: t('pink.mop', 'Esfregão') }], this.tool);
+    const hot = [slot0, { icon: 'mop', label: t('pink.mop', 'Esfregão') }];
+    if (pendingWall(s.renov)) hot.push({ icon: 'hammer', label: t('pink.hammer', 'Marreta') });
+    this.hud.hot(hot, this.tool);
     this.hud.carrying(!!c);
   }
 
@@ -2063,7 +2292,8 @@ export class Shop implements TabletHost {
             sfx.play('sparkle');
             this.useHeld = false;
           }
-        } else if (a?.kind === 'stock') {
+        } else if (a?.kind === 'smash') this.smash();
+        else if (a?.kind === 'stock') {
           this.useRep -= dt;
           if (this.useRep <= 0) {
             this.useRep = 0.16;
@@ -2072,6 +2302,7 @@ export class Shop implements TabletHost {
         }
       }
     }
+    if (this.smashCd > 0) this.smashCd -= dt;
     // produtos voando para a prateleira
     for (let i = this.flies.length - 1; i >= 0; i--) {
       const f = this.flies[i];
@@ -2141,14 +2372,16 @@ export class Shop implements TabletHost {
       this.hud.moveBubble('me', sc?.[0] ?? 0, sc?.[1] ?? 0, !!sc);
     }
     // portas automáticas: alguém perto da porta
-    let near = Math.hypot(e.fp.x, e.fp.z) < 2;
+    let near = Math.hypot(e.fp.x, e.fp.z) < (this.store.isGarage ? 3.2 : 2);
     if (!near) for (const w of walkers) if (Math.abs(w.x) < 1.6 && Math.abs(w.z) < 1.8) near = true;
     if (!near && this.net) for (const w of [...(this.remotes?.positions() ?? []), ...(this.ghosts?.positions() ?? [])]) if (Math.abs(w.x) < 1.6 && Math.abs(w.z) < 1.8) near = true;
     if (near && !this.wasNear && this.phase === 'open') sfx.play('door', { db: -8 });
     this.wasNear = near;
-    const wantShutter = this.truck && this.truck.phase >= 2 && this.truck.phase < 3 ? 1 : 0;
+    const wantShutter = this.truck && this.truck.phase >= 2 && this.truck.phase < 3 && floorBounds(this.s.renov).stock ? 1 : 0;
     const wasOpen = this.store.backOpen;
-    this.store.update(dt, e.time, near, wantShutter);
+    this.store.signOpen = this.phase === 'open';
+    const garageOpen = this.store.isGarage && (this.phase === 'open' || this.phase === 'closing' || (!!this.truck && this.truck.phase === 2));
+    this.store.update(dt, e.time, near || garageOpen, wantShutter);
     if (wasOpen !== this.store.backOpen) this.navDirty = true;
     if (!this.guest) {
       this.dayTick(dt);
@@ -2160,7 +2393,7 @@ export class Shop implements TabletHost {
     if (this.dirtT <= 0) {
       this.dirtT = 2.5;
       for (const c of this.custs) {
-        if (c.w.z < -0.5 && c.w.z > LAY.zB && c.w.vel > 0.3 && Math.random() < 0.06) e.addDirt(c.w.x, c.w.z, Math.random() < 0.3 ? 'mud' : 'dirt', 0.25);
+        if (c.w.z < -0.5 && c.w.z > stageOf(this.s.renov).zB && c.w.vel > 0.3 && Math.random() < 0.06) e.addDirt(c.w.x, c.w.z, Math.random() < 0.3 ? 'mud' : 'dirt', 0.25);
       }
     }
     if (this.comboT > 0) {
@@ -2275,7 +2508,7 @@ export class Shop implements TabletHost {
         break;
       }
       case 'renov':
-        if (['walls', 'window', 'door', 'paint', 'floor', 'sign', 'light', 'exp'].includes(String(a[0])) && this.renov(String(a[0]) as Parameters<Shop['renov']>[0], (a[1] ?? undefined) as string | number | undefined)) note('paint', t('pink.net.renov', 'reformou a loja'));
+        if (['walls', 'window', 'door', 'paint', 'floor', 'sign', 'light', 'grow', 'own'].includes(String(a[0])) && this.renov(String(a[0]) as Parameters<Shop['renov']>[0], (a[1] ?? undefined) as string | number | undefined)) note('paint', t('pink.net.renov', 'reformou a loja'));
         break;
       case 'hire':
         if (STAFF[a[0] as StaffKind]) this.hire(a[0] as StaffKind);
@@ -2323,6 +2556,9 @@ export class Shop implements TabletHost {
         this.save();
         break;
       }
+      case 'hit':
+        this.wallHit();
+        break;
       case 'mop': {
         const x = num(a[0]);
         const z = num(a[1]);
@@ -2521,8 +2757,9 @@ export class Shop implements TabletHost {
     if (c?.kind === 'trash') s.trash.push({ x: this.e.fp.x, z: this.e.fp.z });
     s.dirt = this.e.dirt.map((d) => ({ x: d.x, z: d.z, a: d.a, k: d.k }));
     // pedidos ainda não entregues viram caixas na próxima vez
-    for (const o of this.pendingOrders) for (const [p, n] of o.boxes) s.boxes.push({ p, n, x: -1 + Math.random() * 2, y: 0.5, z: -14, open: false });
-    if (this.truck && this.truck.phase < 3) for (const [p, n] of this.truck.boxes) s.boxes.push({ p, n, x: -1 + Math.random() * 2, y: 0.5, z: -14, open: false });
+    const [bx, bz] = this.backSpot();
+    for (const o of this.pendingOrders) for (const [p, n] of o.boxes) s.boxes.push({ p, n, x: bx + Math.random() * 0.6, y: 0.5, z: bz, open: false });
+    if (this.truck && this.truck.phase < 3) for (const [p, n] of this.truck.boxes) s.boxes.push({ p, n, x: bx + Math.random() * 0.6, y: 0.5, z: bz, open: false });
     return s;
   }
   save(): void {

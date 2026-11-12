@@ -359,6 +359,34 @@ export class Engine {
     this.scene.add(g);
     return this.phys.add('trash', g, new THREE.Vector3(0.27, 0.28, 0.24), new THREE.Vector3(x, 0.3, z), { mass: 1.5 });
   }
+  /** entulho da parede quebrada (vai para a lixeira como lixo) */
+  spawnRubble(x: number, z: number, vel?: THREE.Vector3): Loose {
+    const g = new THREE.Group();
+    const geo = new THREE.DodecahedronGeometry(0.2, 0);
+    const p = geo.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) * (1.1 + Math.sin(i * 1.7) * 0.25), p.getY(i) * 0.6, p.getZ(i) * (0.9 + Math.cos(i * 2.3) * 0.2));
+    geo.computeVertexNormals();
+    const brick = this.kit.plain('rubbleBrick', '#b0644a', 0.9);
+    const mortar = this.kit.plain('rubbleMortar', '#d8d0c4', 1);
+    const m1 = new THREE.Mesh(geo, brick);
+    m1.castShadow = true;
+    const m2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.16), mortar);
+    m2.position.set(0.08, 0.08, 0.02);
+    m2.rotation.set(0.3, 0.6, 0.2);
+    g.add(m1, m2);
+    this.scene.add(g);
+    return this.phys.add('trash', g, new THREE.Vector3(0.22, 0.13, 0.18), new THREE.Vector3(x, 0.4, z), { mass: 2, vel, spin: 4, data: { rubble: true } });
+  }
+  /** lascas/poeira (somem) */
+  chips(x: number, y: number, z: number, color: string, n = 6): void {
+    const m = this.kit.plain('chip' + color, color, 0.9);
+    for (let i = 0; i < n; i++) {
+      const g = new THREE.TetrahedronGeometry(0.025 + Math.random() * 0.035);
+      const mesh = new THREE.Mesh(g, m);
+      this.scene.add(mesh);
+      this.phys.add('shard', mesh, new THREE.Vector3(0.02, 0.02, 0.02), new THREE.Vector3(x, y, z), { mass: 0.05, vel: new THREE.Vector3((Math.random() - 0.5) * 3, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 3), spin: 20, life: 4 + Math.random() * 3 });
+    }
+  }
   spawnItem(pid: string, x: number, y: number, z: number, vel?: THREE.Vector3): Loose {
     const p = PROD[pid];
     const m = productMesh(this.kit, p);
@@ -406,7 +434,27 @@ export class Engine {
       this.scene.add(m);
     }
   }
+  /* ferramenta na mão (marreta, borrifador...) quando as mãos estão livres */
+  private tool: HeldItem | null = null;
+  private toolObj: THREE.Object3D | null = null;
+  setTool(o: THREE.Object3D | null): void {
+    if (o === this.toolObj) return;
+    this.toolObj?.removeFromParent();
+    this.toolObj = o;
+    this.tool = null;
+    if (o) {
+      this.heldPivot.add(o);
+      this.tool = new HeldItem(o, { base: [0.26, -0.32, -0.5], rot: [0.2, -0.2, 0.1], lag: 0.8, bob: 1.1 });
+    }
+  }
+  swingTool(): void {
+    this.tool?.swing('swing', 0.34);
+  }
   private updateCarry(dt: number): void {
+    if (this.tool && this.toolObj) {
+      this.toolObj.visible = !this.carryMesh && this.camv.mode === 'fp';
+      this.tool.update(dt, this.fp.speedK, this.fpc.lookDX, this.fpc.lookDY);
+    }
     const m = this.carryMesh;
     if (!m) return;
     if (this.held && this.camv.mode === 'fp') this.held.update(dt, this.fp.speedK, this.fpc.lookDX, this.fpc.lookDY);

@@ -5,7 +5,7 @@
 import { definePack, lib, THEMES } from '../../audio';
 import { MODES } from '../../audio/music/player';
 
-const { S, both, later, knock, noise, bell, tone, pop, arp, fanfare, softFail, thud, coinChime, metalClick, murmurBed, glass, mtof, whoosh, thump } = lib;
+const { S, both, later, knock, noise, bell, tone, pop, arp, fanfare, softFail, thud, coinChime, metalClick, murmurBed, glass, mtof, whoosh, thump, rocks, grains, splash, humBed, clang, swish } = lib;
 
 // música da loja: pop dançante fofinho (Lá maior, 116 bpm) — calma = loja vazia, tensão = fila, vitória = fim do dia
 if (!THEMES.pink)
@@ -137,6 +137,51 @@ const sounds = {
     knock(v, { fs: [300, 800], dur: 0.06, vol: 0.3, q: 3 });
   }, 0.4),
   combo: S((v) => arp(v, [81, 85, 88], { step: 0.04, dur: 0.18, vol: 0.14, type: 'square', lp: 3000 }), 0.35, { pitch: 0 }),
+  // marreta na parede / parede caindo
+  smash: S(both(thud(80, 0.22, 0.75), rocks(6, 0.3, 0.2)), 0.45, { max: 2 }),
+  crumble: S((v) => {
+    thump(v, { f: 60, dur: 0.9, vol: 0.8 });
+    noise(v, { kind: 'brown', dur: 1.6, vol: 0.5, ft: 'lowpass', f: 700, a: 0.02 });
+    grains(v, { n: 40, span: 1.4, dur: 0.06, vol: 0.3, f: [300, 1600], q: 2, kind: 'pink', decay: 1 });
+  }, 2, { max: 1 }),
+  // dinheiro: moeda batendo no balcão, nota (papel), gaveta do caixa
+  coinDrop: S((v) => {
+    knock(v, { fs: [3100 + v.r() * 400, 5200, 7600], dur: 0.12, vol: 0.18, q: 40 });
+    knock(v, { fs: [2900, 4800], dur: 0.08, vol: 0.1, q: 30, delay: 0.07 });
+  }, 0.2, { max: 4 }),
+  note: S((v) => noise(v, { kind: 'white', dur: 0.12, vol: 0.12, f: 3800, f2: 2400, q: 0.8, a: 0.005 }), 0.15, { max: 3 }),
+  drawer: S((v) => {
+    noise(v, { kind: 'pink', dur: 0.2, vol: 0.18, f: 900, q: 0.8 });
+    knock(v, { fs: [500, 1300], dur: 0.06, vol: 0.3, q: 6, delay: 0.17 });
+    bell(v, { f: 2637, dur: 0.6, vol: 0.12, ratio: 1.41, index: 0.4, delay: 0.2 });
+  }, 0.8),
+  // segurança e assalto
+  whistle: S((v) => tone(v, { f: 2600, f2: 2900, dur: 0.5, vol: 0.12, type: 'sine', vib: [28, 60] }), 0.6, { max: 1, cool: 0.5 }),
+  opa: S((v) => {
+    tone(v, { f: 330, f2: 520, dur: 0.12, vol: 0.2, type: 'triangle' });
+    tone(v, { f: 520, f2: 300, dur: 0.18, vol: 0.2, type: 'triangle', delay: 0.13 });
+  }, 0.4),
+  alarm: S((v) => {
+    for (let i = 0; i < 4; i++) tone(v, { f: 880, f2: 1320, dur: 0.3, vol: 0.12, type: 'triangle', delay: i * 0.32 });
+  }, 1.4, { max: 1 }),
+  // casa: chuveiro (loop), ronco, escova
+  shower: S((v) => splash(0.4)(v), 0.5, { max: 2 }),
+  snore: S((v) => {
+    noise(v, { kind: 'brown', dur: 0.9, vol: 0.25, ft: 'lowpass', f: 300, a: 0.4 });
+    tone(v, { f: 90, f2: 70, dur: 0.9, vol: 0.12, type: 'sawtooth', lp: 400, a: 0.4 });
+  }, 1, { max: 1 }),
+  brush: S((v) => noise(v, { kind: 'pink', dur: 0.18, vol: 0.12, f: 2400, q: 1.2, a: 0.04 }), 0.2, { max: 3 }),
+  // energia
+  powerDown: S((v) => {
+    tone(v, { f: 240, f2: 40, dur: 0.9, vol: 0.25, type: 'sawtooth', lp: 900 });
+    knock(v, { fs: [300, 700], dur: 0.06, vol: 0.3, q: 3 });
+  }, 1, { max: 1 }),
+  powerUp: S((v) => {
+    tone(v, { f: 50, f2: 220, dur: 0.7, vol: 0.2, type: 'sawtooth', lp: 900 });
+    clang(1200, 0.12, 0.4)(v);
+  }, 0.9, { max: 1 }),
+  swoosh: S(swish(500, 2000, 0.2, 0.25), 0.25),
+  fridgeHum: S(humBed(120, 0.12), 6, { loop: true, bus: 'amb', db: -14 }),
   chatter: S(murmurBed(0.22, 8), 8, { loop: true, stereo: true, bus: 'amb', db: -12 }),
   hum: S((v) => {
     tone(v, { f: 120, dur: 6.2, vol: 0.04, type: 'sine', a: 0.5 });

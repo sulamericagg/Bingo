@@ -3,6 +3,7 @@
  * ============================================================ */
 import type { FurnKind, Goal, StaffKind } from './data';
 import { RENOV0, type Renov } from './store3d';
+import { migrateGrow } from './grow';
 
 export type Mode = 'shop' | 'factory';
 
@@ -114,7 +115,9 @@ export function getShop(i: number): ShopSave | null {
   const d = load().shop[i]?.data ?? null;
   if (d) {
     // migração leve: campos novos
-    d.renov = { ...RENOV0, ...d.renov };
+    const r = (d.renov ?? {}) as Renov;
+    migrateGrow(r);
+    d.renov = { ...RENOV0, ...r };
     d.coupons ??= 0;
     d.nextId ??= 1000;
   }
@@ -151,11 +154,11 @@ export function newShop(): ShopSave {
     lic: [],
     furn: [],
     boxes: [],
+    // garagem abandonada: sacos de lixo para levar à lixeira
     trash: [
-      { x: -3.4, z: -2.5 },
-      { x: 2.6, z: -6 },
-      { x: -1.2, z: -9.5 },
-      { x: 3.8, z: -10.4 },
+      { x: -1.7, z: -2.4 },
+      { x: 1.6, z: -4.9 },
+      { x: -1.1, z: -5.2 },
     ],
     dirt: [],
     staff: [],

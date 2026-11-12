@@ -7,9 +7,11 @@ import { fmt, t } from '../../i18n';
 import { sfx } from '../../audio';
 import { brandCanvas, BRAND_SITE } from './brand';
 import { CAT, CATS, demand, money, PRODUCTS, PROD, seasonAt, SEASONS, unlocked, YEAR, type CatId, type Product } from './catalog';
-import { EXPANSIONS, FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, SHOP_FURN, SIGNS, STAFF, TABLET_UP, type FurnKind, type StaffKind } from './data';
+import { FIX_DOOR, FIX_WALLS, FIX_WINDOW, FLOORS, FURN, LIGHTS, PAINTS, SHOP_FURN, SIGNS, STAFF, TABLET_UP, type FurnKind, type StaffKind } from './data';
 import { ic } from './icons';
 import type { ShopSave } from './save';
+import { BUILDING_LVL, BUILDING_PRICE, nextStage, ownedStage, pendingWall, rentOf, salesArea, stagePrice } from './grow';
+import type { RenovAct } from './shop';
 import { thumbUrl } from './thumb';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -19,7 +21,7 @@ export interface TabletHost {
   price(p: Product): number;
   order(cart: Record<string, number>): boolean;
   buyFurniture(k: FurnKind): void;
-  renov(action: 'walls' | 'window' | 'door' | 'paint' | 'floor' | 'sign' | 'light' | 'exp', v?: string | number): boolean;
+  renov(action: RenovAct, v?: string | number): boolean;
   hire(k: StaffKind): boolean;
   fire(i: number): void;
   buyLicense(c: CatId): boolean;
@@ -226,9 +228,17 @@ export class Tablet {
           if (i > 0) html += this.opt('light', String(i), 'bulb', l.name, l.price, l.lvl, r.light === i, l.beauty, r.light > i);
         });
         html += `<div class="pk-sec">${ic('expand', 22)}${esc(t('pink.t.exp', 'Ampliar a loja'))}</div>`;
-        EXPANSIONS.forEach((e, i) => {
-          html += this.opt('exp', String(i + 1), 'expand', e.name, e.price, e.lvl, r.exp >= i + 1, 0, false, r.exp < i);
-        });
+        html += `<div class="pk-line">${ic('house', 30)}<span class="grow"><b>${esc(ownedStage(r).name)}</b> · ${Math.round(salesArea(r))} m²<br><small>${esc(t('pink.t.rent', 'Aluguel'))}: ${r.own ? esc(t('pink.t.noRent', 'nenhum (prédio seu!)')) : `${esc(money(rentOf(r, lv)))}/${esc(t('pink.t.dayShort', 'dia'))}`}</small></span></div>`;
+        const pw = pendingWall(r);
+        const ns = nextStage(r);
+        if (pw) html += `<div class="pk-line" style="background:#fff3c4">${ic('hammer', 30)}<span class="grow"><b>${esc(pw.name)}</b><br><small>${esc(t('pink.t.smash', 'Quebre a parede com a marreta!'))} (${r.hits}/${pw.hits})</small></span></div>`;
+        else if (ns) {
+          const pr = stagePrice(r, ns);
+          const lock = lv < ns.lvl;
+          html += `<div class="pk-line" style="${lock ? 'opacity:.55' : ''}">${ic(ns.icon, 30)}<span class="grow"><b>${esc(ns.name)}</b> · +${Math.round((ns.x1 - ns.x0) * -ns.zB - salesArea(r))} m²<br><small>${esc(t('pink.t.rent', 'Aluguel'))}: ${r.own ? '—' : `${esc(money(ns.rent + lv * 3))}/${esc(t('pink.t.dayShort', 'dia'))}`}</small></span>${lock ? `<b>★${ns.lvl}</b>` : `<button class="pk-b g" data-grow="1" ${s.money >= pr ? '' : 'disabled'}>${ic('coin', 18)}${esc(pr ? money(pr) : t('pink.t.free', 'grátis'))}</button>`}</div>`;
+        } else html += `<div class="pk-line">${ic('check', 28)}<span class="grow">${esc(t('pink.t.maxSize', 'A loja está no tamanho máximo!'))}</span></div>`;
+        // meta de longo prazo: comprar o prédio
+        html += `<div class="pk-line" style="${r.own ? 'background:#fff3c4' : lv < BUILDING_LVL ? 'opacity:.55' : ''}">${ic('key', 30)}<span class="grow"><b>${esc(t('pink.t.buyBuilding', 'Comprar o prédio'))}</b><br><small>${esc(t('pink.t.buyBuildingHelp', 'Acaba o aluguel e as salas do lado ficam de graça'))}</small></span>${r.own ? ic('check', 26) : lv < BUILDING_LVL ? `<b>★${BUILDING_LVL}</b>` : `<button class="pk-b g" data-own="1" ${s.money >= BUILDING_PRICE ? '' : 'disabled'}>${ic('coin', 18)}${esc(money(BUILDING_PRICE))}</button>`}</div>`;
         break;
       }
       case 'staff': {
@@ -413,7 +423,8 @@ export class Tablet {
     on('[data-floor]', (e) => h.renov('floor', e.dataset.floor!) && this.refresh());
     on('[data-sign]', (e) => h.renov('sign', e.dataset.sign!) && this.refresh());
     on('[data-light]', (e) => h.renov('light', +e.dataset.light!) && this.refresh());
-    on('[data-exp]', (e) => h.renov('exp', +e.dataset.exp!) && this.refresh());
+    on('[data-grow]', () => h.renov('grow') && this.refresh());
+    on('[data-own]', () => h.renov('own') && this.refresh());
     on('[data-hire]', (e) => {
       const k = e.dataset.hire as StaffKind;
       if (h.s.lvl < STAFF[k].lvl) return void sfx.play('wrong');
