@@ -979,7 +979,7 @@ export class Env3D {
     b.trees.forEach((sp, si) => {
       // perto: malha completa (lod 0) + tufos de folhas (Médio/Alto); longe: lod 1
       const seed = Math.floor(r() * 99);
-      const gN = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed, lod: 0 });
+      const gN = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed, lod: this.tier <= 0 ? 1 : 0 });
       const gF = natureTree({ kind: sp.kind, h: sp.h, trunk: sp.trunk, leaf: sp.leaf, leaf2: sp.leaf2, seed, lod: 1 });
       const near: [number, number, number, number][] = [];
       const far: [number, number, number, number][] = [];
@@ -1225,10 +1225,11 @@ export class Env3D {
           fparts.push(colored(G.box, b.fence === 'hedge' ? '#4a8a3a' : fc, mtx(mx, 0.35, mz, ry, L, 0.7, 0.4)));
         } else {
           // tábuas verticais (pontudas pela altura alternada) + 2 travessas + mourões
-          const n = Math.max(2, Math.round(L / 0.24));
+          // Mínimo: só mourões e travessas (bem menos triângulos)
+          const n = Math.max(2, Math.round(L / (this.tier <= 0 ? 1.2 : 0.24)));
           for (let k = 0; k <= n; k++) {
             const t2 = k / n;
-            const post = k % 5 === 0;
+            const post = this.tier <= 0 || k % 5 === 0;
             fparts.push(colored(G.box, b.fence === 'candy' && k % 2 ? '#ffffff' : fc, mtx(F.x0 + ux * L * t2, post ? 0.5 : 0.42 + (k % 2) * 0.04, F.z0 + uz * L * t2, ry, post ? 0.11 : 0.09, post ? 1.0 : 0.84 + (k % 2) * 0.08, post ? 0.11 : 0.035)));
           }
           for (const y of [0.3, 0.68]) fparts.push(colored(G.box, fc, mtx(mx, y, mz, ry, L, 0.07, 0.05)));

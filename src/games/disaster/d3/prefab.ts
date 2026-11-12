@@ -475,6 +475,7 @@ export class Prefab {
     this.pieces = [];
     this.houses = [];
     this.loose = [];
+    this.falling = [];
     for (const c of this.chips) c.on = false;
     for (let i = 0; i < this.chips.length; i++) this.chipIm.setMatrixAt(i, ZERO);
     this.chipIm.instanceMatrix.needsUpdate = true;
@@ -507,6 +508,8 @@ export class Prefab {
     return m;
   }
   private inst(p: Piece, m: Mesh, col: THREE.Color): void {
+    // Mínimo: sem o forro de dentro (metade das paredes a desenhar)
+    if (this.host.tier <= 0 && m.mat === this.matIn) return;
     _m.compose(_v.set(p.x, p.y, p.z), p.q, p.sc);
     m.mats.push(_m.clone());
     m.cols.push(col.clone());
