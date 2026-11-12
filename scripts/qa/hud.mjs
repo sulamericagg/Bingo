@@ -1,4 +1,4 @@
-// HUD dos jogos 3D: em 740×360, 844×390 e 915×412 nenhum controle (pular, ação, mochila, câmera...) pode
+// HUD dos jogos 3D (e da montagem do Monta & Leva): em 740×360, 844×390 e 915×412 nenhum controle (pular, ação, mochila, câmera...) pode
 // ficar em cima da barra de itens, das barras, do analógico ou de outro botão. Entra na partida de cada jogo
 // pelo caminho de botões abaixo, mexe um pouco e mede as caixas (getBoundingClientRect) de tudo que é visível.
 //   node scripts/qa/hud.mjs [id,id,...]
@@ -20,7 +20,20 @@ const ROUTES = {
   disaster: ['^3d', '^jogar'],
   desenho: [],
   studio: [],
+  montaleva: [], // entra pela API de debug (SETUP) direto na montagem
 };
+// jogos que entram por API (?debug) em vez de toques, e tamanhos extras (tablet / retrato)
+const SETUP = {
+  // tela de montagem de uma fase com metas e várias peças na bandeja (o voltar ficou em cima do excluir: .sm global)
+  montaleva: async (page) => {
+    for (let i = 0; i < 160 && !(await page.evaluate(() => !!window.__montaleva)); i++) await page.waitForTimeout(250);
+    await page.evaluate(() => window.__montaleva.openLevel(9));
+    await page.waitForTimeout(1500);
+  },
+};
+const EXTRA = { montaleva: [[1024, 768], [412, 915], [390, 844]] };
+// botões que precisam ficar inteiros dentro da tela (fora das bandejas que rolam)
+const INSIDE = { montaleva: '.ml-top button, .ml-acts button, .ml-hud, .ml-drive button' };
 const only = process.argv[2] ? process.argv[2].split(',') : null;
 
 async function tapText(page, re) {
@@ -67,18 +80,28 @@ function overlapsInPage() {
     if (!ids.includes(id) || (only && !only.includes(id))) continue;
     if (await page.$('#game-host.on')) await page.evaluate(() => window.__bloop.closeHost());
     await page.setViewportSize({ width: 412, height: 915 }); await page.waitForTimeout(400);
+    // abertura de cinema do jogo 2D já vista (senão ela cobre a montagem)
+    await page.evaluate((id) => { try { localStorage.setItem('bloop-intro-' + id, '1'); } catch { /* ok */ } }, id);
     await page.evaluate((id) => void window.__bloop.launchGame(window.__bloop.listGames().find((g) => g.id === id)), id);
     let w = 0; while (w < 40000 && (await page.$('#game-host .gh-loading'))) { await page.waitForTimeout(250); w += 250; }
     await page.waitForTimeout(1500);
     for (let k = 0; k < 40 && (await page.$('.i3-root')); k++) { if (k === 4) await page.touchscreen.tap(30, 30).catch(() => {}); await page.waitForTimeout(400); } // intro 3D por cima
     await page.waitForTimeout(1500);
     for (const re of ROUTES[id]) { if (await tapText(page, re)) await page.waitForTimeout(3500); }
-    await page.waitForTimeout(6000);
-    const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
-    await q.hold(cdp, [W * 0.14, H * 0.76], [W * 0.14, H * 0.62], 1200); // mostra o analógico
-    for (const [sw, sh] of SIZES) {
+    if (SETUP[id]) await SETUP[id](page);
+    else {
+      await page.waitForTimeout(6000);
+      const [W, H] = await page.evaluate(() => [innerWidth, innerHeight]);
+      await q.hold(cdp, [W * 0.14, H * 0.76], [W * 0.14, H * 0.62], 1200); // mostra o analógico
+    }
+    for (const [sw, sh] of SIZES.concat(EXTRA[id] || [])) {
       await page.setViewportSize({ width: sw, height: sh }); await page.waitForTimeout(1300);
       const o = await page.evaluate(overlapsInPage);
+      if (SETUP[id] && !o.items) o.pairs.push('nenhum controle na tela (não entrou na montagem?)');
+      if (INSIDE[id]) {
+        const out = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && (r.left < -1 || r.top < -1 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1); }).map((e) => '.' + String(e.className).split(' ')[0] + (e.dataset.a ? `[${e.dataset.a}]` : '')), INSIDE[id]);
+        for (const n of out) o.pairs.push(`${n} fora da tela`);
+      }
       const shot = await q.shot(page, `hud-${id}-${sw}x${sh}`);
       res.push({ id, size: `${sw}x${sh}`, ...o, shot });
       console.log(`${o.pairs.length ? '✗' : '✓'} ${id.padEnd(10)} ${sw}x${sh} itens=${o.items}${o.pairs.length ? '\n    ' + o.pairs.slice(0, 8).join('\n    ') : ''}`);

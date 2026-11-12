@@ -584,14 +584,14 @@ export class MontaLeva implements MiniGameHandle {
         const max = lv >= 2;
         const cost = max ? 0 : u.cost[lv];
         html += `<div class="ml-card"><div class="ml-ci" data-icon="${u.part}"></div><div class="ml-ct"><b>${esc(u.name())}</b><small>${esc(u.desc())}</small><div class="ml-lv">${[0, 1].map((i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</div></div>
-          <button class="ml-btn sm ${max ? 'off' : s.gears >= cost ? 'blue' : 'off'}" data-u="${u.id}">${max ? IC.check : `⚙ ${cost}`}</button></div>`;
+          <button class="ml-btn ml-sm ${max ? 'off' : s.gears >= cost ? 'blue' : 'off'}" data-u="${u.id}">${max ? IC.check : `⚙ ${cost}`}</button></div>`;
       }
       html += `</div><div class="ml-sec">${t('ml.paint', 'Pintura')}</div><div class="ml-grid2">`;
       for (const p of PALS) {
         const own = p.cost === 0 || s.palettes.includes(p.id);
         const curr = s.palette === p.id;
         html += `<div class="ml-card"><div class="ml-ci">${IC.palette}</div><div class="ml-ct"><b>${esc(p.name())}</b><div class="ml-sw" style="margin-top:6px">${p.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div></div>
-          <button class="ml-btn sm ${curr ? 'on' : own ? '' : s.gears >= p.cost ? 'blue' : 'off'}" data-p="${p.id}">${curr ? IC.check : own ? t('ml.use', 'Usar') : `⚙ ${p.cost}`}</button></div>`;
+          <button class="ml-btn ml-sm ${curr ? 'on' : own ? '' : s.gears >= p.cost ? 'blue' : 'off'}" data-p="${p.id}">${curr ? IC.check : own ? t('ml.use', 'Usar') : `⚙ ${p.cost}`}</button></div>`;
       }
       html += `</div><p style="color:#7a8596;font-size:12.5px;margin:14px 4px">${t('ml.gearsHow', 'Ganhe engrenagens entregando cargas e completando metas.')}</p></div>`;
       d.innerHTML = html;
@@ -704,8 +704,8 @@ export class MontaLeva implements MiniGameHandle {
       <div class="ml-goals" data-r="goals"></div>
       <div class="ml-sp"></div>
       <span class="ml-chip" data-r="budget" style="display:${L.budget ? '' : 'none'}"></span>
-      <button class="ml-btn ic sm round" data-a="view" aria-label="${t('ml.view', 'Ver pista')}" title="${t('ml.view', 'Ver pista')}">${IC.eye}</button>
-      <button class="ml-btn ic sm round" data-a="clear" aria-label="${t('ml.clear', 'Limpar tudo')}" title="${t('ml.clear', 'Limpar tudo')}">${IC.trash}</button>`;
+      <button class="ml-btn ic ml-sm round" data-a="view" aria-label="${t('ml.view', 'Ver pista')}" title="${t('ml.view', 'Ver pista')}">${IC.eye}</button>
+      <button class="ml-btn ic ml-sm round" data-a="clear" aria-label="${t('ml.clear', 'Limpar tudo')}" title="${t('ml.clear', 'Limpar tudo')}">${IC.trash}</button>`;
     ui.appendChild(top);
     const tray = document.createElement('div');
     tray.className = 'ml-tray ml-fade';
@@ -1632,7 +1632,7 @@ export class MontaLeva implements MiniGameHandle {
     } else {
       const left = document.createElement('div');
       left.className = 'ml-drive l ml-fade';
-      left.innerHTML = `<button class="ml-pad" data-a="back" aria-label="${t('ml.reverse', 'Ré')}">${IC.rev}</button><button class="ml-pad sm" data-a="brake" aria-label="${t('ml.brake', 'Freio')}">${IC.brake}</button>`;
+      left.innerHTML = `<button class="ml-pad" data-a="back" aria-label="${t('ml.reverse', 'Ré')}">${IC.rev}</button><button class="ml-pad ml-sm" data-a="brake" aria-label="${t('ml.brake', 'Freio')}">${IC.brake}</button>`;
       ui.appendChild(left);
       const right = document.createElement('div');
       right.className = 'ml-drive r ml-fade';

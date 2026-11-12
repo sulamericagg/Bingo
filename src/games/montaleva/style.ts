@@ -18,8 +18,8 @@ const CSS = `
 .ml-btn.blue{background:#3b6fe0;color:#fff;box-shadow:0 4px 0 #2a54b3,0 8px 18px rgba(59,111,224,.25)}
 .ml-btn.ghost{background:transparent;box-shadow:none;color:#5d6878}
 .ml-btn.ic{width:48px;padding:0}
-.ml-btn.sm{min-height:40px;font-size:13px;border-radius:12px}
-.ml-btn.sm.ic{width:40px}
+.ml-btn.ml-sm{min-height:40px;font-size:13px;border-radius:12px}
+.ml-btn.ml-sm.ic{width:40px}
 .ml-btn.on{background:#26303d;color:#fff}
 .ml-btn.round{border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 0 0 1.5px #d5dae1,0 3px 10px rgba(38,48,61,.06)}
 .ml-btn.round svg{width:22px;height:22px;stroke-width:2}
@@ -120,13 +120,16 @@ const CSS = `
 .ml-slot.empty b{background:#9aa5b5}
 .ml-slot .ml-new{position:absolute;left:4px;top:3px;width:8px;height:8px;border-radius:50%;background:#ef5d60;box-shadow:0 0 0 2px #fff}
 .ml-slot .ml-cost{position:absolute;left:4px;top:2px;font-size:10px;font-weight:700;color:#3b6fe0}
-.ml-acts{position:absolute;right:max(10px,var(--edge-r,0px));bottom:max(8px,var(--mlb,0px));display:grid;grid-template-columns:48px 48px;gap:8px;align-items:end}
+/* colunas de 56px = alvo mínimo do .tc-btn (bindButton); com 48px os botões vazavam da grade e da borda segura */
+.ml-acts{position:absolute;right:max(10px,var(--edge-r,0px));bottom:max(8px,var(--mlb,0px));display:grid;grid-template-columns:56px 56px;gap:8px;align-items:end}
+/* a bandeja de peças nunca passa por baixo dos botões de ação (2×56 + 8 de vão + 12 de folga) */
+.ml-tray{max-width:calc(100% - max(10px,var(--edge-l,0px)) - max(10px,var(--edge-r,0px)) - 132px)}
 .ml-acts .ml-test{grid-column:1/3;min-height:60px;font-size:17px;border-radius:18px}
 .ml-acts .ml-test svg{width:26px;height:26px}
 @media (orientation:portrait){
-  .ml-acts{left:max(10px,var(--edge-l,0px));grid-template-columns:repeat(4,48px) 1fr;bottom:calc(max(8px,var(--mlb,0px)) + 88px)}
+  .ml-acts{left:max(10px,var(--edge-l,0px));grid-template-columns:repeat(4,56px) 1fr;bottom:calc(max(8px,var(--mlb,0px)) + 88px)}
   .ml-acts .ml-test{grid-column:auto;min-height:48px;border-radius:14px}
-  .ml-tray{right:max(10px,var(--edge-r,0px))}
+  .ml-tray{right:max(10px,var(--edge-r,0px));max-width:none}
   .ml-goals{display:none}
 }
 .ml-info{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:12px;background:#26303d;color:#fff;font-size:12.5px;max-width:min(520px,80vw);box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none;transition:opacity .15s}
@@ -148,8 +151,8 @@ const CSS = `
 .ml-pad svg{width:36px;height:36px}
 .ml-pad.go{width:92px;height:92px;background:#2fbf8f;color:#fff;box-shadow:0 5px 0 #1f9a71,0 10px 26px rgba(47,191,143,.35)}
 .ml-pad.go svg{width:42px;height:42px}
-.ml-pad.sm{width:64px;height:64px}
-.ml-pad.sm svg{width:28px;height:28px}
+.ml-pad.ml-sm{width:64px;height:64px}
+.ml-pad.ml-sm svg{width:28px;height:28px}
 .ml-pad.jet{background:#ff7a59;color:#fff;box-shadow:0 4px 0 #c94a2b}
 .ml-pad.tc-pressed{filter:brightness(.92)}
 .ml-bpads{position:absolute;left:0;right:0;bottom:max(14px,var(--mlb,0px));display:flex;justify-content:space-between;align-items:flex-end;padding:0 max(16px,var(--edge-r,0px)) 0 max(16px,var(--edge-l,0px));pointer-events:none}
@@ -158,14 +161,14 @@ const CSS = `
 .ml-bpad i{width:60px;height:60px;border-radius:50%;background:var(--cap);box-shadow:inset 0 -6px 0 rgba(0,0,0,.2),inset 0 5px 0 rgba(255,255,255,.3),0 3px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;transition:transform .06s}
 .ml-bpad i svg{width:28px;height:28px}
 .ml-bpad.tc-pressed i,.ml-bpad.on i{transform:translateY(3px) scale(.95);box-shadow:inset 0 -2px 0 rgba(0,0,0,.2),inset 0 3px 0 rgba(255,255,255,.25)}
-.ml-bpad.sm{width:70px;height:70px;border-radius:18px}
-.ml-bpad.sm i{width:48px;height:48px}
+.ml-bpad.ml-sm{width:70px;height:70px;border-radius:18px}
+.ml-bpad.ml-sm i{width:48px;height:48px}
 @media (max-height:420px){.ml-bpad{width:74px;height:74px}.ml-bpad i{width:52px;height:52px}}
 .ml-fuel{position:absolute;left:8px;right:8px;bottom:8px;height:5px;border-radius:3px;background:rgba(255,255,255,.4);overflow:hidden;pointer-events:none}
 .ml-fuel i{display:block;height:100%;background:#fff;border-radius:3px}
 /* ---------- resultado ---------- */
-.ml-ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(243,245,248,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-.ml-res{width:min(400px,92vw);max-height:94%;overflow:auto;background:#fff;border-radius:26px;padding:18px 20px 16px;box-shadow:0 20px 60px rgba(38,48,61,.22);animation:mlPop .32s ease-out both;text-align:center}
+.ml-ov{position:absolute;inset:0;box-sizing:border-box;padding:max(6px,var(--edge-t,0px)) max(8px,var(--edge-r,0px)) max(6px,var(--mlb,0px)) max(8px,var(--edge-l,0px));display:flex;align-items:center;justify-content:center;background:rgba(243,245,248,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.ml-res{width:min(400px,100%);max-height:100%;box-sizing:border-box;overflow:auto;background:#fff;border-radius:26px;padding:18px 20px 16px;box-shadow:0 20px 60px rgba(38,48,61,.22);animation:mlPop .32s ease-out both;text-align:center}
 .ml-res h2{margin:0;font-size:26px}
 .ml-res .ml-big{display:flex;justify-content:center;gap:10px;margin:8px 0 6px}
 .ml-res .ml-big i{width:46px;height:46px;clip-path:polygon(50% 0,63% 35%,100% 38%,71% 61%,80% 100%,50% 79%,20% 100%,29% 61%,0 38%,37% 35%);background:#e3e7ee}
