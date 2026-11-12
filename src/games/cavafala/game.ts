@@ -142,7 +142,7 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
         p.cards([
           { id: 'restore', icon: icon('home', { size: 56 }), label: t('cavafala.mode.restore', 'Restaurar a Vila'), say: t('cavafala.mode.restoreD', 'Desenterre uma vilinha soterrada e devolva a alegria aos moradores antes do anoitecer.'), color: '#7ee08a', sel: menuMode === 'restore', onTap: () => ((menuMode = 'restore'), p.refresh()) },
           { id: 'arena', icon: icon('trophy', { size: 56 }), label: t('cavafala.mode.arenaS', 'Arena'), say: t('cavafala.mode.arenaD', 'Ilha flutuante que encolhe! Empurre os rivais com espuma, bolhas e ventiladores.'), color: '#ffa86a', sel: menuMode === 'arena', onTap: () => ((menuMode = 'arena'), p.refresh()) },
-        ]);
+        ], { size: 'wide', cols: 2 });
         if (menuMode === 'restore') {
           p.cards(
             THEMES.map((th) => {

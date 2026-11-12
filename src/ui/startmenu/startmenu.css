@@ -186,7 +186,7 @@
 
 }
 @media (orientation:landscape) and (max-height:560px){
-.sm .sm-ui{display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,50%);grid-template-rows:auto minmax(0,1fr);gap:4px 14px;padding-bottom:calc(var(--safe-bot,0px) + 8px)}
+.sm .sm-ui{display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,50%);grid-template-rows:auto minmax(0,1fr);gap:4px 14px;padding-bottom:calc(var(--safe-bot,0px) + 12px)}
 .sm .sm-top{grid-column:1/-1;min-height:44px}
 .sm .sm-icb{width:44px;height:44px}
 .sm .sm-ttl b{font-size:26px}
@@ -215,7 +215,7 @@
 .sm .sm-cards.sm-scroll{grid-auto-columns:calc((100% - 18px) / 3.4)}
 
 }
-@media (orientation:landscape) and (max-height:380px){
+@media (orientation:landscape) and (max-height:430px){
 .sm .sm-art{aspect-ratio:2/1}
 .sm .sm-art>svg{width:40%}
 .sm .sm-face b{font-size:11px}

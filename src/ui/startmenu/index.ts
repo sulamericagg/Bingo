@@ -440,7 +440,12 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
         host.appendChild(box);
         if (o.scroll) {
           const s = box.querySelector('.sel') as HTMLElement | null;
-          if (s) requestAnimationFrame(() => (box.scrollLeft = s.offsetLeft - (box.clientWidth - s.offsetWidth) / 2));
+          if (s)
+            requestAnimationFrame(() => {
+              const br = box.getBoundingClientRect();
+              const sr = s.getBoundingClientRect();
+              box.scrollLeft += sr.left + sr.width / 2 - (br.left + br.width / 2);
+            });
         }
         return box;
       },
