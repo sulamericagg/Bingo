@@ -140,8 +140,9 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           },
         );
         const has = !!list[cur]?.data;
-        if (has) p.play({ label: t('pink.cont', 'Continuar'), sub: mode === 'shop' ? t('pink.mode.shop', 'Minha Loja') : t('pink.mode.factory', 'Fábrica'), tone: 'green', onTap: () => void start(cur, false) });
-        else p.play({ sub: mode === 'shop' ? t('pink.newShop', 'Nova loja') : t('pink.newFactory', 'Nova fábrica'), onTap: () => void start(cur, true) });
+        const d = list[cur]?.data as (ShopSave & FactorySave) | null;
+        if (has && d) p.play({ label: t('pink.cont', 'Continuar'), sub: `${t('pink.dayShort', 'Dia {n}', { n: d.day })} · ★${d.lvl}`, tone: 'green', onTap: () => void start(cur, false) });
+        else p.play({ say: mode === 'shop' ? t('pink.newShop', 'Nova loja') : t('pink.newFactory', 'Nova fábrica'), onTap: () => void start(cur, true) });
       },
     });
     menuEl = sm.el;
