@@ -2047,6 +2047,7 @@ export class Shop implements TabletHost {
     if (lock !== this.lastLock) {
       this.lastLock = lock;
       e.input.show(!lock);
+      this.hud.modal(lock);
     }
     if (this.hud.hasBubble('me')) {
       const sc = e.toScreen(e.fp.x - Math.sin(e.fpc.yaw) * 1.2, 1.5, e.fp.z - Math.cos(e.fpc.yaw) * 1.2);
@@ -2123,6 +2124,8 @@ export class Shop implements TabletHost {
   setPaused(p: boolean): void {
     this.e.paused = p;
     this.e.input.show(!p);
+    this.hud.modal(p);
+    this.lastLock = p;
   }
 
   /* =============================== testes =============================== */

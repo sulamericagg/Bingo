@@ -302,6 +302,10 @@ export class Hud {
     this.overlay?.remove();
     this.overlay = null;
   }
+  /** painel por cima (tablet, caixa, menus): esconde botões de jogo */
+  modal(on: boolean): void {
+    this.el.classList.toggle('modal', on);
+  }
   show(on: boolean): void {
     this.el.style.visibility = on ? '' : 'hidden';
   }

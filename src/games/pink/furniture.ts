@@ -52,6 +52,39 @@ function screenCanvas(kind: 'pos' | 'self'): HTMLCanvasElement {
   }
   return c;
 }
+function posterCanvas(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 320;
+  const x = c.getContext('2d')!;
+  const g = x.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#ffd3e6');
+  g.addColorStop(1, '#ff8cc0');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 256, 320);
+  // "foto" de produtos: frascos estilizados
+  const cols = ['#ffffff', '#ffe6f0', '#f2b45a', '#c3a6ff'];
+  for (let i = 0; i < 4; i++) {
+    const px = 40 + i * 50;
+    const h = 90 + (i % 2) * 40;
+    x.fillStyle = 'rgba(0,0,0,.12)';
+    x.beginPath();
+    x.ellipse(px + 16, 262, 22, 6, 0, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = cols[i];
+    x.beginPath();
+    x.roundRect(px, 260 - h, 32, h, 10);
+    x.fill();
+    x.fillStyle = '#d6ad6a';
+    x.fillRect(px + 8, 248 - h, 16, 14);
+  }
+  x.fillStyle = 'rgba(255,255,255,.9)';
+  x.beginPath();
+  x.roundRect(16, 18, 224, 70, 18);
+  x.fill();
+  drawBrandLogo(x, 128, 53, 40);
+  return c;
+}
 function rugCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -129,6 +162,7 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
       shelfUnit(true);
       break;
     case 'gondola': {
+      const W = 1.2; // corpo; a pegada (1,45) inclui as prateleiras das cabeceiras
       // coluna central + prateleiras dos dois lados + cabeceiras arredondadas
       b.add(rbox(W - 0.06, H, 0.05, 0.012, 2), lacPink, 0, H / 2, 0);
       for (const sx of [-1, 1]) b.add(rbox(0.05, H, D, 0.022, 3), lac, sx * (W / 2 - 0.025), H / 2, 0);
@@ -141,6 +175,13 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
       const hm = kit.canvasMat('shelfHead', headerCanvas(), { emissive: 0.15 });
       b.add(new THREE.BoxGeometry(W - 0.2, 0.18, 0.02), hm, 0, H + 0.16, 0);
       b.add(rbox(0.04, 0.12, 0.04, 0.01, 1), chrome, 0, H + 0.05, 0);
+      // cabeceiras: pôster da marca + mini prateleira de acrílico com borda de preço
+      const pm = kit.canvasMat('gondPoster', posterCanvas(), { rough: 0.4, emissive: 0.12 });
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.PlaneGeometry(D - 0.12, 0.95), pm, sx * (W / 2 + 0.002), 0.82, 0, 0, sx * (Math.PI / 2), 0);
+        b.add(rbox(0.16, 0.02, D - 0.14, 0.006, 1), glassShelf, sx * (W / 2 + 0.08), 0.32, 0);
+        b.add(rbox(0.012, 0.035, D - 0.14, 0.004, 1), kit.plain('price', '#ffffff', 0.4), sx * (W / 2 + 0.16), 0.335, 0);
+      }
       break;
     }
     case 'table': {

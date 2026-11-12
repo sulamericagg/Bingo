@@ -17,7 +17,7 @@ precisa ser fácil de usar).
   `src/games/pink/brand.ts` — trocar o nome lá troca no jogo inteiro (placa, site, caixas, sacolas, abertura).
 - Nada imita marca, logo, pessoa, embalagem ou nome de produto reais. Categorias são genéricas
   (perfume/body splash, maquiagem, unhas, skincare, cabelo, suplementos, acessórios, kits presente).
-- 132 produtos inventados em `catalog.ts` (nome próprio fictício, nível, custo, preço de mercado,
+- 128 produtos inventados em `catalog.ts` (nome próprio fictício, nível, custo, preço de mercado,
   sazonalidade e curva de popularidade). Nomes de produto são nomes próprios (não traduzidos, como as
   músicas da Bloop Banda); categorias, telas e falas passam por `t()`.
 
@@ -149,7 +149,7 @@ dinheiro, dia/relógio, nível, câmera, tablet. Nada embaixo de `var(--safe-bot
 |---|---|
 | `register.ts` | registro no hub + vitrine 2D |
 | `brand.ts` | NOME e LOGO da marca (um lugar só) |
-| `catalog.ts` | 132 produtos, categorias, estações, popularidade |
+| `catalog.ts` | 128 produtos, categorias, estações, popularidade |
 | `data.ts` | móveis, cores, pisos, placas, equipe, licenças, níveis, metas |
 | `save.ts` | 3 espaços por modo em `localStorage['bw-pink']` |
 | `tex.ts`, `mats.ts`, `shapes.ts` | texturas procedurais, materiais, geometrias (garrafas, caixas arredondadas) |
@@ -164,6 +164,33 @@ dinheiro, dia/relógio, nível, câmera, tablet. Nada embaixo de `var(--safe-bot
 | `audio.ts` | pacote de sons + música da loja |
 | `intro/cinematic.ts` | abertura |
 
-## Falta / próximos passos
+## Estado (entrega wip/pink)
 
-Ver o fim deste arquivo (atualizado a cada entrega).
+Feito:
+- **Minha Loja** completa: rua + prédio quebrado → reforma por partes (paredes/teto/toldo, vitrines, porta, 10 cores,
+  5 pisos, 5 placas, 4 iluminações, 2 expansões), 19 móveis/decoração/provadores colocados em grade com fantasma
+  verde/vermelho (girar, mover), tablet-site com 9 abas (pedidos, móveis, reforma, equipe, preços, relatórios com
+  gráfico e tendência de estação, licenças, coleção, upgrades) e "deu BO" (lento, servidor fora do ar, produto
+  errado → cupom), caminhão nos fundos com porta de enrolar e caixas com física, carregar/abrir/repor (cada toque um
+  produto voando para a vaga, segurar repete), tirar produto, devolver soltos, lixeira de caixas, sacos de lixo do
+  início, tropeçar correndo com caixa (produtos voam, vidro quebra → cacos + poça), sujeira por pegadas, esfregão,
+  clientes Bloop (desejos por procura/estação, provadores, preço vs mercado, fila, paciência, falas com ícone),
+  caixa manual (bip, cartão, troco com notas/moedas), caixa com leitor, autoatendimento, equipe (faxineira, caixa,
+  repositora, robôs), dia 8h–20h, resumo do dia, aluguel/salários, metas diárias, combo, XP/níveis até 100,
+  licenças, coleção, tutorial em 6 passos, moedas do app por dia, 3 saves.
+- **Fábrica** jogável: bilhetes, cesta, mesa de embalagem (montar → colocar → fita), caixa pronta com física,
+  rampa e baú do caminhão (sobe andando, empilha), despachar e receber, frota (3), esteira, 2ª doca, embaladora,
+  robô separador, carregador automático; chão sujo faz escorregar e derrubar.
+- Abertura de cinema em todo save novo (pulável; não toca em navegador automatizado sem `?intro=1`).
+- Sons e música próprios (`audio.ts`), 11 idiomas, rota no QA de HUD, `?debug` → `window.__pink` / `__pinkF` /
+  `__pinkGame` (inclui `sim(seg)` para testes em GPU por software).
+
+Falta / próximos passos:
+- "Com amigos" (src/party) não foi feito: precisa sincronizar o estado da loja (móveis, vagas, clientes) pelo líder.
+- Mercadinho: só o cartão "em breve" (o motor — catálogo/tablet/carregar/limpeza/equipe — já serve).
+- Fábrica: sem resumo de dia/metas próprias; produtos das estantes são estoque infinito (sem pedido ao fornecedor);
+  robôs não desviam de tudo; esteira é reta.
+- Loja: expansões abrem a área mas a parte nova ainda usa a mesma iluminação; repositora não abre caixas fechadas
+  visualmente (pega a caixa e repõe); clientes não carregam sacolinha visível.
+- Medir FPS em tablet real (no Playwright com GPU por software fica ~6 fps; o nível de qualidade baixa DPR,
+  antialias, sombras e luzes pontuais).

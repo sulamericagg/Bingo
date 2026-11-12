@@ -12,7 +12,7 @@ import { t } from '../../../i18n';
 import { gameFont } from '../../../i18n/font';
 import { detectInitialTier } from '../../../core/quality';
 import { Cine, clamp, ease, easeBack, easeOut, lerp, registerTheme, seg, TAU, Track3 } from '../../../3d/cine';
-import { mySpec, PaperChar } from '../../../3d/paper';
+import { mySpec, npcSpec, PaperChar } from '../../../3d/paper';
 import { MODES } from '../../../audio/music/player';
 import { BRAND_NAME, BRAND_SITE, drawBrandLogo, PINK } from '../brand';
 import { PRODUCTS } from '../catalog';
@@ -273,9 +273,6 @@ function buildHome(kit: Kit): { g: THREE.Group; lid: THREE.Group; screen: THREE.
   hx.fillText('♥', 64, 100);
   b.add(rbox(0.5, 0.5, 0.03, 0.01, 1), kit.plain('picFrame', '#d6ad6a', 0.3, 1), -1.6, 1.8, -2.08);
   b.add(new THREE.PlaneGeometry(0.42, 0.42), kit.canvasMat('heartPic', heart), -1.6, 1.8, -2.06);
-  // cadeira
-  b.add(rbox(0.45, 0.06, 0.45, 0.03, 2), kit.surf('chairFab', 'fabric', { color: '#ffb3d1' }), 0, 0.46, -0.95);
-  b.add(rbox(0.45, 0.5, 0.06, 0.03, 2), kit.surf('chairFab', 'fabric', { color: '#ffb3d1' }), 0, 0.75, -0.72);
   g.add(b.build());
   const plant = buildFurniture(kit, 'plant').group;
   plant.position.set(-2.4, 0, -1.6);
@@ -388,7 +385,7 @@ export async function playIntro(root: HTMLElement): Promise<void> {
   const bloop = new PaperChar(mySpec(), { radius: 0.42, cell: 128, shadow: true });
   street.add(bloop.root);
   const extras: PaperChar[] = [];
-  const npc = await import('../../../3d/paper').then((m) => m.npcSpec);
+  const npc = npcSpec;
   for (const [col, x, z] of [['#c3a6ff', -2.0, -3.4], ['#8fdcff', 1.6, -3.6], ['#ffd34a', 3.1, 2.2]] as [string, number, number][]) {
     const ch = new PaperChar(npc(col, '#ffffff', { head: 'h_bow' as never }), { radius: 0.38, cell: 96, shadow: true });
     ch.root.position.set(x, 0, z);
@@ -420,20 +417,21 @@ export async function playIntro(root: HTMLElement): Promise<void> {
   const camT1 = new Track3([
     [0, -8.5, 1.0, 7.4],
     [T_STOP, -2.8, 1.25, 6.4],
-    [T_THINK + 1, 0.9, 1.45, 5.6],
-    [T_HOME, 0.6, 1.9, 4.1],
+    [T_THINK + 1, 1.0, 1.6, 7.6],
+    [T_HOME, 0.6, 1.9, 7.0],
   ]);
   const lookT1 = new Track3([
     [0, -6, 0.6, 2.4],
     [T_STOP, -0.6, 1.0, 1.6],
-    [T_THINK + 1, 0, 2.6, -0.5],
-    [T_HOME, 0, 3.4, -1],
+    [T_THINK + 1, 0, 2.7, -0.5],
+    [T_HOME, 0, 3.1, -1],
   ]);
   const camT2 = new Track3([
-    [T_HOME, 60.9, 1.55, 0.55],
-    [T_SITE, 60.45, 1.3, -0.45],
-    [T_STAMP, 60.2, 1.18, -0.95],
-    [T_DARK, 60.9, 1.55, 0.6],
+    [T_HOME, 61.5, 1.55, 1.3],
+    [T_SITE, 60.95, 1.35, 0.4],
+    [T_CLICK, 60.5, 1.2, -0.55],
+    [T_STAMP, 60.95, 1.35, 0.45],
+    [T_DARK, 61.4, 1.5, 1.2],
   ]);
   const camT3 = new Track3([
     [T_SHOP, 1.6, 1.1, 9.5],
@@ -500,7 +498,9 @@ export async function playIntro(root: HTMLElement): Promise<void> {
       home.screen.needsUpdate = true;
       camT2.at(tt, v);
       cam.position.copy(v);
-      cam.lookAt(60, 1.0, -1.72);
+      // olha o Bloop + notebook juntos; no clique chega perto da tela; no carimbo abre de novo
+      const kz = ease(seg(tt, T_SITE, T_CLICK)) * (1 - ease(seg(tt, T_STAMP - 0.4, T_STAMP + 0.6)));
+      cam.lookAt(lerp(59.8, 60, kz), lerp(0.8, 0.98, kz), lerp(-1.35, -1.72, kz));
       // o Bloop sentado olhando o notebook (de costas para a câmera); pula no carimbo
       const jump = tt > T_STAMP ? Math.abs(Math.sin((tt - T_STAMP) * 6)) * 0.25 : 0;
       bloop.root.position.set(59.45, jump, -1.05);
@@ -551,5 +551,13 @@ export async function playIntro(root: HTMLElement): Promise<void> {
   };
   void TAU;
   void rbox;
+  // pré-compila os shaders (sem tela preta longa no 1º quadro)
+  try {
+    home.g.visible = true;
+    r.compile(scene, cam);
+    home.g.visible = false;
+  } catch {
+    /* */
+  }
   await c.play();
 }

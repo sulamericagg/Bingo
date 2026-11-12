@@ -57,6 +57,7 @@ const CSS = `
 .pk-rot{right:calc(var(--sr) + 100px);bottom:calc(var(--sb) + 92px);width:54px;height:54px;background:rgba(255,255,255,.4)}
 .pk-cancel{right:calc(var(--sr) + 96px);bottom:calc(var(--sb) + 22px);width:56px;height:56px;background:rgba(232,51,111,.6)}
 .pk-hud [hidden]{display:none!important}
+.pk-hud.modal .pk-btn,.pk-hud.modal .pk-bot,.pk-hud.modal .pk-ret,.pk-hud.modal .pk-hint,.pk-hud.modal .pk-gbtn,.pk-hud.modal .pk-goal{visibility:hidden}
 .pk-bubbles{position:absolute;inset:0;overflow:hidden}
 .pk-bub{position:absolute;transform:translate(-50%,-100%);background:#fff;border-radius:14px;padding:3px 8px 3px 4px;display:flex;align-items:center;gap:4px;font-weight:700;font-size:13px;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.25);animation:pkPop .25s;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
 .pk-bub:after{content:'';position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#fff;border-bottom:0}

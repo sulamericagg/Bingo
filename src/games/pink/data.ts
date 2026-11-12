@@ -88,7 +88,7 @@ export interface FurnDef {
 }
 export const FURN: Record<FurnKind, FurnDef> = {
   shelf: { kind: 'shelf', get name() { return t('pink.f.shelf', 'Prateleira'); }, price: 220, lvl: 1, w: 1.2, d: 0.46, h: 1.75, beauty: 1, group: 'shelf', icon: 'shelf' },
-  gondola: { kind: 'gondola', get name() { return t('pink.f.gondola', 'Gôndola dupla'); }, price: 480, lvl: 6, w: 1.2, d: 0.9, h: 1.35, beauty: 2, group: 'shelf', icon: 'gondola' },
+  gondola: { kind: 'gondola', get name() { return t('pink.f.gondola', 'Gôndola dupla'); }, price: 480, lvl: 6, w: 1.45, d: 0.9, h: 1.35, beauty: 2, group: 'shelf', icon: 'gondola' },
   shelfLux: { kind: 'shelfLux', get name() { return t('pink.f.shelfLux', 'Estante iluminada'); }, price: 900, lvl: 8, w: 1.2, d: 0.46, h: 2.0, beauty: 6, group: 'shelf', icon: 'shelfLux' },
   table: { kind: 'table', get name() { return t('pink.f.table', 'Mesa expositora'); }, price: 260, lvl: 3, w: 1.4, d: 0.75, h: 0.82, beauty: 3, group: 'shelf', icon: 'table' },
   tableRound: { kind: 'tableRound', get name() { return t('pink.f.tableRound', 'Ilha redonda'); }, price: 640, lvl: 14, w: 1.3, d: 1.3, h: 0.9, beauty: 6, group: 'shelf', icon: 'tableRound' },

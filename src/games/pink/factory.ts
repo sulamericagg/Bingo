@@ -57,6 +57,25 @@ interface Rack {
 }
 type PackStage = 'none' | 'folded' | 'filled' | 'taped';
 
+function brandCartonCanvas(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 96;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#c99a62';
+  x.fillRect(0, 0, 128, 96);
+  for (let i = 0; i < 800; i++) {
+    x.fillStyle = `rgba(90,60,30,${Math.random() * 0.08})`;
+    x.fillRect(Math.random() * 128, Math.random() * 96, 2, 2);
+  }
+  x.globalAlpha = 0.8;
+  x.drawImage(brandCanvas(120, 40), 4, 26);
+  x.globalAlpha = 1;
+  x.fillStyle = 'rgba(214,200,170,.9)';
+  x.fillRect(56, 0, 16, 96);
+  return c;
+}
+
 export interface FactoryOpts {
   root: HTMLElement;
   tier: Tier;
@@ -94,6 +113,7 @@ export class Factory {
   private combo = 0;
   private comboT = 0;
   private destroyed = false;
+  private lastLock = false;
 
   constructor(private o: FactoryOpts) {
     this.s = o.save;
@@ -222,6 +242,57 @@ export class Factory {
     wallBox(X1 + 0.2, -10.4, X1 + 14, -10.2, brick, 2.5);
     wallBox(X1 + 0.2, 2.2, X1 + 14, 2.4, brick, 2.5);
     wallBox(X1 + 13.8, -10.2, X1 + 14, 2.2, brick, 2.5);
+    // porta de enrolar da doca (enrolada em cima) + trilhos; outra porta fechada na frente
+    const shut = k.surf('fShutter', 'shutter', { rough: 1, envK: 0.6, metal: 0.4 });
+    b.add(new THREE.CylinderGeometry(0.28, 0.28, DOCK_Z[1] - DOCK_Z[0] + 0.2, 20).rotateX(Math.PI / 2), shut, X1 - 0.25, 3.45, (DOCK_Z[0] + DOCK_Z[1]) / 2);
+    for (const z of DOCK_Z) b.add(rbox(0.1, 3.2, 0.12, 0.02, 1), metal, X1 - 0.1, 1.6, z);
+    b.add(new THREE.BoxGeometry(4, 3.4, 0.08), shut, 4, 1.7, Z1 - 0.06);
+    b.add(rbox(4.2, 0.25, 0.25, 0.03, 1), metal, 4, 3.5, Z1 - 0.15);
+    // faixa zebrada amarela/preta perto da doca
+    const zeb = document.createElement('canvas');
+    zeb.width = 256;
+    zeb.height = 64;
+    const zx = zeb.getContext('2d')!;
+    zx.fillStyle = '#f2c21a';
+    zx.fillRect(0, 0, 256, 64);
+    zx.fillStyle = '#26222a';
+    for (let i = -2; i < 12; i++) {
+      zx.beginPath();
+      zx.moveTo(i * 32, 64);
+      zx.lineTo(i * 32 + 16, 64);
+      zx.lineTo(i * 32 + 48, 0);
+      zx.lineTo(i * 32 + 32, 0);
+      zx.fill();
+    }
+    b.add(new THREE.PlaneGeometry(3.6, 0.5).rotateX(-Math.PI / 2).rotateY(Math.PI / 2), k.canvasMat('zebra', zeb, { rough: 0.8 }), X1 - 0.5, 0.005, (DOCK_Z[0] + DOCK_Z[1]) / 2);
+    // porta-paletes com estoque (lado direito do fundo)
+    const upr = k.plain('rackBlue', '#2f5fa8', 0.45, 0.5);
+    const beam = k.plain('rackOrange', '#f07a1a', 0.45, 0.4);
+    const pal = k.surf('pallet', 'wood', { rough: 1, color: '#c8a070' });
+    const card = k.canvasMat('fCarton', brandCartonCanvas(), { rough: 0.95 });
+    const cardTop = k.surf('cardFlat', 'cardboard', { rough: 1 });
+    for (let bay = 0; bay < 3; bay++) {
+      const cx = 2.4 + bay * 2.5;
+      for (const dx of [-1.2, 1.2]) for (const dz of [-0.5, 0.5]) b.add(new THREE.BoxGeometry(0.08, 3.6, 0.08), upr, cx + dx, 1.8, Z0 + 0.75 + dz);
+      for (const y of [0.15, 1.35, 2.55]) {
+        for (const dz of [-0.5, 0.5]) b.add(new THREE.BoxGeometry(2.4, 0.12, 0.06), beam, cx, y + 0.06, Z0 + 0.75 + dz);
+        for (const px of [-0.6, 0.6]) {
+          b.add(new THREE.BoxGeometry(1.0, 0.12, 1.0), pal, cx + px, y + 0.18, Z0 + 0.75);
+          const n = 2 + ((bay + Math.round(y)) % 3);
+          for (let i = 0; i < n; i++) {
+            const hh = 0.32;
+            const bx = new THREE.BoxGeometry(0.45, hh, 0.42);
+            const mats = [card, card, cardTop, cardTop, card, card];
+            const m = new THREE.Mesh(bx, mats);
+            m.position.set(cx + px + (i % 2 ? 0.24 : -0.24), y + 0.24 + hh / 2 + Math.floor(i / 2) * hh, Z0 + 0.75 + (i % 3 === 2 ? 0.2 : -0.05));
+            m.rotation.y = ((i * 37) % 5) * 0.03;
+            m.castShadow = this.e.tier >= 3;
+            e.scene.add(m);
+          }
+        }
+      }
+      this.colliders.push({ x0: cx - 1.25, z0: Z0, x1: cx + 1.25, z1: Z0 + 1.3 });
+    }
     e.scene.add(b.build({ receive: true }));
     e.scene.background = new THREE.Color('#cfe6ff');
     e.hemi.intensity = 0.45;
@@ -316,6 +387,14 @@ export class Factory {
     b.add(new THREE.BoxGeometry(0.08, 2.3, BED.z1 - BED.z0 + 0.25), white, BED.x1 + 0.04, BED.y + 1.15, -4);
     b.add(new THREE.PlaneGeometry(L * 0.8, 0.9), k.canvasMat('fTruckLogo', brandCanvas(800, 200)), cx, BED.y + 1.3, BED.z0 - 0.125, 0, Math.PI, 0);
     b.add(new THREE.PlaneGeometry(L * 0.8, 0.9), k.canvasMat('fTruckLogo', brandCanvas(800, 200)), cx, BED.y + 1.3, BED.z1 + 0.125);
+    // nervuras de alumínio e trilhos de amarração dentro do baú, luz no teto, logo na parede da frente
+    const alu = k.plain('fTruckAlu', '#c9ced6', 0.3, 0.8, { envK: 1.2 });
+    for (let x = BED.x0 + 0.3; x < BED.x1; x += 0.6) for (const z of [BED.z0 - 0.03, BED.z1 + 0.03]) b.add(new THREE.BoxGeometry(0.05, 2.2, 0.03), alu, x, BED.y + 1.12, z);
+    for (const y of [0.6, 1.5]) for (const z of [BED.z0 - 0.02, BED.z1 + 0.02]) b.add(new THREE.BoxGeometry(L, 0.06, 0.03), dark, cx, BED.y + y, z);
+    b.add(rbox(1.2, 0.04, 0.2, 0.01, 1), k.plain('fTruckLight', '#ffffff', 0.4, 0, { emissive: '#fff6e8', ei: 1.4 }), cx, BED.y + 2.24, -4);
+    b.add(new THREE.PlaneGeometry(1.8, 0.45), k.canvasMat('fTruckLogo', brandCanvas(800, 200)), BED.x1 - 0.005, BED.y + 1.6, -4, 0, -Math.PI / 2, 0);
+    // portas traseiras abertas encostadas nas laterais
+    for (const z of [BED.z0 - 0.15, BED.z1 + 0.15]) b.add(new THREE.BoxGeometry(0.05, 2.3, 1.05), white, BED.x0 - 0.05, BED.y + 1.15, z + (z < -4 ? -0.52 : 0.52));
     // cabine
     b.add(rbox(1.7, 1.9, 2.3, 0.25, 3), pink, BED.x1 + 1.0, 1.3, -4);
     b.add(rbox(0.05, 0.8, 2.0, 0.1, 2), k.glass('fTruckGlass', '#304050', 0.85), BED.x1 + 1.86, 1.7, -4);
@@ -852,6 +931,11 @@ export class Factory {
   private frame(dt: number): void {
     const e = this.e;
     const lock = !!this.hud.overlay;
+    if (lock !== this.lastLock) {
+      this.lastLock = lock;
+      e.input.show(!lock);
+      this.hud.modal(lock);
+    }
     const d = e.dirtAt(e.fp.x, e.fp.z);
     const wet = d && (d.k === 'spill' || d.k === 'glass');
     e.movePlayer(dt, lock, wet ? 1 : 0);
@@ -976,6 +1060,8 @@ export class Factory {
   setPaused(p: boolean): void {
     this.e.paused = p;
     this.e.input.show(!p);
+    this.hud.modal(p);
+    this.lastLock = p;
   }
   private debugApi(): Record<string, unknown> {
     return {

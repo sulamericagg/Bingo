@@ -11,6 +11,9 @@ import { brandCanvas, drawBrandLogo, PINK } from './brand';
 import { PAINTS, type FloorId, type SignId } from './data';
 import type { Kit } from './mats';
 import { Builder, rbox } from './shapes';
+import { buildFurniture } from './furniture';
+import { productMesh } from './products';
+import { PRODUCTS } from './catalog';
 
 export const LAY = {
   x0: -5,
@@ -588,11 +591,98 @@ export class Store3D {
     this.doorL.position.set(-D / 2, 0, 0.04);
     this.doorR.position.set(D / 2, 0, 0.04);
     this.facade.add(this.doorL, this.doorR);
-    // toldo (lona curva) — reformado: rosa; quebrado: rasgado e desbotado
-    const awn = new THREE.CylinderGeometry(0.9, 0.9, 9.6, 24, 1, true, 0, Math.PI / 2);
-    awn.rotateZ(Math.PI / 2);
-    b.add(awn, k.plain('awning' + (r.walls ? 1 : 0), r.walls ? '#ff9ac4' : '#b9a8a0', 0.85, 0, { side: THREE.DoubleSide }), 0, 2.95, 0.15, 0, 0, 0);
-    if (r.walls) for (let i = 0; i < 12; i++) b.add(new THREE.BoxGeometry(0.4, 0.12, 0.01), k.plain('awnStripe', '#ffffff', 0.85), -4.4 + i * 0.8, 2.98, 1.05);
+    // toldo: lona listrada curvinha + bambinela recortada em ondas (reformado); desbotado e rasgado (quebrado)
+    {
+      const ag = new THREE.PlaneGeometry(9.6, 1.25, 1, 8);
+      const p = ag.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const v = (p.getY(i) + 0.625) / 1.25; // 0 = parede, 1 = ponta
+        p.setXYZ(i, p.getX(i), 3.22 - v * 0.42 - Math.sin(v * Math.PI) * 0.06, 0.12 + v * 1.15);
+      }
+      ag.computeVertexNormals();
+      const stripe = document.createElement('canvas');
+      stripe.width = 512;
+      stripe.height = 32;
+      const sx = stripe.getContext('2d')!;
+      for (let i = 0; i < 16; i++) {
+        sx.fillStyle = r.walls ? (i % 2 ? '#ffffff' : '#ff8cc0') : i % 2 ? '#d8d0c8' : '#b9a8a0';
+        sx.fillRect(i * 32, 0, 32, 32);
+      }
+      const am = k.canvasMat('awnStripes' + (r.walls ? 1 : 0), stripe, { rough: 0.85 }) as THREE.MeshStandardMaterial;
+      am.side = THREE.DoubleSide;
+      b.add(ag, am, 0, 0, 0);
+      // bambinela com ondas
+      const val = document.createElement('canvas');
+      val.width = 512;
+      val.height = 64;
+      const vx = val.getContext('2d')!;
+      for (let i = 0; i < 16; i++) {
+        vx.fillStyle = r.walls ? (i % 2 ? '#ffffff' : '#ff8cc0') : i % 2 ? '#d8d0c8' : '#b9a8a0';
+        vx.fillRect(i * 32, 0, 32, 36);
+        vx.beginPath();
+        vx.arc(i * 32 + 16, 34, 16, 0, Math.PI);
+        vx.fill();
+      }
+      if (!r.walls) vx.clearRect(300, 20, 60, 44);
+      const vm = k.canvasMat('awnVal' + (r.walls ? 1 : 0), val, { rough: 0.85, transparent: true }) as THREE.MeshStandardMaterial;
+      vm.alphaTest = 0.5;
+      vm.transparent = false;
+      vm.side = THREE.DoubleSide;
+      b.add(new THREE.PlaneGeometry(9.6, 0.3), vm, 0, 2.66, 1.27);
+      // braços de ferro do toldo
+      const iron = k.plain('awnIron', '#2c2a30', 0.4, 0.7);
+      for (const x of [-4.6, 0, 4.6]) b.add(new THREE.CylinderGeometry(0.015, 0.015, 1.3, 6), iron, x, 2.95, 0.7, 1.2, 0, 0);
+    }
+    if (r.walls) {
+      // revestimento de mármore nos pilares + faixa (lintel) e rodapé de granito escuro
+      const marble = k.surf('facadeMarble', 'marble', { rough: 0.7, envK: 1.1 });
+      const granite = k.plain('granite', '#2e2a30', 0.25, 0.1, { envK: 1.2 });
+      for (const [xa, xb] of [[-5.25, -4.55], [4.55, 5.25], [-D - 0.14, -D + 0.02], [D - 0.02, D + 0.14]]) b.addW(rbox(xb - xa, 2.8, 0.06, 0.015, 1), marble, (xa + xb) / 2, 1.4, 0.13);
+      b.addW(rbox(10.5, 0.42, 0.08, 0.02, 1), marble, 0, 3.0, 0.14);
+      b.add(rbox(10.5, 0.22, 0.1, 0.02, 1), granite, 0, 0.11, 0.15);
+      // vasos com plantas dos dois lados da porta
+      for (const sx of [-1, 1]) {
+        b.add(rbox(0.6, 0.55, 0.6, 0.06, 2), k.plain('planter', '#f4eef0', 0.35, 0, { envK: 1 }), sx * 1.75, 0.275, 0.75);
+        const pl = buildFurniture(k, 'plant').group;
+        pl.position.set(sx * 1.75, 0.15, 0.75);
+        pl.scale.setScalar(1.05);
+        this.facade.add(pl);
+        this.colliders.push({ x0: sx * 1.75 - 0.3, z0: 0.45, x1: sx * 1.75 + 0.3, z1: 1.05 });
+      }
+      // vitrine: pódios com produtos em destaque
+      const podM = k.plain('podium', '#fbf6f8', 0.3, 0, { envK: 0.9 });
+      const podG = k.plain('podiumGold', '#d6ad6a', 0.26, 1, { envK: 1.2 });
+      const show = PRODUCTS.filter((p) => p.tier === 3);
+      let si = 0;
+      for (const sx of [-1, 1])
+        for (const [dx, h] of [[-0.9, 0.55], [0, 0.85], [0.9, 0.4]] as const) {
+          const x = sx * 3 + dx;
+          b.add(new THREE.CylinderGeometry(0.28, 0.3, h, 28), podM, x, h / 2, -0.55);
+          b.add(new THREE.CylinderGeometry(0.29, 0.29, 0.015, 28), podG, x, h, -0.55);
+          if (r.window) {
+            const pm = productMesh(k, show[si++ % show.length]);
+            pm.position.set(x, h + 0.008, -0.55);
+            pm.scale.setScalar(1.6);
+            pm.rotation.y = 0.3 * sx;
+            this.facade.add(pm);
+          }
+        }
+    }
+    // luz de dentro "vazando" na calçada (reformado e com luz)
+    if (r.light >= 1 && r.window) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const x = c.getContext('2d')!;
+      const g = x.createRadialGradient(32, 0, 2, 32, 0, 64);
+      g.addColorStop(0, 'rgba(255,225,200,.35)');
+      g.addColorStop(1, 'rgba(255,225,200,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, 64, 64);
+      const m = k.canvasMat('spill', c, { basic: true, transparent: true }) as THREE.MeshBasicMaterial;
+      m.blending = THREE.AdditiveBlending;
+      m.depthWrite = false;
+      for (const sx of [-1, 1]) b.add(new THREE.PlaneGeometry(3.6, 2.2).rotateX(-Math.PI / 2), m, sx * 2.9, 0.012, 1.1);
+    }
     // expansões fechadas: porta de aço + "aluga-se"
     for (const [ex, need] of [[7, 1], [-7, 2]] as const) {
       const open = r.exp >= need;
