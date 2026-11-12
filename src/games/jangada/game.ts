@@ -21,6 +21,7 @@ import { fillRoom, fillStart, type RoomHandle } from './lobby';
 import { CODE_ALPHA, MAX_PLAYERS, codeFromRoom, createNet, newCode, type JNet, type Me } from './net';
 import { dropSlot, jgSave, persist, slotList, useSlot } from './save';
 import { openStartMenu, smDrawBloop, type SmDraw, type SmPage } from '../../ui/startmenu';
+import { icon } from '../../ui/icons';
 import { injectCss } from './style';
 import { enterGame } from '../../audio';
 import { introGate } from '../../3d/cine/gate';
@@ -151,6 +152,16 @@ export async function launch(root: HTMLElement, exit: () => void): Promise<MiniG
           {
             sel: cur,
             newLabel: t('jangada.menu.new', 'Nova jangada'),
+            nameIdeas: [
+              { text: t('jangada.idea.1', 'Jangada do Capitão'), icon: icon('crown', { size: 20 }) },
+              { text: t('jangada.idea.2', 'Barco Pirata'), icon: icon('target', { size: 20 }) },
+              { text: t('jangada.idea.3', 'Aventura no Mar'), icon: icon('drop', { size: 20 }) },
+              { text: t('jangada.idea.4', 'Ilha do Tesouro'), icon: icon('chest', { size: 20 }) },
+              { text: t('jangada.idea.5', 'Onda Gigante'), icon: icon('bath', { size: 20 }) },
+              { text: t('jangada.idea.6', 'Navio Bloop'), icon: icon('rocket', { size: 20 }) },
+              { text: t('jangada.idea.7', 'Pescador Feliz'), icon: icon('smile', { size: 20 }) },
+              { text: t('jangada.idea.8', 'Tubarão Amigo'), icon: icon('heart', { size: 20 }) },
+            ],
             onSelect: (i) => {
               useSlot(i);
               sm.refresh();

@@ -182,6 +182,8 @@ export class Walker {
   act = -1;
   /** parado esperando (s) */
   wait = 0;
+  /** visual para o grupo ("cor1|cor2|chapéu", coop.ts lookSpec) */
+  look = '';
   constructor(spec: PaperSpec, x: number, z: number, radius = 0.36) {
     this.char = new PaperChar(spec, { radius, cell: 96, shadow: true });
     this.x = x;

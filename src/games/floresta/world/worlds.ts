@@ -12,6 +12,7 @@ import type { GenOpts } from './gen';
 import type { GameMode } from './engine';
 import { freshWorld, parseWorld, type WorldSave } from './wsave';
 import { openStartMenu, SM_ICONS, type SmCard, type SmPage, type StartMenu } from '../../../ui/startmenu';
+import { icon } from '../../../ui/icons';
 
 export interface WorldMeta {
   id: string;
@@ -240,10 +241,20 @@ export function pickWorld(root: HTMLElement, opts: { servers?: boolean; classic?
         const slots = [0, 1, 2].map((i) => top[i]);
         if (sel > 2) sel = 0;
         p.slots(
-          slots.map((w) => (w ? { empty: false, name: w.name, progress: modeName(w.mode), last: w.at, thumb: coverOf(w) } : { empty: true })),
+          slots.map((w) => (w ? { empty: false, id: w.id, name: w.name, progress: modeName(w.mode), last: w.at, thumb: coverOf(w) } : { empty: true })),
           {
             sel,
             newLabel: t('mundo.newWorld', 'Novo mundo'),
+            nameIdeas: [
+              { text: t('mundo.idea.1', 'Reino dos Blocos'), icon: icon('crown', { size: 20 }) },
+              { text: t('mundo.idea.2', 'Ilha Secreta'), icon: icon('planet', { size: 20 }) },
+              { text: t('mundo.idea.3', 'Castelo Gigante'), icon: icon('shield', { size: 20 }) },
+              { text: t('mundo.idea.4', 'Vale Mágico'), icon: icon('sparkle', { size: 20 }) },
+              { text: t('mundo.idea.5', 'Mundo Bloop'), icon: icon('heart', { size: 20 }) },
+              { text: t('mundo.idea.6', 'Cidade dos Amigos'), icon: icon('home', { size: 20 }) },
+              { text: t('mundo.idea.7', 'Floresta Encantada'), icon: icon('star', { size: 20 }) },
+              { text: t('mundo.idea.8', 'Mina de Diamante'), icon: icon('gem', { size: 20 }) },
+            ],
             onSelect: (i) => {
               sel = i;
               sm?.refresh();

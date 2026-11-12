@@ -152,17 +152,18 @@ class WsNet implements JNet {
 }
 
 /**
+ * `path`: outro jogo pode usar o mesmo relé (ex.: Bloop Pink → '/pink/room/', server/raft.ts).
  * Abre a sala: 'create' (você é o anfitrião), 'join' (entrar pelo código) ou 'auto' (grupo: cria se não existe).
  * Resolve no 'welcome'; rejeita com o motivo (bad_code, taken, no_room, full, offline, timeout).
  */
-export function createNet(code: string, how: 'create' | 'join' | 'auto', me: Me, timeoutMs = 9000): Promise<JNet> {
+export function createNet(code: string, how: 'create' | 'join' | 'auto', me: Me, timeoutMs = 9000, path = '/raft/room/'): Promise<JNet> {
   return new Promise((resolve, reject) => {
     let ws: WebSocket;
     try {
       const q = new URLSearchParams({ id: me.id, name: me.name.slice(0, 24), skin: /^[a-z0-9_-]{1,24}$/.test(me.skin) ? me.skin : 'bloop' });
       if (how === 'create') q.set('create', '1');
       if (how === 'auto') q.set('auto', '1');
-      ws = new WebSocket(wsUrl(`/raft/room/${code}?${q}`));
+      ws = new WebSocket(wsUrl(`${path}${code}?${q}`));
     } catch {
       return reject(new Error('offline'));
     }

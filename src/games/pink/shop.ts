@@ -27,12 +27,15 @@ import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { CheckoutUI } from './checkout';
 import { Builder, rbox } from './shapes';
 import { BRAND_NAME, brandCanvas } from './brand';
+import { BoxViews, boxRow, chunks, Ghosts, r2, Remotes, type BoxRow, type GhostRow, type ShopNet } from './coop';
+import type { NetEvent } from '../jangada/net';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const DAY_LEN = 300; // s de 8h às 20h
 const OPEN_H = 8;
 const CLOSE_H = 20;
 const BIN_POS = new THREE.Vector2(4.35, -15.3);
+const DIRT_K = ['dirt', 'spill', 'glass', 'mud'] as const;
 const DROP_ZONE = { x0: -1.3, x1: 1.3, z0: -15.3, z1: -13.0 };
 
 interface SlotW {
@@ -97,7 +100,10 @@ export interface ShopOpts {
   onPause(): void;
   onSave(s: ShopSave): void;
   onCoins(n: number): void;
+  /** loja em grupo (coop.ts): anfitrião = dono do save; convidado = só a vista + pedidos ao anfitrião */
+  net?: ShopNet | null;
 }
+type ActO = 'order' | 'renov' | 'hire' | 'fire' | 'lic' | 'tab' | 'price' | 'auto' | 'open' | 'place' | 'move' | 'mop';
 
 export class Shop implements TabletHost {
   readonly e: Engine;
@@ -138,12 +144,30 @@ export class Shop implements TabletHost {
   private dirtT = 0;
   private bin: THREE.Group;
   private destroyed = false;
+  /* grupo */
+  private net: ShopNet | null;
+  private remotes: Remotes | null = null;
+  private ghosts: Ghosts | null = null;
+  private boxViews: BoxViews | null = null;
+  private netOffs: (() => void)[] = [];
+  private netT = { p: 0, st: 0, sync: 0, bx: 0, dirt: 0 };
+  private lastFu = '';
+  private lastMt = '';
+  private fuSeq = 0;
+  private fuIn: { q: number; parts: FurnSave[][]; got: number } | null = null;
+  private mopAcc: { x: number; z: number; a: number } | null = null;
+  private lastCoins = 0;
+  /** convidado na loja de outra pessoa */
+  get guest(): boolean {
+    return !!this.net && !this.net.host;
+  }
   private wasNear = false;
   private fpsT = 0;
   private lastLock = false;
 
   constructor(private o: ShopOpts) {
     this.s = o.save;
+    this.net = o.net ?? null;
     const e = new Engine(o.root, o.tier, 'pink');
     this.e = e;
     this.store = new Store3D(e.kit);
@@ -164,12 +188,14 @@ export class Shop implements TabletHost {
     for (const b of this.s.boxes) e.spawnBox(b.p, b.n, b.x, Math.max(0.2, b.y), b.z, { open: b.open });
     for (const tr of this.s.trash) this.trashL.push(e.spawnTrash(tr.x, tr.z));
     for (const d of this.s.dirt) e.addDirt(d.x, d.z, d.k, d.a);
-    if (!this.s.dirt.length && !this.s.renov.walls && this.s.day === 1) {
+    if (this.guest) {
+      /* convidado: sujeira, equipe e caixas vêm do anfitrião */
+    } else if (!this.s.dirt.length && !this.s.renov.walls && this.s.day === 1) {
       // loja abandonada: poeira e pegadas
       for (let i = 0; i < 9; i++) e.addDirt(-4 + Math.random() * 8, -1.5 - Math.random() * 9.5, i % 3 ? 'dirt' : 'mud', 0.5 + Math.random() * 0.6);
     }
-    for (const m of this.s.staff) this.spawnStaff(m.k, m.name, m.c);
-    if (!this.s.goals.length) this.newGoals();
+    if (!this.guest) for (const m of this.s.staff) this.spawnStaff(m.k, m.name, m.c);
+    if (!this.s.goals.length && !this.guest) this.newGoals();
     // jogador: na calçada olhando a loja
     e.fp.place(0.4, 2.6);
     e.fpc.yaw = 0;
@@ -199,6 +225,7 @@ export class Shop implements TabletHost {
     e.frame = (dt) => this.frame(dt);
     this.refreshGoals(true);
     this.updateHudStatic();
+    if (this.net) this.netInit();
     e.start();
     if (location.search.includes('debug')) (window as unknown as Record<string, unknown>).__pink = this.debugApi();
   }
@@ -320,6 +347,10 @@ export class Shop implements TabletHost {
     return true;
   }
   order(cart: Record<string, number>): boolean {
+    if (this.guest) {
+      const tot = Object.entries(cart).reduce((a, [id, n]) => a + (PROD[id] && n > 0 ? PROD[id].cost * PROD[id].box * n : 0), 0);
+      return tot > 0 && this.ask('order', [cart], tot - Math.min(this.s.coupons, tot * 0.5), 'truck', t('pink.ordered', 'Pedido feito! O caminhão já vem.'));
+    }
     let tot = 0;
     const boxes: [string, number][] = [];
     for (const [id, n] of Object.entries(cart)) {
@@ -343,11 +374,19 @@ export class Shop implements TabletHost {
   }
   buyFurniture(k: FurnKind): void {
     const d = FURN[k];
+    if (this.guest) {
+      // convidado: paga quando o anfitrião colocar o móvel (o dinheiro é um só)
+      if (!this.canPay(d.price)) return;
+      this.closeTablet();
+      this.startBuild(k, null, 0);
+      return;
+    }
     if (!this.pay(d.price)) return;
     this.closeTablet();
     this.startBuild(k, null, d.price);
   }
   renov(action: 'walls' | 'window' | 'door' | 'paint' | 'floor' | 'sign' | 'light' | 'exp', v?: string | number): boolean {
+    if (this.guest) return this.ask('renov', [action, v ?? null], 0, 'paint', t('pink.net.sent', 'Feito! A loja é de todo mundo.'));
     const r = this.s.renov;
     let price = 0;
     const lv = this.s.lvl;
@@ -408,6 +447,7 @@ export class Shop implements TabletHost {
   }
   hire(k: StaffKind): boolean {
     const d = STAFF[k];
+    if (this.guest) return this.ask('hire', [k], d.hire, d.icon, t('pink.net.sent', 'Feito! A loja é de todo mundo.'));
     if (!this.pay(d.hire)) return false;
     const used = new Set(this.s.staff.map((m) => m.name));
     const name = STAFF_NAMES.find((n) => !used.has(n)) ?? 'Bloop';
@@ -422,6 +462,11 @@ export class Shop implements TabletHost {
   fire(i: number): void {
     const m = this.s.staff[i];
     if (!m) return;
+    if (this.guest) {
+      this.ask('fire', [i], 0);
+      this.s.staff.splice(i, 1);
+      return;
+    }
     this.s.staff.splice(i, 1);
     const st = this.staff.find((x) => x.name === m.name && x.k === m.k);
     if (st) {
@@ -435,6 +480,11 @@ export class Shop implements TabletHost {
   buyLicense(c: CatId): boolean {
     const cat = CAT[c];
     if (this.s.lic.includes(c) || this.s.lvl < cat.lvl) return false;
+    if (this.guest) {
+      if (!this.ask('lic', [c], cat.price, cat.icon, t('pink.license', 'Nova licença: {n}!', { n: cat.name }))) return false;
+      this.s.lic.push(c);
+      return true;
+    }
     if (!this.pay(cat.price)) return false;
     this.s.lic.push(c);
     sfx.play('levelup');
@@ -444,6 +494,11 @@ export class Shop implements TabletHost {
   }
   upgradeTablet(): boolean {
     const nx = TABLET_UP[this.s.tab + 1];
+    if (this.guest) {
+      if (!nx || !this.ask('tab', [], nx.price, 'tablet')) return false;
+      this.s.tab++;
+      return true;
+    }
     if (!nx || !this.pay(nx.price)) return false;
     this.s.tab++;
     sfx.play('sparkle');
@@ -452,9 +507,11 @@ export class Shop implements TabletHost {
   }
   setPrice(id: string, mult: number): void {
     this.s.prices[id] = Math.round(mult * 100) / 100;
+    if (this.guest) this.ask('price', [id, mult], 0);
   }
   setAuto(on: boolean): void {
     this.s.auto = on;
+    if (this.guest) this.ask('auto', [on], 0);
   }
   stockOf(id: string): number {
     let n = 0;
@@ -565,6 +622,17 @@ export class Shop implements TabletHost {
     const b = this.build;
     if (!b || !b.ok) {
       sfx.play('wrong');
+      return;
+    }
+    if (this.guest) {
+      // o anfitrião coloca (e paga); a lista de móveis volta já com ele
+      if (b.move) {
+        this.ask('move', [b.move.sv.id, b.x, b.z, b.r], 0);
+        b.move.g.visible = true;
+      } else if (!this.ask('place', [b.k, b.x, b.z, b.r], FURN[b.k].price)) return;
+      sfx.play('place');
+      sfx.play('sparkle');
+      this.endBuild();
       return;
     }
     if (b.move) {
@@ -1023,6 +1091,16 @@ export class Shop implements TabletHost {
   /* =============================== loja aberta / dia =============================== */
   private toggleOpen(): void {
     if (this.phase === 'summary') return;
+    if (this.guest) {
+      if (this.phase === 'prep' && !this.furn.some((f) => f.def.group === 'checkout')) {
+        sfx.play('wrong');
+        this.hud.banner('register', t('pink.needCheckout', 'Compre um caixa antes de abrir!'), 2000);
+        return;
+      }
+      this.ask('open', [], 0);
+      sfx.play('door');
+      return;
+    }
     if (this.phase === 'prep') {
       if (!this.furn.some((f) => f.def.group === 'checkout')) {
         sfx.play('wrong');
@@ -1102,6 +1180,7 @@ export class Shop implements TabletHost {
     if (s.hist.length > 60) s.hist.shift();
     // moedas do app: 1 a cada B$ 40 vendidos (mín. 5)
     const coins = Math.max(5, Math.round(this.day.rev / 40));
+    this.lastCoins = coins;
     this.o.onCoins(coins);
     music.setState('victory', { bars: 4 });
     sfx.play('levelup');
@@ -1272,6 +1351,7 @@ export class Shop implements TabletHost {
     const heads = ['h_none', 'h_bow', 'h_flower', 'h_crown', 'h_cap', 'h_bunny'];
     const spec = npcSpec(pri, sec, { head: heads[Math.floor(Math.random() * heads.length)] as never });
     const w = new Walker(spec, side * 10, 2.4 + Math.random() * 1.2, 0.36);
+    w.look = `${pri}|${sec}|${(spec.avatar as { parts: { head: string } }).parts.head}`;
     w.speed = 1.1 + Math.random() * 0.4;
     this.e.scene.add(w.char.root);
     // desejos: produtos liberados (alguns que a loja não tem — "cadê?")
@@ -1640,6 +1720,7 @@ export class Shop implements TabletHost {
     const d = STAFF[k];
     const spec = d.robot ? npcSpec('#c0c8d8', '#6a7a8a', { eyes: 'e_cute' as never }) : npcSpec(color, '#ffffff', { head: 'h_bow' as never });
     const w = new Walker(spec, 2 + Math.random(), -13.5, 0.36);
+    w.look = d.robot ? '#c0c8d8|#6a7a8a|r' : `${color}|#ffffff|h_bow`;
     w.speed = d.robot ? 1.9 : 1.45;
     this.e.scene.add(w.char.root);
     this.staff.push({ i: this.staff.length + 100, k, name, w, st: 'idle', t: 0, box: null, task: null, ck: null });
@@ -1967,6 +2048,12 @@ export class Shop implements TabletHost {
         if (a?.kind === 'mop' && a.d) {
           this.mopT += dt;
           e.cleanAt(a.d.x, a.d.z, dt * 1.6);
+          if (this.guest) {
+            const m = (this.mopAcc ??= { x: a.d.x, z: a.d.z, a: 0 });
+            m.x = a.d.x;
+            m.z = a.d.z;
+            m.a += dt * 1.6;
+          }
           if (this.mopT > 0.45) {
             this.mopT = 0;
             sfx.play('mop');
@@ -2056,14 +2143,18 @@ export class Shop implements TabletHost {
     // portas automáticas: alguém perto da porta
     let near = Math.hypot(e.fp.x, e.fp.z) < 2;
     if (!near) for (const w of walkers) if (Math.abs(w.x) < 1.6 && Math.abs(w.z) < 1.8) near = true;
+    if (!near && this.net) for (const w of [...(this.remotes?.positions() ?? []), ...(this.ghosts?.positions() ?? [])]) if (Math.abs(w.x) < 1.6 && Math.abs(w.z) < 1.8) near = true;
     if (near && !this.wasNear && this.phase === 'open') sfx.play('door', { db: -8 });
     this.wasNear = near;
     const wantShutter = this.truck && this.truck.phase >= 2 && this.truck.phase < 3 ? 1 : 0;
     const wasOpen = this.store.backOpen;
     this.store.update(dt, e.time, near, wantShutter);
     if (wasOpen !== this.store.backOpen) this.navDirty = true;
-    this.dayTick(dt);
-    this.truckUpdate(dt);
+    if (!this.guest) {
+      this.dayTick(dt);
+      this.truckUpdate(dt);
+    }
+    if (this.net) this.netTick(dt);
     // sujeira trazida pelos clientes (pegadas)
     this.dirtT -= dt;
     if (this.dirtT <= 0) {
@@ -2089,14 +2180,331 @@ export class Shop implements TabletHost {
       if (this.phase === 'open' && this.custs.length > 5) music.setState('tension');
       else if (this.phase === 'open') music.setState('calm');
       // meta de limpeza: confere ao fechar
-      if (this.phase === 'closing') for (const g of this.s.goals) if (g.k === 'clean' && !g.done && this.scores.clean >= g.n) this.goalProgress('clean', g.n);
+      if (this.phase === 'closing' && !this.guest) for (const g of this.s.goals) if (g.k === 'clean' && !g.done && this.scores.clean >= g.n) this.goalProgress('clean', g.n);
     }
     this.saveT += dt;
-    if (this.saveT > 30) {
+    if (this.saveT > 30 && !this.guest) {
       this.saveT = 0;
       this.save();
     }
     sfx.listener?.(e.camera.position.x, e.camera.position.y, e.camera.position.z, 0, 0, -1);
+  }
+
+  /* =============================== grupo (coop.ts) =============================== */
+  private canPay(n: number): boolean {
+    if (this.s.money >= n) return true;
+    sfx.play('wrong');
+    this.hud.banner('coin', t('pink.noMoney', 'Dinheiro insuficiente!'), 1500);
+    return false;
+  }
+  /** convidado: pede ao anfitrião (confere o dinheiro aqui para responder na hora; o anfitrião confirma) */
+  private ask(o: ActO, a: unknown[], cost: number, icon?: string, msg?: string): boolean {
+    if (cost > 0 && !this.canPay(cost)) return false;
+    this.net?.net.send({ t: 'act', o, a });
+    if (cost > 0) {
+      this.s.money -= cost;
+      this.updateHudStatic(true);
+      sfx.play('cash');
+    }
+    if (icon && msg) this.hud.banner(icon, msg, 1600);
+    return true;
+  }
+  private netInit(): void {
+    const n = this.net!;
+    const net = n.net;
+    this.remotes = new Remotes(this.e.scene, this.hud.el, net);
+    if (!n.host) {
+      this.ghosts = new Ghosts(this.e.scene);
+      this.boxViews = new BoxViews(this.e.scene, (p, k, open) => this.e.boxMesh(PROD[p] ?? null, 0.5, 0.34, 0.38, open, k));
+    }
+    this.netOffs.push(net.onEvent((from, ev) => this.onNet(from, ev)));
+    this.netOffs.push(
+      net.onRoster((why, id) => {
+        if (why === 'leave') this.remotes?.remove(id);
+        if (why === 'join' && this.net?.host) this.sendInit(id);
+        this.hud.players(net.peers.length);
+      }),
+    );
+    this.hud.players(net.peers.length);
+    if (n.host) this.sendInit();
+    else net.send({ t: 'rdy' });
+  }
+  /** anfitrião → quem entrou (ou todos): a loja sem móveis/caixas (vêm logo depois, em 'fu'/'bx') */
+  private sendInit(to?: string): void {
+    const lite: ShopSave = { ...this.s, furn: [], boxes: [], trash: [], dirt: [], hist: [], sold: {} };
+    this.net?.net.send({ t: 'init', s: lite, h: this.hour, ph: this.phase }, to);
+    this.lastFu = '';
+    this.lastMt = '';
+    this.netT.sync = 0.8;
+    this.netT.dirt = 1;
+  }
+  private onNet(from: string, ev: NetEvent): void {
+    const n = this.net;
+    if (!n || this.destroyed) return;
+    if (ev.t === 'p') {
+      this.remotes?.set(from, ev);
+      return;
+    }
+    if (n.host) {
+      if (ev.t === 'rdy') {
+        this.lastFu = '';
+        this.lastMt = '';
+        this.netT.sync = 1;
+        this.netT.dirt = 1;
+      } else if (ev.t === 'want') this.sendInit(from);
+      else if (ev.t === 'act') this.doAct(from, ev);
+      return;
+    }
+    if (from !== n.net.hostId) return;
+    if (ev.t === 'st') this.applySt(ev);
+    else if (ev.t === 'fu') this.applyFu(ev);
+    else if (ev.t === 'mt') this.applyMt(ev);
+    else if (ev.t === 'bx' && Array.isArray(ev.l)) this.boxViews?.sync(ev.l as BoxRow[]);
+  }
+  /** anfitrião: executa o pedido de um convidado (validado como se fosse o próprio jogador) */
+  private doAct(from: string, ev: NetEvent): void {
+    const a = Array.isArray(ev.a) ? (ev.a as unknown[]) : [];
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+    const who = this.net?.net.peers.find((p) => p.id === from)?.name ?? 'Bloop';
+    const note = (icon: string, what: string) => this.hud.banner(icon, t('pink.net.did', '{n}: {w}', { n: who, w: what }), 1800);
+    switch (ev.o as ActO) {
+      case 'order': {
+        const cart: Record<string, number> = {};
+        if (a[0] && typeof a[0] === 'object') for (const [k, v] of Object.entries(a[0] as Record<string, unknown>)) if (PROD[k] && Number.isFinite(num(v))) cart[k] = Math.max(0, Math.min(30, Math.floor(num(v))));
+        if (this.order(cart)) note('cart', t('pink.net.ordered', 'pediu produtos'));
+        break;
+      }
+      case 'renov':
+        if (['walls', 'window', 'door', 'paint', 'floor', 'sign', 'light', 'exp'].includes(String(a[0])) && this.renov(String(a[0]) as Parameters<Shop['renov']>[0], (a[1] ?? undefined) as string | number | undefined)) note('paint', t('pink.net.renov', 'reformou a loja'));
+        break;
+      case 'hire':
+        if (STAFF[a[0] as StaffKind]) this.hire(a[0] as StaffKind);
+        break;
+      case 'fire':
+        this.fire(num(a[0]));
+        break;
+      case 'lic':
+        if (CAT[a[0] as CatId]) this.buyLicense(a[0] as CatId);
+        break;
+      case 'tab':
+        this.upgradeTablet();
+        break;
+      case 'price':
+        if (PROD[String(a[0])] && Number.isFinite(num(a[1]))) this.setPrice(String(a[0]), Math.max(0.5, Math.min(1.5, num(a[1]))));
+        break;
+      case 'auto':
+        this.setAuto(!!a[0]);
+        break;
+      case 'open':
+        this.toggleOpen();
+        break;
+      case 'place':
+      case 'move': {
+        const x = num(a[1]);
+        const z = num(a[2]);
+        const r = ((Math.round(num(a[3])) % 4) + 4) % 4;
+        if (!Number.isFinite(x + z + r) || Math.abs(x) > 20 || z > 0 || z < -20) break;
+        if (ev.o === 'place') {
+          const k = a[0] as FurnKind;
+          const d = FURN[k];
+          if (!d || this.s.lvl < d.lvl || !this.pay(d.price)) break;
+          this.addFurn({ id: this.s.nextId++, k, x, z, r, s: [] }, true);
+          this.addXp(5);
+          sfx.play('place');
+          note(d.icon, d.name);
+        } else {
+          const f = this.furn.find((q) => q.sv.id === num(a[0]));
+          if (!f || this.build?.move === f) break;
+          const slots = f.sv.s;
+          this.removeFurn(f);
+          this.addFurn({ id: f.sv.id, k: f.sv.k, x, z, r, s: slots }, true);
+          sfx.play('place');
+        }
+        this.save();
+        break;
+      }
+      case 'mop': {
+        const x = num(a[0]);
+        const z = num(a[1]);
+        const am = num(a[2]);
+        if (Number.isFinite(x + z + am)) this.e.cleanAt(x, z, Math.min(2, Math.max(0, am)));
+        break;
+      }
+    }
+  }
+  private applySt(ev: NetEvent): void {
+    const s = this.s;
+    const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    const before = s.money;
+    s.money = num(ev.m, s.money);
+    s.xp = num(ev.xp, s.xp);
+    const lv = num(ev.lv, s.lvl);
+    if (lv > s.lvl && s.lvl > 0) {
+      sfx.play('levelup');
+      this.hud.banner('star', t('pink.levelUp', 'Nível {n}!', { n: lv }), 2200);
+    }
+    s.lvl = lv;
+    s.day = num(ev.d, s.day);
+    s.rep = num(ev.r, s.rep);
+    this.hour = num(ev.h, this.hour);
+    const ph = String(ev.ph) as Shop['phase'];
+    if (['prep', 'open', 'closing', 'summary'].includes(ph) && ph !== this.phase) this.guestPhase(ph, num(ev.cn, 5));
+    if (Array.isArray(ev.w)) this.ghosts?.sync(ev.w as GhostRow[]);
+    if (Array.isArray(ev.dt)) this.e.syncDirt(ev.dt as [number, number, number, number][]);
+    this.updateHudStatic(s.money > before + 0.5);
+  }
+  private sumPanel: HTMLDivElement | null = null;
+  private guestPhase(ph: Shop['phase'], coins: number): void {
+    const was = this.phase;
+    this.phase = ph;
+    if (ph === 'open') {
+      sfx.play('door');
+      music.setState('calm');
+      this.hud.banner('open', t('pink.opened', 'Loja aberta!'), 1600);
+    } else if (ph === 'closing') this.hud.banner('closed', t('pink.closing', 'Fechando... atenda quem ficou.'), 1800);
+    else if (ph === 'summary') {
+      this.o.onCoins(coins);
+      music.setState('victory', { bars: 4 });
+      sfx.play('levelup');
+      if (!this.hud.overlay && !this.tablet) {
+        const d = this.hud.panel(`<h2>${ic('moon', 30)}${esc(t('pink.dayEnd', 'Fim do dia {n}', { n: this.s.day }))}</h2>
+          <div class="pk-stats"><div class="pk-stat">${ic('coin', 30)}<span>${esc(t('pink.sum.coins', 'Moedas Bloop'))}<b>+${coins}</b></span></div></div>
+          <div style="font-weight:700">${esc(t('pink.net.waitNext', 'O líder começa o próximo dia.'))}</div>
+          <div class="pk-row"><button class="pk-b g">${ic('check', 24)}${esc(t('pink.ok', 'Oba!'))}</button></div>`);
+        this.sumPanel = d;
+        d.querySelector('button')!.addEventListener('click', () => {
+          if (this.hud.overlay === d) this.hud.closePanel();
+        });
+      }
+    } else if (ph === 'prep' && was === 'summary') {
+      if (this.sumPanel && this.hud.overlay === this.sumPanel) this.hud.closePanel();
+      this.sumPanel = null;
+      const ss = seasonAt(this.s.day);
+      this.hud.banner(ss ? 'sparkle' : 'sun', ss ? ss.name : t('pink.dayN', 'Dia {n}', { n: this.s.day }), 2200);
+    }
+  }
+  private applyFu(ev: NetEvent): void {
+    const q = Number(ev.q);
+    const i = Number(ev.i);
+    const n = Number(ev.n);
+    if (!Number.isInteger(i) || !Number.isInteger(n) || n < 1 || n > 40 || i < 0 || i >= n || !Array.isArray(ev.l)) return;
+    if (!this.fuIn || this.fuIn.q !== q) this.fuIn = { q, parts: new Array(n), got: 0 };
+    if (!this.fuIn.parts[i]) {
+      this.fuIn.parts[i] = ev.l as FurnSave[];
+      this.fuIn.got++;
+    }
+    if (this.fuIn.got < n) return;
+    const list = this.fuIn.parts.flat().filter((f) => f && FURN[f.k] && Number.isFinite(f.x) && Number.isFinite(f.z));
+    this.fuIn = null;
+    const byId = new Map(list.map((f) => [f.id, f]));
+    for (const f of [...this.furn]) {
+      const nf = byId.get(f.sv.id);
+      if (nf && nf.k === f.sv.k && nf.x === f.sv.x && nf.z === f.sv.z && nf.r === f.sv.r) continue;
+      if (this.build?.move === f) this.cancelBuild();
+      this.removeFurn(f);
+    }
+    const cell = (v: unknown): [string, number] | null => (Array.isArray(v) && PROD[v[0]] ? [v[0], Number(v[1]) || 0] : null);
+    for (const nf of list) {
+      const f = this.furn.find((x) => x.sv.id === nf.id);
+      const st = Array.isArray(nf.s) ? nf.s : [];
+      if (f) f.sv.s = f.slots.map((_, k) => cell(st[k]));
+      else this.addFurn({ id: nf.id, k: nf.k, x: nf.x, z: nf.z, r: nf.r, s: st.map(cell) }, true);
+    }
+    this.fieldDirty = true;
+    this.navDirty = true;
+  }
+  private applyMt(ev: NetEvent): void {
+    const s = this.s;
+    const m = ev as unknown as Partial<ShopSave>;
+    if (m.renov && typeof m.renov === 'object' && JSON.stringify(m.renov) !== JSON.stringify(s.renov)) {
+      s.renov = { ...s.renov, ...m.renov };
+      this.store.apply(s.renov);
+    }
+    if (Array.isArray(m.lic)) s.lic = m.lic.filter((c) => typeof c === 'string');
+    if (Array.isArray(m.staff)) s.staff = m.staff;
+    if (m.prices && typeof m.prices === 'object') s.prices = m.prices;
+    if (typeof m.tab === 'number') s.tab = m.tab;
+    if (typeof m.auto === 'boolean') s.auto = m.auto;
+    if (Array.isArray(m.goals)) s.goals = m.goals;
+    if (typeof m.coupons === 'number') s.coupons = m.coupons;
+    if (typeof m.tut === 'number') s.tut = m.tut;
+    this.refreshGoals(false);
+    this.updateHudStatic();
+  }
+  private netLast = 0;
+  private netTick(frameDt: number): void {
+    const n = this.net!;
+    const net = n.net;
+    const e = this.e;
+    const T = this.netT;
+    this.remotes?.update(frameDt, e.camera, (x, y, z) => e.toScreen(x, y, z));
+    this.ghosts?.update(frameDt, e.camera);
+    // ritmo da rede em tempo real (o dt do quadro é limitado a 50 ms: em aparelho lento o jogo anda devagar, a rede não)
+    const now = performance.now();
+    const dt = this.netLast ? Math.min(1, (now - this.netLast) / 1000) : frameDt;
+    this.netLast = now;
+    if (net.closed) return;
+    const alone = net.peers.length < 2;
+    T.p += dt;
+    if (T.p >= 0.1 && !alone) {
+      T.p = 0;
+      net.send({ t: 'p', x: r2(e.fp.x), z: r2(e.fp.z), y: r2(e.fp.y), a: r2(e.fpc.yaw + Math.PI), s: r2(Math.hypot(e.fp.vx, e.fp.vz)) });
+    }
+    if (!n.host) {
+      T.st += dt;
+      const m = this.mopAcc;
+      if (m && T.st >= 0.25) {
+        T.st = 0;
+        net.send({ t: 'act', o: 'mop', a: [r2(m.x), r2(m.z), r2(m.a)] });
+        this.mopAcc = null;
+      }
+      return;
+    }
+    if (alone) return;
+    const s = this.s;
+    T.st += dt;
+    if (T.st >= 0.2) {
+      T.st = 0;
+      const w: GhostRow[] = [];
+      for (const c of this.custs) w.push(['c' + c.id, r2(c.w.x), r2(c.w.z), r2(c.w.yaw), r2(c.w.vel), c.w.look]);
+      for (const st of this.staff) w.push(['s' + st.i, r2(st.w.x), r2(st.w.z), r2(st.w.yaw), r2(st.w.vel), st.w.look]);
+      const msg: NetEvent = { t: 'st', m: r2(s.money), xp: s.xp, lv: s.lvl, d: s.day, h: r2(this.hour), ph: this.phase, r: r2(s.rep), w };
+      if (this.phase === 'summary') msg.cn = this.lastCoins;
+      T.dirt += 0.2;
+      if (T.dirt >= 1) {
+        T.dirt = 0;
+        msg.dt = e.dirt.slice(0, 80).map((d) => [r2(d.x), r2(d.z), r2(d.a), DIRT_K.indexOf(d.k)]);
+      }
+      net.send(msg);
+    }
+    T.sync += dt;
+    if (T.sync >= 1) {
+      T.sync = 0;
+      const fu = JSON.stringify(s.furn);
+      if (fu !== this.lastFu) {
+        this.lastFu = fu;
+        const q = ++this.fuSeq;
+        const parts = chunks(s.furn, 10);
+        parts.forEach((l, i) => net.send({ t: 'fu', q, i, n: parts.length, l }));
+      }
+      const mt = { renov: s.renov, lic: s.lic, staff: s.staff, prices: s.prices, tab: s.tab, auto: s.auto, goals: s.goals, coupons: s.coupons, tut: s.tut };
+      const ms = JSON.stringify(mt);
+      if (ms !== this.lastMt) {
+        this.lastMt = ms;
+        net.send({ t: 'mt', ...mt });
+      }
+    }
+    T.bx += dt;
+    if (T.bx >= 0.5) {
+      T.bx = 0;
+      const l: BoxRow[] = [];
+      for (const it of e.phys.items) if (it.kind === 'box' && l.length < 40) l.push(boxRow(String(it.data.p ?? ''), Number(it.data.n) || 0, !!it.data.open, it.body.position, it.body.quaternion));
+      net.send({ t: 'bx', l });
+    }
+  }
+  /** quantos Bloops na loja (grupo) */
+  get players(): number {
+    return this.net ? this.net.net.peers.length : 1;
   }
 
   /* =============================== salvar =============================== */
@@ -2118,6 +2526,7 @@ export class Shop implements TabletHost {
     return s;
   }
   save(): void {
+    if (this.guest) return;
     this.o.onSave(this.toSave());
   }
 
@@ -2206,6 +2615,11 @@ export class Shop implements TabletHost {
 
   dispose(): void {
     this.destroyed = true;
+    for (const f of this.netOffs) f();
+    this.netOffs = [];
+    this.remotes?.dispose();
+    this.ghosts?.dispose();
+    this.boxViews?.dispose();
     this.closeTablet();
     this.ck?.cancel();
     this.endBuild();

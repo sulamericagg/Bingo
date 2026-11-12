@@ -108,11 +108,43 @@
 .sm .sm-sdiff{position:absolute;right:3px;bottom:3px;display:flex;filter:drop-shadow(0 1px 0 rgba(42,11,92,.5))}
 .sm .sm-stxt{display:flex;flex-direction:column;align-items:center;line-height:1.1;margin-top:5px;min-width:0;text-align:center}
 .sm .sm-stxt b{font-size:clamp(13px,3.6vw,16px);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sm .sm-stxt b.sm-long{font-size:12.5px;line-height:1.05;letter-spacing:-.2px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .sm .sm-stxt small{display:flex;align-items:center;gap:2px;font-size:12px;font-weight:900;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sm .sm-stxt small svg{width:16px;height:16px;flex:0 0 auto}
 .sm .sm-stxt i{display:flex;align-items:center;gap:2px;font-style:normal;font-size:10.5px;font-weight:800;opacity:.65;white-space:nowrap}
 .sm .sm-del{position:absolute;left:-9px;top:-9px;width:36px;height:36px;border-radius:50%;border:3px solid var(--ink);background:linear-gradient(#ffbcc7,#ff4f6a);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-shadow:0 3px 0 var(--ink);z-index:3}
 .sm .sm-del:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.sm .sm-ren{position:absolute;left:30px;top:-9px;width:34px;height:34px;border-radius:50%;border:3px solid var(--ink);background:linear-gradient(#fff6c8,#ffd34a);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-shadow:0 3px 0 var(--ink);z-index:3}
+.sm .sm-ren.solo{left:-9px}
+.sm .sm-ren:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.sm .sm-dlg.sm-rendlg{align-items:center;overflow-y:auto;padding:10px 12px}
+.sm .sm-dlgcard.sm-rencard{max-width:480px;gap:8px;padding:10px 14px 12px;max-height:100%;overflow-y:auto;overscroll-behavior:contain}
+.sm .sm-renhd{display:flex;align-items:center;gap:10px;width:100%}
+.sm .sm-renart{flex:0 0 auto;width:62px;aspect-ratio:4/3;border-radius:12px;overflow:hidden;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;background:var(--sm-acc)}
+.sm .sm-renart canvas,.sm .sm-renart img{width:100%;height:100%;object-fit:cover;display:block}
+.sm .sm-renart svg{width:62%}
+.sm .sm-renhd b{flex:1;text-align:left;font-size:21px}
+.sm .sm-renin{position:relative;width:100%}
+.sm .sm-renin input{width:100%;box-sizing:border-box;height:48px;border-radius:16px;border:3px solid var(--ink);background:#fff;color:var(--ink);font-family:inherit;font-weight:900;font-size:20px;padding:0 48px 0 14px;outline:none;box-shadow:inset 0 3px 0 rgba(42,11,92,.12)}
+.sm .sm-renin input:focus{border-color:#ff5cae;box-shadow:0 0 0 3px rgba(255,92,174,.35)}
+.sm .sm-renin input::placeholder{color:rgba(42,11,92,.4)}
+.sm .sm-renclr{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:0;background:rgba(42,11,92,.55);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.sm .sm-renclr svg{width:18px;height:18px}
+.sm .sm-ideas{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;width:100%}
+.sm .sm-idea{display:flex;align-items:center;gap:5px;min-height:38px;padding:3px 8px 3px 5px;border-radius:14px;border:3px solid var(--ink);background:linear-gradient(#fff,#ffe9f4);color:var(--ink);font-family:inherit;font-weight:800;font-size:13.5px;line-height:1.05;text-align:left;cursor:pointer;box-shadow:0 3px 0 rgba(42,11,92,.5);min-width:0}
+.sm .sm-idea>svg{flex:0 0 auto;width:22px;height:22px}
+.sm .sm-idea span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm .sm-idea:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(42,11,92,.5)}
+.sm .sm-idea.sel{background:linear-gradient(#fffbe0,#ffd34a);box-shadow:0 0 0 3px #ffd34a,0 3px 0 var(--ink)}
+@media (orientation:landscape) and (max-height:560px){
+.sm .sm-dlgcard.sm-rencard{max-width:620px;padding:8px 12px 10px;gap:6px}
+.sm .sm-renart{width:48px}
+.sm .sm-renhd b{font-size:18px}
+.sm .sm-renin input{height:42px;font-size:18px}
+.sm .sm-ideas{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.sm .sm-idea{min-height:34px;font-size:12.5px}
+.sm .sm-dlgcard.sm-rencard .sm-dlgbtns button{height:48px;width:74px}
+}
 .sm .sm-faces{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:8px;padding-top:4px}
 .sm .sm-face{position:relative;display:flex;flex-direction:column;align-items:center;gap:0;border:3px solid var(--ink);border-radius:20px;background:linear-gradient(var(--paper1),var(--paper2));color:var(--ink);padding:4px 2px 5px;cursor:pointer;box-shadow:0 4px 0 rgba(42,11,92,.55);transition:transform .3s cubic-bezier(.2,1.7,.4,1),box-shadow .3s,filter .2s;filter:saturate(.7) brightness(.93);min-width:0}
 .sm .sm-face svg{width:clamp(40px,11vw,54px);height:auto;transition:transform .3s cubic-bezier(.2,1.7,.4,1)}

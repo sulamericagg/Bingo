@@ -315,6 +315,7 @@ async function main() {
   const cs = await mkClient('Solo', 'bloop', 1);
   check('jogador sozinho: 4 bots e resultado', cs.start?.players?.length === 5 && cs.start.players.filter((p) => p.bot).length === 4 && cs.end?.results?.length === 5, cs.start?.players);
 
+  await pinkRelayTests();
   await socialTests(T);
   await homeTests(T);
 
@@ -361,6 +362,38 @@ function wsClient(path) {
     };
     ws.onerror = () => {};
   });
+}
+
+/* ======================= BLOOP PINK EM GRUPO (relé da Jangada, salas à parte) ======================= */
+async function pinkRelayTests() {
+  console.log('\nBloop Pink em grupo (WebSocket, relé RaftRoom)');
+  const code = 'PK2' + 'ABCDEFGH'[Math.floor(Math.random() * 8)] + 'Z';
+  const q = (id, name, extra) => `?id=${id}&name=${encodeURIComponent(name)}&skin=bloop${extra}`;
+  const hostId = 'pinkhost-' + Math.random().toString(36).slice(2, 10);
+  const guestId = 'pinkguest-' + Math.random().toString(36).slice(2, 10);
+  const h = await wsClient('/api/pink/room/' + code + q(hostId, 'Dona', '&create=1'));
+  const hw = await h.wait((m) => m.t === 'welcome');
+  check('pink: anfitrião cria a sala', hw?.host === hostId, h.msgs);
+  // a mesma letra na Jangada é outra sala (não existe)
+  const j = await wsClient('/api/raft/room/' + code + q(guestId, 'Ana', ''));
+  const jr = await j.wait((m) => m.t === 'reject' || m.t === 'welcome');
+  check('pink: sala da Jangada com o mesmo código é separada', jr?.t === 'reject' && jr.reason === 'no_room', jr);
+  const g = await wsClient('/api/pink/room/' + code + q(guestId, 'Ana', ''));
+  const gw = await g.wait((m) => m.t === 'welcome');
+  check('pink: convidado entra na loja do anfitrião', gw?.host === hostId && gw.peers?.some((p) => p.id === hostId), gw);
+  const hj = await h.wait((m) => m.t === 'join');
+  check('pink: anfitrião vê quem entrou', hj?.id === guestId, hj);
+  g.send({ t: 'p', x: 1, z: -2 });
+  const hp = await h.wait((m) => m.t === 'p');
+  check('pink: posição do convidado chega com from', hp?.from === guestId && hp.x === 1, hp);
+  h.send({ t: 'init', to: guestId, s: { money: 10 } });
+  const gi = await g.wait((m) => m.t === 'init');
+  check('pink: anfitrião manda a loja só para quem entrou', gi?.from === hostId && gi.s?.money === 10, gi);
+  const r = await call('GET', '/api/pink/room/' + code);
+  check('pink: sem WebSocket → 426', r.status === 426, r.data);
+  h.ws.close();
+  g.ws.close();
+  j.ws.close();
 }
 
 async function socialTests(T) {
