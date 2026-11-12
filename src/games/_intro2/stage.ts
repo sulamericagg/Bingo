@@ -159,6 +159,7 @@ export class Stage {
     // a posição do pai (o jogo) precisa conter o absolute
     if (parent === document.body) el.style.position = 'fixed';
     parent.appendChild(el);
+    document.documentElement.classList.add('cine-on');
     el.querySelector('.i2-skip')!.addEventListener('click', (e) => {
       e.stopPropagation();
       sfx.click();
@@ -315,6 +316,7 @@ export class Stage {
     const el = this.el;
     window.setTimeout(() => {
       el.remove();
+      document.documentElement.classList.remove('cine-on');
       this.cv.width = this.cv.height = 1;
     }, 480);
     this.done();

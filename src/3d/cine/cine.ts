@@ -168,6 +168,7 @@ export class Cine {
     // nada passa para o jogo por baixo
     for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'wheel']) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
     o.root.appendChild(el);
+    document.documentElement.classList.add('cine-on'); // menus por baixo ficam ocultos (nada sobreposto ao "Pular")
   }
 
   /** renderizador + cena + câmera, já dentro da abertura; liberado no fim */
@@ -374,6 +375,7 @@ export class Cine {
     this.el.classList.remove('bars');
     this.el.classList.add('out');
     window.setTimeout(() => this.el.remove(), 480);
+    document.documentElement.classList.remove('cine-on');
     if (this.o.music) music.play(this.prevTheme, 1.2);
     if (current === this) current = null;
     this.done();

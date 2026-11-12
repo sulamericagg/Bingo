@@ -239,3 +239,6 @@
 
 }
 
+
+/* abertura de cinema tocando: o menu por baixo some */
+.cine-on .sm{visibility:hidden}

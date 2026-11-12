@@ -30,3 +30,6 @@
 .cine-skip{position:absolute;z-index:6;right:calc(var(--edge-r,12px) + 6px);top:calc(9% + 8px);pointer-events:auto;display:flex;align-items:center;gap:6px;min-height:44px;padding:6px 14px;border-radius:22px;border:2px solid rgba(255,255,255,.7);background:rgba(10,8,20,.55);color:#fff;font:700 15px var(--font,'Fredoka',sans-serif);cursor:pointer;opacity:.9}
 .cine-skip:active{transform:scale(.95)}
 .cine-skip svg{width:20px;height:20px}
+
+/* durante a abertura, a tela de início por baixo some (o "Pular" nunca fica sob a engrenagem) */
+.cine-on .sm{visibility:hidden}
