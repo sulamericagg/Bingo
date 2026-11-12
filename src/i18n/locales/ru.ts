@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Пауза",
   "jangada.paused": "Пауза",
   "jangada.putAll": "Убрать всё",
+  "jangada.moveStack": "Стопка",
+  "jangada.keepHook": "Оставь один крюк в руке!",
   "jangada.q.crab": "Принеси 5 ракушек, и я расскажу, где средние острова!",
   "jangada.q.penguin": "Принеси 2 жареные большие рыбы, и я покажу легендарные острова!",
   "jangada.qte.hold": "ДЕРЖИ!",

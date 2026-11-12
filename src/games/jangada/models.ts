@@ -259,6 +259,76 @@ export function stairsGeo(): THREE.BufferGeometry {
   for (const s of [-1, 1]) L.push(box(0.08, 0.16, len, '#9a6a3a', s * CELL * 0.42, DECK + FLOOR_H / 2, 0, -ang, 0, 0));
   return merge(L);
 }
+/* ------------------------------ baú (todas as versões) ------------------------------
+ * Caixa aberta de verdade: fundo + 4 paredes com espessura (sem "outro baú dentro"),
+ * interior escuro, cintas e cantoneiras saltadas ≥ 2,5 cm (sem faces coplanares → sem z-fighting),
+ * tampa arredondada com a parte de baixo fechada e dobradiça na borda de trás.
+ * A tampa vem no espaço da dobradiça: origem = dobradiça, estende-se para +z (frente); abrir = rotation.x < 0. */
+export const CHEST = { W: 0.9, D: 0.6, H: 0.46, T: 0.055 };
+export interface ChestLook {
+  wood: string;
+  band: string;
+  inner?: string;
+  lock?: string;
+  gems?: [string, string] | null;
+}
+export function chestGeos(o: ChestLook): { body: THREE.BufferGeometry; lid: THREE.BufferGeometry } {
+  const { W, D, H, T } = CHEST;
+  const inner = o.inner ?? '#4a2c16';
+  const lock = o.lock ?? '#ffd34a';
+  const B: THREE.BufferGeometry[] = [
+    // paredes (frente/trás inteiras; laterais entre elas)
+    box(W, H, T, o.wood, 0, H / 2, D / 2 - T / 2, 0, 0, 0, 0.08),
+    box(W, H, T, o.wood, 0, H / 2, -D / 2 + T / 2, 0, 0, 0, 0.08),
+    box(T, H, D - 2 * T, o.wood, W / 2 - T / 2, H / 2, 0, 0, 0, 0, 0.08),
+    box(T, H, D - 2 * T, o.wood, -W / 2 + T / 2, H / 2, 0, 0, 0, 0, 0.08),
+    // fundo (entre as paredes) com o piso escuro
+    box(W - 2 * T, 0.07, D - 2 * T, inner, 0, 0.035, 0, 0, 0, 0, 0.05),
+    // pezinhos (levantam o baú do chão: nada encostado plano no convés)
+    ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => box(0.1, 0.04, 0.1, o.band, sx * (W / 2 - 0.07), -0.015, sz * (D / 2 - 0.07), 0, 0, 0, 0))),
+  ];
+  // cintas verticais (frente, trás e laterais) e faixa de baixo — saltadas 2,5 cm
+  const P = 0.025;
+  for (const sx of [-1, 1]) {
+    const x = sx * (W / 2 - 0.16);
+    B.push(box(0.08, H + 0.01, P, o.band, x, H / 2, D / 2 + P / 2, 0, 0, 0, 0));
+    B.push(box(0.08, H + 0.01, P, o.band, x, H / 2, -D / 2 - P / 2, 0, 0, 0, 0));
+    B.push(box(P, H + 0.01, 0.08, o.band, sx * (W / 2 + P / 2), H / 2, 0, 0, 0, 0, 0));
+  }
+  // cantoneiras (quinas de metal)
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) B.push(box(0.06, H + 0.012, 0.06, o.band, sx * (W / 2 - 0.015), H / 2, sz * (D / 2 - 0.015), 0, 0, 0, 0));
+  // fechadura (no corpo, logo abaixo da tampa)
+  B.push(box(0.15, 0.13, 0.03, lock, 0, H - 0.09, D / 2 + 0.015, 0, 0, 0, 0));
+  B.push(box(0.04, 0.06, 0.02, '#3a2a1a', 0, H - 0.1, D / 2 + 0.035, 0, 0, 0, 0));
+  if (o.gems) B.push(sph(0.06, o.gems[0], -W / 2 + 0.16, H * 0.45, D / 2 + 0.04, 1, 1, 0.6), sph(0.06, o.gems[1], W / 2 - 0.16, H * 0.45, D / 2 + 0.04, 1, 1, 0.6));
+  // tampa: base plana (fecha por baixo) + abóbada achatada + cintas
+  const R = D / 2;
+  const L: THREE.BufferGeometry[] = [box(W, 0.05, D, inner, 0, 0.025, R, 0, 0, 0, 0.05)];
+  const dome = new THREE.CylinderGeometry(R, R, W, 14, 1, false, 0, Math.PI);
+  dome.rotateZ(Math.PI / 2);
+  dome.scale(1, 0.62, 1);
+  dome.translate(0, 0.05, R);
+  L.push(clean(paint(dome, o.wood, 0.08)));
+  for (const x of [-(W / 2 - 0.16), W / 2 - 0.16]) {
+    const b = new THREE.CylinderGeometry(R + 0.022, R + 0.022, 0.08, 14, 1, false, 0, Math.PI);
+    b.rotateZ(Math.PI / 2);
+    b.scale(1, 0.62, 1);
+    b.translate(x, 0.05, R);
+    L.push(clean(paint(b, o.band, 0)));
+    for (const z of [-0.011, D + 0.011]) L.push(box(0.08, 0.05, 0.022, o.band, x, 0.025, z, 0, 0, 0, 0));
+  }
+  // aba da fechadura (pendurada na frente da tampa)
+  L.push(box(0.12, 0.1, 0.025, lock, 0, 0.0, D + 0.04, 0, 0, 0, 0));
+  return { body: merge(B), lid: merge(L) };
+}
+/** baú inteiro fechado (prévia de construção, ícones) */
+export function chestClosedGeo(o: ChestLook, y = 0): THREE.BufferGeometry {
+  const { body, lid } = chestGeos(o);
+  lid.translate(0, CHEST.H, -CHEST.D / 2);
+  return merge([body, lid]).translate(0, y, 0);
+}
+
+export const RAFT_CHEST: ChestLook = { wood: '#b0703a', band: '#6a4a2a', inner: '#4a2c16' };
 export function pieceGeo(k: PK, data = 0): THREE.BufferGeometry {
   const L: THREE.BufferGeometry[] = [];
   const y = DECK;
@@ -268,11 +338,8 @@ export function pieceGeo(k: PK, data = 0): THREE.BufferGeometry {
       L.push(box(0.4, 0.12, 0.4, '#8a5a2a', 0, y + 0.06, 0));
       break;
     case 'chest':
-      L.push(box(0.9, 0.5, 0.6, '#b0703a', 0, y + 0.25, 0));
-      L.push(box(0.94, 0.16, 0.64, '#c8884a', 0, y + 0.58, 0));
-      L.push(box(0.96, 0.06, 0.08, '#6a4a2a', 0, y + 0.42, -0.31));
-      L.push(box(0.14, 0.16, 0.06, '#ffd34a', 0, y + 0.46, -0.33));
-      for (const s of [-1, 1]) L.push(box(0.06, 0.52, 0.62, '#6a4a2a', s * 0.42, y + 0.27, 0));
+      // frente para −z (como antes): gira o baú inteiro
+      L.push(chestClosedGeo(RAFT_CHEST, 0).rotateY(Math.PI).translate(0, y + 0.03, 0));
       break;
     case 'bed':
       L.push(box(0.95, 0.3, 1.4, '#9a6a3a', 0, y + 0.15, 0));
@@ -518,12 +585,18 @@ export function ghostModel(): { root: THREE.Group; body: THREE.Mesh; bag: THREE.
   root.add(bag);
   return { root, body, bag };
 }
+let ghostShipMat: THREE.MeshLambertMaterial | null = null;
 export function ghostShipModel(): THREE.Group {
   initMats();
   const root = new THREE.Group();
   const hull = merge([box(1.6, 0.5, 4, '#bff8ea', 0, 0.25, 0), cone(0.8, 1.2, '#bff8ea', 0, 0.25, 2.5, Math.PI / 2, 0, 0, 4), cyl(0.07, 0.07, 3.2, '#bff8ea', 0, 1.9, 0)]);
-  root.add(new THREE.Mesh(hull, MAT.ghostRed));
-  const sail = new THREE.Mesh(merge([box(1.6, 1.5, 0.04, '#e8fff8', 0, 2.2, 0.1)]), MAT.ghostRed);
+  // translúcido, mas grava profundidade e tem ordem fixa: as faces de dentro/de trás não "piscam" quando o barco gira
+  ghostShipMat ??= Object.assign(MAT.ghostRed.clone(), { depthWrite: true });
+  const hm = new THREE.Mesh(hull, ghostShipMat);
+  hm.renderOrder = 2;
+  root.add(hm);
+  const sail = new THREE.Mesh(merge([box(1.6, 1.5, 0.08, '#e8fff8', 0, 2.2, 0.16)]), ghostShipMat);
+  sail.renderOrder = 3;
   root.add(sail);
   return root;
 }

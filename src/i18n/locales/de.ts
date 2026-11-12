@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Pause",
   "jangada.paused": "Pause",
   "jangada.putAll": "Alles einlagern",
+  "jangada.moveStack": "Stapel",
+  "jangada.keepHook": "Behalte einen Haken in der Hand!",
   "jangada.q.crab": "Bring mir 5 Muscheln und ich sage dir, wo die mittleren Inseln sind!",
   "jangada.q.penguin": "Bring mir 2 gebratene große Fische und ich zeige dir die legendären Inseln!",
   "jangada.qte.hold": "HALTEN!",

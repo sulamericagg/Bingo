@@ -9,7 +9,7 @@
  * ============================================================ */
 import * as THREE from 'three';
 import { bagAdd, PIECE, PIECES, type Bag, type ItemId, type PieceDef, type PK } from './data';
-import { CELL, DECK, FLOOR_H, MAT, flameTexture, floorGeo, foundationGeo, initMats, linkGeo, merge, pieceGeo, sph, stairsGeo, box, cyl } from './models';
+import { CELL, CHEST, DECK, FLOOR_H, MAT, RAFT_CHEST, chestGeos, flameTexture, floorGeo, foundationGeo, initMats, linkGeo, merge, pieceGeo, sph, stairsGeo, box, cyl } from './models';
 
 export interface RPiece {
   id: number;
@@ -428,6 +428,8 @@ interface PV {
   glow?: THREE.Mesh;
   flagCloth?: THREE.Mesh;
   items?: THREE.Group;
+  /** baú: tampa (dobradiça) */
+  lid?: THREE.Object3D;
 }
 const geoCache = new Map<string, THREE.BufferGeometry>();
 function cachedGeo(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
@@ -451,6 +453,8 @@ export class RaftView {
   private ver = -1;
   private hpBucket = '';
   private lights = 0;
+  /** baú aberto agora (painel do baú aberto por mim): a tampa abre */
+  openChest = -1;
   constructor(
     private raft: Raft,
     private maxLights: number,
@@ -559,6 +563,24 @@ export class RaftView {
         g.add(n);
         v.items = new THREE.Group();
         g.add(v.items);
+        break;
+      }
+      case 'chest': {
+        // corpo aberto de verdade + tampa na dobradiça (frente para −z, como na prévia)
+        const cg = cachedGeo('chestBody', () => chestGeos(RAFT_CHEST).body);
+        const lg = cachedGeo('chestLid', () => chestGeos(RAFT_CHEST).lid);
+        const turn = new THREE.Group();
+        turn.rotation.y = Math.PI;
+        turn.position.y = DECK + 0.03;
+        g.add(turn);
+        const b = new THREE.Mesh(cg, MAT.wood);
+        b.castShadow = true;
+        turn.add(b);
+        const hinge = new THREE.Group();
+        hinge.position.set(0, CHEST.H, -CHEST.D / 2);
+        hinge.add(new THREE.Mesh(lg, MAT.wood));
+        turn.add(hinge);
+        v.lid = hinge;
         break;
       }
       default: {
@@ -717,6 +739,11 @@ export class RaftView {
       }
       if (p.k === 'flag' && v.flagCloth) v.flagCloth.rotation.y = Math.sin(time * 2.4 + p.id) * 0.35 + 0.3;
       if (p.k === 'net' && v.items) this.showItems(v, Object.keys(d?.bag ?? {}) as ItemId[], 0.12, 0.35);
+      if (p.k === 'chest' && v.lid) {
+        const want = p.id === this.openChest ? -1.75 : 0;
+        const r = v.lid.rotation.x;
+        if (Math.abs(want - r) > 0.002) v.lid.rotation.x = r + (want - r) * 0.18;
+      }
       if (p.k === 'chest' && tier < 0) continue;
     }
   }

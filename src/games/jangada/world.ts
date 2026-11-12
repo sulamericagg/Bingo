@@ -70,6 +70,7 @@ import { Island, axeNode, nodeLoot, solidNode, underwaterNode, type INode } from
 import { CELL, DECK, FLOOR_H, MAT, debrisGeo, iconTexture, initMats, linkGeo, pieceGeo, floorGeo, foundationGeo, stairsGeo, toolGeo } from './models';
 import type { JNet, NetEvent } from './net';
 import { Ocean, SEABED_U, Sky, Underwater, skyAt, waveH, type SkyCols } from './ocean';
+import { Seabed } from './seabed';
 import { Raft, RaftView, bagMove, cellOf, pieceBag, type RPiece } from './raft';
 import type { JgStats, JgWorld } from './save';
 
@@ -329,7 +330,7 @@ export class World {
     this.touch = document.createElement('div');
     this.touch.className = 'jg-touch';
     o.root.appendChild(this.touch);
-    this.cam = new THREE.PerspectiveCamera(72, 1, 0.07, 1400);
+    this.cam = new THREE.PerspectiveCamera(72, 1, 0.1, 1400);
     this.scene.add(this.cam);
     this.scene.fog = new THREE.FogExp2('#bfe8ff', 0.006);
     this.hemi = new THREE.HemisphereLight('#e0f4ff', '#2a6a8a', 1.2);
@@ -350,6 +351,9 @@ export class World {
     this.scene.add(this.ocean.mesh);
     this.uw = new Underwater(this.tier);
     this.scene.add(this.uw.group);
+    // fundo do mar (areia, pedras, algas): debaixo d'água nada de "vazio" embaixo das ilhas
+    this.seabed = new Seabed(this.tier, () => this.map.map((q) => ({ x: q.x, z: q.z, r: q.r * 1.25 + 40 })));
+    this.scene.add(this.seabed.mesh);
     this.fx = new Particles(this.tier <= 0 ? 220 : 420);
     this.fx.floorY = -50;
     this.fx.budget = [0.4, 0.65, 0.9, 1][this.tier];
@@ -371,8 +375,11 @@ export class World {
     this.scene.add(this.paper.root);
     // mão (1ª pessoa)
     this.handMat = (MAT.vc as THREE.MeshLambertMaterial).clone();
-    this.handMat.depthTest = false;
-    this.handMat.depthWrite = false;
+    // viewmodel: vai na fila dos transparentes (depois do mar) e limpa o depth antes de desenhar →
+    // sempre por cima da água/ilha/jangada, mas com profundidade própria (o gancho não se atravessa)
+    this.handMat.transparent = true;
+    this.handMat.depthTest = true;
+    this.handMat.depthWrite = true;
     this.cam.add(this.hand);
     this.hookHead = new THREE.Mesh(toolGeo('hook')!, MAT.vc);
     this.hookHead.scale.setScalar(0.9);
@@ -2124,7 +2131,14 @@ export class World {
         }
       }
       this.jumpQ = false;
-      if (m.speedK > 0.3 && Math.random() < dt * 1.6) this.au.stroke();
+      // braçadas no ritmo do nado (não aleatórias): mais rápido = braçadas mais curtas
+      if (m.speedK > 0.18) {
+        this.strokePh += dt * (0.75 + m.speedK * 0.65);
+        if (this.strokePh >= 1) {
+          this.strokePh -= 1;
+          this.au.stroke(m.speedK, this.auUnder);
+        }
+      } else this.strokePh = Math.min(this.strokePh, 0.7);
       if (Math.random() < dt * m.speedK * 3 * this.fx.budget && m.y > float - 0.4) this.fx.emit(m.x + (Math.random() - 0.5) * 0.6, water, m.z + (Math.random() - 0.5) * 0.6, 0, 0.3, 0, { life: 0.6, size: 0.07, grow: 0.1 });
     }
     m.bob = this.fpc.bob;
@@ -2191,7 +2205,7 @@ export class World {
     if (under) {
       m.air = Math.max(0, m.air - dt / 28);
       if (m.air <= 0) this.hurt(9 * dt, false);
-      if (Math.random() < dt * 1.2) this.au.bubbles(2);
+      if (Math.random() < dt * 0.45) this.au.bubbles(2);
     } else m.air = Math.min(1, m.air + dt / 2.5);
     this.warnT -= dt;
     if (this.warnT <= 0 && (m.food < 18 || m.water < 18)) {
@@ -2230,8 +2244,14 @@ export class World {
     }
   }
   private dying = false;
+  /** fase da braçada (0..1) e "debaixo d'água" do som (com histerese) */
+  private strokePh = 0;
+  private seabed: Seabed;
+  private auUnder = false;
   private camShake = 0;
   private uwCol = new THREE.Color();
+  /** cor da neblina já em sRGB (o shader do mar escreve a cor direto, sem conversão) */
+  private uwFogS = new THREE.Color();
   private photo: [number, number, number, number, number, number] | null = null;
   private handHidden = false;
   /** kit de 1ª pessoa: corpo (aceleração/frenagem da Cozinha, deslizar nas paredes) e câmera (balanço, tremor) */
@@ -2776,9 +2796,10 @@ export class World {
         this.au.nope();
         return;
       }
-      // devolve metade
+      // devolve metade (o baú volta inteiro, com tudo o que tinha dentro: dá para montar de novo em outro lugar)
       const back: Bag = {};
-      for (const [id, n] of Object.entries(PIECE[p.k].cost)) back[id as ItemId] = Math.ceil((n ?? 0) / 2);
+      const keep = p.k === 'chest' ? 1 : 0.5;
+      for (const [id, n] of Object.entries(PIECE[p.k].cost)) back[id as ItemId] = Math.ceil((n ?? 0) * keep);
       if (p.d?.bag) bagAdd(back, p.d.bag);
       this.addItems(back, true);
       this.act({ o: 'trash', id: p.id });
@@ -3143,17 +3164,30 @@ export class World {
   private openChest(p: RPiece): void {
     this.setPaused(!this.net);
     this.ctl.show(false);
+    const pos = { x: p.x * CELL, y: DECK + this.bobY + 0.5, z: p.z * CELL };
+    this.rv.openChest = p.id;
+    this.au.raftCreak(pos);
     let redraw: () => void = () => {};
     const close = () => {
       this.hud.closePanel();
       this.setPaused(false);
       this.chestRedraw = null;
+      this.rv.openChest = -1;
+      this.au.raftCreak(pos);
     };
+    // o último gancho fica com você (sem ele não dá para pescar nada)
+    const lastHook = (id: ItemId) => (id === 'hook' || id === 'hook2') && (this.inv.hook ?? 0) + (this.inv.hook2 ?? 0) <= 1;
     redraw = this.hud.openChest({
       mine: () => this.inv,
       chest: () => this.raft.get(p.id)?.d?.bag ?? {},
-      move: (id, toChest) => {
-        const n = toChest ? (this.inv[id] ?? 0) : (this.raft.get(p.id)?.d?.bag?.[id] ?? 0);
+      move: (id, toChest, one) => {
+        if (toChest && lastHook(id)) {
+          this.au.nope();
+          notify(t('jangada.keepHook', 'Fique com um gancho na mão!'), { icon: 'warning', key: 'jgkeep' });
+          return;
+        }
+        const have = toChest ? (this.inv[id] ?? 0) : (this.raft.get(p.id)?.d?.bag?.[id] ?? 0);
+        const n = one ? Math.min(1, have) : have;
         if (n <= 0) return;
         if (toChest) bagAdd(this.inv, { [id]: n }, -1);
         this.act({ o: 'chest', id: p.id, it: id, n, put: toChest });
@@ -3164,7 +3198,8 @@ export class World {
         const src = toChest ? this.inv : (this.raft.get(p.id)?.d?.bag ?? {});
         for (const [k, n] of Object.entries(src)) {
           const id = k as ItemId;
-          if (!n || ITEM[id].kind === 'tool') continue;
+          // "Guardar tudo" não leva as ferramentas (continuam na mão)
+          if (!n || (toChest && ITEM[id].kind === 'tool')) continue;
           if (toChest) bagAdd(this.inv, { [id]: n }, -1);
           this.act({ o: 'chest', id: p.id, it: id, n, put: toChest });
         }
@@ -3725,7 +3760,8 @@ export class World {
       fog.density = 0.0036 + this.storm * 0.011 + c.night * 0.002;
     }
     this.renderer.setClearColor(fog.color);
-    this.ocean.update(this.cam, this.time, this.amp, this.off[0], this.off[1], c, under ? 0.06 : fog.density, this.storm, uwFog);
+    // debaixo d'água: o lado de baixo da superfície usa a MESMA cor/densidade da neblina (sem faixa clara no horizonte)
+    this.ocean.update(this.cam, this.time, this.amp, this.off[0], this.off[1], c, fog.density, this.storm, under ? this.uwFogS.copy(fog.color).convertLinearToSRGB() : uwFog);
     const ou = this.ocean.mat.uniforms;
     ou.uRaft.value.set(b[0], b[1], b[2], b[3]);
     this.ocean.setIsles([...this.isles.values()].sort((p, q) => Math.hypot(p.x - this.cam.position.x, p.z - this.cam.position.z) - Math.hypot(q.x - this.cam.position.x, q.z - this.cam.position.z)).map((i) => i.shapeU()));
@@ -3733,6 +3769,7 @@ export class World {
     for (const bt of this.boats) wake.push(...bt.wake.slice(0, 3));
     for (const bs of this.bosses) if (bs.fighting && bs.kind === 'mega' && bs.y > this.waterAt(bs.x, bs.z) - 2) wake.push([bs.x, bs.z, 4, 0.9]);
     this.ocean.setWake(wake.slice(0, 8));
+    this.seabed.update(this.cam.position.x, this.cam.position.z);
     SEABED_U.uCTime.value = this.time;
     SEABED_U.uCSun.value = (c.night > 0.5 ? 0.15 : c.sunI * 0.7) * (1 - this.storm * 0.6);
     SEABED_U.uCDeep.value.copy(uwFog);
@@ -3740,7 +3777,10 @@ export class World {
     this.sky.group.visible = !under;
     this.uw.update(this.cam, under, this.time, dt, ld, (c.night > 0.5 ? 0.2 : c.sunI * 0.6) * (1 - this.storm * 0.6), wCam);
     this.hud.underwater(under);
-    this.au.underwater = under;
+    // som abafado com histerese: nadando na superfície a câmera cruza a onda o tempo todo (não fica liga/desliga)
+    const dUw = wCam - this.cam.position.y;
+    if (this.auUnder ? dUw < -0.06 : dUw > 0.18) this.auUnder = !this.auUnder;
+    this.au.underwater = this.auUnder;
     // eu em 3ª pessoa
     const m = this.me;
     this.paper.root.visible = this.camMode !== 0;
@@ -3777,11 +3817,17 @@ export class World {
       if (g) {
         const msh = new THREE.Mesh(g, this.handMat);
         msh.renderOrder = 100;
+        msh.frustumCulled = false;
+        msh.onBeforeRender = (r) => {
+          r.state.buffers.depth.setMask(true);
+          r.clearDepth();
+        };
         this.handObj = msh;
       } else {
         const mat = new THREE.MeshBasicMaterial({ map: iconTexture(iconImage(id), id), transparent: true, depthTest: false, depthWrite: false });
         const msh = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), mat);
         msh.renderOrder = 100;
+        msh.frustumCulled = false;
         this.handObj = msh;
       }
       this.hand.add(this.handObj);
@@ -4542,6 +4588,7 @@ export class World {
     for (const id of [...this.isles.keys()]) this.dropIsle(id);
     for (const b of this.boats) b.dispose();
     this.uw.dispose();
+    this.seabed.dispose();
     for (const r of this.remotes.values()) r.label.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();

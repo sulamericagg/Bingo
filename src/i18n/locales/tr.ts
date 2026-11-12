@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Duraklat",
   "jangada.paused": "Duraklat",
   "jangada.putAll": "Hepsini koy",
+  "jangada.moveStack": "Yığın",
+  "jangada.keepHook": "Elinde bir kanca kalsın!",
   "jangada.q.crab": "Bana 5 deniz kabuğu getir, orta adaların yerini söyleyeyim!",
   "jangada.q.penguin": "Bana 2 kızarmış büyük balık getir, efsanevi adaları göstereyim!",
   "jangada.qte.hold": "BASILI TUT!",

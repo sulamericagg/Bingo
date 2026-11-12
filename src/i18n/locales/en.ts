@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "Pause",
   "jangada.paused": "Pause",
   "jangada.putAll": "Store all",
+  "jangada.moveStack": "Stack",
+  "jangada.keepHook": "Keep one hook in your hand!",
   "jangada.q.crab": "Bring me 5 shells and I'll tell you where the middle islands are!",
   "jangada.q.penguin": "Bring me 2 roasted big fish and I'll show you the legendary islands!",
   "jangada.qte.hold": "HOLD!",

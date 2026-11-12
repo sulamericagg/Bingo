@@ -464,24 +464,37 @@ export class Hud {
   }
 
   /** baú: toque num item para mover (tudo de uma vez) */
-  openChest(o: { mine: () => Bag; chest: () => Bag; move: (id: ItemId, toChest: boolean) => void; all: (toChest: boolean) => void; close: () => void }): () => void {
-    const card = this.panel('', '');
-    const grid = (b: Bag, side: 'm' | 'c') =>
-      Object.entries(b)
-        .filter(([id, n]) => (n ?? 0) > 0 && ITEM[id as ItemId] && ITEM[id as ItemId].kind !== 'tool')
-        .map(([id, n]) => `<button class="jg-it" data-${side}="${id}" aria-label="${esc(itemName(id as ItemId))}">${jIcon(id, 32)}<i>${n}</i></button>`)
-        .join('') || `<small style="opacity:.6;font-weight:600">${esc(t('jangada.empty', 'vazio'))}</small>`;
+  /** baú (estilo Minecraft): espaços do baú + a sua mochila; toque = move a pilha (ou 1, no modo "um por vez") */
+  openChest(o: { mine: () => Bag; chest: () => Bag; move: (id: ItemId, toChest: boolean, one: boolean) => void; all: (toChest: boolean) => void; close: () => void }): () => void {
+    const card = this.panel('', 'jg-chestc');
+    let one = false;
+    const SLOTS = 18;
+    const grid = (b: Bag, side: 'm' | 'c') => {
+      const list = Object.entries(b).filter(([id, n]) => (n ?? 0) > 0 && ITEM[id as ItemId]);
+      const cells = list.map(([id, n]) => `<button class="jg-it" data-${side}="${id}" aria-label="${esc(itemName(id as ItemId))}">${jIcon(id, 30)}<i>${n}</i></button>`);
+      const total = Math.max(side === 'c' ? SLOTS : 12, Math.ceil(list.length / 6) * 6);
+      for (let i = list.length; i < total; i++) cells.push('<span class="jg-it jg-slot0" aria-hidden="true"></span>');
+      return cells.join('');
+    };
     const draw = () => {
-      card.innerHTML = `<button class="jg-close" data-x>${jIcon('close', 20)}</button><h2>${jIcon('chest', 30)}${esc(t('jangada.p.chest', 'Baú'))}</h2>
-        <div class="jg-chest"><div><h3>${jIcon('people', 20)}${esc(t('jangada.bag', 'Com você'))}<button class="jg-b w" data-all="c" style="margin-left:auto;min-height:32px;padding:4px 9px;font-size:13px">${esc(t('jangada.putAll', 'Guardar tudo'))} →</button></h3><div class="jg-inv">${grid(o.mine(), 'm')}</div></div>
-        <div><h3>${jIcon('chest', 20)}${esc(t('jangada.inChest', 'No baú'))}<button class="jg-b w" data-all="m" style="margin-left:auto;min-height:32px;padding:4px 9px;font-size:13px">← ${esc(t('jangada.takeAll', 'Pegar tudo'))}</button></h3><div class="jg-inv">${grid(o.chest(), 'c')}</div></div></div>`;
+      const mine = o.mine();
+      const ch = o.chest();
+      card.innerHTML = `<button class="jg-close" data-x aria-label="${esc(t('jangada.close', 'Fechar'))}">${jIcon('close', 20)}</button>
+        <h2>${jIcon('chest', 28)}${esc(t('jangada.p.chest', 'Baú'))}<span class="jg-seg" role="group"><button data-one="0" class="${one ? '' : 'on'}" aria-pressed="${!one}">${esc(t('jangada.moveStack', 'Pilha'))}</button><button data-one="1" class="${one ? 'on' : ''}" aria-pressed="${one}">1</button></span></h2>
+        <div class="jg-chest">
+          <div><h3>${jIcon('chest', 18)}${esc(t('jangada.inChest', 'No baú'))}</h3><div class="jg-inv jg-slots">${grid(ch, 'c')}</div>
+            <button class="jg-b w jg-allb" data-all="m" ${Object.keys(ch).length ? '' : 'disabled'}>${jIcon('hand', 18)}${esc(t('jangada.takeAll', 'Pegar tudo'))}</button></div>
+          <div><h3>${jIcon('people', 18)}${esc(t('jangada.bag', 'Com você'))}</h3><div class="jg-inv jg-slots">${grid(mine, 'm')}</div>
+            <button class="jg-b w jg-allb" data-all="c">${jIcon('chest', 18)}${esc(t('jangada.putAll', 'Guardar tudo'))}</button></div>
+        </div>`;
     };
     card.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-      if (!b) return;
+      if (!b || b.disabled) return;
       if (b.dataset.x !== undefined) return o.close();
-      if (b.dataset.m) o.move(b.dataset.m as ItemId, true);
-      else if (b.dataset.c) o.move(b.dataset.c as ItemId, false);
+      if (b.dataset.one !== undefined) one = b.dataset.one === '1';
+      else if (b.dataset.m) o.move(b.dataset.m as ItemId, true, one);
+      else if (b.dataset.c) o.move(b.dataset.c as ItemId, false, one);
       else if (b.dataset.all) o.all(b.dataset.all === 'c');
       draw();
     });

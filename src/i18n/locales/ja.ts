@@ -5374,6 +5374,8 @@ export default {
   "jangada.pause": "ポーズ",
   "jangada.paused": "ポーズ",
   "jangada.putAll": "ぜんぶしまう",
+  "jangada.moveStack": "まとめて",
+  "jangada.keepHook": "フックを1つは手に持っていよう！",
   "jangada.q.crab": "貝がらを5つ持ってきたら中くらいの島の場所を教えるよ！",
   "jangada.q.penguin": "焼いた大きな魚を2匹持ってきたら伝説の島を見せるよ！",
   "jangada.qte.hold": "長押し！",
