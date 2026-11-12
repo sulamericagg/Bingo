@@ -54,6 +54,7 @@ export class Power {
       sfx.play('powerDown');
       sh.e.fpc.addShake(0.15);
       sh.store.setPower(false);
+      sh.hud.el.classList.add('pk-dark');
       sh.hud.banner('boltOff', t('pink.pw.out', 'Caiu a luz! As geladeiras pararam!'), 2800);
     }
     if (!this.on) {
@@ -62,6 +63,7 @@ export class Power {
         this.genOn = true;
         sfx.play('powerUp');
         sh.store.setPower(true);
+        sh.hud.el.classList.remove('pk-dark');
         this.cold = true;
         sh.hud.banner('generator', t('pink.pw.gen', 'O gerador ligou sozinho! Tudo funcionando.'), 2600);
       }
@@ -73,6 +75,7 @@ export class Power {
         this.outAt = -1;
         sfx.play('powerUp');
         sh.store.setPower(true);
+        sh.hud.el.classList.remove('pk-dark');
         if (!this.genOn) sh.hud.banner('bolt', t('pink.pw.back', 'A luz voltou!'), 2000);
       }
     }

@@ -1714,10 +1714,11 @@ export class Shop implements TabletHost {
     const lv = this.s.renov.light;
     const night = Math.max(0, k - 0.8) * 5;
     const pw = this.power.on ? 1 : 0.28;
-    e.sun.intensity = 1.6 * (1 - night * 0.7);
+    // sem luz: a loja fica na penumbra (sem sombras nos aparelhos simples, o "sol" também ilumina o salão)
+    e.sun.intensity = 1.6 * (1 - night * 0.7) * (this.power.on ? 1 : 0.35);
     e.hemi.intensity = (0.32 + lv * 0.06) * (1 - night * 0.3) * pw;
     e.amb.intensity = (0.04 + lv * 0.03) * pw;
-    e.r.toneMappingExposure = (0.9 + lv * 0.03) * (this.power.on ? 1 : 0.7);
+    e.r.toneMappingExposure = (0.9 + lv * 0.03) * (this.power.on ? 1 : 0.5);
   }
   private dayTick(dt: number): void {
     if (this.phase === 'open') {

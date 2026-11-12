@@ -163,7 +163,7 @@ export function slotSpecs(kind: FurnKind): SlotSpec[] {
   } else if (kind === 'fridge') {
     for (const y of [0.2, 0.62, 1.04, 1.46]) for (let i = 0; i < 3; i++) out.push({ x: -0.36 + i * 0.36, y: y + 0.02, z: 0.02, face: 1 });
   } else if (kind === 'freezer') {
-    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) out.push({ x: -0.54 + i * 0.36, y: 0.42, z: 0.17 - r * 0.34, face: 1 });
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) out.push({ x: -0.54 + i * 0.36, y: 0.57, z: 0.17 - r * 0.34, face: 1 });
   } else if (kind === 'butcher') {
     for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) out.push({ x: -0.6 + i * 0.4, y: 0.82 + r * 0.06, z: 0.16 - r * 0.26, face: 1 });
   } else if (kind === 'table') {

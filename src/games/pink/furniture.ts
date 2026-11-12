@@ -457,9 +457,15 @@ export function buildFurniture(kit: Kit, kind: FurnKind): FurnModel {
     }
     case 'freezer': {
       const body = kit.plain('fridgeBody', '#f4f6f8', 0.3, 0.2, { envK: 0.9 });
-      b.add(rbox(W, H - 0.1, D, 0.04, 2), body, 0, (H - 0.1) / 2, 0);
-      b.add(new THREE.PlaneGeometry(W - 0.1, D - 0.1).rotateX(-Math.PI / 2), kit.plain('freezerIn', '#cfe8f8', 0.5, 0, { emissive: '#bfe4ff', ei: 0.3 }), 0, H - 0.1, 0);
-      b.add(rbox(W - 0.06, 0.03, D - 0.06, 0.01, 1), kit.glass('fridgeGlass', '#e6f6ff', 0.18), 0, H - 0.06, 0);
+      // caixa oca: paredes + fundo (os produtos ficam à vista pela tampa de vidro)
+      const hh = H - 0.1;
+      for (const sz of [-1, 1]) b.add(rbox(W, hh, 0.06, 0.02, 2), body, 0, hh / 2, sz * (D / 2 - 0.03));
+      for (const sx of [-1, 1]) b.add(rbox(0.06, hh, D, 0.02, 2), body, sx * (W / 2 - 0.03), hh / 2, 0);
+      b.add(rbox(W, 0.56, D, 0.02, 2), body, 0, 0.28, 0);
+      b.add(new THREE.PlaneGeometry(W - 0.12, D - 0.12).rotateX(-Math.PI / 2), kit.plain('freezerIn', '#cfe8f8', 0.5, 0, { emissive: '#bfe4ff', ei: 0.3 }), 0, 0.565, 0);
+      const lid = kit.glass('freezerLid', '#e6f6ff', 0.1);
+      lid.envMapIntensity = 0.25;
+      b.add(rbox(W - 0.06, 0.02, D - 0.06, 0.008, 1), lid, 0, H - 0.06, 0);
       b.add(rbox(W, 0.05, 0.06, 0.02, 1), kit.plain('freezerRim', '#6aa8ff', 0.4), 0, H - 0.08, D / 2 - 0.03);
       break;
     }
