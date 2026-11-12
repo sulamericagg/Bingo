@@ -240,6 +240,33 @@ const CSS = `
 .pk-of-rows{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-weight:700;font-size:13px}
 .pk-of-rows>div{display:flex;align-items:center;gap:5px;background:#fff3f8;border-radius:10px;padding:4px 8px}
 .pk-of-rows b{margin-left:auto}
+.pk-tg{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:min(90vw,560px)}
+.pk-tg h2{margin:0}
+.pk-tg .ask{display:flex;align-items:center;gap:8px;background:#fff3f8;border-radius:14px;padding:4px 12px;font-weight:800;font-size:15px}
+.pk-tg .ask b{display:flex;align-items:center;gap:4px;color:#d63384}
+.pk-tg .ask .dot{display:inline-block;width:28px;height:28px;border-radius:50%;box-shadow:inset 0 0 0 3px rgba(0,0,0,.2)}
+.pk-tg .bottles{display:flex;gap:10px;justify-content:center}
+.pk-tg .bt{display:flex;flex-direction:column;align-items:center;gap:3px;width:96px;padding:6px 4px;border-radius:14px;cursor:pointer;transition:transform .15s}
+.pk-tg .bt.pick{background:#e4ffe9;box-shadow:inset 0 0 0 3px #3ac48a;transform:translateY(-3px)}
+.pk-tg .glass{position:relative;width:44px;height:60px;border-radius:12px 12px 14px 14px;background:linear-gradient(90deg,rgba(255,255,255,.7),rgba(255,255,255,.25) 40%,rgba(255,255,255,.6));box-shadow:inset 0 0 0 2px rgba(0,0,0,.18);margin-top:12px}
+.pk-tg .glass .liq{position:absolute;left:4px;right:4px;bottom:4px;height:62%;border-radius:8px 8px 10px 10px;background:var(--c);opacity:.85}
+.pk-tg .glass .cap{position:absolute;left:12px;top:-12px;width:20px;height:14px;border-radius:5px;background:var(--cap);box-shadow:inset 0 0 0 2px rgba(0,0,0,.2)}
+.pk-tg .bt .nm{font-size:11px;font-weight:700;line-height:1.1;text-align:center;height:24px;overflow:hidden}
+.pk-tg .strip{position:relative;width:22px;height:54px;border-radius:4px;background:#fffdf8;box-shadow:0 1px 3px rgba(0,0,0,.25);display:flex;align-items:flex-start;justify-content:center;padding-top:4px}
+.pk-tg .strip .fam{opacity:0;transform:scale(.4);transition:all .3s .25s}
+.pk-tg .strip .mist{position:absolute;left:-14px;top:-6px;width:50px;height:40px;border-radius:50%;background:radial-gradient(rgba(255,180,215,.8),rgba(255,180,215,0) 70%);opacity:0}
+.pk-tg .bt.sprayed .fam{opacity:1;transform:scale(1)}
+.pk-tg .bt.sprayed .mist{animation:pkMist .9s ease-out}
+@keyframes pkMist{0%{opacity:0;transform:scale(.3)}25%{opacity:1}100%{opacity:0;transform:scale(1.6) translateY(-14px)}}
+.pk-tg .nwrap{display:flex;align-items:center;gap:14px}
+.pk-tg .hand{width:190px;height:220px;touch-action:none}
+.pk-tg .hand .nail{cursor:pointer;transition:fill .2s}
+.pk-tg .pal{display:grid;grid-template-columns:repeat(4,44px);gap:8px}
+.pk-tg .bot{width:44px;height:52px;border:0;border-radius:10px;background:#fff3f8;display:flex;align-items:flex-end;justify-content:center;padding:4px;cursor:pointer;touch-action:manipulation}
+.pk-tg .bot i{width:24px;height:30px;border-radius:7px 7px 9px 9px;background:var(--c);box-shadow:inset 0 0 0 2px rgba(0,0,0,.2),0 -10px 0 -4px #2a2530}
+.pk-tg .bot.on{box-shadow:inset 0 0 0 3px #3ac48a;background:#e4ffe9}
+.pk-tg .hand .nail{stroke-width:3}
+@media (max-height:400px){.pk-tg h2{font-size:18px}.pk-tg .hand{width:158px;height:183px;margin:-6px 0}.pk-tg .glass{height:48px}.pk-tg .strip{height:40px}.pk-tg .bt .nm{display:none}}
 .pk-ck .chg{font-weight:800;font-size:15px;display:flex;gap:10px;align-items:center;justify-content:center}
 .pk-ck .chg b{font-size:18px}
 .pk-ck .chg .ok{color:#2fa35a}

@@ -27,6 +27,7 @@ import { BUILDING_LVL, BUILDING_PRICE, nextStage, pendingWall, rentOf, salesArea
 import { Tablet, type TabletHost, type TabletTab } from './tablet';
 import { Security, guardSpec } from './security';
 import { Office } from './office';
+import { FAMS, NAIL_COLS, nailsGame, perfumeGame, type TestResult } from './testers';
 import { CheckoutUI, type CheckoutResult, type PayKind } from './checkout';
 import { addTo, robberyRisk, SECURITY, CHANGE_KIT, CHANGE_KIT_VALUE, customerNote, drawerTotal, makeChange, takeBag } from './money';
 import { Builder, rbox } from './shapes';
@@ -79,6 +80,8 @@ export interface Cust {
   /** ladrãozinho (esconde um produto e sai andando reto pelo meio) */
   thief?: boolean;
   loot?: Product | null;
+  /** cliente no provador pedindo ajuda (perfume: família; unhas: cor) */
+  help?: { fam: number; color: string } | null;
 }
 export interface Staff {
   i: number;
@@ -958,7 +961,10 @@ export class Shop implements TabletHost {
       case 'mop':
         break;
       case 'tester':
-        if (first && a.f) this.playerTest(a.f);
+        if (first && a.f) this.playerTest(a.f, null);
+        break;
+      case 'help':
+        if (first && a.f && a.cu) this.playerTest(a.f, a.cu);
         break;
       case 'smash':
         this.smash();
@@ -1151,10 +1157,42 @@ export class Shop implements TabletHost {
     } else if (leftover > 0) this.hud.banner('box', t('pink.wasted', 'Opa! {n} produtos foram para o lixo.', { n: leftover }), 1800);
     this.save();
   }
-  private playerTest(f: Furn): void {
-    sfx.play('spray');
-    this.sprayFx(f);
-    this.hud.bubble('me', 'sparkle', t('pink.smell', 'Hmm, que cheirinho!'), 'good', 1600);
+  /** provador: minigame (perfume / unhas); com cliente pedindo ajuda vale venda */
+  private playerTest(f: Furn, cu: Cust | null): void {
+    if (f.sv.k === 'testMakeup') {
+      sfx.play('spray');
+      this.sprayFx(f);
+      this.hud.bubble('me', 'sparkle', t('pink.smell', 'Hmm, que cheirinho!'), 'good', 1600);
+      return;
+    }
+    const help = cu?.help ?? null;
+    if (cu) cu.t = 0;
+    const after = (r: TestResult | null) => {
+      if (!cu) {
+        if (r?.ok) this.hud.bubble('me', 'love', t('pink.smell', 'Hmm, que cheirinho!'), 'good', 1400);
+        return;
+      }
+      cu.help = null;
+      cu.t = 2.2;
+      if (!r) return;
+      if (r.ok) {
+        cu.mood += 25;
+        this.say(cu, 'helped', 'love', t('pink.say.helped', 'Amei! Vou levar!'), 'good', 2200);
+        this.addXp(10);
+        // passa a querer o produto certo (se a loja tiver na prateleira)
+        if (r.p && this.findProduct(r.p, cu.w)) cu.wants.unshift(r.p);
+        sfx.play('sparkle');
+      } else {
+        cu.mood -= 6;
+        this.say(cu, 'helped', 'sad', t('pink.say.notThis', 'Hmm, esse não...'), 'bad', 1800);
+      }
+    };
+    sfx.play('click');
+    if (f.sv.k === 'testPerfume') {
+      const stocked: string[] = [];
+      for (const ff of this.furn) for (const v of ff.sv.s) if (v && v[1] > 0) stocked.push(v[0]);
+      perfumeGame(this.hud, stocked, help ? help.fam : null, after);
+    } else nailsGame(this.hud, help ? help.color : null, after);
   }
   private sprayFx(f: Furn): void {
     const pos = new THREE.Vector3(0, 1.15, 0).applyMatrix4(f.g.matrixWorld);
@@ -1398,10 +1436,18 @@ export class Shop implements TabletHost {
             hicon = 'office';
             use = ['office', t('pink.u.office', 'Finanças'), true];
           } else if (g === 'tester' && !c) {
-            info = { kind: 'tester', f: fb };
-            hint = fb.def.name;
-            hicon = fb.def.icon;
-            use = ['sparkle', t('pink.u.try', 'Provar'), true];
+            const hc = this.custs.find((x) => x.help && x.tester === fb && x.st === 'testing');
+            if (hc) {
+              info = { kind: 'help', f: fb, cu: hc };
+              hint = t('pink.h.help', 'Cliente quer ajuda!');
+              hicon = 'smile';
+              use = ['smile', t('pink.u.help', 'Ajudar'), true];
+            } else {
+              info = { kind: 'tester', f: fb };
+              hint = fb.def.name;
+              hicon = fb.def.icon;
+              use = [fb.sv.k === 'testNails' ? 'nails' : 'spray', t('pink.u.try', 'Provar'), true];
+            }
           } else if (!c) {
             hint = fb.def.name;
             hicon = fb.def.icon;
@@ -1883,20 +1929,48 @@ export class Shop implements TabletHost {
           c.st = 'testing';
           c.t = 0;
           w.act = 0;
-          sfx.play('spray', { db: -4 });
-          this.sprayFx(f);
-          c.mood += 12;
           this.goalProgress('tester', 1);
-          this.say(c, 'test', 'sparkle', f.sv.k === 'testPerfume' ? t('pink.say.smell', 'Que cheiro bom!') : f.sv.k === 'testNails' ? t('pink.say.nails', 'Amei essa cor!') : t('pink.say.makeup', 'Ficou lindo em mim!'), 'good');
+          // com o dono por perto, às vezes pede ajuda (minigame); senão prova sozinha
+          const near = Math.hypot(this.e.fp.x - w.x, this.e.fp.z - w.z) < 9;
+          if ((f.sv.k === 'testPerfume' || f.sv.k === 'testNails') && near && Math.random() < 0.55 && !this.guest) {
+            c.help = { fam: Math.floor(Math.random() * 4), color: NAIL_COLS[Math.floor(Math.random() * 6)] };
+            this.say(c, 'help', f.sv.k === 'testPerfume' ? FAMS[c.help.fam].icon : 'nails', t('pink.say.help', 'Me ajuda?'), '', 6000);
+          } else {
+            sfx.play('spray', { db: -4 });
+            this.sprayFx(f);
+            c.mood += 10;
+            if (f.sv.k === 'testPerfume') this.say(c, 'test1', 'sad', t('pink.say.notThis', 'Hmm, esse não...'), 'bad', 1300);
+            else this.say(c, 'test', 'sparkle', f.sv.k === 'testNails' ? t('pink.say.nails', 'Amei essa cor!') : t('pink.say.makeup', 'Ficou lindo em mim!'), 'good');
+          }
         }
         break;
-      case 'testing':
+      case 'testing': {
+        const f = c.tester;
+        if (c.help) {
+          // esperando o dono ajudar (até 12 s)
+          w.act = -1;
+          if (c.t > 12) {
+            c.help = null;
+            c.mood -= 4;
+            this.say(c, 'noHelp', 'clock', '', 'bad', 1500);
+            c.st = 'shop';
+          }
+          break;
+        }
         w.act = c.t < 1.2 ? (c.t * 0.8) % 1 : -1;
-        if (c.t > 2.2) {
+        if (f?.sv.k === 'testPerfume' && c.t > 1.4 && !c.said.has('test2')) {
+          // borrifa o segundo: esse sim!
+          sfx.play('spray', { db: -4 });
+          this.sprayFx(f);
+          this.say(c, 'test2', 'love', t('pink.say.smell', 'Que cheiro bom!'), 'good', 1600);
+          c.mood += 6;
+        }
+        if (c.t > (f?.sv.k === 'testPerfume' ? 3 : 2.2)) {
           w.act = -1;
           c.st = 'shop';
         }
         break;
+      }
       case 'look': {
         if (!c.target) {
           c.st = 'shop';
