@@ -48,6 +48,7 @@ import { registerMontaLeva } from './games/montaleva/register';
 import { registerNoites } from './games/noites/register';
 import { registerCavaFala } from './games/cavafala/register';
 import { registerJangada } from './games/jangada/register';
+import { registerPink } from './games/pink/register';
 import { registerStudio } from './studio/register';
 import { registerDesenho } from './games/desenho/register';
 import { registerGarimpo } from './games/garimpo/register';
@@ -139,6 +140,7 @@ async function boot(): Promise<void> {
   registerNoites();
   registerCavaFala();
   registerJangada();
+  registerPink();
   registerStudio();
   registerLugar();
   registerDesenho();
