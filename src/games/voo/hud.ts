@@ -19,6 +19,8 @@ import type { IconName } from '../../ui/icons';
 import { seatLabel, type Cmd, type Ctx, type Sim } from './sim';
 import { SPOTS } from './data';
 import { speak } from './voice';
+import { tap as haptic } from '../../core/haptics';
+import { EYE_CROUCH, EYE_STAND, smokeBottom } from './sim';
 
 export interface HudHost {
   sim: Sim;
@@ -138,9 +140,11 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'voo-hud';
     this.el.innerHTML = `
+      <div class="voo-smoke"></div>
       <div class="voo-walk">
         <div class="voo-ret"></div><div class="voo-tgt"></div>
         <div class="voo-acts">
+          <button class="voo-act small hide" data-crouch aria-label="${t('voo.a.crouch', 'Abaixar')}">${vIcon('crouch', 28)}<span>${t('voo.a.crouch', 'Abaixar')}</span></button>
           <button class="voo-act small off" data-thr>${vIcon('throw', 26)}<span>${t('voo.a.throw', 'Jogar')}</span></button>
           <button class="voo-act" data-act><svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="#5ef08a" stroke-width="7" stroke-dasharray="289" stroke-dashoffset="289" stroke-linecap="round"/></svg><span class="ic">${vIcon('hand', 30)}</span><span class="lb">${t('voo.a.use', 'Usar')}</span></button>
         </div>
@@ -156,6 +160,8 @@ export class Hud {
           <button class="voo-btn round ghost voo-ap" data-ap aria-label="${t('voo.f.ap', 'Piloto automático')}" title="${t('voo.f.ap', 'Piloto automático')}">${vIcon('ap', 30)}</button>
           <button class="voo-btn round ghost" data-cam aria-label="${t('voo.f.cam', 'Câmera')}" title="${t('voo.f.cam', 'Câmera')}">${vIcon('cam', 24)}<i class="cm"></i></button>
           <button class="voo-btn round gold" data-stand aria-label="${t('voo.f.stand', 'Levantar')}" title="${t('voo.f.stand', 'Levantar')}">${vIcon('up', 24)}</button>
+          <button class="voo-btn round voo-emb hide" data-masks aria-label="${t('voo.a.masks', 'Soltar máscaras')}" title="${t('voo.a.masks', 'Soltar máscaras')}">${vIcon('mask', 30)}</button>
+          <button class="voo-btn round voo-emb hide" data-vent aria-label="${t('voo.a.vent', 'Ventilar')}" title="${t('voo.a.vent', 'Ventilar')}">${vIcon('vent', 30)}</button>
         </div>
         <div class="voo-chud"><div><small>${t('voo.ch.spd', 'VEL')}</small><b data-c="spd"></b></div><div><small>${t('voo.ch.alt', 'ALT')}</small><b data-c="alt"></b></div><div><small>${t('voo.ch.vs', 'V/S')}</small><b data-c="vs"></b></div><svg data-c="brg" viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="17" fill="rgba(0,0,0,.25)" stroke="#fff" stroke-width="2"/><path d="M20 5L28 24H12Z" fill="#ff5cae" stroke="#2a0b5c" stroke-width="2" stroke-linejoin="round"/></svg></div>
       </div>
@@ -212,7 +218,7 @@ export class Hud {
     const h = this.host;
     const s = h.sim;
     this.el.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-ap],[data-mate],[data-cmd]') as HTMLElement | null;
+      const b = (e.target as HTMLElement).closest('[data-exit],[data-flaps],[data-gear],[data-stand],[data-cam],[data-ap],[data-mate],[data-cmd],[data-masks],[data-vent],[data-lv]') as HTMLElement | null;
       if (!b) return;
       if (b.dataset.exit !== undefined) h.onExit();
       else if (b.dataset.flaps !== undefined) s.setFlaps((s.f.flaps + 1) % 3);
@@ -220,6 +226,9 @@ export class Hud {
       else if (b.dataset.stand !== undefined) h.onStand();
       else if (b.dataset.cam !== undefined) h.onCam();
       else if (b.dataset.ap !== undefined) h.onAP();
+      else if (b.dataset.masks !== undefined) s.dropMasks(s.players[s.me]);
+      else if (b.dataset.vent !== undefined) s.ventCabin(s.players[s.me]);
+      else if (b.dataset.lv !== undefined) this.hideLever();
       else if (b.dataset.mate !== undefined) {
         if (performance.now() - this.dragged > 300) this.openMenu(+b.dataset.mate);
       }
@@ -235,6 +244,7 @@ export class Hud {
         onRelease: () => (h.actHeld = false),
       }),
       bindButton(this.thr, { onPress: () => h.onThrow() }),
+      bindButton(this.q('[data-crouch]'), { onPress: () => this.toggleCrouch() }),
     );
     // andar + olhar (3D) ou só andar (2D): controles compartilhados de src/ui/touch
     this.fps = h.is3d ? new FpsControls(this.surface, { joystick: { zoneTop: 0.3 } }) : null;
@@ -323,6 +333,7 @@ export class Hud {
       else if (e.code === 'KeyC') h.onCam();
       else if (e.code === 'KeyP' && me.seated) h.onAP();
       else if (e.code === 'KeyX' && me.seated) h.onStand();
+      else if (e.code === 'KeyZ' && !me.seated) this.toggleCrouch();
       else return;
       e.preventDefault();
     };
@@ -342,6 +353,14 @@ export class Hud {
       window.removeEventListener('keyup', ku);
       window.removeEventListener('blur', blur);
     });
+  }
+
+  private toggleCrouch(): void {
+    const s = this.host.sim;
+    const me = s.players[s.me];
+    if (me.seated) return;
+    s.setCrouch(me, !me.crouch);
+    haptic('light');
   }
 
   private toggleGear(): void {
@@ -465,9 +484,11 @@ export class Hud {
       if (k === 'door') return { ico: 'door', say: t('voo.v.door', 'Fecha a porta!') };
       if (k === 'pressure') return { ico: 'pressure', say: t('voo.v.valve', 'Gira a válvula!') };
       if (k === 'panic') return { ico: 'calm', say: t('voo.v.calm', 'Acalma os passageiros!') };
+      if (k === 'smoke') return { ico: 'vent', say: t('voo.v.smoke', 'Tira a fumaça da cabine!') };
       return { ico: 'wrench', say: t('voo.v.fix', 'Conserta isso!') };
     }
     if (c === 'pilot') return { ico: 'yoke', say: t('voo.v.pilot', 'Segura o manche!') };
+    if (c === 'masks') return { ico: 'mask', say: t('voo.v.masks', 'Solta as máscaras!') };
     if (c === 'calm') return { ico: 'calm', say: t('voo.v.calm', 'Acalma os passageiros!') };
     if (c === 'follow') return { ico: 'follow', say: t('voo.v.follow', 'Vem comigo!') };
     return { ico: 'stay', say: t('voo.v.stay', 'Fica aí!') };
@@ -552,9 +573,12 @@ export class Hud {
     const m = document.createElement('div');
     m.className = 'voo-menu big';
     const em = s.active().filter((e) => e.kind !== 'turb');
-    const cmds = [...em.map((e) => 'fix:' + e.id), 'pilot', 'calm', 'follow', 'stay'];
+    // fumaça/pressão sem máscaras: dá para pedir só "solta as máscaras" (o ajudante vai ao botão amarelo)
+    const needMask = !s.masks && (s.smoke > 0.08 || em.some((e) => e.kind === 'smoke' || e.kind === 'pressure'));
+    const cmds = [...(needMask ? ['masks'] : []), ...em.map((e) => 'fix:' + e.id), 'pilot', 'calm', 'follow', 'stay'];
     const lbl = (c: string) => {
       if (c.startsWith('fix:')) return emerName(s.emer(+c.slice(4))?.kind ?? 'fire').replace('!', '');
+      if (c === 'masks') return t('voo.cmd.masks', 'Soltar as máscaras');
       return c === 'pilot' ? t('voo.cmd.pilot', 'Segurar o manche') : c === 'calm' ? t('voo.cmd.calm', 'Acalmar passageiros') : c === 'follow' ? t('voo.cmd.follow', 'Me seguir') : t('voo.cmd.stay', 'Parar');
     };
     m.innerHTML =
@@ -601,6 +625,7 @@ export class Hud {
     const e = cmd.emer !== undefined ? s.emer(cmd.emer) : undefined;
     if (e) to = { x: e.x, y: e.y + 0.4, z: e.z };
     else if (c === 'pilot') to = { x: SPOTS.pilot.x, y: 1.3, z: SPOTS.pilot.z };
+    else if (c === 'masks') to = { x: SPOTS.maskSw.x, y: SPOTS.maskSw.y + 0.4, z: SPOTS.maskSw.z };
     else if (c === 'calm') {
       const q = s.pax.slice().sort((a, b) => b.panic - a.panic)[0];
       if (q) to = { x: q.x, y: 1.3, z: q.z };
@@ -621,7 +646,7 @@ export class Hud {
   toast(msg: string, ico: string, tone: string): void {
     // avisos compartilhados: pequenos, sem duplicados (contador ×2), fila
     const icon: IconName =
-      ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'serve' || ico === 'cart' ? 'food' : ico === 'yoke' ? 'planet' : ico === 'turb' ? 'warning' : ico === 'info' ? 'sparkle' : 'warning';
+      ico === 'fire' ? 'fire' : ico === 'check' ? 'check' : ico === 'fuel' || ico === 'leak' ? 'drop' : ico === 'spark' ? 'bolt' : ico === 'calm' || ico === 'panic' ? 'heart' : ico === 'serve' || ico === 'cart' ? 'food' : ico === 'yoke' ? 'planet' : ico === 'turb' ? 'warning' : ico === 'info' || ico === 'vent' || ico === 'mask' ? 'sparkle' : ico === 'bagLost' ? 'bag' : 'warning';
     notify(msg, { icon, kind: tone === 'bad' ? 'bad' : tone === 'good' ? 'good' : 'info', key: msg });
   }
   showBanner(txt: string, sub = '', sec = 2.4): void {
@@ -678,6 +703,12 @@ export class Hud {
     if (s.miniOpen && !this.miniGame) this.openMini(s.miniOpen.kind, s.miniOpen.emer);
     if (this.miniGame) {
       this.miniGame.update(dt);
+      // o efeito da manete aparece enquanto usa: tanque enchendo, trem descendo, pressão voltando
+      const me0 = s.emer(s.miniOpen?.emer ?? -1);
+      const mk = this.miniGame.kind;
+      if (mk === 'pump') this.miniGame.setReadout('fuel', Math.round(f.fuel) + '%');
+      else if (mk === 'crank') this.miniGame.setReadout('gear', (me0 ? Math.round(me0.prog * 100) : 100) + '% ▼');
+      else if (mk === 'valve') this.miniGame.setReadout('pressure', (me0 ? Math.round(me0.prog * 100) : 100) + '%');
       if (me.busy < 0 || !s.emer(s.miniOpen?.emer ?? -1)) {
         this.miniGame.destroy();
         this.miniGame = null;
@@ -825,6 +856,8 @@ export class Hud {
       ob.innerHTML = tip ? `${vIcon(oi, 16)}<span></span>` : '';
       if (tip) (ob.querySelector('span') as HTMLElement).textContent = tip;
     }
+    this.updateSmoke(dt);
+    this.updateLever(dt);
     // instrumentos
     this.instT -= dt;
     if (this.instT <= 0) {
@@ -833,12 +866,13 @@ export class Hud {
       drawNav(this.navX, this.nav.width, this.nav.height, s);
     }
     this.drawMini();
+    this.mkDt = dt;
     this.updateMarkers();
     // retratos: ícone do que o bot está fazendo
     this.crewEl.querySelectorAll<HTMLElement>('.voo-mate').forEach((b) => {
       const p = s.players[+b.dataset.mate!];
       const st = b.querySelector('.st') as HTMLElement;
-      const ic = p.seated ? 'yoke' : p.cmd ? (p.cmd.kind === 'fix' ? s.emer(p.cmd.emer ?? -1)?.kind ?? 'check' : p.cmd.kind === 'calm' ? 'calm' : p.cmd.kind === 'follow' ? 'follow' : 'stay') : 'stay';
+      const ic = p.seated ? 'yoke' : p.cmd ? (p.cmd.kind === 'fix' ? s.emer(p.cmd.emer ?? -1)?.kind ?? 'check' : p.cmd.kind === 'calm' ? 'calm' : p.cmd.kind === 'masks' ? 'mask' : p.cmd.kind === 'follow' ? 'follow' : 'stay') : 'stay';
       if (st.dataset.i !== ic) {
         st.dataset.i = ic;
         st.innerHTML = vIcon(ic, 16);
@@ -848,6 +882,121 @@ export class Hud {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner.classList.remove('show');
     }
+  }
+
+  /* ------------------------------ fumaça na cabine ------------------------------ */
+  private smokeEl: HTMLElement | null = null;
+  private smokeSig = '';
+  private updateSmoke(dt: number): void {
+    const s = this.host.sim;
+    const me = s.players[s.me];
+    if (!this.smokeEl) this.smokeEl = this.q('.voo-smoke');
+    // véu na tela: quanto mais "dentro" da fumaça, mais cinza; tossindo, embaça e balança de leve
+    const eye = me.seated ? 1.5 : me.crouch ? EYE_CROUCH : EYE_STAND;
+    const bot = smokeBottom(me.seated || me.z < -1.2 ? s.smoke * 0.45 : s.smoke);
+    const depth = Math.max(0, Math.min(1, (eye - bot) / 0.5));
+    const cough = me.cough ?? 0;
+    const op = me.seated && s.masks ? 0 : Math.min(0.85, depth * 0.35 + cough * 0.5);
+    const el = this.smokeEl;
+    el.style.opacity = op.toFixed(2);
+    el.classList.toggle('cough', cough > 0.55);
+    // tossida de tempos em tempos enquanto respira fumaça
+    if (cough > 0.55 && !me.seated) {
+      this.coughT -= dt;
+      if (this.coughT <= 0) {
+        this.coughT = 2 + Math.random() * 1.5;
+        haptic('light');
+      }
+    } else this.coughT = 0.8;
+    // botão de abaixar: só aparece com fumaça (ou já abaixado)
+    const showC = !me.seated && (s.smoke > 0.1 || !!me.crouch);
+    if (!me.seated && me.crouch && s.smoke < 0.03) s.setCrouch(me, false);
+    const cb = this.q('[data-crouch]');
+    const sig = (showC ? 1 : 0) + (me.crouch ? 2 : 0) + (cough > 0.55 && !me.crouch ? 4 : 0);
+    if (sig !== +this.smokeSig) {
+      this.smokeSig = String(sig);
+      cb.classList.toggle('hide', !showC);
+      cb.classList.toggle('on2', !!me.crouch);
+      cb.classList.toggle('hot', cough > 0.55 && !me.crouch);
+      const lb = me.crouch ? t('voo.a.standUp', 'Levantar') : t('voo.a.crouch', 'Abaixar');
+      cb.innerHTML = `${vIcon(me.crouch ? 'stand' : 'crouch', 28)}<span>${lb}</span>`;
+      cb.setAttribute('aria-label', lb);
+    }
+    // painel do piloto: máscaras e ventilar só quando servem
+    const needMask = !s.masks && (s.smoke > 0.08 || s.active().some((e) => e.kind === 'smoke' || e.kind === 'pressure'));
+    const mb = this.q('[data-masks]');
+    const vb = this.q('[data-vent]');
+    mb.classList.toggle('hide', !(me.seated && needMask));
+    vb.classList.toggle('hide', !(me.seated && s.smoke > 0.08 && s.vent <= 0));
+  }
+  private coughT = 0.8;
+
+  /* ------------------------------ manetes do porão: para que servem ------------------------------
+   * Na 1ª vez que alguém chega perto (ou toca em "O que é?"): cartão só de ícones — manete → o que ela
+   * enche/conserta — com uma mãozinha tocando no botão. Some sozinho. */
+  private lvEl: HTMLDivElement | null = null;
+  private lvT = 0;
+  private lvSeen = false;
+  private lvLast = -1;
+  private lvPt = false;
+  private updateLever(dt: number): void {
+    const s = this.host.sim;
+    const me = s.players[s.me];
+    if (this.lvT > 0) {
+      this.lvT -= dt;
+      if (this.lvT <= 0 || me.seated || me.busy >= 0) this.hideLever();
+    }
+    // 1ª vez: a mãozinha aponta para o botão de ação ("O que é?") enquanto o cartão está aberto
+    const wantPt = !!this.lvEl?.classList.contains('first') && this.ctx?.kind === 'lever';
+    if (wantPt) (this.tutPoint = 'act'), (this.lvPt = true);
+    else if (this.lvPt) (this.tutPoint = ''), (this.lvPt = false);
+    // tocou em "O que é?"
+    const li = s.leverInfo;
+    if (li && li.t !== this.lvLast) {
+      this.lvLast = li.t;
+      this.showLever(li.k, false);
+    }
+    // 1ª vez perto das manetes do porão
+    if (!this.lvSeen && !me.seated && me.z > 16.8) {
+      this.lvSeen = true;
+      let seen = false;
+      try {
+        seen = localStorage.getItem('bw-voo-levers') === '1';
+        localStorage.setItem('bw-voo-levers', '1');
+      } catch {
+        /* */
+      }
+      if (!seen) this.showLever(-1, true);
+    }
+  }
+  private showLever(focus: number, first: boolean): void {
+    const s = this.host.sim;
+    this.hideLever();
+    const rows: [string, string, string][] = [
+      ['pumpLever', 'fuel', 'leak'],
+      ['crankLever', 'gear', 'gear'],
+      ['valveWheel', 'pressure', 'pressure'],
+    ];
+    const busy = (k: string) => s.active().some((e) => e.kind === k);
+    const d = document.createElement('div');
+    d.className = 'voo-lever' + (first ? ' first' : '');
+    d.innerHTML =
+      rows
+        .map(
+          ([lv, eff, em], i) =>
+            `<div class="row${focus === i ? ' on' : ''}${focus >= 0 && focus !== i ? ' dim' : ''}">${vIcon(lv, 34)}${vIcon('arrow', 18)}${vIcon(eff, 30)}<b class="${busy(em) ? 'need' : 'ok'}">${vIcon(busy(em) ? em : 'check', 20)}</b></div>`,
+        )
+        .join('') +
+      (first ? `<i class="hand">${vIcon('hand', 34)}</i>` : '') +
+      `<button class="x" data-lv aria-label="${t('voo.hg.exit', 'Sair')}">${vIcon('close', 22)}</button>`;
+    this.el.appendChild(d);
+    this.lvEl = d;
+    this.lvT = first ? 7 : 4.5;
+  }
+  private hideLever(): void {
+    this.lvEl?.remove();
+    this.lvEl = null;
+    this.lvT = 0;
   }
 
   /** "Como pilotar": 3 passos na primeira vez que alguém senta no manche */
@@ -1024,24 +1173,107 @@ export class Hud {
     }
     return -1;
   }
+  /** estado suavizado de cada marcador na tela (mola criticamente amortecida, sem quicar) */
+  private mkS = new WeakMap<HTMLElement, { x: number; y: number; vx: number; vy: number; edge: boolean; on: boolean }>();
+  private mkDt = 1 / 60;
+  /** SmoothDamp: segue o alvo sem passar dele; saltos grandes (trocou de lado) aparecem direto com fade */
+  private smoothPos(d: HTMLElement, tx: number, ty: number, W: number): [number, number] {
+    let st = this.mkS.get(d);
+    if (!st || !st.on || Math.hypot(tx - st.x, ty - st.y) > W * 0.4) {
+      st = { x: tx, y: ty, vx: 0, vy: 0, edge: st?.edge ?? false, on: true };
+      this.mkS.set(d, st);
+      d.classList.remove('pop');
+      void d.offsetWidth;
+      d.classList.add('pop');
+      return [tx, ty];
+    }
+    const dt = Math.min(0.05, this.mkDt);
+    const om = 2 / 0.09;
+    const x = om * dt;
+    const ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    const step = (cur: number, v: number, tgt: number): [number, number] => {
+      const ch = cur - tgt;
+      const tmp = (v + om * ch) * dt;
+      return [tgt + (ch + tmp) * ex, (v - om * tmp) * ex];
+    };
+    [st.x, st.vx] = step(st.x, st.vx, tx);
+    [st.y, st.vy] = step(st.y, st.vy, ty);
+    return [st.x, st.y];
+  }
+  /** marcador some (fora de uso): a próxima vez aparece direto no lugar, sem deslizar pela tela */
+  private mkOff(d: HTMLElement): void {
+    const st = this.mkS.get(d);
+    if (st) st.on = false;
+    d.style.display = 'none';
+  }
+  /**
+   * Sentado (cabine ou câmera externa) as emergências NÃO são marcadores no mundo: ficam numa fileira
+   * fixa no alto da tela (chips). Aparecem com o nome por alguns segundos e encolhem para só o ícone.
+   * Assim nada "dança" quando o avião inclina.
+   */
+  private dockMode(me: { seated: boolean }): boolean {
+    return this.host.is3d && (me.seated || this.host.extCam());
+  }
+  private dockMk(d: HTMLDivElement, i: number, n: number, W: number, born: number): void {
+    const R = this.mkR;
+    const gap = 8;
+    const y = this.dockY;
+    const x = W / 2 + (i - (n - 1) / 2) * (R * 2 + gap);
+    const [sx, sy] = this.smoothPos(d, x, y, W);
+    d.classList.add('dock');
+    d.classList.remove('edge', 'near');
+    // só o aviso mais novo mostra o nome (os rótulos dos vizinhos não se atropelam)
+    d.classList.toggle('fresh', born >= this.dockNewest && performance.now() - born < 3200);
+    const em = d.querySelector('em') as HTMLElement | null;
+    if (em) em.style.display = 'none';
+    d.style.display = '';
+    d.style.transform = `translate(${sx}px,${sy}px)`;
+  }
+  private dockY = 30;
+  private dockNewest = 0;
+  /** topo da fileira fixa: logo abaixo da barra de cima (que pode ter 1 ou 2 andares conforme a largura) */
+  private dockTopV = 0;
+  private dockTopT = 0;
+  private dockTop(W: number): number {
+    const now = performance.now();
+    if (now - this.dockTopT > 500 || !this.dockTopV) {
+      this.dockTopT = now;
+      const er = this.el.getBoundingClientRect();
+      // a fileira fica no meio, entre o bloco da esquerda e o da direita: pega o de baixo da pílula de fase
+      const ph = this.phase.getBoundingClientRect();
+      const left = this.q('.voo-tlc').getBoundingClientRect();
+      const right = this.q('.voo-right').getBoundingClientRect();
+      const free = right.left - left.right;
+      const need = (this.mkR * 2 + 8) * 3;
+      // espaço no meio da barra: alinha com a pílula; senão, embaixo dos dois blocos
+      this.dockTopV = free > need + 20 ? ph.top - er.top : Math.max(left.bottom, right.bottom) - er.top + 6;
+      void W;
+    }
+    return this.dockTopV;
+  }
   /** posiciona um marcador (emergência/objetivo/destino) */
   private placeMk(d: HTMLDivElement, x: number, y: number, z: number, W: number, H: number, me: { x: number; z: number; seated: boolean }): void {
     const h = this.host;
     h.project(x, y, z, this.pr);
+    d.classList.remove('dock', 'fresh');
     const R = this.mkR;
     const lab = 18; // rótulo de distância embaixo
     const seatedFP = me.seated && h.is3d && !h.extCam();
     const S = { l: R + 8, t: 58 + R, r: W - R - 8, b: (seatedFP ? H * 0.6 : H - 30) - R - lab };
     let px = this.pr.x;
     let py = this.pr.y;
-    let edge = this.pr.behind || px < S.l || px > S.r || py < S.t || py > S.b;
+    // histerese: só volta para dentro da tela quando entrou de verdade (sem piscar na borda)
+    const st = this.mkS.get(d);
+    const m = st?.edge ? 14 : 0;
+    let edge = this.pr.behind || px < S.l + m || px > S.r - m || py < S.t + m || py > S.b - m;
     if (!h.is3d) edge = px < S.l || px > S.r || py < S.t || py > S.b;
+    if (st) st.edge = edge;
     const cx = W / 2;
     const cy = (S.t + S.b) / 2;
-    let dx = px - cx;
-    let dy = py - cy;
+    const dx = px - cx;
+    const dy = py - cy;
     if (edge) {
-      if (this.pr.behind && h.is3d) dy = Math.abs(dy) + 40; // atrás de mim: vai para a borda de baixo da área
+      // direção estável (a projeção já trata "atrás" pela direção no plano da câmera): vai para a borda nessa direção
       const k = Math.min((S.r - cx) / Math.max(1, Math.abs(dx)), (S.b - cy) / Math.max(1, Math.abs(dy)));
       px = cx + dx * k;
       py = cy + dy * k;
@@ -1089,20 +1321,23 @@ export class Hud {
     }
     this.placed.push({ x: px, y: py });
     const blocked = this.inExcl(px, py, R * 0.6) >= 0;
+    // perto: encolhe e some (o contorno amarelo do objeto já mostra onde é)
+    const dist = Math.hypot(x - me.x, z - me.z);
+    const near = !edge && !me.seated && dist < 3;
+    if (blocked || (!edge && !me.seated && dist < 1.3)) return this.mkOff(d);
+    const [sx, sy] = this.smoothPos(d, px, py, W);
     const em = d.querySelector('em') as HTMLElement | null;
     if (em) {
       if (edge) {
         em.style.display = '';
-        em.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+        // seta aponta do centro para onde o marcador está (posição suavizada: não gira aos trancos)
+        em.style.transform = `rotate(${Math.atan2(sy - cy, sx - cx) + Math.PI / 2}rad)`;
       } else em.style.display = 'none';
     }
-    // perto: encolhe e some (o contorno amarelo do objeto já mostra onde é)
-    const dist = Math.hypot(x - me.x, z - me.z);
-    const near = !edge && !me.seated && dist < 3;
     d.classList.toggle('edge', edge);
     d.classList.toggle('near', near);
-    d.style.display = blocked || (!edge && !me.seated && dist < 1.3) ? 'none' : '';
-    d.style.transform = `translate(${px}px,${py}px)`;
+    d.style.display = '';
+    d.style.transform = `translate(${sx}px,${sy}px)`;
     const sp = d.querySelector('span');
     const lbl = `${Math.round(dist)} m`;
     if (sp && sp.textContent !== lbl) sp.textContent = lbl;
@@ -1142,6 +1377,12 @@ export class Hud {
         return 'cart';
       case 'serve':
         return 'serve';
+      case 'masks':
+        return 'mask';
+      case 'vent':
+        return 'vent';
+      case 'lever':
+        return c.target === 0 ? 'pumpLever' : c.target === 1 ? 'crankLever' : 'valveWheel';
     }
     return 'hand';
   }
@@ -1196,6 +1437,9 @@ export class Hud {
       .active()
       .filter((e) => e.kind !== 'turb')
       .sort((a, b) => b.sev - a.sev);
+    const dock = this.dockMode(me);
+    // fileira fixa logo abaixo da barra de cima (entre o bloco da esquerda e o minimapa)
+    if (dock) this.dockY = this.dockTop(W) + this.mkR;
     // alvo do tutorial
     const tt = this.tutTarget;
     if (tt) {
@@ -1205,12 +1449,16 @@ export class Hud {
         this.tutMk.innerHTML = vIcon('star', 28) + '<span></span><em></em>';
         box.appendChild(this.tutMk);
       }
-      this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
+      if (dock) this.mkOff(this.tutMk);
+      else this.placeMk(this.tutMk, tt.x, tt.y, tt.z, W, H, me);
     } else if (this.tutMk) {
       this.tutMk.remove();
       this.tutMk = null;
     }
-    for (const e of ems) {
+    const dockN = Math.min(ems.length, 5);
+    this.dockNewest = 0;
+    for (const e of ems.slice(0, dockN)) this.dockNewest = Math.max(this.dockNewest, +(this.mk.get(e.id)?.dataset.born ?? performance.now()));
+    ems.forEach((e, ei) => {
       seen.add(e.id);
       let d = this.mk.get(e.id);
       if (!d) {
@@ -1218,15 +1466,22 @@ export class Hud {
         d.className = 'voo-mk';
         d.innerHTML = vIcon(e.kind, 36) + '<span></span><em></em><i class="prog"></i>';
         d.dataset.e = String(e.id);
+        d.dataset.born = String(performance.now());
         box.appendChild(d);
         this.mk.set(e.id, d);
       }
-      this.placeMk(d, e.x, e.y + 0.45, e.z, W, H, me);
+      if (dock) {
+        if (ei >= dockN) return this.mkOff(d);
+        this.dockMk(d, ei, dockN, W, +(d.dataset.born ?? 0));
+        const sp = d.querySelector('span');
+        const nm = emerName(e.kind).replace('!', '');
+        if (sp && sp.textContent !== nm) sp.textContent = nm;
+      } else this.placeMk(d, e.x, e.y + 0.45, e.z, W, H, me);
       d.classList.toggle('mine', me.busy === e.id || me.actTarget === e.id);
       // anel de progresso (segurar para fechar/tapar, fogo diminuindo)
       const pr = e.kind === 'fire' ? Math.max(0, 1 - e.sev / 1.2) * (e.sev < 0.34 ? 1 : 0.4) : e.prog;
       (d.querySelector('.prog') as HTMLElement).style.background = pr > 0.02 ? `conic-gradient(#5ef08a ${pr * 360}deg, transparent 0)` : '';
-    }
+    });
     for (const [id, d] of this.mk)
       if (!seen.has(id)) {
         d.remove();
@@ -1238,7 +1493,8 @@ export class Hud {
       if (now > this.goMk.until) {
         this.goMk.el.remove();
         this.goMk = null;
-      } else this.placeMk(this.goMk.el, this.goMk.x, this.goMk.y, this.goMk.z, W, H, me);
+      } else if (dock) this.mkOff(this.goMk.el);
+      else this.placeMk(this.goMk.el, this.goMk.x, this.goMk.y, this.goMk.z, W, H, me);
     }
     // contorno pulsante no objeto que dá para usar agora
     const c = !me.seated ? this.ctx : null;
@@ -1253,9 +1509,13 @@ export class Hud {
         this.aimEl.innerHTML = vIcon(this.aimIco, 30);
       }
       h.project(c.x, c.y, c.z, this.pr);
-      this.aimEl.style.display = this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 20) >= 0 ? 'none' : '';
-      this.aimEl.style.transform = `translate(${this.pr.x}px,${this.pr.y}px)`;
-    } else if (this.aimEl) this.aimEl.style.display = 'none';
+      if (this.pr.behind || this.inExcl(this.pr.x, this.pr.y, 20) >= 0) this.mkOff(this.aimEl);
+      else {
+        const [ax, ay] = this.smoothPos(this.aimEl, this.pr.x, this.pr.y, W);
+        this.aimEl.style.display = '';
+        this.aimEl.style.transform = `translate(${ax}px,${ay}px)`;
+      }
+    } else if (this.aimEl) this.mkOff(this.aimEl);
     // medidor de calma em cima dos passageiros aflitos perto de mim
     const near = me.seated ? [] : s.pax.filter((q) => q.panic > 0.3 && Math.hypot(q.x - me.x, q.z - me.z) < 5).sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z)).slice(0, 5);
     while (this.calmEls.length < near.length) {

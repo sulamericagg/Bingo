@@ -58,7 +58,7 @@ export function zoneName(z: number): string {
 
 export type SpotId =
   | 'pilot' | 'copilot' | 'elec' | 'doorF' | 'doorR' | 'oven' | 'water' | 'snack' | 'engL' | 'engR'
-  | 'cabinA' | 'cabinB' | 'valve' | 'cargoFire' | 'leak' | 'pump' | 'gear' | 'win';
+  | 'cabinA' | 'cabinB' | 'valve' | 'cargoFire' | 'leak' | 'pump' | 'gear' | 'win' | 'maskSw' | 'vent';
 export interface Spot {
   x: number;
   z: number;
@@ -83,6 +83,10 @@ export const SPOTS: Record<Exclude<SpotId, 'win'>, Spot> = {
   leak: { x: -1.65, z: 19.8, y: 0.7 },
   pump: { x: 1.62, z: 19.8, y: 1.0 },
   gear: { x: 0, z: 20.4, y: 0.25 },
+  /** botão amarelo das máscaras de oxigênio (painel dos comissários, parede direita antes da copa) */
+  maskSw: { x: 1.7, z: 3.2, y: 1.35 },
+  /** chave "ventilar" no painel de cima da cabine de comando (o piloto também tem no HUD) */
+  vent: { x: 0.45, z: -2.45, y: 1.9 },
 };
 /** janelas da econômica (pássaros) */
 export const WIN_Z = [6.6, 7.5, 8.4, 9.3, 11.4, 12.3, 13.2, 14.1];
@@ -116,7 +120,7 @@ export function itemName(k: ItemKind): string {
   }
 }
 
-export type EmerKind = 'fire' | 'leak' | 'spark' | 'pressure' | 'door' | 'turb' | 'panic' | 'bird' | 'gear';
+export type EmerKind = 'fire' | 'leak' | 'spark' | 'pressure' | 'door' | 'turb' | 'panic' | 'bird' | 'gear' | 'smoke';
 export function emerName(k: EmerKind): string {
   switch (k) {
     case 'fire':
@@ -135,6 +139,8 @@ export function emerName(k: EmerKind): string {
       return t('voo.e.panic', 'Passageiros em pânico!');
     case 'bird':
       return t('voo.e.bird', 'Pássaro trincou a janela!');
+    case 'smoke':
+      return t('voo.e.smoke', 'Fumaça na cabine!');
     default:
       return t('voo.e.gear', 'Trem de pouso travado!');
   }
@@ -157,6 +163,8 @@ export function emerHow(k: EmerKind, stage = 0): string {
       return t('voo.h.panic', 'Acalme com um abraço, água ou lanchinho');
     case 'bird':
       return t('voo.h.bird', 'Tape a janela com fita adesiva');
+    case 'smoke':
+      return stage === 0 ? t('voo.h.smoke', 'Solte as máscaras, ande abaixado e apague o forno com o extintor') : t('voo.h.smokeVent', 'Tire a fumaça: chave VENTILAR na cabine de comando ou abra uma porta');
     default:
       return t('voo.h.gear', 'Gire a manivela do trem no porão');
   }

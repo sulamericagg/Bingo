@@ -55,7 +55,7 @@ export class MiniGame {
     const ico = kind === 'rewire' ? 'spark' : kind === 'pump' ? 'fuel' : kind === 'valve' ? 'pressure' : 'gear';
     this.el = document.createElement('div');
     this.el.className = 'voo-minig';
-    this.el.innerHTML = `<h3>${vIcon(ico, 26)}<span>${title}</span><button class="voo-btn round red" data-x>${vIcon('close', 26)}</button></h3><canvas></canvas><div class="bar"><i></i></div><p>${hint}</p>`;
+    this.el.innerHTML = `<h3>${vIcon(ico, 26)}<span>${title}</span><b class="ro"></b><button class="voo-btn round red" data-x>${vIcon('close', 26)}</button></h3><canvas></canvas><div class="bar"><i></i></div><p>${hint}</p>`;
     layer.appendChild(this.el);
     this.cv = this.el.querySelector('canvas')!;
     this.x = this.cv.getContext('2d')!;
@@ -164,6 +164,16 @@ export class MiniGame {
     }
   }
 
+  /** mostra o efeito da manete enquanto usa (ex.: ícone do tanque + %): o que ela faz fica visível */
+  private roSig = '';
+  setReadout(ico: string, txt: string): void {
+    const sig = ico + txt;
+    if (sig === this.roSig) return;
+    this.roSig = sig;
+    const ro = this.el.querySelector('.ro') as HTMLElement;
+    ro.innerHTML = ico ? `${vIcon(ico, 20)}<i></i>` : '';
+    if (ico) (ro.querySelector('i') as HTMLElement).textContent = txt;
+  }
   update(dt: number): void {
     this.t += dt;
     this.pumpAnim = Math.max(0, this.pumpAnim - dt * 4);

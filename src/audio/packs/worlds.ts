@@ -265,6 +265,28 @@ definePack({
     seatbelt: S((v) => bell(v, { f: mtof(88), dur: 0.9, vol: 0.25, ratio: 1, index: 0.2 }), 1, { variants: 1, pitch: 0 }),
     cabin: S(humBed(105, 0.3, 6, 0.6), 6, { loop: true, stereo: true, bus: 'amb', db: -8 }),
     wind: S(windBed(800, 0.35, 0.4, 10), 10, { loop: true, stereo: true, db: -8 }),
+    /* emergência de fumaça */
+    // tossidinha de desenho animado: dois "rã-rã" de ruído com um tom grave por baixo
+    cough: S((v) => {
+      for (const d of [0, 0.2]) {
+        noise(v, { kind: 'pink', dur: 0.13, vol: 0.32, f: 900, f2: 500, q: 1.2, a: 0.006, delay: d });
+        tone(v, { f: 210, f2: 150, dur: 0.11, vol: 0.12, type: 'triangle', lp: 900, delay: d });
+      }
+    }, 0.45, { pitch: 120, max: 2 }),
+    // máscaras caindo: "plim" do painel + plástico batendo + chiado do oxigênio
+    masks: S(both(
+      (v) => bell(v, { f: mtof(86), dur: 0.5, vol: 0.2, ratio: 1, index: 0.2 }),
+      (v) => { for (let i = 0; i < 6; i++) knock(v, { fs: [1400, 2600], dur: 0.04, vol: 0.18, q: 9, delay: 0.12 + i * 0.045 + v.r() * 0.02 }); },
+      (v) => noise(v, { kind: 'pink', dur: 0.9, vol: 0.12, ft: 'bandpass', f: 4200, q: 0.9, a: 0.1, delay: 0.3 }),
+    ), 1.3, { variants: 1, pitch: 0 }),
+    // ventilação: ar sendo puxado para fora (sopro que sobe e some)
+    vent: S(both(swish(180, 1200, 1.4, 0.4), (v) => tone(v, { f: 70, f2: 110, dur: 1.2, vol: 0.12, type: 'triangle', lp: 400, a: 0.2 })), 1.6, { variants: 1 }),
+    // detector de fumaça fofinho: três bipes (não assusta)
+    smokeAlarm: S((v) => {
+      for (let i = 0; i < 3; i++) tone(v, { f: mtof(93), dur: 0.09, vol: 0.18, type: 'square', lp: 2800, delay: i * 0.16 });
+    }, 0.6, { variants: 1, pitch: 0, duck: 0.3 }),
+    // mala voando pela porta: "fiuuu" que vai embora + "uóón"
+    bagLost: S(both(swish(1600, 300, 0.5, 0.35), later(0.35, softFail(67, 'triangle', 0.22))), 1.3, { variants: 1 }),
   },
   amb: { layers: [{ id: 'cabin' }] },
 });
