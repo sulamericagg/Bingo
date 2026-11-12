@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "せってい",
   "sm.slotN": "ゲーム {n}",
   "sm.today": "きょう",
+  "sm.welcome": "きいろいボタンをタッチしてあそぼう。",
   "sm.yes": "はい",
   "sm.yesterday": "きのう",
   "social.close": "とじる",

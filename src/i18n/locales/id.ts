@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Pengaturan",
   "sm.slotN": "Game {n}",
   "sm.today": "Hari ini",
+  "sm.welcome": "Ketuk tombol kuning untuk bermain.",
   "sm.yes": "Ya",
   "sm.yesterday": "Kemarin",
   "social.close": "Tutup",

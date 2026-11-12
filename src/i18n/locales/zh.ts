@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "设置",
   "sm.slotN": "游戏 {n}",
   "sm.today": "今天",
+  "sm.welcome": "点黄色按钮开始玩。",
   "sm.yes": "是",
   "sm.yesterday": "昨天",
   "social.close": "关闭",

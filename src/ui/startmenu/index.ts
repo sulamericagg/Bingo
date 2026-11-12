@@ -984,6 +984,8 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
   render();
   raf = requestAnimationFrame(frame);
   requestAnimationFrame(() => el.classList.add('in'));
-  if (spec.welcome) setTimeout(() => !dead && smSay(spec.welcome, false), 400);
+  // boas-vindas faladas (só com a narração ligada): nome do jogo + "toque em JOGAR"
+  const hello = spec.welcome ?? `${spec.title ?? def?.name ?? ''}! ${t('sm.welcome', 'Toque no botão amarelo para jogar.')}`;
+  setTimeout(() => !dead && smSay(hello, false), 400);
   return api;
 }

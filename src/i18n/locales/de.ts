@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Einstellungen",
   "sm.slotN": "Spiel {n}",
   "sm.today": "Heute",
+  "sm.welcome": "Tippe auf den gelben Knopf, um zu spielen.",
   "sm.yes": "Ja",
   "sm.yesterday": "Gestern",
   "social.close": "Schließen",

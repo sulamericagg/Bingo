@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Impostazioni",
   "sm.slotN": "Partita {n}",
   "sm.today": "Oggi",
+  "sm.welcome": "Tocca il pulsante giallo per giocare.",
   "sm.yes": "Sì",
   "sm.yesterday": "Ieri",
   "social.close": "Chiudi",

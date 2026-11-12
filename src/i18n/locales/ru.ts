@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Настройки",
   "sm.slotN": "Игра {n}",
   "sm.today": "Сегодня",
+  "sm.welcome": "Нажми жёлтую кнопку, чтобы играть.",
   "sm.yes": "Да",
   "sm.yesterday": "Вчера",
   "social.close": "Закрыть",

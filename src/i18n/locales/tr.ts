@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Ayarlar",
   "sm.slotN": "Oyun {n}",
   "sm.today": "Bugün",
+  "sm.welcome": "Oynamak için sarı düğmeye dokun.",
   "sm.yes": "Evet",
   "sm.yesterday": "Dün",
   "social.close": "Kapat",

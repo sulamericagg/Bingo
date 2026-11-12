@@ -214,6 +214,7 @@ export class NoitesGame implements MiniGameHandle {
     const diffs = [t('noites.diff.easy', 'Fácil'), t('noites.diff.normal', 'Normal'), t('noites.diff.hard', 'Difícil')];
     const sm = openStartMenu(this.wrap, {
       game: 'noites',
+      welcome: '', // a fala de boas-vindas é a do próprio jogo (speak abaixo)
       chips: [{ icon: ic('moon', 20), text: `${this.save.best}/${GOAL_NIGHTS}` }],
       onBack: () => this.exitCb(),
       settings: (p) => this.menuSettings(p, () => sm.refresh()),

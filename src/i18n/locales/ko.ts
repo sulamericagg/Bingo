@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "설정",
   "sm.slotN": "게임 {n}",
   "sm.today": "오늘",
+  "sm.welcome": "노란 버튼을 눌러서 놀아요.",
   "sm.yes": "예",
   "sm.yesterday": "어제",
   "social.close": "닫기",

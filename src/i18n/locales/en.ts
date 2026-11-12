@@ -8339,6 +8339,7 @@ export default {
   "sm.settings": "Settings",
   "sm.slotN": "Game {n}",
   "sm.today": "Today",
+  "sm.welcome": "Tap the yellow button to play.",
   "sm.yes": "Yes",
   "sm.yesterday": "Yesterday",
   "social.close": "Close",
