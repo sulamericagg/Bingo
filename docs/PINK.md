@@ -151,7 +151,7 @@ dinheiro, dia/relógio, nível, câmera, tablet. Nada embaixo de `var(--safe-bot
 | `brand.ts` | NOME e LOGO da marca (um lugar só) |
 | `catalog.ts` | 128 produtos, categorias, estações, popularidade |
 | `data.ts` | móveis, cores, pisos, placas, equipe, licenças, níveis, metas |
-| `save.ts` | 3 espaços por modo em `localStorage['bw-pink']` |
+| `save.ts` | 3 espaços por modo em `localStorage['bw-pink']` (nomes em `bw-slotnames`) |
 | `tex.ts`, `mats.ts`, `shapes.ts` | texturas procedurais, materiais, geometrias (garrafas, caixas arredondadas) |
 | `store3d.ts` | prédio, rua, fachada, estado quebrado → reformado |
 | `furniture.ts` | móveis 3D e "vagas" de produto |
@@ -163,6 +163,41 @@ dinheiro, dia/relógio, nível, câmera, tablet. Nada embaixo de `var(--safe-bot
 | `tablet.ts`, `checkout.ts`, `hud.ts` | interfaces |
 | `audio.ts` | pacote de sons + música da loja |
 | `intro/cinematic.ts` | abertura |
+| `coop.ts` | Minha Loja em grupo: jogadores remotos, clientes/equipe/caixas vistos pelo convidado, protocolo |
+
+## Nomes dos saves
+
+Cada um dos 3 espaços (por modo) pode ganhar um nome: lápis amarelo no espaço selecionado da tela de início
+(ao lado da lixeira) → folha "Qual o nome?" com campo (até 18 letras, teclado do aparelho) e 8 sugestões com
+ícone ("Minha Loja Linda", "Loja da Princesa"… / "Fábrica Turbo"…). Genérico em `src/ui/startmenu`
+(`SmSlotsOpts.rename/key/nameIdeas`, `smSlotName()`), guardado em `localStorage['bw-slotnames']`
+(`pink|shop|0`, `pink|factory|2`…); some quando o espaço é apagado ou vira save novo. Aparece no rótulo, no
+"Apagar …?", no JOGAR da sala e na pausa. Vale para todo jogo com `p.slots(...)` (Jangada, Garimpo, Mundo…).
+
+## Minha Loja em grupo (até 4 Bloops)
+
+- Menu: **Com amigos** (`p.friends({ game: 'pink' })`) cria a sala e abre "Chamar amigos"; "Entrar com código /
+  QR" é um link pequeno. Quem abre uma sala avisa os amigos (`reportPlaying`) → "Fulano está jogando — ENTRAR".
+- **Grupo** (`registerPartyGame('pink', { mode: 'room' })`): o líder cria a sala com o código do grupo; os outros
+  entram nela (tentam de novo até 25 s enquanto o líder abre).
+- **Sala** (tela de início): "Na loja (n/4)", Bloops com cor, ♛ coroa no dono, "Vaga livre". O líder escolhe qual
+  das **3 lojas dele** abrir (o save do líder manda) e toca **Abrir a loja**; os outros veem "Esperando Fulano
+  abrir a loja…" e entram sozinhos. Quem chega com a loja já aberta entra direto. No jogo: chip roxo com o
+  número de Bloops no topo e o nome (com ♛) em cima de cada amigo.
+- Servidor: o mesmo relé da Jangada (`server/raft.ts`, DO `RaftRoom`), rota `/api/pink/room/<CÓDIGO>` com salas
+  à parte (`idFromName('pink:room:<CÓDIGO>')`) — sem classe nova nem migração.
+- **Anfitrião** (dono) simula tudo e manda: posição (10/s), `st` 5/s (dinheiro, XP, nível, dia, hora, fase,
+  clientes e equipe), sujeira 1/s, `fu` móveis + estoque das vagas quando mudam (em pedaços de 10), `mt`
+  reforma/licenças/equipe/preços/metas quando mudam, `bx` caixas soltas 2/s (só desenho no convidado).
+- **Convidado**: anda pela loja (Bloop de papel + nome), vê clientes/equipe/caixas/estoque; o dinheiro é um só.
+  Pode usar o **tablet** (pedidos, móveis, reforma, equipe, licenças, upgrade, preços, pedido automático),
+  **colocar e mover móveis** (fantasma local → o dono coloca e paga), **esfregar** sujeira e **abrir/fechar** a loja.
+  Moedas do app no fim de cada dia para todos. A pausa não para a loja em grupo.
+- Dono → "Sala" na pausa: salva e volta para a sala (os amigos esperam lá); dono sai → os amigos voltam ao menu.
+
+Falta no grupo: convidado ainda não **carrega caixas/repõe prateleiras**, não **atende o caixa** e não pega lixo
+(caixas e clientes são só a vista do dono; precisaria de pedidos `pegar/soltar/repor/atender` com dono de cada
+caixa); balões de fala dos clientes e o resumo completo do dia só aparecem para o dono; a **Fábrica** ainda é solo.
 
 ## Estado (entrega wip/pink)
 
@@ -186,7 +221,7 @@ Feito:
   `__pinkGame` (inclui `sim(seg)` para testes em GPU por software).
 
 Falta / próximos passos:
-- "Com amigos" (src/party) não foi feito: precisa sincronizar o estado da loja (móveis, vagas, clientes) pelo líder.
+- Grupo: ver "Falta no grupo" acima (convidado repor/atender o caixa; Fábrica em grupo).
 - Mercadinho: só o cartão "em breve" (o motor — catálogo/tablet/carregar/limpeza/equipe — já serve).
 - Fábrica: sem resumo de dia/metas próprias; produtos das estantes são estoque infinito (sem pedido ao fornecedor);
   robôs não desviam de tudo; esteira é reta.

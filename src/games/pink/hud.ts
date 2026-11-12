@@ -109,6 +109,22 @@ export class Hud {
     this.keys[k] = v;
     f();
   }
+  /** Bloops na loja (grupo): chip com o número; null/1 some */
+  players(n: number | null): void {
+    let c = this.el.querySelector('.pk-chip.pk-pl') as HTMLElement | null;
+    if (!n || n < 1) {
+      c?.remove();
+      return;
+    }
+    if (!c) {
+      c = document.createElement('div');
+      c.className = 'pk-chip pk-pl pk-pe';
+      c.setAttribute('role', 'status');
+      this.q('.pk-lvl').after(c);
+    }
+    c.innerHTML = `${ic('people', 22)}<span>${n}</span>`;
+    c.setAttribute('aria-label', t('pink.net.inStore', '{n} na loja', { n }));
+  }
   money(txt: string, bump = false): void {
     this.once('money', txt, () => {
       const c = this.q('.pk-chip.money');

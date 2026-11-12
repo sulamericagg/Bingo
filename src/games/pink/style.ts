@@ -6,6 +6,20 @@ const CSS = `
   --sb:var(--safe-bot, env(safe-area-inset-bottom,0px));--sl:max(10px,env(safe-area-inset-left,0px));--sr:max(10px,env(safe-area-inset-right,0px));--st:env(safe-area-inset-top,0px);--pk:#ff5fa2;--pk2:#d63384;--ink:#3a0d2a}
 .pk-root canvas.pk-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .pk-hud{position:absolute;inset:0;z-index:5;pointer-events:none}
+.pk-tag{position:absolute;left:0;top:0;z-index:1;pointer-events:none;background:rgba(40,10,32,.72);color:#fff;font-weight:800;font-size:13px;line-height:1;padding:4px 8px;border-radius:10px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;box-shadow:inset 0 0 0 2px rgba(255,255,255,.2)}
+.pk-tag.lead{background:linear-gradient(#ffeaa0,#ffd34a);color:#5a3a00;box-shadow:0 2px 0 #c08a10}
+.pk-tag i{font-style:normal;margin-right:3px}
+.pk-lps{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pk-lp{display:flex;align-items:center;gap:6px;min-width:0;min-height:38px;padding:4px 8px;border-radius:14px;background:#fff;color:#2a0b5c;border:3px solid #2a0b5c;box-shadow:0 3px 0 rgba(42,11,92,.5);font-weight:800;font-size:14px}
+.pk-lp>i{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid #2a0b5c}
+.pk-lp b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-lp svg{flex:none}
+.pk-lp.lead{background:linear-gradient(#fffbe0,#ffd34a)}
+.pk-lp.free{background:rgba(255,255,255,.18);color:#fff;border:3px dashed rgba(255,255,255,.7);box-shadow:none;opacity:.85}
+.pk-lp.free>i{border-color:rgba(255,255,255,.7)}
+.pk-codef{display:flex;gap:8px;align-items:center;justify-content:center}
+.pk-codef input{font-family:inherit;font-weight:800;font-size:22px;letter-spacing:4px;text-align:center;width:160px;height:52px;padding:0 8px;border-radius:14px;border:3px solid #2a0b5c;background:#fff;color:#2a0b5c}
+.pk-chip.pk-pl{padding:0 9px 0 4px;background:linear-gradient(#e8dcff,#b89cff);color:#2a0b5c;box-shadow:0 2px 0 #6a4ab8}
 .pk-hud button,.pk-hud .pk-pe{pointer-events:auto}
 .pk-hud button{font-family:inherit;-webkit-tap-highlight-color:transparent;touch-action:none;border:0;cursor:pointer}
 .pk-top{position:absolute;top:calc(var(--st) + 6px);left:var(--sl);right:var(--sr);display:flex;align-items:center;gap:6px;height:42px}

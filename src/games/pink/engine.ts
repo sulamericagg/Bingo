@@ -523,6 +523,37 @@ export class Engine {
     } else this.styleDirt(best);
     return best;
   }
+  /** convidado do grupo: a sujeira é a do anfitrião ([x, z, a, tipo]) */
+  syncDirt(rows: [number, number, number, number][]): void {
+    const K: DirtKind[] = ['dirt', 'spill', 'glass', 'mud'];
+    const used = new Set<DirtSpot>();
+    for (const r of rows) {
+      if (!Array.isArray(r) || r.length < 4) continue;
+      const [x, z, a, ki] = r;
+      if (!Number.isFinite(x + z + a)) continue;
+      const k = K[ki] ?? 'dirt';
+      let d = this.dirt.find((q) => !used.has(q) && q.k === k && Math.abs(q.x - x) < 0.05 && Math.abs(q.z - z) < 0.05);
+      if (!d) {
+        const v = Math.floor(Math.random() * 4);
+        const mesh = new THREE.Mesh(this.dirtGeo, this.kit.stainMat(k, v));
+        const rr = k === 'spill' ? 0.9 : k === 'glass' ? 0.7 : k === 'mud' ? 0.9 : 0.95;
+        mesh.position.set(x, 0.008 + this.dirt.length * 0.0002, z);
+        mesh.rotation.y = Math.random() * Math.PI * 2;
+        mesh.renderOrder = 1;
+        this.scene.add(mesh);
+        d = { x, z, a, k, mesh, r: rr };
+        this.dirt.push(d);
+      }
+      d.a = a;
+      this.styleDirt(d);
+      used.add(d);
+    }
+    for (const d of [...this.dirt])
+      if (!used.has(d)) {
+        d.mesh.removeFromParent();
+        this.dirt.splice(this.dirt.indexOf(d), 1);
+      }
+  }
   dirtAt(x: number, z: number): DirtSpot | null {
     for (const d of this.dirt) if (Math.hypot(d.x - x, d.z - z) < d.r * 0.55) return d;
     return null;

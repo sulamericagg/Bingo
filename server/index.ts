@@ -344,6 +344,16 @@ export default {
       }
     }
 
+    // Bloop Pink em grupo (WebSocket): /api/pink/room/<CÓDIGO> — mesmo relé da Jangada, salas à parte
+    const pk = /^\/api\/pink\/room\/([A-Z0-9]{5})$/.exec(path);
+    if (pk) {
+      try {
+        return await raftJoin(req, env, pk[1], 'pink');
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+
     // Duelo (WebSocket): /api/duel/<jogo>/<CÓDIGO> — mesmo desafio para todos (src/party/duel.ts)
     const dm = /^\/api\/duel\/([a-z]{2,12})\/([A-Z0-9]{5})$/.exec(path);
     if (dm) {

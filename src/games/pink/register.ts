@@ -2,10 +2,13 @@
  *  BLOOP PINK — registro no hub (leve: só a vitrine; o jogo carrega sob demanda).
  * ============================================================ */
 import { registerGame } from '../../hub/registry';
+import { registerPartyGame } from '../../party/contract';
 import { t } from '../../i18n';
 import { BRAND_NAME, drawBrandLogo, PINK } from './brand';
 
 export function registerPink(): void {
+  // GRUPO: o líder escolhe a loja (save dele) e todos entram nela (game.ts → partySeat, coop.ts)
+  registerPartyGame('pink', { mode: 'room' });
   registerGame({
     id: 'pink',
     get name() {

@@ -1,6 +1,9 @@
 /**
  * JANGADA BLOOP online — Durable Object `RaftRoom` (binding RAFT, SQLite, plano grátis).
  *
+ * Também serve o Bloop Pink (Minha Loja em grupo): /api/pink/room/<CÓDIGO> → idFromName('pink:room:<CÓDIGO>'),
+ * mesmo protocolo (o anfitrião = dono da loja; o save dele manda). Sem classe nova nem migração.
+ *
  * Dois papéis na mesma classe (como o RaftRoom):
  *  - sala (idFromName('room:<CÓDIGO>')): RELÉ para até 4 Bloops na mesma jangada. O anfitrião (quem criou)
  *    manda no mundo: jangada, restos boiando, tubarão, fantasma, hora, clima e ilhas. Cada um simula o
@@ -183,13 +186,17 @@ export class RaftRoom extends DurableObject<Env> {
 
 /* ============================== rotas ============================== */
 
-/** WebSocket: /api/raft/room/<CÓDIGO>?id=&name=&skin=&create=1|auto=1 */
-export async function raftJoin(req: Request, env: Env, code: string): Promise<Response> {
+/** Jogos que reaproveitam este relé (mesma classe, salas separadas por prefixo): '' = Jangada · 'pink' = Bloop Pink (Minha Loja em grupo). */
+export type RelayNs = '' | 'pink';
+export const relayRoomName = (ns: RelayNs, code: string): string => (ns ? `${ns}:room:${code}` : 'room:' + code);
+
+/** WebSocket: /api/raft/room/<CÓDIGO>?id=&name=&skin=&create=1|auto=1 (e /api/pink/room/<CÓDIGO>, ns 'pink') */
+export async function raftJoin(req: Request, env: Env, code: string, ns: RelayNs = ''): Promise<Response> {
   if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'expected_websocket', message: 'Use WebSocket' }, 426);
   if (!RAFT_CODE_RE.test(code)) return json({ error: 'bad_code' }, 400);
   const url = new URL(req.url);
   url.searchParams.set('code', code);
-  return env.RAFT.get(env.RAFT.idFromName('room:' + code)).fetch(new Request(url.toString(), req));
+  return env.RAFT.get(env.RAFT.idFromName(relayRoomName(ns, code))).fetch(new Request(url.toString(), req));
 }
 
 /** POST /api/raft/invite {id, to, code, name} — só entre amigos */
