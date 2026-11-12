@@ -70,7 +70,7 @@ export interface SmCard {
   color?: string;
   /** selo no canto (ex.: "NOVO", "3") */
   badge?: string;
-  /** trancado: mostra cadeado (+ texto curto, ex.: "★ 5") e treme ao tocar */
+  /** trancado: mostra cadeado (+ HTML curto, ex.: "★ 5" — já escapado por quem chama) e treme ao tocar */
   lock?: boolean | string;
   sel?: boolean;
   disabled?: boolean;
@@ -424,7 +424,7 @@ export function openStartMenu(parent: HTMLElement, spec: SmSpec): StartMenu {
           b.insertAdjacentHTML(
             'beforeend',
             `<span class="sm-txt"><b>${esc(it.label)}</b>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span>${it.badge ? `<em class="sm-badge">${esc(it.badge)}</em>` : ''}${
-              it.lock ? `<em class="sm-lock">${icon('lock', { size: 16 })}${typeof it.lock === 'string' ? esc(it.lock) : ''}</em>` : ''
+              it.lock ? `<em class="sm-lock">${icon('lock', { size: 16 })}${typeof it.lock === 'string' ? it.lock : ''}</em>` : ''
             }`,
           );
           b.addEventListener('click', () => {

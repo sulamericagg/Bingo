@@ -63,5 +63,5 @@
 .tubo-duelbtn { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 132px); transform: translateX(-50%); display: none; align-items: center; gap: 8px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 999px; font: inherit; font-size: 18px; font-weight: 700; color: #2a0b5c; background: linear-gradient(180deg, #fff3a0, #ffc21a); box-shadow: 0 4px 0 rgba(120, 30, 80, .45); white-space: nowrap; }
 .tubo-root.is-ready:not(.is-duel) .tubo-duelbtn { display: inline-flex; }
 
-/* tela de início padrão por cima: a queda aparece pela janela, sem o HUD */
+/* tela de início padrão por cima: sem o HUD por baixo */
 .tubo-root:has(> .sm) :is(.tubo-hud,.tubo-duelbtn,.tubo-goals,.tubo-hint,.tubo-shield,.tubo-combo,.tubo-zone){display:none}

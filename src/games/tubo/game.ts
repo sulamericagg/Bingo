@@ -337,11 +337,10 @@ class TuboGame implements MiniGameHandle {
     else this.showStart();
   }
 
-  /** tela de início padrão (src/ui/startmenu): a queda de verdade aparece pela janela */
+  /** tela de início padrão (src/ui/startmenu) */
   private showStart(): void {
     const sm = openStartMenu(this.el, {
       game: 'tubo',
-      seeThrough: true,
       chips: this.best ? [{ icon: icon('trophy', { size: 20 }), text: fmt(this.best) }] : [],
       onBack: () => this.exitFn(),
       build: (p) => {
