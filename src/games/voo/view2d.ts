@@ -328,7 +328,26 @@ export class View2D {
       } else if (e.kind === 'door') {
         x.fillStyle = e.stage ? '#8fd0ff' : Math.sin(this.t * 20) > 0 ? '#ff3d5a' : '#c3b6dc';
         x.fillRect(ex - k * 0.45, this.sy(-1.72) - 3, k * 0.9, 8);
+      } else if (e.kind === 'smoke' && e.stage === 0) {
+        // fumaça escura saindo do forno
+        for (let i = 0; i < 4; i++) {
+          const a = this.t * 1.5 + i * 1.6;
+          x.fillStyle = 'rgba(80,74,90,0.45)';
+          x.beginPath();
+          x.arc(ex - k * 0.3 * ((a % 2) + 0.2), ey + Math.sin(a) * k * 0.2, k * (0.18 + (a % 2) * 0.12), 0, TAU);
+          x.fill();
+        }
       }
+    }
+    // porta aberta para ventilar
+    if (s.ventDoor) {
+      x.fillStyle = '#8fd0ff';
+      x.fillRect(this.sx(SPOTS[s.ventDoor as 'doorF'].z) - k * 0.45, this.sy(-1.72) - 3, k * 0.9, 8);
+    }
+    // véu de fumaça por cima da cabine (vista de cima)
+    if (s.smoke > 0.02) {
+      x.fillStyle = `rgba(110,104,122,${Math.min(0.45, s.smoke * 0.6)})`;
+      x.fillRect(this.sx(-1.2), this.sy(-1.75), this.sx(16.5) - this.sx(-1.2), this.sy(1.75) - this.sy(-1.75));
     }
     // objetos
     for (const it of s.items) {

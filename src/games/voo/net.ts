@@ -160,13 +160,13 @@ export class FlightNet implements VooNet {
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 const KINDS: ItemKind[] = ['ext', 'tape', 'water', 'snack', 'bag', 'tray'];
-const EMERS: EmerKind[] = ['fire', 'leak', 'spark', 'pressure', 'door', 'turb', 'panic', 'bird', 'gear'];
-const SPOTS_L: SpotId[] = ['pilot', 'copilot', 'elec', 'doorF', 'doorR', 'oven', 'water', 'snack', 'engL', 'engR', 'cabinA', 'cabinB', 'valve', 'cargoFire', 'leak', 'pump', 'gear', 'win'];
+const EMERS: EmerKind[] = ['fire', 'leak', 'spark', 'pressure', 'door', 'turb', 'panic', 'bird', 'gear', 'smoke'];
+const SPOTS_L: SpotId[] = ['pilot', 'copilot', 'elec', 'doorF', 'doorR', 'oven', 'water', 'snack', 'engL', 'engR', 'cabinA', 'cabinB', 'valve', 'cargoFire', 'leak', 'pump', 'gear', 'win', 'maskSw', 'vent'];
 const PHASES: Phase[] = ['cruise', 'descent', 'final', 'rollout', 'crash', 'done'];
-const ACTS = ['', 'sit', 'spray', 'patch', 'rewire', 'pump', 'valve', 'crank', 'door', 'give', 'hug', 'take', 'pick', 'stow', 'prep', 'cart', 'serve'];
+const ACTS = ['', 'sit', 'spray', 'patch', 'rewire', 'pump', 'valve', 'crank', 'door', 'give', 'hug', 'take', 'pick', 'stow', 'prep', 'cart', 'serve', 'masks', 'vent', 'lever'];
 const F_KEYS = ['x', 'z', 'alt', 'hdg', 'spd', 'pitch', 'roll', 'gamma', 'vs', 'thr', 'flaps', 'gear', 'gearPos', 'fuel', 'brg', 'talt', 'dist', 'dev', 'wind', 'alpha', 'p', 'q', 'flapPos', 'spoiler', 'gload', 'buffet', 'ap', 'belt', 'ail', 'elev', 'rud'] as const;
 /** eventos que o convidado precisa ver/ouvir */
-const EV_SEND = new Set(['toast', 'sfx', 'fx', 'jolt', 'bags', 'touch', 'say', 'mini', 'prep']);
+const EV_SEND = new Set(['toast', 'sfx', 'fx', 'jolt', 'bags', 'touch', 'say', 'mini', 'prep', 'bagOut']);
 
 /** anfitrião: retrato do mundo */
 export function encodeSnap(s: Sim, seq: number, ev: Ev[]): NetMsg {
@@ -177,8 +177,8 @@ export function encodeSnap(s: Sim, seq: number, ev: Ev[]): NetMsg {
     tm: r2(s.time),
     ph: PHASES.indexOf(s.phase),
     f: [...F_KEYS.map((k) => r3(f[k] as number)), f.eng[0], f.eng[1], f.stall ? 1 : 0, f.loc ? 1 : 0],
-    g: [r2(s.hull), r2(s.turb), r2(s.dizzy), s.flicker ? 1 : 0, s.gearStuck ? 1 : 0, SPOTS_L.indexOf(s.doorOpen as SpotId), s.winBroken, s.fixedCount, r2(s.panicAvg), r2(s.acc.x), r2(s.acc.y), r2(s.acc.z), r2(s.ctrl.sx), r2(s.ctrl.sy), r2(s.ctrl.thr)],
-    pl: s.players.map((p) => [r2(p.x), r2(p.z), r2(p.yaw), p.hold, p.seated ? 1 : 0, r2(p.stun), p.busy, p.spraying ? 1 : 0, r2(p.actProg), p.bot ? 1 : 0, r2(p.walk), ACTS.indexOf(p.actKind)]),
+    g: [r2(s.hull), r2(s.turb), r2(s.dizzy), s.flicker ? 1 : 0, s.gearStuck ? 1 : 0, SPOTS_L.indexOf(s.doorOpen as SpotId), s.winBroken, s.fixedCount, r2(s.panicAvg), r2(s.acc.x), r2(s.acc.y), r2(s.acc.z), r2(s.ctrl.sx), r2(s.ctrl.sy), r2(s.ctrl.thr), r2(s.smoke), s.masks ? 1 : 0, r2(s.vent), SPOTS_L.indexOf(s.ventDoor as SpotId)],
+    pl: s.players.map((p) => [r2(p.x), r2(p.z), r2(p.yaw), p.hold, p.seated ? 1 : 0, r2(p.stun), p.busy, p.spraying ? 1 : 0, r2(p.actProg), p.bot ? 1 : 0, r2(p.walk), ACTS.indexOf(p.actKind), p.crouch ? 1 : 0, r2(p.cough ?? 0)]),
     it: s.items.filter((i) => i.alive).map((i) => [i.id, KINDS.indexOf(i.kind), r2(i.x), r2(i.y), r2(i.z), r2(i.rot), i.held, r2(i.charge)]),
     em: s.emers.filter((e) => !e.done).map((e) => [e.id, EMERS.indexOf(e.kind), SPOTS_L.indexOf(e.spot), r2(e.x), r2(e.y), r2(e.z), r3(e.sev), r3(e.prog), e.stage, e.win, r2(e.age), r2(e.dur)]),
   };
@@ -237,6 +237,10 @@ export class SnapSync {
     s.acc.x = g[9];
     s.acc.y = g[10];
     s.acc.z = g[11];
+    s.smoke = g[15] ?? 0;
+    s.masks = !!g[16];
+    s.vent = g[17] ?? 0;
+    s.ventDoor = ((g[18] ?? -1) >= 0 ? SPOTS_L[g[18]] : '') as SpotId | '';
     const me = s.players[s.me];
     if (!me?.seated) {
       // quem pilota é outro: o manche desenhado acompanha o dele
@@ -259,6 +263,8 @@ export class SnapSync {
       p.actProg = a[8];
       p.bot = !!a[9];
       p.actKind = ACTS[a[11]] ?? '';
+      if (!mine) p.crouch = !!a[12];
+      p.cough = a[13] ?? 0;
       if (mine) {
         // o meu boneco é meu: só corrige se o anfitrião me moveu de verdade (sentar, levantar, tombo longe)
         if (p.seated || wasSeated !== p.seated || Math.hypot(a[0] - p.x, a[1] - p.z) > 2.5) {

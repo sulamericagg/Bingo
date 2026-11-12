@@ -47,7 +47,7 @@ export interface Item {
   charge: number;
   alive: boolean;
 }
-export type CmdKind = 'fix' | 'pilot' | 'follow' | 'calm' | 'stay';
+export type CmdKind = 'fix' | 'pilot' | 'follow' | 'calm' | 'stay' | 'masks';
 export interface Cmd {
   kind: CmdKind;
   emer?: number;
@@ -100,6 +100,10 @@ export interface Player {
   say: string;
   stuck: number;
   stats: Stats;
+  /** abaixado (fumaça no teto: anda devagar, mas respira) */
+  crouch?: boolean;
+  /** fumaça no rosto 0..1 (em pé dentro da camada de fumaça): tosse, vista embaçada */
+  cough?: number;
 }
 export interface Pax {
   seat: number;
@@ -250,10 +254,12 @@ export type Ev =
   /** online: o anfitrião abriu um minijogo para o jogador `who` (convidado) */
   | { k: 'mini'; who: number; kind: MiniKind; emer: number }
   /** online: o anfitrião abriu a copa para o jogador `who` */
-  | { k: 'prep'; who: number };
+  | { k: 'prep'; who: number }
+  /** mala sugada pela porta aberta (some no céu) */
+  | { k: 'bagOut'; x: number; z: number };
 
 export interface Ctx {
-  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow' | 'prep' | 'cart' | 'serve';
+  kind: '' | 'sit' | 'spray' | 'patch' | 'rewire' | 'pump' | 'valve' | 'crank' | 'door' | 'give' | 'hug' | 'take' | 'pick' | 'stow' | 'prep' | 'cart' | 'serve' | 'masks' | 'vent' | 'lever';
   label: string;
   hold: boolean;
   target: number;
@@ -286,7 +292,10 @@ export type NetAct =
   | ['stand']
   | ['ap', number]
   | ['tray', number, number, number, number, number]
-  | ['prepClose'];
+  | ['prepClose']
+  | ['masks']
+  | ['vent']
+  | ['crouch', number];
 
 export interface SimOpts {
   seed: number;
@@ -428,6 +437,14 @@ export function flightStep(f: Flight, dt: number, sx: number, sy: number, gw: nu
 
 const FIRE_SPOTS: SpotId[] = ['oven', 'engL', 'engR', 'cabinA', 'cabinB', 'cargoFire'];
 const HOLD_DUR: Record<string, number> = { patch: 2.2, door: 2.6, hug: 1.2 };
+/** altura dos olhos (m): em pé, abaixado, sentado no manche */
+export const EYE_STAND = 1.45;
+export const EYE_CROUCH = 0.9;
+/** fumaça: a camada começa no teto e desce até ~1 m (nunca chega no nível de quem está abaixado) */
+export const SMOKE_MAX = 0.85;
+export function smokeBottom(smoke: number): number {
+  return CEIL - smoke * 1.55;
+}
 const MINI_RATE: Record<MiniKind, number> = { rewire: 1 / 9, pump: 1 / 11, valve: 1 / 8, crank: 1 / 14 };
 const BOT_SPEED = 2.5;
 const HUMAN_SPEED = 3.3;
@@ -483,6 +500,20 @@ export class Sim {
   private leakCount = 0;
   /** pontos extras (malas guardadas) */
   bonus = 0;
+  /* ---- fumaça na cabine ---- */
+  /** fumaça acumulada no teto 0..1 (a camada desce: ver smokeBottom) */
+  smoke = 0;
+  /** máscaras de oxigênio soltas (só caem quando alguém aperta o botão) */
+  masks = false;
+  /** ventilação ligada (s restantes) */
+  vent = 0;
+  /** porta aberta de propósito para tirar a fumaça ('' fechada) */
+  ventDoor: SpotId | '' = '';
+  /** malas perdidas pela porta */
+  bagsLost = 0;
+  private masksIdle = 0;
+  /** quando começou a precisar de máscara (fumaça/pressão) — bônus se soltar rápido */
+  private maskNeedT = -1;
   private bonked = new Set<number>();
 
   constructor(opts: SimOpts) {
@@ -600,6 +631,7 @@ export class Sim {
     if (this.flying) {
       this.schedule(dt);
       this.stepEmers(dt);
+      this.stepSmoke(dt);
       this.stepPax(dt);
     }
     this.stepCabinForces(dt);
@@ -920,9 +952,10 @@ export class Sim {
       ['leak', this.leakCount < 2 && !final ? 1.4 : 0],
       ['spark', final ? 0.6 : 2],
       ['pressure', final ? 0.3 : 1.2],
-      ['door', 1.4],
+      ['door', this.ventDoor ? 0 : 1.4],
       ['turb', 2],
       ['bird', 1.8],
+      ['smoke', final ? 0.5 : 1.4],
     ];
     const has = (k: EmerKind) => act.filter((e) => e.kind === k).length;
     let tot = 0;
@@ -956,6 +989,7 @@ export class Sim {
     else if (k === 'door') this.startEmer('door', r() < 0.5 ? 'doorF' : 'doorR');
     else if (k === 'turb') this.warnTurb(6);
     else if (k === 'bird') this.startEmer('bird', 'win');
+    else if (k === 'smoke') this.startEmer('smoke', 'oven');
   }
 
   startEmer(kind: EmerKind, spot: SpotId): Emer | null {
@@ -983,10 +1017,16 @@ export class Sim {
     }
     if (kind === 'fire' && (spot === 'engL' || spot === 'engR')) this.f.eng[spot === 'engL' ? 0 : 1] = 0.35;
     if (kind === 'spark') this.flicker = true;
+    if (kind === 'smoke') {
+      // pipoca queimada no forno: fumaça escura saindo da porta do forno
+      e.sev = 0.4;
+      e.x = SPOTS.oven.x - 0.15;
+      e.y = 1.35;
+    }
     this.emers.push(e);
     const msg = emerName(kind);
     this.toast(msg, kind, 'bad', e.id);
-    this.sfx(kind === 'bird' ? 'glass' : kind === 'turb' ? 'rumble' : 'alarm');
+    this.sfx(kind === 'bird' ? 'glass' : kind === 'turb' ? 'rumble' : kind === 'smoke' ? 'smokeAlarm' : 'alarm');
     return e;
   }
 
@@ -1053,7 +1093,8 @@ export class Sim {
           break;
         case 'pressure':
           e.sev = Math.min(1, e.sev + dt / 45);
-          this.dizzy = e.sev >= 1 ? Math.min(1, this.dizzy + dt * 0.5) : 0;
+          // com as máscaras soltas ninguém fica tonto de verdade
+          this.dizzy = e.sev >= 1 ? Math.min(this.masks ? 0.2 : 1, this.dizzy + dt * 0.5) : 0;
           if (e.sev >= 1) this.warn('dizzy', 18, () => this.toast(t('voo.t.dizzy', 'Ar rarefeito: todo mundo tonto!'), 'pressure', 'bad'));
           break;
         case 'door':
@@ -1091,6 +1132,13 @@ export class Sim {
         case 'gear':
           e.sev = this.phase === 'final' ? 1 : 0.5;
           break;
+        case 'smoke':
+          // 0: o forno solta fumaça (apaga com o extintor ou para sozinho); 1: tirar a fumaça do teto
+          if (e.stage === 0) {
+            e.sev = Math.min(1, e.sev + dt / 60);
+            if (e.age > 34) this.smokeOut(e);
+          } else if (this.smoke < 0.05) this.endEmer(e, null);
+          break;
         case 'panic': {
           let worst: Pax | null = null;
           for (const p of this.pax) if (p.panic > 0.7 && (!worst || p.panic > worst.panic)) worst = p;
@@ -1117,6 +1165,111 @@ export class Sim {
     this.alarmT -= dt;
   }
 
+  /** a fonte da fumaça parou: agora é ventilar */
+  private smokeOut(e: Emer): void {
+    if (e.stage !== 0) return;
+    e.stage = 1;
+    e.sev = 0.5;
+    e.prog = 0;
+    // o marcador vai para a chave de ventilar (a fumaça sai por ali, ou pela porta)
+    e.x = SPOTS.vent.x;
+    e.y = SPOTS.vent.y - 0.5;
+    e.z = SPOTS.vent.z;
+    this.toast(t('voo.t.smokeSrc', 'O forno parou de soltar fumaça. Agora tire a fumaça!'), 'vent', 'info', e.id);
+  }
+
+  /** fumaça no teto: sobe com o forno/fogo, sai pela ventilação ou porta aberta */
+  private stepSmoke(dt: number): void {
+    let add = 0;
+    let need = false;
+    for (const e of this.emers) {
+      if (e.done) continue;
+      if (e.kind === 'smoke') {
+        need = true;
+        if (e.stage === 0) add += dt * (0.02 + e.sev * 0.018);
+      } else if (e.kind === 'fire' && e.spot !== 'engL' && e.spot !== 'engR') add += dt * e.sev * 0.008;
+      else if (e.kind === 'pressure') need = true;
+    }
+    const before = this.smoke;
+    this.smoke = Math.min(SMOKE_MAX, this.smoke + add);
+    // a fumaça vai embora sozinha bem devagar; ventilação e porta aberta tiram rápido
+    let out = dt * 0.003;
+    if (this.vent > 0) {
+      this.vent = Math.max(0, this.vent - dt);
+      out += dt * 0.11;
+    }
+    if (this.doorOpen) out += dt * 0.16;
+    this.smoke = Math.max(0, this.smoke - out);
+    if (this.smoke > 0.25) need = true;
+    // sem pressão nem fumaça, a tontura da ventilação passa
+    if (!this.emers.some((e) => !e.done && e.kind === 'pressure')) this.dizzy = Math.max(0, this.dizzy - dt * 0.12);
+    if (need && this.maskNeedT < 0) this.maskNeedT = this.time;
+    if (need && !this.masks) this.warn('masks', 16, () => this.toast(t('voo.t.needMasks', 'Soltem as máscaras de oxigênio!'), 'mask', 'bad'));
+    // tudo limpo: as máscaras sobem de volta e o bônus da próxima vez recomeça
+    if (!need && this.smoke < 0.05) {
+      this.masksIdle += dt;
+      if (this.masksIdle > 6) {
+        this.masks = false;
+        this.maskNeedT = -1;
+      }
+    } else this.masksIdle = 0;
+    // porta aberta para ventilar: sem fumaça, lembra de fechar
+    if (this.ventDoor && this.smoke < 0.05 && before >= 0.05) this.toast(t('voo.t.closeDoor', 'Fumaça foi embora! Agora feche a porta'), 'door', 'info');
+    if (this.ventDoor) this.hull -= dt * 0.08;
+    // quem está em pé dentro da fumaça tosse e enxerga mal; abaixado respira
+    const bot = smokeBottom(this.smoke);
+    for (const p of this.players) {
+      let c = p.cough ?? 0;
+      // ajudantes se abaixam sozinhos quando a fumaça desce
+      if (p.bot && !p.seated) p.crouch = bot < EYE_STAND + 0.15;
+      const eye = p.seated ? 1.5 : p.crouch ? EYE_CROUCH : EYE_STAND;
+      // cabine de comando: porta fechada, entra pouca fumaça
+      const inSmoke = (p.seated || p.z < -1.2 ? smokeBottom(this.smoke * 0.45) : bot) < eye;
+      const was = c;
+      c = inSmoke && !(p.seated && this.masks) ? Math.min(1, c + dt * 0.45) : Math.max(0, c - dt * 0.6);
+      p.cough = c;
+      if (c > 0.55 && was <= 0.55 && !p.seated && p.idx === this.me) {
+        this.sfx('cough');
+        this.warn('smokeLow', 9, () => this.toast(t('voo.t.crouch', 'Muita fumaça! Abaixe-se para respirar'), 'crouch', 'bad'));
+      }
+    }
+  }
+
+  /** soltar as máscaras (botão no painel do piloto, botão amarelo dos comissários ou um ajudante) */
+  dropMasks(by: Player | null): void {
+    if (this.proxy) return this.proxy(['masks']);
+    if (this.masks) return;
+    this.masks = true;
+    this.masksIdle = 0;
+    this.sfx('masks');
+    const quick = this.maskNeedT >= 0 && this.time - this.maskNeedT < 14;
+    if (quick) this.bonus += 150;
+    for (const q of this.pax) q.panic = Math.max(0, q.panic - 0.12);
+    this.ev.push({ k: 'fx', t: 'calm', x: 0, z: 8, y: 1.6 });
+    const who = by ? by.name : '';
+    this.toast(
+      quick ? t('voo.t.masksQuick', 'Máscaras na hora! Bônus') : who ? t('voo.t.masksBy', '{n} soltou as máscaras', { n: who }) : t('voo.t.masks', 'Máscaras de oxigênio soltas!'),
+      'mask',
+      'good',
+    );
+  }
+  /** ventilar: a fumaça sai rápido (sem máscaras, o ar fica ralo e todo mundo fica um pouco tonto) */
+  ventCabin(by: Player | null): void {
+    if (this.proxy) return this.proxy(['vent']);
+    if (this.vent > 0) return;
+    this.vent = 9;
+    this.sfx('vent');
+    if (!this.masks) {
+      this.dizzy = Math.max(this.dizzy, 0.45);
+      for (const q of this.pax) q.panic = Math.min(1, q.panic + 0.1);
+      this.toast(t('voo.t.ventNoMask', 'Ventilando… sem máscaras todo mundo fica tonto!'), 'vent', 'bad');
+    } else this.toast(by ? t('voo.t.ventBy', '{n} ligou a ventilação', { n: by.name }) : t('voo.t.vent', 'Ventilação ligada: a fumaça está saindo'), 'vent', 'good');
+  }
+  setCrouch(p: Player, on: boolean): void {
+    p.crouch = on;
+    if (this.proxy && p.idx === this.me) this.proxy(['crouch', on ? 1 : 0]);
+  }
+
   private dropBags(n: number): void {
     const bags = this.items.filter((i) => i.kind === 'bag' && i.alive);
     const ids: number[] = [];
@@ -1140,7 +1293,7 @@ export class Sim {
     const act = this.active();
     let alarms = 0;
     for (const e of act) if (e.kind !== 'turb' && e.kind !== 'panic' && e.kind !== 'gear') alarms++;
-    const base = 0.002 + alarms * 0.003 + this.turb * 0.025 + (Math.abs(f.roll) > 0.6 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (f.stall ? 0.03 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0);
+    const base = 0.002 + alarms * 0.003 + this.turb * 0.025 + (Math.abs(f.roll) > 0.6 ? 0.02 : 0) + (f.vs < -25 ? 0.02 : 0) + (f.stall ? 0.03 : 0) + (this.pilot ? 0 : 0.004) + this.dizzy * 0.01 + (this.doorOpen || this.winBroken >= 0 ? 0.02 : 0) + this.smoke * (this.masks ? 0.004 : 0.02);
     // cintos: aviso de turbulência ou turbulência = todo mundo sentado
     const belt = !!f.belt || this.turb > 0;
     let up = 0;
@@ -1205,7 +1358,7 @@ export class Sim {
         p.doorT += dt;
         if (p.doorT > 14) {
           p.doorT = 0;
-          if (!act.some((e) => e.kind === 'door')) {
+          if (!act.some((e) => e.kind === 'door') && !this.ventDoor) {
             this.toast(t('voo.t.paxDoor', 'Um passageiro desesperado mexeu na porta!'), 'door', 'bad');
             this.startEmer('door', p.sz > 8 ? 'doorR' : 'doorF');
           }
@@ -1541,7 +1694,7 @@ export class Sim {
       this.botMove.x = this.botMove.z = 0;
     }
     if (p.busy >= 0 || p.stun > 0 || p.prep) mx = mz = 0;
-    const sp = (p.bot ? BOT_SPEED : HUMAN_SPEED) * (p.hold >= 0 && this.item(p.hold)?.kind === 'bag' ? 0.7 : 1) * (this.cart.by === p.idx ? 0.65 : 1) * (1 - this.dizzy * 0.4);
+    const sp = (p.bot ? BOT_SPEED : HUMAN_SPEED) * (p.hold >= 0 && this.item(p.hold)?.kind === 'bag' ? 0.7 : 1) * (this.cart.by === p.idx ? 0.65 : 1) * (1 - this.dizzy * 0.4) * (p.crouch ? 0.55 : 1) * ((p.cough ?? 0) > 0.55 ? 0.75 : 1);
     const ml = Math.hypot(mx, mz);
     if (ml > 1) (mx /= ml), (mz /= ml);
     // eu (humano local): o andar compartilhado da Cozinha (src/3d/fpkit, preset 'indoor')
@@ -1690,6 +1843,7 @@ export class Sim {
     this.lastCtx = this.contextFor(p, this.input.fx, this.input.fz);
     if (this.input.tap) {
       this.input.tap = false;
+      if (this.lastCtx.kind === 'lever') this.leverInfo = { k: this.lastCtx.target, t: this.time };
       this.tapCount++;
     }
   }
@@ -1744,6 +1898,15 @@ export class Sim {
         break;
       case 'prepClose':
         this.prepClose(p);
+        break;
+      case 'masks':
+        this.dropMasks(p);
+        break;
+      case 'vent':
+        this.ventCabin(p);
+        break;
+      case 'crouch':
+        p.crouch = !!a[1];
         break;
     }
   }
@@ -1811,7 +1974,7 @@ export class Sim {
     const pilot = this.pilot;
     if (!pilot || pilot.bot) consider('sit', pilot ? t('voo.a.takeover', 'Assumir') : t('voo.a.sit', 'Pilotar'), false, -1, SPOTS.pilot.x, SPOTS.pilot.z, 0.9, 1.6, 0.3);
     for (const e of this.active()) {
-      if (e.kind === 'fire' && held?.kind === 'ext') consider('spray', t('voo.a.spray', 'Apagar'), true, e.id, e.x, e.z, e.y, 2.5, 0.8);
+      if ((e.kind === 'fire' || (e.kind === 'smoke' && e.stage === 0)) && held?.kind === 'ext') consider('spray', t('voo.a.spray', 'Apagar'), true, e.id, e.x, e.z, e.y, 2.5, 0.8);
       else if ((e.kind === 'bird' || (e.kind === 'leak' && e.stage === 0)) && held?.kind === 'tape') consider('patch', t('voo.a.patch', 'Tapar'), true, e.id, e.x, e.z, e.y, REACH + 0.1, 0.8);
       else if (e.kind === 'leak' && e.stage === 1) consider('pump', t('voo.a.pump', 'Bombear'), false, e.id, SPOTS.pump.x, SPOTS.pump.z, SPOTS.pump.y, REACH, 0.6);
       else if (e.kind === 'spark') consider('rewire', t('voo.a.rewire', 'Consertar'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
@@ -1819,6 +1982,20 @@ export class Sim {
       else if (e.kind === 'gear') consider('crank', t('voo.a.crank', 'Manivela'), false, e.id, e.x, e.z, e.y, REACH, 0.6);
       else if (e.kind === 'door') consider('door', t('voo.a.doorClose', 'Fechar porta'), true, e.id, e.x, e.z, e.y, REACH, 0.8);
     }
+    // fumaça: máscaras (botão amarelo dos comissários), ventilar (painel de cima da cabine) e portas
+    const needMask = !this.masks && (this.smoke > 0.08 || this.active().some((e) => e.kind === 'smoke' || e.kind === 'pressure'));
+    if (needMask) consider('masks', t('voo.a.masks', 'Soltar máscaras'), false, -1, SPOTS.maskSw.x, SPOTS.maskSw.z, SPOTS.maskSw.y, REACH, 0.9);
+    if (this.smoke > 0.08 && this.vent <= 0) consider('vent', t('voo.a.vent', 'Ventilar'), false, -1, SPOTS.vent.x, SPOTS.vent.z, SPOTS.vent.y, REACH, 0.9);
+    if (this.ventDoor) {
+      const d = SPOTS[this.ventDoor as 'doorF'];
+      consider('door', t('voo.a.doorClose', 'Fechar porta'), true, this.ventDoor === 'doorF' ? -2 : -3, d.x, d.z, d.y, REACH, 0.8);
+    } else if (!this.doorOpen && this.smoke > 0.15 && !this.active().some((e) => e.kind === 'door'))
+      for (const sp of ['doorF', 'doorR'] as const) consider('door', t('voo.a.doorOpen', 'Abrir porta'), true, sp === 'doorF' ? -2 : -3, SPOTS[sp].x, SPOTS[sp].z, SPOTS[sp].y, REACH, 0.2);
+    // as manetes do porão sem emergência: tocar mostra para que servem (ícones)
+    const busyK = (k: EmerKind) => this.active().some((e) => e.kind === k && (k !== 'leak' || e.stage === 1));
+    if (!busyK('leak')) consider('lever', t('voo.a.what', 'O que é?'), false, 0, SPOTS.pump.x, SPOTS.pump.z, SPOTS.pump.y, REACH, -0.4);
+    if (!busyK('gear')) consider('lever', t('voo.a.what', 'O que é?'), false, 1, SPOTS.gear.x, SPOTS.gear.z, 0.4, REACH, -0.4);
+    if (!busyK('pressure')) consider('lever', t('voo.a.what', 'O que é?'), false, 2, SPOTS.valve.x, SPOTS.valve.z, SPOTS.valve.y, REACH, -0.4);
     for (let i = 0; i < this.pax.length; i++) {
       const q = this.pax[i];
       if (q.panic < 0.35) continue;
@@ -1938,6 +2115,16 @@ export class Sim {
       case 'serve':
         this.serve(p, c.target);
         return '';
+      case 'masks':
+        this.dropMasks(p);
+        return '';
+      case 'vent':
+        this.ventCabin(p);
+        return '';
+      case 'lever':
+        if (p.idx === this.me) this.leverInfo = { k: c.target, t: this.time };
+        this.sfx('pick');
+        return '';
       case 'give': {
         const q = this.pax[c.target];
         const it = this.item(p.hold);
@@ -1964,6 +2151,8 @@ export class Sim {
   }
   /** minijogo aberto pelo jogador local (a interface lê e abre a sobreposição) */
   miniOpen: { kind: MiniKind; emer: number } | null = null;
+  /** manete do porão tocada (0 bomba, 1 manivela, 2 válvula): o HUD mostra para que serve */
+  leverInfo: { k: number; t: number } | null = null;
 
   doHold(p: Player, c: Ctx, dt: number, rate: number): void {
     if (p.actKind !== c.kind || p.actTarget !== c.target) {
@@ -1983,7 +2172,14 @@ export class Sim {
       it.charge = Math.max(0, it.charge - dt * 0.09);
       e.sev -= dt * 0.42 * rate;
       p.actProg = 1 - Math.max(0, e.sev);
-      if (e.sev <= 0) this.endEmer(e, p);
+      if (e.sev <= 0) {
+        if (e.kind === 'smoke') {
+          p.stats.fires++;
+          this.ev.push({ k: 'fx', t: 'fireOut', x: e.x, z: e.z, y: e.y });
+          this.smokeOut(e);
+          p.actProg = 0;
+        } else this.endEmer(e, p);
+      }
       return;
     }
     if (c.kind === 'hug') {
@@ -1993,6 +2189,26 @@ export class Sim {
       if (p.actProg >= 1) {
         p.actProg = 0;
         this.calmPax(q, p, 0.65);
+      }
+      return;
+    }
+    if (c.kind === 'door' && c.target <= -2) {
+      // porta aberta/fechada de propósito (tirar a fumaça)
+      p.actProg += (dt / 1.6) * rate;
+      if (p.actProg < 1) return;
+      p.actProg = 0;
+      p.actKind = '';
+      const sp: SpotId = c.target === -2 ? 'doorF' : 'doorR';
+      if (this.ventDoor) {
+        this.ventDoor = '';
+        if (this.doorOpen === sp) this.doorOpen = '';
+        this.sfx('fixed');
+        this.toast(t('voo.t.doorShut', 'Porta fechada!'), 'door', 'good');
+      } else if (!this.doorOpen) {
+        this.ventDoor = sp;
+        this.doorOpen = sp;
+        this.sfx('wind');
+        this.toast(t('voo.t.doorVent', 'Porta aberta: a fumaça está saindo! Cuidado com as malas'), 'door', 'info');
       }
       return;
     }
@@ -2099,7 +2315,16 @@ export class Sim {
         const d = Math.max(0.5, Math.hypot(dx, dz));
         it.vx += (dx / d) * Math.min(6, 14 / d) * dt;
         it.vz += (dz / d) * Math.min(6, 14 / d) * dt;
-        if (d < 0.7 && it.kind !== 'ext' && it.kind !== 'tape') it.alive = false; // voou pela abertura
+        if (d < 0.7 && it.kind !== 'ext' && it.kind !== 'tape') {
+          it.alive = false; // voou pela abertura
+          if (it.kind === 'bag') {
+            this.bagsLost++;
+            this.bonus -= 150;
+            this.ev.push({ k: 'bagOut', x: it.x, z: it.z });
+            this.toast(t('voo.t.bagLost', 'Perdeu a mala de alguém!'), 'bagLost', 'bad');
+            this.sfx('bagLost');
+          }
+        }
       }
       it.x += it.vx * dt;
       it.y += it.vy * dt;
@@ -2252,6 +2477,13 @@ export class Sim {
       }
       return;
     }
+    if (cmd.kind === 'masks') {
+      if (this.botMasks(p)) {
+        p.cmd = null;
+        this.botSay(p, t('voo.s.masks', 'Máscaras soltas!'));
+      }
+      return;
+    }
     if (cmd.kind === 'calm') {
       let best: Pax | null = null;
       let bi = -1;
@@ -2278,8 +2510,20 @@ export class Sim {
       return;
     }
     if (p.busy >= 0 && (p.busy !== e.id || Math.hypot(e.x - p.x, e.z - p.z) > REACH + 1.2)) p.busy = -1;
+    // fumaça: primeiro as máscaras, depois o forno (extintor), depois ventilar
+    if (e.kind === 'smoke' && !this.masks) {
+      if (this.botMasks(p)) this.botSay(p, t('voo.s.masks', 'Máscaras soltas!'));
+      return;
+    }
+    if (e.kind === 'smoke' && e.stage === 1) {
+      const [ax, az] = this.approach(SPOTS.vent.x, SPOTS.vent.z);
+      if (Math.hypot(SPOTS.vent.x - p.x, SPOTS.vent.z - p.z) < REACH - 0.2 || this.walkTo(p, ax, az)) {
+        if (this.vent <= 0 && this.smoke > 0.05) this.ventCabin(p);
+      }
+      return;
+    }
     let need: ItemKind | '' = '';
-    if (e.kind === 'fire') need = 'ext';
+    if (e.kind === 'fire' || e.kind === 'smoke') need = 'ext';
     else if (e.kind === 'bird' || (e.kind === 'leak' && e.stage === 0)) need = 'tape';
     else if (e.kind === 'turb' || e.kind === 'panic') {
       p.cmd = { kind: e.kind === 'panic' ? 'calm' : 'stay' };
@@ -2320,7 +2564,7 @@ export class Sim {
     }
     p.yaw = Math.atan2(sx - p.x, sz - p.z);
     const kind: Ctx['kind'] =
-      e.kind === 'fire' ? 'spray' : need === 'tape' ? 'patch' : e.kind === 'door' ? 'door' : e.kind === 'spark' ? 'rewire' : e.kind === 'pressure' ? 'valve' : e.kind === 'gear' ? 'crank' : 'pump';
+      e.kind === 'fire' || e.kind === 'smoke' ? 'spray' : need === 'tape' ? 'patch' : e.kind === 'door' ? 'door' : e.kind === 'spark' ? 'rewire' : e.kind === 'pressure' ? 'valve' : e.kind === 'gear' ? 'crank' : 'pump';
     if (kind === 'spray' || kind === 'patch' || kind === 'door') {
       this.doHold(p, { kind, label: '', hold: true, target: e.id, x: sx, z: sz, y: e.y }, dt, kind === 'spray' ? 0.7 : 0.6);
     } else {
@@ -2330,6 +2574,17 @@ export class Sim {
       this.miniAdd(e.id, dt * MINI_RATE[mk] * 0.5, p);
       if (e.done || this.emer(e.id) === undefined) p.busy = -1;
     }
+  }
+
+  /** ajudante vai até o botão amarelo e solta as máscaras; true quando terminou */
+  private botMasks(p: Player): boolean {
+    if (this.masks) return true;
+    const [ax, az] = this.approach(SPOTS.maskSw.x, SPOTS.maskSw.z);
+    if (Math.hypot(SPOTS.maskSw.x - p.x, SPOTS.maskSw.z - p.z) < REACH - 0.2 || this.walkTo(p, ax, az)) {
+      this.dropMasks(p);
+      return true;
+    }
+    return false;
   }
 
   /* ------------------------------ resumo ------------------------------ */

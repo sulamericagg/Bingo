@@ -15,7 +15,8 @@ export type VIcon =
   | 'fire' | 'leak' | 'fuel' | 'spark' | 'pressure' | 'door' | 'turb' | 'panic' | 'bird' | 'gear' | 'check' | 'info' | 'warn' | 'yoke'
   | 'down' | 'runway' | 'ext' | 'tape' | 'water' | 'snack' | 'bag' | 'close' | 'hand' | 'throw' | 'drop' | 'cube' | 'square' | 'star'
   | 'starOff' | 'wrench' | 'crew' | 'follow' | 'stay' | 'calm' | 'cam' | 'flaps' | 'plane' | 'up' | 'clock' | 'calendar' | 'school' | 'trophy' | 'coin'
-  | 'tray' | 'sand' | 'pasta' | 'juice' | 'milk' | 'oven' | 'cart' | 'ap' | 'serve' | 'trash' | 'orbit';
+  | 'tray' | 'sand' | 'pasta' | 'juice' | 'milk' | 'oven' | 'cart' | 'ap' | 'serve' | 'trash' | 'orbit'
+  | 'smoke' | 'mask' | 'vent' | 'crouch' | 'stand' | 'bagLost' | 'pumpLever' | 'crankLever' | 'valveWheel' | 'thrLever' | 'arrow';
 
 const ICONS: Record<VIcon, string> = {
   fire:
@@ -85,6 +86,29 @@ const ICONS: Record<VIcon, string> = {
   serve: sil('<path d="M6 34H42C42 22 34 14 24 14C14 14 6 22 6 34Z"/>', 'silver') + sil('<circle cx="24" cy="12" r="3.5"/>', 'gold', 1.5) + sil('<rect x="4" y="34" width="40" height="5" rx="2.5"/>', 'rock', 1.5),
   trash: sil('<path d="M12 14H36L33 43H15Z"/>', 'rock') + sil('<rect x="9" y="9" width="30" height="6" rx="3"/>', 'silver', 1.5) + stroke('M20 20V37M28 20V37', '#c9c9d9', 2),
   orbit: sil('<path d="M18 28L30 22V30Z"/>', 'white') + stroke('M8 24C8 15 15 10 24 10C33 10 40 15 40 24', '#7ad8ff', 3) + stroke('M40 24C40 33 33 38 24 38C15 38 8 33 8 24', '#ffd34a', 3) + stroke('M36 18L40 24L44 18', '#7ad8ff', 2.5),
+  smoke:
+    sil('<path d="M8 22C8 16 13 13 18 14C20 9 26 7 31 10C36 9 41 13 40 18C44 19 45 26 40 28H10C6 28 5 23 8 22Z"/>', 'rock') +
+    sil('<path d="M14 34C14 31 17 30 19 31C21 28 26 28 28 31C31 30 34 32 33 35H15Z"/>', 'silver', 2) + hl('<ellipse cx="20" cy="18" rx="5" ry="2.5"/>', 0.35),
+  mask:
+    stroke('M24 4V14', '#ffffff', 2.5) + sil('<path d="M12 22C12 16 17 14 24 14C31 14 36 16 36 22V30C36 37 31 42 24 42C17 42 12 37 12 30Z"/>', 'gold') +
+    sil('<rect x="18" y="26" width="12" height="8" rx="4"/>', 'white', 1.5) + stroke('M12 26L5 24M36 26L43 24', '#c9c9d9', 2.5),
+  vent:
+    sil('<circle cx="24" cy="24" r="19"/>', 'cyan') + sil('<path d="M24 24C20 14 26 8 30 12C33 15 28 20 24 24ZM24 24C34 22 38 28 34 31C31 34 27 28 24 24ZM24 24C20 33 13 33 13 28C13 24 20 24 24 24Z"/>', 'white', 1.5) + ink('<circle cx="24" cy="24" r="3"/>'),
+  crouch:
+    sil('<ellipse cx="24" cy="34" rx="15" ry="10"/>', 'pink') + ink('<circle cx="19" cy="32" r="2.2"/><circle cx="29" cy="32" r="2.2"/>') + stroke('M24 4V16M18 11L24 17L30 11', '#ffffff', 3.5),
+  stand:
+    sil('<ellipse cx="24" cy="30" rx="11" ry="14"/>', 'pink') + ink('<circle cx="20" cy="26" r="2.2"/><circle cx="28" cy="26" r="2.2"/>') + stroke('M24 14V4M18 9L24 3L30 9', '#ffffff', 3.5),
+  bagLost:
+    sil('<rect x="6" y="18" width="26" height="22" rx="5"/>', 'violet') + stroke('M14 18V14C14 12 15 11 17 11H21C23 11 24 12 24 14V18', '#c9c9d9', 2.5) + stroke('M34 14L44 6M44 6H37M44 6V13', '#ff4d6a', 3),
+  pumpLever:
+    sil('<rect x="8" y="22" width="14" height="22" rx="3"/>', 'orange') + stroke('M15 22L36 8', '#2a2f45', 4) + sil('<rect x="32" y="4" width="10" height="9" rx="2"/>', 'gold', 1.5),
+  crankLever:
+    sil('<circle cx="16" cy="32" r="6"/>', 'silver') + stroke('M16 32L36 18', '#ffd34a', 4) + sil('<rect x="33" y="8" width="6" height="14" rx="3"/>', 'red', 1.5),
+  valveWheel:
+    sil('<circle cx="24" cy="24" r="17"/>', 'red') + sil('<circle cx="24" cy="24" r="10"/>', 'white', 1.5) + stroke('M24 7V41M7 24H41', '#ff4d6a', 3) + sil('<circle cx="24" cy="24" r="4"/>', 'gold', 1.5),
+  thrLever:
+    sil('<rect x="10" y="30" width="28" height="12" rx="3"/>', 'rock') + stroke('M18 30L22 10M30 30L34 10', '#9aa0b4', 3) + sil('<rect x="16" y="5" width="10" height="7" rx="2"/>', 'rock', 1.5) + sil('<rect x="28" y="5" width="10" height="7" rx="2"/>', 'rock', 1.5),
+  arrow: stroke('M6 24H40M30 14L40 24L30 34', '#ffffff', 5),
   coin: sil('<circle cx="24" cy="24" r="18"/>', 'gold') + stroke('M24 14V34', '#b36b00', 3) + hl('<circle cx="17" cy="16" r="4"/>', 0.6),
 };
 

@@ -15,6 +15,7 @@ import { save as globalSave } from '../../core/storage';
 import { reportRun, type MiniGameHandle } from '../../hub/registry';
 import { displayName } from '../../services/leaderboard';
 import { sfx } from '../../3d/common/sfx';
+import { play as playSound } from '../../audio/sound';
 import { BOT_NAMES, BOT_SKINS, CABINS, CITIES, LIVERIES, SPOTS } from './data';
 import { bigMoment, notify } from '../../ui/notify';
 import { openHangar, type HangarHandle } from './hangar';
@@ -642,6 +643,7 @@ export class VooGame implements MiniGameHandle, HudHost {
     s.ev.length = 0;
   }
 
+  private coughT = 1.2;
   private sfx(n: string): void {
     switch (n) {
       case 'alarm':
@@ -677,6 +679,14 @@ export class VooGame implements MiniGameHandle, HudHost {
       case 'seat':
         sfx.click();
         break;
+      // fumaça na cabine: sons próprios do pacote 'voo' (src/audio/packs/worlds.ts)
+      case 'cough':
+      case 'masks':
+      case 'vent':
+      case 'smokeAlarm':
+      case 'bagLost':
+        playSound(n);
+        break;
     }
   }
 
@@ -691,6 +701,14 @@ export class VooGame implements MiniGameHandle, HudHost {
     const me = s.players[s.me];
     if (me.spraying && Math.random() < dt * 8) sfx.spray();
     if (s.active().some((e) => e.kind === 'fire') && Math.random() < dt * 1.5) sfx.fire();
+    // em pé dentro da fumaça: tossidinha de vez em quando (abaixado passa)
+    if ((me.cough ?? 0) > 0.55 && !me.seated) {
+      this.coughT -= dt;
+      if (this.coughT <= 0) {
+        this.coughT = 2.2 + Math.random() * 1.6;
+        playSound('cough');
+      }
+    } else this.coughT = 1.2;
   }
 
   /* ------------------------------ entrada (HudHost) ------------------------------ */

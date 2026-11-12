@@ -17,7 +17,7 @@ import {
   CG_Z, FUSE_Y, WHEEL_Y, airportGeo, bloopGeo, buildCabin, buildExterior, cartGeo, groundTexture, trayGeo, houseGeo, itemGeo, mat, mountainGeo,
   runwayTexture, skyDome, tapeX, treeGeo, type CabinRefs, type ExtRefs,
 } from './models';
-import { DRINKS, GS, MAINS, RWY_HALF, RWY_LEN, seatLabel, type Ev, type Order, type Sim } from './sim';
+import { DRINKS, EYE_CROUCH, EYE_STAND, GS, MAINS, RWY_HALF, RWY_LEN, seatLabel, smokeBottom, type Ev, type Order, type Sim } from './sim';
 import { GeoBuilder } from '../../3d/common/geo';
 import { vIconImg } from './icons';
 import { FpCamera, fpTuning, type FpCollider } from '../../3d/fpkit';
@@ -139,6 +139,57 @@ function crackTexture(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+/** fumaça em camadas: textura macia (manchas de ruído) que se repete e escorrega devagar */
+function smokeTexture(): THREE.CanvasTexture {
+  const [cv, c] = canvas(128, 128);
+  c.clearRect(0, 0, 128, 128);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 46; i++) {
+    const x = rnd() * 128;
+    const y = rnd() * 128;
+    const r = 14 + rnd() * 30;
+    // repete nas bordas (sem emenda)
+    for (const ox of [-128, 0, 128])
+      for (const oy of [-128, 0, 128]) {
+        const g = c.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        g.addColorStop(0, 'rgba(255,255,255,0.32)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g;
+        c.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+      }
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1.4, 7);
+  return t;
+}
+/** plaquinha redonda com ícone (manetes, botão das máscaras, chave de ventilar) */
+function iconPlate(ico: string, ring: string): THREE.Sprite {
+  const [cv, c] = canvas(128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const draw = () => {
+    c.clearRect(0, 0, 128, 128);
+    c.fillStyle = 'rgba(255,255,255,0.95)';
+    c.strokeStyle = ring;
+    c.lineWidth = 10;
+    c.beginPath();
+    c.arc(64, 64, 56, 0, TAU);
+    c.fill();
+    c.stroke();
+    const im = vIconImg(ico);
+    if (im.complete && im.naturalWidth) c.drawImage(im, 22, 22, 84, 84);
+    tex.needsUpdate = true;
+  };
+  const im = vIconImg(ico);
+  if (im.complete && im.naturalWidth) draw();
+  else im.addEventListener('load', draw, { once: true });
+  draw();
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.renderOrder = 4;
+  return sp;
 }
 function bangTexture(txt: string, bg: string): THREE.CanvasTexture {
   const [cv, c] = canvas(96, 96);
@@ -365,6 +416,13 @@ export class View3D {
   private wasSeated = false;
   private wasPortrait = false;
   private lastMaskDrop = 0;
+  /** camadas de fumaça no teto (descem conforme a fumaça acumula) */
+  private smokeL: THREE.Mesh[] = [];
+  private smokeTex: THREE.CanvasTexture | null = null;
+  private crouchK = 0;
+  /** plaquinhas com ícone (manetes e botões): pulsam quando mexem */
+  private plates: { sp: THREE.Sprite; base: number; pulse: number; key: string }[] = [];
+  private lastLev = { thr: -1, flaps: -1, gear: -1 };
   private binOpen = 0;
   private instT = 0;
 
@@ -588,6 +646,8 @@ export class View3D {
     this.puddle.position.set(SPOTS.leak.x + 0.6, 0.012, SPOTS.leak.z);
     this.puddle.scale.setScalar(0.01);
     this.cabin.add(this.puddle);
+    this.buildSmoke();
+    this.buildPlates();
     // mão
     this.hand = new Hand(this.cam, handColors(o.mySkin));
     this.resize();
@@ -697,16 +757,33 @@ export class View3D {
     // entre escritas de estilo) forçava layout síncrono várias vezes por quadro
     const w = this.cw;
     const h = this.ch;
-    if (this.extCam || this.ending || (this.cut >= 0 && this.cut < 6)) {
-      _v.set(x, y, z);
-      this.planeOff.localToWorld(_v);
-      _v.project(this.wcam);
-    } else {
-      _v.set(x, y, z).project(this.cam);
+    // sempre a câmera que ACABOU de desenhar o quadro (frame() roda antes do HUD), com a matriz
+    // de vista recalculada aqui: nada de matriz velha de um quadro antes (marcador "dançando")
+    const ext = this.extCam || !!this.ending || (this.cut >= 0 && this.cut < 6);
+    const cam = ext ? this.wcam : this.cam;
+    _v.set(x, y, z);
+    if (ext) this.planeOff.localToWorld(_v);
+    cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+    // espaço da câmera: -z é para a frente
+    _v.applyMatrix4(cam.matrixWorldInverse);
+    const vz = _v.z;
+    if (vz > -cam.near * 1.5) {
+      // atrás (ou rente à lente): a projeção perspectiva espelha e explode perto de z=0 — em vez
+      // disso, só a DIREÇÃO no plano da tela (x para a direita, y para cima) empurra para a borda
+      out.behind = true;
+      let dx = _v.x;
+      let dy = _v.y;
+      const l = Math.hypot(dx, dy);
+      if (l < 1e-4) (dx = 0), (dy = -1);
+      else (dx /= l), (dy /= l);
+      out.x = w * 0.5 + dx * w * 4;
+      out.y = h * 0.5 - dy * h * 4;
+      return;
     }
-    out.behind = _v.z > 1;
-    out.x = ((out.behind ? -_v.x : _v.x) * 0.5 + 0.5) * w;
-    out.y = ((out.behind ? _v.y : -_v.y) * 0.5 + 0.5) * h;
+    _v.applyMatrix4(cam.projectionMatrix);
+    out.behind = false;
+    out.x = (_v.x * 0.5 + 0.5) * w;
+    out.y = (-_v.y * 0.5 + 0.5) * h;
   }
 
   /* ============================== por quadro ============================== */
@@ -1032,7 +1109,9 @@ export class View3D {
       fc.pitch = this.pitch;
       fc.extraPitch = wob * 0.5 + shy * 0.6;
       fc.extraRoll = -s.acc.x * 0.012 + stun * 0.5 + wob;
-      fc.extraY = shy - stun * 0.55;
+      // abaixado: olhos perto do chão (a fumaça fica em cima)
+      this.crouchK += ((me.crouch ? 1 : 0) - this.crouchK) * Math.min(1, dt * 9);
+      fc.extraY = shy - stun * 0.55 - this.crouchK * (EYE_STAND - EYE_CROUCH);
       this.fpBody.x = (me.ox ?? me.x) + (me.x - (me.ox ?? me.x)) * k + shx;
       this.fpBody.z = (me.oz ?? me.z) + (me.z - (me.oz ?? me.z)) * k;
       this.fpBody.speedK = speedK;
@@ -1203,7 +1282,9 @@ export class View3D {
         m.position.set(p.x, hop, p.z);
         m.rotation.set(p.stun > 0 ? -1.2 : sp * 0.04, p.yaw + Math.PI, p.stun > 0 ? 0.4 : Math.sin(p.walk * 3.2) * 0.08 * Math.min(1, sp));
         const sq = p.actProg > 0 ? Math.sin(this.t * 14) * 0.04 : 0;
-        m.scale.set(CREW_S * (1 + sq), CREW_S * (1 - sq), CREW_S * (1 + sq));
+        // abaixado na fumaça: achatado e mais largo
+        const cr = p.crouch ? 0.68 : 1;
+        m.scale.set(CREW_S * (1 + sq) * (2 - cr) ** 0.5, CREW_S * (1 - sq) * cr, CREW_S * (1 + sq) * (2 - cr) ** 0.5);
       }
       this.updateStars(v.stars, p.stun > 0, m.position.x, 1.6, m.position.z, 1.2);
       if (p.spraying) this.spray(p.x + Math.sin(p.yaw) * 0.45, 0.85, p.z + Math.cos(p.yaw) * 0.45, Math.sin(p.yaw), Math.cos(p.yaw));
@@ -1269,12 +1350,7 @@ export class View3D {
     // emergências
     this.updateEmers(dt, act, intro);
     // máscaras de oxigênio
-    const press = act.some((e) => e.kind === 'pressure');
-    if (press && !cab.masks.visible) {
-      cab.masks.visible = true;
-      this.lastMaskDrop = this.t;
-    }
-    if (!press) cab.masks.visible = false;
+    this.updateSmokeAndPlates(dt);
     if (cab.masks.visible) {
       const k = ease((this.t - this.lastMaskDrop) / 0.6);
       for (let i = 0; i < cab.maskBase.length; i++) {
@@ -1506,6 +1582,9 @@ export class View3D {
           bestFire = e.sev;
           this.fireLight.position.set(e.x * 0.8, e.y + 0.4, e.z);
         }
+      } else if (e.kind === 'smoke' && e.stage === 0) {
+        // pipoca queimada: fumaça escura saindo da porta do forno e subindo até o teto
+        if (Math.random() < dt * (10 + e.sev * 14)) ps.emit(e.x + (Math.random() - 0.5) * 0.2, e.y, e.z + (Math.random() - 0.5) * 0.3, -0.2 + (Math.random() - 0.5) * 0.3, 0.7 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3, { tile: PT.Smoke, color: Math.random() < 0.5 ? '#4f4a58' : '#6a6474', life: 1.6, size: 0.22, grow: 1.4 });
       } else if (e.kind === 'spark') {
         if (Math.random() < dt * 14) ps.burst(e.x - 0.08, e.y + (Math.random() - 0.5) * 0.4, e.z + (Math.random() - 0.5) * 0.4, 6, 'spark', '#9ff4ff', 2);
       } else if (e.kind === 'leak' && e.stage === 0) {
@@ -1521,7 +1600,8 @@ export class View3D {
     if (this.fireLight) this.fireLight.intensity = bestFire > 0 ? 2 + bestFire * 2 + Math.sin(this.t * 25) * 0.5 : 0;
     // forno brilhando
     const oven = act.find((e) => e.kind === 'fire' && e.spot === 'oven');
-    (cab.ovenGlow.material as THREE.MeshBasicMaterial).color.set(oven ? (Math.sin(this.t * 18) > 0 ? '#ff8a2a' : '#ffcf3a') : '#3a2a3a');
+    const ovenSm = act.find((e) => e.kind === 'smoke' && e.stage === 0);
+    (cab.ovenGlow.material as THREE.MeshBasicMaterial).color.set(oven ? (Math.sin(this.t * 18) > 0 ? '#ff8a2a' : '#ffcf3a') : ovenSm ? (Math.sin(this.t * 4) > 0 ? '#7a3a1a' : '#5a2a1a') : '#3a2a3a');
     // painel elétrico aberto
     const spark = act.find((e) => e.kind === 'spark');
     cab.elecDoor.rotation.y += ((spark ? -1.4 + Math.sin(this.t * 13) * 0.08 : 0) - cab.elecDoor.rotation.y) * Math.min(1, dt * 6);
@@ -1531,7 +1611,7 @@ export class View3D {
       ['doorR', cab.doorR],
     ] as const) {
       const e = act.find((x) => x.kind === 'door' && x.spot === spot);
-      const open = e && e.stage === 1 ? 1 : 0;
+      const open = (e && e.stage === 1) || s.ventDoor === spot ? 1 : 0;
       const shake = e && e.stage === 0 ? Math.sin(this.t * 30) * 0.03 * (0.3 + e.sev) : 0;
       g.rotation.y += ((open ? 1.3 : 0) + shake - g.rotation.y) * Math.min(1, dt * (open ? 3 : 12));
     }
@@ -1573,6 +1653,117 @@ export class View3D {
 
   /* ------------------------------ eventos ------------------------------ */
 
+  /** fumaça: planos horizontais empilhados (vistos de baixo e de cima), do teto até a borda da camada */
+  private buildSmoke(): void {
+    this.smokeTex = smokeTexture();
+    this.dispose.push(this.smokeTex);
+    const geo = new THREE.PlaneGeometry(3.5, 20.5);
+    this.dispose.push(geo);
+    const n = this.q.tier < 1 ? 4 : 6;
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ map: this.smokeTex, color: i % 2 ? '#8a8494' : '#6f6a7a', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+      );
+      m.rotation.x = Math.PI / 2;
+      m.rotation.z = i * 0.7;
+      m.position.set(0, 2.2, 6.2);
+      m.visible = false;
+      m.renderOrder = 3;
+      this.cabin.add(m);
+      this.smokeL.push(m);
+      this.dispose.push(m.material as THREE.Material);
+    }
+  }
+  /** ícones em cima das manetes/botões: dá para saber o que cada coisa faz sem ler */
+  private buildPlates(): void {
+    const add = (key: string, ico: string, ring: string, x: number, y: number, z: number, size: number) => {
+      const sp = iconPlate(ico, ring);
+      sp.position.set(x, y, z);
+      sp.scale.setScalar(size);
+      this.cabin.add(sp);
+      this.dispose.push(sp.material, (sp.material as THREE.SpriteMaterial).map!);
+      this.plates.push({ sp, base: size, pulse: 0, key });
+    };
+    // pedestal da cabine de comando (potência, flapes, trem)
+    add('thr', 'fuel', '#ff7a3a', 0, 1.02, -3.06, 0.1);
+    add('flaps', 'flaps', '#7ad8ff', 0.17, 1.0, -3.42, 0.085);
+    add('gear', 'gear', '#9aa0b8', -0.17, 1.0, -3.42, 0.085);
+    // porão: bomba (combustível), manivela (trem), válvula (pressão)
+    add('pump', 'fuel', '#ff7a3a', SPOTS.pump.x - 0.08, 1.48, SPOTS.pump.z, 0.24);
+    add('crank', 'gear', '#ffd34a', SPOTS.gear.x, 0.95, SPOTS.gear.z, 0.24);
+    add('valve', 'pressure', '#ff3d5a', SPOTS.valve.x - 0.12, 1.62, SPOTS.valve.z, 0.24);
+    // botão das máscaras (comissários) e chave de ventilar (teto da cabine)
+    add('mask', 'mask', '#ffd34a', SPOTS.maskSw.x - 0.1, SPOTS.maskSw.y + 0.3, SPOTS.maskSw.z, 0.2);
+    add('vent', 'vent', '#46d9e6', SPOTS.vent.x, SPOTS.vent.y + 0.12, SPOTS.vent.z, 0.12);
+  }
+  private pulsePlate(key: string): void {
+    for (const p of this.plates) if (p.key === key) p.pulse = 1;
+  }
+  private updateSmokeAndPlates(dt: number): void {
+    const s = this.sim;
+    const sm = s.smoke;
+    const bot = smokeBottom(sm);
+    const n = this.smokeL.length;
+    const tex = this.smokeTex!;
+    // a fumaça escorrega para onde está saindo (porta aberta / ventilação na frente)
+    const flow = s.doorOpen ? 0.12 : s.vent > 0 ? 0.08 : 0.012;
+    tex.offset.y -= dt * flow;
+    tex.offset.x += dt * 0.004;
+    for (let i = 0; i < n; i++) {
+      const m = this.smokeL[i];
+      const k = (i + 0.5) / n;
+      m.visible = sm > 0.015;
+      if (!m.visible) continue;
+      m.position.y = 2.28 - k * (2.28 - bot) + Math.sin(this.t * 0.6 + i) * 0.02;
+      (m.material as THREE.MeshBasicMaterial).opacity = Math.min(1, sm * 2.2) * (0.3 - k * 0.12);
+    }
+    // saindo pela porta aberta: fiapos de fumaça puxados para fora; ventilação: para a frente
+    if (sm > 0.03 && (s.doorOpen || s.vent > 0)) {
+      const d = s.doorOpen ? SPOTS[s.doorOpen as 'doorF'] : null;
+      for (let i = 0; i < 2; i++) {
+        if (Math.random() > sm * 3) continue;
+        const z = d ? d.z + (Math.random() - 0.5) * 6 : 1 + Math.random() * 14;
+        const y = bot + Math.random() * (2.25 - bot);
+        const x = (Math.random() - 0.5) * 2.6;
+        const vx = d ? (d.x - x) * 1.2 : 0;
+        const vz = d ? (d.z - z) * 0.9 : -3;
+        this.fx.emit(x, y, z, vx, 0.1, vz, { tile: PT.Smoke, color: '#7a7484', life: 1.1, size: 0.45, grow: 0.8 });
+      }
+    }
+    // máscaras: só quando alguém soltou (botão), não sozinhas
+    const cab = this.cab;
+    if (s.masks && !cab.masks.visible) {
+      cab.masks.visible = true;
+      this.lastMaskDrop = this.t;
+    }
+    if (!s.masks) cab.masks.visible = false;
+    // manetes mexendo: a plaquinha pulsa (mostra o que mudou)
+    const L = this.lastLev;
+    if (L.thr >= 0 && Math.abs(s.ctrl.thr - L.thr) > 0.04) this.pulsePlate('thr');
+    if (L.flaps >= 0 && s.f.flaps !== L.flaps) this.pulsePlate('flaps');
+    if (L.gear >= 0 && s.f.gear !== L.gear) this.pulsePlate('gear');
+    if (L.thr < 0 || Math.abs(s.ctrl.thr - L.thr) > 0.04) L.thr = s.ctrl.thr;
+    L.flaps = s.f.flaps;
+    L.gear = s.f.gear;
+    for (const e of s.active()) {
+      if (e.kind === 'leak' && e.stage === 1 && e.prog > 0) this.pulsePlate('pump');
+      if (e.kind === 'gear' && e.prog > 0) this.pulsePlate('crank');
+      if (e.kind === 'pressure' && e.prog > 0) this.pulsePlate('valve');
+    }
+    const me = s.players[s.me];
+    const needMask = !s.masks && (sm > 0.08 || s.active().some((e) => e.kind === 'smoke' || e.kind === 'pressure'));
+    for (const p of this.plates) {
+      p.pulse = Math.max(0, p.pulse - dt * 1.6);
+      // pedestal só aparece quando estou sentado na cabine; o resto, a pé
+      const cock = p.key === 'thr' || p.key === 'flaps' || p.key === 'gear';
+      p.sp.visible = cock ? me.seated : p.key === 'mask' ? !s.masks : p.key === 'vent' ? sm > 0.05 || s.vent > 0 : !me.seated;
+      // botão de máscara pisca quando precisa
+      const blink = p.key === 'mask' && needMask ? 0.15 * Math.abs(Math.sin(this.t * 5)) : 0;
+      p.sp.scale.setScalar(p.base * (1 + p.pulse * 0.45 + blink));
+    }
+  }
+
   onEv(ev: Ev): void {
     const s = this.sim;
     if (ev.k === 'jolt') {
@@ -1599,6 +1790,9 @@ export class View3D {
           this.cab.tapePatches.add(tp);
         }
       }
+    } else if (ev.k === 'bagOut') {
+      // mala sumindo pela porta: nuvenzinha branca no vão
+      this.fx.burst(ev.x, 1.1, ev.z, 12, 'poof', '#ffffff', 2.2);
     } else if (ev.k === 'touch') {
       const f = s.f;
       this.ending = { t: 0, kind: ev.out.kind, base: new THREE.Vector3(f.x, 0, f.z), hdg: f.hdg, poppers: [] };

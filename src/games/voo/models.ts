@@ -304,6 +304,10 @@ export function buildCabin(cab: Cabin, standard: boolean, bevel: number, pfdTex:
   // painel elétrico e válvula
   metal.box(0.1, 0.75, 0.62, 1.72, 0.95, SPOTS.elec.z, '#9aa0b8');
   metal.box(0.1, 0.7, 0.6, 1.72, 0.85, SPOTS.valve.z, '#9aa0b8');
+  // painel amarelo das máscaras (comissários) e chave de ventilar no teto da cabine de comando
+  metal.box(0.08, 0.3, 0.34, 1.72, 1.2, SPOTS.maskSw.z, '#ffd34a');
+  metal.box(0.05, 0.12, 0.12, 1.66, 1.29, SPOTS.maskSw.z, '#ff3d5a');
+  metal.box(0.4, 0.05, 0.26, SPOTS.vent.x, 2.12, SPOTS.vent.z, '#46d9e6');
   // lâmpadas de alarme (vermelhas) no teto
   const alarm = new GeoBuilder();
   alarm.ao = false;
